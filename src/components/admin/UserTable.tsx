@@ -2,7 +2,7 @@
 
 import { Table } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
-import { Button } from 'A/components/ui/Button';
+import { Button } from '@/components/ui/Button';
 
 const mockUsers = [
   { id: '1', avatar: '👤', name: 'Jean Dupont', email: 'jean@example.com', plan: 'Pro', credits: 450, joined: '2024-01-15', status: 'active' },
