@@ -42,4 +42,5 @@ export function AdminSidebar() {
         })}
       </nav>
     </aside>
-  +}
+  );
+}
