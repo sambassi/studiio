@@ -2,7 +2,7 @@
 
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Badge } from 'A/components/ui/Badge';
+import { Badge } from '@/components/ui/Badge';
 import { Instagram, Music, Facebook, Youtube, Check, Plus } from 'lucide-react';
 
 const socialNetworks = [
