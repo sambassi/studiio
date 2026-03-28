@@ -1,8 +1,8 @@
 'use client';
 
 import { Table } from '@/components/ui/Table';
-import { Badge } from 'A/components/ui/Badge';
-import { Button } from 'A/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
 
 const mockSubscriptions = [
   { id: '1', user: 'Jean Dupont', plan: 'Pro', status: 'active', start: '2024-01-15', end: '2024-04-15', auto_renew: true },
