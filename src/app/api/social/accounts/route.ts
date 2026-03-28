@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from 'A/lib/auth/config';
+import { auth } from '@/lib/auth/config';
 import { supabase } from '@/lib/db/supabase';
 import { ApiResponse } from '@/lib/types/api';
 
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<ApiResponse<an
     return NextResponse.json({ success: true, data });
   } catch (error) {
     return NextResponse.json(
-      { success¦alse, error: 'Failed to fetch social accounts' },
+      { successÂ¦alse, error: 'Failed to fetch social accounts' },
       { status: 500 }
     );
   }
