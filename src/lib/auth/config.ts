@@ -13,12 +13,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   }),
   providers: [
     Google({
-      clientId: process.env.GOOGLE_ID,
-      clientSecret: process.env.GOOGLE_SECRET.
+      clientId: process.env.GOOGLE_ID!,
+      clientSecret: process.env.GOOGLE_SECRET!,
     }),
     Facebook({
       clientId: process.env.FACEBOOK_ID!,
-      clientSecret: process.env.FACMEC==X_SECRET!
+      clientSecret: process.env.FACEBOOK_SECRET!,
     }),
   ],
   callbacks: {
