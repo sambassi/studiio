@@ -2,7 +2,7 @@
 
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
+import { Badge } from 'A/components/ui/Badge';
 import { Instagram, Music, Facebook, Youtube, Check, Plus } from 'lucide-react';
 
 const socialNetworks = [
@@ -59,6 +59,27 @@ export default function SocialPage() {
         <CardContent className="pt-6">
           <h3 className="font-semibold text-white mb-4">Publication automatique</h3>
           <div className="space-y-4">
+            <label className="flex items-center gap-3 p-4 bg-gray-800/50 rounded-lg cursor-pointer hover:bg-gray-800 transition">
+              <input type="checkbox" className="w-4 h-4" defaultChecked />
+              <div>
+                <p className="font-medium text-white text-sm">Publier sur les réseaux connectés</p>
+                <p className="text-xs text-gray-400">Publiez automatiquement vos vidéos sur tous vos comptes</p>
+              </div>
+            </label>
+            <label className="flex items-center gap-3 p-4 bg-gray-800/50 rounded-lg cursor-pointer hover:bg-gray-800 transition">
+              <input type="checkbox" className="w-4 h-4" />
+              <div>
+                <p className="font-medium text-white text-sm">Programmer la publication</p>
+                <p className="text-xs text-gray-400">Choisissez l'heure de publication optimale</p>
+              </div>
+            </label>
+            <label className="flex items-center gap-3 p-4 bg-gray-800/50 rounded-lg cursor-pointer hover:bg-gray-800 transition">
+              <input type="checkbox" className="w-4 h-4" defaultChecked />
+              <div>
+                <p className="font-medium text-white text-sm">Tracker les performances</p>
+                <p className="text-xs text-gray-400">Recevez des rapports détaillés sur vos vidéos</p>
+              </div>
+            </label>
           </div>
         </CardContent>
       </Card>
