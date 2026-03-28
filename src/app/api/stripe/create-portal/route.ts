@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from 'A/lib/auth/config';
+import { auth } from '@/lib/auth/config';
 import { createBillingPortalSession } from '@/lib/stripe/client';
 import { ApiResponse } from '@/lib/types/api';
 
