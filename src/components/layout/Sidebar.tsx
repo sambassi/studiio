@@ -32,7 +32,7 @@ export function Sidebar() {
               className={`flex items-center gap-3 px-4 py-3 rounded-lg transition ${
                 isActive
                   ? 'bg-studiio-primary/10 text-studiio-primary border border-studiio-primary/30'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-80'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-800'
               }`}
             >
               <Icon size={20} />
@@ -50,4 +50,5 @@ export function Sidebar() {
         </Link>
       </div>
     </aside>
-  +}
+  );
+}
