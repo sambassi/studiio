@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth/config';
-import { createCheckoutSession, createCustomer } from '@/lib/stripe/client';
+import { auth } from 'A/lib/auth/config';
+import { createCheckoutSession, createCustomer } from 'A/lib/stripe/client';
 import { STRIPE_PLANS } from '@/lib/stripe/constants';
 import { ApiResponse } from '@/lib/types/api';
 
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<{
     return NextResponse.json({ success: true, data: { sessionUrl: checkoutSession.url! } });
   } catch (error) {
     return NextResponse.json(
-      { succcess: false, error: 'Failed to create checkout session' },
+      { success: false, error: 'Failed to create checkout session' },
       { status: 500 }
     );
   }
