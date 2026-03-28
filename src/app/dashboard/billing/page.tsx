@@ -22,8 +22,82 @@ export default function BillingPage() {
         <h1 className="text-4xl font-bold text-white mb-2">Facturation</h1>
         <p className="text-gray-400">Gérez vos crédits et votre abonnement</p>
       </div>
+
       <CreditsDisplay credits={1250} isPro={true} />
-      <PricingCards onSelectPlan={(plan) => console.log(plan)} />
+
+      <div className="grid md:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader className="border-b border-gray-800">
+            <CardTitle>Abonnement actuel</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-6 space-y-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-sm text-gray-400 mb-1">Plan</p>
+                <p className="text-2xl font-bold text-white">Pro</p>
+              </div>
+              <Badge variant="success">Actif</Badge>
+            </div>
+            <div className="pt-4 border-t border-gray-800">
+              <p className="text-sm text-gray-400 mb-1">Renouvellement</p>
+              <p className="text-white font-semibold">2 avril 2024</p>
+            </div>
+            <Button variant="secondary" className="w-full">
+              Gérer l'abonnement
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="border-b border-gray-800">
+            <CardTitle>Acheter des crédits</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-6 space-y-3">
+            {Object.entries(CREDIT_PACKAGES).map(([key, pkg]) => (
+              <Button key={key} variant="secondary" className="w-full">
+                {pkg.name} - {pkg.priceFr}
+              </Button>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader className="border-b border-gray-800">
+          <CardTitle>Historique des transactions</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-6">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-800">
+                  <th className="text-left py-2 text-gray-400 font-medium">Date</th>
+                  <th className="text-left py-2 text-gray-400 font-medium">Description</th>
+                  <th className="text-right py-2 text-gray-400 font-medium">Crédits</th>
+                  <th className="text-right py-2 text-gray-400 font-medium">Solde</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mockTransactions.map((tx) => (
+                  <tr key={tx.id} className="border-b border-gray-800 last:border-0">
+                    <td className="py-3 text-gray-300">{tx.date}</td>
+                    <td className="py-3 text-gray-300">{tx.description}</td>
+                    <td className={`text-right py-3 font-semibold ${tx.credits > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {tx.credits > 0 ? '+' : ''}{tx.credits}
+                    </td>
+                    <td className="text-right py-3 text-white">{tx.balance}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div>
+        <h2 className="text-2xl font-bold text-white mb-6">Modifier votre plan</h2>
+        <PricingCards onSelectPlan={(plan) => console.log('Selected plan:', plan)} />
+      </div>
     </div>
   );
 }
