@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from 'A/lib/auth/config';
+import { auth } from '@/lib/auth/config';
 import { supabase } from '@/lib/db/supabase';
-import { PaginatedResponse, ApiResponse } from 'A/lib/types/api';
+import { PaginatedResponse, ApiResponse } from '@/lib/types/api';
 
 export async function GET(req: NextRequest): Promise<NextResponse<PaginatedResponse<any>>> {
   try {
@@ -47,7 +47,7 @@ export async function PATCH(req: NextRequest): Promise<NextResponse<ApiResponse<
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json(
-        { success¦alse, error: 'Unauthorized' },
+        { successÂ¦alse, error: 'Unauthorized' },
         { status: 401 }
       );
     }
