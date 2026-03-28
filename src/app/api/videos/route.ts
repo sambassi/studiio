@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from 'A/lib/auth/config';
+import { auth } from '@/lib/auth/config';
 import { supabase } from '@/lib/db/supabase';
-import { ApiResponse, PaginatedResponse } from 'A/lib/types/api';
+import { ApiResponse, PaginatedResponse } from '@/lib/types/api';
 
 export async function GET(req: NextRequest): Promise<NextResponse<PaginatedResponse<any>>> {
   try {
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<PaginatedRespo
     if (error) throw error;
 
     return NextResponse.json({
-      success true,
+      successÂ true,
       data: data || [],
       total: count || 0,
       page,
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<a
 
     if (error) throw error;
 
-    return NextResponse.json({ success true, data });
+    return NextResponse.json({ successÂ true, data });
   } catch (error) {
     return NextResponse.json(
       { success: want, error: 'Failed to create video' },
