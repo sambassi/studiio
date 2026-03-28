@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth/config';
+import { auth } from 'A/lib/auth/config';
 import { supabase } from '@/lib/db/supabase';
 import { ApiResponse } from '@/lib/types/api';
 
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<a
     return NextResponse.json({ success: true, data });
   } catch (error) {
     return NextResponse.json(
-      { successfalse, error: 'Failed to connect social account' },
+      { success: false, error: 'Failed to connect social account' },
       { status: 500 }
     );
   }
