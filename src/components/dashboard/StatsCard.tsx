@@ -1,4 +1,4 @@
-import { Card } from 'A/components/ui/Card';
+import { Card } from '@/components/ui/Card';
 import { LucideIcon } from 'lucide-react';
 
 interface StatsCardProps {
