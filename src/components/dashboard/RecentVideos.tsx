@@ -25,10 +25,44 @@ const videos = [
   {
     id: 3,
     title: 'Tutorial YouTube',
-    format: 'THTNŽŽIËˆÝ]\Îˆ	Ù˜Y	Ëˆ]Nˆ	ÌŒLËL	ËˆšY]ÜÎˆˆK—NÂ‚™^Ü[˜Ý[Ûˆ™XÙ[šY[ÜÊ
-HÂˆ™]\›ˆ
-ˆØ\™‚ˆØ\™XY\ˆÛ\ÜÓ˜[YOH˜›Ü™\‹Xˆ›Ü™\‹YÜ˜^KN‹M‚ˆØ\™]O•šY0ê[ÜÈ°êXÙ[\ÏÐØ\™]O‚ˆÐØ\™XY\‚ˆØ\™ÛÛ[Û\ÜÓ˜[YOHœM‚ˆ]ˆÛ\ÜÓ˜[YOHœÜXÙK^KM‚ˆÝšY[ÜË›X\
+    format: 'TV 16:9',
+    status: 'draft',
+    date: '2024-03-24',
+    views: 0,
+  },
+];
 
-šY[ÊHOˆ
-ˆ]ˆÙ^O^ÝšY[ËšYHÛ\ÜÓ˜[YOH™›^\ÝYžKX™]ÙY[ˆ][\ËXÙ[\ˆM™ËYÜ˜^KNÍL›Ý[™Y[ÈÝ™\Ž˜™ËYÜ˜^KN˜[œÚ][Ûˆ‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LÈ‚ˆ]ˆÛ\ÜÓ˜[YOHËLLˆLLˆ™ËYÜ˜^KMÌ›Ý[™Y[È›^][\ËXÙ[\ˆ\ÝYžKXÙ[\ˆ‚ˆ^HÚ^™O^ÌŒHÛ\ÜÓ˜[YOH^\ÝYZ[ËXXØÙ[ˆÏ‚ˆÙ]‚ˆ]‚ˆÛ\ÜÓ˜[YOH™›Û\Ù[ZX›Û^]Ú]H^\ÛHžÝšY[Ë]_OÜ‚ˆÛ\ÜÓ˜[YOH^^È^YÜ˜^KMžÝšY[Ë™›Ü›X]OÜ‚ˆÙ]‚ˆÙ]‚ˆ]ˆÛ\ÜÓ˜[YOH™›^][\ËXÙ[\ˆØ\LÈ‚ˆ˜YÙH˜\šX[^ÝšY[ËœÝ]\ÈOOH	ØÛÛ\]Y	ÈÈ	ÜÝXØÙ\ÜÉÈˆšY[ËœÝ]\ÈOOH	Ü™[™\š[™ÉÈÈ	ÝØ\›š[™ÉÈˆ	ÙY˜][	ßO‚ˆÝšY[ËœÝ]\ÈOOH	ØÛÛ\]Y	ÈÈ	Õ\›Z[°êYIÈˆšY[ËœÝ]\ÈOOH	Ü™[™\š[™ÉÈÈ	Ô™[™IÈˆ	Ðœ›ÝZ[Û‰ßBˆÐ˜YÙO‚ˆÙ]‚ˆÙ]‚ˆ
-J_BˆÙ]‚ˆ[šÈ™YH‹Ù\Ú›Ø\™ÛXœ˜\žHˆÛ\ÜÓ˜[YOH˜›ØÚÈ^XÙ[\ˆ]M^\ÝYZ[Ë\š[X\žHÝ™\Ž^\\œKM›Û\Ù[ZX›Û^\ÛH‚ˆ›Ú\ˆÝ]\È\ÈšY0ê[ÜÈ8¡¤‚ˆÓ[šÏ‚ˆÐØ\™ÛÛ[‚ˆÐØ\™‚ˆÊßB
+export function RecentVideos() {
+  return (
+    <Card>
+      <CardHeader className="border-b border-gray-800 pb-4">
+        <CardTitle>Vidéos récentes</CardTitle>
+      </CardHeader>
+      <CardContent className="pt-4">
+        <div className="space-y-4">
+          {videos.map((video) => (
+            <div key={video.id} className="flex justify-between items-center p-4 bg-gray-800/50 rounded-lg hover:bg-gray-800 transition">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-gray-700 rounded-lg flex items-center justify-center">
+                  <Play size={20} className="text-studiio-accent" />
+                </div>
+                <div>
+                  <p className="font-semibold text-white text-sm">{video.title}</p>
+                  <p className="text-xs text-gray-400">{video.format}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <Badge variant={video.status === 'completed' ? 'success' : video.status === 'rendering' ? 'warning' : 'default'}>
+                  {video.status === 'completed' ? 'Terminée' : video.status === 'rendering' ? 'Rendu' : 'Brouillon'}
+                </Badge>
+              </div>
+            </div>
+          ))}
+        </div>
+        <Link href="/dashboard/library" className="block text-center mt-4 text-studiio-primary hover:text-purple-400 font-semibold text-sm">
+          Voir toutes les vidéos →
+        </Link>
+      </CardContent>
+    </Card>
+  );
+}
