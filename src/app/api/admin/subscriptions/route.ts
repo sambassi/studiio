@@ -47,7 +47,7 @@ export async function PATCH(req: NextRequest): Promise<NextResponse<ApiResponse<
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json(
-        { success¦alse, error: 'Unauthorized' },
+        { success: false, error: 'Unauthorized' },
         { status: 401 }
       );
     }
