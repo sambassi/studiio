@@ -417,7 +417,7 @@ export default function LandingPage() {
       </section>
 
       {/* ══════════════════════════════════════════════
-          FORMATS SUPPORT��S
+          FORMATS SUPPORTÉS
           ══════════════════════════════════════════════ */}
       <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-transparent via-violet-950/10 to-transparent">
         <div className="max-w-5xl mx-auto">
@@ -459,7 +459,7 @@ export default function LandingPage() {
               <Award size={14} className="text-pink-400" />
               <span className="text-xs font-semibold text-pink-300 tracking-wide">COMMENT ÇA MARCHE</span>
             </div>
-            <h2 className="text-3xl sm:text-4xl font-black mb-4">4 étapes pour des vidéos pro</h2>
+            <h2 className="text-3xl sm:text-4xl font-black mb-4">4 åtapes pour des vidéos pro</h2>
             <p className="text-gray-400">Pas besoin d&apos;être vidéaste. Studiio fait le travail pour vous.</p>
           </div>
 
