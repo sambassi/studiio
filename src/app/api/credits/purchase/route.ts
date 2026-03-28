@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from 'A/lib/auth/config';
-import { createOneTimeCheckout, createCustomer } from 'A/lib/stripe/client';
-import { ApiResponse } from 'A/lib/types/api';
+import { auth } from '@/lib/auth/config';
+import { createOneTimeCheckout, createCustomer } from '@/lib/stripe/client';
+import { ApiResponse } from '@/lib/types/api';
 
 export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<{ sessionUrl: string }>>> {
   try {
