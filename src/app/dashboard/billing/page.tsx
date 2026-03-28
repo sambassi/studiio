@@ -23,6 +23,7 @@ export default function BillingPage() {
         <p className="text-gray-400">Gérez vos crédits et votre abonnement</p>
       </div>
       <CreditsDisplay credits={1250} isPro={true} />
+      <PricingCards onSelectPlan={(plan) => console.log(plan)} />
     </div>
   );
 }
