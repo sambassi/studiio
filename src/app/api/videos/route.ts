@@ -28,7 +28,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<PaginatedRespo
     if (error) throw error;
 
     return NextResponse.json({
-      success true,
+      success: true,
       data: data || [],
       total: count || 0,
       page,
@@ -66,10 +66,10 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<a
 
     if (error) throw error;
 
-    return NextResponse.json({ success true, data });
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     return NextResponse.json(
-      { success: want, error: 'Failed to create video' },
+      { success: false, error: 'Failed to create video' },
       { status: 500 }
     );
   }
