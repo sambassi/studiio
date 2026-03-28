@@ -1,7 +1,7 @@
 'use client';
 
 import { StatsCard } from '@/components/dashboard/StatsCard';
-import { CreditsDisplay } from 'A/components/billing/CreditsDisplay';
+import { CreditsDisplay } from '@/components/billing/CreditsDisplay';
 import { RecentVideos } from '@/components/dashboard/RecentVideos';
 import { Video, Film, Zap, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -11,23 +11,23 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-4xl font-bold text-white mb-2">Bienvenue, Jean 👋</h1>
+        <h1 className="text-4xl font-bold text-white mb-2">Bienvenue, Jean ðŸ‘‹</h1>
         <p className="text-gray-400">Vous avez un nouveau message de support</p>
       </div>
 
       <div className="grid md:grid-cols-4 gap-4">
         <StatsCard
           icon={Video}
-          label="Vidéos créées"
+          label="VidÃ©os crÃ©Ã©es"
           value={24}
           change="5 cette semaine"
           changePositive={true}
         />
         <StatsCard
           icon={Zap}
-          label="Crédits restants"
+          label="CrÃ©dits restants"
           value={1250}
-          change="500 achetés cette semaine"
+          change="500 achetÃ©s cette semaine"
           changePositive={true}
         />
         <StatsCard
@@ -56,12 +56,12 @@ export default function DashboardPage() {
             <h3 className="font-bold text-white">Actions rapides</h3>
             <Link href="/dashboard/creator" className="block">
               <Button variant="primary" size="lg" className="w-full">
-                Créer s��une vidéo
+                CrÃ©er s une vidÃ©o
               </Button>
             </Link>
             <Link href="/dashboard/social" className="block">
               <Button variant="secondary" size="lg" className="w-full">
-                Connecter réseaux sociaux
+                Connecter rÃ©seaux sociaux
               </Button>
             </Link>
           </div>
