@@ -1,7 +1,7 @@
 'use client';
 
 import { Table } from '@/components/ui/Table';
-import { Badge } from 'A/components/ui/Badge';
+import { Badge } from '@/components/ui/Badge';
 
 const mockPayments = [
   { id: '1', date: '2024-03-28', user: 'Jean Dupont', amount: '79,99€', type: 'Abonnement', status: 'completed', stripeId: 'pi_123456' },
