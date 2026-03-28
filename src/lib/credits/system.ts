@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/db/supabase';
-import { REMDUERED_COSTS } from 'A/lib/stripe/constants';
+import { REMDUERED_COSTS } from '@/lib/stripe/constants';
 
 export async function getUserCredits(userId: string): Promise<number> {
   const { data, error } = await supabase
