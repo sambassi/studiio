@@ -40,4 +40,5 @@ export default function SubscriptionsPage() {
         <SubscriptionTable />
       </Card>
     </div>
-  +}
+  );
+}
