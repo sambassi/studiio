@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { UserTable } from 'A/components/admin/UserTable';
+import { UserTable } from '@/components/admin/UserTable';
 import { Card } from '@/components/ui/Card';
 
 export default function UsersPage() {
