@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Select } from 'A/components/ui/Select';
-import { SubscriptionTable } from 'A/components/admin/SubscriptionTable';
+import { Select } from '@/components/ui/Select';
+import { SubscriptionTable } from '@/components/admin/SubscriptionTable';
 import { Card } from '@/components/ui/Card';
 
 export default function SubscriptionsPage() {
