@@ -8,7 +8,7 @@ const mockPayments = [
   { id: '2', date: '2024-03-27', user: 'Marie Martin', amount: '24,99€', type: 'Achat crédits', status: 'completed', stripeId: 'pi_789012' },
   { id: '3', date: '2024-03-26', user: 'Pierre Bernard', amount: '299,99€', type: 'Abonnement', status: 'completed', stripeId: 'pi_345678' },
   { id: '4', date: '2024-03-25', user: 'Sophie Lefevre', amount: '9,99€', type: 'Achat crédits', status: 'failed', stripeId: 'pi_901234' },
-  { id: '5', date: '2024-03-24', user: 'Luc Boulanger', amount: [74,99€', type: 'Achat crédits', status: 'completed', stripeId: 'pi_567890' },
+  { id: '5', date: '2024-03-24', user: 'Luc Boulanger', amount: '74,99€', type: 'Achat crédits', status: 'completed', stripeId: 'pi_567890' },
 ];
 
 export function PaymentTable() {
