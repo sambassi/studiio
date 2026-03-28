@@ -1,7 +1,7 @@
 'use client';
 
 import { Table } from '@/components/ui/Table';
-import { Badge } from '@/components/ui/Badge';
+import { Badge } from 'A/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 
 const mockSubscriptions = [
