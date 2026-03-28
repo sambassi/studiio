@@ -49,4 +49,5 @@ export default function AdminDashboard() {
         <ActivityFeed />
       </div>
     </div>
-  +}
+  );
+}
