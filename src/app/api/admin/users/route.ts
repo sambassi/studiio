@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from 'A/lib/auth/config';
+import { auth } from '@/lib/auth/config';
 import { supabase } from '@/lib/db/supabase';
 import { PaginatedResponse } from '@/lib/types/api';
 
