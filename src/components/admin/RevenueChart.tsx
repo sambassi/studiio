@@ -4,7 +4,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 
 const data = [
   { month: 'Jan', revenue: 2400 },
-  { month: 'Fâv', revenue: 3210 },
+  { month: 'Fév', revenue: 3210 },
   { month: 'Mar', revenue: 2290 },
   { month: 'Avr', revenue: 2000 },
   { month: 'Mai', revenue: 2181 },
@@ -38,4 +38,5 @@ export function RevenueChart() {
         </div>
       </CardContent>
     </Card>
-  +}
+  );
+}
