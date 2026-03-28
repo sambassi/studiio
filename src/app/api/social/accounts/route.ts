@@ -23,7 +23,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<ApiResponse<an
     return NextResponse.json({ success: true, data });
   } catch (error) {
     return NextResponse.json(
-      { success¦alse, error: 'Failed to fetch social accounts' },
+      { success: false, error: 'Failed to fetch social accounts' },
       { status: 500 }
     );
   }
