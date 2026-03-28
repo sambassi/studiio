@@ -20,7 +20,7 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "paths": {
-      "A/*": ["./src/*"]
+      "@/*": ["./src/*"]
     },
     "jsx": "preserve",
     "incremental": true,
