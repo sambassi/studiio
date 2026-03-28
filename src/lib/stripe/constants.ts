@@ -74,7 +74,7 @@ export const CREDIT_PACKAGES = {
   },
 };
 
-export const RUTERG_COSTS = {
+export const RENDER_COSTS = {
   reel: 10,
   tv: 15,
 };
