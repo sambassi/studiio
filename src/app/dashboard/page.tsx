@@ -11,23 +11,23 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-4xl font-bold text-white mb-2">Bienvenue, Jean ðŸ‘‹</h1>
+        <h1 className="text-4xl font-bold text-white mb-2">Bienvenue, Jean 👋</h1>
         <p className="text-gray-400">Vous avez un nouveau message de support</p>
       </div>
 
       <div className="grid md:grid-cols-4 gap-4">
         <StatsCard
           icon={Video}
-          label="VidÃ©os crÃ©Ã©es"
+          label="Vidéos créées"
           value={24}
           change="5 cette semaine"
           changePositive={true}
         />
         <StatsCard
           icon={Zap}
-          label="CrÃ©dits restants"
+          label="Crédits restants"
           value={1250}
-          change="500 achetÃ©s cette semaine"
+          change="500 achetés cette semaine"
           changePositive={true}
         />
         <StatsCard
@@ -56,12 +56,12 @@ export default function DashboardPage() {
             <h3 className="font-bold text-white">Actions rapides</h3>
             <Link href="/dashboard/creator" className="block">
               <Button variant="primary" size="lg" className="w-full">
-                CrÃ©er s une vidÃ©o
+                Créer une vidéo
               </Button>
             </Link>
             <Link href="/dashboard/social" className="block">
               <Button variant="secondary" size="lg" className="w-full">
-                Connecter rÃ©seaux sociaux
+                Connecter réseaux sociaux
               </Button>
             </Link>
           </div>
