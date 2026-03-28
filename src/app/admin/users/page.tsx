@@ -39,4 +39,5 @@ export default function UsersPage() {
         <UserTable />
       </Card>
     </div>
-  +}
+  );
+}
