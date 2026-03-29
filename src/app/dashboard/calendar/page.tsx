@@ -9,6 +9,14 @@ import {
   Edit2,
   Copy,
   FileVideo,
+  Eye,
+  Move,
+  Send,
+  Trash2,
+  Clock,
+  Bot,
+  Download,
+  CheckSquare,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -37,6 +45,46 @@ const platformColors: Record<string, string> = {
 
 const STORAGE_KEY = 'studiio_posts';
 
+// Mock data with sample posts
+const MOCK_POSTS: Post[] = [
+  {
+    id: '1',
+    title: 'Tutoriel React AvancÃ©',
+    caption: 'DÃ©couvrez les derniÃ¨res techniques React pour optimiser vos applications.',
+    mediaUrl: 'https://media.w3.org/2016/12/sample_mpeg4.mp4',
+    mediaType: 'video',
+    format: 'reel',
+    platforms: ['Instagram', 'TikTok'],
+    scheduledDate: '2026-03-29',
+    scheduledTime: '14:30',
+    status: 'scheduled',
+  },
+  {
+    id: '2',
+    title: 'Design System Tips',
+    caption: 'Les meilleures pratiques pour crÃ©er un design system scalable.',
+    mediaUrl: 'https://media.w3.org/2016/12/sample_mpeg4.mp4',
+    mediaType: 'video',
+    format: 'tv',
+    platforms: ['YouTube'],
+    scheduledDate: '2026-03-29',
+    scheduledTime: '18:00',
+    status: 'draft',
+  },
+  {
+    id: '3',
+    title: 'Web Performance Guide',
+    caption: 'AmÃ©liorez les performances de votre site web avec ces conseils.',
+    mediaUrl: 'https://media.w3.org/2016/12/sample_mpeg4.mp4',
+    mediaType: 'video',
+    format: 'reel',
+    platforms: ['Instagram'],
+    scheduledDate: '2026-03-30',
+    scheduledTime: '10:00',
+    status: 'published',
+  },
+];
+
 export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date(2026, 2, 29)); // March 29, 2026
   const [posts, setPosts] = useState<Post[]>([]);
@@ -54,7 +102,7 @@ export default function CalendarPage() {
     status: 'draft',
   });
 
-  // Load posts from localStorage
+  // Load posts from localStorage or use mock data
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
@@ -62,7 +110,12 @@ export default function CalendarPage() {
         setPosts(JSON.parse(stored));
       } catch (error) {
         console.error('Failed to load posts:', error);
+        setPosts(MOCK_POSTS);
       }
+    } else {
+      // Initialize with mock data
+      setPosts(MOCK_POSTS);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(MOCK_POSTS));
     }
   }, []);
 
@@ -148,16 +201,29 @@ export default function CalendarPage() {
     }
   };
 
+  const handleDeletePost = () => {
+    if (selectedPost) {
+      setPosts(posts.filter((p) => p.id !== selectedPost.id));
+      setShowPreviewModal(false);
+    }
+  };
+
   const handleSavePost = () => {
     if (editFormData.id) {
       setPosts(posts.map((p) => (p.id === editFormData.id ? (editFormData as Post) : p)));
     } else {
       const newPost: Post = {
-        ...editFormData,
-        id: Math.random().toString(36).substr(2, 9),
+        title: editFormData.title || 'Nouveau post',
+        caption: editFormData.caption || '',
+        mediaUrl: editFormData.mediaUrl,
+        mediaType: editFormData.mediaType || 'video',
+        format: editFormData.format || 'reel',
         platforms: editFormData.platforms || [],
+        scheduledDate: editFormData.scheduledDate || formatDateForStorage(new Date(), new Date().getDate()),
+        scheduledTime: editFormData.scheduledTime || '12:00',
         status: editTab,
-      } as Post;
+        id: Math.random().toString(36).substr(2, 9),
+      };
       setPosts([...posts, newPost]);
     }
     setShowEditModal(false);
@@ -168,9 +234,14 @@ export default function CalendarPage() {
     setEditFormData({
       platforms: [],
       status: 'draft',
+      format: 'reel',
       scheduledDate: selectedDay
         ? formatDateForStorage(currentDate, selectedDay)
         : formatDateForStorage(new Date(), new Date().getDate()),
+      scheduledTime: '12:00',
+      title: '',
+      caption: '',
+      mediaType: 'video',
     });
     setEditTab('draft');
     setShowEditModal(true);
@@ -299,7 +370,7 @@ export default function CalendarPage() {
             <h3 className="text-lg font-bold text-white mb-4">
               {selectedDay
                 ? `${selectedDay} ${formatMonthYear(currentDate)}`
-                : 'Sélectionnez un jour'}
+                : 'SÃ©lectionnez un jour'}
             </h3>
 
             <div className="space-y-3">
@@ -314,9 +385,10 @@ export default function CalendarPage() {
                   >
                     <div className="mb-2">
                       <p className="text-sm font-medium text-white truncate">{post.title}</p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {post.scheduledTime}
-                      </p>
+                      <div className="flex items-center gap-1 text-xs text-gray-400 mt-1">
+                        <Clock className="w-3 h-3" />
+                        <span>{post.scheduledTime}</span>
+                      </div>
                     </div>
                     <div className="flex gap-1 flex-wrap mb-2">
                       {post.platforms.map((platform) => (
@@ -338,9 +410,9 @@ export default function CalendarPage() {
                       }
                     >
                       {post.status === 'published'
-                        ? 'Publié'
+                        ? 'PubliÃ©'
                         : post.status === 'scheduled'
-                          ? 'Planifié'
+                          ? 'PlanifiÃ©'
                           : 'Brouillon'}
                     </Badge>
                   </div>
@@ -357,6 +429,7 @@ export default function CalendarPage() {
                 size="sm"
                 className="flex-1 text-xs"
               >
+                <Bot className="w-4 h-4 mr-1" />
                 Agent IA
               </Button>
               <Button
@@ -365,7 +438,7 @@ export default function CalendarPage() {
                 className="flex-1 text-xs"
                 onClick={handleImportClick}
               >
-                <Upload className="w-4 h-4 mr-1" />
+                <Download className="w-4 h-4 mr-1" />
                 Importer
               </Button>
               <Button
@@ -374,7 +447,8 @@ export default function CalendarPage() {
                 className="flex-1 text-xs"
                 onClick={() => setMultiSelectMode(!multiSelectMode)}
               >
-                {multiSelectMode ? 'Annuler' : 'Sél. multiple'}
+                <CheckSquare className="w-4 h-4 mr-1" />
+                {multiSelectMode ? 'Annuler' : 'SÃ©l. multiple'}
               </Button>
             </div>
             <Button
@@ -392,29 +466,25 @@ export default function CalendarPage() {
       <Modal
         isOpen={showPreviewModal}
         onClose={() => setShowPreviewModal(false)}
-        title="Aperçu du post"
+        title="AperÃ§u du post"
         size="lg"
       >
         {selectedPost && (
           <div className="space-y-4">
-            {/* Video Preview */}
+            {/* Video Preview - BUG FIX 1: Proper sizing based on format */}
             {selectedPost.mediaUrl && (
-              <div className="flex justify-center bg-black rounded-lg p-4">
+              <div className="flex justify-center bg-black rounded-lg p-6">
                 <div
                   className={`flex items-center justify-center ${
                     selectedPost.format === 'reel'
-                      ? 'w-40 h-72'
-                      : 'w-96 h-56'
+                      ? 'w-48 h-80'
+                      : 'w-full max-w-2xl aspect-video'
                   }`}
                 >
                   <video
                     src={selectedPost.mediaUrl}
                     controls
-                    className={`${
-                      selectedPost.format === 'reel'
-                        ? 'w-full h-full object-contain'
-                        : 'w-full h-full object-contain'
-                    } rounded`}
+                    className="w-full h-full object-contain rounded"
                   />
                 </div>
               </div>
@@ -434,12 +504,28 @@ export default function CalendarPage() {
                     {platform}
                   </Badge>
                 ))}
+                <Badge
+                  className={
+                    selectedPost.status === 'published'
+                      ? 'bg-green-600'
+                      : selectedPost.status === 'scheduled'
+                        ? 'bg-blue-600'
+                        : 'bg-gray-600'
+                  }
+                >
+                  {selectedPost.status === 'published'
+                    ? 'PubliÃ©'
+                    : selectedPost.status === 'scheduled'
+                      ? 'PlanifiÃ©'
+                      : 'Brouillon'}
+                </Badge>
               </div>
 
-              <div className="text-xs text-gray-400 mb-4">
-                <p>
-                  {selectedPost.scheduledDate} à {selectedPost.scheduledTime}
-                </p>
+              <div className="text-xs text-gray-400 mb-4 flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                <span>
+                  {selectedPost.scheduledDate} Ã  {selectedPost.scheduledTime}
+                </span>
               </div>
             </div>
 
@@ -460,6 +546,14 @@ export default function CalendarPage() {
                 <Copy className="w-4 h-4 mr-2" />
                 Dupliquer
               </Button>
+              <Button
+                variant="secondary"
+                className="flex-1"
+                onClick={handleDeletePost}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Supprimer
+              </Button>
             </div>
           </div>
         )}
@@ -472,7 +566,8 @@ export default function CalendarPage() {
         title="Modifier le Post"
         size="lg"
       >
-        <div className="max-h-96 overflow-y-auto">
+        {/* BUG FIX 3: Discreet thin scrollbar with custom CSS class */}
+        <div className="max-h-96 overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-700/50 [&::-webkit-scrollbar-thumb]:rounded-full">
           {/* Tabs */}
           <div className="flex gap-4 mb-6 border-b border-gray-700 pb-3">
             {['draft', 'scheduled', 'published'].map((tab) => (
@@ -485,7 +580,7 @@ export default function CalendarPage() {
                     : 'text-gray-400 hover:text-white'
                 }`}
               >
-                {tab === 'draft' ? 'Brouillon' : tab === 'scheduled' ? 'Planifié' : 'Publier'}
+                {tab === 'draft' ? 'Brouillon' : tab === 'scheduled' ? 'PlanifiÃ©' : 'Publier'}
               </button>
             ))}
           </div>
@@ -508,7 +603,7 @@ export default function CalendarPage() {
 
             {/* Caption */}
             <div>
-              <label className="block text-sm font-medium text-white mb-2">Légende</label>
+              <label className="block text-sm font-medium text-white mb-2">LÃ©gende</label>
               <textarea
                 value={editFormData.caption || ''}
                 onChange={(e) =>
@@ -516,13 +611,13 @@ export default function CalendarPage() {
                 }
                 rows={3}
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-studiio-primary"
-                placeholder="Décrivez votre post..."
+                placeholder="DÃ©crivez votre post..."
               />
             </div>
 
             {/* Social Networks */}
             <div>
-              <label className="block text-sm font-medium text-white mb-2">Réseaux sociaux</label>
+              <label className="block text-sm font-medium text-white mb-2">RÃ©seaux sociaux</label>
               <div className="flex flex-wrap gap-2">
                 {['Instagram', 'TikTok', 'Facebook', 'YouTube'].map((platform) => (
                   <button
@@ -553,22 +648,47 @@ export default function CalendarPage() {
               </div>
             </div>
 
-            {/* Media Upload */}
+            {/* Media Upload - BUG FIX 2: Proper drag & drop support with import button */}
             <div>
-              <label className="block text-sm font-medium text-white mb-2">Média</label>
+              <label className="block text-sm font-medium text-white mb-2">MÃ©dia</label>
               <div
                 onClick={handleImportClick}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.classList.add('border-studiio-primary');
+                }}
+                onDragLeave={(e) => {
+                  e.currentTarget.classList.remove('border-studiio-primary');
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.classList.remove('border-studiio-primary');
+                  const file = e.dataTransfer.files?.[0];
+                  if (file && file.type.startsWith('video/')) {
+                    const reader = new FileReader();
+                    reader.onload = (event: any) => {
+                      setEditFormData({
+                        ...editFormData,
+                        mediaUrl: event.target.result,
+                        mediaType: 'video',
+                      });
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }}
                 className="border-2 border-dashed border-gray-700 rounded-lg p-6 text-center cursor-pointer hover:border-studiio-primary transition-colors"
               >
                 {editFormData.mediaUrl ? (
                   <div className="text-white">
                     <FileVideo className="w-8 h-8 mx-auto mb-2 text-studiio-primary" />
-                    <p className="text-sm">Vidéo ajoutée</p>
+                    <p className="text-sm font-medium">VidÃ©o ajoutÃ©e</p>
+                    <p className="text-xs text-gray-400 mt-1">Cliquez pour changer</p>
                   </div>
                 ) : (
                   <div className="text-gray-400">
                     <Upload className="w-8 h-8 mx-auto mb-2" />
-                    <p className="text-sm">Cliquez pour importer une vidéo</p>
+                    <p className="text-sm font-medium">Glissez-dÃ©posez une vidÃ©o</p>
+                    <p className="text-xs text-gray-400 mt-1">ou cliquez pour importer</p>
                   </div>
                 )}
               </div>
@@ -636,6 +756,7 @@ export default function CalendarPage() {
               className="flex-1 bg-studiio-primary hover:bg-studiio-primary/90 text-white"
               onClick={handleSavePost}
             >
+              <Send className="w-4 h-4 mr-2" />
               Enregistrer
             </Button>
           </div>
