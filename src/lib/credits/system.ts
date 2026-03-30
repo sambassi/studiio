@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/db/supabase';
+import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { RENDER_COSTS } from '@/lib/stripe/constants';
 
 export async function getUserCredits(userId: string): Promise<number> {

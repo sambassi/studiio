@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWebhookEvent } from '@/lib/stripe/client';
-import { supabase } from '@/lib/db/supabase';
+import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
