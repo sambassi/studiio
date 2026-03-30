@@ -108,22 +108,46 @@ export default function SocialPage() {
           setSettings(JSON.parse(savedSettings));
         }
 
-        // Try to fetch from API
+        // Check platform status (includes env-configured tokens)
         try {
-          const res = await fetch('/api/social/accounts');
-          if (res.ok) {
-            const data = await res.json();
-            if (data.success && data.accounts) {
+          const statusRes = await fetch('/api/social/status');
+          if (statusRes.ok) {
+            const statusData = await statusRes.json();
+            if (statusData.success && statusData.platforms) {
               const accountsMap: Record<string, SocialAccount | null> = {};
-              data.accounts.forEach((acc: SocialAccount) => {
-                accountsMap[acc.platform] = acc;
+              Object.entries(statusData.platforms).forEach(([platform, info]: [string, any]) => {
+                if (info.connected) {
+                  accountsMap[platform] = {
+                    id: `${platform}_env`,
+                    platform,
+                    username: info.username || `user_${platform}`,
+                    connected: true,
+                    connectedAt: new Date().toISOString(),
+                  };
+                }
               });
               setAccounts(accountsMap);
               localStorage.setItem(STORAGE_KEY, JSON.stringify(accountsMap));
             }
           }
         } catch (error) {
-          console.warn('Could not fetch accounts from API, using localStorage:', error);
+          // Fallback: try accounts API
+          try {
+            const res = await fetch('/api/social/accounts');
+            if (res.ok) {
+              const data = await res.json();
+              if (data.success && data.accounts) {
+                const accountsMap: Record<string, SocialAccount | null> = {};
+                data.accounts.forEach((acc: SocialAccount) => {
+                  accountsMap[acc.platform] = acc;
+                });
+                setAccounts(accountsMap);
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(accountsMap));
+              }
+            }
+          } catch (e) {
+            console.warn('Could not fetch accounts from API, using localStorage:', e);
+          }
         }
       } finally {
         setIsLoading(false);
