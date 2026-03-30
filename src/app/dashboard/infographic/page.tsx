@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Trash2, Upload, Zap, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Upload, Zap, Loader2, Sparkles } from 'lucide-react';
 
 interface InfoCard {
   id: string;
@@ -83,6 +83,47 @@ export default function InfographiePage() {
     }
   };
 
+  const AI_TITLES: Record<string, { title: string; subtitle: string }[]> = {
+    'rose': [
+      { title: 'ENERGIE & CARDIO', subtitle: 'Booste ton corps et ton mental' },
+      { title: 'DANSE & BIEN-ETRE', subtitle: 'Le mouvement qui guerit' },
+      { title: 'OBJECTIF SILHOUETTE', subtitle: 'Transforme ton corps en dansant' },
+    ],
+    'violet': [
+      { title: 'MENTAL D\'ACIER', subtitle: 'La force commence dans la tete' },
+      { title: 'STRESS & RELAXATION', subtitle: 'Libere la pression par la danse' },
+      { title: 'CONFIANCE EN SOI', subtitle: 'Chaque pas te rend plus fort' },
+    ],
+    'bleu': [
+      { title: 'SOMMEIL & SPORT', subtitle: 'Mieux dormir grace au mouvement' },
+      { title: 'HYDRATATION', subtitle: 'L\'eau est ton meilleur allie' },
+      { title: 'RECUPERATION', subtitle: 'Le repos fait la performance' },
+    ],
+    'vert': [
+      { title: 'NUTRITION SMART', subtitle: 'Mange bien, performe mieux' },
+      { title: 'EQUILIBRE ALIMENTAIRE', subtitle: 'Fuel ton corps naturellement' },
+      { title: 'PROTEINES & ENERGIE', subtitle: 'Les bases de la nutrition sportive' },
+    ],
+  };
+
+  const AI_SALES_PHRASES = [
+    'Reserve ta place maintenant !',
+    'Premier cours GRATUIT cette semaine',
+    'Offre limitee : -50% ce mois-ci',
+    'Rejoins la tribu Afroboost !',
+    'Plus que 5 places disponibles',
+    'Essai sans engagement',
+    'Ton corps te remerciera',
+    'Le changement commence aujourd\'hui',
+  ];
+
+  const handleGenerateTitle = () => {
+    const options = AI_TITLES[theme] || AI_TITLES['rose'];
+    const pick = options[Math.floor(Math.random() * options.length)];
+    setTitle(pick.title);
+    setSubtitle(pick.subtitle);
+  };
+
   const addCard = () => {
     const newCard: InfoCard = {
       id: Date.now().toString(),
@@ -151,15 +192,25 @@ export default function InfographiePage() {
         <div className="w-2/5 overflow-y-auto border-r border-gray-700 bg-gray-900 px-8 py-6">
           {/* Title Input */}
           <div className="mb-6">
-            <label className="block text-sm font-semibold text-gray-300 mb-2">
-              Titre principal
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-semibold text-gray-300">
+                Titre principal
+              </label>
+              <button
+                onClick={handleGenerateTitle}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-[#D91CD2] border border-[#D91CD2]/30 hover:bg-[#D91CD2]/10 transition"
+                title="Generer un titre et sous-titre avec l'IA"
+              >
+                <Sparkles size={12} />
+                IA
+              </button>
+            </div>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white placeholder-gray-500 border border-gray-700 focus:border-pink-500 focus:outline-none"
-              placeholder="ex: ÉNERGIE & CARDIO"
+              placeholder="ex: ENERGIE & CARDIO"
             />
           </div>
 
