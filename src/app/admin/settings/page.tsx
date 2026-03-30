@@ -21,17 +21,17 @@ export default function SettingsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-4xl font-bold text-white mb-2">Paramètres de la plateforme</h1>
+        <h1 className="text-4xl font-bold text-white mb-2">ParamÃ¨tres de la plateforme</h1>
         <p className="text-gray-400">Configurez la plateforme Studiio</p>
       </div>
 
       <Card>
         <CardHeader className="border-b border-gray-800">
-          <CardTitle>Crédits gratuits</CardTitle>
+          <CardTitle>CrÃ©dits gratuits</CardTitle>
         </CardHeader>
         <CardContent className="pt-6">
           <Input
-            label="Crédits offerts aux nouveaux utilisateurs"
+            label="CrÃ©dits offerts aux nouveaux utilisateurs"
             type="number"
             value={freeCredits}
             onChange={(e) => setFreeCredits(parseInt(e.target.value))}
@@ -41,7 +41,7 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader className="border-b border-gray-800">
-          <CardTitle>Fonctionnalités</CardTitle>
+          <CardTitle>FonctionnalitÃ©s</CardTitle>
         </CardHeader>
         <CardContent className="pt-6 space-y-4">
           <label className="flex items-center gap-3 p-4 bg-gray-800/50 rounded-lg cursor-pointer hover:bg-gray-800 transition">
@@ -53,7 +53,7 @@ export default function SettingsPage() {
             />
             <div>
               <p className="font-medium text-white text-sm">Mode maintenance</p>
-              <p className="text-xs text-gray-400">Désactiver tous les accès utilisateurs</p>
+              <p className="text-xs text-gray-400">DÃ©sactiver tous les accÃ¨s utilisateurs</p>
             </div>
           </label>
           <label className="flex items-center gap-3 p-4 bg-gray-800/50 rounded-lg cursor-pointer hover:bg-gray-800 transition">
@@ -76,8 +76,8 @@ export default function SettingsPage() {
               className="w-4 h-4"
             />
             <div>
-              <p className="font-medium text-white text-sm">Activation de la génération IA</p>
-              <p className="text-xs text-gray-400">Permettre la création de vidéos avec l'IA</p>
+              <p className="font-medium text-white text-sm">Activation de la gÃ©nÃ©ration IA</p>
+              <p className="text-xs text-gray-400">Permettre la crÃ©ation de vidÃ©os avec l'IA</p>
             </div>
           </label>
         </CardContent>
@@ -95,7 +95,7 @@ export default function SettingsPage() {
                   <h4 className="font-semibold text-white">{plan.name}</h4>
                   <span className="text-studiio-accent font-bold">{plan.priceFr}</span>
                 </div>
-                <p className="text-xs text-gray-400">Crédits: {plan.credits || 'Illimitées'}</p>
+                <p className="text-xs text-gray-400">CrÃ©dits: {plan.credits || 'IllimitÃ©es'}</p>
               </div>
             ))}
           </div>
@@ -104,7 +104,7 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader className="border-b border-gray-800">
-          <CardTitle>Packages de crédits</CardTitle>
+          <CardTitle>Packages de crÃ©dits</CardTitle>
         </CardHeader>
         <CardContent className="pt-6">
           <div className="space-y-4">
@@ -123,11 +123,10 @@ export default function SettingsPage() {
       <Card>
         <CardFooter className="border-t-0 pt-0">
           <Button variant="primary" size="lg" onClick={handleSave}>
-            Sauvegarder les paramètres
+            Sauvegarder les paramÃ¨tres
           </Button>
         </CardFooter>
       </Card>
     </div>
-  
- "�
+  );
 }
