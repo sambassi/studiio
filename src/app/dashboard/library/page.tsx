@@ -344,7 +344,7 @@ export default function LibraryPage() {
                       {video.title}
                     </p>
                     <p className="text-xs text-gray-400">
-                      {video.format === 'reel' ? 'Reel 9:16' : 'TV 16:9'} â¢{' '}
+                      {video.format === 'reel' ? 'Reel 9:16' : 'TV 16:9'} •{' '}
                       {formatDate(video.created_at)}
                     </p>
                   </div>
@@ -537,7 +537,7 @@ export default function LibraryPage() {
               Supprimer la vidéo ?
             </h3>
             <p className="text-gray-400 mb-6">
-              Ãtes-vous sûr de vouloir supprimer{' '}
+              Êtes-vous sûr de vouloir supprimer{' '}
               <span className="font-semibold text-white">
                 &quot;{deleteConfirm.videoTitle}&quot;
               </span>{' '}
