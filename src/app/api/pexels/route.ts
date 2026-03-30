@@ -1,0 +1,61 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/lib/auth/config';
+
+const PEXELS_API_KEY = process.env.PEXELS_API_KEY;
+
+const THEME_QUERIES: Record<string, string> = {
+  promotion: 'fitness dance energy workout',
+  abonnement: 'gym membership fitness class',
+  motivation: 'athlete motivation sport training',
+  bienfaits: 'wellness health yoga meditation',
+  nutrition: 'healthy food nutrition fruits',
+  cardio: 'cardio dance aerobics',
+  default: 'fitness dance workout',
+};
+
+// GET /api/pexels?query=fitness&count=5
+export async function GET(req: NextRequest) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (!PEXELS_API_KEY) {
+      return NextResponse.json({ success: false, error: 'Pexels API not configured' }, { status: 500 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const query = searchParams.get('query') || 'fitness dance';
+    const count = Math.min(parseInt(searchParams.get('count') || '5'), 15);
+    const objective = searchParams.get('objective');
+
+    const searchQuery = objective ? (THEME_QUERIES[objective] || THEME_QUERIES.default) : query;
+
+    const res = await fetch(
+      `https://api.pexels.com/v1/search?query=${encodeURIComponent(searchQuery)}&per_page=${count}&orientation=portrait`,
+      {
+        headers: { Authorization: PEXELS_API_KEY },
+      }
+    );
+
+    if (!res.ok) {
+      return NextResponse.json({ success: false, error: 'Pexels API error' }, { status: 502 });
+    }
+
+    const data = await res.json();
+    const photos = data.photos?.map((p: any) => ({
+      id: p.id,
+      url: p.src.large2x || p.src.large,
+      medium: p.src.medium,
+      small: p.src.small,
+      photographer: p.photographer,
+      alt: p.alt,
+    })) || [];
+
+    return NextResponse.json({ success: true, photos });
+  } catch (error) {
+    console.error('Pexels API error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to fetch photos' }, { status: 500 });
+  }
+}

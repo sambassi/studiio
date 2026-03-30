@@ -84,6 +84,7 @@ export default function CreatorPage() {
   const [characterImage, setCharacterImage] = useState<File | null>(null);
   const [batchCount, setBatchCount] = useState(2);
   const [generatedTitles, setGeneratedTitles] = useState<GeneratedTitle[]>([]);
+  const [batchPosters, setBatchPosters] = useState<string[]>([]);
   const [destination, setDestination] = useState('calendar');
   const [ttsMode, setTtsMode] = useState<'edge' | 'upload' | 'none'>('none');
   const [ttsVoice, setTtsVoice] = useState('fr-FR-DeniseNeural');
@@ -178,6 +179,18 @@ export default function CreatorPage() {
 
   const handleRemoveTextCard = (id: string) => {
     setTextCards(textCards.filter((c) => c.id !== id));
+  };
+
+  const fetchBatchPosters = async (count: number) => {
+    try {
+      const res = await fetch(`/api/pexels?objective=${objective}&count=${count}`);
+      const data = await res.json();
+      if (data.success && data.photos) {
+        setBatchPosters(data.photos.map((p: any) => p.medium || p.url));
+      }
+    } catch (error) {
+      console.error('Failed to fetch posters:', error);
+    }
   };
 
   const handleRegenerateTitle = () => {
@@ -834,6 +847,7 @@ export default function CreatorPage() {
                             onClick={() => {
                               setBatchCount(count);
                               setGeneratedTitles([]);
+                              fetchBatchPosters(count);
                             }}
                             className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition border ${
                               batchCount === count
@@ -928,7 +942,14 @@ export default function CreatorPage() {
                               GRADIENT_COMBINATIONS[i % GRADIENT_COMBINATIONS.length]
                             } flex items-center justify-center relative`}
                           >
-                            <div className="absolute inset-0 bg-black/30" />
+                            {batchPosters[i] && (
+                              <img
+                                src={batchPosters[i]}
+                                alt={`Affiche ${i + 1}`}
+                                className="absolute inset-0 w-full h-full object-cover"
+                              />
+                            )}
+                            <div className="absolute inset-0 bg-black/40" />
                             <div className="relative z-10 text-center px-4">
                               <p className="text-xs text-gray-200 mb-2">
                                 Vidéo {i + 1}
