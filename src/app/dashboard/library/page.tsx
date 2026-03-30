@@ -24,11 +24,11 @@ interface Video {
   format: string;
   status: string;
   created_at: string;
+  video_url?: string;
+  thumbnail_url?: string;
   metadata?: {
     objective?: string;
     mode?: string;
-    outputUrl?: string;
-    posterUrl?: string;
   };
 }
 
@@ -310,9 +310,9 @@ export default function LibraryPage() {
                   }`}
                   onClick={() => setPreviewVideo(video)}
                 >
-                  {video.metadata?.posterUrl && (
+                  {video.thumbnail_url && (
                     <img
-                      src={video.metadata.posterUrl}
+                      src={video.thumbnail_url}
                       alt={video.title}
                       className="absolute inset-0 w-full h-full object-cover opacity-60"
                     />
@@ -465,7 +465,7 @@ export default function LibraryPage() {
               </button>
             </div>
             <div className="bg-black flex items-center justify-center">
-              {previewVideo.metadata?.outputUrl ? (
+              {previewVideo.video_url ? (
                 <video
                   key={previewVideo.id}
                   controls
@@ -475,10 +475,10 @@ export default function LibraryPage() {
                       ? 'max-h-[70vh] aspect-[9/16] mx-auto'
                       : 'max-h-[60vh]'
                   }`}
-                  poster={previewVideo.metadata?.posterUrl}
+                  poster={previewVideo.thumbnail_url}
                 >
                   <source
-                    src={previewVideo.metadata.outputUrl}
+                    src={previewVideo.video_url}
                     type="video/mp4"
                   />
                   Votre navigateur ne supporte pas la lecture vidéo.
@@ -515,7 +515,7 @@ export default function LibraryPage() {
               >
                 Fermer
               </Button>
-              {previewVideo.metadata?.outputUrl && (
+              {previewVideo.video_url && (
                 <Button
                   variant="primary"
                   onClick={() => handleExport(previewVideo.id)}

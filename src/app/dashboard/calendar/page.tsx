@@ -17,6 +17,7 @@ import {
   Bot,
   Download,
   CheckSquare,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -94,6 +95,9 @@ export default function CalendarPage() {
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedPosts, setSelectedPosts] = useState<Set<string>>(new Set());
+  const [showAIAgent, setShowAIAgent] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiGenerating, setAiGenerating] = useState(false);
 
   // Edit modal state
   const [editTab, setEditTab] = useState<'draft' | 'scheduled' | 'published'>('draft');
@@ -247,20 +251,57 @@ export default function CalendarPage() {
     setShowEditModal(true);
   };
 
+  const handleAIGenerate = async () => {
+    if (!aiPrompt.trim()) return;
+    setAiGenerating(true);
+
+    // Simulate AI content generation
+    setTimeout(() => {
+      const generatedPost: Post = {
+        id: Math.random().toString(36).substr(2, 9),
+        title: aiPrompt.trim(),
+        caption: `Contenu généré par l'IA: ${aiPrompt}`,
+        mediaType: 'video',
+        format: 'reel',
+        platforms: ['Instagram', 'TikTok'],
+        scheduledDate: selectedDay
+          ? formatDateForStorage(currentDate, selectedDay)
+          : formatDateForStorage(new Date(), new Date().getDate()),
+        scheduledTime: '12:00',
+        status: 'draft',
+      };
+      setPosts([...posts, generatedPost]);
+      setAiGenerating(false);
+      setAiPrompt('');
+      setShowAIAgent(false);
+    }, 1500);
+  };
+
   const handleImportClick = () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'video/*';
+    input.accept = 'video/*,image/*';
     input.onchange = (e: any) => {
       const file = e.target.files?.[0];
       if (file) {
         const reader = new FileReader();
         reader.onload = (event: any) => {
+          const isVideo = file.type.startsWith('video/');
           setEditFormData({
-            ...editFormData,
+            platforms: [],
+            status: 'draft',
+            format: 'reel',
+            scheduledDate: selectedDay
+              ? formatDateForStorage(currentDate, selectedDay)
+              : formatDateForStorage(new Date(), new Date().getDate()),
+            scheduledTime: '12:00',
+            title: file.name.replace(/\.[^/.]+$/, ''),
+            caption: '',
             mediaUrl: event.target.result,
-            mediaType: 'video',
+            mediaType: isVideo ? 'video' : 'image',
           });
+          setEditTab('draft');
+          setShowEditModal(true);
         };
         reader.readAsDataURL(file);
       }
@@ -428,6 +469,7 @@ export default function CalendarPage() {
                 variant="secondary"
                 size="sm"
                 className="flex-1 text-xs"
+                onClick={() => setShowAIAgent(true)}
               >
                 <Bot className="w-4 h-4 mr-1" />
                 Agent IA
@@ -758,6 +800,60 @@ export default function CalendarPage() {
             >
               <Send className="w-4 h-4 mr-2" />
               Enregistrer
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* AI Agent Modal */}
+      <Modal
+        isOpen={showAIAgent}
+        onClose={() => setShowAIAgent(false)}
+        title="Agent IA"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <p className="text-gray-400 text-sm">
+            Décrivez le type de contenu que vous souhaitez créer et l'Agent IA générera un brouillon de post pour vous.
+          </p>
+
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">
+              Décrivez votre contenu
+            </label>
+            <textarea
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+              rows={4}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-studiio-primary"
+              placeholder="Ex: Une vidéo motivante sur les bienfaits du sport matinal..."
+            />
+          </div>
+
+          <div className="flex gap-3">
+            <Button
+              variant="secondary"
+              className="flex-1"
+              onClick={() => setShowAIAgent(false)}
+            >
+              Annuler
+            </Button>
+            <Button
+              className="flex-1 bg-studiio-primary hover:bg-studiio-primary/90 text-white"
+              onClick={handleAIGenerate}
+              disabled={aiGenerating || !aiPrompt.trim()}
+            >
+              {aiGenerating ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Génération...
+                </>
+              ) : (
+                <>
+                  <Bot className="w-4 h-4 mr-2" />
+                  Générer le post
+                </>
+              )}
             </Button>
           </div>
         </div>

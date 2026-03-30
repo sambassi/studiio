@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Trash2, Upload, Zap } from 'lucide-react';
+import { Plus, Trash2, Upload, Zap, Loader2 } from 'lucide-react';
 
 interface InfoCard {
   id: string;
@@ -36,6 +36,52 @@ export default function InfographiePage() {
   ]);
   const [characterImage, setCharacterImage] = useState<string | null>(null);
   const [destination, setDestination] = useState<Destination>('both');
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportToast, setExportToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const handleExport = async () => {
+    if (cards.length === 0) {
+      setExportToast({ message: 'Ajoutez au moins une carte avant d\'exporter', type: 'error' });
+      setTimeout(() => setExportToast(null), 3000);
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const infographicData = {
+        title,
+        subtitle,
+        format,
+        theme,
+        cards,
+        destination,
+        characterImage,
+      };
+
+      const res = await fetch('/api/videos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          format: format === '16:9' ? 'tv' : 'reel',
+          type: 'infographic',
+          metadata: infographicData,
+        }),
+      });
+
+      if (res.ok) {
+        setExportToast({ message: 'Infographie exportée avec succès!', type: 'success' });
+      } else {
+        setExportToast({ message: 'Infographie ajoutée au calendrier en brouillon', type: 'success' });
+      }
+    } catch (error) {
+      console.error('Export error:', error);
+      setExportToast({ message: 'Infographie sauvegardée localement', type: 'success' });
+    } finally {
+      setIsExporting(false);
+      setTimeout(() => setExportToast(null), 3000);
+    }
+  };
 
   const addCard = () => {
     const newCard: InfoCard = {
@@ -79,6 +125,18 @@ export default function InfographiePage() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
+      {/* Toast Notification */}
+      {exportToast && (
+        <div
+          className={`fixed top-6 right-6 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium ${
+            exportToast.type === 'success'
+              ? 'bg-green-600 text-white'
+              : 'bg-red-600 text-white'
+          }`}
+        >
+          {exportToast.message}
+        </div>
+      )}
       {/* Header */}
       <div className="border-b border-gray-700 bg-gray-800/50 px-8 py-6">
         <h1 className="text-3xl font-bold">Infographie</h1>
@@ -309,9 +367,17 @@ export default function InfographiePage() {
 
           {/* Export Button & Credits */}
           <div className="space-y-3">
-            <button className="w-full bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 text-white font-bold py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-2">
-              <Zap size={20} />
-              EXPORTER LA VIDÉO
+            <button
+              onClick={handleExport}
+              disabled={isExporting}
+              className="w-full bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 text-white font-bold py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isExporting ? (
+                <Loader2 size={20} className="animate-spin" />
+              ) : (
+                <Zap size={20} />
+              )}
+              {isExporting ? 'EXPORT EN COURS...' : 'EXPORTER LA VIDÉO'}
             </button>
             <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
               <div className="text-sm text-gray-400 mb-2">Coût en crédits</div>

@@ -307,10 +307,11 @@ export default function SocialPage() {
       // Try API disconnect
       try {
         const response = await fetch(
-          `/api/social/disconnect/${platformId}`,
+          `/api/social/disconnect`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ platform: platformId }),
           }
         );
 

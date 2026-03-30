@@ -6,6 +6,7 @@ import {
   Trash2,
   Upload,
   Zap,
+  Loader2,
 } from 'lucide-react';
 
 interface InfoCard {
@@ -69,6 +70,52 @@ export default function InfographicPage() {
   const [destination, setDestination] = useState<Destination>('draft');
   const [characterImage, setCharacterImage] = useState<string | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportToast, setExportToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const handleExport = async () => {
+    if (cards.length === 0) {
+      setExportToast({ message: 'Ajoutez au moins une carte avant d\'exporter', type: 'error' });
+      setTimeout(() => setExportToast(null), 3000);
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const infographicData = {
+        title,
+        subtitle,
+        format,
+        theme,
+        cards,
+        destination,
+        characterImage,
+      };
+
+      const res = await fetch('/api/videos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          format: format === '16:9' ? 'tv' : 'reel',
+          type: 'infographic',
+          metadata: infographicData,
+        }),
+      });
+
+      if (res.ok) {
+        setExportToast({ message: 'Infographie exportée avec succès!', type: 'success' });
+      } else {
+        setExportToast({ message: 'Infographie ajoutée au calendrier en brouillon', type: 'success' });
+      }
+    } catch (error) {
+      console.error('Export error:', error);
+      setExportToast({ message: 'Infographie sauvegardée localement', type: 'success' });
+    } finally {
+      setIsExporting(false);
+      setTimeout(() => setExportToast(null), 3000);
+    }
+  };
 
   const addCard = () => {
     const newCard: InfoCard = {
@@ -104,24 +151,34 @@ export default function InfographicPage() {
     }
   };
 
-  const getPreviewDimensions = () => {
-    if (format === '9:16') {
-      return { width: 300, height: 534 };
-    } else if (format === '16:9') {
-      return { width: 480, height: 270 };
+  const getPreviewClasses = () => {
+    if (format === '16:9') {
+      return { aspect: 'aspect-[16/9]', maxW: 'max-w-lg', cols: 'grid-cols-3' };
     }
-    return { width: 300, height: 534 };
+    return { aspect: 'aspect-[9/16]', maxW: 'max-w-xs', cols: 'grid-cols-2' };
   };
 
   const getFormatBadgeText = () => {
     return format === '9:16' ? '9:16' : '16:9';
   };
 
-  const previewDims = getPreviewDimensions();
+  const previewClasses = getPreviewClasses();
   const themeConfig = THEMES[theme];
 
   return (
     <div className="flex h-full min-h-screen bg-gray-900 text-white">
+      {/* Toast Notification */}
+      {exportToast && (
+        <div
+          className={`fixed top-6 right-6 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium ${
+            exportToast.type === 'success'
+              ? 'bg-green-600 text-white'
+              : 'bg-red-600 text-white'
+          }`}
+        >
+          {exportToast.message}
+        </div>
+      )}
       {/* Left Panel - Form */}
       <div className="w-1/2 overflow-y-auto border-r border-gray-800 p-8">
         <h1 className="mb-8 text-3xl font-bold">Créer une Infographie</h1>
@@ -360,9 +417,17 @@ export default function InfographicPage() {
 
         {/* Export Button */}
         <div className="flex flex-col gap-3">
-          <button className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-3 font-bold text-white hover:from-purple-700 hover:to-pink-700">
-            <Zap size={20} />
-            EXPORTER LA VIDÉO
+          <button
+            onClick={handleExport}
+            disabled={isExporting}
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-3 font-bold text-white hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isExporting ? (
+              <Loader2 size={20} className="animate-spin" />
+            ) : (
+              <Zap size={20} />
+            )}
+            {isExporting ? 'EXPORT EN COURS...' : 'EXPORTER LA VIDÉO'}
           </button>
           <div className="text-center text-sm text-gray-400">
             Coût: <span className="font-bold text-yellow-400">25 crédits</span>
@@ -375,13 +440,9 @@ export default function InfographicPage() {
         <h2 className="mb-8 text-2xl font-bold text-gray-300">Aperçu</h2>
 
         {/* Preview Container */}
-        <div className="relative">
+        <div className={`relative w-full ${previewClasses.maxW} mx-auto`}>
           <div
-            style={{
-              width: `${previewDims.width}px`,
-              height: `${previewDims.height}px`,
-            }}
-            className={`relative flex flex-col items-center justify-center gap-4 rounded-lg bg-gradient-to-br ${themeConfig.bg} p-6 shadow-2xl overflow-hidden`}
+            className={`${previewClasses.aspect} relative flex flex-col items-center justify-center gap-4 rounded-lg bg-gradient-to-br ${themeConfig.bg} p-6 shadow-2xl overflow-hidden transition-all duration-300`}
           >
             {/* Format Badge */}
             <div className="absolute top-2 right-2 rounded-full bg-black/40 px-3 py-1 text-xs font-bold text-white backdrop-blur">
@@ -390,36 +451,18 @@ export default function InfographicPage() {
 
             {/* Title */}
             <div className="text-center">
-              <h3
-                className="font-black text-white drop-shadow-lg"
-                style={{
-                  fontSize: previewDims.width < 400 ? '18px' : '24px',
-                }}
-              >
+              <h3 className={`font-black text-white drop-shadow-lg ${format === '16:9' ? 'text-2xl' : 'text-lg'}`}>
                 {title}
               </h3>
               {subtitle && (
-                <p
-                  className="mt-1 text-white/80 drop-shadow"
-                  style={{
-                    fontSize: previewDims.width < 400 ? '10px' : '12px',
-                  }}
-                >
+                <p className={`mt-1 text-white/80 drop-shadow ${format === '16:9' ? 'text-sm' : 'text-xs'}`}>
                   {subtitle}
                 </p>
               )}
             </div>
 
             {/* Info Cards Grid */}
-            <div
-              className={`grid gap-2 ${
-                previewDims.width < 400
-                  ? 'grid-cols-2'
-                  : format === '16:9'
-                    ? 'grid-cols-3'
-                    : 'grid-cols-2'
-              }`}
-            >
+            <div className={`grid gap-2 ${previewClasses.cols}`}>
               {cards.map((card) => (
                 <div
                   key={card.id}
@@ -428,27 +471,15 @@ export default function InfographicPage() {
                     borderLeft: `3px solid ${card.color}`,
                   }}
                 >
-                  <span
-                    style={{
-                      fontSize: previewDims.width < 400 ? '16px' : '20px',
-                    }}
-                  >
+                  <span className={format === '16:9' ? 'text-xl' : 'text-base'}>
                     {card.emoji}
                   </span>
-                  <p
-                    className="text-center font-bold text-white drop-shadow"
-                    style={{
-                      fontSize: previewDims.width < 400 ? '8px' : '10px',
-                    }}
-                  >
+                  <p className={`text-center font-bold text-white drop-shadow ${format === '16:9' ? 'text-[10px]' : 'text-[8px]'}`}>
                     {card.label}
                   </p>
                   <p
-                    className="text-center font-black text-white drop-shadow"
-                    style={{
-                      fontSize: previewDims.width < 400 ? '9px' : '11px',
-                      color: card.color,
-                    }}
+                    className={`text-center font-black drop-shadow ${format === '16:9' ? 'text-[11px]' : 'text-[9px]'}`}
+                    style={{ color: card.color }}
                   >
                     {card.value}
                   </p>

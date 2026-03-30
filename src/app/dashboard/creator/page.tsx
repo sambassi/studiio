@@ -166,6 +166,17 @@ export default function CreatorPage() {
       return;
     }
 
+    // TTS validation
+    if (ttsMode === 'edge' && textCards.length === 0) {
+      showToast('Ajoutez des cartes de texte pour la synthèse vocale Edge TTS', 'error');
+      return;
+    }
+
+    if (ttsMode === 'upload' && !voiceOverFile) {
+      showToast('Veuillez télécharger un fichier audio pour la voix-off', 'error');
+      return;
+    }
+
     setRendering({
       isRendering: true,
       progress: 0,
@@ -174,33 +185,47 @@ export default function CreatorPage() {
       totalVideos: batchCount,
     });
 
-    // Simulate rendering progress
+    // Build stages based on selected options
     const stages = [
       'Initialisation...',
       'Téléchargement des fichiers...',
       'Traitement vidéo...',
       'Application des effets...',
       'Ajout du texte...',
-      'Intégration audio...',
-      'Rendu en cours...',
-      'Finalisation...',
     ];
 
-    let stageIndex = 0;
-    const interval = setInterval(() => {
-      setRendering((prev) => {
-        const newProgress = Math.min(prev.progress + Math.random() * 15, 99);
-        if (stageIndex < stages.length - 1 && newProgress > (stageIndex + 1) * 12) {
-          stageIndex++;
-        }
+    if (ttsMode === 'edge') {
+      stages.push('Synthèse vocale (TTS)...');
+    } else if (ttsMode === 'upload') {
+      stages.push('Intégration voix-off...');
+    }
 
-        return {
-          ...prev,
-          progress: newProgress,
-          stage: stages[Math.min(stageIndex, stages.length - 1)],
-        };
-      });
-    }, 800);
+    if (backgroundMusic) {
+      stages.push('Mixage audio...');
+    }
+
+    stages.push('Rendu en cours...', 'Finalisation...');
+
+    let currentVideoIndex = 1;
+    const totalDuration = batchCount * 3000; // ~3s per video
+    const startTime = Date.now();
+
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const rawProgress = Math.min((elapsed / totalDuration) * 100, 99);
+      const currentVid = Math.min(Math.floor((elapsed / totalDuration) * batchCount) + 1, batchCount);
+      const stageIdx = Math.min(
+        Math.floor((rawProgress / 100) * stages.length),
+        stages.length - 1
+      );
+
+      setRendering((prev) => ({
+        ...prev,
+        progress: rawProgress,
+        stage: stages[stageIdx],
+        currentVideo: currentVid,
+      }));
+    }, 200);
 
     // Simulate completion
     setTimeout(() => {
@@ -212,7 +237,7 @@ export default function CreatorPage() {
         currentVideo: batchCount,
         totalVideos: batchCount,
       });
-      showToast('Vidéos générées avec succès!', 'success');
+      showToast(`${batchCount} vidéos générées avec succès!`, 'success');
 
       // Reset after 2 seconds
       setTimeout(() => {
@@ -225,7 +250,7 @@ export default function CreatorPage() {
           totalVideos: 0,
         });
       }, 2000);
-    }, 6000);
+    }, totalDuration);
   };
 
   const steps = [
@@ -817,7 +842,9 @@ export default function CreatorPage() {
                         ? 'grid-cols-3'
                         : 'grid-cols-5'
                     }`}>
-                      {Array.from({ length: batchCount }, (_, i) => (
+                      {Array.from({ length: batchCount }, (_, i) => {
+                        const videoTitle = generatedTitles.find(gt => gt.videoIndex === i)?.text || `${title} #${i + 1}`;
+                        return (
                         <div
                           key={i}
                           className={`rounded-lg overflow-hidden border border-gray-700 ${
@@ -837,12 +864,13 @@ export default function CreatorPage() {
                                 Vidéo {i + 1}
                               </p>
                               <p className="text-sm font-semibold text-white line-clamp-2">
-                                {title}
+                                {videoTitle}
                               </p>
                             </div>
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 </div>

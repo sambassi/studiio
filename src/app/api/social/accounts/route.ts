@@ -20,7 +20,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<ApiResponse<an
 
     if (error) throw error;
 
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json({ success: true, accounts: data });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: 'Failed to fetch social accounts' },
