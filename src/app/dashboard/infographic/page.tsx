@@ -30,8 +30,8 @@ export default function InfographiePage() {
   const [format, setFormat] = useState<Format>('9:16');
   const [theme, setTheme] = useState<Theme>('rose');
   const [cards, setCards] = useState<InfoCard[]>([
-    { id: '1', emoji: 'â¡', label: 'IntensitÃ©', value: 'TrÃ¨s ÃlevÃ©e', color: 'bg-red-500' },
-    { id: '2', emoji: 'â¤ï¸', label: 'FrÃ©quence', value: '5x par semaine', color: 'bg-pink-500' },
+    { id: '1', emoji: 'â¡', label: 'Intensité', value: 'Très Ãlevée', color: 'bg-red-500' },
+    { id: '2', emoji: 'â¤ï¸', label: 'Fréquence', value: '5x par semaine', color: 'bg-pink-500' },
     { id: '3', emoji: 'ð¥', label: 'Calories', value: '500-800 kcal', color: 'bg-orange-500' },
   ]);
   const [characterImage, setCharacterImage] = useState<string | null>(null);
@@ -83,7 +83,7 @@ export default function InfographiePage() {
       <div className="border-b border-gray-700 bg-gray-800/50 px-8 py-6">
         <h1 className="text-3xl font-bold">Infographie</h1>
         <p className="mt-2 text-gray-400">
-          CrÃ©ez une infographie animÃ©e pour votre programme d'entraÃ®nement
+          Créez une infographie animée pour votre programme d'entraînement
         </p>
       </div>
 
@@ -122,7 +122,7 @@ export default function InfographiePage() {
           {/* Format Selector */}
           <div className="mb-6">
             <label className="block text-sm font-semibold text-gray-300 mb-3">
-              SÃ©lectionner un format vidÃ©o
+              Sélectionner un format vidéo
             </label>
             <div className="grid grid-cols-3 gap-3">
               {(['9:16', '16:9', 'both'] as const).map((fmt) => (
@@ -144,7 +144,7 @@ export default function InfographiePage() {
           {/* Theme Selector */}
           <div className="mb-6">
             <label className="block text-sm font-semibold text-gray-300 mb-3">
-              ThÃ¨me de couleurs
+              Thème de couleurs
             </label>
             <div className="space-y-2">
               {(Object.keys(THEME_GRADIENTS) as Theme[]).map((t) => (
@@ -220,7 +220,7 @@ export default function InfographiePage() {
                         value={card.label}
                         onChange={(e) => updateCard(card.id, { label: e.target.value })}
                         className="w-full rounded bg-gray-700 px-3 py-2 text-sm text-white placeholder-gray-500 border border-gray-600 focus:border-pink-500 focus:outline-none"
-                        placeholder="ex: IntensitÃ©"
+                        placeholder="ex: Intensité"
                       />
                     </div>
                     <div>
@@ -232,7 +232,7 @@ export default function InfographiePage() {
                         value={card.value}
                         onChange={(e) => updateCard(card.id, { value: e.target.value })}
                         className="w-full rounded bg-gray-700 px-3 py-2 text-sm text-white placeholder-gray-500 border border-gray-600 focus:border-pink-500 focus:outline-none"
-                        placeholder="ex: TrÃ¨s ÃlevÃ©e"
+                        placeholder="ex: Très Ãlevée"
                       />
                     </div>
                   </div>
@@ -276,7 +276,7 @@ export default function InfographiePage() {
             </label>
             <button className="w-full flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 border-2 border-dashed border-gray-700 rounded-lg py-4 text-gray-300 transition-all">
               <Upload size={18} />
-              <span>TÃ©lÃ©charger une image</span>
+              <span>Télécharger une image</span>
             </button>
           </div>
 
@@ -314,12 +314,12 @@ export default function InfographiePage() {
               EXPORTER LA VIDÃO
             </button>
             <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-              <div className="text-sm text-gray-400 mb-2">CoÃ»t en crÃ©dits</div>
+              <div className="text-sm text-gray-400 mb-2">Coût en crédits</div>
               <div className="text-2xl font-bold text-pink-400">
-                {getCreditsNeeded()} <span className="text-sm text-gray-400">crÃ©dits</span>
+                {getCreditsNeeded()} <span className="text-sm text-gray-400">crédits</span>
               </div>
               <div className="text-xs text-gray-500 mt-2">
-                {getFormatCount()} format{getFormatCount() > 1 ? 's' : ''} Ã 25 crÃ©dits
+                {getFormatCount()} format{getFormatCount() > 1 ? 's' : ''} Ã 25 crédits
               </div>
             </div>
           </div>
@@ -327,7 +327,7 @@ export default function InfographiePage() {
 
         {/* Right Panel - Preview */}
         <div className="w-3/5 flex flex-col bg-gray-800 px-8 py-6">
-          <h2 className="text-xl font-bold mb-4 text-white">AperÃ§u</h2>
+          <h2 className="text-xl font-bold mb-4 text-white">Aperçu</h2>
 
           {/* Preview Container */}
           <div className="flex-1 flex items-center justify-center bg-gray-900 rounded-xl border border-gray-700 p-6 overflow-hidden">
@@ -385,7 +385,7 @@ export default function InfographiePage() {
               <div className="text-2xl font-bold text-white">{getFormatCount()}</div>
             </div>
             <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-              <div className="text-xs text-gray-400 mb-1">CrÃ©dits</div>
+              <div className="text-xs text-gray-400 mb-1">Crédits</div>
               <div className="text-2xl font-bold text-pink-400">{getCreditsNeeded()}</div>
             </div>
           </div>
