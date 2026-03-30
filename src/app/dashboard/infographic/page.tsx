@@ -36,6 +36,7 @@ export default function InfographiePage() {
   ]);
   const [characterImage, setCharacterImage] = useState<string | null>(null);
   const [destination, setDestination] = useState<Destination>('both');
+  const [ctaText, setCtaText] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [exportToast, setExportToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -387,6 +388,33 @@ export default function InfographiePage() {
               <Upload size={18} />
               <span>Télécharger une image</span>
             </button>
+          </div>
+
+          {/* Phrase de vente (CTA) */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-semibold text-gray-300">
+                Phrase de vente
+              </label>
+              <button
+                onClick={() => {
+                  const phrase = AI_SALES_PHRASES[Math.floor(Math.random() * AI_SALES_PHRASES.length)];
+                  setCtaText(phrase);
+                }}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-[#D91CD2] border border-[#D91CD2]/30 hover:bg-[#D91CD2]/10 transition"
+                title="Generer une phrase d'accroche"
+              >
+                <Sparkles size={12} />
+                IA
+              </button>
+            </div>
+            <input
+              type="text"
+              value={ctaText}
+              onChange={(e) => setCtaText(e.target.value)}
+              className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white placeholder-gray-500 border border-gray-700 focus:border-pink-500 focus:outline-none"
+              placeholder="ex: Reserve ta place maintenant !"
+            />
           </div>
 
           {/* Destination */}
