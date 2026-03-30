@@ -15,7 +15,7 @@ type Format = '9:16' | '16:9' | 'both';
 type Theme = 'rose' | 'violet' | 'bleu' | 'vert';
 type Destination = 'calendar' | 'export' | 'both';
 
-const EMOJI_LIST = ['â¡', 'â¤ï¸', 'ð¥', 'ð¯', 'ð', 'ð', 'ð§ ', 'ð¨', 'ð', 'ðª'];
+const EMOJI_LIST = ['⚡', '❤️', '🔥', '🎯', '📊', '🏃', '🧠', '💨', '🌟', '💪'];
 
 const THEME_GRADIENTS: Record<Theme, { from: string; to: string; label: string }> = {
   rose: { from: 'from-pink-600', to: 'to-pink-400', label: 'Rose/Magenta' },
@@ -25,14 +25,14 @@ const THEME_GRADIENTS: Record<Theme, { from: string; to: string; label: string }
 };
 
 export default function InfographiePage() {
-  const [title, setTitle] = useState('ÃNERGIE & CARDIO');
+  const [title, setTitle] = useState('ÉNERGIE & CARDIO');
   const [subtitle, setSubtitle] = useState('Programme intensif 30 jours');
   const [format, setFormat] = useState<Format>('9:16');
   const [theme, setTheme] = useState<Theme>('rose');
   const [cards, setCards] = useState<InfoCard[]>([
-    { id: '1', emoji: 'â¡', label: 'Intensité', value: 'Très Ãlevée', color: 'bg-red-500' },
-    { id: '2', emoji: 'â¤ï¸', label: 'Fréquence', value: '5x par semaine', color: 'bg-pink-500' },
-    { id: '3', emoji: 'ð¥', label: 'Calories', value: '500-800 kcal', color: 'bg-orange-500' },
+    { id: '1', emoji: '⚡', label: 'Intensité', value: 'Très Élevée', color: 'bg-red-500' },
+    { id: '2', emoji: '❤️', label: 'Fréquence', value: '5x par semaine', color: 'bg-pink-500' },
+    { id: '3', emoji: '🔥', label: 'Calories', value: '500-800 kcal', color: 'bg-orange-500' },
   ]);
   const [characterImage, setCharacterImage] = useState<string | null>(null);
   const [destination, setDestination] = useState<Destination>('both');
@@ -101,7 +101,7 @@ export default function InfographiePage() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white placeholder-gray-500 border border-gray-700 focus:border-pink-500 focus:outline-none"
-              placeholder="ex: ÃNERGIE & CARDIO"
+              placeholder="ex: ÉNERGIE & CARDIO"
             />
           </div>
 
@@ -232,7 +232,7 @@ export default function InfographiePage() {
                         value={card.value}
                         onChange={(e) => updateCard(card.id, { value: e.target.value })}
                         className="w-full rounded bg-gray-700 px-3 py-2 text-sm text-white placeholder-gray-500 border border-gray-600 focus:border-pink-500 focus:outline-none"
-                        placeholder="ex: Très Ãlevée"
+                        placeholder="ex: Très Élevée"
                       />
                     </div>
                   </div>
@@ -311,7 +311,7 @@ export default function InfographiePage() {
           <div className="space-y-3">
             <button className="w-full bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 text-white font-bold py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-2">
               <Zap size={20} />
-              EXPORTER LA VIDÃO
+              EXPORTER LA VIDÉO
             </button>
             <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
               <div className="text-sm text-gray-400 mb-2">Coût en crédits</div>
@@ -319,7 +319,7 @@ export default function InfographiePage() {
                 {getCreditsNeeded()} <span className="text-sm text-gray-400">crédits</span>
               </div>
               <div className="text-xs text-gray-500 mt-2">
-                {getFormatCount()} format{getFormatCount() > 1 ? 's' : ''} Ã 25 crédits
+                {getFormatCount()} format{getFormatCount() > 1 ? 's' : ''} × 25 crédits
               </div>
             </div>
           </div>
