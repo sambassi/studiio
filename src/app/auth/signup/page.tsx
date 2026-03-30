@@ -21,7 +21,7 @@ export default function SignupPage() {
         <div className="card-base p-8 space-y-6">
           <div className="text-center">
             <h1 className="text-3xl font-bold text-white mb-2">Inscription</h1>
-            <p className="text-gray-400">Cr\u00e9ez votre compte Studiio gratuitement</p>
+            <p className="text-gray-400">Créez votre compte Studiio gratuitement</p>
           </div>
 
           {error && (
@@ -54,13 +54,13 @@ export default function SignupPage() {
               En vous inscrivant, vous acceptez nos{' '}
               <span className="text-studiio-primary cursor-pointer">Conditions d&apos;utilisation</span>{' '}
               et notre{' '}
-              <span className="text-studiio-primary cursor-pointer">Politique de confidentialit\u00e9</span>.
+              <span className="text-studiio-primary cursor-pointer">Politique de confidentialité</span>.
             </p>
           </div>
 
           <div className="text-center">
             <p className="text-gray-400">
-              Vous avez d\u00e9j\u00e0 un compte ?{' '}
+              Vous avez déjà un compte ?{' '}
               <Link href="/auth/login" className="text-studiio-primary hover:text-purple-400 font-semibold">
                 Se connecter
               </Link>
