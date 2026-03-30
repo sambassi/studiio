@@ -226,7 +226,7 @@ export default function SocialPage() {
 
           if (!popup) {
             showToast(
-              'Les popups doivent Ãªtre activées pour se connecter',
+              'Les popups doivent être activées pour se connecter',
               'error'
             );
             setConnecting(null);
@@ -416,7 +416,7 @@ export default function SocialPage() {
                   connecté{connectedCount > 1 ? 's' : ''}
                 </p>
                 <p className="text-sm text-gray-400">
-                  Vos vidéos peuvent Ãªtre publiées automatiquement
+                  Vos vidéos peuvent être publiées automatiquement
                 </p>
               </div>
             </div>
