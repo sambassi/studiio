@@ -16,8 +16,11 @@ import {
   Volume2,
   Zap,
   Music,
+  Play,
+  Square,
 } from 'lucide-react';
 import Link from 'next/link';
+import { TTS_VOICES, previewVoice, synthesize } from '@/lib/tts/edge-tts-client';
 
 interface VideoRush {
   id: string;
@@ -84,6 +87,8 @@ export default function CreatorPage() {
   const [destination, setDestination] = useState('calendar');
   const [ttsMode, setTtsMode] = useState<'edge' | 'upload' | 'none'>('none');
   const [ttsVoice, setTtsVoice] = useState('fr-FR-DeniseNeural');
+  const [previewAudio, setPreviewAudio] = useState<HTMLAudioElement | null>(null);
+  const [previewingVoice, setPreviewingVoice] = useState<string | null>(null);
 
   // UI states
   const [toast, setToast] = useState<Toast | null>(null);
@@ -106,6 +111,36 @@ export default function CreatorPage() {
 
   const showToast = (message: string, type: 'success' | 'error' = 'error') => {
     setToast({ message, type });
+  };
+
+  const handlePreviewVoice = async (voiceId: string) => {
+    // Stop current preview
+    if (previewAudio) {
+      previewAudio.pause();
+      previewAudio.src = '';
+      setPreviewAudio(null);
+    }
+
+    if (previewingVoice === voiceId) {
+      setPreviewingVoice(null);
+      return;
+    }
+
+    setPreviewingVoice(voiceId);
+    try {
+      const url = await previewVoice(voiceId);
+      const audio = new Audio(url);
+      audio.onended = () => {
+        setPreviewingVoice(null);
+        setPreviewAudio(null);
+      };
+      audio.play();
+      setPreviewAudio(audio);
+    } catch (error) {
+      console.error('Voice preview error:', error);
+      showToast('Erreur lors de la preview de la voix', 'error');
+      setPreviewingVoice(null);
+    }
   };
 
   const handleAddVideoRush = () => {
@@ -582,16 +617,51 @@ export default function CreatorPage() {
                 </div>
 
                 {ttsMode === 'edge' && (
-                  <Select
-                    options={[
-                      { value: 'fr-FR-DeniseNeural', label: 'Denise (FR)' },
-                      { value: 'fr-FR-HenriNeural', label: 'Henri (FR)' },
-                      { value: 'en-US-AriaNeural', label: 'Aria (EN)' },
-                      { value: 'en-US-GuyNeural', label: 'Guy (EN)' },
-                    ]}
-                    value={ttsVoice}
-                    onChange={(e) => setTtsVoice(e.target.value)}
-                  />
+                  <div className="space-y-2">
+                    {Object.entries(
+                      TTS_VOICES.reduce((acc, v) => {
+                        if (!acc[v.lang]) acc[v.lang] = [];
+                        acc[v.lang].push(v);
+                        return acc;
+                      }, {} as Record<string, typeof TTS_VOICES>)
+                    ).map(([lang, voices]) => (
+                      <div key={lang}>
+                        <p className="text-xs text-gray-500 mb-1">{voices[0].flag} {lang}</p>
+                        <div className="grid grid-cols-2 gap-1">
+                          {voices.map((voice) => (
+                            <div
+                              key={voice.id}
+                              className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition border text-sm ${
+                                ttsVoice === voice.id
+                                  ? 'border-[#D91CD2] bg-[#D91CD2]/10 text-white'
+                                  : 'border-gray-700 text-gray-400 hover:border-gray-600'
+                              }`}
+                              onClick={() => setTtsVoice(voice.id)}
+                            >
+                              <span className="flex-1 truncate">
+                                {voice.name} ({voice.gender === 'Female' ? 'F' : 'H'})
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handlePreviewVoice(voice.id);
+                                }}
+                                className="p-1 rounded hover:bg-gray-700 transition"
+                                title="Ecouter un apercu"
+                              >
+                                {previewingVoice === voice.id ? (
+                                  <Square size={12} className="text-[#D91CD2]" />
+                                ) : (
+                                  <Play size={12} className="text-gray-400" />
+                                )}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
 
                 {ttsMode === 'upload' && (

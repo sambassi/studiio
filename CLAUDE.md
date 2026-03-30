@@ -118,3 +118,17 @@ Key routing rules:
 - Design system, brand → invoke design-consultation
 - Visual audit, design polish → invoke design-review
 - Architecture review → invoke plan-eng-review
+
+## Automatisation navigateur (Playwright)
+
+Un skill Playwright est disponible dans `.claude/skills/playwright/`.
+Il permet de scraper une page web en headless et de récupérer le contenu en JSON :
+
+```bash
+node .claude/skills/playwright/scripts/run.js <URL>
+```
+
+Retourne `{ title, text, links }`. Utile pour :
+- Lire de la documentation externe (API Meta, TikTok, Remotion, etc.)
+- Vérifier qu'une page déployée charge correctement
+- Extraire des données structurées d'un site

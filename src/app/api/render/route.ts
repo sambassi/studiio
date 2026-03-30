@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { RENDER_COSTS } from '@/lib/stripe/constants';
-import { renderVideo, completeJob, failJob } from '@/lib/render/worker';
-import { uploadToStorage } from '@/lib/storage/upload';
+// Dynamic imports to avoid webpack bundling issues with @remotion/bundler
+// These are only imported at runtime, not build time
+const loadRenderWorker = () => import('@/lib/render/worker');
+const loadStorage = () => import('@/lib/storage/upload');
 
 // Async render trigger - runs after response is sent
 async function triggerRender(params: {
@@ -17,6 +19,9 @@ async function triggerRender(params: {
   const { jobId, videoId, userId, compositionId, inputProps, creditsCharged } = params;
 
   try {
+    const { renderVideo, completeJob } = await loadRenderWorker();
+    const { uploadToStorage } = await loadStorage();
+
     const { outputPath } = await renderVideo({
       jobId,
       compositionId,
@@ -34,7 +39,12 @@ async function triggerRender(params: {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown render error';
     console.error(`Render failed for job ${jobId}:`, message);
-    await failJob(jobId, videoId, userId, creditsCharged, message);
+    try {
+      const { failJob } = await loadRenderWorker();
+      await failJob(jobId, videoId, userId, creditsCharged, message);
+    } catch (e) {
+      console.error('Failed to mark job as failed:', e);
+    }
   }
 }
 
