@@ -303,8 +303,8 @@ export default function CreatorPage() {
                 </label>
                 <div className="flex gap-4">
                   {[
-                    { value: 'reel', label: 'Reel 9:16', icon: 'ð±' },
-                    { value: 'tv', label: 'TV 16:9', icon: 'ðº' },
+                    { value: 'reel', label: 'Reel 9:16', icon: '📱' },
+                    { value: 'tv', label: 'TV 16:9', icon: '📺' },
                   ].map((opt) => (
                     <button
                       key={opt.value}
