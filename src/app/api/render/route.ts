@@ -2,6 +2,41 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { RENDER_COSTS } from '@/lib/stripe/constants';
+import { renderVideo, completeJob, failJob } from '@/lib/render/worker';
+import { uploadToStorage } from '@/lib/storage/upload';
+
+// Async render trigger - runs after response is sent
+async function triggerRender(params: {
+  jobId: string;
+  videoId: string;
+  userId: string;
+  compositionId: string;
+  inputProps: Record<string, any>;
+  creditsCharged: number;
+}) {
+  const { jobId, videoId, userId, compositionId, inputProps, creditsCharged } = params;
+
+  try {
+    const { outputPath } = await renderVideo({
+      jobId,
+      compositionId,
+      inputProps,
+    });
+
+    // Upload rendered video to Supabase Storage
+    const outputUrl = await uploadToStorage({
+      filePath: outputPath,
+      bucket: 'videos',
+      storagePath: `${userId}/${videoId}.mp4`,
+    });
+
+    await completeJob(jobId, videoId, outputUrl);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown render error';
+    console.error(`Render failed for job ${jobId}:`, message);
+    await failJob(jobId, videoId, userId, creditsCharged, message);
+  }
+}
 
 // POST /api/render - Start a video render job
 export async function POST(req: NextRequest) {
@@ -139,30 +174,21 @@ export async function POST(req: NextRequest) {
         .eq('id', video.id);
     }
 
-    // In production, this would trigger a serverless render via:
-    // - Remotion Lambda (AWS)
-    // - Cloud Run job (GCP)
-    // - or a background worker
-    //
-    // For now, we simulate the render completing after creation.
-    // The actual Remotion rendering pipeline will be connected
-    // when cloud infrastructure is provisioned.
-    //
-    // TODO: Replace with actual Remotion renderMediaOnLambda() or
-    // a background job that calls @remotion/renderer.renderMedia()
-
-    // Simulate render completion (will be replaced with real pipeline)
+    // Trigger async rendering
+    // On Vercel, this runs in the background after the response is sent.
+    // The client polls /api/render/status?jobId=xxx for progress.
     if (renderJob) {
-      // Mark as rendering
-      await supabase
-        .from('render_jobs')
-        .update({
-          status: 'rendering',
-          progress: 0,
-          stage: 'Initialisation...',
-          started_at: new Date().toISOString(),
-        })
-        .eq('id', renderJob.id);
+      // Fire-and-forget: start the render process
+      triggerRender({
+        jobId: renderJob.id,
+        videoId: video.id,
+        userId: session.user.id,
+        compositionId: composition,
+        inputProps,
+        creditsCharged: actualCost,
+      }).catch((error) => {
+        console.error('Background render failed:', error);
+      });
     }
 
     return NextResponse.json({
