@@ -529,9 +529,11 @@ export default function CalendarPage() {
         {selectedPost && (
           <div className="space-y-4">
             {selectedPost.media_url && (
-              <div className="flex justify-center bg-black rounded-lg p-6">
+              <div className="flex justify-center bg-black rounded-lg p-4">
                 <div className={`flex items-center justify-center ${
-                  selectedPost.format === 'reel' ? 'w-48 h-80' : 'w-full max-w-2xl aspect-video'
+                  selectedPost.format === 'reel'
+                    ? 'w-64 aspect-[9/16] max-h-[60vh]'
+                    : 'w-full max-w-2xl aspect-video max-h-[50vh]'
                 }`}>
                   {selectedPost.media_type === 'video' ? (
                     <video src={selectedPost.media_url} controls className="w-full h-full object-contain rounded" />
