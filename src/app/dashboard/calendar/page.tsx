@@ -324,13 +324,48 @@ export default function CalendarPage() {
   const handleImportClick = () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'video/*,image/*';
-    input.onchange = (e: any) => {
+    input.accept = 'video/mp4,video/quicktime,video/webm,image/jpeg,image/png,image/webp,image/gif';
+    input.onchange = async (e: any) => {
       const file = e.target.files?.[0];
-      if (file) {
+      if (!file) return;
+
+      const isVideo = file.type.startsWith('video/');
+      const title = file.name.replace(/\.[^/.]+$/, '');
+
+      // Upload to Supabase Storage via API
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('purpose', isVideo ? 'rush' : 'thumbnail');
+
+        const uploadRes = await fetch('/api/upload/media', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const uploadData = await uploadRes.json();
+        const mediaUrl = uploadData.success ? uploadData.file.url : null;
+
+        setEditFormData({
+          platforms: [],
+          status: 'draft',
+          format: 'reel',
+          scheduled_date: selectedDay
+            ? formatDateForStorage(currentDate, selectedDay)
+            : formatDateForStorage(new Date(), new Date().getDate()),
+          scheduled_time: '12:00',
+          title,
+          caption: '',
+          media_url: mediaUrl,
+          media_type: isVideo ? 'video' : 'image',
+        });
+        setEditTab('draft');
+        setShowEditModal(true);
+      } catch (error) {
+        console.error('Upload failed:', error);
+        // Fallback to dataURL if upload fails
         const reader = new FileReader();
         reader.onload = (event: any) => {
-          const isVideo = file.type.startsWith('video/');
           setEditFormData({
             platforms: [],
             status: 'draft',
@@ -339,7 +374,7 @@ export default function CalendarPage() {
               ? formatDateForStorage(currentDate, selectedDay)
               : formatDateForStorage(new Date(), new Date().getDate()),
             scheduled_time: '12:00',
-            title: file.name.replace(/\.[^/.]+$/, ''),
+            title,
             caption: '',
             media_url: event.target.result,
             media_type: isVideo ? 'video' : 'image',
