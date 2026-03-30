@@ -55,7 +55,7 @@ export async function PATCH(req: NextRequest): Promise<NextResponse<ApiResponse<
     const body = await req.json();
     const { id, ...updates } = body;
 
-    const { data, error ] = await supabase
+    const { data, error } = await supabase
       .from('subscriptions')
       .update(updates)
       .eq('id', id)
