@@ -6,11 +6,11 @@ import Providers from './providers'
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 
 export const metadata: Metadata = {
-  title: 'Studiio - Cr\u00e9ez des vid\u00e9os virales',
-  description: 'Cr\u00e9ez des vid\u00e9os virales en quelques clics avec Studiio, la plateforme de cr\u00e9ation vid\u00e9o IA.',
+  title: 'Studiio - Créez des vidéos virales',
+  description: 'Créez des vidéos virales en quelques clics avec Studiio, la plateforme de création vidéo IA.',
   openGraph: {
-    title: 'Studiio - Cr\u00e9ez des vid\u00e9os virales',
-    description: 'Plateforme de cr\u00e9ation vid\u00e9o IA',
+    title: 'Studiio - Créez des vidéos virales',
+    description: 'Plateforme de création vidéo IA',
     type: 'website',
   },
 }
