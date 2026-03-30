@@ -238,6 +238,16 @@ function FAQItem({ q, a }: { q: string; a: string }) {
 
 export default function LandingPage() {
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
+  const [showLangMenu, setShowLangMenu] = useState(false);
+  const [lang, setLang] = useState('FR');
+  const LANGS = [
+    { code: 'FR', label: 'Francais', flag: '🇫🇷' },
+    { code: 'EN', label: 'English', flag: '🇬🇧' },
+    { code: 'ES', label: 'Espanol', flag: '🇪🇸' },
+    { code: 'PT', label: 'Portugues', flag: '🇧🇷' },
+    { code: 'DE', label: 'Deutsch', flag: '🇩🇪' },
+    { code: 'AR', label: 'العربية', flag: '🇸🇦' },
+  ];
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-white overflow-x-hidden">
@@ -259,6 +269,32 @@ export default function LandingPage() {
               <a href="#faq" className="hover:text-white transition">FAQ</a>
             </div>
             <div className="flex items-center gap-3">
+              {/* Language Selector */}
+              <div className="relative hidden sm:block">
+                <button
+                  onClick={() => setShowLangMenu(!showLangMenu)}
+                  className="flex items-center gap-1 text-sm text-gray-400 hover:text-white transition px-2 py-1 rounded-lg hover:bg-gray-800"
+                >
+                  <Globe size={14} />
+                  <span>{LANGS.find(l => l.code === lang)?.flag} {lang}</span>
+                </button>
+                {showLangMenu && (
+                  <div className="absolute right-0 top-full mt-1 bg-gray-900 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[140px] z-50">
+                    {LANGS.map((l) => (
+                      <button
+                        key={l.code}
+                        onClick={() => { setLang(l.code); setShowLangMenu(false); }}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-800 transition flex items-center gap-2 ${
+                          lang === l.code ? 'text-[#D91CD2]' : 'text-gray-300'
+                        }`}
+                      >
+                        <span>{l.flag}</span>
+                        <span>{l.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <Link href="/auth/login" className="text-sm text-gray-300 hover:text-white transition hidden sm:block">
                 Connexion
               </Link>
