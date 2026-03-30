@@ -41,7 +41,7 @@ export default function LoginPage() {
         window.location.href = '/dashboard';
       }
     } catch {
-      setError('Erreur de connexion. Veuillez r\u00e9essayer.');
+      setError('Erreur de connexion. Veuillez réessayer.');
     }
     setLoading(null);
   };
@@ -52,7 +52,7 @@ export default function LoginPage() {
         <div className="card-base p-8 space-y-6">
           <div className="text-center">
             <h1 className="text-3xl font-bold text-white mb-2">Connexion</h1>
-            <p className="text-gray-400">Connectez-vous \u00e0 votre compte Studiio</p>
+            <p className="text-gray-400">Connectez-vous à votre compte Studiio</p>
           </div>
 
           {error && (
@@ -106,7 +106,7 @@ export default function LoginPage() {
                 type="password"
                 name="password"
                 className="input-base w-full"
-                placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
+                placeholder="••••••••"
                 disabled={!!loading}
               />
             </div>
