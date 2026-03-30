@@ -1,32 +1,82 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
-import { Chrome, Facebook } from 'lucide-react';
+import { signIn } from 'next-auth/react';
+import { Chrome, Facebook, Loader2 } from 'lucide-react';
 
 export default function LoginPage() {
+  const [loading, setLoading] = useState<string | null>(null);
+  const [error, setError] = useState('');
+
+  const handleOAuthSignIn = (provider: string) => {
+    setLoading(provider);
+    setError('');
+    signIn(provider, { callbackUrl: '/dashboard' });
+  };
+
+  const handleEmailLogin = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setLoading('email');
+    setError('');
+    const formData = new FormData(e.currentTarget);
+    const email = formData.get('email') as string;
+    const password = formData.get('password') as string;
+
+    if (!email || !password) {
+      setError('Veuillez remplir tous les champs.');
+      setLoading(null);
+      return;
+    }
+
+    try {
+      const res = await signIn('credentials', {
+        email,
+        password,
+        redirect: false,
+      });
+      if (res?.error) {
+        setError('Email ou mot de passe incorrect.');
+      } else {
+        window.location.href = '/dashboard';
+      }
+    } catch {
+      setError('Erreur de connexion. Veuillez r\u00e9essayer.');
+    }
+    setLoading(null);
+  };
+
   return (
     <div className="min-h-screen bg-studiio-dark flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="card-base p-8 space-y-6">
           <div className="text-center">
             <h1 className="text-3xl font-bold text-white mb-2">Connexion</h1>
-            <p className="text-gray-400">Connectez-vous à votre compte Studiio</p>
+            <p className="text-gray-400">Connectez-vous \u00e0 votre compte Studiio</p>
           </div>
 
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-3 text-red-400 text-sm text-center">
+              {error}
+            </div>
+          )}
+
           <div className="space-y-3">
-            <button className="w-full flex items-center justify-center gap-3 bg-gray-800 hover:bg-gray-700 text-white font-semibold py-3 rounded-lg transition">
-              <Chrome size={20} />
+            <button
+              onClick={() => handleOAuthSignIn('google')}
+              disabled={!!loading}
+              className="w-full flex items-center justify-center gap-3 bg-gray-800 hover:bg-gray-700 text-white font-semibold py-3 rounded-lg transition disabled:opacity-50"
+            >
+              {loading === 'google' ? <Loader2 size={20} className="animate-spin" /> : <Chrome size={20} />}
               Continuer avec Google
             </button>
-            <button className="w-full flex items-center justify-center gap-3 bg-gray-800 hover:bg-gray-700 text-white font-semibold py-3 rounded-lg transition">
-              <Facebook size={20} />
+            <button
+              onClick={() => handleOAuthSignIn('facebook')}
+              disabled={!!loading}
+              className="w-full flex items-center justify-center gap-3 bg-gray-800 hover:bg-gray-700 text-white font-semibold py-3 rounded-lg transition disabled:opacity-50"
+            >
+              {loading === 'facebook' ? <Loader2 size={20} className="animate-spin" /> : <Facebook size={20} />}
               Continuer avec Facebook
-            </button>
-            <button className="w-full flex items-center justify-center gap-3 bg-gray-800 hover:bg-gray-700 text-white font-semibold py-3 rounded-lg transition">
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.002 12.002 0 0024 12c0-6.63-5.37-12-12-12z" />
-              </svg>
-              Continuer avec GitHub
             </button>
           </div>
 
@@ -39,17 +89,33 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <form className="space-y-4">
+          <form onSubmit={handleEmailLogin} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">Email</label>
-              <input type="email" className="input-base w-full" placeholder="votre@email.com" />
+              <input
+                type="email"
+                name="email"
+                className="input-base w-full"
+                placeholder="votre@email.com"
+                disabled={!!loading}
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">Mot de passe</label>
-              <input type="password" className="input-base w-full" placeholder="••••••••" />
+              <input
+                type="password"
+                name="password"
+                className="input-base w-full"
+                placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
+                disabled={!!loading}
+              />
             </div>
-            <button type="submit" className="w-full button-primary">
-              Se connecter
+            <button
+              type="submit"
+              disabled={!!loading}
+              className="w-full button-primary disabled:opacity-50"
+            >
+              {loading === 'email' ? 'Connexion...' : 'Se connecter'}
             </button>
           </form>
 
