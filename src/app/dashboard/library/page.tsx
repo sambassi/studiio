@@ -324,15 +324,29 @@ export default function LibraryPage() {
                         size={32}
                       />
                       <span className="text-xs text-gray-300 font-medium">
-                        Rendu en cours
+                        Rendu en cours...
                       </span>
                     </div>
-                  ) : (
+                  ) : video.status === 'failed' ? (
+                    <div className="flex flex-col items-center gap-2 z-10">
+                      <X className="text-red-400" size={32} />
+                      <span className="text-xs text-red-300 font-medium">
+                        Echec du rendu
+                      </span>
+                    </div>
+                  ) : video.video_url ? (
                     <div className="flex items-center justify-center w-14 h-14 rounded-full bg-studiio-accent/20 group-hover/thumbnail:bg-studiio-accent/40 transition z-10">
                       <Play
                         className="text-studiio-accent group-hover/thumbnail:scale-110 transition fill-current"
                         size={32}
                       />
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 z-10">
+                      <Film className="text-gray-500" size={32} />
+                      <span className="text-xs text-gray-400 font-medium">
+                        Video en traitement
+                      </span>
                     </div>
                   )}
                 </div>
