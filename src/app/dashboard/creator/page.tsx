@@ -148,11 +148,11 @@ export default function CreatorPage() {
   const handleRegenerateTitle = () => {
     // Simulate title generation
     const newTitles = Array.from({ length: batchCount }, (_, i) => ({
-      text: `VidÃ©o ${i + 1} - ${title}`,
+      text: `Vidéo ${i + 1} - ${title}`,
       videoIndex: i,
     }));
     setGeneratedTitles(newTitles);
-    showToast('Titres rÃ©gÃ©nÃ©rÃ©s avec succÃ¨s', 'success');
+    showToast('Titres régénérés avec succès', 'success');
   };
 
   const handleStartRendering = async () => {
@@ -162,7 +162,7 @@ export default function CreatorPage() {
     }
 
     if (videoRushes.every((v) => !v.file && !v.url)) {
-      showToast('Veuillez ajouter au moins une vidÃ©o', 'error');
+      showToast('Veuillez ajouter au moins une vidéo', 'error');
       return;
     }
 
@@ -177,11 +177,11 @@ export default function CreatorPage() {
     // Simulate rendering progress
     const stages = [
       'Initialisation...',
-      'TÃ©lÃ©chargement des fichiers...',
-      'Traitement vidÃ©o...',
+      'Téléchargement des fichiers...',
+      'Traitement vidéo...',
       'Application des effets...',
       'Ajout du texte...',
-      'IntÃ©gration audio...',
+      'Intégration audio...',
       'Rendu en cours...',
       'Finalisation...',
     ];
@@ -208,11 +208,11 @@ export default function CreatorPage() {
       setRendering({
         isRendering: false,
         progress: 100,
-        stage: 'Rendu terminÃ©!',
+        stage: 'Rendu terminé!',
         currentVideo: batchCount,
         totalVideos: batchCount,
       });
-      showToast('VidÃ©os gÃ©nÃ©rÃ©es avec succÃ¨s!', 'success');
+      showToast('Vidéos générées avec succès!', 'success');
 
       // Reset after 2 seconds
       setTimeout(() => {
@@ -230,9 +230,9 @@ export default function CreatorPage() {
 
   const steps = [
     'Configuration',
-    'MÃ©dias',
+    'Médias',
     'Timeline',
-    'AperÃ§u & Rendu',
+    'Aperçu & Rendu',
   ];
 
   return (
@@ -254,10 +254,10 @@ export default function CreatorPage() {
       <div className="border-b border-gray-800 bg-gray-900/50 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-3xl font-bold">CrÃ©ateur de vidÃ©os</h1>
+            <h1 className="text-3xl font-bold">Créateur de vidéos</h1>
             <Link href="/dashboard/library">
               <Button variant="secondary" size="sm">
-                Vers la bibliothÃ¨que
+                Vers la bibliothèque
               </Button>
             </Link>
           </div>
@@ -293,7 +293,7 @@ export default function CreatorPage() {
             <div className="card-base p-6 space-y-6">
               <div>
                 <h2 className="text-2xl font-bold mb-2">Configuration</h2>
-                <p className="text-gray-400">Configurez les paramÃ¨tres de base de votre vidÃ©o</p>
+                <p className="text-gray-400">Configurez les paramètres de base de votre vidéo</p>
               </div>
 
               {/* Format Selection */}
@@ -330,7 +330,7 @@ export default function CreatorPage() {
                 <div className="flex gap-4">
                   {[
                     { value: 'cardio', label: 'Cardio/Dynamique' },
-                    { value: 'testimony', label: 'TÃ©moignage/Clean' },
+                    { value: 'testimony', label: 'Témoignage/Clean' },
                   ].map((opt) => (
                     <button
                       key={opt.value}
@@ -371,7 +371,7 @@ export default function CreatorPage() {
                   Titre principal
                 </label>
                 <Input
-                  placeholder="Ex: Ma nouvelle vidÃ©o..."
+                  placeholder="Ex: Ma nouvelle vidéo..."
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   className="input-base"
@@ -395,26 +395,26 @@ export default function CreatorPage() {
                 onClick={() => setStep(1)}
                 className="w-full"
               >
-                Continuer vers les mÃ©dias
+                Continuer vers les médias
               </Button>
             </div>
           </div>
         )}
 
-        {/* Step 1: MÃ©dias */}
+        {/* Step 1: Médias */}
         {step === 1 && (
           <div className="space-y-8 max-w-2xl">
             <div className="card-base p-6 space-y-6">
               <div>
-                <h2 className="text-2xl font-bold mb-2">MÃ©dias</h2>
-                <p className="text-gray-400">Ajoutez vos vidÃ©os, images et audio</p>
+                <h2 className="text-2xl font-bold mb-2">Médias</h2>
+                <p className="text-gray-400">Ajoutez vos vidéos, images et audio</p>
               </div>
 
               {/* Video Rushes */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="block text-sm font-semibold text-gray-300">
-                    VidÃ©os (Rush)
+                    Vidéos (Rush)
                   </label>
                   <span className="text-xs text-gray-500">
                     {videoRushes.length} / 10
@@ -434,7 +434,7 @@ export default function CreatorPage() {
                         <span className="text-sm text-gray-300">
                           {rush.file
                             ? rush.file.name
-                            : 'Cliquez pour ajouter une vidÃ©o'}
+                            : 'Cliquez pour ajouter une vidéo'}
                         </span>
                         <input
                           type="file"
@@ -466,7 +466,7 @@ export default function CreatorPage() {
                     className="w-full"
                   >
                     <Plus size={14} className="mr-2" />
-                    Ajouter une vidÃ©o
+                    Ajouter une vidéo
                   </Button>
                 )}
               </div>
@@ -485,7 +485,7 @@ export default function CreatorPage() {
                         : 'Cliquez pour ajouter une image'}
                     </p>
                     <p className="text-xs text-gray-500">
-                      PNG, JPG jusqu'Ã  10MB
+                      PNG, JPG jusqu'à 10MB
                     </p>
                   </div>
                   <input
@@ -515,7 +515,7 @@ export default function CreatorPage() {
                         : 'Cliquez pour ajouter de la musique'}
                     </p>
                     <p className="text-xs text-gray-500">
-                      MP3, WAV jusqu'Ã  50MB
+                      MP3, WAV jusqu'à 50MB
                     </p>
                   </div>
                   <input
@@ -539,7 +539,7 @@ export default function CreatorPage() {
                 <div className="flex gap-2 mb-3">
                   {[
                     { value: 'edge', label: 'Edge TTS' },
-                    { value: 'upload', label: 'TÃ©lÃ©charger' },
+                    { value: 'upload', label: 'Télécharger' },
                     { value: 'none', label: 'Aucune' },
                   ].map((opt) => (
                     <button
@@ -579,7 +579,7 @@ export default function CreatorPage() {
                           : 'Cliquez pour ajouter une voix-off'}
                       </p>
                       <p className="text-xs text-gray-500">
-                        MP3, WAV jusqu'Ã  30MB
+                        MP3, WAV jusqu'à 30MB
                       </p>
                     </div>
                     <input
@@ -622,7 +622,7 @@ export default function CreatorPage() {
             <div className="card-base p-6 space-y-6">
               <div>
                 <h2 className="text-2xl font-bold mb-2">Timeline</h2>
-                <p className="text-gray-400">CrÃ©ez des cartes de texte pour votre vidÃ©o</p>
+                <p className="text-gray-400">Créez des cartes de texte pour votre vidéo</p>
               </div>
 
               {/* Text Cards List */}
@@ -670,7 +670,7 @@ export default function CreatorPage() {
                 />
                 <Input
                   type="number"
-                  placeholder="DurÃ©e (secondes)"
+                  placeholder="Durée (secondes)"
                   min="1"
                   max="30"
                   value={activeNewCard?.duration || ''}
@@ -705,14 +705,14 @@ export default function CreatorPage() {
                   onClick={() => setStep(3)}
                   className="flex-1"
                 >
-                  Continuer vers l'aperÃ§u
+                  Continuer vers l'aperçu
                 </Button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Step 3: AperÃ§u & Rendu */}
+        {/* Step 3: Aperçu & Rendu */}
         {step === 3 && (
           <div className="space-y-8">
             {!rendering.isRendering ? (
@@ -720,9 +720,9 @@ export default function CreatorPage() {
                 {/* Preview Section */}
                 <div className="card-base p-6 space-y-6">
                   <div>
-                    <h2 className="text-2xl font-bold mb-2">AperÃ§u & Rendu</h2>
+                    <h2 className="text-2xl font-bold mb-2">Aperçu & Rendu</h2>
                     <p className="text-gray-400">
-                      VÃ©rifiez vos paramÃ¨tres avant de gÃ©nÃ©rer
+                      Vérifiez vos paramètres avant de générer
                     </p>
                   </div>
 
@@ -730,7 +730,7 @@ export default function CreatorPage() {
                   <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-3">
                       <label className="block text-sm font-semibold text-gray-300">
-                        Nombre de vidÃ©os
+                        Nombre de vidéos
                       </label>
                       <div className="flex gap-2">
                         {[2, 3, 5, 10].map((count) => (
@@ -772,7 +772,7 @@ export default function CreatorPage() {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <label className="block text-sm font-semibold text-gray-300">
-                        Titres gÃ©nÃ©rÃ©s
+                        Titres générés
                       </label>
                       <Button
                         variant="secondary"
@@ -780,7 +780,7 @@ export default function CreatorPage() {
                         onClick={handleRegenerateTitle}
                       >
                         <RotateCcw size={14} className="mr-2" />
-                        RÃ©gÃ©nÃ©rer
+                        Régénérer
                       </Button>
                     </div>
 
@@ -792,7 +792,7 @@ export default function CreatorPage() {
                             className="p-3 rounded-lg bg-gray-800/50 border border-gray-700"
                           >
                             <p className="text-xs text-gray-500 mb-1">
-                              VidÃ©o {gt.videoIndex + 1}
+                              Vidéo {gt.videoIndex + 1}
                             </p>
                             <p className="text-sm text-white">{gt.text}</p>
                           </div>
@@ -800,7 +800,7 @@ export default function CreatorPage() {
                       </div>
                     ) : (
                       <p className="text-sm text-gray-500 italic">
-                        Cliquez sur "RÃ©gÃ©nÃ©rer" pour crÃ©er les titres
+                        Cliquez sur "Régénérer" pour créer les titres
                       </p>
                     )}
                   </div>
@@ -808,7 +808,7 @@ export default function CreatorPage() {
                   {/* Video Preview Grid */}
                   <div className="space-y-3">
                     <p className="text-sm font-semibold text-gray-300">
-                      AperÃ§u des vidÃ©os
+                      Aperçu des vidéos
                     </p>
                     <div className={`grid gap-4 ${
                       batchCount === 2
@@ -834,7 +834,7 @@ export default function CreatorPage() {
                             <div className="absolute inset-0 bg-black/30" />
                             <div className="relative z-10 text-center px-4">
                               <p className="text-xs text-gray-200 mb-2">
-                                VidÃ©o {i + 1}
+                                Vidéo {i + 1}
                               </p>
                               <p className="text-sm font-semibold text-white line-clamp-2">
                                 {title}
@@ -863,7 +863,7 @@ export default function CreatorPage() {
                       className="flex-1"
                     >
                       <Zap size={16} className="mr-2" />
-                      GÃ©nÃ©rer les vidÃ©os
+                      Générer les vidéos
                     </Button>
                   </div>
                 </div>
@@ -873,10 +873,10 @@ export default function CreatorPage() {
               <div className="card-base p-12 space-y-8 text-center">
                 <div>
                   <h2 className="text-3xl font-bold mb-2">
-                    CrÃ©ation en cours...
+                    Création en cours...
                   </h2>
                   <p className="text-gray-400">
-                    VidÃ©o {rendering.currentVideo} sur {rendering.totalVideos}
+                    Vidéo {rendering.currentVideo} sur {rendering.totalVideos}
                   </p>
                 </div>
 
