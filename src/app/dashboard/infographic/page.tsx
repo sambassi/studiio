@@ -118,9 +118,9 @@ export default function InfographiePage() {
 
   const getAspectRatioDimensions = () => {
     if (format === '9:16') {
-      return { width: 'w-full', height: 'h-full', aspectRatio: 'aspect-[9/16]' };
+      return { width: 'w-full', height: 'h-full', aspectRatio: 'aspect-[9/16]', maxW: 'max-w-sm' };
     }
-    return { width: 'w-full', height: 'h-full', aspectRatio: 'aspect-[16/9]' };
+    return { width: 'w-full', height: 'h-full', aspectRatio: 'aspect-[16/9]', maxW: 'max-w-lg' };
   };
 
   return (
@@ -398,7 +398,7 @@ export default function InfographiePage() {
           {/* Preview Container */}
           <div className="flex-1 flex items-center justify-center bg-gray-900 rounded-xl border border-gray-700 p-6 overflow-hidden">
             <div
-              className={`${getAspectRatioDimensions().aspectRatio} w-full max-w-md bg-gradient-to-br ${getThemeGradient()} rounded-2xl shadow-2xl p-6 flex flex-col justify-between relative overflow-hidden`}
+              className={`${getAspectRatioDimensions().aspectRatio} w-full ${getAspectRatioDimensions().maxW} bg-gradient-to-br ${getThemeGradient()} rounded-2xl shadow-2xl p-6 flex flex-col justify-between relative overflow-hidden transition-all duration-300`}
             >
               {/* Format Badge */}
               <div className="absolute top-3 right-3 bg-black/40 backdrop-blur px-3 py-1 rounded-full text-xs font-bold text-white">
