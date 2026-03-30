@@ -100,11 +100,11 @@ export default function LibraryPage() {
   const getStatusLabel = (status: string) => {
     switch (status) {
       case 'completed':
-        return 'TerminÃ©e';
+        return 'Terminée';
       case 'rendering':
         return 'Rendu en cours';
       case 'published':
-        return 'PubliÃ©e';
+        return 'Publiée';
       default:
         return 'Brouillon';
     }
@@ -135,7 +135,7 @@ export default function LibraryPage() {
           link.download = '';
           link.click();
         }
-        setToast({ message: 'VidÃ©o exportÃ©e avec succÃ¨s', type: 'success' });
+        setToast({ message: 'Vidéo exportée avec succès', type: 'success' });
       } else {
         setToast({ message: 'Erreur lors de l\'export', type: 'error' });
       }
@@ -158,7 +158,7 @@ export default function LibraryPage() {
           setVideos(data.data || []);
           setPage(1);
         }
-        setToast({ message: 'VidÃ©o dupliquÃ©e', type: 'success' });
+        setToast({ message: 'Vidéo dupliquée', type: 'success' });
       } else {
         setToast({ message: 'Erreur lors de la duplication', type: 'error' });
       }
@@ -175,7 +175,7 @@ export default function LibraryPage() {
     try {
       const res = await fetch(`/api/videos/${videoId}/repost`, { method: 'POST' });
       if (res.ok) {
-        setToast({ message: 'VidÃ©o repostÃ©e sur vos rÃ©seaux', type: 'success' });
+        setToast({ message: 'Vidéo repostée sur vos réseaux', type: 'success' });
       } else {
         setToast({ message: 'Erreur lors du repost', type: 'error' });
       }
@@ -197,7 +197,7 @@ export default function LibraryPage() {
       if (res.ok) {
         setVideos(videos.filter((v) => v.id !== deleteConfirm.videoId));
         setTotal(Math.max(0, total - 1));
-        setToast({ message: 'VidÃ©o supprimÃ©e', type: 'success' });
+        setToast({ message: 'Vidéo supprimée', type: 'success' });
       }
     } catch (error) {
       console.error('Error deleting video:', error);
@@ -234,16 +234,16 @@ export default function LibraryPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-white mb-2">BibliothÃ¨que</h1>
+          <h1 className="text-3xl font-bold text-white mb-2">Bibliothèque</h1>
           <p className="text-gray-400">
             {total > 0
-              ? `${total} vidÃ©o${total > 1 ? 's' : ''} crÃ©Ã©e${total > 1 ? 's' : ''}`
-              : 'GÃ©rez toutes vos vidÃ©os crÃ©Ã©es'}
+              ? `${total} vidéo${total > 1 ? 's' : ''} créée${total > 1 ? 's' : ''}`
+              : 'Gérez toutes vos vidéos créées'}
           </p>
         </div>
         <Link href="/dashboard/creator">
           <Button variant="primary" size="md">
-            CrÃ©er une vidÃ©o
+            Créer une vidéo
           </Button>
         </Link>
       </div>
@@ -251,18 +251,18 @@ export default function LibraryPage() {
       {/* Filters */}
       <div className="flex gap-4 items-end">
         <Input
-          placeholder="Rechercher une vidÃ©o..."
+          placeholder="Rechercher une vidéo..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="flex-1"
         />
         <Select
           options={[
-            { value: '', label: 'SÃ©lectionner...' },
-            { value: 'completed', label: 'TerminÃ©e' },
+            { value: '', label: 'Sélectionner...' },
+            { value: 'completed', label: 'Terminée' },
             { value: 'rendering', label: 'Rendu en cours' },
             { value: 'draft', label: 'Brouillon' },
-            { value: 'published', label: 'PubliÃ©e' },
+            { value: 'published', label: 'Publiée' },
           ]}
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
@@ -278,16 +278,16 @@ export default function LibraryPage() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-16">
           <Film className="mx-auto text-gray-600 mb-4" size={64} />
-          <h3 className="text-xl font-bold text-white mb-2">Aucune vidÃ©o</h3>
+          <h3 className="text-xl font-bold text-white mb-2">Aucune vidéo</h3>
           <p className="text-gray-400 mb-6">
             {search || filterStatus
-              ? 'Aucune vidÃ©o ne correspond Ã  vos filtres'
-              : 'CrÃ©ez votre premiÃ¨re vidÃ©o pour la voir ici'}
+              ? 'Aucune vidéo ne correspond à vos filtres'
+              : 'Créez votre première vidéo pour la voir ici'}
           </p>
           {!search && !filterStatus && (
             <Link href="/dashboard/creator">
               <Button variant="primary" size="lg">
-                CrÃ©er ma premiÃ¨re vidÃ©o
+                Créer ma première vidéo
               </Button>
             </Link>
           )}
@@ -365,10 +365,10 @@ export default function LibraryPage() {
                       onClick={() => setPreviewVideo(video)}
                       disabled={actionInProgress !== null}
                       className="flex flex-col items-center gap-1 rounded-lg py-2 text-gray-400 hover:bg-gray-800 hover:text-white transition disabled:opacity-50"
-                      title="AperÃ§u"
+                      title="Aperçu"
                     >
                       <Play size={16} />
-                      <span className="text-[10px]">AperÃ§u</span>
+                      <span className="text-[10px]">Aperçu</span>
                     </button>
                     <button
                       onClick={() => handleExport(video.id)}
@@ -481,7 +481,7 @@ export default function LibraryPage() {
                     src={previewVideo.metadata.outputUrl}
                     type="video/mp4"
                   />
-                  Votre navigateur ne supporte pas la lecture vidÃ©o.
+                  Votre navigateur ne supporte pas la lecture vidéo.
                 </video>
               ) : previewVideo.status === 'rendering' ? (
                 <div className="flex items-center justify-center w-full h-96 bg-gradient-to-b from-gray-800 to-black">
@@ -494,7 +494,7 @@ export default function LibraryPage() {
                       Rendu en cours...
                     </p>
                     <p className="text-gray-500 text-sm mt-2">
-                      La vidÃ©o sera disponible Ã  la fin du rendu
+                      La vidéo sera disponible à la fin du rendu
                     </p>
                   </div>
                 </div>
@@ -502,7 +502,7 @@ export default function LibraryPage() {
                 <div className="flex items-center justify-center w-full h-96 bg-gradient-to-b from-gray-800 to-black">
                   <div className="text-center">
                     <Play className="text-gray-500 mx-auto mb-4" size={48} />
-                    <p className="text-gray-400">VidÃ©o non disponible</p>
+                    <p className="text-gray-400">Vidéo non disponible</p>
                   </div>
                 </div>
               )}
@@ -521,7 +521,7 @@ export default function LibraryPage() {
                   onClick={() => handleExport(previewVideo.id)}
                 >
                   <Download size={16} className="mr-2" />
-                  TÃ©lÃ©charger
+                  Télécharger
                 </Button>
               )}
             </div>
@@ -534,14 +534,14 @@ export default function LibraryPage() {
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-gray-900 rounded-lg p-6 max-w-sm w-full border border-gray-800">
             <h3 className="text-lg font-semibold text-white mb-2">
-              Supprimer la vidÃ©o ?
+              Supprimer la vidéo ?
             </h3>
             <p className="text-gray-400 mb-6">
-              Ãtes-vous sÃ»r de vouloir supprimer{' '}
+              Ãtes-vous sûr de vouloir supprimer{' '}
               <span className="font-semibold text-white">
                 &quot;{deleteConfirm.videoTitle}&quot;
               </span>{' '}
-              ? Cette action est irrÃ©versible.
+              ? Cette action est irréversible.
             </p>
             <div className="flex gap-3">
               <Button
