@@ -57,7 +57,7 @@ const PLATFORMS = [
     name: 'TikTok',
     icon: Music2,
     color: 'text-slate-900',
-    description: 'VidÃ©os courtes virales',
+    description: 'Vidéos courtes virales',
     gradient: 'from-slate-500/20 to-slate-600/20',
   },
   {
@@ -65,7 +65,7 @@ const PLATFORMS = [
     name: 'Facebook',
     icon: Facebook,
     color: 'text-blue-500',
-    description: 'VidÃ©os, Reels, Stories',
+    description: 'Vidéos, Reels, Stories',
     gradient: 'from-blue-500/20 to-blue-600/20',
   },
   {
@@ -73,7 +73,7 @@ const PLATFORMS = [
     name: 'YouTube',
     icon: Youtube,
     color: 'text-red-500',
-    description: 'Shorts, vidÃ©os longues',
+    description: 'Shorts, vidéos longues',
     gradient: 'from-red-500/20 to-orange-500/20',
   },
 ];
@@ -194,7 +194,7 @@ export default function SocialPage() {
           // API doesn't exist or error - show info but don't error
           if (response.status === 404 || response.status === 500) {
             showToast(
-              'Configuration OAuth requise cÃ´tÃ© serveur',
+              'Configuration OAuth requise côté serveur',
               'info'
             );
             setConnecting(null);
@@ -226,7 +226,7 @@ export default function SocialPage() {
 
           if (!popup) {
             showToast(
-              'Les popups doivent Ãªtre activÃ©es pour se connecter',
+              'Les popups doivent Ãªtre activées pour se connecter',
               'error'
             );
             setConnecting(null);
@@ -256,14 +256,14 @@ export default function SocialPage() {
                         JSON.stringify(accountsMap)
                       );
                       showToast(
-                        `Connexion Ã  ${platform.name} rÃ©ussie!`,
+                        `Connexion à ${platform.name} réussie!`,
                         'success'
                       );
                     }
                   })
                   .catch(() => {
                     showToast(
-                      `Connexion initiÃ©e pour ${platform.name}`,
+                      `Connexion initiée pour ${platform.name}`,
                       'success'
                     );
                   });
@@ -275,7 +275,7 @@ export default function SocialPage() {
           setTimeout(() => clearInterval(pollInterval), 5 * 60 * 1000);
         } else {
           // No authUrl but successful response - treat as demo mode
-          showToast(`Connexion Ã  ${platform.name} rÃ©ussie!`, 'success');
+          showToast(`Connexion à ${platform.name} réussie!`, 'success');
           const newAccount: SocialAccount = {
             id: `${platformId}_${Date.now()}`,
             platform: platformId,
@@ -321,7 +321,7 @@ export default function SocialPage() {
             delete updated[platformId];
             setAccounts(updated);
             localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-            showToast(`DÃ©connectÃ© de ${platform?.name}`, 'success');
+            showToast(`Déconnecté de ${platform?.name}`, 'success');
             return;
           }
         }
@@ -335,10 +335,10 @@ export default function SocialPage() {
       delete updated[platformId];
       setAccounts(updated);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-      showToast(`DÃ©connectÃ© de ${platform?.name}`, 'success');
+      showToast(`Déconnecté de ${platform?.name}`, 'success');
     } catch (error) {
       console.error('Error disconnecting account:', error);
-      showToast('Erreur lors de la dÃ©connexion', 'error');
+      showToast('Erreur lors de la déconnexion', 'error');
     }
   };
 
@@ -381,9 +381,9 @@ export default function SocialPage() {
 
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-white mb-2">RÃ©seaux sociaux</h1>
+        <h1 className="text-3xl font-bold text-white mb-2">Réseaux sociaux</h1>
         <p className="text-gray-400">
-          Connectez vos comptes pour publier vos vidÃ©os automatiquement
+          Connectez vos comptes pour publier vos vidéos automatiquement
         </p>
       </div>
 
@@ -393,10 +393,10 @@ export default function SocialPage() {
           <Bell size={20} className="text-amber-400 flex-shrink-0 mt-0.5" />
           <div>
             <p className="text-amber-100 font-semibold">
-              Aucun rÃ©seau connectÃ©
+              Aucun réseau connecté
             </p>
             <p className="text-amber-200/80 text-sm">
-              Connectez au moins un rÃ©seau pour publier vos vidÃ©os
+              Connectez au moins un réseau pour publier vos vidéos
             </p>
           </div>
         </div>
@@ -412,11 +412,11 @@ export default function SocialPage() {
               </div>
               <div className="flex-1">
                 <p className="text-white font-semibold">
-                  {connectedCount} rÃ©seau{connectedCount > 1 ? 'x' : ''}{' '}
-                  connectÃ©{connectedCount > 1 ? 's' : ''}
+                  {connectedCount} réseau{connectedCount > 1 ? 'x' : ''}{' '}
+                  connecté{connectedCount > 1 ? 's' : ''}
                 </p>
                 <p className="text-sm text-gray-400">
-                  Vos vidÃ©os peuvent Ãªtre publiÃ©es automatiquement
+                  Vos vidéos peuvent Ãªtre publiées automatiquement
                 </p>
               </div>
             </div>
@@ -483,7 +483,7 @@ export default function SocialPage() {
                       variant="success"
                       className="flex items-center gap-1 bg-green-500/20 text-green-300 border-green-500/30"
                     >
-                      <Check size={12} /> ConnectÃ©
+                      <Check size={12} /> Connecté
                     </Badge>
                   )}
                 </div>
@@ -521,7 +521,7 @@ export default function SocialPage() {
                       onClick={() => handleDisconnect(platform.id)}
                     >
                       <X size={16} className="mr-2" />
-                      DÃ©connecter
+                      Déconnecter
                     </Button>
                   )}
                 </div>
@@ -536,7 +536,7 @@ export default function SocialPage() {
         <CardHeader className="border-b border-gray-800">
           <CardTitle className="flex items-center gap-2">
             <Settings size={20} className="text-studiio-primary" />
-            ParamÃ¨tres de publication
+            Paramètres de publication
           </CardTitle>
         </CardHeader>
 
@@ -564,7 +564,7 @@ export default function SocialPage() {
                   Publication automatique
                 </label>
                 <p className="text-xs text-gray-400 mt-1">
-                  Publiez automatiquement sur tous vos comptes connectÃ©s
+                  Publiez automatiquement sur tous vos comptes connectés
                 </p>
               </div>
             </div>
@@ -596,14 +596,14 @@ export default function SocialPage() {
               </div>
             </div>
 
-            {/* Hashtags par dÃ©faut */}
+            {/* Hashtags par défaut */}
             <div className="space-y-2">
               <label className="flex items-center gap-2 font-medium text-white">
                 <Hash size={16} className="text-studiio-primary" />
-                Hashtags par dÃ©faut
+                Hashtags par défaut
               </label>
               <Input
-                placeholder="Entrez les hashtags par dÃ©faut (sÃ©parÃ©s par des espaces)"
+                placeholder="Entrez les hashtags par défaut (séparés par des espaces)"
                 value={settings.defaultHashtags}
                 onChange={(e) =>
                   setSettings((prev) => ({
@@ -618,14 +618,14 @@ export default function SocialPage() {
               </p>
             </div>
 
-            {/* Description par dÃ©faut */}
+            {/* Description par défaut */}
             <div className="space-y-2">
               <label className="flex items-center gap-2 font-medium text-white">
                 <FileText size={16} className="text-studiio-primary" />
-                Description par dÃ©faut
+                Description par défaut
               </label>
               <textarea
-                placeholder="Entrez votre description par dÃ©faut..."
+                placeholder="Entrez votre description par défaut..."
                 value={settings.defaultDescription}
                 onChange={(e) =>
                   setSettings((prev) => ({
@@ -637,7 +637,7 @@ export default function SocialPage() {
                 className="w-full bg-gray-800/50 border border-gray-700/50 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-studiio-primary/50 transition"
               />
               <p className="text-xs text-gray-400">
-                Cette description sera appliquÃ©e Ã  tous vos posts par dÃ©faut
+                Cette description sera appliquée à tous vos posts par défaut
               </p>
             </div>
           </div>
