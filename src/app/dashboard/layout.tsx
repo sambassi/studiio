@@ -1,4 +1,4 @@
-'use client';
+export const dynamic = 'force-dynamic';
 
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Navbar } from '@/components/layout/Navbar';
