@@ -2,16 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 
-// GET /api/social/status - Check connection status for all platforms
-// Uses pre-configured env vars AND database records
+// GET /api/social/status - Check REAL connection status for all platforms
+// Only trusts database records (from completed OAuth flows), NOT env vars
 export async function GET(req: NextRequest) {
+  void req; // unused but required by Next.js
   try {
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check DB for user's connected accounts
+    // Check DB for user's connected accounts (only real OAuth connections)
     const { data: dbAccounts } = await supabase
       .from('social_accounts')
       .select('*')
@@ -20,38 +21,42 @@ export async function GET(req: NextRequest) {
 
     const dbMap: Record<string, any> = {};
     dbAccounts?.forEach((acc) => {
-      dbMap[acc.platform] = acc;
+      // Only trust accounts with real tokens (not demo_token)
+      if (acc.access_token && acc.access_token !== 'demo_token' && acc.access_token !== 'env_token') {
+        dbMap[acc.platform] = acc;
+      }
     });
 
-    // Check env vars for pre-configured tokens
-    const metaToken = process.env.META_PAGE_ACCESS_TOKEN;
-    const metaPageId = process.env.META_PAGE_ID || process.env.FACEBOOK_ID;
-    const igAccountId = process.env.META_INSTAGRAM_APP_ID;
-    const tiktokKey = process.env.TIKTOK_CLIENT_KEY;
-    const youtubeRefresh = process.env.YOUTUBE_REFRESH_TOKEN;
-    const youtubeChannelId = process.env.YOUTUBE_CHANNEL_ID;
+    // Check which platforms have OAuth configured (can initiate connection)
+    const hasInstagramOAuth = !!(process.env.META_INSTAGRAM_APP_ID || process.env.FACEBOOK_CLIENT_ID);
+    const hasFacebookOAuth = !!process.env.FACEBOOK_CLIENT_ID;
+    const hasTiktokOAuth = !!process.env.TIKTOK_CLIENT_KEY;
+    const hasYoutubeOAuth = !!(process.env.YOUTUBE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID);
 
     const platforms = {
       instagram: {
-        connected: !!(dbMap.instagram?.connected || (metaToken && igAccountId)),
-        username: dbMap.instagram?.account_name || (igAccountId ? 'afroboost' : null),
-        source: dbMap.instagram ? 'database' : metaToken ? 'env' : null,
+        connected: !!dbMap.instagram,
+        username: dbMap.instagram?.account_name || null,
+        source: dbMap.instagram ? 'database' : null,
+        oauthAvailable: hasInstagramOAuth,
       },
       facebook: {
-        connected: !!(dbMap.facebook?.connected || (metaToken && metaPageId)),
-        username: dbMap.facebook?.account_name || (metaPageId ? 'Bassi Bassi' : null),
-        source: dbMap.facebook ? 'database' : metaToken ? 'env' : null,
+        connected: !!dbMap.facebook,
+        username: dbMap.facebook?.account_name || null,
+        source: dbMap.facebook ? 'database' : null,
+        oauthAvailable: hasFacebookOAuth,
       },
       tiktok: {
-        connected: !!dbMap.tiktok?.connected,
+        connected: !!dbMap.tiktok,
         username: dbMap.tiktok?.account_name || null,
         source: dbMap.tiktok ? 'database' : null,
-        oauthAvailable: !!tiktokKey,
+        oauthAvailable: hasTiktokOAuth,
       },
       youtube: {
-        connected: !!(dbMap.youtube?.connected || youtubeRefresh),
-        username: dbMap.youtube?.account_name || (youtubeChannelId ? 'Afroboost' : null),
-        source: dbMap.youtube ? 'database' : youtubeRefresh ? 'env' : null,
+        connected: !!dbMap.youtube,
+        username: dbMap.youtube?.account_name || null,
+        source: dbMap.youtube ? 'database' : null,
+        oauthAvailable: hasYoutubeOAuth,
       },
     };
 

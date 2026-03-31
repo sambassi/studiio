@@ -16,17 +16,45 @@ const mockObjectives = [
 export default function ObjectivesPage() {
   const [objectives, setObjectives] = useState(mockObjectives);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: '', description: '', target: '', platform: '', tone: '' });
 
   const handleDelete = (id: string) => {
     setObjectives(objectives.filter((obj) => obj.id !== id));
   };
 
+  const handleEdit = (objective: typeof mockObjectives[0]) => {
+    setEditingId(objective.id);
+    setFormData({
+      name: objective.name,
+      description: objective.description,
+      target: objective.target,
+      platform: objective.platform,
+      tone: objective.tone,
+    });
+    setShowForm(true);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setObjectives([...objectives, { ...formData, id: Date.now().toString() }]);
+    if (editingId) {
+      // Update existing objective
+      setObjectives(objectives.map((obj) =>
+        obj.id === editingId ? { ...formData, id: editingId } : obj
+      ));
+      setEditingId(null);
+    } else {
+      // Create new objective
+      setObjectives([...objectives, { ...formData, id: Date.now().toString() }]);
+    }
     setFormData({ name: '', description: '', target: '', platform: '', tone: '' });
     setShowForm(false);
+  };
+
+  const handleCancel = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setFormData({ name: '', description: '', target: '', platform: '', tone: '' });
   };
 
   return (
@@ -36,7 +64,15 @@ export default function ObjectivesPage() {
           <h1 className="text-4xl font-bold text-white mb-2">Objectifs</h1>
           <p className="text-gray-400">Définissez vos objectifs de création vidéo</p>
         </div>
-        <Button variant="primary" onClick={() => setShowForm(!showForm)}>
+        <Button variant="primary" onClick={() => {
+          if (showForm) {
+            handleCancel();
+          } else {
+            setEditingId(null);
+            setFormData({ name: '', description: '', target: '', platform: '', tone: '' });
+            setShowForm(true);
+          }
+        }}>
           {showForm ? 'Annuler' : '+ Créer un objectif'}
         </Button>
       </div>
@@ -44,7 +80,7 @@ export default function ObjectivesPage() {
       {showForm && (
         <Card>
           <CardHeader className="border-b border-gray-800">
-            <CardTitle>Nouvel objectif</CardTitle>
+            <CardTitle>{editingId ? 'Modifier l\u2019objectif' : 'Nouvel objectif'}</CardTitle>
           </CardHeader>
           <form onSubmit={handleSubmit}>
             <CardContent className="pt-6 space-y-4">
@@ -90,9 +126,14 @@ export default function ObjectivesPage() {
                 onChange={(e) => setFormData({ ...formData, tone: e.target.value })}
               />
             </CardContent>
-            <CardFooter>
+            <CardFooter className="flex gap-2">
+              {editingId && (
+                <Button variant="secondary" type="button" onClick={handleCancel}>
+                  Annuler
+                </Button>
+              )}
               <Button variant="primary" type="submit">
-                Créer
+                {editingId ? 'Enregistrer' : 'Créer'}
               </Button>
             </CardFooter>
           </form>
@@ -123,7 +164,7 @@ export default function ObjectivesPage() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button size="sm" variant="secondary">
+                  <Button size="sm" variant="secondary" onClick={() => handleEdit(objective)}>
                     <Edit2 size={16} />
                   </Button>
                   <Button size="sm" variant="secondary" onClick={() => handleDelete(objective.id)}>

@@ -2,12 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { RENDER_COSTS } from '@/lib/stripe/constants';
+
 // Dynamic imports to avoid webpack bundling issues with @remotion/bundler
-// These are only imported at runtime, not build time
 const loadRenderWorker = () => import('@/lib/render/worker');
 const loadStorage = () => import('@/lib/storage/upload');
 
-// Async render trigger - runs after response is sent
+// ═══ CRITICAL: maxDuration allows Vercel to keep function alive for rendering ═══
+// Free plan: 60s, Pro plan: 300s (5 min), Enterprise: 900s (15 min)
+// Remotion renders for 30s video typically take 2-5 minutes
+export const maxDuration = 300;
+
+// Async render trigger — runs as background task via waitUntil
 async function triggerRender(params: {
   jobId: string;
   videoId: string;
@@ -36,14 +41,15 @@ async function triggerRender(params: {
     });
 
     await completeJob(jobId, videoId, outputUrl);
+    console.log(`[Render] Job ${jobId} completed successfully: ${outputUrl}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown render error';
-    console.error(`Render failed for job ${jobId}:`, message);
+    console.error(`[Render] Job ${jobId} failed:`, message);
     try {
       const { failJob } = await loadRenderWorker();
       await failJob(jobId, videoId, userId, creditsCharged, message);
     } catch (e) {
-      console.error('Failed to mark job as failed:', e);
+      console.error('[Render] Failed to mark job as failed:', e);
     }
   }
 }
@@ -169,7 +175,6 @@ export async function POST(req: NextRequest) {
 
     if (renderError) {
       console.error('Failed to create render job:', renderError);
-      // Mark video as failed
       await supabase
         .from('videos')
         .update({ status: 'failed' })
@@ -184,21 +189,39 @@ export async function POST(req: NextRequest) {
         .eq('id', video.id);
     }
 
-    // Trigger async rendering
-    // On Vercel, this runs in the background after the response is sent.
-    // The client polls /api/render/status?jobId=xxx for progress.
+    // ═══ CRITICAL FIX: Use waitUntil to keep function alive during rendering ═══
+    // On Vercel, fire-and-forget promises are killed after response is sent.
+    // waitUntil tells Vercel to keep the function running until the render completes.
     if (renderJob) {
-      // Fire-and-forget: start the render process
-      triggerRender({
+      let waitUntilFn: ((promise: Promise<unknown>) => void) | null = null;
+      try {
+        // Dynamic import — only available on Vercel production, not local dev
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const mod = await (Function('return import("@vercel/functions")')() as Promise<{ waitUntil: (p: Promise<unknown>) => void }>);
+        waitUntilFn = mod.waitUntil;
+      } catch {
+        // @vercel/functions not available (local dev) — fall back
+        console.log('[Render] @vercel/functions not available, using fire-and-forget fallback');
+      }
+
+      const renderPromise = triggerRender({
         jobId: renderJob.id,
         videoId: video.id,
         userId: session.user.id,
         compositionId: composition,
         inputProps,
         creditsCharged: actualCost,
-      }).catch((error) => {
-        console.error('Background render failed:', error);
       });
+
+      if (waitUntilFn) {
+        // Vercel production: extend function lifetime
+        waitUntilFn(renderPromise);
+      } else {
+        // Local dev fallback: fire-and-forget (function won't die locally)
+        renderPromise.catch((error) => {
+          console.error('Background render failed:', error);
+        });
+      }
     }
 
     return NextResponse.json({

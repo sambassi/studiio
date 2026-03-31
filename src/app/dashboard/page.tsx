@@ -1,5 +1,6 @@
 'use client';
 
+import { useSession } from 'next-auth/react';
 import { StatsCard } from '@/components/dashboard/StatsCard';
 import { CreditsDisplay } from '@/components/billing/CreditsDisplay';
 import { RecentVideos } from '@/components/dashboard/RecentVideos';
@@ -8,10 +9,13 @@ import { Button } from '@/components/ui/Button';
 import Link from 'next/link';
 
 export default function DashboardPage() {
+  const { data: session } = useSession();
+  const userName = session?.user?.name?.split(' ')[0] || 'utilisateur';
+
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-4xl font-bold text-white mb-2">Bienvenue, Jean 👋</h1>
+        <h1 className="text-4xl font-bold text-white mb-2">Bienvenue, {userName} 👋</h1>
         <p className="text-gray-400">Vous avez un nouveau message de support</p>
       </div>
 

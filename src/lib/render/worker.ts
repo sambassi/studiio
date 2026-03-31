@@ -36,7 +36,7 @@ export async function getOrCreateBundle(): Promise<string> {
 
   const bundleLocation = await bundle({
     entryPoint,
-    onProgress: (progress) => {
+    onProgress: (_progress) => {
       // Bundle progress (0-100)
     },
   });
@@ -69,7 +69,7 @@ export async function renderVideo(options: {
     serveUrl,
     id: compositionId,
     inputProps,
-    timeoutInMilliseconds: 60000,
+    timeoutInMilliseconds: 120000,
   });
 
   // Create temp output file
@@ -86,7 +86,7 @@ export async function renderVideo(options: {
     codec: 'h264',
     outputLocation: outputPath,
     inputProps,
-    timeoutInMilliseconds: 60000,
+    timeoutInMilliseconds: 240000,
     videoBitrate: '8M',
     encodingMaxRate: '12M',
     encodingBufferSize: '16M',

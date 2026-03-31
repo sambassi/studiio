@@ -59,7 +59,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<a
       .insert({
         ...body,
         user_id: session.user.id,
-        status: 'draft',
+        status: body.status || 'draft',
       })
       .select()
       .single();

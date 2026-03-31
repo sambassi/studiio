@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Plus,
   Trash2,
@@ -47,6 +48,7 @@ const THEMES = {
 const EMOJIS = ['💪', '❤️', '⚡', '🔥', '🎯', '📊', '🏃', '🧠', '💨', '🌟'];
 
 export default function InfographicPage() {
+  const router = useRouter();
   const [title, setTitle] = useState('ÉNERGIE & CARDIO');
   const [subtitle, setSubtitle] = useState('');
   const [format, setFormat] = useState<Format>('9:16');
@@ -82,35 +84,75 @@ export default function InfographicPage() {
 
     setIsExporting(true);
     try {
-      const infographicData = {
-        title,
-        subtitle,
-        format,
-        theme,
-        cards,
-        destination,
-        characterImage,
-      };
+      // Upload character image if present
+      let mediaUrl: string | null = null;
+      if (characterImage && characterImage.startsWith('data:')) {
+        const blob = await fetch(characterImage).then((r) => r.blob());
+        const file = new File([blob], 'infographic-character.png', { type: 'image/png' });
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('purpose', 'infographic');
+        const uploadRes = await fetch('/api/upload/media', { method: 'POST', body: formData });
+        const uploadData = await uploadRes.json();
+        if (uploadData.success) mediaUrl = uploadData.file.url;
+      }
 
-      const res = await fetch('/api/videos', {
+      // Save video record
+      await fetch('/api/videos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title,
           format: format === '16:9' ? 'tv' : 'reel',
           type: 'infographic',
-          metadata: infographicData,
+          metadata: { title, subtitle, format, theme, cards, destination, characterImage: mediaUrl },
         }),
       });
 
-      if (res.ok) {
-        setExportToast({ message: 'Infographie exportée avec succès!', type: 'success' });
-      } else {
-        setExportToast({ message: 'Infographie ajoutée au calendrier en brouillon', type: 'success' });
+      // Add to calendar as draft post
+      if (destination === 'draft' || destination === 'both') {
+        const today = new Date();
+        const scheduledDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        const caption = [subtitle, cards.map((c) => `${c.emoji} ${c.label}: ${c.value}`).join(' | ')].filter(Boolean).join('\n');
+        const postRes = await fetch('/api/posts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: title || 'Infographie',
+            caption,
+            media_url: mediaUrl,
+            media_type: 'image',
+            format: format === '16:9' ? 'tv' : 'reel',
+            platforms: [],
+            scheduled_date: scheduledDate,
+            scheduled_time: '12:00',
+            status: 'draft',
+            metadata: {
+              type: 'infographic',
+              subtitle,
+              theme,
+              cards: cards.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color })),
+              characterUrl: mediaUrl,
+            },
+          }),
+        });
+        const postData = await postRes.json();
+        if (postData.success) {
+          setExportToast({ message: 'Ajouté au calendrier en brouillon !', type: 'success' });
+        }
+      }
+
+      // Export: show success message (no file to download for infographic yet)
+      if (destination === 'export' || destination === 'both') {
+        setExportToast({ message: 'Infographie exportée avec succès !', type: 'success' });
+      }
+
+      if (destination === 'draft') {
+        setTimeout(() => router.push('/dashboard/calendar'), 1500);
       }
     } catch (error) {
       console.error('Export error:', error);
-      setExportToast({ message: 'Infographie sauvegardée localement', type: 'success' });
+      setExportToast({ message: 'Erreur lors de l\'export', type: 'error' });
     } finally {
       setIsExporting(false);
       setTimeout(() => setExportToast(null), 3000);

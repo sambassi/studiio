@@ -1,11 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import { CreditsDisplay } from '@/components/billing/CreditsDisplay';
 import { PricingCards } from '@/components/billing/PricingCards';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { CREDIT_PACKAGES, STRIPE_PLANS } from '@/lib/stripe/constants';
+import { CREDIT_PACKAGES } from '@/lib/stripe/constants';
+import { Loader2 } from 'lucide-react';
 
 const mockTransactions = [
   { id: '1', date: '2024-03-25', description: 'Rendu vidéo - Reel 9:16', credits: -10, balance: 1250 },
@@ -16,6 +18,70 @@ const mockTransactions = [
 ];
 
 export default function BillingPage() {
+  const [loadingPortal, setLoadingPortal] = useState(false);
+  const [loadingCredits, setLoadingCredits] = useState<string | null>(null);
+  const handleManageSubscription = async () => {
+    setLoadingPortal(true);
+    try {
+      const res = await fetch('/api/stripe/create-portal', { method: 'POST' });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert('Impossible d\u2019ouvrir le portail de facturation. Veuillez réessayer.');
+      }
+    } catch (error) {
+      console.error('Error opening portal:', error);
+      alert('Erreur de connexion. Veuillez réessayer.');
+    } finally {
+      setLoadingPortal(false);
+    }
+  };
+
+  const handleBuyCredits = async (packageKey: string) => {
+    setLoadingCredits(packageKey);
+    try {
+      const res = await fetch('/api/stripe/create-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packageId: packageKey }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert('Impossible de créer la session de paiement. Veuillez réessayer.');
+      }
+    } catch (error) {
+      console.error('Error creating checkout:', error);
+      alert('Erreur de connexion. Veuillez réessayer.');
+    } finally {
+      setLoadingCredits(null);
+    }
+  };
+
+  const handleSelectPlan = async (planId: string) => {
+    setLoadingCredits('plan');
+    try {
+      const res = await fetch('/api/stripe/create-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planId }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert('Impossible de créer la session de paiement. Veuillez réessayer.');
+      }
+    } catch (error) {
+      console.error('Error creating checkout:', error);
+      alert('Erreur de connexion. Veuillez réessayer.');
+    } finally {
+      setLoadingCredits(null);
+    }
+  };
+
   return (
     <div className="space-y-8">
       <div>
@@ -42,8 +108,17 @@ export default function BillingPage() {
               <p className="text-sm text-gray-400 mb-1">Renouvellement</p>
               <p className="text-white font-semibold">2 avril 2024</p>
             </div>
-            <Button variant="secondary" className="w-full">
-              Gérer l'abonnement
+            <Button
+              variant="secondary"
+              className="w-full"
+              onClick={handleManageSubscription}
+              disabled={loadingPortal}
+            >
+              {loadingPortal ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Chargement...</>
+              ) : (
+                'Gérer l\u2019abonnement'
+              )}
             </Button>
           </CardContent>
         </Card>
@@ -54,8 +129,18 @@ export default function BillingPage() {
           </CardHeader>
           <CardContent className="pt-6 space-y-3">
             {Object.entries(CREDIT_PACKAGES).map(([key, pkg]) => (
-              <Button key={key} variant="secondary" className="w-full">
-                {pkg.name} - {pkg.priceFr}
+              <Button
+                key={key}
+                variant="secondary"
+                className="w-full"
+                onClick={() => handleBuyCredits(key)}
+                disabled={loadingCredits === key}
+              >
+                {loadingCredits === key ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Chargement...</>
+                ) : (
+                  <>{pkg.name} - {pkg.priceFr}</>
+                )}
               </Button>
             ))}
           </CardContent>
@@ -96,7 +181,7 @@ export default function BillingPage() {
 
       <div>
         <h2 className="text-2xl font-bold text-white mb-6">Modifier votre plan</h2>
-        <PricingCards onSelectPlan={(plan) => console.log('Selected plan:', plan)} />
+        <PricingCards onSelectPlan={handleSelectPlan} />
       </div>
     </div>
   );

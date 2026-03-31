@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { title, caption, media_url, media_type, format, platforms, scheduled_date, scheduled_time, status } = body;
+    const { title, caption, media_url, media_type, format, platforms, scheduled_date, scheduled_time, status, metadata } = body;
 
     const { data, error } = await supabase
       .from('scheduled_posts')
@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
         scheduled_date,
         scheduled_time: scheduled_time || '12:00',
         status: status || 'draft',
+        ...(metadata ? { metadata } : {}),
       })
       .select()
       .single();

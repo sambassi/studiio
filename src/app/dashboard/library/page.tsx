@@ -23,12 +23,20 @@ interface Video {
   title: string;
   format: string;
   status: string;
+  type?: string;
   created_at: string;
   video_url?: string;
   thumbnail_url?: string;
   metadata?: {
     objective?: string;
     mode?: string;
+    rushUrls?: string[];
+    posterPhotoUrl?: string;
+    characterImageUrl?: string;
+    characterUrl?: string;
+    title?: string;
+    subtitle?: string;
+    salesPhrase?: string;
   };
 }
 
@@ -81,6 +89,7 @@ export default function LibraryPage() {
       const timer = setTimeout(() => setToast(null), 3000);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [toast]);
 
   const filtered = videos.filter(
@@ -310,9 +319,9 @@ export default function LibraryPage() {
                   }`}
                   onClick={() => setPreviewVideo(video)}
                 >
-                  {video.thumbnail_url && (
+                  {(video.thumbnail_url || video.metadata?.posterPhotoUrl || video.metadata?.characterImageUrl || video.metadata?.characterUrl) && (
                     <img
-                      src={video.thumbnail_url}
+                      src={video.thumbnail_url || video.metadata?.posterPhotoUrl || video.metadata?.characterImageUrl || video.metadata?.characterUrl}
                       alt={video.title}
                       className="absolute inset-0 w-full h-full object-cover opacity-60"
                     />
@@ -366,11 +375,9 @@ export default function LibraryPage() {
                     <Badge variant={getStatusVariant(video.status)}>
                       {getStatusLabel(video.status)}
                     </Badge>
-                    {video.metadata?.objective && (
-                      <span className="text-xs text-gray-500 capitalize">
-                        {video.metadata.objective}
-                      </span>
-                    )}
+                    <span className="text-xs text-gray-500 capitalize">
+                      {video.type === 'infographic' ? 'Infographie' : video.metadata?.objective || 'Vidéo'}
+                    </span>
                   </div>
 
                   {/* Visible Action Buttons */}
@@ -479,24 +486,32 @@ export default function LibraryPage() {
               </button>
             </div>
             <div className="bg-black flex items-center justify-center">
-              {previewVideo.video_url ? (
+              {(previewVideo.video_url || previewVideo.metadata?.rushUrls?.[0]) ? (
                 <video
                   key={previewVideo.id}
                   controls
                   autoPlay
+                  playsInline
                   className={`w-full h-auto ${
                     previewVideo.format === 'reel'
                       ? 'max-h-[70vh] aspect-[9/16] mx-auto'
                       : 'max-h-[60vh]'
                   }`}
-                  poster={previewVideo.thumbnail_url}
+                  poster={previewVideo.thumbnail_url || previewVideo.metadata?.posterPhotoUrl || previewVideo.metadata?.characterImageUrl}
+                  src={previewVideo.video_url || previewVideo.metadata?.rushUrls?.[0]}
                 >
-                  <source
-                    src={previewVideo.video_url}
-                    type="video/mp4"
-                  />
                   Votre navigateur ne supporte pas la lecture vidéo.
                 </video>
+              ) : (previewVideo.metadata?.posterPhotoUrl || previewVideo.metadata?.characterImageUrl) ? (
+                <img
+                  src={previewVideo.metadata.posterPhotoUrl || previewVideo.metadata.characterImageUrl}
+                  alt={previewVideo.title}
+                  className={`w-full h-auto ${
+                    previewVideo.format === 'reel'
+                      ? 'max-h-[70vh] aspect-[9/16] mx-auto object-cover'
+                      : 'max-h-[60vh] object-contain'
+                  }`}
+                />
               ) : previewVideo.status === 'rendering' ? (
                 <div className="flex items-center justify-center w-full h-96 bg-gradient-to-b from-gray-800 to-black">
                   <div className="text-center">

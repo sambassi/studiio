@@ -2,6 +2,7 @@ import NextAuth from 'next-auth';
 import Google from 'next-auth/providers/google';
 import Facebook from 'next-auth/providers/facebook';
 import { supabaseAdmin } from '@/lib/db/supabase';
+import { sendWelcomeEmailDirect } from '@/lib/email/notifications';
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -57,6 +58,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
             if (newUser) {
               token.id = newUser.id;
+
+              // Send welcome email (fire-and-forget)
+              sendWelcomeEmailDirect(user.email!, user.name || 'Utilisateur', 10);
             }
           }
         } catch (error) {

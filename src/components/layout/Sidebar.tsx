@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Zap, Library, Target, Share2, CreditCard, Image, Calendar } from 'lucide-react';
+import { useSession } from 'next-auth/react';
+import { LayoutDashboard, Zap, Library, Target, Share2, CreditCard, Image, Calendar, Shield } from 'lucide-react';
 
 const menuItems = [
   { icon: LayoutDashboard, label: 'Tableau de bord', href: '/dashboard' },
@@ -18,7 +19,9 @@ const menuItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { data: session } = useSession();
   const [credits, setCredits] = useState<number | null>(null);
+  const isAdmin = session?.user?.email === 'contact.artboost@gmail.com';
 
   useEffect(() => {
     async function fetchCredits() {
@@ -59,6 +62,20 @@ export function Sidebar() {
             </Link>
           );
         })}
+
+        {isAdmin && (
+          <Link
+            href="/admin"
+            className={`flex items-center gap-3 px-4 py-3 rounded-lg transition ${
+              pathname.startsWith('/admin')
+                ? 'bg-studiio-primary/10 text-orange-500 border border-orange-500/30'
+                : 'text-orange-600 hover:text-orange-400 hover:bg-gray-800'
+            }`}
+          >
+            <Shield size={20} />
+            <span className="font-medium">Administration</span>
+          </Link>
+        )}
       </nav>
 
       <div className="absolute bottom-6 left-6 right-6 card-base p-4">

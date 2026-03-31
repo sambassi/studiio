@@ -72,44 +72,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, authUrl });
     }
 
-    // No OAuth credentials configured - create demo connection
-    const now = new Date().toISOString();
-    const { data, error } = await supabase
-      .from('social_accounts')
-      .upsert(
-        {
-          user_id: session.user.id,
-          platform,
-          account_id: `${platform}_${session.user.id}`,
-          account_name: `user_${platform}`,
-          access_token: 'demo_token',
-          connected: true,
-          created_at: now,
-          updated_at: now,
-        },
-        { onConflict: 'user_id,platform' }
-      )
-      .select()
-      .single();
+    // No OAuth credentials configured - inform the user
+    const platformNames: Record<string, string> = {
+      instagram: 'META_INSTAGRAM_APP_ID',
+      facebook: 'FACEBOOK_CLIENT_ID',
+      tiktok: 'TIKTOK_CLIENT_KEY',
+      youtube: 'YOUTUBE_CLIENT_ID ou GOOGLE_CLIENT_ID',
+    };
 
-    if (error) {
-      // Fallback insert
-      await supabase
-        .from('social_accounts')
-        .insert({
-          user_id: session.user.id,
-          platform,
-          account_id: `${platform}_${session.user.id}`,
-          account_name: `user_${platform}`,
-          access_token: 'demo_token',
-          connected: true,
-          created_at: now,
-          updated_at: now,
-        });
-    }
-
-    // No authUrl = demo mode, frontend handles this
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: false,
+      error: `Configuration OAuth manquante pour ${platform}. Ajoutez ${platformNames[platform] || 'les identifiants'} dans les variables d\'environnement Vercel.`,
+      needsConfig: true,
+    }, { status: 422 });
   } catch (error) {
     console.error('Social connect error:', error);
     return NextResponse.json(

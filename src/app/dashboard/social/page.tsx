@@ -93,22 +93,21 @@ export default function SocialPage() {
   });
   const [isLoading, setIsLoading] = useState(true);
 
-  // Initialize accounts and settings from localStorage and API
+  // Initialize accounts and settings from API only (no stale localStorage)
   useEffect(() => {
     const initializeData = async () => {
       try {
-        // Load from localStorage first (for demo/fallback)
-        const savedAccounts = localStorage.getItem(STORAGE_KEY);
+        // Load settings from localStorage (settings are safe to cache)
         const savedSettings = localStorage.getItem(SETTINGS_KEY);
-
-        if (savedAccounts) {
-          setAccounts(JSON.parse(savedAccounts));
-        }
         if (savedSettings) {
           setSettings(JSON.parse(savedSettings));
         }
 
-        // Check platform status (includes env-configured tokens)
+        // IMPORTANT: Clear any stale account data from localStorage
+        // Only trust the server API for connection status
+        localStorage.removeItem(STORAGE_KEY);
+
+        // Fetch real connection status from API
         try {
           const statusRes = await fetch('/api/social/status');
           if (statusRes.ok) {
@@ -118,36 +117,21 @@ export default function SocialPage() {
               Object.entries(statusData.platforms).forEach(([platform, info]: [string, any]) => {
                 if (info.connected) {
                   accountsMap[platform] = {
-                    id: `${platform}_env`,
+                    id: `${platform}_oauth`,
                     platform,
-                    username: info.username || `user_${platform}`,
+                    username: info.username || `@${platform}`,
                     connected: true,
                     connectedAt: new Date().toISOString(),
                   };
                 }
               });
               setAccounts(accountsMap);
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(accountsMap));
             }
           }
         } catch (error) {
-          // Fallback: try accounts API
-          try {
-            const res = await fetch('/api/social/accounts');
-            if (res.ok) {
-              const data = await res.json();
-              if (data.success && data.accounts) {
-                const accountsMap: Record<string, SocialAccount | null> = {};
-                data.accounts.forEach((acc: SocialAccount) => {
-                  accountsMap[acc.platform] = acc;
-                });
-                setAccounts(accountsMap);
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(accountsMap));
-              }
-            }
-          } catch (e) {
-            console.warn('Could not fetch accounts from API, using localStorage:', e);
-          }
+          console.warn('Could not fetch social status:', error);
+          // Start with empty accounts — no fake connections
+          setAccounts({});
         }
       } finally {
         setIsLoading(false);
@@ -214,20 +198,28 @@ export default function SocialPage() {
           body: JSON.stringify({ platform: platformId }),
         });
 
+        const data = await response.json();
+
         if (!response.ok) {
-          // API doesn't exist or error - show info but don't error
-          if (response.status === 404 || response.status === 500) {
+          if (data.needsConfig) {
+            // OAuth not configured — show clear message
             showToast(
-              'Configuration OAuth requise côté serveur',
-              'info'
+              `OAuth non configuré pour ${platform?.name}. Configurez les clés API dans Vercel > Settings > Environment Variables.`,
+              'error'
             );
             setConnecting(null);
             return;
           }
-          throw new Error(`HTTP ${response.status}`);
+          if (response.status === 404 || response.status === 500) {
+            showToast(
+              'Erreur serveur lors de la connexion',
+              'error'
+            );
+            setConnecting(null);
+            return;
+          }
+          throw new Error(data.error || `HTTP ${response.status}`);
         }
-
-        const data = await response.json();
 
         // If we get a redirect URL, open it in a popup
         if (data.authUrl) {
@@ -298,18 +290,8 @@ export default function SocialPage() {
           // Clear interval after 5 minutes (safety timeout)
           setTimeout(() => clearInterval(pollInterval), 5 * 60 * 1000);
         } else {
-          // No authUrl but successful response - treat as demo mode
-          showToast(`Connexion à ${platform.name} réussie!`, 'success');
-          const newAccount: SocialAccount = {
-            id: `${platformId}_${Date.now()}`,
-            platform: platformId,
-            username: `user_${platformId}`,
-            connected: true,
-            connectedAt: new Date().toISOString(),
-          };
-          const updated = { ...accounts, [platformId]: newAccount };
-          setAccounts(updated);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+          // Successful response but no authUrl — should not happen with new API
+          showToast(`Erreur: pas de lien d'authentification reçu pour ${platform.name}`, 'error');
           setConnecting(null);
         }
       } catch (error) {

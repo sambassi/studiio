@@ -241,10 +241,8 @@ export default function LandingPage() {
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [lang, setLang] = useState('FR');
   const LANGS = [
-    { code: 'FR', label: 'Francais', flag: '🇫🇷' },
+    { code: 'FR', label: 'Français', flag: '🇫🇷' },
     { code: 'EN', label: 'English', flag: '🇬🇧' },
-    { code: 'ES', label: 'Espanol', flag: '🇪🇸' },
-    { code: 'PT', label: 'Portugues', flag: '🇧🇷' },
     { code: 'DE', label: 'Deutsch', flag: '🇩🇪' },
     { code: 'AR', label: 'العربية', flag: '🇸🇦' },
   ];
