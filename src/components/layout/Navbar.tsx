@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import { Bell, User, LogOut, Shield } from 'lucide-react';
 
-const ADMIN_EMAILS = ['contact.artboost@gmail.com'];
+const ADMIN_EMAILS = ['contact.artboost@gmail.com', 'bassicustomshoes@gmail.com'];
 
 export function Navbar() {
   const router = useRouter();

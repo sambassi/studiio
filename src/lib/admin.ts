@@ -2,7 +2,7 @@ import { auth } from '@/lib/auth/config';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/db/supabase';
 
-const ADMIN_EMAILS = ['contact.artboost@gmail.com'];
+const ADMIN_EMAILS = ['contact.artboost@gmail.com', 'bassicustomshoes@gmail.com'];
 
 export function isAdmin(email: string | null | undefined): boolean {
   return ADMIN_EMAILS.includes(email?.toLowerCase() || '');
