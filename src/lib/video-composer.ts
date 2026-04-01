@@ -491,7 +491,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   // ═══ CREATE AUDIO CONTEXT FIRST (needed for decodeAudioData) ═══
   const hasAudioUrls = !!musicUrl || !!voiceUrl;
   let audioCtx: AudioContext | null = null;
-  let audioDest: MediaStreamAudioDestinationNode | null = null;
+  // audioDest removed — now using playbackDest in the audio section below
   // Fallback: <audio> elements when decodeAudioData fails
   let musicElement: HTMLAudioElement | null = null;
   let voiceElement: HTMLAudioElement | null = null;
@@ -596,43 +596,34 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     ctx.fillStyle = barGrad; ctx.fillRect(0, height - barH, width * (elapsed / totalDuration), barH);
   };
 
-  // ═══ AUDIO CAPTURE STRATEGY ═══
-  // Chrome has a known bug: MediaRecorder often FAILS to capture audio from
-  // AudioContext's MediaStreamAudioDestinationNode. The test beep at 440Hz was
-  // inaudible in exports, proving this pipeline is broken in Chrome.
-  //
-  // SOLUTION: Use <audio> elements with captureStream() — this uses Chrome's
-  // native media pipeline and is RELIABLY captured by MediaRecorder.
-  //
-  // For mixing (music + voice): we mix via AudioContext → OfflineAudioContext,
-  // encode to WAV blob, play via <audio> element, capture via captureStream().
+  // ═══ AUDIO CAPTURE — Simple approach: AudioBufferSourceNode → MediaStreamDestinationNode ═══
+  // 1. Pre-mix all audio via OfflineAudioContext into a single AudioBuffer
+  // 2. At record time, play that buffer via AudioBufferSourceNode
+  // 3. Connected to MediaStreamAudioDestinationNode → track added to MediaRecorder
+  // 4. Verbose logging at every step to diagnose any failure
 
-  let audioMixElement: HTMLAudioElement | null = null;
+  let mixedBuffer: AudioBuffer | null = null;
+  let playbackCtx: AudioContext | null = null;
+  let playbackDest: MediaStreamAudioDestinationNode | null = null;
+  let playbackSource: AudioBufferSourceNode | null = null;
 
   if (audioCtx && hasAudio) {
-    console.log('[AudioPipeline] ═══ MIXING AUDIO ═══');
+    console.log('[AudioPipeline] ═══ STEP 1: OFFLINE MIX ═══');
 
-    // Pre-render all audio into a single mixed AudioBuffer using OfflineAudioContext
-    const offlineCtx = new OfflineAudioContext(
-      2, // stereo
-      Math.ceil(totalDuration * 48000),
-      48000
-    );
+    const offlineCtx = new OfflineAudioContext(1, Math.ceil(totalDuration * 48000), 48000);
 
     if (musicBuffer) {
       const src = offlineCtx.createBufferSource();
       src.buffer = musicBuffer;
       src.loop = true;
-      // For looping in offline context, manually set duration
       src.loopEnd = musicBuffer.duration;
       const gain = offlineCtx.createGain();
       gain.gain.value = voiceBuffer ? 0.3 : 0.8;
       src.connect(gain);
       gain.connect(offlineCtx.destination);
       src.start(0);
-      // Stop after total duration (loop handles repeat)
       src.stop(totalDuration);
-      console.log('[AudioPipeline] Music → OfflineCtx (gain:', gain.gain.value, ', loop, dur:', totalDuration.toFixed(1) + 's)');
+      console.log('[AudioPipeline] Music → offline (gain:', gain.gain.value, 'dur:', musicBuffer.duration.toFixed(1) + 's loop to', totalDuration.toFixed(1) + 's)');
     }
 
     if (voiceBuffer) {
@@ -643,196 +634,80 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       src.connect(gain);
       gain.connect(offlineCtx.destination);
       src.start(0);
-      console.log('[AudioPipeline] Voice → OfflineCtx (gain: 1.0, dur:', voiceBuffer.duration.toFixed(1) + 's)');
+      console.log('[AudioPipeline] Voice → offline (gain: 1.0, dur:', voiceBuffer.duration.toFixed(1) + 's)');
     }
 
-    // Add test tone at the start (0.3s, 440Hz) — proves audio pipeline works
-    const testOsc = offlineCtx.createOscillator();
-    testOsc.frequency.value = 440;
-    const testGain = offlineCtx.createGain();
-    testGain.gain.value = 0.2;
-    testOsc.connect(testGain);
-    testGain.connect(offlineCtx.destination);
-    testOsc.start(0);
-    testOsc.stop(0.3);
-    console.log('[AudioPipeline] Test tone → OfflineCtx (440Hz, 0.3s)');
+    // Test tone 0.5s at start
+    const osc = offlineCtx.createOscillator();
+    osc.frequency.value = 440;
+    const oscGain = offlineCtx.createGain();
+    oscGain.gain.value = 0.25;
+    osc.connect(oscGain);
+    oscGain.connect(offlineCtx.destination);
+    osc.start(0);
+    osc.stop(0.5);
 
-    // Connect <audio> element fallback sources via AudioContext → OfflineAudioContext
-    // (elements can't connect to OfflineAudioContext, so we load them as buffers from blob)
-    if (musicElement && !musicBuffer && musicUrl) {
-      console.log('[AudioPipeline] Music element fallback: loading as buffer for offline mix...');
-      try {
-        const resp = await fetch(musicElement.src);
-        const ab = await resp.arrayBuffer();
-        const buf = await offlineCtx.decodeAudioData(ab);
-        const src = offlineCtx.createBufferSource();
-        src.buffer = buf;
-        src.loop = true;
-        src.loopEnd = buf.duration;
-        const gain = offlineCtx.createGain();
-        gain.gain.value = voiceBuffer ? 0.3 : 0.8;
-        src.connect(gain);
-        gain.connect(offlineCtx.destination);
-        src.start(0);
-        src.stop(totalDuration);
-        console.log('[AudioPipeline] Music element → OfflineCtx via decode');
-      } catch (e) {
-        console.error('[AudioPipeline] Music element offline decode failed:', (e as Error)?.message);
-      }
-    }
-
-    if (voiceElement && !voiceBuffer && voiceUrl) {
-      console.log('[AudioPipeline] Voice element fallback: loading as buffer for offline mix...');
-      try {
-        const resp = await fetch(voiceElement.src);
-        const ab = await resp.arrayBuffer();
-        const buf = await offlineCtx.decodeAudioData(ab);
-        const src = offlineCtx.createBufferSource();
-        src.buffer = buf;
-        const gain = offlineCtx.createGain();
-        gain.gain.value = 1.0;
-        src.connect(gain);
-        gain.connect(offlineCtx.destination);
-        src.start(0);
-        console.log('[AudioPipeline] Voice element → OfflineCtx via decode');
-      } catch (e) {
-        console.error('[AudioPipeline] Voice element offline decode failed:', (e as Error)?.message);
-      }
-    }
-
-    // Render the mixed audio
     console.log('[AudioPipeline] Rendering offline mix...');
-    const mixedBuffer = await offlineCtx.startRendering();
-    console.log('[AudioPipeline] ✅ Mixed audio rendered:', mixedBuffer.duration.toFixed(2) + 's,', mixedBuffer.numberOfChannels, 'ch');
+    mixedBuffer = await offlineCtx.startRendering();
+    console.log('[AudioPipeline] ✅ Mixed buffer:', mixedBuffer.duration.toFixed(2) + 's,', mixedBuffer.numberOfChannels, 'ch,', mixedBuffer.length, 'samples');
 
-    // Encode mixed AudioBuffer to WAV blob
-    const wavBlob = audioBufferToWav(mixedBuffer);
-    console.log('[AudioPipeline] WAV blob:', (wavBlob.size / 1024).toFixed(1), 'KB, type:', wavBlob.type);
-    // Verify WAV header
-    const wavHeader = new Uint8Array(await wavBlob.slice(0, 12).arrayBuffer());
-    console.log('[AudioPipeline] WAV header check:', String.fromCharCode(wavHeader[0], wavHeader[1], wavHeader[2], wavHeader[3]), String.fromCharCode(wavHeader[8], wavHeader[9], wavHeader[10], wavHeader[11]));
-
-    // Create <audio> element from WAV blob — captureStream() on this is RELIABLE
-    const mixBlobUrl = URL.createObjectURL(wavBlob);
-    console.log('[AudioPipeline] WAV blob URL:', mixBlobUrl);
-
-    audioMixElement = document.createElement('audio');
-    audioMixElement.preload = 'auto';
-
-    const audioLoaded = await new Promise<boolean>((resolve) => {
-      let resolved = false;
-      const done = (ok: boolean) => { if (!resolved) { resolved = true; resolve(ok); } };
-
-      audioMixElement!.oncanplaythrough = () => {
-        console.log('[AudioPipeline] ✅ <audio> canplaythrough, duration:', audioMixElement!.duration);
-        done(true);
-      };
-      audioMixElement!.onloadeddata = () => {
-        console.log('[AudioPipeline] ✅ <audio> loadeddata, duration:', audioMixElement!.duration);
-        done(true);
-      };
-      audioMixElement!.onerror = () => {
-        const err = audioMixElement!.error;
-        console.error('[AudioPipeline] ❌ <audio> load error:', err?.code, err?.message);
-        done(false);
-      };
-      // Set src AFTER event handlers are attached
-      audioMixElement!.src = mixBlobUrl;
-      audioMixElement!.load();
-      // Safety timeout — 5 seconds
-      setTimeout(() => { console.warn('[AudioPipeline] <audio> load timeout'); done(false); }, 5000);
-    });
-
-    if (!audioLoaded || !audioMixElement.duration || audioMixElement.duration === Infinity) {
-      console.error('[AudioPipeline] ❌ WAV <audio> failed. Trying WebM fallback via MediaRecorder...');
-
-      // FALLBACK: Use AudioContext + MediaStreamDestinationNode + MediaRecorder to create a WebM audio blob
-      // This records in real-time but is a reliable fallback
-      try {
-        const rtCtx = new AudioContext({ sampleRate: 48000 });
-        await rtCtx.resume();
-        const rtDest = rtCtx.createMediaStreamDestination();
-        const rtSource = rtCtx.createBufferSource();
-        rtSource.buffer = mixedBuffer;
-        rtSource.connect(rtDest);
-
-        const webmMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
-        const audioRec = new MediaRecorder(rtDest.stream, { mimeType: webmMime });
-        const audioChunks: Blob[] = [];
-        audioRec.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
-
-        const webmBlob = await new Promise<Blob>((resolve) => {
-          audioRec.onstop = () => {
-            const b = new Blob(audioChunks, { type: 'audio/webm' });
-            console.log('[AudioPipeline] WebM fallback blob:', (b.size / 1024).toFixed(1), 'KB');
-            resolve(b);
-          };
-          audioRec.start(100);
-          rtSource.start(0);
-          rtSource.onended = () => setTimeout(() => {
-            if (audioRec.state === 'recording') audioRec.stop();
-          }, 200);
-        });
-
-        await rtCtx.close();
-
-        const webmUrl = URL.createObjectURL(webmBlob);
-        audioMixElement = document.createElement('audio');
-        audioMixElement.preload = 'auto';
-        audioMixElement.src = webmUrl;
-        await new Promise<void>((r) => {
-          audioMixElement!.oncanplaythrough = () => r();
-          audioMixElement!.onloadeddata = () => r();
-          audioMixElement!.onerror = () => { console.error('[AudioPipeline] WebM fallback also failed'); r(); };
-          audioMixElement!.load();
-          setTimeout(r, 5000);
-        });
-        console.log('[AudioPipeline] WebM fallback audio ready, duration:', audioMixElement.duration);
-        URL.revokeObjectURL(mixBlobUrl);
-      } catch (fallbackErr) {
-        console.error('[AudioPipeline] WebM fallback exception:', fallbackErr);
-      }
+    // Verify the buffer has actual audio content
+    const ch0 = mixedBuffer.getChannelData(0);
+    let maxAmp = 0, rms = 0;
+    for (let i = 0; i < Math.min(ch0.length, 48000); i++) {
+      const v = Math.abs(ch0[i]);
+      if (v > maxAmp) maxAmp = v;
+      rms += v * v;
     }
+    rms = Math.sqrt(rms / Math.min(ch0.length, 48000));
+    console.log('[AudioPipeline] Buffer amplitude (first 1s): max=' + maxAmp.toFixed(4) + ' rms=' + rms.toFixed(4),
+      maxAmp > 0.01 ? '✅ HAS AUDIO' : '❌ SILENT');
 
-    // Clean up AudioContext (no longer needed)
-    if (audioCtx) {
-      await audioCtx.close();
-      audioCtx = null;
-    }
+    // Close the original AudioContext used for loading
+    await audioCtx.close();
+    audioCtx = null;
+
+    console.log('[AudioPipeline] ═══ STEP 2: PLAYBACK CONTEXT ═══');
+
+    // Create a NEW AudioContext for real-time playback during recording
+    playbackCtx = new AudioContext({ sampleRate: 48000 });
+    await playbackCtx.resume();
+    console.log('[AudioPipeline] Playback AudioContext: state=' + playbackCtx.state + ' sampleRate=' + playbackCtx.sampleRate);
+
+    playbackDest = playbackCtx.createMediaStreamDestination();
+    console.log('[AudioPipeline] MediaStreamDestination created');
+
+    // Verify the destination has an audio track
+    const destTracks = playbackDest.stream.getAudioTracks();
+    console.log('[AudioPipeline] Dest tracks:', destTracks.length, destTracks.map(t =>
+      'id=' + t.id.substring(0, 8) + ' state=' + t.readyState + ' enabled=' + t.enabled + ' muted=' + t.muted
+    ));
+
+    // Create the source node (will be started when recording starts)
+    playbackSource = playbackCtx.createBufferSource();
+    playbackSource.buffer = mixedBuffer;
+    playbackSource.connect(playbackDest);
+    console.log('[AudioPipeline] ✅ AudioBufferSourceNode created and connected to dest');
   }
 
   // ═══ MEDIARECORDER SETUP ═══
   const videoStream = canvas.captureStream(fps);
+  console.log('[Composer] Canvas captureStream: video tracks=' + videoStream.getVideoTracks().length);
 
-  // Combine video + audio into one MediaStream
-  // Use <audio>.captureStream() for RELIABLE audio capture in Chrome
   const combinedStream = new MediaStream();
   for (const track of videoStream.getVideoTracks()) combinedStream.addTrack(track);
 
-  if (audioMixElement) {
-    // captureStream() on <audio> element — this is Chrome-reliable
-    const audioStream = (audioMixElement as any).captureStream ? (audioMixElement as any).captureStream() : null;
-    if (audioStream) {
-      const audioTracks = audioStream.getAudioTracks();
-      for (const track of audioTracks) combinedStream.addTrack(track);
-      console.log('[AudioPipeline] ✅ captureStream() audio tracks added:', audioTracks.length,
-        audioTracks.map((t: MediaStreamTrack) => `${t.id.substring(0, 8)}:${t.readyState}:enabled=${t.enabled}`));
-    } else {
-      console.error('[AudioPipeline] ❌ captureStream() not available on <audio> element!');
-      // Fallback: try MediaStreamAudioDestinationNode approach
-      if (audioDest) {
-        const audioTracks = audioDest.stream.getAudioTracks();
-        for (const track of audioTracks) combinedStream.addTrack(track);
-        console.log('[AudioPipeline] Fallback: using MediaStreamDestination tracks:', audioTracks.length);
-      }
+  if (playbackDest) {
+    const audioTracks = playbackDest.stream.getAudioTracks();
+    for (const track of audioTracks) {
+      combinedStream.addTrack(track);
+      console.log('[AudioPipeline] ✅ Added audio track to recording stream: id=' + track.id.substring(0, 8) +
+        ' state=' + track.readyState + ' enabled=' + track.enabled + ' muted=' + track.muted);
     }
-  } else if (audioDest) {
-    const audioTracks = audioDest.stream.getAudioTracks();
-    for (const track of audioTracks) combinedStream.addTrack(track);
-    console.log('[AudioPipeline] Using MediaStreamDestination tracks:', audioTracks.length);
   }
 
-  console.log('[Composer] Combined stream — video:', combinedStream.getVideoTracks().length, 'audio:', combinedStream.getAudioTracks().length);
+  console.log('[Composer] Combined stream — video:', combinedStream.getVideoTracks().length,
+    'audio:', combinedStream.getAudioTracks().length);
 
   // Choose best mimeType — prefer MP4 if truly supported
   // IMPORTANT: Do NOT use quoted codecs in isTypeSupported — Chrome rejects them
@@ -875,11 +750,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       console.log('[Composer] ✅ DONE — blob:', (blob.size / 1024 / 1024).toFixed(1), 'MB, type:', outputType, ', chunks:', chunks.length);
 
       // Cleanup
-      if (audioMixElement) {
-        audioMixElement.pause();
-        if (audioMixElement.src.startsWith('blob:')) URL.revokeObjectURL(audioMixElement.src);
-        audioMixElement.src = '';
-      }
+      if (playbackCtx) playbackCtx.close().catch(() => {});
       if (musicElement) { musicElement.pause(); musicElement.src = ''; }
       if (voiceElement) { voiceElement.pause(); voiceElement.src = ''; }
       if (audioCtx) audioCtx.close().catch(() => {});
@@ -895,15 +766,25 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       reject(new Error('Recording failed'));
     };
 
-    // START recording FIRST
+    // START recording FIRST, then audio
     recorder.start(200);
     console.log('[AudioPipeline] MediaRecorder started, state:', recorder.state);
 
-    // START mixed audio element (plays pre-rendered audio via captureStream)
-    if (audioMixElement) {
-      audioMixElement.currentTime = 0;
-      audioMixElement.play().catch(e => console.error('[AudioPipeline] Mix audio play failed:', e));
-      console.log('[AudioPipeline] ✅ Mixed audio playing, duration:', audioMixElement.duration.toFixed(2) + 's');
+    // START the pre-mixed audio buffer playback
+    if (playbackSource && playbackCtx) {
+      playbackSource.start(0);
+      console.log('[AudioPipeline] ✅ AudioBufferSourceNode.start(0) called');
+      console.log('[AudioPipeline] playbackCtx: state=' + playbackCtx.state + ' currentTime=' + playbackCtx.currentTime.toFixed(3));
+      // Verify audio is flowing after a short delay
+      setTimeout(() => {
+        if (playbackCtx) {
+          console.log('[AudioPipeline] @100ms: playbackCtx state=' + playbackCtx.state + ' time=' + playbackCtx.currentTime.toFixed(3));
+        }
+        if (playbackDest) {
+          const t = playbackDest.stream.getAudioTracks()[0];
+          if (t) console.log('[AudioPipeline] @100ms: audio track state=' + t.readyState + ' enabled=' + t.enabled + ' muted=' + t.muted);
+        }
+      }, 100);
     }
 
     // START video element
@@ -921,7 +802,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       if (elapsed >= totalDuration + 0.3) {
         console.log('[Composer] Render complete, stopping recorder...');
         // Stop audio
-        if (audioMixElement) audioMixElement.pause();
+        try { if (playbackSource) playbackSource.stop(); } catch {}
         recorder.stop();
         return;
       }
