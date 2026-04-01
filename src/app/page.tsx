@@ -638,18 +638,20 @@ export default function LandingPage() {
           <div className="grid md:grid-cols-3 gap-6">
             {(cmsPlans || PLANS).map((p, i) => {
               const defaultP = PLANS[i] || PLANS[0];
-              const color = (p as any).color || defaultP.color || 'border-gray-700';
               const popular = p.popular ?? defaultP.popular;
               const credits = p.credits || defaultP.credits;
+              const planSlug = p.name.toLowerCase().replace(/\s+/g, '-');
               return (
-                <div key={i} className={`relative bg-gray-900/50 border rounded-2xl p-8 ${color} transition-all hover:shadow-lg hover:shadow-violet-500/5`}>
+                <div key={i} className={`relative bg-gray-900/50 border rounded-2xl p-8 transition-all hover:shadow-lg hover:shadow-violet-500/5 ${
+                  popular ? 'border-violet-500 border-2' : 'border-gray-700 hover:border-violet-500'
+                }`}>
                   {popular && (
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-violet-600 to-pink-600 text-white text-xs font-bold px-4 py-1 rounded-full">
                       LE PLUS POPULAIRE
                     </div>
                   )}
                   <h3 className="text-2xl font-black mb-1">{p.name}</h3>
-                  <p className="text-sm text-gray-500 mb-5">{p.desc}</p>
+                  <p className="text-sm text-gray-500 mb-5">{p.desc || defaultP.desc || ''}</p>
                   <div className="mb-6">
                     <span className="text-4xl font-black">
                       {billingPeriod === 'yearly' ? p.yearlyPrice : p.price}€
@@ -661,7 +663,7 @@ export default function LandingPage() {
                   </div>
                   <div className="text-sm text-violet-400 font-bold mb-5">{credits.toLocaleString()} crédits/mois</div>
                   <ul className="space-y-3 mb-8">
-                    {p.features.map((f, j) => (
+                    {(p.features || defaultP.features).map((f, j) => (
                       <li key={j} className="flex items-start gap-3 text-sm text-gray-300">
                         <Check size={16} className="text-violet-400 shrink-0 mt-0.5" />
                         {f}
@@ -669,14 +671,14 @@ export default function LandingPage() {
                     ))}
                   </ul>
                   <Link
-                    href="/auth/signup"
+                    href={`/auth/signup?plan=${planSlug}&billing=${billingPeriod}`}
                     className={`block w-full text-center py-3 rounded-xl font-bold text-sm transition ${
                       popular
                         ? 'bg-gradient-to-r from-violet-600 to-pink-600 hover:from-violet-500 hover:to-pink-500 text-white shadow-lg shadow-violet-500/20'
                         : 'bg-gray-800 hover:bg-gray-700 text-white border border-gray-700'
                     }`}
                   >
-                    {p.cta}
+                    {p.cta || defaultP.cta}
                   </Link>
                 </div>
               );

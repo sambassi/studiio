@@ -314,6 +314,10 @@ export default function SettingsPage() {
               </div>
             ))}
           </div>
+          <a href="/admin/landing" className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-orange-500/10 border border-orange-500/30 rounded-lg text-orange-400 text-sm font-medium hover:bg-orange-500/20 transition">
+            <Edit2 size={14} />
+            Modifier les plans dans l&apos;editeur Landing Page
+          </a>
         </CardContent>
       </Card>
 
