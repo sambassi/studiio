@@ -585,7 +585,8 @@ export default function CalendarPage() {
     if (meta?.renderedVideoUrl) {
       const link = document.createElement('a');
       link.href = meta.renderedVideoUrl;
-      link.download = `${(post.title || 'video').replace(/\s+/g, '_')}.webm`;
+      const dlExt = meta.renderedVideoUrl.includes('.mp4') ? 'mp4' : 'webm';
+      link.download = `${(post.title || 'video').replace(/\s+/g, '_')}.${dlExt}`;
       link.target = '_blank';
       document.body.appendChild(link);
       link.click();

@@ -924,8 +924,20 @@ export default function CreatorPage() {
         }
       }
 
+      // If musicFile is null but we have a blob URL, re-create File from blob for upload
+      let musicFileForUpload = musicFile;
+      if (!musicFileForUpload && (musicBlobUrlRef.current || winMusic?.blobUrl)) {
+        try {
+          const blobUrl = musicBlobUrlRef.current || winMusic?.blobUrl;
+          const resp = await fetch(blobUrl!);
+          const blob = await resp.blob();
+          musicFileForUpload = new File([blob], winMusic?.name || 'music.mp3', { type: blob.type || 'audio/mpeg' });
+          console.log('[Creator] Re-created music File from blob URL:', (blob.size / 1024).toFixed(1), 'KB');
+        } catch (e) { console.warn('[Creator] Could not re-create music File from blob URL'); }
+      }
+
       const [musicUrl, charUrl, voiceUrl, logoUrl] = await Promise.all([
-        musicFile ? uploadFile(musicFile, 'music') : null,
+        musicFileForUpload ? uploadFile(musicFileForUpload, 'music') : null,
         charImageToUpload ? uploadFile(charImageToUpload, 'thumbnail') : null,
         actualVoiceFile ? uploadFile(actualVoiceFile, 'voice') : null,
         logo ? uploadFile(logo, 'logo') : null,

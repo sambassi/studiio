@@ -7,6 +7,19 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // COOP/COEP headers required for FFmpeg.wasm SharedArrayBuffer
+  // Scoped to /dashboard only — applying globally breaks OAuth popups
+  async headers() {
+    return [
+      {
+        source: '/dashboard/:path*',
+        headers: [
+          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+          { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp' },
+        ],
+      },
+    ];
+  },
   images: {
     remotePatterns: [
       {

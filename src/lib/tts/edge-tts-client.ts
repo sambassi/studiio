@@ -200,13 +200,21 @@ export async function synthesize(
   voiceId: string,
   options?: { rate?: string; pitch?: string },
 ): Promise<Blob> {
+  // Truncate text for Vercel Hobby (10s function limit — long texts always timeout)
+  const maxChars = 500;
+  let truncatedText = text;
+  if (text.length > maxChars) {
+    truncatedText = text.substring(0, maxChars).replace(/\s\S*$/, '') + '.';
+    console.log('[TTS] Text truncated:', text.length, '→', truncatedText.length, 'chars');
+  }
+
   // Try server first
-  const serverBlob = await tryServerSynthesize(text, voiceId, options);
+  const serverBlob = await tryServerSynthesize(truncatedText, voiceId, options);
   if (serverBlob) return serverBlob;
 
   // Fallback to browser TTS
   console.log('[TTS] Server failed, falling back to browser SpeechSynthesis');
-  return browserSynthesize(text, voiceId);
+  return browserSynthesize(truncatedText, voiceId);
 }
 
 /**
