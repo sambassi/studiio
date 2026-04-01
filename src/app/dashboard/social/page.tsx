@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import {
-  Share2,
   Instagram,
   Music2,
   Facebook,
@@ -18,7 +17,6 @@ import {
   Hash,
   FileText,
   Bell,
-  Clock,
   ExternalLink,
 } from 'lucide-react';
 
@@ -93,6 +91,8 @@ export default function SocialPage() {
   });
   const [isLoading, setIsLoading] = useState(true);
 
+  const [oauthStatus, setOauthStatus] = useState<Record<string, boolean>>({});
+
   // Initialize accounts and settings from API only (no stale localStorage)
   useEffect(() => {
     const initializeData = async () => {
@@ -114,7 +114,9 @@ export default function SocialPage() {
             const statusData = await statusRes.json();
             if (statusData.success && statusData.platforms) {
               const accountsMap: Record<string, SocialAccount | null> = {};
+              const oauthMap: Record<string, boolean> = {};
               Object.entries(statusData.platforms).forEach(([platform, info]: [string, any]) => {
+                oauthMap[platform] = info.oauthAvailable ?? false;
                 if (info.connected) {
                   accountsMap[platform] = {
                     id: `${platform}_oauth`,
@@ -126,6 +128,7 @@ export default function SocialPage() {
                 }
               });
               setAccounts(accountsMap);
+              setOauthStatus(oauthMap);
             }
           }
         } catch (error) {
@@ -450,6 +453,7 @@ export default function SocialPage() {
           const account = accounts[platform.id];
           const isConnecting = connecting === platform.id;
           const isConnected = account?.connected ?? false;
+          const hasOAuth = oauthStatus[platform.id] ?? false;
 
           return (
             <Card
@@ -471,13 +475,15 @@ export default function SocialPage() {
                       className={`w-12 h-12 rounded-xl flex items-center justify-center transition ${
                         isConnected
                           ? 'bg-green-500/20'
-                          : 'bg-gray-800'
+                          : hasOAuth
+                            ? 'bg-gray-800'
+                            : 'bg-gray-800/50'
                       }`}
                     >
                       <Icon
                         size={24}
                         className={
-                          isConnected ? platform.color : 'text-gray-500'
+                          isConnected ? platform.color : hasOAuth ? 'text-gray-400' : 'text-gray-600'
                         }
                       />
                     </div>
@@ -489,30 +495,47 @@ export default function SocialPage() {
                         <p className="text-sm text-green-400">
                           @{account.username}
                         </p>
-                      ) : (
+                      ) : hasOAuth ? (
                         <p className="text-sm text-gray-500">
                           {platform.description}
+                        </p>
+                      ) : (
+                        <p className="text-sm text-amber-500">
+                          OAuth non configuré
                         </p>
                       )}
                     </div>
                   </div>
 
-                  {isConnected && (
+                  {isConnected ? (
                     <Badge
                       variant="success"
                       className="flex items-center gap-1 bg-green-500/20 text-green-300 border-green-500/30"
                     >
                       <Check size={12} /> Connecté
                     </Badge>
-                  )}
+                  ) : hasOAuth ? (
+                    <Badge className="flex items-center gap-1 bg-blue-500/20 text-blue-300 border-blue-500/30">
+                      Prêt
+                    </Badge>
+                  ) : null}
                 </div>
+
+                {/* OAuth not configured info */}
+                {!hasOAuth && !isConnected && (
+                  <div className="mb-3 p-3 bg-amber-900/20 border border-amber-500/30 rounded-lg">
+                    <p className="text-xs text-amber-300">
+                      Pour activer la connexion {platform.name}, configurez les clés API OAuth dans les variables d&apos;environnement Vercel.
+                    </p>
+                  </div>
+                )}
 
                 {/* Action Buttons */}
                 <div className="space-y-2">
                   <Button
                     variant={isConnected ? 'ghost' : 'primary'}
                     className="w-full"
-                    disabled={isConnecting}
+                    disabled={isConnecting || (!hasOAuth && !isConnected)}
                     onClick={() => handleConnect(platform.id)}
                   >
                     {isConnecting ? (

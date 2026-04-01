@@ -131,6 +131,9 @@ export default function CalendarPage() {
   const [aiMusicFile, setAiMusicFile] = useState<File | null>(null);
   const [aiPhotoAffiche, setAiPhotoAffiche] = useState(false);
 
+  // Connected social accounts
+  const [connectedPlatforms, setConnectedPlatforms] = useState<Set<string>>(new Set());
+
   // Drag & drop state
   const [draggedPost, setDraggedPost] = useState<Post | null>(null);
   const [dragOverDay, setDragOverDay] = useState<number | null>(null);
@@ -192,6 +195,23 @@ export default function CalendarPage() {
 
   useEffect(() => {
     fetchPosts();
+    // Fetch connected social platforms
+    fetch('/api/social/status')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.success && data.platforms) {
+          const connected = new Set<string>();
+          Object.entries(data.platforms).forEach(([platform, info]: [string, any]) => {
+            if (info.connected) {
+              // Map API platform names to display names used in the calendar
+              const displayName = platform === 'youtube' ? 'YouTube' : platform === 'tiktok' ? 'TikTok' : platform.charAt(0).toUpperCase() + platform.slice(1);
+              connected.add(displayName);
+            }
+          });
+          setConnectedPlatforms(connected);
+        }
+      })
+      .catch(() => {});
   }, [fetchPosts]);
 
   // Stats
@@ -517,11 +537,51 @@ export default function CalendarPage() {
   const handlePublishPost = async (post: Post) => {
     setSaving(true);
     try {
-      await fetch('/api/posts', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...post, status: 'published' }),
-      });
+      // If the post has platforms and a rendered video, publish to social networks
+      if (post.platforms.length > 0 && (post.media_url || post.metadata?.renderedVideoUrl)) {
+        // First, find or create the video record for this post
+        // The /api/social/publish expects a videoId, so we use the post ID directly
+        const publishRes = await fetch('/api/social/publish', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            videoId: post.id, // Use post ID — the publish API will look up the video
+            platforms: post.platforms.map(p => p.toLowerCase()),
+            caption: post.caption,
+            hashtags: post.caption?.match(/#\w+/g) || [],
+            scheduledPostId: post.id,
+          }),
+        });
+
+        const publishData = await publishRes.json();
+
+        if (publishData.success) {
+          // Update post status locally
+          await fetch('/api/posts', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...post, status: 'published' }),
+          });
+        } else {
+          // Even if social publish partially failed, mark as published if at least some succeeded
+          const anySuccess = publishData.results?.some((r: any) => r.success);
+          if (anySuccess) {
+            await fetch('/api/posts', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ...post, status: 'published' }),
+            });
+          }
+          console.warn('Social publish results:', publishData.results);
+        }
+      } else {
+        // No platforms selected — just update post status
+        await fetch('/api/posts', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...post, status: 'published' }),
+        });
+      }
       await fetchPosts();
       setShowFullPreview(false);
     } catch (error) { console.error('Error publishing:', error); }
@@ -1405,19 +1465,39 @@ export default function CalendarPage() {
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 text-sm" placeholder="Décrivez votre post..." />
             </div>
             <div>
-              <label className="block text-sm font-medium text-white mb-2">Reseaux sociaux</label>
+              <label className="block text-sm font-medium text-white mb-2">Réseaux sociaux</label>
               <div className="flex flex-wrap gap-2">
-                {['Instagram', 'TikTok', 'Facebook', 'YouTube'].map((p) => (
-                  <button key={p} onClick={() => {
-                    const pls = editFormData.platforms || [];
-                    setEditFormData({ ...editFormData, platforms: pls.includes(p) ? pls.filter((x) => x !== p) : [...pls, p] });
-                  }}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-                      editFormData.platforms?.includes(p) ? `${platformColors[p]} text-white` : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                    }`}
-                  >{p}</button>
-                ))}
+                {['Instagram', 'TikTok', 'Facebook', 'YouTube'].map((p) => {
+                  const isConnected = connectedPlatforms.has(p);
+                  const isSelected = editFormData.platforms?.includes(p);
+                  return (
+                    <button key={p} onClick={() => {
+                      const pls = editFormData.platforms || [];
+                      setEditFormData({ ...editFormData, platforms: pls.includes(p) ? pls.filter((x) => x !== p) : [...pls, p] });
+                    }}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium transition relative ${
+                        isSelected ? `${platformColors[p]} text-white` : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                      }`}
+                    >
+                      {p}
+                      {isConnected && (
+                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-500 rounded-full border border-gray-900" />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
+              {connectedPlatforms.size > 0 && (
+                <p className="text-xs text-gray-500 mt-1">
+                  <span className="inline-block w-2 h-2 bg-green-500 rounded-full mr-1" />
+                  = compte connecté
+                </p>
+              )}
+              {connectedPlatforms.size === 0 && (
+                <p className="text-xs text-amber-400 mt-1">
+                  Aucun réseau connecté — <a href="/dashboard/social" className="underline hover:text-amber-300">connectez vos comptes</a>
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-white mb-2">Media</label>
