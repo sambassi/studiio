@@ -614,7 +614,7 @@ async function preRenderAudio(
 export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   const {
     width, height,
-    fps = 30,
+    fps = 24,
     title, subtitle, salesPhrase, cards = [],
     posterUrl, videoUrl, logoUrl, musicUrl, voiceUrl,
     introDuration = 5, cardsDuration = 8, videoDuration = 12, ctaDuration = 5,
@@ -725,18 +725,47 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   // ═══ SET UP AudioEncoder (Opus — if audio) ═══
   let audioEncoder: AudioEncoder | null = null;
   let audioEncoderChunks = 0;
+  let audioEncoderErrors = 0;
   if (hasAudio) {
+    // First verify Opus encoding is supported
+    try {
+      const opusSupport = await AudioEncoder.isConfigSupported({
+        codec: 'opus',
+        sampleRate: 48000,
+        numberOfChannels: audioBuffer!.numberOfChannels,
+        bitrate: 128_000,
+      });
+      console.log('[VideoComposer] Opus AudioEncoder support:', JSON.stringify(opusSupport));
+      if (!opusSupport.supported) {
+        console.error('[VideoComposer] ❌ Opus AudioEncoder NOT SUPPORTED by this browser!');
+      }
+    } catch (supportErr) {
+      console.error('[VideoComposer] AudioEncoder.isConfigSupported check failed:', supportErr);
+    }
+
     audioEncoder = new AudioEncoder({
-      output: (chunk, meta) => { audioEncoderChunks++; muxer.addAudioChunk(chunk, meta ?? undefined); },
-      error: (e) => console.error('[VideoComposer] AudioEncoder error:', e),
+      output: (chunk, meta) => {
+        audioEncoderChunks++;
+        try {
+          muxer.addAudioChunk(chunk, meta ?? undefined);
+        } catch (muxErr) {
+          console.error('[VideoComposer] muxer.addAudioChunk failed:', muxErr);
+        }
+      },
+      error: (e) => { audioEncoderErrors++; console.error('[VideoComposer] AudioEncoder error #' + audioEncoderErrors + ':', e); },
     });
 
-    audioEncoder.configure({
-      codec: 'opus',
-      sampleRate: 48000,
-      numberOfChannels: audioBuffer!.numberOfChannels,
-      bitrate: 128_000,
-    });
+    try {
+      audioEncoder.configure({
+        codec: 'opus',
+        sampleRate: 48000,
+        numberOfChannels: audioBuffer!.numberOfChannels,
+        bitrate: 128_000,
+      });
+      console.log('[VideoComposer] AudioEncoder state after configure:', audioEncoder.state);
+    } catch (configErr) {
+      console.error('[VideoComposer] AudioEncoder.configure FAILED:', configErr);
+    }
 
     console.log('[VideoComposer] AudioEncoder configured: Opus', audioBuffer!.numberOfChannels, 'ch @ 48000Hz');
   }
@@ -844,8 +873,8 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     videoEncoder.encode(frame, { keyFrame });
     frame.close();
 
-    // Update progress every 30 frames
-    if (f % 30 === 0) {
+    // Update progress every 12 frames (~0.5s at 24fps) for responsive UI
+    if (f % 12 === 0) {
       const percent = Math.round(15 + (f / totalFrames) * 60);
       onProgress?.(Math.min(percent, 75), `Encodage vidéo: ${Math.round((f / totalFrames) * 100)}%`);
 
@@ -859,46 +888,61 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   // ═══ ENCODE AUDIO (if available) ═══
   if (hasAudio && audioEncoder && audioBuffer) {
     onProgress?.(78, 'Encodage audio...');
-    console.log('[VideoComposer] Encoding audio:', audioBuffer.duration.toFixed(1), 's,',
-      audioBuffer.numberOfChannels, 'ch,', audioBuffer.length, 'samples');
+    console.log('[VideoComposer] Encoding audio — encoder state:', audioEncoder.state,
+      '| buffer:', audioBuffer.duration.toFixed(1), 's,', audioBuffer.numberOfChannels, 'ch,', audioBuffer.length, 'samples');
 
-    const numChannels = audioBuffer.numberOfChannels;
-    const sampleRate = audioBuffer.sampleRate;
+    if (audioEncoder.state !== 'configured') {
+      console.error('[VideoComposer] ❌ AudioEncoder is NOT configured! State:', audioEncoder.state, '— skipping audio encoding');
+    } else {
+      const numChannels = audioBuffer.numberOfChannels;
+      const sampleRate = audioBuffer.sampleRate;
 
-    // Get all channel data
-    const channels: Float32Array[] = [];
-    for (let c = 0; c < numChannels; c++) {
-      channels.push(audioBuffer.getChannelData(c));
-    }
-
-    // Encode audio in chunks (960 samples = 20ms @ 48kHz, standard Opus/AAC frame)
-    const chunkSize = 960;
-    const totalAudioSamples = audioBuffer.length;
-
-    for (let offset = 0; offset < totalAudioSamples; offset += chunkSize) {
-      const frameLength = Math.min(chunkSize, totalAudioSamples - offset);
-
-      // Create interleaved Float32 data for AudioData
-      // AudioData with f32-planar format expects planar layout
-      const planarData = new Float32Array(frameLength * numChannels);
+      // Get all channel data
+      const channels: Float32Array[] = [];
       for (let c = 0; c < numChannels; c++) {
-        planarData.set(channels[c].subarray(offset, offset + frameLength), c * frameLength);
+        channels.push(audioBuffer.getChannelData(c));
       }
 
-      const audioData = new AudioData({
-        format: 'f32-planar',
-        sampleRate,
-        numberOfFrames: frameLength,
-        numberOfChannels: numChannels,
-        timestamp: Math.round((offset / sampleRate) * 1_000_000), // microseconds
-        data: planarData,
-      });
+      // Encode audio in chunks (960 samples = 20ms @ 48kHz, standard Opus frame)
+      const chunkSize = 960;
+      const totalAudioSamples = audioBuffer.length;
+      let audioChunksSubmitted = 0;
 
-      audioEncoder.encode(audioData);
-      audioData.close();
+      for (let offset = 0; offset < totalAudioSamples; offset += chunkSize) {
+        // IMPORTANT: Pad the last chunk to chunkSize (Opus requires fixed frame sizes)
+        const frameLength = Math.min(chunkSize, totalAudioSamples - offset);
+        const actualLength = chunkSize; // Always use full chunk size
+
+        // Create planar Float32 data for AudioData
+        const planarData = new Float32Array(actualLength * numChannels);
+        for (let c = 0; c < numChannels; c++) {
+          const srcData = channels[c].subarray(offset, offset + frameLength);
+          planarData.set(srcData, c * actualLength);
+          // Remaining samples (if frameLength < actualLength) are zero-padded automatically
+        }
+
+        try {
+          const audioData = new AudioData({
+            format: 'f32-planar',
+            sampleRate,
+            numberOfFrames: actualLength,
+            numberOfChannels: numChannels,
+            timestamp: Math.round((offset / sampleRate) * 1_000_000), // microseconds
+            data: planarData,
+          });
+
+          audioEncoder.encode(audioData);
+          audioData.close();
+          audioChunksSubmitted++;
+        } catch (encodeErr) {
+          console.error('[VideoComposer] Audio encode error at offset', offset, ':', encodeErr);
+          break;
+        }
+      }
+
+      console.log('[VideoComposer] Audio encoding done — submitted:', audioChunksSubmitted,
+        'chunks | encoder output chunks:', audioEncoderChunks, '| errors:', audioEncoderErrors);
     }
-
-    console.log('[VideoComposer] All audio chunks encoded, total audio encoder output chunks:', audioEncoderChunks);
   }
 
   // ═══ FLUSH & FINALIZE ═══

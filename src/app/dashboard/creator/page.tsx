@@ -878,28 +878,23 @@ export default function CreatorPage() {
       ]);
       console.log('[Creator] Upload results — music:', !!musicUrl, 'char:', !!charUrl, 'voice:', !!voiceUrl, 'logo:', !!logoUrl);
 
-      // CRITICAL FALLBACK: If Supabase uploads fail, use blob URLs from the
-      // original File objects so the composer can still access the media.
-      // Blob URLs work perfectly for client-side rendering since the composer
-      // runs in the same browser tab.
+      // CRITICAL: ALWAYS use blob URLs from original File objects for the composer.
+      // Supabase URLs are stored in metadata for later playback, but for client-side
+      // rendering, blob URLs are FASTER and GUARANTEED to work (no CORS/permissions issues).
+      // This fixes the "no audio in exported video" bug caused by Supabase URL fetch failures.
       const effectiveCharUrl = charUrl || characterPreview || null;
-      const effectiveLogoUrl = logoUrl || logoPreview || null;
+      const effectiveLogoUrl = logoFile ? URL.createObjectURL(logoFile) : (logoPreview || logoUrl || null);
 
-      // Music fallback: create blob URL from original file if upload failed
-      let effectiveMusicUrl: string | null = musicUrl;
-      if (!effectiveMusicUrl && backgroundMusic) {
-        effectiveMusicUrl = URL.createObjectURL(backgroundMusic);
-        console.warn('[Creator] Music upload failed, using blob URL fallback:', effectiveMusicUrl.substring(0, 60));
-      }
+      // ALWAYS create blob URLs from original Files for the composer
+      const effectiveMusicUrl: string | null = backgroundMusic ? URL.createObjectURL(backgroundMusic) : (musicUrl || null);
+      const effectiveVoiceUrl: string | null = actualVoiceFile ? URL.createObjectURL(actualVoiceFile) : (voiceUrl || null);
 
-      // Voice fallback: create blob URL from original file if upload failed
-      let effectiveVoiceUrl: string | null = voiceUrl;
-      if (!effectiveVoiceUrl && actualVoiceFile) {
-        effectiveVoiceUrl = URL.createObjectURL(actualVoiceFile);
-        console.warn('[Creator] Voice upload failed, using blob URL fallback:', effectiveVoiceUrl.substring(0, 60));
-      }
-
-      console.log('[Creator] Effective URLs — music:', effectiveMusicUrl?.substring(0, 60) || 'NULL', '| voice:', effectiveVoiceUrl?.substring(0, 60) || 'NULL', '| logo:', effectiveLogoUrl?.substring(0, 60) || 'NULL');
+      console.log('[Creator] Composer URLs (blob preferred) — music:', effectiveMusicUrl?.substring(0, 60) || 'NULL',
+        '| voice:', effectiveVoiceUrl?.substring(0, 60) || 'NULL',
+        '| logo:', effectiveLogoUrl?.substring(0, 60) || 'NULL');
+      console.log('[Creator] Original files — music:', !!backgroundMusic, (backgroundMusic?.size || 0), 'bytes',
+        '| voice:', !!actualVoiceFile, (actualVoiceFile?.size || 0), 'bytes',
+        '| logo:', !!logoFile);
       setRenderProgress(20);
 
       // ═══ PHASE 2: Batch variations ═══
@@ -969,7 +964,7 @@ export default function CreatorPage() {
             const { url } = await composeAndUpload({
               width: vidWidth,
               height: vidHeight,
-              fps: 30,
+              fps: 24,
               title: bTitle,
               subtitle: bSubtitle || undefined,
               salesPhrase: bPhrase || undefined,
@@ -1059,7 +1054,7 @@ export default function CreatorPage() {
           const { blob } = await composeAndUpload({
             width: vidWidth,
             height: vidHeight,
-            fps: 30,
+            fps: 24,
             title: title || 'Nouvelle vidéo',
             subtitle: subtitle || undefined,
             salesPhrase: salesPhrase || undefined,
