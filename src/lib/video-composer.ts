@@ -1,7 +1,8 @@
 /**
  * Client-side video composer using Canvas + MediaRecorder.
- * Uses <audio> elements + createMediaElementSource for GUARANTEED audio.
- * Audio elements handle MP3/OGG/WAV decoding natively (no OfflineAudioContext).
+ * Uses fetch() + decodeAudioData() + AudioBufferSourceNode for GUARANTEED audio capture.
+ * AudioBufferSourceNode plays ONLY through Web Audio graph (not speakers).
+ * This ensures MediaRecorder captures all audio in the final video file.
  * Outputs MP4 if supported, otherwise WebM.
  */
 
@@ -113,49 +114,65 @@ function loadVideo(src: string): Promise<HTMLVideoElement> {
   });
 }
 
-/** Load an <audio> element from a URL. Returns null on failure. */
-async function loadAudioElement(src: string): Promise<HTMLAudioElement | null> {
-  console.log('[Composer] Loading audio:', src.substring(0, 80));
+/**
+ * Fetch audio file and decode it into an AudioBuffer.
+ * This is MORE RELIABLE than <audio> + createMediaElementSource because:
+ * 1. fetch() works perfectly with blob: URLs (same-origin)
+ * 2. decodeAudioData handles MP3/OGG/WAV natively
+ * 3. The resulting AudioBuffer can be played via AudioBufferSourceNode
+ *    which ONLY outputs through Web Audio graph (never speakers)
+ * 4. GUARANTEED to be captured by MediaStreamDestinationNode → MediaRecorder
+ */
+async function loadAudioBuffer(audioCtx: AudioContext, src: string): Promise<AudioBuffer | null> {
+  console.log('[Composer] Loading audio buffer:', src.substring(0, 80));
   try {
-    const audio = new Audio();
-    // blob: URLs are same-origin, no CORS needed
-    if (!src.startsWith('blob:') && !src.startsWith('data:')) {
-      audio.crossOrigin = 'anonymous';
+    // Step 1: Fetch the audio file as raw bytes
+    let response: Response;
+    try {
+      response = await fetch(src);
+    } catch {
+      // If direct fetch fails (CORS), try proxy for remote URLs
+      if (!src.startsWith('blob:') && !src.startsWith('data:')) {
+        console.log('[Composer] Direct fetch failed, trying proxy...');
+        response = await fetch(`/api/proxy-media?url=${encodeURIComponent(src)}`);
+      } else {
+        throw new Error('Fetch failed for blob/data URL');
+      }
     }
-    audio.preload = 'auto';
-    audio.volume = 1;
 
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Audio load timeout')), 15000);
-      audio.oncanplaythrough = () => { clearTimeout(timeout); resolve(); };
-      audio.onerror = () => { clearTimeout(timeout); reject(new Error('Audio load error: ' + src.substring(0, 40))); };
-      audio.src = src;
-      audio.load();
-    });
+    if (!response.ok) {
+      throw new Error(`Fetch failed: ${response.status} ${response.statusText}`);
+    }
 
-    console.log('[Composer] Audio loaded OK, duration:', audio.duration.toFixed(1), 's');
-    return audio;
+    const arrayBuffer = await response.arrayBuffer();
+    console.log('[Composer] Audio fetched:', (arrayBuffer.byteLength / 1024).toFixed(1), 'KB');
+
+    if (arrayBuffer.byteLength < 100) {
+      console.warn('[Composer] Audio file too small, skipping');
+      return null;
+    }
+
+    // Step 2: Decode to raw PCM AudioBuffer
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    console.log('[Composer] Audio decoded OK — duration:', audioBuffer.duration.toFixed(1), 's, channels:', audioBuffer.numberOfChannels, ', sampleRate:', audioBuffer.sampleRate);
+    return audioBuffer;
   } catch (err) {
-    console.error('[Composer] Audio load FAILED:', (err as Error)?.message);
+    console.error('[Composer] Audio buffer load FAILED:', (err as Error)?.message);
 
-    // Fallback: try via proxy for remote URLs
+    // Fallback: try proxy for remote URLs
     if (!src.startsWith('blob:') && !src.startsWith('data:')) {
       try {
         const proxyUrl = `/api/proxy-media?url=${encodeURIComponent(src)}`;
-        const audio = new Audio();
-        audio.crossOrigin = 'anonymous';
-        audio.preload = 'auto';
-        await new Promise<void>((resolve, reject) => {
-          const timeout = setTimeout(() => reject(new Error('Proxy timeout')), 15000);
-          audio.oncanplaythrough = () => { clearTimeout(timeout); resolve(); };
-          audio.onerror = () => { clearTimeout(timeout); reject(new Error('Proxy audio load error')); };
-          audio.src = proxyUrl;
-          audio.load();
-        });
-        console.log('[Composer] Audio loaded via proxy, duration:', audio.duration.toFixed(1), 's');
-        return audio;
-      } catch {
-        console.error('[Composer] Audio proxy load also failed');
+        console.log('[Composer] Trying proxy fallback:', proxyUrl.substring(0, 80));
+        const resp = await fetch(proxyUrl);
+        const ab = await resp.arrayBuffer();
+        if (ab.byteLength > 100) {
+          const buf = await audioCtx.decodeAudioData(ab);
+          console.log('[Composer] Audio decoded via proxy OK — duration:', buf.duration.toFixed(1), 's');
+          return buf;
+        }
+      } catch (proxyErr) {
+        console.error('[Composer] Proxy audio load also failed:', (proxyErr as Error)?.message);
       }
     }
     return null;
@@ -329,7 +346,7 @@ function drawTransition(
 }
 
 // ═══════════════════════════════════════════════════════════
-// MAIN COMPOSER — MediaRecorder + <audio> elements
+// MAIN COMPOSER — MediaRecorder + AudioBufferSourceNode
 // ═══════════════════════════════════════════════════════════
 
 export async function composeVideo(options: ComposerOptions): Promise<Blob> {
@@ -343,29 +360,46 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     watermarkText, onProgress,
   } = options;
 
-  console.log('[Composer] === START ===');
-  console.log('[Composer] Music:', musicUrl?.substring(0, 60) || 'NONE');
-  console.log('[Composer] Voice:', voiceUrl?.substring(0, 60) || 'NONE');
-  console.log('[Composer] Logo:', logoUrl?.substring(0, 60) || 'NONE');
+  console.log('[Composer] ═══════════════════════════════════════');
+  console.log('[Composer] === START COMPOSE ===');
+  console.log('[Composer] Music URL:', musicUrl ? musicUrl.substring(0, 80) : 'NONE');
+  console.log('[Composer] Voice URL:', voiceUrl ? voiceUrl.substring(0, 80) : 'NONE');
+  console.log('[Composer] Logo URL:', logoUrl ? logoUrl.substring(0, 80) : 'NONE');
 
   onProgress?.(2, 'Chargement des médias...');
 
-  // Load visual media
-  const [posterImg, logoImg, videoEl] = await Promise.all([
+  // ═══ CREATE AUDIO CONTEXT FIRST (needed for decodeAudioData) ═══
+  const hasAudioUrls = !!musicUrl || !!voiceUrl;
+  let audioCtx: AudioContext | null = null;
+  let audioDest: MediaStreamAudioDestinationNode | null = null;
+  let musicSourceNode: AudioBufferSourceNode | null = null;
+  let voiceSourceNode: AudioBufferSourceNode | null = null;
+
+  if (hasAudioUrls) {
+    audioCtx = new AudioContext({ sampleRate: 48000 });
+    await audioCtx.resume();
+    console.log('[Composer] AudioContext created, state:', audioCtx.state, ', sampleRate:', audioCtx.sampleRate);
+  }
+
+  // ═══ LOAD ALL MEDIA IN PARALLEL ═══
+  const [posterImg, logoImg, videoEl, musicBuffer, voiceBuffer] = await Promise.all([
     posterUrl ? loadImage(posterUrl).catch(() => null) : null,
     logoUrl ? loadImage(logoUrl).catch(() => null) : null,
     videoUrl ? loadVideo(videoUrl).catch(() => null) : null,
+    (audioCtx && musicUrl) ? loadAudioBuffer(audioCtx, musicUrl) : null,
+    (audioCtx && voiceUrl) ? loadAudioBuffer(audioCtx, voiceUrl) : null,
   ]);
 
-  // Load audio elements (using native <audio> — handles MP3/OGG/WAV automatically)
-  const [musicEl, voiceEl] = await Promise.all([
-    musicUrl ? loadAudioElement(musicUrl) : null,
-    voiceUrl ? loadAudioElement(voiceUrl) : null,
-  ]);
+  const hasAudio = musicBuffer !== null || voiceBuffer !== null;
+  console.log('[Composer] Media loaded — poster:', !!posterImg, '| logo:', !!logoImg, '| video:', !!videoEl);
+  console.log('[Composer] Audio buffers — music:', musicBuffer ? `${musicBuffer.duration.toFixed(1)}s` : 'NULL', '| voice:', voiceBuffer ? `${voiceBuffer.duration.toFixed(1)}s` : 'NULL');
 
-  const hasAudio = musicEl !== null || voiceEl !== null;
-  console.log('[Composer] Media loaded — poster:', !!posterImg, 'logo:', !!logoImg, 'video:', !!videoEl);
-  console.log('[Composer] Audio loaded — music:', !!musicEl, 'voice:', !!voiceEl);
+  // If we created AudioContext but got no audio buffers, close it
+  if (audioCtx && !hasAudio) {
+    console.warn('[Composer] No audio buffers loaded, closing AudioContext');
+    await audioCtx.close();
+    audioCtx = null;
+  }
 
   // Build sequences
   const sequences: Array<{ type: string; duration: number }> = [{ type: 'intro', duration: introDuration }];
@@ -418,48 +452,35 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     ctx.fillStyle = barGrad; ctx.fillRect(0, height - barH, width * (elapsed / totalDuration), barH);
   };
 
-  // ═══ AUDIO SETUP: Use <audio> elements + createMediaElementSource ═══
-  // This is the SIMPLEST, MOST RELIABLE approach:
-  // <audio> elements decode audio natively (MP3/OGG/WAV)
-  // createMediaElementSource routes audio through Web Audio API
-  // MediaStreamDestination captures it for MediaRecorder
-  // Audio does NOT play through speakers (redirected from default output)
+  // ═══ AUDIO SETUP: AudioBufferSourceNode (GUARANTEED capture) ═══
+  // Unlike <audio> + createMediaElementSource which can silently fail,
+  // AudioBufferSourceNode ONLY outputs through Web Audio graph.
+  // It NEVER plays through speakers. It ALWAYS gets captured by MediaRecorder.
 
-  let audioCtx: AudioContext | null = null;
-  let audioDest: MediaStreamAudioDestinationNode | null = null;
-
-  if (hasAudio) {
-    audioCtx = new AudioContext({ sampleRate: 48000 });
-    await audioCtx.resume();
-    console.log('[Composer] AudioContext state:', audioCtx.state);
-
+  if (audioCtx && hasAudio) {
     audioDest = audioCtx.createMediaStreamDestination();
+    console.log('[Composer] MediaStreamDestination created');
 
-    if (musicEl) {
-      try {
-        const musicSource = audioCtx.createMediaElementSource(musicEl);
-        const musicGain = audioCtx.createGain();
-        musicGain.gain.value = voiceEl ? 0.3 : 0.8;
-        musicSource.connect(musicGain);
-        musicGain.connect(audioDest);
-        musicEl.loop = true;
-        console.log('[Composer] ✅ Music connected to audio graph, gain:', musicGain.gain.value);
-      } catch (err) {
-        console.error('[Composer] ❌ Music audio graph setup failed:', err);
-      }
+    if (musicBuffer) {
+      musicSourceNode = audioCtx.createBufferSource();
+      musicSourceNode.buffer = musicBuffer;
+      musicSourceNode.loop = true;
+      const musicGain = audioCtx.createGain();
+      musicGain.gain.value = voiceBuffer ? 0.3 : 0.8;
+      musicSourceNode.connect(musicGain);
+      musicGain.connect(audioDest);
+      console.log('[Composer] ✅ Music BufferSource connected, gain:', musicGain.gain.value, ', loop: true');
     }
 
-    if (voiceEl) {
-      try {
-        const voiceSource = audioCtx.createMediaElementSource(voiceEl);
-        const voiceGain = audioCtx.createGain();
-        voiceGain.gain.value = 1.0;
-        voiceSource.connect(voiceGain);
-        voiceGain.connect(audioDest);
-        console.log('[Composer] ✅ Voice connected to audio graph');
-      } catch (err) {
-        console.error('[Composer] ❌ Voice audio graph setup failed:', err);
-      }
+    if (voiceBuffer) {
+      voiceSourceNode = audioCtx.createBufferSource();
+      voiceSourceNode.buffer = voiceBuffer;
+      voiceSourceNode.loop = false;
+      const voiceGain = audioCtx.createGain();
+      voiceGain.gain.value = 1.0;
+      voiceSourceNode.connect(voiceGain);
+      voiceGain.connect(audioDest);
+      console.log('[Composer] ✅ Voice BufferSource connected, gain: 1.0');
     }
   }
 
@@ -470,13 +491,17 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   const combinedStream = new MediaStream();
   for (const track of videoStream.getVideoTracks()) combinedStream.addTrack(track);
   if (audioDest) {
-    for (const track of audioDest.stream.getAudioTracks()) combinedStream.addTrack(track);
+    const audioTracks = audioDest.stream.getAudioTracks();
+    for (const track of audioTracks) combinedStream.addTrack(track);
+    console.log('[Composer] Audio tracks added to stream:', audioTracks.length, '| track states:', audioTracks.map(t => t.readyState).join(','));
   }
 
-  console.log('[Composer] Stream tracks:', combinedStream.getTracks().map(t => t.kind + ':' + t.readyState).join(', '));
+  console.log('[Composer] Combined stream tracks:', combinedStream.getTracks().map(t => `${t.kind}:${t.readyState}`).join(', '));
 
   // Choose best mimeType — prefer MP4!
   const mimeTypes = [
+    'video/mp4;codecs="avc1.42E01E,mp4a.40.2"',
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
     'video/mp4;codecs=avc1,mp4a.40.2',
     'video/mp4',
     'video/webm;codecs=vp8,opus',
@@ -488,7 +513,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     if (MediaRecorder.isTypeSupported(t)) { mimeType = t; break; }
   }
   const isMP4 = mimeType.startsWith('video/mp4');
-  console.log('[Composer] MediaRecorder mimeType:', mimeType, '| MP4:', isMP4);
+  console.log('[Composer] MediaRecorder mimeType:', mimeType, '| isMP4:', isMP4);
 
   const recorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 4_000_000 });
   const chunks: Blob[] = [];
@@ -502,9 +527,9 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       const outputType = isMP4 ? 'video/mp4' : 'video/webm';
       const blob = new Blob(chunks, { type: outputType });
       console.log('[Composer] ✅ DONE — blob:', (blob.size / 1024 / 1024).toFixed(1), 'MB, type:', outputType, ', chunks:', chunks.length);
+
+      // Cleanup
       if (audioCtx) audioCtx.close().catch(() => {});
-      if (musicEl) { musicEl.pause(); musicEl.src = ''; }
-      if (voiceEl) { voiceEl.pause(); voiceEl.src = ''; }
       if (videoEl) videoEl.pause();
       try { document.body.removeChild(canvas); } catch {}
       onProgress?.(100, 'Terminé !');
@@ -513,20 +538,22 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 
     recorder.onerror = (e) => {
       console.error('[Composer] MediaRecorder error:', e);
+      if (audioCtx) audioCtx.close().catch(() => {});
       reject(new Error('Recording failed'));
     };
 
-    // START recording
+    // START recording FIRST
     recorder.start(200);
+    console.log('[Composer] MediaRecorder started');
 
-    // START audio playback (through MediaStreamDestination, NOT speakers)
-    if (musicEl) {
-      musicEl.currentTime = 0;
-      musicEl.play().then(() => console.log('[Composer] ✅ Music playing')).catch(err => console.error('[Composer] ❌ Music play failed:', err));
+    // START audio sources (they play through Web Audio graph ONLY, not speakers)
+    if (musicSourceNode) {
+      musicSourceNode.start(0);
+      console.log('[Composer] ✅ Music source started');
     }
-    if (voiceEl) {
-      voiceEl.currentTime = 0;
-      voiceEl.play().then(() => console.log('[Composer] ✅ Voice playing')).catch(err => console.error('[Composer] ❌ Voice play failed:', err));
+    if (voiceSourceNode) {
+      voiceSourceNode.start(0);
+      console.log('[Composer] ✅ Voice source started');
     }
 
     // START video element
@@ -541,16 +568,17 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       const elapsed = (performance.now() - startTime) / 1000;
 
       if (elapsed >= totalDuration + 0.3) {
-        console.log('[Composer] Render done, stopping recorder');
-        if (musicEl) musicEl.pause();
-        if (voiceEl) voiceEl.pause();
+        console.log('[Composer] Render complete, stopping recorder...');
+        // Stop audio sources
+        try { if (musicSourceNode) musicSourceNode.stop(); } catch {}
+        try { if (voiceSourceNode) voiceSourceNode.stop(); } catch {}
         recorder.stop();
         return;
       }
 
       const t = Math.min(elapsed, totalDuration - 0.001);
 
-      // Handle video element
+      // Handle video element playback
       if (videoEl) {
         const videoSeq = sequences.find(s => s.type === 'video');
         if (videoSeq) {
