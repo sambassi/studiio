@@ -156,11 +156,10 @@ export default function CreatorPage() {
   // Music
   const [backgroundMusic, setBackgroundMusic] = useState<File | null>(null);
   const [musicName, setMusicName] = useState('');
-  // BLOB URL REFS: File objects in state can be lost (React quirks, GC).
-  // Blob URLs are plain strings — they NEVER get lost.
-  // Created immediately on upload, used as ultimate fallback at export time.
   const backgroundMusicRef = useRef<File | null>(null);
   const musicBlobUrlRef = useRef<string | null>(null);
+  // NUCLEAR OPTION: store raw bytes in memory — ArrayBuffer cannot be GC'd while ref exists
+  const musicDataRef = useRef<{ buffer: ArrayBuffer; name: string; type: string } | null>(null);
 
   // Voice
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('none');
@@ -172,6 +171,7 @@ export default function CreatorPage() {
   const [voiceUploadFile, setVoiceUploadFile] = useState<File | null>(null);
   const voiceUploadFileRef = useRef<File | null>(null);
   const voiceBlobUrlRef = useRef<string | null>(null);
+  const voiceDataRef = useRef<{ buffer: ArrayBuffer; name: string; type: string } | null>(null);
   const [previewingVoice, setPreviewingVoice] = useState(false);
   const [previewAudio, setPreviewAudio] = useState<HTMLAudioElement | null>(null);
 
@@ -731,20 +731,24 @@ export default function CreatorPage() {
   const handleMusicUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    console.log('[Creator] 🎵 Music uploaded:', file.name, (file.size / 1024).toFixed(1), 'KB, type:', file.type);
+    console.log('[Creator] 🎵 MUSIC UPLOAD:', file.name, (file.size / 1024).toFixed(1), 'KB, type:', file.type);
+
+    // Read raw bytes into memory IMMEDIATELY — this cannot be lost
+    const reader = new FileReader();
+    reader.onload = () => {
+      musicDataRef.current = { buffer: reader.result as ArrayBuffer, name: file.name, type: file.type || 'audio/mpeg' };
+      console.log('[Creator] 🎵 Music bytes stored in musicDataRef:', (musicDataRef.current.buffer.byteLength / 1024).toFixed(1), 'KB');
+    };
+    reader.readAsArrayBuffer(file);
+
     setBackgroundMusic(file);
     backgroundMusicRef.current = file;
     const blobUrl = URL.createObjectURL(file);
     musicBlobUrlRef.current = blobUrl;
-    // Store on window — IMPOSSIBLE to lose via any React mechanism
     (window as any).__studiio_music = { file, blobUrl, name: file.name };
-    console.log('[Creator] 🎵 Music stored: state + ref + blobUrlRef + window.__studiio_music');
     setMusicName(file.name);
     if (musicPreviewUrl) URL.revokeObjectURL(musicPreviewUrl);
-    if (musicAudioRef.current) {
-      musicAudioRef.current.pause();
-      musicAudioRef.current = null;
-    }
+    if (musicAudioRef.current) { musicAudioRef.current.pause(); musicAudioRef.current = null; }
     setIsMusicPlaying(false);
     setMusicPreviewUrl(blobUrl);
   };
@@ -752,13 +756,20 @@ export default function CreatorPage() {
   const handleVoiceUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    console.log('[Creator] 🎤 Voice uploaded:', file.name, (file.size / 1024).toFixed(1), 'KB, type:', file.type);
+    console.log('[Creator] 🎤 VOICE UPLOAD:', file.name, (file.size / 1024).toFixed(1), 'KB, type:', file.type);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      voiceDataRef.current = { buffer: reader.result as ArrayBuffer, name: file.name, type: file.type || 'audio/mpeg' };
+      console.log('[Creator] 🎤 Voice bytes stored in voiceDataRef:', (voiceDataRef.current.buffer.byteLength / 1024).toFixed(1), 'KB');
+    };
+    reader.readAsArrayBuffer(file);
+
     setVoiceUploadFile(file);
     voiceUploadFileRef.current = file;
     const blobUrl = URL.createObjectURL(file);
     voiceBlobUrlRef.current = blobUrl;
     (window as any).__studiio_voice = { file, blobUrl, name: file.name };
-    console.log('[Creator] 🎤 Voice stored: state + ref + blobUrlRef + window.__studiio_voice');
   };
 
   const handleGenerateVoice = async () => {
@@ -835,32 +846,44 @@ export default function CreatorPage() {
     setRenderStage('Initialisation...');
 
     try {
-      // ═══ RESOLVE FILES — READ DIRECTLY FROM DOM INPUT ELEMENTS ═══
-      // React state/ref/window all fail to preserve File objects.
-      // The ONLY reliable source is the <input type="file"> DOM element itself.
-      // React doesn't control input.files — the browser retains them.
-      const domMusicFile = musicInputRef.current?.files?.[0] || null;
-      const domVoiceFile = voiceInputRef.current?.files?.[0] || null;
-      const domLogoFile = logoInputRef.current?.files?.[0] || null;
-
+      // ═══ RESOLVE FILES ═══
+      // musicDataRef contains raw ArrayBuffer bytes — the ONLY thing that cannot be lost
       console.log('[Creator] ═══ EXPORT FILE RESOLUTION ═══');
-      console.log('[Creator] DOM input music:', domMusicFile ? `${domMusicFile.name} (${(domMusicFile.size/1024).toFixed(1)}KB)` : 'NULL');
-      console.log('[Creator] DOM input voice:', domVoiceFile ? `${domVoiceFile.name}` : 'NULL');
-      console.log('[Creator] DOM input logo:', domLogoFile ? `${domLogoFile.name}` : 'NULL');
-      console.log('[Creator] State music:', backgroundMusic ? backgroundMusic.name : 'NULL');
-      console.log('[Creator] Ref music:', backgroundMusicRef.current ? backgroundMusicRef.current.name : 'NULL');
-      console.log('[Creator] BlobUrl ref:', musicBlobUrlRef.current?.substring(0, 50) || 'NULL');
-      console.log('[Creator] Window music:', (window as any).__studiio_music?.name || 'UNDEFINED');
+      console.log('[Creator] musicDataRef:', musicDataRef.current ? `${musicDataRef.current.name} (${(musicDataRef.current.buffer.byteLength/1024).toFixed(1)}KB)` : 'NULL');
+      console.log('[Creator] voiceDataRef:', voiceDataRef.current ? `${voiceDataRef.current.name} (${(voiceDataRef.current.buffer.byteLength/1024).toFixed(1)}KB)` : 'NULL');
+      console.log('[Creator] DOM input:', musicInputRef.current?.files?.[0]?.name || 'NULL');
+      console.log('[Creator] State:', backgroundMusic?.name || 'NULL');
       console.log('[Creator] voiceMode:', voiceMode, '| ttsText:', ttsText.substring(0, 40));
-      console.log('[Creator] generatedVoiceBlob:', generatedVoiceBlob ? `${(generatedVoiceBlob.size/1024).toFixed(1)}KB` : 'NULL');
 
-      // Priority: DOM element → state → ref → window
-      const musicFile = domMusicFile || backgroundMusic || backgroundMusicRef.current || (window as any).__studiio_music?.file || null;
-      const voiceFile = domVoiceFile || voiceUploadFile || voiceUploadFileRef.current || (window as any).__studiio_voice?.file || null;
-      const logo = domLogoFile || logoFile || logoFileRef.current;
+      // Reconstruct File from ArrayBuffer if needed
+      let musicFile: File | null = null;
+      if (musicDataRef.current) {
+        musicFile = new File([musicDataRef.current.buffer], musicDataRef.current.name, { type: musicDataRef.current.type });
+        console.log('[Creator] ✅ Music from musicDataRef (ArrayBuffer):', musicFile.name, (musicFile.size/1024).toFixed(1) + 'KB');
+      } else if (musicInputRef.current?.files?.[0]) {
+        musicFile = musicInputRef.current.files[0];
+        console.log('[Creator] ✅ Music from DOM input:', musicFile.name);
+      } else if (backgroundMusic) {
+        musicFile = backgroundMusic;
+        console.log('[Creator] ✅ Music from state:', musicFile.name);
+      } else if (backgroundMusicRef.current) {
+        musicFile = backgroundMusicRef.current;
+        console.log('[Creator] ✅ Music from ref');
+      } else {
+        console.warn('[Creator] ❌ NO MUSIC FILE from any source');
+      }
 
-      if (musicFile) console.log('[Creator] ✅ Music resolved:', musicFile.name, (musicFile.size/1024).toFixed(1) + 'KB', 'source:', domMusicFile ? 'DOM' : backgroundMusic ? 'state' : 'ref/window');
-      else console.warn('[Creator] ❌ NO MUSIC — DOM input, state, ref, window ALL null');
+      let voiceFile: File | null = null;
+      if (voiceDataRef.current) {
+        voiceFile = new File([voiceDataRef.current.buffer], voiceDataRef.current.name, { type: voiceDataRef.current.type });
+        console.log('[Creator] ✅ Voice from voiceDataRef:', voiceFile.name);
+      } else if (voiceInputRef.current?.files?.[0]) {
+        voiceFile = voiceInputRef.current.files[0];
+      } else if (voiceUploadFile) {
+        voiceFile = voiceUploadFile;
+      }
+
+      const logo = logoInputRef.current?.files?.[0] || logoFile || logoFileRef.current;
 
       // ═══ PHASE 1: Upload files (0-20%) ═══
       setRenderStage('Upload des vidéos...');
@@ -931,20 +954,11 @@ export default function CreatorPage() {
       const effectiveCharUrl = charUrl || characterPreview || null;
       const effectiveLogoUrl = logo ? URL.createObjectURL(logo) : (logoPreview || logoUrl || null);
 
-      // RESOLVE MUSIC URL — create blob URL from resolved File
+      // RESOLVE MUSIC URL
       let effectiveMusicUrl: string | null = null;
       if (musicFile) {
         effectiveMusicUrl = URL.createObjectURL(musicFile);
-        console.log('[Creator] Music URL: blob from File (' + musicFile.name + ')');
-      } else if (musicBlobUrlRef.current) {
-        effectiveMusicUrl = musicBlobUrlRef.current;
-        console.log('[Creator] Music URL: from blobUrlRef');
-      } else if ((window as any).__studiio_music?.blobUrl) {
-        effectiveMusicUrl = (window as any).__studiio_music.blobUrl;
-        console.log('[Creator] Music URL: from window');
-      } else if (musicPreviewUrl) {
-        effectiveMusicUrl = musicPreviewUrl;
-        console.log('[Creator] Music URL: from musicPreviewUrl');
+        console.log('[Creator] Music URL: blob from File');
       } else if (musicUrl) {
         console.log('[Creator] Music source: fetching via proxy from Supabase...');
         try {
@@ -962,12 +976,6 @@ export default function CreatorPage() {
       if (actualVoiceFile) {
         effectiveVoiceUrl = URL.createObjectURL(actualVoiceFile);
         console.log('[Creator] Voice URL: blob from File');
-      } else if (voiceBlobUrlRef.current) {
-        effectiveVoiceUrl = voiceBlobUrlRef.current;
-        console.log('[Creator] Voice URL: from blobUrlRef');
-      } else if ((window as any).__studiio_voice?.blobUrl) {
-        effectiveVoiceUrl = (window as any).__studiio_voice.blobUrl;
-        console.log('[Creator] Voice URL: from window');
       } else if (voiceUrl) {
         console.log('[Creator] Voice source: fetching via proxy from Supabase...');
         try {
