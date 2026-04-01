@@ -7,7 +7,7 @@ import {
   ChevronRight,
   ChevronLeft,
   Upload,
-  Loader2
+  Loader2,
   Plus,
   X,
   Volume2,
