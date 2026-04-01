@@ -707,22 +707,98 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 
     // Encode mixed AudioBuffer to WAV blob
     const wavBlob = audioBufferToWav(mixedBuffer);
-    console.log('[AudioPipeline] WAV blob:', (wavBlob.size / 1024).toFixed(1), 'KB');
+    console.log('[AudioPipeline] WAV blob:', (wavBlob.size / 1024).toFixed(1), 'KB, type:', wavBlob.type);
+    // Verify WAV header
+    const wavHeader = new Uint8Array(await wavBlob.slice(0, 12).arrayBuffer());
+    console.log('[AudioPipeline] WAV header check:', String.fromCharCode(wavHeader[0], wavHeader[1], wavHeader[2], wavHeader[3]), String.fromCharCode(wavHeader[8], wavHeader[9], wavHeader[10], wavHeader[11]));
 
     // Create <audio> element from WAV blob — captureStream() on this is RELIABLE
     const mixBlobUrl = URL.createObjectURL(wavBlob);
-    audioMixElement = new Audio(mixBlobUrl);
-    audioMixElement.volume = 1.0;
-    await new Promise<void>((resolve) => {
-      audioMixElement!.oncanplaythrough = () => resolve();
-      audioMixElement!.onerror = () => { console.error('[AudioPipeline] Mix audio element load failed'); resolve(); };
+    console.log('[AudioPipeline] WAV blob URL:', mixBlobUrl);
+
+    audioMixElement = document.createElement('audio');
+    audioMixElement.preload = 'auto';
+
+    const audioLoaded = await new Promise<boolean>((resolve) => {
+      let resolved = false;
+      const done = (ok: boolean) => { if (!resolved) { resolved = true; resolve(ok); } };
+
+      audioMixElement!.oncanplaythrough = () => {
+        console.log('[AudioPipeline] ✅ <audio> canplaythrough, duration:', audioMixElement!.duration);
+        done(true);
+      };
+      audioMixElement!.onloadeddata = () => {
+        console.log('[AudioPipeline] ✅ <audio> loadeddata, duration:', audioMixElement!.duration);
+        done(true);
+      };
+      audioMixElement!.onerror = () => {
+        const err = audioMixElement!.error;
+        console.error('[AudioPipeline] ❌ <audio> load error:', err?.code, err?.message);
+        done(false);
+      };
+      // Set src AFTER event handlers are attached
+      audioMixElement!.src = mixBlobUrl;
       audioMixElement!.load();
+      // Safety timeout — 5 seconds
+      setTimeout(() => { console.warn('[AudioPipeline] <audio> load timeout'); done(false); }, 5000);
     });
-    console.log('[AudioPipeline] ✅ Mix audio element ready, duration:', audioMixElement.duration.toFixed(2) + 's');
+
+    if (!audioLoaded || !audioMixElement.duration || audioMixElement.duration === Infinity) {
+      console.error('[AudioPipeline] ❌ WAV <audio> failed. Trying WebM fallback via MediaRecorder...');
+
+      // FALLBACK: Use AudioContext + MediaStreamDestinationNode + MediaRecorder to create a WebM audio blob
+      // This records in real-time but is a reliable fallback
+      try {
+        const rtCtx = new AudioContext({ sampleRate: 48000 });
+        await rtCtx.resume();
+        const rtDest = rtCtx.createMediaStreamDestination();
+        const rtSource = rtCtx.createBufferSource();
+        rtSource.buffer = mixedBuffer;
+        rtSource.connect(rtDest);
+
+        const webmMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+        const audioRec = new MediaRecorder(rtDest.stream, { mimeType: webmMime });
+        const audioChunks: Blob[] = [];
+        audioRec.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
+
+        const webmBlob = await new Promise<Blob>((resolve) => {
+          audioRec.onstop = () => {
+            const b = new Blob(audioChunks, { type: 'audio/webm' });
+            console.log('[AudioPipeline] WebM fallback blob:', (b.size / 1024).toFixed(1), 'KB');
+            resolve(b);
+          };
+          audioRec.start(100);
+          rtSource.start(0);
+          rtSource.onended = () => setTimeout(() => {
+            if (audioRec.state === 'recording') audioRec.stop();
+          }, 200);
+        });
+
+        await rtCtx.close();
+
+        const webmUrl = URL.createObjectURL(webmBlob);
+        audioMixElement = document.createElement('audio');
+        audioMixElement.preload = 'auto';
+        audioMixElement.src = webmUrl;
+        await new Promise<void>((r) => {
+          audioMixElement!.oncanplaythrough = () => r();
+          audioMixElement!.onloadeddata = () => r();
+          audioMixElement!.onerror = () => { console.error('[AudioPipeline] WebM fallback also failed'); r(); };
+          audioMixElement!.load();
+          setTimeout(r, 5000);
+        });
+        console.log('[AudioPipeline] WebM fallback audio ready, duration:', audioMixElement.duration);
+        URL.revokeObjectURL(mixBlobUrl);
+      } catch (fallbackErr) {
+        console.error('[AudioPipeline] WebM fallback exception:', fallbackErr);
+      }
+    }
 
     // Clean up AudioContext (no longer needed)
-    await audioCtx.close();
-    audioCtx = null;
+    if (audioCtx) {
+      await audioCtx.close();
+      audioCtx = null;
+    }
   }
 
   // ═══ MEDIARECORDER SETUP ═══
@@ -933,9 +1009,17 @@ export async function composeAndUpload(options: ComposerOptions): Promise<{ blob
 }
 
 export function downloadBlob(blob: Blob, filename: string) {
+  // Force correct extension based on blob type
+  let finalFilename = filename;
+  if (blob.type.includes('mp4') && !filename.endsWith('.mp4')) {
+    finalFilename = filename.replace(/\.\w+$/, '.mp4');
+  } else if (blob.type.includes('webm') && !filename.endsWith('.webm')) {
+    finalFilename = filename.replace(/\.\w+$/, '.webm');
+  }
+  console.log('[Composer] downloadBlob:', (blob.size / 1024 / 1024).toFixed(2), 'MB, type:', blob.type, '→', finalFilename);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = filename;
+  a.href = url; a.download = finalFilename;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }

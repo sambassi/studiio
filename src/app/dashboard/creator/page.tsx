@@ -156,9 +156,11 @@ export default function CreatorPage() {
   // Music
   const [backgroundMusic, setBackgroundMusic] = useState<File | null>(null);
   const [musicName, setMusicName] = useState('');
-  // REF BACKUP: File objects can sometimes be lost from useState (React quirks, StrictMode).
-  // Refs survive any render cycle and act as a bulletproof backup.
+  // BLOB URL REFS: File objects in state can be lost (React quirks, GC).
+  // Blob URLs are plain strings — they NEVER get lost.
+  // Created immediately on upload, used as ultimate fallback at export time.
   const backgroundMusicRef = useRef<File | null>(null);
+  const musicBlobUrlRef = useRef<string | null>(null);
 
   // Voice
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('none');
@@ -169,6 +171,7 @@ export default function CreatorPage() {
   const [generatedVoiceBlob, setGeneratedVoiceBlob] = useState<Blob | null>(null);
   const [voiceUploadFile, setVoiceUploadFile] = useState<File | null>(null);
   const voiceUploadFileRef = useRef<File | null>(null);
+  const voiceBlobUrlRef = useRef<string | null>(null);
   const [previewingVoice, setPreviewingVoice] = useState(false);
   const [previewAudio, setPreviewAudio] = useState<HTMLAudioElement | null>(null);
 
@@ -728,26 +731,32 @@ export default function CreatorPage() {
   const handleMusicUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    console.log('[Creator] Music uploaded:', file.name, (file.size / 1024).toFixed(1), 'KB');
+    console.log('[Creator] 🎵 Music uploaded:', file.name, (file.size / 1024).toFixed(1), 'KB, type:', file.type);
     setBackgroundMusic(file);
-    backgroundMusicRef.current = file; // ref backup
+    backgroundMusicRef.current = file;
+    // Create blob URL IMMEDIATELY and store in ref — this string NEVER gets lost
+    const blobUrl = URL.createObjectURL(file);
+    musicBlobUrlRef.current = blobUrl;
+    console.log('[Creator] 🎵 Music blob URL stored in ref:', blobUrl.substring(0, 50));
     setMusicName(file.name);
-    // Create preview URL for playback
     if (musicPreviewUrl) URL.revokeObjectURL(musicPreviewUrl);
     if (musicAudioRef.current) {
       musicAudioRef.current.pause();
       musicAudioRef.current = null;
     }
     setIsMusicPlaying(false);
-    setMusicPreviewUrl(URL.createObjectURL(file));
+    setMusicPreviewUrl(blobUrl); // reuse same blob URL
   };
 
   const handleVoiceUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    console.log('[Creator] Voice uploaded:', file.name, (file.size / 1024).toFixed(1), 'KB');
+    console.log('[Creator] 🎤 Voice uploaded:', file.name, (file.size / 1024).toFixed(1), 'KB, type:', file.type);
     setVoiceUploadFile(file);
-    voiceUploadFileRef.current = file; // ref backup
+    voiceUploadFileRef.current = file;
+    const blobUrl = URL.createObjectURL(file);
+    voiceBlobUrlRef.current = blobUrl;
+    console.log('[Creator] 🎤 Voice blob URL stored in ref:', blobUrl.substring(0, 50));
   };
 
   const handleGenerateVoice = async () => {
@@ -835,6 +844,8 @@ export default function CreatorPage() {
       console.log('[Creator] characterImage:', characterImage ? `${characterImage.name}` : 'NULL');
       console.log('[Creator] voiceMode:', voiceMode, '| ttsText:', ttsText.substring(0, 40), '| ttsVoice:', ttsVoice);
       console.log('[Creator] generatedVoiceBlob:', generatedVoiceBlob ? `${(generatedVoiceBlob.size/1024).toFixed(1)}KB` : 'NULL');
+      console.log('[Creator] musicBlobUrlRef:', musicBlobUrlRef.current?.substring(0, 60) || 'NULL');
+      console.log('[Creator] voiceBlobUrlRef:', voiceBlobUrlRef.current?.substring(0, 60) || 'NULL');
       console.log('[Creator] musicPreviewUrl:', musicPreviewUrl?.substring(0, 60) || 'NULL');
       console.log('[Creator] logoPreview:', logoPreview?.substring(0, 60) || 'NULL');
       console.log('[Creator] rushes with files:', rushesWithFiles.length, '/', videoRushes.length);
@@ -923,42 +934,47 @@ export default function CreatorPage() {
       const effectiveCharUrl = charUrl || characterPreview || null;
       const effectiveLogoUrl = logo ? URL.createObjectURL(logo) : (logoPreview || logoUrl || null);
 
-      // ALWAYS create blob URLs from original Files for the composer
-      // If File is null, try: ref backup → musicPreviewUrl → proxy from Supabase URL
+      // RESOLVE MUSIC URL — priority: File → blobUrlRef → musicPreviewUrl → Supabase proxy
       let effectiveMusicUrl: string | null = null;
       if (musicFile) {
         effectiveMusicUrl = URL.createObjectURL(musicFile);
-        console.log('[Creator] Music: using File blob URL');
+        console.log('[Creator] Music source: File blob URL');
+      } else if (musicBlobUrlRef.current) {
+        effectiveMusicUrl = musicBlobUrlRef.current;
+        console.log('[Creator] Music source: blobUrlRef (File was null, using stored blob URL)');
       } else if (musicPreviewUrl) {
-        // musicPreviewUrl is already a blob URL created from the original File
         effectiveMusicUrl = musicPreviewUrl;
-        console.log('[Creator] Music: using existing preview blob URL (File was null!)');
+        console.log('[Creator] Music source: musicPreviewUrl state');
       } else if (musicUrl) {
-        // Supabase URL exists but no File — fetch through proxy to get a blob URL
-        console.log('[Creator] Music: no File but have Supabase URL, fetching via proxy...');
+        console.log('[Creator] Music source: fetching via proxy from Supabase...');
         try {
           const proxyRes = await fetch(`/api/proxy-media?url=${encodeURIComponent(musicUrl)}`);
           if (proxyRes.ok) {
             const blob = await proxyRes.blob();
             effectiveMusicUrl = URL.createObjectURL(blob);
-            console.log('[Creator] Music proxy blob created:', (blob.size / 1024).toFixed(1), 'KB');
+            console.log('[Creator] Music proxy blob:', (blob.size / 1024).toFixed(1), 'KB');
           }
-        } catch (e) { console.error('[Creator] Music proxy fetch failed:', e); }
+        } catch (e) { console.error('[Creator] Music proxy failed:', e); }
       }
 
+      // RESOLVE VOICE URL — priority: File → blobUrlRef → Supabase proxy
       let effectiveVoiceUrl: string | null = null;
       if (actualVoiceFile) {
         effectiveVoiceUrl = URL.createObjectURL(actualVoiceFile);
+        console.log('[Creator] Voice source: File blob URL');
+      } else if (voiceBlobUrlRef.current) {
+        effectiveVoiceUrl = voiceBlobUrlRef.current;
+        console.log('[Creator] Voice source: blobUrlRef');
       } else if (voiceUrl) {
-        console.log('[Creator] Voice: no File but have Supabase URL, fetching via proxy...');
+        console.log('[Creator] Voice source: fetching via proxy from Supabase...');
         try {
           const proxyRes = await fetch(`/api/proxy-media?url=${encodeURIComponent(voiceUrl)}`);
           if (proxyRes.ok) {
             const blob = await proxyRes.blob();
             effectiveVoiceUrl = URL.createObjectURL(blob);
-            console.log('[Creator] Voice proxy blob created:', (blob.size / 1024).toFixed(1), 'KB');
+            console.log('[Creator] Voice proxy blob:', (blob.size / 1024).toFixed(1), 'KB');
           }
-        } catch (e) { console.error('[Creator] Voice proxy fetch failed:', e); }
+        } catch (e) { console.error('[Creator] Voice proxy failed:', e); }
       }
 
       console.log('[Creator] Composer URLs — music:', effectiveMusicUrl?.substring(0, 60) || 'NULL',
