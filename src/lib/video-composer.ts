@@ -637,24 +637,34 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 
   console.log('[Composer] Combined stream tracks:', combinedStream.getTracks().map(t => `${t.kind}:${t.readyState}`).join(', '));
 
-  // Choose best mimeType — prefer MP4!
-  const mimeTypes = [
-    'video/mp4;codecs="avc1.42E01E,mp4a.40.2"',
+  // Choose best mimeType — prefer MP4 if truly supported
+  // IMPORTANT: Do NOT use quoted codecs in isTypeSupported — Chrome rejects them
+  const mimeTypeCandidates = [
     'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-    'video/mp4;codecs=avc1,mp4a.40.2',
+    'video/mp4;codecs=avc1,mp4a',
     'video/mp4',
-    'video/webm;codecs=vp8,opus',
     'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
     'video/webm',
   ];
   let mimeType = 'video/webm';
-  for (const t of mimeTypes) {
-    if (MediaRecorder.isTypeSupported(t)) { mimeType = t; break; }
+  for (const t of mimeTypeCandidates) {
+    const supported = MediaRecorder.isTypeSupported(t);
+    console.log('[Composer] isTypeSupported("' + t + '"):', supported);
+    if (supported && mimeType === 'video/webm') { mimeType = t; }
   }
   const isMP4 = mimeType.startsWith('video/mp4');
-  console.log('[Composer] MediaRecorder mimeType:', mimeType, '| isMP4:', isMP4);
+  console.log('[Composer] ✅ Selected mimeType:', mimeType, '| isMP4:', isMP4);
 
-  const recorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 4_000_000 });
+  // Bitrate: 2Mbps keeps file under 4.5MB for ~18s video (Vercel Hobby limit)
+  // For longer videos, bitrate is further reduced
+  const targetMaxBytes = 4 * 1024 * 1024; // 4MB target (under 4.5MB Vercel limit)
+  const autoBitrate = Math.min(2_500_000, Math.floor((targetMaxBytes * 8) / totalDuration));
+  console.log('[Composer] Bitrate:', autoBitrate, 'bps for', totalDuration.toFixed(1), 's → estimated', ((autoBitrate * totalDuration) / 8 / 1024 / 1024).toFixed(1), 'MB');
+
+  const recorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: autoBitrate });
   const chunks: Blob[] = [];
   recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
 
@@ -782,20 +792,37 @@ export async function composeAndUpload(options: ComposerOptions): Promise<{ blob
   const blob = await composeVideo(options);
   if (blob.size === 0) return { blob, url: null };
 
-  const isMP4 = blob.type.includes('mp4');
-  const ext = isMP4 ? 'mp4' : 'webm';
-  console.log('[Composer] Uploading', (blob.size / 1024 / 1024).toFixed(2), 'MB', ext);
+  const blobIsMP4 = blob.type.includes('mp4');
+  const ext = blobIsMP4 ? 'mp4' : 'webm';
+  const blobSizeMB = blob.size / 1024 / 1024;
+  console.log('[Composer] Blob:', blobSizeMB.toFixed(2), 'MB', ext, 'type:', blob.type);
 
+  // Skip upload if blob exceeds Vercel Hobby body limit (4.5MB)
   let url: string | null = null;
-  try {
-    const formData = new FormData();
-    formData.append('file', new File([blob], `montage-${Date.now()}.${ext}`, { type: blob.type }));
-    formData.append('purpose', 'rush');
-    const res = await fetch('/api/upload/media', { method: 'POST', body: formData });
-    const data = await res.json();
-    if (data.success && data.file?.url) { url = data.file.url; console.log('[Composer] Upload OK:', url); }
-    else console.error('[Composer] Upload failed:', data);
-  } catch (err) { console.error('[Composer] Upload error:', err); }
+  const UPLOAD_LIMIT_MB = 4.5;
+
+  if (blobSizeMB > UPLOAD_LIMIT_MB) {
+    console.warn(`[Composer] ⚠️ Blob too large for upload (${blobSizeMB.toFixed(1)}MB > ${UPLOAD_LIMIT_MB}MB). Using local blob URL.`);
+    url = URL.createObjectURL(blob);
+  } else {
+    try {
+      const formData = new FormData();
+      formData.append('file', new File([blob], `montage-${Date.now()}.${ext}`, { type: blob.type }));
+      formData.append('purpose', 'rush');
+      const res = await fetch('/api/upload/media', { method: 'POST', body: formData });
+      if (res.status === 413) {
+        console.warn('[Composer] Upload 413 — file too large. Using local blob URL.');
+        url = URL.createObjectURL(blob);
+      } else {
+        const data = await res.json();
+        if (data.success && data.file?.url) { url = data.file.url; console.log('[Composer] Upload OK:', url); }
+        else { console.error('[Composer] Upload failed:', data); url = URL.createObjectURL(blob); }
+      }
+    } catch (err) {
+      console.error('[Composer] Upload error:', err);
+      url = URL.createObjectURL(blob);
+    }
+  }
   return { blob, url };
 }
 

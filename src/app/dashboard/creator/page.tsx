@@ -815,6 +815,20 @@ export default function CreatorPage() {
     setRenderStage('Initialisation...');
 
     try {
+      // ═══ STATE DIAGNOSTIC — log all media state at export time ═══
+      console.log('[Creator] ═══ EXPORT STATE DIAGNOSTIC ═══');
+      console.log('[Creator] backgroundMusic:', backgroundMusic ? `${backgroundMusic.name} (${(backgroundMusic.size/1024).toFixed(1)}KB)` : 'NULL');
+      console.log('[Creator] voiceUploadFile:', voiceUploadFile ? `${voiceUploadFile.name} (${(voiceUploadFile.size/1024).toFixed(1)}KB)` : 'NULL');
+      console.log('[Creator] logoFile:', logoFile ? `${logoFile.name} (${(logoFile.size/1024).toFixed(1)}KB)` : 'NULL');
+      console.log('[Creator] characterImage:', characterImage ? `${characterImage.name} (${(characterImage.size/1024).toFixed(1)}KB)` : 'NULL');
+      console.log('[Creator] voiceMode:', voiceMode, '| ttsText:', ttsText.substring(0, 40) + (ttsText.length > 40 ? '...' : ''), '| ttsVoice:', ttsVoice);
+      console.log('[Creator] generatedVoiceBlob:', generatedVoiceBlob ? `${(generatedVoiceBlob.size/1024).toFixed(1)}KB` : 'NULL');
+      console.log('[Creator] characterPreview:', characterPreview?.substring(0, 60) || 'NULL');
+      console.log('[Creator] musicPreviewUrl:', musicPreviewUrl?.substring(0, 60) || 'NULL');
+      console.log('[Creator] logoPreview:', logoPreview?.substring(0, 60) || 'NULL');
+      console.log('[Creator] rushes with files:', rushesWithFiles.length, '/', videoRushes.length);
+      console.log('[Creator] ═══════════════════════════════');
+
       // ═══ PHASE 1: Upload files (0-20%) ═══
       setRenderStage('Upload des vidéos...');
       const rushUrls: string[] = [];
@@ -879,22 +893,50 @@ export default function CreatorPage() {
       console.log('[Creator] Upload results — music:', !!musicUrl, 'char:', !!charUrl, 'voice:', !!voiceUrl, 'logo:', !!logoUrl);
 
       // CRITICAL: ALWAYS use blob URLs from original File objects for the composer.
-      // Supabase URLs are stored in metadata for later playback, but for client-side
-      // rendering, blob URLs are FASTER and GUARANTEED to work (no CORS/permissions issues).
-      // This fixes the "no audio in exported video" bug caused by Supabase URL fetch failures.
+      // Supabase URLs cause CORS failures with decodeAudioData.
+      // Blob URLs are local, CORS-free, and GUARANTEED to work.
       const effectiveCharUrl = charUrl || characterPreview || null;
       const effectiveLogoUrl = logoFile ? URL.createObjectURL(logoFile) : (logoPreview || logoUrl || null);
 
       // ALWAYS create blob URLs from original Files for the composer
-      const effectiveMusicUrl: string | null = backgroundMusic ? URL.createObjectURL(backgroundMusic) : (musicUrl || null);
-      const effectiveVoiceUrl: string | null = actualVoiceFile ? URL.createObjectURL(actualVoiceFile) : (voiceUrl || null);
+      // If File is null but Supabase URL exists, fetch via proxy and create blob URL
+      let effectiveMusicUrl: string | null = null;
+      if (backgroundMusic) {
+        effectiveMusicUrl = URL.createObjectURL(backgroundMusic);
+      } else if (musicUrl) {
+        // Supabase URL exists but no File — fetch through proxy to get a blob URL
+        console.log('[Creator] Music: no File but have Supabase URL, fetching via proxy...');
+        try {
+          const proxyRes = await fetch(`/api/proxy-media?url=${encodeURIComponent(musicUrl)}`);
+          if (proxyRes.ok) {
+            const blob = await proxyRes.blob();
+            effectiveMusicUrl = URL.createObjectURL(blob);
+            console.log('[Creator] Music proxy blob created:', (blob.size / 1024).toFixed(1), 'KB');
+          }
+        } catch (e) { console.error('[Creator] Music proxy fetch failed:', e); }
+      }
 
-      console.log('[Creator] Composer URLs (blob preferred) — music:', effectiveMusicUrl?.substring(0, 60) || 'NULL',
+      let effectiveVoiceUrl: string | null = null;
+      if (actualVoiceFile) {
+        effectiveVoiceUrl = URL.createObjectURL(actualVoiceFile);
+      } else if (voiceUrl) {
+        console.log('[Creator] Voice: no File but have Supabase URL, fetching via proxy...');
+        try {
+          const proxyRes = await fetch(`/api/proxy-media?url=${encodeURIComponent(voiceUrl)}`);
+          if (proxyRes.ok) {
+            const blob = await proxyRes.blob();
+            effectiveVoiceUrl = URL.createObjectURL(blob);
+            console.log('[Creator] Voice proxy blob created:', (blob.size / 1024).toFixed(1), 'KB');
+          }
+        } catch (e) { console.error('[Creator] Voice proxy fetch failed:', e); }
+      }
+
+      console.log('[Creator] Composer URLs — music:', effectiveMusicUrl?.substring(0, 60) || 'NULL',
         '| voice:', effectiveVoiceUrl?.substring(0, 60) || 'NULL',
         '| logo:', effectiveLogoUrl?.substring(0, 60) || 'NULL');
-      console.log('[Creator] Original files — music:', !!backgroundMusic, (backgroundMusic?.size || 0), 'bytes',
-        '| voice:', !!actualVoiceFile, (actualVoiceFile?.size || 0), 'bytes',
-        '| logo:', !!logoFile);
+      console.log('[Creator] Sources — music:', backgroundMusic ? 'File' : (musicUrl ? 'proxy' : 'none'),
+        '| voice:', actualVoiceFile ? 'File' : (voiceUrl ? 'proxy' : 'none'),
+        '| logo:', logoFile ? 'File' : 'fallback');
       setRenderProgress(20);
 
       // ═══ PHASE 2: Batch variations ═══
