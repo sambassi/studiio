@@ -49,7 +49,7 @@ export default function AdminDashboard() {
         if (!statsRes.ok) throw new Error('Erreur lors du chargement des statistiques');
 
         const statsData = await statsRes.json();
-        setStats(statsData);
+        setStats({ totalUsers: statsData.totalUsers ?? 0, monthlyRevenue: statsData.monthlyRevenue ?? 0, activeSubscriptions: statsData.activeSubscriptions ?? 0, videosRendered: statsData.videosRendered ?? 0 });
 
         if (logsRes.ok) {
           const logsData = await logsRes.json();
