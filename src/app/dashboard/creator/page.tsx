@@ -7,7 +7,7 @@ import {
   ChevronRight,
   ChevronLeft,
   Upload,
-  Loader2,
+  Loader2
   Plus,
   X,
   Volume2,
@@ -1046,7 +1046,7 @@ export default function CreatorPage() {
             cards: cardItems.length > 0 ? cardItems : undefined,
             posterUrl: effectiveCharUrl,
             videoUrl: rushUrls[0] || null,
-            logoUrl: null,
+            logoUrl: effectiveLogoUrl,
             musicUrl: musicUrl || null,
             voiceUrl: voiceUrl || null,
             introDuration: 5,
