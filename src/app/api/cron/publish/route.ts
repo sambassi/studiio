@@ -289,7 +289,11 @@ async function publishToInstagram(
   const accessToken = account.access_token;
   const igAccountId = account.account_id;
 
+  console.log(`[CRON][IG] Starting Instagram publish. igAccountId=${igAccountId}, hasToken=${!!accessToken}, tokenPreview=${accessToken ? accessToken.substring(0, 15) + '...' : 'NULL'}`);
+  console.log(`[CRON][IG] Video URL: ${video.video_url?.substring(0, 100) || 'NULL'}`);
+
   if (!accessToken || !igAccountId) {
+    console.log(`[CRON][IG] FAIL: Missing credentials. token=${!!accessToken}, accountId=${!!igAccountId}`);
     return { success: false, error: 'Instagram credentials missing' };
   }
 
@@ -297,27 +301,34 @@ async function publishToInstagram(
 
   try {
     // Step 1: Create media container (Reels)
+    console.log(`[CRON][IG] Step 1: Creating media container for Reel...`);
+    const createBody = {
+      media_type: 'REELS',
+      video_url: video.video_url,
+      caption: fullCaption,
+      share_to_feed: true,
+      access_token: accessToken,
+    };
     const createRes = await fetch(
       `https://graph.facebook.com/v24.0/${igAccountId}/media`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          media_type: 'REELS',
-          video_url: video.video_url,
-          caption: fullCaption,
-          share_to_feed: true,
-          access_token: accessToken,
-        }),
+        body: JSON.stringify(createBody),
       }
     );
 
     const createData = await createRes.json();
+    console.log(`[CRON][IG] Step 1 response: status=${createRes.status}, data=${JSON.stringify(createData)}`);
+
     if (!createData.id) {
-      return { success: false, error: createData.error?.message || 'Failed to create media container' };
+      const errMsg = createData.error?.message || JSON.stringify(createData);
+      console.log(`[CRON][IG] FAIL at Step 1: ${errMsg}`);
+      return { success: false, error: `IG container creation failed: ${errMsg}` };
     }
 
     const containerId = createData.id;
+    console.log(`[CRON][IG] Container created: ${containerId}`);
 
     // Step 2: Poll until processing is complete (max 30 attempts for cron, 5s each = 150s)
     let status = 'IN_PROGRESS';
@@ -330,13 +341,16 @@ async function publishToInstagram(
       const statusData = await statusRes.json();
       status = statusData.status_code;
       attempts++;
+      console.log(`[CRON][IG] Step 2 poll #${attempts}: status=${status}`);
     }
 
     if (status !== 'FINISHED') {
-      return { success: false, error: `Instagram processing failed. Status: ${status}` };
+      console.log(`[CRON][IG] FAIL at Step 2: Processing not finished after ${attempts} polls. Status: ${status}`);
+      return { success: false, error: `Instagram processing failed after ${attempts} polls. Status: ${status}` };
     }
 
     // Step 3: Publish
+    console.log(`[CRON][IG] Step 3: Publishing container ${containerId}...`);
     const publishRes = await fetch(
       `https://graph.facebook.com/v24.0/${igAccountId}/media_publish`,
       {
@@ -350,7 +364,10 @@ async function publishToInstagram(
     );
 
     const publishData = await publishRes.json();
+    console.log(`[CRON][IG] Step 3 response: status=${publishRes.status}, data=${JSON.stringify(publishData)}`);
+
     if (publishData.id) {
+      console.log(`[CRON][IG] SUCCESS! Post ID: ${publishData.id}`);
       return {
         success: true,
         platformPostId: publishData.id,
@@ -358,8 +375,11 @@ async function publishToInstagram(
       };
     }
 
-    return { success: false, error: publishData.error?.message || 'Failed to publish' };
+    const errMsg = publishData.error?.message || JSON.stringify(publishData);
+    console.log(`[CRON][IG] FAIL at Step 3: ${errMsg}`);
+    return { success: false, error: `IG publish failed: ${errMsg}` };
   } catch (error) {
+    console.log(`[CRON][IG] EXCEPTION: ${error instanceof Error ? error.message : String(error)}`);
     return { success: false, error: error instanceof Error ? error.message : 'Instagram API error' };
   }
 }
