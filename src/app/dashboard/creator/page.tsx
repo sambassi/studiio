@@ -734,10 +734,11 @@ export default function CreatorPage() {
     console.log('[Creator] 🎵 Music uploaded:', file.name, (file.size / 1024).toFixed(1), 'KB, type:', file.type);
     setBackgroundMusic(file);
     backgroundMusicRef.current = file;
-    // Create blob URL IMMEDIATELY and store in ref — this string NEVER gets lost
     const blobUrl = URL.createObjectURL(file);
     musicBlobUrlRef.current = blobUrl;
-    console.log('[Creator] 🎵 Music blob URL stored in ref:', blobUrl.substring(0, 50));
+    // Store on window — IMPOSSIBLE to lose via any React mechanism
+    (window as any).__studiio_music = { file, blobUrl, name: file.name };
+    console.log('[Creator] 🎵 Music stored: state + ref + blobUrlRef + window.__studiio_music');
     setMusicName(file.name);
     if (musicPreviewUrl) URL.revokeObjectURL(musicPreviewUrl);
     if (musicAudioRef.current) {
@@ -745,7 +746,7 @@ export default function CreatorPage() {
       musicAudioRef.current = null;
     }
     setIsMusicPlaying(false);
-    setMusicPreviewUrl(blobUrl); // reuse same blob URL
+    setMusicPreviewUrl(blobUrl);
   };
 
   const handleVoiceUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -756,7 +757,8 @@ export default function CreatorPage() {
     voiceUploadFileRef.current = file;
     const blobUrl = URL.createObjectURL(file);
     voiceBlobUrlRef.current = blobUrl;
-    console.log('[Creator] 🎤 Voice blob URL stored in ref:', blobUrl.substring(0, 50));
+    (window as any).__studiio_voice = { file, blobUrl, name: file.name };
+    console.log('[Creator] 🎤 Voice stored: state + ref + blobUrlRef + window.__studiio_voice');
   };
 
   const handleGenerateVoice = async () => {
@@ -851,19 +853,21 @@ export default function CreatorPage() {
       console.log('[Creator] rushes with files:', rushesWithFiles.length, '/', videoRushes.length);
       console.log('[Creator] ═══════════════════════════════');
 
-      // USE REF BACKUPS if state is null (defensive against React state quirks)
-      const musicFile = backgroundMusic || backgroundMusicRef.current;
-      const voiceFile = voiceUploadFile || voiceUploadFileRef.current;
+      // RESOLVE FILES: state → ref → window (each level more indestructible)
+      const winMusic = (window as any).__studiio_music as { file: File; blobUrl: string; name: string } | undefined;
+      const winVoice = (window as any).__studiio_voice as { file: File; blobUrl: string; name: string } | undefined;
+      console.log('[Creator] window.__studiio_music:', winMusic ? `${winMusic.name} blob=${winMusic.blobUrl.substring(0,40)}` : 'UNDEFINED');
+      console.log('[Creator] window.__studiio_voice:', winVoice ? `${winVoice.name}` : 'UNDEFINED');
+
+      const musicFile = backgroundMusic || backgroundMusicRef.current || winMusic?.file || null;
+      const voiceFile = voiceUploadFile || voiceUploadFileRef.current || winVoice?.file || null;
       const logo = logoFile || logoFileRef.current;
-      if (!backgroundMusic && backgroundMusicRef.current) {
-        console.warn('[Creator] ⚠️ backgroundMusic STATE was null but REF has file! Using ref.');
-      }
-      if (!voiceUploadFile && voiceUploadFileRef.current) {
-        console.warn('[Creator] ⚠️ voiceUploadFile STATE was null but REF has file! Using ref.');
-      }
-      if (!logoFile && logoFileRef.current) {
-        console.warn('[Creator] ⚠️ logoFile STATE was null but REF has file! Using ref.');
-      }
+
+      if (musicFile) console.log('[Creator] ✅ Music file resolved:', musicFile.name, (musicFile.size/1024).toFixed(1) + 'KB');
+      else console.warn('[Creator] ❌ Music file NULL from all sources (state, ref, window)');
+
+      if (voiceFile) console.log('[Creator] ✅ Voice file resolved:', voiceFile.name);
+      else console.log('[Creator] Voice file NULL (may use TTS instead)');
 
       // ═══ PHASE 1: Upload files (0-20%) ═══
       setRenderStage('Upload des vidéos...');
@@ -934,17 +938,20 @@ export default function CreatorPage() {
       const effectiveCharUrl = charUrl || characterPreview || null;
       const effectiveLogoUrl = logo ? URL.createObjectURL(logo) : (logoPreview || logoUrl || null);
 
-      // RESOLVE MUSIC URL — priority: File → blobUrlRef → musicPreviewUrl → Supabase proxy
+      // RESOLVE MUSIC URL — priority: File → blobUrlRef → window → previewUrl → Supabase proxy
       let effectiveMusicUrl: string | null = null;
       if (musicFile) {
         effectiveMusicUrl = URL.createObjectURL(musicFile);
-        console.log('[Creator] Music source: File blob URL');
+        console.log('[Creator] Music URL: from File');
       } else if (musicBlobUrlRef.current) {
         effectiveMusicUrl = musicBlobUrlRef.current;
-        console.log('[Creator] Music source: blobUrlRef (File was null, using stored blob URL)');
+        console.log('[Creator] Music URL: from blobUrlRef');
+      } else if (winMusic?.blobUrl) {
+        effectiveMusicUrl = winMusic.blobUrl;
+        console.log('[Creator] Music URL: from window.__studiio_music.blobUrl');
       } else if (musicPreviewUrl) {
         effectiveMusicUrl = musicPreviewUrl;
-        console.log('[Creator] Music source: musicPreviewUrl state');
+        console.log('[Creator] Music URL: from musicPreviewUrl');
       } else if (musicUrl) {
         console.log('[Creator] Music source: fetching via proxy from Supabase...');
         try {
@@ -957,14 +964,17 @@ export default function CreatorPage() {
         } catch (e) { console.error('[Creator] Music proxy failed:', e); }
       }
 
-      // RESOLVE VOICE URL — priority: File → blobUrlRef → Supabase proxy
+      // RESOLVE VOICE URL — priority: File → blobUrlRef → window → Supabase proxy
       let effectiveVoiceUrl: string | null = null;
       if (actualVoiceFile) {
         effectiveVoiceUrl = URL.createObjectURL(actualVoiceFile);
-        console.log('[Creator] Voice source: File blob URL');
+        console.log('[Creator] Voice URL: from File');
       } else if (voiceBlobUrlRef.current) {
         effectiveVoiceUrl = voiceBlobUrlRef.current;
-        console.log('[Creator] Voice source: blobUrlRef');
+        console.log('[Creator] Voice URL: from blobUrlRef');
+      } else if (winVoice?.blobUrl) {
+        effectiveVoiceUrl = winVoice.blobUrl;
+        console.log('[Creator] Voice URL: from window.__studiio_voice.blobUrl');
       } else if (voiceUrl) {
         console.log('[Creator] Voice source: fetching via proxy from Supabase...');
         try {
