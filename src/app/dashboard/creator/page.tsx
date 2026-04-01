@@ -815,28 +815,8 @@ export default function CreatorPage() {
 
       // Generate Edge TTS voice if selected and no manual upload
       let actualVoiceFile = voiceUploadFile;
-      if (voiceMode === 'edge' && ttsText.trim() && !voiceUploadFile) {
-        setRenderStage('Génération de la voix off...');
-        setRenderProgress(16);
-        try {
-          // Reuse already-generated TTS blob if available (avoids re-synthesis which may fail)
-          let ttsBlob: Blob;
-      // TTS voice generation removed - user provides their own audio
+      // TTS voice generation block removed - user provides their own audio file
 
-            console.log('[Creator] Generating Edge TTS:', ttsText.substring(0, 80));
-        // synthesize call removed - TTS no longer used
-          }
-          if (ttsBlob.size > 100) {
-            actualVoiceFile = new File([ttsBlob], 'voiceover-tts.mp3', { type: ttsBlob.type || 'audio/mpeg' });
-            console.log('[Creator] TTS voice file ready:', (ttsBlob.size / 1024).toFixed(1), 'KB');
-          } else {
-            console.warn('[Creator] TTS blob too small, skipping voice:', ttsBlob.size, 'bytes');
-          }
-        } catch (ttsErr) {
-          console.error('[Creator] Edge TTS generation failed:', ttsErr);
-          showToast('Erreur génération voix off', 'error');
-        }
-      }
 
       setRenderStage('Upload des médias...');
       setRenderProgress(17);
