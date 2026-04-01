@@ -156,10 +156,6 @@ export default function CreatorPage() {
   // Music
   const [backgroundMusic, setBackgroundMusic] = useState<File | null>(null);
   const [musicName, setMusicName] = useState('');
-  const backgroundMusicRef = useRef<File | null>(null);
-  const musicBlobUrlRef = useRef<string | null>(null);
-  // NUCLEAR OPTION: store raw bytes in memory — ArrayBuffer cannot be GC'd while ref exists
-  const musicDataRef = useRef<{ buffer: ArrayBuffer; name: string; type: string } | null>(null);
 
   // Voice
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('none');
@@ -169,15 +165,11 @@ export default function CreatorPage() {
   const [generatedVoiceUrl, setGeneratedVoiceUrl] = useState<string | null>(null);
   const [generatedVoiceBlob, setGeneratedVoiceBlob] = useState<Blob | null>(null);
   const [voiceUploadFile, setVoiceUploadFile] = useState<File | null>(null);
-  const voiceUploadFileRef = useRef<File | null>(null);
-  const voiceBlobUrlRef = useRef<string | null>(null);
-  const voiceDataRef = useRef<{ buffer: ArrayBuffer; name: string; type: string } | null>(null);
   const [previewingVoice, setPreviewingVoice] = useState(false);
   const [previewAudio, setPreviewAudio] = useState<HTMLAudioElement | null>(null);
 
   // Logo
   const [logoFile, setLogoFile] = useState<File | null>(null);
-  const logoFileRef = useRef<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
@@ -731,45 +723,22 @@ export default function CreatorPage() {
   const handleMusicUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    console.log('[Creator] 🎵 MUSIC UPLOAD:', file.name, (file.size / 1024).toFixed(1), 'KB, type:', file.type);
-
-    // Read raw bytes into memory IMMEDIATELY — this cannot be lost
-    const reader = new FileReader();
-    reader.onload = () => {
-      musicDataRef.current = { buffer: reader.result as ArrayBuffer, name: file.name, type: file.type || 'audio/mpeg' };
-      console.log('[Creator] 🎵 Music bytes stored in musicDataRef:', (musicDataRef.current.buffer.byteLength / 1024).toFixed(1), 'KB');
-    };
-    reader.readAsArrayBuffer(file);
-
     setBackgroundMusic(file);
-    backgroundMusicRef.current = file;
-    const blobUrl = URL.createObjectURL(file);
-    musicBlobUrlRef.current = blobUrl;
-    (window as any).__studiio_music = { file, blobUrl, name: file.name };
     setMusicName(file.name);
+    // Create preview URL for playback
     if (musicPreviewUrl) URL.revokeObjectURL(musicPreviewUrl);
-    if (musicAudioRef.current) { musicAudioRef.current.pause(); musicAudioRef.current = null; }
+    if (musicAudioRef.current) {
+      musicAudioRef.current.pause();
+      musicAudioRef.current = null;
+    }
     setIsMusicPlaying(false);
-    setMusicPreviewUrl(blobUrl);
+    setMusicPreviewUrl(URL.createObjectURL(file));
   };
 
   const handleVoiceUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    console.log('[Creator] 🎤 VOICE UPLOAD:', file.name, (file.size / 1024).toFixed(1), 'KB, type:', file.type);
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      voiceDataRef.current = { buffer: reader.result as ArrayBuffer, name: file.name, type: file.type || 'audio/mpeg' };
-      console.log('[Creator] 🎤 Voice bytes stored in voiceDataRef:', (voiceDataRef.current.buffer.byteLength / 1024).toFixed(1), 'KB');
-    };
-    reader.readAsArrayBuffer(file);
-
     setVoiceUploadFile(file);
-    voiceUploadFileRef.current = file;
-    const blobUrl = URL.createObjectURL(file);
-    voiceBlobUrlRef.current = blobUrl;
-    (window as any).__studiio_voice = { file, blobUrl, name: file.name };
   };
 
   const handleGenerateVoice = async () => {
@@ -846,45 +815,6 @@ export default function CreatorPage() {
     setRenderStage('Initialisation...');
 
     try {
-      // ═══ RESOLVE FILES ═══
-      // musicDataRef contains raw ArrayBuffer bytes — the ONLY thing that cannot be lost
-      console.log('[Creator] ═══ EXPORT FILE RESOLUTION ═══');
-      console.log('[Creator] musicDataRef:', musicDataRef.current ? `${musicDataRef.current.name} (${(musicDataRef.current.buffer.byteLength/1024).toFixed(1)}KB)` : 'NULL');
-      console.log('[Creator] voiceDataRef:', voiceDataRef.current ? `${voiceDataRef.current.name} (${(voiceDataRef.current.buffer.byteLength/1024).toFixed(1)}KB)` : 'NULL');
-      console.log('[Creator] DOM input:', musicInputRef.current?.files?.[0]?.name || 'NULL');
-      console.log('[Creator] State:', backgroundMusic?.name || 'NULL');
-      console.log('[Creator] voiceMode:', voiceMode, '| ttsText:', ttsText.substring(0, 40));
-
-      // Reconstruct File from ArrayBuffer if needed
-      let musicFile: File | null = null;
-      if (musicDataRef.current) {
-        musicFile = new File([musicDataRef.current.buffer], musicDataRef.current.name, { type: musicDataRef.current.type });
-        console.log('[Creator] ✅ Music from musicDataRef (ArrayBuffer):', musicFile.name, (musicFile.size/1024).toFixed(1) + 'KB');
-      } else if (musicInputRef.current?.files?.[0]) {
-        musicFile = musicInputRef.current.files[0];
-        console.log('[Creator] ✅ Music from DOM input:', musicFile.name);
-      } else if (backgroundMusic) {
-        musicFile = backgroundMusic;
-        console.log('[Creator] ✅ Music from state:', musicFile.name);
-      } else if (backgroundMusicRef.current) {
-        musicFile = backgroundMusicRef.current;
-        console.log('[Creator] ✅ Music from ref');
-      } else {
-        console.warn('[Creator] ❌ NO MUSIC FILE from any source');
-      }
-
-      let voiceFile: File | null = null;
-      if (voiceDataRef.current) {
-        voiceFile = new File([voiceDataRef.current.buffer], voiceDataRef.current.name, { type: voiceDataRef.current.type });
-        console.log('[Creator] ✅ Voice from voiceDataRef:', voiceFile.name);
-      } else if (voiceInputRef.current?.files?.[0]) {
-        voiceFile = voiceInputRef.current.files[0];
-      } else if (voiceUploadFile) {
-        voiceFile = voiceUploadFile;
-      }
-
-      const logo = logoInputRef.current?.files?.[0] || logoFile || logoFileRef.current;
-
       // ═══ PHASE 1: Upload files (0-20%) ═══
       setRenderStage('Upload des vidéos...');
       const rushUrls: string[] = [];
@@ -895,8 +825,8 @@ export default function CreatorPage() {
       }
 
       // Generate Edge TTS voice if selected and no manual upload
-      let actualVoiceFile = voiceFile;
-      if (voiceMode === 'edge' && ttsText.trim() && !voiceFile) {
+      let actualVoiceFile = voiceUploadFile;
+      if (voiceMode === 'edge' && ttsText.trim() && !voiceUploadFile) {
         setRenderStage('Génération de la voix off...');
         setRenderProgress(16);
         try {
@@ -911,10 +841,7 @@ export default function CreatorPage() {
           }
           if (ttsBlob.size > 100) {
             actualVoiceFile = new File([ttsBlob], 'voiceover-tts.mp3', { type: ttsBlob.type || 'audio/mpeg' });
-            // Store TTS bytes in voiceDataRef for direct passing to composer
-            const ttsBuffer = await ttsBlob.arrayBuffer();
-            voiceDataRef.current = { buffer: ttsBuffer, name: 'voiceover-tts.mp3', type: ttsBlob.type || 'audio/mpeg' };
-            console.log('[Creator] TTS voice ready:', (ttsBlob.size / 1024).toFixed(1), 'KB → voiceDataRef stored');
+            console.log('[Creator] TTS voice file ready:', (ttsBlob.size / 1024).toFixed(1), 'KB');
           } else {
             console.warn('[Creator] TTS blob too small, skipping voice:', ttsBlob.size, 'bytes');
           }
@@ -944,59 +871,15 @@ export default function CreatorPage() {
       }
 
       const [musicUrl, charUrl, voiceUrl, logoUrl] = await Promise.all([
-        musicFile ? uploadFile(musicFile, 'music') : null,
+        backgroundMusic ? uploadFile(backgroundMusic, 'music') : null,
         charImageToUpload ? uploadFile(charImageToUpload, 'thumbnail') : null,
         actualVoiceFile ? uploadFile(actualVoiceFile, 'voice') : null,
-        logo ? uploadFile(logo, 'logo') : null,
+        logoFile ? uploadFile(logoFile, 'logo') : null,
       ]);
       console.log('[Creator] Upload results — music:', !!musicUrl, 'char:', !!charUrl, 'voice:', !!voiceUrl, 'logo:', !!logoUrl);
-
-      // CRITICAL: ALWAYS use blob URLs from original File objects for the composer.
-      // Supabase URLs cause CORS failures with decodeAudioData.
-      // Blob URLs are local, CORS-free, and GUARANTEED to work.
+      // Fallback: if charUrl is null but we have a characterPreview (blob/pexels URL), use it directly
       const effectiveCharUrl = charUrl || characterPreview || null;
-      const effectiveLogoUrl = logo ? URL.createObjectURL(logo) : (logoPreview || logoUrl || null);
-
-      // RESOLVE MUSIC URL
-      let effectiveMusicUrl: string | null = null;
-      if (musicFile) {
-        effectiveMusicUrl = URL.createObjectURL(musicFile);
-        console.log('[Creator] Music URL: blob from File');
-      } else if (musicUrl) {
-        console.log('[Creator] Music source: fetching via proxy from Supabase...');
-        try {
-          const proxyRes = await fetch(`/api/proxy-media?url=${encodeURIComponent(musicUrl)}`);
-          if (proxyRes.ok) {
-            const blob = await proxyRes.blob();
-            effectiveMusicUrl = URL.createObjectURL(blob);
-            console.log('[Creator] Music proxy blob:', (blob.size / 1024).toFixed(1), 'KB');
-          }
-        } catch (e) { console.error('[Creator] Music proxy failed:', e); }
-      }
-
-      // RESOLVE VOICE URL
-      let effectiveVoiceUrl: string | null = null;
-      if (actualVoiceFile) {
-        effectiveVoiceUrl = URL.createObjectURL(actualVoiceFile);
-        console.log('[Creator] Voice URL: blob from File');
-      } else if (voiceUrl) {
-        console.log('[Creator] Voice source: fetching via proxy from Supabase...');
-        try {
-          const proxyRes = await fetch(`/api/proxy-media?url=${encodeURIComponent(voiceUrl)}`);
-          if (proxyRes.ok) {
-            const blob = await proxyRes.blob();
-            effectiveVoiceUrl = URL.createObjectURL(blob);
-            console.log('[Creator] Voice proxy blob:', (blob.size / 1024).toFixed(1), 'KB');
-          }
-        } catch (e) { console.error('[Creator] Voice proxy failed:', e); }
-      }
-
-      console.log('[Creator] Composer URLs — music:', effectiveMusicUrl?.substring(0, 60) || 'NULL',
-        '| voice:', effectiveVoiceUrl?.substring(0, 60) || 'NULL',
-        '| logo:', effectiveLogoUrl?.substring(0, 60) || 'NULL');
-      console.log('[Creator] Sources — music:', musicFile ? 'File' : (musicPreviewUrl ? 'previewUrl' : (musicUrl ? 'proxy' : 'none')),
-        '| voice:', actualVoiceFile ? 'File' : (voiceUrl ? 'proxy' : 'none'),
-        '| logo:', logo ? 'File' : 'fallback');
+      const effectiveLogoUrl = logoUrl || logoPreview || null;
       setRenderProgress(20);
 
       // ═══ PHASE 2: Batch variations ═══
@@ -1066,7 +949,7 @@ export default function CreatorPage() {
             const { url } = await composeAndUpload({
               width: vidWidth,
               height: vidHeight,
-              fps: 24,
+              fps: 30,
               title: bTitle,
               subtitle: bSubtitle || undefined,
               salesPhrase: bPhrase || undefined,
@@ -1074,15 +957,12 @@ export default function CreatorPage() {
               posterUrl: effectiveCharUrl,
               videoUrl: rushUrl,
               logoUrl: effectiveLogoUrl,
-              musicUrl: effectiveMusicUrl || null,
-              voiceUrl: effectiveVoiceUrl || null,
-              // Pass raw audio bytes directly — bypasses ALL URL/fetch/CORS issues
-              musicData: musicDataRef.current?.buffer || null,
-              voiceData: voiceDataRef.current?.buffer || null,
-              introDuration: 4,
-              cardsDuration: cardItems.length > 0 ? 6 : 0,
-              videoDuration: 10,
-              ctaDuration: 4,
+              musicUrl: musicUrl || null,
+              voiceUrl: voiceUrl || null,
+              introDuration: 5,
+              cardsDuration: cardItems.length > 0 ? 8 : 0,
+              videoDuration: 12,
+              ctaDuration: 5,
               accentColor: branding.accentColor || '#D91CD2',
               ctaText: branding.ctaText || 'CHAT POUR PLUS D\'INFOS',
               ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
@@ -1112,7 +992,7 @@ export default function CreatorPage() {
                 scheduled_date: scheduledDate, scheduled_time: '12:00', status: 'draft',
                 metadata: {
                   type: 'creator', subtitle: bSubtitle, salesPhrase: bPhrase, objective, mode,
-                  rushUrls, musicUrl: effectiveMusicUrl || null, voiceUrl: effectiveVoiceUrl || null, characterUrl: effectiveCharUrl || null, logoUrl: effectiveLogoUrl || null,
+                  rushUrls, musicUrl: musicUrl || null, characterUrl: effectiveCharUrl || null,
                   renderedVideoUrl: renderedVideoUrl || null, videoUrl: renderedVideoUrl || rushUrl || null,
                   voiceMode, ttsVoice: voiceMode === 'edge' ? ttsVoice : null, ttsText: voiceMode === 'edge' ? ttsText : null,
                   textCards: textCards.filter((c) => c.text.trim()).map((c) => ({ text: c.text, color: c.color })),
@@ -1137,8 +1017,8 @@ export default function CreatorPage() {
                 metadata: {
                   title: bTitle, subtitle: bSubtitle, salesPhrase: bPhrase, objective,
                   posterPhotoUrl: effectiveCharUrl || null, characterUrl: effectiveCharUrl || null,
-                  rushUrls, musicUrl: effectiveMusicUrl || null, voiceUrl: effectiveVoiceUrl || null,
-                  renderedVideoUrl: renderedVideoUrl || null, logoUrl: effectiveLogoUrl || null,
+                  rushUrls, musicUrl: musicUrl || null, voiceUrl: voiceUrl || null,
+                  renderedVideoUrl: renderedVideoUrl || null,
                 },
               }),
             });
@@ -1159,22 +1039,20 @@ export default function CreatorPage() {
           const { blob } = await composeAndUpload({
             width: vidWidth,
             height: vidHeight,
-            fps: 24,
+            fps: 30,
             title: title || 'Nouvelle vidéo',
             subtitle: subtitle || undefined,
             salesPhrase: salesPhrase || undefined,
             cards: cardItems.length > 0 ? cardItems : undefined,
             posterUrl: effectiveCharUrl,
             videoUrl: rushUrls[0] || null,
-            logoUrl: effectiveLogoUrl,
-            musicUrl: effectiveMusicUrl || null,
-            voiceUrl: effectiveVoiceUrl || null,
-            musicData: musicDataRef.current?.buffer || null,
-            voiceData: voiceDataRef.current?.buffer || null,
-            introDuration: 4,
-            cardsDuration: cardItems.length > 0 ? 6 : 0,
-            videoDuration: 10,
-            ctaDuration: 4,
+            logoUrl: null,
+            musicUrl: musicUrl || null,
+            voiceUrl: voiceUrl || null,
+            introDuration: 5,
+            cardsDuration: cardItems.length > 0 ? 8 : 0,
+            videoDuration: 12,
+            ctaDuration: 5,
             accentColor: branding.accentColor || '#D91CD2',
             ctaText: branding.ctaText || 'CHAT POUR PLUS D\'INFOS',
             ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
@@ -1184,8 +1062,7 @@ export default function CreatorPage() {
               setRenderStage(stage);
             },
           });
-          const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
-          downloadBlob(blob, `${(title || 'video').replace(/\s+/g, '_')}.${ext}`);
+          downloadBlob(blob, `${(title || 'video').replace(/\s+/g, '_')}.webm`);
         } catch (exportErr) {
           console.error('[Composer] Export error:', exportErr);
           showToast('Erreur lors du montage vidéo. Veuillez réessayer.');
@@ -1241,9 +1118,7 @@ export default function CreatorPage() {
       <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
         const file = e.target.files?.[0];
         if (file) {
-          console.log('[Creator] Logo uploaded:', file.name, (file.size / 1024).toFixed(1), 'KB');
           setLogoFile(file);
-          logoFileRef.current = file; // ref backup
           if (logoPreview) URL.revokeObjectURL(logoPreview);
           setLogoPreview(URL.createObjectURL(file));
         }

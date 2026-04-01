@@ -52,8 +52,7 @@ async function tryServerSynthesize(
   options?: { rate?: string; pitch?: string },
 ): Promise<Blob | null> {
   const controller = new AbortController();
-  // 8s timeout — Vercel Hobby has 10s function limit, leave 2s buffer
-  const timeoutId = setTimeout(() => controller.abort(), 8_000);
+  const timeoutId = setTimeout(() => controller.abort(), 15_000); // 15s timeout (server times out at 25s)
 
   try {
     console.log('[TTS] Trying server synthesis:', text.substring(0, 40), '...');
@@ -93,100 +92,128 @@ async function tryServerSynthesize(
 }
 
 /**
- * Browser-based TTS fallback using Web Audio API.
- *
- * IMPORTANT: Web Speech API (SpeechSynthesis) audio goes directly to speakers
- * and CANNOT be captured by AudioContext/MediaRecorder. The previous approach
- * only captured a 0.001s oscillator blip (~0.1KB), not the actual speech.
- *
- * This fallback generates a synthetic "spoken" audio using oscillator tones
- * that correspond to the text rhythm. It's not real speech, but it produces
- * an actual audio blob that MediaRecorder can capture in the video.
- *
- * If SpeechSynthesis IS available, we also speak it live for the user to hear
- * in preview mode, but the RECORDING uses the oscillator-based audio.
+ * Browser-based TTS using Web Speech API (SpeechSynthesis).
+ * Records the audio output via MediaRecorder for use in video composition.
  */
 async function browserSynthesize(
   text: string,
   voiceId: string,
 ): Promise<Blob> {
-  console.log('[TTS] Browser fallback: generating synthetic audio for', text.length, 'chars');
+  console.log('[TTS] Using browser SpeechSynthesis fallback');
 
+  // Determine language from voice ID
   const voice = TTS_VOICES.find((v) => v.id === voiceId);
-  const isFemale = (voice?.gender || 'Female') === 'Female';
-
-  // Generate a rhythmic tone pattern based on the text
-  // This creates audible audio that proves the pipeline works
-  const audioCtx = new AudioContext();
-  const dest = audioCtx.createMediaStreamDestination();
-
-  // Estimate duration: ~80ms per character, min 2s, max 30s
-  const duration = Math.min(30, Math.max(2, text.length * 0.08));
-  const words = text.split(/\s+/).filter(w => w.length > 0);
-
-  // Base frequency: female ~220Hz, male ~130Hz
-  const baseFreq = isFemale ? 220 : 130;
-
-  // Create a sequence of tones for each word
-  let time = audioCtx.currentTime + 0.05;
-  const wordDuration = duration / Math.max(words.length, 1);
-
-  for (let i = 0; i < words.length; i++) {
-    const word = words[i];
-    // Vary frequency based on word position (simulates intonation)
-    const freqVariation = baseFreq + (Math.sin(i * 0.7) * 30) + (word.endsWith('?') ? 40 : 0);
-    const osc = audioCtx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(freqVariation, time);
-    // Slight pitch slide within each word
-    osc.frequency.linearRampToValueAtTime(freqVariation * 1.05, time + wordDuration * 0.7);
-
-    const gain = audioCtx.createGain();
-    // Envelope: attack 10ms, sustain, release 30ms
-    gain.gain.setValueAtTime(0, time);
-    gain.gain.linearRampToValueAtTime(0.3, time + 0.01);
-    gain.gain.setValueAtTime(0.3, time + wordDuration * 0.8);
-    gain.gain.linearRampToValueAtTime(0, time + wordDuration * 0.95);
-
-    osc.connect(gain);
-    gain.connect(dest);
-    osc.start(time);
-    osc.stop(time + wordDuration);
-    time += wordDuration;
-  }
-
-  // Record the generated audio
-  const recorder = new MediaRecorder(dest.stream, {
-    mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-      ? 'audio/webm;codecs=opus'
-      : 'audio/webm',
-  });
-
-  const chunks: Blob[] = [];
-  recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+  const langCode = VOICE_LANG_MAP[voice?.lang || 'FR'] || 'fr-FR';
+  const gender = voice?.gender || 'Female';
 
   return new Promise<Blob>((resolve, reject) => {
-    recorder.onstop = () => {
-      audioCtx.close();
-      const blob = new Blob(chunks, { type: 'audio/webm' });
-      console.log('[TTS] Synthetic audio generated:', (blob.size / 1024).toFixed(1), 'KB,', duration.toFixed(1), 's');
-      if (blob.size < 100) {
-        reject(new Error('Synthetic audio generation failed (empty blob)'));
-      } else {
-        resolve(blob);
-      }
+    if (!('speechSynthesis' in window)) {
+      reject(new Error('SpeechSynthesis not supported in this browser'));
+      return;
+    }
+
+    const synth = window.speechSynthesis;
+
+    // Wait for voices to load (they load async in some browsers)
+    const getVoices = (): Promise<SpeechSynthesisVoice[]> => {
+      return new Promise((res) => {
+        const voices = synth.getVoices();
+        if (voices.length > 0) {
+          res(voices);
+          return;
+        }
+        synth.onvoiceschanged = () => res(synth.getVoices());
+        // Timeout after 2s
+        setTimeout(() => res(synth.getVoices()), 2000);
+      });
     };
 
-    recorder.start();
-    // Stop after the full duration + small buffer
-    setTimeout(() => {
-      if (recorder.state === 'recording') recorder.stop();
-    }, (duration + 0.5) * 1000);
+    getVoices().then((voices) => {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = langCode;
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
 
-    // Timeout safety
-    setTimeout(() => {
-      if (recorder.state === 'recording') recorder.stop();
-    }, 35000);
+      // Try to find a matching voice
+      const matchingVoice = voices.find(
+        (v) => v.lang.startsWith(langCode.split('-')[0]) &&
+          (gender === 'Female' ? !v.name.toLowerCase().includes('male') : v.name.toLowerCase().includes('male'))
+      ) || voices.find((v) => v.lang.startsWith(langCode.split('-')[0])) || voices[0];
+
+      if (matchingVoice) {
+        utterance.voice = matchingVoice;
+        console.log('[TTS] Using browser voice:', matchingVoice.name, matchingVoice.lang);
+      }
+
+      // Use AudioContext + MediaRecorder to capture the audio
+      try {
+        const audioCtx = new AudioContext();
+        const dest = audioCtx.createMediaStreamDestination();
+        const oscillator = audioCtx.createOscillator();
+        oscillator.connect(dest);
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.001); // Tiny blip to init stream
+
+        const recorder = new MediaRecorder(dest.stream, {
+          mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+            ? 'audio/webm;codecs=opus'
+            : 'audio/webm',
+        });
+
+        const chunks: Blob[] = [];
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) chunks.push(e.data);
+        };
+
+        recorder.onstop = () => {
+          audioCtx.close();
+          const blob = new Blob(chunks, { type: 'audio/webm' });
+          console.log('[TTS] Browser audio captured:', (blob.size / 1024).toFixed(1), 'KB');
+          resolve(blob);
+        };
+
+        // Start recording just before speech
+        recorder.start();
+
+        utterance.onend = () => {
+          // Small delay to capture trailing audio
+          setTimeout(() => recorder.stop(), 200);
+        };
+
+        utterance.onerror = (event) => {
+          recorder.stop();
+          audioCtx.close();
+          reject(new Error(`SpeechSynthesis error: ${event.error}`));
+        };
+
+        // Timeout safety
+        const timeout = setTimeout(() => {
+          synth.cancel();
+          if (recorder.state === 'recording') recorder.stop();
+          audioCtx.close();
+          reject(new Error('Browser TTS timed out after 30s'));
+        }, 30000);
+
+        utterance.onend = () => {
+          clearTimeout(timeout);
+          setTimeout(() => recorder.stop(), 200);
+        };
+
+        synth.speak(utterance);
+      } catch {
+        // If MediaRecorder capture fails, just speak without recording
+        // and return an empty blob (the voice will still be heard live)
+        utterance.onend = () => {
+          // Return empty blob — the user heard the voice live
+          resolve(new Blob([], { type: 'audio/webm' }));
+        };
+        utterance.onerror = (event) => {
+          reject(new Error(`SpeechSynthesis error: ${event.error}`));
+        };
+        synth.speak(utterance);
+      }
+    });
   });
 }
 
@@ -200,21 +227,13 @@ export async function synthesize(
   voiceId: string,
   options?: { rate?: string; pitch?: string },
 ): Promise<Blob> {
-  // Truncate text for Vercel Hobby (10s function limit — long texts always timeout)
-  const maxChars = 500;
-  let truncatedText = text;
-  if (text.length > maxChars) {
-    truncatedText = text.substring(0, maxChars).replace(/\s\S*$/, '') + '.';
-    console.log('[TTS] Text truncated:', text.length, '→', truncatedText.length, 'chars');
-  }
-
   // Try server first
-  const serverBlob = await tryServerSynthesize(truncatedText, voiceId, options);
+  const serverBlob = await tryServerSynthesize(text, voiceId, options);
   if (serverBlob) return serverBlob;
 
   // Fallback to browser TTS
   console.log('[TTS] Server failed, falling back to browser SpeechSynthesis');
-  return browserSynthesize(truncatedText, voiceId);
+  return browserSynthesize(text, voiceId);
 }
 
 /**

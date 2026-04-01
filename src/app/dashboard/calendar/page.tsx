@@ -131,9 +131,6 @@ export default function CalendarPage() {
   const [aiMusicFile, setAiMusicFile] = useState<File | null>(null);
   const [aiPhotoAffiche, setAiPhotoAffiche] = useState(false);
 
-  // Connected social accounts
-  const [connectedPlatforms, setConnectedPlatforms] = useState<Set<string>>(new Set());
-
   // Drag & drop state
   const [draggedPost, setDraggedPost] = useState<Post | null>(null);
   const [dragOverDay, setDragOverDay] = useState<number | null>(null);
@@ -143,15 +140,6 @@ export default function CalendarPage() {
   // Bulk date change
   const [showBulkDateModal, setShowBulkDateModal] = useState(false);
   const [bulkNewDate, setBulkNewDate] = useState('');
-
-  // Post audio (music + voiceover) — edit modal
-  const [editMusicFile, setEditMusicFile] = useState<File | null>(null);
-  const [editVoiceFile, setEditVoiceFile] = useState<File | null>(null);
-  const [editMusicUrl, setEditMusicUrl] = useState<string | null>(null);
-  const [editVoiceUrl, setEditVoiceUrl] = useState<string | null>(null);
-  const [uploadingAudio, setUploadingAudio] = useState(false);
-  const editMusicInputRef = useRef<HTMLInputElement>(null);
-  const editVoiceInputRef = useRef<HTMLInputElement>(null);
 
   // Full preview modal
   const [showFullPreview, setShowFullPreview] = useState(false);
@@ -204,23 +192,6 @@ export default function CalendarPage() {
 
   useEffect(() => {
     fetchPosts();
-    // Fetch connected social platforms
-    fetch('/api/social/status')
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (data?.success && data.platforms) {
-          const connected = new Set<string>();
-          Object.entries(data.platforms).forEach(([platform, info]: [string, any]) => {
-            if (info.connected) {
-              // Map API platform names to display names used in the calendar
-              const displayName = platform === 'youtube' ? 'YouTube' : platform === 'tiktok' ? 'TikTok' : platform.charAt(0).toUpperCase() + platform.slice(1);
-              connected.add(displayName);
-            }
-          });
-          setConnectedPlatforms(connected);
-        }
-      })
-      .catch(() => {});
   }, [fetchPosts]);
 
   // Stats
@@ -265,67 +236,9 @@ export default function CalendarPage() {
       setSelectedPost(target);
       setEditFormData({ ...target });
       setEditTab(target.status as 'draft' | 'scheduled' | 'published');
-      // Load existing audio URLs from metadata
-      setEditMusicUrl(target.metadata?.musicUrl || null);
-      setEditVoiceUrl(target.metadata?.voiceUrl || null);
-      setEditMusicFile(null);
-      setEditVoiceFile(null);
       setShowEditModal(true);
       setShowPreviewModal(false);
     }
-  };
-
-  const handleUploadAudioFile = async (file: File, purpose: 'music' | 'voice'): Promise<string | null> => {
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('purpose', purpose);
-      const res = await fetch('/api/upload/media', { method: 'POST', body: formData });
-      if (res.status === 413) {
-        console.warn('[Calendar] Audio upload 413 — file too large');
-        return null;
-      }
-      const data = await res.json();
-      return data.success ? data.file.url : null;
-    } catch { return null; }
-  };
-
-  const handleSaveAudio = async () => {
-    setUploadingAudio(true);
-    try {
-      let newMusicUrl = editMusicUrl;
-      let newVoiceUrl = editVoiceUrl;
-
-      if (editMusicFile) {
-        const url = await handleUploadAudioFile(editMusicFile, 'music');
-        if (url) newMusicUrl = url;
-      }
-      if (editVoiceFile) {
-        const url = await handleUploadAudioFile(editVoiceFile, 'voice');
-        if (url) newVoiceUrl = url;
-      }
-
-      // Update post metadata with audio URLs
-      const updatedMetadata = {
-        ...(editFormData.metadata || {}),
-        musicUrl: newMusicUrl,
-        voiceUrl: newVoiceUrl,
-      };
-
-      await fetch('/api/posts', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...editFormData, metadata: updatedMetadata }),
-      });
-
-      setEditMusicUrl(newMusicUrl);
-      setEditVoiceUrl(newVoiceUrl);
-      setEditMusicFile(null);
-      setEditVoiceFile(null);
-      await fetchPosts();
-      console.log('[Calendar] Audio saved — music:', !!newMusicUrl, 'voice:', !!newVoiceUrl);
-    } catch (e) { console.error('[Calendar] Audio save error:', e); }
-    finally { setUploadingAudio(false); }
   };
 
   const handleDuplicatePost = async (post?: Post) => {
@@ -448,7 +361,7 @@ export default function CalendarPage() {
         if (data.success) await fetchPosts();
       }
     } catch (error) { console.error('Error saving:', error); }
-    finally { setSaving(false); setShowEditModal(false); setEditFormData({}); setEditMusicFile(null); setEditVoiceFile(null); }
+    finally { setSaving(false); setShowEditModal(false); setEditFormData({}); }
   };
 
   // Drag & drop: move post to a new date
@@ -604,51 +517,11 @@ export default function CalendarPage() {
   const handlePublishPost = async (post: Post) => {
     setSaving(true);
     try {
-      // If the post has platforms and a rendered video, publish to social networks
-      if (post.platforms.length > 0 && (post.media_url || post.metadata?.renderedVideoUrl)) {
-        // First, find or create the video record for this post
-        // The /api/social/publish expects a videoId, so we use the post ID directly
-        const publishRes = await fetch('/api/social/publish', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            videoId: post.id, // Use post ID — the publish API will look up the video
-            platforms: post.platforms.map(p => p.toLowerCase()),
-            caption: post.caption,
-            hashtags: post.caption?.match(/#\w+/g) || [],
-            scheduledPostId: post.id,
-          }),
-        });
-
-        const publishData = await publishRes.json();
-
-        if (publishData.success) {
-          // Update post status locally
-          await fetch('/api/posts', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...post, status: 'published' }),
-          });
-        } else {
-          // Even if social publish partially failed, mark as published if at least some succeeded
-          const anySuccess = publishData.results?.some((r: any) => r.success);
-          if (anySuccess) {
-            await fetch('/api/posts', {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ ...post, status: 'published' }),
-            });
-          }
-          console.warn('Social publish results:', publishData.results);
-        }
-      } else {
-        // No platforms selected — just update post status
-        await fetch('/api/posts', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...post, status: 'published' }),
-        });
-      }
+      await fetch('/api/posts', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...post, status: 'published' }),
+      });
       await fetchPosts();
       setShowFullPreview(false);
     } catch (error) { console.error('Error publishing:', error); }
@@ -712,8 +585,7 @@ export default function CalendarPage() {
     if (meta?.renderedVideoUrl) {
       const link = document.createElement('a');
       link.href = meta.renderedVideoUrl;
-      const dlExt = meta.renderedVideoUrl.includes('.mp4') ? 'mp4' : 'webm';
-      link.download = `${(post.title || 'video').replace(/\s+/g, '_')}.${dlExt}`;
+      link.download = `${(post.title || 'video').replace(/\s+/g, '_')}.webm`;
       link.target = '_blank';
       document.body.appendChild(link);
       link.click();
@@ -1479,35 +1351,6 @@ export default function CalendarPage() {
                 <Clock className="w-3 h-3" />
                 {selectedPost.scheduled_date} a {selectedPost.scheduled_time}
               </div>
-              {/* Audio players — music and voiceover */}
-              {(() => {
-                const sMusicUrl = spMeta?.musicUrl as string | undefined;
-                const sVoiceUrl = spMeta?.voiceUrl as string | undefined;
-                if (sMusicUrl || sVoiceUrl) return (
-                <div className="mt-3 space-y-2">
-                  {sMusicUrl && (
-                    <div className="flex items-center gap-2 bg-gray-800 rounded-lg p-2">
-                      <Music size={14} className="text-purple-400 flex-shrink-0" />
-                      <span className="text-xs text-gray-400 flex-shrink-0">Musique</span>
-                      <audio src={sMusicUrl} controls className="flex-1 h-8" style={{ minWidth: 0 }} />
-                    </div>
-                  )}
-                  {sVoiceUrl && (
-                    <div className="flex items-center gap-2 bg-gray-800 rounded-lg p-2">
-                      <Mic size={14} className="text-pink-400 flex-shrink-0" />
-                      <span className="text-xs text-gray-400 flex-shrink-0">Voix-off</span>
-                      <audio src={sVoiceUrl} controls className="flex-1 h-8" style={{ minWidth: 0 }} />
-                    </div>
-                  )}
-                </div>
-                );
-                return null;
-              })()}
-              {!spMeta?.musicUrl && !spMeta?.voiceUrl && (
-                <p className="mt-2 text-xs text-amber-400/70 flex items-center gap-1">
-                  <Volume2 size={12} /> Pas d&apos;audio — cliquez Modifier pour ajouter musique/voix-off
-                </p>
-              )}
             </div>
             <div className="flex gap-3">
               <Button className="flex-1 bg-studiio-primary text-white" onClick={() => handleEditPost()}>
@@ -1561,39 +1404,19 @@ export default function CalendarPage() {
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 text-sm" placeholder="Décrivez votre post..." />
             </div>
             <div>
-              <label className="block text-sm font-medium text-white mb-2">Réseaux sociaux</label>
+              <label className="block text-sm font-medium text-white mb-2">Reseaux sociaux</label>
               <div className="flex flex-wrap gap-2">
-                {['Instagram', 'TikTok', 'Facebook', 'YouTube'].map((p) => {
-                  const isConnected = connectedPlatforms.has(p);
-                  const isSelected = editFormData.platforms?.includes(p);
-                  return (
-                    <button key={p} onClick={() => {
-                      const pls = editFormData.platforms || [];
-                      setEditFormData({ ...editFormData, platforms: pls.includes(p) ? pls.filter((x) => x !== p) : [...pls, p] });
-                    }}
-                      className={`px-3 py-2 rounded-lg text-sm font-medium transition relative ${
-                        isSelected ? `${platformColors[p]} text-white` : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                      }`}
-                    >
-                      {p}
-                      {isConnected && (
-                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-500 rounded-full border border-gray-900" />
-                      )}
-                    </button>
-                  );
-                })}
+                {['Instagram', 'TikTok', 'Facebook', 'YouTube'].map((p) => (
+                  <button key={p} onClick={() => {
+                    const pls = editFormData.platforms || [];
+                    setEditFormData({ ...editFormData, platforms: pls.includes(p) ? pls.filter((x) => x !== p) : [...pls, p] });
+                  }}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                      editFormData.platforms?.includes(p) ? `${platformColors[p]} text-white` : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                    }`}
+                  >{p}</button>
+                ))}
               </div>
-              {connectedPlatforms.size > 0 && (
-                <p className="text-xs text-gray-500 mt-1">
-                  <span className="inline-block w-2 h-2 bg-green-500 rounded-full mr-1" />
-                  = compte connecté
-                </p>
-              )}
-              {connectedPlatforms.size === 0 && (
-                <p className="text-xs text-amber-400 mt-1">
-                  Aucun réseau connecté — <a href="/dashboard/social" className="underline hover:text-amber-300">connectez vos comptes</a>
-                </p>
-              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-white mb-2">Media</label>
@@ -1605,69 +1428,6 @@ export default function CalendarPage() {
                 )}
               </div>
             </div>
-            {/* ═══ AUDIO: Musique + Voix-off ═══ */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="flex items-center gap-1.5 text-sm font-medium text-white mb-2">
-                  <Music size={14} className="text-purple-400" /> Musique
-                </label>
-                <input ref={editMusicInputRef} type="file" accept="audio/*" className="hidden"
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) setEditMusicFile(f); }} />
-                {editMusicFile ? (
-                  <div className="bg-gray-800 rounded-lg p-2.5 flex items-center gap-2">
-                    <Music size={14} className="text-purple-400 flex-shrink-0" />
-                    <span className="text-xs text-white truncate flex-1">{editMusicFile.name}</span>
-                    <button onClick={() => setEditMusicFile(null)} className="text-gray-500 hover:text-red-400"><Trash2 size={12} /></button>
-                  </div>
-                ) : editMusicUrl ? (
-                  <div className="bg-gray-800 rounded-lg p-2.5 flex items-center gap-2">
-                    <Volume2 size={14} className="text-green-400 flex-shrink-0" />
-                    <span className="text-xs text-green-400 flex-1">Musique ajoutée</span>
-                    <button onClick={() => { setEditMusicUrl(null); }} className="text-gray-500 hover:text-red-400 text-xs">Retirer</button>
-                  </div>
-                ) : (
-                  <button onClick={() => editMusicInputRef.current?.click()}
-                    className="w-full border border-dashed border-gray-700 rounded-lg p-3 text-center text-gray-500 hover:border-purple-500 hover:text-gray-400 transition text-xs">
-                    <Upload size={14} className="mx-auto mb-1" /> MP3, WAV
-                  </button>
-                )}
-              </div>
-              <div>
-                <label className="flex items-center gap-1.5 text-sm font-medium text-white mb-2">
-                  <Mic size={14} className="text-pink-400" /> Voix-off
-                </label>
-                <input ref={editVoiceInputRef} type="file" accept="audio/*" className="hidden"
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) setEditVoiceFile(f); }} />
-                {editVoiceFile ? (
-                  <div className="bg-gray-800 rounded-lg p-2.5 flex items-center gap-2">
-                    <Mic size={14} className="text-pink-400 flex-shrink-0" />
-                    <span className="text-xs text-white truncate flex-1">{editVoiceFile.name}</span>
-                    <button onClick={() => setEditVoiceFile(null)} className="text-gray-500 hover:text-red-400"><Trash2 size={12} /></button>
-                  </div>
-                ) : editVoiceUrl ? (
-                  <div className="bg-gray-800 rounded-lg p-2.5 flex items-center gap-2">
-                    <Volume2 size={14} className="text-green-400 flex-shrink-0" />
-                    <span className="text-xs text-green-400 flex-1">Voix-off ajoutée</span>
-                    <button onClick={() => { setEditVoiceUrl(null); }} className="text-gray-500 hover:text-red-400 text-xs">Retirer</button>
-                  </div>
-                ) : (
-                  <button onClick={() => editVoiceInputRef.current?.click()}
-                    className="w-full border border-dashed border-gray-700 rounded-lg p-3 text-center text-gray-500 hover:border-purple-500 hover:text-gray-400 transition text-xs">
-                    <Upload size={14} className="mx-auto mb-1" /> MP3, WAV
-                  </button>
-                )}
-              </div>
-              {(editMusicFile || editVoiceFile) && (
-                <div className="col-span-2">
-                  <button onClick={handleSaveAudio} disabled={uploadingAudio}
-                    className="w-full py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded-lg text-xs font-medium text-white transition flex items-center justify-center gap-1.5">
-                    {uploadingAudio ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                    {uploadingAudio ? 'Upload en cours...' : 'Sauvegarder audio'}
-                  </button>
-                </div>
-              )}
-            </div>
-
             <div>
               <label className="block text-sm font-medium text-white mb-2">Format</label>
               <div className="flex gap-2">

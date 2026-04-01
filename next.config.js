@@ -7,19 +7,6 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  // COOP/COEP for FFmpeg.wasm SharedArrayBuffer
-  // credentialless is less restrictive than require-corp — doesn't block external resources
-  async headers() {
-    return [
-      {
-        source: '/dashboard/:path*',
-        headers: [
-          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
-          { key: 'Cross-Origin-Embedder-Policy', value: 'credentialless' },
-        ],
-      },
-    ];
-  },
   images: {
     remotePatterns: [
       {

@@ -54,36 +54,20 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<a
     }
 
     const body = await req.json();
-
-    // Only include valid columns — reject unknown fields that could cause Supabase errors
-    const validFields: Record<string, unknown> = {
-      user_id: session.user.id,
-      title: body.title || 'Untitled',
-      format: body.format || 'reel',
-      type: body.type || 'creator',
-      status: body.status || 'draft',
-      video_url: body.video_url || null,
-      thumbnail_url: body.thumbnail_url || null,
-      metadata: body.metadata || {},
-    };
-
     const { data, error } = await supabase
       .from('videos')
-      .insert(validFields)
+      .insert({
+        ...body,
+        user_id: session.user.id,
+        status: body.status || 'draft',
+      })
       .select()
       .single();
 
-    if (error) {
-      console.error('Video insert error:', error.message, error.details, error.hint);
-      return NextResponse.json(
-        { success: false, error: `Failed to create video: ${error.message}` },
-        { status: 500 }
-      );
-    }
+    if (error) throw error;
 
     return NextResponse.json({ success: true, data });
   } catch (error) {
-    console.error('Video POST error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to create video' },
       { status: 500 }

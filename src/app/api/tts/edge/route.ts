@@ -5,8 +5,8 @@ import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 // Accept all Edge TTS neural voices (including Multilingual variants)
 const VALID_VOICE_PATTERN = /^[a-z]{2}-[A-Z]{2}-\w+Neural$/;
 
-// Timeout for TTS synthesis — Vercel Hobby limit is 10s, keep under that
-const TTS_TIMEOUT_MS = 8_000;
+// Timeout for TTS synthesis (25 seconds — Vercel serverless limit is 60s on Pro, 10s on Hobby)
+const TTS_TIMEOUT_MS = 25_000;
 
 // POST /api/tts/edge - Synthesize speech from text
 export async function POST(req: NextRequest) {
@@ -101,17 +101,17 @@ async function synthesizeTTS(
     const chunks: Buffer[] = [];
 
     await new Promise<void>((resolve, reject) => {
-      // Initial timeout: 5s for first data (Vercel Hobby has 10s total)
+      // Initial timeout: wait up to 15s for first data
       let timeout = setTimeout(() => {
         reject(new Error('Stream timeout — no data received'));
-      }, 5_000);
+      }, 15_000);
 
       audioStream.on('data', (chunk: Buffer) => {
-        // Reset timeout for each chunk (3s between chunks)
+        // Reset timeout for each chunk (10s between chunks)
         clearTimeout(timeout);
         timeout = setTimeout(() => {
           reject(new Error('Stream timeout — no new data after chunk'));
-        }, 3_000);
+        }, 10_000);
         chunks.push(chunk);
       });
       audioStream.on('end', () => {
