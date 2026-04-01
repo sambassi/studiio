@@ -24,6 +24,7 @@
     "react-dom": "^18.2.0",
     "remotion": "^4.0.441",
     "stripe": "^15.0.0",
+    "webm-muxer": "^5.1.4",
     "zod": "^3.22.0"
   },
   "devDependencies": {
