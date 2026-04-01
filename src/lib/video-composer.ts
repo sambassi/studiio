@@ -30,7 +30,6 @@ export interface ComposerOptions {
   logoUrl?: string | null;
   musicUrl?: string | null;
   voiceUrl?: string | null;
-  // Raw audio bytes — bypasses ALL URL/fetch/CORS issues
   musicData?: ArrayBuffer | null;
   voiceData?: ArrayBuffer | null;
   introDuration?: number;
@@ -127,44 +126,17 @@ function loadVideo(src: string): Promise<HTMLVideoElement> {
  * 4. GUARANTEED to be captured by MediaStreamDestinationNode → MediaRecorder
  */
 async function loadAudioBuffer(audioCtx: AudioContext, src: string): Promise<AudioBuffer | null> {
-  console.log('[AudioPipeline] ====== loadAudioBuffer START ======');
-  console.log('[AudioPipeline] Source:', src);
-  console.log('[AudioPipeline] AudioContext state:', audioCtx.state, 'sampleRate:', audioCtx.sampleRate);
-
-  const tryDecode = async (arrayBuf: ArrayBuffer, method: string): Promise<AudioBuffer> => {
-    console.log(`[AudioPipeline] decodeAudioData (${method}), size:`, arrayBuf.byteLength, 'bytes');
-    // Log file header to identify format
-    const header = new Uint8Array(arrayBuf.slice(0, 16));
-    console.log(`[AudioPipeline] File header (${method}):`, Array.from(header).map(b => b.toString(16).padStart(2, '0')).join(' '));
-
-    const cloned = arrayBuf.slice(0);
-    const audioBuf = await audioCtx.decodeAudioData(cloned);
-    console.log(`[AudioPipeline] ✅ decode SUCCESS (${method}):`, {
-      duration: audioBuf.duration.toFixed(2) + 's',
-      channels: audioBuf.numberOfChannels,
-      sampleRate: audioBuf.sampleRate,
-      length: audioBuf.length,
-    });
-    // Verify audio is not silent
-    const ch = audioBuf.getChannelData(0);
-    let maxAmp = 0;
-    for (let i = 0; i < Math.min(ch.length, 44100); i++) maxAmp = Math.max(maxAmp, Math.abs(ch[i]));
-    console.log(`[AudioPipeline] Amplitude (first 1s): max=${maxAmp.toFixed(4)} ${maxAmp > 0.001 ? '✅ HAS AUDIO' : '⚠️ SILENT'}`);
-    return audioBuf;
-  };
-
+  console.log('[Composer] Loading audio buffer:', src.substring(0, 80));
   try {
     // Step 1: Fetch the audio file as raw bytes
     let response: Response;
     try {
-      console.log('[AudioPipeline] Fetching direct...');
       response = await fetch(src);
-      console.log('[AudioPipeline] Direct fetch:', response.status, 'type:', response.headers.get('content-type'), 'size:', response.headers.get('content-length'));
     } catch {
+      // If direct fetch fails (CORS), try proxy for remote URLs
       if (!src.startsWith('blob:') && !src.startsWith('data:')) {
-        console.log('[AudioPipeline] Direct fetch failed, trying proxy...');
+        console.log('[Composer] Direct fetch failed, trying proxy...');
         response = await fetch(`/api/proxy-media?url=${encodeURIComponent(src)}`);
-        console.log('[AudioPipeline] Proxy fetch:', response.status, 'type:', response.headers.get('content-type'));
       } else {
         throw new Error('Fetch failed for blob/data URL');
       }
@@ -175,81 +147,38 @@ async function loadAudioBuffer(audioCtx: AudioContext, src: string): Promise<Aud
     }
 
     const arrayBuffer = await response.arrayBuffer();
-    console.log('[AudioPipeline] Fetched:', (arrayBuffer.byteLength / 1024).toFixed(1), 'KB');
+    console.log('[Composer] Audio fetched:', (arrayBuffer.byteLength / 1024).toFixed(1), 'KB');
 
     if (arrayBuffer.byteLength < 100) {
-      console.warn('[AudioPipeline] ⚠️ Audio file too small (<100 bytes), skipping');
+      console.warn('[Composer] Audio file too small, skipping');
       return null;
     }
 
-    return await tryDecode(arrayBuffer, 'direct');
+    // Step 2: Decode to raw PCM AudioBuffer
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    console.log('[Composer] Audio decoded OK — duration:', audioBuffer.duration.toFixed(1), 's, channels:', audioBuffer.numberOfChannels, ', sampleRate:', audioBuffer.sampleRate);
+    return audioBuffer;
   } catch (err) {
-    console.error('[AudioPipeline] ❌ Primary load FAILED:', (err as Error)?.message);
+    console.error('[Composer] Audio buffer load FAILED:', (err as Error)?.message);
 
     // Fallback: try proxy for remote URLs
     if (!src.startsWith('blob:') && !src.startsWith('data:')) {
       try {
         const proxyUrl = `/api/proxy-media?url=${encodeURIComponent(src)}`;
-        console.log('[AudioPipeline] Trying proxy fallback...');
+        console.log('[Composer] Trying proxy fallback:', proxyUrl.substring(0, 80));
         const resp = await fetch(proxyUrl);
-        console.log('[AudioPipeline] Proxy response:', resp.status, 'type:', resp.headers.get('content-type'));
         const ab = await resp.arrayBuffer();
         if (ab.byteLength > 100) {
-          return await tryDecode(ab, 'proxy');
+          const buf = await audioCtx.decodeAudioData(ab);
+          console.log('[Composer] Audio decoded via proxy OK — duration:', buf.duration.toFixed(1), 's');
+          return buf;
         }
       } catch (proxyErr) {
-        console.error('[AudioPipeline] ❌ Proxy fallback also failed:', (proxyErr as Error)?.message);
+        console.error('[Composer] Proxy audio load also failed:', (proxyErr as Error)?.message);
       }
     }
-    console.error('[AudioPipeline] ====== ALL METHODS FAILED ======');
     return null;
   }
-}
-
-/** Encode an AudioBuffer to a WAV Blob (PCM 16-bit) */
-function audioBufferToWav(buffer: AudioBuffer): Blob {
-  const numChannels = buffer.numberOfChannels;
-  const sampleRate = buffer.sampleRate;
-  const length = buffer.length;
-  const bytesPerSample = 2; // 16-bit
-  const blockAlign = numChannels * bytesPerSample;
-  const dataSize = length * blockAlign;
-  const headerSize = 44;
-  const arrayBuffer = new ArrayBuffer(headerSize + dataSize);
-  const view = new DataView(arrayBuffer);
-
-  // WAV header
-  const writeString = (offset: number, str: string) => {
-    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
-  };
-  writeString(0, 'RIFF');
-  view.setUint32(4, 36 + dataSize, true);
-  writeString(8, 'WAVE');
-  writeString(12, 'fmt ');
-  view.setUint32(16, 16, true); // fmt chunk size
-  view.setUint16(20, 1, true); // PCM
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * blockAlign, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, 16, true); // bits per sample
-  writeString(36, 'data');
-  view.setUint32(40, dataSize, true);
-
-  // Interleave channels and write PCM data
-  const channels: Float32Array[] = [];
-  for (let ch = 0; ch < numChannels; ch++) channels.push(buffer.getChannelData(ch));
-
-  let offset = 44;
-  for (let i = 0; i < length; i++) {
-    for (let ch = 0; ch < numChannels; ch++) {
-      const sample = Math.max(-1, Math.min(1, channels[ch][i]));
-      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
-      offset += 2;
-    }
-  }
-
-  return new Blob([arrayBuffer], { type: 'audio/wav' });
 }
 
 function drawRoundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -419,82 +348,86 @@ function drawTransition(
 }
 
 // ═══════════════════════════════════════════════════════════
-// MAIN COMPOSER — Video-only MediaRecorder + FFmpeg.wasm audio mux
+// MAIN COMPOSER — MediaRecorder + AudioBufferSourceNode
 // ═══════════════════════════════════════════════════════════
 
 export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   const {
     width, height, fps = 24,
     title, subtitle, salesPhrase, cards = [],
-    posterUrl, videoUrl, logoUrl, musicUrl, voiceUrl,
-    musicData, voiceData,
+    posterUrl, videoUrl, logoUrl, musicUrl, voiceUrl, musicData, voiceData,
     introDuration = 4, cardsDuration = 6, videoDuration = 10, ctaDuration = 4,
     accentColor = '#D91CD2',
     ctaText = 'CHAT POUR PLUS D\'INFOS', ctaSubText = 'LIEN EN BIO',
     watermarkText, onProgress,
   } = options;
 
-  console.log('[Composer] ═══ START ═══');
-  console.log('[Composer] Music:', musicData ? `RAW ${(musicData.byteLength/1024).toFixed(0)}KB` : (musicUrl ? 'URL:' + musicUrl.substring(0, 50) : 'NONE'));
-  console.log('[Composer] Voice:', voiceData ? `RAW ${(voiceData.byteLength/1024).toFixed(0)}KB` : (voiceUrl ? 'URL:' + voiceUrl.substring(0, 50) : 'NONE'));
+  console.log('[Composer] ═══════════════════════════════════════');
+  console.log('[Composer] === START COMPOSE ===');
+  console.log('[Composer] Music URL:', musicUrl ? musicUrl.substring(0, 80) : 'NONE');
+  console.log('[Composer] Voice URL:', voiceUrl ? voiceUrl.substring(0, 80) : 'NONE');
+  console.log('[Composer] Logo URL:', logoUrl ? logoUrl.substring(0, 80) : 'NONE');
 
   onProgress?.(2, 'Chargement des médias...');
 
-  // ═══ LOAD MEDIA ═══
-  const hasAudio = !!musicData || !!voiceData || !!musicUrl || !!voiceUrl;
+  // ═══ CREATE AUDIO CONTEXT ═══
+  const hasAudioInput = !!musicUrl || !!voiceUrl || !!musicData || !!voiceData;
   let audioCtx: AudioContext | null = null;
+  let audioDest: MediaStreamAudioDestinationNode | null = null;
+  let musicSourceNode: AudioBufferSourceNode | null = null;
+  let voiceSourceNode: AudioBufferSourceNode | null = null;
 
-  if (hasAudio) {
+  if (hasAudioInput) {
     audioCtx = new AudioContext({ sampleRate: 48000 });
     await audioCtx.resume();
+    console.log('[Composer] AudioContext created, state:', audioCtx.state);
   }
 
-  // Load visual media
+  // ═══ LOAD ALL MEDIA IN PARALLEL ═══
   const [posterImg, logoImg, videoEl] = await Promise.all([
     posterUrl ? loadImage(posterUrl).catch(() => null) : null,
     logoUrl ? loadImage(logoUrl).catch(() => null) : null,
     videoUrl ? loadVideo(videoUrl).catch(() => null) : null,
   ]);
 
-  // Load audio — prefer raw bytes (musicData/voiceData) over URLs
+  // Load audio: raw bytes (musicData/voiceData) FIRST, then URL fallback
   let musicBuffer: AudioBuffer | null = null;
   let voiceBuffer: AudioBuffer | null = null;
 
   if (audioCtx) {
-    // MUSIC: raw bytes first, then URL fallback
     if (musicData && musicData.byteLength > 100) {
       try {
-        musicBuffer = await audioCtx.decodeAudioData(musicData.slice(0)); // clone — decodeAudioData consumes buffer
-        console.log('[Composer] ✅ Music decoded from RAW bytes:', musicBuffer.duration.toFixed(1) + 's');
-      } catch (e) {
-        console.error('[Composer] ❌ Music RAW decode failed:', (e as Error)?.message);
-      }
+        musicBuffer = await audioCtx.decodeAudioData(musicData.slice(0));
+        console.log('[Composer] ✅ Music from RAW bytes:', musicBuffer.duration.toFixed(1) + 's');
+      } catch (e) { console.error('[Composer] Music RAW decode failed:', (e as Error)?.message); }
     }
     if (!musicBuffer && musicUrl) {
-      musicBuffer = await loadAudioBuffer(audioCtx, musicUrl).catch(() => null);
-      if (musicBuffer) console.log('[Composer] ✅ Music decoded from URL:', musicBuffer.duration.toFixed(1) + 's');
+      musicBuffer = await loadAudioBuffer(audioCtx, musicUrl);
     }
 
-    // VOICE: raw bytes first, then URL fallback
     if (voiceData && voiceData.byteLength > 100) {
       try {
         voiceBuffer = await audioCtx.decodeAudioData(voiceData.slice(0));
-        console.log('[Composer] ✅ Voice decoded from RAW bytes:', voiceBuffer.duration.toFixed(1) + 's');
-      } catch (e) {
-        console.error('[Composer] ❌ Voice RAW decode failed:', (e as Error)?.message);
-      }
+        console.log('[Composer] ✅ Voice from RAW bytes:', voiceBuffer.duration.toFixed(1) + 's');
+      } catch (e) { console.error('[Composer] Voice RAW decode failed:', (e as Error)?.message); }
     }
     if (!voiceBuffer && voiceUrl) {
-      voiceBuffer = await loadAudioBuffer(audioCtx, voiceUrl).catch(() => null);
-      if (voiceBuffer) console.log('[Composer] ✅ Voice decoded from URL:', voiceBuffer.duration.toFixed(1) + 's');
+      voiceBuffer = await loadAudioBuffer(audioCtx, voiceUrl);
     }
   }
 
-  console.log('[Composer] Media: poster=' + !!posterImg + ' logo=' + !!logoImg + ' video=' + !!videoEl +
-    ' music=' + (musicBuffer ? musicBuffer.duration.toFixed(1) + 's' : 'NONE') +
-    ' voice=' + (voiceBuffer ? voiceBuffer.duration.toFixed(1) + 's' : 'NONE'));
+  const hasAudio = musicBuffer !== null || voiceBuffer !== null;
+  console.log('[Composer] Media — poster:', !!posterImg, '| logo:', !!logoImg, '| video:', !!videoEl);
+  console.log('[Composer] Audio — music:', musicBuffer ? `${musicBuffer.duration.toFixed(1)}s` : 'NONE', '| voice:', voiceBuffer ? `${voiceBuffer.duration.toFixed(1)}s` : 'NONE');
 
-  // Build sequences (needed before audio mix to know totalDuration)
+  // If we created AudioContext but got no audio buffers, close it
+  if (audioCtx && !hasAudio) {
+    console.warn('[Composer] No audio buffers loaded, closing AudioContext');
+    await audioCtx.close();
+    audioCtx = null;
+  }
+
+  // Build sequences
   const sequences: Array<{ type: string; duration: number }> = [{ type: 'intro', duration: introDuration }];
   if (cards.length > 0) sequences.push({ type: 'cards', duration: cardsDuration });
   if (videoEl) sequences.push({ type: 'video', duration: videoDuration });
@@ -505,46 +438,8 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   const seqStarts: number[] = [];
   let cumTime = 0;
   for (const seq of sequences) { seqStarts.push(cumTime); cumTime += seq.duration; }
-  console.log('[Composer] Sequences:', sequences.map(s => s.type).join('→'), totalDuration.toFixed(1) + 's');
 
-  // ═══ PRE-MIX AUDIO → WAV BLOB (OfflineAudioContext) ═══
-  let audioWavBlob: Blob | null = null;
-
-  if (musicBuffer || voiceBuffer) {
-    if (!audioCtx) { audioCtx = new AudioContext({ sampleRate: 48000 }); await audioCtx.resume(); }
-    const offlineCtx = new OfflineAudioContext(2, Math.ceil(totalDuration * 48000), 48000);
-
-    if (musicBuffer) {
-      const src = offlineCtx.createBufferSource();
-      src.buffer = musicBuffer;
-      src.loop = true;
-      src.loopEnd = musicBuffer.duration;
-      const gain = offlineCtx.createGain();
-      gain.gain.value = voiceBuffer ? 0.3 : 0.8;
-      src.connect(gain);
-      gain.connect(offlineCtx.destination);
-      src.start(0);
-      src.stop(totalDuration);
-      console.log('[Composer] Audio mix: music gain=' + gain.gain.value);
-    }
-
-    if (voiceBuffer) {
-      const src = offlineCtx.createBufferSource();
-      src.buffer = voiceBuffer;
-      const gain = offlineCtx.createGain();
-      gain.gain.value = 1.0;
-      src.connect(gain);
-      gain.connect(offlineCtx.destination);
-      src.start(0);
-      console.log('[Composer] Audio mix: voice gain=1.0');
-    }
-
-    const rendered = await offlineCtx.startRendering();
-    audioWavBlob = audioBufferToWav(rendered);
-    console.log('[Composer] ✅ Audio WAV: ' + (audioWavBlob.size / 1024).toFixed(0) + ' KB, ' + rendered.duration.toFixed(1) + 's');
-  }
-
-  if (audioCtx) { await audioCtx.close(); audioCtx = null; }
+  console.log('[Composer] Duration:', totalDuration.toFixed(1), 's | Sequences:', sequences.map(s => s.type).join(' → '));
 
   onProgress?.(10, 'Préparation...');
 
@@ -555,6 +450,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   canvas.style.cssText = 'position:fixed;top:-9999px;left:-9999px;pointer-events:none;opacity:0;';
   document.body.appendChild(canvas);
 
+  // Draw frame helper
   const drawFrame = (elapsed: number) => {
     let seqIdx = 0;
     for (let i = sequences.length - 1; i >= 0; i--) { if (elapsed >= seqStarts[i]) { seqIdx = i; break; } }
@@ -575,134 +471,146 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     if (inTransition && seqIdx < sequences.length - 1) {
       drawTransition(ctx, width, height, (p) => drawSeq(seq.type, p), (p) => drawSeq(sequences[seqIdx + 1].type, p), transProgress);
     } else { drawSeq(seq.type, seqProgress); }
-    ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(0, height - 3, width, 3);
+    const barH = 3;
+    ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(0, height - barH, width, barH);
     const barGrad = ctx.createLinearGradient(0, 0, width * (elapsed / totalDuration), 0);
     barGrad.addColorStop(0, accentColor); barGrad.addColorStop(0.5, '#FF2DAA'); barGrad.addColorStop(1, '#00D4FF');
-    ctx.fillStyle = barGrad; ctx.fillRect(0, height - 3, width * (elapsed / totalDuration), 3);
+    ctx.fillStyle = barGrad; ctx.fillRect(0, height - barH, width * (elapsed / totalDuration), barH);
   };
 
-  // ═══ SETUP AUDIO PLAYBACK via <audio>.captureStream() ═══
-  // This is the ONLY approach that works reliably in Chrome:
-  // 1. Create blob URL from WAV
-  // 2. Set as <audio src="blob:..."> (NOT srcObject)
-  // 3. Wait for canplaythrough
-  // 4. Call audio.captureStream() to get audio MediaStream
-  // 5. Add audio track to combined stream for MediaRecorder
-  let audioElement: HTMLAudioElement | null = null;
-  let audioTrack: MediaStreamTrack | null = null;
+  // ═══ AUDIO SETUP: AudioBufferSourceNode (GUARANTEED capture) ═══
+  // Unlike <audio> + createMediaElementSource which can silently fail,
+  // AudioBufferSourceNode ONLY outputs through Web Audio graph.
+  // It NEVER plays through speakers. It ALWAYS gets captured by MediaRecorder.
 
-  if (audioWavBlob && audioWavBlob.size > 100) {
-    const wavUrl = URL.createObjectURL(audioWavBlob);
-    console.log('[Composer] Loading audio element: WAV=' + (audioWavBlob.size / 1024).toFixed(0) + 'KB url=' + wavUrl.substring(0, 50));
+  if (audioCtx && hasAudio) {
+    audioDest = audioCtx.createMediaStreamDestination();
+    console.log('[Composer] MediaStreamDestination created');
 
-    audioElement = document.createElement('audio');
-    audioElement.preload = 'auto';
-    audioElement.volume = 0.01; // near-silent speaker output
+    if (musicBuffer) {
+      musicSourceNode = audioCtx.createBufferSource();
+      musicSourceNode.buffer = musicBuffer;
+      musicSourceNode.loop = true;
+      const musicGain = audioCtx.createGain();
+      musicGain.gain.value = voiceBuffer ? 0.3 : 0.8;
+      musicSourceNode.connect(musicGain);
+      musicGain.connect(audioDest);
+      console.log('[Composer] ✅ Music BufferSource connected, gain:', musicGain.gain.value, ', loop: true');
+    }
 
-    // Wait for audio to be ready
-    const audioReady = await new Promise<boolean>((resolve) => {
-      let done = false;
-      const finish = (ok: boolean) => { if (!done) { done = true; resolve(ok); } };
-      audioElement!.oncanplaythrough = () => { console.log('[Composer] ✅ Audio element ready, dur=' + audioElement!.duration.toFixed(1) + 's'); finish(true); };
-      audioElement!.onloadeddata = () => { console.log('[Composer] Audio loadeddata'); finish(true); };
-      audioElement!.onerror = () => {
-        const e = audioElement!.error;
-        console.error('[Composer] ❌ Audio element error:', e?.code, e?.message);
-        finish(false);
-      };
-      audioElement!.src = wavUrl; // MUST set src after handlers
-      audioElement!.load();
-      setTimeout(() => { console.warn('[Composer] Audio load timeout 10s'); finish(false); }, 10000);
-    });
-
-    if (audioReady && audioElement.duration > 0) {
-      // captureStream() on <audio> element — Chrome native, no Web Audio API needed
-      try {
-        const audioStream = (audioElement as any).captureStream() as MediaStream;
-        const tracks = audioStream.getAudioTracks();
-        if (tracks.length > 0) {
-          audioTrack = tracks[0];
-          console.log('[Composer] ✅ captureStream() audio track: state=' + audioTrack.readyState + ' enabled=' + audioTrack.enabled);
-        } else {
-          console.error('[Composer] captureStream() returned 0 audio tracks');
-        }
-      } catch (csErr) {
-        console.error('[Composer] captureStream() failed:', (csErr as Error)?.message);
-      }
-    } else {
-      console.error('[Composer] Audio element not ready — no audio in output');
-      URL.revokeObjectURL(wavUrl);
-      audioElement = null;
+    if (voiceBuffer) {
+      voiceSourceNode = audioCtx.createBufferSource();
+      voiceSourceNode.buffer = voiceBuffer;
+      voiceSourceNode.loop = false;
+      const voiceGain = audioCtx.createGain();
+      voiceGain.gain.value = 1.0;
+      voiceSourceNode.connect(voiceGain);
+      voiceGain.connect(audioDest);
+      console.log('[Composer] ✅ Voice BufferSource connected, gain: 1.0');
     }
   }
 
-  onProgress?.(15, 'Rendu...');
-
-  // ═══ RECORD VIDEO + AUDIO TOGETHER ═══
+  // ═══ MEDIARECORDER SETUP ═══
   const videoStream = canvas.captureStream(fps);
+
+  // Combine video + audio into one MediaStream
   const combinedStream = new MediaStream();
-  for (const t of videoStream.getVideoTracks()) combinedStream.addTrack(t);
-  if (audioTrack) combinedStream.addTrack(audioTrack);
+  for (const track of videoStream.getVideoTracks()) combinedStream.addTrack(track);
+  if (audioDest) {
+    const audioTracks = audioDest.stream.getAudioTracks();
+    for (const track of audioTracks) combinedStream.addTrack(track);
+    console.log('[Composer] Audio tracks added to stream:', audioTracks.length, '| track states:', audioTracks.map(t => t.readyState).join(','));
+  }
 
-  console.log('[Composer] Recording: video=' + combinedStream.getVideoTracks().length + ' audio=' + combinedStream.getAudioTracks().length);
+  console.log('[Composer] Combined stream tracks:', combinedStream.getTracks().map(t => `${t.kind}:${t.readyState}`).join(', '));
 
-  // Pick mime type — with audio, prefer codecs that support audio
-  const mimeType = audioTrack
-    ? (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1.42E01E,mp4a.40.2') ? 'video/mp4;codecs=avc1.42E01E,mp4a.40.2'
-      : MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus'
-      : MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus') ? 'video/webm;codecs=vp8,opus'
-      : 'video/webm')
-    : (MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4'
-      : MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9'
-      : 'video/webm');
+  // Choose best mimeType — prefer MP4!
+  const mimeTypes = [
+    'video/mp4;codecs="avc1.42E01E,mp4a.40.2"',
+    'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+    'video/mp4;codecs=avc1,mp4a.40.2',
+    'video/mp4',
+    'video/webm;codecs=vp8,opus',
+    'video/webm;codecs=vp9,opus',
+    'video/webm',
+  ];
+  let mimeType = 'video/webm';
+  for (const t of mimeTypes) {
+    if (MediaRecorder.isTypeSupported(t)) { mimeType = t; break; }
+  }
+  const isMP4 = mimeType.startsWith('video/mp4');
+  console.log('[Composer] MediaRecorder mimeType:', mimeType, '| isMP4:', isMP4);
 
-  const targetBytes = 4 * 1024 * 1024;
-  const bitrate = Math.min(2_500_000, Math.floor((targetBytes * 8) / totalDuration));
-
-  const recorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: bitrate });
+  const recorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 4_000_000 });
   const chunks: Blob[] = [];
   recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-  console.log('[Composer] MediaRecorder: ' + mimeType + ' @ ' + (bitrate / 1000) + 'kbps');
 
-  const finalBlob = await new Promise<Blob>((resolve, reject) => {
+  onProgress?.(15, 'Rendu en cours...');
+
+  // ═══ REAL-TIME RENDER + RECORD ═══
+  return new Promise<Blob>((resolve, reject) => {
     recorder.onstop = () => {
-      const isMP4 = mimeType.includes('mp4');
-      const blob = new Blob(chunks, { type: isMP4 ? 'video/mp4' : 'video/webm' });
-      console.log('[Composer] ✅ DONE: ' + (blob.size / 1024 / 1024).toFixed(2) + ' MB, ' + blob.type);
+      const outputType = isMP4 ? 'video/mp4' : 'video/webm';
+      const blob = new Blob(chunks, { type: outputType });
+      console.log('[Composer] ✅ DONE — blob:', (blob.size / 1024 / 1024).toFixed(1), 'MB, type:', outputType, ', chunks:', chunks.length);
+
+      // Cleanup
+      if (audioCtx) audioCtx.close().catch(() => {});
+      if (videoEl) videoEl.pause();
+      try { document.body.removeChild(canvas); } catch {}
+      onProgress?.(100, 'Terminé !');
       resolve(blob);
     };
-    recorder.onerror = () => reject(new Error('Recording failed'));
 
-    // Start recording FIRST
+    recorder.onerror = (e) => {
+      console.error('[Composer] MediaRecorder error:', e);
+      if (audioCtx) audioCtx.close().catch(() => {});
+      reject(new Error('Recording failed'));
+    };
+
+    // START recording FIRST
     recorder.start(200);
+    console.log('[Composer] MediaRecorder started');
 
-    // Start audio playback (captureStream captures it in real-time)
-    if (audioElement) {
-      audioElement.currentTime = 0;
-      audioElement.play().catch(e => console.error('[Composer] Audio play error:', e));
-      console.log('[Composer] ✅ Audio playback started');
+    // START audio sources (they play through Web Audio graph ONLY, not speakers)
+    if (musicSourceNode) {
+      musicSourceNode.start(0);
+      console.log('[Composer] ✅ Music source started');
+    }
+    if (voiceSourceNode) {
+      voiceSourceNode.start(0);
+      console.log('[Composer] ✅ Voice source started');
     }
 
+    // START video element
     if (videoEl) { videoEl.currentTime = 0; videoEl.pause(); }
 
+    console.log('[Composer] Recording started for', totalDuration.toFixed(1), 's');
+
     const startTime = performance.now();
-    let lastProg = 0;
+    let lastProgress = 0;
 
     const animate = () => {
       const elapsed = (performance.now() - startTime) / 1000;
+
       if (elapsed >= totalDuration + 0.3) {
-        if (audioElement) audioElement.pause();
+        console.log('[Composer] Render complete, stopping recorder...');
+        // Stop audio sources
+        try { if (musicSourceNode) musicSourceNode.stop(); } catch {}
+        try { if (voiceSourceNode) voiceSourceNode.stop(); } catch {}
         recorder.stop();
         return;
       }
 
       const t = Math.min(elapsed, totalDuration - 0.001);
 
+      // Handle video element playback
       if (videoEl) {
         const videoSeq = sequences.find(s => s.type === 'video');
         if (videoSeq) {
           const vs = seqStarts[sequences.indexOf(videoSeq)];
-          if (t >= vs && t < vs + videoSeq.duration) {
+          const ve = vs + videoSeq.duration;
+          if (t >= vs && t < ve) {
             if (videoEl.paused) { videoEl.currentTime = t - vs; videoEl.play().catch(() => {}); }
           } else if (!videoEl.paused) { videoEl.pause(); }
         }
@@ -710,10 +618,10 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 
       drawFrame(t);
 
-      if (elapsed - lastProg > 0.5) {
-        lastProg = elapsed;
-        onProgress?.(Math.min(15 + Math.round((elapsed / totalDuration) * 80), 95),
-          `Rendu: ${Math.round((elapsed / totalDuration) * 100)}%`);
+      if (elapsed - lastProgress > 0.5) {
+        lastProgress = elapsed;
+        const pct = Math.round(15 + (elapsed / totalDuration) * 80);
+        onProgress?.(Math.min(pct, 95), `Rendu: ${Math.round((elapsed / totalDuration) * 100)}%`);
       }
 
       requestAnimationFrame(animate);
@@ -722,17 +630,6 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     drawFrame(0);
     requestAnimationFrame(animate);
   });
-
-  // Cleanup
-  if (audioElement) {
-    audioElement.pause();
-    if (audioElement.src.startsWith('blob:')) URL.revokeObjectURL(audioElement.src);
-  }
-  if (videoEl) videoEl.pause();
-  try { document.body.removeChild(canvas); } catch {}
-
-  onProgress?.(100, 'Terminé !');
-  return finalBlob;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -743,52 +640,27 @@ export async function composeAndUpload(options: ComposerOptions): Promise<{ blob
   const blob = await composeVideo(options);
   if (blob.size === 0) return { blob, url: null };
 
-  const blobIsMP4 = blob.type.includes('mp4');
-  const ext = blobIsMP4 ? 'mp4' : 'webm';
-  const blobSizeMB = blob.size / 1024 / 1024;
-  console.log('[Composer] Blob:', blobSizeMB.toFixed(2), 'MB', ext, 'type:', blob.type);
+  const isMP4 = blob.type.includes('mp4');
+  const ext = isMP4 ? 'mp4' : 'webm';
+  console.log('[Composer] Uploading', (blob.size / 1024 / 1024).toFixed(2), 'MB', ext);
 
-  // Skip upload if blob exceeds Vercel Hobby body limit (4.5MB)
   let url: string | null = null;
-  const UPLOAD_LIMIT_MB = 4.5;
-
-  if (blobSizeMB > UPLOAD_LIMIT_MB) {
-    console.warn(`[Composer] ⚠️ Blob too large for upload (${blobSizeMB.toFixed(1)}MB > ${UPLOAD_LIMIT_MB}MB). Using local blob URL.`);
-    url = URL.createObjectURL(blob);
-  } else {
-    try {
-      const formData = new FormData();
-      formData.append('file', new File([blob], `montage-${Date.now()}.${ext}`, { type: blob.type }));
-      formData.append('purpose', 'rush');
-      const res = await fetch('/api/upload/media', { method: 'POST', body: formData });
-      if (res.status === 413) {
-        console.warn('[Composer] Upload 413 — file too large. Using local blob URL.');
-        url = URL.createObjectURL(blob);
-      } else {
-        const data = await res.json();
-        if (data.success && data.file?.url) { url = data.file.url; console.log('[Composer] Upload OK:', url); }
-        else { console.error('[Composer] Upload failed:', data); url = URL.createObjectURL(blob); }
-      }
-    } catch (err) {
-      console.error('[Composer] Upload error:', err);
-      url = URL.createObjectURL(blob);
-    }
-  }
+  try {
+    const formData = new FormData();
+    formData.append('file', new File([blob], `montage-${Date.now()}.${ext}`, { type: blob.type }));
+    formData.append('purpose', 'rush');
+    const res = await fetch('/api/upload/media', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.success && data.file?.url) { url = data.file.url; console.log('[Composer] Upload OK:', url); }
+    else console.error('[Composer] Upload failed:', data);
+  } catch (err) { console.error('[Composer] Upload error:', err); }
   return { blob, url };
 }
 
 export function downloadBlob(blob: Blob, filename: string) {
-  // Force correct extension based on blob type
-  let finalFilename = filename;
-  if (blob.type.includes('mp4') && !filename.endsWith('.mp4')) {
-    finalFilename = filename.replace(/\.\w+$/, '.mp4');
-  } else if (blob.type.includes('webm') && !filename.endsWith('.webm')) {
-    finalFilename = filename.replace(/\.\w+$/, '.webm');
-  }
-  console.log('[Composer] downloadBlob:', (blob.size / 1024 / 1024).toFixed(2), 'MB, type:', blob.type, '→', finalFilename);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = finalFilename;
+  a.href = url; a.download = filename;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
