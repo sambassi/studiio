@@ -880,6 +880,7 @@ export default function CreatorPage() {
       // Fallback: if charUrl is null but we have a characterPreview (blob/pexels URL), use it directly
       const effectiveCharUrl = charUrl || characterPreview || null;
       const effectiveLogoUrl = logoUrl || logoPreview || null;
+      console.log('[Creator] Logo resolution — uploaded:', logoUrl?.substring(0, 60) || 'null', '| preview:', logoPreview?.substring(0, 60) || 'null', '| effective:', effectiveLogoUrl?.substring(0, 60) || 'NULL');
       setRenderProgress(20);
 
       // ═══ PHASE 2: Batch variations ═══

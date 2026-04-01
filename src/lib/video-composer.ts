@@ -48,18 +48,54 @@ export interface ComposerOptions {
 // HELPERS
 // ═══════════════════════════════════════════════════════════
 
+/**
+ * Convert a blob: URL to a data: URL.  Data URLs embed the bytes directly so
+ * they survive even if the original Blob/ObjectURL is revoked.
+ */
+async function blobUrlToDataUrl(blobUrl: string): Promise<string> {
+  const res = await fetch(blobUrl);
+  const blob = await res.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('FileReader failed'));
+    reader.readAsDataURL(blob);
+  });
+}
+
 function loadImage(src: string): Promise<HTMLImageElement> {
   console.log('[VideoComposer] Loading image:', src.substring(0, 80) + '...');
 
-  // For blob: and data: URLs, load directly (no CORS issues)
-  if (src.startsWith('blob:') || src.startsWith('data:')) {
+  // For blob: URLs, convert to data URL first for reliability (blob URLs can
+  // become invalid if the source object is garbage-collected or revoked).
+  if (src.startsWith('blob:')) {
+    return blobUrlToDataUrl(src).then(
+      (dataUrl) => {
+        console.log('[VideoComposer] Converted blob URL to data URL, length:', dataUrl.length);
+        return loadImage(dataUrl); // recurse with the stable data URL
+      },
+      (err) => {
+        console.warn('[VideoComposer] blob→dataURL conversion failed, trying direct load:', err);
+        // Fall through to direct load below
+        return new Promise<HTMLImageElement>((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => { console.log('[VideoComposer] Image loaded (blob direct):', img.width, 'x', img.height); resolve(img); };
+          img.onerror = () => reject(new Error(`Failed to load blob image: ${src.substring(0, 40)}`));
+          img.src = src;
+        });
+      }
+    );
+  }
+
+  // For data: URLs, load directly (no CORS issues)
+  if (src.startsWith('data:')) {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
-        console.log('[VideoComposer] Image loaded (local):', img.width, 'x', img.height);
+        console.log('[VideoComposer] Image loaded (data URL):', img.width, 'x', img.height);
         resolve(img);
       };
-      img.onerror = () => reject(new Error(`Failed to load local image: ${src.substring(0, 40)}`));
+      img.onerror = () => reject(new Error(`Failed to load data URL image`));
       img.src = src;
     });
   }
@@ -515,16 +551,18 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 
   onProgress?.(2, 'Chargement des médias...');
 
-  console.log('[VideoComposer] Media URLs — poster:', !!posterUrl, 'logo:', !!logoUrl, 'video:', !!videoUrl);
+  console.log('[VideoComposer] Media URLs — poster:', posterUrl?.substring(0, 60), 'logo:', logoUrl?.substring(0, 60), 'video:', videoUrl?.substring(0, 60));
+
+  if (!logoUrl) console.warn('[VideoComposer] ⚠ No logo URL provided — logo will NOT appear in video');
 
   // Load all media in parallel
   const [posterImg, logoImg, videoEl] = await Promise.all([
     posterUrl ? loadImage(posterUrl).catch((err) => { console.error('[VideoComposer] Poster load failed:', err?.message); return null; }) : Promise.resolve(null),
-    logoUrl ? loadImage(logoUrl).catch((err) => { console.error('[VideoComposer] Logo load failed:', err?.message); return null; }) : Promise.resolve(null),
+    logoUrl ? loadImage(logoUrl).catch((err) => { console.error('[VideoComposer] ⚠ Logo load FAILED:', err?.message, '— logo will not appear'); return null; }) : Promise.resolve(null),
     videoUrl ? loadVideo(videoUrl).catch((err) => { console.error('[VideoComposer] Video load failed:', err?.message); return null; }) : Promise.resolve(null),
   ]);
 
-  console.log('[VideoComposer] Media loaded — poster:', !!posterImg, 'logo:', !!logoImg, 'video:', !!videoEl);
+  console.log('[VideoComposer] Media loaded — poster:', !!posterImg, `(${posterImg?.width}x${posterImg?.height})`, 'logo:', !!logoImg, `(${logoImg?.width}x${logoImg?.height})`, 'video:', !!videoEl);
 
   onProgress?.(10, 'Préparation du rendu...');
 
@@ -550,12 +588,13 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   let audioDestination: MediaStreamAudioDestinationNode | null = null;
   let musicSource: AudioBufferSourceNode | null = null;
   let voiceSource: AudioBufferSourceNode | null = null;
+  let silentOsc: OscillatorNode | null = null; // keeps audio track alive for MediaRecorder
   let hasAudio = false;
 
   if (musicUrl || voiceUrl) {
     console.log('[VideoComposer] Audio URLs — music:', musicUrl, 'voice:', voiceUrl);
     try {
-      audioCtx = new AudioContext();
+      audioCtx = new AudioContext({ sampleRate: 48000 });
       // CRITICAL: Resume AudioContext if suspended (browser autoplay policy)
       if (audioCtx.state === 'suspended') {
         console.log('[VideoComposer] AudioContext is suspended, resuming...');
@@ -563,6 +602,19 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
         console.log('[VideoComposer] AudioContext resumed, state:', audioCtx.state);
       }
       audioDestination = audioCtx.createMediaStreamDestination();
+
+      // CRITICAL FIX: Connect a silent oscillator to keep the audio track alive.
+      // Without this, MediaRecorder may drop the audio track if no audio is
+      // flowing when recording starts. The oscillator produces near-zero volume
+      // silence that keeps the MediaStreamAudioDestinationNode stream active.
+      silentOsc = audioCtx.createOscillator();
+      silentOsc.frequency.value = 0; // DC / silence
+      const silentGain = audioCtx.createGain();
+      silentGain.gain.value = 0.001; // essentially inaudible
+      silentOsc.connect(silentGain);
+      silentGain.connect(audioDestination);
+      silentOsc.start(0);
+      console.log('[VideoComposer] Silent oscillator started to keep audio track alive');
 
       const [musicBuf, voiceBuf] = await Promise.all([
         musicUrl ? loadAudio(audioCtx, musicUrl).catch((err) => {
@@ -601,14 +653,17 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       // If neither audio loaded successfully, clean up
       if (!hasAudio) {
         console.warn('[VideoComposer] No audio buffers loaded, cleaning up AudioContext');
+        try { silentOsc.stop(); } catch {}
         try { audioCtx.close(); } catch {}
         audioCtx = null;
         audioDestination = null;
+        silentOsc = null;
       }
     } catch (audioErr) {
       console.error('[VideoComposer] Audio setup failed:', audioErr);
       audioCtx = null;
       audioDestination = null;
+      silentOsc = null;
     }
   }
 
@@ -665,11 +720,20 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     console.error('[VideoComposer] Recorder error:', e);
   };
 
-  // Start recording + audio
-  recorder.start(500); // collect data every 500ms (less frequent = more reliable)
+  // CRITICAL FIX: Start audio sources BEFORE the recorder so that audio data
+  // is already flowing into the MediaStreamAudioDestinationNode when
+  // MediaRecorder begins capturing.  If we start the recorder first, the audio
+  // track may be flagged as "ended" or empty before any samples arrive.
   if (musicSource) musicSource.start(0);
   if (voiceSource) voiceSource.start(0);
   if (videoEl) { videoEl.currentTime = 0; videoEl.play().catch(() => {}); }
+
+  // Small delay to let audio buffers push at least one quantum (~3ms) before
+  // MediaRecorder inspects the tracks.
+  await new Promise(r => setTimeout(r, 150));
+
+  recorder.start(500); // collect data every 500ms
+  console.log('[VideoComposer] Recorder started AFTER audio sources');
 
   // ═══ RENDER LOOP (requestAnimationFrame-based for reliability) ═══
   const totalFrames = totalDuration * fps;
@@ -810,6 +874,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 
   // Clean up AFTER recording is stopped
   if (videoEl) videoEl.pause();
+  if (silentOsc) try { silentOsc.stop(); } catch {}
   if (musicSource) try { musicSource.stop(); } catch {}
   if (voiceSource) try { voiceSource.stop(); } catch {}
   if (audioCtx) try { audioCtx.close(); } catch {}
