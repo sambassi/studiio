@@ -1,12 +1,12 @@
 /**
- * Client-side video composer using Canvas + WebCodecs + webm-muxer.
+ * Client-side video composer using Canvas + WebCodecs + mp4-muxer.
  * Renders montage sequences (intro, cards, video, CTA) directly in the browser.
- * Uses WebCodecs API (VideoEncoder/AudioEncoder) + webm-muxer for RELIABLE
- * audio+video encoding — no more MediaRecorder audio capture bugs.
- * Outputs a downloadable WebM video blob — NO server rendering needed.
+ * Uses WebCodecs API (VideoEncoder/AudioEncoder) + mp4-muxer for RELIABLE
+ * audio+video encoding with universal MP4 format (H.264 + AAC).
+ * Outputs a downloadable MP4 video blob — NO server rendering needed.
  */
 
-import { Muxer, ArrayBufferTarget } from 'webm-muxer';
+import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
 
 // ═══════════════════════════════════════════════════════════
 // TYPES
@@ -626,6 +626,8 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   ]);
 
   console.log('[VideoComposer] Media loaded — poster:', !!posterImg, `(${posterImg?.width}x${posterImg?.height})`, 'logo:', !!logoImg, `(${logoImg?.width}x${logoImg?.height})`, 'video:', !!videoEl);
+  if (!logoImg) console.error('[VideoComposer] ❌ LOGO IS NULL — logoUrl was:', logoUrl);
+  if (logoImg) console.log('[VideoComposer] ✅ Logo loaded successfully:', logoImg.width, 'x', logoImg.height);
 
   onProgress?.(10, 'Préparation du rendu...');
 
@@ -657,44 +659,45 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   canvas.style.cssText = 'position:fixed;top:-9999px;left:-9999px;pointer-events:none;opacity:0;';
   document.body.appendChild(canvas);
 
-  // ═══ SET UP webm-muxer ═══
+  // ═══ SET UP mp4-muxer (H.264 + AAC for universal compatibility) ═══
   const muxerTarget = new ArrayBufferTarget();
   const muxer = new Muxer({
     target: muxerTarget,
     video: {
-      codec: 'V_VP8',
+      codec: 'avc',
       width,
       height,
     },
     ...(hasAudio ? {
       audio: {
-        codec: 'A_OPUS',
+        codec: 'aac',
         sampleRate: 48000,
         numberOfChannels: audioBuffer!.numberOfChannels,
       },
     } : {}),
     firstTimestampBehavior: 'offset',
+    fastStart: 'in-memory',
   });
 
-  console.log('[VideoComposer] Muxer created — video: VP8', width, 'x', height, '| audio:', hasAudio ? 'OPUS' : 'none');
+  console.log('[VideoComposer] MP4 Muxer created — video: H.264', width, 'x', height, '| audio:', hasAudio ? 'AAC' : 'none');
 
-  // ═══ SET UP VideoEncoder ═══
+  // ═══ SET UP VideoEncoder (H.264) ═══
   const videoEncoder = new VideoEncoder({
     output: (chunk, meta) => muxer.addVideoChunk(chunk, meta ?? undefined),
     error: (e) => console.error('[VideoComposer] VideoEncoder error:', e),
   });
 
   videoEncoder.configure({
-    codec: 'vp8',
+    codec: 'avc1.640028', // H.264 High Profile Level 4.0
     width,
     height,
     bitrate: 8_000_000,
     framerate: fps,
   });
 
-  console.log('[VideoComposer] VideoEncoder configured: vp8', width, 'x', height, '@', fps, 'fps');
+  console.log('[VideoComposer] VideoEncoder configured: H.264 High', width, 'x', height, '@', fps, 'fps');
 
-  // ═══ SET UP AudioEncoder (if audio) ═══
+  // ═══ SET UP AudioEncoder (AAC — if audio) ═══
   let audioEncoder: AudioEncoder | null = null;
   if (hasAudio) {
     audioEncoder = new AudioEncoder({
@@ -703,13 +706,13 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     });
 
     audioEncoder.configure({
-      codec: 'opus',
+      codec: 'mp4a.40.2', // AAC-LC
       sampleRate: 48000,
       numberOfChannels: audioBuffer!.numberOfChannels,
       bitrate: 128_000,
     });
 
-    console.log('[VideoComposer] AudioEncoder configured: opus', audioBuffer!.numberOfChannels, 'ch @ 48000Hz');
+    console.log('[VideoComposer] AudioEncoder configured: AAC-LC', audioBuffer!.numberOfChannels, 'ch @ 48000Hz');
   }
 
   // Pre-calculate sequence start times
@@ -885,9 +888,9 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   muxer.finalize();
   console.log('[VideoComposer] Muxer finalized');
 
-  // Get the final WebM blob
+  // Get the final MP4 blob
   const { buffer } = muxerTarget;
-  const blob = new Blob([buffer], { type: 'video/webm' });
+  const blob = new Blob([buffer], { type: 'video/mp4' });
 
   console.log('[VideoComposer] Output blob:', (blob.size / 1024 / 1024).toFixed(1), 'MB');
 
@@ -918,8 +921,8 @@ export async function composeAndUpload(
   let url: string | null = null;
   try {
     const formData = new FormData();
-    const cleanType = 'video/webm';
-    const file = new File([blob], `montage-${Date.now()}.webm`, { type: cleanType });
+    const cleanType = 'video/mp4';
+    const file = new File([blob], `montage-${Date.now()}.mp4`, { type: cleanType });
     formData.append('file', file);
     formData.append('purpose', 'rush');
     const res = await fetch('/api/upload/media', { method: 'POST', body: formData });

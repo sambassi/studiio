@@ -1037,8 +1037,8 @@ export default function CreatorPage() {
                 metadata: {
                   title: bTitle, subtitle: bSubtitle, salesPhrase: bPhrase, objective,
                   posterPhotoUrl: effectiveCharUrl || null, characterUrl: effectiveCharUrl || null,
-                  rushUrls, musicUrl: musicUrl || null, voiceUrl: voiceUrl || null,
-                  renderedVideoUrl: renderedVideoUrl || null,
+                  rushUrls, musicUrl: effectiveMusicUrl || null, voiceUrl: effectiveVoiceUrl || null,
+                  renderedVideoUrl: renderedVideoUrl || null, logoUrl: effectiveLogoUrl || null,
                 },
               }),
             });
@@ -1067,8 +1067,8 @@ export default function CreatorPage() {
             posterUrl: effectiveCharUrl,
             videoUrl: rushUrls[0] || null,
             logoUrl: effectiveLogoUrl,
-            musicUrl: musicUrl || null,
-            voiceUrl: voiceUrl || null,
+            musicUrl: effectiveMusicUrl || null,
+            voiceUrl: effectiveVoiceUrl || null,
             introDuration: 5,
             cardsDuration: cardItems.length > 0 ? 8 : 0,
             videoDuration: 12,
@@ -1082,7 +1082,7 @@ export default function CreatorPage() {
               setRenderStage(stage);
             },
           });
-          downloadBlob(blob, `${(title || 'video').replace(/\s+/g, '_')}.webm`);
+          downloadBlob(blob, `${(title || 'video').replace(/\s+/g, '_')}.mp4`);
         } catch (exportErr) {
           console.error('[Composer] Export error:', exportErr);
           showToast('Erreur lors du montage vidéo. Veuillez réessayer.');
