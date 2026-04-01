@@ -623,7 +623,8 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       });
       console.log('[Composer] ✅ Muxed MP4: ' + (finalBlob.size / 1024 / 1024).toFixed(2) + ' MB');
     } catch (muxErr) {
-      console.error('[Composer] FFmpeg mux failed, returning video-only:', muxErr);
+      console.error('[Composer] ❌ FFmpeg mux failed:', (muxErr as Error)?.message || muxErr);
+      console.error('[Composer] Returning video WITHOUT audio. Check: COOP/COEP headers, SharedArrayBuffer availability, network access to unpkg.com');
       finalBlob = videoBlob;
     }
   } else {
