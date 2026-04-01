@@ -7,6 +7,25 @@
  */
 
 // ═══════════════════════════════════════════════════════════
+// AUDIO & FORMAT DIAGNOSTICS
+// ═══════════════════════════════════════════════════════════
+
+/** Log all supported MediaRecorder mime types for debugging */
+export function diagnoseMediaSupport(): Record<string, boolean> {
+  const types = [
+    'video/mp4', 'video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=h264,aac',
+    'video/webm', 'video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=h264,opus', 'audio/webm;codecs=opus',
+  ];
+  const results: Record<string, boolean> = {};
+  for (const t of types) {
+    results[t] = typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(t);
+  }
+  console.log('[AudioDiag] MediaRecorder supported types:', JSON.stringify(results, null, 2));
+  return results;
+}
+
+// ═══════════════════════════════════════════════════════════
 // TYPES
 // ═══════════════════════════════════════════════════════════
 
@@ -124,17 +143,44 @@ function loadVideo(src: string): Promise<HTMLVideoElement> {
  * 4. GUARANTEED to be captured by MediaStreamDestinationNode → MediaRecorder
  */
 async function loadAudioBuffer(audioCtx: AudioContext, src: string): Promise<AudioBuffer | null> {
-  console.log('[Composer] Loading audio buffer:', src.substring(0, 80));
+  console.log('[AudioPipeline] ====== loadAudioBuffer START ======');
+  console.log('[AudioPipeline] Source:', src);
+  console.log('[AudioPipeline] AudioContext state:', audioCtx.state, 'sampleRate:', audioCtx.sampleRate);
+
+  const tryDecode = async (arrayBuf: ArrayBuffer, method: string): Promise<AudioBuffer> => {
+    console.log(`[AudioPipeline] decodeAudioData (${method}), size:`, arrayBuf.byteLength, 'bytes');
+    // Log file header to identify format
+    const header = new Uint8Array(arrayBuf.slice(0, 16));
+    console.log(`[AudioPipeline] File header (${method}):`, Array.from(header).map(b => b.toString(16).padStart(2, '0')).join(' '));
+
+    const cloned = arrayBuf.slice(0);
+    const audioBuf = await audioCtx.decodeAudioData(cloned);
+    console.log(`[AudioPipeline] ✅ decode SUCCESS (${method}):`, {
+      duration: audioBuf.duration.toFixed(2) + 's',
+      channels: audioBuf.numberOfChannels,
+      sampleRate: audioBuf.sampleRate,
+      length: audioBuf.length,
+    });
+    // Verify audio is not silent
+    const ch = audioBuf.getChannelData(0);
+    let maxAmp = 0;
+    for (let i = 0; i < Math.min(ch.length, 44100); i++) maxAmp = Math.max(maxAmp, Math.abs(ch[i]));
+    console.log(`[AudioPipeline] Amplitude (first 1s): max=${maxAmp.toFixed(4)} ${maxAmp > 0.001 ? '✅ HAS AUDIO' : '⚠️ SILENT'}`);
+    return audioBuf;
+  };
+
   try {
     // Step 1: Fetch the audio file as raw bytes
     let response: Response;
     try {
+      console.log('[AudioPipeline] Fetching direct...');
       response = await fetch(src);
+      console.log('[AudioPipeline] Direct fetch:', response.status, 'type:', response.headers.get('content-type'), 'size:', response.headers.get('content-length'));
     } catch {
-      // If direct fetch fails (CORS), try proxy for remote URLs
       if (!src.startsWith('blob:') && !src.startsWith('data:')) {
-        console.log('[Composer] Direct fetch failed, trying proxy...');
+        console.log('[AudioPipeline] Direct fetch failed, trying proxy...');
         response = await fetch(`/api/proxy-media?url=${encodeURIComponent(src)}`);
+        console.log('[AudioPipeline] Proxy fetch:', response.status, 'type:', response.headers.get('content-type'));
       } else {
         throw new Error('Fetch failed for blob/data URL');
       }
@@ -145,38 +191,63 @@ async function loadAudioBuffer(audioCtx: AudioContext, src: string): Promise<Aud
     }
 
     const arrayBuffer = await response.arrayBuffer();
-    console.log('[Composer] Audio fetched:', (arrayBuffer.byteLength / 1024).toFixed(1), 'KB');
+    console.log('[AudioPipeline] Fetched:', (arrayBuffer.byteLength / 1024).toFixed(1), 'KB');
 
     if (arrayBuffer.byteLength < 100) {
-      console.warn('[Composer] Audio file too small, skipping');
+      console.warn('[AudioPipeline] ⚠️ Audio file too small (<100 bytes), skipping');
       return null;
     }
 
-    // Step 2: Decode to raw PCM AudioBuffer
-    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-    console.log('[Composer] Audio decoded OK — duration:', audioBuffer.duration.toFixed(1), 's, channels:', audioBuffer.numberOfChannels, ', sampleRate:', audioBuffer.sampleRate);
-    return audioBuffer;
+    return await tryDecode(arrayBuffer, 'direct');
   } catch (err) {
-    console.error('[Composer] Audio buffer load FAILED:', (err as Error)?.message);
+    console.error('[AudioPipeline] ❌ Primary load FAILED:', (err as Error)?.message);
 
     // Fallback: try proxy for remote URLs
     if (!src.startsWith('blob:') && !src.startsWith('data:')) {
       try {
         const proxyUrl = `/api/proxy-media?url=${encodeURIComponent(src)}`;
-        console.log('[Composer] Trying proxy fallback:', proxyUrl.substring(0, 80));
+        console.log('[AudioPipeline] Trying proxy fallback...');
         const resp = await fetch(proxyUrl);
+        console.log('[AudioPipeline] Proxy response:', resp.status, 'type:', resp.headers.get('content-type'));
         const ab = await resp.arrayBuffer();
         if (ab.byteLength > 100) {
-          const buf = await audioCtx.decodeAudioData(ab);
-          console.log('[Composer] Audio decoded via proxy OK — duration:', buf.duration.toFixed(1), 's');
-          return buf;
+          return await tryDecode(ab, 'proxy');
         }
       } catch (proxyErr) {
-        console.error('[Composer] Proxy audio load also failed:', (proxyErr as Error)?.message);
+        console.error('[AudioPipeline] ❌ Proxy fallback also failed:', (proxyErr as Error)?.message);
       }
     }
+    console.error('[AudioPipeline] ====== ALL METHODS FAILED ======');
     return null;
   }
+}
+
+/**
+ * Fallback: load audio via <audio> element + createMediaElementSource.
+ * Works even when decodeAudioData fails for some codecs.
+ * Does NOT play through speakers — only feeds into the recording stream.
+ */
+function loadAudioElement(src: string): Promise<HTMLAudioElement> {
+  return new Promise((resolve, reject) => {
+    console.log('[AudioPipeline] Creating <audio> element fallback for:', src.substring(0, 80));
+    const audio = new Audio();
+    audio.crossOrigin = 'anonymous';
+    audio.preload = 'auto';
+    if (src.startsWith('blob:') || src.startsWith('data:')) {
+      audio.src = src;
+    } else {
+      audio.src = `/api/proxy-media?url=${encodeURIComponent(src)}`;
+    }
+    audio.oncanplaythrough = () => {
+      console.log('[AudioPipeline] <audio> element ready, duration:', audio.duration.toFixed(2) + 's');
+      resolve(audio);
+    };
+    audio.onerror = (e) => {
+      console.error('[AudioPipeline] <audio> element failed:', e);
+      reject(new Error('Audio element load failed'));
+    };
+    audio.load();
+  });
 }
 
 function drawRoundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -368,17 +439,26 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 
   onProgress?.(2, 'Chargement des médias...');
 
+  // Run format diagnostics
+  diagnoseMediaSupport();
+
   // ═══ CREATE AUDIO CONTEXT FIRST (needed for decodeAudioData) ═══
   const hasAudioUrls = !!musicUrl || !!voiceUrl;
   let audioCtx: AudioContext | null = null;
   let audioDest: MediaStreamAudioDestinationNode | null = null;
   let musicSourceNode: AudioBufferSourceNode | null = null;
   let voiceSourceNode: AudioBufferSourceNode | null = null;
+  // Fallback: <audio> elements when decodeAudioData fails
+  let musicElement: HTMLAudioElement | null = null;
+  let voiceElement: HTMLAudioElement | null = null;
 
   if (hasAudioUrls) {
     audioCtx = new AudioContext({ sampleRate: 48000 });
     await audioCtx.resume();
-    console.log('[Composer] AudioContext created, state:', audioCtx.state, ', sampleRate:', audioCtx.sampleRate);
+    console.log('[AudioPipeline] AudioContext created — state:', audioCtx.state, ', sampleRate:', audioCtx.sampleRate);
+    if (audioCtx.state !== 'running') {
+      console.error('[AudioPipeline] ❌ AudioContext NOT RUNNING after resume! Browser may have blocked it (no user gesture).');
+    }
   }
 
   // ═══ LOAD ALL MEDIA IN PARALLEL ═══
@@ -390,13 +470,33 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     (audioCtx && voiceUrl) ? loadAudioBuffer(audioCtx, voiceUrl) : null,
   ]);
 
-  const hasAudio = musicBuffer !== null || voiceBuffer !== null;
+  let hasAudio = musicBuffer !== null || voiceBuffer !== null;
   console.log('[Composer] Media loaded — poster:', !!posterImg, '| logo:', !!logoImg, '| video:', !!videoEl);
   console.log('[Composer] Audio buffers — music:', musicBuffer ? `${musicBuffer.duration.toFixed(1)}s` : 'NULL', '| voice:', voiceBuffer ? `${voiceBuffer.duration.toFixed(1)}s` : 'NULL');
 
-  // If we created AudioContext but got no audio buffers, close it
+  // ═══ AUDIO ELEMENT FALLBACK for failed decodeAudioData ═══
+  if (audioCtx && musicUrl && !musicBuffer) {
+    console.log('[AudioPipeline] Music decodeAudioData failed, trying <audio> element fallback...');
+    try {
+      musicElement = await loadAudioElement(musicUrl);
+      hasAudio = true;
+    } catch (e) {
+      console.error('[AudioPipeline] ❌ Music <audio> fallback also failed:', (e as Error)?.message);
+    }
+  }
+  if (audioCtx && voiceUrl && !voiceBuffer) {
+    console.log('[AudioPipeline] Voice decodeAudioData failed, trying <audio> element fallback...');
+    try {
+      voiceElement = await loadAudioElement(voiceUrl);
+      hasAudio = true;
+    } catch (e) {
+      console.error('[AudioPipeline] ❌ Voice <audio> fallback also failed:', (e as Error)?.message);
+    }
+  }
+
+  // If we created AudioContext but got no audio at all, close it
   if (audioCtx && !hasAudio) {
-    console.warn('[Composer] No audio buffers loaded, closing AudioContext');
+    console.warn('[AudioPipeline] ❌ No audio loaded (buffer or element), closing AudioContext');
     await audioCtx.close();
     audioCtx = null;
   }
@@ -459,17 +559,18 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 
   if (audioCtx && hasAudio) {
     audioDest = audioCtx.createMediaStreamDestination();
-    console.log('[Composer] MediaStreamDestination created');
+    console.log('[AudioPipeline] MediaStreamDestination created');
 
+    // Connect AudioBufferSourceNodes (primary approach)
     if (musicBuffer) {
       musicSourceNode = audioCtx.createBufferSource();
       musicSourceNode.buffer = musicBuffer;
       musicSourceNode.loop = true;
       const musicGain = audioCtx.createGain();
-      musicGain.gain.value = voiceBuffer ? 0.3 : 0.8;
+      musicGain.gain.value = (voiceBuffer || voiceElement) ? 0.3 : 0.8;
       musicSourceNode.connect(musicGain);
       musicGain.connect(audioDest);
-      console.log('[Composer] ✅ Music BufferSource connected, gain:', musicGain.gain.value, ', loop: true');
+      console.log('[AudioPipeline] ✅ Music BufferSource connected, gain:', musicGain.gain.value);
     }
 
     if (voiceBuffer) {
@@ -480,8 +581,46 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       voiceGain.gain.value = 1.0;
       voiceSourceNode.connect(voiceGain);
       voiceGain.connect(audioDest);
-      console.log('[Composer] ✅ Voice BufferSource connected, gain: 1.0');
+      console.log('[AudioPipeline] ✅ Voice BufferSource connected, gain: 1.0');
     }
+
+    // Connect <audio> element fallbacks via createMediaElementSource
+    // These do NOT play through speakers — only feed into the recording stream
+    if (musicElement && !musicBuffer) {
+      musicElement.loop = true;
+      const elSource = audioCtx.createMediaElementSource(musicElement);
+      const musicGain = audioCtx.createGain();
+      musicGain.gain.value = (voiceBuffer || voiceElement) ? 0.3 : 0.8;
+      elSource.connect(musicGain);
+      musicGain.connect(audioDest);
+      console.log('[AudioPipeline] ✅ Music <audio> element connected (fallback), gain:', musicGain.gain.value);
+    }
+
+    if (voiceElement && !voiceBuffer) {
+      const elSource = audioCtx.createMediaElementSource(voiceElement);
+      const voiceGain = audioCtx.createGain();
+      voiceGain.gain.value = 1.0;
+      elSource.connect(voiceGain);
+      voiceGain.connect(audioDest);
+      console.log('[AudioPipeline] ✅ Voice <audio> element connected (fallback), gain: 1.0');
+    }
+
+    // Diagnostic test tone: 0.3s 440Hz beep to prove audio pipeline works
+    console.log('[AudioPipeline] Adding 0.3s test tone (440Hz) to verify pipeline...');
+    const osc = audioCtx.createOscillator();
+    osc.frequency.value = 440;
+    const oscGain = audioCtx.createGain();
+    oscGain.gain.value = 0.15;
+    osc.connect(oscGain);
+    oscGain.connect(audioDest);
+    osc.start(audioCtx.currentTime);
+    osc.stop(audioCtx.currentTime + 0.3);
+
+    // Log final audio destination track state
+    const tracks = audioDest.stream.getAudioTracks();
+    console.log('[AudioPipeline] Audio dest tracks:', tracks.length, tracks.map(t => ({
+      id: t.id.substring(0, 8), readyState: t.readyState, enabled: t.enabled, muted: t.muted,
+    })));
   }
 
   // ═══ MEDIARECORDER SETUP ═══
@@ -529,6 +668,8 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       console.log('[Composer] ✅ DONE — blob:', (blob.size / 1024 / 1024).toFixed(1), 'MB, type:', outputType, ', chunks:', chunks.length);
 
       // Cleanup
+      if (musicElement) { musicElement.pause(); musicElement.src = ''; }
+      if (voiceElement) { voiceElement.pause(); voiceElement.src = ''; }
       if (audioCtx) audioCtx.close().catch(() => {});
       if (videoEl) videoEl.pause();
       try { document.body.removeChild(canvas); } catch {}
@@ -544,25 +685,42 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 
     // START recording FIRST
     recorder.start(200);
-    console.log('[Composer] MediaRecorder started');
+    console.log('[AudioPipeline] MediaRecorder started, state:', recorder.state);
 
-    // START audio sources (they play through Web Audio graph ONLY, not speakers)
+    // START audio buffer sources
     if (musicSourceNode) {
       musicSourceNode.start(0);
-      console.log('[Composer] ✅ Music source started');
+      console.log('[AudioPipeline] ✅ Music BufferSource started');
     }
     if (voiceSourceNode) {
       voiceSourceNode.start(0);
-      console.log('[Composer] ✅ Voice source started');
+      console.log('[AudioPipeline] ✅ Voice BufferSource started');
+    }
+
+    // START audio element fallbacks
+    if (musicElement) {
+      musicElement.currentTime = 0;
+      musicElement.play().catch(e => console.error('[AudioPipeline] Music element play failed:', e));
+      console.log('[AudioPipeline] ✅ Music <audio> element play started');
+    }
+    if (voiceElement) {
+      voiceElement.currentTime = 0;
+      voiceElement.play().catch(e => console.error('[AudioPipeline] Voice element play failed:', e));
+      console.log('[AudioPipeline] ✅ Voice <audio> element play started');
     }
 
     // START video element
     if (videoEl) { videoEl.currentTime = 0; videoEl.pause(); }
 
+    if (audioCtx) {
+      console.log('[AudioPipeline] Post-start — AudioCtx state:', audioCtx.state, 'time:', audioCtx.currentTime);
+    }
+
     console.log('[Composer] Recording started for', totalDuration.toFixed(1), 's');
 
     const startTime = performance.now();
     let lastProgress = 0;
+    let lastDiagTime = 0;
 
     const animate = () => {
       const elapsed = (performance.now() - startTime) / 1000;
@@ -596,6 +754,16 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
         lastProgress = elapsed;
         const pct = Math.round(15 + (elapsed / totalDuration) * 80);
         onProgress?.(Math.min(pct, 95), `Rendu: ${Math.round((elapsed / totalDuration) * 100)}%`);
+      }
+
+      // Periodic audio diagnostics every 3s
+      const now = performance.now();
+      if (hasAudio && audioCtx && (now - lastDiagTime > 3000)) {
+        lastDiagTime = now;
+        console.log(`[AudioPipeline] @${elapsed.toFixed(1)}s — AudioCtx: state=${audioCtx.state} time=${audioCtx.currentTime.toFixed(2)}s, Recorder: state=${recorder.state} chunks=${chunks.length}`);
+        combinedStream.getAudioTracks().forEach(t => {
+          console.log(`[AudioPipeline] Track: ${t.id.substring(0, 8)} readyState=${t.readyState} enabled=${t.enabled} muted=${t.muted}`);
+        });
       }
 
       requestAnimationFrame(animate);
