@@ -185,12 +185,37 @@ export default function SocialPage() {
         return;
       }
 
+      // IMPORTANT: Open popup IMMEDIATELY on user click to avoid browser blocking
+      // The popup starts with about:blank, then gets redirected after API call
+      const width = 500;
+      const height = 600;
+      const left =
+        typeof window !== 'undefined'
+          ? window.screenX + (window.outerWidth - width) / 2
+          : 0;
+      const top =
+        typeof window !== 'undefined'
+          ? window.screenY + (window.outerHeight - height) / 2
+          : 0;
+
+      const popup = window.open(
+        'about:blank',
+        `oauth_${platformId}`,
+        `width=${width},height=${height},left=${left},top=${top}`
+      );
+
+      if (!popup) {
+        showToast(
+          'Les popups doivent être activées pour se connecter',
+          'error'
+        );
+        setConnecting(null);
+        return;
+      }
+
       showToast(`Connexion en cours...`, 'info');
 
-      // Wait 1 second before API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Call API to initiate OAuth flow
+      // Call API to get the OAuth URL
       try {
         const response = await fetch('/api/social/connect', {
           method: 'POST',
@@ -201,8 +226,8 @@ export default function SocialPage() {
         const data = await response.json();
 
         if (!response.ok) {
+          popup.close();
           if (data.needsConfig) {
-            // OAuth not configured — show clear message
             showToast(
               `OAuth non configuré pour ${platform?.name}. Configurez les clés API dans Vercel > Settings > Environment Variables.`,
               'error'
@@ -221,24 +246,9 @@ export default function SocialPage() {
           throw new Error(data.error || `HTTP ${response.status}`);
         }
 
-        // If we get a redirect URL, open it in a popup
+        // Redirect the already-open popup to the OAuth URL
         if (data.authUrl) {
-          const width = 500;
-          const height = 600;
-          const left =
-            typeof window !== 'undefined'
-              ? window.screenX + (window.outerWidth - width) / 2
-              : 0;
-          const top =
-            typeof window !== 'undefined'
-              ? window.screenY + (window.outerHeight - height) / 2
-              : 0;
-
-          const popup = window.open(
-            data.authUrl,
-            `oauth_${platformId}`,
-            `width=${width},height=${height},left=${left},top=${top}`
-          );
+          popup.location.href = data.authUrl;
 
           if (!popup) {
             showToast(
@@ -291,11 +301,13 @@ export default function SocialPage() {
           setTimeout(() => clearInterval(pollInterval), 5 * 60 * 1000);
         } else {
           // Successful response but no authUrl — should not happen with new API
+          popup.close();
           showToast(`Erreur: pas de lien d'authentification reçu pour ${platform.name}`, 'error');
           setConnecting(null);
         }
       } catch (error) {
         console.error('Error during connection:', error);
+        if (popup && !popup.closed) popup.close();
         showToast('Erreur lors de la connexion', 'error');
         setConnecting(null);
       }

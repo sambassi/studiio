@@ -4,7 +4,12 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
-import { isAdmin } from '@/lib/admin';
+
+// Client-safe admin check — do NOT import from @/lib/admin (it pulls in supabaseAdmin server module)
+const ADMIN_EMAILS = ['contact.artboost@gmail.com', 'bassicustomshoes@gmail.com'];
+function isAdminEmail(email: string | null | undefined): boolean {
+  return ADMIN_EMAILS.includes(email?.toLowerCase() || '');
+}
 
 export default function AdminLayout({
   children,
@@ -19,7 +24,7 @@ export default function AdminLayout({
     // Check if user is authenticated and is admin
     if (status === 'loading') return;
 
-    if (!session?.user?.email || !isAdmin(session.user.email)) {
+    if (!session?.user?.email || !isAdminEmail(session.user.email)) {
       // Redirect to home if not admin
       router.push('/');
       return;
