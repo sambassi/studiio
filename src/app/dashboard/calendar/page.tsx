@@ -28,7 +28,7 @@ import {
   Volume2,
   Download,
   Film,
-} from 'lucide-react';
+ X,} from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -110,7 +110,12 @@ export default function CalendarPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [showAIAgent, setShowAIAgent] = useState(false);
-  const [saving, setSaving] = useState(false);
+
+  const [agentVoiceFile, setAgentVoiceFile] = useState<File | null>(null);
+  const [isRecordingAgentVoice, setIsRecordingAgentVoice] = useState(false);
+  const agentVoiceInputRef = useRef<HTMLInputElement>(null);
+  const agentVoiceRecorderRef = useRef<MediaRecorder | null>(null);
+  const agentVoiceChunksRef = useRef<Blob[]>([]);  const [saving, setSaving] = useState(false);
 
   // Bulk selection
   const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
@@ -513,7 +518,34 @@ export default function CalendarPage() {
       }
     }, currentDuration);
 
-    return () => {
+  
+  const startAgentVoiceRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      agentVoiceRecorderRef.current = recorder;
+      agentVoiceChunksRef.current = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) agentVoiceChunksRef.current.push(e.data); };
+      recorder.onstop = () => {
+        const blob = new Blob(agentVoiceChunksRef.current, { type: 'audio/webm' });
+        setAgentVoiceFile(new File([blob], 'agent-voix-off.webm', { type: 'audio/webm' }));
+        stream.getTracks().forEach(t => t.stop());
+        setIsRecordingAgentVoice(false);
+      };
+      recorder.start();
+      setIsRecordingAgentVoice(true);
+    } catch (err) {
+      console.error('Mic error:', err);
+    }
+  };
+
+  const stopAgentVoiceRecording = () => {
+    if (agentVoiceRecorderRef.current && agentVoiceRecorderRef.current.state !== 'inactive') {
+      agentVoiceRecorderRef.current.stop();
+    }
+  };
+
+  return () => {
       if (montageTimerRef.current) clearTimeout(montageTimerRef.current);
       if (montageProgressRef.current) clearInterval(montageProgressRef.current);
     };
@@ -1605,7 +1637,33 @@ export default function CalendarPage() {
                 </button>
               </div>
             </div>
-          </div>
+
+                {/* Voix off */}
+                <div className="bg-gray-900/50 rounded-xl p-4 border border-gray-800">
+                  <h3 className="text-sm font-semibold text-gray-200 mb-3 flex items-center gap-2">
+                    <Mic className="w-4 h-4 text-pink-400" />
+                    Voix off
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => agentVoiceInputRef.current?.click()} className="flex-1 px-3 py-2 text-xs rounded-lg border bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700 transition-all">
+                        <Upload className="w-3 h-3 inline mr-1" />Uploader
+                      </button>
+                      <button type="button" onClick={() => { if (!isRecordingAgentVoice) startAgentVoiceRecording(); else stopAgentVoiceRecording(); }} className={`flex-1 px-3 py-2 text-xs rounded-lg border transition-all ${isRecordingAgentVoice ? 'bg-red-600/20 border-red-500 text-red-400 animate-pulse' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
+                        <Mic className="w-3 h-3 inline mr-1" />{isRecordingAgentVoice ? 'Stop' : 'Enregistrer'}
+                      </button>
+                    </div>
+                    {agentVoiceFile && (
+                      <div className="flex items-center gap-2 p-2 bg-gray-800 rounded-lg">
+                        <Volume2 className="w-4 h-4 text-pink-400" />
+                        <span className="text-xs text-gray-300 flex-1 truncate">{agentVoiceFile.name}</span>
+                        <button type="button" onClick={() => { const url = URL.createObjectURL(agentVoiceFile); new Audio(url).play(); }} className="text-pink-400 hover:text-pink-300"><Play className="w-3 h-3" /></button>
+                        <button type="button" onClick={() => setAgentVoiceFile(null)} className="text-gray-500 hover:text-red-400"><X className="w-3 h-3" /></button>
+                      </div>
+                    )}
+                    <input ref={agentVoiceInputRef} type="file" accept="audio/*" className="hidden" onChange={(e) => { if (e.target.files?.[0]) setAgentVoiceFile(e.target.files[0]); }} />
+                  </div>
+                </div>          </div>
 
           {/* Branding / Personnalisation */}
           <div className="mb-4 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
