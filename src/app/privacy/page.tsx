@@ -15,6 +15,19 @@ export default function PrivacyPage() {
                 </section>
           
                 <section className="mb-6">
+                    <h2 className="text-xl font-semibold mb-2">1b. Application Afroboost Studio sur TikTok</h2>
+                    <p className="text-gray-300">
+                        L&apos;application Afroboost Studio (App ID : 7620817395090966540) est une application
+                        enregistr&eacute;e sur la plateforme TikTok for Developers. Afroboost Studio utilise
+                        l&apos;API TikTok (Login Kit et Content Posting API) pour permettre aux utilisateurs
+                        de connecter leur compte TikTok et de publier du contenu vid&eacute;o directement
+                        depuis la plateforme Studiio. En utilisant Afroboost Studio, vous autorisez
+                        l&apos;application &agrave; acc&eacute;der &agrave; votre profil TikTok et &agrave; publier du contenu
+                        en votre nom.
+                    </p>
+                </section>
+          
+                <section className="mb-6">
                         <h2 className="text-xl font-semibold mb-2">2. Collecte des donn&eacute;es</h2>
                         <p className="text-gray-300">
                                   Studiio et Afroboost Studio collectent les informations n&eacute;cessaires au fonctionnement du service :
