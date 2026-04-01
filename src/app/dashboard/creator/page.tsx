@@ -911,7 +911,10 @@ export default function CreatorPage() {
           }
           if (ttsBlob.size > 100) {
             actualVoiceFile = new File([ttsBlob], 'voiceover-tts.mp3', { type: ttsBlob.type || 'audio/mpeg' });
-            console.log('[Creator] TTS voice file ready:', (ttsBlob.size / 1024).toFixed(1), 'KB');
+            // Store TTS bytes in voiceDataRef for direct passing to composer
+            const ttsBuffer = await ttsBlob.arrayBuffer();
+            voiceDataRef.current = { buffer: ttsBuffer, name: 'voiceover-tts.mp3', type: ttsBlob.type || 'audio/mpeg' };
+            console.log('[Creator] TTS voice ready:', (ttsBlob.size / 1024).toFixed(1), 'KB → voiceDataRef stored');
           } else {
             console.warn('[Creator] TTS blob too small, skipping voice:', ttsBlob.size, 'bytes');
           }
@@ -1073,6 +1076,9 @@ export default function CreatorPage() {
               logoUrl: effectiveLogoUrl,
               musicUrl: effectiveMusicUrl || null,
               voiceUrl: effectiveVoiceUrl || null,
+              // Pass raw audio bytes directly — bypasses ALL URL/fetch/CORS issues
+              musicData: musicDataRef.current?.buffer || null,
+              voiceData: voiceDataRef.current?.buffer || null,
               introDuration: 4,
               cardsDuration: cardItems.length > 0 ? 6 : 0,
               videoDuration: 10,
@@ -1163,6 +1169,8 @@ export default function CreatorPage() {
             logoUrl: effectiveLogoUrl,
             musicUrl: effectiveMusicUrl || null,
             voiceUrl: effectiveVoiceUrl || null,
+            musicData: musicDataRef.current?.buffer || null,
+            voiceData: voiceDataRef.current?.buffer || null,
             introDuration: 4,
             cardsDuration: cardItems.length > 0 ? 6 : 0,
             videoDuration: 10,

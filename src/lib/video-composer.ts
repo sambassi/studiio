@@ -30,6 +30,9 @@ export interface ComposerOptions {
   logoUrl?: string | null;
   musicUrl?: string | null;
   voiceUrl?: string | null;
+  // Raw audio bytes — bypasses ALL URL/fetch/CORS issues
+  musicData?: ArrayBuffer | null;
+  voiceData?: ArrayBuffer | null;
   introDuration?: number;
   cardsDuration?: number;
   videoDuration?: number;
@@ -424,6 +427,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     width, height, fps = 24,
     title, subtitle, salesPhrase, cards = [],
     posterUrl, videoUrl, logoUrl, musicUrl, voiceUrl,
+    musicData, voiceData,
     introDuration = 4, cardsDuration = 6, videoDuration = 10, ctaDuration = 4,
     accentColor = '#D91CD2',
     ctaText = 'CHAT POUR PLUS D\'INFOS', ctaSubText = 'LIEN EN BIO',
@@ -431,33 +435,64 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   } = options;
 
   console.log('[Composer] ═══ START ═══');
-  console.log('[Composer] Music URL:', musicUrl ? musicUrl.substring(0, 80) : 'NONE');
-  console.log('[Composer] Voice URL:', voiceUrl ? voiceUrl.substring(0, 80) : 'NONE');
+  console.log('[Composer] Music:', musicData ? `RAW ${(musicData.byteLength/1024).toFixed(0)}KB` : (musicUrl ? 'URL:' + musicUrl.substring(0, 50) : 'NONE'));
+  console.log('[Composer] Voice:', voiceData ? `RAW ${(voiceData.byteLength/1024).toFixed(0)}KB` : (voiceUrl ? 'URL:' + voiceUrl.substring(0, 50) : 'NONE'));
 
   onProgress?.(2, 'Chargement des médias...');
 
-  // ═══ LOAD AUDIO BUFFERS ═══
-  const hasAudioUrls = !!musicUrl || !!voiceUrl;
+  // ═══ LOAD MEDIA ═══
+  const hasAudio = !!musicData || !!voiceData || !!musicUrl || !!voiceUrl;
   let audioCtx: AudioContext | null = null;
 
-  if (hasAudioUrls) {
+  if (hasAudio) {
     audioCtx = new AudioContext({ sampleRate: 48000 });
     await audioCtx.resume();
-    console.log('[Composer] AudioContext: state=' + audioCtx.state);
   }
 
-  // ═══ LOAD ALL MEDIA IN PARALLEL ═══
-  const [posterImg, logoImg, videoEl, musicBuffer, voiceBuffer] = await Promise.all([
+  // Load visual media
+  const [posterImg, logoImg, videoEl] = await Promise.all([
     posterUrl ? loadImage(posterUrl).catch(() => null) : null,
     logoUrl ? loadImage(logoUrl).catch(() => null) : null,
     videoUrl ? loadVideo(videoUrl).catch(() => null) : null,
-    (audioCtx && musicUrl) ? loadAudioBuffer(audioCtx, musicUrl) : null,
-    (audioCtx && voiceUrl) ? loadAudioBuffer(audioCtx, voiceUrl) : null,
   ]);
 
-  console.log('[Composer] Loaded — poster:', !!posterImg, 'logo:', !!logoImg, 'video:', !!videoEl,
-    'music:', musicBuffer ? musicBuffer.duration.toFixed(1) + 's' : 'NULL',
-    'voice:', voiceBuffer ? voiceBuffer.duration.toFixed(1) + 's' : 'NULL');
+  // Load audio — prefer raw bytes (musicData/voiceData) over URLs
+  let musicBuffer: AudioBuffer | null = null;
+  let voiceBuffer: AudioBuffer | null = null;
+
+  if (audioCtx) {
+    // MUSIC: raw bytes first, then URL fallback
+    if (musicData && musicData.byteLength > 100) {
+      try {
+        musicBuffer = await audioCtx.decodeAudioData(musicData.slice(0)); // clone — decodeAudioData consumes buffer
+        console.log('[Composer] ✅ Music decoded from RAW bytes:', musicBuffer.duration.toFixed(1) + 's');
+      } catch (e) {
+        console.error('[Composer] ❌ Music RAW decode failed:', (e as Error)?.message);
+      }
+    }
+    if (!musicBuffer && musicUrl) {
+      musicBuffer = await loadAudioBuffer(audioCtx, musicUrl).catch(() => null);
+      if (musicBuffer) console.log('[Composer] ✅ Music decoded from URL:', musicBuffer.duration.toFixed(1) + 's');
+    }
+
+    // VOICE: raw bytes first, then URL fallback
+    if (voiceData && voiceData.byteLength > 100) {
+      try {
+        voiceBuffer = await audioCtx.decodeAudioData(voiceData.slice(0));
+        console.log('[Composer] ✅ Voice decoded from RAW bytes:', voiceBuffer.duration.toFixed(1) + 's');
+      } catch (e) {
+        console.error('[Composer] ❌ Voice RAW decode failed:', (e as Error)?.message);
+      }
+    }
+    if (!voiceBuffer && voiceUrl) {
+      voiceBuffer = await loadAudioBuffer(audioCtx, voiceUrl).catch(() => null);
+      if (voiceBuffer) console.log('[Composer] ✅ Voice decoded from URL:', voiceBuffer.duration.toFixed(1) + 's');
+    }
+  }
+
+  console.log('[Composer] Media: poster=' + !!posterImg + ' logo=' + !!logoImg + ' video=' + !!videoEl +
+    ' music=' + (musicBuffer ? musicBuffer.duration.toFixed(1) + 's' : 'NONE') +
+    ' voice=' + (voiceBuffer ? voiceBuffer.duration.toFixed(1) + 's' : 'NONE'));
 
   // Build sequences (needed before audio mix to know totalDuration)
   const sequences: Array<{ type: string; duration: number }> = [{ type: 'intro', duration: introDuration }];
@@ -475,7 +510,8 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   // ═══ PRE-MIX AUDIO → WAV BLOB (OfflineAudioContext) ═══
   let audioWavBlob: Blob | null = null;
 
-  if (audioCtx && (musicBuffer || voiceBuffer)) {
+  if (musicBuffer || voiceBuffer) {
+    if (!audioCtx) { audioCtx = new AudioContext({ sampleRate: 48000 }); await audioCtx.resume(); }
     const offlineCtx = new OfflineAudioContext(2, Math.ceil(totalDuration * 48000), 48000);
 
     if (musicBuffer) {
