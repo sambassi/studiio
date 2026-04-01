@@ -877,10 +877,29 @@ export default function CreatorPage() {
         logoFile ? uploadFile(logoFile, 'logo') : null,
       ]);
       console.log('[Creator] Upload results — music:', !!musicUrl, 'char:', !!charUrl, 'voice:', !!voiceUrl, 'logo:', !!logoUrl);
-      // Fallback: if charUrl is null but we have a characterPreview (blob/pexels URL), use it directly
+
+      // CRITICAL FALLBACK: If Supabase uploads fail, use blob URLs from the
+      // original File objects so the composer can still access the media.
+      // Blob URLs work perfectly for client-side rendering since the composer
+      // runs in the same browser tab.
       const effectiveCharUrl = charUrl || characterPreview || null;
       const effectiveLogoUrl = logoUrl || logoPreview || null;
-      console.log('[Creator] Logo resolution — uploaded:', logoUrl?.substring(0, 60) || 'null', '| preview:', logoPreview?.substring(0, 60) || 'null', '| effective:', effectiveLogoUrl?.substring(0, 60) || 'NULL');
+
+      // Music fallback: create blob URL from original file if upload failed
+      let effectiveMusicUrl: string | null = musicUrl;
+      if (!effectiveMusicUrl && backgroundMusic) {
+        effectiveMusicUrl = URL.createObjectURL(backgroundMusic);
+        console.warn('[Creator] Music upload failed, using blob URL fallback:', effectiveMusicUrl.substring(0, 60));
+      }
+
+      // Voice fallback: create blob URL from original file if upload failed
+      let effectiveVoiceUrl: string | null = voiceUrl;
+      if (!effectiveVoiceUrl && actualVoiceFile) {
+        effectiveVoiceUrl = URL.createObjectURL(actualVoiceFile);
+        console.warn('[Creator] Voice upload failed, using blob URL fallback:', effectiveVoiceUrl.substring(0, 60));
+      }
+
+      console.log('[Creator] Effective URLs — music:', effectiveMusicUrl?.substring(0, 60) || 'NULL', '| voice:', effectiveVoiceUrl?.substring(0, 60) || 'NULL', '| logo:', effectiveLogoUrl?.substring(0, 60) || 'NULL');
       setRenderProgress(20);
 
       // ═══ PHASE 2: Batch variations ═══
@@ -958,8 +977,8 @@ export default function CreatorPage() {
               posterUrl: effectiveCharUrl,
               videoUrl: rushUrl,
               logoUrl: effectiveLogoUrl,
-              musicUrl: musicUrl || null,
-              voiceUrl: voiceUrl || null,
+              musicUrl: effectiveMusicUrl || null,
+              voiceUrl: effectiveVoiceUrl || null,
               introDuration: 5,
               cardsDuration: cardItems.length > 0 ? 8 : 0,
               videoDuration: 12,
