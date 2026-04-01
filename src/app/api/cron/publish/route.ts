@@ -17,10 +17,26 @@ export async function GET(req: NextRequest) {
 
   try {
     const now = new Date();
-    const todayDate = now.toISOString().split('T')[0]; // YYYY-MM-DD
-    const currentTime = now.toTimeString().slice(0, 5);  // HH:MM
 
-    console.log(`[CRON] Checking scheduled posts at ${todayDate} ${currentTime}`);
+    // Convert server UTC time to Europe/Paris (user's timezone)
+    // This is critical because Vercel runs in UTC but users schedule in local time
+    const dateFormatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Paris',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const timeFormatter = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Paris',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+
+    const todayDate = dateFormatter.format(now); // YYYY-MM-DD (en-CA locale)
+    const currentTime = timeFormatter.format(now); // HH:MM (24h format)
+
+    console.log(`[CRON] Checking scheduled posts at ${todayDate} ${currentTime} (Europe/Paris)`);
 
     // Find all posts that are scheduled and whose date/time has passed
     // We look for:
