@@ -1,12 +1,12 @@
 /**
- * Client-side video composer using Canvas + WebCodecs + mp4-muxer.
+ * Client-side video composer using Canvas + WebCodecs + webm-muxer.
  * Renders montage sequences (intro, cards, video, CTA) directly in the browser.
- * Uses WebCodecs API (VideoEncoder/AudioEncoder) + mp4-muxer for RELIABLE
- * audio+video encoding with universal MP4 format (H.264 + AAC).
- * Outputs a downloadable MP4 video blob — NO server rendering needed.
+ * Uses WebCodecs API (VideoEncoder/AudioEncoder) + webm-muxer for RELIABLE
+ * audio+video encoding with VP8 + Opus (proven browser support).
+ * Outputs a downloadable WebM video blob — NO server rendering needed.
  */
 
-import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
+import { Muxer, ArrayBufferTarget } from 'webm-muxer';
 
 // ═══════════════════════════════════════════════════════════
 // TYPES
@@ -545,12 +545,27 @@ async function preRenderAudio(
   }
 
   if (voiceBytes) {
+    console.log('[VideoComposer] Voice bytes received:', voiceBytes.byteLength, 'bytes');
+    // Check first few bytes to identify format
+    const header = new Uint8Array(voiceBytes.slice(0, 16));
+    const headerHex = Array.from(header).map(b => b.toString(16).padStart(2, '0')).join(' ');
+    console.log('[VideoComposer] Voice file header (hex):', headerHex);
     try {
       voiceBuf = await offlineCtx.decodeAudioData(voiceBytes.slice(0));
-      console.log('[VideoComposer] Voice decoded:', voiceBuf.duration.toFixed(1), 's,', voiceBuf.numberOfChannels, 'ch');
+      console.log('[VideoComposer] Voice decoded OK:', voiceBuf.duration.toFixed(1), 's,', voiceBuf.numberOfChannels, 'ch,', voiceBuf.sampleRate, 'Hz');
+      // Check if voice buffer actually has audio content (not silence)
+      const voiceSamples = voiceBuf.getChannelData(0);
+      let maxAmp = 0;
+      for (let i = 0; i < Math.min(voiceSamples.length, 48000); i++) {
+        maxAmp = Math.max(maxAmp, Math.abs(voiceSamples[i]));
+      }
+      console.log('[VideoComposer] Voice max amplitude (first 1s):', maxAmp.toFixed(4), maxAmp > 0.001 ? '(HAS AUDIO)' : '(SILENT!)');
     } catch (err) {
-      console.error('[VideoComposer] Voice decode failed:', (err as Error)?.message);
+      console.error('[VideoComposer] Voice decode FAILED:', (err as Error)?.message);
+      console.error('[VideoComposer] Voice bytes size was:', voiceBytes.byteLength, '— this format may not be decodable');
     }
+  } else {
+    console.warn('[VideoComposer] No voice bytes received — voiceUrl was:', voiceUrl);
   }
 
   if (!musicBuf && !voiceBuf) {
@@ -593,7 +608,7 @@ async function preRenderAudio(
 }
 
 // ═══════════════════════════════════════════════════════════
-// MAIN COMPOSER — WebCodecs + webm-muxer
+// MAIN COMPOSER — WebCodecs + webm-muxer (VP8 + Opus)
 // ═══════════════════════════════════════════════════════════
 
 export async function composeVideo(options: ComposerOptions): Promise<Blob> {
@@ -612,7 +627,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 
   onProgress?.(2, 'Chargement des médias...');
 
-  console.log('[VideoComposer] === COMPOSE START (WebCodecs + webm-muxer) ===');
+  console.log('[VideoComposer] === COMPOSE START (WebCodecs + webm-muxer VP8+Opus) ===');
   console.log('[VideoComposer] Media URLs — poster:', posterUrl?.substring(0, 60), 'logo:', logoUrl?.substring(0, 60), 'video:', videoUrl?.substring(0, 60));
   console.log('[VideoComposer] Audio URLs — music:', musicUrl?.substring(0, 60) || 'NONE', 'voice:', voiceUrl?.substring(0, 60) || 'NONE');
 
@@ -643,9 +658,19 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   const transitionDur = 0.8;
 
   // Pre-render audio using OfflineAudioContext (GUARANTEED to produce correct audio)
+  console.log('[VideoComposer] Calling preRenderAudio with musicUrl:', musicUrl ? musicUrl.substring(0, 60) : 'NULL', '| voiceUrl:', voiceUrl ? voiceUrl.substring(0, 60) : 'NULL');
   const audioBuffer = await preRenderAudio(musicUrl || null, voiceUrl || null, totalDuration);
   const hasAudio = audioBuffer !== null;
-  console.log('[VideoComposer] Audio status:', hasAudio ? `READY (${audioBuffer!.duration.toFixed(1)}s)` : 'NO AUDIO');
+  if (hasAudio) {
+    console.log('[VideoComposer] Audio pre-rendered OK:', audioBuffer!.duration.toFixed(1), 's,', audioBuffer!.numberOfChannels, 'ch,', audioBuffer!.length, 'samples');
+    // Check if audio buffer has content
+    const ch0 = audioBuffer!.getChannelData(0);
+    let maxAmp = 0;
+    for (let i = 0; i < Math.min(ch0.length, 48000 * 3); i++) { maxAmp = Math.max(maxAmp, Math.abs(ch0[i])); }
+    console.log('[VideoComposer] Audio max amplitude (first 3s):', maxAmp.toFixed(4), maxAmp > 0.001 ? '✅ HAS AUDIO' : '❌ SILENT');
+  } else {
+    console.error('[VideoComposer] ❌ NO AUDIO — preRenderAudio returned null. Music:', !!musicUrl, 'Voice:', !!voiceUrl);
+  }
 
   onProgress?.(15, 'Démarrage de l\'encodage...');
 
@@ -659,60 +684,61 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   canvas.style.cssText = 'position:fixed;top:-9999px;left:-9999px;pointer-events:none;opacity:0;';
   document.body.appendChild(canvas);
 
-  // ═══ SET UP mp4-muxer (H.264 + AAC for universal compatibility) ═══
+  // ═══ SET UP webm-muxer (VP8 + Opus — proven browser support) ═══
   const muxerTarget = new ArrayBufferTarget();
   const muxer = new Muxer({
     target: muxerTarget,
     video: {
-      codec: 'avc',
+      codec: 'V_VP8',
       width,
       height,
     },
     ...(hasAudio ? {
       audio: {
-        codec: 'aac',
+        codec: 'A_OPUS',
         sampleRate: 48000,
         numberOfChannels: audioBuffer!.numberOfChannels,
       },
     } : {}),
     firstTimestampBehavior: 'offset',
-    fastStart: 'in-memory',
   });
 
-  console.log('[VideoComposer] MP4 Muxer created — video: H.264', width, 'x', height, '| audio:', hasAudio ? 'AAC' : 'none');
+  console.log('[VideoComposer] WebM Muxer created — video: VP8', width, 'x', height, '| audio:', hasAudio ? 'Opus ' + audioBuffer!.numberOfChannels + 'ch' : 'none');
 
-  // ═══ SET UP VideoEncoder (H.264) ═══
+  // ═══ SET UP VideoEncoder (VP8) ═══
+  let videoEncoderChunks = 0;
   const videoEncoder = new VideoEncoder({
-    output: (chunk, meta) => muxer.addVideoChunk(chunk, meta ?? undefined),
+    output: (chunk, meta) => { videoEncoderChunks++; muxer.addVideoChunk(chunk, meta ?? undefined); },
     error: (e) => console.error('[VideoComposer] VideoEncoder error:', e),
   });
 
   videoEncoder.configure({
-    codec: 'avc1.640028', // H.264 High Profile Level 4.0
+    codec: 'vp8',
     width,
     height,
     bitrate: 8_000_000,
     framerate: fps,
   });
 
-  console.log('[VideoComposer] VideoEncoder configured: H.264 High', width, 'x', height, '@', fps, 'fps');
+  console.log('[VideoComposer] VideoEncoder configured: VP8', width, 'x', height, '@', fps, 'fps');
 
-  // ═══ SET UP AudioEncoder (AAC — if audio) ═══
+  // ═══ SET UP AudioEncoder (Opus — if audio) ═══
   let audioEncoder: AudioEncoder | null = null;
+  let audioEncoderChunks = 0;
   if (hasAudio) {
     audioEncoder = new AudioEncoder({
-      output: (chunk, meta) => muxer.addAudioChunk(chunk, meta ?? undefined),
+      output: (chunk, meta) => { audioEncoderChunks++; muxer.addAudioChunk(chunk, meta ?? undefined); },
       error: (e) => console.error('[VideoComposer] AudioEncoder error:', e),
     });
 
     audioEncoder.configure({
-      codec: 'mp4a.40.2', // AAC-LC
+      codec: 'opus',
       sampleRate: 48000,
       numberOfChannels: audioBuffer!.numberOfChannels,
       bitrate: 128_000,
     });
 
-    console.log('[VideoComposer] AudioEncoder configured: AAC-LC', audioBuffer!.numberOfChannels, 'ch @ 48000Hz');
+    console.log('[VideoComposer] AudioEncoder configured: Opus', audioBuffer!.numberOfChannels, 'ch @ 48000Hz');
   }
 
   // Pre-calculate sequence start times
@@ -845,7 +871,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       channels.push(audioBuffer.getChannelData(c));
     }
 
-    // Encode audio in chunks (960 samples = 20ms @ 48kHz, standard Opus frame)
+    // Encode audio in chunks (960 samples = 20ms @ 48kHz, standard Opus/AAC frame)
     const chunkSize = 960;
     const totalAudioSamples = audioBuffer.length;
 
@@ -872,7 +898,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       audioData.close();
     }
 
-    console.log('[VideoComposer] All audio chunks encoded');
+    console.log('[VideoComposer] All audio chunks encoded, total audio encoder output chunks:', audioEncoderChunks);
   }
 
   // ═══ FLUSH & FINALIZE ═══
@@ -882,17 +908,19 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   await videoEncoder.flush();
   if (audioEncoder) await audioEncoder.flush();
 
+  console.log('[VideoComposer] Encoder stats — video chunks:', videoEncoderChunks, '| audio chunks:', audioEncoderChunks);
+
   videoEncoder.close();
   if (audioEncoder) audioEncoder.close();
 
   muxer.finalize();
   console.log('[VideoComposer] Muxer finalized');
 
-  // Get the final MP4 blob
+  // Get the final WebM blob
   const { buffer } = muxerTarget;
-  const blob = new Blob([buffer], { type: 'video/mp4' });
+  const blob = new Blob([buffer], { type: 'video/webm' });
 
-  console.log('[VideoComposer] Output blob:', (blob.size / 1024 / 1024).toFixed(1), 'MB');
+  console.log('[VideoComposer] Output blob:', (blob.size / 1024 / 1024).toFixed(1), 'MB, type: video/webm');
 
   // Clean up
   if (videoEl) videoEl.pause();
@@ -921,8 +949,8 @@ export async function composeAndUpload(
   let url: string | null = null;
   try {
     const formData = new FormData();
-    const cleanType = 'video/mp4';
-    const file = new File([blob], `montage-${Date.now()}.mp4`, { type: cleanType });
+    const cleanType = 'video/webm';
+    const file = new File([blob], `montage-${Date.now()}.webm`, { type: cleanType });
     formData.append('file', file);
     formData.append('purpose', 'rush');
     const res = await fetch('/api/upload/media', { method: 'POST', body: formData });
