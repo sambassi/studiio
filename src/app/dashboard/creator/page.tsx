@@ -156,6 +156,9 @@ export default function CreatorPage() {
   // Music
   const [backgroundMusic, setBackgroundMusic] = useState<File | null>(null);
   const [musicName, setMusicName] = useState('');
+  // REF BACKUP: File objects can sometimes be lost from useState (React quirks, StrictMode).
+  // Refs survive any render cycle and act as a bulletproof backup.
+  const backgroundMusicRef = useRef<File | null>(null);
 
   // Voice
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('none');
@@ -165,11 +168,13 @@ export default function CreatorPage() {
   const [generatedVoiceUrl, setGeneratedVoiceUrl] = useState<string | null>(null);
   const [generatedVoiceBlob, setGeneratedVoiceBlob] = useState<Blob | null>(null);
   const [voiceUploadFile, setVoiceUploadFile] = useState<File | null>(null);
+  const voiceUploadFileRef = useRef<File | null>(null);
   const [previewingVoice, setPreviewingVoice] = useState(false);
   const [previewAudio, setPreviewAudio] = useState<HTMLAudioElement | null>(null);
 
   // Logo
   const [logoFile, setLogoFile] = useState<File | null>(null);
+  const logoFileRef = useRef<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
@@ -723,7 +728,9 @@ export default function CreatorPage() {
   const handleMusicUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    console.log('[Creator] Music uploaded:', file.name, (file.size / 1024).toFixed(1), 'KB');
     setBackgroundMusic(file);
+    backgroundMusicRef.current = file; // ref backup
     setMusicName(file.name);
     // Create preview URL for playback
     if (musicPreviewUrl) URL.revokeObjectURL(musicPreviewUrl);
@@ -738,7 +745,9 @@ export default function CreatorPage() {
   const handleVoiceUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    console.log('[Creator] Voice uploaded:', file.name, (file.size / 1024).toFixed(1), 'KB');
     setVoiceUploadFile(file);
+    voiceUploadFileRef.current = file; // ref backup
   };
 
   const handleGenerateVoice = async () => {
@@ -817,17 +826,33 @@ export default function CreatorPage() {
     try {
       // ═══ STATE DIAGNOSTIC — log all media state at export time ═══
       console.log('[Creator] ═══ EXPORT STATE DIAGNOSTIC ═══');
-      console.log('[Creator] backgroundMusic:', backgroundMusic ? `${backgroundMusic.name} (${(backgroundMusic.size/1024).toFixed(1)}KB)` : 'NULL');
-      console.log('[Creator] voiceUploadFile:', voiceUploadFile ? `${voiceUploadFile.name} (${(voiceUploadFile.size/1024).toFixed(1)}KB)` : 'NULL');
-      console.log('[Creator] logoFile:', logoFile ? `${logoFile.name} (${(logoFile.size/1024).toFixed(1)}KB)` : 'NULL');
-      console.log('[Creator] characterImage:', characterImage ? `${characterImage.name} (${(characterImage.size/1024).toFixed(1)}KB)` : 'NULL');
-      console.log('[Creator] voiceMode:', voiceMode, '| ttsText:', ttsText.substring(0, 40) + (ttsText.length > 40 ? '...' : ''), '| ttsVoice:', ttsVoice);
+      console.log('[Creator] backgroundMusic (state):', backgroundMusic ? `${backgroundMusic.name} (${(backgroundMusic.size/1024).toFixed(1)}KB)` : 'NULL');
+      console.log('[Creator] backgroundMusic (ref):', backgroundMusicRef.current ? `${backgroundMusicRef.current.name} (${(backgroundMusicRef.current.size/1024).toFixed(1)}KB)` : 'NULL');
+      console.log('[Creator] voiceUploadFile (state):', voiceUploadFile ? `${voiceUploadFile.name} (${(voiceUploadFile.size/1024).toFixed(1)}KB)` : 'NULL');
+      console.log('[Creator] voiceUploadFile (ref):', voiceUploadFileRef.current ? `${voiceUploadFileRef.current.name}` : 'NULL');
+      console.log('[Creator] logoFile (state):', logoFile ? `${logoFile.name}` : 'NULL');
+      console.log('[Creator] logoFile (ref):', logoFileRef.current ? `${logoFileRef.current.name}` : 'NULL');
+      console.log('[Creator] characterImage:', characterImage ? `${characterImage.name}` : 'NULL');
+      console.log('[Creator] voiceMode:', voiceMode, '| ttsText:', ttsText.substring(0, 40), '| ttsVoice:', ttsVoice);
       console.log('[Creator] generatedVoiceBlob:', generatedVoiceBlob ? `${(generatedVoiceBlob.size/1024).toFixed(1)}KB` : 'NULL');
-      console.log('[Creator] characterPreview:', characterPreview?.substring(0, 60) || 'NULL');
       console.log('[Creator] musicPreviewUrl:', musicPreviewUrl?.substring(0, 60) || 'NULL');
       console.log('[Creator] logoPreview:', logoPreview?.substring(0, 60) || 'NULL');
       console.log('[Creator] rushes with files:', rushesWithFiles.length, '/', videoRushes.length);
       console.log('[Creator] ═══════════════════════════════');
+
+      // USE REF BACKUPS if state is null (defensive against React state quirks)
+      const musicFile = backgroundMusic || backgroundMusicRef.current;
+      const voiceFile = voiceUploadFile || voiceUploadFileRef.current;
+      const logo = logoFile || logoFileRef.current;
+      if (!backgroundMusic && backgroundMusicRef.current) {
+        console.warn('[Creator] ⚠️ backgroundMusic STATE was null but REF has file! Using ref.');
+      }
+      if (!voiceUploadFile && voiceUploadFileRef.current) {
+        console.warn('[Creator] ⚠️ voiceUploadFile STATE was null but REF has file! Using ref.');
+      }
+      if (!logoFile && logoFileRef.current) {
+        console.warn('[Creator] ⚠️ logoFile STATE was null but REF has file! Using ref.');
+      }
 
       // ═══ PHASE 1: Upload files (0-20%) ═══
       setRenderStage('Upload des vidéos...');
@@ -839,8 +864,8 @@ export default function CreatorPage() {
       }
 
       // Generate Edge TTS voice if selected and no manual upload
-      let actualVoiceFile = voiceUploadFile;
-      if (voiceMode === 'edge' && ttsText.trim() && !voiceUploadFile) {
+      let actualVoiceFile = voiceFile;
+      if (voiceMode === 'edge' && ttsText.trim() && !voiceFile) {
         setRenderStage('Génération de la voix off...');
         setRenderProgress(16);
         try {
@@ -885,10 +910,10 @@ export default function CreatorPage() {
       }
 
       const [musicUrl, charUrl, voiceUrl, logoUrl] = await Promise.all([
-        backgroundMusic ? uploadFile(backgroundMusic, 'music') : null,
+        musicFile ? uploadFile(musicFile, 'music') : null,
         charImageToUpload ? uploadFile(charImageToUpload, 'thumbnail') : null,
         actualVoiceFile ? uploadFile(actualVoiceFile, 'voice') : null,
-        logoFile ? uploadFile(logoFile, 'logo') : null,
+        logo ? uploadFile(logo, 'logo') : null,
       ]);
       console.log('[Creator] Upload results — music:', !!musicUrl, 'char:', !!charUrl, 'voice:', !!voiceUrl, 'logo:', !!logoUrl);
 
@@ -896,13 +921,18 @@ export default function CreatorPage() {
       // Supabase URLs cause CORS failures with decodeAudioData.
       // Blob URLs are local, CORS-free, and GUARANTEED to work.
       const effectiveCharUrl = charUrl || characterPreview || null;
-      const effectiveLogoUrl = logoFile ? URL.createObjectURL(logoFile) : (logoPreview || logoUrl || null);
+      const effectiveLogoUrl = logo ? URL.createObjectURL(logo) : (logoPreview || logoUrl || null);
 
       // ALWAYS create blob URLs from original Files for the composer
-      // If File is null but Supabase URL exists, fetch via proxy and create blob URL
+      // If File is null, try: ref backup → musicPreviewUrl → proxy from Supabase URL
       let effectiveMusicUrl: string | null = null;
-      if (backgroundMusic) {
-        effectiveMusicUrl = URL.createObjectURL(backgroundMusic);
+      if (musicFile) {
+        effectiveMusicUrl = URL.createObjectURL(musicFile);
+        console.log('[Creator] Music: using File blob URL');
+      } else if (musicPreviewUrl) {
+        // musicPreviewUrl is already a blob URL created from the original File
+        effectiveMusicUrl = musicPreviewUrl;
+        console.log('[Creator] Music: using existing preview blob URL (File was null!)');
       } else if (musicUrl) {
         // Supabase URL exists but no File — fetch through proxy to get a blob URL
         console.log('[Creator] Music: no File but have Supabase URL, fetching via proxy...');
@@ -934,9 +964,9 @@ export default function CreatorPage() {
       console.log('[Creator] Composer URLs — music:', effectiveMusicUrl?.substring(0, 60) || 'NULL',
         '| voice:', effectiveVoiceUrl?.substring(0, 60) || 'NULL',
         '| logo:', effectiveLogoUrl?.substring(0, 60) || 'NULL');
-      console.log('[Creator] Sources — music:', backgroundMusic ? 'File' : (musicUrl ? 'proxy' : 'none'),
+      console.log('[Creator] Sources — music:', musicFile ? 'File' : (musicPreviewUrl ? 'previewUrl' : (musicUrl ? 'proxy' : 'none')),
         '| voice:', actualVoiceFile ? 'File' : (voiceUrl ? 'proxy' : 'none'),
-        '| logo:', logoFile ? 'File' : 'fallback');
+        '| logo:', logo ? 'File' : 'fallback');
       setRenderProgress(20);
 
       // ═══ PHASE 2: Batch variations ═══
@@ -1176,7 +1206,9 @@ export default function CreatorPage() {
       <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
         const file = e.target.files?.[0];
         if (file) {
+          console.log('[Creator] Logo uploaded:', file.name, (file.size / 1024).toFixed(1), 'KB');
           setLogoFile(file);
+          logoFileRef.current = file; // ref backup
           if (logoPreview) URL.revokeObjectURL(logoPreview);
           setLogoPreview(URL.createObjectURL(file));
         }
