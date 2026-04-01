@@ -18,38 +18,66 @@ export async function GET(req: NextRequest) {
   try {
     const now = new Date();
 
-    // Convert server UTC time to Europe/Paris (user's timezone)
-    // This is critical because Vercel runs in UTC but users schedule in local time
-    const dateFormatter = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Europe/Paris',
+    // We need to check posts across all timezones
+    // Strategy: get all scheduled posts, then check each one against its own timezone
+    // Default timezone is Europe/Paris if not specified in post metadata
+    // For the main query, we use a generous window: check posts where date <= today UTC+14 (earliest timezone)
+    // Then filter precisely per-post timezone in code
+
+    // Use the latest possible timezone (UTC+14) to ensure we don't miss any posts
+    const latestTzFormatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Pacific/Kiritimati', // UTC+14, the latest timezone
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
     });
-    const timeFormatter = new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Europe/Paris',
+    const latestDate = latestTzFormatter.format(now);
+    const latestTimeFormatter = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Pacific/Kiritimati',
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
     });
+    const latestTime = latestTimeFormatter.format(now);
 
-    const todayDate = dateFormatter.format(now); // YYYY-MM-DD (en-CA locale)
-    const currentTime = timeFormatter.format(now); // HH:MM (24h format)
+    console.log(`[CRON] Checking scheduled posts. Server UTC: ${now.toISOString()}, Latest TZ date: ${latestDate} ${latestTime}`);
 
-    console.log(`[CRON] Checking scheduled posts at ${todayDate} ${currentTime} (Europe/Paris)`);
-
-    // Find all posts that are scheduled and whose date/time has passed
-    // We look for:
-    // 1. Posts with scheduled_date < today (past days, missed)
-    // 2. Posts with scheduled_date = today AND scheduled_time <= current time
-    const { data: duePosts, error: fetchError } = await supabase
+    // Find all posts that are scheduled and whose date/time has potentially passed
+    // We use the latest timezone (UTC+14) for the query to cast a wide net,
+    // then filter precisely per-post timezone in code
+    const { data: candidatePosts, error: fetchError } = await supabase
       .from('scheduled_posts')
       .select('*, videos:video_id(*)')
       .eq('status', 'scheduled')
-      .or(`scheduled_date.lt.${todayDate},and(scheduled_date.eq.${todayDate},scheduled_time.lte.${currentTime})`)
+      .or(`scheduled_date.lt.${latestDate},and(scheduled_date.eq.${latestDate},scheduled_time.lte.${latestTime})`)
       .order('scheduled_date', { ascending: true })
       .order('scheduled_time', { ascending: true })
-      .limit(10); // Process max 10 per run to stay within timeout
+      .limit(20);
+
+    // Filter posts by their actual timezone
+    const duePosts = (candidatePosts || []).filter((post) => {
+      // Get user's timezone from post metadata, default to Europe/Paris
+      const userTz = post.metadata?.timezone || 'Europe/Paris';
+      try {
+        const userDateFmt = new Intl.DateTimeFormat('en-CA', { timeZone: userTz, year: 'numeric', month: '2-digit', day: '2-digit' });
+        const userTimeFmt = new Intl.DateTimeFormat('en-GB', { timeZone: userTz, hour: '2-digit', minute: '2-digit', hour12: false });
+        const userDate = userDateFmt.format(now);
+        const userTime = userTimeFmt.format(now);
+
+        // Check if post is due in user's timezone
+        const isDue = post.scheduled_date < userDate ||
+          (post.scheduled_date === userDate && post.scheduled_time <= userTime);
+        return isDue;
+      } catch {
+        // If timezone is invalid, fall back to Europe/Paris
+        const parisFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' });
+        const parisTimeFmt = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false });
+        const parisDate = parisFmt.format(now);
+        const parisTime = parisTimeFmt.format(now);
+        return post.scheduled_date < parisDate ||
+          (post.scheduled_date === parisDate && post.scheduled_time <= parisTime);
+      }
+    });
 
     if (fetchError) {
       console.error('[CRON] Error fetching due posts:', fetchError);
@@ -72,6 +100,8 @@ export async function GET(req: NextRequest) {
     }> = [];
 
     for (const post of duePosts) {
+      console.log(`[CRON] Processing post: id=${post.id}, title="${post.title}", platforms=${JSON.stringify(post.platforms)}, video_id=${post.video_id}, media_url=${post.media_url ? 'SET' : 'NULL'}`);
+
       // Mark as "publishing" to prevent double-processing
       await supabase
         .from('scheduled_posts')
@@ -80,11 +110,13 @@ export async function GET(req: NextRequest) {
 
       try {
         // Get the user's social accounts
-        const { data: accounts } = await supabase
+        const { data: accounts, error: accountsError } = await supabase
           .from('social_accounts')
           .select('*')
           .eq('user_id', post.user_id)
           .eq('connected', true);
+
+        console.log(`[CRON] Social accounts found: ${accounts?.length || 0}, platforms: ${accounts?.map((a: any) => a.platform).join(', ') || 'none'}${accountsError ? ', ERROR: ' + accountsError.message : ''}`);
 
         if (!accounts || accounts.length === 0) {
           await supabase
@@ -97,9 +129,12 @@ export async function GET(req: NextRequest) {
 
         // Check if post has a video with a URL
         const video = post.videos;
+        console.log(`[CRON] Video data: video_id=${post.video_id}, video exists=${!!video}, video_url=${video?.video_url ? 'SET' : 'NULL'}, post.media_url=${post.media_url ? 'SET' : 'NULL'}`);
+
         if (!video || !video.video_url) {
           // If no video_id, try using media_url directly
           if (!post.media_url) {
+            console.log(`[CRON] FAIL: No video or media URL for post ${post.id}`);
             await supabase
               .from('scheduled_posts')
               .update({ status: 'failed', metadata: { ...post.metadata, error: 'No video or media URL' } })
@@ -111,6 +146,7 @@ export async function GET(req: NextRequest) {
 
         const videoUrl = video?.video_url || post.media_url;
         const videoData = video || { title: post.title, video_url: videoUrl };
+        console.log(`[CRON] Using video URL: ${videoUrl?.substring(0, 80)}...`);
 
         const platformResults: Array<{ platform: string; success: boolean; error?: string }> = [];
 

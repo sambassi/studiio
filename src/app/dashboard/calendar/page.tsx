@@ -337,7 +337,11 @@ export default function CalendarPage() {
         const res = await fetch('/api/posts', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...editFormData, status: editTab }),
+          body: JSON.stringify({
+            ...editFormData,
+            status: editTab,
+            metadata: { ...(editFormData.metadata || {}), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+          }),
         });
         const data = await res.json();
         if (data.success) await fetchPosts();
@@ -355,6 +359,7 @@ export default function CalendarPage() {
             scheduled_date: editFormData.scheduled_date || formatDateForStorage(new Date(), new Date().getDate()),
             scheduled_time: editFormData.scheduled_time || '12:00',
             status: editTab,
+            metadata: { ...(editFormData.metadata || {}), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
           }),
         });
         const data = await res.json();
