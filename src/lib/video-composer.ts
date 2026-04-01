@@ -545,30 +545,108 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     ctx.fillStyle = barGrad; ctx.fillRect(0, height - 3, width * (elapsed / totalDuration), 3);
   };
 
-  onProgress?.(15, 'Rendu vidéo...');
+  // ═══ SETUP AUDIO PLAYBACK via <audio>.captureStream() ═══
+  // This is the ONLY approach that works reliably in Chrome:
+  // 1. Create blob URL from WAV
+  // 2. Set as <audio src="blob:..."> (NOT srcObject)
+  // 3. Wait for canplaythrough
+  // 4. Call audio.captureStream() to get audio MediaStream
+  // 5. Add audio track to combined stream for MediaRecorder
+  let audioElement: HTMLAudioElement | null = null;
+  let audioTrack: MediaStreamTrack | null = null;
 
-  // ═══ VIDEO-ONLY RECORDING (no audio in MediaRecorder — FFmpeg adds it after) ═══
+  if (audioWavBlob && audioWavBlob.size > 100) {
+    const wavUrl = URL.createObjectURL(audioWavBlob);
+    console.log('[Composer] Loading audio element: WAV=' + (audioWavBlob.size / 1024).toFixed(0) + 'KB url=' + wavUrl.substring(0, 50));
+
+    audioElement = document.createElement('audio');
+    audioElement.preload = 'auto';
+    audioElement.volume = 0.01; // near-silent speaker output
+
+    // Wait for audio to be ready
+    const audioReady = await new Promise<boolean>((resolve) => {
+      let done = false;
+      const finish = (ok: boolean) => { if (!done) { done = true; resolve(ok); } };
+      audioElement!.oncanplaythrough = () => { console.log('[Composer] ✅ Audio element ready, dur=' + audioElement!.duration.toFixed(1) + 's'); finish(true); };
+      audioElement!.onloadeddata = () => { console.log('[Composer] Audio loadeddata'); finish(true); };
+      audioElement!.onerror = () => {
+        const e = audioElement!.error;
+        console.error('[Composer] ❌ Audio element error:', e?.code, e?.message);
+        finish(false);
+      };
+      audioElement!.src = wavUrl; // MUST set src after handlers
+      audioElement!.load();
+      setTimeout(() => { console.warn('[Composer] Audio load timeout 10s'); finish(false); }, 10000);
+    });
+
+    if (audioReady && audioElement.duration > 0) {
+      // captureStream() on <audio> element — Chrome native, no Web Audio API needed
+      try {
+        const audioStream = (audioElement as any).captureStream() as MediaStream;
+        const tracks = audioStream.getAudioTracks();
+        if (tracks.length > 0) {
+          audioTrack = tracks[0];
+          console.log('[Composer] ✅ captureStream() audio track: state=' + audioTrack.readyState + ' enabled=' + audioTrack.enabled);
+        } else {
+          console.error('[Composer] captureStream() returned 0 audio tracks');
+        }
+      } catch (csErr) {
+        console.error('[Composer] captureStream() failed:', (csErr as Error)?.message);
+      }
+    } else {
+      console.error('[Composer] Audio element not ready — no audio in output');
+      URL.revokeObjectURL(wavUrl);
+      audioElement = null;
+    }
+  }
+
+  onProgress?.(15, 'Rendu...');
+
+  // ═══ RECORD VIDEO + AUDIO TOGETHER ═══
   const videoStream = canvas.captureStream(fps);
-  const mimeType = MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4'
-    : MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9'
-    : 'video/webm';
+  const combinedStream = new MediaStream();
+  for (const t of videoStream.getVideoTracks()) combinedStream.addTrack(t);
+  if (audioTrack) combinedStream.addTrack(audioTrack);
+
+  console.log('[Composer] Recording: video=' + combinedStream.getVideoTracks().length + ' audio=' + combinedStream.getAudioTracks().length);
+
+  // Pick mime type — with audio, prefer codecs that support audio
+  const mimeType = audioTrack
+    ? (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1.42E01E,mp4a.40.2') ? 'video/mp4;codecs=avc1.42E01E,mp4a.40.2'
+      : MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus'
+      : MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus') ? 'video/webm;codecs=vp8,opus'
+      : 'video/webm')
+    : (MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4'
+      : MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9'
+      : 'video/webm');
+
   const targetBytes = 4 * 1024 * 1024;
   const bitrate = Math.min(2_500_000, Math.floor((targetBytes * 8) / totalDuration));
 
-  const recorder = new MediaRecorder(videoStream, { mimeType, videoBitsPerSecond: bitrate });
+  const recorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: bitrate });
   const chunks: Blob[] = [];
   recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-  console.log('[Composer] Recording video-only: ' + mimeType + ' @ ' + (bitrate / 1000) + 'kbps');
+  console.log('[Composer] MediaRecorder: ' + mimeType + ' @ ' + (bitrate / 1000) + 'kbps');
 
-  const videoBlob = await new Promise<Blob>((resolve, reject) => {
+  const finalBlob = await new Promise<Blob>((resolve, reject) => {
     recorder.onstop = () => {
-      const blob = new Blob(chunks, { type: mimeType });
-      console.log('[Composer] Video blob: ' + (blob.size / 1024 / 1024).toFixed(2) + ' MB');
+      const isMP4 = mimeType.includes('mp4');
+      const blob = new Blob(chunks, { type: isMP4 ? 'video/mp4' : 'video/webm' });
+      console.log('[Composer] ✅ DONE: ' + (blob.size / 1024 / 1024).toFixed(2) + ' MB, ' + blob.type);
       resolve(blob);
     };
     recorder.onerror = () => reject(new Error('Recording failed'));
 
+    // Start recording FIRST
     recorder.start(200);
+
+    // Start audio playback (captureStream captures it in real-time)
+    if (audioElement) {
+      audioElement.currentTime = 0;
+      audioElement.play().catch(e => console.error('[Composer] Audio play error:', e));
+      console.log('[Composer] ✅ Audio playback started');
+    }
+
     if (videoEl) { videoEl.currentTime = 0; videoEl.pause(); }
 
     const startTime = performance.now();
@@ -576,7 +654,11 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 
     const animate = () => {
       const elapsed = (performance.now() - startTime) / 1000;
-      if (elapsed >= totalDuration + 0.3) { recorder.stop(); return; }
+      if (elapsed >= totalDuration + 0.3) {
+        if (audioElement) audioElement.pause();
+        recorder.stop();
+        return;
+      }
 
       const t = Math.min(elapsed, totalDuration - 0.001);
 
@@ -594,7 +676,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 
       if (elapsed - lastProg > 0.5) {
         lastProg = elapsed;
-        onProgress?.(Math.min(15 + Math.round((elapsed / totalDuration) * 55), 70),
+        onProgress?.(Math.min(15 + Math.round((elapsed / totalDuration) * 80), 95),
           `Rendu: ${Math.round((elapsed / totalDuration) * 100)}%`);
       }
 
@@ -605,32 +687,13 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     requestAnimationFrame(animate);
   });
 
+  // Cleanup
+  if (audioElement) {
+    audioElement.pause();
+    if (audioElement.src.startsWith('blob:')) URL.revokeObjectURL(audioElement.src);
+  }
   if (videoEl) videoEl.pause();
   try { document.body.removeChild(canvas); } catch {}
-
-  // ═══ MUX VIDEO + AUDIO via FFmpeg.wasm ═══
-  let finalBlob: Blob;
-
-  if (audioWavBlob && audioWavBlob.size > 100) {
-    onProgress?.(72, 'Fusion audio + vidéo...');
-    console.log('[Composer] ═══ FFMPEG MUX ═══');
-    try {
-      const { muxVideoAudio } = await import('@/lib/ffmpeg-mux');
-      finalBlob = await muxVideoAudio({
-        videoBlob,
-        audioBlob: audioWavBlob,
-        onProgress: (pct) => onProgress?.(72 + Math.round(pct * 0.25), 'Fusion audio...'),
-      });
-      console.log('[Composer] ✅ Muxed MP4: ' + (finalBlob.size / 1024 / 1024).toFixed(2) + ' MB');
-    } catch (muxErr) {
-      console.error('[Composer] ❌ FFmpeg mux failed:', (muxErr as Error)?.message || muxErr);
-      console.error('[Composer] Returning video WITHOUT audio. Check: COOP/COEP headers, SharedArrayBuffer availability, network access to unpkg.com');
-      finalBlob = videoBlob;
-    }
-  } else {
-    console.log('[Composer] No audio — using video blob as-is');
-    finalBlob = videoBlob;
-  }
 
   onProgress?.(100, 'Terminé !');
   return finalBlob;
