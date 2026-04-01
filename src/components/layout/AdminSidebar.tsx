@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Users, CreditCard, Zap, Film, Settings, FileText, Mail, Shield, ArrowLeft } from 'lucide-react';
+import { LayoutDashboard, Users, CreditCard, Zap, Film, Settings, FileText, Mail, Shield, ArrowLeft, Globe } from 'lucide-react';
 
 const menuItems = [
   { icon: LayoutDashboard, label: 'Tableau de bord', href: '/admin' },
@@ -10,6 +10,7 @@ const menuItems = [
   { icon: CreditCard, label: 'Abonnements', href: '/admin/subscriptions' },
   { icon: Zap, label: 'Paiements', href: '/admin/payments' },
   { icon: Film, label: 'Vidéos', href: '/admin/videos' },
+  { icon: Globe, label: 'Landing Page', href: '/admin/landing' },
   { icon: Settings, label: 'Paramètres', href: '/admin/settings' },
   { icon: FileText, label: 'Conditions Générales', href: '/admin/terms' },
   { icon: Mail, label: 'Emails', href: '/admin/emails' },

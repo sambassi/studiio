@@ -1,13 +1,26 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   ArrowRight, Zap, Sparkles, BarChart3, Play, Check, Star,
   Video, Calendar, Share2, Target, Palette, Globe, Shield,
   ChevronDown, ChevronUp, Users, TrendingUp, Clock, Award,
   Smartphone, Monitor, Instagram, Youtube, Facebook, Music,
 } from 'lucide-react';
+
+// Dynamic content from admin CMS
+interface DynamicContent {
+  hero?: { badge?: string; title?: string; subtitle?: string; cta1?: string; cta2?: string; socialProof1?: string; socialProof2?: string; socialProof3?: string; demoVideoUrl?: string };
+  features?: Array<{ title: string; desc: string; iconName?: string; color?: string }>;
+  testimonials?: Array<{ name: string; role: string; text: string; stars: number; avatar: string }>;
+  howItWorks?: Array<{ step: string; title: string; desc: string }>;
+  faq?: Array<{ q: string; a: string }>;
+  stats?: Array<{ value: string; label: string }>;
+  plans?: Array<{ name: string; price: string; yearlyPrice: string; desc: string; credits: number; features: string[]; cta: string; popular: boolean }>;
+  footer?: { description?: string; copyright?: string };
+  cta?: { title?: string; subtitle?: string; button?: string; reassurance?: string };
+}
 
 /* ═══════════════════════════════════════════════════════
    STUDIIO — Landing Page de vente
@@ -240,6 +253,27 @@ export default function LandingPage() {
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [lang, setLang] = useState('FR');
+  const [cms, setCms] = useState<DynamicContent>({});
+
+  // Fetch CMS content from admin panel (non-blocking, merges with defaults)
+  useEffect(() => {
+    fetch('/api/admin/landing')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.content) setCms(data.content); })
+      .catch(() => {}); // Silently fail — defaults will be used
+  }, []);
+
+  // Merge helpers: CMS overrides defaults
+  const hero = cms.hero || {};
+  const cmsFeatures = cms.features;
+  const cmsTestimonials = cms.testimonials;
+  const cmsHowItWorks = cms.howItWorks;
+  const cmsFaq = cms.faq;
+  const cmsStats = cms.stats;
+  const cmsPlans = cms.plans;
+  const cmsFooter = cms.footer || {};
+  const cmsCta = cms.cta || {};
+
   const LANGS = [
     { code: 'FR', label: 'Français', flag: '🇫🇷' },
     { code: 'EN', label: 'English', flag: '🇬🇧' },
@@ -316,31 +350,37 @@ export default function LandingPage() {
           {/* Badge */}
           <div className="inline-flex items-center gap-2 bg-violet-500/10 border border-violet-500/20 rounded-full px-4 py-1.5 mb-8">
             <Sparkles size={14} className="text-violet-400" />
-            <span className="text-xs font-semibold text-violet-300 tracking-wide">10 CRÉDITS OFFERTS — AUCUNE CARTE REQUISE</span>
+            <span className="text-xs font-semibold text-violet-300 tracking-wide">{hero.badge || '10 CRÉDITS OFFERTS — AUCUNE CARTE REQUISE'}</span>
           </div>
 
           <h1 className="text-4xl sm:text-5xl md:text-7xl font-black mb-6 leading-[1.1] tracking-tight">
-            Créez des vidéos{' '}
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-violet-400 via-pink-400 to-violet-400">virales</span>
-            <br />
-            en quelques clics
+            {hero.title ? (
+              <span dangerouslySetInnerHTML={{ __html: hero.title.replace(/\*(.*?)\*/g, '<span class="bg-clip-text text-transparent bg-gradient-to-r from-violet-400 via-pink-400 to-violet-400">$1</span>') }} />
+            ) : (
+              <>Créez des vidéos{' '}<span className="bg-clip-text text-transparent bg-gradient-to-r from-violet-400 via-pink-400 to-violet-400">virales</span><br />en quelques clics</>
+            )}
           </h1>
 
           <p className="text-lg sm:text-xl text-gray-400 mb-10 max-w-2xl mx-auto leading-relaxed">
-            Studio vidéo IA pour les créateurs, coachs et agences.
-            Créez, planifiez et publiez sur tous vos réseaux sociaux —
-            <strong className="text-gray-200"> sans compétence technique</strong>.
+            {hero.subtitle || <>Studio vidéo IA pour les créateurs, coachs et agences. Créez, planifiez et publiez sur tous vos réseaux sociaux — <strong className="text-gray-200">sans compétence technique</strong>.</>}
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
             <Link href="/auth/signup" className="group bg-gradient-to-r from-violet-600 to-pink-600 hover:from-violet-500 hover:to-pink-500 px-8 py-4 rounded-xl text-white font-bold text-lg flex items-center justify-center gap-3 transition shadow-2xl shadow-violet-500/30 hover:shadow-violet-500/40">
-              Commencer gratuitement
+              {hero.cta1 || 'Commencer gratuitement'}
               <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
             </Link>
-            <button className="border border-gray-700 hover:border-gray-500 hover:bg-white/5 px-8 py-4 rounded-xl text-white font-bold text-lg flex items-center justify-center gap-3 transition">
-              <Play size={20} className="text-violet-400" />
-              Voir la démo
-            </button>
+            {hero.demoVideoUrl ? (
+              <a href={hero.demoVideoUrl} target="_blank" rel="noopener noreferrer" className="border border-gray-700 hover:border-gray-500 hover:bg-white/5 px-8 py-4 rounded-xl text-white font-bold text-lg flex items-center justify-center gap-3 transition">
+                <Play size={20} className="text-violet-400" />
+                {hero.cta2 || 'Voir la démo'}
+              </a>
+            ) : (
+              <button className="border border-gray-700 hover:border-gray-500 hover:bg-white/5 px-8 py-4 rounded-xl text-white font-bold text-lg flex items-center justify-center gap-3 transition">
+                <Play size={20} className="text-violet-400" />
+                {hero.cta2 || 'Voir la démo'}
+              </button>
+            )}
           </div>
 
           {/* Social proof */}
@@ -352,10 +392,10 @@ export default function LandingPage() {
                 </div>
               ))}
             </div>
-            <span>Rejoint par <strong className="text-white">12 000+</strong> créateurs</span>
+            <span>Rejoint par <strong className="text-white">{hero.socialProof1 || '12 000+'}</strong> créateurs</span>
             <div className="flex items-center gap-1">
               {[1,2,3,4,5].map(i => <Star key={i} size={14} className="text-yellow-500 fill-yellow-500" />)}
-              <span className="ml-1">4.9/5</span>
+              <span className="ml-1">{hero.socialProof3 || '4.9/5'}</span>
             </div>
           </div>
         </div>
@@ -371,23 +411,29 @@ export default function LandingPage() {
               </div>
               <span className="text-xs text-gray-500 ml-2">Studiio — Studio Vidéo</span>
             </div>
-            <div className="aspect-[16/9] bg-gradient-to-br from-gray-900 via-[#0d0d15] to-gray-900 flex items-center justify-center relative">
-              <div className="absolute inset-0 bg-gradient-to-br from-violet-600/5 to-pink-600/5" />
-              <div className="text-center z-10">
-                <div className="flex items-center justify-center gap-3 mb-4">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center">
-                    <Video size={24} />
+            {hero.demoVideoUrl ? (
+              <div className="aspect-[16/9]">
+                <video src={hero.demoVideoUrl} controls className="w-full h-full object-cover" poster="" />
+              </div>
+            ) : (
+              <div className="aspect-[16/9] bg-gradient-to-br from-gray-900 via-[#0d0d15] to-gray-900 flex items-center justify-center relative">
+                <div className="absolute inset-0 bg-gradient-to-br from-violet-600/5 to-pink-600/5" />
+                <div className="text-center z-10">
+                  <div className="flex items-center justify-center gap-3 mb-4">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center">
+                      <Video size={24} />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-black mb-2">Votre studio, prêt à créer</p>
+                  <p className="text-gray-500 text-sm">Format REEL 9:16 — Rendu en 45 secondes</p>
+                  <div className="flex gap-3 justify-center mt-6">
+                    <div className="px-4 py-2 bg-violet-600/20 border border-violet-500/30 rounded-lg text-violet-300 text-xs font-bold">REEL 9:16</div>
+                    <div className="px-4 py-2 bg-gray-800/50 border border-gray-700/30 rounded-lg text-gray-500 text-xs font-bold">TV 16:9</div>
+                    <div className="px-4 py-2 bg-gray-800/50 border border-gray-700/30 rounded-lg text-gray-500 text-xs font-bold">BATCH x10</div>
                   </div>
                 </div>
-                <p className="text-2xl font-black mb-2">Votre studio, prêt à créer</p>
-                <p className="text-gray-500 text-sm">Format REEL 9:16 — Rendu en 45 secondes</p>
-                <div className="flex gap-3 justify-center mt-6">
-                  <div className="px-4 py-2 bg-violet-600/20 border border-violet-500/30 rounded-lg text-violet-300 text-xs font-bold">REEL 9:16</div>
-                  <div className="px-4 py-2 bg-gray-800/50 border border-gray-700/30 rounded-lg text-gray-500 text-xs font-bold">TV 16:9</div>
-                  <div className="px-4 py-2 bg-gray-800/50 border border-gray-700/30 rounded-lg text-gray-500 text-xs font-bold">BATCH x10</div>
-                </div>
               </div>
-            </div>
+            )}
           </div>
           {/* Floating elements */}
           <div className="absolute -right-4 top-1/4 bg-gray-900 border border-gray-800 rounded-xl p-3 shadow-xl hidden lg:block">
@@ -410,13 +456,16 @@ export default function LandingPage() {
           ══════════════════════════════════════════════ */}
       <section className="border-y border-gray-800/50 py-12 px-4">
         <div className="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8">
-          {STATS.map((s, i) => (
-            <div key={i} className="text-center">
-              <s.icon size={24} className="mx-auto text-violet-400 mb-2" />
-              <div className="text-3xl font-black text-white">{s.value}</div>
-              <div className="text-sm text-gray-500">{s.label}</div>
-            </div>
-          ))}
+          {STATS.map((s, i) => {
+            const cmsS = cmsStats?.[i];
+            return (
+              <div key={i} className="text-center">
+                <s.icon size={24} className="mx-auto text-violet-400 mb-2" />
+                <div className="text-3xl font-black text-white">{cmsS?.value || s.value}</div>
+                <div className="text-sm text-gray-500">{cmsS?.label || s.label}</div>
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -437,15 +486,18 @@ export default function LandingPage() {
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {FEATURES.map((f, i) => (
-              <div key={i} className="group bg-gray-900/50 border border-gray-800 rounded-2xl p-7 hover:border-violet-500/30 transition-all hover:shadow-lg hover:shadow-violet-500/5">
-                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${f.color} flex items-center justify-center mb-5 group-hover:scale-110 transition-transform`}>
-                  <f.icon size={22} className="text-white" />
+            {FEATURES.map((f, i) => {
+              const cmsF = cmsFeatures?.[i];
+              return (
+                <div key={i} className="group bg-gray-900/50 border border-gray-800 rounded-2xl p-7 hover:border-violet-500/30 transition-all hover:shadow-lg hover:shadow-violet-500/5">
+                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${cmsF?.color || f.color} flex items-center justify-center mb-5 group-hover:scale-110 transition-transform`}>
+                    <f.icon size={22} className="text-white" />
+                  </div>
+                  <h3 className="text-lg font-bold mb-2">{cmsF?.title || f.title}</h3>
+                  <p className="text-gray-400 text-sm leading-relaxed">{cmsF?.desc || f.desc}</p>
                 </div>
-                <h3 className="text-lg font-bold mb-2">{f.title}</h3>
-                <p className="text-gray-400 text-sm leading-relaxed">{f.desc}</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>
@@ -498,12 +550,12 @@ export default function LandingPage() {
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {HOW_IT_WORKS.map((s, i) => (
+            {(cmsHowItWorks || HOW_IT_WORKS).map((s, i) => (
               <div key={i} className="relative">
                 <div className="text-5xl font-black text-violet-500/15 mb-3">{s.step}</div>
                 <h3 className="text-lg font-bold mb-2">{s.title}</h3>
                 <p className="text-sm text-gray-400 leading-relaxed">{s.desc}</p>
-                {i < HOW_IT_WORKS.length - 1 && (
+                {i < (cmsHowItWorks || HOW_IT_WORKS).length - 1 && (
                   <div className="hidden lg:block absolute top-8 -right-3 text-gray-700">
                     <ArrowRight size={20} />
                   </div>
@@ -525,10 +577,10 @@ export default function LandingPage() {
           </div>
 
           <div className="grid md:grid-cols-3 gap-6">
-            {TESTIMONIALS.map((t, i) => (
+            {(cmsTestimonials || TESTIMONIALS).map((t, i) => (
               <div key={i} className="bg-gray-900/50 border border-gray-800 rounded-2xl p-7">
                 <div className="flex items-center gap-1 mb-4">
-                  {Array.from({ length: t.stars }).map((_, j) => (
+                  {Array.from({ length: t.stars || 5 }).map((_, j) => (
                     <Star key={j} size={14} className="text-yellow-500 fill-yellow-500" />
                   ))}
                 </div>
@@ -584,45 +636,51 @@ export default function LandingPage() {
           </div>
 
           <div className="grid md:grid-cols-3 gap-6">
-            {PLANS.map((p, i) => (
-              <div key={i} className={`relative bg-gray-900/50 border rounded-2xl p-8 ${p.color} transition-all hover:shadow-lg hover:shadow-violet-500/5`}>
-                {p.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-violet-600 to-pink-600 text-white text-xs font-bold px-4 py-1 rounded-full">
-                    LE PLUS POPULAIRE
-                  </div>
-                )}
-                <h3 className="text-2xl font-black mb-1">{p.name}</h3>
-                <p className="text-sm text-gray-500 mb-5">{p.desc}</p>
-                <div className="mb-6">
-                  <span className="text-4xl font-black">
-                    {billingPeriod === 'yearly' ? p.yearlyPrice : p.price}€
-                  </span>
-                  <span className="text-gray-500 text-sm">/mois</span>
-                  {billingPeriod === 'yearly' && (
-                    <div className="text-xs text-green-400 mt-1">Facturé annuellement</div>
+            {(cmsPlans || PLANS).map((p, i) => {
+              const defaultP = PLANS[i] || PLANS[0];
+              const color = (p as any).color || defaultP.color || 'border-gray-700';
+              const popular = p.popular ?? defaultP.popular;
+              const credits = p.credits || defaultP.credits;
+              return (
+                <div key={i} className={`relative bg-gray-900/50 border rounded-2xl p-8 ${color} transition-all hover:shadow-lg hover:shadow-violet-500/5`}>
+                  {popular && (
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-violet-600 to-pink-600 text-white text-xs font-bold px-4 py-1 rounded-full">
+                      LE PLUS POPULAIRE
+                    </div>
                   )}
+                  <h3 className="text-2xl font-black mb-1">{p.name}</h3>
+                  <p className="text-sm text-gray-500 mb-5">{p.desc}</p>
+                  <div className="mb-6">
+                    <span className="text-4xl font-black">
+                      {billingPeriod === 'yearly' ? p.yearlyPrice : p.price}€
+                    </span>
+                    <span className="text-gray-500 text-sm">/mois</span>
+                    {billingPeriod === 'yearly' && (
+                      <div className="text-xs text-green-400 mt-1">Facturé annuellement</div>
+                    )}
+                  </div>
+                  <div className="text-sm text-violet-400 font-bold mb-5">{credits.toLocaleString()} crédits/mois</div>
+                  <ul className="space-y-3 mb-8">
+                    {p.features.map((f, j) => (
+                      <li key={j} className="flex items-start gap-3 text-sm text-gray-300">
+                        <Check size={16} className="text-violet-400 shrink-0 mt-0.5" />
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                  <Link
+                    href="/auth/signup"
+                    className={`block w-full text-center py-3 rounded-xl font-bold text-sm transition ${
+                      popular
+                        ? 'bg-gradient-to-r from-violet-600 to-pink-600 hover:from-violet-500 hover:to-pink-500 text-white shadow-lg shadow-violet-500/20'
+                        : 'bg-gray-800 hover:bg-gray-700 text-white border border-gray-700'
+                    }`}
+                  >
+                    {p.cta}
+                  </Link>
                 </div>
-                <div className="text-sm text-violet-400 font-bold mb-5">{p.credits.toLocaleString()} crédits/mois</div>
-                <ul className="space-y-3 mb-8">
-                  {p.features.map((f, j) => (
-                    <li key={j} className="flex items-start gap-3 text-sm text-gray-300">
-                      <Check size={16} className="text-violet-400 shrink-0 mt-0.5" />
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-                <Link
-                  href="/auth/signup"
-                  className={`block w-full text-center py-3 rounded-xl font-bold text-sm transition ${
-                    p.popular
-                      ? 'bg-gradient-to-r from-violet-600 to-pink-600 hover:from-violet-500 hover:to-pink-500 text-white shadow-lg shadow-violet-500/20'
-                      : 'bg-gray-800 hover:bg-gray-700 text-white border border-gray-700'
-                  }`}
-                >
-                  {p.cta}
-                </Link>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Credit packs */}
@@ -654,7 +712,7 @@ export default function LandingPage() {
             <p className="text-gray-400">Tout ce que vous devez savoir avant de commencer.</p>
           </div>
           <div className="space-y-3">
-            {FAQ_DATA.map((faq, i) => (
+            {(cmsFaq || FAQ_DATA).map((faq, i) => (
               <FAQItem key={i} q={faq.q} a={faq.a} />
             ))}
           </div>
@@ -669,18 +727,20 @@ export default function LandingPage() {
           <div className="absolute inset-0 bg-gradient-to-r from-violet-600/20 to-pink-600/20 rounded-3xl blur-3xl" />
           <div className="relative bg-gray-900/80 border border-violet-500/20 rounded-3xl p-12 sm:p-16 text-center">
             <h2 className="text-3xl sm:text-5xl font-black mb-6">
-              Prêt à créer des vidéos qui{' '}
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-violet-400 to-pink-400">cartonnent</span> ?
+              {cmsCta.title ? (
+                <span dangerouslySetInnerHTML={{ __html: cmsCta.title.replace(/\*(.*?)\*/g, '<span class="bg-clip-text text-transparent bg-gradient-to-r from-violet-400 to-pink-400">$1</span>') }} />
+              ) : (
+                <>Prêt à créer des vidéos qui{' '}<span className="bg-clip-text text-transparent bg-gradient-to-r from-violet-400 to-pink-400">cartonnent</span> ?</>
+              )}
             </h2>
             <p className="text-lg text-gray-400 mb-10 max-w-xl mx-auto">
-              Rejoignez 12 000+ créateurs. 10 crédits gratuits, aucune carte bancaire.
-              Votre première vidéo en moins de 2 minutes.
+              {cmsCta.subtitle || 'Rejoignez 12 000+ créateurs. 10 crédits gratuits, aucune carte bancaire. Votre première vidéo en moins de 2 minutes.'}
             </p>
             <Link href="/auth/signup" className="group inline-flex items-center gap-3 bg-gradient-to-r from-violet-600 to-pink-600 hover:from-violet-500 hover:to-pink-500 px-10 py-5 rounded-xl text-white font-bold text-lg transition shadow-2xl shadow-violet-500/30 hover:shadow-violet-500/40">
-              Commencer gratuitement
+              {cmsCta.button || 'Commencer gratuitement'}
               <ArrowRight size={22} className="group-hover:translate-x-1 transition-transform" />
             </Link>
-            <p className="text-xs text-gray-500 mt-4">Aucun engagement. Annulable à tout moment.</p>
+            <p className="text-xs text-gray-500 mt-4">{cmsCta.reassurance || 'Aucun engagement. Annulable à tout moment.'}</p>
           </div>
         </div>
       </section>
@@ -697,7 +757,7 @@ export default function LandingPage() {
                 <span className="text-lg font-black">Studiio</span>
               </div>
               <p className="text-sm text-gray-500 leading-relaxed">
-                La plateforme de création vidéo IA pour les réseaux sociaux. Créez, planifiez, publiez.
+                {cmsFooter.description || 'La plateforme de création vidéo IA pour les réseaux sociaux. Créez, planifiez, publiez.'}
               </p>
             </div>
             <div>
@@ -729,7 +789,7 @@ export default function LandingPage() {
             </div>
           </div>
           <div className="border-t border-gray-800/50 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p className="text-sm text-gray-600">&copy; 2026 Studiio. Tous droits réservés.</p>
+            <p className="text-sm text-gray-600">{cmsFooter.copyright || '\u00A9 2026 Studiio. Tous droits réservés.'}</p>
             <div className="flex items-center gap-4">
               {SOCIAL_NETWORKS.map((n, i) => (
                 <a key={i} href="#" className="text-gray-600 hover:text-white transition">
