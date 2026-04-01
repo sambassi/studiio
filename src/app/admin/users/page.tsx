@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2, AlertCircle, Check, X, Edit2 } from 'lucide-react';
+import { Loader2, AlertCircle, Check, Edit2, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -22,10 +22,12 @@ interface User {
 }
 
 interface UsersResponse {
-  users: User[];
+  success: boolean;
+  data: any[];
   total: number;
   page: number;
   limit: number;
+  hasMore: boolean;
 }
 
 export default function UsersPage() {
@@ -74,7 +76,19 @@ export default function UsersPage() {
       if (!res.ok) throw new Error('Erreur lors du chargement des utilisateurs');
 
       const data: UsersResponse = await res.json();
-      setUsers(data.users);
+      // Map Supabase fields to frontend User interface
+      const mappedUsers: User[] = (data.data || []).map((u: any) => ({
+        id: u.id,
+        name: u.name || u.full_name || u.email?.split('@')[0] || 'Sans nom',
+        email: u.email,
+        plan: u.plan || 'free',
+        credits: u.credits || 0,
+        role: u.role || 'user',
+        status: u.blocked ? 'blocked' : 'active',
+        joinedAt: u.created_at || new Date().toISOString(),
+        avatar: u.avatar_url || u.image || undefined,
+      }));
+      setUsers(mappedUsers);
       setTotal(data.total);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Une erreur est survenue');
@@ -146,8 +160,35 @@ export default function UsersPage() {
     }
   };
 
+  const handleDeleteUser = async (user: User) => {
+    if (!confirm(`Supprimer définitivement ${user.name} (${user.email}) ? Cette action est irréversible.`)) return;
+
+    try {
+      setActionLoading(true);
+      const res = await fetch(`/api/admin/users/${user.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!res.ok) throw new Error('Erreur lors de la suppression');
+
+      showToast(`Utilisateur ${user.name} supprimé avec succès`, 'success');
+      fetchUsers();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Une erreur est survenue', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleToggleBan = async (user: User) => {
-    if (!confirm(`${user.status === 'active' ? 'Bannir' : 'Débannir'} cet utilisateur ?`)) return;
+    let reason = '';
+    if (user.status === 'active') {
+      reason = prompt(`Raison du bannissement de ${user.name} :`) || '';
+      if (!reason) return;
+    } else {
+      if (!confirm(`Débannir ${user.name} ?`)) return;
+    }
 
     try {
       setActionLoading(true);
@@ -155,6 +196,7 @@ export default function UsersPage() {
       const res = await fetch(`/api/admin/users/${user.id}/ban`, {
         method,
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason || 'Débannissement admin' }),
       });
 
       if (!res.ok) throw new Error('Erreur lors du bannissement');
@@ -345,6 +387,15 @@ export default function UsersPage() {
                             disabled={actionLoading}
                           >
                             {user.status === 'active' ? 'Bannir' : 'Débannir'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => handleDeleteUser(user)}
+                            disabled={actionLoading}
+                            className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                          >
+                            <Trash2 size={14} />
                           </Button>
                         </div>
                       </td>
