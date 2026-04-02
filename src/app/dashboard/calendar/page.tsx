@@ -26,6 +26,7 @@ import {
   CalendarDays,
   Mic,
   Volume2,
+  VolumeX,
   Download,
   Film,
 } from 'lucide-react';
@@ -146,6 +147,7 @@ export default function CalendarPage() {
   const [fullPreviewPost, setFullPreviewPost] = useState<Post | null>(null);
   const [infoSeqIndex, setInfoSeqIndex] = useState(0);
   const [montageAutoPlay, setMontageAutoPlay] = useState(true);
+  const [montageMuted, setMontageMuted] = useState(true);
   const montageTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [montageProgress, setMontageProgress] = useState(0);
   const montageProgressRef = useRef<NodeJS.Timeout | null>(null);
@@ -477,6 +479,7 @@ export default function CalendarPage() {
     setFullPreviewPost(post);
     setInfoSeqIndex(0);
     setMontageAutoPlay(true);
+    setMontageMuted(true);
     setMontageProgress(0);
     setShowFullPreview(true);
   };
@@ -1753,7 +1756,7 @@ export default function CalendarPage() {
                     {/* === VIDEO: Full-screen video + Logo overlay === */}
                     {meta?.videoUrl && (
                       <div className="absolute inset-0 transition-all duration-[800ms] ease-in-out" style={{ opacity: currentSeq === 'video' ? 1 : 0, zIndex: currentSeq === 'video' ? 10 : 1 }}>
-                        <video id="preview-video-infographic" src={meta.videoUrl} muted loop playsInline autoPlay className="absolute inset-0 w-full h-full object-cover" />
+                        <video id="preview-video-infographic" src={meta.videoUrl} muted={montageMuted} loop playsInline autoPlay className="absolute inset-0 w-full h-full object-cover" />
                         {meta?.logoUrl && (
                           <div className="absolute bottom-6 right-4 z-10">
                             <img src={meta.logoUrl} alt="Logo" className="w-14 h-14 rounded-xl object-contain bg-black/50 p-1.5 backdrop-blur-sm" />
@@ -1777,13 +1780,28 @@ export default function CalendarPage() {
                       </div>
                     </div>
 
-                    {/* Play/Pause — subtle top-right overlay */}
-                    <button className="absolute top-3 right-3 z-40 w-7 h-7 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center hover:bg-black/50 transition opacity-0 hover:opacity-100" style={{ transition: 'opacity 0.3s' }} onClick={(e) => { e.stopPropagation(); setMontageAutoPlay(!montageAutoPlay); }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0'; }}
-                    >
-                      {montageAutoPlay ? <span className="text-white text-[10px] font-bold">❚❚</span> : <Play size={12} className="text-white ml-0.5" fill="white" />}
-                    </button>
+                    {/* Play/Pause + Volume — top-right overlay */}
+                    <div className="absolute top-3 right-3 z-40 flex items-center gap-1.5">
+                      <button className="w-7 h-7 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center hover:bg-black/50 transition"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMontageMuted(m => {
+                            const newMuted = !m;
+                            // Sync all preview videos
+                            document.querySelectorAll<HTMLVideoElement>('#preview-video-infographic, #preview-video').forEach(v => { v.muted = newMuted; });
+                            return newMuted;
+                          });
+                        }}
+                        title={montageMuted ? 'Activer le son' : 'Couper le son'}
+                      >
+                        {montageMuted ? <VolumeX size={12} className="text-white" /> : <Volume2 size={12} className="text-white" />}
+                      </button>
+                      <button className="w-7 h-7 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center hover:bg-black/50 transition"
+                        onClick={(e) => { e.stopPropagation(); setMontageAutoPlay(!montageAutoPlay); }}
+                      >
+                        {montageAutoPlay ? <span className="text-white text-[10px] font-bold">❚❚</span> : <Play size={12} className="text-white ml-0.5" fill="white" />}
+                      </button>
+                    </div>
 
                     {/* Continuous progress bar — thin bottom line */}
                     <div className="absolute bottom-0 left-0 right-0 z-40 h-[3px] bg-black/20">
@@ -1821,7 +1839,7 @@ export default function CalendarPage() {
                         <img src={posterImgSrc} alt="Poster" className="absolute inset-0 w-full h-full object-cover" />
                       )}
                       {videoSrc ? (
-                        <video id="preview-video" src={videoSrc} muted loop playsInline className="absolute inset-0 w-full h-full object-cover" />
+                        <video id="preview-video" src={videoSrc} muted={montageMuted} loop playsInline autoPlay className="absolute inset-0 w-full h-full object-cover" />
                       ) : imgSrc ? (
                         <img src={imgSrc} alt={fullPreviewPost.title} className="absolute inset-0 w-full h-full object-cover" />
                       ) : (
