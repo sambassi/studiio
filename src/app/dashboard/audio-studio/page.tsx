@@ -516,14 +516,14 @@ function AudioStudioContent() {
           {/* Main video preview */}
           <div className="flex-1 flex items-center justify-center p-2">
             <div
-              className="relative"
+              className="relative bg-gray-900 rounded-xl overflow-hidden border border-gray-700/50"
               style={post.format === 'tv'
                 ? { width: '100%', maxWidth: '100%', aspectRatio: '16/9', maxHeight: '100%' }
                 : { height: '100%', maxHeight: '100%', aspectRatio: '9/16', maxWidth: '100%' }
               }
             >
               {videoSrc ? (
-                <video key={post?.id} ref={videoRef} src={videoSrc} className="w-full h-full object-contain rounded-lg" playsInline autoPlay loop muted />
+                <video key={post?.id} ref={videoRef} src={videoSrc} className="w-full h-full object-contain" playsInline autoPlay loop muted crossOrigin="anonymous" />
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center bg-gray-900">
                   <Volume2 size={48} className="text-gray-700 mb-2" />
