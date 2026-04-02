@@ -189,6 +189,12 @@ function AudioStudioContent() {
   let cumTime = 0;
   sequences.forEach(s => { seqStarts.push(cumTime); cumTime += s.duration; });
 
+  // ═══ TIMELINE PLAYBACK — independent real-time clock ═══
+  // Uses performance.now() instead of video.currentTime to guarantee
+  // the timeline runs at exactly 1 second per second regardless of video duration
+  const playStartRef = useRef<number>(0); // performance.now() when playback started
+  const timeOffsetRef = useRef<number>(0); // timeline offset when playback started
+
   // ═══ RESET VIDEO STATE ON POST CHANGE ═══
   useEffect(() => {
     setVideoLoading(true);
@@ -196,13 +202,10 @@ function AudioStudioContent() {
     setCurrentTime(0);
     setActiveSeqIdx(0);
     setIsPlaying(false);
+    // Reset the independent clock refs so timeline starts fresh
+    timeOffsetRef.current = 0;
+    playStartRef.current = performance.now();
   }, [post?.id]);
-
-  // ═══ TIMELINE PLAYBACK — independent real-time clock ═══
-  // Uses performance.now() instead of video.currentTime to guarantee
-  // the timeline runs at exactly 1 second per second regardless of video duration
-  const playStartRef = useRef<number>(0); // performance.now() when playback started
-  const timeOffsetRef = useRef<number>(0); // timeline offset when playback started
 
   useEffect(() => {
     const vid = videoRef.current;
@@ -671,6 +674,7 @@ function AudioStudioContent() {
                     className="w-full h-full object-contain"
                     playsInline
                     autoPlay
+                    loop
                     muted
                     crossOrigin="anonymous"
                     onLoadedData={() => { setVideoLoading(false); setVideoError(false); }}
