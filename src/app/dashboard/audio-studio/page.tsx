@@ -498,7 +498,7 @@ function AudioStudioContent() {
         <div className="flex-1 flex flex-col">
           {/* Main video preview */}
           <div className="flex-1 flex items-center justify-center">
-            <div className={`${(post.format === 'reel' || meta.type === 'infographic') ? 'h-full max-h-full aspect-[9/16]' : 'w-full max-w-3xl aspect-video'} relative`}>
+            <div className={`${post.format !== 'tv' ? 'h-full max-h-full aspect-[9/16]' : 'w-full max-w-full aspect-video'} relative`}>
               {videoSrc ? (
                 <video key={post?.id} ref={videoRef} src={videoSrc} className="w-full h-full object-contain" playsInline autoPlay loop muted />
               ) : (
@@ -538,7 +538,7 @@ function AudioStudioContent() {
                     onClick={() => setCurrentPostIndex(i)}
                     className={`shrink-0 w-16 rounded-lg overflow-hidden border-2 transition-all ${isActive ? 'border-pink-500 ring-1 ring-pink-500/50 scale-105' : 'border-gray-700 hover:border-gray-500 opacity-60 hover:opacity-100'}`}
                   >
-                    <div className="aspect-[9/16] bg-gray-800 relative">
+                    <div className={`${p.format === 'tv' ? 'aspect-video' : 'aspect-[9/16]'} bg-gray-800 relative`}>
                       {thumbUrl ? (
                         <video src={thumbUrl} className="w-full h-full object-cover" muted playsInline preload="metadata" />
                       ) : (
