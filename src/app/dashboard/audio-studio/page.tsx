@@ -424,6 +424,14 @@ function AudioStudioContent() {
 
         console.log(`[AudioStudio] ═══ BATCH START: ${posts.length} videos ═══`);
 
+        // Create ONE shared AudioContext for the entire batch to avoid Chrome's concurrent limit
+        let sharedAudioCtx: AudioContext | undefined;
+        if (localMusicBlobUrl || localVoiceBlobUrl) {
+          sharedAudioCtx = new AudioContext({ sampleRate: 48000 });
+          await sharedAudioCtx.resume();
+          console.log(`[AudioStudio] Shared AudioContext created, state: ${sharedAudioCtx.state}`);
+        }
+
         for (let i = 0; i < posts.length; i++) {
           const p = posts[i];
           const pm = p.metadata || {};
@@ -451,6 +459,11 @@ function AudioStudioContent() {
             setExportStage(t('export.composingBatch', { current: String(i + 1), total: String(posts.length) }));
             setExportProgress(progressBase);
 
+            // Resume shared AudioContext before each video (Chrome suspends after inactivity)
+            if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
+              await sharedAudioCtx.resume();
+            }
+
             const result = await composeAndUpload({
               width: isReel ? 1080 : 1920,
               height: isReel ? 1920 : 1080,
@@ -471,6 +484,7 @@ function AudioStudioContent() {
               ctaText: (brand?.ctaText as string) || 'CHAT POUR PLUS D\'INFOS',
               ctaSubText: (brand?.ctaSubText as string) || 'LIEN EN BIO',
               watermarkText: (brand?.watermarkText as string) || undefined,
+              sharedAudioCtx,
               onProgress: (pct, stage) => {
                 setExportProgress(Math.round(progressBase + (pct / 100) * progressSpan));
                 setExportStage(`[${i + 1}/${posts.length}] ${stage}`);
@@ -537,6 +551,12 @@ function AudioStudioContent() {
         }
 
         console.log(`[AudioStudio] ═══ BATCH DONE: ${successCount}/${posts.length} ═══`);
+
+        // Close the shared AudioContext now that all videos are done
+        if (sharedAudioCtx) {
+          try { await sharedAudioCtx.close(); console.log('[AudioStudio] Shared AudioContext closed'); }
+          catch (e) { console.warn('[AudioStudio] Shared AudioContext close error:', e); }
+        }
 
         if (localMusicBlobUrl) URL.revokeObjectURL(localMusicBlobUrl);
         if (localVoiceBlobUrl) URL.revokeObjectURL(localVoiceBlobUrl);

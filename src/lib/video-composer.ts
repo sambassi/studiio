@@ -43,6 +43,8 @@ export interface ComposerOptions {
   ctaSubText?: string;
   watermarkText?: string;
   onProgress?: (percent: number, stage: string) => void;
+  /** Shared AudioContext for batch mode — avoids creating/closing multiple contexts */
+  sharedAudioCtx?: AudioContext;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -441,11 +443,12 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 
   let audioCtx: AudioContext | null = null;
   let audioDest: MediaStreamAudioDestinationNode | null = null;
+  const isSharedCtx = !!options.sharedAudioCtx;
 
   if (hasAudio) {
-    audioCtx = new AudioContext({ sampleRate: 48000 });
+    audioCtx = options.sharedAudioCtx || new AudioContext({ sampleRate: 48000 });
     await audioCtx.resume();
-    console.log('[Composer] AudioContext state:', audioCtx.state);
+    console.log('[Composer] AudioContext state:', audioCtx.state, isSharedCtx ? '(SHARED)' : '(new)');
 
     audioDest = audioCtx.createMediaStreamDestination();
 
@@ -601,10 +604,9 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       if (videoEl) videoEl.pause();
       try { document.body.removeChild(canvas); } catch {}
       onProgress?.(100, 'Terminé !');
-      // Resolve IMMEDIATELY — don't block on AudioContext.close()
       resolve(blob);
-      // Fire-and-forget cleanup of AudioContext (non-blocking)
-      if (audioCtx) { audioCtx.close().catch(() => {}); }
+      // Only close AudioContext if we created it (NOT shared in batch mode)
+      if (audioCtx && !isSharedCtx) { audioCtx.close().catch(() => {}); }
     };
 
     recorder.onerror = (e) => {
