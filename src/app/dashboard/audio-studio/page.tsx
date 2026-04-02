@@ -430,10 +430,32 @@ function AudioStudioContent() {
 
         // Create ONE shared AudioContext for the entire batch to avoid Chrome's concurrent limit
         let sharedAudioCtx: AudioContext | undefined;
-        if (localMusicBlobUrl || localVoiceBlobUrl) {
+        let musicBuffer: AudioBuffer | undefined;
+        let voiceBuffer: AudioBuffer | undefined;
+        if (musicFile || voiceFile) {
           sharedAudioCtx = new AudioContext({ sampleRate: 48000 });
           await sharedAudioCtx.resume();
           console.log(`[AudioStudio] Shared AudioContext created, state: ${sharedAudioCtx.state}`);
+
+          // Pre-decode audio files into AudioBuffers — more reliable than <audio> elements in batch mode
+          if (musicFile) {
+            try {
+              const musicArrayBuf = await musicFile.arrayBuffer();
+              musicBuffer = await sharedAudioCtx.decodeAudioData(musicArrayBuf);
+              console.log(`[AudioStudio] ✅ Music decoded to AudioBuffer: ${musicBuffer.duration.toFixed(1)}s, ${musicBuffer.numberOfChannels}ch, ${musicBuffer.sampleRate}Hz`);
+            } catch (err) {
+              console.error('[AudioStudio] ❌ Music decode failed:', err);
+            }
+          }
+          if (voiceFile) {
+            try {
+              const voiceArrayBuf = await voiceFile.arrayBuffer();
+              voiceBuffer = await sharedAudioCtx.decodeAudioData(voiceArrayBuf);
+              console.log(`[AudioStudio] ✅ Voice decoded to AudioBuffer: ${voiceBuffer.duration.toFixed(1)}s, ${voiceBuffer.numberOfChannels}ch, ${voiceBuffer.sampleRate}Hz`);
+            } catch (err) {
+              console.error('[AudioStudio] ❌ Voice decode failed:', err);
+            }
+          }
         }
 
         for (let i = 0; i < posts.length; i++) {
@@ -489,6 +511,8 @@ function AudioStudioContent() {
               ctaSubText: (brand?.ctaSubText as string) || 'LIEN EN BIO',
               watermarkText: (brand?.watermarkText as string) || undefined,
               sharedAudioCtx,
+              musicBuffer,
+              voiceBuffer,
               onProgress: (pct, stage) => {
                 setExportProgress(Math.round(progressBase + (pct / 100) * progressSpan));
                 setExportStage(`[${i + 1}/${posts.length}] ${stage}`);
