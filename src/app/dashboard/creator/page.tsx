@@ -1062,7 +1062,8 @@ export default function CreatorPage() {
               setRenderStage(stage);
             },
           });
-          downloadBlob(blob, `${(title || 'video').replace(/\s+/g, '_')}.webm`);
+          const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
+          downloadBlob(blob, `${(title || 'video').replace(/\s+/g, '_')}.${ext}`);
         } catch (exportErr) {
           console.error('[Composer] Export error:', exportErr);
           showToast('Erreur lors du montage vidéo. Veuillez réessayer.');

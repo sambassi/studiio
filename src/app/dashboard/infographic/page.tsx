@@ -572,7 +572,8 @@ export default function InfographiePage() {
             watermarkText: branding.watermarkText,
             onProgress: (pct, stage) => { setExportProgress(pct); setExportToast({ message: stage, type: 'success' }); },
           });
-          downloadBlob(blob, `${(title || 'infographie').replace(/\s+/g, '_')}.webm`);
+          const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
+          downloadBlob(blob, `${(title || 'infographie').replace(/\s+/g, '_')}.${ext}`);
         } catch (err) { console.error('Export render error:', err); }
       }
 

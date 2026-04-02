@@ -590,7 +590,8 @@ export default function CalendarPage() {
     if (meta?.renderedVideoUrl) {
       const link = document.createElement('a');
       link.href = meta.renderedVideoUrl;
-      link.download = `${(post.title || 'video').replace(/\s+/g, '_')}.webm`;
+      const calExt = meta.renderedVideoUrl.includes('.mp4') ? 'mp4' : 'webm';
+      link.download = `${(post.title || 'video').replace(/\s+/g, '_')}.${calExt}`;
       link.target = '_blank';
       document.body.appendChild(link);
       link.click();
@@ -643,7 +644,8 @@ export default function CalendarPage() {
 
       // Download the composed video
       if (blob && blob.size > 0) {
-        downloadBlob(blob, `${(post.title || 'montage').replace(/\s+/g, '_')}.webm`);
+        const dlExt = blob.type.includes('mp4') ? 'mp4' : 'webm';
+        downloadBlob(blob, `${(post.title || 'montage').replace(/\s+/g, '_')}.${dlExt}`);
       }
 
       // Update the post with the rendered URL if upload succeeded
