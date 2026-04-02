@@ -182,34 +182,39 @@ function AudioStudioContent() {
   let cumTime = 0;
   sequences.forEach(s => { seqStarts.push(cumTime); cumTime += s.duration; });
 
-  // ═══ TIMELINE PLAYBACK ═══
+  // ═══ TIMELINE PLAYBACK (synced with video) ═══
+  // Sync timeline from video's actual currentTime
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid) return;
+    const onTimeUpdate = () => {
+      const t = vid.currentTime % totalDuration;
+      setCurrentTime(t);
+      let idx = 0;
+      for (let i = sequences.length - 1; i >= 0; i--) {
+        if (t >= seqStarts[i]) { idx = i; break; }
+      }
+      setActiveSeqIdx(idx);
+    };
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+    vid.addEventListener('timeupdate', onTimeUpdate);
+    vid.addEventListener('play', onPlay);
+    vid.addEventListener('pause', onPause);
+    return () => {
+      vid.removeEventListener('timeupdate', onTimeUpdate);
+      vid.removeEventListener('play', onPlay);
+      vid.removeEventListener('pause', onPause);
+    };
+  }, [videoSrc, totalDuration, sequences, seqStarts]);
+
   const startPlayback = useCallback(() => {
-    setIsPlaying(true);
     if (videoRef.current) { videoRef.current.currentTime = 0; videoRef.current.play().catch(() => {}); }
     if (musicAudioRef.current) { musicAudioRef.current.currentTime = 0; musicAudioRef.current.play().catch(() => {}); }
     if (voiceAudioRef.current) { voiceAudioRef.current.currentTime = 0; voiceAudioRef.current.play().catch(() => {}); }
-
-    playIntervalRef.current = setInterval(() => {
-      setCurrentTime(t => {
-        const next = t + 0.1;
-        if (next >= totalDuration) {
-          stopPlayback();
-          return 0;
-        }
-        // Update active sequence
-        let idx = 0;
-        for (let i = sequences.length - 1; i >= 0; i--) {
-          if (next >= seqStarts[i]) { idx = i; break; }
-        }
-        setActiveSeqIdx(idx);
-        return next;
-      });
-    }, 100);
-  }, [totalDuration, sequences, seqStarts]);
+  }, []);
 
   const stopPlayback = useCallback(() => {
-    setIsPlaying(false);
-    if (playIntervalRef.current) { clearInterval(playIntervalRef.current); playIntervalRef.current = null; }
     if (videoRef.current) videoRef.current.pause();
     if (musicAudioRef.current) musicAudioRef.current.pause();
     if (voiceAudioRef.current) voiceAudioRef.current.pause();
@@ -219,6 +224,9 @@ function AudioStudioContent() {
 
   const seekTo = (time: number) => {
     setCurrentTime(time);
+    if (videoRef.current) videoRef.current.currentTime = time;
+    if (musicAudioRef.current) musicAudioRef.current.currentTime = time;
+    if (voiceAudioRef.current) voiceAudioRef.current.currentTime = time;
     let idx = 0;
     for (let i = sequences.length - 1; i >= 0; i--) {
       if (time >= seqStarts[i]) { idx = i; break; }
@@ -486,7 +494,7 @@ function AudioStudioContent() {
           <div className="flex-1 flex items-center justify-center">
             <div className={`${post.format === 'reel' ? 'h-full max-h-full aspect-[9/16]' : 'w-full max-w-3xl aspect-video'} relative`}>
               {videoSrc ? (
-                <video ref={videoRef} src={videoSrc} className="w-full h-full object-contain" muted playsInline />
+                <video key={post?.id || videoSrc} ref={videoRef} src={videoSrc} className="w-full h-full object-contain" playsInline autoPlay loop />
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center bg-gray-900">
                   <Volume2 size={48} className="text-gray-700 mb-2" />
