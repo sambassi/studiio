@@ -312,19 +312,15 @@ function AudioStudioContent() {
     setExportStage('Préparation...');
 
     try {
-      let uploadedMusicUrl: string | null = null;
-      let uploadedVoiceUrl: string | null = null;
+      // ═══ Step 1: Create LOCAL blob URLs for audio (avoids CORS issues) ═══
+      // Use blob URLs directly for the composer — no remote upload needed for mixing
+      const localMusicBlobUrl = musicFile ? URL.createObjectURL(musicFile) : null;
+      const localVoiceBlobUrl = voiceFile ? URL.createObjectURL(voiceFile) : null;
 
-      if (musicFile) {
-        setExportStage('Upload musique...');
-        uploadedMusicUrl = await uploadFile(musicFile, 'music');
-        setExportProgress(15);
-      }
-      if (voiceFile) {
-        setExportStage('Upload voix off...');
-        uploadedVoiceUrl = await uploadFile(voiceFile, 'voiceover');
-        setExportProgress(30);
-      }
+      console.log('[AudioStudio] Local music blob URL:', localMusicBlobUrl ? 'yes' : 'none');
+      console.log('[AudioStudio] Local voice blob URL:', localVoiceBlobUrl ? 'yes' : 'none');
+
+      setExportProgress(10);
 
       // Extract composition params from metadata
       const m = meta;
@@ -337,8 +333,9 @@ function AudioStudioContent() {
       const rushUrl = (m.rushUrls as string[])?.[0] || (m.rawVideoUrl as string) || null;
 
       setExportStage('Montage vidéo avec son...');
-      setExportProgress(35);
+      setExportProgress(15);
 
+      // ═══ Step 2: Compose video with LOCAL blob audio (guaranteed no CORS) ═══
       const result = await composeAndUpload({
         width: isReel ? 1080 : 1920,
         height: isReel ? 1920 : 1080,
@@ -349,8 +346,8 @@ function AudioStudioContent() {
         cards: finalCards.length > 0 ? finalCards : undefined,
         posterUrl, videoUrl: rushUrl,
         logoUrl: (m.logoUrl as string) || null,
-        musicUrl: uploadedMusicUrl,
-        voiceUrl: uploadedVoiceUrl,
+        musicUrl: localMusicBlobUrl,
+        voiceUrl: localVoiceBlobUrl,
         introDuration: seqDurations.intro,
         cardsDuration: seqDurations.cards,
         videoDuration: seqDurations.video,
@@ -360,19 +357,31 @@ function AudioStudioContent() {
         ctaSubText: (brand?.ctaSubText as string) || 'LIEN EN BIO',
         watermarkText: (brand?.watermarkText as string) || undefined,
         onProgress: (pct, stage) => {
-          setExportProgress(35 + Math.round(pct * 0.55));
+          setExportProgress(15 + Math.round(pct * 0.65));
           setExportStage(stage);
         },
       });
 
-      setExportProgress(92);
+      // Cleanup local blob URLs
+      if (localMusicBlobUrl) URL.revokeObjectURL(localMusicBlobUrl);
+      if (localVoiceBlobUrl) URL.revokeObjectURL(localVoiceBlobUrl);
+
+      setExportProgress(85);
 
       if (exportDest === 'desktop' || exportDest === 'both') {
         const ext = result.blob.type.includes('mp4') ? 'mp4' : 'webm';
         downloadBlob(result.blob, `${(post.title || 'video').replace(/\s+/g, '_')}_audio.${ext}`);
       }
 
+      // ═══ Step 3: Upload audio files to Supabase for metadata (background) ═══
+      let uploadedMusicUrl: string | null = null;
+      let uploadedVoiceUrl: string | null = null;
+
       if ((exportDest === 'calendar' || exportDest === 'both') && result.url) {
+        setExportStage('Sauvegarde des fichiers audio...');
+        if (musicFile) uploadedMusicUrl = await uploadFile(musicFile, 'music');
+        if (voiceFile) uploadedVoiceUrl = await uploadFile(voiceFile, 'voiceover');
+
         setExportStage('Mise à jour du calendrier...');
         try {
           await fetch(`/api/posts/${post.id}`, {
