@@ -71,7 +71,7 @@ interface PexelsPhoto {
   alt: string;
 }
 
-type VoiceMode = 'none' | 'edge' | 'upload';
+type VoiceMode = 'none' | 'record' | 'upload';
 
 interface Toast {
   message: string;
@@ -159,19 +159,11 @@ export default function CreatorPage() {
 
   // Voice
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('none');
-  const [ttsVoice, setTtsVoice] = useState('fr-FR-DeniseNeural');
-  const [ttsText, setTtsText] = useState('');
-  const [isGeneratingVoice, setIsGeneratingVoice] = useState(false);
-
-  const [voiceOverFile, setVoiceOverFile] = useState<File | null>(null);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
-  const voiceInputRef = useRef<HTMLInputElement>(null);
   const voiceMediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const voiceChunksRef = useRef<Blob[]>([]);  const [generatedVoiceUrl, setGeneratedVoiceUrl] = useState<string | null>(null);
-  const [generatedVoiceBlob, setGeneratedVoiceBlob] = useState<Blob | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
   const [voiceUploadFile, setVoiceUploadFile] = useState<File | null>(null);
-  const [previewingVoice, setPreviewingVoice] = useState(false);
-  const [previewAudio, setPreviewAudio] = useState<HTMLAudioElement | null>(null);
+
 
   // Logo
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -225,7 +217,6 @@ export default function CreatorPage() {
         if (r.previewUrl) URL.revokeObjectURL(r.previewUrl);
       });
       if (characterPreview) URL.revokeObjectURL(characterPreview);
-      if (generatedVoiceUrl) URL.revokeObjectURL(generatedVoiceUrl);
     };
   }, []);
 
@@ -746,28 +737,26 @@ export default function CreatorPage() {
     setVoiceUploadFile(file);
   };
 
-    // handleGenerateVoice removed - Edge TTS no longer used
-  const handleGenerateVoice = async () => { /* TTS removed */ };
-
-
+  // Voice recording functions
   const startVoiceRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      voiceMediaRecorderRef.current = recorder;
+      const mediaRecorder = new MediaRecorder(stream);
+      voiceMediaRecorderRef.current = mediaRecorder;
       voiceChunksRef.current = [];
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) voiceChunksRef.current.push(e.data); };
-      recorder.onstop = () => {
-        const blob = new Blob(voiceChunksRef.current, { type: 'audio/webm' });
-        setVoiceOverFile(new File([blob], 'voix-off-recording.webm', { type: 'audio/webm' }));
-        stream.getTracks().forEach(t => t.stop());
+      mediaRecorder.ondataavailable = (event) => { if (event.data.size > 0) voiceChunksRef.current.push(event.data); };
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(voiceChunksRef.current, { type: 'audio/webm' });
+        const audioFile = new File([audioBlob], 'voix-off-recording.webm', { type: 'audio/webm' });
+        setVoiceUploadFile(audioFile);
+        stream.getTracks().forEach(track => track.stop());
         setIsRecordingVoice(false);
       };
-      recorder.start();
+      mediaRecorder.start();
       setIsRecordingVoice(true);
     } catch (err) {
-      console.error('Mic error:', err);
-      alert('Impossible d\'acceder au microphone.');
+      console.error('Microphone error:', err);
+      showToast("Erreur d'accès au microphone");
     }
   };
 
@@ -776,8 +765,9 @@ export default function CreatorPage() {
       voiceMediaRecorderRef.current.stop();
     }
   };
-    // previewVoice removed - Edge TTS no longer used
-  const handlePreviewVoice = async () => { /* TTS removed */ };
+
+
+
 
   const uploadFile = async (file: File, purpose: string): Promise<string | null> => {
     try {
@@ -813,10 +803,8 @@ export default function CreatorPage() {
         if (url) rushUrls.push(url);
       }
 
-      // Generate Edge TTS voice if selected and no manual upload
+      // TTS removed - user provides voice via upload or recording
       let actualVoiceFile = voiceUploadFile;
-      // TTS voice generation block removed - user provides their own audio file
-
 
       setRenderStage('Upload des médias...');
       setRenderProgress(17);
@@ -961,7 +949,7 @@ export default function CreatorPage() {
                   type: 'creator', subtitle: bSubtitle, salesPhrase: bPhrase, objective, mode,
                   rushUrls, musicUrl: musicUrl || null, characterUrl: effectiveCharUrl || null,
                   renderedVideoUrl: renderedVideoUrl || null, videoUrl: renderedVideoUrl || rushUrl || null,
-                  voiceMode, ttsVoice: voiceMode === 'edge' ? ttsVoice : null, ttsText: voiceMode === 'edge' ? ttsText : null,
+                  voiceMode,
                   textCards: textCards.filter((c) => c.text.trim()).map((c) => ({ text: c.text, color: c.color })),
                   branding: { watermarkText: branding.watermarkText, borderColor: branding.borderEnabled ? branding.borderColor : null, ctaText: branding.ctaText, ctaSubText: branding.ctaSubText, accentColor: branding.accentColor },
                 },
@@ -1789,31 +1777,39 @@ export default function CreatorPage() {
                 </div>
 
                 {/* Voix off */}
-                <div className="bg-gray-900/50 rounded-xl p-4 border border-gray-800">
-                  <h2 className="text-sm font-semibold text-gray-200 mb-3 flex items-center gap-2">
-                    <Mic className="w-4 h-4 text-pink-400" />
+                <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
+                  <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
+                    <Mic size={20} />
                     Voix off
                   </h2>
+
+                  {/* Voice buttons: Upload + Record */}
                   <div className="space-y-3">
                     <div className="flex gap-2">
-                      <button onClick={() => { if (voiceInputRef?.current) voiceInputRef.current.click(); }} className="flex-1 px-3 py-2 text-xs rounded-lg border bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700 transition-all">
+                      <button
+                        onClick={() => voiceInputRef.current?.click()}
+                        className="flex-1 px-3 py-2 text-xs rounded-lg border bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700 transition-all"
+                      >
                         <Upload className="w-3 h-3 inline mr-1" />Uploader MP3/WAV
                       </button>
-                      <button onClick={() => { if (!isRecordingVoice) { startVoiceRecording(); } else { stopVoiceRecording(); } }} className={`flex-1 px-3 py-2 text-xs rounded-lg border transition-all ${isRecordingVoice ? 'bg-red-600/20 border-red-500 text-red-400 animate-pulse' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
+                      <button
+                        onClick={() => { if (!isRecordingVoice) { startVoiceRecording(); } else { stopVoiceRecording(); } }}
+                        className={`flex-1 px-3 py-2 text-xs rounded-lg border transition-all ${isRecordingVoice ? 'bg-red-600/20 border-red-500 text-red-400 animate-pulse' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
+                      >
                         <Mic className="w-3 h-3 inline mr-1" />{isRecordingVoice ? 'Stop enregistrement' : 'Enregistrer'}
                       </button>
                     </div>
-                    {voiceOverFile && (
+                    {voiceUploadFile && (
                       <div className="flex items-center gap-2 p-2 bg-gray-800 rounded-lg">
                         <Volume2 className="w-4 h-4 text-pink-400" />
-                        <span className="text-xs text-gray-300 flex-1 truncate">{voiceOverFile.name}</span>
-                        <button onClick={() => { const url = URL.createObjectURL(voiceOverFile); const a = new Audio(url); a.play(); }} className="text-pink-400 hover:text-pink-300"><Play className="w-3 h-3" /></button>
-                        <button onClick={() => setVoiceOverFile(null)} className="text-gray-500 hover:text-red-400"><X className="w-3 h-3" /></button>
+                        <span className="text-xs text-gray-300 flex-1 truncate">{voiceUploadFile.name}</span>
+                        <button onClick={() => { const url = URL.createObjectURL(voiceUploadFile); const a = new Audio(url); a.play(); }} className="text-pink-400 hover:text-pink-300"><Play className="w-3 h-3" /></button>
+                        <button onClick={() => setVoiceUploadFile(null)} className="text-gray-500 hover:text-red-400"><X className="w-3 h-3" /></button>
                       </div>
                     )}
-                    <input ref={voiceInputRef} type="file" accept="audio/*" className="hidden" onChange={(e) => { if (e.target.files?.[0]) setVoiceOverFile(e.target.files[0]); }} />
                   </div>
                 </div>
+              </div>
 
               {/* Logo */}
               <div className="bg-gray-800/60 rounded-xl p-4 border border-gray-700/50">
@@ -2145,7 +2141,7 @@ export default function CreatorPage() {
               {voiceMode !== 'none' && (
                 <div className="flex justify-between text-[10px]">
                   <span className="text-gray-500">Voix off</span>
-                  <span className="text-green-400">{voiceMode === 'edge' ? 'Edge TTS' : 'Upload'}</span>
+                  <span className="text-green-400">{voiceUploadFile ? voiceUploadFile.name : 'Oui'}</span>
                 </div>
               )}
               {batchCount > 1 && (
