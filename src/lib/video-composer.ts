@@ -9,6 +9,11 @@
 // TYPES
 // ═══════════════════════════════════════════════════════════
 
+// Extend MediaStreamTrack for canvas capture manual frame requests
+interface CanvasCaptureMediaStreamTrack extends MediaStreamTrack {
+  requestFrame(): void;
+}
+
 export interface CardData {
   emoji: string;
   label: string;
@@ -473,7 +478,9 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   }
 
   // ═══ MEDIARECORDER SETUP ═══
-  const videoStream = canvas.captureStream(fps);
+  // Use manual frame capture (fps=0) for fast mode, auto fps for real-time
+  const useFastMode = !hasAudio;
+  const videoStream = canvas.captureStream(useFastMode ? 0 : fps);
 
   // Combine video + audio into one MediaStream
   const combinedStream = new MediaStream();
@@ -498,14 +505,91 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   }
   const isMP4 = mimeType.startsWith('video/mp4');
   console.log('[Composer] MediaRecorder mimeType:', mimeType, '| MP4:', isMP4);
+  console.log('[Composer] Mode:', useFastMode ? '⚡ FAST (no audio)' : '🔊 REAL-TIME (with audio)');
 
   const recorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 4_000_000 });
   const chunks: Blob[] = [];
   recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
 
-  onProgress?.(15, 'Rendu en cours...');
+  onProgress?.(15, useFastMode ? 'Rendu rapide...' : 'Rendu en cours...');
 
-  // ═══ REAL-TIME RENDER + RECORD ═══
+  // ═══════════════════════════════════════════════════════════
+  // FAST MODE: No audio → render frames as fast as possible
+  // Instead of waiting 18s real-time, renders ~2s total
+  // ═══════════════════════════════════════════════════════════
+  if (useFastMode) {
+    return new Promise<Blob>((resolve, reject) => {
+      recorder.onstop = () => {
+        const outputType = isMP4 ? 'video/mp4' : 'video/webm';
+        const blob = new Blob(chunks, { type: outputType });
+        console.log('[Composer] ✅ DONE — blob:', (blob.size / 1024 / 1024).toFixed(1), 'MB, type:', outputType, ', chunks:', chunks.length);
+        if (videoEl) videoEl.pause();
+        try { document.body.removeChild(canvas); } catch {}
+        onProgress?.(100, 'Terminé !');
+        resolve(blob);
+      };
+      recorder.onerror = (e) => { console.error('[Composer] MediaRecorder error:', e); reject(new Error('Recording failed')); };
+
+      // Get video track for manual frame capture
+      const videoTrack = videoStream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
+      const canRequestFrame = videoTrack && typeof videoTrack.requestFrame === 'function';
+      if (!canRequestFrame) {
+        console.warn('[Composer] requestFrame not available, falling back to timer-based fast mode');
+      }
+
+      recorder.start(200);
+      console.log('[Composer] ⚡ Fast recording started for', totalDuration.toFixed(1), 's');
+
+      const totalFrames = Math.ceil(totalDuration * fps);
+      const frameInterval = 1 / fps;
+      let frameIdx = 0;
+      const fastStart = performance.now();
+
+      const renderBatch = () => {
+        // Render up to 8 frames per batch to avoid blocking the main thread
+        const batchSize = 8;
+        for (let b = 0; b < batchSize && frameIdx < totalFrames; b++, frameIdx++) {
+          const t = Math.min(frameIdx * frameInterval, totalDuration - 0.001);
+
+          // Seek video element to correct position
+          if (videoEl) {
+            const videoSeq = sequences.find(s => s.type === 'video');
+            if (videoSeq) {
+              const vs = seqStarts[sequences.indexOf(videoSeq)];
+              const ve = vs + videoSeq.duration;
+              if (t >= vs && t < ve) { videoEl.currentTime = t - vs; }
+            }
+          }
+
+          drawFrame(t);
+          if (canRequestFrame) videoTrack.requestFrame();
+        }
+
+        // Report progress
+        const pct = Math.round(15 + (frameIdx / totalFrames) * 80);
+        onProgress?.(Math.min(pct, 95), `Montage rapide... ${Math.round((frameIdx / totalFrames) * 100)}%`);
+
+        if (frameIdx < totalFrames) {
+          // Small delay to let MediaRecorder process frames
+          setTimeout(renderBatch, 2);
+        } else {
+          // Render complete — give MediaRecorder a moment to flush
+          const fastElapsed = ((performance.now() - fastStart) / 1000).toFixed(1);
+          console.log(`[Composer] ⚡ Fast render done: ${totalFrames} frames in ${fastElapsed}s (vs ${totalDuration.toFixed(1)}s real-time)`);
+          setTimeout(() => recorder.stop(), 200);
+        }
+      };
+
+      // Kick off fast rendering
+      drawFrame(0);
+      if (canRequestFrame) videoTrack.requestFrame();
+      setTimeout(renderBatch, 10);
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // REAL-TIME MODE: With audio → must render in sync with audio
+  // ═══════════════════════════════════════════════════════════
   return new Promise<Blob>((resolve, reject) => {
     recorder.onstop = () => {
       const outputType = isMP4 ? 'video/mp4' : 'video/webm';
@@ -541,7 +625,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     // START video element
     if (videoEl) { videoEl.currentTime = 0; videoEl.pause(); }
 
-    console.log('[Composer] Recording started for', totalDuration.toFixed(1), 's');
+    console.log('[Composer] 🔊 Real-time recording started for', totalDuration.toFixed(1), 's');
 
     const startTime = performance.now();
     let lastProgress = 0;
