@@ -2063,23 +2063,22 @@ export default function CreatorPage() {
               {/* Destination */}
               <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
                 <h2 className="text-lg font-bold mb-4">Destination</h2>
-                <div className="space-y-2">
+                <div className="flex gap-2">
                   {[
-                    { value: 'calendar', label: '📅 Calendrier (brouillon)', desc: 'Ajouté comme brouillon dans votre calendrier' },
-                    { value: 'export', label: '📦 Export fichier', desc: 'Télécharger directement le fichier' },
-                    { value: 'both', label: '🔄 Les deux', desc: 'Calendrier + Export' },
+                    { value: 'calendar', label: '📅 Calendrier' },
+                    { value: 'export', label: '📦 Export' },
+                    { value: 'both', label: '🔄 Les deux' },
                   ].map((dest) => (
                     <button
                       key={dest.value}
                       onClick={() => setDestination(dest.value)}
-                      className={`w-full text-left px-4 py-3 rounded-lg text-sm transition border ${
+                      className={`flex-1 text-center px-2 py-2.5 rounded-lg font-medium text-xs transition border ${
                         destination === dest.value
-                          ? 'bg-purple-500/10 border-purple-500 text-white'
-                          : 'border-gray-700 text-gray-400 hover:bg-gray-700/50'
+                          ? 'bg-purple-500/20 border-purple-500 text-white'
+                          : 'bg-gray-700 border-gray-700 text-gray-300 hover:bg-gray-600'
                       }`}
                     >
-                      <div className="font-medium">{dest.label}</div>
-                      <div className="text-xs text-gray-500 mt-0.5">{dest.desc}</div>
+                      {dest.label}
                     </button>
                   ))}
                 </div>

@@ -1040,10 +1040,10 @@ export default function InfographiePage() {
               {/* Destination */}
               <div className="mb-6">
                 <h3 className="text-sm font-semibold text-gray-300 mb-2">Destination</h3>
-                <div className="space-y-2">
+                <div className="flex gap-2">
                   {(['calendar', 'export', 'both'] as Destination[]).map((dest) => (
-                    <button key={dest} onClick={() => setDestination(dest)} className={`w-full text-left px-4 py-2.5 rounded-lg font-medium text-sm transition-all border ${destination === dest ? 'bg-pink-600/20 border-pink-500 text-white' : 'bg-gray-700 border-gray-700 text-gray-300 hover:bg-gray-600'}`}>
-                      {dest === 'calendar' && '📅 Calendrier (brouillon)'}{dest === 'export' && '📦 Export fichier'}{dest === 'both' && '🔄 Les deux'}
+                    <button key={dest} onClick={() => setDestination(dest)} className={`flex-1 text-center px-2 py-2.5 rounded-lg font-medium text-xs transition-all border ${destination === dest ? 'bg-pink-600/20 border-pink-500 text-white' : 'bg-gray-700 border-gray-700 text-gray-300 hover:bg-gray-600'}`}>
+                      {dest === 'calendar' && '📅 Calendrier'}{dest === 'export' && '📦 Export'}{dest === 'both' && '🔄 Les deux'}
                     </button>
                   ))}
                 </div>
