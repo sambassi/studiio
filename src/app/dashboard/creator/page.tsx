@@ -1196,6 +1196,15 @@ export default function CreatorPage() {
                     className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
                   />
                 </div>
+
+                {/* Audio note — Studio Son */}
+                <div className="bg-purple-900/20 rounded-xl p-3 border border-purple-500/30 flex items-center gap-3">
+                  <Volume2 size={18} className="text-purple-400 shrink-0" />
+                  <div>
+                    <p className="text-sm text-white font-medium">Musique & Voix off</p>
+                    <p className="text-xs text-gray-400 mt-0.5">L&apos;audio sera ajouté après le montage dans le <span className="text-purple-400 font-medium">Studio Son</span>.</p>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -1661,15 +1670,6 @@ export default function CreatorPage() {
                     )}
                   </div>
                 )}
-              </div>
-
-              {/* Audio note */}
-              <div className="bg-purple-900/20 rounded-xl p-4 border border-purple-500/30 flex items-center gap-3">
-                <Volume2 size={20} className="text-purple-400 shrink-0" />
-                <div>
-                  <p className="text-sm text-white font-medium">Musique & Voix off</p>
-                  <p className="text-xs text-gray-400 mt-0.5">L&apos;audio sera ajouté après le montage dans le <span className="text-purple-400 font-medium">Studio Son</span>. Choisissez &quot;Studio Son&quot; comme destination pour y accéder.</p>
-                </div>
               </div>
 
               {/* Logo */}
