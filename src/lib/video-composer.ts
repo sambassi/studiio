@@ -576,7 +576,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       if (elapsed - lastProgress > 0.5) {
         lastProgress = elapsed;
         const pct = Math.round(15 + (elapsed / totalDuration) * 80);
-        onProgress?.(Math.min(pct, 95), `Rendu: ${Math.round((elapsed / totalDuration) * 100)}%`);
+        onProgress?.(Math.min(pct, 95), 'Montage vidéo en cours...');
       }
 
       requestAnimationFrame(animate);

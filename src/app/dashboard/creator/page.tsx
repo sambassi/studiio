@@ -2114,9 +2114,7 @@ export default function CreatorPage() {
                     />
                   </div>
 
-                  <p className="text-gray-400">{renderStage}</p>
-
-                  <Loader2 size={40} className="animate-spin text-purple-500 mx-auto" />
+                  <p className="text-gray-400 text-sm">{renderStage}</p>
                 </div>
               )}
             </div>
