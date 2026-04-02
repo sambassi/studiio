@@ -156,6 +156,17 @@ function AudioStudioContent() {
     };
   }, [musicUrl, voiceUrl]);
 
+  // ═══ PREVENT NAVIGATION DURING EXPORT ═══
+  useEffect(() => {
+    if (!isExporting) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isExporting]);
+
   // ═══ SEQUENCE BLOCKS ═══
   const meta = post?.metadata || {};
   const seq = (meta.sequences || {}) as Record<string, unknown>;
@@ -494,6 +505,9 @@ function AudioStudioContent() {
         for (let i = 0; i < posts.length; i++) {
           const p = posts[i];
           const pm = p.metadata || {};
+
+          // Update preview to show current video being processed
+          setCurrentPostIndex(i);
 
           console.log(`[AudioStudio] ─── Video ${i + 1}/${posts.length} START: "${p.title}" (${p.id}) ───`);
 
@@ -910,7 +924,7 @@ function AudioStudioContent() {
         <div className="w-72 bg-gray-900 border-l border-gray-800 p-4 overflow-y-auto flex flex-col gap-4">
           {/* Back + title */}
           <div className="flex items-center gap-2">
-            <button onClick={() => router.back()} className="p-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 transition"><ChevronLeft size={16} className="text-gray-400" /></button>
+            <button onClick={() => { if (isExporting) { alert(t('export.navigateWarning') || 'Export en cours ! Ne quittez pas cette page.'); return; } router.back(); }} className="p-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 transition"><ChevronLeft size={16} className="text-gray-400" /></button>
             <div className="min-w-0 flex-1">
               <h2 className="text-sm font-bold text-white truncate flex items-center gap-1.5">
                 <Volume2 size={14} className="text-pink-500 shrink-0" /> {t('title')}
@@ -1017,10 +1031,17 @@ function AudioStudioContent() {
             {isExporting && exportStage && <p className="text-[10px] text-pink-400 text-center mt-1">{exportStage}</p>}
           </div>
 
-          {/* Skip */}
-          <button onClick={() => router.push('/dashboard/calendar')} className="flex items-center justify-center gap-1.5 py-2 text-xs text-gray-500 hover:text-gray-300 transition">
-            {t('export.skipKeepWithoutAudio')}
-          </button>
+          {/* Skip — hidden during export */}
+          {!isExporting && (
+            <button onClick={() => router.push('/dashboard/calendar')} className="flex items-center justify-center gap-1.5 py-2 text-xs text-gray-500 hover:text-gray-300 transition">
+              {t('export.skipKeepWithoutAudio')}
+            </button>
+          )}
+          {isExporting && (
+            <p className="text-[10px] text-yellow-400/80 text-center py-2 animate-pulse">
+              ⚠️ Ne quittez pas cette page pendant l&apos;export
+            </p>
+          )}
         </div>
       </div>
 
