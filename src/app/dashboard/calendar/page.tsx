@@ -141,6 +141,7 @@ export default function CalendarPage() {
   // Bulk date change
   const [showBulkDateModal, setShowBulkDateModal] = useState(false);
   const [bulkNewDate, setBulkNewDate] = useState('');
+  const [bulkNewTime, setBulkNewTime] = useState('12:00');
 
   // Full preview modal
   const [showFullPreview, setShowFullPreview] = useState(false);
@@ -415,13 +416,20 @@ export default function CalendarPage() {
     setSaving(true);
     try {
       const ids = Array.from(selectedPostIds);
-      for (const id of ids) {
-        const post = posts.find((p) => p.id === id);
+      for (let i = 0; i < ids.length; i++) {
+        const post = posts.find((p) => p.id === ids[i]);
         if (post) {
-          await fetch('/api/posts', {
-            method: 'PUT',
+          // Stagger times: first post gets the selected time, each subsequent post +30min
+          const baseHour = parseInt(bulkNewTime.split(':')[0]) || 12;
+          const baseMin = parseInt(bulkNewTime.split(':')[1]) || 0;
+          const totalMin = baseHour * 60 + baseMin + (i * 30);
+          const h = Math.min(Math.floor(totalMin / 60), 23);
+          const m = totalMin % 60;
+          const scheduledTime = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+          await fetch(`/api/posts/${post.id}`, {
+            method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...post, scheduled_date: bulkNewDate }),
+            body: JSON.stringify({ scheduled_date: bulkNewDate, scheduled_time: scheduledTime }),
           });
         }
       }
@@ -430,6 +438,7 @@ export default function CalendarPage() {
       setBulkMode(false);
       setShowBulkDateModal(false);
       setBulkNewDate('');
+      setBulkNewTime('12:00');
     } catch (error) { console.error('Bulk date change error:', error); }
     finally { setSaving(false); }
   };
@@ -1127,6 +1136,25 @@ export default function CalendarPage() {
                 </div>
                 <p className="text-xs text-gray-400 mb-3">{selectedDayPosts.length} post{selectedDayPosts.length !== 1 ? 's' : ''}</p>
 
+                {/* Select all / deselect */}
+                {bulkMode && (
+                  <div className="flex items-center gap-2 mb-2">
+                    <button
+                      onClick={() => {
+                        if (selectedPostIds.size === selectedDayPosts.length) {
+                          setSelectedPostIds(new Set());
+                        } else {
+                          setSelectedPostIds(new Set(selectedDayPosts.map(p => p.id)));
+                        }
+                      }}
+                      className="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 transition"
+                    >
+                      {selectedPostIds.size === selectedDayPosts.length ? 'Tout désélectionner' : 'Tout sélectionner'}
+                    </button>
+                    <span className="text-[10px] text-gray-500">{selectedPostIds.size}/{selectedDayPosts.length}</span>
+                  </div>
+                )}
+
                 {/* Bulk actions bar */}
                 {bulkMode && selectedPostIds.size > 0 && (
                   <div className="flex gap-2 mb-3 p-2 bg-gray-800 rounded-lg border border-gray-700">
@@ -1671,6 +1699,18 @@ export default function CalendarPage() {
               onChange={(e) => setBulkNewDate(e.target.value)}
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500"
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">Heure du 1er post</label>
+            <input
+              type="time"
+              value={bulkNewTime}
+              onChange={(e) => setBulkNewTime(e.target.value)}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500"
+            />
+            {selectedPostIds.size > 1 && (
+              <p className="text-[10px] text-gray-500 mt-1">Les posts suivants seront espacés de 30 min</p>
+            )}
           </div>
           <div className="flex gap-3">
             <Button variant="secondary" className="flex-1" onClick={() => setShowBulkDateModal(false)}>Annuler</Button>
