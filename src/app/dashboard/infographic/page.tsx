@@ -401,6 +401,7 @@ export default function InfographiePage() {
       let successCount = 0;
       let lastError = '';
       let savedBlobForExport: Blob | null = null;
+      let firstCreatedPostId: string | null = null;
 
       if (destination === 'calendar' || destination === 'both' || destination === 'studio') {
         const today = new Date();
@@ -479,13 +480,16 @@ export default function InfographiePage() {
               }),
             });
             const postData = await postRes.json();
+            console.log('[Export] POST /api/posts response:', JSON.stringify(postData).substring(0, 300));
             if (postData.success) {
               successCount++;
-              if (b === 0 && (postData?.post?.id || postData?.data?.id)) {
-                (window as unknown as Record<string, unknown>).__lastCreatedPostId = postData.post?.id || postData.data?.id;
+              const createdId = postData.post?.id || postData.data?.id || null;
+              console.log('[Export] Created post ID:', createdId);
+              if (b === 0 && createdId) {
+                firstCreatedPostId = createdId;
               }
             }
-            else { lastError = postData.error || 'Unknown error'; }
+            else { lastError = postData.error || 'Unknown error'; console.error('[Export] Post creation failed:', postData); }
           } catch (postErr) { lastError = String(postErr); }
 
           // Also create a video record in the library
@@ -543,10 +547,12 @@ export default function InfographiePage() {
 
       setExportProgress(100);
       if (destination === 'studio') {
-        const createdPostId = (window as unknown as Record<string, unknown>).__lastCreatedPostId as string;
+        console.log('[Export] Studio redirect — firstCreatedPostId:', firstCreatedPostId);
         setExportToast({ message: 'Redirection vers Studio Son...', type: 'success' });
         await new Promise((r) => setTimeout(r, 1000));
-        router.push(createdPostId ? `/dashboard/audio-studio?postId=${createdPostId}` : '/dashboard/audio-studio');
+        const studioUrl = firstCreatedPostId ? `/dashboard/audio-studio?postId=${firstCreatedPostId}` : '/dashboard/audio-studio';
+        console.log('[Export] Redirecting to:', studioUrl);
+        router.push(studioUrl);
       } else if (destination === 'calendar' || destination === 'both') {
         if (successCount > 0) {
           setExportToast({ message: `${successCount} vidéo${successCount > 1 ? 's' : ''} montée${successCount > 1 ? 's' : ''} au calendrier !`, type: 'success' });

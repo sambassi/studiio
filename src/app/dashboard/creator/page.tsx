@@ -775,6 +775,7 @@ export default function CreatorPage() {
 
       // ═══ PHASE 3: Client-side render + Create calendar posts + Export (20-98%) ═══
       let successCount = 0;
+      let firstCreatedPostId: string | null = null;
       // For "both" mode: compose once, reuse blob for export + url for calendar
       let savedBlobForExport: Blob | null = null;
 
@@ -882,10 +883,11 @@ export default function CreatorPage() {
               const postData = await postRes.json().catch(() => ({}));
               successCount++;
               // Save first post ID for Studio Son redirect
-              if (b === 0 && (postData?.post?.id || postData?.data?.id)) {
-                (window as unknown as Record<string, unknown>).__lastCreatedPostId = postData.post?.id || postData.data?.id;
+              const createdId = postData.post?.id || postData.data?.id || null;
+              console.log(`[Creator] Post ${b + 1} created, id:`, createdId);
+              if (b === 0 && createdId) {
+                firstCreatedPostId = createdId;
               }
-              console.log(`[Creator] Post ${b + 1} created successfully, id:`, postData?.post?.id || postData?.data?.id);
             } else {
               console.error(`[Creator] Post ${b + 1} failed:`, postRes.status, await postRes.text().catch(() => ''));
             }
@@ -973,9 +975,11 @@ export default function CreatorPage() {
 
       if (destination === 'studio') {
         // Redirect to Audio Studio with the first created post
-        const createdPostId = (window as unknown as Record<string, unknown>).__lastCreatedPostId as string;
+        console.log('[Creator] Studio redirect — firstCreatedPostId:', firstCreatedPostId);
         await new Promise((r) => setTimeout(r, 1000));
-        router.push(createdPostId ? `/dashboard/audio-studio?postId=${createdPostId}` : '/dashboard/audio-studio');
+        const studioUrl = firstCreatedPostId ? `/dashboard/audio-studio?postId=${firstCreatedPostId}` : '/dashboard/audio-studio';
+        console.log('[Creator] Redirecting to:', studioUrl);
+        router.push(studioUrl);
       } else if (destination === 'calendar' || destination === 'both') {
         await new Promise((r) => setTimeout(r, 1500));
         router.push('/dashboard/calendar');
