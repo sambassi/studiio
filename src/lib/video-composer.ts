@@ -241,25 +241,34 @@ function drawCards(
   const grad = ctx.createLinearGradient(0, 0, 0, h);
   grad.addColorStop(0, '#1a0030'); grad.addColorStop(0.5, '#0a0a0a'); grad.addColorStop(1, '#000000');
   ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
-  ctx.font = `700 ${Math.round(w * 0.022)}px sans-serif`; ctx.textAlign = 'center';
-  ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.fillText('INFORMATIONS', w / 2, h * 0.2);
-  const cardH = Math.round(h * 0.065), cardW = Math.round(w * 0.8);
-  const cardX = (w - cardW) / 2, startY = h * 0.27, gap = cardH * 1.4;
+  ctx.font = `700 ${Math.round(w * 0.03)}px sans-serif`; ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.fillText('INFORMATIONS', w / 2, h * 0.15);
+  const cardH = Math.round(h * 0.095), cardW = Math.round(w * 0.88);
+  const cardX = (w - cardW) / 2, startY = h * 0.21, gap = cardH * 1.25;
   cards.slice(0, 5).forEach((card, i) => {
     const cp = Math.max(0, Math.min(1, (progress - i * 0.12) * 4));
     if (cp <= 0) return;
     const y = startY + i * gap, slideX = cardX + (1 - cp) * (-w * 0.15);
     ctx.globalAlpha = cp;
-    ctx.fillStyle = 'rgba(0,0,0,0.5)'; drawRoundRect(ctx, slideX, y, cardW, cardH, 12); ctx.fill();
-    ctx.fillStyle = card.color || accent; ctx.fillRect(slideX, y + 4, 3, cardH - 8);
-    const dotR = Math.round(cardH * 0.12);
-    ctx.fillStyle = card.color || accent; ctx.beginPath();
-    ctx.arc(slideX + 16 + dotR, y + cardH * 0.5, dotR, 0, Math.PI * 2); ctx.fill();
-    ctx.font = `400 ${Math.round(w * 0.022)}px sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.textAlign = 'left';
-    ctx.fillText(card.label, slideX + 16 + dotR * 2 + 10, y + cardH * 0.6);
-    ctx.font = `700 ${Math.round(w * 0.032)}px sans-serif`; ctx.textAlign = 'right'; ctx.fillStyle = 'white';
-    ctx.shadowColor = accent; ctx.shadowBlur = 8;
-    ctx.fillText(card.value, slideX + cardW - 16, y + cardH * 0.65); ctx.shadowBlur = 0;
+    // Card background
+    ctx.fillStyle = 'rgba(0,0,0,0.55)'; drawRoundRect(ctx, slideX, y, cardW, cardH, 14); ctx.fill();
+    // Left accent border
+    ctx.fillStyle = card.color || accent; ctx.fillRect(slideX, y + 5, 4, cardH - 10);
+    // Emoji (real emoji, large and visible)
+    const emojiSize = Math.round(w * 0.06);
+    ctx.font = `${emojiSize}px sans-serif`; ctx.textAlign = 'left';
+    ctx.fillText(card.emoji || '●', slideX + 18, y + cardH * 0.62);
+    // Label (bold, bigger)
+    const labelX = slideX + 18 + emojiSize + 12;
+    ctx.font = `700 ${Math.round(w * 0.032)}px sans-serif`; ctx.fillStyle = 'white'; ctx.textAlign = 'left';
+    ctx.fillText(card.label.toUpperCase(), labelX, y + cardH * 0.42);
+    // Sublabel if value has description
+    ctx.font = `400 ${Math.round(w * 0.022)}px sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.fillText(card.label !== card.value ? '' : '', labelX, y + cardH * 0.68);
+    // Value (large, glowing)
+    ctx.font = `800 ${Math.round(w * 0.048)}px sans-serif`; ctx.textAlign = 'right'; ctx.fillStyle = 'white';
+    ctx.shadowColor = accent; ctx.shadowBlur = 12;
+    ctx.fillText(card.value, slideX + cardW - 20, y + cardH * 0.65); ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
   });
   if (logoImg) {

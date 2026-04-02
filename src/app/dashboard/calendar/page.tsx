@@ -228,7 +228,16 @@ export default function CalendarPage() {
   const handleNextMonth = () => { setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1)); setSelectedDay(null); };
   const handleDayClick = (day: number) => { setSelectedDay(selectedDay === day ? null : day); };
 
-  const handlePostClick = (post: Post) => { setSelectedPost(post); setShowPreviewModal(true); };
+  const handlePostClick = (post: Post) => {
+    setSelectedPost(post);
+    const meta = post.metadata as Record<string, unknown> | undefined;
+    const hasMontage = meta?.type === 'infographic' || meta?.type === 'creator' || meta?.sequences;
+    if (hasMontage) {
+      handleFullPreview(post);
+    } else {
+      setShowPreviewModal(true);
+    }
+  };
 
   const handleEditPost = (post?: Post) => {
     const target = post || selectedPost;
