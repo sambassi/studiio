@@ -377,19 +377,17 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   ]);
 
   // Load audio — prefer pre-decoded AudioBuffers (batch mode), fallback to <audio> elements
-  const hasMusicBuffer = !!options.musicBuffer;
-  const hasVoiceBuffer = !!options.voiceBuffer;
+  // For each audio source independently: use buffer if provided, else load <audio> element
   let musicEl: HTMLAudioElement | null = null;
   let voiceEl: HTMLAudioElement | null = null;
-  if (!hasMusicBuffer && !hasVoiceBuffer) {
-    // Fallback: load <audio> elements (single video mode)
-    [musicEl, voiceEl] = await Promise.all([
-      musicUrl ? loadAudioElement(musicUrl) : null,
-      voiceUrl ? loadAudioElement(voiceUrl) : null,
-    ]);
+  if (!options.musicBuffer && musicUrl) {
+    musicEl = await loadAudioElement(musicUrl);
+  }
+  if (!options.voiceBuffer && voiceUrl) {
+    voiceEl = await loadAudioElement(voiceUrl);
   }
 
-  const hasAudio = hasMusicBuffer || hasVoiceBuffer || musicEl !== null || voiceEl !== null;
+  const hasAudio = !!options.musicBuffer || !!options.voiceBuffer || musicEl !== null || voiceEl !== null;
   console.log('[Composer] Media loaded — poster:', !!posterImg, 'logo:', !!logoImg, 'video:', !!videoEl);
   console.log('[Composer] Audio — musicBuffer:', hasMusicBuffer, 'voiceBuffer:', hasVoiceBuffer, 'musicEl:', !!musicEl, 'voiceEl:', !!voiceEl, 'hasAudio:', hasAudio);
 
@@ -445,25 +443,30 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   };
 
   // ═══ AUDIO SETUP ═══
-  // Two approaches:
-  // A) AudioBuffer + AudioBufferSourceNode (batch mode) — most reliable, no autoplay issues
-  // B) <audio> element + createMediaElementSource (single mode) — simpler but less reliable in batch
+  // Strategy: try AudioBuffer approach first (reliable for batch), fallback to <audio> element
+  // AudioBufferSourceNode: no autoplay policy issues, can be reused across batch
+  // <audio> element: simpler but Chrome's autoplay policy blocks play() after first video in batch
 
   let audioCtx: AudioContext | null = null;
   let audioDest: MediaStreamAudioDestinationNode | null = null;
   const isSharedCtx = !!options.sharedAudioCtx;
-  // Track buffer source nodes so we can stop them on completion
   let musicBufferSource: AudioBufferSourceNode | null = null;
   let voiceBufferSource: AudioBufferSourceNode | null = null;
+  let musicElConnected = false;
+  let voiceElConnected = false;
 
   if (hasAudio) {
     audioCtx = options.sharedAudioCtx || new AudioContext({ sampleRate: 48000 });
-    await audioCtx.resume();
-    console.log('[Composer] AudioContext state:', audioCtx.state, isSharedCtx ? '(SHARED)' : '(new)');
+    // Ensure AudioContext is running — critical for batch mode
+    if (audioCtx.state !== 'running') {
+      await audioCtx.resume();
+    }
+    console.log('[Composer] AudioContext state:', audioCtx.state, '| sampleRate:', audioCtx.sampleRate, isSharedCtx ? '(SHARED)' : '(new)');
 
     audioDest = audioCtx.createMediaStreamDestination();
+    console.log('[Composer] AudioDestination created, stream tracks:', audioDest.stream.getAudioTracks().length);
 
-    // ── METHOD A: Pre-decoded AudioBuffer (batch mode — more reliable) ──
+    // ── MUSIC: try AudioBuffer first, then <audio> element ──
     if (options.musicBuffer) {
       try {
         musicBufferSource = audioCtx.createBufferSource();
@@ -473,13 +476,34 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
         musicGain.gain.value = (options.voiceBuffer || voiceEl) ? 0.3 : 0.8;
         musicBufferSource.connect(musicGain);
         musicGain.connect(audioDest);
-        console.log('[Composer] ✅ Music AudioBuffer connected, duration:', options.musicBuffer.duration.toFixed(1), 's, gain:', musicGain.gain.value);
+        console.log('[Composer] ✅ Music: AudioBuffer connected | duration:', options.musicBuffer.duration.toFixed(1), 's | channels:', options.musicBuffer.numberOfChannels, '| gain:', musicGain.gain.value);
       } catch (err) {
         console.error('[Composer] ❌ Music AudioBuffer setup failed:', err);
         musicBufferSource = null;
+        // Fallback: try loading <audio> element if we have a URL
+        if (musicUrl && !musicEl) {
+          console.log('[Composer] ↪ Fallback: loading music <audio> element...');
+          musicEl = await loadAudioElement(musicUrl);
+        }
+      }
+    }
+    // <audio> element approach (single mode or fallback)
+    if (musicEl && !musicBufferSource) {
+      try {
+        const musicSource = audioCtx.createMediaElementSource(musicEl);
+        const musicGain = audioCtx.createGain();
+        musicGain.gain.value = voiceEl ? 0.3 : 0.8;
+        musicSource.connect(musicGain);
+        musicGain.connect(audioDest);
+        musicEl.loop = true;
+        musicElConnected = true;
+        console.log('[Composer] ✅ Music: <audio> element connected | gain:', musicGain.gain.value);
+      } catch (err) {
+        console.error('[Composer] ❌ Music <audio> setup failed:', err);
       }
     }
 
+    // ── VOICE: try AudioBuffer first, then <audio> element ──
     if (options.voiceBuffer) {
       try {
         voiceBufferSource = audioCtx.createBufferSource();
@@ -489,40 +513,33 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
         voiceGain.gain.value = 1.0;
         voiceBufferSource.connect(voiceGain);
         voiceGain.connect(audioDest);
-        console.log('[Composer] ✅ Voice AudioBuffer connected, duration:', options.voiceBuffer.duration.toFixed(1), 's');
+        console.log('[Composer] ✅ Voice: AudioBuffer connected | duration:', options.voiceBuffer.duration.toFixed(1), 's');
       } catch (err) {
         console.error('[Composer] ❌ Voice AudioBuffer setup failed:', err);
         voiceBufferSource = null;
+        if (voiceUrl && !voiceEl) {
+          console.log('[Composer] ↪ Fallback: loading voice <audio> element...');
+          voiceEl = await loadAudioElement(voiceUrl);
+        }
       }
     }
-
-    // ── METHOD B: <audio> element (single mode — fallback) ──
-    if (musicEl && !options.musicBuffer) {
-      try {
-        const musicSource = audioCtx.createMediaElementSource(musicEl);
-        const musicGain = audioCtx.createGain();
-        musicGain.gain.value = voiceEl ? 0.3 : 0.8;
-        musicSource.connect(musicGain);
-        musicGain.connect(audioDest);
-        musicEl.loop = true;
-        console.log('[Composer] ✅ Music element connected to audio graph, gain:', musicGain.gain.value);
-      } catch (err) {
-        console.error('[Composer] ❌ Music element setup failed:', err);
-      }
-    }
-
-    if (voiceEl && !options.voiceBuffer) {
+    if (voiceEl && !voiceBufferSource) {
       try {
         const voiceSource = audioCtx.createMediaElementSource(voiceEl);
         const voiceGain = audioCtx.createGain();
         voiceGain.gain.value = 1.0;
         voiceSource.connect(voiceGain);
         voiceGain.connect(audioDest);
-        console.log('[Composer] ✅ Voice element connected to audio graph');
+        voiceElConnected = true;
+        console.log('[Composer] ✅ Voice: <audio> element connected');
       } catch (err) {
-        console.error('[Composer] ❌ Voice element setup failed:', err);
+        console.error('[Composer] ❌ Voice <audio> setup failed:', err);
       }
     }
+
+    // Final audio status
+    const audioReady = !!musicBufferSource || musicElConnected || !!voiceBufferSource || voiceElConnected;
+    console.log('[Composer] Audio setup complete — ready:', audioReady, '| musicBuffer:', !!musicBufferSource, '| musicEl:', musicElConnected, '| voiceBuffer:', !!voiceBufferSource, '| voiceEl:', voiceElConnected);
   }
 
   // ═══ MEDIARECORDER SETUP ═══
@@ -664,24 +681,28 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     // START recording
     recorder.start(200);
 
-    // START audio playback
-    // Method A: AudioBufferSourceNode (batch mode)
+    // START audio playback — buffer sources first, then <audio> elements as fallback
     if (musicBufferSource) {
-      musicBufferSource.start(0);
-      console.log('[Composer] ✅ Music AudioBuffer started');
+      try {
+        musicBufferSource.start(0);
+        console.log('[Composer] ✅ Music AudioBuffer PLAYING');
+      } catch (err) {
+        console.error('[Composer] ❌ Music AudioBuffer start failed:', err);
+      }
+    } else if (musicElConnected && musicEl) {
+      musicEl.currentTime = 0;
+      musicEl.play().then(() => console.log('[Composer] ✅ Music <audio> PLAYING')).catch(err => console.error('[Composer] ❌ Music play failed:', err));
     }
     if (voiceBufferSource) {
-      voiceBufferSource.start(0);
-      console.log('[Composer] ✅ Voice AudioBuffer started');
-    }
-    // Method B: <audio> element (single mode)
-    if (musicEl && !options.musicBuffer) {
-      musicEl.currentTime = 0;
-      musicEl.play().then(() => console.log('[Composer] ✅ Music element playing')).catch(err => console.error('[Composer] ❌ Music play failed:', err));
-    }
-    if (voiceEl && !options.voiceBuffer) {
+      try {
+        voiceBufferSource.start(0);
+        console.log('[Composer] ✅ Voice AudioBuffer PLAYING');
+      } catch (err) {
+        console.error('[Composer] ❌ Voice AudioBuffer start failed:', err);
+      }
+    } else if (voiceElConnected && voiceEl) {
       voiceEl.currentTime = 0;
-      voiceEl.play().then(() => console.log('[Composer] ✅ Voice element playing')).catch(err => console.error('[Composer] ❌ Voice play failed:', err));
+      voiceEl.play().then(() => console.log('[Composer] ✅ Voice <audio> PLAYING')).catch(err => console.error('[Composer] ❌ Voice play failed:', err));
     }
 
     // START video element

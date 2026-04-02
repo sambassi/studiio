@@ -438,19 +438,24 @@ function AudioStudioContent() {
           console.log(`[AudioStudio] Shared AudioContext created, state: ${sharedAudioCtx.state}`);
 
           // Pre-decode audio files into AudioBuffers — more reliable than <audio> elements in batch mode
+          // decodeAudioData detaches the ArrayBuffer, so we read it fresh for each decode
           if (musicFile) {
             try {
+              console.log(`[AudioStudio] Decoding music: ${musicFile.name} (${(musicFile.size / 1024).toFixed(0)}KB, type: ${musicFile.type})`);
               const musicArrayBuf = await musicFile.arrayBuffer();
-              musicBuffer = await sharedAudioCtx.decodeAudioData(musicArrayBuf);
+              console.log(`[AudioStudio] Music ArrayBuffer: ${musicArrayBuf.byteLength} bytes`);
+              musicBuffer = await sharedAudioCtx.decodeAudioData(musicArrayBuf.slice(0));
               console.log(`[AudioStudio] ✅ Music decoded to AudioBuffer: ${musicBuffer.duration.toFixed(1)}s, ${musicBuffer.numberOfChannels}ch, ${musicBuffer.sampleRate}Hz`);
             } catch (err) {
               console.error('[AudioStudio] ❌ Music decode failed:', err);
+              console.error('[AudioStudio] ↪ Will fall back to <audio> element per-video (may not work for all batch items)');
             }
           }
           if (voiceFile) {
             try {
+              console.log(`[AudioStudio] Decoding voice: ${voiceFile.name} (${(voiceFile.size / 1024).toFixed(0)}KB, type: ${voiceFile.type})`);
               const voiceArrayBuf = await voiceFile.arrayBuffer();
-              voiceBuffer = await sharedAudioCtx.decodeAudioData(voiceArrayBuf);
+              voiceBuffer = await sharedAudioCtx.decodeAudioData(voiceArrayBuf.slice(0));
               console.log(`[AudioStudio] ✅ Voice decoded to AudioBuffer: ${voiceBuffer.duration.toFixed(1)}s, ${voiceBuffer.numberOfChannels}ch, ${voiceBuffer.sampleRate}Hz`);
             } catch (err) {
               console.error('[AudioStudio] ❌ Voice decode failed:', err);
@@ -477,7 +482,9 @@ function AudioStudioContent() {
 
             console.log(`[AudioStudio]   posterUrl: ${posterUrl?.substring(0, 60) || 'NONE'}`);
             console.log(`[AudioStudio]   rushUrl: ${rushUrl?.substring(0, 60) || 'NONE'}`);
-            console.log(`[AudioStudio]   music: ${localMusicBlobUrl ? 'YES' : 'NONE'}, voice: ${localVoiceBlobUrl ? 'YES' : 'NONE'}`);
+            console.log(`[AudioStudio]   musicBuffer: ${musicBuffer ? musicBuffer.duration.toFixed(1) + 's' : 'NULL'}, voiceBuffer: ${voiceBuffer ? voiceBuffer.duration.toFixed(1) + 's' : 'NULL'}`);
+            console.log(`[AudioStudio]   musicBlobUrl: ${localMusicBlobUrl ? 'YES' : 'NONE'}, voiceBlobUrl: ${localVoiceBlobUrl ? 'YES' : 'NONE'}`);
+            console.log(`[AudioStudio]   sharedAudioCtx: ${sharedAudioCtx ? sharedAudioCtx.state : 'NULL'}`);
             console.log(`[AudioStudio]   sequences: intro=${(pSeq.intro as number) || 0} cards=${(pSeq.cards as number) || 0} video=${(pSeq.video as number) || 0} cta=${(pSeq.cta as number) || 0}`);
 
             const progressBase = 20 + Math.round((i / posts.length) * 70);
@@ -715,46 +722,53 @@ function AudioStudioContent() {
                 : { height: '100%', aspectRatio: '9/16', maxWidth: 'calc((100vh - 300px) * 9 / 16)' }
               }
             >
-              {videoSrc ? (
+              {isExporting ? (
                 <>
-                  {/* During export: show static poster to prevent video flickering */}
-                  {isExporting && posterImgSrc ? (
+                  {/* During export: ALWAYS show static content — never render <video> */}
+                  {posterImgSrc ? (
                     <img src={posterImgSrc} alt="" className="w-full h-full object-cover" />
                   ) : (
-                    <video
-                      key={post?.id}
-                      ref={videoRef}
-                      src={videoSrc}
-                      poster={posterImgSrc || undefined}
-                      className="w-full h-full object-contain"
-                      playsInline
-                      autoPlay
-                      loop
-                      muted
-                      crossOrigin="anonymous"
-                      onLoadedData={() => { setVideoLoading(false); setVideoError(false); }}
-                      onError={() => { setVideoLoading(false); setVideoError(true); }}
-                      onWaiting={() => setVideoLoading(true)}
-                      onPlaying={() => setVideoLoading(false)}
-                    />
+                    <div className="w-full h-full bg-gradient-to-b from-gray-800 to-gray-900 flex items-center justify-center">
+                      <Music size={48} className="text-pink-500/30" />
+                    </div>
                   )}
-                  {videoLoading && !isExporting && (
+                  {/* Export progress overlay with title info */}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-10">
+                    <Loader2 className="animate-spin text-pink-500 mb-3" size={36} />
+                    <p className="text-lg text-white font-bold">{exportProgress}%</p>
+                    <p className="text-xs text-gray-300 mt-1 px-4 text-center">{exportStage}</p>
+                    {post?.title && (
+                      <p className="text-[10px] text-pink-300 mt-2 px-4 text-center truncate max-w-full">{post.title}</p>
+                    )}
+                  </div>
+                </>
+              ) : videoSrc ? (
+                <>
+                  <video
+                    key={post?.id}
+                    ref={videoRef}
+                    src={videoSrc}
+                    poster={posterImgSrc || undefined}
+                    className="w-full h-full object-contain"
+                    playsInline
+                    autoPlay
+                    loop
+                    muted
+                    crossOrigin="anonymous"
+                    onLoadedData={() => { setVideoLoading(false); setVideoError(false); }}
+                    onError={() => { setVideoLoading(false); setVideoError(true); }}
+                    onWaiting={() => setVideoLoading(true)}
+                    onPlaying={() => setVideoLoading(false)}
+                  />
+                  {videoLoading && (
                     <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-10">
                       <Loader2 className="animate-spin text-pink-500" size={32} />
                     </div>
                   )}
-                  {videoError && !isExporting && (
+                  {videoError && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-10">
                       <VolumeX size={32} className="text-red-400 mb-2" />
                       <p className="text-xs text-red-400">{t('loadingError')}</p>
-                    </div>
-                  )}
-                  {/* Export progress overlay */}
-                  {isExporting && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-10">
-                      <Loader2 className="animate-spin text-pink-500 mb-2" size={32} />
-                      <p className="text-sm text-white font-bold">{exportProgress}%</p>
-                      <p className="text-xs text-gray-300 mt-1">{exportStage}</p>
                     </div>
                   )}
                 </>
