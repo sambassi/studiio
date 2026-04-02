@@ -389,7 +389,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 
   const hasAudio = !!options.musicBuffer || !!options.voiceBuffer || musicEl !== null || voiceEl !== null;
   console.log('[Composer] Media loaded — poster:', !!posterImg, 'logo:', !!logoImg, 'video:', !!videoEl);
-  console.log('[Composer] Audio — musicBuffer:', hasMusicBuffer, 'voiceBuffer:', hasVoiceBuffer, 'musicEl:', !!musicEl, 'voiceEl:', !!voiceEl, 'hasAudio:', hasAudio);
+  console.log('[Composer] Audio — musicBuffer:', !!options.musicBuffer, 'voiceBuffer:', !!options.voiceBuffer, 'musicEl:', !!musicEl, 'voiceEl:', !!voiceEl, 'hasAudio:', hasAudio);
 
   // Build sequences
   const sequences: Array<{ type: string; duration: number }> = [{ type: 'intro', duration: introDuration }];
