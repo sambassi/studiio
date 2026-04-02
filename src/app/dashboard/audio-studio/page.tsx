@@ -55,6 +55,10 @@ function AudioStudioContent() {
   const post = posts[currentPostIndex] || null;
   const isBatch = posts.length > 1;
 
+  // Video loading state
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [videoError, setVideoError] = useState(false);
+
   // Audio files
   const [musicFile, setMusicFile] = useState<File | null>(null);
   const [musicUrl, setMusicUrl] = useState<string | null>(null);
@@ -182,21 +186,28 @@ function AudioStudioContent() {
   let cumTime = 0;
   sequences.forEach(s => { seqStarts.push(cumTime); cumTime += s.duration; });
 
+  // ═══ RESET VIDEO STATE ON POST CHANGE ═══
+  useEffect(() => {
+    setVideoLoading(true);
+    setVideoError(false);
+    setCurrentTime(0);
+    setActiveSeqIdx(0);
+    setIsPlaying(false);
+  }, [post?.id]);
+
   // ═══ TIMELINE PLAYBACK (synced with video) ═══
   // Use requestAnimationFrame for smooth timeline, reading video.currentTime
   useEffect(() => {
     const vid = videoRef.current;
-    if (!vid) return;
+    if (!vid || videoLoading) return;
     let rafId = 0;
     let running = false;
 
     const syncTimeline = () => {
       if (!running) return;
       if (vid && !vid.paused && vid.duration > 0) {
-        // Use actual video duration to avoid drift
         const videoDur = vid.duration;
         const t = vid.currentTime;
-        // Map video time to timeline time (clamp to totalDuration)
         const mapped = totalDuration > 0 ? Math.min(t % totalDuration, totalDuration - 0.01) : t % videoDur;
         setCurrentTime(mapped);
         let idx = 0;
@@ -220,7 +231,6 @@ function AudioStudioContent() {
     vid.addEventListener('play', onPlay);
     vid.addEventListener('pause', onPause);
     vid.addEventListener('seeked', onSeeked);
-    // Start sync if already playing
     if (!vid.paused) { running = true; setIsPlaying(true); rafId = requestAnimationFrame(syncTimeline); }
     return () => {
       running = false;
@@ -229,7 +239,7 @@ function AudioStudioContent() {
       vid.removeEventListener('pause', onPause);
       vid.removeEventListener('seeked', onSeeked);
     };
-  }, [post?.id, totalDuration, sequences, seqStarts]);
+  }, [post?.id, totalDuration, sequences, seqStarts, videoLoading]);
 
   const startPlayback = useCallback(() => {
     if (videoRef.current) { videoRef.current.currentTime = 0; videoRef.current.play().catch(() => {}); }
@@ -374,33 +384,100 @@ function AudioStudioContent() {
 
       setExportProgress(20);
 
-      // ═══ BATCH MODE: Skip re-composition, just update metadata ═══
-      // Videos are already rendered from Infographic/Creator. We just attach audio URLs.
+      // ═══ BATCH MODE: Re-compose each video with embedded audio ═══
       if (isBatch) {
         let successCount = 0;
+        const localMusicBlobUrl = musicFile ? URL.createObjectURL(musicFile) : null;
+        const localVoiceBlobUrl = voiceFile ? URL.createObjectURL(voiceFile) : null;
+
         for (let i = 0; i < posts.length; i++) {
           const p = posts[i];
           const pm = p.metadata || {};
+          const brand = (pm.branding as Record<string, string>) || undefined;
+          const isReel = p.format === 'reel';
+          const pSeq = (pm.sequences || {}) as Record<string, unknown>;
+          const pCards = (pm.cards as Array<{ emoji: string; label: string; value: string; color?: string }>) || [];
+          const pTextCards = (pm.textCards as Array<{ text: string; color?: string }>) || [];
+          const finalCards = pCards.length > 0 ? pCards : pTextCards.map(tc => ({ emoji: '📝', label: tc.text, value: tc.text, color: tc.color }));
+          const posterUrl = (pm.posterUrl || pm.pexelsUrl || pm.characterUrl || null) as string | null;
+          const rushUrl = (pm.rushUrls as string[])?.[0] || (pm.rawVideoUrl as string) || null;
 
-          setExportStage(`Mise à jour ${i + 1}/${posts.length}...`);
-          setExportProgress(20 + Math.round((i / posts.length) * 70));
+          const progressBase = 20 + Math.round((i / posts.length) * 70);
+          const progressSpan = Math.round(70 / posts.length);
+          setExportStage(`Montage vidéo ${i + 1}/${posts.length}...`);
+          setExportProgress(progressBase);
 
           try {
-            await fetch(`/api/posts/${p.id}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                metadata: { ...pm, hasAudio: true, musicUrl: uploadedMusicUrl, voiceUrl: uploadedVoiceUrl },
-              }),
+            const result = await composeAndUpload({
+              width: isReel ? 1080 : 1920,
+              height: isReel ? 1920 : 1080,
+              fps: 24,
+              title: p.title || 'Vidéo',
+              subtitle: (pm.subtitle as string) || undefined,
+              salesPhrase: (pm.salesPhrase as string) || undefined,
+              cards: finalCards.length > 0 ? finalCards : undefined,
+              posterUrl, videoUrl: rushUrl,
+              logoUrl: (pm.logoUrl as string) || null,
+              musicUrl: localMusicBlobUrl,
+              voiceUrl: localVoiceBlobUrl,
+              introDuration: (pSeq.intro as number) || seqDurations.intro,
+              cardsDuration: (pSeq.cards as number) || seqDurations.cards,
+              videoDuration: (pSeq.video as number) || seqDurations.video,
+              ctaDuration: (pSeq.cta as number) || seqDurations.cta,
+              accentColor: (brand?.accentColor as string) || '#D91CD2',
+              ctaText: (brand?.ctaText as string) || 'CHAT POUR PLUS D\'INFOS',
+              ctaSubText: (brand?.ctaSubText as string) || 'LIEN EN BIO',
+              watermarkText: (brand?.watermarkText as string) || undefined,
+              onProgress: (pct, stage) => {
+                setExportProgress(Math.round(progressBase + (pct / 100) * progressSpan));
+                setExportStage(`[${i + 1}/${posts.length}] ${stage}`);
+              },
             });
-            successCount++;
-            console.log(`[AudioStudio] Updated post ${i + 1}/${posts.length}: ${p.id}`);
-          } catch (err) { console.error(`[AudioStudio] Update post ${p.id} failed:`, err); }
+
+            // Update post with new rendered video + audio metadata
+            if (result.url) {
+              await fetch(`/api/posts/${p.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  media_url: result.url,
+                  media_type: 'video',
+                  status: 'completed',
+                  metadata: { ...pm, renderedVideoUrl: result.url, videoUrl: result.url, hasAudio: true, musicUrl: uploadedMusicUrl, voiceUrl: uploadedVoiceUrl },
+                }),
+              });
+              successCount++;
+              console.log(`[AudioStudio] Composed & updated post ${i + 1}/${posts.length}: ${p.id}`);
+            } else {
+              console.warn(`[AudioStudio] No URL returned for post ${i + 1}: ${p.id}`);
+            }
+
+            if ((exportDest === 'desktop' || exportDest === 'both') && result.blob) {
+              const ext = result.blob.type.includes('mp4') ? 'mp4' : 'webm';
+              downloadBlob(result.blob, `${(p.title || 'video').replace(/\s+/g, '_')}_${i + 1}.${ext}`);
+            }
+          } catch (err) {
+            console.error(`[AudioStudio] Compose failed for post ${p.id}:`, err);
+            // Fallback: just update metadata
+            try {
+              await fetch(`/api/posts/${p.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  status: 'completed',
+                  metadata: { ...pm, hasAudio: true, musicUrl: uploadedMusicUrl, voiceUrl: uploadedVoiceUrl },
+                }),
+              });
+            } catch (patchErr) { console.error(`[AudioStudio] Fallback patch failed:`, patchErr); }
+          }
         }
 
+        if (localMusicBlobUrl) URL.revokeObjectURL(localMusicBlobUrl);
+        if (localVoiceBlobUrl) URL.revokeObjectURL(localVoiceBlobUrl);
+
         setExportProgress(100);
-        setExportStage(`${successCount}/${posts.length} vidéos mises à jour !`);
-        console.log(`[AudioStudio] Batch done: ${successCount}/${posts.length} updated`);
+        setExportStage(`${successCount}/${posts.length} vidéos exportées !`);
+        console.log(`[AudioStudio] Batch done: ${successCount}/${posts.length} composed`);
 
         if (exportDest === 'calendar' || exportDest === 'both') {
           setTimeout(() => router.push('/dashboard/calendar'), 1500);
@@ -523,7 +600,34 @@ function AudioStudioContent() {
               }
             >
               {videoSrc ? (
-                <video key={post?.id} ref={videoRef} src={videoSrc} className="w-full h-full object-contain" playsInline autoPlay loop muted crossOrigin="anonymous" />
+                <>
+                  <video
+                    key={post?.id}
+                    ref={videoRef}
+                    src={videoSrc}
+                    className="w-full h-full object-contain"
+                    playsInline
+                    autoPlay
+                    loop
+                    muted
+                    crossOrigin="anonymous"
+                    onLoadedData={() => { setVideoLoading(false); setVideoError(false); }}
+                    onError={() => { setVideoLoading(false); setVideoError(true); }}
+                    onWaiting={() => setVideoLoading(true)}
+                    onPlaying={() => setVideoLoading(false)}
+                  />
+                  {videoLoading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-10">
+                      <Loader2 className="animate-spin text-pink-500" size={32} />
+                    </div>
+                  )}
+                  {videoError && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-10">
+                      <VolumeX size={32} className="text-red-400 mb-2" />
+                      <p className="text-xs text-red-400">Erreur de chargement</p>
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center bg-gray-900">
                   <Volume2 size={48} className="text-gray-700 mb-2" />
