@@ -61,6 +61,7 @@ function AudioStudioContent() {
   // Video loading state
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoError, setVideoError] = useState(false);
+  const [videoFallbackIdx, setVideoFallbackIdx] = useState(0);
   const [detectedVideoDuration, setDetectedVideoDuration] = useState<number | null>(null);
 
   // Audio files
@@ -200,6 +201,7 @@ function AudioStudioContent() {
   useEffect(() => {
     setVideoLoading(true);
     setVideoError(false);
+    setVideoFallbackIdx(0);
     setCurrentTime(0);
     setActiveSeqIdx(0);
     setIsPlaying(false);
@@ -210,7 +212,8 @@ function AudioStudioContent() {
 
   // ═══ DETECT ACTUAL VIDEO DURATION FROM SOURCE ═══
   useEffect(() => {
-    const src = (meta.renderedVideoUrl || meta.videoUrl || post?.media_url || null) as string | null;
+    const rUrls = ((meta.rushUrls || []) as string[]);
+    const src = (meta.renderedVideoUrl || meta.videoUrl || rUrls[0] || post?.media_url || null) as string | null;
     if (!src) { setDetectedVideoDuration(null); return; }
     const tempVid = document.createElement('video');
     tempVid.preload = 'metadata';
@@ -222,7 +225,6 @@ function AudioStudioContent() {
       }
     };
     tempVid.onerror = () => setDetectedVideoDuration(null);
-    if (!src.startsWith('blob:') && !src.startsWith('data:')) tempVid.crossOrigin = 'anonymous';
     tempVid.src = src;
     return () => { tempVid.src = ''; };
   }, [post?.id, meta.renderedVideoUrl, meta.videoUrl, post?.media_url]);
@@ -724,7 +726,17 @@ function AudioStudioContent() {
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
   const hasAudio = !!musicFile || !!voiceFile;
-  const videoSrc = (meta.renderedVideoUrl || meta.videoUrl || post?.media_url || null) as string | null;
+  // Video source: build a fallback chain of all available video URLs
+  const rushUrls = (meta.rushUrls || []) as string[];
+  const videoSrcCandidates = [
+    meta.renderedVideoUrl as string | null,
+    meta.videoUrl as string | null,
+    ...rushUrls,
+    post?.media_url || null,
+  ].filter((u): u is string => !!u);
+  // Remove duplicates while preserving order
+  const uniqueVideoSrcs = [...new Set(videoSrcCandidates)];
+  const videoSrc = uniqueVideoSrcs[videoFallbackIdx] || uniqueVideoSrcs[0] || null;
   // Static poster image for stable preview (avoids video flickering during re-renders)
   const posterImgSrc = (meta.posterUrl || meta.pexelsUrl || meta.characterUrl || null) as string | null;
 
@@ -780,7 +792,7 @@ function AudioStudioContent() {
               ) : videoSrc ? (
                 <>
                   <video
-                    key={post?.id}
+                    key={`${post?.id}-${videoFallbackIdx}`}
                     ref={videoRef}
                     src={videoSrc}
                     poster={posterImgSrc || undefined}
@@ -789,9 +801,18 @@ function AudioStudioContent() {
                     autoPlay
                     loop
                     muted
-                    crossOrigin="anonymous"
                     onLoadedData={() => { setVideoLoading(false); setVideoError(false); }}
-                    onError={() => { setVideoLoading(false); setVideoError(true); }}
+                    onError={() => {
+                      console.warn(`[AudioStudio] Video load failed (idx ${videoFallbackIdx}): ${videoSrc?.substring(0, 80)}`);
+                      // Try next fallback URL if available
+                      if (videoFallbackIdx < uniqueVideoSrcs.length - 1) {
+                        setVideoFallbackIdx(prev => prev + 1);
+                        setVideoLoading(true);
+                      } else {
+                        setVideoLoading(false);
+                        setVideoError(true);
+                      }
+                    }}
                     onWaiting={() => setVideoLoading(true)}
                     onPlaying={() => setVideoLoading(false)}
                   />
@@ -802,11 +823,31 @@ function AudioStudioContent() {
                   )}
                   {videoError && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-10">
-                      <VolumeX size={32} className="text-red-400 mb-2" />
-                      <p className="text-xs text-red-400">{t('loadingError')}</p>
+                      {posterImgSrc ? (
+                        <>
+                          <img src={posterImgSrc} alt="" className="absolute inset-0 w-full h-full object-cover opacity-60" />
+                          <div className="relative z-10 flex flex-col items-center">
+                            <Play size={32} className="text-white/60 mb-2" />
+                            <p className="text-xs text-white/60">{t('videoPreview')}</p>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <Volume2 size={32} className="text-gray-600 mb-2" />
+                          <p className="text-xs text-gray-500">{t('videoPreview')}</p>
+                        </>
+                      )}
                     </div>
                   )}
                 </>
+              ) : posterImgSrc ? (
+                <div className="w-full h-full relative">
+                  <img src={posterImgSrc} alt={post?.title || ''} className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30">
+                    <Play size={40} className="text-white/60 mb-2" />
+                    <p className="text-xs text-white/60">{t('videoPreview')}</p>
+                  </div>
+                </div>
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center bg-gray-900">
                   <Volume2 size={48} className="text-gray-700 mb-2" />
