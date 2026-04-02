@@ -61,6 +61,7 @@ function AudioStudioContent() {
   // Video loading state
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoError, setVideoError] = useState(false);
+  const [detectedVideoDuration, setDetectedVideoDuration] = useState<number | null>(null);
 
   // Audio files
   const [musicFile, setMusicFile] = useState<File | null>(null);
@@ -161,7 +162,7 @@ function AudioStudioContent() {
   const seqDurations: Record<string, number> = {
     intro: (seq.intro as number) || 4,
     cards: (seq.cards as number) || 0,
-    video: (seq.video as number) || 10,
+    video: (seq.video as number) || detectedVideoDuration || 10,
     cta: (seq.cta as number) || 4,
   };
 
@@ -206,6 +207,25 @@ function AudioStudioContent() {
     timeOffsetRef.current = 0;
     playStartRef.current = performance.now();
   }, [post?.id]);
+
+  // ═══ DETECT ACTUAL VIDEO DURATION FROM SOURCE ═══
+  useEffect(() => {
+    const src = (meta.renderedVideoUrl || meta.videoUrl || post?.media_url || null) as string | null;
+    if (!src) { setDetectedVideoDuration(null); return; }
+    const tempVid = document.createElement('video');
+    tempVid.preload = 'metadata';
+    tempVid.onloadedmetadata = () => {
+      const dur = Math.round(tempVid.duration);
+      if (dur > 0 && dur < 300) {
+        setDetectedVideoDuration(dur);
+        console.log(`[AudioStudio] Detected video duration: ${dur}s`);
+      }
+    };
+    tempVid.onerror = () => setDetectedVideoDuration(null);
+    if (!src.startsWith('blob:') && !src.startsWith('data:')) tempVid.crossOrigin = 'anonymous';
+    tempVid.src = src;
+    return () => { tempVid.src = ''; };
+  }, [post?.id, meta.renderedVideoUrl, meta.videoUrl, post?.media_url]);
 
   useEffect(() => {
     const vid = videoRef.current;

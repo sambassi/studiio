@@ -136,6 +136,7 @@ export default function CreatorPage() {
     { id: 'rush-1' },
     { id: 'rush-2' },
   ]);
+  const [rushVideoDuration, setRushVideoDuration] = useState(10);
   const [textCards, setTextCards] = useState<TextCard[]>([]);
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
 
@@ -235,7 +236,7 @@ export default function CreatorPage() {
   const montageSequences = [
     { id: 'intro', type: 'intro', label: t('montageSequences.intro'), duration: 5, color: '#ec4899', icon: '🖼️' },
     { id: 'cards', type: 'cards', label: t('montageSequences.cards'), duration: 6, color: '#a855f7', icon: '📊' },
-    { id: 'video', type: 'video', label: t('montageSequences.video'), duration: 10, color: '#3b82f6', icon: '🎬' },
+    { id: 'video', type: 'video', label: t('montageSequences.video'), duration: rushVideoDuration, color: '#3b82f6', icon: '🎬' },
     { id: 'cta', type: 'cta', label: t('montageSequences.cta'), duration: 5, color: '#22c55e', icon: '📢' },
   ];
   const activeMontageSequences = montageSequences.filter(s => s.type !== 'video' || videoRushes.some(r => r.file));
@@ -428,6 +429,22 @@ export default function CreatorPage() {
 
   const handleRushUpload = (rushId: string, file: File) => {
     const previewUrl = URL.createObjectURL(file);
+
+    // Detect actual video duration
+    if (file.type.startsWith('video/')) {
+      const tempVid = document.createElement('video');
+      tempVid.preload = 'metadata';
+      tempVid.onloadedmetadata = () => {
+        const dur = Math.round(tempVid.duration);
+        if (dur > 0 && dur < 300) {
+          setRushVideoDuration(dur);
+          console.log(`[Creator] Rush video duration detected: ${dur}s`);
+        }
+        URL.revokeObjectURL(tempVid.src);
+      };
+      tempVid.src = URL.createObjectURL(file);
+    }
+
     setVideoRushes((prev) =>
       prev.map((r) => {
         if (r.id !== rushId) return r;
@@ -746,6 +763,26 @@ export default function CreatorPage() {
       // No audio — music/voice handled in Studio Son page
       const effectiveMusicUrl: string | null = null;
       const effectiveVoiceUrl: string | null = null;
+
+      // ═══ Batch poster variety: upload additional Pexels images ═══
+      const batchPosterUrls: string[] = [];
+      if (batchCount > 1 && pexelsResults.length > 1) {
+        console.log(`[Creator] Uploading ${Math.min(batchCount, pexelsResults.length)} different Pexels photos for batch variety`);
+        for (let pi = 0; pi < Math.min(batchCount, pexelsResults.length); pi++) {
+          const photo = pexelsResults[pi];
+          try {
+            const pRes = await fetch(photo.medium);
+            if (pRes.ok) {
+              const pBlob = await pRes.blob();
+              const pFile = new File([pBlob], `pexels-batch-${pi}.jpg`, { type: pBlob.type || 'image/jpeg' });
+              const pUrl = await uploadFile(pFile, 'thumbnail');
+              if (pUrl) batchPosterUrls.push(pUrl);
+            }
+          } catch { /* skip failed downloads */ }
+        }
+        console.log(`[Creator] Batch posters uploaded: ${batchPosterUrls.length} different images`);
+      }
+
       setRenderProgress(20);
 
       // ═══ PHASE 2: Batch variations (locale-aware) ═══
@@ -792,6 +829,11 @@ export default function CreatorPage() {
           const renderProgressBase = 20 + (b / batchCount) * 70;
           const renderProgressSpan = 70 / batchCount;
 
+          // Use different poster photo for each batch video when available
+          const batchPosterUrl = batchPosterUrls.length > 0
+            ? batchPosterUrls[b % batchPosterUrls.length]
+            : effectiveCharUrl;
+
           let renderedVideoUrl: string | null = null;
           let renderedBlob: Blob | null = null;
           try {
@@ -806,14 +848,14 @@ export default function CreatorPage() {
               subtitle: bSubtitle || undefined,
               salesPhrase: bPhrase || undefined,
               cards: cardItems.length > 0 ? cardItems : undefined,
-              posterUrl: effectiveCharUrl,
+              posterUrl: batchPosterUrl,
               videoUrl: rushUrl,
               logoUrl: effectiveLogoUrl,
               musicUrl: effectiveMusicUrl || null,
               voiceUrl: effectiveVoiceUrl || null,
               introDuration: 4,
               cardsDuration: cardItems.length > 0 ? 6 : 0,
-              videoDuration: 10,
+              videoDuration: rushVideoDuration,
               ctaDuration: 4,
               accentColor: branding.accentColor || '#D91CD2',
               ctaText: branding.ctaText || 'CHAT POUR PLUS D\'INFOS',
@@ -836,7 +878,7 @@ export default function CreatorPage() {
           const schedDate = new Date(today);
           schedDate.setDate(today.getDate() + b);
           const scheduledDate = `${schedDate.getFullYear()}-${String(schedDate.getMonth() + 1).padStart(2, '0')}-${String(schedDate.getDate()).padStart(2, '0')}`;
-          const postMediaUrl = renderedVideoUrl || effectiveCharUrl || null;
+          const postMediaUrl = renderedVideoUrl || batchPosterUrl || effectiveCharUrl || null;
           if (!renderedVideoUrl) console.warn(`[Creator] Montage URL is null for post ${b + 1} — upload may have failed`);
 
           try {
@@ -849,8 +891,8 @@ export default function CreatorPage() {
                 scheduled_date: scheduledDate, scheduled_time: '12:00', status: 'draft',
                 metadata: {
                   type: 'creator', subtitle: bSubtitle, salesPhrase: bPhrase, objective, mode,
-                  rushUrls, musicUrl: effectiveMusicUrl || null, voiceUrl: effectiveVoiceUrl || null, characterUrl: effectiveCharUrl || null, logoUrl: effectiveLogoUrl || null,
-                  posterUrl: effectiveCharUrl || null,
+                  rushUrls, musicUrl: effectiveMusicUrl || null, voiceUrl: effectiveVoiceUrl || null, characterUrl: batchPosterUrl || effectiveCharUrl || null, logoUrl: effectiveLogoUrl || null,
+                  posterUrl: batchPosterUrl || effectiveCharUrl || null, pexelsUrl: batchPosterUrl || null,
                   renderedVideoUrl: renderedVideoUrl || null, videoUrl: renderedVideoUrl || rushUrl || null,
                   voiceMode: 'none', ttsVoice: null, ttsText: null,
                   textCards: textCards.filter((c) => c.text.trim()).map((c) => ({ text: c.text, color: c.color })),
@@ -860,9 +902,9 @@ export default function CreatorPage() {
                   sequences: {
                     intro: 4,
                     cards: cardItems.length > 0 ? 6 : 0,
-                    video: rushUrl ? 10 : 0,
+                    video: rushUrl ? rushVideoDuration : 0,
                     cta: 4,
-                    total: 4 + (cardItems.length > 0 ? 6 : 0) + (rushUrl ? 10 : 0) + 4,
+                    total: 4 + (cardItems.length > 0 ? 6 : 0) + (rushUrl ? rushVideoDuration : 0) + 4,
                     order: ['intro', ...(cardItems.length > 0 ? ['cards'] : []), ...(rushUrl ? ['video'] : []), 'cta'],
                   },
                   branding: { watermarkText: branding.watermarkText, borderColor: branding.borderEnabled ? branding.borderColor : null, ctaText: branding.ctaText, ctaSubText: branding.ctaSubText, accentColor: branding.accentColor },
@@ -936,7 +978,7 @@ export default function CreatorPage() {
               voiceUrl: effectiveVoiceUrl || null,
               introDuration: 5,
               cardsDuration: cardItems.length > 0 ? 8 : 0,
-              videoDuration: 12,
+              videoDuration: rushVideoDuration,
               ctaDuration: 5,
               accentColor: branding.accentColor || '#D91CD2',
               ctaText: branding.ctaText || 'CHAT POUR PLUS D\'INFOS',
@@ -1539,6 +1581,26 @@ export default function CreatorPage() {
                 </p>
               </div>
 
+              {/* Nombre de vidéos */}
+              <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
+                <h2 className="text-lg font-bold mb-4">{t('batch.count')}</h2>
+                <div className="flex gap-3">
+                  {[1, 2, 3, 5, 10].map((count) => (
+                    <button
+                      key={count}
+                      onClick={() => setBatchCount(count)}
+                      className={`flex-1 py-3 rounded-lg font-bold text-sm transition border-2 ${
+                        batchCount === count
+                          ? 'border-purple-500 bg-purple-500/10 text-white'
+                          : 'border-gray-700 text-gray-400 hover:border-gray-600'
+                      }`}
+                    >
+                      x{count}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Personnage */}
               <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
                 <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
@@ -1704,26 +1766,6 @@ export default function CreatorPage() {
           {/* ============ STEP 2: PERSONNALISATION ============ */}
           {step === 2 && (
             <div className="space-y-6">
-              {/* Batch count */}
-              <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
-                <h2 className="text-lg font-bold mb-4">{t('batch.count')}</h2>
-                <div className="flex gap-3">
-                  {[1, 2, 3, 5, 10].map((count) => (
-                    <button
-                      key={count}
-                      onClick={() => setBatchCount(count)}
-                      className={`flex-1 py-3 rounded-lg font-bold text-sm transition border-2 ${
-                        batchCount === count
-                          ? 'border-purple-500 bg-purple-500/10 text-white'
-                          : 'border-gray-700 text-gray-400 hover:border-gray-600'
-                      }`}
-                    >
-                      x{count}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               {/* Phrase de vente */}
               <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
                 <div className="flex items-center justify-between mb-4">
