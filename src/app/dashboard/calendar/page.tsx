@@ -625,14 +625,16 @@ export default function CalendarPage() {
         title: post.title || 'Vidéo',
         subtitle: meta?.subtitle || undefined,
         salesPhrase: meta?.salesPhrase || undefined,
-        cards: meta?.cards?.map(c => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color })),
+        cards: meta?.cards?.length > 0
+          ? meta.cards.map((c: { emoji: string; label: string; value: string; color?: string }) => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color }))
+          : (meta?.textCards || []).map((tc: { text: string; color?: string }) => ({ emoji: '📝', label: tc.text, value: tc.text, color: tc.color })),
         posterUrl,
         videoUrl,
         logoUrl,
         musicUrl,
         voiceUrl,
         introDuration: seq?.intro ?? 5,
-        cardsDuration: seq?.cards ?? 0,
+        cardsDuration: seq?.cards ?? ((meta?.cards?.length > 0 || meta?.textCards?.length > 0) ? 6 : 0),
         videoDuration: seq?.video ?? 12,
         ctaDuration: seq?.cta ?? 5,
         accentColor: brand?.accentColor || '#D91CD2',
@@ -1728,13 +1730,19 @@ export default function CalendarPage() {
                       <div className="absolute inset-0 flex flex-col items-center justify-center z-10 px-6">
                         <p className="text-xs font-bold text-white/50 uppercase tracking-[0.25em] text-center mb-5">Informations</p>
                         <div className="w-full space-y-2.5">
-                          {meta?.cards?.map((card: { emoji: string; label: string; value: string; color?: string }, i: number) => (
-                            <div key={i} className="flex items-center gap-3 bg-black/40 backdrop-blur-sm rounded-xl px-4 py-3" style={{ borderLeft: `3px solid ${card.color || accent}`, transition: 'all 0.6s cubic-bezier(0.16, 1, 0.3, 1)', transitionDelay: currentSeq === 'cards' ? `${i * 200}ms` : '0ms', opacity: currentSeq === 'cards' ? 1 : 0, transform: currentSeq === 'cards' ? 'translateX(0)' : 'translateX(-30px)' }}>
-                              <span className="text-2xl">{card.emoji}</span>
-                              <span className="text-sm text-white/80 flex-1">{card.label}</span>
-                              <span className="text-lg font-bold text-white" style={{ textShadow: `0 0 10px ${accent}80` }}>{card.value}</span>
-                            </div>
-                          ))}
+                          {(() => {
+                            // Use cards if available, otherwise convert textCards
+                            const displayCards = meta?.cards?.length > 0
+                              ? meta.cards.map((c: { emoji: string; label: string; value: string; color?: string }) => c)
+                              : (meta?.textCards || []).map((tc: { text: string; color?: string }) => ({ emoji: '📝', label: tc.text, value: tc.text, color: tc.color }));
+                            return displayCards.map((card: { emoji: string; label: string; value: string; color?: string }, i: number) => (
+                              <div key={i} className="flex items-center gap-3 bg-black/40 backdrop-blur-sm rounded-xl px-4 py-3" style={{ borderLeft: `3px solid ${card.color || accent}`, transition: 'all 0.6s cubic-bezier(0.16, 1, 0.3, 1)', transitionDelay: currentSeq === 'cards' ? `${i * 200}ms` : '0ms', opacity: currentSeq === 'cards' ? 1 : 0, transform: currentSeq === 'cards' ? 'translateX(0)' : 'translateX(-30px)' }}>
+                                <span className="text-2xl">{card.emoji}</span>
+                                <span className="text-sm text-white/80 flex-1">{card.label}</span>
+                                <span className="text-lg font-bold text-white" style={{ textShadow: `0 0 10px ${accent}80` }}>{card.value}</span>
+                              </div>
+                            ));
+                          })()}
                         </div>
                       </div>
                     </div>

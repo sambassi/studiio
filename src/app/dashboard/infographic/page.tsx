@@ -454,6 +454,7 @@ export default function InfographiePage() {
 
       let successCount = 0;
       let lastError = '';
+      let savedBlobForExport: Blob | null = null;
 
       if (destination === 'calendar' || destination === 'both') {
         const today = new Date();
@@ -474,7 +475,7 @@ export default function InfographiePage() {
           // ═══ CLIENT-SIDE VIDEO RENDERING ═══
           let renderedVideoUrl: string | null = null;
           try {
-            const { url } = await composeAndUpload({
+            const result = await composeAndUpload({
               width: compWidth, height: compHeight, fps: 30,
               title: bTitle, subtitle: bSub, salesPhrase: bPhrase,
               cards: cards.map(c => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color })),
@@ -489,7 +490,11 @@ export default function InfographiePage() {
                 setExportToast({ message: stage, type: 'success' });
               },
             });
-            renderedVideoUrl = url;
+            renderedVideoUrl = result.url;
+            // Save first blob for desktop export in "both" mode
+            if (b === 0 && destination === 'both' && result.blob && result.blob.size > 0) {
+              savedBlobForExport = result.blob;
+            }
           } catch (err) {
             console.error(`[Compose] Erreur vidéo ${b + 1}:`, err);
             lastError = String(err);
@@ -558,21 +563,30 @@ export default function InfographiePage() {
 
       // Direct export (download)
       if (destination === 'export' || destination === 'both') {
-        setExportToast({ message: 'Montage vidéo pour export...', type: 'success' });
         try {
-          const { blob } = await composeAndUpload({
-            width: compWidth, height: compHeight, fps: 30,
-            title: title || 'Infographie', subtitle, salesPhrase,
-            cards: cards.map(c => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color })),
-            posterUrl: posterUrl || selectedPexelsUrl || characterUrl, videoUrl, logoUrl, musicUrl, voiceUrl,
-            introDuration: seqIntro, cardsDuration: seqCards, videoDuration: seqVideo, ctaDuration: seqCta,
-            accentColor: branding.accentColor || '#D91CD2',
-            ctaText: branding.ctaText || 'CHAT POUR PLUS D\'INFOS',
-            ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
-            watermarkText: branding.watermarkText,
-            onProgress: (pct, stage) => { setExportProgress(pct); setExportToast({ message: stage, type: 'success' }); },
-          });
-          downloadBlob(blob, `${(title || 'infographie').replace(/\s+/g, '_')}.webm`);
+          let exportBlob: Blob;
+          if (destination === 'both' && savedBlobForExport && savedBlobForExport.size > 0) {
+            // Reuse blob from calendar compose — no double render
+            exportBlob = savedBlobForExport;
+            setExportProgress(98);
+          } else {
+            setExportToast({ message: 'Montage vidéo pour export...', type: 'success' });
+            const result = await composeAndUpload({
+              width: compWidth, height: compHeight, fps: 30,
+              title: title || 'Infographie', subtitle, salesPhrase,
+              cards: cards.map(c => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color })),
+              posterUrl: posterUrl || selectedPexelsUrl || characterUrl, videoUrl, logoUrl, musicUrl, voiceUrl,
+              introDuration: seqIntro, cardsDuration: seqCards, videoDuration: seqVideo, ctaDuration: seqCta,
+              accentColor: branding.accentColor || '#D91CD2',
+              ctaText: branding.ctaText || 'CHAT POUR PLUS D\'INFOS',
+              ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
+              watermarkText: branding.watermarkText,
+              onProgress: (pct, stage) => { setExportProgress(pct); setExportToast({ message: stage, type: 'success' }); },
+            });
+            exportBlob = result.blob;
+          }
+          const ext = exportBlob.type.includes('mp4') ? 'mp4' : 'webm';
+          downloadBlob(exportBlob, `${(title || 'infographie').replace(/\s+/g, '_')}.${ext}`);
         } catch (err) { console.error('Export render error:', err); }
       }
 

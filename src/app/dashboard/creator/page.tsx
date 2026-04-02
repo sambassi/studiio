@@ -1015,9 +1015,21 @@ export default function CreatorPage() {
                 metadata: {
                   type: 'creator', subtitle: bSubtitle, salesPhrase: bPhrase, objective, mode,
                   rushUrls, musicUrl: effectiveMusicUrl || null, voiceUrl: effectiveVoiceUrl || null, characterUrl: effectiveCharUrl || null, logoUrl: effectiveLogoUrl || null,
+                  posterUrl: effectiveCharUrl || null,
                   renderedVideoUrl: renderedVideoUrl || null, videoUrl: renderedVideoUrl || rushUrl || null,
                   voiceMode, ttsVoice: voiceMode === 'edge' ? ttsVoice : null, ttsText: voiceMode === 'edge' ? ttsText : null,
                   textCards: textCards.filter((c) => c.text.trim()).map((c) => ({ text: c.text, color: c.color })),
+                  // Cards in the format expected by calendar preview & video-composer
+                  cards: cardItems.map((c) => ({ emoji: c.emoji || '📝', label: c.label || c.value, value: c.value, color: c.color })),
+                  // Sequence timing so calendar can reconstruct the montage
+                  sequences: {
+                    intro: 4,
+                    cards: cardItems.length > 0 ? 6 : 0,
+                    video: rushUrl ? 10 : 0,
+                    cta: 4,
+                    total: 4 + (cardItems.length > 0 ? 6 : 0) + (rushUrl ? 10 : 0) + 4,
+                    order: ['intro', ...(cardItems.length > 0 ? ['cards'] : []), ...(rushUrl ? ['video'] : []), 'cta'],
+                  },
                   branding: { watermarkText: branding.watermarkText, borderColor: branding.borderEnabled ? branding.borderColor : null, ctaText: branding.ctaText, ctaSubText: branding.ctaSubText, accentColor: branding.accentColor },
                 },
               }),
