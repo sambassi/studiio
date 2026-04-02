@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Trash2, Upload, Zap, Loader2, Sparkles, Music, Film, Mic, X, Play, Square, Volume2, Image as ImageIcon, Search, ChevronRight, ChevronLeft, ArrowUp, ArrowDown } from 'lucide-react';
-// Edge TTS removed - voice-off via mic recording or file upload
+import { TTS_VOICES, previewVoice, synthesize } from '@/lib/tts/edge-tts-client';
 import { generateSmartContent } from '@/lib/smart-content';
 import { useBranding } from '@/lib/hooks/useBranding';
 import BrandingPanel from '@/components/BrandingPanel';
@@ -19,7 +19,7 @@ interface InfoCard {
 
 type Format = '9:16' | '16:9';
 type Destination = 'calendar' | 'export' | 'both';
-type VoiceOption = 'none' | 'record' | 'upload';
+type VoiceOption = 'none' | 'edge' | 'upload';
 type ThemeType = 'sommeil' | 'nutrition' | 'energie' | 'stress' | 'communaute' | 'custom';
 
 interface SequenceItem {
@@ -146,12 +146,10 @@ export default function InfographiePage() {
 
   // Voice state
   const [voiceOption, setVoiceOption] = useState<VoiceOption>('none');
-  const [selectedVoice, setSelectedVoice] = useState('');
+  const [selectedVoice, setSelectedVoice] = useState(TTS_VOICES[0].id);
   const [voiceFile, setVoiceFile] = useState<File | null>(null);
   const [voiceFileName, setVoiceFileName] = useState<string>('');
-  const [isRecording, setIsRecording] = useState(false);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+  const [isPreviewingVoice, setIsPreviewingVoice] = useState(false);
 
   // Batch preview state
   interface BatchVariation { title: string; subtitle: string; salesPhrase: string; photoUrl: string | null; }
@@ -363,39 +361,11 @@ export default function InfographiePage() {
   const handleCharacterImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (!f) return; setCharacterImageFile(f); if (characterImagePreview) URL.revokeObjectURL(characterImagePreview); setCharacterImagePreview(URL.createObjectURL(f)); setCharacterImage(true); };
   const handleVoiceFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (!f) return; setVoiceFile(f); setVoiceFileName(f.name); };
 
-  // handlePreviewVoice removed - Edge TTS no longer used
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-      
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) audioChunksRef.current.push(event.data);
-      };
-      
-      mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const audioFile = new File([audioBlob], 'voix-off-recording.webm', { type: 'audio/webm' });
-        setVoiceFile(audioFile);
-        stream.getTracks().forEach(track => track.stop());
-        setIsRecording(false);
-      };
-      
-      mediaRecorder.start();
-      setIsRecording(true);
-    } catch (err) {
-      console.error('Microphone access denied:', err);
-      alert('Impossible d\'acceder au microphone. Verifiez les permissions.');
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-    }
+  const handlePreviewVoice = async () => {
+    if (isPreviewingVoice) return;
+    setIsPreviewingVoice(true);
+    try { const audioUrl = await previewVoice(selectedVoice); const audio = new Audio(audioUrl); audio.onended = () => setIsPreviewingVoice(false); audio.onerror = () => setIsPreviewingVoice(false); await audio.play(); }
+    catch { setIsPreviewingVoice(false); setExportToast({ message: 'Impossible de lire l\'aperçu vocal.', type: 'error' }); setTimeout(() => setExportToast(null), 4000); }
   };
 
   const toggleMusicPlayback = () => {
@@ -428,8 +398,25 @@ export default function InfographiePage() {
     try {
       // ═══ PHASE 0: Generate Edge TTS voice if selected ═══
       let actualVoiceFile = voiceFile;
-      // Voice-off: user provides their own audio (recorded or uploaded) - no TTS generation needed
-
+      if (voiceOption === 'edge' && !voiceFile) {
+        setExportToast({ message: 'Génération de la voix off...', type: 'success' });
+        setExportProgress(1);
+        try {
+          // Build TTS text from title + subtitle + salesPhrase + card labels
+          const ttsText = [
+            title || 'Votre vidéo',
+            subtitle,
+            salesPhrase,
+            ...cards.map(c => `${c.label}: ${c.value}`),
+          ].filter(Boolean).join('. ');
+          console.log('[Export] Generating Edge TTS with text:', ttsText.substring(0, 100));
+          const ttsBlob = await synthesize(ttsText, selectedVoice);
+          actualVoiceFile = new File([ttsBlob], 'voiceover-tts.mp3', { type: 'audio/mpeg' });
+          console.log('[Export] Edge TTS generated:', (ttsBlob.size / 1024).toFixed(1), 'KB');
+        } catch (ttsErr) {
+          console.error('[Export] Edge TTS generation failed:', ttsErr);
+        }
+      }
 
       // ═══ PHASE 1: Upload raw files to get URLs (0-20%) ═══
       setExportToast({ message: 'Upload des fichiers...', type: 'success' });
@@ -628,12 +615,12 @@ export default function InfographiePage() {
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <div className="absolute inset-0 bg-gradient-to-b from-purple-950 to-black" />
           <div className="relative z-10 w-full px-3 space-y-1.5">
-            <p className="text-sm font-bold text-white/60 uppercase tracking-widest text-center mb-2">Informations</p>
+            <p className="text-[8px] font-bold text-white/60 uppercase tracking-widest text-center mb-2">Informations</p>
             {cards.slice(0, 5).map((card, i) => (
               <div key={i} className="flex items-center gap-2 bg-black/40 backdrop-blur-sm rounded-lg px-2 py-1.5 border-l-2" style={{ borderColor: card.color }}>
-                <span className="text-xl">{card.emoji}</span>
-                <span className="text-sm text-white/70 flex-1">{card.label}</span>
-                <span className="text-lg font-bold text-white" style={{ textShadow: `0 0 6px ${accent}80` }}>{card.value}</span>
+                <span className="text-sm">{card.emoji}</span>
+                <span className="text-[8px] text-white/70 flex-1">{card.label}</span>
+                <span className="text-[10px] font-bold text-white" style={{ textShadow: `0 0 6px ${accent}80` }}>{card.value}</span>
               </div>
             ))}
           </div>
@@ -928,36 +915,35 @@ export default function InfographiePage() {
 
               {/* Voice */}
               <div className="mb-6">
-                <h3 className="text-sm font-semibold text-gray-300 mb-3">Voix Off</h3>
-                <div className="space-y-3">
-                  <div className="flex gap-2">
-                    <button onClick={() => setVoiceOption('none')} className={`flex-1 px-3 py-2 text-xs rounded-lg border transition-all ${voiceOption === 'none' ? 'bg-pink-600/20 border-pink-500 text-pink-400' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
-                      Aucune
+                <h3 className="text-sm font-semibold text-gray-300 mb-2">Voix Off</h3>
+                <div className="flex gap-2 mb-2">
+                  {(['none', 'edge', 'upload'] as VoiceOption[]).map((opt) => (
+                    <button key={opt} onClick={() => setVoiceOption(opt)} className={`flex-1 py-2 rounded-lg text-xs font-medium transition border ${voiceOption === opt ? 'bg-pink-600/20 border-pink-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
+                      {opt === 'none' && 'Aucune'}{opt === 'edge' && 'Edge TTS'}{opt === 'upload' && 'Upload'}
                     </button>
-                    <button onClick={() => { setVoiceOption('upload'); voiceInputRef.current?.click(); }} className={`flex-1 px-3 py-2 text-xs rounded-lg border transition-all ${voiceOption === 'upload' ? 'bg-pink-600/20 border-pink-500 text-pink-400' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
-                      <Upload className="w-3 h-3 inline mr-1" />Uploader
-                    </button>
-                    <button onClick={() => { setVoiceOption('record'); if (!isRecording) { startRecording(); } else { stopRecording(); } }} className={`flex-1 px-3 py-2 text-xs rounded-lg border transition-all ${voiceOption === 'record' ? 'bg-pink-600/20 border-pink-500 text-pink-400' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
-                      <Mic className={`w-3 h-3 inline mr-1 ${isRecording ? 'text-red-500 animate-pulse' : ''}`} />{isRecording ? 'Stop' : 'Enregistrer'}
+                  ))}
+                </div>
+                {voiceOption === 'edge' && (
+                  <div className="space-y-2">
+                    <select value={selectedVoice} onChange={(e) => setSelectedVoice(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white focus:border-pink-500 focus:outline-none">
+                      {TTS_VOICES.map((v) => <option key={v.id} value={v.id}>{v.name} ({v.lang})</option>)}
+                    </select>
+                    <button onClick={handlePreviewVoice} disabled={isPreviewingVoice} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-gray-800 border border-gray-700 hover:bg-gray-700 rounded-lg transition">
+                      {isPreviewingVoice ? <Loader2 size={12} className="animate-spin" /> : <Volume2 size={12} />} {isPreviewingVoice ? 'Lecture...' : 'Aperçu'}
                     </button>
                   </div>
-                  {voiceOption === 'upload' && voiceFile && (
-                    <div className="flex items-center gap-2 p-2 bg-gray-800 rounded-lg">
-                      <Volume2 className="w-4 h-4 text-pink-400" />
-                      <span className="text-xs text-gray-300 flex-1 truncate">{voiceFile.name}</span>
-                      <button onClick={() => { setVoiceFile(null); setVoiceOption('none'); }} className="text-gray-500 hover:text-red-400"><X className="w-3 h-3" /></button>
+                )}
+                {voiceOption === 'upload' && (
+                  voiceFile ? (
+                    <div className="flex items-center gap-2 bg-gray-800 px-3 py-2 rounded-lg border border-gray-700">
+                      <Mic size={14} className="text-green-400" /><span className="text-xs text-white flex-1 truncate">{voiceFileName}</span>
+                      <button onClick={() => { setVoiceFile(null); setVoiceFileName(''); }} className="text-gray-400 hover:text-red-400"><X size={14} /></button>
                     </div>
-                  )}
-                  {voiceOption === 'record' && voiceFile && !isRecording && (
-                    <div className="flex items-center gap-2 p-2 bg-gray-800 rounded-lg">
-                      <Mic className="w-4 h-4 text-pink-400" />
-                      <span className="text-xs text-gray-300 flex-1">Enregistrement pret</span>
-                      <button onClick={() => { const url = URL.createObjectURL(voiceFile); const a = new Audio(url); a.play(); }} className="text-pink-400 hover:text-pink-300"><Play className="w-3 h-3" /></button>
-                      <button onClick={() => { setVoiceFile(null); }} className="text-gray-500 hover:text-red-400"><X className="w-3 h-3" /></button>
-                    </div>
-                  )}
-                  <input ref={voiceInputRef} type="file" accept="audio/*" className="hidden" onChange={(e) => { if (e.target.files?.[0]) { setVoiceFile(e.target.files[0]); setVoiceOption('upload'); } }} />
-                </div></div>
+                  ) : (
+                    <button onClick={() => voiceInputRef.current?.click()} className="w-full py-3 bg-gray-800 border border-dashed border-gray-700 rounded-lg text-xs text-gray-400 hover:border-green-500/50 transition">Importer un fichier audio</button>
+                  )
+                )}
+              </div>
 
               {/* Logo */}
               <div className="mb-6">

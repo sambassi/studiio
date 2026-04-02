@@ -24,7 +24,7 @@ import {
   Pause,
   Type,
 } from 'lucide-react';
-// Edge TTS removed - voice-off via mic recording or file upload
+import { TTS_VOICES, previewVoice, synthesize } from '@/lib/tts/edge-tts-client';
 import { useBranding } from '@/lib/hooks/useBranding';
 import BrandingPanel from '@/components/BrandingPanel';
 import { composeAndUpload, downloadBlob } from '@/lib/video-composer';
@@ -71,7 +71,7 @@ interface PexelsPhoto {
   alt: string;
 }
 
-type VoiceMode = 'none' | 'record' | 'upload';
+type VoiceMode = 'none' | 'edge' | 'upload';
 
 interface Toast {
   message: string;
@@ -159,11 +159,14 @@ export default function CreatorPage() {
 
   // Voice
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('none');
-  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
-  const voiceMediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const voiceChunksRef = useRef<Blob[]>([]);
+  const [ttsVoice, setTtsVoice] = useState('fr-FR-DeniseNeural');
+  const [ttsText, setTtsText] = useState('');
+  const [isGeneratingVoice, setIsGeneratingVoice] = useState(false);
+  const [generatedVoiceUrl, setGeneratedVoiceUrl] = useState<string | null>(null);
+  const [generatedVoiceBlob, setGeneratedVoiceBlob] = useState<Blob | null>(null);
   const [voiceUploadFile, setVoiceUploadFile] = useState<File | null>(null);
-
+  const [previewingVoice, setPreviewingVoice] = useState(false);
+  const [previewAudio, setPreviewAudio] = useState<HTMLAudioElement | null>(null);
 
   // Logo
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -217,6 +220,7 @@ export default function CreatorPage() {
         if (r.previewUrl) URL.revokeObjectURL(r.previewUrl);
       });
       if (characterPreview) URL.revokeObjectURL(characterPreview);
+      if (generatedVoiceUrl) URL.revokeObjectURL(generatedVoiceUrl);
     };
   }, []);
 
@@ -737,37 +741,54 @@ export default function CreatorPage() {
     setVoiceUploadFile(file);
   };
 
-  // Voice recording functions
-  const startVoiceRecording = async () => {
+  const handleGenerateVoice = async () => {
+    if (!ttsText.trim()) {
+      showToast('Entrez un texte à lire');
+      return;
+    }
+    setIsGeneratingVoice(true);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      voiceMediaRecorderRef.current = mediaRecorder;
-      voiceChunksRef.current = [];
-      mediaRecorder.ondataavailable = (event) => { if (event.data.size > 0) voiceChunksRef.current.push(event.data); };
-      mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(voiceChunksRef.current, { type: 'audio/webm' });
-        const audioFile = new File([audioBlob], 'voix-off-recording.webm', { type: 'audio/webm' });
-        setVoiceUploadFile(audioFile);
-        stream.getTracks().forEach(track => track.stop());
-        setIsRecordingVoice(false);
-      };
-      mediaRecorder.start();
-      setIsRecordingVoice(true);
+      const blob = await synthesize(ttsText, ttsVoice);
+      if (generatedVoiceUrl) URL.revokeObjectURL(generatedVoiceUrl);
+      const url = URL.createObjectURL(blob);
+      setGeneratedVoiceUrl(url);
+      setGeneratedVoiceBlob(blob);
+      console.log('[Creator] TTS blob saved:', (blob.size / 1024).toFixed(1), 'KB');
+      // Auto-play preview
+      const audio = new Audio(url);
+      audio.play();
+      showToast('Voix générée avec succès !', 'success');
     } catch (err) {
-      console.error('Microphone error:', err);
-      showToast("Erreur d'accès au microphone");
+      console.error('TTS error:', err);
+      showToast('Erreur lors de la génération de la voix');
+    } finally {
+      setIsGeneratingVoice(false);
     }
   };
 
-  const stopVoiceRecording = () => {
-    if (voiceMediaRecorderRef.current && voiceMediaRecorderRef.current.state !== 'inactive') {
-      voiceMediaRecorderRef.current.stop();
+  const handlePreviewVoice = async () => {
+    if (previewAudio) {
+      previewAudio.pause();
+      setPreviewAudio(null);
+      setPreviewingVoice(false);
+      return;
+    }
+    setPreviewingVoice(true);
+    try {
+      const url = await previewVoice(ttsVoice);
+      const audio = new Audio(url);
+      audio.onended = () => {
+        setPreviewingVoice(false);
+        setPreviewAudio(null);
+      };
+      audio.play();
+      setPreviewAudio(audio);
+    } catch (err) {
+      console.error('Preview error:', err);
+      showToast('Erreur de prévisualisation de la voix');
+      setPreviewingVoice(false);
     }
   };
-
-
-
 
   const uploadFile = async (file: File, purpose: string): Promise<string | null> => {
     try {
@@ -803,8 +824,32 @@ export default function CreatorPage() {
         if (url) rushUrls.push(url);
       }
 
-      // TTS removed - user provides voice via upload or recording
+      // Generate Edge TTS voice if selected and no manual upload
       let actualVoiceFile = voiceUploadFile;
+      if (voiceMode === 'edge' && ttsText.trim() && !voiceUploadFile) {
+        setRenderStage('Génération de la voix off...');
+        setRenderProgress(16);
+        try {
+          // Reuse already-generated TTS blob if available (avoids re-synthesis which may fail)
+          let ttsBlob: Blob;
+          if (generatedVoiceBlob && generatedVoiceBlob.size > 100) {
+            console.log('[Creator] Reusing previously generated TTS blob:', (generatedVoiceBlob.size / 1024).toFixed(1), 'KB');
+            ttsBlob = generatedVoiceBlob;
+          } else {
+            console.log('[Creator] Generating Edge TTS:', ttsText.substring(0, 80));
+            ttsBlob = await synthesize(ttsText, ttsVoice);
+          }
+          if (ttsBlob.size > 100) {
+            actualVoiceFile = new File([ttsBlob], 'voiceover-tts.mp3', { type: ttsBlob.type || 'audio/mpeg' });
+            console.log('[Creator] TTS voice file ready:', (ttsBlob.size / 1024).toFixed(1), 'KB');
+          } else {
+            console.warn('[Creator] TTS blob too small, skipping voice:', ttsBlob.size, 'bytes');
+          }
+        } catch (ttsErr) {
+          console.error('[Creator] Edge TTS generation failed:', ttsErr);
+          showToast('Erreur génération voix off', 'error');
+        }
+      }
 
       setRenderStage('Upload des médias...');
       setRenderProgress(17);
@@ -949,7 +994,7 @@ export default function CreatorPage() {
                   type: 'creator', subtitle: bSubtitle, salesPhrase: bPhrase, objective, mode,
                   rushUrls, musicUrl: musicUrl || null, characterUrl: effectiveCharUrl || null,
                   renderedVideoUrl: renderedVideoUrl || null, videoUrl: renderedVideoUrl || rushUrl || null,
-                  voiceMode,
+                  voiceMode, ttsVoice: voiceMode === 'edge' ? ttsVoice : null, ttsText: voiceMode === 'edge' ? ttsText : null,
                   textCards: textCards.filter((c) => c.text.trim()).map((c) => ({ text: c.text, color: c.color })),
                   branding: { watermarkText: branding.watermarkText, borderColor: branding.borderEnabled ? branding.borderColor : null, ctaText: branding.ctaText, ctaSubText: branding.ctaSubText, accentColor: branding.accentColor },
                 },
@@ -1381,9 +1426,6 @@ export default function CreatorPage() {
                                   src={rush.previewUrl}
                                   className="w-full h-full object-cover pointer-events-none"
                                   muted
-                                  autoPlay
-                                  loop
-                                  playsInline
                                 />
                                 <button
                                   onClick={(e) => {
@@ -1786,31 +1828,108 @@ export default function CreatorPage() {
                     Voix off
                   </h2>
 
-                  {/* Voice buttons: Upload + Record */}
-                  <div className="space-y-3">
-                    <div className="flex gap-2">
+                  {/* Mode buttons */}
+                  <div className="flex gap-1.5 mb-3">
+                    {(['none', 'edge', 'upload'] as VoiceMode[]).map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => setVoiceMode(m)}
+                        className={`flex-1 py-2 rounded-lg text-xs font-medium transition ${
+                          voiceMode === m
+                            ? 'bg-purple-600 text-white'
+                            : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                        }`}
+                      >
+                        {m === 'none' && 'Aucune'}
+                        {m === 'edge' && 'Edge TTS'}
+                        {m === 'upload' && 'Upload'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {voiceMode === 'edge' && (
+                    <div className="space-y-3">
+                      <div className="flex gap-2">
+                        <select
+                          value={ttsVoice}
+                          onChange={(e) => setTtsVoice(e.target.value)}
+                          className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:border-purple-500 focus:outline-none"
+                        >
+                          {TTS_VOICES.map((v) => (
+                            <option key={v.id} value={v.id}>
+                              {v.flag} {v.name} ({v.gender === 'Female' ? 'Femme' : 'Homme'})
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={handlePreviewVoice}
+                          disabled={previewingVoice}
+                          className={`px-3 py-2 rounded-lg transition ${
+                            previewingVoice
+                              ? 'bg-purple-600 text-white'
+                              : 'bg-gray-700 hover:bg-gray-600'
+                          }`}
+                          title="Aperçu de la voix"
+                        >
+                          {previewingVoice ? <Loader2 size={14} className="animate-spin" /> : <Volume2 size={14} />}
+                        </button>
+                      </div>
+                      <textarea
+                        value={ttsText}
+                        onChange={(e) => setTtsText(e.target.value)}
+                        placeholder="Texte à lire..."
+                        rows={3}
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none resize-none"
+                      />
+                      <button
+                        onClick={handleGenerateVoice}
+                        disabled={isGeneratingVoice}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 rounded-lg text-sm font-medium transition"
+                      >
+                        {isGeneratingVoice ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <Volume2 size={14} />
+                        )}
+                        {isGeneratingVoice ? 'Génération...' : 'Générer la voix'}
+                      </button>
+                      {generatedVoiceUrl && (
+                        <div className="flex items-center gap-2 bg-green-900/30 border border-green-700/50 rounded-lg p-2">
+                          <Volume2 size={12} className="text-green-400" />
+                          <span className="text-xs text-green-300 flex-1">Voix générée</span>
+                          <button
+                            onClick={() => {
+                              const a = new Audio(generatedVoiceUrl);
+                              a.play();
+                            }}
+                            className="text-xs text-green-400 hover:text-green-300 underline"
+                          >
+                            Écouter
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {voiceMode === 'upload' && (
+                    voiceUploadFile ? (
+                      <div className="flex items-center gap-2 bg-gray-900 rounded-lg p-3">
+                        <Mic size={14} className="text-purple-400" />
+                        <span className="text-xs text-white truncate flex-1">{voiceUploadFile.name}</span>
+                        <button onClick={() => setVoiceUploadFile(null)} className="text-gray-400 hover:text-red-400">
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ) : (
                       <button
                         onClick={() => voiceInputRef.current?.click()}
-                        className="flex-1 px-3 py-2 text-xs rounded-lg border bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700 transition-all"
+                        className="w-full flex flex-col items-center justify-center gap-2 py-6 rounded-lg border-2 border-dashed border-gray-700 hover:border-purple-500/50 text-gray-500 hover:text-gray-400 transition cursor-pointer"
                       >
-                        <Upload className="w-3 h-3 inline mr-1" />Uploader MP3/WAV
+                        <Upload size={16} />
+                        <span className="text-xs">MP3, WAV</span>
                       </button>
-                      <button
-                        onClick={() => { if (!isRecordingVoice) { startVoiceRecording(); } else { stopVoiceRecording(); } }}
-                        className={`flex-1 px-3 py-2 text-xs rounded-lg border transition-all ${isRecordingVoice ? 'bg-red-600/20 border-red-500 text-red-400 animate-pulse' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
-                      >
-                        <Mic className="w-3 h-3 inline mr-1" />{isRecordingVoice ? 'Stop enregistrement' : 'Enregistrer'}
-                      </button>
-                    </div>
-                    {voiceUploadFile && (
-                      <div className="flex items-center gap-2 p-2 bg-gray-800 rounded-lg">
-                        <Volume2 className="w-4 h-4 text-pink-400" />
-                        <span className="text-xs text-gray-300 flex-1 truncate">{voiceUploadFile.name}</span>
-                        <button onClick={() => { const url = URL.createObjectURL(voiceUploadFile); const a = new Audio(url); a.play(); }} className="text-pink-400 hover:text-pink-300"><Play className="w-3 h-3" /></button>
-                        <button onClick={() => setVoiceUploadFile(null)} className="text-gray-500 hover:text-red-400"><X className="w-3 h-3" /></button>
-                      </div>
-                    )}
-                  </div>
+                    )
+                  )}
                 </div>
               </div>
 
@@ -2144,7 +2263,7 @@ export default function CreatorPage() {
               {voiceMode !== 'none' && (
                 <div className="flex justify-between text-[10px]">
                   <span className="text-gray-500">Voix off</span>
-                  <span className="text-green-400">{voiceUploadFile ? voiceUploadFile.name : 'Oui'}</span>
+                  <span className="text-green-400">{voiceMode === 'edge' ? 'Edge TTS' : 'Upload'}</span>
                 </div>
               )}
               {batchCount > 1 && (
