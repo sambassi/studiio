@@ -198,73 +198,74 @@ function AudioStudioContent() {
     setIsPlaying(false);
   }, [post?.id]);
 
-  // ═══ TIMELINE PLAYBACK (synced with video) ═══
-  // Use requestAnimationFrame for smooth timeline — stops at totalDuration (no loop)
+  // ═══ TIMELINE PLAYBACK — independent real-time clock ═══
+  // Uses performance.now() instead of video.currentTime to guarantee
+  // the timeline runs at exactly 1 second per second regardless of video duration
+  const playStartRef = useRef<number>(0); // performance.now() when playback started
+  const timeOffsetRef = useRef<number>(0); // timeline offset when playback started
+
   useEffect(() => {
     const vid = videoRef.current;
     if (!vid || videoLoading) return;
     let rafId = 0;
     let running = false;
-    let playbackStartVideoTime = 0; // video.currentTime when playback started
 
     const syncTimeline = () => {
       if (!running) return;
-      if (vid && !vid.paused && vid.duration > 0) {
-        // Calculate elapsed since playback started (not modulo — linear progression)
-        const elapsed = vid.currentTime - playbackStartVideoTime;
-        const mapped = Math.min(Math.max(elapsed, 0), totalDuration);
+      const now = performance.now();
+      const elapsed = timeOffsetRef.current + (now - playStartRef.current) / 1000;
+      const mapped = Math.min(Math.max(elapsed, 0), totalDuration);
 
-        // Stop at end of timeline — no looping
-        if (mapped >= totalDuration) {
-          setCurrentTime(totalDuration);
-          setActiveSeqIdx(sequences.length - 1);
-          vid.pause();
-          if (musicAudioRef.current) musicAudioRef.current.pause();
-          if (voiceAudioRef.current) voiceAudioRef.current.pause();
-          setIsPlaying(false);
-          running = false;
-          return;
-        }
-
-        setCurrentTime(mapped);
-        let idx = 0;
-        for (let i = sequences.length - 1; i >= 0; i--) {
-          if (mapped >= seqStarts[i]) { idx = i; break; }
-        }
-        setActiveSeqIdx(idx);
+      // Stop at end of timeline
+      if (mapped >= totalDuration) {
+        setCurrentTime(totalDuration);
+        setActiveSeqIdx(sequences.length - 1);
+        vid.pause();
+        if (musicAudioRef.current) musicAudioRef.current.pause();
+        if (voiceAudioRef.current) voiceAudioRef.current.pause();
+        setIsPlaying(false);
+        running = false;
+        return;
       }
+
+      setCurrentTime(mapped);
+      let idx = 0;
+      for (let i = sequences.length - 1; i >= 0; i--) {
+        if (mapped >= seqStarts[i]) { idx = i; break; }
+      }
+      setActiveSeqIdx(idx);
       rafId = requestAnimationFrame(syncTimeline);
     };
 
     const onPlay = () => {
-      playbackStartVideoTime = vid.currentTime;
+      playStartRef.current = performance.now();
       setIsPlaying(true);
       if (!running) { running = true; rafId = requestAnimationFrame(syncTimeline); }
     };
-    const onPause = () => { setIsPlaying(false); running = false; cancelAnimationFrame(rafId); };
-    const onSeeked = () => {
-      if (vid.duration > 0) {
-        // When seeking, update the start reference so elapsed calc works
-        playbackStartVideoTime = vid.currentTime;
-        const mapped = Math.min(vid.currentTime, totalDuration);
-        setCurrentTime(mapped);
-      }
+    const onPause = () => {
+      // Save current position so we can resume from here
+      const now = performance.now();
+      timeOffsetRef.current = timeOffsetRef.current + (now - playStartRef.current) / 1000;
+      setIsPlaying(false);
+      running = false;
+      cancelAnimationFrame(rafId);
     };
 
     vid.addEventListener('play', onPlay);
     vid.addEventListener('pause', onPause);
-    vid.addEventListener('seeked', onSeeked);
-    if (!vid.paused) { playbackStartVideoTime = vid.currentTime; running = true; setIsPlaying(true); rafId = requestAnimationFrame(syncTimeline); }
+    if (!vid.paused) { playStartRef.current = performance.now(); running = true; setIsPlaying(true); rafId = requestAnimationFrame(syncTimeline); }
     return () => {
       running = false;
       cancelAnimationFrame(rafId);
       vid.removeEventListener('play', onPlay);
       vid.removeEventListener('pause', onPause);
-      vid.removeEventListener('seeked', onSeeked);
     };
   }, [post?.id, totalDuration, sequences, seqStarts, videoLoading]);
 
   const startPlayback = useCallback(() => {
+    // Reset timeline clock to start from 0
+    timeOffsetRef.current = 0;
+    playStartRef.current = performance.now();
     setCurrentTime(0);
     setActiveSeqIdx(0);
     if (videoRef.current) { videoRef.current.currentTime = 0; videoRef.current.play().catch(() => {}); }
@@ -281,6 +282,9 @@ function AudioStudioContent() {
   const togglePlayback = () => { isPlaying ? stopPlayback() : startPlayback(); };
 
   const seekTo = (time: number) => {
+    // Update timeline clock to the seek position
+    timeOffsetRef.current = time;
+    playStartRef.current = performance.now();
     setCurrentTime(time);
     if (videoRef.current) videoRef.current.currentTime = time;
     if (musicAudioRef.current) musicAudioRef.current.currentTime = time;
@@ -415,24 +419,35 @@ function AudioStudioContent() {
         const localMusicBlobUrl = musicFile ? URL.createObjectURL(musicFile) : null;
         const localVoiceBlobUrl = voiceFile ? URL.createObjectURL(voiceFile) : null;
 
+        console.log(`[AudioStudio] ═══ BATCH START: ${posts.length} videos ═══`);
+
         for (let i = 0; i < posts.length; i++) {
           const p = posts[i];
           const pm = p.metadata || {};
-          const brand = (pm.branding as Record<string, string>) || undefined;
-          const isReel = p.format === 'reel';
-          const pSeq = (pm.sequences || {}) as Record<string, unknown>;
-          const pCards = (pm.cards as Array<{ emoji: string; label: string; value: string; color?: string }>) || [];
-          const pTextCards = (pm.textCards as Array<{ text: string; color?: string }>) || [];
-          const finalCards = pCards.length > 0 ? pCards : pTextCards.map(tc => ({ emoji: '📝', label: tc.text, value: tc.text, color: tc.color }));
-          const posterUrl = (pm.posterUrl || pm.pexelsUrl || pm.characterUrl || null) as string | null;
-          const rushUrl = (pm.rushUrls as string[])?.[0] || (pm.rawVideoUrl as string) || null;
 
-          const progressBase = 20 + Math.round((i / posts.length) * 70);
-          const progressSpan = Math.round(70 / posts.length);
-          setExportStage(t('export.composingBatch', { current: String(i + 1), total: String(posts.length) }));
-          setExportProgress(progressBase);
+          console.log(`[AudioStudio] ─── Video ${i + 1}/${posts.length} START: "${p.title}" (${p.id}) ───`);
 
           try {
+            const brand = (pm.branding as Record<string, string>) || undefined;
+            const isReel = p.format === 'reel';
+            const pSeq = (pm.sequences || {}) as Record<string, unknown>;
+            const pCards = (pm.cards as Array<{ emoji: string; label: string; value: string; color?: string }>) || [];
+            const pTextCards = (pm.textCards as Array<{ text: string; color?: string }>) || [];
+            const finalCards = pCards.length > 0 ? pCards : pTextCards.map(card => ({ emoji: '📝', label: card.text, value: card.text, color: card.color }));
+            // Read poster from ALL possible metadata fields
+            const posterUrl = (pm.posterUrl || pm.pexelsUrl || pm.characterUrl || pm.renderedVideoUrl || null) as string | null;
+            const rushUrl = (pm.rushUrls as string[])?.[0] || (pm.rawVideoUrl as string) || null;
+
+            console.log(`[AudioStudio]   posterUrl: ${posterUrl?.substring(0, 60) || 'NONE'}`);
+            console.log(`[AudioStudio]   rushUrl: ${rushUrl?.substring(0, 60) || 'NONE'}`);
+            console.log(`[AudioStudio]   music: ${localMusicBlobUrl ? 'YES' : 'NONE'}, voice: ${localVoiceBlobUrl ? 'YES' : 'NONE'}`);
+            console.log(`[AudioStudio]   sequences: intro=${(pSeq.intro as number) || 0} cards=${(pSeq.cards as number) || 0} video=${(pSeq.video as number) || 0} cta=${(pSeq.cta as number) || 0}`);
+
+            const progressBase = 20 + Math.round((i / posts.length) * 70);
+            const progressSpan = Math.round(70 / posts.length);
+            setExportStage(t('export.composingBatch', { current: String(i + 1), total: String(posts.length) }));
+            setExportProgress(progressBase);
+
             const result = await composeAndUpload({
               width: isReel ? 1080 : 1920,
               height: isReel ? 1920 : 1080,
@@ -459,9 +474,11 @@ function AudioStudioContent() {
               },
             });
 
+            console.log(`[AudioStudio]   composeAndUpload result: blob=${(result.blob.size / 1024).toFixed(0)}KB, url=${result.url ? 'YES' : 'NULL'}`);
+
             // Update post with new rendered video + audio metadata
             if (result.url) {
-              await fetch(`/api/posts/${p.id}`, {
+              const patchRes = await fetch(`/api/posts/${p.id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -471,10 +488,20 @@ function AudioStudioContent() {
                   metadata: { ...pm, renderedVideoUrl: result.url, videoUrl: result.url, hasAudio: true, musicUrl: uploadedMusicUrl, voiceUrl: uploadedVoiceUrl },
                 }),
               });
+              const patchData = await patchRes.json().catch(() => ({}));
               successCount++;
-              console.log(`[AudioStudio] Composed & updated post ${i + 1}/${posts.length}: ${p.id}`);
+              console.log(`[AudioStudio]   ✅ PATCH OK post ${i + 1}/${posts.length}: ${p.id}`, patchData.success ? 'success' : 'failed');
             } else {
-              console.warn(`[AudioStudio] No URL returned for post ${i + 1}: ${p.id}`);
+              console.warn(`[AudioStudio]   ⚠️ No URL returned for post ${i + 1}: ${p.id} — updating metadata only`);
+              await fetch(`/api/posts/${p.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  status: 'completed',
+                  metadata: { ...pm, hasAudio: true, musicUrl: uploadedMusicUrl, voiceUrl: uploadedVoiceUrl },
+                }),
+              });
+              successCount++;
             }
 
             if ((exportDest === 'desktop' || exportDest === 'both') && result.blob) {
@@ -482,8 +509,8 @@ function AudioStudioContent() {
               downloadBlob(result.blob, `${(p.title || 'video').replace(/\s+/g, '_')}_${i + 1}.${ext}`);
             }
           } catch (err) {
-            console.error(`[AudioStudio] Compose failed for post ${p.id}:`, err);
-            // Fallback: just update metadata
+            console.error(`[AudioStudio]   ❌ FAILED post ${i + 1}/${posts.length} (${p.id}):`, err);
+            // Fallback: just update metadata so the post still appears in calendar
             try {
               await fetch(`/api/posts/${p.id}`, {
                 method: 'PATCH',
@@ -493,14 +520,20 @@ function AudioStudioContent() {
                   metadata: { ...pm, hasAudio: true, musicUrl: uploadedMusicUrl, voiceUrl: uploadedVoiceUrl },
                 }),
               });
-            } catch (patchErr) { console.error(`[AudioStudio] Fallback patch failed:`, patchErr); }
+              successCount++;
+              console.log(`[AudioStudio]   ↪ Fallback PATCH OK for post ${p.id}`);
+            } catch (patchErr) { console.error(`[AudioStudio]   ↪ Fallback PATCH also failed:`, patchErr); }
           }
 
-          // Small delay between batch items to let AudioContext fully release
+          console.log(`[AudioStudio] ─── Video ${i + 1}/${posts.length} END (success total: ${successCount}) ───`);
+
+          // Delay between batch items to let AudioContext fully release
           if (i < posts.length - 1) {
-            await new Promise(r => setTimeout(r, 500));
+            await new Promise(r => setTimeout(r, 800));
           }
         }
+
+        console.log(`[AudioStudio] ═══ BATCH DONE: ${successCount}/${posts.length} ═══`);
 
         if (localMusicBlobUrl) URL.revokeObjectURL(localMusicBlobUrl);
         if (localVoiceBlobUrl) URL.revokeObjectURL(localVoiceBlobUrl);
