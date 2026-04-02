@@ -423,6 +423,10 @@ function AudioStudioContent() {
         const localVoiceBlobUrl = voiceFile ? URL.createObjectURL(voiceFile) : null;
 
         console.log(`[AudioStudio] ═══ BATCH START: ${posts.length} videos ═══`);
+        console.log(`[AudioStudio] musicFile: ${musicFile ? musicFile.name + ' (' + (musicFile.size / 1024).toFixed(0) + 'KB)' : 'NULL'}`);
+        console.log(`[AudioStudio] voiceFile: ${voiceFile ? voiceFile.name : 'NULL'}`);
+        console.log(`[AudioStudio] localMusicBlobUrl: ${localMusicBlobUrl || 'NULL'}`);
+        console.log(`[AudioStudio] localVoiceBlobUrl: ${localVoiceBlobUrl || 'NULL'}`);
 
         // Create ONE shared AudioContext for the entire batch to avoid Chrome's concurrent limit
         let sharedAudioCtx: AudioContext | undefined;
@@ -743,7 +747,9 @@ function AudioStudioContent() {
             <div className="bg-gray-900/80 border-t border-gray-800 px-3 py-2 flex gap-2 overflow-x-auto">
               {posts.map((p, i) => {
                 const pMeta = p.metadata || {};
-                const thumbUrl = (pMeta.renderedVideoUrl || pMeta.videoUrl || p.media_url || null) as string | null;
+                // Prefer static image for thumbnail (avoids video reload flickering)
+                const imgThumb = (pMeta.posterUrl || pMeta.pexelsUrl || pMeta.characterUrl || null) as string | null;
+                const videoThumb = !imgThumb ? ((pMeta.renderedVideoUrl || pMeta.videoUrl || p.media_url || null) as string | null) : null;
                 const isActive = i === currentPostIndex;
                 return (
                   <button
@@ -752,8 +758,10 @@ function AudioStudioContent() {
                     className={`shrink-0 w-16 rounded-lg overflow-hidden border-2 transition-all ${isActive ? 'border-pink-500 ring-1 ring-pink-500/50 scale-105' : 'border-gray-700 hover:border-gray-500 opacity-60 hover:opacity-100'}`}
                   >
                     <div className="bg-gray-800 relative" style={{ aspectRatio: p.format === 'tv' ? '16/9' : '9/16' }}>
-                      {thumbUrl ? (
-                        <video src={thumbUrl} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+                      {imgThumb ? (
+                        <img src={imgThumb} alt={p.title || ''} className="w-full h-full object-cover" />
+                      ) : videoThumb ? (
+                        <video src={videoThumb} className="w-full h-full object-cover" muted playsInline preload="metadata" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center"><Volume2 size={10} className="text-gray-600" /></div>
                       )}

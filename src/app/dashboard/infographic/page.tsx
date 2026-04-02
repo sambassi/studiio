@@ -820,7 +820,8 @@ export default function InfographiePage() {
           {/* ===== STEP 2: MEDIAS ===== */}
           {step === 2 && (
             <div>
-              {/* Photo Affiche */}
+              {/* Photo Affiche — hidden when batch mode is ON (batch provides its own photos per variation) */}
+              {!batchMode && (
               <div className="mb-6">
                 <div className="flex items-center justify-between bg-gray-800 rounded-lg p-4 border border-gray-700">
                   <div>
@@ -871,6 +872,7 @@ export default function InfographiePage() {
                   </div>
                 )}
               </div>
+              )}
 
               {/* Video */}
               <div className="mb-6">
