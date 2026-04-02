@@ -1035,23 +1035,15 @@ export default function InfographiePage() {
                 </div>
               </div>
 
-              {/* Export progress */}
-              {isExporting && (
-                <div className="mb-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-medium text-gray-300">Export en cours...</span>
-                    <span className="text-xs font-bold text-pink-400">{exportProgress}%</span>
-                  </div>
-                  <div className="w-full bg-gray-700 rounded-full h-2.5 overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-pink-600 to-pink-400 rounded-full transition-all duration-500" style={{ width: `${exportProgress}%` }} />
-                  </div>
-                </div>
-              )}
-
-              {/* Export button */}
-              <button onClick={handleExport} disabled={isExporting} className="w-full bg-gradient-to-r from-pink-600 to-pink-400 hover:from-pink-700 hover:to-pink-500 disabled:opacity-50 text-white font-bold py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-2 mb-3">
-                {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
-                {isExporting ? `EXPORT... ${exportProgress}%` : batchMode ? '⚡ EXPORTER 10 VIDÉOS' : '⚡ EXPORTER LA VIDÉO'}
+              {/* Export button with integrated progress */}
+              <button onClick={handleExport} disabled={isExporting} className="w-full relative overflow-hidden bg-gradient-to-r from-pink-600 to-pink-400 hover:from-pink-700 hover:to-pink-500 disabled:opacity-50 text-white font-bold py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-2 mb-3">
+                {isExporting && (
+                  <div className="absolute inset-0 bg-gradient-to-r from-pink-700 to-pink-500 transition-all duration-500" style={{ width: `${exportProgress}%` }} />
+                )}
+                <span className="relative z-10 flex items-center gap-2">
+                  {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
+                  {isExporting ? `EXPORT... ${exportProgress}%` : batchMode ? '⚡ EXPORTER 10 VIDÉOS' : '⚡ EXPORTER LA VIDÉO'}
+                </span>
               </button>
 
               <div className="bg-gray-700 rounded-lg p-2.5 text-center text-xs text-gray-300 mb-4">
