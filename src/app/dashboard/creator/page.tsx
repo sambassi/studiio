@@ -771,6 +771,8 @@ export default function CreatorPage() {
         emoji: '📝', label: '', value: c.text, color: c.color,
       }));
 
+      console.log(`[Creator] ═══ CONFIG: batchCount=${batchCount}, destination=${destination} ═══`);
+
       if (destination === 'calendar' || destination === 'both' || destination === 'studio') {
         const today = new Date();
         const usedTitles: string[] = [];

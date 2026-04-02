@@ -398,6 +398,8 @@ export default function InfographiePage() {
       let variations = batchVariations;
       if (batchMode && variations.length === 0) variations = await generateBatchVariations();
 
+      console.log(`[Export] ═══ CONFIG: batchMode=${batchMode}, batchTotal=${batchTotal}, destination=${destination}, variations=${variations.length} ═══`);
+
       const seqIntro = sequences.find(s => s.type === 'intro')?.duration || 5;
       const seqCards = sequences.find(s => s.type === 'cards')?.duration || 8;
       const seqVideo = sequences.find(s => s.type === 'video')?.duration || 12;
