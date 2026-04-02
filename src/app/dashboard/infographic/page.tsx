@@ -481,8 +481,8 @@ export default function InfographiePage() {
             const postData = await postRes.json();
             if (postData.success) {
               successCount++;
-              if (b === 0 && postData?.data?.id) {
-                (window as unknown as Record<string, unknown>).__lastCreatedPostId = postData.data.id;
+              if (b === 0 && (postData?.post?.id || postData?.data?.id)) {
+                (window as unknown as Record<string, unknown>).__lastCreatedPostId = postData.post?.id || postData.data?.id;
               }
             }
             else { lastError = postData.error || 'Unknown error'; }

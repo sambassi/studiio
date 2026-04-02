@@ -882,10 +882,10 @@ export default function CreatorPage() {
               const postData = await postRes.json().catch(() => ({}));
               successCount++;
               // Save first post ID for Studio Son redirect
-              if (b === 0 && postData?.data?.id) {
-                (window as unknown as Record<string, unknown>).__lastCreatedPostId = postData.data.id;
+              if (b === 0 && (postData?.post?.id || postData?.data?.id)) {
+                (window as unknown as Record<string, unknown>).__lastCreatedPostId = postData.post?.id || postData.data?.id;
               }
-              console.log(`[Creator] Post ${b + 1} created successfully, id:`, postData?.data?.id);
+              console.log(`[Creator] Post ${b + 1} created successfully, id:`, postData?.post?.id || postData?.data?.id);
             } else {
               console.error(`[Creator] Post ${b + 1} failed:`, postRes.status, await postRes.text().catch(() => ''));
             }
