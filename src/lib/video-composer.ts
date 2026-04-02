@@ -597,18 +597,57 @@ export async function composeAndUpload(options: ComposerOptions): Promise<{ blob
 
   const isMP4 = blob.type.includes('mp4');
   const ext = isMP4 ? 'mp4' : 'webm';
-  console.log('[Composer] Uploading', (blob.size / 1024 / 1024).toFixed(2), 'MB', ext);
+  const sizeMB = (blob.size / 1024 / 1024).toFixed(2);
+  console.log('[Composer] Uploading', sizeMB, 'MB', ext);
 
   let url: string | null = null;
+
+  // Strategy 1: Use signed URL for direct Supabase upload (bypasses Vercel 4.5MB limit)
   try {
-    const formData = new FormData();
-    formData.append('file', new File([blob], `montage-${Date.now()}.${ext}`, { type: blob.type }));
-    formData.append('purpose', 'rush');
-    const res = await fetch('/api/upload/media', { method: 'POST', body: formData });
-    const data = await res.json();
-    if (data.success && data.file?.url) { url = data.file.url; console.log('[Composer] Upload OK:', url); }
-    else console.error('[Composer] Upload failed:', data);
-  } catch (err) { console.error('[Composer] Upload error:', err); }
+    const filename = `montage-${Date.now()}.${ext}`;
+    console.log('[Composer] Requesting signed upload URL...');
+    const signedRes = await fetch('/api/upload/signed-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename, contentType: blob.type, purpose: 'rush' }),
+    });
+    const signedData = await signedRes.json();
+
+    if (signedData.success && signedData.signedUrl) {
+      console.log('[Composer] Got signed URL, uploading directly to Supabase...');
+      const uploadRes = await fetch(signedData.signedUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': blob.type },
+        body: blob,
+      });
+
+      if (uploadRes.ok) {
+        url = signedData.publicUrl;
+        console.log('[Composer] Direct upload OK:', url);
+      } else {
+        console.error('[Composer] Direct upload failed:', uploadRes.status, uploadRes.statusText);
+      }
+    } else {
+      console.error('[Composer] Signed URL request failed:', signedData);
+    }
+  } catch (err) {
+    console.error('[Composer] Signed URL upload error:', err);
+  }
+
+  // Strategy 2: Fallback to API route (works for small files < 4.5MB)
+  if (!url) {
+    try {
+      console.log('[Composer] Fallback: uploading via API route...');
+      const formData = new FormData();
+      formData.append('file', new File([blob], `montage-${Date.now()}.${ext}`, { type: blob.type }));
+      formData.append('purpose', 'rush');
+      const res = await fetch('/api/upload/media', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (data.success && data.file?.url) { url = data.file.url; console.log('[Composer] Fallback upload OK:', url); }
+      else console.error('[Composer] Fallback upload failed:', data);
+    } catch (err) { console.error('[Composer] Fallback upload error:', err); }
+  }
+
   return { blob, url };
 }
 
