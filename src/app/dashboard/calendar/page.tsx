@@ -2000,7 +2000,7 @@ export default function CalendarPage() {
                 )}
                 {meta?.voiceMode && meta.voiceMode !== 'none' && (
                   <div className="flex items-center gap-2 text-xs text-emerald-400">
-                    <Mic className="w-3 h-3" /> Voix off ({meta.voiceMode === 'edge' ? 'Edge TTS' : 'Upload'})
+                    <Mic className="w-3 h-3" /> Voix off ({meta.voiceMode === 'record' ? 'Enregistrement' : 'Upload'})
                   </div>
                 )}
                 {meta?.logoUrl && (

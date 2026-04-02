@@ -1381,6 +1381,9 @@ export default function CreatorPage() {
                                   src={rush.previewUrl}
                                   className="w-full h-full object-cover pointer-events-none"
                                   muted
+                                  autoPlay
+                                  loop
+                                  playsInline
                                 />
                                 <button
                                   onClick={(e) => {

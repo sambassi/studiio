@@ -19,7 +19,7 @@ interface InfoCard {
 
 type Format = '9:16' | '16:9';
 type Destination = 'calendar' | 'export' | 'both';
-type VoiceOption = 'none' | 'edge' | 'upload';
+type VoiceOption = 'none' | 'record' | 'upload';
 type ThemeType = 'sommeil' | 'nutrition' | 'energie' | 'stress' | 'communaute' | 'custom';
 
 interface SequenceItem {
@@ -379,7 +379,7 @@ export default function InfographiePage() {
       mediaRecorder.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         const audioFile = new File([audioBlob], 'voix-off-recording.webm', { type: 'audio/webm' });
-        setVoiceOver(audioFile);
+        setVoiceFile(audioFile);
         stream.getTracks().forEach(track => track.stop());
         setIsRecording(false);
       };
@@ -937,26 +937,26 @@ export default function InfographiePage() {
                     <button onClick={() => { setVoiceOption('upload'); voiceInputRef.current?.click(); }} className={`flex-1 px-3 py-2 text-xs rounded-lg border transition-all ${voiceOption === 'upload' ? 'bg-pink-600/20 border-pink-500 text-pink-400' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
                       <Upload className="w-3 h-3 inline mr-1" />Uploader
                     </button>
-                    <button onClick={() => { setVoiceOption('edge'); if (!isRecording) { startRecording(); } else { stopRecording(); } }} className={`flex-1 px-3 py-2 text-xs rounded-lg border transition-all ${voiceOption === 'edge' ? 'bg-pink-600/20 border-pink-500 text-pink-400' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
+                    <button onClick={() => { setVoiceOption('record'); if (!isRecording) { startRecording(); } else { stopRecording(); } }} className={`flex-1 px-3 py-2 text-xs rounded-lg border transition-all ${voiceOption === 'record' ? 'bg-pink-600/20 border-pink-500 text-pink-400' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
                       <Mic className={`w-3 h-3 inline mr-1 ${isRecording ? 'text-red-500 animate-pulse' : ''}`} />{isRecording ? 'Stop' : 'Enregistrer'}
                     </button>
                   </div>
-                  {voiceOption === 'upload' && voiceOver && (
+                  {voiceOption === 'upload' && voiceFile && (
                     <div className="flex items-center gap-2 p-2 bg-gray-800 rounded-lg">
                       <Volume2 className="w-4 h-4 text-pink-400" />
-                      <span className="text-xs text-gray-300 flex-1 truncate">{voiceOver.name}</span>
-                      <button onClick={() => { setVoiceOver(null); setVoiceOption('none'); }} className="text-gray-500 hover:text-red-400"><X className="w-3 h-3" /></button>
+                      <span className="text-xs text-gray-300 flex-1 truncate">{voiceFile.name}</span>
+                      <button onClick={() => { setVoiceFile(null); setVoiceOption('none'); }} className="text-gray-500 hover:text-red-400"><X className="w-3 h-3" /></button>
                     </div>
                   )}
-                  {voiceOption === 'edge' && voiceOver && !isRecording && (
+                  {voiceOption === 'record' && voiceFile && !isRecording && (
                     <div className="flex items-center gap-2 p-2 bg-gray-800 rounded-lg">
                       <Mic className="w-4 h-4 text-pink-400" />
                       <span className="text-xs text-gray-300 flex-1">Enregistrement pret</span>
-                      <button onClick={() => { const url = URL.createObjectURL(voiceOver); const a = new Audio(url); a.play(); }} className="text-pink-400 hover:text-pink-300"><Play className="w-3 h-3" /></button>
-                      <button onClick={() => { setVoiceOver(null); }} className="text-gray-500 hover:text-red-400"><X className="w-3 h-3" /></button>
+                      <button onClick={() => { const url = URL.createObjectURL(voiceFile); const a = new Audio(url); a.play(); }} className="text-pink-400 hover:text-pink-300"><Play className="w-3 h-3" /></button>
+                      <button onClick={() => { setVoiceFile(null); }} className="text-gray-500 hover:text-red-400"><X className="w-3 h-3" /></button>
                     </div>
                   )}
-                  <input ref={voiceInputRef} type="file" accept="audio/*" className="hidden" onChange={(e) => { if (e.target.files?.[0]) { setVoiceOver(e.target.files[0]); setVoiceOption('upload'); } }} />
+                  <input ref={voiceInputRef} type="file" accept="audio/*" className="hidden" onChange={(e) => { if (e.target.files?.[0]) { setVoiceFile(e.target.files[0]); setVoiceOption('upload'); } }} />
                 </div></div>
 
               {/* Logo */}
