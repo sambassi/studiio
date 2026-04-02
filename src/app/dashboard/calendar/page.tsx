@@ -68,6 +68,8 @@ interface PostMetadata {
   logoUrl?: string;
   voiceUrl?: string;
   renderedVideoUrl?: string;
+  rawVideoUrl?: string;
+  hasAudio?: boolean;
   sequences?: {
     intro?: number;
     cards?: number;

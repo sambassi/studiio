@@ -402,6 +402,7 @@ export default function InfographiePage() {
       let lastError = '';
       let savedBlobForExport: Blob | null = null;
       let firstCreatedPostId: string | null = null;
+      const allCreatedPostIds: string[] = [];
 
       if (destination === 'calendar' || destination === 'both' || destination === 'studio') {
         const today = new Date();
@@ -485,8 +486,9 @@ export default function InfographiePage() {
               successCount++;
               const createdId = postData.post?.id || postData.data?.id || null;
               console.log('[Export] Created post ID:', createdId);
-              if (b === 0 && createdId) {
-                firstCreatedPostId = createdId;
+              if (createdId) {
+                allCreatedPostIds.push(createdId);
+                if (b === 0) firstCreatedPostId = createdId;
               }
             }
             else { lastError = postData.error || 'Unknown error'; console.error('[Export] Post creation failed:', postData); }
@@ -547,10 +549,14 @@ export default function InfographiePage() {
 
       setExportProgress(100);
       if (destination === 'studio') {
-        console.log('[Export] Studio redirect — firstCreatedPostId:', firstCreatedPostId);
+        console.log('[Export] Studio redirect — allCreatedPostIds:', allCreatedPostIds);
         setExportToast({ message: 'Redirection vers Studio Son...', type: 'success' });
         await new Promise((r) => setTimeout(r, 1000));
-        const studioUrl = firstCreatedPostId ? `/dashboard/audio-studio?postId=${firstCreatedPostId}` : '/dashboard/audio-studio';
+        const studioUrl = allCreatedPostIds.length > 1
+          ? `/dashboard/audio-studio?postIds=${allCreatedPostIds.join(',')}`
+          : allCreatedPostIds.length === 1
+            ? `/dashboard/audio-studio?postId=${allCreatedPostIds[0]}`
+            : '/dashboard/audio-studio';
         console.log('[Export] Redirecting to:', studioUrl);
         router.push(studioUrl);
       } else if (destination === 'calendar' || destination === 'both') {

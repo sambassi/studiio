@@ -46,10 +46,14 @@ function AudioStudioContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const postId = searchParams.get('postId');
+  const postIdsParam = searchParams.get('postIds'); // comma-separated for batch
 
-  // Post data
-  const [post, setPost] = useState<PostData | null>(null);
+  // Post data — supports batch (multiple posts)
+  const [posts, setPosts] = useState<PostData[]>([]);
+  const [currentPostIndex, setCurrentPostIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+  const post = posts[currentPostIndex] || null;
+  const isBatch = posts.length > 1;
 
   // Audio files
   const [musicFile, setMusicFile] = useState<File | null>(null);
@@ -105,18 +109,32 @@ function AudioStudioContent() {
     }
   }, [voiceVolume, voiceMuted]);
 
-  // ═══ LOAD POST DATA ═══
+  // ═══ LOAD POST DATA (single or batch) ═══
   useEffect(() => {
-    if (!postId) { setLoading(false); return; }
+    const ids: string[] = [];
+    if (postIdsParam) {
+      ids.push(...postIdsParam.split(',').filter(Boolean));
+    } else if (postId) {
+      ids.push(postId);
+    }
+    if (ids.length === 0) { setLoading(false); return; }
+
     (async () => {
       try {
-        const res = await fetch(`/api/posts/${postId}`);
-        const data = await res.json();
-        if (data.success && data.data) setPost(data.data);
+        const loaded: PostData[] = [];
+        for (const id of ids) {
+          try {
+            const res = await fetch(`/api/posts/${id}`);
+            const data = await res.json();
+            if (data.success && data.data) loaded.push(data.data);
+          } catch (err) { console.error(`[AudioStudio] Load error for ${id}:`, err); }
+        }
+        if (loaded.length > 0) setPosts(loaded);
+        console.log(`[AudioStudio] Loaded ${loaded.length}/${ids.length} posts`);
       } catch (err) { console.error('[AudioStudio] Load error:', err); }
       finally { setLoading(false); }
     })();
-  }, [postId]);
+  }, [postId, postIdsParam]);
 
   // Cleanup
   useEffect(() => {
@@ -304,100 +322,114 @@ function AudioStudioContent() {
     } catch { return null; }
   };
 
-  // ═══ EXPORT WITH AUDIO ═══
+  // ═══ EXPORT WITH AUDIO (supports batch) ═══
   const handleExport = async () => {
-    if (!post) return;
+    if (posts.length === 0) return;
     setIsExporting(true);
     setExportProgress(0);
     setExportStage('Préparation...');
 
     try {
       // ═══ Step 1: Create LOCAL blob URLs for audio (avoids CORS issues) ═══
-      // Use blob URLs directly for the composer — no remote upload needed for mixing
       const localMusicBlobUrl = musicFile ? URL.createObjectURL(musicFile) : null;
       const localVoiceBlobUrl = voiceFile ? URL.createObjectURL(voiceFile) : null;
 
+      console.log(`[AudioStudio] Batch export: ${posts.length} post(s)`);
       console.log('[AudioStudio] Local music blob URL:', localMusicBlobUrl ? 'yes' : 'none');
       console.log('[AudioStudio] Local voice blob URL:', localVoiceBlobUrl ? 'yes' : 'none');
 
-      setExportProgress(10);
+      // ═══ Step 2: Upload audio files to Supabase ONCE (shared across all posts) ═══
+      let uploadedMusicUrl: string | null = null;
+      let uploadedVoiceUrl: string | null = null;
+      if (exportDest === 'calendar' || exportDest === 'both') {
+        setExportStage('Upload des fichiers audio...');
+        setExportProgress(5);
+        if (musicFile) uploadedMusicUrl = await uploadFile(musicFile, 'music');
+        if (voiceFile) uploadedVoiceUrl = await uploadFile(voiceFile, 'voiceover');
+      }
 
-      // Extract composition params from metadata
-      const m = meta;
-      const brand = m.branding as Record<string, string> | undefined;
-      const isReel = post.format === 'reel';
-      const cards = (m.cards as Array<{ emoji: string; label: string; value: string; color?: string }>) || [];
-      const textCards = (m.textCards as Array<{ text: string; color?: string }>) || [];
-      const finalCards = cards.length > 0 ? cards : textCards.map(tc => ({ emoji: '📝', label: tc.text, value: tc.text, color: tc.color }));
-      const posterUrl = (m.posterUrl || m.pexelsUrl || m.characterUrl || null) as string | null;
-      const rushUrl = (m.rushUrls as string[])?.[0] || (m.rawVideoUrl as string) || null;
+      // ═══ Step 3: Loop through ALL posts ═══
+      let successCount = 0;
+      for (let i = 0; i < posts.length; i++) {
+        const p = posts[i];
+        const pm = p.metadata || {};
+        const brand = (pm.branding as Record<string, string>) || undefined;
+        const isReel = p.format === 'reel';
+        const pSeq = (pm.sequences || {}) as Record<string, unknown>;
+        const pCards = (pm.cards as Array<{ emoji: string; label: string; value: string; color?: string }>) || [];
+        const pTextCards = (pm.textCards as Array<{ text: string; color?: string }>) || [];
+        const finalCards = pCards.length > 0 ? pCards : pTextCards.map(tc => ({ emoji: '📝', label: tc.text, value: tc.text, color: tc.color }));
+        const posterUrl = (pm.posterUrl || pm.pexelsUrl || pm.characterUrl || null) as string | null;
+        const rushUrl = (pm.rushUrls as string[])?.[0] || (pm.rawVideoUrl as string) || null;
 
-      setExportStage('Montage vidéo avec son...');
-      setExportProgress(15);
+        const progressBase = 10 + (i / posts.length) * 80;
+        const progressSpan = 80 / posts.length;
 
-      // ═══ Step 2: Compose video with LOCAL blob audio (guaranteed no CORS) ═══
-      const result = await composeAndUpload({
-        width: isReel ? 1080 : 1920,
-        height: isReel ? 1920 : 1080,
-        fps: 24,
-        title: post.title || 'Vidéo',
-        subtitle: (m.subtitle as string) || undefined,
-        salesPhrase: (m.salesPhrase as string) || undefined,
-        cards: finalCards.length > 0 ? finalCards : undefined,
-        posterUrl, videoUrl: rushUrl,
-        logoUrl: (m.logoUrl as string) || null,
-        musicUrl: localMusicBlobUrl,
-        voiceUrl: localVoiceBlobUrl,
-        introDuration: seqDurations.intro,
-        cardsDuration: seqDurations.cards,
-        videoDuration: seqDurations.video,
-        ctaDuration: seqDurations.cta,
-        accentColor: (brand?.accentColor as string) || '#D91CD2',
-        ctaText: (brand?.ctaText as string) || 'CHAT POUR PLUS D\'INFOS',
-        ctaSubText: (brand?.ctaSubText as string) || 'LIEN EN BIO',
-        watermarkText: (brand?.watermarkText as string) || undefined,
-        onProgress: (pct, stage) => {
-          setExportProgress(15 + Math.round(pct * 0.65));
-          setExportStage(stage);
-        },
-      });
+        setExportStage(posts.length > 1 ? `Montage vidéo ${i + 1}/${posts.length}...` : 'Montage vidéo avec son...');
+        setExportProgress(Math.round(progressBase));
+
+        try {
+          const result = await composeAndUpload({
+            width: isReel ? 1080 : 1920,
+            height: isReel ? 1920 : 1080,
+            fps: 24,
+            title: p.title || 'Vidéo',
+            subtitle: (pm.subtitle as string) || undefined,
+            salesPhrase: (pm.salesPhrase as string) || undefined,
+            cards: finalCards.length > 0 ? finalCards : undefined,
+            posterUrl, videoUrl: rushUrl,
+            logoUrl: (pm.logoUrl as string) || null,
+            musicUrl: localMusicBlobUrl,
+            voiceUrl: localVoiceBlobUrl,
+            introDuration: (pSeq.intro as number) || seqDurations.intro,
+            cardsDuration: (pSeq.cards as number) || seqDurations.cards,
+            videoDuration: (pSeq.video as number) || seqDurations.video,
+            ctaDuration: (pSeq.cta as number) || seqDurations.cta,
+            accentColor: (brand?.accentColor as string) || '#D91CD2',
+            ctaText: (brand?.ctaText as string) || 'CHAT POUR PLUS D\'INFOS',
+            ctaSubText: (brand?.ctaSubText as string) || 'LIEN EN BIO',
+            watermarkText: (brand?.watermarkText as string) || undefined,
+            onProgress: (pct, stage) => {
+              setExportProgress(Math.round(progressBase + (pct / 100) * progressSpan));
+              setExportStage(posts.length > 1 ? `Vidéo ${i + 1}/${posts.length}: ${stage}` : stage);
+            },
+          });
+
+          // Desktop download (only first video in batch, or all if single)
+          if ((exportDest === 'desktop' || exportDest === 'both') && (posts.length === 1 || i === 0)) {
+            const ext = result.blob.type.includes('mp4') ? 'mp4' : 'webm';
+            downloadBlob(result.blob, `${(p.title || 'video').replace(/\s+/g, '_')}_audio.${ext}`);
+          }
+
+          // Update post in calendar
+          if ((exportDest === 'calendar' || exportDest === 'both') && result.url) {
+            setExportStage(posts.length > 1 ? `Sauvegarde ${i + 1}/${posts.length}...` : 'Mise à jour du calendrier...');
+            try {
+              await fetch(`/api/posts/${p.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  media_url: result.url,
+                  media_type: 'video',
+                  metadata: { ...pm, renderedVideoUrl: result.url, videoUrl: result.url, hasAudio: true, musicUrl: uploadedMusicUrl, voiceUrl: uploadedVoiceUrl },
+                }),
+              });
+              successCount++;
+            } catch (err) { console.error(`[AudioStudio] Update post ${p.id} failed:`, err); }
+          } else {
+            successCount++;
+          }
+        } catch (err) {
+          console.error(`[AudioStudio] Export error for post ${i + 1}/${posts.length}:`, err);
+        }
+      }
 
       // Cleanup local blob URLs
       if (localMusicBlobUrl) URL.revokeObjectURL(localMusicBlobUrl);
       if (localVoiceBlobUrl) URL.revokeObjectURL(localVoiceBlobUrl);
 
-      setExportProgress(85);
-
-      if (exportDest === 'desktop' || exportDest === 'both') {
-        const ext = result.blob.type.includes('mp4') ? 'mp4' : 'webm';
-        downloadBlob(result.blob, `${(post.title || 'video').replace(/\s+/g, '_')}_audio.${ext}`);
-      }
-
-      // ═══ Step 3: Upload audio files to Supabase for metadata (background) ═══
-      let uploadedMusicUrl: string | null = null;
-      let uploadedVoiceUrl: string | null = null;
-
-      if ((exportDest === 'calendar' || exportDest === 'both') && result.url) {
-        setExportStage('Sauvegarde des fichiers audio...');
-        if (musicFile) uploadedMusicUrl = await uploadFile(musicFile, 'music');
-        if (voiceFile) uploadedVoiceUrl = await uploadFile(voiceFile, 'voiceover');
-
-        setExportStage('Mise à jour du calendrier...');
-        try {
-          await fetch(`/api/posts/${post.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              media_url: result.url,
-              media_type: 'video',
-              metadata: { ...m, renderedVideoUrl: result.url, videoUrl: result.url, hasAudio: true, musicUrl: uploadedMusicUrl, voiceUrl: uploadedVoiceUrl },
-            }),
-          });
-        } catch (err) { console.error('[AudioStudio] Update failed:', err); }
-      }
-
       setExportProgress(100);
-      setExportStage('Terminé !');
+      setExportStage(posts.length > 1 ? `${successCount}/${posts.length} vidéos exportées !` : 'Terminé !');
 
       if (exportDest === 'calendar' || exportDest === 'both') {
         setTimeout(() => router.push('/dashboard/calendar'), 1500);
@@ -420,7 +452,7 @@ function AudioStudioContent() {
 
   if (loading) return <div className="flex items-center justify-center h-[70vh]"><Loader2 className="animate-spin text-pink-500" size={40} /></div>;
 
-  if (!post) return (
+  if (posts.length === 0) return (
     <div className="flex flex-col items-center justify-center h-[70vh] gap-4">
       <VolumeX size={48} className="text-gray-600" />
       <p className="text-gray-400">Aucune vidéo sélectionnée</p>
@@ -459,11 +491,31 @@ function AudioStudioContent() {
           {/* Back + title */}
           <div className="flex items-center gap-2">
             <button onClick={() => router.back()} className="p-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 transition"><ChevronLeft size={16} className="text-gray-400" /></button>
-            <div className="min-w-0">
-              <h2 className="text-sm font-bold text-white truncate flex items-center gap-1.5"><Volume2 size={14} className="text-pink-500 shrink-0" /> Studio Son</h2>
-              <p className="text-[10px] text-gray-500 truncate">{post.title}</p>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm font-bold text-white truncate flex items-center gap-1.5">
+                <Volume2 size={14} className="text-pink-500 shrink-0" /> Studio Son
+                {isBatch && <span className="text-[10px] font-normal bg-pink-600/30 text-pink-300 px-1.5 py-0.5 rounded-full ml-1">{posts.length} vidéos</span>}
+              </h2>
+              <p className="text-[10px] text-gray-500 truncate">{isBatch ? `Vidéo ${currentPostIndex + 1}/${posts.length} — ${post.title}` : post.title}</p>
             </div>
           </div>
+
+          {/* Batch navigation */}
+          {isBatch && (
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setCurrentPostIndex(i => Math.max(0, i - 1))}
+                disabled={currentPostIndex === 0}
+                className="flex-1 py-1.5 rounded-lg text-[10px] font-medium bg-gray-700 hover:bg-gray-600 text-gray-300 disabled:opacity-30 transition text-center"
+              >← Précédente</button>
+              <span className="text-[10px] text-gray-400 px-1">{currentPostIndex + 1}/{posts.length}</span>
+              <button
+                onClick={() => setCurrentPostIndex(i => Math.min(posts.length - 1, i + 1))}
+                disabled={currentPostIndex === posts.length - 1}
+                className="flex-1 py-1.5 rounded-lg text-[10px] font-medium bg-gray-700 hover:bg-gray-600 text-gray-300 disabled:opacity-30 transition text-center"
+              >Suivante →</button>
+            </div>
+          )}
 
           {/* Music */}
           <div className="bg-gray-800 rounded-xl p-3 border border-gray-700/50">
@@ -538,7 +590,7 @@ function AudioStudioContent() {
             <button onClick={handleExport} disabled={isExporting || !hasAudio} className="w-full relative overflow-hidden bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 disabled:opacity-40 text-white font-bold py-2.5 px-3 rounded-xl transition-all text-xs">
               {isExporting && <div className="absolute inset-0 bg-gradient-to-r from-pink-700 to-purple-700 transition-all duration-500" style={{ width: `${exportProgress}%` }} />}
               <span className="relative z-10 flex items-center justify-center gap-1.5">
-                {isExporting ? <><Loader2 size={14} className="animate-spin" /> {Math.round(exportProgress)}%</> : <><Volume2 size={14} /> EXPORTER AVEC SON</>}
+                {isExporting ? <><Loader2 size={14} className="animate-spin" /> {Math.round(exportProgress)}%</> : <><Volume2 size={14} /> {isBatch ? `EXPORTER ${posts.length} VIDÉOS AVEC SON` : 'EXPORTER AVEC SON'}</>}
               </span>
             </button>
             {!hasAudio && <p className="text-[10px] text-gray-500 text-center mt-1.5">Ajoutez musique ou voix off</p>}

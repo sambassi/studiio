@@ -776,6 +776,7 @@ export default function CreatorPage() {
       // ═══ PHASE 3: Client-side render + Create calendar posts + Export (20-98%) ═══
       let successCount = 0;
       let firstCreatedPostId: string | null = null;
+      const allCreatedPostIds: string[] = [];
       // For "both" mode: compose once, reuse blob for export + url for calendar
       let savedBlobForExport: Blob | null = null;
 
@@ -882,11 +883,12 @@ export default function CreatorPage() {
             if (postRes.ok) {
               const postData = await postRes.json().catch(() => ({}));
               successCount++;
-              // Save first post ID for Studio Son redirect
+              // Save post IDs for Studio Son redirect
               const createdId = postData.post?.id || postData.data?.id || null;
               console.log(`[Creator] Post ${b + 1} created, id:`, createdId);
-              if (b === 0 && createdId) {
-                firstCreatedPostId = createdId;
+              if (createdId) {
+                allCreatedPostIds.push(createdId);
+                if (b === 0) firstCreatedPostId = createdId;
               }
             } else {
               console.error(`[Creator] Post ${b + 1} failed:`, postRes.status, await postRes.text().catch(() => ''));
@@ -974,10 +976,14 @@ export default function CreatorPage() {
       showToast(successCount > 0 ? `${successCount} vidéo${successCount > 1 ? 's' : ''} montée${successCount > 1 ? 's' : ''} avec succès !` : 'Vidéo montée avec succès !', 'success');
 
       if (destination === 'studio') {
-        // Redirect to Audio Studio with the first created post
-        console.log('[Creator] Studio redirect — firstCreatedPostId:', firstCreatedPostId);
+        // Redirect to Audio Studio with ALL created post IDs
+        console.log('[Creator] Studio redirect — allCreatedPostIds:', allCreatedPostIds);
         await new Promise((r) => setTimeout(r, 1000));
-        const studioUrl = firstCreatedPostId ? `/dashboard/audio-studio?postId=${firstCreatedPostId}` : '/dashboard/audio-studio';
+        const studioUrl = allCreatedPostIds.length > 1
+          ? `/dashboard/audio-studio?postIds=${allCreatedPostIds.join(',')}`
+          : allCreatedPostIds.length === 1
+            ? `/dashboard/audio-studio?postId=${allCreatedPostIds[0]}`
+            : '/dashboard/audio-studio';
         console.log('[Creator] Redirecting to:', studioUrl);
         router.push(studioUrl);
       } else if (destination === 'calendar' || destination === 'both') {
