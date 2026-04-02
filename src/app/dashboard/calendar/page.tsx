@@ -1286,6 +1286,9 @@ export default function CalendarPage() {
                               }`}>
                                 {post.status === 'published' ? 'Publie' : post.status === 'scheduled' ? 'Planifie' : 'Brouillon'}
                               </Badge>
+                              {post.metadata?.hasAudio && (
+                                <span className="text-[9px] text-pink-400 flex items-center gap-0.5" title="Audio ajouté"><Volume2 className="w-2.5 h-2.5" /></span>
+                              )}
                               <span className="text-[9px] text-gray-400 flex items-center gap-0.5 ml-auto">
                                 <Clock className="w-2.5 h-2.5" />{post.scheduled_time}
                               </span>
@@ -1736,12 +1739,22 @@ export default function CalendarPage() {
         const isInfographic = meta?.type === 'infographic';
         const hasMontage = isInfographic || (isCreator && meta?.sequences);
         const hasMetadata = !!meta;
+        const previewMusicUrl = meta?.musicUrl as string | undefined;
+        const previewVoiceUrl = meta?.voiceUrl as string | undefined;
+        const postHasAudio = !!meta?.hasAudio;
         // Display title: use metadata subtitle for the overlay text, keep raw title for the sidebar
         const displayTitle = meta?.subtitle
           ? fullPreviewPost.title.replace(/\s*\(Rush\s*\d+\)\s*/gi, '').replace(/\s*-\s*(Instagram|Facebook|TikTok|YouTube|YouTube Shorts)\s*/gi, '')
           : fullPreviewPost.title;
         return (
         <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4" onClick={() => setShowFullPreview(false)}>
+          {/* Hidden audio elements for posts with separate audio tracks */}
+          {postHasAudio && previewMusicUrl && (
+            <audio id="preview-audio-music" src={previewMusicUrl} loop autoPlay muted={montageMuted} style={{ display: 'none' }} />
+          )}
+          {postHasAudio && previewVoiceUrl && (
+            <audio id="preview-audio-voice" src={previewVoiceUrl} autoPlay muted={montageMuted} style={{ display: 'none' }} />
+          )}
           <div className="bg-gray-900 rounded-2xl overflow-hidden shadow-2xl max-w-5xl w-full flex max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
             {/* Left: Rich Montage Preview */}
             <div className="flex-1 bg-black flex flex-col items-center justify-center min-h-[60vh] p-4">
@@ -1829,8 +1842,9 @@ export default function CalendarPage() {
                           e.stopPropagation();
                           setMontageMuted(m => {
                             const newMuted = !m;
-                            // Sync all preview videos
+                            // Sync all preview videos AND audio elements
                             document.querySelectorAll<HTMLVideoElement>('#preview-video-infographic, #preview-video').forEach(v => { v.muted = newMuted; });
+                            document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice').forEach(a => { a.muted = newMuted; });
                             return newMuted;
                           });
                         }}
@@ -1901,8 +1915,15 @@ export default function CalendarPage() {
                       const vid = document.getElementById('preview-video') as HTMLVideoElement;
                       if (vid) {
                         const btn = document.getElementById('play-btn-overlay');
-                        if (vid.paused) { vid.muted = false; vid.play(); if (btn) btn.style.opacity = '0'; }
-                        else { vid.pause(); if (btn) btn.style.opacity = '1'; }
+                        if (vid.paused) {
+                          vid.muted = false; vid.play(); if (btn) btn.style.opacity = '0';
+                          // Also play audio tracks
+                          document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice').forEach(a => { a.muted = false; a.play().catch(() => {}); });
+                          setMontageMuted(false);
+                        } else {
+                          vid.pause(); if (btn) btn.style.opacity = '1';
+                          document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice').forEach(a => { a.pause(); });
+                        }
                       }
                     }}
                   >
