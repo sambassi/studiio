@@ -591,14 +591,18 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   // REAL-TIME MODE: With audio → must render in sync with audio
   // ═══════════════════════════════════════════════════════════
   return new Promise<Blob>((resolve, reject) => {
-    recorder.onstop = () => {
+    recorder.onstop = async () => {
       const outputType = isMP4 ? 'video/mp4' : 'video/webm';
       const blob = new Blob(chunks, { type: outputType });
       console.log('[Composer] ✅ DONE — blob:', (blob.size / 1024 / 1024).toFixed(1), 'MB, type:', outputType, ', chunks:', chunks.length);
-      if (audioCtx) audioCtx.close().catch(() => {});
-      if (musicEl) { musicEl.pause(); musicEl.src = ''; }
-      if (voiceEl) { voiceEl.pause(); voiceEl.src = ''; }
+      // Clean up audio — pause but do NOT destroy src (allows blob URL reuse in batch)
+      if (musicEl) { musicEl.pause(); musicEl.currentTime = 0; }
+      if (voiceEl) { voiceEl.pause(); voiceEl.currentTime = 0; }
       if (videoEl) videoEl.pause();
+      // Close AudioContext and wait for it to fully release
+      if (audioCtx) {
+        try { await audioCtx.close(); } catch {}
+      }
       try { document.body.removeChild(canvas); } catch {}
       onProgress?.(100, 'Terminé !');
       resolve(blob);
