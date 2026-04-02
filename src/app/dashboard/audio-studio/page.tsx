@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { Suspense, useEffect, useRef, useState, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Music, Mic, Upload, Play, Pause, Square, Trash2, Volume2, VolumeX, Loader2, ChevronLeft, SkipBack, SkipForward } from 'lucide-react';
 import { composeAndUpload, downloadBlob } from '@/lib/video-composer';
@@ -31,10 +31,18 @@ interface SeqBlock {
 type ExportDest = 'calendar' | 'desktop' | 'both';
 
 // ═══════════════════════════════════════════════════════════
-// AUDIO STUDIO PAGE — Timeline-based audio editor
+// WRAPPER — Suspense boundary required for useSearchParams
 // ═══════════════════════════════════════════════════════════
 
 export default function AudioStudioPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-[70vh]"><Loader2 className="animate-spin text-pink-500" size={40} /></div>}>
+      <AudioStudioContent />
+    </Suspense>
+  );
+}
+
+function AudioStudioContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const postId = searchParams.get('postId');
@@ -266,14 +274,14 @@ export default function AudioStudioPage() {
   }, [isRecording, stopPlayback]);
 
   // ═══ UPLOAD FILE ═══
-  const uploadFile = async (file: File, type: string): Promise<string | null> => {
+  const uploadFile = async (file: File, purpose: string): Promise<string | null> => {
     try {
       const fd = new FormData();
       fd.append('file', file);
-      fd.append('type', type);
-      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      fd.append('purpose', purpose);
+      const res = await fetch('/api/upload/media', { method: 'POST', body: fd });
       const data = await res.json();
-      return data.url || null;
+      return data.success ? data.file?.url || null : null;
     } catch { return null; }
   };
 
@@ -348,11 +356,10 @@ export default function AudioStudioPage() {
       if ((exportDest === 'calendar' || exportDest === 'both') && result.url) {
         setExportStage('Mise à jour du calendrier...');
         try {
-          await fetch('/api/posts', {
-            method: 'PUT',
+          await fetch(`/api/posts/${post.id}`, {
+            method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              id: post.id,
               media_url: result.url,
               media_type: 'video',
               metadata: { ...m, renderedVideoUrl: result.url, videoUrl: result.url, hasAudio: true, musicUrl: uploadedMusicUrl, voiceUrl: uploadedVoiceUrl },

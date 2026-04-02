@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 
+// Increase Vercel serverless function limits for video uploads
+export const maxDuration = 60; // seconds
+export const dynamic = 'force-dynamic';
+
 // Max file sizes per type
 const MAX_VIDEO_SIZE = 500 * 1024 * 1024; // 500MB
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;  // 10MB
