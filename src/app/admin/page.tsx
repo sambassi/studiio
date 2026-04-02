@@ -5,8 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Users, TrendingUp, ShoppingCart, Film, Loader2, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
-import { Table } from '@/components/ui/Table';
+import { useTranslations } from '@/i18n/client';
 
 interface StatsData {
   totalUsers: number;
@@ -25,6 +24,7 @@ interface Activity {
 
 export default function AdminDashboard() {
   const router = useRouter();
+  const t = useTranslations('admin');
   const [stats, setStats] = useState<StatsData | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,7 +46,7 @@ export default function AdminDashboard() {
           return;
         }
 
-        if (!statsRes.ok) throw new Error('Erreur lors du chargement des statistiques');
+        if (!statsRes.ok) throw new Error(t('dashboard.errorLoadingStats'));
 
         const statsData = await statsRes.json();
         setStats({ totalUsers: statsData.totalUsers ?? 0, monthlyRevenue: statsData.monthlyRevenue ?? 0, activeSubscriptions: statsData.activeSubscriptions ?? 0, videosRendered: statsData.videosRendered ?? 0 });
@@ -56,7 +56,7 @@ export default function AdminDashboard() {
           setActivities(logsData.logs || []);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Une erreur est survenue');
+        setError(err instanceof Error ? err.message : t('common.errorOccurred'));
       } finally {
         setLoading(false);
       }
@@ -70,7 +70,7 @@ export default function AdminDashboard() {
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-orange-500 mx-auto mb-4" />
-          <p className="text-gray-400">Chargement du tableau de bord...</p>
+          <p className="text-gray-400">{t('dashboard.loadingDashboard')}</p>
         </div>
       </div>
     );
@@ -79,8 +79,8 @@ export default function AdminDashboard() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-4xl font-bold text-white mb-2">Tableau de bord admin</h1>
-        <p className="text-gray-400">Vue d'ensemble de la plateforme Studiio</p>
+        <h1 className="text-4xl font-bold text-white mb-2">{t('dashboard.title')}</h1>
+        <p className="text-gray-400">{t('dashboard.subtitle')}</p>
       </div>
 
       {error && (
@@ -96,7 +96,7 @@ export default function AdminDashboard() {
             <Card>
               <CardContent className="flex items-center justify-between">
                 <div>
-                  <p className="text-gray-400 text-sm mb-2">Total utilisateurs</p>
+                  <p className="text-gray-400 text-sm mb-2">{t('dashboard.stats.totalUsers')}</p>
                   <p className="text-3xl font-bold text-white">{stats.totalUsers.toLocaleString('fr-FR')}</p>
                 </div>
                 <Users className="w-12 h-12 text-orange-500 opacity-20" />
@@ -106,7 +106,7 @@ export default function AdminDashboard() {
             <Card>
               <CardContent className="flex items-center justify-between">
                 <div>
-                  <p className="text-gray-400 text-sm mb-2">Revenus du mois</p>
+                  <p className="text-gray-400 text-sm mb-2">{t('dashboard.stats.monthlyRevenue')}</p>
                   <p className="text-3xl font-bold text-white">€{(stats.monthlyRevenue / 100).toLocaleString('fr-FR')}</p>
                 </div>
                 <TrendingUp className="w-12 h-12 text-orange-500 opacity-20" />
@@ -116,7 +116,7 @@ export default function AdminDashboard() {
             <Card>
               <CardContent className="flex items-center justify-between">
                 <div>
-                  <p className="text-gray-400 text-sm mb-2">Abonnements actifs</p>
+                  <p className="text-gray-400 text-sm mb-2">{t('dashboard.stats.activeSubscriptions')}</p>
                   <p className="text-3xl font-bold text-white">{stats.activeSubscriptions.toLocaleString('fr-FR')}</p>
                 </div>
                 <ShoppingCart className="w-12 h-12 text-orange-500 opacity-20" />
@@ -126,7 +126,7 @@ export default function AdminDashboard() {
             <Card>
               <CardContent className="flex items-center justify-between">
                 <div>
-                  <p className="text-gray-400 text-sm mb-2">Vidéos rendues</p>
+                  <p className="text-gray-400 text-sm mb-2">{t('dashboard.stats.videosRendered')}</p>
                   <p className="text-3xl font-bold text-white">{stats.videosRendered.toLocaleString('fr-FR')}</p>
                 </div>
                 <Film className="w-12 h-12 text-orange-500 opacity-20" />
@@ -137,7 +137,7 @@ export default function AdminDashboard() {
           <div className="grid md:grid-cols-2 gap-6">
             <Card>
               <CardHeader>
-                <CardTitle>Activités récentes</CardTitle>
+                <CardTitle>{t('dashboard.recentActivities')}</CardTitle>
               </CardHeader>
               <CardContent>
                 {activities.length > 0 ? (
@@ -161,24 +161,24 @@ export default function AdminDashboard() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-gray-400 text-sm">Aucune activité récente</p>
+                  <p className="text-gray-400 text-sm">{t('dashboard.noRecentActivity')}</p>
                 )}
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>Actions rapides</CardTitle>
+                <CardTitle>{t('dashboard.quickActions')}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <Button variant="primary" className="w-full">
-                  Créditer un utilisateur
+                  {t('dashboard.creditUser')}
                 </Button>
                 <Button variant="secondary" className="w-full">
-                  Voir les paiements
+                  {t('dashboard.viewPayments')}
                 </Button>
                 <Button variant="secondary" className="w-full">
-                  Gérer les CGV
+                  {t('dashboard.manageTerms')}
                 </Button>
               </CardContent>
             </Card>

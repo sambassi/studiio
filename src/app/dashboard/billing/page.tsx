@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { CREDIT_PACKAGES } from '@/lib/stripe/constants';
 import { Loader2 } from 'lucide-react';
+import { useTranslations } from '@/i18n/client';
 
 const mockTransactions = [
   { id: '1', date: '2024-03-25', description: 'Rendu vidéo - Reel 9:16', credits: -10, balance: 1250 },
@@ -20,6 +21,9 @@ const mockTransactions = [
 export default function BillingPage() {
   const [loadingPortal, setLoadingPortal] = useState(false);
   const [loadingCredits, setLoadingCredits] = useState<string | null>(null);
+  const t = useTranslations('billing');
+  const tc = useTranslations('common');
+
   const handleManageSubscription = async () => {
     setLoadingPortal(true);
     try {
@@ -28,11 +32,11 @@ export default function BillingPage() {
       if (data.url) {
         window.location.href = data.url;
       } else {
-        alert('Impossible d\u2019ouvrir le portail de facturation. Veuillez réessayer.');
+        alert(t('errors.portalFailed'));
       }
     } catch (error) {
       console.error('Error opening portal:', error);
-      alert('Erreur de connexion. Veuillez réessayer.');
+      alert(t('errors.connectionError'));
     } finally {
       setLoadingPortal(false);
     }
@@ -50,11 +54,11 @@ export default function BillingPage() {
       if (data.url) {
         window.location.href = data.url;
       } else {
-        alert('Impossible de créer la session de paiement. Veuillez réessayer.');
+        alert(t('errors.checkoutFailed'));
       }
     } catch (error) {
       console.error('Error creating checkout:', error);
-      alert('Erreur de connexion. Veuillez réessayer.');
+      alert(t('errors.connectionError'));
     } finally {
       setLoadingCredits(null);
     }
@@ -72,11 +76,11 @@ export default function BillingPage() {
       if (data.url) {
         window.location.href = data.url;
       } else {
-        alert('Impossible de créer la session de paiement. Veuillez réessayer.');
+        alert(t('errors.checkoutFailed'));
       }
     } catch (error) {
       console.error('Error creating checkout:', error);
-      alert('Erreur de connexion. Veuillez réessayer.');
+      alert(t('errors.connectionError'));
     } finally {
       setLoadingCredits(null);
     }
@@ -85,8 +89,8 @@ export default function BillingPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-4xl font-bold text-white mb-2">Facturation</h1>
-        <p className="text-gray-400">Gérez vos crédits et votre abonnement</p>
+        <h1 className="text-4xl font-bold text-white mb-2">{t('title')}</h1>
+        <p className="text-gray-400">{t('subtitle')}</p>
       </div>
 
       <CreditsDisplay credits={1250} isPro={true} />
@@ -94,18 +98,18 @@ export default function BillingPage() {
       <div className="grid md:grid-cols-2 gap-6">
         <Card>
           <CardHeader className="border-b border-gray-800">
-            <CardTitle>Abonnement actuel</CardTitle>
+            <CardTitle>{t('currentPlan')}</CardTitle>
           </CardHeader>
           <CardContent className="pt-6 space-y-4">
             <div className="flex justify-between items-start">
               <div>
-                <p className="text-sm text-gray-400 mb-1">Plan</p>
+                <p className="text-sm text-gray-400 mb-1">{t('plan')}</p>
                 <p className="text-2xl font-bold text-white">Pro</p>
               </div>
-              <Badge variant="success">Actif</Badge>
+              <Badge variant="success">{tc('status.active')}</Badge>
             </div>
             <div className="pt-4 border-t border-gray-800">
-              <p className="text-sm text-gray-400 mb-1">Renouvellement</p>
+              <p className="text-sm text-gray-400 mb-1">{t('renewal')}</p>
               <p className="text-white font-semibold">2 avril 2024</p>
             </div>
             <Button
@@ -115,9 +119,9 @@ export default function BillingPage() {
               disabled={loadingPortal}
             >
               {loadingPortal ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Chargement...</>
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{tc('loading')}</>
               ) : (
-                'Gérer l\u2019abonnement'
+                t('manageSubscription')
               )}
             </Button>
           </CardContent>
@@ -125,7 +129,7 @@ export default function BillingPage() {
 
         <Card>
           <CardHeader className="border-b border-gray-800">
-            <CardTitle>Acheter des crédits</CardTitle>
+            <CardTitle>{t('buyCredits')}</CardTitle>
           </CardHeader>
           <CardContent className="pt-6 space-y-3">
             {Object.entries(CREDIT_PACKAGES).map(([key, pkg]) => (
@@ -137,7 +141,7 @@ export default function BillingPage() {
                 disabled={loadingCredits === key}
               >
                 {loadingCredits === key ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Chargement...</>
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{tc('loading')}</>
                 ) : (
                   <>{pkg.name} - {pkg.priceFr}</>
                 )}
@@ -149,17 +153,17 @@ export default function BillingPage() {
 
       <Card>
         <CardHeader className="border-b border-gray-800">
-          <CardTitle>Historique des transactions</CardTitle>
+          <CardTitle>{t('transactionHistory')}</CardTitle>
         </CardHeader>
         <CardContent className="pt-6">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-800">
-                  <th className="text-left py-2 text-gray-400 font-medium">Date</th>
-                  <th className="text-left py-2 text-gray-400 font-medium">Description</th>
-                  <th className="text-right py-2 text-gray-400 font-medium">Crédits</th>
-                  <th className="text-right py-2 text-gray-400 font-medium">Solde</th>
+                  <th className="text-left py-2 text-gray-400 font-medium">{t('table.date')}</th>
+                  <th className="text-left py-2 text-gray-400 font-medium">{t('table.description')}</th>
+                  <th className="text-right py-2 text-gray-400 font-medium">{t('table.credits')}</th>
+                  <th className="text-right py-2 text-gray-400 font-medium">{t('table.balance')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -180,7 +184,7 @@ export default function BillingPage() {
       </Card>
 
       <div>
-        <h2 className="text-2xl font-bold text-white mb-6">Modifier votre plan</h2>
+        <h2 className="text-2xl font-bold text-white mb-6">{t('changePlan')}</h2>
         <PricingCards onSelectPlan={handleSelectPlan} />
       </div>
     </div>

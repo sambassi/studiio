@@ -37,6 +37,8 @@ import { Modal } from '@/components/ui/Modal';
 import { useBranding } from '@/lib/hooks/useBranding';
 import BrandingPanel from '@/components/BrandingPanel';
 import { composeAndUpload, downloadBlob } from '@/lib/video-composer';
+import { useTranslations, useLocale } from '@/i18n/client';
+import { getContentPools, pickRandom as pickRandomI18n } from '@/lib/i18n-content';
 
 interface PostBranding {
   watermarkText?: string;
@@ -104,6 +106,11 @@ const platformColors: Record<string, string> = {
 };
 
 export default function CalendarPage() {
+  const t = useTranslations('calendar');
+  const tc = useTranslations('common');
+  const locale = useLocale();
+  const localeMap: Record<string, string> = { fr: 'fr-FR', en: 'en-GB', de: 'de-DE' };
+  const intlLocale = localeMap[locale] || 'fr-FR';
   const { branding, setBranding } = useBranding();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [posts, setPosts] = useState<Post[]>([]);
@@ -225,7 +232,7 @@ export default function CalendarPage() {
   };
 
   const formatMonthYear = (date: Date): string => {
-    const str = date.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    const str = date.toLocaleDateString(intlLocale, { month: 'long', year: 'numeric' });
     return str.charAt(0).toUpperCase() + str.slice(1);
   };
 
@@ -620,7 +627,7 @@ export default function CalendarPage() {
     console.log('[Export] No renderedVideoUrl — composing montage on-the-fly for:', post.title);
     setExportRendering(true);
     setExportRenderProgress(0);
-    setExportRenderStage('Préparation du montage...');
+    setExportRenderStage(t('exportOverlay.preparingMontage'));
 
     try {
       const posterUrl = meta?.posterUrl || meta?.pexelsUrl || meta?.characterUrl || null;
@@ -641,7 +648,7 @@ export default function CalendarPage() {
         salesPhrase: meta?.salesPhrase || undefined,
         cards: meta?.cards?.length > 0
           ? meta.cards.map((c: { emoji: string; label: string; value: string; color?: string }) => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color }))
-          : (meta?.textCards || []).map((tc: { text: string; color?: string }) => ({ emoji: '📝', label: tc.text, value: tc.text, color: tc.color })),
+          : (meta?.textCards || []).map((tCard: { text: string; color?: string }) => ({ emoji: '📝', label: tCard.text, value: tCard.text, color: tCard.color })),
         posterUrl,
         videoUrl,
         logoUrl,
@@ -691,7 +698,7 @@ export default function CalendarPage() {
       }
     } catch (err) {
       console.error('[Export] Montage composition failed:', err);
-      setExportRenderStage('Erreur lors du montage');
+      setExportRenderStage(t('exportOverlay.errorMontage'));
     } finally {
       setTimeout(() => {
         setExportRendering(false);
@@ -705,19 +712,20 @@ export default function CalendarPage() {
     if (aiRushFiles.length === 0) return;
     setAiGenerating(true);
     setAiProgress(0);
-    setAiStage('Préparation...');
+    setAiStage(t('aiAgent.stages.preparing'));
     try {
       const days = parseInt(aiPlanDuration);
       const postsToCreate = Math.min(days, 30);
       const startDate = new Date();
+      startDate.setDate(startDate.getDate() + 1); // Start from tomorrow
       const totalSteps = aiRushFiles.length + (aiMusicFile ? 1 : 0) + (aiPhotoAffiche ? 1 : 0) + postsToCreate;
       let completedSteps = 0;
 
       // --- 1. Upload rush files to Supabase ---
-      setAiStage('Upload des rushes...');
+      setAiStage(t('aiAgent.stages.uploadingRush', { current: '0', total: String(aiRushFiles.length) }));
       const rushUrls: string[] = [];
       for (let fi = 0; fi < aiRushFiles.length; fi++) {
-        setAiStage(`Upload rush ${fi + 1}/${aiRushFiles.length}...`);
+        setAiStage(t('aiAgent.stages.uploadingRush', { current: String(fi + 1), total: String(aiRushFiles.length) }));
         const formData = new FormData();
         formData.append('file', aiRushFiles[fi]);
         formData.append('purpose', 'rush');
@@ -733,7 +741,7 @@ export default function CalendarPage() {
       // --- 2. Upload music ---
       let musicUrl: string | null = null;
       if (aiMusicFile) {
-        setAiStage('Upload musique...');
+        setAiStage(t('aiAgent.stages.uploadingMusic'));
         const formData = new FormData();
         formData.append('file', aiMusicFile);
         formData.append('purpose', 'music');
@@ -749,7 +757,7 @@ export default function CalendarPage() {
       // --- 3. Fetch poster photos from Pexels (different per objective) ---
       const posterUrlsByObjective: Record<string, string[]> = {};
       if (aiPhotoAffiche) {
-        setAiStage('Recherche de photos affiches...');
+        setAiStage(t('aiAgent.stages.searchingPhotos'));
         const objQueries: Record<string, string> = {
           promo: 'fitness promotion sale offer',
           motiv: 'athlete motivation sport training',
@@ -771,29 +779,12 @@ export default function CalendarPage() {
         setAiProgress(Math.round((completedSteps / totalSteps) * 100));
       }
 
-      // --- Variation pools per objective ---
-      const titlePools: Record<string, string[]> = {
-        promo: ['OFFRE EXCLUSIVE', 'PROMO FLASH', 'BON PLAN', 'DEAL DU JOUR', 'OFFRE LIMITÉE', 'SOLDES', 'DERNIÈRE CHANCE', 'PRIX CASSÉ', 'VENTE FLASH', 'OFFRE SPÉCIALE'],
-        motiv: ['C\'EST TON MOMENT', 'LÈVE-TOI', 'NO EXCUSES', 'DÉPASSE-TOI', 'GO GO GO', 'BELIEVE', 'TU PEUX', 'NEVER GIVE UP', 'PUSH HARDER', 'DISCIPLINE'],
-        bienfaits: ['LES BIENFAITS', 'TOP RÉSULTATS', 'LE SECRET', 'PROUVÉ', 'EFFICACE', 'TRANSFORME-TOI', 'SANTÉ TOTALE', 'BIEN-ÊTRE', 'MENTAL D\'ACIER', 'ÉNERGIE PURE'],
-        abo: ['ABONNE-TOI', 'REJOINS-NOUS', 'FOLLOW NOW', 'ON T\'ATTEND', 'REJOINS LA TRIBU', 'ACTIVE LA CLOCHE', 'STAY TUNED', 'NE RATE RIEN', 'LINK IN BIO', 'ESSAI OFFERT'],
-        nutri: ['MANGE MIEUX', 'RECETTE DU JOUR', 'NUTRITION', 'HEALTHY LIFE', 'CLEAN EATING', 'MEAL PREP', 'SUPER FOOD', 'BOOST NATUREL', 'FUEL TON CORPS', 'ÉNERGIE SAINE'],
-      };
-      const subtitlePools: Record<string, string[]> = {
-        promo: ['Profite avant qu\'il soit trop tard', 'Une opportunité unique', 'Seulement cette semaine', 'Places limitées', 'Ne rate pas cette offre', 'Quantités réduites', 'Offre qui expire bientôt'],
-        motiv: ['Ton futur commence ici', 'Chaque jour est une chance', 'Tu es capable de tout', 'Le moment c\'est maintenant', 'Rien n\'est impossible', 'La discipline fait la différence', 'Ton potentiel est illimité'],
-        bienfaits: ['Résultats visibles rapidement', 'Ton corps va te remercier', 'Testé et approuvé', 'Transformation garantie', 'La science a parlé', 'Prouvé par des milliers', 'Le changement commence ici'],
-        abo: ['Rejoins la communauté', 'Du contenu exclusif chaque jour', 'La team t\'attend', 'Première vidéo gratuite', 'Contenu premium', 'Accès illimité', 'La famille Afroboost t\'attend'],
-        nutri: ['La clé d\'une vie saine', 'Recettes simples et efficaces', 'Bon pour toi et délicieux', 'Nutrition optimale', 'Transforme ton alimentation', 'Énergie naturelle garantie', 'Ton corps mérite le meilleur'],
-      };
-      const phrasePools: Record<string, string[]> = {
-        promo: ['Offre limitée !', '-30% cette semaine', 'Réserve ta place', 'Profite maintenant', 'Code promo en bio', 'Dernières places', 'Ne rate pas ça'],
-        motiv: ['C\'est maintenant ou jamais', 'Chaque jour compte', 'Pas d\'excuses', 'Lève-toi et brille', 'Go hard or go home', 'No pain no gain', 'Crois en toi'],
-        bienfaits: ['Découvre les résultats', 'Essaie et compare', 'Les chiffres parlent', 'Testé par +5000', 'Prouvé scientifiquement', 'Résultats dès la 1ère semaine', 'Voir c\'est croire'],
-        abo: ['Abonne-toi !', 'Follow pour + de contenu', 'Active les notifs', 'Lien en bio', 'Rejoins-nous maintenant', 'C\'est gratuit !', 'La tribu grandit'],
-        nutri: ['Teste cette recette', 'Mange sain, vis mieux', 'Ton corps te remerciera', 'Simple, rapide, efficace', 'La nutrition c\'est la clé', 'Boost ton énergie', 'Zéro compromis'],
-      };
-      const objectiveLabels: Record<string, string> = { promo: 'Promotion', motiv: 'Motivation', bienfaits: 'Bienfaits', abo: 'Abonnement', nutri: 'Nutrition' };
+      // --- Variation pools per objective (locale-aware) ---
+      const contentPools = getContentPools(locale as 'fr' | 'en' | 'de');
+      const titlePools = contentPools.titles;
+      const subtitlePools = contentPools.subtitles;
+      const phrasePools = contentPools.phrases;
+      const objectiveLabels = contentPools.objectiveLabels;
 
       const pickRandom = (arr: string[], exclude: string[] = []) => {
         const filtered = arr.filter((x) => !exclude.includes(x));
@@ -802,7 +793,7 @@ export default function CalendarPage() {
       const usedTitles: string[] = [];
 
       // --- 4. Client-side compose + Create posts ---
-      setAiStage('Montage et création des posts...');
+      setAiStage(t('aiAgent.stages.composingPosts'));
       for (let i = 0; i < postsToCreate; i++) {
         const postDate = new Date(startDate);
         postDate.setDate(startDate.getDate() + i);
@@ -821,7 +812,7 @@ export default function CalendarPage() {
         const rushFile = aiRushFiles.length > 0 ? aiRushFiles[i % aiRushFiles.length] : null;
         const mediaType = rushFile?.type?.startsWith('image/') ? 'image' as const : 'video' as const;
 
-        setAiStage(`Montage vidéo ${i + 1}/${postsToCreate} — ${bTitle}`);
+        setAiStage(t('aiAgent.stages.composingVideo', { current: String(i + 1), total: String(postsToCreate), title: bTitle }));
 
         // Client-side video composition
         let renderedVideoUrl: string | null = null;
@@ -848,7 +839,7 @@ export default function CalendarPage() {
               ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
               watermarkText: branding.watermarkText || undefined,
               onProgress: (_pct, stage) => {
-                setAiStage(`Vidéo ${i + 1}/${postsToCreate}: ${stage}`);
+                setAiStage(t('aiAgent.stages.videoStage', { current: String(i + 1), total: String(postsToCreate), stage }));
               },
             });
             if (url) renderedVideoUrl = url;
@@ -924,7 +915,7 @@ export default function CalendarPage() {
         setAiProgress(Math.round((completedSteps / totalSteps) * 100));
       }
 
-      setAiStage('Terminé !');
+      setAiStage(t('aiAgent.stages.done'));
       setAiProgress(100);
       await new Promise((r) => setTimeout(r, 800));
       await fetchPosts();
@@ -1016,7 +1007,7 @@ export default function CalendarPage() {
           <div className="bg-gray-900 rounded-2xl p-8 max-w-md w-full mx-4 border border-purple-500/30">
             <div className="flex items-center gap-3 mb-4">
               <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
-              <h3 className="text-lg font-bold text-white">Montage vidéo en cours...</h3>
+              <h3 className="text-lg font-bold text-white">{t('exportOverlay.title')}</h3>
             </div>
             <p className="text-sm text-gray-300 mb-4">{exportRenderStage}</p>
             <div className="w-full h-3 bg-gray-700 rounded-full overflow-hidden">
@@ -1032,18 +1023,18 @@ export default function CalendarPage() {
 
       {/* Page Header */}
       <div className="px-8 pt-6 pb-4">
-        <h1 className="text-3xl font-bold">Calendrier IA</h1>
-        <p className="text-gray-400 text-sm mt-1">Planifiez et gerez vos posts sur les reseaux sociaux</p>
+        <h1 className="text-3xl font-bold">{t('title')}</h1>
+        <p className="text-gray-400 text-sm mt-1">{t('subtitle')}</p>
       </div>
 
       {/* Stats Cards */}
       <div className="px-8 mb-6">
         <div className="grid grid-cols-4 gap-4">
           {[
-            { label: 'Total', value: totalPosts, color: 'text-white' },
-            { label: 'Brouillons', value: draftPosts, color: 'text-yellow-400' },
-            { label: 'Planifies', value: scheduledPosts, color: 'text-blue-400' },
-            { label: 'Publies', value: publishedPosts, color: 'text-red-400' },
+            { label: t('stats.total'), value: totalPosts, color: 'text-white' },
+            { label: t('stats.drafts'), value: draftPosts, color: 'text-yellow-400' },
+            { label: t('stats.scheduled'), value: scheduledPosts, color: 'text-blue-400' },
+            { label: t('stats.published'), value: publishedPosts, color: 'text-red-400' },
           ].map((stat) => (
             <div key={stat.label} className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4 text-center">
               <div className={`text-2xl font-bold ${stat.color}`}>{stat.value}</div>
@@ -1071,8 +1062,10 @@ export default function CalendarPage() {
 
             {/* Day Headers */}
             <div className="grid grid-cols-7 gap-2 mb-3">
-              {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map((d) => (
-                <div key={d} className="text-center text-gray-500 text-xs font-medium py-1">{d}</div>
+              {[1, 2, 3, 4, 5, 6, 7].map((day) => (
+                <div key={day} className="text-center text-gray-500 text-xs font-medium py-1">
+                  {new Date(2024, 0, day).toLocaleDateString(intlLocale, { weekday: 'short' })}
+                </div>
               ))}
             </div>
 
@@ -1081,7 +1074,7 @@ export default function CalendarPage() {
               {loading ? (
                 <div className="col-span-7 flex items-center justify-center py-20">
                   <Loader2 className="animate-spin text-purple-500 mr-2" size={20} />
-                  <span className="text-gray-400 text-sm">Chargement...</span>
+                  <span className="text-gray-400 text-sm">{t('loading')}</span>
                 </div>
               ) : (
                 renderCalendarGrid()
@@ -1096,14 +1089,14 @@ export default function CalendarPage() {
                   className="flex items-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm font-medium transition"
                 >
                   <Bot size={16} />
-                  Agent IA
+                  {t('agentIA')}
                 </button>
                 <button
                   onClick={handleImportClick}
                   className="flex items-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm font-medium transition"
                 >
                   <Upload size={16} />
-                  Importer
+                  {t('import')}
                 </button>
               </div>
               <button
@@ -1111,7 +1104,7 @@ export default function CalendarPage() {
                 className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 rounded-lg text-sm font-bold transition"
               >
                 <Plus size={16} />
-                Nouveau Post
+                {t('newPost')}
               </button>
             </div>
           </Card>
@@ -1124,7 +1117,7 @@ export default function CalendarPage() {
               <>
                 <div className="flex items-center justify-between mb-1">
                   <h3 className="text-lg font-bold">
-                    {new Date(currentDate.getFullYear(), currentDate.getMonth(), selectedDay).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}
+                    {new Date(currentDate.getFullYear(), currentDate.getMonth(), selectedDay).toLocaleDateString(intlLocale, { weekday: 'short', day: 'numeric', month: 'short' })}
                   </h3>
                   {selectedDayPosts.length > 0 && (
                     <button
@@ -1132,11 +1125,11 @@ export default function CalendarPage() {
                       className={`text-xs px-2 py-1 rounded transition ${bulkMode ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-400 hover:text-white'}`}
                     >
                       <CheckSquare size={12} className="inline mr-1" />
-                      {bulkMode ? 'Annuler' : 'Selectionner'}
+                      {bulkMode ? tc('cancel') : t('select')}
                     </button>
                   )}
                 </div>
-                <p className="text-xs text-gray-400 mb-3">{selectedDayPosts.length} post{selectedDayPosts.length !== 1 ? 's' : ''}</p>
+                <p className="text-xs text-gray-400 mb-3">{selectedDayPosts.length} {selectedDayPosts.length !== 1 ? t('posts') : t('post')}</p>
 
                 {/* Select all / deselect */}
                 {bulkMode && (
@@ -1151,7 +1144,7 @@ export default function CalendarPage() {
                       }}
                       className="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 transition"
                     >
-                      {selectedPostIds.size === selectedDayPosts.length ? 'Tout désélectionner' : 'Tout sélectionner'}
+                      {selectedPostIds.size === selectedDayPosts.length ? t('deselectAll') : t('selectAll')}
                     </button>
                     <span className="text-[10px] text-gray-500">{selectedPostIds.size}/{selectedDayPosts.length}</span>
                   </div>
@@ -1165,21 +1158,21 @@ export default function CalendarPage() {
                       disabled={saving}
                       className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-[10px] font-medium transition"
                     >
-                      <Copy className="w-3 h-3" /> Dupliquer
+                      <Copy className="w-3 h-3" /> {t('bulkDuplicate')}
                     </button>
                     <button
                       onClick={() => { setShowBulkDateModal(true); setBulkNewDate(''); }}
                       disabled={saving}
                       className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-[10px] font-medium transition"
                     >
-                      <CalendarDays className="w-3 h-3" /> Déplacer
+                      <CalendarDays className="w-3 h-3" /> {t('bulkMove')}
                     </button>
                     <button
                       onClick={handleBulkDelete}
                       disabled={saving}
                       className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-[10px] font-medium transition"
                     >
-                      <Trash2 className="w-3 h-3" /> Suppr.
+                      <Trash2 className="w-3 h-3" /> {t('bulkDelete')}
                     </button>
                   </div>
                 )}
@@ -1236,7 +1229,7 @@ export default function CalendarPage() {
                   {selectedDayPosts.length === 0 ? (
                     <div className="flex flex-col items-center py-6 text-gray-500">
                       <Calendar size={28} className="mb-2 text-gray-600" />
-                      <p className="text-sm">Aucun post ce jour</p>
+                      <p className="text-sm">{t('noPosts')}</p>
                     </div>
                   ) : (
                     selectedDayPosts.map((post) => (
@@ -1284,10 +1277,10 @@ export default function CalendarPage() {
                               <Badge className={`text-white text-[9px] px-1 py-0 ${
                                 post.status === 'published' ? 'bg-green-600' : post.status === 'scheduled' ? 'bg-blue-600' : 'bg-gray-600'
                               }`}>
-                                {post.status === 'published' ? 'Publie' : post.status === 'scheduled' ? 'Planifie' : 'Brouillon'}
+                                {t(`status.${post.status}`)}
                               </Badge>
                               {post.metadata?.hasAudio && (
-                                <span className="text-[9px] text-pink-400 flex items-center gap-0.5" title="Audio ajouté"><Volume2 className="w-2.5 h-2.5" /></span>
+                                <span className="text-[9px] text-pink-400 flex items-center gap-0.5" title={t('actions.addAudio')}><Volume2 className="w-2.5 h-2.5" /></span>
                               )}
                               <span className="text-[9px] text-gray-400 flex items-center gap-0.5 ml-auto">
                                 <Clock className="w-2.5 h-2.5" />{post.scheduled_time}
@@ -1295,17 +1288,17 @@ export default function CalendarPage() {
                             </div>
 
                             <div className="flex gap-1">
-                              <button onClick={() => handlePostClick(post)} className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition" title="Aperçu"><Eye className="w-3 h-3" /></button>
-                              <button onClick={() => handleEditPost(post)} className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition" title="Modifier"><Edit2 className="w-3 h-3" /></button>
-                              <button onClick={() => handleDuplicatePost(post)} className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition" title="Dupliquer"><Copy className="w-3 h-3" /></button>
+                              <button onClick={() => handlePostClick(post)} className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition" title={t('actions.preview')}><Eye className="w-3 h-3" /></button>
+                              <button onClick={() => handleEditPost(post)} className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition" title={t('actions.edit')}><Edit2 className="w-3 h-3" /></button>
+                              <button onClick={() => handleDuplicatePost(post)} className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition" title={t('actions.duplicate')}><Copy className="w-3 h-3" /></button>
                               {(post.media_url || post.metadata?.characterUrl) && (
-                                <button onClick={() => handleExportPost(post)} className="p-1 rounded bg-gray-700 hover:bg-blue-600 text-gray-300 hover:text-white transition" title="Exporter"><Download className="w-3 h-3" /></button>
+                                <button onClick={() => handleExportPost(post)} className="p-1 rounded bg-gray-700 hover:bg-blue-600 text-gray-300 hover:text-white transition" title={t('actions.export')}><Download className="w-3 h-3" /></button>
                               )}
                               {!post.metadata?.hasAudio && post.media_type === 'video' && (
-                                <button onClick={() => { window.location.href = `/dashboard/audio-studio?postId=${post.id}`; }} className="p-1 rounded bg-purple-600 hover:bg-purple-700 text-white transition" title="Ajouter le son"><Volume2 className="w-3 h-3" /></button>
+                                <button onClick={() => { window.location.href = `/dashboard/audio-studio?postId=${post.id}`; }} className="p-1 rounded bg-purple-600 hover:bg-purple-700 text-white transition" title={t('actions.addAudio')}><Volume2 className="w-3 h-3" /></button>
                               )}
-                              <button onClick={() => handleFullPreview(post)} className="p-1 rounded bg-green-600 hover:bg-green-700 text-white transition ml-auto" title="Aperçu complet & Publier"><Play className="w-3 h-3" /></button>
-                              <button disabled={saving} onClick={() => handleDeletePost(post)} className="p-1 rounded bg-gray-700 hover:bg-red-600 text-gray-300 hover:text-white transition" title="Supprimer"><Trash2 className="w-3 h-3" /></button>
+                              <button onClick={() => handleFullPreview(post)} className="p-1 rounded bg-green-600 hover:bg-green-700 text-white transition ml-auto" title={t('actions.fullPreview')}><Play className="w-3 h-3" /></button>
+                              <button disabled={saving} onClick={() => handleDeletePost(post)} className="p-1 rounded bg-gray-700 hover:bg-red-600 text-gray-300 hover:text-white transition" title={t('actions.delete')}><Trash2 className="w-3 h-3" /></button>
                             </div>
                           </>
                         )}
@@ -1319,16 +1312,16 @@ export default function CalendarPage() {
                       className="w-full p-2 rounded-lg border-2 border-dashed border-gray-700 hover:border-purple-500 text-gray-400 hover:text-white transition flex items-center justify-center gap-2 text-xs"
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      Ajouter un post
+                      {t('addPost')}
                     </button>
                   )}
                 </div>
               </>
             ) : (
               <div className="flex flex-col items-center justify-center py-16 text-gray-500">
-                <h3 className="text-lg font-bold text-white mb-4">Selectionnez une date</h3>
+                <h3 className="text-lg font-bold text-white mb-4">{t('selectDate')}</h3>
                 <Calendar size={48} className="mb-3 text-gray-600" />
-                <p className="text-sm text-center">Cliquez sur un jour pour voir ses posts</p>
+                <p className="text-sm text-center">{t('clickDayToSee')}</p>
               </div>
             )}
           </Card>
@@ -1336,7 +1329,7 @@ export default function CalendarPage() {
       </div>
 
       {/* Preview Modal */}
-      <Modal isOpen={showPreviewModal} onClose={() => setShowPreviewModal(false)} title="Apercu du post" size="lg">
+      <Modal isOpen={showPreviewModal} onClose={() => setShowPreviewModal(false)} title={t('previewModal.title')} size="lg">
         {selectedPost && (() => {
           const spMeta = selectedPost.metadata as Record<string, unknown> | undefined;
           const spAccent = (spMeta?.branding as Record<string, unknown>)?.accentColor as string || '#D91CD2';
@@ -1380,7 +1373,7 @@ export default function CalendarPage() {
                             </div>
                           ))}
                           {spTextCards.length > 3 && (
-                            <span className="text-[8px] text-white/50">+{spTextCards.length - 3} cartes</span>
+                            <span className="text-[8px] text-white/50">+{spTextCards.length - 3} {t('previewModal.cards')}</span>
                           )}
                         </div>
                       )}
@@ -1399,18 +1392,18 @@ export default function CalendarPage() {
               </div>
               <div className="text-xs text-gray-400 flex items-center gap-1">
                 <Clock className="w-3 h-3" />
-                {selectedPost.scheduled_date} a {selectedPost.scheduled_time}
+                {selectedPost.scheduled_date} {t('previewModal.at')} {selectedPost.scheduled_time}
               </div>
             </div>
             <div className="flex gap-3">
               <Button className="flex-1 bg-studiio-primary text-white" onClick={() => handleEditPost()}>
-                <Edit2 className="w-4 h-4 mr-2" />Modifier
+                <Edit2 className="w-4 h-4 mr-2" />{t('actions.edit')}
               </Button>
               <Button variant="secondary" className="flex-1" onClick={() => handleDuplicatePost()} disabled={saving}>
-                <Copy className="w-4 h-4 mr-2" />Dupliquer
+                <Copy className="w-4 h-4 mr-2" />{t('actions.duplicate')}
               </Button>
               <Button variant="secondary" className="flex-1" onClick={() => handleDeletePost()} disabled={saving}>
-                <Trash2 className="w-4 h-4 mr-2" />Supprimer
+                <Trash2 className="w-4 h-4 mr-2" />{t('actions.delete')}
               </Button>
             </div>
           </div>
@@ -1419,7 +1412,7 @@ export default function CalendarPage() {
       </Modal>
 
       {/* Edit Modal */}
-      <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="Modifier le Post" size="lg">
+      <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title={t('editModal.title')} size="lg">
         <div className="max-h-[70vh] overflow-y-auto pr-1">
           <div className="flex gap-4 mb-6 border-b border-gray-700 pb-3">
             {(['draft', 'scheduled', 'published'] as const).map((tab) => (
@@ -1430,31 +1423,31 @@ export default function CalendarPage() {
                   editTab === tab ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-400 hover:text-white'
                 }`}
               >
-                {tab === 'draft' ? 'Brouillon' : tab === 'scheduled' ? 'Planifie' : 'Publier'}
+                {t(`editModal.${tab}`)}
               </button>
             ))}
           </div>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-white mb-2">Titre</label>
+              <label className="block text-sm font-medium text-white mb-2">{t('editModal.titleField')}</label>
               <input type="text" value={editFormData.title || ''} onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500" placeholder="Titre du post" />
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500" placeholder={t('editModal.titlePlaceholder')} />
             </div>
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="text-sm font-medium text-white">Légende</label>
+                <label className="text-sm font-medium text-white">{t('editModal.captionField')}</label>
                 <button
                   onClick={generateIACaption}
                   className="flex items-center gap-1 px-2.5 py-1 bg-purple-600 hover:bg-purple-500 rounded-lg text-[10px] font-medium text-white transition"
                 >
-                  <Sparkles size={10} /> IA Légende
+                  <Sparkles size={10} /> {t('editModal.generateCaption')}
                 </button>
               </div>
               <textarea value={editFormData.caption || ''} onChange={(e) => setEditFormData({ ...editFormData, caption: e.target.value })} rows={4}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 text-sm" placeholder="Décrivez votre post..." />
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 text-sm" placeholder={t('editModal.captionPlaceholder')} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-white mb-2">Reseaux sociaux</label>
+              <label className="block text-sm font-medium text-white mb-2">{t('editModal.platforms')}</label>
               <div className="flex flex-wrap gap-2">
                 {['Instagram', 'TikTok', 'Facebook', 'YouTube'].map((p) => (
                   <button key={p} onClick={() => {
@@ -1469,43 +1462,43 @@ export default function CalendarPage() {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-white mb-2">Media</label>
+              <label className="block text-sm font-medium text-white mb-2">{t('editModal.media')}</label>
               <div onClick={handleImportClick} className="border-2 border-dashed border-gray-700 rounded-lg p-6 text-center cursor-pointer hover:border-purple-500 transition">
                 {editFormData.media_url ? (
-                  <div className="text-white"><FileVideo className="w-8 h-8 mx-auto mb-2 text-purple-400" /><p className="text-sm">Media ajoute</p><p className="text-xs text-gray-400 mt-1">Cliquez pour changer</p></div>
+                  <div className="text-white"><FileVideo className="w-8 h-8 mx-auto mb-2 text-purple-400" /><p className="text-sm">{t('editModal.mediaAdded')}</p><p className="text-xs text-gray-400 mt-1">{t('editModal.mediaClickToChange')}</p></div>
                 ) : (
-                  <div className="text-gray-400"><Upload className="w-8 h-8 mx-auto mb-2" /><p className="text-sm">Glissez-deposez un fichier</p><p className="text-xs text-gray-400 mt-1">ou cliquez pour importer</p></div>
+                  <div className="text-gray-400"><Upload className="w-8 h-8 mx-auto mb-2" /><p className="text-sm">{t('editModal.mediaDragDrop')}</p><p className="text-xs text-gray-400 mt-1">{t('editModal.mediaClickToImport')}</p></div>
                 )}
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-white mb-2">Format</label>
+              <label className="block text-sm font-medium text-white mb-2">{t('editModal.format')}</label>
               <div className="flex gap-2">
                 {(['reel', 'tv'] as const).map((fmt) => (
                   <button key={fmt} onClick={() => setEditFormData({ ...editFormData, format: fmt })}
                     className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition ${editFormData.format === fmt ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
-                  >{fmt === 'reel' ? 'Reel (9:16)' : 'TV (16:9)'}</button>
+                  >{tc(`formats.${fmt}`)}</button>
                 ))}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-white mb-2">Date</label>
+                <label className="block text-sm font-medium text-white mb-2">{t('editModal.date')}</label>
                 <input type="date" value={editFormData.scheduled_date || ''} onChange={(e) => setEditFormData({ ...editFormData, scheduled_date: e.target.value })}
                   className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-white mb-2">Heure</label>
+                <label className="block text-sm font-medium text-white mb-2">{t('editModal.time')}</label>
                 <input type="time" value={editFormData.scheduled_time || ''} onChange={(e) => setEditFormData({ ...editFormData, scheduled_time: e.target.value })}
                   className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500" />
               </div>
             </div>
           </div>
           <div className="flex gap-3 mt-6 pt-4 border-t border-gray-700">
-            <Button variant="secondary" className="flex-1" onClick={() => setShowEditModal(false)}>Annuler</Button>
+            <Button variant="secondary" className="flex-1" onClick={() => setShowEditModal(false)}>{tc('cancel')}</Button>
             <Button className="flex-1 bg-purple-600 hover:bg-purple-700 text-white" onClick={handleSavePost} disabled={saving}>
               {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
-              Enregistrer
+              {t('editModal.save')}
             </Button>
           </div>
         </div>
@@ -1517,10 +1510,10 @@ export default function CalendarPage() {
           <div className="text-center mb-4">
             <h2 className="text-lg font-bold flex items-center justify-center gap-2">
               <span className="text-xl">📅</span>
-              AGENT IA — PLANIFICATEUR AUTONOME
+              {t('aiAgent.title')}
             </h2>
             <p className="text-gray-400 text-xs mt-1">
-              Importe tes rushes, l&apos;IA genere un planning optimise avec un montage different par video.
+              {t('aiAgent.description')}
             </p>
           </div>
 
@@ -1528,7 +1521,7 @@ export default function CalendarPage() {
           <div className="mb-4">
             <div className="flex items-center gap-2 mb-2">
               <Folder size={14} className="text-gray-400" />
-              <span className="text-xs font-semibold">Dossier de Rushes</span>
+              <span className="text-xs font-semibold">{t('aiAgent.rushFolder')}</span>
             </div>
             <button
               onClick={() => rushInputRef.current?.click()}
@@ -1536,7 +1529,7 @@ export default function CalendarPage() {
             >
               {aiRushFiles.length > 0 ? (
                 <div>
-                  <span className="text-sm text-white font-medium">{aiRushFiles.length} fichier(s)</span>
+                  <span className="text-sm text-white font-medium">{t('aiAgent.filesCount', { count: String(aiRushFiles.length) })}</span>
                   <div className="flex flex-wrap gap-1 justify-center mt-1.5">
                     {aiRushFiles.slice(0, 6).map((f, i) => (
                       <span key={i} className="text-[9px] bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded truncate max-w-[80px]">
@@ -1548,7 +1541,7 @@ export default function CalendarPage() {
                   </div>
                 </div>
               ) : (
-                <span className="text-sm text-gray-400">Selectionner des videos ou images</span>
+                <span className="text-sm text-gray-400">{t('aiAgent.selectVideosOrImages')}</span>
               )}
             </button>
           </div>
@@ -1558,7 +1551,7 @@ export default function CalendarPage() {
             {/* Left col */}
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-gray-400 mb-1.5">Planifier pour</label>
+                <label className="block text-xs text-gray-400 mb-1.5">{t('aiAgent.planFor')}</label>
                 <div className="flex gap-1.5">
                   {(['7', '14', '30'] as const).map((d) => (
                     <button
@@ -1570,14 +1563,14 @@ export default function CalendarPage() {
                           : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
                       }`}
                     >
-                      {d}j
+                      {t(`aiAgent.duration.${d}`)}
                     </button>
                   ))}
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs text-gray-400 mb-1.5">Reseaux sociaux</label>
+                <label className="block text-xs text-gray-400 mb-1.5">{t('aiAgent.platforms.label')}</label>
                 <div className="grid grid-cols-2 gap-1.5">
                   {['Instagram', 'Facebook', 'YouTube Shorts', 'TikTok'].map((p) => (
                     <button
@@ -1599,14 +1592,14 @@ export default function CalendarPage() {
             {/* Right col */}
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-gray-400 mb-1.5">Objectifs</label>
+                <label className="block text-xs text-gray-400 mb-1.5">{t('aiAgent.objectives.label')}</label>
                 <div className="flex flex-wrap gap-1.5">
                   {[
-                    { id: 'promo', label: '📁 Promo' },
-                    { id: 'motiv', label: '💪 Motiv' },
-                    { id: 'bienfaits', label: '✨ Bienfaits' },
-                    { id: 'abo', label: '❤️ Abo' },
-                    { id: 'nutri', label: '🥗 Nutri' },
+                    { id: 'promo', emoji: '📁' },
+                    { id: 'motiv', emoji: '💪' },
+                    { id: 'bienfaits', emoji: '✨' },
+                    { id: 'abo', emoji: '❤️' },
+                    { id: 'nutri', emoji: '🥗' },
                   ].map((obj) => (
                     <button
                       key={obj.id}
@@ -1617,7 +1610,7 @@ export default function CalendarPage() {
                           : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'
                       }`}
                     >
-                      {obj.label}
+                      {obj.emoji} {t(`aiAgent.objectives.${obj.id}`)}
                     </button>
                   ))}
                 </div>
@@ -1632,7 +1625,7 @@ export default function CalendarPage() {
                   }`}
                 >
                   <ImageIcon size={12} className="inline mr-1" />
-                  Photo Affiche differente par video
+                  {t('aiAgent.posterPhoto.label')}
                 </button>
               </div>
 
@@ -1640,13 +1633,13 @@ export default function CalendarPage() {
               <div>
                 <div className="flex items-center gap-1 mb-1.5">
                   <Music size={12} className="text-gray-400" />
-                  <label className="text-xs text-gray-400">Musique (optionnel)</label>
+                  <label className="text-xs text-gray-400">{t('aiAgent.musicFile.label')}</label>
                 </div>
                 <button
                   onClick={() => musicInputRef.current?.click()}
                   className="w-full py-2 bg-gray-800 border border-gray-700 hover:bg-gray-700 rounded-lg text-xs text-gray-400 transition truncate px-2"
                 >
-                  {aiMusicFile ? aiMusicFile.name : 'Choisir un fichier audio'}
+                  {aiMusicFile ? aiMusicFile.name : t('aiAgent.musicFile.selectFile')}
                 </button>
               </div>
             </div>
@@ -1656,7 +1649,7 @@ export default function CalendarPage() {
           <div className="mb-4 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
             <h3 className="text-xs font-bold text-gray-300 mb-2 flex items-center gap-1.5">
               <Sparkles size={12} className="text-purple-400" />
-              Personnalisation (mémorisée)
+              {t('aiAgent.branding.title')}
             </h3>
             <BrandingPanel branding={branding} onChange={setBranding} compact />
           </div>
@@ -1679,25 +1672,25 @@ export default function CalendarPage() {
 
           {/* Generate Button */}
           <div className="flex gap-3">
-            <Button variant="secondary" className="flex-1" onClick={() => !aiGenerating && setShowAIAgent(false)} disabled={aiGenerating}>Annuler</Button>
+            <Button variant="secondary" className="flex-1" onClick={() => !aiGenerating && setShowAIAgent(false)} disabled={aiGenerating}>{tc('cancel')}</Button>
             <button
               onClick={handleAIGenerate}
               disabled={aiGenerating || aiRushFiles.length === 0}
               className="flex-1 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 disabled:opacity-50 rounded-lg text-sm font-bold transition"
             >
               {aiGenerating ? <Loader2 size={16} className="animate-spin" /> : <Bot size={16} />}
-              {aiGenerating ? 'Génération...' : `Générer (${aiPlanDuration}j)`}
+              {aiGenerating ? t('aiAgent.generating') : t('aiAgent.generateWithDays', { days: aiPlanDuration })}
             </button>
           </div>
         </div>
       </Modal>
 
       {/* Bulk Date Change Modal */}
-      <Modal isOpen={showBulkDateModal} onClose={() => setShowBulkDateModal(false)} title="Déplacer les posts sélectionnés" size="sm">
+      <Modal isOpen={showBulkDateModal} onClose={() => setShowBulkDateModal(false)} title={t('bulkDateModal.title')} size="sm">
         <div className="space-y-4">
-          <p className="text-sm text-gray-400">{selectedPostIds.size} post{selectedPostIds.size > 1 ? 's' : ''} sélectionné{selectedPostIds.size > 1 ? 's' : ''}</p>
+          <p className="text-sm text-gray-400">{t('bulkDateModal.selectedPosts', { count: String(selectedPostIds.size) })}</p>
           <div>
-            <label className="block text-sm font-medium text-white mb-2">Nouvelle date</label>
+            <label className="block text-sm font-medium text-white mb-2">{t('bulkDateModal.newDate')}</label>
             <input
               type="date"
               value={bulkNewDate}
@@ -1706,7 +1699,7 @@ export default function CalendarPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-white mb-2">Heure du 1er post</label>
+            <label className="block text-sm font-medium text-white mb-2">{t('bulkDateModal.newTime')}</label>
             <input
               type="time"
               value={bulkNewTime}
@@ -1714,14 +1707,14 @@ export default function CalendarPage() {
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-purple-500"
             />
             {selectedPostIds.size > 1 && (
-              <p className="text-[10px] text-gray-500 mt-1">Les posts suivants seront espacés de 30 min</p>
+              <p className="text-[10px] text-gray-500 mt-1">{t('bulkDateModal.staggerNote')}</p>
             )}
           </div>
           <div className="flex gap-3">
-            <Button variant="secondary" className="flex-1" onClick={() => setShowBulkDateModal(false)}>Annuler</Button>
+            <Button variant="secondary" className="flex-1" onClick={() => setShowBulkDateModal(false)}>{tc('cancel')}</Button>
             <Button className="flex-1 bg-purple-600 hover:bg-purple-700 text-white" onClick={handleBulkDateChange} disabled={saving || !bulkNewDate}>
               {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CalendarDays className="w-4 h-4 mr-2" />}
-              Déplacer
+              {t('bulkDateModal.confirm')}
             </Button>
           </div>
         </div>
@@ -1789,13 +1782,13 @@ export default function CalendarPage() {
                     <div className="absolute inset-0 transition-all duration-[800ms] ease-in-out" style={{ opacity: currentSeq === 'cards' ? 1 : 0, zIndex: currentSeq === 'cards' ? 10 : 1 }}>
                       <div className="absolute inset-0 bg-gradient-to-b from-purple-950 via-gray-900 to-black" />
                       <div className="absolute inset-0 flex flex-col items-center justify-center z-10 px-6">
-                        <p className="text-xs font-bold text-white/50 uppercase tracking-[0.25em] text-center mb-5">Informations</p>
+                        <p className="text-xs font-bold text-white/50 uppercase tracking-[0.25em] text-center mb-5">{t('fullPreview.information')}</p>
                         <div className="w-full space-y-2.5">
                           {(() => {
                             // Use cards if available, otherwise convert textCards
                             const displayCards = meta?.cards?.length > 0
                               ? meta.cards.map((c: { emoji: string; label: string; value: string; color?: string }) => c)
-                              : (meta?.textCards || []).map((tc: { text: string; color?: string }) => ({ emoji: '📝', label: tc.text, value: tc.text, color: tc.color }));
+                              : (meta?.textCards || []).map((tCard: { text: string; color?: string }) => ({ emoji: '📝', label: tCard.text, value: tCard.text, color: tCard.color }));
                             return displayCards.map((card: { emoji: string; label: string; value: string; color?: string }, i: number) => (
                               <div key={i} className="flex items-center gap-3 bg-black/40 backdrop-blur-sm rounded-xl px-4 py-3" style={{ borderLeft: `3px solid ${card.color || accent}`, transition: 'all 0.6s cubic-bezier(0.16, 1, 0.3, 1)', transitionDelay: currentSeq === 'cards' ? `${i * 200}ms` : '0ms', opacity: currentSeq === 'cards' ? 1 : 0, transform: currentSeq === 'cards' ? 'translateX(0)' : 'translateX(-30px)' }}>
                                 <span className="text-2xl">{card.emoji}</span>
@@ -1828,8 +1821,8 @@ export default function CalendarPage() {
                         <p className="text-sm text-white/70 uppercase tracking-wider">{brd?.ctaSubText || branding.ctaSubText || 'LIEN EN BIO'}</p>
                         {meta?.salesPhrase && <p className="text-base text-white/90 mt-4 italic font-medium">{meta.salesPhrase}</p>}
                         <div className="flex items-center justify-center gap-2 mt-5">
-                          {meta?.musicUrl && <span className="text-xs text-white/80 px-3 py-1 rounded-full flex items-center gap-1.5 bg-white/10 backdrop-blur-sm"><Music size={12} /> Musique</span>}
-                          {meta?.voiceMode && meta.voiceMode !== 'none' && <span className="text-xs text-white/80 px-3 py-1 rounded-full flex items-center gap-1.5 bg-white/10 backdrop-blur-sm"><Mic size={12} /> Voix off</span>}
+                          {meta?.musicUrl && <span className="text-xs text-white/80 px-3 py-1 rounded-full flex items-center gap-1.5 bg-white/10 backdrop-blur-sm"><Music size={12} /> {t('fullPreview.music')}</span>}
+                          {meta?.voiceMode && meta.voiceMode !== 'none' && <span className="text-xs text-white/80 px-3 py-1 rounded-full flex items-center gap-1.5 bg-white/10 backdrop-blur-sm"><Mic size={12} /> {t('fullPreview.voiceOffLabel')}</span>}
                         </div>
                         {wm && <p className="text-[9px] text-white/25 mt-5 tracking-[0.2em]">{wm}</p>}
                       </div>
@@ -1848,7 +1841,7 @@ export default function CalendarPage() {
                             return newMuted;
                           });
                         }}
-                        title={montageMuted ? 'Activer le son' : 'Couper le son'}
+                        title={montageMuted ? t('fullPreview.enableSound') : t('fullPreview.muteSound')}
                       >
                         {montageMuted ? <VolumeX size={12} className="text-white" /> : <Volume2 size={12} className="text-white" />}
                       </button>
@@ -1988,12 +1981,12 @@ export default function CalendarPage() {
                       <div className="flex items-center justify-center gap-2">
                         {meta?.musicUrl && (
                           <span className="text-[9px] text-white px-2 py-1 rounded-full flex items-center gap-1" style={{ background: `linear-gradient(135deg, #7C3AED, ${accent})` }}>
-                            <Music size={8} /> Musique
+                            <Music size={8} /> {t('fullPreview.music')}
                           </span>
                         )}
                         {meta?.voiceMode && meta.voiceMode !== 'none' && (
                           <span className="text-[9px] text-white px-2 py-1 rounded-full flex items-center gap-1" style={{ background: 'linear-gradient(135deg, #059669, #10B981)' }}>
-                            <Mic size={8} /> Voix off
+                            <Mic size={8} /> {t('fullPreview.voiceOffLabel')}
                           </span>
                         )}
                       </div>
@@ -2012,53 +2005,53 @@ export default function CalendarPage() {
             <div className="w-80 p-6 flex flex-col border-l border-gray-800">
               <h3 className="text-xl font-bold text-white mb-1">{fullPreviewPost.title}</h3>
               {meta?.subtitle && <p className="text-sm text-purple-300 mb-2">{meta.subtitle}</p>}
-              <p className="text-sm text-gray-300 mb-4 whitespace-pre-line flex-1 overflow-y-auto max-h-32">{fullPreviewPost.caption || 'Pas de légende'}</p>
+              <p className="text-sm text-gray-300 mb-4 whitespace-pre-line flex-1 overflow-y-auto max-h-32">{fullPreviewPost.caption || t('previewModal.noCaption')}</p>
 
               <div className="space-y-2.5 mb-6">
                 <div className="flex items-center gap-2 text-xs text-gray-400">
                   <Calendar className="w-3 h-3" />
-                  {fullPreviewPost.scheduled_date} à {fullPreviewPost.scheduled_time}
+                  {fullPreviewPost.scheduled_date} {t('previewModal.at')} {fullPreviewPost.scheduled_time}
                 </div>
                 <div className="flex items-center gap-2 text-xs text-gray-400">
                   <FileVideo className="w-3 h-3" />
-                  {fullPreviewPost.format === 'reel' ? 'Reel 9:16' : 'TV 16:9'} • {fullPreviewPost.media_type}
+                  {tc(`formats.${fullPreviewPost.format}`)} • {fullPreviewPost.media_type}
                 </div>
                 {hasMetadata && (
                   <div className="flex items-center gap-2 text-xs text-gray-400">
                     <Sparkles className="w-3 h-3 text-purple-400" />
-                    {isCreator ? 'Vidéo Creator' : isInfographic ? 'Infographie' : 'Post'}
+                    {isCreator ? t('fullPreview.videoCreator') : isInfographic ? t('fullPreview.infographic') : t('fullPreview.postLabel')}
                     {meta?.objective && <span className="text-purple-300">• {meta.objective}</span>}
                     {meta?.theme && <span className="text-purple-300">• {meta.theme}</span>}
                   </div>
                 )}
                 {meta?.musicUrl && (
                   <div className="flex items-center gap-2 text-xs text-green-400">
-                    <Volume2 className="w-3 h-3" /> Musique incluse
+                    <Volume2 className="w-3 h-3" /> {t('fullPreview.musicIncluded')}
                   </div>
                 )}
                 {meta?.voiceMode && meta.voiceMode !== 'none' && (
                   <div className="flex items-center gap-2 text-xs text-emerald-400">
-                    <Mic className="w-3 h-3" /> Voix off ({meta.voiceMode === 'edge' ? 'Edge TTS' : 'Upload'})
+                    <Mic className="w-3 h-3" /> {t('fullPreview.voiceOver')} ({meta.voiceMode === 'edge' ? 'Edge TTS' : 'Upload'})
                   </div>
                 )}
                 {meta?.logoUrl && (
                   <div className="flex items-center gap-2 text-xs text-blue-400">
-                    <ImageIcon className="w-3 h-3" /> Logo inclus
+                    <ImageIcon className="w-3 h-3" /> {t('fullPreview.logoIncluded')}
                   </div>
                 )}
                 {hasMontage && (
                   <div className="flex items-center gap-2 text-xs text-purple-400">
-                    <Film className="w-3 h-3" /> {(meta?.sequences?.order || ['intro', 'cards', 'cta']).length} séquences • {meta?.sequences?.total || 30}s
+                    <Film className="w-3 h-3" /> {t('fullPreview.sequences', { count: String((meta?.sequences?.order || ['intro', 'cards', 'cta']).length) })} • {meta?.sequences?.total || 30}s
                   </div>
                 )}
                 {meta?.videoUrl && !hasMontage && (
                   <div className="flex items-center gap-2 text-xs text-blue-400">
-                    <Film className="w-3 h-3" /> Vidéo incluse
+                    <Film className="w-3 h-3" /> {t('fullPreview.videoIncluded')}
                   </div>
                 )}
                 {meta?.rushUrls && meta.rushUrls.length > 0 && (
                   <div className="flex items-center gap-2 text-xs text-gray-400">
-                    <FileVideo className="w-3 h-3" /> {meta.rushUrls.length} rush{meta.rushUrls.length > 1 ? 'es' : ''}
+                    <FileVideo className="w-3 h-3" /> {t('fullPreview.rushes', { count: String(meta.rushUrls.length) })}
                   </div>
                 )}
                 {fullPreviewPost.platforms.length > 0 && (
@@ -2072,7 +2065,7 @@ export default function CalendarPage() {
                   <Badge className={`text-white text-xs ${
                     fullPreviewPost.status === 'published' ? 'bg-green-600' : fullPreviewPost.status === 'scheduled' ? 'bg-blue-600' : 'bg-yellow-600'
                   }`}>
-                    {fullPreviewPost.status === 'published' ? 'Publié' : fullPreviewPost.status === 'scheduled' ? 'Planifié' : 'Brouillon'}
+                    {t(`status.${fullPreviewPost.status}`)}
                   </Badge>
                 </div>
               </div>
@@ -2082,14 +2075,14 @@ export default function CalendarPage() {
                   onClick={() => handleEditPost(fullPreviewPost)}
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm font-medium transition"
                 >
-                  <Edit2 size={14} /> Modifier
+                  <Edit2 size={14} /> {t('fullPreview.edit')}
                 </button>
                 {(fullPreviewPost.media_url || meta?.characterUrl) && (
                   <button
                     onClick={() => handleExportPost(fullPreviewPost)}
                     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm font-medium transition"
                   >
-                    <Download size={14} /> Exporter sur le bureau
+                    <Download size={14} /> {t('actions.exportDesktop')}
                   </button>
                 )}
                 {!meta?.hasAudio && fullPreviewPost.media_type === 'video' && (
@@ -2097,7 +2090,7 @@ export default function CalendarPage() {
                     onClick={() => { window.location.href = `/dashboard/audio-studio?postId=${fullPreviewPost.id}`; }}
                     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 border border-purple-500 rounded-lg text-sm font-medium text-white transition"
                   >
-                    <Volume2 size={14} /> Ajouter le son
+                    <Volume2 size={14} /> {t('actions.addAudio')}
                   </button>
                 )}
                 {fullPreviewPost.status !== 'scheduled' && (
@@ -2106,7 +2099,7 @@ export default function CalendarPage() {
                     disabled={saving}
                     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm font-bold text-white transition"
                   >
-                    <Send size={14} /> Planifier
+                    <Send size={14} /> {t('fullPreview.schedule')}
                   </button>
                 )}
                 <button
@@ -2115,13 +2108,13 @@ export default function CalendarPage() {
                   className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 disabled:opacity-50 rounded-lg text-sm font-bold text-white transition"
                 >
                   {saving ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                  Publier maintenant
+                  {t('fullPreview.publishNow')}
                 </button>
                 <button
                   onClick={() => setShowFullPreview(false)}
                   className="w-full text-center text-xs text-gray-500 hover:text-white transition py-1"
                 >
-                  Fermer
+                  {t('fullPreview.close')}
                 </button>
               </div>
             </div>

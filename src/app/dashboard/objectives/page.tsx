@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { Trash2, Edit2 } from 'lucide-react';
+import { useTranslations } from '@/i18n/client';
 
 const mockObjectives = [
   { id: '1', name: 'Croissance Instagram', description: 'Augmenter les followers', target: 'Jeunes adultes', platform: 'Instagram', tone: 'Ludique' },
@@ -18,6 +19,8 @@ export default function ObjectivesPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: '', description: '', target: '', platform: '', tone: '' });
+  const t = useTranslations('objectives');
+  const tc = useTranslations('common');
 
   const handleDelete = (id: string) => {
     setObjectives(objectives.filter((obj) => obj.id !== id));
@@ -38,13 +41,11 @@ export default function ObjectivesPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingId) {
-      // Update existing objective
       setObjectives(objectives.map((obj) =>
         obj.id === editingId ? { ...formData, id: editingId } : obj
       ));
       setEditingId(null);
     } else {
-      // Create new objective
       setObjectives([...objectives, { ...formData, id: Date.now().toString() }]);
     }
     setFormData({ name: '', description: '', target: '', platform: '', tone: '' });
@@ -61,8 +62,8 @@ export default function ObjectivesPage() {
     <div className="space-y-8">
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-4xl font-bold text-white mb-2">Objectifs</h1>
-          <p className="text-gray-400">Définissez vos objectifs de création vidéo</p>
+          <h1 className="text-4xl font-bold text-white mb-2">{t('title')}</h1>
+          <p className="text-gray-400">{t('subtitle')}</p>
         </div>
         <Button variant="primary" onClick={() => {
           if (showForm) {
@@ -73,38 +74,38 @@ export default function ObjectivesPage() {
             setShowForm(true);
           }
         }}>
-          {showForm ? 'Annuler' : '+ Créer un objectif'}
+          {showForm ? tc('cancel') : t('createObjective')}
         </Button>
       </div>
 
       {showForm && (
         <Card>
           <CardHeader className="border-b border-gray-800">
-            <CardTitle>{editingId ? 'Modifier l\u2019objectif' : 'Nouvel objectif'}</CardTitle>
+            <CardTitle>{editingId ? t('editObjective') : t('newObjective')}</CardTitle>
           </CardHeader>
           <form onSubmit={handleSubmit}>
             <CardContent className="pt-6 space-y-4">
               <Input
-                label="Nom"
-                placeholder="Par exemple: Croissance Instagram"
+                label={t('form.name')}
+                placeholder={t('form.namePlaceholder')}
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
               />
               <Input
-                label="Description"
-                placeholder="Décrivez votre objectif"
+                label={t('form.description')}
+                placeholder={t('form.descriptionPlaceholder')}
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               />
               <Input
-                label="Public cible"
-                placeholder="Par exemple: Jeunes adultes"
+                label={t('form.targetAudience')}
+                placeholder={t('form.targetPlaceholder')}
                 value={formData.target}
                 onChange={(e) => setFormData({ ...formData, target: e.target.value })}
               />
               <Select
-                label="Plateforme"
+                label={t('form.platform')}
                 options={[
                   { value: 'instagram', label: 'Instagram' },
                   { value: 'tiktok', label: 'TikTok' },
@@ -115,12 +116,12 @@ export default function ObjectivesPage() {
                 onChange={(e) => setFormData({ ...formData, platform: e.target.value })}
               />
               <Select
-                label="Ton"
+                label={t('form.tone')}
                 options={[
-                  { value: 'ludique', label: 'Ludique' },
-                  { value: 'educatif', label: 'Éducatif' },
-                  { value: 'tendance', label: 'Tendance' },
-                  { value: 'professionnel', label: 'Professionnel' },
+                  { value: 'ludique', label: t('tones.playful') },
+                  { value: 'educatif', label: t('tones.educational') },
+                  { value: 'tendance', label: t('tones.trendy') },
+                  { value: 'professionnel', label: t('tones.professional') },
                 ]}
                 value={formData.tone}
                 onChange={(e) => setFormData({ ...formData, tone: e.target.value })}
@@ -129,11 +130,11 @@ export default function ObjectivesPage() {
             <CardFooter className="flex gap-2">
               {editingId && (
                 <Button variant="secondary" type="button" onClick={handleCancel}>
-                  Annuler
+                  {tc('cancel')}
                 </Button>
               )}
               <Button variant="primary" type="submit">
-                {editingId ? 'Enregistrer' : 'Créer'}
+                {editingId ? tc('save') : tc('create')}
               </Button>
             </CardFooter>
           </form>
@@ -150,15 +151,15 @@ export default function ObjectivesPage() {
                   <p className="text-sm text-gray-400 mb-4">{objective.description}</p>
                   <div className="flex gap-4 text-xs">
                     <div>
-                      <span className="text-gray-500">Public: </span>
+                      <span className="text-gray-500">{t('labels.audience')}: </span>
                       <span className="text-gray-300">{objective.target}</span>
                     </div>
                     <div>
-                      <span className="text-gray-500">Plateforme: </span>
+                      <span className="text-gray-500">{t('labels.platform')}: </span>
                       <span className="text-gray-300">{objective.platform}</span>
                     </div>
                     <div>
-                      <span className="text-gray-500">Ton: </span>
+                      <span className="text-gray-500">{t('labels.tone')}: </span>
                       <span className="text-gray-300">{objective.tone}</span>
                     </div>
                   </div>

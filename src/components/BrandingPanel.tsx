@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { type BrandingSettings } from '@/lib/hooks/useBranding';
+import { useTranslations } from '@/i18n/client';
 
 interface BrandingPanelProps {
   branding: BrandingSettings;
@@ -22,27 +23,29 @@ const PRESET_COLORS = [
 ];
 
 export default function BrandingPanel({ branding, onChange, compact = false }: BrandingPanelProps) {
+  const t = useTranslations('branding');
+
   return (
     <div className={`space-y-${compact ? '3' : '4'}`}>
       {/* Watermark / Site web */}
       <div>
         <label className="block text-xs font-semibold text-gray-400 mb-1.5">
-          Watermark / Site web
+          {t('watermark.label')}
         </label>
         <input
           type="text"
           value={branding.watermarkText}
           onChange={(e) => onChange({ watermarkText: e.target.value })}
-          placeholder="Ex: monsite.com"
+          placeholder={t('watermark.placeholder')}
           className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
         />
-        <p className="text-[10px] text-gray-500 mt-1">Apparaît en bas de chaque vidéo. Laissez vide pour aucun watermark.</p>
+        <p className="text-[10px] text-gray-500 mt-1">{t('watermark.hint')}</p>
       </div>
 
       {/* Border / Contour */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <label className="text-xs font-semibold text-gray-400">Contour de couleur</label>
+          <label className="text-xs font-semibold text-gray-400">{t('border.label')}</label>
           <button
             onClick={() => onChange({ borderEnabled: !branding.borderEnabled })}
             className={`relative w-9 h-5 rounded-full transition-colors ${branding.borderEnabled ? 'bg-purple-600' : 'bg-gray-700'}`}
@@ -85,13 +88,13 @@ export default function BrandingPanel({ branding, onChange, compact = false }: B
       {/* CTA Text */}
       <div>
         <label className="block text-xs font-semibold text-gray-400 mb-1.5">
-          Texte CTA (appel à l&apos;action)
+          {t('ctaText.label')}
         </label>
         <input
           type="text"
           value={branding.ctaText}
           onChange={(e) => onChange({ ctaText: e.target.value })}
-          placeholder="Ex: RÉSERVE TA PLACE"
+          placeholder={t('ctaText.placeholder')}
           className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
         />
       </div>
@@ -99,13 +102,13 @@ export default function BrandingPanel({ branding, onChange, compact = false }: B
       {/* CTA Sub-text */}
       <div>
         <label className="block text-xs font-semibold text-gray-400 mb-1.5">
-          Sous-texte CTA
+          {t('ctaSubText.label')}
         </label>
         <input
           type="text"
           value={branding.ctaSubText}
           onChange={(e) => onChange({ ctaSubText: e.target.value })}
-          placeholder="Ex: LIEN EN BIO"
+          placeholder={t('ctaSubText.placeholder')}
           className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
         />
       </div>
@@ -113,7 +116,7 @@ export default function BrandingPanel({ branding, onChange, compact = false }: B
       {/* Accent Color */}
       <div>
         <label className="block text-xs font-semibold text-gray-400 mb-1.5">
-          Couleur d&apos;accent
+          {t('accentColor.label')}
         </label>
         <div className="flex gap-1.5 flex-wrap">
           {PRESET_COLORS.slice(0, 7).map((color) => (

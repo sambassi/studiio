@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
+import { useTranslations } from '@/i18n/client';
 import {
   Instagram,
   Music2,
@@ -47,7 +48,6 @@ const PLATFORMS = [
     name: 'Instagram',
     icon: Instagram,
     color: 'text-pink-400',
-    description: 'Reels, Stories, Posts',
     gradient: 'from-pink-500/20 to-purple-500/20',
   },
   {
@@ -55,7 +55,6 @@ const PLATFORMS = [
     name: 'TikTok',
     icon: Music2,
     color: 'text-slate-900',
-    description: 'Vidéos courtes virales',
     gradient: 'from-slate-500/20 to-slate-600/20',
   },
   {
@@ -63,7 +62,6 @@ const PLATFORMS = [
     name: 'Facebook',
     icon: Facebook,
     color: 'text-blue-500',
-    description: 'Vidéos, Reels, Stories',
     gradient: 'from-blue-500/20 to-blue-600/20',
   },
   {
@@ -71,7 +69,6 @@ const PLATFORMS = [
     name: 'YouTube',
     icon: Youtube,
     color: 'text-red-500',
-    description: 'Shorts, vidéos longues',
     gradient: 'from-red-500/20 to-orange-500/20',
   },
 ];
@@ -80,6 +77,9 @@ const STORAGE_KEY = 'studiio_social_accounts';
 const SETTINGS_KEY = 'studiio_publishing_settings';
 
 export default function SocialPage() {
+  const t = useTranslations('social');
+  const tc = useTranslations('common');
+
   const [accounts, setAccounts] = useState<Record<string, SocialAccount | null>>({});
   const [connecting, setConnecting] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -183,7 +183,7 @@ export default function SocialPage() {
       const platform = PLATFORMS.find((p) => p.id === platformId);
 
       if (!platform) {
-        showToast('Plateforme non reconnue', 'error');
+        showToast(t('toasts.platformNotRecognized'), 'error');
         setConnecting(null);
         return;
       }
@@ -208,15 +208,12 @@ export default function SocialPage() {
       );
 
       if (!popup) {
-        showToast(
-          'Les popups doivent être activées pour se connecter',
-          'error'
-        );
+        showToast(t('toasts.popupsRequired'), 'error');
         setConnecting(null);
         return;
       }
 
-      showToast(`Connexion en cours...`, 'info');
+      showToast(t('toasts.connectionInProgress'), 'info');
 
       // Call API to get the OAuth URL
       try {
@@ -232,17 +229,14 @@ export default function SocialPage() {
           popup.close();
           if (data.needsConfig) {
             showToast(
-              `OAuth non configuré pour ${platform?.name}. Configurez les clés API dans Vercel > Settings > Environment Variables.`,
+              t('toasts.oauthNotConfigured', { platform: platform.name }),
               'error'
             );
             setConnecting(null);
             return;
           }
           if (response.status === 404 || response.status === 500) {
-            showToast(
-              'Erreur serveur lors de la connexion',
-              'error'
-            );
+            showToast(t('toasts.serverError'), 'error');
             setConnecting(null);
             return;
           }
@@ -254,10 +248,7 @@ export default function SocialPage() {
           popup.location.href = data.authUrl;
 
           if (!popup) {
-            showToast(
-              'Les popups doivent être activées pour se connecter',
-              'error'
-            );
+            showToast(t('toasts.popupsRequired'), 'error');
             setConnecting(null);
             return;
           }
@@ -285,14 +276,14 @@ export default function SocialPage() {
                         JSON.stringify(accountsMap)
                       );
                       showToast(
-                        `Connexion à ${platform.name} réussie!`,
+                        t('toasts.connectionSuccess', { platform: platform.name }),
                         'success'
                       );
                     }
                   })
                   .catch(() => {
                     showToast(
-                      `Connexion initiée pour ${platform.name}`,
+                      t('toasts.connectionInitiated', { platform: platform.name }),
                       'success'
                     );
                   });
@@ -305,18 +296,18 @@ export default function SocialPage() {
         } else {
           // Successful response but no authUrl — should not happen with new API
           popup.close();
-          showToast(`Erreur: pas de lien d'authentification reçu pour ${platform.name}`, 'error');
+          showToast(t('toasts.noAuthUrl', { platform: platform.name }), 'error');
           setConnecting(null);
         }
       } catch (error) {
         console.error('Error during connection:', error);
         if (popup && !popup.closed) popup.close();
-        showToast('Erreur lors de la connexion', 'error');
+        showToast(t('toasts.connectionError'), 'error');
         setConnecting(null);
       }
     } catch (error) {
       console.error('Error in handleConnect:', error);
-      showToast('Erreur lors de la connexion', 'error');
+      showToast(t('toasts.connectionError'), 'error');
       setConnecting(null);
     }
   };
@@ -343,7 +334,7 @@ export default function SocialPage() {
             delete updated[platformId];
             setAccounts(updated);
             localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-            showToast(`Déconnecté de ${platform?.name}`, 'success');
+            showToast(t('toasts.disconnected', { platform: platform?.name || platformId }), 'success');
             return;
           }
         }
@@ -357,10 +348,10 @@ export default function SocialPage() {
       delete updated[platformId];
       setAccounts(updated);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-      showToast(`Déconnecté de ${platform?.name}`, 'success');
+      showToast(t('toasts.disconnected', { platform: platform?.name || platformId }), 'success');
     } catch (error) {
       console.error('Error disconnecting account:', error);
-      showToast('Erreur lors de la déconnexion', 'error');
+      showToast(t('toasts.disconnectError'), 'error');
     }
   };
 
@@ -403,9 +394,9 @@ export default function SocialPage() {
 
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-white mb-2">Réseaux sociaux</h1>
+        <h1 className="text-3xl font-bold text-white mb-2">{t('title')}</h1>
         <p className="text-gray-400">
-          Connectez vos comptes pour publier vos vidéos automatiquement
+          {t('subtitle')}
         </p>
       </div>
 
@@ -415,10 +406,10 @@ export default function SocialPage() {
           <Bell size={20} className="text-amber-400 flex-shrink-0 mt-0.5" />
           <div>
             <p className="text-amber-100 font-semibold">
-              Aucun réseau connecté
+              {t('noNetworkConnected')}
             </p>
             <p className="text-amber-200/80 text-sm">
-              Connectez au moins un réseau pour publier vos vidéos
+              {t('connectAtLeastOne')}
             </p>
           </div>
         </div>
@@ -434,11 +425,10 @@ export default function SocialPage() {
               </div>
               <div className="flex-1">
                 <p className="text-white font-semibold">
-                  {connectedCount} réseau{connectedCount > 1 ? 'x' : ''}{' '}
-                  connecté{connectedCount > 1 ? 's' : ''}
+                  {t('networksConnected', { count: connectedCount })}
                 </p>
                 <p className="text-sm text-gray-400">
-                  Vos vidéos peuvent être publiées automatiquement
+                  {t('videosAutoPublish')}
                 </p>
               </div>
             </div>
@@ -454,6 +444,7 @@ export default function SocialPage() {
           const isConnecting = connecting === platform.id;
           const isConnected = account?.connected ?? false;
           const hasOAuth = oauthStatus[platform.id] ?? false;
+          const platformDescription = t(`platforms.${platform.id}.description`);
 
           return (
             <Card
@@ -497,11 +488,11 @@ export default function SocialPage() {
                         </p>
                       ) : hasOAuth ? (
                         <p className="text-sm text-gray-500">
-                          {platform.description}
+                          {platformDescription}
                         </p>
                       ) : (
                         <p className="text-sm text-amber-500">
-                          OAuth non configuré
+                          {t('status.oauthNotConfigured')}
                         </p>
                       )}
                     </div>
@@ -512,11 +503,11 @@ export default function SocialPage() {
                       variant="success"
                       className="flex items-center gap-1 bg-green-500/20 text-green-300 border-green-500/30"
                     >
-                      <Check size={12} /> Connecté
+                      <Check size={12} /> {t('status.connected')}
                     </Badge>
                   ) : hasOAuth ? (
                     <Badge className="flex items-center gap-1 bg-blue-500/20 text-blue-300 border-blue-500/30">
-                      Prêt
+                      {t('status.ready')}
                     </Badge>
                   ) : null}
                 </div>
@@ -525,7 +516,7 @@ export default function SocialPage() {
                 {!hasOAuth && !isConnected && (
                   <div className="mb-3 p-3 bg-amber-900/20 border border-amber-500/30 rounded-lg">
                     <p className="text-xs text-amber-300">
-                      Pour activer la connexion {platform.name}, configurez les clés API OAuth dans les variables d&apos;environnement Vercel.
+                      {t('oauthInfo', { platform: platform.name })}
                     </p>
                   </div>
                 )}
@@ -541,17 +532,17 @@ export default function SocialPage() {
                     {isConnecting ? (
                       <>
                         <Loader2 size={16} className="animate-spin mr-2" />
-                        Connexion...
+                        {t('actions.connecting')}
                       </>
                     ) : isConnected ? (
                       <>
                         <ExternalLink size={16} className="mr-2" />
-                        Reconnecter
+                        {t('actions.reconnect')}
                       </>
                     ) : (
                       <>
                         <ExternalLink size={16} className="mr-2" />
-                        Connecter {platform.name}
+                        {t('actions.connect', { platform: platform.name })}
                       </>
                     )}
                   </Button>
@@ -563,7 +554,7 @@ export default function SocialPage() {
                       onClick={() => handleDisconnect(platform.id)}
                     >
                       <X size={16} className="mr-2" />
-                      Déconnecter
+                      {t('actions.disconnect')}
                     </Button>
                   )}
                 </div>
@@ -578,7 +569,7 @@ export default function SocialPage() {
         <CardHeader className="border-b border-gray-800">
           <CardTitle className="flex items-center gap-2">
             <Settings size={20} className="text-studiio-primary" />
-            Paramètres de publication
+            {t('settings.title')}
           </CardTitle>
         </CardHeader>
 
@@ -603,10 +594,10 @@ export default function SocialPage() {
                   htmlFor="autoPublish"
                   className="font-medium text-white cursor-pointer block"
                 >
-                  Publication automatique
+                  {t('settings.autoPublish.title')}
                 </label>
                 <p className="text-xs text-gray-400 mt-1">
-                  Publiez automatiquement sur tous vos comptes connectés
+                  {t('settings.autoPublish.description')}
                 </p>
               </div>
             </div>
@@ -630,10 +621,10 @@ export default function SocialPage() {
                   htmlFor="bestTime"
                   className="font-medium text-white cursor-pointer block"
                 >
-                  Meilleur moment pour publier
+                  {t('settings.bestTime.title')}
                 </label>
                 <p className="text-xs text-gray-400 mt-1">
-                  L&apos;IA choisit l&apos;heure optimale de publication
+                  {t('settings.bestTime.description')}
                 </p>
               </div>
             </div>
@@ -642,10 +633,10 @@ export default function SocialPage() {
             <div className="space-y-2">
               <label className="flex items-center gap-2 font-medium text-white">
                 <Hash size={16} className="text-studiio-primary" />
-                Hashtags par défaut
+                {t('settings.defaultHashtags.title')}
               </label>
               <Input
-                placeholder="Entrez les hashtags par défaut (séparés par des espaces)"
+                placeholder={t('settings.defaultHashtags.placeholder')}
                 value={settings.defaultHashtags}
                 onChange={(e) =>
                   setSettings((prev) => ({
@@ -656,7 +647,7 @@ export default function SocialPage() {
                 className="bg-gray-800/50 border-gray-700/50 text-white placeholder-gray-500"
               />
               <p className="text-xs text-gray-400">
-                Exemple: #studiio #video #content
+                {t('settings.defaultHashtags.example')}
               </p>
             </div>
 
@@ -664,10 +655,10 @@ export default function SocialPage() {
             <div className="space-y-2">
               <label className="flex items-center gap-2 font-medium text-white">
                 <FileText size={16} className="text-studiio-primary" />
-                Description par défaut
+                {t('settings.defaultDescription.title')}
               </label>
               <textarea
-                placeholder="Entrez votre description par défaut..."
+                placeholder={t('settings.defaultDescription.placeholder')}
                 value={settings.defaultDescription}
                 onChange={(e) =>
                   setSettings((prev) => ({
@@ -679,7 +670,7 @@ export default function SocialPage() {
                 className="w-full bg-gray-800/50 border border-gray-700/50 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-studiio-primary/50 transition"
               />
               <p className="text-xs text-gray-400">
-                Cette description sera appliquée à tous vos posts par défaut
+                {t('settings.defaultDescription.info')}
               </p>
             </div>
           </div>

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Loader2, AlertCircle, Check } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { useTranslations } from '@/i18n/client';
 
 interface TermsData {
   content: string;
@@ -12,6 +13,7 @@ interface TermsData {
 }
 
 export default function TermsPage() {
+  const t = useTranslations('admin');
   const [content, setContent] = useState('');
   const [originalContent, setOriginalContent] = useState('');
   const [lastModified, setLastModified] = useState('');
@@ -32,7 +34,7 @@ export default function TermsPage() {
 
       const res = await fetch('/api/admin/terms');
 
-      if (!res.ok) throw new Error('Erreur lors du chargement des conditions');
+      if (!res.ok) throw new Error(t('terms.errorLoading'));
 
       const data: TermsData = await res.json();
       setContent(data.content);
@@ -40,7 +42,7 @@ export default function TermsPage() {
       setLastModified(data.lastModified);
       setModifiedBy(data.modifiedBy);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Une erreur est survenue');
+      setError(err instanceof Error ? err.message : t('common.errorOccurred'));
     } finally {
       setLoading(false);
     }
@@ -62,15 +64,15 @@ export default function TermsPage() {
         body: JSON.stringify({ content }),
       });
 
-      if (!res.ok) throw new Error('Erreur lors de la sauvegarde');
+      if (!res.ok) throw new Error(t('terms.errorSaving'));
 
       const data: TermsData = await res.json();
       setOriginalContent(content);
       setLastModified(data.lastModified);
       setModifiedBy(data.modifiedBy);
-      showToast('Conditions générales sauvegardées avec succès', 'success');
+      showToast(t('terms.saved'), 'success');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Une erreur est survenue', 'error');
+      showToast(err instanceof Error ? err.message : t('common.errorOccurred'), 'error');
     } finally {
       setSaving(false);
     }
@@ -81,8 +83,8 @@ export default function TermsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-4xl font-bold text-white mb-2">Conditions Générales</h1>
-        <p className="text-gray-400">Gérez les conditions générales d'utilisation de la plateforme</p>
+        <h1 className="text-4xl font-bold text-white mb-2">{t('terms.title')}</h1>
+        <p className="text-gray-400">{t('terms.subtitle')}</p>
       </div>
 
       {toast && (
@@ -107,7 +109,7 @@ export default function TermsPage() {
         <div className="md:col-span-2">
           <Card>
             <CardHeader>
-              <CardTitle>Édition du contenu</CardTitle>
+              <CardTitle>{t('terms.editContent')}</CardTitle>
             </CardHeader>
             <CardContent>
               {loading ? (
@@ -120,7 +122,7 @@ export default function TermsPage() {
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
                     className="input-base w-full h-96 resize-none font-mono text-sm"
-                    placeholder="Entrez les conditions générales ici..."
+                    placeholder={t('terms.placeholder')}
                   />
                   <div className="flex gap-3">
                     <Button
@@ -130,7 +132,7 @@ export default function TermsPage() {
                         setContent(originalContent);
                       }}
                     >
-                      Annuler les modifications
+                      {t('terms.cancelChanges')}
                     </Button>
                     <Button
                       variant="primary"
@@ -140,10 +142,10 @@ export default function TermsPage() {
                       {saving ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                          Sauvegarde...
+                          {t('terms.saving')}
                         </>
                       ) : (
-                        'Sauvegarder'
+                        t('terms.save')
                       )}
                     </Button>
                   </div>
@@ -156,11 +158,11 @@ export default function TermsPage() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Informations</CardTitle>
+              <CardTitle className="text-lg">{t('terms.info.title')}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase mb-2">Dernière modification</p>
+                <p className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('terms.info.lastModified')}</p>
                 <p className="text-white">
                   {lastModified ? new Date(lastModified).toLocaleDateString('fr-FR', {
                     year: 'numeric',
@@ -168,19 +170,19 @@ export default function TermsPage() {
                     day: 'numeric',
                     hour: '2-digit',
                     minute: '2-digit',
-                  }) : 'Jamais'}
+                  }) : t('terms.info.never')}
                 </p>
               </div>
               <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase mb-2">Modifié par</p>
-                <p className="text-white">{modifiedBy || 'N/A'}</p>
+                <p className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('terms.info.modifiedBy')}</p>
+                <p className="text-white">{modifiedBy || t('terms.info.na')}</p>
               </div>
               <div className="pt-4 border-t border-gray-800">
-                <p className="text-xs font-semibold text-gray-400 uppercase mb-2">Nombre de caractères</p>
+                <p className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('terms.info.characterCount')}</p>
                 <p className="text-white text-2xl font-bold">{content.length.toLocaleString('fr-FR')}</p>
               </div>
               <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase mb-2">Nombre de lignes</p>
+                <p className="text-xs font-semibold text-gray-400 uppercase mb-2">{t('terms.info.lineCount')}</p>
                 <p className="text-white text-2xl font-bold">{content.split('\n').length}</p>
               </div>
             </CardContent>
@@ -188,7 +190,7 @@ export default function TermsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Aperçu</CardTitle>
+              <CardTitle className="text-lg">{t('terms.preview')}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-sm text-gray-300 max-h-96 overflow-y-auto prose prose-invert">

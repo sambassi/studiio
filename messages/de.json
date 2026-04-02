@@ -1,0 +1,1598 @@
+{
+  "common": {
+    "loading": "Laden...",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "delete": "Löschen",
+    "edit": "Bearbeiten",
+    "create": "Erstellen",
+    "close": "Schließen",
+    "back": "Zurück",
+    "next": "Weiter",
+    "previous": "Zurück",
+    "search": "Suchen",
+    "export": "Exportieren",
+    "import": "Importieren",
+    "duplicate": "Duplizieren",
+    "preview": "Vorschau",
+    "publish": "Veröffentlichen",
+    "download": "Herunterladen",
+    "upload": "Upload",
+    "add": "Hinzufügen",
+    "remove": "Entfernen",
+    "apply": "Anwenden",
+    "generate": "Generieren",
+    "confirm": "Bestätigen",
+    "yes": "Ja",
+    "no": "Nein",
+    "or": "Oder",
+    "all": "Alle",
+    "none": "Keine",
+    "active": "Aktiv",
+    "credits": "Credits",
+    "perMonth": "/Monat",
+    "video": "Video",
+    "videos": "Videos",
+    "image": "Bild",
+    "error": "Fehler",
+    "success": "Erfolg",
+    "errorOccurred": "Ein Fehler ist aufgetreten",
+    "connectionError": "Verbindungsfehler. Bitte versuchen Sie es erneut.",
+    "noResults": "Keine Ergebnisse",
+    "loadMore": "Mehr laden",
+    "select": "Auswählen",
+    "selected": "ausgewählt",
+    "more": "Mehr",
+    "less": "Weniger",
+    "show": "Anzeigen",
+    "hide": "Ausblenden",
+    "open": "Öffnen",
+    "clear": "Löschen",
+    "filter": "Filtern",
+    "sort": "Sortieren",
+    "retry": "Erneut versuchen",
+    "submit": "Absenden",
+    "reset": "Zurücksetzen",
+    "view": "Ansehen",
+    "and": "und",
+    "status": {
+      "draft": "Entwurf",
+      "scheduled": "Geplant",
+      "published": "Veröffentlicht",
+      "completed": "Abgeschlossen",
+      "rendering": "Wird gerendert",
+      "failed": "Fehlgeschlagen",
+      "active": "Aktiv"
+    },
+    "formats": {
+      "reel": "Reel 9:16",
+      "tv": "TV 16:9"
+    },
+    "page": "Seite",
+    "of": "von"
+  },
+  "metadata": {
+    "title": "Studiio — KI-Videoplattform",
+    "description": "KI-Videostudio für Creator, Coaches und Agenturen. Erstellen, planen und veröffentlichen Sie auf all Ihren sozialen Netzwerken."
+  },
+  "sidebar": {
+    "dashboard": "Übersicht",
+    "create": "Erstellen",
+    "infographic": "Infografik",
+    "audioStudio": "Tonstudio",
+    "library": "Mediathek",
+    "objectives": "Ziele",
+    "billing": "Abrechnung",
+    "buy": "Kaufen",
+    "calendar": "KI-Kalender",
+    "social": "Soziale Netzwerke",
+    "admin": "Verwaltung",
+    "creditsAvailable": "Verfügbare Credits"
+  },
+  "navbar": {
+    "dashboard": "Dashboard",
+    "admin": "Admin",
+    "profile": "Profil",
+    "logout": "Abmelden",
+    "notifications": "Benachrichtigungen"
+  },
+  "adminSidebar": {
+    "dashboard": "Übersicht",
+    "users": "Benutzer",
+    "subscriptions": "Abonnements",
+    "payments": "Zahlungen",
+    "videos": "Videos",
+    "landingPage": "Landing Page",
+    "settings": "Einstellungen",
+    "terms": "AGB",
+    "emails": "E-Mails",
+    "auditLog": "Audit Log",
+    "backToSite": "Zurück zur Seite"
+  },
+  "auth": {
+    "login": {
+      "title": "Anmelden",
+      "subtitle": "Melden Sie sich bei Ihrem Studiio-Konto an",
+      "email": "E-Mail",
+      "emailPlaceholder": "ihre@email.de",
+      "password": "Passwort",
+      "submit": "Anmelden",
+      "noAccount": "Noch kein Konto?",
+      "errorFillAll": "Bitte füllen Sie alle Felder aus.",
+      "google": "Weiter mit Google",
+      "facebook": "Weiter mit Facebook",
+      "connecting": "Anmeldung...",
+      "or": "Oder",
+      "signup": "Registrieren",
+      "errorInvalid": "E-Mail oder Passwort ungültig.",
+      "errorGeneric": "Verbindungsfehler. Bitte versuchen Sie es erneut."
+    },
+    "signup": {
+      "title": "Registrierung",
+      "subtitle": "Erstellen Sie Ihr kostenloses Studiio-Konto",
+      "selectedPlan": "Gewählter Plan",
+      "creditsPerMonth": "Credits/Monat",
+      "hasAccount": "Sie haben bereits ein Konto?",
+      "google": "Mit Google registrieren",
+      "facebook": "Mit Facebook registrieren",
+      "month": "Monat",
+      "moreFeatures": "weitere Vorteile",
+      "planSelected": "Plan {plan} ausgewählt",
+      "planFinalize": "Sie können Ihr Abonnement nach der Registrierung abschließen",
+      "termsPrefix": "Mit Ihrer Registrierung akzeptieren Sie unsere",
+      "termsLink": "Nutzungsbedingungen",
+      "termsAnd": "und unsere",
+      "privacyLink": "Datenschutzerklärung",
+      "login": "Anmelden"
+    }
+  },
+  "landing": {
+    "nav": {
+      "features": "Funktionen",
+      "howItWorks": "So funktioniert's",
+      "pricing": "Preise",
+      "faq": "FAQ",
+      "login": "Anmelden",
+      "freeTrial": "Kostenlos testen"
+    },
+    "languages": {
+      "french": "Français",
+      "english": "English",
+      "german": "Deutsch",
+      "arabic": "العربية"
+    },
+    "hero": {
+      "badge": "10 GRATIS-CREDITS — KEINE KREDITKARTE NÖTIG",
+      "titlePart1": "Erstellen Sie",
+      "titleHighlight": "virale",
+      "titlePart2": "Videos mit wenigen Klicks",
+      "subtitle": "KI-Videostudio für Creator, Coaches und Agenturen. Erstellen, planen und veröffentlichen Sie auf all Ihren sozialen Netzwerken —",
+      "subtitleBold": "ohne technische Vorkenntnisse",
+      "cta1": "Kostenlos starten",
+      "cta2": "Demo ansehen",
+      "socialProofJoinedBy": "Genutzt von",
+      "socialProofCreators": "Creators"
+    },
+    "heroMockup": {
+      "studioTitle": "Studiio — Videostudio",
+      "readyToCreate": "Ihr Studio, bereit zum Erstellen",
+      "formatInfo": "Format REEL 9:16 — Rendering in 45 Sekunden",
+      "renderDone": "Rendering abgeschlossen — 42s",
+      "engagement": "+340% Engagement"
+    },
+    "stats": {
+      "videosCreated": "Erstellte Videos",
+      "activeCreators": "Aktive Creator",
+      "customerSatisfaction": "Kundenzufriedenheit",
+      "renderTime": "Renderzeit"
+    },
+    "features": {
+      "badge": "FUNKTIONEN",
+      "title": "Alles, was Sie brauchen, um Social Media zu dominieren",
+      "subtitle": "Von der Erstellung bis zur Veröffentlichung — Studiio automatisiert jeden Schritt Ihrer Video-Content-Strategie.",
+      "items": {
+        "0": {
+          "title": "KI-Videostudio",
+          "desc": "Erstellen Sie professionelle Videos mit wenigen Klicks. Animierte Texte, fließende Übergänge, synchronisierte Musik — alles vollautomatisch."
+        },
+        "1": {
+          "title": "KI-Generierung",
+          "desc": "Die KI erstellt Ihre Skripte, wählt die besten Bilder aus, synchronisiert die Musik und optimiert jedes Video für maximales Engagement."
+        },
+        "2": {
+          "title": "Redaktionskalender",
+          "desc": "Planen Sie Ihre Veröffentlichungen für 30 Tage. Der KI-Agent analysiert Ihre Rushes und erstellt automatisch veröffentlichungsfertige Entwürfe."
+        },
+        "3": {
+          "title": "Multi-Plattform-Veröffentlichung",
+          "desc": "Veröffentlichen Sie direkt auf Instagram, TikTok, YouTube Shorts und Facebook — alles aus einer Oberfläche. Kein Copy-Paste mehr."
+        },
+        "4": {
+          "title": "Individuelle Ziele",
+          "desc": "Definieren Sie Ihre Marketingziele: Promotion, Abonnements, Motivation... Studiio passt jedes Video an Ihre Strategie an."
+        },
+        "5": {
+          "title": "Analytics & Performance",
+          "desc": "Verfolgen Sie Aufrufe, Likes und Shares jeder Veröffentlichung. Verstehen Sie, was funktioniert, und optimieren Sie Ihren Content."
+        }
+      }
+    },
+    "formats": {
+      "title": "Alle Formate, alle Plattformen",
+      "subtitle": "Ein einziges Tool für Content, der auf jedem sozialen Netzwerk passt.",
+      "reel": {
+        "label": "REEL 9:16",
+        "desc": "Instagram Reels, TikTok, YouTube Shorts"
+      },
+      "tv": {
+        "label": "TV 16:9",
+        "desc": "YouTube, Facebook, LinkedIn"
+      },
+      "infographic": {
+        "label": "INFOGRAFIK",
+        "desc": "Animierte Slides mit Schlüsseldaten"
+      },
+      "batch": {
+        "label": "BATCH x10",
+        "desc": "10 Videos mit einem Klick"
+      },
+      "publishOn": "Veröffentlichen auf:"
+    },
+    "howItWorks": {
+      "badge": "SO FUNKTIONIERT'S",
+      "title": "4 Schritte zu professionellen Videos",
+      "subtitle": "Sie müssen kein Videoprofi sein. Studiio erledigt die Arbeit für Sie.",
+      "steps": {
+        "0": {
+          "step": "01",
+          "title": "Wählen Sie Ihr Ziel",
+          "desc": "Promotion, Motivation, Abonnement... Studiio passt den gesamten Content an Ihre Marketingstrategie an."
+        },
+        "1": {
+          "step": "02",
+          "title": "Laden Sie Ihre Medien hoch",
+          "desc": "Ziehen Sie Ihre Videos oder Fotos hinein. Die KI wählt automatisch die besten Momente aus jedem Rush."
+        },
+        "2": {
+          "step": "03",
+          "title": "Personalisieren Sie mit einem Klick",
+          "desc": "Texte, Musik, Übergänge, Logo — alles ist anpassbar. Oder lassen Sie die KI alles für Sie erledigen."
+        },
+        "3": {
+          "step": "04",
+          "title": "Überall veröffentlichen",
+          "desc": "Exportieren oder veröffentlichen Sie direkt auf Instagram, TikTok, YouTube und Facebook — mit einem Klick."
+        }
+      }
+    },
+    "testimonials": {
+      "title": "Sie erstellen mit Studiio",
+      "subtitle": "Erfahren Sie, wie unsere Nutzer ihren Content transformieren.",
+      "items": {
+        "0": {
+          "name": "Sophie M.",
+          "role": "Fitness-Coach",
+          "text": "Studiio hat meine Social-Media-Präsenz komplett verändert. Ich erstelle 10 Videos pro Woche in weniger als einer Stunde. Meine Followerzahl hat sich in 3 Monaten verdreifacht."
+        },
+        "1": {
+          "name": "Marco D.",
+          "role": "Marketingagentur",
+          "text": "Wir betreuen 15 Kunden mit Studiio. Die Batch-x10-Funktion spart uns 20 Stunden pro Woche. Der ROI ist unglaublich."
+        },
+        "2": {
+          "name": "Aminata K.",
+          "role": "Content Creatorin",
+          "text": "Die KI, die Captions und Hashtags generiert, ist genial. Meine TikTok-Videos erzielen 10x mehr Aufrufe als vorher."
+        }
+      }
+    },
+    "pricing": {
+      "badge": "TRANSPARENTE PREISE",
+      "title": "Ein Plan für jede Ambition",
+      "subtitle": "Starten Sie kostenlos mit 10 Credits. Keine Kreditkarte erforderlich.",
+      "monthly": "Monatlich",
+      "yearly": "Jährlich",
+      "yearlyDiscount": "-17%",
+      "billedYearly": "Jährlich abgerechnet",
+      "mostPopular": "AM BELIEBTESTEN",
+      "creditsPerMonth": "Credits/Monat",
+      "extraCredits": "Mehr Credits benötigt? Kaufen Sie Zusatzpakete:",
+      "plans": {
+        "starter": {
+          "name": "Starter",
+          "price": "29,99",
+          "yearlyPrice": "24,99",
+          "desc": "Für Creator am Anfang",
+          "cta": "Loslegen",
+          "features": [
+            "300 Credits/Monat",
+            "Unbegrenzte Videos",
+            "Formate Reel + TV",
+            "Redaktionskalender",
+            "Instagram-Veröffentlichung",
+            "E-Mail-Support"
+          ]
+        },
+        "pro": {
+          "name": "Pro",
+          "price": "79,99",
+          "yearlyPrice": "66,99",
+          "desc": "Für aktive Creator und Coaches",
+          "cta": "Pro testen",
+          "features": [
+            "1.000 Credits/Monat",
+            "Unbegrenzte Videos",
+            "Alle Formate + Batch x10",
+            "KI-Kalender + Autonomer Agent",
+            "Multi-Plattform-Veröffentlichung",
+            "KI-Voiceover",
+            "Individuelle Ziele",
+            "Prioritäts-Support innerhalb 24h"
+          ]
+        },
+        "enterprise": {
+          "name": "Enterprise",
+          "price": "299,99",
+          "yearlyPrice": "249,99",
+          "desc": "Für Agenturen und Teams",
+          "cta": "Kontakt aufnehmen",
+          "features": [
+            "5.000 Credits/Monat",
+            "Unbegrenzte Benutzer",
+            "API-Zugang",
+            "Unbegrenzter Batch",
+            "White Label",
+            "Erweiterte Analytics",
+            "Persönlicher Account Manager",
+            "Support rund um die Uhr"
+          ]
+        }
+      }
+    },
+    "faq": {
+      "title": "Häufig gestellte Fragen",
+      "subtitle": "Alles, was Sie wissen müssen, bevor Sie loslegen.",
+      "items": {
+        "0": {
+          "q": "Wie funktionieren die Credits?",
+          "a": "1 Credit = 1 gerendertes Video. Wenn Sie ein Video erstellen und exportieren, wird ein Credit verbraucht. Die Credits Ihres Plans werden monatlich erneuert. Wenn ein Rendering fehlschlägt, wird der Credit automatisch erstattet."
+        },
+        "1": {
+          "q": "Kann ich kostenlos testen?",
+          "a": "Ja! Jedes neue Konto erhält 10 kostenlose Credits, um alle Funktionen zu testen. Keine Kreditkarte für die Registrierung erforderlich."
+        },
+        "2": {
+          "q": "Wie verbinde ich meine sozialen Netzwerke?",
+          "a": "Gehen Sie zu Einstellungen > Soziale Netzwerke und klicken Sie auf 'Verbinden' beim gewünschten Netzwerk. Die Authentifizierung erfolgt über OAuth — Ihre Anmeldedaten bleiben bei Instagram, TikTok usw. Wir speichern niemals Ihre Passwörter."
+        },
+        "3": {
+          "q": "Kann ich mein Abonnement kündigen?",
+          "a": "Ja, jederzeit. Ihr Abonnement bleibt bis zum Ende des bezahlten Zeitraums aktiv. Keine Bindung, keine Kündigungsgebühren."
+        },
+        "4": {
+          "q": "Welche Qualität haben die Videos?",
+          "a": "Alle Videos werden in Full HD (1080p) mit dem für jede Plattform optimierten H.264-Codec gerendert. Das Ergebnis entspricht einem professionellen Schnitt."
+        },
+        "5": {
+          "q": "Wie lange dauert ein Rendering?",
+          "a": "Ein einfaches Rendering dauert etwa 30 bis 90 Sekunden. Ein Batch von 10 Videos dauert 5 bis 10 Minuten. Sie werden benachrichtigt, sobald alles fertig ist."
+        }
+      }
+    },
+    "cta": {
+      "titlePart1": "Bereit für Videos, die",
+      "titleHighlight": "durchstarten",
+      "titlePart2": "?",
+      "subtitle": "Schließen Sie sich über 12.000 Creators an. 10 Gratis-Credits, keine Kreditkarte. Ihr erstes Video in weniger als 2 Minuten.",
+      "button": "Kostenlos starten",
+      "reassurance": "Keine Bindung. Jederzeit kündbar."
+    },
+    "footer": {
+      "description": "Die KI-Videoplattform für soziale Netzwerke. Erstellen, planen, veröffentlichen.",
+      "product": "Produkt",
+      "features": "Funktionen",
+      "pricing": "Preise",
+      "api": "API",
+      "integrations": "Integrationen",
+      "resources": "Ressourcen",
+      "documentation": "Dokumentation",
+      "blog": "Blog",
+      "tutorials": "Tutorials",
+      "legal": "Rechtliches",
+      "termsOfUse": "Nutzungsbedingungen",
+      "privacyPolicy": "Datenschutzerklärung",
+      "legalNotice": "Impressum",
+      "contact": "Kontakt",
+      "copyright": "© 2026 Studiio. Alle Rechte vorbehalten."
+    }
+  },
+  "dashboardHome": {
+    "welcome": "Willkommen, {name}",
+    "stats": {
+      "videosCreated": "Erstellte Videos",
+      "publications": "Veröffentlichungen",
+      "totalViews": "Gesamtaufrufe",
+      "videosThisWeek": "{count} diese Woche",
+      "creditsRemaining": "Verbleibende Credits",
+      "creditsBoughtThisWeek": "{count} diese Woche gekauft",
+      "pubsThisWeek": "{count} diese Woche",
+      "viewsIncrease": "{percent}% Steigerung"
+    },
+    "quickActions": "Schnellaktionen",
+    "createVideo": "Video erstellen",
+    "connectSocial": "Soziale Netzwerke verbinden",
+    "subtitle": "Sie haben eine neue Support-Nachricht"
+  },
+  "creator": {
+    "title": "Video erstellen",
+    "stepOf": "Schritt {current} von {total}",
+    "credits": "15 Credits",
+    "stepLabels": {
+      "0": "Format & Ziel",
+      "1": "Medien & Stimme",
+      "2": "Personalisierung",
+      "3": "Vorschau & Export"
+    },
+    "format": {
+      "title": "Format",
+      "reel": "Reel 9:16",
+      "tv": "TV 16:9"
+    },
+    "mode": {
+      "title": "Modus",
+      "cardio": "Cardio / Dynamisch",
+      "testimony": "Testimonial / Clean"
+    },
+    "objective": {
+      "title": "Ziel",
+      "createObjective": "+ Ziel erstellen",
+      "promotion": "Promotion",
+      "subscription": "Abonnement",
+      "motivation": "Motivation",
+      "benefits": "Vorteile",
+      "nutrition": "Ernährung"
+    },
+    "titleSubtitle": {
+      "title": "Titel & Untertitel",
+      "mainTitle": "Haupttitel",
+      "titlePlaceholder": "z.B.: JETZT ABONNIEREN",
+      "subtitle": "Untertitel",
+      "subtitlePlaceholder": "z.B.: Deine Zukunft beginnt hier",
+      "ia": "KI"
+    },
+    "audioNote": {
+      "title": "Musik & Voiceover",
+      "description": "Das Audio wird nach dem Schnitt im",
+      "studioSon": "Tonstudio"
+    },
+    "rushVideos": {
+      "title": "Rush-Videos",
+      "add": "Hinzufügen",
+      "settings": "Einstellungen",
+      "analyzeClips": "Clips werden analysiert...",
+      "clipsDetected": "Clips erkannt",
+      "fullVideo": "Komplettes Video ausgewählt",
+      "clipExtracted": "Clip \"{label}\" extrahiert ({duration}s)",
+      "extractError": "Fehler beim Extrahieren des Clips"
+    },
+    "textCards": {
+      "title": "Textkarten-Einstellungen",
+      "color": "Farbe",
+      "font": "Schriftart",
+      "small": "Klein",
+      "medium": "Mittel",
+      "large": "Groß",
+      "apply": "Anwenden",
+      "appliedToAll": "Einstellungen auf alle Karten angewendet",
+      "addText": "Textkarten hinzufügen",
+      "information": "Informationen"
+    },
+    "character": {
+      "title": "Charakter / Posterbild",
+      "upload": "Upload",
+      "ai": "KI",
+      "searchPlaceholder": "z.B.: Fitness, Tanz, Sport...",
+      "noImageFound": "Kein Bild gefunden",
+      "pexelsError": "Fehler bei der Pexels-Suche"
+    },
+    "logo": {
+      "title": "Logo",
+      "upload": "Logo importieren"
+    },
+    "montageSequences": {
+      "intro": "Poster + Titel",
+      "cards": "Textkarten",
+      "video": "Rush-Video",
+      "cta": "CTA",
+      "noVideo": "Kein Video"
+    },
+    "salesPhrase": {
+      "title": "Verkaufstext",
+      "generated": "Text generiert!",
+      "titleGenerated": "Titel & Untertitel generiert!",
+      "promotion": [
+        "Limitiertes Angebot! Sichere Dir jetzt Deinen Platz",
+        "Nutze -20% nur diese Woche",
+        "Verpasse diese einmalige Gelegenheit nicht",
+        "Mach mit und verändere Dein Leben"
+      ],
+      "subscription": [
+        "Abonniere und verpasse nichts!",
+        "Werde jetzt Teil unserer Community",
+        "Aktiviere die Glocke, um nichts zu verpassen",
+        "Folge für exklusiven Content"
+      ],
+      "motivation": [
+        "Deine Zukunft beginnt jetzt",
+        "Jeder Tag ist eine neue Chance",
+        "Du bist stärker, als Du denkst",
+        "Überschreite heute Deine Grenzen"
+      ],
+      "benefits": [
+        "Entdecke die unglaublichen Vorteile",
+        "Dein Körper wird es Dir danken",
+        "Die Ergebnisse sprechen für sich",
+        "Verwandle Deinen Alltag in 30 Tagen"
+      ],
+      "nutrition": [
+        "Iss gesund, lebe besser",
+        "Ernährung ist der Schlüssel zum Erfolg",
+        "Versorge Deinen Körper mit dem Besten",
+        "Rezepte, die alles verändern"
+      ]
+    },
+    "batch": {
+      "count": "Anzahl Videos",
+      "destination": "Ziel",
+      "calendar": "Kalender",
+      "export": "Export",
+      "both": "Beides",
+      "studio": "Tonstudio"
+    },
+    "render": {
+      "initializing": "Initialisierung...",
+      "uploadingVideos": "Videos werden hochgeladen...",
+      "uploadingMedia": "Medien werden hochgeladen...",
+      "composingVideo": "Videoschnitt läuft...",
+      "composingBatch": "Videoschnitt {current}/{total}...",
+      "composingForExport": "Videoschnitt für Export...",
+      "finalizing": "Wird abgeschlossen...",
+      "done": "Fertig!",
+      "successSingle": "Video erfolgreich erstellt!",
+      "successBatch": "{count} Videos erfolgreich erstellt!",
+      "errorCreate": "Fehler bei der Erstellung",
+      "errorCompose": "Fehler beim Videoschnitt. Bitte versuchen Sie es erneut.",
+      "errorNoRush": "Fügen Sie mindestens ein Rush-Video hinzu",
+      "errorNoTitle": "Bitte geben Sie einen Titel ein",
+      "creating": "Wird erstellt...",
+      "launchCreation": "Erstellung starten",
+      "generate": "{count} Video generieren",
+      "generatePlural": "{count} Videos generieren"
+    },
+    "preview": {
+      "title": "Echtzeit-Vorschau",
+      "autoUpdate": "Automatische Aktualisierung",
+      "format": "Format",
+      "mode": "Modus",
+      "rushes": "Rushes",
+      "textCardsLabel": "Textkarten",
+      "audio": "Audio",
+      "audioStudioSon": "Tonstudio",
+      "audioAddedInStudio": "Ton im Tonstudio hinzugefügt",
+      "batch": "Batch",
+      "batchVideos": "x{count} Videos",
+      "montagePreview": "Montage-Vorschau",
+      "pause": "Pause",
+      "playMontage": "Montage abspielen",
+      "seqIntro": "Poster",
+      "seqCards": "Karten",
+      "seqVideo": "Video",
+      "seqCta": "CTA"
+    },
+    "summary": {
+      "title": "Zusammenfassung",
+      "format": "Format",
+      "mode": "Modus",
+      "videos": "Videos",
+      "rushBatch": "{rushes} Rush(es) • x{batch} Batch",
+      "destination": "Ziel",
+      "titleLabel": "Titel",
+      "notDefined": "(nicht festgelegt)",
+      "cardio": "Cardio",
+      "testimony": "Testimonial"
+    },
+    "dragReorder": "Ziehen zum Neuordnen",
+    "addTitleCards": "Klicken Sie {icon} um Titelkarten hinzuzufügen",
+    "addTitleCard": "Titelkarte hinzufügen",
+    "rush": "Rush {index}",
+    "uploadCharacter": "Hochladen",
+    "aiSuggest": "KI-Vorschlag",
+    "clickToAddImage": "Klicken Sie, um ein Bild hinzuzufügen",
+    "imageFormats": "PNG, JPG bis zu 10MB",
+    "typeDescription": "Beschreibung eingeben oder auf Suchen klicken",
+    "characterLabel": "Charakter",
+    "change": "Ändern",
+    "logoOptional": "Logo (optional)",
+    "addLogo": "Logo hinzufügen",
+    "salesPlaceholder": "z.B.: Sichere Dir jetzt Deinen Platz!",
+    "branding": {
+      "title": "Branding",
+      "memo": "Diese Einstellungen werden automatisch gespeichert."
+    },
+    "studioRedirectNote": "Das Video wird ohne Ton erstellt und anschließend zum Tonstudio weitergeleitet, um Musik und Voiceover hinzuzufügen",
+    "cardTextPlaceholder": "Kartentext"
+  },
+  "infographic": {
+    "title": "Infografik-Editor",
+    "stepOf": "Schritt {step} von 3",
+    "steps": {
+      "1": "Inhalt",
+      "2": "Medien",
+      "3": "Abschluss"
+    },
+    "themes": {
+      "selectTheme": "Thema auswählen",
+      "sommeil": "Schlaf & Sport",
+      "nutrition": "Ernährung & Tanz",
+      "energie": "Energie & Cardio",
+      "stress": "Stress & Mental",
+      "communaute": "Community",
+      "custom": "Benutzerdefiniert"
+    },
+    "themePresets": {
+      "sommeil": {
+        "title": "SCHLAF & SPORT",
+        "subtitle": "Die Vorteile des Tanzens für Deine Erholung"
+      },
+      "nutrition": {
+        "title": "ERNÄHRUNG & TANZ",
+        "subtitle": "Nähre Deinen Körper, entfessle Deine Energie"
+      },
+      "energie": {
+        "title": "ENERGIE & CARDIO",
+        "subtitle": "Überschreite Deine Grenzen mit Afroboost"
+      },
+      "stress": {
+        "title": "STRESS & MENTAL",
+        "subtitle": "Tanze für Dein mentales Wohlbefinden"
+      },
+      "communaute": {
+        "title": "COMMUNITY",
+        "subtitle": "Werde Teil der Afroboost-Crew"
+      }
+    },
+    "batch": {
+      "title": "BATCH-Modus x10",
+      "description": "10 Videos mit verschiedenen Texten und Fotos",
+      "regenerate": "Neu generieren",
+      "previewTitle": "Vorschau der 10 Varianten"
+    },
+    "titleField": "Titel",
+    "subtitleField": "Untertitel",
+    "titlePlaceholderCustom": "Geben Sie ein Thema ein: Moringa, Wasser, Cardio...",
+    "titlePlaceholder": "z.B.: ENERGIE & CARDIO",
+    "subtitlePlaceholder": "z.B.: Überschreite Deine Grenzen mit Afroboost",
+    "infoCards": {
+      "title": "Infokarten",
+      "add": "Hinzufügen",
+      "newCard": "Neue Karte",
+      "value": "Wert"
+    },
+    "salesPhrase": {
+      "title": "Verkaufstext",
+      "placeholder": "z.B.: Sichere Dir jetzt Deinen Platz!",
+      "presets": [
+        "Sichere Dir jetzt Deinen Platz!",
+        "Limitiertes Angebot diese Woche",
+        "Erste Stunde GRATIS",
+        "Werde Teil der Community",
+        "-50% auf Dein Abonnement",
+        "7 Tage kostenlos testen",
+        "Boost Deine Energie!",
+        "Verwandle Deinen Körper",
+        "Ergebnisse garantiert",
+        "Anmeldung geöffnet"
+      ]
+    },
+    "sequences": {
+      "intro": "Posterbild + Titel",
+      "cards": "Infokarten",
+      "video": "Video",
+      "cta": "CTA (Handlungsaufforderung)"
+    },
+    "export": {
+      "uploadingFiles": "Dateien werden hochgeladen...",
+      "composingVideo": "Videoschnitt läuft...",
+      "composingBatch": "Videoschnitt {current}/{total}...",
+      "composingForExport": "Videoschnitt für Export...",
+      "redirectingStudio": "Weiterleitung zum Tonstudio...",
+      "successCalendar": "{count} Videos zum Kalender hinzugefügt!",
+      "successExport": "Video erfolgreich exportiert!",
+      "errorNoCards": "Fügen Sie mindestens eine Karte hinzu, bevor Sie exportieren",
+      "errorExport": "Fehler beim Export. Bitte versuchen Sie es erneut.",
+      "errorNoPost": "Fehler: Kein Post erstellt."
+    },
+    "format": {
+      "title": "Format",
+      "portrait": "9:16 (Reel)",
+      "landscape": "16:9 (TV)"
+    },
+    "destination": {
+      "title": "Ziel",
+      "calendar": "Kalender",
+      "export": "Direkter Export",
+      "both": "Kalender + Export",
+      "studio": "Tonstudio"
+    },
+    "posterPhoto": {
+      "title": "Posterbild",
+      "searchPlaceholder": "z.B.: Fitness, Yoga, Tanz...",
+      "subtitle": "Hintergrundbild für die Intro-Sequenz",
+      "import": "Importieren",
+      "remove": "Entfernen",
+      "clickToSelect": "Klicken Sie zum Auswählen",
+      "searchOrImport": "Suchen oder importieren Sie ein Bild",
+      "importFromComputer": "Vom Computer importieren"
+    },
+    "videoRush": {
+      "title": "Video",
+      "upload": "Video importieren"
+    },
+    "logoUpload": {
+      "title": "Logo",
+      "upload": "Logo importieren"
+    },
+    "characterImage": {
+      "title": "Charakterbild",
+      "upload": "Bild importieren"
+    },
+    "suggestions": {
+      "0": {
+        "title": "VERWANDLE DEINEN KÖRPER",
+        "subtitle": "Tanzen ist Deine Geheimwaffe"
+      },
+      "1": {
+        "title": "GRENZENLOSE ENERGIE",
+        "subtitle": "Überschreite jeden Tag Deine Grenzen"
+      },
+      "2": {
+        "title": "TANZ & PERFORMANCE",
+        "subtitle": "Erreiche Deine Ziele schneller"
+      },
+      "3": {
+        "title": "GANZHEITLICHES WOHLBEFINDEN",
+        "subtitle": "Körper und Geist im Einklang"
+      }
+    },
+    "nextStepMedia": "Nächster Schritt: Medien",
+    "backButton": "Zurück",
+    "finalizeButton": "Abschließen",
+    "backToMedia": "Zurück zu Medien",
+    "sequenceOrder": {
+      "title": "Sequenz-Reihenfolge",
+      "help": "Verwenden Sie die Pfeile, um die Reihenfolge der Sequenzen zu ändern",
+      "totalDuration": "Gesamtdauer",
+      "photoSelected": "Foto ausgewählt",
+      "noPhoto": "Kein Foto",
+      "cardCount": "{count} Karte(n)",
+      "noVideo": "Kein Video",
+      "defaultCta": "Standard-CTA"
+    },
+    "branding": {
+      "title": "Branding",
+      "memo": "Automatisch gespeichert"
+    },
+    "exportButton": {
+      "exportBatch": "10 VIDEOS EXPORTIEREN",
+      "exportSingle": "VIDEO EXPORTIEREN",
+      "exporting": "EXPORT... {progress}%"
+    },
+    "creditsInfo": {
+      "batch": "250 Credits (10 Videos)",
+      "single": "25 Credits"
+    },
+    "preview": {
+      "title": "Finale Videovorschau",
+      "pause": "Pause",
+      "play": "Montage abspielen",
+      "seqIntro": "Poster",
+      "seqCards": "Karten",
+      "seqVideo": "Video",
+      "seqCta": "CTA",
+      "information": "Informationen",
+      "noVideoLabel": "Kein Video"
+    },
+    "videoSection": {
+      "title": "Video (Sequenz 3)",
+      "choose": "Video auswählen"
+    },
+    "audioNote": {
+      "title": "Musik & Voiceover",
+      "description": "Das Audio wird nach dem Schnitt im",
+      "studioSon": "Tonstudio"
+    },
+    "logoSection": {
+      "title": "Logo (auf der CTA-Seite angezeigt)",
+      "add": "Logo hinzufügen"
+    }
+  },
+  "audioStudio": {
+    "title": "Tonstudio",
+    "noVideoSelected": "Kein Video ausgewählt",
+    "backToCalendar": "Zurück zum Kalender",
+    "videoPreview": "Videovorschau",
+    "loadingError": "Ladefehler",
+    "batchLabel": "{count} Videos",
+    "batchVideoOf": "Video {current}/{total} — {title}",
+    "previousVideo": "Vorheriges",
+    "nextVideo": "Nächstes",
+    "music": {
+      "title": "MUSIK",
+      "import": "Musik importieren",
+      "noMusic": "Keine Musik",
+      "mute": "Musik stummschalten",
+      "unmute": "Musik aktivieren"
+    },
+    "voice": {
+      "title": "VOICEOVER",
+      "record": "Aufnehmen",
+      "stop": "Stopp",
+      "importFile": "Datei importieren",
+      "recordingName": "Mikrofon-Aufnahme",
+      "noVoice": "Kein Voiceover",
+      "mute": "Stimme stummschalten",
+      "unmute": "Stimme aktivieren",
+      "micDenied": "Bitte erlauben Sie den Mikrofonzugriff.",
+      "file": "Datei"
+    },
+    "destination": {
+      "title": "ZIEL",
+      "calendar": "Kalender",
+      "desktop": "Desktop",
+      "both": "Beides"
+    },
+    "export": {
+      "exportWithAudio": "MIT TON EXPORTIEREN",
+      "exportBatch": "{count} VIDEOS MIT TON EXPORTIEREN",
+      "addAudioFirst": "Fügen Sie Musik oder Voiceover hinzu",
+      "preparing": "Vorbereitung...",
+      "uploadingAudio": "Audiodateien werden hochgeladen...",
+      "composingWithAudio": "Videoschnitt mit Ton...",
+      "composingBatch": "Videoschnitt {current}/{total}...",
+      "updatingCalendar": "Kalender wird aktualisiert...",
+      "done": "Fertig!",
+      "batchDone": "{success}/{total} Videos exportiert!",
+      "error": "Fehler",
+      "skipKeepWithoutAudio": "Überspringen — ohne Ton beibehalten"
+    },
+    "timeline": {
+      "affiche": "Poster",
+      "cards": "Karten",
+      "video": "Video",
+      "cta": "CTA",
+      "music": "Musik",
+      "voice": "Stimme"
+    }
+  },
+  "calendar": {
+    "title": "KI-Kalender",
+    "subtitle": "Planen und verwalten Sie Ihre Social-Media-Posts",
+    "stats": {
+      "total": "Gesamt",
+      "drafts": "Entwürfe",
+      "scheduled": "Geplant",
+      "published": "Veröffentlicht"
+    },
+    "dayHeaders": [
+      "Mo",
+      "Di",
+      "Mi",
+      "Do",
+      "Fr",
+      "Sa",
+      "So"
+    ],
+    "selectDate": "Wählen Sie ein Datum",
+    "clickDayToSee": "Klicken Sie auf einen Tag, um dessen Posts anzuzeigen",
+    "noPosts": "Keine Posts an diesem Tag",
+    "posts": "Posts",
+    "post": "Post",
+    "addPost": "Post hinzufügen",
+    "newPost": "Neuer Post",
+    "agentIA": "KI-Agent",
+    "import": "Importieren",
+    "select": "Auswählen",
+    "selectAll": "Alle auswählen",
+    "deselectAll": "Alle abwählen",
+    "bulkDuplicate": "Duplizieren",
+    "bulkMove": "Verschieben",
+    "bulkDelete": "Löschen",
+    "status": {
+      "published": "Veröffentlicht",
+      "scheduled": "Geplant",
+      "draft": "Entwurf"
+    },
+    "actions": {
+      "preview": "Vorschau",
+      "edit": "Bearbeiten",
+      "duplicate": "Duplizieren",
+      "export": "Exportieren",
+      "addAudio": "Ton hinzufügen",
+      "fullPreview": "Vollständige Vorschau & Veröffentlichen",
+      "delete": "Löschen",
+      "exportDesktop": "Auf den Desktop exportieren"
+    },
+    "previewModal": {
+      "title": "Post-Vorschau",
+      "at": "um",
+      "noCaption": "Keine Beschreibung",
+      "cards": "Karten"
+    },
+    "editModal": {
+      "titleField": "Titel",
+      "captionField": "Beschreibung",
+      "generateCaption": "KI-Beschreibung generieren",
+      "platforms": "Plattformen",
+      "date": "Datum",
+      "time": "Uhrzeit",
+      "format": "Format",
+      "draft": "Entwurf",
+      "scheduled": "Geplant",
+      "published": "Veröffentlicht",
+      "save": "Speichern",
+      "title": "Post bearbeiten",
+      "titlePlaceholder": "Post-Titel",
+      "captionPlaceholder": "Beschreiben Sie Ihren Post...",
+      "media": "Medien",
+      "mediaAdded": "Medien hinzugefügt",
+      "mediaClickToChange": "Zum Ändern klicken",
+      "mediaDragDrop": "Datei hierher ziehen",
+      "mediaClickToImport": "oder zum Importieren klicken"
+    },
+    "exportOverlay": {
+      "title": "Videoschnitt läuft...",
+      "preparingMontage": "Schnitt wird vorbereitet...",
+      "errorMontage": "Fehler beim Videoschnitt"
+    },
+    "aiAgent": {
+      "title": "Autonomer KI-Agent",
+      "duration": {
+        "7": "7 Tage",
+        "14": "14 Tage",
+        "30": "30 Tage",
+        "label": "Plandauer"
+      },
+      "platforms": {
+        "label": "Plattformen"
+      },
+      "objectives": {
+        "label": "Ziele",
+        "promo": "Promotion",
+        "motiv": "Motivation",
+        "bienfaits": "Vorteile",
+        "abo": "Abonnement",
+        "nutri": "Ernährung"
+      },
+      "rushFiles": {
+        "label": "Videos / Fotos (Rushes)",
+        "selectFiles": "Dateien auswählen",
+        "filesSelected": "{count} Dateien ausgewählt"
+      },
+      "musicFile": {
+        "label": "Musik (optional)",
+        "selectFile": "Musik auswählen",
+        "fileSelected": "Musik ausgewählt"
+      },
+      "posterPhoto": {
+        "label": "KI-Posterbild",
+        "description": "Die KI wählt passende Fotos für jedes Ziel"
+      },
+      "generate": "Plan generieren",
+      "generating": "Wird generiert...",
+      "stages": {
+        "preparing": "Vorbereitung...",
+        "uploadingRush": "Rush hochladen {current}/{total}...",
+        "uploadingMusic": "Musik wird hochgeladen...",
+        "searchingPhotos": "Posterbilder werden gesucht...",
+        "composingPosts": "Schnitt und Erstellung der Posts...",
+        "composingVideo": "Videoschnitt {current}/{total} — {title}",
+        "videoStage": "Video {current}/{total}: {stage}",
+        "done": "Fertig!"
+      },
+      "description": "Laden Sie Ihre Rushes hoch und die KI erstellt einen optimierten Plan mit unterschiedlichem Schnitt für jedes Video.",
+      "rushFolder": "Rush-Ordner",
+      "selectVideosOrImages": "Videos oder Bilder auswählen",
+      "filesCount": "{count} Datei(en)",
+      "planFor": "Planen für",
+      "branding": {
+        "title": "Personalisierung (gespeichert)"
+      },
+      "generateWithDays": "Generieren ({days}T)"
+    },
+    "fullPreview": {
+      "schedule": "Planen",
+      "edit": "Bearbeiten",
+      "studioSon": "Tonstudio",
+      "publishNow": "Jetzt veröffentlichen",
+      "close": "Schließen",
+      "information": "Informationen",
+      "musicIncluded": "Musik enthalten",
+      "voiceOver": "Voiceover",
+      "logoIncluded": "Logo enthalten",
+      "videoIncluded": "Video enthalten",
+      "videoCreator": "Video Creator",
+      "infographic": "Infografik",
+      "postLabel": "Post",
+      "sequences": "{count} Sequenzen",
+      "rushes": "{count} Rush(es)",
+      "enableSound": "Ton aktivieren",
+      "muteSound": "Ton stummschalten",
+      "music": "Musik",
+      "voiceOffLabel": "Voiceover"
+    },
+    "bulkDateModal": {
+      "title": "Posts verschieben",
+      "newDate": "Neues Datum",
+      "newTime": "Startzeit",
+      "confirm": "Verschieben",
+      "selectedPosts": "{count} Post(s) ausgewählt",
+      "staggerNote": "Folgende Posts werden im 30-Minuten-Abstand verteilt"
+    },
+    "captionStyles": {
+      "promotion": "Promotion",
+      "motivation": "Motivation",
+      "bienfaits": "Vorteile",
+      "abonnement": "Abonnement",
+      "nutrition": "Ernährung"
+    },
+    "loading": "Laden...",
+    "postCount": "{count} Post(s)"
+  },
+  "library": {
+    "title": "Mediathek",
+    "subtitle": "{count} erstellte Videos",
+    "subtitleManage": "Verwalten Sie alle Ihre erstellten Videos",
+    "createVideo": "Video erstellen",
+    "createFirstVideo": "Erstes Video erstellen",
+    "searchPlaceholder": "Video suchen...",
+    "filterSelect": "Auswählen...",
+    "noVideos": "Keine Videos",
+    "noVideosFilter": "Keine Videos entsprechen Ihren Filtern",
+    "noVideosCreate": "Erstellen Sie Ihr erstes Video, um es hier anzuzeigen",
+    "status": {
+      "completed": "Abgeschlossen",
+      "rendering": "Wird gerendert",
+      "published": "Veröffentlicht",
+      "draft": "Entwurf",
+      "failed": "Rendering fehlgeschlagen"
+    },
+    "actions": {
+      "preview": "Vorschau",
+      "export": "Exportieren",
+      "edit": "Bearbeiten",
+      "duplicate": "Duplizieren",
+      "delete": "Löschen",
+      "repost": "Erneut posten"
+    },
+    "toasts": {
+      "exported": "Video erfolgreich exportiert",
+      "exportError": "Fehler beim Export",
+      "duplicated": "Video dupliziert",
+      "duplicateError": "Fehler beim Duplizieren",
+      "reposted": "Video erneut auf Ihren Netzwerken gepostet",
+      "repostError": "Fehler beim erneuten Posten",
+      "deleted": "Video gelöscht",
+      "deleteError": "Fehler beim Löschen"
+    },
+    "deleteConfirm": {
+      "title": "Video löschen?",
+      "message": "Möchten Sie \"{title}\" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden."
+    },
+    "preview": {
+      "renderingInProgress": "Rendering läuft...",
+      "videoAvailableAfterRender": "Das Video wird nach Abschluss des Renderings verfügbar sein",
+      "videoNotAvailable": "Video nicht verfügbar",
+      "browserNotSupported": "Ihr Browser unterstützt keine Videowiedergabe.",
+      "processing": "Video wird verarbeitet"
+    },
+    "formatLabels": {
+      "reel": "Reel 9:16",
+      "tv": "TV 16:9"
+    },
+    "typeLabels": {
+      "infographic": "Infografik",
+      "video": "Video"
+    }
+  },
+  "objectives": {
+    "title": "Ziele",
+    "subtitle": "Definieren Sie Ihre Ziele für die Videoerstellung",
+    "createObjective": "+ Ziel erstellen",
+    "newObjective": "Neues Ziel",
+    "editObjective": "Ziel bearbeiten",
+    "form": {
+      "name": "Name",
+      "namePlaceholder": "z.B.: Instagram-Wachstum",
+      "description": "Beschreibung",
+      "descriptionPlaceholder": "Beschreiben Sie Ihr Ziel",
+      "targetAudience": "Zielgruppe",
+      "targetPlaceholder": "z.B.: Junge Erwachsene",
+      "platform": "Plattform",
+      "tone": "Tonalität"
+    },
+    "tones": {
+      "ludique": "Spielerisch",
+      "educatif": "Lehrreich",
+      "tendance": "Trendig",
+      "professionnel": "Professionell"
+    },
+    "labels": {
+      "audience": "Zielgruppe",
+      "platform": "Plattform",
+      "tone": "Tonalität"
+    }
+  },
+  "social": {
+    "title": "Soziale Netzwerke",
+    "subtitle": "Verbinden Sie Ihre Konten, um Videos automatisch zu veröffentlichen",
+    "noNetworkConnected": "Kein Netzwerk verbunden",
+    "connectAtLeastOne": "Verbinden Sie mindestens ein Netzwerk, um Ihre Videos zu veröffentlichen",
+    "networksConnected": "{count} Netzwerke verbunden",
+    "videosAutoPublish": "Ihre Videos können automatisch veröffentlicht werden",
+    "platforms": {
+      "instagram": {
+        "name": "Instagram",
+        "description": "Reels, Stories, Posts"
+      },
+      "tiktok": {
+        "name": "TikTok",
+        "description": "Virale Kurzvideos"
+      },
+      "facebook": {
+        "name": "Facebook",
+        "description": "Videos, Reels, Stories"
+      },
+      "youtube": {
+        "name": "YouTube",
+        "description": "Shorts, lange Videos"
+      }
+    },
+    "status": {
+      "connected": "Verbunden",
+      "ready": "Bereit",
+      "oauthNotConfigured": "OAuth nicht konfiguriert"
+    },
+    "actions": {
+      "connect": "{platform} verbinden",
+      "reconnect": "Erneut verbinden",
+      "disconnect": "Trennen",
+      "connecting": "Verbindung wird hergestellt..."
+    },
+    "oauthInfo": "Um die Verbindung zu {platform} zu aktivieren, konfigurieren Sie die OAuth-API-Schlüssel in den Vercel-Umgebungsvariablen.",
+    "toasts": {
+      "connectionSuccess": "Erfolgreich mit {platform} verbunden!",
+      "connectionInitiated": "Verbindung zu {platform} eingeleitet",
+      "disconnected": "Von {platform} getrennt",
+      "platformNotRecognized": "Plattform nicht erkannt",
+      "popupsRequired": "Popups müssen für die Verbindung aktiviert sein",
+      "connectionInProgress": "Verbindung wird hergestellt...",
+      "oauthNotConfigured": "OAuth für {platform} nicht konfiguriert. Konfigurieren Sie die API-Schlüssel unter Vercel > Settings > Environment Variables.",
+      "serverError": "Serverfehler bei der Verbindung",
+      "noAuthUrl": "Fehler: Kein Authentifizierungslink für {platform} empfangen",
+      "connectionError": "Fehler bei der Verbindung",
+      "disconnectError": "Fehler beim Trennen"
+    },
+    "settings": {
+      "title": "Veröffentlichungseinstellungen",
+      "autoPublish": {
+        "title": "Automatische Veröffentlichung",
+        "description": "Automatisch auf allen verbundenen Konten veröffentlichen"
+      },
+      "bestTime": {
+        "title": "Bester Veröffentlichungszeitpunkt",
+        "description": "Die KI wählt den optimalen Veröffentlichungszeitpunkt"
+      },
+      "defaultHashtags": {
+        "title": "Standard-Hashtags",
+        "placeholder": "Geben Sie Standard-Hashtags ein (durch Leerzeichen getrennt)",
+        "example": "Beispiel: #studiio #video #content"
+      },
+      "defaultDescription": {
+        "title": "Standardbeschreibung",
+        "placeholder": "Geben Sie Ihre Standardbeschreibung ein...",
+        "info": "Diese Beschreibung wird standardmäßig auf alle Ihre Posts angewendet"
+      }
+    }
+  },
+  "billing": {
+    "title": "Abrechnung",
+    "subtitle": "Verwalten Sie Ihre Credits und Ihr Abonnement",
+    "currentSubscription": "Aktuelles Abonnement",
+    "plan": "Plan",
+    "renewal": "Verlängerung",
+    "manageSubscription": "Abonnement verwalten",
+    "buyCredits": "Credits kaufen",
+    "transactionHistory": "Transaktionsverlauf",
+    "changePlan": "Plan ändern",
+    "tableHeaders": {
+      "date": "Datum",
+      "description": "Beschreibung",
+      "credits": "Credits",
+      "balance": "Guthaben"
+    },
+    "errors": {
+      "portalError": "Das Abrechnungsportal konnte nicht geöffnet werden. Bitte versuchen Sie es erneut.",
+      "checkoutError": "Die Zahlungssitzung konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+      "connectionError": "Verbindungsfehler. Bitte versuchen Sie es erneut."
+    },
+    "transactions": {
+      "renderReel": "Video-Rendering - Reel 9:16",
+      "buyCredits": "Kauf von {count} Credits",
+      "renderTV": "Video-Rendering - TV 16:9",
+      "subscriptionPro": "Pro-Abonnement",
+      "bonusCredits": "Bonus-Credits"
+    }
+  },
+  "branding": {
+    "watermark": {
+      "label": "Watermark / Website",
+      "placeholder": "z.B.: meineseite.de",
+      "hint": "Wird unten in jedem Video angezeigt. Leer lassen für kein Watermark."
+    },
+    "border": {
+      "label": "Farbiger Rahmen"
+    },
+    "ctaText": {
+      "label": "CTA-Text (Handlungsaufforderung)",
+      "placeholder": "z.B.: SICHERE DIR DEINEN PLATZ"
+    },
+    "ctaSubText": {
+      "label": "CTA-Untertext",
+      "placeholder": "z.B.: LINK IN BIO"
+    },
+    "accentColor": {
+      "label": "Akzentfarbe"
+    }
+  },
+  "admin": {
+    "dashboard": {
+      "title": "Admin-Dashboard",
+      "subtitle": "Überblick über die Studiio-Plattform",
+      "loadingDashboard": "Dashboard wird geladen...",
+      "errorLoadingStats": "Fehler beim Laden der Statistiken",
+      "stats": {
+        "totalUsers": "Benutzer gesamt",
+        "monthlyRevenue": "Monatliche Einnahmen",
+        "activeSubscriptions": "Aktive Abonnements",
+        "videosRendered": "Gerenderte Videos"
+      },
+      "recentActivities": "Letzte Aktivitäten",
+      "noRecentActivity": "Keine aktuellen Aktivitäten",
+      "quickActions": "Schnellaktionen",
+      "creditUser": "Benutzer gutschreiben",
+      "viewPayments": "Zahlungen anzeigen",
+      "manageTerms": "AGB verwalten"
+    },
+    "users": {
+      "title": "Benutzerverwaltung",
+      "subtitle": "Verwalten Sie alle Benutzer der Plattform",
+      "searchPlaceholder": "Nach Name oder E-Mail suchen...",
+      "allPlans": "Alle Pläne",
+      "allStatuses": "Alle Status",
+      "allRoles": "Alle Rollen",
+      "errorLoading": "Fehler beim Laden der Benutzer",
+      "errorAddCredits": "Fehler beim Hinzufügen von Credits",
+      "creditsAdded": "Credits erfolgreich hinzugefügt",
+      "errorModify": "Fehler bei der Änderung",
+      "userModified": "Benutzer erfolgreich geändert",
+      "errorDelete": "Fehler beim Löschen",
+      "userDeleted": "Benutzer {name} erfolgreich gelöscht",
+      "errorBan": "Fehler beim Sperren",
+      "userBanned": "Benutzer erfolgreich gesperrt",
+      "userUnbanned": "Benutzer erfolgreich entsperrt",
+      "confirmDelete": "{name} ({email}) endgültig löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+      "banReason": "Grund für die Sperrung von {name}:",
+      "confirmUnban": "{name} entsperren?",
+      "noName": "Ohne Name",
+      "noUsersFound": "Keine Benutzer gefunden",
+      "tableHeaders": {
+        "name": "Name",
+        "email": "E-Mail",
+        "plan": "Plan",
+        "credits": "Credits",
+        "role": "Rolle",
+        "status": "Status",
+        "joined": "Registriert",
+        "actions": "Aktionen"
+      },
+      "plans": {
+        "free": "Kostenlos",
+        "starter": "Starter",
+        "pro": "Pro",
+        "enterprise": "Enterprise"
+      },
+      "roles": {
+        "user": "Benutzer",
+        "admin": "Admin"
+      },
+      "statuses": {
+        "active": "Aktiv",
+        "blocked": "Gesperrt"
+      },
+      "actions": {
+        "credit": "Gutschreiben",
+        "ban": "Sperren",
+        "unban": "Entsperren"
+      },
+      "creditModal": {
+        "title": "Credits hinzufügen",
+        "amount": "Anzahl der Credits",
+        "reason": "Grund",
+        "reasonPlaceholder": "z.B.: Kompensation, Bonus...",
+        "add": "Hinzufügen"
+      },
+      "editModal": {
+        "title": "Benutzer bearbeiten",
+        "role": "Rolle",
+        "plan": "Plan",
+        "credits": "Credits",
+        "modify": "Ändern"
+      },
+      "pagination": {
+        "previous": "Zurück",
+        "next": "Weiter",
+        "pageOf": "Seite {page} / {pages}"
+      }
+    },
+    "videos": {
+      "title": "Videoverwaltung",
+      "subtitle": "Alle auf der Plattform erstellten Videos",
+      "searchPlaceholder": "Nach Titel oder Benutzer suchen...",
+      "tableHeaders": {
+        "title": "Titel",
+        "user": "Benutzer",
+        "format": "Format",
+        "status": "Status",
+        "credits": "Credits",
+        "date": "Datum"
+      },
+      "status": {
+        "completed": "Abgeschlossen",
+        "rendering": "Rendering",
+        "draft": "Entwurf"
+      }
+    },
+    "payments": {
+      "title": "Zahlungsverlauf",
+      "subtitle": "Alle Zahlungen der Plattform",
+      "exportCSV": "CSV exportieren",
+      "stats": {
+        "monthlyRevenue": "Gesamteinnahmen (Monat)",
+        "transactions": "Transaktionen",
+        "thisMonth": "Dieser Monat",
+        "conversionRate": "Konversionsrate",
+        "stable": "Stabil",
+        "failedTransactions": "Fehlgeschlagene Transaktionen",
+        "toExamine": "Zu prüfen",
+        "vsLastMonth": "vs. Vormonat"
+      },
+      "filters": {
+        "subscription": "Abonnement",
+        "credits": "Credit-Kauf",
+        "completed": "Abgeschlossen",
+        "failed": "Fehlgeschlagen"
+      }
+    },
+    "subscriptions": {
+      "title": "Abonnementverwaltung",
+      "subtitle": "Verwalten Sie alle aktiven Abonnements",
+      "filters": {
+        "active": "Aktiv",
+        "canceled": "Gekündigt"
+      }
+    },
+    "settings": {
+      "title": "Plattformeinstellungen",
+      "subtitle": "Konfigurieren Sie die Studiio-Plattform",
+      "errorSaving": "Fehler beim Speichern",
+      "saved": "Einstellungen erfolgreich gespeichert",
+      "creditUser": "Benutzer gutschreiben",
+      "creditUserDesc": "Credits eines Benutzers hinzufügen oder abziehen",
+      "changePlan": "Plan ändern",
+      "changePlanDesc": "Den Tarifplan eines Benutzers ändern",
+      "freeCredits": "Gratis-Credits",
+      "freeCreditsLabel": "Credits für neue Benutzer",
+      "features": "Funktionen",
+      "maintenanceMode": "Wartungsmodus",
+      "maintenanceModeDesc": "Alle Benutzerzugriffe deaktivieren",
+      "newSignups": "Neue Registrierungen zulassen",
+      "newSignupsDesc": "Neuen Benutzern die Registrierung ermöglichen",
+      "aiGeneration": "KI-Generierung aktivieren",
+      "aiGenerationDesc": "Videoerstellung mit KI ermöglichen",
+      "planPricing": "Tarifpreise",
+      "creditPackages": "Credit-Pakete",
+      "editLandingPlans": "Pläne im Landing-Page-Editor bearbeiten",
+      "saveSettings": "Einstellungen speichern",
+      "saving": "Wird gespeichert...",
+      "searchUser": "Benutzer suchen",
+      "searchUserPlaceholder": "Name oder E-Mail...",
+      "creditsActuels": "aktuelle Credits",
+      "addCredits": "Hinzufügen",
+      "deductCredits": "Abziehen",
+      "amount": "Betrag",
+      "reason": "Grund",
+      "reasonPlaceholder": "z.B.: Bonus, Kompensation...",
+      "confirmAction": "Bestätigen",
+      "currentPlan": "Aktueller Plan",
+      "newPlan": "Neuer Plan",
+      "modifyPlan": "Plan ändern"
+    },
+    "landing": {
+      "title": "Landing Page",
+      "subtitle": "Verwalten Sie den Inhalt der Startseite"
+    },
+    "emails": {
+      "title": "E-Mail-Verwaltung",
+      "subtitle": "Senden Sie E-Mails und verwalten Sie Benachrichtigungen",
+      "bulkButton": "Massen-E-Mail",
+      "close": "Schließen",
+      "testEmail": {
+        "title": "Test-E-Mail senden",
+        "to": "Empfänger-E-Mail",
+        "toPlaceholder": "test@beispiel.de",
+        "subject": "Betreff",
+        "subjectPlaceholder": "E-Mail-Betreff...",
+        "body": "Nachrichtentext",
+        "bodyPlaceholder": "E-Mail-Inhalt...",
+        "send": "Test senden",
+        "sending": "Wird gesendet...",
+        "fillAll": "Bitte füllen Sie alle Felder aus",
+        "sent": "Test-E-Mail erfolgreich gesendet",
+        "error": "Fehler beim Senden der Test-E-Mail"
+      },
+      "notifications": {
+        "title": "Benachrichtigungseinstellungen",
+        "adminEmail": "Admin-E-Mail",
+        "adminEmailPlaceholder": "admin@studiio.com",
+        "notifyOnSale": "Benachrichtigung bei jedem Verkauf",
+        "notifyOnSaleDesc": "Bei jedem Verkauf eine Benachrichtigung erhalten",
+        "dailyDigest": "Tägliche Zusammenfassung",
+        "dailyDigestDesc": "Tägliche Zusammenfassung der Aktivitäten erhalten",
+        "notifyNewUser": "Neue-Benutzer-Benachrichtigung",
+        "notifyNewUserDesc": "Bei jeder neuen Registrierung benachrichtigt werden",
+        "save": "Einstellungen speichern",
+        "saving": "Wird gespeichert...",
+        "saved": "Benachrichtigungseinstellungen erfolgreich gespeichert",
+        "error": "Fehler beim Speichern"
+      },
+      "bulk": {
+        "title": "E-Mail an mehrere Benutzer senden",
+        "recipients": "Empfänger",
+        "recipientsCount": "{count} ausgewählt",
+        "allUsers": "Alle Benutzer",
+        "deselectAll": "Alle abwählen",
+        "searchPlaceholder": "Nach Name oder E-Mail suchen...",
+        "subject": "Betreff",
+        "subjectPlaceholder": "E-Mail-Betreff...",
+        "body": "Nachrichtentext",
+        "bodyVariables": "Variablen: {nom}, {email}, {plan}",
+        "bodyPlaceholder": "E-Mail-Inhalt... Verwenden Sie {nom} für den Benutzernamen",
+        "sendingProgress": "Wird gesendet...",
+        "sendTo": "An {count} Benutzer senden",
+        "sending": "Versand {sent}/{total}",
+        "fillAll": "Wählen Sie Benutzer aus und füllen Sie alle Felder aus",
+        "confirmSend": "Diese E-Mail an {count} Benutzer senden?",
+        "successPartial": "{sent} E-Mails gesendet, {errors} Fehler",
+        "successAll": "{sent} E-Mails erfolgreich gesendet",
+        "usersSelected": "{count} Benutzer ausgewählt"
+      },
+      "templates": {
+        "title": "E-Mail-Vorlagen"
+      }
+    },
+    "logs": {
+      "title": "Audit-Protokoll",
+      "subtitle": "Sehen Sie den vollständigen Verlauf der Admin-Aktionen ein",
+      "errorLoading": "Fehler beim Laden der Protokolle",
+      "allActions": "Alle Aktionen",
+      "allTypes": "Alle Typen",
+      "noLogs": "Keine Protokolle gefunden",
+      "logsCount": "Audit-Einträge ({count})",
+      "details": "Details",
+      "actions": {
+        "create": "Erstellt",
+        "update": "Geändert",
+        "delete": "Gelöscht",
+        "block": "Gesperrt",
+        "unblock": "Entsperrt",
+        "credit": "Gutgeschrieben",
+        "login": "Anmeldung",
+        "logout": "Abmeldung",
+        "ban": "Gesperrt",
+        "unban": "Entsperrt"
+      },
+      "targetTypes": {
+        "user": "Benutzer",
+        "payment": "Zahlung",
+        "subscription": "Abonnement",
+        "video": "Video",
+        "content": "Inhalt",
+        "settings": "Einstellungen"
+      },
+      "pagination": {
+        "previous": "Zurück",
+        "next": "Weiter",
+        "pageOf": "Seite {page} / {pages}"
+      }
+    },
+    "terms": {
+      "title": "Allgemeine Geschäftsbedingungen",
+      "subtitle": "Verwalten Sie die AGB der Plattform",
+      "editContent": "Inhalt bearbeiten",
+      "placeholder": "Geben Sie hier die AGB ein...",
+      "cancelChanges": "Änderungen verwerfen",
+      "save": "Speichern",
+      "saving": "Wird gespeichert...",
+      "saved": "AGB erfolgreich gespeichert",
+      "errorLoading": "Fehler beim Laden der AGB",
+      "errorSaving": "Fehler beim Speichern",
+      "info": {
+        "title": "Informationen",
+        "lastModified": "Letzte Änderung",
+        "modifiedBy": "Geändert von",
+        "never": "Nie",
+        "na": "k.A.",
+        "characterCount": "Zeichenanzahl",
+        "lineCount": "Zeilenanzahl"
+      },
+      "preview": "Vorschau"
+    }
+  },
+  "privacy": {
+    "title": "Datenschutzerklärung - Studiio / Afroboost Studio",
+    "lastUpdated": "Letzte Aktualisierung: 1. April 2026",
+    "sections": {
+      "introduction": {
+        "title": "1. Einleitung",
+        "content": "Diese Datenschutzerklärung gilt für Studiio (erreichbar unter studiio.pro) und Afroboost Studio, unsere mit sozialen Netzwerken wie TikTok, Instagram, Facebook und YouTube verbundene Anwendung. Studiio und Afroboost Studio werden von Bassi Original / Afroboost betrieben."
+      },
+      "tiktokApp": {
+        "title": "1b. Afroboost Studio Anwendung auf TikTok",
+        "content": "Die Anwendung Afroboost Studio (App-ID: 7620817395090966540) ist eine auf der TikTok for Developers Plattform registrierte Anwendung. Afroboost Studio nutzt die TikTok-API (Login Kit und Content Posting API), um Benutzern zu ermöglichen, ihr TikTok-Konto zu verbinden und Videoinhalte direkt von der Studiio-Plattform zu veröffentlichen. Durch die Nutzung von Afroboost Studio autorisieren Sie die Anwendung, auf Ihr TikTok-Profil zuzugreifen und Inhalte in Ihrem Namen zu veröffentlichen."
+      },
+      "dataCollection": {
+        "title": "2. Datenerhebung",
+        "content": "Studiio und Afroboost Studio erheben die für den Betrieb des Dienstes erforderlichen Informationen: E-Mail-Adresse, Name und Verbindungsdaten zu sozialen Netzwerken (OAuth-Token). Diese Daten werden ausschließlich zur Veröffentlichung von Inhalten auf Ihren verbundenen Konten verwendet."
+      },
+      "dataUsage": {
+        "title": "3. Verwendung der Daten",
+        "content": "Ihre Daten werden von Studiio und Afroboost Studio verwendet, um: Ihr Konto zu authentifizieren, Inhalte auf den von Ihnen verbundenen Plattformen (Instagram, Facebook, TikTok, YouTube) zu veröffentlichen und unsere Dienste zu verbessern."
+      },
+      "dataSharing": {
+        "title": "4. Weitergabe der Daten",
+        "content": "Wir verkaufen oder teilen Ihre personenbezogenen Daten nicht mit Dritten, außer zum technischen Betrieb des Dienstes (Hosting, APIs der sozialen Netzwerke)."
+      },
+      "security": {
+        "title": "5. Sicherheit",
+        "content": "Ihre Zugangstoken werden sicher und verschlüsselt gespeichert. Wir verwenden HTTPS für die gesamte Kommunikation."
+      },
+      "dataDeletion": {
+        "title": "6. Datenlöschung",
+        "content": "Sie können die Löschung Ihrer Daten jederzeit beantragen, indem Sie uns unter contact.artboost@gmail.com kontaktieren oder Ihre sozialen Konten über das Dashboard trennen."
+      },
+      "contactSection": {
+        "title": "7. Kontakt",
+        "content": "Bei Fragen: contact.artboost@gmail.com"
+      }
+    }
+  },
+  "terms": {
+    "title": "Allgemeine Nutzungsbedingungen",
+    "lastUpdated": "Letzte Aktualisierung: {date}",
+    "backToHome": "Zurück zur Startseite",
+    "branding": "Studiio - KI-Plattform für Content Creator",
+    "loadingTerms": "Nutzungsbedingungen werden geladen...",
+    "unavailable": "Die Nutzungsbedingungen sind derzeit nicht verfügbar.",
+    "loadError": "Die Nutzungsbedingungen konnten nicht geladen werden."
+  }
+}

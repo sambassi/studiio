@@ -4,6 +4,7 @@ import { Suspense, useEffect, useRef, useState, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Music, Mic, Upload, Play, Pause, Square, Trash2, Volume2, VolumeX, Loader2, ChevronLeft, SkipBack, SkipForward } from 'lucide-react';
 import { composeAndUpload, downloadBlob } from '@/lib/video-composer';
+import { useTranslations } from '@/i18n/client';
 
 // ═══════════════════════════════════════════════════════════
 // TYPES
@@ -43,6 +44,8 @@ export default function AudioStudioPage() {
 }
 
 function AudioStudioContent() {
+  const t = useTranslations('audioStudio');
+  const tc = useTranslations('common');
   const searchParams = useSearchParams();
   const router = useRouter();
   const postId = searchParams.get('postId');
@@ -163,10 +166,10 @@ function AudioStudioContent() {
   };
 
   const seqConfig: Record<string, { label: string; emoji: string; color: string }> = {
-    intro: { label: 'Affiche', emoji: '🖼️', color: '#D91CD2' },
-    cards: { label: 'Cartes', emoji: '📊', color: '#3B82F6' },
-    video: { label: 'Vidéo', emoji: '🎬', color: '#10B981' },
-    cta: { label: 'CTA', emoji: '📢', color: '#F59E0B' },
+    intro: { label: t('timeline.affiche'), emoji: '🖼️', color: '#D91CD2' },
+    cards: { label: t('timeline.cards'), emoji: '📊', color: '#3B82F6' },
+    video: { label: t('timeline.video'), emoji: '🎬', color: '#10B981' },
+    cta: { label: t('timeline.cta'), emoji: '📢', color: '#F59E0B' },
   };
 
   const sequences: SeqBlock[] = seqOrder
@@ -322,7 +325,7 @@ function AudioStudioContent() {
         const url = URL.createObjectURL(blob);
         if (voiceUrl) URL.revokeObjectURL(voiceUrl);
         setVoiceUrl(url);
-        setVoiceName('Enregistrement micro');
+        setVoiceName(t('voice.recordingName'));
         setVoiceFile(new File([blob], `voix-off-${Date.now()}.webm`, { type: blob.type }));
         voiceAudioRef.current = new Audio(url);
         stream.getTracks().forEach(t => t.stop());
@@ -338,7 +341,7 @@ function AudioStudioContent() {
       recordingTimerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000);
     } catch (err) {
       console.error('[AudioStudio] Mic denied:', err);
-      alert('Veuillez autoriser l\'accès au microphone.');
+      alert(t('voice.micDenied'));
     }
   }, [voiceUrl, startPlayback]);
 
@@ -368,14 +371,14 @@ function AudioStudioContent() {
     if (posts.length === 0) return;
     setIsExporting(true);
     setExportProgress(0);
-    setExportStage('Préparation...');
+    setExportStage(t('export.preparing'));
 
     try {
       // ═══ Step 1: Upload audio files to Supabase ONCE (shared across all posts) ═══
       let uploadedMusicUrl: string | null = null;
       let uploadedVoiceUrl: string | null = null;
 
-      setExportStage('Upload des fichiers audio...');
+      setExportStage(t('export.uploadingAudio'));
       setExportProgress(5);
       if (musicFile) uploadedMusicUrl = await uploadFile(musicFile, 'music');
       if (voiceFile) uploadedVoiceUrl = await uploadFile(voiceFile, 'voiceover');
@@ -404,7 +407,7 @@ function AudioStudioContent() {
 
           const progressBase = 20 + Math.round((i / posts.length) * 70);
           const progressSpan = Math.round(70 / posts.length);
-          setExportStage(`Montage vidéo ${i + 1}/${posts.length}...`);
+          setExportStage(t('export.composingBatch', { current: String(i + 1), total: String(posts.length) }));
           setExportProgress(progressBase);
 
           try {
@@ -476,7 +479,7 @@ function AudioStudioContent() {
         if (localVoiceBlobUrl) URL.revokeObjectURL(localVoiceBlobUrl);
 
         setExportProgress(100);
-        setExportStage(`${successCount}/${posts.length} vidéos exportées !`);
+        setExportStage(t('export.batchDone', { success: String(successCount), total: String(posts.length) }));
         console.log(`[AudioStudio] Batch done: ${successCount}/${posts.length} composed`);
 
         if (exportDest === 'calendar' || exportDest === 'both') {
@@ -499,7 +502,7 @@ function AudioStudioContent() {
         const localMusicBlobUrl = musicFile ? URL.createObjectURL(musicFile) : null;
         const localVoiceBlobUrl = voiceFile ? URL.createObjectURL(voiceFile) : null;
 
-        setExportStage('Montage vidéo avec son...');
+        setExportStage(t('export.composingWithAudio'));
         setExportProgress(25);
 
         const result = await composeAndUpload({
@@ -537,7 +540,7 @@ function AudioStudioContent() {
         }
 
         if ((exportDest === 'calendar' || exportDest === 'both') && result.url) {
-          setExportStage('Mise à jour du calendrier...');
+          setExportStage(t('export.updatingCalendar'));
           try {
             await fetch(`/api/posts/${p.id}`, {
               method: 'PATCH',
@@ -552,7 +555,7 @@ function AudioStudioContent() {
         }
 
         setExportProgress(100);
-        setExportStage('Terminé !');
+        setExportStage(t('export.done'));
 
         if (exportDest === 'calendar' || exportDest === 'both') {
           setTimeout(() => router.push('/dashboard/calendar'), 1500);
@@ -560,7 +563,7 @@ function AudioStudioContent() {
       }
     } catch (err) {
       console.error('[AudioStudio] Export error:', err);
-      setExportStage('Erreur');
+      setExportStage(t('export.error'));
     } finally {
       setTimeout(() => { setIsExporting(false); setExportProgress(0); setExportStage(''); }, 2000);
     }
@@ -579,8 +582,8 @@ function AudioStudioContent() {
   if (posts.length === 0) return (
     <div className="flex flex-col items-center justify-center h-[70vh] gap-4">
       <VolumeX size={48} className="text-gray-600" />
-      <p className="text-gray-400">Aucune vidéo sélectionnée</p>
-      <button onClick={() => router.push('/dashboard/calendar')} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-white transition">Retour au calendrier</button>
+      <p className="text-gray-400">{t('noVideoSelected')}</p>
+      <button onClick={() => router.push('/dashboard/calendar')} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-white transition">{t('backToCalendar')}</button>
     </div>
   );
 
@@ -624,14 +627,14 @@ function AudioStudioContent() {
                   {videoError && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-10">
                       <VolumeX size={32} className="text-red-400 mb-2" />
-                      <p className="text-xs text-red-400">Erreur de chargement</p>
+                      <p className="text-xs text-red-400">{t('loadingError')}</p>
                     </div>
                   )}
                 </>
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center bg-gray-900">
                   <Volume2 size={48} className="text-gray-700 mb-2" />
-                  <p className="text-sm text-gray-600">Aperçu vidéo</p>
+                  <p className="text-sm text-gray-600">{t('videoPreview')}</p>
                 </div>
               )}
 
@@ -672,7 +675,7 @@ function AudioStudioContent() {
                         <div className="w-full h-full flex items-center justify-center"><Volume2 size={10} className="text-gray-600" /></div>
                       )}
                       <div className="absolute bottom-0 inset-x-0 bg-black/70 text-[8px] text-center text-white py-0.5 truncate px-0.5">
-                        {p.title || `Vidéo ${i + 1}`}
+                        {p.title || `${t('timeline.video')} ${i + 1}`}
                       </div>
                     </div>
                   </button>
@@ -689,10 +692,10 @@ function AudioStudioContent() {
             <button onClick={() => router.back()} className="p-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 transition"><ChevronLeft size={16} className="text-gray-400" /></button>
             <div className="min-w-0 flex-1">
               <h2 className="text-sm font-bold text-white truncate flex items-center gap-1.5">
-                <Volume2 size={14} className="text-pink-500 shrink-0" /> Studio Son
-                {isBatch && <span className="text-[10px] font-normal bg-pink-600/30 text-pink-300 px-1.5 py-0.5 rounded-full ml-1">{posts.length} vidéos</span>}
+                <Volume2 size={14} className="text-pink-500 shrink-0" /> {t('title')}
+                {isBatch && <span className="text-[10px] font-normal bg-pink-600/30 text-pink-300 px-1.5 py-0.5 rounded-full ml-1">{t('batchLabel', { count: String(posts.length) })}</span>}
               </h2>
-              <p className="text-[10px] text-gray-500 truncate">{isBatch ? `Vidéo ${currentPostIndex + 1}/${posts.length} — ${post.title}` : post.title}</p>
+              <p className="text-[10px] text-gray-500 truncate">{isBatch ? t('batchVideoOf', { current: String(currentPostIndex + 1), total: String(posts.length), title: post.title }) : post.title}</p>
             </div>
           </div>
 
@@ -703,13 +706,13 @@ function AudioStudioContent() {
                 onClick={() => setCurrentPostIndex(i => Math.max(0, i - 1))}
                 disabled={currentPostIndex === 0}
                 className="flex-1 py-1.5 rounded-lg text-[10px] font-medium bg-gray-700 hover:bg-gray-600 text-gray-300 disabled:opacity-30 transition text-center"
-              >← Précédente</button>
+              >{`← ${t('previousVideo')}`}</button>
               <span className="text-[10px] text-gray-400 px-1">{currentPostIndex + 1}/{posts.length}</span>
               <button
                 onClick={() => setCurrentPostIndex(i => Math.min(posts.length - 1, i + 1))}
                 disabled={currentPostIndex === posts.length - 1}
                 className="flex-1 py-1.5 rounded-lg text-[10px] font-medium bg-gray-700 hover:bg-gray-600 text-gray-300 disabled:opacity-30 transition text-center"
-              >Suivante →</button>
+              >{`${t('nextVideo')} →`}</button>
             </div>
           )}
 
@@ -717,7 +720,7 @@ function AudioStudioContent() {
           <div className="bg-gray-800 rounded-xl p-3 border border-gray-700/50">
             <div className="flex items-center gap-1.5 mb-2.5">
               <Music size={13} className="text-pink-400" />
-              <span className="text-xs font-bold text-white uppercase tracking-wider">Musique</span>
+              <span className="text-xs font-bold text-white uppercase tracking-wider">{t('music.title')}</span>
             </div>
             {musicFile ? (
               <div className="flex items-center gap-2 bg-gray-900 rounded-lg p-2">
@@ -729,7 +732,7 @@ function AudioStudioContent() {
               </div>
             ) : (
               <button onClick={() => musicInputRef.current?.click()} className="w-full flex items-center justify-center gap-1.5 py-2.5 border border-dashed border-gray-600 hover:border-pink-500 rounded-lg text-gray-400 hover:text-pink-400 transition text-xs">
-                <Upload size={13} /> Importer musique
+                <Upload size={13} /> {t('music.import')}
               </button>
             )}
             <input ref={musicInputRef} type="file" accept="audio/*" className="hidden" onChange={handleMusicUpload} />
@@ -739,16 +742,16 @@ function AudioStudioContent() {
           <div className="bg-gray-800 rounded-xl p-3 border border-gray-700/50">
             <div className="flex items-center gap-1.5 mb-2.5">
               <Mic size={13} className="text-purple-400" />
-              <span className="text-xs font-bold text-white uppercase tracking-wider">Voix Off</span>
+              <span className="text-xs font-bold text-white uppercase tracking-wider">{t('voice.title')}</span>
             </div>
             {/* Record */}
             {!isRecording ? (
               <button onClick={startRecording} className="w-full flex items-center justify-center gap-1.5 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-white text-xs font-medium transition mb-2">
-                <Mic size={13} /> Enregistrer
+                <Mic size={13} /> {t('voice.record')}
               </button>
             ) : (
               <button onClick={stopRecording} className="w-full flex items-center justify-center gap-1.5 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-white text-xs font-medium transition mb-2 animate-pulse">
-                <Square size={13} /> Stop ({fmt(recordingTime)})
+                <Square size={13} /> {t('voice.stop')} ({fmt(recordingTime)})
               </button>
             )}
             {voiceFile ? (
@@ -756,13 +759,13 @@ function AudioStudioContent() {
                 <div className="w-7 h-7 rounded-full bg-purple-600 flex items-center justify-center shrink-0">{recordedBlob ? <Mic size={12} className="text-white" /> : <Volume2 size={12} className="text-white" />}</div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-white truncate">{voiceName}</p>
-                  <p className="text-[10px] text-gray-500">{recordedBlob ? `${fmt(recordingTime)}` : 'Fichier'}</p>
+                  <p className="text-[10px] text-gray-500">{recordedBlob ? `${fmt(recordingTime)}` : t('voice.file')}</p>
                 </div>
                 <button onClick={handleRemoveVoice} className="p-1 rounded hover:bg-red-500/20 text-red-400"><Trash2 size={12} /></button>
               </div>
             ) : (
               <button onClick={() => voiceInputRef.current?.click()} className="w-full flex items-center justify-center gap-1.5 py-2 border border-dashed border-gray-600 hover:border-purple-500 rounded-lg text-gray-400 hover:text-purple-400 transition text-xs">
-                <Upload size={13} /> Importer fichier
+                <Upload size={13} /> {t('voice.importFile')}
               </button>
             )}
             <input ref={voiceInputRef} type="file" accept="audio/*" className="hidden" onChange={handleVoiceUpload} />
@@ -770,12 +773,12 @@ function AudioStudioContent() {
 
           {/* Destination + Export */}
           <div className="bg-gray-800 rounded-xl p-3 border border-gray-700/50">
-            <span className="text-xs font-bold text-white uppercase tracking-wider mb-2 block">Destination</span>
+            <span className="text-xs font-bold text-white uppercase tracking-wider mb-2 block">{t('destination.title')}</span>
             <div className="flex gap-1.5 mb-3">
               {([
-                { v: 'calendar' as ExportDest, l: '📅 Calendrier' },
-                { v: 'desktop' as ExportDest, l: '💾 Bureau' },
-                { v: 'both' as ExportDest, l: '🔄 Les deux' },
+                { v: 'calendar' as ExportDest, l: `📅 ${t('destination.calendar')}` },
+                { v: 'desktop' as ExportDest, l: `💾 ${t('destination.desktop')}` },
+                { v: 'both' as ExportDest, l: `🔄 ${t('destination.both')}` },
               ]).map(d => (
                 <button key={d.v} onClick={() => setExportDest(d.v)} className={`flex-1 text-center px-1 py-2 rounded-lg font-medium text-[10px] transition border ${exportDest === d.v ? 'bg-pink-600/20 border-pink-500 text-white' : 'bg-gray-700 border-gray-700 text-gray-400 hover:bg-gray-600'}`}>
                   {d.l}
@@ -786,16 +789,16 @@ function AudioStudioContent() {
             <button onClick={handleExport} disabled={isExporting || !hasAudio} className="w-full relative overflow-hidden bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 disabled:opacity-40 text-white font-bold py-2.5 px-3 rounded-xl transition-all text-xs">
               {isExporting && <div className="absolute inset-0 bg-gradient-to-r from-pink-700 to-purple-700 transition-all duration-500" style={{ width: `${exportProgress}%` }} />}
               <span className="relative z-10 flex items-center justify-center gap-1.5">
-                {isExporting ? <><Loader2 size={14} className="animate-spin" /> {Math.round(exportProgress)}%</> : <><Volume2 size={14} /> {isBatch ? `EXPORTER ${posts.length} VIDÉOS AVEC SON` : 'EXPORTER AVEC SON'}</>}
+                {isExporting ? <><Loader2 size={14} className="animate-spin" /> {Math.round(exportProgress)}%</> : <><Volume2 size={14} /> {isBatch ? t('export.exportBatch', { count: String(posts.length) }) : t('export.exportWithAudio')}</>}
               </span>
             </button>
-            {!hasAudio && <p className="text-[10px] text-gray-500 text-center mt-1.5">Ajoutez musique ou voix off</p>}
+            {!hasAudio && <p className="text-[10px] text-gray-500 text-center mt-1.5">{t('export.addAudioFirst')}</p>}
             {isExporting && exportStage && <p className="text-[10px] text-pink-400 text-center mt-1">{exportStage}</p>}
           </div>
 
           {/* Skip */}
           <button onClick={() => router.push('/dashboard/calendar')} className="flex items-center justify-center gap-1.5 py-2 text-xs text-gray-500 hover:text-gray-300 transition">
-            Passer — garder sans son
+            {t('export.skipKeepWithoutAudio')}
           </button>
         </div>
       </div>
@@ -857,11 +860,11 @@ function AudioStudioContent() {
 
           {/* Music track with volume */}
           <div className="flex items-center gap-2 h-8">
-            <span className="text-[10px] text-pink-400 w-14 shrink-0 flex items-center gap-1"><Music size={10} /> Musique</span>
+            <span className="text-[10px] text-pink-400 w-14 shrink-0 flex items-center gap-1"><Music size={10} /> {t('timeline.music')}</span>
             <button
               onClick={() => setMusicMuted(m => !m)}
               className="shrink-0 p-1 rounded hover:bg-gray-700/50 transition"
-              title={musicMuted ? 'Activer musique' : 'Couper musique'}
+              title={musicMuted ? t('music.unmute') : t('music.mute')}
             >
               {musicMuted ? <VolumeX size={12} className="text-gray-500" /> : <Volume2 size={12} className="text-pink-400" />}
             </button>
@@ -883,7 +886,7 @@ function AudioStudioContent() {
                 </div>
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-[9px] text-gray-600">Pas de musique</span>
+                  <span className="text-[9px] text-gray-600">{t('music.noMusic')}</span>
                 </div>
               )}
             </div>
@@ -891,11 +894,11 @@ function AudioStudioContent() {
 
           {/* Voice track with volume */}
           <div className="flex items-center gap-2 h-8">
-            <span className="text-[10px] text-purple-400 w-14 shrink-0 flex items-center gap-1"><Mic size={10} /> Voix</span>
+            <span className="text-[10px] text-purple-400 w-14 shrink-0 flex items-center gap-1"><Mic size={10} /> {t('timeline.voice')}</span>
             <button
               onClick={() => setVoiceMuted(m => !m)}
               className="shrink-0 p-1 rounded hover:bg-gray-700/50 transition"
-              title={voiceMuted ? 'Activer voix' : 'Couper voix'}
+              title={voiceMuted ? t('voice.unmute') : t('voice.mute')}
             >
               {voiceMuted ? <VolumeX size={12} className="text-gray-500" /> : <Volume2 size={12} className="text-purple-400" />}
             </button>
@@ -917,7 +920,7 @@ function AudioStudioContent() {
                 </div>
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-[9px] text-gray-600">Pas de voix off</span>
+                  <span className="text-[9px] text-gray-600">{t('voice.noVoice')}</span>
                 </div>
               )}
             </div>

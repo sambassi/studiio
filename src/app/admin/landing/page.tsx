@@ -8,6 +8,7 @@ import {
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { useTranslations } from '@/i18n/client';
 
 // ── Types ──
 interface HeroContent {
@@ -171,6 +172,7 @@ function Section({ title, defaultOpen = false, children }: { title: string; defa
 // ═══════════════════════════════════════════════════════
 
 export default function AdminLandingPage() {
+  const t = useTranslations('admin');
   const [content, setContent] = useState<LandingContent>(DEFAULT_CONTENT);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -388,8 +390,8 @@ export default function AdminLandingPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-4xl font-bold text-white mb-2">Landing Page</h1>
-          <p className="text-gray-400">Modifiez tout le contenu de la page d&apos;accueil</p>
+          <h1 className="text-4xl font-bold text-white mb-2">{t('landing.title')}</h1>
+          <p className="text-gray-400">{t('landing.subtitle')}</p>
         </div>
         <div className="flex gap-3">
           <a href="/" target="_blank" rel="noopener noreferrer">

@@ -1,0 +1,1578 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "close": "Close",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "search": "Search",
+    "export": "Export",
+    "import": "Import",
+    "duplicate": "Duplicate",
+    "preview": "Preview",
+    "publish": "Publish",
+    "download": "Download",
+    "upload": "Upload",
+    "add": "Add",
+    "remove": "Remove",
+    "apply": "Apply",
+    "generate": "Generate",
+    "confirm": "Confirm",
+    "yes": "Yes",
+    "no": "No",
+    "or": "Or",
+    "all": "All",
+    "none": "None",
+    "active": "Active",
+    "credits": "credits",
+    "perMonth": "/month",
+    "video": "Video",
+    "videos": "Videos",
+    "image": "Image",
+    "error": "Error",
+    "success": "Success",
+    "errorOccurred": "An error occurred",
+    "connectionError": "Connection error. Please try again.",
+    "noResults": "No results",
+    "loadMore": "Load more",
+    "select": "Select",
+    "selected": "selected",
+    "more": "More",
+    "less": "Less",
+    "show": "Show",
+    "hide": "Hide",
+    "open": "Open",
+    "clear": "Clear",
+    "filter": "Filter",
+    "sort": "Sort",
+    "retry": "Retry",
+    "submit": "Submit",
+    "reset": "Reset",
+    "view": "View",
+    "and": "and",
+    "status": {
+      "draft": "Draft",
+      "scheduled": "Scheduled",
+      "published": "Published",
+      "completed": "Completed",
+      "rendering": "Rendering",
+      "failed": "Failed",
+      "active": "Active"
+    },
+    "formats": {
+      "reel": "Reel 9:16",
+      "tv": "TV 16:9"
+    },
+    "page": "Page",
+    "of": "of"
+  },
+  "metadata": {
+    "title": "Studiio — AI Video Creation Platform",
+    "description": "AI video studio for creators, coaches and agencies. Create, schedule and publish across all your social networks."
+  },
+  "sidebar": {
+    "dashboard": "Dashboard",
+    "create": "Create",
+    "infographic": "Infographic",
+    "audioStudio": "Audio Studio",
+    "calendar": "AI Calendar",
+    "library": "Library",
+    "objectives": "Objectives",
+    "social": "Social Networks",
+    "billing": "Billing",
+    "admin": "Administration",
+    "creditsAvailable": "Available credits",
+    "buy": "Buy"
+  },
+  "navbar": {
+    "dashboard": "Dashboard",
+    "admin": "Admin",
+    "profile": "Profile",
+    "logout": "Log out",
+    "notifications": "Notifications"
+  },
+  "adminSidebar": {
+    "dashboard": "Dashboard",
+    "users": "Users",
+    "subscriptions": "Subscriptions",
+    "payments": "Payments",
+    "videos": "Videos",
+    "landingPage": "Landing Page",
+    "settings": "Settings",
+    "terms": "Terms & Conditions",
+    "emails": "Emails",
+    "auditLog": "Audit Log",
+    "backToSite": "Back to site"
+  },
+  "auth": {
+    "login": {
+      "title": "Log In",
+      "subtitle": "Sign in to your Studiio account",
+      "google": "Continue with Google",
+      "facebook": "Continue with Facebook",
+      "email": "Email",
+      "emailPlaceholder": "you@email.com",
+      "password": "Password",
+      "submit": "Log in",
+      "connecting": "Logging in...",
+      "or": "Or",
+      "noAccount": "Don't have an account?",
+      "signup": "Sign up",
+      "errorFillAll": "Please fill in all fields.",
+      "errorInvalid": "Incorrect email or password.",
+      "errorGeneric": "Connection error. Please try again."
+    },
+    "signup": {
+      "title": "Sign Up",
+      "subtitle": "Create your free Studiio account",
+      "google": "Sign up with Google",
+      "facebook": "Sign up with Facebook",
+      "selectedPlan": "Selected plan",
+      "creditsPerMonth": "credits/month",
+      "month": "month",
+      "moreFeatures": "other benefits",
+      "planSelected": "{plan} plan selected",
+      "planFinalize": "You can finalise your subscription after signing up",
+      "termsPrefix": "By signing up, you agree to our",
+      "termsLink": "Terms of Use",
+      "termsAnd": "and our",
+      "privacyLink": "Privacy Policy",
+      "hasAccount": "Already have an account?",
+      "login": "Log in"
+    }
+  },
+  "landing": {
+    "nav": {
+      "features": "Features",
+      "howItWorks": "How It Works",
+      "pricing": "Pricing",
+      "faq": "FAQ",
+      "login": "Log In",
+      "freeTrial": "Free Trial"
+    },
+    "languages": {
+      "french": "Français",
+      "english": "English",
+      "german": "Deutsch",
+      "arabic": "العربية"
+    },
+    "hero": {
+      "badge": "10 FREE CREDITS — NO CARD REQUIRED",
+      "titlePart1": "Create",
+      "titleHighlight": "viral",
+      "titlePart2": "videos in just a few clicks",
+      "subtitle": "AI video studio for creators, coaches and agencies. Create, schedule and publish across all your social networks —",
+      "subtitleBold": "no technical skills needed",
+      "cta1": "Get started for free",
+      "cta2": "Watch the demo",
+      "socialProofJoinedBy": "Joined by",
+      "socialProofCreators": "creators"
+    },
+    "heroMockup": {
+      "studioTitle": "Studiio — Video Studio",
+      "readyToCreate": "Your studio, ready to create",
+      "formatInfo": "REEL 9:16 format — Rendered in 45 seconds",
+      "renderDone": "Render complete — 42s",
+      "engagement": "+340% engagement"
+    },
+    "stats": {
+      "videosCreated": "Videos created",
+      "activeCreators": "Active creators",
+      "customerSatisfaction": "Customer satisfaction",
+      "renderTime": "Render time"
+    },
+    "features": {
+      "badge": "FEATURES",
+      "title": "Everything you need to dominate social media",
+      "subtitle": "From creation to publishing, Studiio automates every step of your video content strategy.",
+      "items": {
+        "0": {
+          "title": "AI Video Studio",
+          "desc": "Create professional videos in just a few clicks. Animated text, smooth transitions, synced music — everything is automated."
+        },
+        "1": {
+          "title": "AI Generation",
+          "desc": "AI writes your scripts, picks the best visuals, syncs the music and optimises every video for maximum engagement."
+        },
+        "2": {
+          "title": "Editorial Calendar",
+          "desc": "Plan your posts for 30 days ahead. The AI Agent analyses your footage and automatically creates publish-ready drafts."
+        },
+        "3": {
+          "title": "Multi-Platform Publishing",
+          "desc": "Publish directly to Instagram, TikTok, YouTube Shorts and Facebook from a single interface. No more copy-pasting."
+        },
+        "4": {
+          "title": "Custom Objectives",
+          "desc": "Define your marketing goals: promotion, subscriptions, motivation... Studiio tailors every video to your strategy."
+        },
+        "5": {
+          "title": "Analytics & Performance",
+          "desc": "Track views, likes and shares for every post. Understand what works and optimise your content."
+        }
+      }
+    },
+    "formats": {
+      "title": "Every format, every platform",
+      "subtitle": "One tool to create content tailored to each social network.",
+      "reel": {
+        "label": "REEL 9:16",
+        "desc": "Instagram Reels, TikTok, YouTube Shorts"
+      },
+      "tv": {
+        "label": "TV 16:9",
+        "desc": "YouTube, Facebook, LinkedIn"
+      },
+      "infographic": {
+        "label": "INFOGRAPHIC",
+        "desc": "Animated slides with key data"
+      },
+      "batch": {
+        "label": "BATCH x10",
+        "desc": "10 videos in a single click"
+      },
+      "publishOn": "Publish on:"
+    },
+    "howItWorks": {
+      "badge": "HOW IT WORKS",
+      "title": "4 steps to professional videos",
+      "subtitle": "No video editing skills required. Studiio does the work for you.",
+      "steps": {
+        "0": {
+          "step": "01",
+          "title": "Choose your objective",
+          "desc": "Promotion, motivation, subscriptions... Studiio adapts all content to your marketing strategy."
+        },
+        "1": {
+          "step": "02",
+          "title": "Upload your media",
+          "desc": "Drag in your videos or photos. The AI automatically selects the best moments from each clip."
+        },
+        "2": {
+          "step": "03",
+          "title": "Customise in one click",
+          "desc": "Text, music, transitions, logo — everything is editable. Or let the AI handle it all for you."
+        },
+        "3": {
+          "step": "04",
+          "title": "Publish everywhere",
+          "desc": "Export or publish directly to Instagram, TikTok, YouTube and Facebook in one click."
+        }
+      }
+    },
+    "testimonials": {
+      "title": "They create with Studiio",
+      "subtitle": "See how our users are transforming their content.",
+      "items": {
+        "0": {
+          "name": "Sophie M.",
+          "role": "Fitness Coach",
+          "text": "Studiio transformed my social media presence. I create 10 videos a week in under an hour. My followers tripled in 3 months."
+        },
+        "1": {
+          "name": "Marco D.",
+          "role": "Marketing Agency",
+          "text": "We manage 15 clients with Studiio. The batch x10 feature saves us 20 hours a week. The ROI is incredible."
+        },
+        "2": {
+          "name": "Aminata K.",
+          "role": "Content Creator",
+          "text": "The AI that generates captions and hashtags is genius. My TikTok videos get 10x more views than before."
+        }
+      }
+    },
+    "pricing": {
+      "badge": "TRANSPARENT PRICING",
+      "title": "A plan for every ambition",
+      "subtitle": "Start for free with 10 credits. No credit card required.",
+      "monthly": "Monthly",
+      "yearly": "Yearly",
+      "yearlyDiscount": "-17%",
+      "billedYearly": "Billed annually",
+      "mostPopular": "MOST POPULAR",
+      "creditsPerMonth": "credits/month",
+      "extraCredits": "Need more credits? Buy additional packs:",
+      "plans": {
+        "starter": {
+          "name": "Starter",
+          "price": "29.99",
+          "yearlyPrice": "24.99",
+          "desc": "For creators just getting started",
+          "cta": "Get Started",
+          "features": [
+            "300 credits/month",
+            "Unlimited videos",
+            "Reel + TV formats",
+            "Editorial calendar",
+            "Instagram publishing",
+            "Email support"
+          ]
+        },
+        "pro": {
+          "name": "Pro",
+          "price": "79.99",
+          "yearlyPrice": "66.99",
+          "desc": "For active creators and coaches",
+          "cta": "Try Pro",
+          "features": [
+            "1,000 credits/month",
+            "Unlimited videos",
+            "All formats + Batch x10",
+            "AI Calendar + Autonomous Agent",
+            "Multi-platform publishing",
+            "AI voice-over",
+            "Custom objectives",
+            "Priority support within 24h"
+          ]
+        },
+        "enterprise": {
+          "name": "Enterprise",
+          "price": "299.99",
+          "yearlyPrice": "249.99",
+          "desc": "For agencies and teams",
+          "cta": "Contact Us",
+          "features": [
+            "5,000 credits/month",
+            "Unlimited users",
+            "API access",
+            "Unlimited batches",
+            "White label",
+            "Advanced analytics",
+            "Dedicated account manager",
+            "24/7 support"
+          ]
+        }
+      }
+    },
+    "faq": {
+      "title": "Frequently asked questions",
+      "subtitle": "Everything you need to know before getting started.",
+      "items": {
+        "0": {
+          "q": "How do credits work?",
+          "a": "1 credit = 1 rendered video. When you create and export a video, one credit is used. Plan credits are renewed each month. If a render fails, your credit is refunded automatically."
+        },
+        "1": {
+          "q": "Can I try it for free?",
+          "a": "Yes! Every new account receives 10 free credits to test all features. No credit card required to sign up."
+        },
+        "2": {
+          "q": "How do I connect my social networks?",
+          "a": "Go to Settings > Social Networks and click \"Connect\" on the desired platform. Authentication is handled via OAuth — your credentials stay with Instagram, TikTok, etc. We never store your passwords."
+        },
+        "3": {
+          "q": "Can I cancel my subscription?",
+          "a": "Yes, at any time. Your subscription stays active until the end of the paid period. No commitment, no cancellation fees."
+        },
+        "4": {
+          "q": "What is the video quality?",
+          "a": "All videos are rendered in Full HD (1080p) with the H.264 codec optimised for each platform. The result is on par with professional editing."
+        },
+        "5": {
+          "q": "How long does rendering take?",
+          "a": "A single render takes around 30 to 90 seconds. A batch of 10 videos takes 5 to 10 minutes. You'll be notified as soon as it's ready."
+        }
+      }
+    },
+    "cta": {
+      "titlePart1": "Ready to create videos that go",
+      "titleHighlight": "viral",
+      "titlePart2": "?",
+      "subtitle": "Join 12,000+ creators. 10 free credits, no credit card. Your first video in under 2 minutes.",
+      "button": "Get started for free",
+      "reassurance": "No commitment. Cancel anytime."
+    },
+    "footer": {
+      "description": "The AI video creation platform for social media. Create, schedule, publish.",
+      "product": "Product",
+      "features": "Features",
+      "pricing": "Pricing",
+      "api": "API",
+      "integrations": "Integrations",
+      "resources": "Resources",
+      "documentation": "Documentation",
+      "blog": "Blog",
+      "tutorials": "Tutorials",
+      "legal": "Legal",
+      "termsOfUse": "Terms of Use",
+      "privacyPolicy": "Privacy Policy",
+      "legalNotice": "Legal Notice",
+      "contact": "Contact",
+      "copyright": "© 2026 Studiio. All rights reserved."
+    }
+  },
+  "dashboardHome": {
+    "welcome": "Welcome, {name}",
+    "subtitle": "You have a new support message",
+    "stats": {
+      "videosCreated": "Videos created",
+      "videosThisWeek": "{count} this week",
+      "creditsRemaining": "Remaining credits",
+      "creditsBoughtThisWeek": "{count} bought this week",
+      "publications": "Publications",
+      "pubsThisWeek": "{count} this week",
+      "totalViews": "Total views",
+      "viewsIncrease": "{percent}% increase"
+    },
+    "quickActions": "Quick actions",
+    "createVideo": "Create a video",
+    "connectSocial": "Connect social networks"
+  },
+  "creator": {
+    "title": "Create a video",
+    "stepOf": "Step {current} of {total}",
+    "credits": "15 credits",
+    "stepLabels": {
+      "0": "Format & Objective",
+      "1": "Media & Voice",
+      "2": "Customisation",
+      "3": "Preview & Export"
+    },
+    "format": {
+      "title": "Format",
+      "reel": "Reel 9:16",
+      "tv": "TV 16:9"
+    },
+    "mode": {
+      "title": "Mode",
+      "cardio": "Cardio / Dynamic",
+      "testimony": "Testimony / Clean"
+    },
+    "objective": {
+      "title": "Objective",
+      "createObjective": "+ Create an objective",
+      "promotion": "Promotion",
+      "subscription": "Subscription",
+      "motivation": "Motivation",
+      "benefits": "Benefits",
+      "nutrition": "Nutrition"
+    },
+    "titleSubtitle": {
+      "title": "Title & Subtitle",
+      "mainTitle": "Main title",
+      "titlePlaceholder": "E.g.: SUBSCRIBE NOW",
+      "subtitle": "Subtitle",
+      "subtitlePlaceholder": "E.g.: Your future starts here",
+      "ia": "AI"
+    },
+    "audioNote": {
+      "title": "Music & Voice-over",
+      "description": "Audio will be added after editing in the",
+      "studioSon": "Audio Studio"
+    },
+    "rushVideos": {
+      "title": "Rush videos",
+      "add": "Add",
+      "settings": "Settings",
+      "analyzeClips": "Analysing clips...",
+      "clipsDetected": "clips detected",
+      "fullVideo": "Full video selected",
+      "clipExtracted": "Clip \"{label}\" extracted ({duration}s)",
+      "extractError": "Error extracting clip"
+    },
+    "textCards": {
+      "title": "Text card settings",
+      "color": "Colour",
+      "font": "Font",
+      "small": "Small",
+      "medium": "Medium",
+      "large": "Large",
+      "apply": "Apply",
+      "appliedToAll": "Settings applied to all cards",
+      "addText": "Add text cards",
+      "information": "Information"
+    },
+    "character": {
+      "title": "Character / Poster photo",
+      "upload": "Upload",
+      "ai": "AI",
+      "searchPlaceholder": "E.g.: fitness, dance, sport...",
+      "noImageFound": "No image found",
+      "pexelsError": "Error searching Pexels"
+    },
+    "logo": {
+      "title": "Logo",
+      "upload": "Upload a logo"
+    },
+    "montageSequences": {
+      "intro": "Poster + Title",
+      "cards": "Text Cards",
+      "video": "Rush Video",
+      "cta": "CTA",
+      "noVideo": "No video"
+    },
+    "salesPhrase": {
+      "title": "Sales phrase",
+      "generated": "Phrase generated!",
+      "titleGenerated": "Title & subtitle generated!",
+      "promotion": [
+        "Limited offer! Reserve your spot now",
+        "Get 20% off this week only",
+        "Don't miss this unique opportunity",
+        "Join us and transform your life"
+      ],
+      "subscription": [
+        "Subscribe and never miss a thing!",
+        "Join our community now",
+        "Turn on notifications so you don't miss out",
+        "Follow for exclusive content"
+      ],
+      "motivation": [
+        "Your future starts now",
+        "Every day is a new chance",
+        "You're stronger than you think",
+        "Push past your limits today"
+      ],
+      "benefits": [
+        "Discover the incredible benefits",
+        "Your body will thank you",
+        "The results speak for themselves",
+        "Transform your daily life in 30 days"
+      ],
+      "nutrition": [
+        "Eat well, live better",
+        "Nutrition is the key to success",
+        "Fuel your body with the best",
+        "Recipes that change everything"
+      ]
+    },
+    "batch": {
+      "count": "Number of videos",
+      "destination": "Destination",
+      "calendar": "Calendar",
+      "export": "Export",
+      "both": "Both",
+      "studio": "Audio Studio"
+    },
+    "render": {
+      "initializing": "Initialising...",
+      "uploadingVideos": "Uploading videos...",
+      "uploadingMedia": "Uploading media...",
+      "composingVideo": "Composing video...",
+      "composingBatch": "Composing video {current}/{total}...",
+      "composingForExport": "Composing video for export...",
+      "finalizing": "Finalising...",
+      "done": "Done!",
+      "successSingle": "Video composed successfully!",
+      "successBatch": "{count} videos composed successfully!",
+      "errorCreate": "Error during creation",
+      "errorCompose": "Error composing video. Please try again.",
+      "errorNoRush": "Add at least one rush video",
+      "errorNoTitle": "Please enter a title",
+      "creating": "Creating...",
+      "launchCreation": "Launch creation",
+      "generate": "Generate {count} video",
+      "generatePlural": "Generate {count} videos"
+    },
+    "preview": {
+      "title": "Real-time preview",
+      "autoUpdate": "Auto-update",
+      "format": "Format",
+      "mode": "Mode",
+      "rushes": "Rushes",
+      "textCardsLabel": "Text cards",
+      "audio": "Audio",
+      "audioStudioSon": "Audio Studio",
+      "audioAddedInStudio": "Audio added in Audio Studio",
+      "batch": "Batch",
+      "batchVideos": "x{count} videos",
+      "montagePreview": "Composition Preview",
+      "pause": "Pause",
+      "playMontage": "Play composition",
+      "seqIntro": "Poster",
+      "seqCards": "Cards",
+      "seqVideo": "Video",
+      "seqCta": "CTA"
+    },
+    "summary": {
+      "title": "Summary",
+      "format": "Format",
+      "mode": "Mode",
+      "videos": "Videos",
+      "rushBatch": "{rushes} rush(es) • x{batch} batch",
+      "destination": "Destination",
+      "titleLabel": "Title",
+      "notDefined": "(not defined)",
+      "cardio": "Cardio",
+      "testimony": "Testimony"
+    },
+    "dragReorder": "Drag to reorder",
+    "addTitleCards": "Click {icon} to add title cards",
+    "addTitleCard": "Add a title card",
+    "rush": "Rush {index}",
+    "uploadCharacter": "Upload",
+    "aiSuggest": "AI suggests",
+    "clickToAddImage": "Click to add an image",
+    "imageFormats": "PNG, JPG up to 10MB",
+    "typeDescription": "Type a description or click search",
+    "characterLabel": "Character",
+    "change": "Change",
+    "logoOptional": "Logo (optional)",
+    "addLogo": "Add a logo",
+    "salesPlaceholder": "E.g.: Reserve your spot now!",
+    "branding": {
+      "title": "Branding",
+      "memo": "These settings are saved automatically."
+    },
+    "studioRedirectNote": "The video will be composed without audio, then redirected to Audio Studio to add music and voice-over",
+    "cardTextPlaceholder": "Card text"
+  },
+  "infographic": {
+    "title": "Infographic Creator",
+    "stepOf": "Step {step} of 3",
+    "steps": {
+      "1": "Content",
+      "2": "Media",
+      "3": "Finalise"
+    },
+    "themes": {
+      "selectTheme": "Select a theme",
+      "sommeil": "Sleep & Sport",
+      "nutrition": "Nutrition & Dance",
+      "energie": "Energy & Cardio",
+      "stress": "Stress & Mental Health",
+      "communaute": "Community",
+      "custom": "Custom"
+    },
+    "themePresets": {
+      "sommeil": {
+        "title": "SLEEP & SPORT",
+        "subtitle": "The benefits of dance on your rest"
+      },
+      "nutrition": {
+        "title": "NUTRITION & DANCE",
+        "subtitle": "Nourish your body, unleash your energy"
+      },
+      "energie": {
+        "title": "ENERGY & CARDIO",
+        "subtitle": "Push your limits with Afroboost"
+      },
+      "stress": {
+        "title": "STRESS & MENTAL HEALTH",
+        "subtitle": "Dance for your mental well-being"
+      },
+      "communaute": {
+        "title": "COMMUNITY",
+        "subtitle": "Join the Afroboost tribe"
+      }
+    },
+    "batch": {
+      "title": "BATCH x10 Mode",
+      "description": "10 videos with different text and photos",
+      "regenerate": "Regenerate",
+      "previewTitle": "Preview of 10 variants"
+    },
+    "titleField": "Title",
+    "subtitleField": "Subtitle",
+    "titlePlaceholderCustom": "Type a topic: moringa, water, cardio...",
+    "titlePlaceholder": "e.g.: ENERGY & CARDIO",
+    "subtitlePlaceholder": "e.g.: Push your limits with Afroboost",
+    "infoCards": {
+      "title": "Information Cards",
+      "add": "Add",
+      "newCard": "New card",
+      "value": "Value"
+    },
+    "salesPhrase": {
+      "title": "Sales phrase",
+      "placeholder": "e.g.: Reserve your spot now!",
+      "presets": [
+        "Reserve your spot now!",
+        "Limited offer this week",
+        "First class FREE",
+        "Join the community",
+        "-50% on your subscription",
+        "Free 7-day trial",
+        "Boost your energy!",
+        "Transform your body",
+        "Guaranteed results",
+        "Registration open"
+      ]
+    },
+    "sequences": {
+      "intro": "Poster Photo + Title",
+      "cards": "Information Cards",
+      "video": "Video",
+      "cta": "CTA (Call to Action)"
+    },
+    "export": {
+      "uploadingFiles": "Uploading files...",
+      "composingVideo": "Composing video...",
+      "composingBatch": "Composing video {current}/{total}...",
+      "composingForExport": "Composing video for export...",
+      "redirectingStudio": "Redirecting to Audio Studio...",
+      "successCalendar": "{count} videos composed to calendar!",
+      "successExport": "Composed video exported!",
+      "errorNoCards": "Add at least one card before exporting",
+      "errorExport": "Error during export. Please try again.",
+      "errorNoPost": "Error: no post created."
+    },
+    "format": {
+      "title": "Format",
+      "portrait": "9:16 (Reel)",
+      "landscape": "16:9 (TV)"
+    },
+    "destination": {
+      "title": "Destination",
+      "calendar": "Calendar",
+      "export": "Direct export",
+      "both": "Calendar + Export",
+      "studio": "Audio Studio"
+    },
+    "posterPhoto": {
+      "title": "Poster Photo",
+      "subtitle": "Background image for the Intro sequence",
+      "searchPlaceholder": "Search (e.g.: fitness, dance, yoga...)",
+      "import": "Import",
+      "remove": "Remove",
+      "clickToSelect": "Click to select",
+      "searchOrImport": "Search or import an image",
+      "importFromComputer": "Import from your computer"
+    },
+    "videoRush": {
+      "title": "Video",
+      "upload": "Upload a video"
+    },
+    "logoUpload": {
+      "title": "Logo",
+      "upload": "Upload a logo"
+    },
+    "characterImage": {
+      "title": "Character image",
+      "upload": "Upload an image"
+    },
+    "suggestions": {
+      "0": { "title": "TRANSFORM YOUR BODY", "subtitle": "Dance is your secret weapon" },
+      "1": { "title": "LIMITLESS ENERGY", "subtitle": "Push your limits every day" },
+      "2": { "title": "DANCE & PERFORMANCE", "subtitle": "Reach your goals faster" },
+      "3": { "title": "TOTAL WELL-BEING", "subtitle": "Body and mind in harmony" }
+    },
+    "nextStepMedia": "Next step: Media",
+    "backButton": "Back",
+    "finalizeButton": "Finalise",
+    "backToMedia": "Back to media",
+    "sequenceOrder": {
+      "title": "Sequence Order",
+      "help": "Use the arrows to reorder the sequences",
+      "totalDuration": "Total duration",
+      "photoSelected": "Photo selected",
+      "noPhoto": "No photo",
+      "cardCount": "{count} card(s)",
+      "noVideo": "No video",
+      "defaultCta": "Default CTA"
+    },
+    "branding": {
+      "title": "Branding",
+      "memo": "Saved automatically"
+    },
+    "exportButton": {
+      "exportBatch": "EXPORT 10 VIDEOS",
+      "exportSingle": "EXPORT VIDEO",
+      "exporting": "EXPORTING... {progress}%"
+    },
+    "creditsInfo": {
+      "batch": "250 credits (10 videos)",
+      "single": "25 credits"
+    },
+    "preview": {
+      "title": "Final Video Preview",
+      "pause": "Pause",
+      "play": "Play composition",
+      "seqIntro": "Poster",
+      "seqCards": "Cards",
+      "seqVideo": "Video",
+      "seqCta": "CTA",
+      "information": "Information",
+      "noVideoLabel": "No video"
+    },
+    "videoSection": {
+      "title": "Video (sequence 3)",
+      "choose": "Choose a video"
+    },
+    "audioNote": {
+      "title": "Music & Voice-over",
+      "description": "Audio will be added after editing in the",
+      "studioSon": "Audio Studio"
+    },
+    "logoSection": {
+      "title": "Logo (displayed on the CTA page)",
+      "add": "Add a logo"
+    }
+  },
+  "audioStudio": {
+    "title": "Audio Studio",
+    "noVideoSelected": "No video selected",
+    "backToCalendar": "Back to calendar",
+    "videoPreview": "Video preview",
+    "loadingError": "Loading error",
+    "batchLabel": "{count} videos",
+    "batchVideoOf": "Video {current}/{total} — {title}",
+    "previousVideo": "Previous",
+    "nextVideo": "Next",
+    "music": {
+      "title": "MUSIC",
+      "import": "Import music",
+      "noMusic": "No music",
+      "mute": "Mute music",
+      "unmute": "Unmute music"
+    },
+    "voice": {
+      "title": "VOICE-OVER",
+      "record": "Record",
+      "stop": "Stop",
+      "importFile": "Import file",
+      "recordingName": "Microphone recording",
+      "noVoice": "No voice-over",
+      "mute": "Mute voice",
+      "unmute": "Unmute voice",
+      "micDenied": "Please allow microphone access.",
+      "file": "File"
+    },
+    "destination": {
+      "title": "DESTINATION",
+      "calendar": "Calendar",
+      "desktop": "Desktop",
+      "both": "Both"
+    },
+    "export": {
+      "exportWithAudio": "EXPORT WITH AUDIO",
+      "exportBatch": "EXPORT {count} VIDEOS WITH AUDIO",
+      "addAudioFirst": "Add music or voice-over",
+      "preparing": "Preparing...",
+      "uploadingAudio": "Uploading audio files...",
+      "composingWithAudio": "Composing video with audio...",
+      "composingBatch": "Composing video {current}/{total}...",
+      "updatingCalendar": "Updating calendar...",
+      "done": "Done!",
+      "batchDone": "{success}/{total} videos exported!",
+      "error": "Error",
+      "skipKeepWithoutAudio": "Skip — keep without audio"
+    },
+    "timeline": {
+      "affiche": "Poster",
+      "cards": "Cards",
+      "video": "Video",
+      "cta": "CTA",
+      "music": "Music",
+      "voice": "Voice"
+    }
+  },
+  "calendar": {
+    "title": "AI Calendar",
+    "subtitle": "Plan and manage your social media posts",
+    "loading": "Loading...",
+    "stats": {
+      "total": "Total",
+      "drafts": "Drafts",
+      "scheduled": "Scheduled",
+      "published": "Published"
+    },
+    "dayHeaders": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    "selectDate": "Select a date",
+    "clickDayToSee": "Click a day to view its posts",
+    "noPosts": "No posts this day",
+    "posts": "posts",
+    "post": "post",
+    "postCount": "{count} post(s)",
+    "addPost": "Add a post",
+    "newPost": "New Post",
+    "agentIA": "AI Agent",
+    "import": "Import",
+    "select": "Select",
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all",
+    "bulkDuplicate": "Duplicate",
+    "bulkMove": "Move",
+    "bulkDelete": "Delete",
+    "status": {
+      "published": "Published",
+      "scheduled": "Scheduled",
+      "draft": "Draft"
+    },
+    "actions": {
+      "preview": "Preview",
+      "edit": "Edit",
+      "duplicate": "Duplicate",
+      "export": "Export",
+      "exportDesktop": "Export to desktop",
+      "addAudio": "Add audio",
+      "fullPreview": "Full preview & Publish",
+      "delete": "Delete"
+    },
+    "previewModal": {
+      "title": "Post preview",
+      "at": "at",
+      "noCaption": "No caption",
+      "cards": "cards"
+    },
+    "editModal": {
+      "title": "Edit Post",
+      "titleField": "Title",
+      "titlePlaceholder": "Post title",
+      "captionField": "Caption",
+      "captionPlaceholder": "Describe your post...",
+      "generateCaption": "AI Caption",
+      "platforms": "Social networks",
+      "date": "Date",
+      "time": "Time",
+      "format": "Format",
+      "media": "Media",
+      "mediaAdded": "Media added",
+      "mediaClickToChange": "Click to change",
+      "mediaDragDrop": "Drag and drop a file",
+      "mediaClickToImport": "or click to import",
+      "draft": "Draft",
+      "scheduled": "Scheduled",
+      "published": "Publish",
+      "save": "Save"
+    },
+    "exportOverlay": {
+      "title": "Composing video...",
+      "preparingMontage": "Preparing composition...",
+      "errorMontage": "Error during composition"
+    },
+    "aiAgent": {
+      "title": "AI AGENT — AUTONOMOUS PLANNER",
+      "description": "Import your rushes, the AI generates an optimised schedule with a different edit for each video.",
+      "rushFolder": "Rushes Folder",
+      "selectVideosOrImages": "Select videos or images",
+      "filesCount": "{count} file(s)",
+      "planFor": "Plan for",
+      "duration": {
+        "label": "Plan duration",
+        "7": "7d",
+        "14": "14d",
+        "30": "30d"
+      },
+      "platforms": {
+        "label": "Social networks"
+      },
+      "objectives": {
+        "label": "Objectives",
+        "promo": "Promo",
+        "motiv": "Motiv",
+        "bienfaits": "Benefits",
+        "abo": "Subs",
+        "nutri": "Nutri"
+      },
+      "rushFiles": {
+        "label": "Videos / Photos (rushes)",
+        "selectFiles": "Select files",
+        "filesSelected": "{count} files selected"
+      },
+      "musicFile": {
+        "label": "Music (optional)",
+        "selectFile": "Choose an audio file",
+        "fileSelected": "Music selected"
+      },
+      "posterPhoto": {
+        "label": "Different poster photo per video",
+        "description": "AI selects photos suited to each objective"
+      },
+      "branding": {
+        "title": "Customisation (saved)"
+      },
+      "generate": "Generate",
+      "generateWithDays": "Generate ({days}d)",
+      "generating": "Generating...",
+      "stages": {
+        "preparing": "Preparing...",
+        "uploadingRush": "Uploading rush {current}/{total}...",
+        "uploadingMusic": "Uploading music...",
+        "searchingPhotos": "Searching for poster photos...",
+        "composingPosts": "Composing and creating posts...",
+        "composingVideo": "Composing video {current}/{total} — {title}",
+        "videoStage": "Video {current}/{total}: {stage}",
+        "done": "Done!"
+      }
+    },
+    "fullPreview": {
+      "publishNow": "Publish now",
+      "schedule": "Schedule",
+      "edit": "Edit",
+      "studioSon": "Audio Studio",
+      "close": "Close",
+      "information": "Information",
+      "musicIncluded": "Music included",
+      "voiceOver": "Voice-over",
+      "logoIncluded": "Logo included",
+      "videoIncluded": "Video included",
+      "videoCreator": "Video Creator",
+      "infographic": "Infographic",
+      "postLabel": "Post",
+      "sequences": "{count} sequences",
+      "rushes": "{count} rush(es)",
+      "enableSound": "Enable sound",
+      "muteSound": "Mute sound",
+      "music": "Music",
+      "voiceOffLabel": "Voice-over"
+    },
+    "bulkDateModal": {
+      "title": "Move selected posts",
+      "selectedPosts": "{count} post(s) selected",
+      "newDate": "New date",
+      "newTime": "First post time",
+      "staggerNote": "Subsequent posts will be spaced 30 min apart",
+      "confirm": "Move"
+    },
+    "captionStyles": {
+      "promotion": "Promotion",
+      "motivation": "Motivation",
+      "bienfaits": "Benefits",
+      "abonnement": "Subscription",
+      "nutrition": "Nutrition"
+    }
+  },
+  "library": {
+    "title": "Library",
+    "subtitle": "{count} videos created",
+    "subtitleManage": "Manage all your created videos",
+    "createVideo": "Create a video",
+    "createFirstVideo": "Create my first video",
+    "searchPlaceholder": "Search for a video...",
+    "filterSelect": "Select...",
+    "noVideos": "No videos",
+    "noVideosFilter": "No videos match your filters",
+    "noVideosCreate": "Create your first video to see it here",
+    "status": {
+      "completed": "Completed",
+      "rendering": "Rendering",
+      "published": "Published",
+      "draft": "Draft",
+      "failed": "Render failed"
+    },
+    "actions": {
+      "preview": "Preview",
+      "export": "Export",
+      "edit": "Edit",
+      "duplicate": "Duplicate",
+      "delete": "Delete",
+      "repost": "Repost"
+    },
+    "toasts": {
+      "exported": "Video exported successfully",
+      "exportError": "Error during export",
+      "duplicated": "Video duplicated",
+      "duplicateError": "Error during duplication",
+      "reposted": "Video reposted to your networks",
+      "repostError": "Error during repost",
+      "deleted": "Video deleted",
+      "deleteError": "Error during deletion"
+    },
+    "deleteConfirm": {
+      "title": "Delete video?",
+      "message": "Are you sure you want to delete \"{title}\"? This action cannot be undone."
+    },
+    "preview": {
+      "renderingInProgress": "Rendering in progress...",
+      "videoAvailableAfterRender": "The video will be available once rendering is complete",
+      "videoNotAvailable": "Video not available",
+      "browserNotSupported": "Your browser does not support video playback.",
+      "processing": "Video processing"
+    },
+    "formatLabels": {
+      "reel": "Reel 9:16",
+      "tv": "TV 16:9"
+    },
+    "typeLabels": {
+      "infographic": "Infographic",
+      "video": "Video"
+    }
+  },
+  "objectives": {
+    "title": "Objectives",
+    "subtitle": "Define your video creation objectives",
+    "createObjective": "+ Create an objective",
+    "newObjective": "New objective",
+    "editObjective": "Edit objective",
+    "form": {
+      "name": "Name",
+      "namePlaceholder": "E.g.: Instagram Growth",
+      "description": "Description",
+      "descriptionPlaceholder": "Describe your objective",
+      "targetAudience": "Target audience",
+      "targetPlaceholder": "E.g.: Young adults",
+      "platform": "Platform",
+      "tone": "Tone"
+    },
+    "tones": {
+      "ludique": "Playful",
+      "educatif": "Educational",
+      "tendance": "Trendy",
+      "professionnel": "Professional"
+    },
+    "labels": {
+      "audience": "Audience",
+      "platform": "Platform",
+      "tone": "Tone"
+    }
+  },
+  "social": {
+    "title": "Social Networks",
+    "subtitle": "Connect your accounts to publish your videos automatically",
+    "noNetworkConnected": "No network connected",
+    "connectAtLeastOne": "Connect at least one network to publish your videos",
+    "networksConnected": "{count} networks connected",
+    "videosAutoPublish": "Your videos can be published automatically",
+    "platforms": {
+      "instagram": {
+        "name": "Instagram",
+        "description": "Reels, Stories, Posts"
+      },
+      "tiktok": {
+        "name": "TikTok",
+        "description": "Short-form viral videos"
+      },
+      "facebook": {
+        "name": "Facebook",
+        "description": "Videos, Reels, Stories"
+      },
+      "youtube": {
+        "name": "YouTube",
+        "description": "Shorts, long-form videos"
+      }
+    },
+    "status": {
+      "connected": "Connected",
+      "ready": "Ready",
+      "oauthNotConfigured": "OAuth not configured"
+    },
+    "actions": {
+      "connect": "Connect {platform}",
+      "reconnect": "Reconnect",
+      "disconnect": "Disconnect",
+      "connecting": "Connecting..."
+    },
+    "oauthInfo": "To enable {platform} connection, configure the OAuth API keys in the Vercel environment variables.",
+    "toasts": {
+      "connectionSuccess": "Successfully connected to {platform}!",
+      "connectionInitiated": "Connection initiated for {platform}",
+      "disconnected": "Disconnected from {platform}",
+      "platformNotRecognized": "Platform not recognised",
+      "popupsRequired": "Pop-ups must be enabled to connect",
+      "connectionInProgress": "Connecting...",
+      "oauthNotConfigured": "OAuth not configured for {platform}. Configure the API keys in Vercel > Settings > Environment Variables.",
+      "serverError": "Server error during connection",
+      "noAuthUrl": "Error: no authentication link received for {platform}",
+      "connectionError": "Error during connection",
+      "disconnectError": "Error during disconnection"
+    },
+    "settings": {
+      "title": "Publishing settings",
+      "autoPublish": {
+        "title": "Auto-publish",
+        "description": "Automatically publish to all your connected accounts"
+      },
+      "bestTime": {
+        "title": "Best time to publish",
+        "description": "AI chooses the optimal publishing time"
+      },
+      "defaultHashtags": {
+        "title": "Default hashtags",
+        "placeholder": "Enter default hashtags (separated by spaces)",
+        "example": "Example: #studiio #video #content"
+      },
+      "defaultDescription": {
+        "title": "Default description",
+        "placeholder": "Enter your default description...",
+        "info": "This description will be applied to all your posts by default"
+      }
+    }
+  },
+  "billing": {
+    "title": "Billing",
+    "subtitle": "Manage your credits and subscription",
+    "currentSubscription": "Current subscription",
+    "plan": "Plan",
+    "renewal": "Renewal",
+    "manageSubscription": "Manage subscription",
+    "buyCredits": "Buy credits",
+    "transactionHistory": "Transaction history",
+    "changePlan": "Change your plan",
+    "tableHeaders": {
+      "date": "Date",
+      "description": "Description",
+      "credits": "Credits",
+      "balance": "Balance"
+    },
+    "errors": {
+      "portalError": "Unable to open the billing portal. Please try again.",
+      "checkoutError": "Unable to create the payment session. Please try again.",
+      "connectionError": "Connection error. Please try again."
+    },
+    "transactions": {
+      "renderReel": "Video render - Reel 9:16",
+      "buyCredits": "Purchase of {count} credits",
+      "renderTV": "Video render - TV 16:9",
+      "subscriptionPro": "Pro Subscription",
+      "bonusCredits": "Bonus credits"
+    }
+  },
+  "branding": {
+    "watermark": {
+      "label": "Watermark / Website",
+      "placeholder": "E.g.: mysite.com",
+      "hint": "Appears at the bottom of every video. Leave empty for no watermark."
+    },
+    "border": {
+      "label": "Colour border"
+    },
+    "ctaText": {
+      "label": "CTA text (call to action)",
+      "placeholder": "E.g.: RESERVE YOUR SPOT"
+    },
+    "ctaSubText": {
+      "label": "CTA sub-text",
+      "placeholder": "E.g.: LINK IN BIO"
+    },
+    "accentColor": {
+      "label": "Accent colour"
+    }
+  },
+  "admin": {
+    "dashboard": {
+      "title": "Admin dashboard",
+      "subtitle": "Overview of the Studiio platform",
+      "loadingDashboard": "Loading dashboard...",
+      "errorLoadingStats": "Error loading statistics",
+      "stats": {
+        "totalUsers": "Total users",
+        "monthlyRevenue": "Monthly revenue",
+        "activeSubscriptions": "Active subscriptions",
+        "videosRendered": "Videos rendered"
+      },
+      "recentActivities": "Recent activities",
+      "noRecentActivity": "No recent activity",
+      "quickActions": "Quick actions",
+      "creditUser": "Credit a user",
+      "viewPayments": "View payments",
+      "manageTerms": "Manage T&Cs"
+    },
+    "users": {
+      "title": "User management",
+      "subtitle": "Manage all platform users",
+      "searchPlaceholder": "Search by name or email...",
+      "allPlans": "All plans",
+      "allStatuses": "All statuses",
+      "allRoles": "All roles",
+      "errorLoading": "Error loading users",
+      "errorAddCredits": "Error adding credits",
+      "creditsAdded": "Credits added successfully",
+      "errorModify": "Error during modification",
+      "userModified": "User modified successfully",
+      "errorDelete": "Error during deletion",
+      "userDeleted": "User {name} deleted successfully",
+      "errorBan": "Error during ban",
+      "userBanned": "User banned successfully",
+      "userUnbanned": "User unbanned successfully",
+      "confirmDelete": "Permanently delete {name} ({email})? This action cannot be undone.",
+      "banReason": "Reason for banning {name}:",
+      "confirmUnban": "Unban {name}?",
+      "noName": "No name",
+      "noUsersFound": "No users found",
+      "tableHeaders": {
+        "name": "Name",
+        "email": "Email",
+        "plan": "Plan",
+        "credits": "Credits",
+        "role": "Role",
+        "status": "Status",
+        "joined": "Joined",
+        "actions": "Actions"
+      },
+      "plans": {
+        "free": "Free",
+        "starter": "Starter",
+        "pro": "Pro",
+        "enterprise": "Enterprise"
+      },
+      "roles": {
+        "user": "User",
+        "admin": "Admin"
+      },
+      "statuses": {
+        "active": "Active",
+        "blocked": "Blocked"
+      },
+      "actions": {
+        "credit": "Credit",
+        "ban": "Ban",
+        "unban": "Unban"
+      },
+      "creditModal": {
+        "title": "Add credits",
+        "amount": "Credit amount",
+        "reason": "Reason",
+        "reasonPlaceholder": "E.g.: Compensation, bonus...",
+        "add": "Add"
+      },
+      "editModal": {
+        "title": "Edit user",
+        "role": "Role",
+        "plan": "Plan",
+        "credits": "Credits",
+        "modify": "Save"
+      },
+      "pagination": {
+        "previous": "Previous",
+        "next": "Next",
+        "pageOf": "Page {page} / {pages}"
+      }
+    },
+    "videos": {
+      "title": "Video management",
+      "subtitle": "All videos created on the platform",
+      "searchPlaceholder": "Search by title or user...",
+      "tableHeaders": {
+        "title": "Title",
+        "user": "User",
+        "format": "Format",
+        "status": "Status",
+        "credits": "Credits",
+        "date": "Date"
+      },
+      "status": {
+        "completed": "Completed",
+        "rendering": "Rendering",
+        "draft": "Draft"
+      }
+    },
+    "payments": {
+      "title": "Payment history",
+      "subtitle": "All platform payments",
+      "exportCSV": "Export CSV",
+      "stats": {
+        "monthlyRevenue": "Total revenue (month)",
+        "transactions": "Transactions",
+        "thisMonth": "This month",
+        "conversionRate": "Conversion rate",
+        "stable": "Stable",
+        "failedTransactions": "Failed transactions",
+        "toExamine": "To review",
+        "vsLastMonth": "vs last month"
+      },
+      "filters": {
+        "subscription": "Subscription",
+        "credits": "Credit purchase",
+        "completed": "Completed",
+        "failed": "Failed"
+      }
+    },
+    "subscriptions": {
+      "title": "Subscription management",
+      "subtitle": "Manage all active subscriptions",
+      "filters": {
+        "active": "Active",
+        "canceled": "Cancelled"
+      }
+    },
+    "settings": {
+      "title": "Platform settings",
+      "subtitle": "Configure the Studiio platform",
+      "errorSaving": "Error saving",
+      "saved": "Settings saved successfully",
+      "creditUser": "Credit a user",
+      "creditUserDesc": "Add or remove credits for a user",
+      "changePlan": "Change plan",
+      "changePlanDesc": "Change a user's pricing plan",
+      "freeCredits": "Free credits",
+      "freeCreditsLabel": "Credits given to new users",
+      "features": "Features",
+      "maintenanceMode": "Maintenance mode",
+      "maintenanceModeDesc": "Disable all user access",
+      "newSignups": "Allow new sign-ups",
+      "newSignupsDesc": "Allow new users to register",
+      "aiGeneration": "AI generation",
+      "aiGenerationDesc": "Allow video creation with AI",
+      "planPricing": "Plan pricing",
+      "creditPackages": "Credit packages",
+      "editLandingPlans": "Edit plans in the Landing Page editor",
+      "saveSettings": "Save settings",
+      "saving": "Saving...",
+      "searchUser": "Search for a user",
+      "searchUserPlaceholder": "Name or email...",
+      "creditsActuels": "current credits",
+      "addCredits": "Add",
+      "deductCredits": "Deduct",
+      "amount": "Amount",
+      "reason": "Reason",
+      "reasonPlaceholder": "E.g.: Bonus, compensation...",
+      "confirmAction": "Confirm",
+      "currentPlan": "Current plan",
+      "newPlan": "New plan",
+      "modifyPlan": "Change plan"
+    },
+    "landing": {
+      "title": "Landing Page",
+      "subtitle": "Manage the homepage content"
+    },
+    "emails": {
+      "title": "Email management",
+      "subtitle": "Send emails and manage notifications",
+      "bulkButton": "Bulk email",
+      "close": "Close",
+      "testEmail": {
+        "title": "Send a test email",
+        "to": "Recipient email",
+        "toPlaceholder": "test@example.com",
+        "subject": "Subject",
+        "subjectPlaceholder": "Email subject...",
+        "body": "Message body",
+        "bodyPlaceholder": "Email content...",
+        "send": "Send test",
+        "sending": "Sending...",
+        "fillAll": "Please fill in all fields",
+        "sent": "Test email sent successfully",
+        "error": "Error sending the test"
+      },
+      "notifications": {
+        "title": "Notification settings",
+        "adminEmail": "Admin email",
+        "adminEmailPlaceholder": "admin@studiio.com",
+        "notifyOnSale": "Sale notification",
+        "notifyOnSaleDesc": "Receive a notification for each sale",
+        "dailyDigest": "Daily digest email",
+        "dailyDigestDesc": "Receive a daily summary of activities",
+        "notifyNewUser": "New user alerts",
+        "notifyNewUserDesc": "Be alerted when a new user signs up",
+        "save": "Save settings",
+        "saving": "Saving...",
+        "saved": "Notification settings saved successfully",
+        "error": "Error saving"
+      },
+      "bulk": {
+        "title": "Send an email to multiple users",
+        "recipients": "Recipients",
+        "recipientsCount": "{count} selected",
+        "allUsers": "All users",
+        "deselectAll": "Deselect all",
+        "searchPlaceholder": "Search by name or email...",
+        "subject": "Subject",
+        "subjectPlaceholder": "Email subject...",
+        "body": "Message body",
+        "bodyVariables": "Variables: {nom}, {email}, {plan}",
+        "bodyPlaceholder": "Email content... Use {nom} for the user's name",
+        "sendingProgress": "Sending...",
+        "sendTo": "Send to {count} user(s)",
+        "sending": "Sending {sent}/{total}",
+        "fillAll": "Select users and fill in all fields",
+        "confirmSend": "Send this email to {count} user(s)?",
+        "successPartial": "{sent} emails sent, {errors} errors",
+        "successAll": "{sent} emails sent successfully",
+        "usersSelected": "{count} users selected"
+      },
+      "templates": {
+        "title": "Email templates"
+      }
+    },
+    "logs": {
+      "title": "Audit log",
+      "subtitle": "View the complete history of admin actions",
+      "errorLoading": "Error loading logs",
+      "allActions": "All actions",
+      "allTypes": "All types",
+      "noLogs": "No logs found",
+      "logsCount": "Audit logs ({count})",
+      "details": "Details",
+      "actions": {
+        "create": "Created",
+        "update": "Modified",
+        "delete": "Deleted",
+        "block": "Blocked",
+        "unblock": "Unblocked",
+        "credit": "Credited",
+        "login": "Login",
+        "logout": "Logout",
+        "ban": "Banned",
+        "unban": "Unbanned"
+      },
+      "targetTypes": {
+        "user": "User",
+        "payment": "Payment",
+        "subscription": "Subscription",
+        "video": "Video",
+        "content": "Content",
+        "settings": "Settings"
+      },
+      "pagination": {
+        "previous": "Previous",
+        "next": "Next",
+        "pageOf": "Page {page} / {pages}"
+      }
+    },
+    "terms": {
+      "title": "Terms & Conditions",
+      "subtitle": "Manage the platform's terms and conditions",
+      "editContent": "Edit content",
+      "placeholder": "Enter the terms and conditions here...",
+      "cancelChanges": "Discard changes",
+      "save": "Save",
+      "saving": "Saving...",
+      "saved": "Terms and conditions saved successfully",
+      "errorLoading": "Error loading terms",
+      "errorSaving": "Error saving",
+      "info": {
+        "title": "Information",
+        "lastModified": "Last modified",
+        "modifiedBy": "Modified by",
+        "never": "Never",
+        "na": "N/A",
+        "characterCount": "Character count",
+        "lineCount": "Line count"
+      },
+      "preview": "Preview"
+    }
+  },
+  "privacy": {
+    "title": "Privacy Policy - Studiio / Afroboost Studio",
+    "lastUpdated": "Last updated: 1 April 2026",
+    "sections": {
+      "introduction": {
+        "title": "1. Introduction",
+        "content": "This privacy policy applies to Studiio (accessible at studiio.pro) and Afroboost Studio, our application connected to social networks including TikTok, Instagram, Facebook and YouTube. Studiio and Afroboost Studio are operated by Bassi Original / Afroboost."
+      },
+      "tiktokApp": {
+        "title": "1b. Afroboost Studio App on TikTok",
+        "content": "The Afroboost Studio application (App ID: 7620817395090966540) is a registered application on the TikTok for Developers platform. Afroboost Studio uses the TikTok API (Login Kit and Content Posting API) to allow users to connect their TikTok account and publish video content directly from the Studiio platform. By using Afroboost Studio, you authorise the application to access your TikTok profile and publish content on your behalf."
+      },
+      "dataCollection": {
+        "title": "2. Data Collection",
+        "content": "Studiio and Afroboost Studio collect the information necessary for the service to function: email address, name, and social network connection data (OAuth tokens). This data is used solely to publish content to your connected accounts."
+      },
+      "dataUsage": {
+        "title": "3. Use of Data",
+        "content": "Your data is used by Studiio and Afroboost Studio to: authenticate your account, publish content on the platforms you have connected (Instagram, Facebook, TikTok, YouTube), and improve our services."
+      },
+      "dataSharing": {
+        "title": "4. Data Sharing",
+        "content": "We do not sell or share your personal data with third parties, except as required for the technical operation of the service (hosting, social network APIs)."
+      },
+      "security": {
+        "title": "5. Security",
+        "content": "Your access tokens are stored securely and encrypted. We use HTTPS for all communications."
+      },
+      "dataDeletion": {
+        "title": "6. Data Deletion",
+        "content": "You may request the deletion of your data at any time by contacting us at contact.artboost@gmail.com or by disconnecting your social accounts from the dashboard."
+      },
+      "contactSection": {
+        "title": "7. Contact",
+        "content": "For any questions: contact.artboost@gmail.com"
+      }
+    }
+  },
+  "terms": {
+    "title": "Terms of Use",
+    "lastUpdated": "Last updated: {date}",
+    "backToHome": "Back to home",
+    "branding": "Studiio - AI Platform for Content Creators",
+    "loadingTerms": "Loading terms of use...",
+    "unavailable": "The terms of use are not currently available.",
+    "loadError": "Unable to load the terms of use."
+  }
+}

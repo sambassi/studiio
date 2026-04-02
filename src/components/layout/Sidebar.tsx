@@ -5,17 +5,19 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { LayoutDashboard, Zap, Library, Target, Share2, CreditCard, Image, Calendar, Shield, Volume2 } from 'lucide-react';
+import { useTranslations } from '@/i18n/client';
+import { LanguageSelector } from '@/components/LanguageSelector';
 
-const menuItems = [
-  { icon: LayoutDashboard, label: 'Tableau de bord', href: '/dashboard' },
-  { icon: Zap, label: 'Créer', href: '/dashboard/creator' },
-  { icon: Image, label: 'Infographie', href: '/dashboard/infographic' },
-  { icon: Volume2, label: 'Studio Son', href: '/dashboard/audio-studio' },
-  { icon: Calendar, label: 'Calendrier IA', href: '/dashboard/calendar' },
-  { icon: Library, label: 'Bibliothèque', href: '/dashboard/library' },
-  { icon: Target, label: 'Objectifs', href: '/dashboard/objectives' },
-  { icon: Share2, label: 'Réseaux sociaux', href: '/dashboard/social' },
-  { icon: CreditCard, label: 'Facturation', href: '/dashboard/billing' },
+const menuKeys = [
+  { icon: LayoutDashboard, key: 'dashboard', href: '/dashboard' },
+  { icon: Zap, key: 'create', href: '/dashboard/creator' },
+  { icon: Image, key: 'infographic', href: '/dashboard/infographic' },
+  { icon: Volume2, key: 'audioStudio', href: '/dashboard/audio-studio' },
+  { icon: Calendar, key: 'calendar', href: '/dashboard/calendar' },
+  { icon: Library, key: 'library', href: '/dashboard/library' },
+  { icon: Target, key: 'objectives', href: '/dashboard/objectives' },
+  { icon: Share2, key: 'social', href: '/dashboard/social' },
+  { icon: CreditCard, key: 'billing', href: '/dashboard/billing' },
 ];
 
 export function Sidebar() {
@@ -23,6 +25,7 @@ export function Sidebar() {
   const { data: session } = useSession();
   const [credits, setCredits] = useState<number | null>(null);
   const isAdmin = session?.user?.email === 'contact.artboost@gmail.com';
+  const t = useTranslations('sidebar');
 
   useEffect(() => {
     async function fetchCredits() {
@@ -40,13 +43,13 @@ export function Sidebar() {
   }, []);
 
   return (
-    <aside className="fixed left-0 top-0 w-64 h-screen bg-gray-900 border-r border-gray-800 p-6 z-50">
+    <aside className="fixed left-0 top-0 w-64 h-screen bg-gray-900 border-r border-gray-800 p-6 z-50 flex flex-col">
       <Link href="/" className="text-2xl font-bold text-gradient mb-8 block">
         Studiio
       </Link>
 
-      <nav className="space-y-2">
-        {menuItems.map(({ icon: Icon, label, href }) => {
+      <nav className="space-y-2 flex-1">
+        {menuKeys.map(({ icon: Icon, key, href }) => {
           const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
           return (
             <Link
@@ -59,7 +62,7 @@ export function Sidebar() {
               }`}
             >
               <Icon size={20} />
-              <span className="font-medium">{label}</span>
+              <span className="font-medium">{t(key)}</span>
             </Link>
           );
         })}
@@ -74,19 +77,22 @@ export function Sidebar() {
             }`}
           >
             <Shield size={20} />
-            <span className="font-medium">Administration</span>
+            <span className="font-medium">{t('admin')}</span>
           </Link>
         )}
       </nav>
 
-      <div className="absolute bottom-6 left-6 right-6 card-base p-4">
-        <div className="text-xs text-gray-500 mb-2">Crédits disponibles</div>
-        <div className="text-2xl font-bold text-studiio-accent mb-4">
-          {credits !== null ? credits.toLocaleString() : '...'}
+      <div className="space-y-4">
+        <LanguageSelector variant="sidebar" />
+        <div className="card-base p-4">
+          <div className="text-xs text-gray-500 mb-2">{t('creditsAvailable')}</div>
+          <div className="text-2xl font-bold text-studiio-accent mb-4">
+            {credits !== null ? credits.toLocaleString() : '...'}
+          </div>
+          <Link href="/dashboard/billing" className="w-full button-primary text-center text-sm block">
+            {t('buy')}
+          </Link>
         </div>
-        <Link href="/dashboard/billing" className="w-full button-primary text-center text-sm block">
-          Acheter
-        </Link>
       </div>
     </aside>
   );

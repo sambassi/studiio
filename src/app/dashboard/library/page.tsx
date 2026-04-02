@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useTranslations, useFormattedDate } from '@/i18n/client';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
@@ -47,6 +48,10 @@ interface DeleteConfirmState {
 }
 
 export default function LibraryPage() {
+  const t = useTranslations('library');
+  const tc = useTranslations('common');
+  const formatDateLocale = useFormattedDate();
+
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -98,24 +103,16 @@ export default function LibraryPage() {
       (!filterStatus || video.status === filterStatus)
   );
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('fr-FR', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    });
-  };
-
   const getStatusLabel = (status: string) => {
     switch (status) {
       case 'completed':
-        return 'Terminée';
+        return t('status.completed');
       case 'rendering':
-        return 'Rendu en cours';
+        return t('status.rendering');
       case 'published':
-        return 'Publiée';
+        return t('status.published');
       default:
-        return 'Brouillon';
+        return t('status.draft');
     }
   };
 
@@ -144,13 +141,13 @@ export default function LibraryPage() {
           link.download = '';
           link.click();
         }
-        setToast({ message: 'Vidéo exportée avec succès', type: 'success' });
+        setToast({ message: t('toasts.exported'), type: 'success' });
       } else {
-        setToast({ message: 'Erreur lors de l\'export', type: 'error' });
+        setToast({ message: t('toasts.exportError'), type: 'error' });
       }
     } catch (error) {
       console.error('Error exporting video:', error);
-      setToast({ message: 'Erreur lors de l\'export', type: 'error' });
+      setToast({ message: t('toasts.exportError'), type: 'error' });
     } finally {
       setActionInProgress(null);
     }
@@ -167,13 +164,13 @@ export default function LibraryPage() {
           setVideos(data.data || []);
           setPage(1);
         }
-        setToast({ message: 'Vidéo dupliquée', type: 'success' });
+        setToast({ message: t('toasts.duplicated'), type: 'success' });
       } else {
-        setToast({ message: 'Erreur lors de la duplication', type: 'error' });
+        setToast({ message: t('toasts.duplicateError'), type: 'error' });
       }
     } catch (error) {
       console.error('Error duplicating video:', error);
-      setToast({ message: 'Erreur lors de la duplication', type: 'error' });
+      setToast({ message: t('toasts.duplicateError'), type: 'error' });
     } finally {
       setActionInProgress(null);
     }
@@ -184,13 +181,13 @@ export default function LibraryPage() {
     try {
       const res = await fetch(`/api/videos/${videoId}/repost`, { method: 'POST' });
       if (res.ok) {
-        setToast({ message: 'Vidéo repostée sur vos réseaux', type: 'success' });
+        setToast({ message: t('toasts.reposted'), type: 'success' });
       } else {
-        setToast({ message: 'Erreur lors du repost', type: 'error' });
+        setToast({ message: t('toasts.repostError'), type: 'error' });
       }
     } catch (error) {
       console.error('Error reposting video:', error);
-      setToast({ message: 'Erreur lors du repost', type: 'error' });
+      setToast({ message: t('toasts.repostError'), type: 'error' });
     } finally {
       setActionInProgress(null);
     }
@@ -206,11 +203,11 @@ export default function LibraryPage() {
       if (res.ok) {
         setVideos(videos.filter((v) => v.id !== deleteConfirm.videoId));
         setTotal(Math.max(0, total - 1));
-        setToast({ message: 'Vidéo supprimée', type: 'success' });
+        setToast({ message: t('toasts.deleted'), type: 'success' });
       }
     } catch (error) {
       console.error('Error deleting video:', error);
-      setToast({ message: 'Erreur lors de la suppression', type: 'error' });
+      setToast({ message: t('toasts.deleteError'), type: 'error' });
     } finally {
       setActionInProgress(null);
       setDeleteConfirm({ isOpen: false, videoId: null, videoTitle: null });
@@ -243,16 +240,16 @@ export default function LibraryPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-white mb-2">Bibliothèque</h1>
+          <h1 className="text-3xl font-bold text-white mb-2">{t('title')}</h1>
           <p className="text-gray-400">
             {total > 0
-              ? `${total} vidéo${total > 1 ? 's' : ''} créée${total > 1 ? 's' : ''}`
-              : 'Gérez toutes vos vidéos créées'}
+              ? t('subtitle', { count: total })
+              : t('subtitleManage')}
           </p>
         </div>
         <Link href="/dashboard/creator">
           <Button variant="primary" size="md">
-            Créer une vidéo
+            {t('createVideo')}
           </Button>
         </Link>
       </div>
@@ -260,18 +257,18 @@ export default function LibraryPage() {
       {/* Filters */}
       <div className="flex gap-4 items-end">
         <Input
-          placeholder="Rechercher une vidéo..."
+          placeholder={t('searchPlaceholder')}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="flex-1"
         />
         <Select
           options={[
-            { value: '', label: 'Sélectionner...' },
-            { value: 'completed', label: 'Terminée' },
-            { value: 'rendering', label: 'Rendu en cours' },
-            { value: 'draft', label: 'Brouillon' },
-            { value: 'published', label: 'Publiée' },
+            { value: '', label: t('filterSelect') },
+            { value: 'completed', label: t('status.completed') },
+            { value: 'rendering', label: t('status.rendering') },
+            { value: 'draft', label: t('status.draft') },
+            { value: 'published', label: t('status.published') },
           ]}
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
@@ -282,21 +279,21 @@ export default function LibraryPage() {
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="animate-spin text-studiio-primary mr-3" size={24} />
-          <span className="text-gray-400">Chargement...</span>
+          <span className="text-gray-400">{tc('loading')}</span>
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-16">
           <Film className="mx-auto text-gray-600 mb-4" size={64} />
-          <h3 className="text-xl font-bold text-white mb-2">Aucune vidéo</h3>
+          <h3 className="text-xl font-bold text-white mb-2">{t('noVideos')}</h3>
           <p className="text-gray-400 mb-6">
             {search || filterStatus
-              ? 'Aucune vidéo ne correspond à vos filtres'
-              : 'Créez votre première vidéo pour la voir ici'}
+              ? t('noVideosFilter')
+              : t('noVideosCreate')}
           </p>
           {!search && !filterStatus && (
             <Link href="/dashboard/creator">
               <Button variant="primary" size="lg">
-                Créer ma première vidéo
+                {t('createFirstVideo')}
               </Button>
             </Link>
           )}
@@ -333,14 +330,14 @@ export default function LibraryPage() {
                         size={32}
                       />
                       <span className="text-xs text-gray-300 font-medium">
-                        Rendu en cours...
+                        {t('preview.renderingInProgress')}
                       </span>
                     </div>
                   ) : video.status === 'failed' ? (
                     <div className="flex flex-col items-center gap-2 z-10">
                       <X className="text-red-400" size={32} />
                       <span className="text-xs text-red-300 font-medium">
-                        Echec du rendu
+                        {t('status.failed')}
                       </span>
                     </div>
                   ) : video.video_url ? (
@@ -354,7 +351,7 @@ export default function LibraryPage() {
                     <div className="flex flex-col items-center gap-2 z-10">
                       <Film className="text-gray-500" size={32} />
                       <span className="text-xs text-gray-400 font-medium">
-                        Video en traitement
+                        {t('preview.processing')}
                       </span>
                     </div>
                   )}
@@ -367,8 +364,8 @@ export default function LibraryPage() {
                       {video.title}
                     </p>
                     <p className="text-xs text-gray-400">
-                      {video.format === 'reel' ? 'Reel 9:16' : 'TV 16:9'} •{' '}
-                      {formatDate(video.created_at)}
+                      {video.format === 'reel' ? t('formatLabels.reel') : t('formatLabels.tv')} •{' '}
+                      {formatDateLocale(video.created_at, { day: 'numeric', month: 'short', year: 'numeric' })}
                     </p>
                   </div>
                   <div className="flex justify-between items-center">
@@ -376,7 +373,7 @@ export default function LibraryPage() {
                       {getStatusLabel(video.status)}
                     </Badge>
                     <span className="text-xs text-gray-500 capitalize">
-                      {video.type === 'infographic' ? 'Infographie' : video.metadata?.objective || 'Vidéo'}
+                      {video.type === 'infographic' ? t('typeLabels.infographic') : video.metadata?.objective || t('typeLabels.video')}
                     </span>
                   </div>
 
@@ -386,49 +383,49 @@ export default function LibraryPage() {
                       onClick={() => setPreviewVideo(video)}
                       disabled={actionInProgress !== null}
                       className="flex flex-col items-center gap-1 rounded-lg py-2 text-gray-400 hover:bg-gray-800 hover:text-white transition disabled:opacity-50"
-                      title="Aperçu"
+                      title={t('actions.preview')}
                     >
                       <Play size={16} />
-                      <span className="text-[10px]">Aperçu</span>
+                      <span className="text-[10px]">{t('actions.preview')}</span>
                     </button>
                     <button
                       onClick={() => handleExport(video.id)}
                       disabled={actionInProgress !== null}
                       className="flex flex-col items-center gap-1 rounded-lg py-2 text-gray-400 hover:bg-gray-800 hover:text-white transition disabled:opacity-50"
-                      title="Exporter"
+                      title={t('actions.export')}
                     >
                       {actionInProgress === `export-${video.id}` ? (
                         <Loader2 size={16} className="animate-spin" />
                       ) : (
                         <Download size={16} />
                       )}
-                      <span className="text-[10px]">Exporter</span>
+                      <span className="text-[10px]">{t('actions.export')}</span>
                     </button>
                     <Link href={`/dashboard/creator?id=${video.id}`} className="flex flex-col items-center gap-1 rounded-lg py-2 text-gray-400 hover:bg-gray-800 hover:text-white transition">
                       <Edit size={16} />
-                      <span className="text-[10px]">Modifier</span>
+                      <span className="text-[10px]">{t('actions.edit')}</span>
                     </Link>
                     <button
                       onClick={() => handleDuplicate(video.id)}
                       disabled={actionInProgress !== null}
                       className="flex flex-col items-center gap-1 rounded-lg py-2 text-gray-400 hover:bg-gray-800 hover:text-white transition disabled:opacity-50"
-                      title="Dupliquer"
+                      title={t('actions.duplicate')}
                     >
                       {actionInProgress === `duplicate-${video.id}` ? (
                         <Loader2 size={16} className="animate-spin" />
                       ) : (
                         <Copy size={16} />
                       )}
-                      <span className="text-[10px]">Dupliquer</span>
+                      <span className="text-[10px]">{t('actions.duplicate')}</span>
                     </button>
                     <button
                       onClick={() => openDeleteDialog(video.id, video.title)}
                       disabled={actionInProgress !== null}
                       className="flex flex-col items-center gap-1 rounded-lg py-2 text-gray-400 hover:bg-red-900/30 hover:text-red-400 transition disabled:opacity-50"
-                      title="Supprimer"
+                      title={t('actions.delete')}
                     >
                       <Trash2 size={16} />
-                      <span className="text-[10px]">Supprimer</span>
+                      <span className="text-[10px]">{t('actions.delete')}</span>
                     </button>
                   </div>
 
@@ -443,7 +440,7 @@ export default function LibraryPage() {
                     ) : (
                       <Share2 size={14} />
                     )}
-                    Reposter
+                    {t('actions.repost')}
                   </button>
                 </div>
               </div>
@@ -453,7 +450,7 @@ export default function LibraryPage() {
           {hasMore && (
             <div className="text-center pt-4">
               <Button variant="ghost" onClick={() => setPage((p) => p + 1)}>
-                Charger plus
+                {tc('loadMore')}
               </Button>
             </div>
           )}
@@ -500,7 +497,7 @@ export default function LibraryPage() {
                   poster={previewVideo.thumbnail_url || previewVideo.metadata?.posterPhotoUrl || previewVideo.metadata?.characterImageUrl}
                   src={previewVideo.video_url || previewVideo.metadata?.rushUrls?.[0]}
                 >
-                  Votre navigateur ne supporte pas la lecture vidéo.
+                  {t('preview.browserNotSupported')}
                 </video>
               ) : (previewVideo.metadata?.posterPhotoUrl || previewVideo.metadata?.characterImageUrl) ? (
                 <img
@@ -520,10 +517,10 @@ export default function LibraryPage() {
                       size={48}
                     />
                     <p className="text-gray-300 font-medium">
-                      Rendu en cours...
+                      {t('preview.renderingInProgress')}
                     </p>
                     <p className="text-gray-500 text-sm mt-2">
-                      La vidéo sera disponible à la fin du rendu
+                      {t('preview.videoAvailableAfterRender')}
                     </p>
                   </div>
                 </div>
@@ -531,7 +528,7 @@ export default function LibraryPage() {
                 <div className="flex items-center justify-center w-full h-96 bg-gradient-to-b from-gray-800 to-black">
                   <div className="text-center">
                     <Play className="text-gray-500 mx-auto mb-4" size={48} />
-                    <p className="text-gray-400">Vidéo non disponible</p>
+                    <p className="text-gray-400">{t('preview.videoNotAvailable')}</p>
                   </div>
                 </div>
               )}
@@ -542,7 +539,7 @@ export default function LibraryPage() {
                 onClick={() => setPreviewVideo(null)}
                 className="flex-1"
               >
-                Fermer
+                {tc('close')}
               </Button>
               {previewVideo.video_url && (
                 <Button
@@ -550,7 +547,7 @@ export default function LibraryPage() {
                   onClick={() => handleExport(previewVideo.id)}
                 >
                   <Download size={16} className="mr-2" />
-                  Télécharger
+                  {tc('download')}
                 </Button>
               )}
             </div>
@@ -563,14 +560,10 @@ export default function LibraryPage() {
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-gray-900 rounded-lg p-6 max-w-sm w-full border border-gray-800">
             <h3 className="text-lg font-semibold text-white mb-2">
-              Supprimer la vidéo ?
+              {t('deleteConfirm.title')}
             </h3>
             <p className="text-gray-400 mb-6">
-              Êtes-vous sûr de vouloir supprimer{' '}
-              <span className="font-semibold text-white">
-                &quot;{deleteConfirm.videoTitle}&quot;
-              </span>{' '}
-              ? Cette action est irréversible.
+              {t('deleteConfirm.message', { title: deleteConfirm.videoTitle || '' })}
             </p>
             <div className="flex gap-3">
               <Button
@@ -579,7 +572,7 @@ export default function LibraryPage() {
                 disabled={actionInProgress !== null}
                 className="flex-1"
               >
-                Annuler
+                {tc('cancel')}
               </Button>
               <Button
                 variant="primary"
@@ -594,7 +587,7 @@ export default function LibraryPage() {
                     className="mr-2 animate-spin"
                   />
                 )}
-                Supprimer
+                {t('actions.delete')}
               </Button>
             </div>
           </div>

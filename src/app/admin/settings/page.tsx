@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
 import { STRIPE_PLANS, CREDIT_PACKAGES, FREE_CREDITS } from '@/lib/stripe/constants';
+import { useTranslations } from '@/i18n/client';
 
 interface UserForCredit {
   id: string;
@@ -18,6 +19,7 @@ interface UserForCredit {
 }
 
 export default function SettingsPage() {
+  const t = useTranslations('admin');
   const [freeCredits, setFreeCredits] = useState(FREE_CREDITS);
   const [settings, setSettings] = useState({
     maintenanceMode: false,
@@ -91,11 +93,11 @@ export default function SettingsPage() {
         }),
       });
 
-      if (!res.ok) throw new Error('Erreur lors de la sauvegarde');
+      if (!res.ok) throw new Error(t('settings.errorSaving'));
 
-      showToast('Parametres sauvegardes avec succes', 'success');
+      showToast(t('settings.saved'), 'success');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Une erreur est survenue', 'error');
+      showToast(err instanceof Error ? err.message : t('common.errorOccurred'), 'error');
     } finally {
       setSaving(false);
     }
@@ -110,7 +112,7 @@ export default function SettingsPage() {
         const data = await res.json();
         setUsers((data.data || []).map((u: any) => ({
           id: u.id,
-          name: u.name || u.full_name || u.email?.split('@')[0] || 'Sans nom',
+          name: u.name || u.full_name || u.email?.split('@')[0] || t('users.noName'),
           email: u.email,
           credits: u.credits || 0,
           plan: u.plan || 'free',
@@ -130,7 +132,7 @@ export default function SettingsPage() {
         const data = await res.json();
         setPlanUsers((data.data || []).map((u: any) => ({
           id: u.id,
-          name: u.name || u.full_name || u.email?.split('@')[0] || 'Sans nom',
+          name: u.name || u.full_name || u.email?.split('@')[0] || t('users.noName'),
           email: u.email,
           credits: u.credits || 0,
           plan: u.plan || 'free',
@@ -152,7 +154,7 @@ export default function SettingsPage() {
         body: JSON.stringify({ amount, reason: creditReason }),
       });
 
-      if (!res.ok) throw new Error('Erreur lors du credit');
+      if (!res.ok) throw new Error(t('users.errorAddCredits'));
 
       showToast(`${Math.abs(amount)} credits ${creditAction === 'add' ? 'ajoutes a' : 'retires de'} ${selectedUser.name}`, 'success');
       setCreditModalOpen(false);
@@ -160,7 +162,7 @@ export default function SettingsPage() {
       setCreditAmount('');
       setCreditReason('');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+      showToast(err instanceof Error ? err.message : t('common.error'), 'error');
     } finally {
       setCreditSaving(false);
     }
@@ -176,14 +178,14 @@ export default function SettingsPage() {
         body: JSON.stringify({ plan: newPlan }),
       });
 
-      if (!res.ok) throw new Error('Erreur lors du changement de plan');
+      if (!res.ok) throw new Error(t('users.errorModify'));
 
       showToast(`Plan de ${selectedPlanUser.name} change en ${newPlan}`, 'success');
       setPlanModalOpen(false);
       setSelectedPlanUser(null);
       setNewPlan('');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+      showToast(err instanceof Error ? err.message : t('common.error'), 'error');
     } finally {
       setPlanSaving(false);
     }
@@ -200,8 +202,8 @@ export default function SettingsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-4xl font-bold text-white mb-2">Parametres de la plateforme</h1>
-        <p className="text-gray-400">Configurez la plateforme Studiio</p>
+        <h1 className="text-4xl font-bold text-white mb-2">{t('settings.title')}</h1>
+        <p className="text-gray-400">{t('settings.subtitle')}</p>
       </div>
 
       {toast && (
@@ -223,9 +225,9 @@ export default function SettingsPage() {
         >
           <div className="flex items-center gap-3 mb-2">
             <CreditCard size={24} className="text-purple-400 group-hover:text-purple-300" />
-            <h3 className="text-lg font-bold text-white">Crediter un utilisateur</h3>
+            <h3 className="text-lg font-bold text-white">{t('settings.creditUser')}</h3>
           </div>
-          <p className="text-sm text-gray-400">Ajouter ou retirer des credits a un utilisateur</p>
+          <p className="text-sm text-gray-400">{t('settings.creditUserDesc')}</p>
         </button>
 
         <button
@@ -234,19 +236,19 @@ export default function SettingsPage() {
         >
           <div className="flex items-center gap-3 mb-2">
             <Edit2 size={24} className="text-orange-400 group-hover:text-orange-300" />
-            <h3 className="text-lg font-bold text-white">Modifier le plan</h3>
+            <h3 className="text-lg font-bold text-white">{t('settings.changePlan')}</h3>
           </div>
-          <p className="text-sm text-gray-400">Changer le plan tarifaire d&apos;un utilisateur</p>
+          <p className="text-sm text-gray-400">{t('settings.changePlanDesc')}</p>
         </button>
       </div>
 
       <Card>
         <CardHeader className="border-b border-gray-800">
-          <CardTitle>Credits gratuits</CardTitle>
+          <CardTitle>{t('settings.freeCredits')}</CardTitle>
         </CardHeader>
         <CardContent className="pt-6">
           <Input
-            label="Credits offerts aux nouveaux utilisateurs"
+            label={t('settings.freeCreditsLabel')}
             type="number"
             value={freeCredits}
             onChange={(e) => setFreeCredits(parseInt(e.target.value) || 0)}
@@ -256,7 +258,7 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader className="border-b border-gray-800">
-          <CardTitle>Fonctionnalites</CardTitle>
+          <CardTitle>{t('settings.features')}</CardTitle>
         </CardHeader>
         <CardContent className="pt-6 space-y-4">
           <label className="flex items-center gap-3 p-4 bg-gray-800/50 rounded-lg cursor-pointer hover:bg-gray-800 transition">
@@ -267,8 +269,8 @@ export default function SettingsPage() {
               className="w-4 h-4"
             />
             <div>
-              <p className="font-medium text-white text-sm">Mode maintenance</p>
-              <p className="text-xs text-gray-400">Desactiver tous les acces utilisateurs</p>
+              <p className="font-medium text-white text-sm">{t('settings.maintenanceMode')}</p>
+              <p className="text-xs text-gray-400">{t('settings.maintenanceModeDesc')}</p>
             </div>
           </label>
           <label className="flex items-center gap-3 p-4 bg-gray-800/50 rounded-lg cursor-pointer hover:bg-gray-800 transition">
@@ -279,8 +281,8 @@ export default function SettingsPage() {
               className="w-4 h-4"
             />
             <div>
-              <p className="font-medium text-white text-sm">Autoriser les nouvelles inscriptions</p>
-              <p className="text-xs text-gray-400">Permettre aux nouveaux utilisateurs de s&apos;inscrire</p>
+              <p className="font-medium text-white text-sm">{t('settings.newSignups')}</p>
+              <p className="text-xs text-gray-400">{t('settings.newSignupsDesc')}</p>
             </div>
           </label>
           <label className="flex items-center gap-3 p-4 bg-gray-800/50 rounded-lg cursor-pointer hover:bg-gray-800 transition">
@@ -291,8 +293,8 @@ export default function SettingsPage() {
               className="w-4 h-4"
             />
             <div>
-              <p className="font-medium text-white text-sm">Activation de la generation IA</p>
-              <p className="text-xs text-gray-400">Permettre la creation de videos avec l&apos;IA</p>
+              <p className="font-medium text-white text-sm">{t('settings.aiGeneration')}</p>
+              <p className="text-xs text-gray-400">{t('settings.aiGenerationDesc')}</p>
             </div>
           </label>
         </CardContent>
@@ -300,7 +302,7 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader className="border-b border-gray-800">
-          <CardTitle>Tarification des plans</CardTitle>
+          <CardTitle>{t('settings.planPricing')}</CardTitle>
         </CardHeader>
         <CardContent className="pt-6">
           <div className="space-y-4">
@@ -316,14 +318,14 @@ export default function SettingsPage() {
           </div>
           <a href="/admin/landing" className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-orange-500/10 border border-orange-500/30 rounded-lg text-orange-400 text-sm font-medium hover:bg-orange-500/20 transition">
             <Edit2 size={14} />
-            Modifier les plans dans l&apos;editeur Landing Page
+            {t('settings.editLandingPlans')}
           </a>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="border-b border-gray-800">
-          <CardTitle>Packages de credits</CardTitle>
+          <CardTitle>{t('settings.creditPackages')}</CardTitle>
         </CardHeader>
         <CardContent className="pt-6">
           <div className="space-y-4">
@@ -343,22 +345,22 @@ export default function SettingsPage() {
         <CardFooter className="border-t-0 pt-0">
           <Button variant="primary" size="lg" onClick={handleSave} disabled={saving}>
             {saving ? (
-              <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Sauvegarde...</>
+              <><Loader2 className="w-4 h-4 animate-spin mr-2" /> {t('settings.saving')}</>
             ) : (
-              <><Save size={16} className="mr-2" /> Sauvegarder les parametres</>
+              <><Save size={16} className="mr-2" /> {t('settings.saveSettings')}</>
             )}
           </Button>
         </CardFooter>
       </Card>
 
       {/* Credit User Modal */}
-      <Modal isOpen={creditModalOpen} onClose={() => { setCreditModalOpen(false); setSelectedUser(null); }} title="Crediter un utilisateur">
+      <Modal isOpen={creditModalOpen} onClose={() => { setCreditModalOpen(false); setSelectedUser(null); }} title={t('settings.creditUser')}>
         <div className="space-y-4">
           {!selectedUser ? (
             <>
               <Input
-                label="Rechercher un utilisateur"
-                placeholder="Nom ou email..."
+                label={t('settings.searchUser')}
+                placeholder={t('settings.searchUserPlaceholder')}
                 value={userSearch}
                 onChange={(e) => {
                   setUserSearch(e.target.value);
@@ -384,7 +386,7 @@ export default function SettingsPage() {
               <div className="p-3 bg-gray-800/50 rounded-lg flex justify-between items-center">
                 <div>
                   <p className="text-sm font-medium text-white">{selectedUser.name}</p>
-                  <p className="text-xs text-gray-400">{selectedUser.email} - {selectedUser.credits} credits actuels</p>
+                  <p className="text-xs text-gray-400">{selectedUser.email} - {selectedUser.credits} {t('settings.creditsActuels')}</p>
                 </div>
                 <button onClick={() => setSelectedUser(null)} className="text-gray-400 hover:text-white">
                   <X size={16} />
@@ -395,21 +397,21 @@ export default function SettingsPage() {
                   onClick={() => setCreditAction('add')}
                   className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${creditAction === 'add' ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-400'}`}
                 >
-                  + Ajouter
+                  + {t('settings.addCredits')}
                 </button>
                 <button
                   onClick={() => setCreditAction('deduct')}
                   className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${creditAction === 'deduct' ? 'bg-red-600 text-white' : 'bg-gray-700 text-gray-400'}`}
                 >
-                  - Retirer
+                  - {t('settings.deductCredits')}
                 </button>
               </div>
-              <Input label="Montant" type="number" placeholder="100" value={creditAmount} onChange={(e) => setCreditAmount(e.target.value)} min="1" />
-              <Input label="Raison" placeholder="Ex: Bonus, compensation..." value={creditReason} onChange={(e) => setCreditReason(e.target.value)} />
+              <Input label={t('settings.amount')} type="number" placeholder="100" value={creditAmount} onChange={(e) => setCreditAmount(e.target.value)} min="1" />
+              <Input label={t('settings.reason')} placeholder={t('settings.reasonPlaceholder')} value={creditReason} onChange={(e) => setCreditReason(e.target.value)} />
               <div className="flex gap-3 pt-2">
-                <Button variant="secondary" className="flex-1" onClick={() => { setCreditModalOpen(false); setSelectedUser(null); }}>Annuler</Button>
+                <Button variant="secondary" className="flex-1" onClick={() => { setCreditModalOpen(false); setSelectedUser(null); }}>{t('common.cancel')}</Button>
                 <Button variant="primary" className="flex-1" onClick={handleCreditUser} disabled={creditSaving || !creditAmount || !creditReason}>
-                  {creditSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirmer'}
+                  {creditSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : t('settings.confirmAction')}
                 </Button>
               </div>
             </>
@@ -418,13 +420,13 @@ export default function SettingsPage() {
       </Modal>
 
       {/* Change Plan Modal */}
-      <Modal isOpen={planModalOpen} onClose={() => { setPlanModalOpen(false); setSelectedPlanUser(null); }} title="Modifier le plan d'un utilisateur">
+      <Modal isOpen={planModalOpen} onClose={() => { setPlanModalOpen(false); setSelectedPlanUser(null); }} title={t('settings.changePlanDesc')}>
         <div className="space-y-4">
           {!selectedPlanUser ? (
             <>
               <Input
-                label="Rechercher un utilisateur"
-                placeholder="Nom ou email..."
+                label={t('settings.searchUser')}
+                placeholder={t('settings.searchUserPlaceholder')}
                 value={planUserSearch}
                 onChange={(e) => {
                   setPlanUserSearch(e.target.value);
@@ -440,7 +442,7 @@ export default function SettingsPage() {
                     className="w-full text-left p-3 rounded-lg bg-gray-800/50 hover:bg-gray-700/50 transition"
                   >
                     <p className="text-sm font-medium text-white">{u.name}</p>
-                    <p className="text-xs text-gray-400">{u.email} - Plan actuel: {u.plan}</p>
+                    <p className="text-xs text-gray-400">{u.email} - {t('settings.currentPlan')}: {u.plan}</p>
                   </button>
                 ))}
               </div>
@@ -450,16 +452,16 @@ export default function SettingsPage() {
               <div className="p-3 bg-gray-800/50 rounded-lg flex justify-between items-center">
                 <div>
                   <p className="text-sm font-medium text-white">{selectedPlanUser.name}</p>
-                  <p className="text-xs text-gray-400">{selectedPlanUser.email} - Plan actuel: {selectedPlanUser.plan}</p>
+                  <p className="text-xs text-gray-400">{selectedPlanUser.email} - {t('settings.currentPlan')}: {selectedPlanUser.plan}</p>
                 </div>
                 <button onClick={() => setSelectedPlanUser(null)} className="text-gray-400 hover:text-white">
                   <X size={16} />
                 </button>
               </div>
               <Select
-                label="Nouveau plan"
+                label={t('settings.newPlan')}
                 options={[
-                  { value: 'free', label: 'Gratuit' },
+                  { value: 'free', label: t('users.plans.free') },
                   { value: 'starter', label: 'Starter - 29,99 EUR' },
                   { value: 'pro', label: 'Pro - 79,99 EUR' },
                   { value: 'enterprise', label: 'Enterprise - 299,99 EUR' },
@@ -468,9 +470,9 @@ export default function SettingsPage() {
                 onChange={(e) => setNewPlan(e.target.value)}
               />
               <div className="flex gap-3 pt-2">
-                <Button variant="secondary" className="flex-1" onClick={() => { setPlanModalOpen(false); setSelectedPlanUser(null); }}>Annuler</Button>
+                <Button variant="secondary" className="flex-1" onClick={() => { setPlanModalOpen(false); setSelectedPlanUser(null); }}>{t('common.cancel')}</Button>
                 <Button variant="primary" className="flex-1" onClick={handleChangePlan} disabled={planSaving || !newPlan}>
-                  {planSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Modifier le plan'}
+                  {planSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : t('settings.modifyPlan')}
                 </Button>
               </div>
             </>

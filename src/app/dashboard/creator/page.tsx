@@ -22,6 +22,8 @@ import {
   Type,
 } from 'lucide-react';
 import { useBranding } from '@/lib/hooks/useBranding';
+import { useTranslations, useLocale } from '@/i18n/client';
+import { getContentPools, pickRandom as pickRandomI18n } from '@/lib/i18n-content';
 import BrandingPanel from '@/components/BrandingPanel';
 import { composeAndUpload, downloadBlob } from '@/lib/video-composer';
 import { detectClips, extractClip, type DetectedClip } from '@/lib/clip-detector';
@@ -83,31 +85,36 @@ interface UserObjective {
 
 // ---- Constants ----
 
-const STEP_LABELS = ['Format & Objectif', 'Médias & Voix', 'Personnalisation', 'Aperçu & Export'];
 const STEP_COLORS = ['bg-red-500', 'bg-pink-500', 'bg-purple-500', 'bg-gray-500'];
-
-const FORMAT_OPTIONS = [
-  { value: 'reel', label: 'Reel 9:16', icon: '📱' },
-  { value: 'tv', label: 'TV 16:9', icon: '📺' },
-];
-
-const MODE_OPTIONS = [
-  { value: 'cardio', label: 'Cardio / Dynamique' },
-  { value: 'testimony', label: 'Témoignage / Clean' },
-];
-
-const DEFAULT_OBJECTIVES = [
-  { value: 'promotion', label: 'Promotion' },
-  { value: 'subscription', label: 'Abonnement' },
-  { value: 'motivation', label: 'Motivation' },
-  { value: 'benefits', label: 'Bienfaits' },
-  { value: 'nutrition', label: 'Nutrition' },
-];
 
 export default function CreatorPage() {
   useSession();
   const router = useRouter();
   const { branding, setBranding } = useBranding();
+  const t = useTranslations('creator');
+  const tc = useTranslations('common');
+  const locale = useLocale();
+
+  // Translated constants (must be inside component for i18n)
+  const STEP_LABELS = [t('stepLabels.0'), t('stepLabels.1'), t('stepLabels.2'), t('stepLabels.3')];
+
+  const FORMAT_OPTIONS = [
+    { value: 'reel', label: t('format.reel'), icon: '📱' },
+    { value: 'tv', label: t('format.tv'), icon: '📺' },
+  ];
+
+  const MODE_OPTIONS = [
+    { value: 'cardio', label: t('mode.cardio') },
+    { value: 'testimony', label: t('mode.testimony') },
+  ];
+
+  const DEFAULT_OBJECTIVES = [
+    { value: 'promotion', label: t('objective.promotion') },
+    { value: 'subscription', label: t('objective.subscription') },
+    { value: 'motivation', label: t('objective.motivation') },
+    { value: 'benefits', label: t('objective.benefits') },
+    { value: 'nutrition', label: t('objective.nutrition') },
+  ];
 
   // Step navigation
   const [step, setStep] = useState(0);
@@ -226,10 +233,10 @@ export default function CreatorPage() {
 
   // Montage sequences definition (like Infographie page)
   const montageSequences = [
-    { id: 'intro', type: 'intro', label: 'Affiche + Titre', duration: 5, color: '#ec4899', icon: '🖼️' },
-    { id: 'cards', type: 'cards', label: 'Cartes Texte', duration: 6, color: '#a855f7', icon: '📊' },
-    { id: 'video', type: 'video', label: 'Vidéo Rush', duration: 10, color: '#3b82f6', icon: '🎬' },
-    { id: 'cta', type: 'cta', label: 'CTA', duration: 5, color: '#22c55e', icon: '📢' },
+    { id: 'intro', type: 'intro', label: t('montageSequences.intro'), duration: 5, color: '#ec4899', icon: '🖼️' },
+    { id: 'cards', type: 'cards', label: t('montageSequences.cards'), duration: 6, color: '#a855f7', icon: '📊' },
+    { id: 'video', type: 'video', label: t('montageSequences.video'), duration: 10, color: '#3b82f6', icon: '🎬' },
+    { id: 'cta', type: 'cta', label: t('montageSequences.cta'), duration: 5, color: '#22c55e', icon: '📢' },
   ];
   const activeMontageSequences = montageSequences.filter(s => s.type !== 'video' || videoRushes.some(r => r.file));
   const montageTotalDuration = activeMontageSequences.reduce((s, x) => s + x.duration, 0);
@@ -280,7 +287,7 @@ export default function CreatorPage() {
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <div className="absolute inset-0 bg-gradient-to-b from-purple-950 to-black" />
           <div className="relative z-10 w-full px-3 space-y-1">
-            <p className="text-[7px] font-bold text-white/60 uppercase tracking-widest text-center mb-1">Informations</p>
+            <p className="text-[7px] font-bold text-white/60 uppercase tracking-widest text-center mb-1">{t('textCards.information')}</p>
             {visibleCards.length > 0 ? visibleCards.map((card, i) => (
               <div key={i} className="flex items-center gap-2 bg-black/40 backdrop-blur-sm rounded-lg px-2 py-1 border-l-2" style={{ borderColor: card.color }}>
                 <span className="text-[8px] text-white font-bold" style={{ fontFamily: card.fontFamily }}>{card.text}</span>
@@ -288,7 +295,7 @@ export default function CreatorPage() {
             )) : (
               <div className="text-center py-4">
                 <Type size={16} className="text-gray-600 mx-auto mb-1" />
-                <p className="text-[8px] text-gray-500">Ajoutez des cartes texte</p>
+                <p className="text-[8px] text-gray-500">{t('textCards.addText')}</p>
               </div>
             )}
           </div>
@@ -306,7 +313,7 @@ export default function CreatorPage() {
             <div className="absolute inset-0 bg-gradient-to-b from-gray-900 to-black flex items-center justify-center">
               <div className="text-center">
                 <Film size={20} className="text-gray-600 mx-auto mb-1" />
-                <p className="text-[8px] text-gray-500">Aucune vidéo</p>
+                <p className="text-[8px] text-gray-500">{t('montageSequences.noVideo')}</p>
               </div>
             </div>
           )}
@@ -370,7 +377,7 @@ export default function CreatorPage() {
     const allPhrases = [...objectivePhrases, ...phrases['motivation'] || []];
     const random = allPhrases[Math.floor(Math.random() * allPhrases.length)];
     setSalesPhrase(random);
-    showToast('Phrase générée !', 'success');
+    showToast(t('salesPhrase.generated'), 'success');
   };
 
   const generateTitleSubtitle = () => {
@@ -414,7 +421,7 @@ export default function CreatorPage() {
     const subtitle = match.subtitles[Math.floor(Math.random() * match.subtitles.length)];
     setTitle(title);
     setSubtitle(subtitle);
-    showToast('Titre & sous-titre générés !', 'success');
+    showToast(t('salesPhrase.titleGenerated'), 'success');
   };
 
   // ---- Handlers ----
@@ -472,7 +479,7 @@ export default function CreatorPage() {
         if (r.previewUrl) URL.revokeObjectURL(r.previewUrl);
         return { ...r, previewUrl, selectedClipId: 'full' };
       }));
-      showToast('Vidéo complète sélectionnée', 'success');
+      showToast(t('rushVideos.fullVideo'), 'success');
       return;
     }
 
@@ -491,11 +498,11 @@ export default function CreatorPage() {
         if (r.previewUrl) URL.revokeObjectURL(r.previewUrl);
         return { ...r, file: clipFile, previewUrl, isAnalyzing: false, analyzeProgress: 100, selectedClipId: clipId, title: clip.label };
       }));
-      showToast(`Clip "${clip.label}" extrait (${clip.duration}s)`, 'success');
+      showToast(t('rushVideos.clipExtracted', { label: clip.label, duration: String(clip.duration) }), 'success');
     } catch (err) {
       console.error('[ClipExtract] Failed:', err);
       setVideoRushes((prev) => prev.map((r) => r.id === rushId ? { ...r, isAnalyzing: false } : r));
-      showToast('Erreur lors de l\'extraction du clip', 'error');
+      showToast(t('rushVideos.extractError'), 'error');
     }
   };
 
@@ -564,7 +571,7 @@ export default function CreatorPage() {
     setTextCards((prev) =>
       prev.map((c) => ({ ...c, color: globalTextColor, fontFamily: globalFontFamily, fontSize: globalFontSize }))
     );
-    showToast('Paramètres appliqués à toutes les cartes', 'success');
+    showToast(t('textCards.appliedToAll'), 'success');
   };
 
   // ---- Drag & Drop reorder ----
@@ -649,10 +656,10 @@ export default function CreatorPage() {
         setPexelsResults(data.photos);
       } else {
         setPexelsResults([]);
-        showToast('Aucune image trouvée');
+        showToast(t('character.noImageFound'));
       }
     } catch {
-      showToast('Erreur lors de la recherche Pexels');
+      showToast(t('character.pexelsError'));
       setPexelsResults([]);
     } finally {
       setPexelsLoading(false);
@@ -689,17 +696,17 @@ export default function CreatorPage() {
   const handleStartRendering = async () => {
     const rushesWithFiles = videoRushes.filter((r) => r.file);
     if (rushesWithFiles.length === 0) {
-      showToast('Ajoutez au moins une vidéo rush');
+      showToast(t('render.errorNoRush'));
       return;
     }
 
     setIsRendering(true);
     setRenderProgress(0);
-    setRenderStage('Initialisation...');
+    setRenderStage(t('render.initializing'));
 
     try {
       // ═══ PHASE 1: Upload files (0-20%) ═══
-      setRenderStage('Upload des vidéos...');
+      setRenderStage(t('render.uploadingVideos'));
       const rushUrls: string[] = [];
       for (let i = 0; i < rushesWithFiles.length; i++) {
         setRenderProgress(Math.round(((i + 1) / rushesWithFiles.length) * 15));
@@ -708,7 +715,7 @@ export default function CreatorPage() {
       }
 
       // Audio (music/voice) is handled in Studio Son page — compose without audio here
-      setRenderStage('Upload des médias...');
+      setRenderStage(t('render.uploadingMedia'));
       setRenderProgress(17);
 
       // If using Pexels image (no characterImage file), download it to create a File for upload
@@ -741,32 +748,12 @@ export default function CreatorPage() {
       const effectiveVoiceUrl: string | null = null;
       setRenderProgress(20);
 
-      // ═══ PHASE 2: Batch variations ═══
-      const batchTitles: Record<string, string[]> = {
-        promotion: ['OFFRE EXCLUSIVE', 'PROMO FLASH', 'BON PLAN', 'DEAL DU JOUR', 'OFFRE LIMITÉE', 'SOLDES', 'DERNIÈRE CHANCE', 'PRIX CASSÉ', 'OFFRE SPÉCIALE', 'VENTE FLASH'],
-        subscription: ['ABONNE-TOI', 'REJOINS-NOUS', 'FOLLOW NOW', 'ON T\'ATTEND', 'LINK IN BIO', 'ACTIVE LA CLOCHE', 'STAY TUNED', 'REJOINS LA TRIBU', 'NE RATE RIEN', 'FOLLOW MAINTENANT'],
-        motivation: ['C\'EST TON MOMENT', 'LÈVE-TOI', 'NO EXCUSES', 'DÉPASSE-TOI', 'GO GO GO', 'BELIEVE', 'TU PEUX', 'NEVER GIVE UP', 'PUSH HARDER', 'NO LIMIT'],
-        benefits: ['LES BIENFAITS', 'DÉCOUVRE', 'TOP RÉSULTATS', 'LE SECRET', 'AVANT/APRÈS', 'PROUVÉ', 'EFFICACE', 'TESTÉ', 'RÉSULTATS', 'TRANSFORME-TOI'],
-        nutrition: ['MANGE MIEUX', 'RECETTE DU JOUR', 'NUTRITION', 'HEALTHY LIFE', 'CLEAN EATING', 'MEAL PREP', 'SUPER FOOD', 'BOOST NATUREL', 'ÉNERGIE SAINE', 'FUEL YOUR BODY'],
-      };
-      const batchSubtitles: Record<string, string[]> = {
-        promotion: ['Ne rate pas cette offre', 'Profite avant qu\'il soit trop tard', 'Une opportunité unique', 'Seulement cette semaine', 'Places limitées'],
-        subscription: ['Rejoins la communauté', 'Du contenu exclusif chaque jour', 'Contenu premium gratuit', 'La team t\'attend', 'Première vidéo gratuite'],
-        motivation: ['Ton futur commence ici', 'Chaque jour est une chance', 'Tu es capable de tout', 'Rien n\'est impossible', 'Le moment c\'est maintenant'],
-        benefits: ['Résultats visibles rapidement', 'Ton corps va te remercier', 'La science a parlé', 'Testé et approuvé', 'Transformation garantie'],
-        nutrition: ['La clé d\'une vie saine', 'Recettes simples et efficaces', 'Transforme ton alimentation', 'Bon pour toi et délicieux', 'Nutrition optimale'],
-      };
-      const batchPhrases: Record<string, string[]> = {
-        promotion: ['Offre limitée !', '-30% cette semaine', 'Réserve ta place', 'Profite maintenant', 'Code promo en bio'],
-        subscription: ['Abonne-toi !', 'Follow pour + de contenu', 'Active les notifs', 'Lien en bio', 'Rejoins-nous maintenant'],
-        motivation: ['C\'est maintenant ou jamais', 'Chaque jour compte', 'Pas d\'excuses', 'Lève-toi et brille', 'Go hard or go home'],
-        benefits: ['Découvre les résultats', 'Essaie et compare', 'Prouvé cliniquement', 'Les chiffres parlent', 'Testé par + de 5000'],
-        nutrition: ['Teste cette recette', 'Mange sain, vis mieux', 'Ton corps te remerciera', 'Simple, rapide, efficace', 'La nutrition c\'est la clé'],
-      };
-      const pickRandom = (arr: string[], exclude: string[] = []) => {
-        const filtered = arr.filter((x) => !exclude.includes(x));
-        return filtered.length > 0 ? filtered[Math.floor(Math.random() * filtered.length)] : arr[Math.floor(Math.random() * arr.length)];
-      };
+      // ═══ PHASE 2: Batch variations (locale-aware) ═══
+      const contentPools = getContentPools(locale as 'fr' | 'en' | 'de');
+      const batchTitles = contentPools.titles;
+      const batchSubtitles = contentPools.subtitles;
+      const batchPhrases = contentPools.phrases;
+      const pickRandom = pickRandomI18n;
 
       // Video dimensions based on format
       const isReel = format !== 'tv';
@@ -806,7 +793,7 @@ export default function CreatorPage() {
           let renderedVideoUrl: string | null = null;
           let renderedBlob: Blob | null = null;
           try {
-            setRenderStage(batchCount > 1 ? `Montage vidéo ${b + 1}/${batchCount}...` : 'Montage vidéo en cours...');
+            setRenderStage(batchCount > 1 ? t('render.composingBatch', { current: String(b + 1), total: String(batchCount) }) : t('render.composingVideo'));
             setRenderProgress(Math.round(renderProgressBase));
 
             const result = await composeAndUpload({
@@ -931,7 +918,7 @@ export default function CreatorPage() {
             setRenderProgress(98);
           } else {
             // Export-only: compose fresh
-            setRenderStage('Montage vidéo pour export...');
+            setRenderStage(t('render.composingForExport'));
             const result = await composeAndUpload({
               width: vidWidth,
               height: vidHeight,
@@ -964,16 +951,16 @@ export default function CreatorPage() {
           downloadBlob(exportBlob, `${(title || 'video').replace(/\s+/g, '_')}.${ext}`);
         } catch (exportErr) {
           console.error('[Composer] Export error:', exportErr);
-          showToast('Erreur lors du montage vidéo. Veuillez réessayer.');
+          showToast(t('render.errorCompose'));
         }
       }
 
-      setRenderStage('Finalisation...');
+      setRenderStage(t('render.finalizing'));
       await new Promise((r) => setTimeout(r, 800));
       setRenderProgress(100);
-      setRenderStage('Terminé !');
+      setRenderStage(t('render.done'));
 
-      showToast(successCount > 0 ? `${successCount} vidéo${successCount > 1 ? 's' : ''} montée${successCount > 1 ? 's' : ''} avec succès !` : 'Vidéo montée avec succès !', 'success');
+      showToast(successCount > 1 ? t('render.successBatch', { count: String(successCount) }) : t('render.successSingle'), 'success');
 
       if (destination === 'studio') {
         // Redirect to Audio Studio with ALL created post IDs
@@ -992,7 +979,7 @@ export default function CreatorPage() {
       }
     } catch (err) {
       console.error('Render error:', err);
-      showToast('Erreur lors de la création');
+      showToast(t('render.errorCreate'));
     } finally {
       setTimeout(() => {
         setIsRendering(false);
@@ -1004,7 +991,7 @@ export default function CreatorPage() {
   const goNext = () => {
     if (step === 0) {
       if (!title.trim()) {
-        showToast('Veuillez entrer un titre');
+        showToast(t('render.errorNoTitle'));
         return;
       }
     }
@@ -1056,11 +1043,11 @@ export default function CreatorPage() {
       <div className="px-8 pt-6 pb-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Créer une vidéo</h1>
-            <p className="text-sm text-gray-400 mt-1">Étape {step + 1} sur {STEP_LABELS.length}</p>
+            <h1 className="text-2xl font-bold">{t('title')}</h1>
+            <p className="text-sm text-gray-400 mt-1">{t('stepOf', { current: String(step + 1), total: String(STEP_LABELS.length) })}</p>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-400">15 crédits</span>
+            <span className="text-sm text-gray-400">{t('credits')}</span>
             <div className="flex gap-1.5">
               {STEP_COLORS.map((color, i) => (
                 <div
@@ -1085,7 +1072,7 @@ export default function CreatorPage() {
             <div className="space-y-6">
               {/* Format */}
               <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
-                <h2 className="text-lg font-bold mb-4">Format</h2>
+                <h2 className="text-lg font-bold mb-4">{t('format.title')}</h2>
                 <div className="flex gap-3">
                   {FORMAT_OPTIONS.map((opt) => (
                     <button
@@ -1106,7 +1093,7 @@ export default function CreatorPage() {
 
               {/* Mode */}
               <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
-                <h2 className="text-lg font-bold mb-4">Mode</h2>
+                <h2 className="text-lg font-bold mb-4">{t('mode.title')}</h2>
                 <div className="flex gap-3">
                   {MODE_OPTIONS.map((opt) => (
                     <button
@@ -1127,18 +1114,18 @@ export default function CreatorPage() {
               {/* Objectif — defaults + user-created merged */}
               <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-bold">Objectif</h2>
+                  <h2 className="text-lg font-bold">{t('objective.title')}</h2>
                   <button
                     onClick={() => router.push('/dashboard/objectives')}
                     className="text-xs text-purple-400 hover:text-purple-300 border border-purple-500/30 px-2 py-1 rounded-lg transition"
                   >
-                    + Creer un objectif
+                    {t('objective.createObjective')}
                   </button>
                 </div>
                 {loadingObjectives ? (
                   <div className="flex items-center justify-center py-4">
                     <Loader2 size={16} className="animate-spin text-purple-400 mr-2" />
-                    <span className="text-xs text-gray-400">Chargement...</span>
+                    <span className="text-xs text-gray-400">{tc('loading')}</span>
                   </div>
                 ) : (
                   <div className="flex flex-wrap gap-2">
@@ -1177,32 +1164,32 @@ export default function CreatorPage() {
               {/* Titre & Sous-titre */}
               <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50 space-y-4">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-bold">Titre & Sous-titre</h2>
+                  <h2 className="text-lg font-bold">{t('titleSubtitle.title')}</h2>
                   <button
                     onClick={generateTitleSubtitle}
                     className="flex items-center gap-1 text-xs text-purple-400 border border-purple-500/30 px-2.5 py-1.5 rounded-lg hover:bg-purple-500/10 transition"
                   >
                     <Sparkles size={12} />
-                    IA
+                    {t('titleSubtitle.ia')}
                   </button>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-400 mb-2">Titre principal</label>
+                  <label className="block text-xs font-semibold text-gray-400 mb-2">{t('titleSubtitle.mainTitle')}</label>
                   <input
                     type="text"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Ex: ABONNE-TOI MAINTENANT"
+                    placeholder={t('titleSubtitle.titlePlaceholder')}
                     className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-400 mb-2">Sous-titre</label>
+                  <label className="block text-xs font-semibold text-gray-400 mb-2">{t('titleSubtitle.subtitle')}</label>
                   <input
                     type="text"
                     value={subtitle}
                     onChange={(e) => setSubtitle(e.target.value)}
-                    placeholder="Ex: Ton futur commence ici"
+                    placeholder={t('titleSubtitle.subtitlePlaceholder')}
                     className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
                   />
                 </div>
@@ -1211,8 +1198,8 @@ export default function CreatorPage() {
                 <div className="bg-purple-900/20 rounded-xl p-3 border border-purple-500/30 flex items-center gap-3">
                   <Volume2 size={18} className="text-purple-400 shrink-0" />
                   <div>
-                    <p className="text-sm text-white font-medium">Musique & Voix off</p>
-                    <p className="text-xs text-gray-400 mt-0.5">L&apos;audio sera ajouté après le montage dans le <span className="text-purple-400 font-medium">Studio Son</span>.</p>
+                    <p className="text-sm text-white font-medium">{t('audioNote.title')}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{t('audioNote.description')} <span className="text-purple-400 font-medium">{t('audioNote.studioSon')}</span>.</p>
                   </div>
                 </div>
               </div>
@@ -1227,7 +1214,7 @@ export default function CreatorPage() {
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-bold flex items-center gap-2">
                     <Film size={20} />
-                    Rush vidéos ({rushCount})
+                    {t('rushVideos.title')} ({rushCount})
                   </h2>
                   <div className="flex items-center gap-2">
                     {/* Global settings toggle */}
@@ -1238,17 +1225,17 @@ export default function CreatorPage() {
                           ? 'bg-purple-600 border-purple-500 text-white'
                           : 'border-gray-600 text-gray-400 hover:text-white hover:border-gray-500'
                       }`}
-                      title="Paramètres globaux des cartes"
+                      title={t('rushVideos.settings')}
                     >
                       <Type size={14} />
-                      Paramètres
+                      {t('rushVideos.settings')}
                     </button>
                     <button
                       onClick={handleAddRush}
                       className="flex items-center gap-1 text-sm text-purple-400 hover:text-purple-300 transition"
                     >
                       <Plus size={16} />
-                      Ajouter
+                      {t('rushVideos.add')}
                     </button>
                   </div>
                 </div>
@@ -1256,10 +1243,10 @@ export default function CreatorPage() {
                 {/* Global settings panel */}
                 {showGlobalSettings && (
                   <div className="mb-4 bg-gray-900 rounded-lg p-4 border border-gray-700 space-y-3">
-                    <h3 className="text-xs font-bold text-gray-300 uppercase tracking-wide">Paramètres des cartes texte</h3>
+                    <h3 className="text-xs font-bold text-gray-300 uppercase tracking-wide">{t('textCards.title')}</h3>
                     <div className="flex gap-3 items-center">
                       <div className="flex items-center gap-2">
-                        <label className="text-[10px] text-gray-500">Couleur</label>
+                        <label className="text-[10px] text-gray-500">{t('textCards.color')}</label>
                         <input
                           type="color"
                           value={globalTextColor}
@@ -1268,7 +1255,7 @@ export default function CreatorPage() {
                         />
                       </div>
                       <div className="flex items-center gap-2 flex-1">
-                        <label className="text-[10px] text-gray-500">Police</label>
+                        <label className="text-[10px] text-gray-500">{t('textCards.font')}</label>
                         <select
                           value={globalFontFamily}
                           onChange={(e) => setGlobalFontFamily(e.target.value)}
@@ -1288,7 +1275,7 @@ export default function CreatorPage() {
                               globalFontSize === size ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'
                             }`}
                           >
-                            {size === 'sm' ? 'Petit' : size === 'md' ? 'Moyen' : 'Grand'}
+                            {size === 'sm' ? t('textCards.small') : size === 'md' ? t('textCards.medium') : t('textCards.large')}
                           </button>
                         ))}
                       </div>
@@ -1296,7 +1283,7 @@ export default function CreatorPage() {
                         onClick={applyGlobalSettings}
                         className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium rounded-lg transition"
                       >
-                        Appliquer
+                        {t('textCards.apply')}
                       </button>
                     </div>
                   </div>
@@ -1378,7 +1365,7 @@ export default function CreatorPage() {
                             <div className="w-28 mt-1">
                               <div className="flex items-center gap-1 mb-0.5">
                                 <Loader2 size={8} className="animate-spin text-purple-400" />
-                                <span className="text-[8px] text-purple-400">Analyse clips...</span>
+                                <span className="text-[8px] text-purple-400">{t('rushVideos.analyzeClips')}</span>
                               </div>
                               <div className="w-full h-1 bg-gray-700 rounded-full overflow-hidden">
                                 <div className="h-full bg-purple-500 rounded-full transition-all" style={{ width: `${rush.analyzeProgress || 0}%` }} />
@@ -1391,7 +1378,7 @@ export default function CreatorPage() {
                             <div className="w-28 mt-1">
                               <div className="flex items-center gap-1 mb-1">
                                 <Zap size={8} className="text-yellow-400" />
-                                <span className="text-[8px] text-gray-400">{rush.detectedClips.length} clips détectés</span>
+                                <span className="text-[8px] text-gray-400">{rush.detectedClips.length} {t('rushVideos.clipsDetected')}</span>
                               </div>
                               <div className="flex gap-0.5 flex-wrap">
                                 {/* Full video option */}
@@ -1402,7 +1389,7 @@ export default function CreatorPage() {
                                       ? 'border-purple-500 bg-purple-500/20 text-purple-300'
                                       : 'border-gray-600 bg-gray-800 text-gray-500 hover:border-gray-500'
                                   }`}
-                                  title="Vidéo complète"
+                                  title={t('rushVideos.fullVideo')}
                                 >
                                   Full
                                 </button>
@@ -1431,7 +1418,7 @@ export default function CreatorPage() {
                             </div>
                           )}
 
-                          <span className="text-[10px] text-gray-500">Rush {idx + 1}</span>
+                          <span className="text-[10px] text-gray-500">{t('rush', { index: String(idx + 1) })}</span>
                         </div>
 
                         {/* Text cards inserted at this position */}
@@ -1466,14 +1453,14 @@ export default function CreatorPage() {
                                     value={card.text}
                                     onChange={(e) => handleUpdateTextCard(card.id, { text: e.target.value })}
                                     className="flex-1 bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-xs text-white focus:border-purple-500 focus:outline-none"
-                                    placeholder="Texte de la carte"
+                                    placeholder={t('cardTextPlaceholder')}
                                   />
                                   <button
                                     onClick={() => handleUpdateTextCard(card.id, { text: generateCardText() })}
                                     className="flex items-center gap-1 px-2 py-1.5 bg-purple-600 hover:bg-purple-500 rounded text-[10px] font-medium text-white transition flex-shrink-0"
-                                    title="Générer un texte IA selon l'objectif"
+                                    title={t('titleSubtitle.ia')}
                                   >
-                                    <Sparkles size={10} /> IA
+                                    <Sparkles size={10} /> {t('titleSubtitle.ia')}
                                   </button>
                                 </div>
                                 <div className="flex gap-2 items-center">
@@ -1494,7 +1481,7 @@ export default function CreatorPage() {
                                             : 'bg-gray-700 text-gray-400'
                                         }`}
                                       >
-                                        {size === 'sm' ? 'Petit' : size === 'md' ? 'Moyen' : 'Grand'}
+                                        {size === 'sm' ? t('textCards.small') : size === 'md' ? t('textCards.medium') : t('textCards.large')}
                                       </button>
                                     ))}
                                   </div>
@@ -1522,7 +1509,7 @@ export default function CreatorPage() {
                           <button
                             onClick={() => handleAddTextCard(idx)}
                             className="w-6 h-40 rounded-lg border border-dashed border-gray-600 hover:border-green-500 hover:bg-green-500/10 flex items-center justify-center transition group"
-                            title="Ajouter une carte titre"
+                            title={t('addTitleCard')}
                           >
                             <Plus size={12} className="text-gray-600 group-hover:text-green-400" />
                           </button>
@@ -1546,7 +1533,7 @@ export default function CreatorPage() {
 
                 <p className="text-xs text-gray-500 mt-3 text-center">
                   <GripVertical size={12} className="inline text-gray-400 mr-1" />
-                  Glisser pour réorganiser • Cliquez <span className="text-green-400 font-bold">+</span> pour ajouter des cartes titres
+                  {t('dragReorder')} • {t('addTitleCards', { icon: '' })}<span className="text-green-400 font-bold">+</span>
                 </p>
               </div>
 
@@ -1554,7 +1541,7 @@ export default function CreatorPage() {
               <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
                 <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
                   <ImageIcon size={20} />
-                  Personnage
+                  {t('character.title')}
                 </h2>
 
                 {/* Tab Toggle */}
@@ -1568,7 +1555,7 @@ export default function CreatorPage() {
                     }`}
                   >
                     <Upload size={14} className="inline mr-2" />
-                    Uploader
+                    {t('uploadCharacter')}
                   </button>
                   <button
                     onClick={() => setCharacterTab('ai')}
@@ -1579,20 +1566,20 @@ export default function CreatorPage() {
                     }`}
                   >
                     <Sparkles size={14} className="inline mr-2" />
-                    IA propose
+                    {t('aiSuggest')}
                   </button>
                 </div>
 
                 {characterTab === 'upload' ? (
                   characterPreview && !selectedPexelsUrl ? (
                     <div className="relative">
-                      <img src={characterPreview} alt="Personnage" className="w-full h-48 rounded-lg object-cover" />
+                      <img src={characterPreview} alt={t('characterLabel')} className="w-full h-48 rounded-lg object-cover" />
                       <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center gap-3">
                         <button
                           onClick={() => characterInputRef.current?.click()}
                           className="px-3 py-2 bg-white/20 backdrop-blur rounded-lg text-sm text-white hover:bg-white/30 transition"
                         >
-                          Changer
+                          {t('change')}
                         </button>
                         <button
                           onClick={() => {
@@ -1602,7 +1589,7 @@ export default function CreatorPage() {
                           }}
                           className="px-3 py-2 bg-red-500/50 backdrop-blur rounded-lg text-sm text-white hover:bg-red-500/70 transition"
                         >
-                          Supprimer
+                          {tc('delete')}
                         </button>
                       </div>
                     </div>
@@ -1612,8 +1599,8 @@ export default function CreatorPage() {
                       className="w-full flex flex-col items-center justify-center gap-2 py-10 rounded-lg border-2 border-dashed border-gray-700 hover:border-purple-500/50 text-gray-500 hover:text-gray-400 transition cursor-pointer"
                     >
                       <Upload size={24} />
-                      <span className="text-sm">Cliquez pour ajouter une image</span>
-                      <span className="text-xs text-gray-600">PNG, JPG jusqu&apos;à 10MB</span>
+                      <span className="text-sm">{t('clickToAddImage')}</span>
+                      <span className="text-xs text-gray-600">{t('imageFormats')}</span>
                     </button>
                   )
                 ) : (
@@ -1625,7 +1612,7 @@ export default function CreatorPage() {
                         value={characterPrompt}
                         onChange={(e) => setCharacterPrompt(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') searchPexelsCharacter(); }}
-                        placeholder="Ex: femme noir musclée, homme sport..."
+                        placeholder={t('character.searchPlaceholder')}
                         className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
                       />
                       <button
@@ -1640,11 +1627,11 @@ export default function CreatorPage() {
                     {/* Selected image preview */}
                     {selectedPexelsUrl && characterPreview && (
                       <div className="relative">
-                        <img src={characterPreview} alt="Personnage Pexels" className="w-full h-48 rounded-lg object-cover" />
+                        <img src={characterPreview} alt={t('characterLabel')} className="w-full h-48 rounded-lg object-cover" />
                         <button
                           onClick={() => searchPexelsCharacter()}
                           className="absolute top-2 right-2 p-1.5 bg-black/50 rounded-full text-white hover:bg-black/70 transition"
-                          title="Changer d'image"
+                          title={t('change')}
                         >
                           <Search size={14} />
                         </button>
@@ -1675,7 +1662,7 @@ export default function CreatorPage() {
                     {!pexelsLoading && pexelsResults.length === 0 && !selectedPexelsUrl && (
                       <div className="flex flex-col items-center py-6 text-gray-500">
                         <Sparkles size={28} className="mb-2 text-purple-500/40" />
-                        <p className="text-sm">Tapez une description ou cliquez rechercher</p>
+                        <p className="text-sm">{t('typeDescription')}</p>
                       </div>
                     )}
                   </div>
@@ -1686,7 +1673,7 @@ export default function CreatorPage() {
               <div className="bg-gray-800/60 rounded-xl p-4 border border-gray-700/50">
                 <h2 className="text-sm font-bold flex items-center gap-2 mb-3">
                   <ImageIcon size={16} />
-                  Logo (optionnel)
+                  {t('logoOptional')}
                 </h2>
                 {logoFile ? (
                   <div className="flex items-center gap-3">
@@ -1705,7 +1692,7 @@ export default function CreatorPage() {
                     className="w-full flex items-center justify-center gap-2 py-4 rounded-lg border border-dashed border-gray-700 hover:border-purple-500/50 text-gray-500 hover:text-gray-400 transition cursor-pointer text-xs"
                   >
                     <Upload size={14} />
-                    Ajouter un logo
+                    {t('addLogo')}
                   </button>
                 )}
               </div>
@@ -1717,7 +1704,7 @@ export default function CreatorPage() {
             <div className="space-y-6">
               {/* Batch count */}
               <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
-                <h2 className="text-lg font-bold mb-4">Nombre de vidéos</h2>
+                <h2 className="text-lg font-bold mb-4">{t('batch.count')}</h2>
                 <div className="flex gap-3">
                   {[1, 2, 3, 5, 10].map((count) => (
                     <button
@@ -1738,40 +1725,40 @@ export default function CreatorPage() {
               {/* Phrase de vente */}
               <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-bold">Phrase de vente</h2>
+                  <h2 className="text-lg font-bold">{t('salesPhrase.title')}</h2>
                   <button
                     onClick={generateSalesPhrase}
                     className="flex items-center gap-1 text-xs text-purple-400 border border-purple-500/30 px-2 py-1 rounded-lg hover:bg-purple-500/10 transition"
                   >
                     <Sparkles size={12} />
-                    IA
+                    {t('titleSubtitle.ia')}
                   </button>
                 </div>
                 <input
                   type="text"
                   value={salesPhrase}
                   onChange={(e) => setSalesPhrase(e.target.value)}
-                  placeholder="Ex: Réserve ta place maintenant !"
+                  placeholder={t('salesPlaceholder')}
                   className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
                 />
               </div>
 
               {/* Branding / Personnalisation visuelle */}
               <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
-                <h2 className="text-lg font-bold mb-1">Branding</h2>
-                <p className="text-xs text-gray-500 mb-4">Ces réglages sont mémorisés automatiquement.</p>
+                <h2 className="text-lg font-bold mb-1">{t('branding.title')}</h2>
+                <p className="text-xs text-gray-500 mb-4">{t('branding.memo')}</p>
                 <BrandingPanel branding={branding} onChange={setBranding} />
               </div>
 
               {/* Destination */}
               <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
-                <h2 className="text-lg font-bold mb-4">Destination</h2>
+                <h2 className="text-lg font-bold mb-4">{t('batch.destination')}</h2>
                 <div className="flex gap-2 mb-2">
                   {[
-                    { value: 'calendar', label: '📅 Calendrier' },
-                    { value: 'studio', label: '🎵 Studio Son' },
-                    { value: 'export', label: '📦 Export' },
-                    { value: 'both', label: '🔄 Les deux' },
+                    { value: 'calendar', label: `📅 ${t('batch.calendar')}` },
+                    { value: 'studio', label: `🎵 ${t('batch.studio')}` },
+                    { value: 'export', label: `📦 ${t('batch.export')}` },
+                    { value: 'both', label: `🔄 ${t('batch.both')}` },
                   ].map((dest) => (
                     <button
                       key={dest.value}
@@ -1787,7 +1774,7 @@ export default function CreatorPage() {
                   ))}
                 </div>
                 {destination === 'studio' && (
-                  <p className="text-[10px] text-purple-400 mt-1">La vidéo sera composée sans son, puis redirigée vers le Studio Son pour ajouter musique et voix off</p>
+                  <p className="text-[10px] text-purple-400 mt-1">{t('studioRedirectNote')}</p>
                 )}
               </div>
             </div>
@@ -1800,27 +1787,27 @@ export default function CreatorPage() {
                 <>
                   {/* Summary */}
                   <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
-                    <h2 className="text-lg font-bold mb-4">Résumé</h2>
+                    <h2 className="text-lg font-bold mb-4">{t('summary.title')}</h2>
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div className="bg-gray-900 rounded-lg p-3">
-                        <span className="text-gray-500 text-xs">Format</span>
-                        <p className="font-medium mt-1">{format === 'reel' ? '📱 Reel 9:16' : '📺 TV 16:9'}</p>
+                        <span className="text-gray-500 text-xs">{t('summary.format')}</span>
+                        <p className="font-medium mt-1">{format === 'reel' ? `📱 ${t('format.reel')}` : `📺 ${t('format.tv')}`}</p>
                       </div>
                       <div className="bg-gray-900 rounded-lg p-3">
-                        <span className="text-gray-500 text-xs">Mode</span>
-                        <p className="font-medium mt-1">{mode === 'cardio' ? 'Cardio' : 'Témoignage'}</p>
+                        <span className="text-gray-500 text-xs">{t('summary.mode')}</span>
+                        <p className="font-medium mt-1">{mode === 'cardio' ? t('summary.cardio') : t('summary.testimony')}</p>
                       </div>
                       <div className="bg-gray-900 rounded-lg p-3">
-                        <span className="text-gray-500 text-xs">Vidéos</span>
-                        <p className="font-medium mt-1">{rushCount} rush(es) • x{batchCount} batch</p>
+                        <span className="text-gray-500 text-xs">{t('summary.videos')}</span>
+                        <p className="font-medium mt-1">{t('summary.rushBatch', { rushes: String(rushCount), batch: String(batchCount) })}</p>
                       </div>
                       <div className="bg-gray-900 rounded-lg p-3">
-                        <span className="text-gray-500 text-xs">Destination</span>
-                        <p className="font-medium mt-1">{destination === 'calendar' ? 'Calendrier' : destination === 'export' ? 'Export' : 'Les deux'}</p>
+                        <span className="text-gray-500 text-xs">{t('summary.destination')}</span>
+                        <p className="font-medium mt-1">{destination === 'calendar' ? t('batch.calendar') : destination === 'export' ? t('batch.export') : t('batch.both')}</p>
                       </div>
                       <div className="col-span-2 bg-gray-900 rounded-lg p-3">
-                        <span className="text-gray-500 text-xs">Titre</span>
-                        <p className="font-medium mt-1">{title || '(non défini)'}</p>
+                        <span className="text-gray-500 text-xs">{t('summary.titleLabel')}</span>
+                        <p className="font-medium mt-1">{title || t('summary.notDefined')}</p>
                       </div>
                     </div>
                   </div>
@@ -1831,13 +1818,13 @@ export default function CreatorPage() {
                     className="w-full bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 text-white font-bold py-4 rounded-xl transition-all flex items-center justify-center gap-2 text-lg"
                   >
                     <Zap size={20} />
-                    Générer {batchCount} vidéo{batchCount > 1 ? 's' : ''}
+                    {batchCount > 1 ? t('render.generatePlural', { count: String(batchCount) }) : t('render.generate', { count: String(batchCount) })}
                   </button>
                 </>
               ) : (
                 /* Rendering Progress */
                 <div className="bg-gray-800/60 rounded-xl p-12 border border-gray-700/50 text-center space-y-6">
-                  <h2 className="text-2xl font-bold">Création en cours...</h2>
+                  <h2 className="text-2xl font-bold">{t('render.creating')}</h2>
 
                   <div className="text-6xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
                     {Math.round(renderProgress)}%
@@ -1862,9 +1849,9 @@ export default function CreatorPage() {
           <div className="bg-gray-800/60 rounded-xl border border-gray-700/50 p-5 sticky top-0">
             <div className="flex items-center gap-2 mb-3">
               <Eye size={16} className="text-pink-400" />
-              <h3 className="text-sm font-semibold text-gray-300">Aperçu en temps réel</h3>
+              <h3 className="text-sm font-semibold text-gray-300">{t('preview.title')}</h3>
             </div>
-            <p className="text-xs text-gray-500 mb-3">Mise à jour automatique</p>
+            <p className="text-xs text-gray-500 mb-3">{t('preview.autoUpdate')}</p>
 
             {/* Phone Preview — Remotion-style montage */}
             <div className="flex justify-center">
@@ -1954,7 +1941,7 @@ export default function CreatorPage() {
                       <div className="flex items-center justify-center gap-1">
                         <span className="text-[6px] text-white/50 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 bg-gray-700/50">
                           <Volume2 size={5} />
-                          Son ajouté dans Studio Son
+                          {t('preview.audioAddedInStudio')}
                         </span>
                       </div>
 
@@ -1979,31 +1966,31 @@ export default function CreatorPage() {
             {/* Preview details below phone */}
             <div className="mt-3 space-y-1.5">
               <div className="flex justify-between text-[10px]">
-                <span className="text-gray-500">Format</span>
-                <span className="text-white">{format === 'reel' ? 'Reel 9:16' : 'TV 16:9'}</span>
+                <span className="text-gray-500">{t('preview.format')}</span>
+                <span className="text-white">{format === 'reel' ? t('format.reel') : t('format.tv')}</span>
               </div>
               <div className="flex justify-between text-[10px]">
-                <span className="text-gray-500">Mode</span>
-                <span className="text-white">{mode === 'cardio' ? 'Cardio' : 'Témoignage'}</span>
+                <span className="text-gray-500">{t('preview.mode')}</span>
+                <span className="text-white">{mode === 'cardio' ? t('summary.cardio') : t('summary.testimony')}</span>
               </div>
               <div className="flex justify-between text-[10px]">
-                <span className="text-gray-500">Rushes</span>
-                <span className="text-white">{rushCount} vidéo{rushCount !== 1 ? 's' : ''}</span>
+                <span className="text-gray-500">{t('preview.rushes')}</span>
+                <span className="text-white">{rushCount} {rushCount !== 1 ? tc('videos') : tc('video')}</span>
               </div>
               {textCards.length > 0 && (
                 <div className="flex justify-between text-[10px]">
-                  <span className="text-gray-500">Cartes texte</span>
+                  <span className="text-gray-500">{t('preview.textCardsLabel')}</span>
                   <span className="text-white">{textCards.length}</span>
                 </div>
               )}
               <div className="flex justify-between text-[10px]">
-                <span className="text-gray-500">Audio</span>
-                <span className="text-purple-400">Studio Son</span>
+                <span className="text-gray-500">{t('preview.audio')}</span>
+                <span className="text-purple-400">{t('preview.audioStudioSon')}</span>
               </div>
               {batchCount > 1 && (
                 <div className="flex justify-between text-[10px]">
-                  <span className="text-gray-500">Batch</span>
-                  <span className="text-purple-400">x{batchCount} vidéos</span>
+                  <span className="text-gray-500">{t('preview.batch')}</span>
+                  <span className="text-purple-400">{t('preview.batchVideos', { count: String(batchCount) })}</span>
                 </div>
               )}
             </div>
@@ -2011,14 +1998,14 @@ export default function CreatorPage() {
             {/* Lire le montage — animated sequence preview */}
             <div className="mt-4 pt-4 border-t border-gray-700/50">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Montage Preview</span>
+                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{t('preview.montagePreview')}</span>
                 <button
                   onClick={() => { if (!previewAutoPlay) { setPreviewSeqIndex(0); setPreviewProgress(0); } setPreviewAutoPlay(!previewAutoPlay); }}
                   className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-medium transition ${
                     previewAutoPlay ? 'bg-pink-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600 border border-gray-600'
                   }`}
                 >
-                  {previewAutoPlay ? <><span className="text-[10px]">❚❚</span> Pause</> : <><Play size={10} /> Lire le montage</>}
+                  {previewAutoPlay ? <><span className="text-[10px]">❚❚</span> {t('preview.pause')}</> : <><Play size={10} /> {t('preview.playMontage')}</>}
                 </button>
               </div>
 
@@ -2052,7 +2039,7 @@ export default function CreatorPage() {
                   <div className="absolute top-1.5 left-1.5 z-20 flex items-center gap-1">
                     <div className="w-1.5 h-1.5 rounded-full" style={{ background: activeMontageSequences[previewSeqIndex]?.color, animation: previewAutoPlay ? 'pulse 1.5s infinite' : 'none' }} />
                     <span className="text-[7px] font-bold text-white/70 bg-black/40 backdrop-blur-sm px-1 py-0.5 rounded">
-                      {activeMontageSequences[previewSeqIndex]?.type === 'intro' ? 'Affiche' : activeMontageSequences[previewSeqIndex]?.type === 'cards' ? 'Cartes' : activeMontageSequences[previewSeqIndex]?.type === 'video' ? 'Vidéo' : 'CTA'}
+                      {activeMontageSequences[previewSeqIndex]?.type === 'intro' ? t('preview.seqIntro') : activeMontageSequences[previewSeqIndex]?.type === 'cards' ? t('preview.seqCards') : activeMontageSequences[previewSeqIndex]?.type === 'video' ? t('preview.seqVideo') : t('preview.seqCta')}
                     </span>
                   </div>
 
@@ -2106,7 +2093,7 @@ export default function CreatorPage() {
           }`}
         >
           <ChevronLeft size={16} />
-          Retour
+          {tc('back')}
         </button>
 
         {step < 3 ? (
@@ -2114,7 +2101,7 @@ export default function CreatorPage() {
             onClick={goNext}
             className="flex items-center gap-2 px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg transition text-sm"
           >
-            Suivant
+            {tc('next')}
             <ChevronRight size={16} />
           </button>
         ) : !isRendering ? (
@@ -2123,7 +2110,7 @@ export default function CreatorPage() {
             className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 text-white font-bold rounded-lg transition text-sm"
           >
             <Zap size={16} />
-            Lancer la création
+            {t('render.launchCreation')}
           </button>
         ) : null}
       </div>

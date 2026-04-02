@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
+import { useTranslations } from '@/i18n/client';
 
 interface TermsData {
   success: boolean;
@@ -11,6 +12,7 @@ interface TermsData {
 }
 
 export default function TermsPage() {
+  const t = useTranslations('terms');
   const [terms, setTerms] = useState<TermsData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -24,7 +26,7 @@ export default function TermsPage() {
         console.error('Failed to fetch terms:', error);
         setTerms({
           success: false,
-          content: 'Impossible de charger les conditions d\'utilisation.',
+          content: t('loadError'),
           updatedAt: new Date().toISOString(),
         });
       } finally {
@@ -53,14 +55,14 @@ export default function TermsPage() {
             className="inline-flex items-center gap-2 text-studiio-primary hover:text-orange-400 transition mb-6"
           >
             <ArrowLeft size={20} />
-            Retour à l'accueil
+            {t('backToHome')}
           </Link>
 
-          <h1 className="text-4xl font-bold mb-2">Conditions Générales d'Utilisation</h1>
+          <h1 className="text-4xl font-bold mb-2">{t('title')}</h1>
 
           {lastUpdated && (
             <p className="text-gray-400 text-sm">
-              Dernière mise à jour : {lastUpdated}
+              {t('lastUpdated', { date: lastUpdated })}
             </p>
           )}
         </div>
@@ -68,18 +70,18 @@ export default function TermsPage() {
         {/* Branding */}
         <div className="mb-8 pb-8 border-b border-gray-800">
           <p className="text-gray-300">
-            <strong className="text-gradient">Studiio</strong> - Plateforme d'IA pour créateurs de contenu
+            <strong className="text-gradient">{t('branding')}</strong>
           </p>
         </div>
 
-        {/* Content */}
+        {/* Content - uses dangerouslySetInnerHTML as in original code; content comes from admin-controlled API */}
         <div className="prose prose-invert max-w-none">
           {loading ? (
             <div className="text-center py-12">
               <div className="inline-block">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-studiio-primary"></div>
               </div>
-              <p className="text-gray-400 mt-4">Chargement des conditions d'utilisation...</p>
+              <p className="text-gray-400 mt-4">{t('loadingTerms')}</p>
             </div>
           ) : terms?.success && terms?.content ? (
             <div
@@ -90,7 +92,7 @@ export default function TermsPage() {
             />
           ) : (
             <div className="bg-red-900/20 border border-red-800 rounded-lg p-6 text-red-300">
-              <p>Les conditions d'utilisation ne sont pas disponibles pour le moment.</p>
+              <p>{t('unavailable')}</p>
             </div>
           )}
         </div>

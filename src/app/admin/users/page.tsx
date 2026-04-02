@@ -8,6 +8,7 @@ import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
+import { useTranslations } from '@/i18n/client';
 
 interface User {
   id: string;
@@ -31,6 +32,7 @@ interface UsersResponse {
 }
 
 export default function UsersPage() {
+  const t = useTranslations('admin');
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -73,13 +75,13 @@ export default function UsersPage() {
 
       const res = await fetch(`/api/admin/users?${params}`);
 
-      if (!res.ok) throw new Error('Erreur lors du chargement des utilisateurs');
+      if (!res.ok) throw new Error(t('users.errorLoading'));
 
       const data: UsersResponse = await res.json();
       // Map Supabase fields to frontend User interface
       const mappedUsers: User[] = (data.data || []).map((u: any) => ({
         id: u.id,
-        name: u.name || u.full_name || u.email?.split('@')[0] || 'Sans nom',
+        name: u.name || u.full_name || u.email?.split('@')[0] || t('users.noName'),
         email: u.email,
         plan: u.plan || 'free',
         credits: u.credits || 0,
@@ -91,7 +93,7 @@ export default function UsersPage() {
       setUsers(mappedUsers);
       setTotal(data.total);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Une erreur est survenue');
+      setError(err instanceof Error ? err.message : t('common.errorOccurred'));
     } finally {
       setLoading(false);
     }
@@ -116,15 +118,15 @@ export default function UsersPage() {
         }),
       });
 
-      if (!res.ok) throw new Error('Erreur lors de l\'ajout de crédits');
+      if (!res.ok) throw new Error(t('users.errorAddCredits'));
 
-      showToast('Crédits ajoutés avec succès', 'success');
+      showToast(t('users.creditsAdded'), 'success');
       setCreditModal(false);
       setCreditAmount('');
       setCreditReason('');
       fetchUsers();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Une erreur est survenue', 'error');
+      showToast(err instanceof Error ? err.message : t('common.errorOccurred'), 'error');
     } finally {
       setActionLoading(false);
     }
@@ -145,23 +147,23 @@ export default function UsersPage() {
         }),
       });
 
-      if (!res.ok) throw new Error('Erreur lors de la modification');
+      if (!res.ok) throw new Error(t('users.errorModify'));
 
-      showToast('Utilisateur modifié avec succès', 'success');
+      showToast(t('users.userModified'), 'success');
       setEditModal(false);
       setEditRole('');
       setEditPlan('');
       setEditCredits('');
       fetchUsers();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Une erreur est survenue', 'error');
+      showToast(err instanceof Error ? err.message : t('common.errorOccurred'), 'error');
     } finally {
       setActionLoading(false);
     }
   };
 
   const handleDeleteUser = async (user: User) => {
-    if (!confirm(`Supprimer définitivement ${user.name} (${user.email}) ? Cette action est irréversible.`)) return;
+    if (!confirm(t('users.confirmDelete', { name: user.name, email: user.email }))) return;
 
     try {
       setActionLoading(true);
@@ -170,12 +172,12 @@ export default function UsersPage() {
         headers: { 'Content-Type': 'application/json' },
       });
 
-      if (!res.ok) throw new Error('Erreur lors de la suppression');
+      if (!res.ok) throw new Error(t('users.errorDelete'));
 
-      showToast(`Utilisateur ${user.name} supprimé avec succès`, 'success');
+      showToast(t('users.userDeleted', { name: user.name }), 'success');
       fetchUsers();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Une erreur est survenue', 'error');
+      showToast(err instanceof Error ? err.message : t('common.errorOccurred'), 'error');
     } finally {
       setActionLoading(false);
     }
@@ -184,10 +186,10 @@ export default function UsersPage() {
   const handleToggleBan = async (user: User) => {
     let reason = '';
     if (user.status === 'active') {
-      reason = prompt(`Raison du bannissement de ${user.name} :`) || '';
+      reason = prompt(t('users.banReason', { name: user.name })) || '';
       if (!reason) return;
     } else {
-      if (!confirm(`Débannir ${user.name} ?`)) return;
+      if (!confirm(t('users.confirmUnban', { name: user.name }))) return;
     }
 
     try {
@@ -196,30 +198,30 @@ export default function UsersPage() {
       const res = await fetch(`/api/admin/users/${user.id}/ban`, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: reason || 'Débannissement admin' }),
+        body: JSON.stringify({ reason: reason || t('users.confirmUnban', { name: user.name }) }),
       });
 
-      if (!res.ok) throw new Error('Erreur lors du bannissement');
+      if (!res.ok) throw new Error(t('users.errorBan'));
 
-      showToast(`Utilisateur ${user.status === 'active' ? 'banni' : 'débanni'} avec succès`, 'success');
+      showToast(user.status === 'active' ? t('users.userBanned') : t('users.userUnbanned'), 'success');
       fetchUsers();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Une erreur est survenue', 'error');
+      showToast(err instanceof Error ? err.message : t('common.errorOccurred'), 'error');
     } finally {
       setActionLoading(false);
     }
   };
 
   const planLabels: Record<string, string> = {
-    free: 'Gratuit',
-    starter: 'Starter',
-    pro: 'Pro',
-    enterprise: 'Entreprise',
+    free: t('users.plans.free'),
+    starter: t('users.plans.starter'),
+    pro: t('users.plans.pro'),
+    enterprise: t('users.plans.enterprise'),
   };
 
   const roleLabels: Record<string, string> = {
-    user: 'Utilisateur',
-    admin: 'Admin',
+    user: t('users.roles.user'),
+    admin: t('users.roles.admin'),
   };
 
   const pages = Math.ceil(total / limit);
@@ -227,8 +229,8 @@ export default function UsersPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-4xl font-bold text-white mb-2">Gestion des utilisateurs</h1>
-        <p className="text-gray-400">Gérez tous les utilisateurs de la plateforme</p>
+        <h1 className="text-4xl font-bold text-white mb-2">{t('users.title')}</h1>
+        <p className="text-gray-400">{t('users.subtitle')}</p>
       </div>
 
       {toast && (
@@ -245,7 +247,7 @@ export default function UsersPage() {
       <div className="space-y-4">
         <div className="flex gap-4 items-end flex-wrap">
           <Input
-            placeholder="Rechercher par nom ou email..."
+            placeholder={t('users.searchPlaceholder')}
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
@@ -255,11 +257,11 @@ export default function UsersPage() {
           />
           <Select
             options={[
-              { value: '', label: 'Tous les plans' },
-              { value: 'free', label: 'Gratuit' },
-              { value: 'starter', label: 'Starter' },
-              { value: 'pro', label: 'Pro' },
-              { value: 'enterprise', label: 'Entreprise' },
+              { value: '', label: t('users.allPlans') },
+              { value: 'free', label: t('users.plans.free') },
+              { value: 'starter', label: t('users.plans.starter') },
+              { value: 'pro', label: t('users.plans.pro') },
+              { value: 'enterprise', label: t('users.plans.enterprise') },
             ]}
             value={filterPlan}
             onChange={(e) => {
@@ -270,9 +272,9 @@ export default function UsersPage() {
           />
           <Select
             options={[
-              { value: '', label: 'Tous les statuts' },
-              { value: 'active', label: 'Actif' },
-              { value: 'blocked', label: 'Bloqué' },
+              { value: '', label: t('users.allStatuses') },
+              { value: 'active', label: t('users.statuses.active') },
+              { value: 'blocked', label: t('users.statuses.blocked') },
             ]}
             value={filterStatus}
             onChange={(e) => {
@@ -283,9 +285,9 @@ export default function UsersPage() {
           />
           <Select
             options={[
-              { value: '', label: 'Tous les rôles' },
-              { value: 'user', label: 'Utilisateur' },
-              { value: 'admin', label: 'Admin' },
+              { value: '', label: t('users.allRoles') },
+              { value: 'user', label: t('users.roles.user') },
+              { value: 'admin', label: t('users.roles.admin') },
             ]}
             value={filterRole}
             onChange={(e) => {
@@ -306,7 +308,7 @@ export default function UsersPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Utilisateurs ({total})</CardTitle>
+          <CardTitle>{t('users.tableHeaders.name')} ({total})</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -318,14 +320,14 @@ export default function UsersPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-800">
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-300">Nom</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-300">Email</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-300">Plan</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-300">Crédits</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-300">Rôle</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-300">Statut</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-300">Inscrit</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-300">Actions</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-300">{t('users.tableHeaders.name')}</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-300">{t('users.tableHeaders.email')}</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-300">{t('users.tableHeaders.plan')}</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-300">{t('users.tableHeaders.credits')}</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-300">{t('users.tableHeaders.role')}</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-300">{t('users.tableHeaders.status')}</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-300">{t('users.tableHeaders.joined')}</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-300">{t('users.tableHeaders.actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -347,7 +349,7 @@ export default function UsersPage() {
                       <td className="px-6 py-4 text-gray-300 text-sm">{roleLabels[user.role]}</td>
                       <td className="px-6 py-4">
                         <Badge variant={user.status === 'active' ? 'success' : 'error'}>
-                          {user.status === 'active' ? 'Actif' : 'Bloqué'}
+                          {user.status === 'active' ? t('users.statuses.active') : t('users.statuses.blocked')}
                         </Badge>
                       </td>
                       <td className="px-6 py-4 text-gray-300 text-sm">
@@ -365,7 +367,7 @@ export default function UsersPage() {
                               setCreditModal(true);
                             }}
                           >
-                            Créditer
+                            {t('users.actions.credit')}
                           </Button>
                           <Button
                             size="sm"
@@ -386,7 +388,7 @@ export default function UsersPage() {
                             onClick={() => handleToggleBan(user)}
                             disabled={actionLoading}
                           >
-                            {user.status === 'active' ? 'Bannir' : 'Débannir'}
+                            {user.status === 'active' ? t('users.actions.ban') : t('users.actions.unban')}
                           </Button>
                           <Button
                             size="sm"
@@ -405,7 +407,7 @@ export default function UsersPage() {
               </table>
             </div>
           ) : (
-            <p className="text-gray-400 text-center py-8">Aucun utilisateur trouvé</p>
+            <p className="text-gray-400 text-center py-8">{t('users.noUsersFound')}</p>
           )}
 
           {pages > 1 && (
@@ -416,10 +418,10 @@ export default function UsersPage() {
                 disabled={page === 1}
                 onClick={() => setPage(Math.max(1, page - 1))}
               >
-                Précédent
+                {t('users.pagination.previous')}
               </Button>
               <span className="text-gray-400 text-sm">
-                Page {page} / {pages}
+                {t('users.pagination.pageOf', { page: String(page), pages: String(pages) })}
               </span>
               <Button
                 size="sm"
@@ -427,17 +429,17 @@ export default function UsersPage() {
                 disabled={page === pages}
                 onClick={() => setPage(Math.min(pages, page + 1))}
               >
-                Suivant
+                {t('users.pagination.next')}
               </Button>
             </div>
           )}
         </CardContent>
       </Card>
 
-      <Modal isOpen={creditModal} onClose={() => setCreditModal(false)} title="Ajouter des crédits">
+      <Modal isOpen={creditModal} onClose={() => setCreditModal(false)} title={t('users.creditModal.title')}>
         <div className="space-y-4">
           <Input
-            label="Montant des crédits"
+            label={t('users.creditModal.amount')}
             type="number"
             placeholder="100"
             value={creditAmount}
@@ -445,8 +447,8 @@ export default function UsersPage() {
             min="0"
           />
           <Input
-            label="Raison"
-            placeholder="Ex: Compensation, bonus..."
+            label={t('users.creditModal.reason')}
+            placeholder={t('users.creditModal.reasonPlaceholder')}
             value={creditReason}
             onChange={(e) => setCreditReason(e.target.value)}
           />
@@ -457,7 +459,7 @@ export default function UsersPage() {
               onClick={() => setCreditModal(false)}
               disabled={actionLoading}
             >
-              Annuler
+              {t('common.cancel')}
             </Button>
             <Button
               variant="primary"
@@ -465,36 +467,36 @@ export default function UsersPage() {
               onClick={handleAddCredits}
               disabled={actionLoading || !creditAmount || !creditReason}
             >
-              {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Ajouter'}
+              {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : t('users.creditModal.add')}
             </Button>
           </div>
         </div>
       </Modal>
 
-      <Modal isOpen={editModal} onClose={() => setEditModal(false)} title="Modifier l'utilisateur">
+      <Modal isOpen={editModal} onClose={() => setEditModal(false)} title={t('users.editModal.title')}>
         <div className="space-y-4">
           <Select
-            label="Rôle"
+            label={t('users.editModal.role')}
             options={[
-              { value: 'user', label: 'Utilisateur' },
-              { value: 'admin', label: 'Admin' },
+              { value: 'user', label: t('users.roles.user') },
+              { value: 'admin', label: t('users.roles.admin') },
             ]}
             value={editRole}
             onChange={(e) => setEditRole(e.target.value)}
           />
           <Select
-            label="Plan"
+            label={t('users.editModal.plan')}
             options={[
-              { value: 'free', label: 'Gratuit' },
-              { value: 'starter', label: 'Starter' },
-              { value: 'pro', label: 'Pro' },
-              { value: 'enterprise', label: 'Entreprise' },
+              { value: 'free', label: t('users.plans.free') },
+              { value: 'starter', label: t('users.plans.starter') },
+              { value: 'pro', label: t('users.plans.pro') },
+              { value: 'enterprise', label: t('users.plans.enterprise') },
             ]}
             value={editPlan}
             onChange={(e) => setEditPlan(e.target.value)}
           />
           <Input
-            label="Crédits"
+            label={t('users.editModal.credits')}
             type="number"
             placeholder="0"
             value={editCredits}
@@ -508,7 +510,7 @@ export default function UsersPage() {
               onClick={() => setEditModal(false)}
               disabled={actionLoading}
             >
-              Annuler
+              {t('common.cancel')}
             </Button>
             <Button
               variant="primary"
@@ -516,7 +518,7 @@ export default function UsersPage() {
               onClick={handleEditUser}
               disabled={actionLoading}
             >
-              {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Modifier'}
+              {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : t('users.editModal.modify')}
             </Button>
           </div>
         </div>

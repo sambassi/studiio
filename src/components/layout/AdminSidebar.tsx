@@ -3,22 +3,24 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, Users, CreditCard, Zap, Film, Settings, FileText, Mail, Shield, ArrowLeft, Globe } from 'lucide-react';
-
-const menuItems = [
-  { icon: LayoutDashboard, label: 'Tableau de bord', href: '/admin' },
-  { icon: Users, label: 'Utilisateurs', href: '/admin/users' },
-  { icon: CreditCard, label: 'Abonnements', href: '/admin/subscriptions' },
-  { icon: Zap, label: 'Paiements', href: '/admin/payments' },
-  { icon: Film, label: 'Vidéos', href: '/admin/videos' },
-  { icon: Globe, label: 'Landing Page', href: '/admin/landing' },
-  { icon: Settings, label: 'Paramètres', href: '/admin/settings' },
-  { icon: FileText, label: 'Conditions Générales', href: '/admin/terms' },
-  { icon: Mail, label: 'Emails', href: '/admin/emails' },
-  { icon: Shield, label: 'Audit Log', href: '/admin/logs' },
-];
+import { useTranslations } from '@/i18n/client';
 
 export function AdminSidebar() {
   const pathname = usePathname();
+  const t = useTranslations('adminSidebar');
+
+  const menuItems = [
+    { icon: LayoutDashboard, label: t('dashboard'), href: '/admin' },
+    { icon: Users, label: t('users'), href: '/admin/users' },
+    { icon: CreditCard, label: t('subscriptions'), href: '/admin/subscriptions' },
+    { icon: Zap, label: t('payments'), href: '/admin/payments' },
+    { icon: Film, label: t('videos'), href: '/admin/videos' },
+    { icon: Globe, label: t('landingPage'), href: '/admin/landing' },
+    { icon: Settings, label: t('settings'), href: '/admin/settings' },
+    { icon: FileText, label: t('terms'), href: '/admin/terms' },
+    { icon: Mail, label: t('emails'), href: '/admin/emails' },
+    { icon: Shield, label: t('auditLog'), href: '/admin/logs' },
+  ];
 
   return (
     <aside className="fixed left-0 top-0 w-64 h-screen bg-gray-900 border-r border-orange-900/50 p-6 z-50 flex flex-col">
@@ -51,7 +53,7 @@ export function AdminSidebar() {
         className="flex items-center gap-3 px-4 py-3 rounded-lg transition text-gray-400 hover:text-white hover:bg-gray-800 border-t border-gray-800 pt-4 mt-4"
       >
         <ArrowLeft size={20} />
-        <span className="font-medium">Retour au site</span>
+        <span className="font-medium">{t('backToSite')}</span>
       </Link>
     </aside>
   );

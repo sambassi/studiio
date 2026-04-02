@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { useTranslations } from '@/i18n/client';
 
 interface AuditLog {
   id: string;
@@ -36,6 +37,7 @@ const ACTION_COLORS: Record<string, string> = {
 };
 
 export default function AuditLogsPage() {
+  const t = useTranslations('admin');
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -65,13 +67,13 @@ export default function AuditLogsPage() {
 
       const res = await fetch(`/api/admin/logs?${params}`);
 
-      if (!res.ok) throw new Error('Erreur lors du chargement des logs');
+      if (!res.ok) throw new Error(t('logs.errorLoading'));
 
       const data: LogsResponse = await res.json();
       setLogs(data.logs);
       setTotal(data.total);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Une erreur est survenue');
+      setError(err instanceof Error ? err.message : t('common.errorOccurred'));
     } finally {
       setLoading(false);
     }
@@ -88,44 +90,24 @@ export default function AuditLogsPage() {
   ).sort();
 
   const getActionLabel = (action: string) => {
-    const labels: Record<string, string> = {
-      create: 'Créé',
-      update: 'Modifié',
-      delete: 'Supprimé',
-      block: 'Bloqué',
-      unblock: 'Débloqué',
-      credit: 'Crédité',
-      login: 'Connexion',
-      logout: 'Déconnexion',
-      ban: 'Banni',
-      unban: 'Débanni',
-    };
-    return labels[action] || action;
+    return t(`logs.actions.${action}`) || action;
   };
 
   const getTargetTypeLabel = (type: string) => {
-    const labels: Record<string, string> = {
-      user: 'Utilisateur',
-      payment: 'Paiement',
-      subscription: 'Abonnement',
-      video: 'Vidéo',
-      content: 'Contenu',
-      settings: 'Paramètres',
-    };
-    return labels[type] || type;
+    return t(`logs.targetTypes.${type}`) || type;
   };
 
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-4xl font-bold text-white mb-2">Journal d'audit</h1>
-        <p className="text-gray-400">Consultez l'historique complet des actions administrateur</p>
+        <h1 className="text-4xl font-bold text-white mb-2">{t('logs.title')}</h1>
+        <p className="text-gray-400">{t('logs.subtitle')}</p>
       </div>
 
       <div className="flex gap-4 items-end flex-wrap">
         <Select
           options={[
-            { value: '', label: 'Toutes les actions' },
+            { value: '', label: t('logs.allActions') },
             ...uniqueActions.map((action) => ({
               value: action,
               label: getActionLabel(action),
@@ -140,7 +122,7 @@ export default function AuditLogsPage() {
         />
         <Select
           options={[
-            { value: '', label: 'Tous les types' },
+            { value: '', label: t('logs.allTypes') },
             ...uniqueTargetTypes.map((type) => ({
               value: type,
               label: getTargetTypeLabel(type),
@@ -164,7 +146,7 @@ export default function AuditLogsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Logs d'audit ({total})</CardTitle>
+          <CardTitle>{t('logs.logsCount', { count: String(total) })}</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -210,7 +192,7 @@ export default function AuditLogsPage() {
 
                   {expandedLog === log.id && (
                     <div className="mt-2 p-4 bg-gray-900 rounded-lg border border-gray-800 border-t-0 rounded-t-none">
-                      <p className="text-xs font-semibold text-gray-400 uppercase mb-3">Détails</p>
+                      <p className="text-xs font-semibold text-gray-400 uppercase mb-3">{t('logs.details')}</p>
                       <pre className="bg-gray-800 p-3 rounded text-xs text-gray-300 overflow-x-auto max-h-64 overflow-y-auto font-mono">
                         {JSON.stringify(log.details, null, 2)}
                       </pre>
@@ -220,7 +202,7 @@ export default function AuditLogsPage() {
               ))}
             </div>
           ) : (
-            <p className="text-gray-400 text-center py-8">Aucun log trouvé</p>
+            <p className="text-gray-400 text-center py-8">{t('logs.noLogs')}</p>
           )}
 
           {pages > 1 && (
@@ -231,10 +213,10 @@ export default function AuditLogsPage() {
                 disabled={page === 1}
                 onClick={() => setPage(Math.max(1, page - 1))}
               >
-                Précédent
+                {t('logs.pagination.previous')}
               </Button>
               <span className="text-gray-400 text-sm">
-                Page {page} / {pages}
+                {t('logs.pagination.pageOf', { page: String(page), pages: String(pages) })}
               </span>
               <Button
                 size="sm"
@@ -242,7 +224,7 @@ export default function AuditLogsPage() {
                 disabled={page === pages}
                 onClick={() => setPage(Math.min(pages, page + 1))}
               >
-                Suivant
+                {t('logs.pagination.next')}
               </Button>
             </div>
           )}

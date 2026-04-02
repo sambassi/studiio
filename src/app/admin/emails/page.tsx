@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { useTranslations } from '@/i18n/client';
 
 interface NotificationSettings {
   notifyOnSale: boolean;
@@ -28,6 +29,7 @@ interface UserForEmail {
 }
 
 export default function EmailsPage() {
+  const t = useTranslations('admin');
   const [testEmail, setTestEmail] = useState('');
   const [testSubject, setTestSubject] = useState('');
   const [testBody, setTestBody] = useState('');
@@ -81,7 +83,7 @@ export default function EmailsPage() {
         setTemplates(data.templates || []);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Une erreur est survenue');
+      setError(err instanceof Error ? err.message : t('common.errorOccurred'));
     } finally {
       setLoading(false);
     }
@@ -94,7 +96,7 @@ export default function EmailsPage() {
 
   const handleSendTestEmail = async () => {
     if (!testEmail || !testSubject || !testBody) {
-      showToast('Veuillez remplir tous les champs', 'error');
+      showToast(t('emails.testEmail.fillAll'), 'error');
       return;
     }
 
@@ -106,18 +108,18 @@ export default function EmailsPage() {
         body: JSON.stringify({
           to: testEmail,
           subject: testSubject,
-          emailBody: testBody, // API expects emailBody, not body
+          emailBody: testBody,
         }),
       });
 
-      if (!res.ok) throw new Error('Erreur lors de l\'envoi du test');
+      if (!res.ok) throw new Error(t('emails.testEmail.error'));
 
-      showToast('Email de test envoye avec succes', 'success');
+      showToast(t('emails.testEmail.sent'), 'success');
       setTestEmail('');
       setTestSubject('');
       setTestBody('');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Une erreur est survenue', 'error');
+      showToast(err instanceof Error ? err.message : t('common.errorOccurred'), 'error');
     } finally {
       setTestLoading(false);
     }
@@ -137,11 +139,11 @@ export default function EmailsPage() {
         }),
       });
 
-      if (!res.ok) throw new Error('Erreur lors de la sauvegarde');
+      if (!res.ok) throw new Error(t('emails.notifications.error'));
 
-      showToast('Parametres de notification sauvegardes avec succes', 'success');
+      showToast(t('emails.notifications.saved'), 'success');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Une erreur est survenue', 'error');
+      showToast(err instanceof Error ? err.message : t('common.errorOccurred'), 'error');
     } finally {
       setSettingsLoading(false);
     }
@@ -157,7 +159,7 @@ export default function EmailsPage() {
         const data = await res.json();
         setSearchResults((data.data || []).map((u: any) => ({
           id: u.id,
-          name: u.name || u.full_name || u.email?.split('@')[0] || 'Sans nom',
+          name: u.name || u.full_name || u.email?.split('@')[0] || t('users.noName'),
           email: u.email,
           plan: u.plan || 'free',
         })));
@@ -175,12 +177,12 @@ export default function EmailsPage() {
         const data = await res.json();
         const allUsers = (data.data || []).map((u: any) => ({
           id: u.id,
-          name: u.name || u.full_name || u.email?.split('@')[0] || 'Sans nom',
+          name: u.name || u.full_name || u.email?.split('@')[0] || t('users.noName'),
           email: u.email,
           plan: u.plan || 'free',
         }));
         setSelectedUsers(allUsers);
-        showToast(`${allUsers.length} utilisateurs selectionnes`, 'success');
+        showToast(t('emails.bulk.usersSelected', { count: String(allUsers.length) }), 'success');
       }
     } catch { /* ignore */ } finally {
       setSearchLoading(false);
@@ -199,11 +201,11 @@ export default function EmailsPage() {
 
   const handleSendBulkEmail = async () => {
     if (selectedUsers.length === 0 || !bulkSubject || !bulkBody) {
-      showToast('Selectionnez des utilisateurs et remplissez tous les champs', 'error');
+      showToast(t('emails.bulk.fillAll'), 'error');
       return;
     }
 
-    if (!confirm(`Envoyer cet email a ${selectedUsers.length} utilisateur(s) ?`)) return;
+    if (!confirm(t('emails.bulk.confirmSend', { count: String(selectedUsers.length) }))) return;
 
     try {
       setBulkSending(true);
@@ -237,9 +239,9 @@ export default function EmailsPage() {
       }
 
       if (errorCount > 0) {
-        showToast(`${sentCount} emails envoyes, ${errorCount} erreurs`, sentCount > 0 ? 'success' : 'error');
+        showToast(t('emails.bulk.successPartial', { sent: String(sentCount), errors: String(errorCount) }), sentCount > 0 ? 'success' : 'error');
       } else {
-        showToast(`${sentCount} emails envoyes avec succes`, 'success');
+        showToast(t('emails.bulk.successAll', { sent: String(sentCount) }), 'success');
       }
 
       // Reset
@@ -248,7 +250,7 @@ export default function EmailsPage() {
       setBulkBody('');
       setBulkMode(false);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+      showToast(err instanceof Error ? err.message : t('common.error'), 'error');
     } finally {
       setBulkSending(false);
       setBulkProgress({ sent: 0, total: 0 });
@@ -260,7 +262,7 @@ export default function EmailsPage() {
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-orange-500 mx-auto mb-4" />
-          <p className="text-gray-400">Chargement des parametres...</p>
+          <p className="text-gray-400">{t('common.loading')}</p>
         </div>
       </div>
     );
@@ -270,17 +272,17 @@ export default function EmailsPage() {
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-4xl font-bold text-white mb-2">Gestion des emails</h1>
-          <p className="text-gray-400">Envoyez des emails et gerez les notifications</p>
+          <h1 className="text-4xl font-bold text-white mb-2">{t('emails.title')}</h1>
+          <p className="text-gray-400">{t('emails.subtitle')}</p>
         </div>
         <Button
           variant={bulkMode ? 'secondary' : 'primary'}
           onClick={() => setBulkMode(!bulkMode)}
         >
           {bulkMode ? (
-            <><X size={16} className="mr-2" /> Fermer</>
+            <><X size={16} className="mr-2" /> {t('emails.close')}</>
           ) : (
-            <><Users size={16} className="mr-2" /> Email grouper</>
+            <><Users size={16} className="mr-2" /> {t('emails.bulkButton')}</>
           )}
         </Button>
       </div>
@@ -310,7 +312,7 @@ export default function EmailsPage() {
             <CardTitle>
               <div className="flex items-center gap-2">
                 <Send size={20} className="text-orange-500" />
-                Envoyer un email a plusieurs utilisateurs
+                {t('emails.bulk.title')}
               </div>
             </CardTitle>
           </CardHeader>
@@ -320,22 +322,22 @@ export default function EmailsPage() {
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <label className="block text-sm font-medium text-gray-300">
-                    Destinataires ({selectedUsers.length} selectionnes)
+                    {t('emails.bulk.recipients')} ({t('emails.bulk.recipientsCount', { count: String(selectedUsers.length) })})
                   </label>
                   <div className="flex gap-2">
                     <Button size="sm" variant="secondary" onClick={loadAllUsers} disabled={searchLoading}>
-                      Tous les utilisateurs
+                      {t('emails.bulk.allUsers')}
                     </Button>
                     {selectedUsers.length > 0 && (
                       <Button size="sm" variant="secondary" onClick={() => setSelectedUsers([])}>
-                        Tout deselectionner
+                        {t('emails.bulk.deselectAll')}
                       </Button>
                     )}
                   </div>
                 </div>
 
                 <Input
-                  placeholder="Rechercher par nom ou email..."
+                  placeholder={t('emails.bulk.searchPlaceholder')}
                   value={userSearch}
                   onChange={(e) => {
                     setUserSearch(e.target.value);
@@ -388,24 +390,24 @@ export default function EmailsPage() {
                   </div>
                 )}
                 {selectedUsers.length > 20 && (
-                  <p className="mt-3 text-sm text-purple-300">{selectedUsers.length} utilisateurs selectionnes</p>
+                  <p className="mt-3 text-sm text-purple-300">{t('emails.bulk.usersSelected', { count: String(selectedUsers.length) })}</p>
                 )}
               </div>
 
               {/* Email content */}
               <Input
-                label="Sujet"
-                placeholder="Sujet de l'email..."
+                label={t('emails.bulk.subject')}
+                placeholder={t('emails.bulk.subjectPlaceholder')}
                 value={bulkSubject}
                 onChange={(e) => setBulkSubject(e.target.value)}
               />
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-300">
-                  Corps du message
-                  <span className="text-xs text-gray-500 ml-2">Variables: {'{nom}'}, {'{email}'}, {'{plan}'}</span>
+                  {t('emails.bulk.body')}
+                  <span className="text-xs text-gray-500 ml-2">{t('emails.bulk.bodyVariables')}</span>
                 </label>
                 <textarea
-                  placeholder="Contenu de l'email... Utilisez {nom} pour le nom de l'utilisateur"
+                  placeholder={t('emails.bulk.bodyPlaceholder')}
                   value={bulkBody}
                   onChange={(e) => setBulkBody(e.target.value)}
                   className="input-base w-full h-40 resize-none"
@@ -415,7 +417,7 @@ export default function EmailsPage() {
               {bulkSending && (
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm text-gray-400">
-                    <span>Envoi en cours...</span>
+                    <span>{t('emails.bulk.sendingProgress')}</span>
                     <span>{bulkProgress.sent}/{bulkProgress.total}</span>
                   </div>
                   <div className="w-full bg-gray-700 rounded-full h-2">
@@ -434,9 +436,9 @@ export default function EmailsPage() {
                   disabled={bulkSending || selectedUsers.length === 0 || !bulkSubject || !bulkBody}
                 >
                   {bulkSending ? (
-                    <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Envoi {bulkProgress.sent}/{bulkProgress.total}</>
+                    <><Loader2 className="w-4 h-4 animate-spin mr-2" /> {t('emails.bulk.sending', { sent: String(bulkProgress.sent), total: String(bulkProgress.total) })}</>
                   ) : (
-                    <><Send size={16} className="mr-2" /> Envoyer a {selectedUsers.length} utilisateur(s)</>
+                    <><Send size={16} className="mr-2" /> {t('emails.bulk.sendTo', { count: String(selectedUsers.length) })}</>
                   )}
                 </Button>
               </div>
@@ -448,27 +450,27 @@ export default function EmailsPage() {
       {/* Test Email */}
       <Card>
         <CardHeader>
-          <CardTitle>Envoyer un email de test</CardTitle>
+          <CardTitle>{t('emails.testEmail.title')}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             <Input
-              label="Email destinataire"
+              label={t('emails.testEmail.to')}
               type="email"
-              placeholder="test@example.com"
+              placeholder={t('emails.testEmail.toPlaceholder')}
               value={testEmail}
               onChange={(e) => setTestEmail(e.target.value)}
             />
             <Input
-              label="Sujet"
-              placeholder="Sujet de l'email..."
+              label={t('emails.testEmail.subject')}
+              placeholder={t('emails.testEmail.subjectPlaceholder')}
               value={testSubject}
               onChange={(e) => setTestSubject(e.target.value)}
             />
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-300">Corps du message</label>
+              <label className="block text-sm font-medium text-gray-300">{t('emails.testEmail.body')}</label>
               <textarea
-                placeholder="Contenu de l'email..."
+                placeholder={t('emails.testEmail.bodyPlaceholder')}
                 value={testBody}
                 onChange={(e) => setTestBody(e.target.value)}
                 className="input-base w-full h-32 resize-none"
@@ -481,9 +483,9 @@ export default function EmailsPage() {
                 disabled={testLoading || !testEmail || !testSubject || !testBody}
               >
                 {testLoading ? (
-                  <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Envoi...</>
+                  <><Loader2 className="w-4 h-4 animate-spin mr-2" /> {t('emails.testEmail.sending')}</>
                 ) : (
-                  'Envoyer le test'
+                  t('emails.testEmail.send')
                 )}
               </Button>
             </div>
@@ -494,14 +496,14 @@ export default function EmailsPage() {
       {/* Notification Settings */}
       <Card>
         <CardHeader>
-          <CardTitle>Parametres de notification</CardTitle>
+          <CardTitle>{t('emails.notifications.title')}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
             <Input
-              label="Email administrateur"
+              label={t('emails.notifications.adminEmail')}
               type="email"
-              placeholder="admin@studiio.com"
+              placeholder={t('emails.notifications.adminEmailPlaceholder')}
               value={adminEmail}
               onChange={(e) => setAdminEmail(e.target.value)}
             />
@@ -509,8 +511,8 @@ export default function EmailsPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between p-4 bg-gray-800/50 rounded-lg border border-gray-700">
                 <div>
-                  <p className="font-medium text-white">Notification pour chaque vente</p>
-                  <p className="text-sm text-gray-400">Recevoir une notification a chaque vente</p>
+                  <p className="font-medium text-white">{t('emails.notifications.notifyOnSale')}</p>
+                  <p className="text-sm text-gray-400">{t('emails.notifications.notifyOnSaleDesc')}</p>
                 </div>
                 <label className="flex items-center cursor-pointer">
                   <input
@@ -524,8 +526,8 @@ export default function EmailsPage() {
 
               <div className="flex items-center justify-between p-4 bg-gray-800/50 rounded-lg border border-gray-700">
                 <div>
-                  <p className="font-medium text-white">Email digest quotidien</p>
-                  <p className="text-sm text-gray-400">Recevoir un resume quotidien des activites</p>
+                  <p className="font-medium text-white">{t('emails.notifications.dailyDigest')}</p>
+                  <p className="text-sm text-gray-400">{t('emails.notifications.dailyDigestDesc')}</p>
                 </div>
                 <label className="flex items-center cursor-pointer">
                   <input
@@ -539,8 +541,8 @@ export default function EmailsPage() {
 
               <div className="flex items-center justify-between p-4 bg-gray-800/50 rounded-lg border border-gray-700">
                 <div>
-                  <p className="font-medium text-white">Alertes nouvel utilisateur</p>
-                  <p className="text-sm text-gray-400">Etre alerte a chaque nouvelle inscription</p>
+                  <p className="font-medium text-white">{t('emails.notifications.notifyNewUser')}</p>
+                  <p className="text-sm text-gray-400">{t('emails.notifications.notifyNewUserDesc')}</p>
                 </div>
                 <label className="flex items-center cursor-pointer">
                   <input
@@ -560,9 +562,9 @@ export default function EmailsPage() {
                 disabled={settingsLoading}
               >
                 {settingsLoading ? (
-                  <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Sauvegarde...</>
+                  <><Loader2 className="w-4 h-4 animate-spin mr-2" /> {t('emails.notifications.saving')}</>
                 ) : (
-                  'Sauvegarder les parametres'
+                  t('emails.notifications.save')
                 )}
               </Button>
             </div>
@@ -573,7 +575,7 @@ export default function EmailsPage() {
       {templates.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Templates d&apos;email</CardTitle>
+            <CardTitle>{t('emails.templates.title')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid md:grid-cols-2 gap-4">

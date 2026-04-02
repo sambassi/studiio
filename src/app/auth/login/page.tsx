@@ -4,10 +4,12 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { signIn } from 'next-auth/react';
 import { Chrome, Facebook, Loader2 } from 'lucide-react';
+import { useTranslations } from '@/i18n/client';
 
 export default function LoginPage() {
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const t = useTranslations('auth');
 
   const handleOAuthSignIn = (provider: string) => {
     setLoading(provider);
@@ -24,7 +26,7 @@ export default function LoginPage() {
     const password = formData.get('password') as string;
 
     if (!email || !password) {
-      setError('Veuillez remplir tous les champs.');
+      setError(t('login.errorFillAll'));
       setLoading(null);
       return;
     }
@@ -36,12 +38,12 @@ export default function LoginPage() {
         redirect: false,
       });
       if (res?.error) {
-        setError('Email ou mot de passe incorrect.');
+        setError(t('login.errorInvalid'));
       } else {
         window.location.href = '/dashboard';
       }
     } catch {
-      setError('Erreur de connexion. Veuillez réessayer.');
+      setError(t('login.errorGeneric'));
     }
     setLoading(null);
   };
@@ -51,8 +53,8 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <div className="card-base p-8 space-y-6">
           <div className="text-center">
-            <h1 className="text-3xl font-bold text-white mb-2">Connexion</h1>
-            <p className="text-gray-400">Connectez-vous à votre compte Studiio</p>
+            <h1 className="text-3xl font-bold text-white mb-2">{t('login.title')}</h1>
+            <p className="text-gray-400">{t('login.subtitle')}</p>
           </div>
 
           {error && (
@@ -68,7 +70,7 @@ export default function LoginPage() {
               className="w-full flex items-center justify-center gap-3 bg-gray-800 hover:bg-gray-700 text-white font-semibold py-3 rounded-lg transition disabled:opacity-50"
             >
               {loading === 'google' ? <Loader2 size={20} className="animate-spin" /> : <Chrome size={20} />}
-              Continuer avec Google
+              {t('login.google')}
             </button>
             <button
               onClick={() => handleOAuthSignIn('facebook')}
@@ -76,7 +78,7 @@ export default function LoginPage() {
               className="w-full flex items-center justify-center gap-3 bg-gray-800 hover:bg-gray-700 text-white font-semibold py-3 rounded-lg transition disabled:opacity-50"
             >
               {loading === 'facebook' ? <Loader2 size={20} className="animate-spin" /> : <Facebook size={20} />}
-              Continuer avec Facebook
+              {t('login.facebook')}
             </button>
           </div>
 
@@ -85,23 +87,23 @@ export default function LoginPage() {
               <div className="w-full border-t border-gray-700"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-gray-900 text-gray-500">Ou</span>
+              <span className="px-2 bg-gray-900 text-gray-500">{t('login.or')}</span>
             </div>
           </div>
 
           <form onSubmit={handleEmailLogin} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Email</label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">{t('login.email')}</label>
               <input
                 type="email"
                 name="email"
                 className="input-base w-full"
-                placeholder="votre@email.com"
+                placeholder={t('login.emailPlaceholder')}
                 disabled={!!loading}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Mot de passe</label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">{t('login.password')}</label>
               <input
                 type="password"
                 name="password"
@@ -115,15 +117,15 @@ export default function LoginPage() {
               disabled={!!loading}
               className="w-full button-primary disabled:opacity-50"
             >
-              {loading === 'email' ? 'Connexion...' : 'Se connecter'}
+              {loading === 'email' ? t('login.connecting') : t('login.submit')}
             </button>
           </form>
 
           <div className="text-center">
             <p className="text-gray-400">
-              Pas encore de compte ?{' '}
+              {t('login.noAccount')}{' '}
               <Link href="/auth/signup" className="text-studiio-primary hover:text-purple-400 font-semibold">
-                S&apos;inscrire
+                {t('login.signup')}
               </Link>
             </p>
           </div>

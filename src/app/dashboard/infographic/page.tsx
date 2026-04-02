@@ -7,6 +7,7 @@ import { generateSmartContent } from '@/lib/smart-content';
 import { useBranding } from '@/lib/hooks/useBranding';
 import BrandingPanel from '@/components/BrandingPanel';
 import { composeAndUpload, downloadBlob } from '@/lib/video-composer';
+import { useTranslations } from '@/i18n/client';
 
 interface InfoCard {
   id: string;
@@ -96,6 +97,8 @@ const SALES_PHRASES = [
 ];
 
 export default function InfographiePage() {
+  const t = useTranslations('infographic');
+  const tc = useTranslations('common');
   const { branding, setBranding } = useBranding();
   const [step, setStep] = useState(1);
 
@@ -145,11 +148,17 @@ export default function InfographiePage() {
   const [selectedBatchPreview, setSelectedBatchPreview] = useState<number | null>(null);
 
   // Sequences (reorderable)
+  const seqLabels = {
+    intro: t('sequences.intro'),
+    cards: t('sequences.cards'),
+    video: t('sequences.video'),
+    cta: t('sequences.cta'),
+  };
   const [sequences, setSequences] = useState<SequenceItem[]>([
-    { id: 'intro', type: 'intro', label: 'Photo Affiche + Titre', duration: 5, color: '#ec4899', icon: '🖼️' },
-    { id: 'cards', type: 'cards', label: 'Cartes d\'Information', duration: 8, color: '#a855f7', icon: '📊' },
-    { id: 'video', type: 'video', label: 'Vidéo', duration: 12, color: '#3b82f6', icon: '🎬' },
-    { id: 'cta', type: 'cta', label: 'CTA (Appel à l\'action)', duration: 5, color: '#22c55e', icon: '📢' },
+    { id: 'intro', type: 'intro', label: seqLabels.intro, duration: 5, color: '#ec4899', icon: '🖼️' },
+    { id: 'cards', type: 'cards', label: seqLabels.cards, duration: 8, color: '#a855f7', icon: '📊' },
+    { id: 'video', type: 'video', label: seqLabels.video, duration: 12, color: '#3b82f6', icon: '🎬' },
+    { id: 'cta', type: 'cta', label: seqLabels.cta, duration: 5, color: '#22c55e', icon: '📢' },
   ]);
   const totalDuration = sequences.reduce((sum, s) => sum + s.duration, 0);
 
@@ -251,7 +260,7 @@ export default function InfographiePage() {
     }
   };
 
-  const addCard = () => setCards([...cards, { id: Date.now().toString(), emoji: '⭐', label: 'Nouvelle carte', value: 'Valeur', color: '#ec4899' }]);
+  const addCard = () => setCards([...cards, { id: Date.now().toString(), emoji: '⭐', label: t('infoCards.newCard'), value: t('infoCards.value'), color: '#ec4899' }]);
   const deleteCard = (id: string) => setCards(cards.filter((c) => c.id !== id));
   const updateCard = (id: string, updates: Partial<InfoCard>) => setCards(cards.map((c) => (c.id === id ? { ...c, ...updates } : c)));
 
@@ -361,11 +370,11 @@ export default function InfographiePage() {
   };
 
   const handleExport = async () => {
-    if (cards.length === 0) { setExportToast({ message: 'Ajoutez au moins une carte avant d\'exporter', type: 'error' }); setTimeout(() => setExportToast(null), 3000); return; }
+    if (cards.length === 0) { setExportToast({ message: t('export.errorNoCards'), type: 'error' }); setTimeout(() => setExportToast(null), 3000); return; }
     setIsExporting(true); setExportProgress(0);
     try {
       // ═══ PHASE 1: Upload raw files to get URLs (0-20%) — audio handled in Studio Son ═══
-      setExportToast({ message: 'Upload des fichiers...', type: 'success' });
+      setExportToast({ message: t('export.uploadingFiles'), type: 'success' });
       setExportProgress(3);
       const filesToUpload = [
         selectedVideo ? uploadFile(selectedVideo, 'rush') : Promise.resolve(null),
@@ -417,7 +426,7 @@ export default function InfographiePage() {
           const progressBase = 20 + (b / batchTotal) * 70;
           const progressSpan = 70 / batchTotal;
 
-          setExportToast({ message: batchTotal > 1 ? `Montage vidéo ${b + 1}/${batchTotal}...` : 'Montage vidéo en cours...', type: 'success' });
+          setExportToast({ message: batchTotal > 1 ? t('export.composingBatch', { current: String(b + 1), total: String(batchTotal) }) : t('export.composingVideo'), type: 'success' });
           setExportProgress(Math.round(progressBase));
 
           // ═══ CLIENT-SIDE VIDEO RENDERING ═══
@@ -527,7 +536,7 @@ export default function InfographiePage() {
             exportBlob = savedBlobForExport;
             setExportProgress(98);
           } else {
-            setExportToast({ message: 'Montage vidéo pour export...', type: 'success' });
+            setExportToast({ message: t('export.composingForExport'), type: 'success' });
             const result = await composeAndUpload({
               width: compWidth, height: compHeight, fps: 30,
               title: title || 'Infographie', subtitle, salesPhrase,
@@ -550,7 +559,7 @@ export default function InfographiePage() {
       setExportProgress(100);
       if (destination === 'studio') {
         console.log('[Export] Studio redirect — allCreatedPostIds:', allCreatedPostIds);
-        setExportToast({ message: 'Redirection vers Studio Son...', type: 'success' });
+        setExportToast({ message: t('export.redirectingStudio'), type: 'success' });
         await new Promise((r) => setTimeout(r, 1000));
         const studioUrl = allCreatedPostIds.length > 1
           ? `/dashboard/audio-studio?postIds=${allCreatedPostIds.join(',')}`
@@ -561,15 +570,15 @@ export default function InfographiePage() {
         router.push(studioUrl);
       } else if (destination === 'calendar' || destination === 'both') {
         if (successCount > 0) {
-          setExportToast({ message: `${successCount} vidéo${successCount > 1 ? 's' : ''} montée${successCount > 1 ? 's' : ''} au calendrier !`, type: 'success' });
+          setExportToast({ message: t('export.successCalendar', { count: String(successCount) }), type: 'success' });
           await new Promise((r) => setTimeout(r, 1500)); router.push('/dashboard/calendar');
         } else {
-          setExportToast({ message: `Erreur: aucun post créé. ${lastError}`, type: 'error' });
+          setExportToast({ message: `${t('export.errorNoPost')} ${lastError}`, type: 'error' });
         }
-      } else { setExportToast({ message: 'Vidéo montée exportée !', type: 'success' }); }
+      } else { setExportToast({ message: t('export.successExport'), type: 'success' }); }
     } catch (error) {
       console.error('Export error:', error); setExportProgress(0);
-      setExportToast({ message: 'Erreur lors de l\'export. Veuillez réessayer.', type: 'error' });
+      setExportToast({ message: t('export.errorExport'), type: 'error' });
     } finally { setTimeout(() => { setIsExporting(false); setExportProgress(0); setExportToast(null); }, 5000); }
   };
 
@@ -597,7 +606,7 @@ export default function InfographiePage() {
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <div className="absolute inset-0 bg-gradient-to-b from-purple-950 to-black" />
           <div className="relative z-10 w-full px-3 space-y-1.5">
-            <p className="text-[8px] font-bold text-white/60 uppercase tracking-widest text-center mb-2">Informations</p>
+            <p className="text-[8px] font-bold text-white/60 uppercase tracking-widest text-center mb-2">{t('preview.information')}</p>
             {cards.slice(0, 5).map((card, i) => (
               <div key={i} className="flex items-center gap-2 bg-black/40 backdrop-blur-sm rounded-lg px-2 py-1.5 border-l-2" style={{ borderColor: card.color }}>
                 <span className="text-sm">{card.emoji}</span>
@@ -619,7 +628,7 @@ export default function InfographiePage() {
             <div className="absolute inset-0 bg-gradient-to-b from-gray-900 to-black flex items-center justify-center">
               <div className="text-center">
                 <Film size={24} className="text-gray-600 mx-auto mb-1" />
-                <p className="text-[9px] text-gray-500">Aucune vidéo</p>
+                <p className="text-[9px] text-gray-500">{t('preview.noVideoLabel')}</p>
               </div>
             </div>
           )}
@@ -672,16 +681,16 @@ export default function InfographiePage() {
       <div className="border-b border-gray-700 bg-gray-800/50 px-8 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Créateur d&apos;Infographie</h1>
-            <p className="text-sm text-gray-400 mt-0.5">Étape {step} sur 3</p>
+            <h1 className="text-2xl font-bold">{t('title')}</h1>
+            <p className="text-sm text-gray-400 mt-0.5">{t('stepOf', { step: String(step) })}</p>
           </div>
           <div className="flex items-center gap-1">
             {[1, 2, 3].map((s) => (
               <button key={s} onClick={() => setStep(s)} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${step === s ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white' : s < step ? 'bg-green-600/20 text-green-400 border border-green-600/30' : 'bg-gray-800 text-gray-400 border border-gray-700'}`}>
                 <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ background: step === s ? 'white' : 'transparent', color: step === s ? '#D91CD2' : 'inherit' }}>{s < step ? '✓' : s}</span>
-                {s === 1 && 'Contenu'}
-                {s === 2 && 'Médias'}
-                {s === 3 && 'Finaliser'}
+                {s === 1 && t('steps.1')}
+                {s === 2 && t('steps.2')}
+                {s === 3 && t('steps.3')}
               </button>
             ))}
           </div>
@@ -698,11 +707,11 @@ export default function InfographiePage() {
             <div>
               {/* Theme selector */}
               <div className="mb-6">
-                <h3 className="text-sm font-semibold text-gray-300 mb-3">Sélectionner un thème</h3>
+                <h3 className="text-sm font-semibold text-gray-300 mb-3">{t('themes.selectTheme')}</h3>
                 <div className="grid grid-cols-3 gap-2">
                   {(['sommeil', 'nutrition', 'energie', 'stress', 'communaute', 'custom'] as ThemeType[]).map((theme) => (
                     <button key={theme} onClick={() => handleThemeSelect(theme)} className={`py-2.5 px-3 rounded-lg font-medium text-sm transition-all ${selectedTheme === theme ? 'bg-gradient-to-r from-pink-600 to-pink-400 text-white' : 'bg-gray-800 text-gray-300 border border-gray-700 hover:border-gray-600'}`}>
-                      {theme === 'sommeil' && 'Sommeil & Sport'}{theme === 'nutrition' && 'Nutrition & Danse'}{theme === 'energie' && 'Énergie & Cardio'}{theme === 'stress' && 'Stress & Mental'}{theme === 'communaute' && 'Communauté'}{theme === 'custom' && 'Personnalisé'}
+                      {t(`themes.${theme}`)}
                     </button>
                   ))}
                 </div>
@@ -712,12 +721,12 @@ export default function InfographiePage() {
               <div className="mb-6 flex items-center gap-3 bg-gray-800 rounded-lg p-3 border border-gray-700">
                 <input type="checkbox" checked={batchMode} onChange={(e) => setBatchMode(e.target.checked)} className="w-4 h-4 rounded accent-pink-500" />
                 <div className="flex-1">
-                  <div className="font-semibold text-sm">Mode BATCH x10</div>
-                  <div className="text-xs text-gray-400">10 vidéos avec des textes et photos différents</div>
+                  <div className="font-semibold text-sm">{t('batch.title')}</div>
+                  <div className="text-xs text-gray-400">{t('batch.description')}</div>
                 </div>
                 {batchMode && (
                   <button onClick={generateBatchVariations} disabled={batchPhotosLoading} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-gradient-to-r from-purple-600 to-pink-500 text-white transition flex items-center gap-1 disabled:opacity-50">
-                    {batchPhotosLoading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} Régénérer
+                    {batchPhotosLoading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} {t('batch.regenerate')}
                   </button>
                 )}
               </div>
@@ -725,7 +734,7 @@ export default function InfographiePage() {
               {/* Batch preview grid */}
               {batchMode && batchVariations.length > 0 && (
                 <div className="mb-6">
-                  <h3 className="text-xs font-semibold text-gray-400 mb-2">Aperçu des 10 variantes</h3>
+                  <h3 className="text-xs font-semibold text-gray-400 mb-2">{t('batch.previewTitle')}</h3>
                   <div className="grid grid-cols-5 gap-1.5">
                     {batchVariations.map((v, i) => (
                       <button key={i} onClick={() => setSelectedBatchPreview(selectedBatchPreview === i ? null : i)} className={`relative rounded-lg overflow-hidden border-2 aspect-[9/16] transition-all ${selectedBatchPreview === i ? 'border-pink-500 ring-2 ring-pink-500/30' : 'border-gray-700 hover:border-gray-500'}`}>
@@ -744,28 +753,28 @@ export default function InfographiePage() {
               {/* Title */}
               <div className="mb-4">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-semibold text-gray-400">Titre</label>
+                  <label className="text-xs font-semibold text-gray-400">{t('titleField')}</label>
                   <button onClick={() => { if (selectedTheme === 'custom') handleGenerateFromTitle(); else handleGenerateTitleAndSubtitle(); if (batchMode) generateBatchVariations(); }} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-[#D91CD2] border border-[#D91CD2]/30 hover:bg-[#D91CD2]/10 transition">
                     <Sparkles size={12} /> IA
                   </button>
                 </div>
                 <div className="flex gap-2">
-                  <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && selectedTheme === 'custom') handleGenerateFromTitle(); }} className="flex-1 rounded-lg bg-gray-800 px-4 py-2 text-white placeholder-gray-500 border border-gray-700 focus:border-pink-500 focus:outline-none text-sm" placeholder={selectedTheme === 'custom' ? 'Tape un sujet: moringa, eau, cardio...' : 'ex: ÉNERGIE & CARDIO'} />
-                  {selectedTheme === 'custom' && <button onClick={handleGenerateFromTitle} className="px-3 py-2 bg-gradient-to-r from-purple-600 to-pink-500 rounded-lg text-xs font-bold text-white flex items-center gap-1"><Sparkles size={12} /> Générer</button>}
+                  <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && selectedTheme === 'custom') handleGenerateFromTitle(); }} className="flex-1 rounded-lg bg-gray-800 px-4 py-2 text-white placeholder-gray-500 border border-gray-700 focus:border-pink-500 focus:outline-none text-sm" placeholder={selectedTheme === 'custom' ? t('titlePlaceholderCustom') : t('titlePlaceholder')} />
+                  {selectedTheme === 'custom' && <button onClick={handleGenerateFromTitle} className="px-3 py-2 bg-gradient-to-r from-purple-600 to-pink-500 rounded-lg text-xs font-bold text-white flex items-center gap-1"><Sparkles size={12} /> {tc('generate')}</button>}
                 </div>
               </div>
 
               {/* Subtitle */}
               <div className="mb-6">
-                <label className="block text-xs font-semibold text-gray-400 mb-2">Sous-titre</label>
-                <input type="text" value={subtitle} onChange={(e) => setSubtitle(e.target.value)} className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white placeholder-gray-500 border border-gray-700 focus:border-pink-500 focus:outline-none text-sm" placeholder="ex: Pousse tes limites avec Afroboost" />
+                <label className="block text-xs font-semibold text-gray-400 mb-2">{t('subtitleField')}</label>
+                <input type="text" value={subtitle} onChange={(e) => setSubtitle(e.target.value)} className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white placeholder-gray-500 border border-gray-700 focus:border-pink-500 focus:outline-none text-sm" placeholder={t('subtitlePlaceholder')} />
               </div>
 
               {/* Info cards */}
               <div className="mb-6">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-gray-300">Cartes d&apos;Information</h3>
-                  <button onClick={addCard} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-[#D91CD2] border border-[#D91CD2]/30 hover:bg-[#D91CD2]/10 transition"><Plus size={14} /> Ajouter</button>
+                  <h3 className="text-sm font-semibold text-gray-300">{t('infoCards.title')}</h3>
+                  <button onClick={addCard} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-[#D91CD2] border border-[#D91CD2]/30 hover:bg-[#D91CD2]/10 transition"><Plus size={14} /> {t('infoCards.add')}</button>
                 </div>
                 <div className="space-y-2">
                   {cards.map((card) => (
@@ -788,10 +797,10 @@ export default function InfographiePage() {
               {/* Sales phrase */}
               <div className="mb-6">
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-semibold text-gray-300">Phrase de vente</h3>
+                  <h3 className="text-sm font-semibold text-gray-300">{t('salesPhrase.title')}</h3>
                   <button onClick={() => setSalesPhrase(SALES_PHRASES[Math.floor(Math.random() * SALES_PHRASES.length)])} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-[#D91CD2] border border-[#D91CD2]/30 hover:bg-[#D91CD2]/10 transition"><Sparkles size={12} /> IA</button>
                 </div>
-                <input type="text" value={salesPhrase} onChange={(e) => setSalesPhrase(e.target.value)} className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white placeholder-gray-500 border border-gray-700 focus:border-pink-500 focus:outline-none text-sm mb-2" placeholder="ex: Réserve ta place maintenant !" />
+                <input type="text" value={salesPhrase} onChange={(e) => setSalesPhrase(e.target.value)} className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white placeholder-gray-500 border border-gray-700 focus:border-pink-500 focus:outline-none text-sm mb-2" placeholder={t('salesPhrase.placeholder')} />
                 <div className="flex flex-wrap gap-1.5">
                   {SALES_PHRASES.map((phrase) => (
                     <button key={phrase} onClick={() => setSalesPhrase(phrase)} className={`text-xs border px-2 py-1 rounded transition ${salesPhrase === phrase ? 'bg-pink-600/20 border-pink-500 text-pink-300' : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'}`}>{phrase}</button>
@@ -801,7 +810,7 @@ export default function InfographiePage() {
 
               {/* Next step button */}
               <button onClick={() => setStep(2)} className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 rounded-lg text-sm font-bold transition">
-                Étape suivante : Médias <ChevronRight size={16} />
+                {t('nextStepMedia')} <ChevronRight size={16} />
               </button>
             </div>
           )}
@@ -813,8 +822,8 @@ export default function InfographiePage() {
               <div className="mb-6">
                 <div className="flex items-center justify-between bg-gray-800 rounded-lg p-4 border border-gray-700">
                   <div>
-                    <div className="text-sm font-semibold">Photo Affiche</div>
-                    <div className="text-xs text-gray-400">Image de fond pour la séquence Intro</div>
+                    <div className="text-sm font-semibold">{t('posterPhoto.title')}</div>
+                    <div className="text-xs text-gray-400">{t('posterPhoto.subtitle')}</div>
                   </div>
                   <button onClick={() => { if (posterPhoto) { setPosterPhoto(false); setPosterPhotoFile(null); setSelectedPexelsUrl(null); if (posterPhotoPreview) URL.revokeObjectURL(posterPhotoPreview); setPosterPhotoPreview(null); } else { setPosterPhoto(true); } }} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${posterPhoto ? 'bg-pink-600' : 'bg-gray-700'}`}>
                     <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${posterPhoto ? 'translate-x-6' : 'translate-x-1'}`} />
@@ -823,7 +832,7 @@ export default function InfographiePage() {
                 {posterPhoto && (
                   <div className="mt-2 bg-gray-800 rounded-lg border border-gray-700 p-3 space-y-3">
                     <div className="flex gap-2">
-                      <input type="text" value={pexelsQuery} onChange={(e) => setPexelsQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') searchPexels(); }} placeholder="Rechercher (ex: fitness, danse, yoga...)" className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white placeholder-gray-500 focus:border-pink-500 focus:outline-none" />
+                      <input type="text" value={pexelsQuery} onChange={(e) => setPexelsQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') searchPexels(); }} placeholder={t('posterPhoto.searchPlaceholder')} className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white placeholder-gray-500 focus:border-pink-500 focus:outline-none" />
                       <button onClick={() => searchPexels()} disabled={pexelsLoading} className="px-3 py-2 bg-pink-600 hover:bg-pink-700 disabled:opacity-50 rounded-lg transition">
                         {pexelsLoading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
                       </button>
@@ -832,14 +841,14 @@ export default function InfographiePage() {
                       <div className="relative">
                         <img src={selectedPexelsUrl || posterPhotoPreview || ''} alt="Photo Affiche" className="w-full h-32 rounded-lg object-cover" />
                         <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center gap-2">
-                          <button onClick={() => posterPhotoInputRef.current?.click()} className="flex items-center gap-1 bg-white/20 backdrop-blur px-3 py-1.5 rounded-lg text-white text-xs font-medium"><Upload size={12} /> Importer</button>
-                          <button onClick={() => { setSelectedPexelsUrl(null); setPosterPhotoFile(null); if (posterPhotoPreview) URL.revokeObjectURL(posterPhotoPreview); setPosterPhotoPreview(null); }} className="flex items-center gap-1 bg-red-500/50 backdrop-blur px-3 py-1.5 rounded-lg text-white text-xs font-medium"><X size={12} /> Retirer</button>
+                          <button onClick={() => posterPhotoInputRef.current?.click()} className="flex items-center gap-1 bg-white/20 backdrop-blur px-3 py-1.5 rounded-lg text-white text-xs font-medium"><Upload size={12} /> {t('posterPhoto.import')}</button>
+                          <button onClick={() => { setSelectedPexelsUrl(null); setPosterPhotoFile(null); if (posterPhotoPreview) URL.revokeObjectURL(posterPhotoPreview); setPosterPhotoPreview(null); }} className="flex items-center gap-1 bg-red-500/50 backdrop-blur px-3 py-1.5 rounded-lg text-white text-xs font-medium"><X size={12} /> {t('posterPhoto.remove')}</button>
                         </div>
                       </div>
                     )}
                     {pexelsResults.length > 0 && (
                       <div>
-                        <p className="text-[10px] text-gray-500 mb-2">Cliquez pour sélectionner</p>
+                        <p className="text-[10px] text-gray-500 mb-2">{t('posterPhoto.clickToSelect')}</p>
                         <div className="grid grid-cols-4 gap-2">
                           {pexelsResults.map((photo) => (
                             <button key={photo.id} onClick={() => handleSelectPexelsImage(photo.url)} className={`relative rounded-lg overflow-hidden aspect-square transition-all ${selectedPexelsUrl === photo.url ? 'ring-2 ring-pink-500 ring-offset-2 ring-offset-gray-800' : 'hover:opacity-80'}`}>
@@ -853,8 +862,8 @@ export default function InfographiePage() {
                     {pexelsLoading && <div className="flex items-center justify-center py-4"><Loader2 size={20} className="animate-spin text-pink-400" /></div>}
                     {!pexelsLoading && pexelsResults.length === 0 && !selectedPexelsUrl && !posterPhotoPreview && (
                       <div className="flex flex-col items-center py-4 text-gray-500">
-                        <ImageIcon size={20} className="mb-1" /><p className="text-xs">Recherchez ou importez une image</p>
-                        <button onClick={() => posterPhotoInputRef.current?.click()} className="mt-2 text-xs text-pink-400 hover:text-pink-300 transition">Importer depuis votre ordinateur</button>
+                        <ImageIcon size={20} className="mb-1" /><p className="text-xs">{t('posterPhoto.searchOrImport')}</p>
+                        <button onClick={() => posterPhotoInputRef.current?.click()} className="mt-2 text-xs text-pink-400 hover:text-pink-300 transition">{t('posterPhoto.importFromComputer')}</button>
                       </div>
                     )}
                   </div>
@@ -863,7 +872,7 @@ export default function InfographiePage() {
 
               {/* Video */}
               <div className="mb-6">
-                <h3 className="text-sm font-semibold text-gray-300 mb-2">Vidéo (séquence 3)</h3>
+                <h3 className="text-sm font-semibold text-gray-300 mb-2">{t('videoSection.title')}</h3>
                 {selectedVideo ? (
                   <div className="flex items-center gap-3 bg-gray-800 text-white px-4 py-3 rounded-lg border border-gray-700">
                     <Film size={18} className="text-blue-400 flex-shrink-0" />
@@ -872,7 +881,7 @@ export default function InfographiePage() {
                   </div>
                 ) : (
                   <button onClick={() => videoInputRef.current?.click()} className="w-full flex flex-col items-center gap-2 bg-gray-800 hover:bg-gray-700 border-2 border-dashed border-gray-700 hover:border-blue-500/50 rounded-lg py-5 text-gray-400 hover:text-gray-300 transition cursor-pointer">
-                    <Film size={20} /><span className="text-sm">Choisir une vidéo</span>
+                    <Film size={20} /><span className="text-sm">{t('videoSection.choose')}</span>
                   </button>
                 )}
               </div>
@@ -882,15 +891,15 @@ export default function InfographiePage() {
                 <div className="bg-purple-900/20 rounded-xl p-4 border border-purple-500/30 flex items-center gap-3">
                   <Volume2 size={20} className="text-purple-400 shrink-0" />
                   <div>
-                    <p className="text-sm text-white font-medium">Musique & Voix off</p>
-                    <p className="text-xs text-gray-400 mt-0.5">L&apos;audio sera ajouté après le montage dans le <span className="text-purple-400 font-medium">Studio Son</span>.</p>
+                    <p className="text-sm text-white font-medium">{t('audioNote.title')}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{t('audioNote.description')} <span className="text-purple-400 font-medium">{t('audioNote.studioSon')}</span>.</p>
                   </div>
                 </div>
               </div>
 
               {/* Logo */}
               <div className="mb-6">
-                <h3 className="text-sm font-semibold text-gray-300 mb-2">Logo (affiché sur la page CTA)</h3>
+                <h3 className="text-sm font-semibold text-gray-300 mb-2">{t('logoSection.title')}</h3>
                 {selectedLogo ? (
                   <div className="flex items-center gap-3 bg-gray-800 px-4 py-3 rounded-lg border border-gray-700">
                     <img src={logoPreviewUrl || ''} alt="Logo" className="w-12 h-12 rounded-lg object-contain bg-gray-600 p-1 flex-shrink-0" />
@@ -899,15 +908,15 @@ export default function InfographiePage() {
                   </div>
                 ) : (
                   <button onClick={() => logoInputRef.current?.click()} className="w-full flex flex-col items-center gap-2 bg-gray-800 hover:bg-gray-700 border-2 border-dashed border-gray-700 hover:border-purple-500/50 rounded-lg py-5 text-gray-400 hover:text-gray-300 transition cursor-pointer">
-                    <Upload size={20} /><span className="text-sm">Ajouter un logo</span>
+                    <Upload size={20} /><span className="text-sm">{t('logoSection.add')}</span>
                   </button>
                 )}
               </div>
 
               {/* Nav */}
               <div className="flex gap-3">
-                <button onClick={() => setStep(1)} className="flex-1 flex items-center justify-center gap-2 py-3 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm font-medium transition"><ChevronLeft size={16} /> Retour</button>
-                <button onClick={() => setStep(3)} className="flex-1 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 rounded-lg text-sm font-bold transition">Finaliser <ChevronRight size={16} /></button>
+                <button onClick={() => setStep(1)} className="flex-1 flex items-center justify-center gap-2 py-3 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm font-medium transition"><ChevronLeft size={16} /> {t('backButton')}</button>
+                <button onClick={() => setStep(3)} className="flex-1 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 rounded-lg text-sm font-bold transition">{t('finalizeButton')} <ChevronRight size={16} /></button>
               </div>
             </div>
           )}
@@ -917,8 +926,8 @@ export default function InfographiePage() {
             <div>
               {/* Sequence order + durations */}
               <div className="mb-6">
-                <h3 className="text-sm font-semibold text-gray-300 mb-3">Ordre des Séquences</h3>
-                <p className="text-[10px] text-gray-500 mb-3">Utilisez les flèches pour réorganiser l&apos;ordre des séquences</p>
+                <h3 className="text-sm font-semibold text-gray-300 mb-3">{t('sequenceOrder.title')}</h3>
+                <p className="text-[10px] text-gray-500 mb-3">{t('sequenceOrder.help')}</p>
                 <div className="space-y-2">
                   {sequences.map((seq, idx) => (
                     <div key={seq.id} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 border transition ${seq.type === 'video' && !selectedVideo ? 'bg-gray-800/40 border-gray-700/50 opacity-50' : 'bg-gray-800 border-gray-700'}`}>
@@ -930,10 +939,10 @@ export default function InfographiePage() {
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium text-white">{seq.label}</p>
                         <p className="text-[10px] text-gray-500">
-                          {seq.type === 'intro' && (selectedPexelsUrl || posterPhotoPreview ? 'Photo sélectionnée' : 'Pas de photo')}
-                          {seq.type === 'cards' && `${cards.length} carte${cards.length > 1 ? 's' : ''}`}
-                          {seq.type === 'video' && (selectedVideo ? videoName : 'Aucune vidéo')}
-                          {seq.type === 'cta' && (branding.ctaText || 'CTA par défaut')}
+                          {seq.type === 'intro' && (selectedPexelsUrl || posterPhotoPreview ? t('sequenceOrder.photoSelected') : t('sequenceOrder.noPhoto'))}
+                          {seq.type === 'cards' && t('sequenceOrder.cardCount', { count: String(cards.length) })}
+                          {seq.type === 'video' && (selectedVideo ? videoName : t('sequenceOrder.noVideo'))}
+                          {seq.type === 'cta' && (branding.ctaText || t('sequenceOrder.defaultCta'))}
                         </p>
                       </div>
                       <div className="flex items-center gap-1">
@@ -943,7 +952,7 @@ export default function InfographiePage() {
                     </div>
                   ))}
                   <div className="flex items-center justify-between px-3 py-2 bg-gradient-to-r from-pink-600/10 to-purple-600/10 rounded-lg border border-pink-500/20">
-                    <span className="text-xs font-semibold text-white">Durée totale</span>
+                    <span className="text-xs font-semibold text-white">{t('sequenceOrder.totalDuration')}</span>
                     <span className="text-sm font-bold text-pink-400">{totalDuration}s</span>
                   </div>
                 </div>
@@ -951,7 +960,7 @@ export default function InfographiePage() {
 
               {/* Format */}
               <div className="mb-6">
-                <label className="block text-xs font-semibold text-gray-400 mb-2">Format</label>
+                <label className="block text-xs font-semibold text-gray-400 mb-2">{t('format.title')}</label>
                 <div className="flex gap-2">
                   {(['9:16', '16:9'] as Format[]).map((fmt) => (
                     <button key={fmt} onClick={() => setFormat(fmt)} className={`flex-1 py-2 rounded-lg font-medium text-sm transition-all ${format === fmt ? 'bg-gradient-to-r from-pink-600 to-pink-400 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>{fmt}</button>
@@ -961,18 +970,18 @@ export default function InfographiePage() {
 
               {/* Branding */}
               <div className="mb-6 p-4 bg-gray-800 rounded-xl border border-gray-700">
-                <h3 className="text-sm font-semibold text-gray-300 mb-1">Branding</h3>
-                <p className="text-[10px] text-gray-500 mb-3">Mémorisé automatiquement</p>
+                <h3 className="text-sm font-semibold text-gray-300 mb-1">{t('branding.title')}</h3>
+                <p className="text-[10px] text-gray-500 mb-3">{t('branding.memo')}</p>
                 <BrandingPanel branding={branding} onChange={setBranding} compact />
               </div>
 
               {/* Destination */}
               <div className="mb-6">
-                <h3 className="text-sm font-semibold text-gray-300 mb-2">Destination</h3>
+                <h3 className="text-sm font-semibold text-gray-300 mb-2">{t('destination.title')}</h3>
                 <div className="flex gap-2">
                   {(['calendar', 'export', 'both', 'studio'] as Destination[]).map((dest) => (
                     <button key={dest} onClick={() => setDestination(dest)} className={`flex-1 text-center px-2 py-2.5 rounded-lg font-medium text-xs transition-all border ${destination === dest ? 'bg-pink-600/20 border-pink-500 text-white' : 'bg-gray-700 border-gray-700 text-gray-300 hover:bg-gray-600'}`}>
-                      {dest === 'calendar' && '📅 Calendrier'}{dest === 'export' && '📦 Bureau'}{dest === 'both' && '🔄 Les deux'}{dest === 'studio' && '🎵 Studio Son'}
+                      {dest === 'calendar' && `📅 ${t('destination.calendar')}`}{dest === 'export' && `📦 ${t('destination.export')}`}{dest === 'both' && `🔄 ${t('destination.both')}`}{dest === 'studio' && `🎵 ${t('destination.studio')}`}
                     </button>
                   ))}
                 </div>
@@ -985,16 +994,16 @@ export default function InfographiePage() {
                 )}
                 <span className="relative z-10 flex items-center gap-2">
                   {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
-                  {isExporting ? `EXPORT... ${exportProgress}%` : batchMode ? '⚡ EXPORTER 10 VIDÉOS' : '⚡ EXPORTER LA VIDÉO'}
+                  {isExporting ? t('exportButton.exporting', { progress: String(exportProgress) }) : batchMode ? `⚡ ${t('exportButton.exportBatch')}` : `⚡ ${t('exportButton.exportSingle')}`}
                 </span>
               </button>
 
               <div className="bg-gray-700 rounded-lg p-2.5 text-center text-xs text-gray-300 mb-4">
-                <div>{batchMode ? '250 crédits (10 vidéos)' : '25 crédits'}</div>
+                <div>{batchMode ? t('creditsInfo.batch') : t('creditsInfo.single')}</div>
               </div>
 
               {/* Back button */}
-              <button onClick={() => setStep(2)} className="w-full flex items-center justify-center gap-2 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm font-medium transition"><ChevronLeft size={16} /> Retour aux médias</button>
+              <button onClick={() => setStep(2)} className="w-full flex items-center justify-center gap-2 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm font-medium transition"><ChevronLeft size={16} /> {t('backToMedia')}</button>
             </div>
           )}
         </div>
@@ -1002,9 +1011,9 @@ export default function InfographiePage() {
         {/* RIGHT COLUMN — Montage Preview (40%) */}
         <div className="w-2/5 bg-gray-800 border-l border-gray-700 px-6 py-6 overflow-y-auto flex flex-col">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-gray-300">Aperçu Vidéo Finale</h3>
+            <h3 className="text-sm font-semibold text-gray-300">{t('preview.title')}</h3>
             <button onClick={() => { if (!previewAutoPlay) { setPreviewSeqIndex(0); setPreviewProgress(0); } setPreviewAutoPlay(!previewAutoPlay); }} className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-medium transition ${previewAutoPlay ? 'bg-pink-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600 border border-gray-600'}`}>
-              {previewAutoPlay ? <><span className="text-[10px]">❚❚</span> Pause</> : <><Play size={10} /> Lire le montage</>}
+              {previewAutoPlay ? <><span className="text-[10px]">❚❚</span> {t('preview.pause')}</> : <><Play size={10} /> {t('preview.play')}</>}
             </button>
           </div>
 
@@ -1035,7 +1044,7 @@ export default function InfographiePage() {
               <div className="absolute top-2 left-2 z-20 flex items-center gap-1">
                 <div className="w-1.5 h-1.5 rounded-full" style={{ background: activeSequences[previewSeqIndex]?.color, animation: previewAutoPlay ? 'pulse 1.5s infinite' : 'none' }} />
                 <span className="text-[8px] font-bold text-white/70 bg-black/40 backdrop-blur-sm px-1.5 py-0.5 rounded">
-                  {activeSequences[previewSeqIndex]?.type === 'intro' ? 'Affiche' : activeSequences[previewSeqIndex]?.type === 'cards' ? 'Cartes' : activeSequences[previewSeqIndex]?.type === 'video' ? 'Vidéo' : 'CTA'}
+                  {activeSequences[previewSeqIndex]?.type === 'intro' ? t('preview.seqIntro') : activeSequences[previewSeqIndex]?.type === 'cards' ? t('preview.seqCards') : activeSequences[previewSeqIndex]?.type === 'video' ? t('preview.seqVideo') : t('preview.seqCta')}
                 </span>
               </div>
 
@@ -1068,7 +1077,7 @@ export default function InfographiePage() {
             <div className="flex gap-1">
               {activeSequences.map((seq, idx) => (
                 <button key={seq.id} onClick={() => { setPreviewSeqIndex(idx); setPreviewProgress(0); setPreviewAutoPlay(false); }} className={`flex-1 py-1 rounded-lg text-[9px] font-medium transition ${previewSeqIndex === idx ? 'text-white' : 'bg-gray-700 text-gray-500 hover:bg-gray-600'}`} style={previewSeqIndex === idx ? { background: seq.color } : undefined}>
-                  {seq.icon} {seq.type === 'intro' ? 'Affiche' : seq.type === 'cards' ? 'Cartes' : seq.type === 'video' ? 'Vidéo' : 'CTA'} {seq.duration}s
+                  {seq.icon} {seq.type === 'intro' ? t('preview.seqIntro') : seq.type === 'cards' ? t('preview.seqCards') : seq.type === 'video' ? t('preview.seqVideo') : t('preview.seqCta')} {seq.duration}s
                 </button>
               ))}
             </div>
