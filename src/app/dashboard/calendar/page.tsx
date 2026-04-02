@@ -1301,6 +1301,8 @@ export default function CalendarPage() {
           const spPosterUrl = spMeta?.posterUrl as string || spMeta?.characterUrl as string || null;
           const spImgSrc = selectedPost.media_type === 'video' ? (spPosterUrl || selectedPost.media_url) : selectedPost.media_url;
           const spTextCards = (spMeta?.textCards as Array<{ text: string; color: string }>) || [];
+          const spVideoSrc = selectedPost.media_url || (spMeta?.renderedVideoUrl as string) || (spMeta?.videoUrl as string) || null;
+          const spIsVideo = selectedPost.media_type === 'video' || !!(spMeta?.renderedVideoUrl) || !!(spMeta?.videoUrl);
           return (
           <div className="space-y-4">
             {/* Always show preview card — with media, or gradient + info cards */}
@@ -1308,8 +1310,8 @@ export default function CalendarPage() {
               <div className={`relative overflow-hidden rounded-xl ${
                 selectedPost.format === 'reel' ? 'w-48 aspect-[9/16]' : 'w-full max-w-lg aspect-video'
               }`}>
-                {selectedPost.media_type === 'video' && selectedPost.media_url ? (
-                  <video src={selectedPost.media_url} controls className="w-full h-full object-cover rounded" />
+                {spIsVideo && spVideoSrc ? (
+                  <video src={spVideoSrc} controls autoPlay loop playsInline className="w-full h-full object-cover rounded" />
                 ) : (
                   <>
                     {spImgSrc ? (
