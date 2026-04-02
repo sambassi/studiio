@@ -2,8 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Trash2, Upload, Zap, Loader2, Sparkles, Music, Film, Mic, X, Play, Square, Volume2, Image as ImageIcon, Search, ChevronRight, ChevronLeft, ArrowUp, ArrowDown } from 'lucide-react';
-import { TTS_VOICES, previewVoice, synthesize } from '@/lib/tts/edge-tts-client';
+import { Plus, Trash2, Upload, Zap, Loader2, Sparkles, Film, X, Play, Volume2, Image as ImageIcon, Search, ChevronRight, ChevronLeft, ArrowUp, ArrowDown } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
 import { useBranding } from '@/lib/hooks/useBranding';
 import BrandingPanel from '@/components/BrandingPanel';
@@ -18,8 +17,7 @@ interface InfoCard {
 }
 
 type Format = '9:16' | '16:9';
-type Destination = 'calendar' | 'export' | 'both';
-type VoiceOption = 'none' | 'edge' | 'upload';
+type Destination = 'calendar' | 'export' | 'both' | 'studio';
 type ThemeType = 'sommeil' | 'nutrition' | 'energie' | 'stress' | 'communaute' | 'custom';
 
 interface SequenceItem {
@@ -127,12 +125,7 @@ export default function InfographiePage() {
   const [characterImageFile, setCharacterImageFile] = useState<File | null>(null);
   const [characterImagePreview, setCharacterImagePreview] = useState<string | null>(null);
 
-  // Music state
-  const [selectedMusic, setSelectedMusic] = useState<File | null>(null);
-  const [musicName, setMusicName] = useState<string>('');
-  const [musicPreviewUrl, setMusicPreviewUrl] = useState<string | null>(null);
-  const [isPlayingMusic, setIsPlayingMusic] = useState(false);
-  const musicAudioRef = useRef<HTMLAudioElement | null>(null);
+  // Music & Voice handled in Studio Son page
 
   // Video state
   const [selectedVideo, setSelectedVideo] = useState<File | null>(null);
@@ -144,12 +137,6 @@ export default function InfographiePage() {
   const [logoName, setLogoName] = useState<string>('');
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
 
-  // Voice state
-  const [voiceOption, setVoiceOption] = useState<VoiceOption>('none');
-  const [selectedVoice, setSelectedVoice] = useState(TTS_VOICES[0].id);
-  const [voiceFile, setVoiceFile] = useState<File | null>(null);
-  const [voiceFileName, setVoiceFileName] = useState<string>('');
-  const [isPreviewingVoice, setIsPreviewingVoice] = useState(false);
 
   // Batch preview state
   interface BatchVariation { title: string; subtitle: string; salesPhrase: string; photoUrl: string | null; }
@@ -183,16 +170,13 @@ export default function InfographiePage() {
 
   // File input refs
   const posterPhotoInputRef = useRef<HTMLInputElement>(null);
-  const musicInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const characterInputRef = useRef<HTMLInputElement>(null);
-  const voiceInputRef = useRef<HTMLInputElement>(null);
 
   // Cleanup object URLs on unmount
   useEffect(() => {
     return () => {
-      if (musicPreviewUrl) URL.revokeObjectURL(musicPreviewUrl);
       if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
       if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl);
       if (characterImagePreview) URL.revokeObjectURL(characterImagePreview);
@@ -355,25 +339,9 @@ export default function InfographiePage() {
   useEffect(() => { if (batchMode) generateBatchVariations(); else { setBatchVariations([]); setSelectedBatchPreview(null); } }, [batchMode, selectedTheme]);
 
   // --- Media handlers ---
-  const handleMusicSelect = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (!f) return; setSelectedMusic(f); setMusicName(f.name); if (musicPreviewUrl) URL.revokeObjectURL(musicPreviewUrl); setMusicPreviewUrl(URL.createObjectURL(f)); };
   const handleVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (!f) return; setSelectedVideo(f); setVideoName(f.name); if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl); setVideoPreviewUrl(URL.createObjectURL(f)); };
   const handleLogoSelect = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (!f) return; setSelectedLogo(f); setLogoName(f.name); if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl); setLogoPreviewUrl(URL.createObjectURL(f)); };
   const handleCharacterImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (!f) return; setCharacterImageFile(f); if (characterImagePreview) URL.revokeObjectURL(characterImagePreview); setCharacterImagePreview(URL.createObjectURL(f)); setCharacterImage(true); };
-  const handleVoiceFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (!f) return; setVoiceFile(f); setVoiceFileName(f.name); };
-
-  const handlePreviewVoice = async () => {
-    if (isPreviewingVoice) return;
-    setIsPreviewingVoice(true);
-    try { const audioUrl = await previewVoice(selectedVoice); const audio = new Audio(audioUrl); audio.onended = () => setIsPreviewingVoice(false); audio.onerror = () => setIsPreviewingVoice(false); await audio.play(); }
-    catch { setIsPreviewingVoice(false); setExportToast({ message: 'Impossible de lire l\'aperçu vocal.', type: 'error' }); setTimeout(() => setExportToast(null), 4000); }
-  };
-
-  const toggleMusicPlayback = () => {
-    if (!musicPreviewUrl) return;
-    if (isPlayingMusic && musicAudioRef.current) { musicAudioRef.current.pause(); setIsPlayingMusic(false); }
-    else { if (!musicAudioRef.current) { musicAudioRef.current = new Audio(musicPreviewUrl); musicAudioRef.current.onended = () => setIsPlayingMusic(false); } musicAudioRef.current.play(); setIsPlayingMusic(true); }
-  };
-
   // --- Sequence reorder ---
   const moveSequence = (index: number, direction: 'up' | 'down') => {
     const newSeqs = [...sequences];
@@ -396,47 +364,25 @@ export default function InfographiePage() {
     if (cards.length === 0) { setExportToast({ message: 'Ajoutez au moins une carte avant d\'exporter', type: 'error' }); setTimeout(() => setExportToast(null), 3000); return; }
     setIsExporting(true); setExportProgress(0);
     try {
-      // ═══ PHASE 0: Generate Edge TTS voice if selected ═══
-      let actualVoiceFile = voiceFile;
-      if (voiceOption === 'edge' && !voiceFile) {
-        setExportToast({ message: 'Génération de la voix off...', type: 'success' });
-        setExportProgress(1);
-        try {
-          // Build TTS text from title + subtitle + salesPhrase + card labels
-          const ttsText = [
-            title || 'Votre vidéo',
-            subtitle,
-            salesPhrase,
-            ...cards.map(c => `${c.label}: ${c.value}`),
-          ].filter(Boolean).join('. ');
-          console.log('[Export] Generating Edge TTS with text:', ttsText.substring(0, 100));
-          const ttsBlob = await synthesize(ttsText, selectedVoice);
-          actualVoiceFile = new File([ttsBlob], 'voiceover-tts.mp3', { type: 'audio/mpeg' });
-          console.log('[Export] Edge TTS generated:', (ttsBlob.size / 1024).toFixed(1), 'KB');
-        } catch (ttsErr) {
-          console.error('[Export] Edge TTS generation failed:', ttsErr);
-        }
-      }
-
-      // ═══ PHASE 1: Upload raw files to get URLs (0-20%) ═══
+      // ═══ PHASE 1: Upload raw files to get URLs (0-20%) — audio handled in Studio Son ═══
       setExportToast({ message: 'Upload des fichiers...', type: 'success' });
       setExportProgress(3);
       const filesToUpload = [
-        selectedMusic ? uploadFile(selectedMusic, 'music') : Promise.resolve(null),
         selectedVideo ? uploadFile(selectedVideo, 'rush') : Promise.resolve(null),
         selectedLogo ? uploadFile(selectedLogo, 'logo') : Promise.resolve(null),
         characterImageFile ? uploadFile(characterImageFile, 'thumbnail') : Promise.resolve(null),
-        actualVoiceFile ? uploadFile(actualVoiceFile, 'voiceover') : Promise.resolve(null),
         posterPhotoFile ? uploadFile(posterPhotoFile, 'poster') : Promise.resolve(null),
       ];
-      const totalFiles = filesToUpload.filter((_, i) => [selectedMusic, selectedVideo, selectedLogo, characterImageFile, actualVoiceFile, posterPhotoFile][i]).length;
+      const totalFiles = filesToUpload.filter((_, i) => [selectedVideo, selectedLogo, characterImageFile, posterPhotoFile][i]).length;
       let uploadedCount = 0;
       const uploadResults = await Promise.all(filesToUpload.map(async (p, i) => {
         const result = await p;
-        if ([selectedMusic, selectedVideo, selectedLogo, characterImageFile, actualVoiceFile, posterPhotoFile][i]) { uploadedCount++; setExportProgress(Math.round(3 + (uploadedCount / Math.max(totalFiles, 1)) * 17)); }
+        if ([selectedVideo, selectedLogo, characterImageFile, posterPhotoFile][i]) { uploadedCount++; setExportProgress(Math.round(3 + (uploadedCount / Math.max(totalFiles, 1)) * 17)); }
         return result;
       }));
-      const [musicUrl, videoUrl, logoUrl, characterUrl, voiceUrl, posterUrl] = uploadResults;
+      const [videoUrl, logoUrl, characterUrl, posterUrl] = uploadResults;
+      const musicUrl: string | null = null;
+      const voiceUrl: string | null = null;
 
       // ═══ PHASE 2: Batch variations ═══
       const batchTotal = batchMode ? 10 : 1;
@@ -456,7 +402,7 @@ export default function InfographiePage() {
       let lastError = '';
       let savedBlobForExport: Blob | null = null;
 
-      if (destination === 'calendar' || destination === 'both') {
+      if (destination === 'calendar' || destination === 'both' || destination === 'studio') {
         const today = new Date();
 
         for (let b = 0; b < batchTotal; b++) {
@@ -526,14 +472,19 @@ export default function InfographiePage() {
                   posterUrl: posterUrl || null, pexelsUrl: bMediaUrl, characterUrl: characterUrl || null,
                   videoUrl: renderedVideoUrl || null, renderedVideoUrl: renderedVideoUrl || null, rawVideoUrl: videoUrl || null,
                   logoUrl: logoUrl || null, musicUrl: musicUrl || null, voiceUrl: voiceUrl || null,
-                  voiceMode: voiceOption !== 'none' ? voiceOption : null,
+                  voiceMode: 'none',
                   sequences: { intro: seqIntro, cards: seqCards, video: seqVideo, cta: seqCta, total: totalDuration, order: seqOrder },
                   branding: { watermarkText: branding.watermarkText, borderColor: branding.borderEnabled ? branding.borderColor : null, ctaText: branding.ctaText, ctaSubText: branding.ctaSubText, accentColor: branding.accentColor },
                 },
               }),
             });
             const postData = await postRes.json();
-            if (postData.success) { successCount++; }
+            if (postData.success) {
+              successCount++;
+              if (b === 0 && postData?.data?.id) {
+                (window as unknown as Record<string, unknown>).__lastCreatedPostId = postData.data.id;
+              }
+            }
             else { lastError = postData.error || 'Unknown error'; }
           } catch (postErr) { lastError = String(postErr); }
 
@@ -591,7 +542,12 @@ export default function InfographiePage() {
       }
 
       setExportProgress(100);
-      if (destination === 'calendar' || destination === 'both') {
+      if (destination === 'studio') {
+        const createdPostId = (window as unknown as Record<string, unknown>).__lastCreatedPostId as string;
+        setExportToast({ message: 'Redirection vers Studio Son...', type: 'success' });
+        await new Promise((r) => setTimeout(r, 1000));
+        router.push(createdPostId ? `/dashboard/audio-studio?postId=${createdPostId}` : '/dashboard/audio-studio');
+      } else if (destination === 'calendar' || destination === 'both') {
         if (successCount > 0) {
           setExportToast({ message: `${successCount} vidéo${successCount > 1 ? 's' : ''} montée${successCount > 1 ? 's' : ''} au calendrier !`, type: 'success' });
           await new Promise((r) => setTimeout(r, 1500)); router.push('/dashboard/calendar');
@@ -689,11 +645,9 @@ export default function InfographiePage() {
     <div className="min-h-screen bg-gray-900 text-white flex flex-col">
       {/* Hidden file inputs */}
       <input ref={posterPhotoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePosterPhotoSelect} />
-      <input ref={musicInputRef} type="file" accept="audio/*" className="hidden" onChange={handleMusicSelect} />
       <input ref={videoInputRef} type="file" accept="video/*" className="hidden" onChange={handleVideoSelect} />
       <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoSelect} />
       <input ref={characterInputRef} type="file" accept="image/*" className="hidden" onChange={handleCharacterImageSelect} />
-      <input ref={voiceInputRef} type="file" accept="audio/*" className="hidden" onChange={handleVoiceFileSelect} />
 
       {/* Toast — only show final messages, not during rendering progress */}
       {exportToast && !isExporting && (
@@ -911,52 +865,15 @@ export default function InfographiePage() {
                 )}
               </div>
 
-              {/* Music */}
+              {/* Music & Voice — handled in Studio Son */}
               <div className="mb-6">
-                <h3 className="text-sm font-semibold text-gray-300 mb-2">Musique</h3>
-                {selectedMusic ? (
-                  <div className="flex items-center gap-3 bg-gray-800 text-white px-4 py-3 rounded-lg border border-gray-700">
-                    <button onClick={toggleMusicPlayback} className="flex-shrink-0 hover:text-pink-400 transition">{isPlayingMusic ? <Square size={18} /> : <Play size={18} />}</button>
-                    <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{musicName}</p><p className="text-xs text-gray-400">{(selectedMusic.size / (1024 * 1024)).toFixed(1)} Mo</p></div>
-                    <button onClick={() => { setSelectedMusic(null); setMusicName(''); if (musicPreviewUrl) URL.revokeObjectURL(musicPreviewUrl); setMusicPreviewUrl(null); if (musicAudioRef.current) { musicAudioRef.current.pause(); musicAudioRef.current = null; } setIsPlayingMusic(false); }} className="p-1 text-gray-400 hover:text-red-400 transition"><X size={16} /></button>
+                <div className="bg-purple-900/20 rounded-xl p-4 border border-purple-500/30 flex items-center gap-3">
+                  <Volume2 size={20} className="text-purple-400 shrink-0" />
+                  <div>
+                    <p className="text-sm text-white font-medium">Musique & Voix off</p>
+                    <p className="text-xs text-gray-400 mt-0.5">L&apos;audio sera ajouté après le montage dans le <span className="text-purple-400 font-medium">Studio Son</span>.</p>
                   </div>
-                ) : (
-                  <button onClick={() => musicInputRef.current?.click()} className="w-full flex flex-col items-center gap-2 bg-gray-800 hover:bg-gray-700 border-2 border-dashed border-gray-700 hover:border-pink-500/50 rounded-lg py-5 text-gray-400 hover:text-gray-300 transition cursor-pointer">
-                    <Music size={20} /><span className="text-sm">Choisir une musique</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Voice */}
-              <div className="mb-6">
-                <h3 className="text-sm font-semibold text-gray-300 mb-2">Voix Off</h3>
-                <div className="flex gap-2 mb-2">
-                  {(['none', 'edge', 'upload'] as VoiceOption[]).map((opt) => (
-                    <button key={opt} onClick={() => setVoiceOption(opt)} className={`flex-1 py-2 rounded-lg text-xs font-medium transition border ${voiceOption === opt ? 'bg-pink-600/20 border-pink-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
-                      {opt === 'none' && 'Aucune'}{opt === 'edge' && 'Edge TTS'}{opt === 'upload' && 'Upload'}
-                    </button>
-                  ))}
                 </div>
-                {voiceOption === 'edge' && (
-                  <div className="space-y-2">
-                    <select value={selectedVoice} onChange={(e) => setSelectedVoice(e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white focus:border-pink-500 focus:outline-none">
-                      {TTS_VOICES.map((v) => <option key={v.id} value={v.id}>{v.name} ({v.lang})</option>)}
-                    </select>
-                    <button onClick={handlePreviewVoice} disabled={isPreviewingVoice} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-gray-800 border border-gray-700 hover:bg-gray-700 rounded-lg transition">
-                      {isPreviewingVoice ? <Loader2 size={12} className="animate-spin" /> : <Volume2 size={12} />} {isPreviewingVoice ? 'Lecture...' : 'Aperçu'}
-                    </button>
-                  </div>
-                )}
-                {voiceOption === 'upload' && (
-                  voiceFile ? (
-                    <div className="flex items-center gap-2 bg-gray-800 px-3 py-2 rounded-lg border border-gray-700">
-                      <Mic size={14} className="text-green-400" /><span className="text-xs text-white flex-1 truncate">{voiceFileName}</span>
-                      <button onClick={() => { setVoiceFile(null); setVoiceFileName(''); }} className="text-gray-400 hover:text-red-400"><X size={14} /></button>
-                    </div>
-                  ) : (
-                    <button onClick={() => voiceInputRef.current?.click()} className="w-full py-3 bg-gray-800 border border-dashed border-gray-700 rounded-lg text-xs text-gray-400 hover:border-green-500/50 transition">Importer un fichier audio</button>
-                  )
-                )}
               </div>
 
               {/* Logo */}
@@ -1041,9 +958,9 @@ export default function InfographiePage() {
               <div className="mb-6">
                 <h3 className="text-sm font-semibold text-gray-300 mb-2">Destination</h3>
                 <div className="flex gap-2">
-                  {(['calendar', 'export', 'both'] as Destination[]).map((dest) => (
+                  {(['calendar', 'export', 'both', 'studio'] as Destination[]).map((dest) => (
                     <button key={dest} onClick={() => setDestination(dest)} className={`flex-1 text-center px-2 py-2.5 rounded-lg font-medium text-xs transition-all border ${destination === dest ? 'bg-pink-600/20 border-pink-500 text-white' : 'bg-gray-700 border-gray-700 text-gray-300 hover:bg-gray-600'}`}>
-                      {dest === 'calendar' && '📅 Calendrier'}{dest === 'export' && '📦 Export'}{dest === 'both' && '🔄 Les deux'}
+                      {dest === 'calendar' && '📅 Calendrier'}{dest === 'export' && '📦 Bureau'}{dest === 'both' && '🔄 Les deux'}{dest === 'studio' && '🎵 Studio Son'}
                     </button>
                   ))}
                 </div>

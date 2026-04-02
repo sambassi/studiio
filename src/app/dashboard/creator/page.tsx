@@ -12,19 +12,15 @@ import {
   X,
   Volume2,
   Zap,
-  Music,
   Sparkles,
   Search,
   Image as ImageIcon,
   Film,
-  Mic,
   Eye,
   GripVertical,
   Play,
-  Pause,
   Type,
 } from 'lucide-react';
-import { TTS_VOICES, previewVoice, synthesize } from '@/lib/tts/edge-tts-client';
 import { useBranding } from '@/lib/hooks/useBranding';
 import BrandingPanel from '@/components/BrandingPanel';
 import { composeAndUpload, downloadBlob } from '@/lib/video-composer';
@@ -70,8 +66,6 @@ interface PexelsPhoto {
   photographer: string;
   alt: string;
 }
-
-type VoiceMode = 'none' | 'edge' | 'upload';
 
 interface Toast {
   message: string;
@@ -153,20 +147,7 @@ export default function CreatorPage() {
   const [pexelsLoading, setPexelsLoading] = useState(false);
   const [selectedPexelsUrl, setSelectedPexelsUrl] = useState<string | null>(null);
 
-  // Music
-  const [backgroundMusic, setBackgroundMusic] = useState<File | null>(null);
-  const [musicName, setMusicName] = useState('');
-
-  // Voice
-  const [voiceMode, setVoiceMode] = useState<VoiceMode>('none');
-  const [ttsVoice, setTtsVoice] = useState('fr-FR-DeniseNeural');
-  const [ttsText, setTtsText] = useState('');
-  const [isGeneratingVoice, setIsGeneratingVoice] = useState(false);
-  const [generatedVoiceUrl, setGeneratedVoiceUrl] = useState<string | null>(null);
-  const [generatedVoiceBlob, setGeneratedVoiceBlob] = useState<Blob | null>(null);
-  const [voiceUploadFile, setVoiceUploadFile] = useState<File | null>(null);
-  const [previewingVoice, setPreviewingVoice] = useState(false);
-  const [previewAudio, setPreviewAudio] = useState<HTMLAudioElement | null>(null);
+  // Audio removed — handled in Studio Son page
 
   // Logo
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -189,11 +170,6 @@ export default function CreatorPage() {
   const touchStartPos = useRef<{ x: number; y: number; idx: number } | null>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
 
-  // Music preview
-  const [musicPreviewUrl, setMusicPreviewUrl] = useState<string | null>(null);
-  const [isMusicPlaying, setIsMusicPlaying] = useState(false);
-  const musicAudioRef = useRef<HTMLAudioElement | null>(null);
-
   // UI
   const [toast, setToast] = useState<Toast | null>(null);
 
@@ -210,8 +186,6 @@ export default function CreatorPage() {
   // Refs
   const rushInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const characterInputRef = useRef<HTMLInputElement>(null);
-  const musicInputRef = useRef<HTMLInputElement>(null);
-  const voiceInputRef = useRef<HTMLInputElement>(null);
 
   // Cleanup
   useEffect(() => {
@@ -220,7 +194,6 @@ export default function CreatorPage() {
         if (r.previewUrl) URL.revokeObjectURL(r.previewUrl);
       });
       if (characterPreview) URL.revokeObjectURL(characterPreview);
-      if (generatedVoiceUrl) URL.revokeObjectURL(generatedVoiceUrl);
     };
   }, []);
 
@@ -664,26 +637,6 @@ export default function CreatorPage() {
     setDragOverIndex(null);
   };
 
-  // ---- Music preview ----
-  const handleMusicTogglePlay = () => {
-    if (!musicPreviewUrl) return;
-    if (musicAudioRef.current) {
-      if (isMusicPlaying) {
-        musicAudioRef.current.pause();
-        setIsMusicPlaying(false);
-      } else {
-        musicAudioRef.current.play();
-        setIsMusicPlaying(true);
-      }
-    } else {
-      const audio = new Audio(musicPreviewUrl);
-      audio.onended = () => setIsMusicPlaying(false);
-      musicAudioRef.current = audio;
-      audio.play();
-      setIsMusicPlaying(true);
-    }
-  };
-
   // Pexels search for Personnage
   const searchPexelsCharacter = async (query?: string) => {
     const q = query || characterPrompt;
@@ -720,76 +673,6 @@ export default function CreatorPage() {
     setCharacterPreview(URL.createObjectURL(file));
   };
 
-  const handleMusicUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setBackgroundMusic(file);
-    setMusicName(file.name);
-    // Create preview URL for playback
-    if (musicPreviewUrl) URL.revokeObjectURL(musicPreviewUrl);
-    if (musicAudioRef.current) {
-      musicAudioRef.current.pause();
-      musicAudioRef.current = null;
-    }
-    setIsMusicPlaying(false);
-    setMusicPreviewUrl(URL.createObjectURL(file));
-  };
-
-  const handleVoiceUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setVoiceUploadFile(file);
-  };
-
-  const handleGenerateVoice = async () => {
-    if (!ttsText.trim()) {
-      showToast('Entrez un texte à lire');
-      return;
-    }
-    setIsGeneratingVoice(true);
-    try {
-      const blob = await synthesize(ttsText, ttsVoice);
-      if (generatedVoiceUrl) URL.revokeObjectURL(generatedVoiceUrl);
-      const url = URL.createObjectURL(blob);
-      setGeneratedVoiceUrl(url);
-      setGeneratedVoiceBlob(blob);
-      console.log('[Creator] TTS blob saved:', (blob.size / 1024).toFixed(1), 'KB');
-      // Auto-play preview
-      const audio = new Audio(url);
-      audio.play();
-      showToast('Voix générée avec succès !', 'success');
-    } catch (err) {
-      console.error('TTS error:', err);
-      showToast('Erreur lors de la génération de la voix');
-    } finally {
-      setIsGeneratingVoice(false);
-    }
-  };
-
-  const handlePreviewVoice = async () => {
-    if (previewAudio) {
-      previewAudio.pause();
-      setPreviewAudio(null);
-      setPreviewingVoice(false);
-      return;
-    }
-    setPreviewingVoice(true);
-    try {
-      const url = await previewVoice(ttsVoice);
-      const audio = new Audio(url);
-      audio.onended = () => {
-        setPreviewingVoice(false);
-        setPreviewAudio(null);
-      };
-      audio.play();
-      setPreviewAudio(audio);
-    } catch (err) {
-      console.error('Preview error:', err);
-      showToast('Erreur de prévisualisation de la voix');
-      setPreviewingVoice(false);
-    }
-  };
-
   const uploadFile = async (file: File, purpose: string): Promise<string | null> => {
     try {
       const formData = new FormData();
@@ -824,33 +707,7 @@ export default function CreatorPage() {
         if (url) rushUrls.push(url);
       }
 
-      // Generate Edge TTS voice if selected and no manual upload
-      let actualVoiceFile = voiceUploadFile;
-      if (voiceMode === 'edge' && ttsText.trim() && !voiceUploadFile) {
-        setRenderStage('Génération de la voix off...');
-        setRenderProgress(16);
-        try {
-          // Reuse already-generated TTS blob if available (avoids re-synthesis which may fail)
-          let ttsBlob: Blob;
-          if (generatedVoiceBlob && generatedVoiceBlob.size > 100) {
-            console.log('[Creator] Reusing previously generated TTS blob:', (generatedVoiceBlob.size / 1024).toFixed(1), 'KB');
-            ttsBlob = generatedVoiceBlob;
-          } else {
-            console.log('[Creator] Generating Edge TTS:', ttsText.substring(0, 80));
-            ttsBlob = await synthesize(ttsText, ttsVoice);
-          }
-          if (ttsBlob.size > 100) {
-            actualVoiceFile = new File([ttsBlob], 'voiceover-tts.mp3', { type: ttsBlob.type || 'audio/mpeg' });
-            console.log('[Creator] TTS voice file ready:', (ttsBlob.size / 1024).toFixed(1), 'KB');
-          } else {
-            console.warn('[Creator] TTS blob too small, skipping voice:', ttsBlob.size, 'bytes');
-          }
-        } catch (ttsErr) {
-          console.error('[Creator] Edge TTS generation failed:', ttsErr);
-          showToast('Erreur génération voix off', 'error');
-        }
-      }
-
+      // Audio (music/voice) is handled in Studio Son page — compose without audio here
       setRenderStage('Upload des médias...');
       setRenderProgress(17);
 
@@ -870,31 +727,18 @@ export default function CreatorPage() {
         }
       }
 
-      const [musicUrl, charUrl, voiceUrl, logoUrl] = await Promise.all([
-        backgroundMusic ? uploadFile(backgroundMusic, 'music') : null,
+      const [charUrl, logoUrl] = await Promise.all([
         charImageToUpload ? uploadFile(charImageToUpload, 'thumbnail') : null,
-        actualVoiceFile ? uploadFile(actualVoiceFile, 'voice') : null,
         logoFile ? uploadFile(logoFile, 'logo') : null,
       ]);
-      console.log('[Creator] Upload results — music:', !!musicUrl, 'char:', !!charUrl, 'voice:', !!voiceUrl, 'logo:', !!logoUrl);
+      console.log('[Creator] Upload results — char:', !!charUrl, 'logo:', !!logoUrl);
 
-      // CRITICAL: ALWAYS use blob URLs from original File objects for the composer.
-      // Supabase URLs are stored in metadata for later playback, but for client-side
-      // rendering, blob URLs are FASTER and GUARANTEED to work (no CORS/permissions issues).
-      // This fixes the "no audio in exported video" bug caused by Supabase URL fetch failures.
       const effectiveCharUrl = charUrl || characterPreview || null;
       const effectiveLogoUrl = logoFile ? URL.createObjectURL(logoFile) : (logoPreview || logoUrl || null);
 
-      // ALWAYS create blob URLs from original Files for the composer
-      const effectiveMusicUrl: string | null = backgroundMusic ? URL.createObjectURL(backgroundMusic) : (musicUrl || null);
-      const effectiveVoiceUrl: string | null = actualVoiceFile ? URL.createObjectURL(actualVoiceFile) : (voiceUrl || null);
-
-      console.log('[Creator] Composer URLs (blob preferred) — music:', effectiveMusicUrl?.substring(0, 60) || 'NULL',
-        '| voice:', effectiveVoiceUrl?.substring(0, 60) || 'NULL',
-        '| logo:', effectiveLogoUrl?.substring(0, 60) || 'NULL');
-      console.log('[Creator] Original files — music:', !!backgroundMusic, (backgroundMusic?.size || 0), 'bytes',
-        '| voice:', !!actualVoiceFile, (actualVoiceFile?.size || 0), 'bytes',
-        '| logo:', !!logoFile);
+      // No audio — music/voice handled in Studio Son page
+      const effectiveMusicUrl: string | null = null;
+      const effectiveVoiceUrl: string | null = null;
       setRenderProgress(20);
 
       // ═══ PHASE 2: Batch variations ═══
@@ -938,7 +782,7 @@ export default function CreatorPage() {
         emoji: '📝', label: '', value: c.text, color: c.color,
       }));
 
-      if (destination === 'calendar' || destination === 'both') {
+      if (destination === 'calendar' || destination === 'both' || destination === 'studio') {
         const today = new Date();
         const usedTitles: string[] = [];
         const usedSubtitles: string[] = [];
@@ -1017,7 +861,7 @@ export default function CreatorPage() {
                   rushUrls, musicUrl: effectiveMusicUrl || null, voiceUrl: effectiveVoiceUrl || null, characterUrl: effectiveCharUrl || null, logoUrl: effectiveLogoUrl || null,
                   posterUrl: effectiveCharUrl || null,
                   renderedVideoUrl: renderedVideoUrl || null, videoUrl: renderedVideoUrl || rushUrl || null,
-                  voiceMode, ttsVoice: voiceMode === 'edge' ? ttsVoice : null, ttsText: voiceMode === 'edge' ? ttsText : null,
+                  voiceMode: 'none', ttsVoice: null, ttsText: null,
                   textCards: textCards.filter((c) => c.text.trim()).map((c) => ({ text: c.text, color: c.color })),
                   // Cards in the format expected by calendar preview & video-composer
                   cards: cardItems.map((c) => ({ emoji: c.emoji || '📝', label: c.label || c.value, value: c.value, color: c.color })),
@@ -1035,8 +879,13 @@ export default function CreatorPage() {
               }),
             });
             if (postRes.ok) {
+              const postData = await postRes.json().catch(() => ({}));
               successCount++;
-              console.log(`[Creator] Post ${b + 1} created successfully`);
+              // Save first post ID for Studio Son redirect
+              if (b === 0 && postData?.data?.id) {
+                (window as unknown as Record<string, unknown>).__lastCreatedPostId = postData.data.id;
+              }
+              console.log(`[Creator] Post ${b + 1} created successfully, id:`, postData?.data?.id);
             } else {
               console.error(`[Creator] Post ${b + 1} failed:`, postRes.status, await postRes.text().catch(() => ''));
             }
@@ -1122,7 +971,12 @@ export default function CreatorPage() {
 
       showToast(successCount > 0 ? `${successCount} vidéo${successCount > 1 ? 's' : ''} montée${successCount > 1 ? 's' : ''} avec succès !` : 'Vidéo montée avec succès !', 'success');
 
-      if (destination === 'calendar' || destination === 'both') {
+      if (destination === 'studio') {
+        // Redirect to Audio Studio with the first created post
+        const createdPostId = (window as unknown as Record<string, unknown>).__lastCreatedPostId as string;
+        await new Promise((r) => setTimeout(r, 1000));
+        router.push(createdPostId ? `/dashboard/audio-studio?postId=${createdPostId}` : '/dashboard/audio-studio');
+      } else if (destination === 'calendar' || destination === 'both') {
         await new Promise((r) => setTimeout(r, 1500));
         router.push('/dashboard/calendar');
       }
@@ -1159,8 +1013,6 @@ export default function CreatorPage() {
     <div className="min-h-[calc(100vh-64px)] flex flex-col text-white">
       {/* Hidden file inputs */}
       <input ref={characterInputRef} type="file" accept="image/*" className="hidden" onChange={handleCharacterUpload} />
-      <input ref={musicInputRef} type="file" accept="audio/*" className="hidden" onChange={handleMusicUpload} />
-      <input ref={voiceInputRef} type="file" accept="audio/*" className="hidden" onChange={handleVoiceUpload} />
       <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -1811,171 +1663,12 @@ export default function CreatorPage() {
                 )}
               </div>
 
-              {/* Music & Voice - Side by Side */}
-              <div className="grid grid-cols-2 gap-4">
-                {/* Musique */}
-                <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
-                  <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
-                    <Music size={20} />
-                    Musique
-                  </h2>
-                  {backgroundMusic ? (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-3 bg-gray-900 rounded-lg p-3">
-                        <button
-                          onClick={handleMusicTogglePlay}
-                          className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-600 hover:bg-purple-700 flex items-center justify-center transition"
-                        >
-                          {isMusicPlaying ? <Pause size={14} /> : <Play size={14} className="ml-0.5" />}
-                        </button>
-                        <div className="flex-1 min-w-0">
-                          <span className="text-sm text-white truncate block">{musicName}</span>
-                          <span className="text-[10px] text-gray-500">{isMusicPlaying ? 'Lecture en cours...' : 'Cliquez ▶ pour écouter'}</span>
-                        </div>
-                        <button
-                          onClick={() => {
-                            if (musicAudioRef.current) {
-                              musicAudioRef.current.pause();
-                              musicAudioRef.current = null;
-                            }
-                            if (musicPreviewUrl) URL.revokeObjectURL(musicPreviewUrl);
-                            setBackgroundMusic(null);
-                            setMusicName('');
-                            setMusicPreviewUrl(null);
-                            setIsMusicPlaying(false);
-                          }}
-                          className="text-gray-400 hover:text-red-400 transition"
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-                      <button
-                        onClick={() => musicInputRef.current?.click()}
-                        className="w-full text-xs text-purple-400 hover:text-purple-300 py-1.5 transition text-center"
-                      >
-                        Changer de musique
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => musicInputRef.current?.click()}
-                      className="w-full flex flex-col items-center justify-center gap-2 py-10 rounded-lg border-2 border-dashed border-gray-700 hover:border-purple-500/50 text-gray-500 hover:text-gray-400 transition cursor-pointer"
-                    >
-                      <Upload size={20} />
-                      <span className="text-xs">MP3, WAV, OGG</span>
-                    </button>
-                  )}
-                </div>
-
-                {/* Voix off */}
-                <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
-                  <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
-                    <Mic size={20} />
-                    Voix off
-                  </h2>
-
-                  {/* Mode buttons */}
-                  <div className="flex gap-1.5 mb-3">
-                    {(['none', 'edge', 'upload'] as VoiceMode[]).map((m) => (
-                      <button
-                        key={m}
-                        onClick={() => setVoiceMode(m)}
-                        className={`flex-1 py-2 rounded-lg text-xs font-medium transition ${
-                          voiceMode === m
-                            ? 'bg-purple-600 text-white'
-                            : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                        }`}
-                      >
-                        {m === 'none' && 'Aucune'}
-                        {m === 'edge' && 'Edge TTS'}
-                        {m === 'upload' && 'Upload'}
-                      </button>
-                    ))}
-                  </div>
-
-                  {voiceMode === 'edge' && (
-                    <div className="space-y-3">
-                      <div className="flex gap-2">
-                        <select
-                          value={ttsVoice}
-                          onChange={(e) => setTtsVoice(e.target.value)}
-                          className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:border-purple-500 focus:outline-none"
-                        >
-                          {TTS_VOICES.map((v) => (
-                            <option key={v.id} value={v.id}>
-                              {v.flag} {v.name} ({v.gender === 'Female' ? 'Femme' : 'Homme'})
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          onClick={handlePreviewVoice}
-                          disabled={previewingVoice}
-                          className={`px-3 py-2 rounded-lg transition ${
-                            previewingVoice
-                              ? 'bg-purple-600 text-white'
-                              : 'bg-gray-700 hover:bg-gray-600'
-                          }`}
-                          title="Aperçu de la voix"
-                        >
-                          {previewingVoice ? <Loader2 size={14} className="animate-spin" /> : <Volume2 size={14} />}
-                        </button>
-                      </div>
-                      <textarea
-                        value={ttsText}
-                        onChange={(e) => setTtsText(e.target.value)}
-                        placeholder="Texte à lire..."
-                        rows={3}
-                        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none resize-none"
-                      />
-                      <button
-                        onClick={handleGenerateVoice}
-                        disabled={isGeneratingVoice}
-                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 rounded-lg text-sm font-medium transition"
-                      >
-                        {isGeneratingVoice ? (
-                          <Loader2 size={14} className="animate-spin" />
-                        ) : (
-                          <Volume2 size={14} />
-                        )}
-                        {isGeneratingVoice ? 'Génération...' : 'Générer la voix'}
-                      </button>
-                      {generatedVoiceUrl && (
-                        <div className="flex items-center gap-2 bg-green-900/30 border border-green-700/50 rounded-lg p-2">
-                          <Volume2 size={12} className="text-green-400" />
-                          <span className="text-xs text-green-300 flex-1">Voix générée</span>
-                          <button
-                            onClick={() => {
-                              const a = new Audio(generatedVoiceUrl);
-                              a.play();
-                            }}
-                            className="text-xs text-green-400 hover:text-green-300 underline"
-                          >
-                            Écouter
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {voiceMode === 'upload' && (
-                    voiceUploadFile ? (
-                      <div className="flex items-center gap-2 bg-gray-900 rounded-lg p-3">
-                        <Mic size={14} className="text-purple-400" />
-                        <span className="text-xs text-white truncate flex-1">{voiceUploadFile.name}</span>
-                        <button onClick={() => setVoiceUploadFile(null)} className="text-gray-400 hover:text-red-400">
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => voiceInputRef.current?.click()}
-                        className="w-full flex flex-col items-center justify-center gap-2 py-6 rounded-lg border-2 border-dashed border-gray-700 hover:border-purple-500/50 text-gray-500 hover:text-gray-400 transition cursor-pointer"
-                      >
-                        <Upload size={16} />
-                        <span className="text-xs">MP3, WAV</span>
-                      </button>
-                    )
-                  )}
+              {/* Audio note */}
+              <div className="bg-purple-900/20 rounded-xl p-4 border border-purple-500/30 flex items-center gap-3">
+                <Volume2 size={20} className="text-purple-400 shrink-0" />
+                <div>
+                  <p className="text-sm text-white font-medium">Musique & Voix off</p>
+                  <p className="text-xs text-gray-400 mt-0.5">L&apos;audio sera ajouté après le montage dans le <span className="text-purple-400 font-medium">Studio Son</span>. Choisissez &quot;Studio Son&quot; comme destination pour y accéder.</p>
                 </div>
               </div>
 
@@ -2063,16 +1756,17 @@ export default function CreatorPage() {
               {/* Destination */}
               <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
                 <h2 className="text-lg font-bold mb-4">Destination</h2>
-                <div className="flex gap-2">
+                <div className="flex gap-2 mb-2">
                   {[
                     { value: 'calendar', label: '📅 Calendrier' },
+                    { value: 'studio', label: '🎵 Studio Son' },
                     { value: 'export', label: '📦 Export' },
                     { value: 'both', label: '🔄 Les deux' },
                   ].map((dest) => (
                     <button
                       key={dest.value}
                       onClick={() => setDestination(dest.value)}
-                      className={`flex-1 text-center px-2 py-2.5 rounded-lg font-medium text-xs transition border ${
+                      className={`flex-1 text-center px-1.5 py-2.5 rounded-lg font-medium text-[11px] transition border ${
                         destination === dest.value
                           ? 'bg-purple-500/20 border-purple-500 text-white'
                           : 'bg-gray-700 border-gray-700 text-gray-300 hover:bg-gray-600'
@@ -2082,6 +1776,9 @@ export default function CreatorPage() {
                     </button>
                   ))}
                 </div>
+                {destination === 'studio' && (
+                  <p className="text-[10px] text-purple-400 mt-1">La vidéo sera composée sans son, puis redirigée vers le Studio Son pour ajouter musique et voix off</p>
+                )}
               </div>
             </div>
           )}
@@ -2243,20 +1940,12 @@ export default function CreatorPage() {
                         }}>{salesPhrase}</p>
                       )}
 
-                      {/* Audio indicators */}
+                      {/* Audio note */}
                       <div className="flex items-center justify-center gap-1">
-                        {backgroundMusic && (
-                          <span className="text-[6px] text-white px-1.5 py-0.5 rounded-full flex items-center gap-0.5" style={{ background: 'linear-gradient(135deg, #7C3AED, #D91CD2)' }}>
-                            <Music size={5} />
-                            Musique
-                          </span>
-                        )}
-                        {voiceMode !== 'none' && (
-                          <span className="text-[6px] text-white px-1.5 py-0.5 rounded-full flex items-center gap-0.5" style={{ background: 'linear-gradient(135deg, #059669, #10B981)' }}>
-                            <Mic size={5} />
-                            Voix off
-                          </span>
-                        )}
+                        <span className="text-[6px] text-white/50 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 bg-gray-700/50">
+                          <Volume2 size={5} />
+                          Son ajouté dans Studio Son
+                        </span>
                       </div>
 
                       {/* Watermark */}
@@ -2297,18 +1986,10 @@ export default function CreatorPage() {
                   <span className="text-white">{textCards.length}</span>
                 </div>
               )}
-              {backgroundMusic && (
-                <div className="flex justify-between text-[10px]">
-                  <span className="text-gray-500">Musique</span>
-                  <span className="text-green-400 truncate ml-2">{musicName}</span>
-                </div>
-              )}
-              {voiceMode !== 'none' && (
-                <div className="flex justify-between text-[10px]">
-                  <span className="text-gray-500">Voix off</span>
-                  <span className="text-green-400">{voiceMode === 'edge' ? 'Edge TTS' : 'Upload'}</span>
-                </div>
-              )}
+              <div className="flex justify-between text-[10px]">
+                <span className="text-gray-500">Audio</span>
+                <span className="text-purple-400">Studio Son</span>
+              </div>
               {batchCount > 1 && (
                 <div className="flex justify-between text-[10px]">
                   <span className="text-gray-500">Batch</span>

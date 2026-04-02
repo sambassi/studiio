@@ -1265,6 +1265,9 @@ export default function CalendarPage() {
                               {(post.media_url || post.metadata?.characterUrl) && (
                                 <button onClick={() => handleExportPost(post)} className="p-1 rounded bg-gray-700 hover:bg-blue-600 text-gray-300 hover:text-white transition" title="Exporter"><Download className="w-3 h-3" /></button>
                               )}
+                              {!post.metadata?.hasAudio && post.media_type === 'video' && (
+                                <button onClick={() => { window.location.href = `/dashboard/audio-studio?postId=${post.id}`; }} className="p-1 rounded bg-purple-600 hover:bg-purple-700 text-white transition" title="Ajouter le son"><Volume2 className="w-3 h-3" /></button>
+                              )}
                               <button onClick={() => handleFullPreview(post)} className="p-1 rounded bg-green-600 hover:bg-green-700 text-white transition ml-auto" title="Aperçu complet & Publier"><Play className="w-3 h-3" /></button>
                               <button disabled={saving} onClick={() => handleDeletePost(post)} className="p-1 rounded bg-gray-700 hover:bg-red-600 text-gray-300 hover:text-white transition" title="Supprimer"><Trash2 className="w-3 h-3" /></button>
                             </div>
@@ -2006,6 +2009,14 @@ export default function CalendarPage() {
                     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm font-medium transition"
                   >
                     <Download size={14} /> Exporter sur le bureau
+                  </button>
+                )}
+                {!meta?.hasAudio && fullPreviewPost.media_type === 'video' && (
+                  <button
+                    onClick={() => { window.location.href = `/dashboard/audio-studio?postId=${fullPreviewPost.id}`; }}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 border border-purple-500 rounded-lg text-sm font-medium text-white transition"
+                  >
+                    <Volume2 size={14} /> Ajouter le son
                   </button>
                 )}
                 {fullPreviewPost.status !== 'scheduled' && (
