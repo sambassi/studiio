@@ -659,6 +659,8 @@ function AudioStudioContent() {
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
   const hasAudio = !!musicFile || !!voiceFile;
   const videoSrc = (meta.renderedVideoUrl || meta.videoUrl || post?.media_url || null) as string | null;
+  // Static poster image for stable preview (avoids video flickering during re-renders)
+  const posterImgSrc = (meta.posterUrl || meta.pexelsUrl || meta.characterUrl || null) as string | null;
 
   // ═══════════════════════════════════════════════════════════
   // RENDER
@@ -691,30 +693,44 @@ function AudioStudioContent() {
             >
               {videoSrc ? (
                 <>
-                  <video
-                    key={post?.id}
-                    ref={videoRef}
-                    src={videoSrc}
-                    className="w-full h-full object-contain"
-                    playsInline
-                    autoPlay
-                    loop
-                    muted
-                    crossOrigin="anonymous"
-                    onLoadedData={() => { setVideoLoading(false); setVideoError(false); }}
-                    onError={() => { setVideoLoading(false); setVideoError(true); }}
-                    onWaiting={() => setVideoLoading(true)}
-                    onPlaying={() => setVideoLoading(false)}
-                  />
-                  {videoLoading && (
+                  {/* During export: show static poster to prevent video flickering */}
+                  {isExporting && posterImgSrc ? (
+                    <img src={posterImgSrc} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <video
+                      key={post?.id}
+                      ref={videoRef}
+                      src={videoSrc}
+                      poster={posterImgSrc || undefined}
+                      className="w-full h-full object-contain"
+                      playsInline
+                      autoPlay
+                      loop
+                      muted
+                      crossOrigin="anonymous"
+                      onLoadedData={() => { setVideoLoading(false); setVideoError(false); }}
+                      onError={() => { setVideoLoading(false); setVideoError(true); }}
+                      onWaiting={() => setVideoLoading(true)}
+                      onPlaying={() => setVideoLoading(false)}
+                    />
+                  )}
+                  {videoLoading && !isExporting && (
                     <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-10">
                       <Loader2 className="animate-spin text-pink-500" size={32} />
                     </div>
                   )}
-                  {videoError && (
+                  {videoError && !isExporting && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-10">
                       <VolumeX size={32} className="text-red-400 mb-2" />
                       <p className="text-xs text-red-400">{t('loadingError')}</p>
+                    </div>
+                  )}
+                  {/* Export progress overlay */}
+                  {isExporting && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-10">
+                      <Loader2 className="animate-spin text-pink-500 mb-2" size={32} />
+                      <p className="text-sm text-white font-bold">{exportProgress}%</p>
+                      <p className="text-xs text-gray-300 mt-1">{exportStage}</p>
                     </div>
                   )}
                 </>
