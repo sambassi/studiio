@@ -418,11 +418,52 @@ function AudioStudioContent() {
   // ═══ EXPORT WITH AUDIO (supports batch) ═══
   const handleExport = async () => {
     if (posts.length === 0) return;
+
+    // ═══ CRITICAL: Create AudioContext IMMEDIATELY in user gesture chain ═══
+    // Chrome requires AudioContext creation within a user gesture (click/tap).
+    // If we await anything first (like file uploads), the gesture expires and
+    // the AudioContext starts in "suspended" state that cannot be resumed.
+    let sharedAudioCtx: AudioContext | undefined;
+    let musicBuffer: AudioBuffer | undefined;
+    let voiceBuffer: AudioBuffer | undefined;
+    if (musicFile || voiceFile) {
+      sharedAudioCtx = new AudioContext({ sampleRate: 48000 });
+      console.log(`[AudioStudio] AudioContext created IN user gesture, state: ${sharedAudioCtx.state}`);
+    }
+
     setIsExporting(true);
     setExportProgress(0);
     setExportStage(t('export.preparing'));
 
     try {
+      // Pre-decode audio files into AudioBuffers BEFORE uploading (faster, no network delay)
+      if (sharedAudioCtx && musicFile) {
+        try {
+          console.log(`[AudioStudio] Decoding music: ${musicFile.name} (${(musicFile.size / 1024).toFixed(0)}KB, type: ${musicFile.type})`);
+          const musicArrayBuf = await musicFile.arrayBuffer();
+          console.log(`[AudioStudio] Music ArrayBuffer: ${musicArrayBuf.byteLength} bytes`);
+          musicBuffer = await sharedAudioCtx.decodeAudioData(musicArrayBuf.slice(0));
+          console.log(`[AudioStudio] ✅ Music decoded to AudioBuffer: ${musicBuffer.duration.toFixed(1)}s, ${musicBuffer.numberOfChannels}ch, ${musicBuffer.sampleRate}Hz`);
+        } catch (err) {
+          console.error('[AudioStudio] ❌ Music decode failed:', err);
+        }
+      }
+      if (sharedAudioCtx && voiceFile) {
+        try {
+          console.log(`[AudioStudio] Decoding voice: ${voiceFile.name} (${(voiceFile.size / 1024).toFixed(0)}KB, type: ${voiceFile.type})`);
+          const voiceArrayBuf = await voiceFile.arrayBuffer();
+          voiceBuffer = await sharedAudioCtx.decodeAudioData(voiceArrayBuf.slice(0));
+          console.log(`[AudioStudio] ✅ Voice decoded to AudioBuffer: ${voiceBuffer.duration.toFixed(1)}s, ${voiceBuffer.numberOfChannels}ch, ${voiceBuffer.sampleRate}Hz`);
+        } catch (err) {
+          console.error('[AudioStudio] ❌ Voice decode failed:', err);
+        }
+      }
+      // Ensure AudioContext is running after decoding
+      if (sharedAudioCtx && sharedAudioCtx.state !== 'running') {
+        await sharedAudioCtx.resume();
+        console.log(`[AudioStudio] AudioContext resumed, state: ${sharedAudioCtx.state}`);
+      }
+
       // ═══ Step 1: Upload audio files to Supabase ONCE (shared across all posts) ═══
       let uploadedMusicUrl: string | null = null;
       let uploadedVoiceUrl: string | null = null;
@@ -433,6 +474,7 @@ function AudioStudioContent() {
       if (voiceFile) uploadedVoiceUrl = await uploadFile(voiceFile, 'voiceover');
 
       console.log(`[AudioStudio] Export: ${posts.length} post(s), music: ${uploadedMusicUrl ? 'yes' : 'none'}, voice: ${uploadedVoiceUrl ? 'yes' : 'none'}`);
+      console.log(`[AudioStudio] AudioContext state after uploads: ${sharedAudioCtx?.state || 'N/A'}`);
 
       setExportProgress(20);
 
@@ -443,45 +485,9 @@ function AudioStudioContent() {
         const localVoiceBlobUrl = voiceFile ? URL.createObjectURL(voiceFile) : null;
 
         console.log(`[AudioStudio] ═══ BATCH START: ${posts.length} videos ═══`);
-        console.log(`[AudioStudio] musicFile: ${musicFile ? musicFile.name + ' (' + (musicFile.size / 1024).toFixed(0) + 'KB)' : 'NULL'}`);
-        console.log(`[AudioStudio] voiceFile: ${voiceFile ? voiceFile.name : 'NULL'}`);
-        console.log(`[AudioStudio] localMusicBlobUrl: ${localMusicBlobUrl || 'NULL'}`);
-        console.log(`[AudioStudio] localVoiceBlobUrl: ${localVoiceBlobUrl || 'NULL'}`);
-
-        // Create ONE shared AudioContext for the entire batch to avoid Chrome's concurrent limit
-        let sharedAudioCtx: AudioContext | undefined;
-        let musicBuffer: AudioBuffer | undefined;
-        let voiceBuffer: AudioBuffer | undefined;
-        if (musicFile || voiceFile) {
-          sharedAudioCtx = new AudioContext({ sampleRate: 48000 });
-          await sharedAudioCtx.resume();
-          console.log(`[AudioStudio] Shared AudioContext created, state: ${sharedAudioCtx.state}`);
-
-          // Pre-decode audio files into AudioBuffers — more reliable than <audio> elements in batch mode
-          // decodeAudioData detaches the ArrayBuffer, so we read it fresh for each decode
-          if (musicFile) {
-            try {
-              console.log(`[AudioStudio] Decoding music: ${musicFile.name} (${(musicFile.size / 1024).toFixed(0)}KB, type: ${musicFile.type})`);
-              const musicArrayBuf = await musicFile.arrayBuffer();
-              console.log(`[AudioStudio] Music ArrayBuffer: ${musicArrayBuf.byteLength} bytes`);
-              musicBuffer = await sharedAudioCtx.decodeAudioData(musicArrayBuf.slice(0));
-              console.log(`[AudioStudio] ✅ Music decoded to AudioBuffer: ${musicBuffer.duration.toFixed(1)}s, ${musicBuffer.numberOfChannels}ch, ${musicBuffer.sampleRate}Hz`);
-            } catch (err) {
-              console.error('[AudioStudio] ❌ Music decode failed:', err);
-              console.error('[AudioStudio] ↪ Will fall back to <audio> element per-video (may not work for all batch items)');
-            }
-          }
-          if (voiceFile) {
-            try {
-              console.log(`[AudioStudio] Decoding voice: ${voiceFile.name} (${(voiceFile.size / 1024).toFixed(0)}KB, type: ${voiceFile.type})`);
-              const voiceArrayBuf = await voiceFile.arrayBuffer();
-              voiceBuffer = await sharedAudioCtx.decodeAudioData(voiceArrayBuf.slice(0));
-              console.log(`[AudioStudio] ✅ Voice decoded to AudioBuffer: ${voiceBuffer.duration.toFixed(1)}s, ${voiceBuffer.numberOfChannels}ch, ${voiceBuffer.sampleRate}Hz`);
-            } catch (err) {
-              console.error('[AudioStudio] ❌ Voice decode failed:', err);
-            }
-          }
-        }
+        console.log(`[AudioStudio] musicBuffer: ${musicBuffer ? musicBuffer.duration.toFixed(1) + 's' : 'NULL'}`);
+        console.log(`[AudioStudio] voiceBuffer: ${voiceBuffer ? voiceBuffer.duration.toFixed(1) + 's' : 'NULL'}`);
+        console.log(`[AudioStudio] sharedAudioCtx: ${sharedAudioCtx?.state || 'NULL'}`);
 
         for (let i = 0; i < posts.length; i++) {
           const p = posts[i];
@@ -626,6 +632,7 @@ function AudioStudioContent() {
 
       } else {
         // ═══ SINGLE POST: Full composition with embedded audio ═══
+        // Also uses sharedAudioCtx + musicBuffer (created at start of handleExport in user gesture)
         const p = posts[0];
         const pm = p.metadata || {};
         const brand = (pm.branding as Record<string, string>) || undefined;
@@ -639,6 +646,11 @@ function AudioStudioContent() {
 
         const localMusicBlobUrl = musicFile ? URL.createObjectURL(musicFile) : null;
         const localVoiceBlobUrl = voiceFile ? URL.createObjectURL(voiceFile) : null;
+
+        // Resume context before composing
+        if (sharedAudioCtx && sharedAudioCtx.state !== 'running') {
+          await sharedAudioCtx.resume();
+        }
 
         setExportStage(t('export.composingWithAudio'));
         setExportProgress(25);
@@ -663,6 +675,9 @@ function AudioStudioContent() {
           ctaText: (brand?.ctaText as string) || 'CHAT POUR PLUS D\'INFOS',
           ctaSubText: (brand?.ctaSubText as string) || 'LIEN EN BIO',
           watermarkText: (brand?.watermarkText as string) || undefined,
+          sharedAudioCtx,
+          musicBuffer,
+          voiceBuffer,
           onProgress: (pct, stage) => {
             setExportProgress(25 + Math.round(pct * 0.60));
             setExportStage(stage);
