@@ -82,9 +82,28 @@ function AudioStudioContent() {
   const [exportProgress, setExportProgress] = useState(0);
   const [exportStage, setExportStage] = useState('');
 
+  // Volume
+  const [musicVolume, setMusicVolume] = useState(0.5);
+  const [voiceVolume, setVoiceVolume] = useState(1.0);
+  const [musicMuted, setMusicMuted] = useState(false);
+  const [voiceMuted, setVoiceMuted] = useState(false);
+
   // Refs
   const musicInputRef = useRef<HTMLInputElement>(null);
   const voiceInputRef = useRef<HTMLInputElement>(null);
+
+  // ═══ SYNC VOLUME TO AUDIO ELEMENTS ═══
+  useEffect(() => {
+    if (musicAudioRef.current) {
+      musicAudioRef.current.volume = musicMuted ? 0 : musicVolume;
+    }
+  }, [musicVolume, musicMuted]);
+
+  useEffect(() => {
+    if (voiceAudioRef.current) {
+      voiceAudioRef.current.volume = voiceMuted ? 0 : voiceVolume;
+    }
+  }, [voiceVolume, voiceMuted]);
 
   // ═══ LOAD POST DATA ═══
   useEffect(() => {
@@ -202,7 +221,7 @@ function AudioStudioContent() {
     if (musicAudioRef.current) musicAudioRef.current.pause();
     const audio = new Audio(url);
     audio.loop = true;
-    audio.volume = 0.5;
+    audio.volume = musicMuted ? 0 : musicVolume;
     musicAudioRef.current = audio;
   };
 
@@ -579,16 +598,29 @@ function AudioStudioContent() {
             <div className="absolute inset-y-0 left-0 bg-pink-500 rounded-full transition-all" style={{ width: `${(currentTime / totalDuration) * 100}%` }} />
           </div>
 
-          {/* Music track */}
+          {/* Music track with volume */}
           <div className="flex items-center gap-2 h-8">
             <span className="text-[10px] text-pink-400 w-14 shrink-0 flex items-center gap-1"><Music size={10} /> Musique</span>
+            <button
+              onClick={() => setMusicMuted(m => !m)}
+              className="shrink-0 p-1 rounded hover:bg-gray-700/50 transition"
+              title={musicMuted ? 'Activer musique' : 'Couper musique'}
+            >
+              {musicMuted ? <VolumeX size={12} className="text-gray-500" /> : <Volume2 size={12} className="text-pink-400" />}
+            </button>
+            <input
+              type="range" min="0" max="1" step="0.05"
+              value={musicMuted ? 0 : musicVolume}
+              onChange={(e) => { setMusicVolume(parseFloat(e.target.value)); if (musicMuted) setMusicMuted(false); }}
+              className="w-16 shrink-0 h-1 accent-pink-500 cursor-pointer"
+              title={`Volume: ${Math.round((musicMuted ? 0 : musicVolume) * 100)}%`}
+            />
             <div className="flex-1 h-full rounded-md overflow-hidden relative bg-gray-800/50">
               {musicFile ? (
-                <div className="absolute inset-0 bg-gradient-to-r from-pink-600/40 to-pink-500/20 flex items-center px-2">
-                  {/* Fake waveform bars */}
+                <div className={`absolute inset-0 bg-gradient-to-r from-pink-600/40 to-pink-500/20 flex items-center px-2 ${musicMuted ? 'opacity-40' : ''}`}>
                   <div className="flex items-center gap-px h-full w-full">
                     {Array.from({ length: 80 }).map((_, i) => (
-                      <div key={i} className="flex-1 bg-pink-500/60 rounded-full" style={{ height: `${20 + Math.sin(i * 0.7) * 30 + Math.random() * 30}%`, minHeight: '3px' }} />
+                      <div key={i} className="flex-1 bg-pink-500/60 rounded-full" style={{ height: `${(20 + Math.sin(i * 0.7) * 30 + Math.random() * 30) * (musicMuted ? 0.3 : musicVolume)}%`, minHeight: '2px' }} />
                     ))}
                   </div>
                 </div>
@@ -600,15 +632,29 @@ function AudioStudioContent() {
             </div>
           </div>
 
-          {/* Voice track */}
+          {/* Voice track with volume */}
           <div className="flex items-center gap-2 h-8">
             <span className="text-[10px] text-purple-400 w-14 shrink-0 flex items-center gap-1"><Mic size={10} /> Voix</span>
+            <button
+              onClick={() => setVoiceMuted(m => !m)}
+              className="shrink-0 p-1 rounded hover:bg-gray-700/50 transition"
+              title={voiceMuted ? 'Activer voix' : 'Couper voix'}
+            >
+              {voiceMuted ? <VolumeX size={12} className="text-gray-500" /> : <Volume2 size={12} className="text-purple-400" />}
+            </button>
+            <input
+              type="range" min="0" max="1" step="0.05"
+              value={voiceMuted ? 0 : voiceVolume}
+              onChange={(e) => { setVoiceVolume(parseFloat(e.target.value)); if (voiceMuted) setVoiceMuted(false); }}
+              className="w-16 shrink-0 h-1 accent-purple-500 cursor-pointer"
+              title={`Volume: ${Math.round((voiceMuted ? 0 : voiceVolume) * 100)}%`}
+            />
             <div className="flex-1 h-full rounded-md overflow-hidden relative bg-gray-800/50">
               {voiceFile ? (
-                <div className="absolute inset-0 bg-gradient-to-r from-purple-600/40 to-purple-500/20 flex items-center px-2">
+                <div className={`absolute inset-0 bg-gradient-to-r from-purple-600/40 to-purple-500/20 flex items-center px-2 ${voiceMuted ? 'opacity-40' : ''}`}>
                   <div className="flex items-center gap-px h-full w-full">
                     {Array.from({ length: 80 }).map((_, i) => (
-                      <div key={i} className="flex-1 bg-purple-500/60 rounded-full" style={{ height: `${15 + Math.cos(i * 0.5) * 25 + Math.random() * 35}%`, minHeight: '3px' }} />
+                      <div key={i} className="flex-1 bg-purple-500/60 rounded-full" style={{ height: `${(15 + Math.cos(i * 0.5) * 25 + Math.random() * 35) * (voiceMuted ? 0.3 : voiceVolume)}%`, minHeight: '2px' }} />
                     ))}
                   </div>
                 </div>
