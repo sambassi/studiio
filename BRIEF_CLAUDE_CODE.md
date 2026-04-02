@@ -9,11 +9,12 @@ Repo GitHub : `sambassi/studiio` (branche main, auto-deploy Vercel).
 
 ## OBJECTIF GLOBAL
 
-Rendre les 3 systemes suivants **prets a l'emploi, fonctionnels de bout en bout, sans bugs** :
+Rendre les 4 systemes suivants **prets a l'emploi, fonctionnels de bout en bout, sans bugs** :
 
 1. **Batch x10 depuis Infographie**
 2. **Batch x10 depuis Creer (Creator)**
 3. **Agent IA (7, 14, 30 jours) depuis Calendrier**
+4. **Internationalisation (i18n) : Francais, Anglais, Allemand**
 
 Chaque systeme doit etre teste de bout en bout avec **Playwright** (tests E2E).
 
@@ -130,6 +131,74 @@ Chaque systeme doit etre teste de bout en bout avec **Playwright** (tests E2E).
 
 ---
 
+## SYSTEME 4 : Internationalisation (i18n) — Francais, Anglais, Allemand
+
+**Objectif :**
+
+Le site entier doit etre disponible en 3 langues : Francais (FR), Anglais (EN), Allemand (DE).
+La langue par defaut est le Francais. Un selecteur de langue doit etre visible et accessible sur toutes les pages.
+
+**Approche technique recommandee :**
+
+Utiliser `next-intl` (ou `next-i18next`) avec le App Router de Next.js 14 :
+- Fichiers de traduction dans `messages/fr.json`, `messages/en.json`, `messages/de.json`
+- Middleware Next.js pour la detection de langue (cookie ou header Accept-Language)
+- Routes prefixees : `/fr/dashboard/calendar`, `/en/dashboard/calendar`, `/de/dashboard/calendar`
+- Ou route sans prefixe pour la langue par defaut (FR)
+
+**Pages a traduire (TOUTES) :**
+
+1. **Landing page** (`/`) : hero, features, temoignages, pricing, FAQ, footer
+2. **Auth** : login, signup (labels, boutons, messages d'erreur)
+3. **Dashboard** : accueil, stats, navigation sidebar
+4. **Creator** (`/dashboard/creator`) : tous les labels, boutons, etapes, messages d'export
+5. **Infographie** (`/dashboard/infographic`) : themes, labels, boutons, batch mode, export
+6. **Studio Son** (`/dashboard/audio-studio`) : controles audio, timeline, export, batch
+7. **Calendrier** (`/dashboard/calendar`) : jours, mois, modales, Agent IA, preview, export
+8. **Bibliotheque** (`/dashboard/library`) : filtres, recherche, statuts
+9. **Reseaux sociaux** (`/dashboard/social`) : plateformes, parametres de publication
+10. **Objectifs** (`/dashboard/objectives`) : formulaire, labels
+11. **Facturation** (`/dashboard/billing`) : plans, credits, historique
+12. **Admin** (toutes les pages admin) : stats, gestion, parametres
+13. **Pages legales** : privacy, terms
+14. **Messages d'erreur et toasts** : tous les messages systeme
+
+**Elements a traduire dans chaque page :**
+
+- Titres et sous-titres
+- Labels de boutons
+- Textes de placeholder dans les inputs
+- Messages de confirmation / erreur / succes (toasts)
+- Labels de navigation (sidebar, breadcrumbs)
+- Contenu des modales
+- Textes des tooltips
+- Formats de date (FR: 2 avril 2026, EN: April 2, 2026, DE: 2. April 2026)
+- Formats de nombres (FR: 1 234,56, EN: 1,234.56, DE: 1.234,56)
+
+**Selecteur de langue :**
+
+- Position : dans la sidebar du dashboard ET dans le header/footer de la landing page
+- Affichage : drapeaux + code langue (🇫🇷 FR / 🇬🇧 EN / 🇩🇪 DE)
+- Comportement : change la langue immediatement, sauvegarde le choix dans un cookie
+- Le changement de langue ne doit PAS recharger la page completement (navigation client-side)
+
+**Contenu genere dynamiquement :**
+
+- Les titres de videos generes par l'Agent IA doivent avoir des pools de titres dans les 3 langues
+- Les legendes IA (`IA Légende`) doivent generer dans la langue active
+- Les phrases de vente, sous-titres, CTA dans les videos composees doivent respecter la langue
+- Le contenu du CMS admin (landing page) reste en francais sauf si l'admin le traduit
+
+**Criteres de succes :**
+- Un selecteur de langue est visible sur toutes les pages
+- Toute l'interface est traduite dans les 3 langues (aucun texte en dur non traduit)
+- Les dates et nombres sont formates selon la locale
+- Le choix de langue persiste entre les sessions (cookie)
+- Les contenus generes par l'IA (titres, legendes, CTA) sont dans la langue active
+- Aucune regression fonctionnelle (batch, export, Agent IA marchent dans les 3 langues)
+
+---
+
 ## TESTS PLAYWRIGHT
 
 Ecrire des tests E2E Playwright couvrant les 3 systemes. Les tests doivent :
@@ -139,6 +208,7 @@ Ecrire des tests E2E Playwright couvrant les 3 systemes. Les tests doivent :
 3. **Tester le batch Creator** : choisir x10, exporter vers Studio Son, verifier le flux complet
 4. **Tester l'Agent IA** : ouvrir la modale, configurer 7 jours, uploader un rush, generer, verifier que 7 posts apparaissent dans le calendrier sur 7 jours differents
 5. **Verifier les formats** : tester que 9:16 et 16:9 sont correctement appliques dans Studio Son
+6. **Tester l'i18n** : changer la langue en EN, verifier que les labels sont traduits, changer en DE, verifier egalement, revenir en FR, confirmer la persistance du choix
 
 Les tests doivent etre dans `tests/` ou `e2e/` a la racine du projet.
 
@@ -146,7 +216,8 @@ Les tests doivent etre dans `tests/` ou `e2e/` a la racine du projet.
 
 ## REGLES IMPORTANTES
 
-- Le site est en francais
+- Le site doit supporter 3 langues : Francais (defaut), Anglais, Allemand
+- Aucun texte en dur dans les composants — tout doit passer par les fichiers de traduction
 - TypeScript avec `ignoreBuildErrors: true` dans next.config.js
 - Tailwind CSS : NE PAS utiliser de classes arbitraires comme `aspect-[9/16]` (purgees en prod), utiliser des inline styles
 - Chrome autoplay : toujours `muted` sur les `<video>` avec autoPlay
