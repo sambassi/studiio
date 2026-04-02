@@ -929,8 +929,14 @@ export default function CreatorPage() {
       const vidWidth = isReel ? 1080 : 1920;
       const vidHeight = isReel ? 1920 : 1080;
 
-      // ═══ PHASE 3: Client-side render + Create calendar posts (20-90%) ═══
+      // ═══ PHASE 3: Client-side render + Create calendar posts + Export (20-98%) ═══
       let successCount = 0;
+      // For "both" mode: compose once, reuse blob for export + url for calendar
+      let savedBlobForExport: Blob | null = null;
+
+      const cardItems = textCards.filter((c) => c.text.trim()).map((c) => ({
+        emoji: '📝', label: '', value: c.text, color: c.color,
+      }));
 
       if (destination === 'calendar' || destination === 'both') {
         const today = new Date();
@@ -951,17 +957,13 @@ export default function CreatorPage() {
           const renderProgressBase = 20 + (b / batchCount) * 70;
           const renderProgressSpan = 70 / batchCount;
 
-          // Build text cards for info cards sequence
-          const cardItems = textCards.filter((c) => c.text.trim()).map((c) => ({
-            emoji: '📝', label: '', value: c.text, color: c.color,
-          }));
-
           let renderedVideoUrl: string | null = null;
+          let renderedBlob: Blob | null = null;
           try {
             setRenderStage(batchCount > 1 ? `Montage vidéo ${b + 1}/${batchCount}...` : 'Montage vidéo en cours...');
             setRenderProgress(Math.round(renderProgressBase));
 
-            const { url } = await composeAndUpload({
+            const result = await composeAndUpload({
               width: vidWidth,
               height: vidHeight,
               fps: 24,
@@ -987,7 +989,12 @@ export default function CreatorPage() {
                 setRenderStage(stage);
               },
             });
-            if (url) renderedVideoUrl = url;
+            if (result.url) renderedVideoUrl = result.url;
+            renderedBlob = result.blob;
+            // Save first blob for desktop export in "both" mode
+            if (b === 0 && destination === 'both' && renderedBlob && renderedBlob.size > 0) {
+              savedBlobForExport = renderedBlob;
+            }
           } catch (renderErr) { console.error(`[Composer] Error vidéo ${b + 1}:`, renderErr); }
 
           // Create calendar post — prefer rendered montage, fallback to poster (never raw rush)
@@ -998,7 +1005,7 @@ export default function CreatorPage() {
           if (!renderedVideoUrl) console.warn(`[Creator] Montage URL is null for post ${b + 1} — upload may have failed`);
 
           try {
-            await fetch('/api/posts', {
+            const postRes = await fetch('/api/posts', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 title: bTitle, caption: `${bSubtitle}\n${bPhrase}`.trim(),
@@ -1015,7 +1022,12 @@ export default function CreatorPage() {
                 },
               }),
             });
-            successCount++;
+            if (postRes.ok) {
+              successCount++;
+              console.log(`[Creator] Post ${b + 1} created successfully`);
+            } else {
+              console.error(`[Creator] Post ${b + 1} failed:`, postRes.status, await postRes.text().catch(() => ''));
+            }
           } catch (postErr) { console.error(`[Post] Error ${b + 1}:`, postErr); }
 
           // Also create a video record in the library
@@ -1046,39 +1058,45 @@ export default function CreatorPage() {
 
       // Export: download the composed video
       if (destination === 'export' || destination === 'both') {
-        setRenderStage('Montage vidéo pour export...');
-        const cardItems = textCards.filter((c) => c.text.trim()).map((c) => ({
-          emoji: '📝', label: '', value: c.text, color: c.color,
-        }));
         try {
-          const { blob } = await composeAndUpload({
-            width: vidWidth,
-            height: vidHeight,
-            fps: 24,
-            title: title || 'Nouvelle vidéo',
-            subtitle: subtitle || undefined,
-            salesPhrase: salesPhrase || undefined,
-            cards: cardItems.length > 0 ? cardItems : undefined,
-            posterUrl: effectiveCharUrl,
-            videoUrl: rushUrls[0] || null,
-            logoUrl: effectiveLogoUrl,
-            musicUrl: effectiveMusicUrl || null,
-            voiceUrl: effectiveVoiceUrl || null,
-            introDuration: 5,
-            cardsDuration: cardItems.length > 0 ? 8 : 0,
-            videoDuration: 12,
-            ctaDuration: 5,
-            accentColor: branding.accentColor || '#D91CD2',
-            ctaText: branding.ctaText || 'CHAT POUR PLUS D\'INFOS',
-            ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
-            watermarkText: branding.watermarkText || undefined,
-            onProgress: (pct, stage) => {
-              setRenderProgress(90 + Math.round(pct * 0.08));
-              setRenderStage(stage);
-            },
-          });
-          const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
-          downloadBlob(blob, `${(title || 'video').replace(/\s+/g, '_')}.${ext}`);
+          let exportBlob: Blob;
+          if (destination === 'both' && savedBlobForExport && savedBlobForExport.size > 0) {
+            // Reuse the blob from calendar compose — no need to render twice
+            exportBlob = savedBlobForExport;
+            setRenderProgress(98);
+          } else {
+            // Export-only: compose fresh
+            setRenderStage('Montage vidéo pour export...');
+            const result = await composeAndUpload({
+              width: vidWidth,
+              height: vidHeight,
+              fps: 24,
+              title: title || 'Nouvelle vidéo',
+              subtitle: subtitle || undefined,
+              salesPhrase: salesPhrase || undefined,
+              cards: cardItems.length > 0 ? cardItems : undefined,
+              posterUrl: effectiveCharUrl,
+              videoUrl: rushUrls[0] || null,
+              logoUrl: effectiveLogoUrl,
+              musicUrl: effectiveMusicUrl || null,
+              voiceUrl: effectiveVoiceUrl || null,
+              introDuration: 5,
+              cardsDuration: cardItems.length > 0 ? 8 : 0,
+              videoDuration: 12,
+              ctaDuration: 5,
+              accentColor: branding.accentColor || '#D91CD2',
+              ctaText: branding.ctaText || 'CHAT POUR PLUS D\'INFOS',
+              ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
+              watermarkText: branding.watermarkText || undefined,
+              onProgress: (pct, stage) => {
+                setRenderProgress(90 + Math.round(pct * 0.08));
+                setRenderStage(stage);
+              },
+            });
+            exportBlob = result.blob;
+          }
+          const ext = exportBlob.type.includes('mp4') ? 'mp4' : 'webm';
+          downloadBlob(exportBlob, `${(title || 'video').replace(/\s+/g, '_')}.${ext}`);
         } catch (exportErr) {
           console.error('[Composer] Export error:', exportErr);
           showToast('Erreur lors du montage vidéo. Veuillez réessayer.');
