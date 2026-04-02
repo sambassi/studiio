@@ -183,34 +183,51 @@ function AudioStudioContent() {
   sequences.forEach(s => { seqStarts.push(cumTime); cumTime += s.duration; });
 
   // ═══ TIMELINE PLAYBACK (synced with video) ═══
-  // Use requestAnimationFrame for smooth timeline, reading video.currentTime each frame
+  // Use requestAnimationFrame for smooth timeline, reading video.currentTime
   useEffect(() => {
     const vid = videoRef.current;
     if (!vid) return;
-    let rafId: number;
+    let rafId = 0;
+    let running = false;
+
     const syncTimeline = () => {
-      if (vid && !vid.paused) {
-        const dur = totalDuration > 0 ? totalDuration : (vid.duration || 30);
-        const t = vid.currentTime % dur;
-        setCurrentTime(t);
+      if (!running) return;
+      if (vid && !vid.paused && vid.duration > 0) {
+        // Use actual video duration to avoid drift
+        const videoDur = vid.duration;
+        const t = vid.currentTime;
+        // Map video time to timeline time (clamp to totalDuration)
+        const mapped = totalDuration > 0 ? Math.min(t % totalDuration, totalDuration - 0.01) : t % videoDur;
+        setCurrentTime(mapped);
         let idx = 0;
         for (let i = sequences.length - 1; i >= 0; i--) {
-          if (t >= seqStarts[i]) { idx = i; break; }
+          if (mapped >= seqStarts[i]) { idx = i; break; }
         }
         setActiveSeqIdx(idx);
       }
       rafId = requestAnimationFrame(syncTimeline);
     };
-    const onPlay = () => { setIsPlaying(true); rafId = requestAnimationFrame(syncTimeline); };
-    const onPause = () => { setIsPlaying(false); cancelAnimationFrame(rafId); };
+
+    const onPlay = () => { setIsPlaying(true); if (!running) { running = true; rafId = requestAnimationFrame(syncTimeline); } };
+    const onPause = () => { setIsPlaying(false); running = false; cancelAnimationFrame(rafId); };
+    const onSeeked = () => {
+      if (vid.duration > 0) {
+        const mapped = Math.min(vid.currentTime % totalDuration, totalDuration - 0.01);
+        setCurrentTime(mapped);
+      }
+    };
+
     vid.addEventListener('play', onPlay);
     vid.addEventListener('pause', onPause);
+    vid.addEventListener('seeked', onSeeked);
     // Start sync if already playing
-    if (!vid.paused) { rafId = requestAnimationFrame(syncTimeline); setIsPlaying(true); }
+    if (!vid.paused) { running = true; setIsPlaying(true); rafId = requestAnimationFrame(syncTimeline); }
     return () => {
+      running = false;
       cancelAnimationFrame(rafId);
       vid.removeEventListener('play', onPlay);
       vid.removeEventListener('pause', onPause);
+      vid.removeEventListener('seeked', onSeeked);
     };
   }, [post?.id, totalDuration, sequences, seqStarts]);
 
@@ -497,10 +514,16 @@ function AudioStudioContent() {
         {/* Video + batch strip */}
         <div className="flex-1 flex flex-col">
           {/* Main video preview */}
-          <div className="flex-1 flex items-center justify-center">
-            <div className={`${post.format !== 'tv' ? 'h-full max-h-full aspect-[9/16]' : 'w-full max-w-full aspect-video'} relative`}>
+          <div className="flex-1 flex items-center justify-center p-2">
+            <div
+              className="relative"
+              style={post.format === 'tv'
+                ? { width: '100%', maxWidth: '100%', aspectRatio: '16/9', maxHeight: '100%' }
+                : { height: '100%', maxHeight: '100%', aspectRatio: '9/16', maxWidth: '100%' }
+              }
+            >
               {videoSrc ? (
-                <video key={post?.id} ref={videoRef} src={videoSrc} className="w-full h-full object-contain" playsInline autoPlay loop muted />
+                <video key={post?.id} ref={videoRef} src={videoSrc} className="w-full h-full object-contain rounded-lg" playsInline autoPlay loop muted />
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center bg-gray-900">
                   <Volume2 size={48} className="text-gray-700 mb-2" />
@@ -538,7 +561,7 @@ function AudioStudioContent() {
                     onClick={() => setCurrentPostIndex(i)}
                     className={`shrink-0 w-16 rounded-lg overflow-hidden border-2 transition-all ${isActive ? 'border-pink-500 ring-1 ring-pink-500/50 scale-105' : 'border-gray-700 hover:border-gray-500 opacity-60 hover:opacity-100'}`}
                   >
-                    <div className={`${p.format === 'tv' ? 'aspect-video' : 'aspect-[9/16]'} bg-gray-800 relative`}>
+                    <div className="bg-gray-800 relative" style={{ aspectRatio: p.format === 'tv' ? '16/9' : '9/16' }}>
                       {thumbUrl ? (
                         <video src={thumbUrl} className="w-full h-full object-cover" muted playsInline preload="metadata" />
                       ) : (
