@@ -183,26 +183,32 @@ function AudioStudioContent() {
   sequences.forEach(s => { seqStarts.push(cumTime); cumTime += s.duration; });
 
   // ═══ TIMELINE PLAYBACK (synced with video) ═══
-  // Sync timeline from video's actual currentTime
+  // Use requestAnimationFrame for smooth timeline, reading video.currentTime each frame
   useEffect(() => {
     const vid = videoRef.current;
     if (!vid) return;
-    const onTimeUpdate = () => {
-      const t = vid.currentTime % totalDuration;
-      setCurrentTime(t);
-      let idx = 0;
-      for (let i = sequences.length - 1; i >= 0; i--) {
-        if (t >= seqStarts[i]) { idx = i; break; }
+    let rafId: number;
+    const syncTimeline = () => {
+      if (vid && !vid.paused) {
+        const dur = totalDuration > 0 ? totalDuration : (vid.duration || 30);
+        const t = vid.currentTime % dur;
+        setCurrentTime(t);
+        let idx = 0;
+        for (let i = sequences.length - 1; i >= 0; i--) {
+          if (t >= seqStarts[i]) { idx = i; break; }
+        }
+        setActiveSeqIdx(idx);
       }
-      setActiveSeqIdx(idx);
+      rafId = requestAnimationFrame(syncTimeline);
     };
-    const onPlay = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
-    vid.addEventListener('timeupdate', onTimeUpdate);
+    const onPlay = () => { setIsPlaying(true); rafId = requestAnimationFrame(syncTimeline); };
+    const onPause = () => { setIsPlaying(false); cancelAnimationFrame(rafId); };
     vid.addEventListener('play', onPlay);
     vid.addEventListener('pause', onPause);
+    // Start sync if already playing
+    if (!vid.paused) { rafId = requestAnimationFrame(syncTimeline); setIsPlaying(true); }
     return () => {
-      vid.removeEventListener('timeupdate', onTimeUpdate);
+      cancelAnimationFrame(rafId);
       vid.removeEventListener('play', onPlay);
       vid.removeEventListener('pause', onPause);
     };
@@ -492,9 +498,9 @@ function AudioStudioContent() {
         <div className="flex-1 flex flex-col">
           {/* Main video preview */}
           <div className="flex-1 flex items-center justify-center">
-            <div className={`${post.format === 'reel' ? 'h-full max-h-full aspect-[9/16]' : 'w-full max-w-3xl aspect-video'} relative`}>
+            <div className={`${(post.format === 'reel' || meta.type === 'infographic') ? 'h-full max-h-full aspect-[9/16]' : 'w-full max-w-3xl aspect-video'} relative`}>
               {videoSrc ? (
-                <video key={post?.id || videoSrc} ref={videoRef} src={videoSrc} className="w-full h-full object-contain" playsInline autoPlay loop />
+                <video key={post?.id} ref={videoRef} src={videoSrc} className="w-full h-full object-contain" playsInline autoPlay loop muted />
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center bg-gray-900">
                   <Volume2 size={48} className="text-gray-700 mb-2" />
