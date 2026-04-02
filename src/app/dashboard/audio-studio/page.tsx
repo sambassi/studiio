@@ -206,7 +206,7 @@ function AudioStudioContent() {
       vid.removeEventListener('play', onPlay);
       vid.removeEventListener('pause', onPause);
     };
-  }, [videoSrc, totalDuration, sequences, seqStarts]);
+  }, [post?.id, totalDuration, sequences, seqStarts]);
 
   const startPlayback = useCallback(() => {
     if (videoRef.current) { videoRef.current.currentTime = 0; videoRef.current.play().catch(() => {}); }
