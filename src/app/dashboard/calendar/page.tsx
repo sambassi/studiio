@@ -228,17 +228,7 @@ export default function CalendarPage() {
   const handleNextMonth = () => { setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1)); setSelectedDay(null); };
   const handleDayClick = (day: number) => { setSelectedDay(selectedDay === day ? null : day); };
 
-  const handlePostClick = (post: Post) => {
-    setSelectedPost(post);
-    // If post has montage data (infographic or creator), show full animated preview
-    const meta = post.metadata as Record<string, unknown> | undefined;
-    const hasMontage = meta?.type === 'infographic' || meta?.type === 'creator' || meta?.sequences;
-    if (hasMontage) {
-      handleFullPreview(post);
-    } else {
-      setShowPreviewModal(true);
-    }
-  };
+  const handlePostClick = (post: Post) => { setSelectedPost(post); setShowPreviewModal(true); };
 
   const handleEditPost = (post?: Post) => {
     const target = post || selectedPost;
@@ -347,11 +337,7 @@ export default function CalendarPage() {
         const res = await fetch('/api/posts', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...editFormData,
-            status: editTab,
-            metadata: { ...(editFormData.metadata || {}), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
-          }),
+          body: JSON.stringify({ ...editFormData, status: editTab }),
         });
         const data = await res.json();
         if (data.success) await fetchPosts();
@@ -369,7 +355,6 @@ export default function CalendarPage() {
             scheduled_date: editFormData.scheduled_date || formatDateForStorage(new Date(), new Date().getDate()),
             scheduled_time: editFormData.scheduled_time || '12:00',
             status: editTab,
-            metadata: { ...(editFormData.metadata || {}), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
           }),
         });
         const data = await res.json();
@@ -600,8 +585,7 @@ export default function CalendarPage() {
     if (meta?.renderedVideoUrl) {
       const link = document.createElement('a');
       link.href = meta.renderedVideoUrl;
-      const calExt = meta.renderedVideoUrl.includes('.mp4') ? 'mp4' : 'webm';
-      link.download = `${(post.title || 'video').replace(/\s+/g, '_')}.${calExt}`;
+      link.download = `${(post.title || 'video').replace(/\s+/g, '_')}.webm`;
       link.target = '_blank';
       document.body.appendChild(link);
       link.click();
@@ -654,8 +638,7 @@ export default function CalendarPage() {
 
       // Download the composed video
       if (blob && blob.size > 0) {
-        const dlExt = blob.type.includes('mp4') ? 'mp4' : 'webm';
-        downloadBlob(blob, `${(post.title || 'montage').replace(/\s+/g, '_')}.${dlExt}`);
+        downloadBlob(blob, `${(post.title || 'montage').replace(/\s+/g, '_')}.webm`);
       }
 
       // Update the post with the rendered URL if upload succeeded
@@ -1311,8 +1294,6 @@ export default function CalendarPage() {
           const spPosterUrl = spMeta?.posterUrl as string || spMeta?.characterUrl as string || null;
           const spImgSrc = selectedPost.media_type === 'video' ? (spPosterUrl || selectedPost.media_url) : selectedPost.media_url;
           const spTextCards = (spMeta?.textCards as Array<{ text: string; color: string }>) || [];
-          const spVideoSrc = selectedPost.media_url || (spMeta?.renderedVideoUrl as string) || (spMeta?.videoUrl as string) || null;
-          const spIsVideo = selectedPost.media_type === 'video' || !!(spMeta?.renderedVideoUrl) || !!(spMeta?.videoUrl);
           return (
           <div className="space-y-4">
             {/* Always show preview card — with media, or gradient + info cards */}
@@ -1320,8 +1301,8 @@ export default function CalendarPage() {
               <div className={`relative overflow-hidden rounded-xl ${
                 selectedPost.format === 'reel' ? 'w-48 aspect-[9/16]' : 'w-full max-w-lg aspect-video'
               }`}>
-                {spIsVideo && spVideoSrc ? (
-                  <video src={spVideoSrc} controls autoPlay loop playsInline className="w-full h-full object-cover rounded" />
+                {selectedPost.media_type === 'video' && selectedPost.media_url ? (
+                  <video src={selectedPost.media_url} controls className="w-full h-full object-cover rounded" />
                 ) : (
                   <>
                     {spImgSrc ? (

@@ -877,9 +877,24 @@ export default function CreatorPage() {
         logoFile ? uploadFile(logoFile, 'logo') : null,
       ]);
       console.log('[Creator] Upload results — music:', !!musicUrl, 'char:', !!charUrl, 'voice:', !!voiceUrl, 'logo:', !!logoUrl);
-      // Fallback: if charUrl is null but we have a characterPreview (blob/pexels URL), use it directly
+
+      // CRITICAL: ALWAYS use blob URLs from original File objects for the composer.
+      // Supabase URLs are stored in metadata for later playback, but for client-side
+      // rendering, blob URLs are FASTER and GUARANTEED to work (no CORS/permissions issues).
+      // This fixes the "no audio in exported video" bug caused by Supabase URL fetch failures.
       const effectiveCharUrl = charUrl || characterPreview || null;
-      const effectiveLogoUrl = logoUrl || logoPreview || null;
+      const effectiveLogoUrl = logoFile ? URL.createObjectURL(logoFile) : (logoPreview || logoUrl || null);
+
+      // ALWAYS create blob URLs from original Files for the composer
+      const effectiveMusicUrl: string | null = backgroundMusic ? URL.createObjectURL(backgroundMusic) : (musicUrl || null);
+      const effectiveVoiceUrl: string | null = actualVoiceFile ? URL.createObjectURL(actualVoiceFile) : (voiceUrl || null);
+
+      console.log('[Creator] Composer URLs (blob preferred) — music:', effectiveMusicUrl?.substring(0, 60) || 'NULL',
+        '| voice:', effectiveVoiceUrl?.substring(0, 60) || 'NULL',
+        '| logo:', effectiveLogoUrl?.substring(0, 60) || 'NULL');
+      console.log('[Creator] Original files — music:', !!backgroundMusic, (backgroundMusic?.size || 0), 'bytes',
+        '| voice:', !!actualVoiceFile, (actualVoiceFile?.size || 0), 'bytes',
+        '| logo:', !!logoFile);
       setRenderProgress(20);
 
       // ═══ PHASE 2: Batch variations ═══
@@ -949,7 +964,7 @@ export default function CreatorPage() {
             const { url } = await composeAndUpload({
               width: vidWidth,
               height: vidHeight,
-              fps: 30,
+              fps: 24,
               title: bTitle,
               subtitle: bSubtitle || undefined,
               salesPhrase: bPhrase || undefined,
@@ -957,12 +972,12 @@ export default function CreatorPage() {
               posterUrl: effectiveCharUrl,
               videoUrl: rushUrl,
               logoUrl: effectiveLogoUrl,
-              musicUrl: musicUrl || null,
-              voiceUrl: voiceUrl || null,
-              introDuration: 5,
-              cardsDuration: cardItems.length > 0 ? 8 : 0,
-              videoDuration: 12,
-              ctaDuration: 5,
+              musicUrl: effectiveMusicUrl || null,
+              voiceUrl: effectiveVoiceUrl || null,
+              introDuration: 4,
+              cardsDuration: cardItems.length > 0 ? 6 : 0,
+              videoDuration: 10,
+              ctaDuration: 4,
               accentColor: branding.accentColor || '#D91CD2',
               ctaText: branding.ctaText || 'CHAT POUR PLUS D\'INFOS',
               ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
@@ -992,7 +1007,7 @@ export default function CreatorPage() {
                 scheduled_date: scheduledDate, scheduled_time: '12:00', status: 'draft',
                 metadata: {
                   type: 'creator', subtitle: bSubtitle, salesPhrase: bPhrase, objective, mode,
-                  rushUrls, musicUrl: musicUrl || null, characterUrl: effectiveCharUrl || null,
+                  rushUrls, musicUrl: effectiveMusicUrl || null, voiceUrl: effectiveVoiceUrl || null, characterUrl: effectiveCharUrl || null, logoUrl: effectiveLogoUrl || null,
                   renderedVideoUrl: renderedVideoUrl || null, videoUrl: renderedVideoUrl || rushUrl || null,
                   voiceMode, ttsVoice: voiceMode === 'edge' ? ttsVoice : null, ttsText: voiceMode === 'edge' ? ttsText : null,
                   textCards: textCards.filter((c) => c.text.trim()).map((c) => ({ text: c.text, color: c.color })),
@@ -1017,8 +1032,8 @@ export default function CreatorPage() {
                 metadata: {
                   title: bTitle, subtitle: bSubtitle, salesPhrase: bPhrase, objective,
                   posterPhotoUrl: effectiveCharUrl || null, characterUrl: effectiveCharUrl || null,
-                  rushUrls, musicUrl: musicUrl || null, voiceUrl: voiceUrl || null,
-                  renderedVideoUrl: renderedVideoUrl || null,
+                  rushUrls, musicUrl: effectiveMusicUrl || null, voiceUrl: effectiveVoiceUrl || null,
+                  renderedVideoUrl: renderedVideoUrl || null, logoUrl: effectiveLogoUrl || null,
                 },
               }),
             });
@@ -1039,16 +1054,16 @@ export default function CreatorPage() {
           const { blob } = await composeAndUpload({
             width: vidWidth,
             height: vidHeight,
-            fps: 30,
+            fps: 24,
             title: title || 'Nouvelle vidéo',
             subtitle: subtitle || undefined,
             salesPhrase: salesPhrase || undefined,
             cards: cardItems.length > 0 ? cardItems : undefined,
             posterUrl: effectiveCharUrl,
             videoUrl: rushUrls[0] || null,
-            logoUrl: null,
-            musicUrl: musicUrl || null,
-            voiceUrl: voiceUrl || null,
+            logoUrl: effectiveLogoUrl,
+            musicUrl: effectiveMusicUrl || null,
+            voiceUrl: effectiveVoiceUrl || null,
             introDuration: 5,
             cardsDuration: cardItems.length > 0 ? 8 : 0,
             videoDuration: 12,
