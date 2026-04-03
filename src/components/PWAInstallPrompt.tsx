@@ -15,11 +15,16 @@ export default function PWAInstallPrompt() {
   const dismissedRef = useRef(false);
 
   useEffect(() => {
-    // Register service worker
+    // Register service worker with forced update check
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch((err) => {
-        console.log('[PWA] Service Worker registration failed:', err);
-      });
+      navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
+        .then((reg) => {
+          // Force update check on each page load
+          reg.update().catch(() => {});
+        })
+        .catch((err) => {
+          console.log('[PWA] Service Worker registration failed:', err);
+        });
     }
 
     // Check if it's iOS Safari
