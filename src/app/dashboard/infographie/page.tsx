@@ -16,6 +16,8 @@ import {
   Edit3,
   Check,
   Search,
+  Video,
+  AlertTriangle,
 } from 'lucide-react';
 
 // ── Types ──────────────────────────────────────────────────────
@@ -83,6 +85,11 @@ export default function InfographicPage() {
   const [format, setFormat] = useState<Format>('9:16');
   const [batchCount, setBatchCount] = useState(1);
   const [characterImage, setCharacterImage] = useState<string | null>(null);
+
+  // ── Video Upload ────────────────────────────────────────────
+  const [rushUrl, setRushUrl] = useState<string | null>(null);
+  const [rushFileName, setRushFileName] = useState<string | null>(null);
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
 
   // ── Pexels Photos ───────────────────────────────────────────
   const [pexelsPhotos, setPexelsPhotos] = useState<PexelsPhoto[]>([]);
@@ -282,12 +289,68 @@ export default function InfographicPage() {
     }
   };
 
+  // ── Video upload ───────────────────────────────────────────
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('video/')) {
+      showToast('Veuillez sélectionner un fichier vidéo');
+      return;
+    }
+
+    // Validate file size (max 100MB)
+    if (file.size > 100 * 1024 * 1024) {
+      showToast('La vidéo ne doit pas dépasser 100 Mo');
+      return;
+    }
+
+    setIsUploadingVideo(true);
+    setRushFileName(file.name);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('purpose', 'infographic-video');
+
+      const res = await fetch('/api/upload/media', { method: 'POST', body: formData });
+      const data = await res.json();
+
+      if (data.success && data.file?.url) {
+        setRushUrl(data.file.url);
+        showToast('Vidéo uploadée avec succès', 'success');
+      } else {
+        showToast('Erreur lors de l\'upload de la vidéo');
+        setRushFileName(null);
+      }
+    } catch (err) {
+      console.error('Video upload error:', err);
+      showToast('Erreur lors de l\'upload de la vidéo');
+      setRushFileName(null);
+    } finally {
+      setIsUploadingVideo(false);
+    }
+  };
+
+  const removeVideo = () => {
+    setRushUrl(null);
+    setRushFileName(null);
+  };
+
   // ── Export ──────────────────────────────────────────────────
   const handleExport = async () => {
     if (cards.length === 0) {
       showToast('Ajoutez au moins une carte avant d\'exporter');
       return;
     }
+
+    // Safety check: if a video was expected but source is undefined, block export
+    if (rushFileName && !rushUrl) {
+      showToast('La vidéo n\'a pas été uploadée correctement. Veuillez re-sélectionner le média.');
+      return;
+    }
+
     setIsExporting(true);
     setExportProgress(0);
 
@@ -320,6 +383,10 @@ export default function InfographicPage() {
           if (uploadData.success) mediaUrl = uploadData.file.url;
         }
 
+        // Determine media type based on whether video is present
+        const hasVideo = !!rushUrl;
+        const mediaType = hasVideo ? 'video' : 'image';
+
         if (destination === 'draft' || destination === 'both') {
           const today = new Date();
           today.setDate(today.getDate() + b); // Spread across days
@@ -336,8 +403,8 @@ export default function InfographicPage() {
             body: JSON.stringify({
               title: title || 'Infographie',
               caption,
-              media_url: mediaUrl,
-              media_type: 'image',
+              media_url: hasVideo ? rushUrl : mediaUrl,
+              media_type: mediaType,
               format: format === '16:9' ? 'tv' : 'reel',
               platforms: [],
               scheduled_date: scheduledDate,
@@ -353,6 +420,9 @@ export default function InfographicPage() {
                 characterUrl: characterImage ? mediaUrl : null,
                 posterUrl,
                 pexelsUrl: posterUrl,
+                // Video URL preservation: ensure Calendar page can access the video source
+                videoUrl: rushUrl || undefined,
+                rushUrls: rushUrl ? [rushUrl] : undefined,
               },
             }),
           });
@@ -804,6 +874,54 @@ export default function InfographicPage() {
               </label>
             </div>
 
+            {/* Video Upload (Médias) */}
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-300">
+                Vidéo de fond (optionnel)
+              </label>
+              {rushUrl ? (
+                <div className="flex items-center gap-3 rounded-lg border border-green-700 bg-green-900/20 px-4 py-3">
+                  <Video size={20} className="text-green-400 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-green-300 truncate">{rushFileName}</p>
+                    <p className="text-xs text-green-500">Vidéo prête pour l'export</p>
+                  </div>
+                  <button
+                    onClick={removeVideo}
+                    className="rounded p-1 text-gray-400 hover:bg-red-600 hover:text-white"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ) : (
+                <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed ${
+                  isUploadingVideo ? 'border-purple-500 bg-purple-900/20' : 'border-gray-700 bg-gray-800 hover:border-purple-500 hover:bg-gray-700'
+                } px-4 py-4`}>
+                  {isUploadingVideo ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin text-purple-400" />
+                      <span className="text-sm text-purple-300">Upload en cours...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Video size={18} />
+                      <span className="text-sm text-gray-300">Ajouter une vidéo</span>
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    accept="video/*"
+                    onChange={handleVideoUpload}
+                    disabled={isUploadingVideo}
+                    className="hidden"
+                  />
+                </label>
+              )}
+              <p className="mt-1 text-xs text-gray-500">
+                La vidéo sera utilisée comme fond dans le montage final (max 100 Mo)
+              </p>
+            </div>
+
             {/* Navigation */}
             <div className="flex gap-3">
               <button
@@ -857,8 +975,27 @@ export default function InfographicPage() {
                   <span className="text-gray-500">Phrases:</span>
                   <span className="ml-2 text-white">{salesPhrases.length}</span>
                 </div>
+                <div>
+                  <span className="text-gray-500">Vidéo:</span>
+                  <span className={`ml-2 ${rushUrl ? 'text-green-400' : 'text-gray-500'}`}>
+                    {rushUrl ? '✓ Prête' : 'Aucune'}
+                  </span>
+                </div>
               </div>
             </div>
+
+            {/* Safety Warning: video source undefined */}
+            {rushFileName && !rushUrl && (
+              <div className="flex items-start gap-3 rounded-lg border border-yellow-700 bg-yellow-900/20 p-3">
+                <AlertTriangle size={18} className="flex-shrink-0 text-yellow-400 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-yellow-300">Source vidéo indéfinie</p>
+                  <p className="text-xs text-yellow-500 mt-0.5">
+                    La vidéo n'a pas été uploadée correctement. Retournez à l'étape Style pour re-sélectionner le fichier vidéo avant d'exporter.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Destination */}
             <div>
