@@ -157,7 +157,7 @@ export default function CalendarPage() {
   const [fullPreviewPost, setFullPreviewPost] = useState<Post | null>(null);
   const [infoSeqIndex, setInfoSeqIndex] = useState(0);
   const [montageAutoPlay, setMontageAutoPlay] = useState(true);
-  const [montageMuted, setMontageMuted] = useState(false);
+  const [montageMuted, setMontageMuted] = useState(true);
   const montageTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [montageProgress, setMontageProgress] = useState(0);
   const montageProgressRef = useRef<NodeJS.Timeout | null>(null);
@@ -543,6 +543,59 @@ export default function CalendarPage() {
       if (montageProgressRef.current) clearInterval(montageProgressRef.current);
     };
   }, [showFullPreview, fullPreviewPost, infoSeqIndex, montageAutoPlay]);
+
+  // Explicit video play/pause when sequence changes — browser autoplay is unreliable
+  useEffect(() => {
+    if (!showFullPreview || !fullPreviewPost) return;
+    const meta = fullPreviewPost.metadata;
+    if (!meta?.videoUrl) return;
+    const seqOrder: string[] = meta?.sequences?.order || ['intro', 'cards', 'video', 'cta'];
+    const activeSeqs = meta?.videoUrl ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
+    const safeIdx = infoSeqIndex < activeSeqs.length ? infoSeqIndex : 0;
+    const currentSeq = activeSeqs[safeIdx] || 'intro';
+
+    const vid = document.getElementById('preview-video-infographic') as HTMLVideoElement | null;
+    if (!vid) return;
+
+    if (currentSeq === 'video') {
+      // Ensure video is playing when video sequence is active
+      vid.muted = true; // Must be muted for autoplay policy
+      vid.currentTime = 0;
+      const playPromise = vid.play();
+      if (playPromise) {
+        playPromise.then(() => {
+          // After play starts, unmute if user wants sound
+          if (!montageMuted) vid.muted = false;
+        }).catch((err) => {
+          console.warn('[Calendar] Video play failed, retrying muted:', err);
+          vid.muted = true;
+          vid.play().catch(() => {});
+        });
+      }
+    } else {
+      // Pause video when not in video sequence to save resources
+      if (!vid.paused) vid.pause();
+    }
+  }, [showFullPreview, fullPreviewPost, infoSeqIndex, montageMuted]);
+
+  // Initial video preload when full preview opens
+  useEffect(() => {
+    if (!showFullPreview || !fullPreviewPost) return;
+    const meta = fullPreviewPost.metadata;
+    if (!meta?.videoUrl) return;
+
+    // Give React a tick to render the video elements
+    const timer = setTimeout(() => {
+      const vid = document.getElementById('preview-video-infographic') as HTMLVideoElement | null;
+      if (vid) {
+        vid.muted = true;
+        vid.load(); // Force browser to start loading the video
+        console.log('[Calendar] Video preloaded:', vid.src, 'readyState:', vid.readyState);
+      }
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [showFullPreview, fullPreviewPost]);
 
   const handlePublishPost = async (post: Post) => {
     setSaving(true);
@@ -1804,7 +1857,10 @@ export default function CalendarPage() {
                     {/* === VIDEO: Full-screen video + Logo overlay === */}
                     {meta?.videoUrl && (
                       <div className="absolute inset-0" style={{ opacity: currentSeq === 'video' ? 1 : 0, zIndex: currentSeq === 'video' ? 10 : 1, transition: 'opacity 800ms ease-in-out', willChange: 'opacity' }}>
-                        <video id="preview-video-infographic" src={meta.videoUrl} muted={montageMuted} loop playsInline autoPlay preload="auto" className="absolute inset-0 w-full h-full object-cover" />
+                        <video id="preview-video-infographic" src={meta.videoUrl} muted loop playsInline preload="auto" className="absolute inset-0 w-full h-full object-cover"
+                          onLoadedData={(e) => { console.log('[Calendar] Video loaded, readyState:', (e.target as HTMLVideoElement).readyState); }}
+                          onError={(e) => { console.error('[Calendar] Video error:', (e.target as HTMLVideoElement).error); }}
+                        />
                         {meta?.logoUrl && (
                           <div className="absolute bottom-6 right-4 z-10">
                             <img src={meta.logoUrl} alt="Logo" className="w-14 h-14 rounded-xl object-contain bg-black/50 p-1.5 backdrop-blur-sm" />
@@ -1888,7 +1944,9 @@ export default function CalendarPage() {
                         <img src={posterImgSrc} alt="Poster" className="absolute inset-0 w-full h-full object-cover" />
                       )}
                       {videoSrc ? (
-                        <video id="preview-video" src={videoSrc} muted={montageMuted} loop playsInline autoPlay preload="auto" className="absolute inset-0 w-full h-full object-cover" />
+                        <video id="preview-video" src={videoSrc} muted loop playsInline autoPlay preload="auto" className="absolute inset-0 w-full h-full object-cover"
+                          onLoadedData={(e) => { const v = e.target as HTMLVideoElement; console.log('[Calendar] BG video loaded, readyState:', v.readyState); v.play().catch(() => {}); }}
+                        />
                       ) : imgSrc ? (
                         <img src={imgSrc} alt={fullPreviewPost.title} className="absolute inset-0 w-full h-full object-cover" />
                       ) : (
