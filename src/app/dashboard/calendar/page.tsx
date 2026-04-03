@@ -611,6 +611,56 @@ export default function CalendarPage() {
     return () => clearTimeout(timer);
   }, [showFullPreview, fullPreviewPost]);
 
+  // Force video play/pause when the active sequence changes
+  useEffect(() => {
+    if (!showFullPreview || !fullPreviewPost) return;
+    const meta = fullPreviewPost.metadata;
+    if (!meta?.videoUrl) return;
+
+    const seqOrder: string[] = meta?.sequences?.order || ['intro', 'cards', 'video', 'cta'];
+    const activeSeqs = meta?.videoUrl ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
+    const currentSeq = activeSeqs[infoSeqIndex] || 'intro';
+
+    const vid = document.getElementById('preview-video-infographic') as HTMLVideoElement | null;
+    if (!vid) return;
+
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    let onLoaded: (() => void) | null = null;
+
+    if (currentSeq === 'video') {
+      // Don't call play() if video hasn't loaded (readyState 0 = HAVE_NOTHING)
+      if (vid.readyState === 0) {
+        // Video not loaded — skip sequence after 3s timeout
+        timeout = setTimeout(() => {
+          console.warn('[Calendar] Video readyState still 0 after 3s, skipping sequence');
+          setInfoSeqIndex(prev => {
+            const next = prev + 1;
+            return next < activeSeqs.length ? next : 0;
+          });
+        }, 3000);
+        onLoaded = () => {
+          if (timeout) clearTimeout(timeout);
+          vid.currentTime = 0;
+          vid.play().catch(() => {});
+        };
+        vid.addEventListener('loadeddata', onLoaded, { once: true });
+      } else {
+        // Video is loaded — play it
+        vid.currentTime = 0;
+        const playPromise = vid.play();
+        if (playPromise) playPromise.catch(() => {}); // Silence AbortError
+      }
+    } else {
+      // Pause video when not in video sequence
+      if (!vid.paused) vid.pause();
+    }
+
+    return () => {
+      if (timeout) clearTimeout(timeout);
+      if (onLoaded) vid.removeEventListener('loadeddata', onLoaded);
+    };
+  }, [showFullPreview, fullPreviewPost, infoSeqIndex]);
+
   const handlePublishPost = async (post: Post) => {
     setSaving(true);
     try {
@@ -682,7 +732,7 @@ export default function CalendarPage() {
     if (meta?.renderedVideoUrl) {
       const link = document.createElement('a');
       link.href = meta.renderedVideoUrl;
-      link.download = `${(post.title || 'video').replace(/\s+/g, '_')}.webm`;
+      link.download = `${(post.title || 'video').replace(/\s+/g, '_')}.mp4`;
       link.target = '_blank';
       document.body.appendChild(link);
       link.click();
@@ -737,7 +787,7 @@ export default function CalendarPage() {
 
       // Download the composed video
       if (blob && blob.size > 0) {
-        downloadBlob(blob, `${(post.title || 'montage').replace(/\s+/g, '_')}.webm`);
+        downloadBlob(blob, `${(post.title || 'montage').replace(/\s+/g, '_')}.mp4`);
       }
 
       // Update the post with the rendered URL if upload succeeded

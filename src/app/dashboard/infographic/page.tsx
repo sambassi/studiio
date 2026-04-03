@@ -553,8 +553,7 @@ export default function InfographiePage() {
             });
             exportBlob = result.blob;
           }
-          const ext = exportBlob.type.includes('mp4') ? 'mp4' : 'webm';
-          downloadBlob(exportBlob, `${(title || 'infographie').replace(/\s+/g, '_')}.${ext}`);
+          downloadBlob(exportBlob, `${(title || 'infographie').replace(/\s+/g, '_')}.mp4`);
         } catch (err) { console.error('Export render error:', err); }
       }
 

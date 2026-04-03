@@ -1000,8 +1000,7 @@ export default function CreatorPage() {
             });
             exportBlob = result.blob;
           }
-          const ext = exportBlob.type.includes('mp4') ? 'mp4' : 'webm';
-          downloadBlob(exportBlob, `${(title || 'video').replace(/\s+/g, '_')}.${ext}`);
+          downloadBlob(exportBlob, `${(title || 'video').replace(/\s+/g, '_')}.mp4`);
         } catch (exportErr) {
           console.error('[Composer] Export error:', exportErr);
           showToast(t('render.errorCompose'));

@@ -556,24 +556,14 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 
   console.log('[Composer] Stream tracks:', combinedStream.getTracks().map(t => t.kind + ':' + t.readyState).join(', '));
 
-  // Choose best mimeType — prefer WebM for reliability
-  // Chrome's MP4 MediaRecorder output has timing issues in fast mode (canvas.captureStream(0))
-  // that produce files Chrome can write but cannot read back. WebM VP8/VP9 handles this correctly.
-  const mimeTypes = useFastMode
-    ? [
-        'video/webm;codecs=vp9,opus',
-        'video/webm;codecs=vp8,opus',
-        'video/webm',
-        'video/mp4;codecs=avc1,mp4a.40.2',
-        'video/mp4',
-      ]
-    : [
-        'video/webm;codecs=vp9,opus',
-        'video/webm;codecs=vp8,opus',
-        'video/webm',
-        'video/mp4;codecs=avc1,mp4a.40.2',
-        'video/mp4',
-      ];
+  // Choose best mimeType — prefer WebM (Chrome MP4 is buggy with captureStream fast mode)
+  const mimeTypes = [
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm',
+    'video/mp4;codecs=avc1,mp4a.40.2',
+    'video/mp4',
+  ];
   let mimeType = 'video/webm';
   for (const t of mimeTypes) {
     if (MediaRecorder.isTypeSupported(t)) { mimeType = t; break; }
@@ -830,10 +820,93 @@ export async function composeAndUpload(options: ComposerOptions): Promise<{ blob
   return { blob, url };
 }
 
-export function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
+/**
+ * Convert a WebM blob to MP4 using FFmpeg.wasm (client-side).
+ * Falls back to original blob if conversion fails.
+ */
+export async function convertWebmToMp4(
+  webmBlob: Blob,
+  onProgress?: (percent: number, stage: string) => void
+): Promise<Blob> {
+  if (webmBlob.type.includes('mp4')) return webmBlob; // Already MP4
+
+  onProgress?.(0, 'Conversion MP4...');
+  try {
+    const { FFmpeg } = await import('@ffmpeg/ffmpeg');
+    const { fetchFile, toBlobURL } = await import('@ffmpeg/util');
+
+    const ffmpeg = new FFmpeg();
+
+    // Load FFmpeg WASM from CDN
+    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+    await ffmpeg.load({
+      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+    });
+
+    onProgress?.(20, 'Conversion MP4...');
+
+    // Write input WebM
+    const inputData = await fetchFile(webmBlob);
+    await ffmpeg.writeFile('input.webm', inputData);
+
+    onProgress?.(40, 'Encodage H.264...');
+
+    // Convert WebM → MP4 (H.264 + AAC)
+    await ffmpeg.exec([
+      '-i', 'input.webm',
+      '-c:v', 'libx264',
+      '-preset', 'fast',
+      '-crf', '23',
+      '-c:a', 'aac',
+      '-b:a', '128k',
+      '-movflags', '+faststart',
+      '-y', 'output.mp4',
+    ]);
+
+    onProgress?.(85, 'Finalisation MP4...');
+
+    // Read output MP4
+    const outputData = await ffmpeg.readFile('output.mp4');
+    // FFmpeg readFile returns Uint8Array or string; use slice for BlobPart compat
+    const uint8 = outputData as Uint8Array;
+    const mp4Blob = new Blob([new Uint8Array(uint8)], { type: 'video/mp4' });
+
+    // Cleanup
+    ffmpeg.terminate();
+
+    onProgress?.(100, 'MP4 prêt !');
+    console.log('[Composer] WebM→MP4 conversion OK:', (mp4Blob.size / 1024 / 1024).toFixed(1), 'MB');
+    return mp4Blob;
+  } catch (err) {
+    console.error('[Composer] WebM→MP4 conversion failed, using original WebM:', err);
+    onProgress?.(100, 'Export WebM (conversion MP4 échouée)');
+    return webmBlob; // Fallback: return original WebM
+  }
+}
+
+/**
+ * Download a blob as a file. Converts WebM to MP4 automatically for desktop export.
+ */
+export async function downloadBlob(
+  blob: Blob,
+  filename: string,
+  onProgress?: (percent: number, stage: string) => void
+) {
+  let finalBlob = blob;
+  let finalFilename = filename;
+
+  // Auto-convert WebM to MP4 for desktop download
+  if (blob.type.includes('webm') || filename.endsWith('.webm')) {
+    finalBlob = await convertWebmToMp4(blob, onProgress);
+    if (finalBlob.type.includes('mp4')) {
+      finalFilename = filename.replace(/\.webm$/i, '.mp4');
+    }
+  }
+
+  const url = URL.createObjectURL(finalBlob);
   const a = document.createElement('a');
-  a.href = url; a.download = filename;
+  a.href = url; a.download = finalFilename;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }

@@ -599,8 +599,7 @@ function AudioStudioContent() {
             }
 
             if ((exportDest === 'desktop' || exportDest === 'both') && result.blob) {
-              const ext = result.blob.type.includes('mp4') ? 'mp4' : 'webm';
-              downloadBlob(result.blob, `${(p.title || 'video').replace(/\s+/g, '_')}_${i + 1}.${ext}`);
+              downloadBlob(result.blob, `${(p.title || 'video').replace(/\s+/g, '_')}_${i + 1}.mp4`);
             }
           } catch (err) {
             console.error(`[AudioStudio]   ❌ FAILED post ${i + 1}/${posts.length} (${p.id}):`, err);
@@ -704,8 +703,7 @@ function AudioStudioContent() {
         if (localVoiceBlobUrl) URL.revokeObjectURL(localVoiceBlobUrl);
 
         if (exportDest === 'desktop' || exportDest === 'both') {
-          const ext = result.blob.type.includes('mp4') ? 'mp4' : 'webm';
-          downloadBlob(result.blob, `${(p.title || 'video').replace(/\s+/g, '_')}_audio.${ext}`);
+          downloadBlob(result.blob, `${(p.title || 'video').replace(/\s+/g, '_')}_audio.mp4`);
         }
 
         if ((exportDest === 'calendar' || exportDest === 'both') && result.url) {
