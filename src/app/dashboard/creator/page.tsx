@@ -20,6 +20,10 @@ import {
   GripVertical,
   Play,
   Type,
+  Calendar,
+  Music,
+  Package,
+  RefreshCw,
 } from 'lucide-react';
 import { useBranding } from '@/lib/hooks/useBranding';
 import { useTranslations, useLocale } from '@/i18n/client';
@@ -1124,19 +1128,19 @@ export default function CreatorPage() {
       )}
 
       {/* Header */}
-      <div className="px-8 pt-6 pb-4">
-        <div className="flex items-center justify-between">
+      <div className="px-4 md:px-8 pt-4 md:pt-6 pb-3 md:pb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold">{t('title')}</h1>
-            <p className="text-sm text-gray-400 mt-1">{t('stepOf', { current: String(step + 1), total: String(STEP_LABELS.length) })}</p>
+            <h1 className="text-xl md:text-2xl font-bold">{t('title')}</h1>
+            <p className="text-xs md:text-sm text-gray-400 mt-1">{t('stepOf', { current: String(step + 1), total: String(STEP_LABELS.length) })}</p>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-400">{t('credits')}</span>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 md:gap-3">
+            <span className="text-xs md:text-sm text-gray-400">{t('credits')}</span>
             <div className="flex gap-1.5">
               {STEP_COLORS.map((color, i) => (
                 <div
                   key={i}
-                  className={`h-2.5 w-8 rounded-full transition-all ${
+                  className={`h-2.5 w-6 md:w-8 rounded-full transition-all ${
                     i <= step ? color : 'bg-gray-700'
                   }`}
                 />
@@ -1147,17 +1151,17 @@ export default function CreatorPage() {
       </div>
 
       {/* Main Content - Two Column */}
-      <div className="flex flex-1 overflow-hidden px-8 pb-0 gap-6">
+      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden px-3 sm:px-4 md:px-8 pb-0 gap-2 sm:gap-4 md:gap-6">
         {/* LEFT COLUMN - Main Form */}
-        <div className="flex-1 overflow-y-auto pb-24 pr-2">
+        <div className="flex-1 overflow-y-auto pb-28 sm:pb-24 pr-1 sm:pr-2 md:pr-4">
 
           {/* ============ STEP 0: FORMAT & OBJECTIF ============ */}
           {step === 0 && (
             <div className="space-y-6">
               {/* Format */}
-              <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
-                <h2 className="text-lg font-bold mb-4">{t('format.title')}</h2>
-                <div className="flex gap-3">
+              <div className="bg-gray-800/60 rounded-xl p-4 md:p-6 border border-gray-700/50">
+                <h2 className="text-base md:text-lg font-bold mb-4">{t('format.title')}</h2>
+                <div className="flex flex-col sm:flex-row gap-2 md:gap-3">
                   {FORMAT_OPTIONS.map((opt) => (
                     <button
                       key={opt.value}
@@ -1176,9 +1180,9 @@ export default function CreatorPage() {
               </div>
 
               {/* Mode */}
-              <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
-                <h2 className="text-lg font-bold mb-4">{t('mode.title')}</h2>
-                <div className="flex gap-3">
+              <div className="bg-gray-800/60 rounded-xl p-4 md:p-6 border border-gray-700/50">
+                <h2 className="text-base md:text-lg font-bold mb-4">{t('mode.title')}</h2>
+                <div className="flex flex-col sm:flex-row gap-2 md:gap-3">
                   {MODE_OPTIONS.map((opt) => (
                     <button
                       key={opt.value}
@@ -1196,12 +1200,12 @@ export default function CreatorPage() {
               </div>
 
               {/* Objectif — defaults + user-created merged */}
-              <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-bold">{t('objective.title')}</h2>
+              <div className="bg-gray-800/60 rounded-xl p-4 md:p-6 border border-gray-700/50">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                  <h2 className="text-base md:text-lg font-bold">{t('objective.title')}</h2>
                   <button
                     onClick={() => router.push('/dashboard/objectives')}
-                    className="text-xs text-purple-400 hover:text-purple-300 border border-purple-500/30 px-2 py-1 rounded-lg transition"
+                    className="text-xs text-purple-400 hover:text-purple-300 border border-purple-500/30 px-2 py-1 rounded-lg transition whitespace-nowrap"
                   >
                     {t('objective.createObjective')}
                   </button>
@@ -1246,9 +1250,9 @@ export default function CreatorPage() {
               </div>
 
               {/* Titre & Sous-titre */}
-              <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-bold">{t('titleSubtitle.title')}</h2>
+              <div className="bg-gray-800/60 rounded-xl p-4 md:p-6 border border-gray-700/50 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <h2 className="text-base md:text-lg font-bold">{t('titleSubtitle.title')}</h2>
                   <button
                     onClick={generateTitleSubtitle}
                     className="flex items-center gap-1 text-xs text-purple-400 border border-purple-500/30 px-2.5 py-1.5 rounded-lg hover:bg-purple-500/10 transition"
@@ -1264,7 +1268,7 @@ export default function CreatorPage() {
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder={t('titleSubtitle.titlePlaceholder')}
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 md:px-4 py-2 md:py-2.5 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -1274,13 +1278,13 @@ export default function CreatorPage() {
                     value={subtitle}
                     onChange={(e) => setSubtitle(e.target.value)}
                     placeholder={t('titleSubtitle.subtitlePlaceholder')}
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 md:px-4 py-2 md:py-2.5 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
                   />
                 </div>
 
                 {/* Audio note — Studio Son */}
-                <div className="bg-purple-900/20 rounded-xl p-3 border border-purple-500/30 flex items-center gap-3">
-                  <Volume2 size={18} className="text-purple-400 shrink-0" />
+                <div className="bg-purple-900/20 rounded-xl p-3 border border-purple-500/30 flex flex-col sm:flex-row sm:items-center gap-2 md:gap-3">
+                  <Volume2 size={18} className="text-purple-400 shrink-0 flex-shrink-0" />
                   <div>
                     <p className="text-sm text-white font-medium">{t('audioNote.title')}</p>
                     <p className="text-xs text-gray-400 mt-0.5">{t('audioNote.description')} <span className="text-purple-400 font-medium">{t('audioNote.studioSon')}</span>.</p>
@@ -1294,9 +1298,9 @@ export default function CreatorPage() {
           {step === 1 && (
             <div className="space-y-6">
               {/* Rush Vidéos */}
-              <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-bold flex items-center gap-2">
+              <div className="bg-gray-800/60 rounded-xl p-4 md:p-6 border border-gray-700/50">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                  <h2 className="text-base md:text-lg font-bold flex items-center gap-2">
                     <Film size={20} />
                     {t('rushVideos.title')} ({rushCount})
                   </h2>
@@ -1326,36 +1330,38 @@ export default function CreatorPage() {
 
                 {/* Global settings panel */}
                 {showGlobalSettings && (
-                  <div className="mb-4 bg-gray-900 rounded-lg p-4 border border-gray-700 space-y-3">
+                  <div className="mb-4 bg-gray-900 rounded-lg p-3 md:p-4 border border-gray-700 space-y-3">
                     <h3 className="text-xs font-bold text-gray-300 uppercase tracking-wide">{t('textCards.title')}</h3>
-                    <div className="flex gap-3 items-center">
-                      <div className="flex items-center gap-2">
-                        <label className="text-[10px] text-gray-500">{t('textCards.color')}</label>
-                        <input
-                          type="color"
-                          value={globalTextColor}
-                          onChange={(e) => setGlobalTextColor(e.target.value)}
-                          className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent"
-                        />
+                    <div className="flex flex-col gap-3 md:gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center gap-2">
+                          <label className="text-[10px] text-gray-500">{t('textCards.color')}</label>
+                          <input
+                            type="color"
+                            value={globalTextColor}
+                            onChange={(e) => setGlobalTextColor(e.target.value)}
+                            className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2 flex-1 min-w-[150px]">
+                          <label className="text-[10px] text-gray-500 whitespace-nowrap">{t('textCards.font')}</label>
+                          <select
+                            value={globalFontFamily}
+                            onChange={(e) => setGlobalFontFamily(e.target.value)}
+                            className="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-white focus:border-purple-500 focus:outline-none"
+                          >
+                            {FONT_OPTIONS.map((f) => (
+                              <option key={f.value} value={f.value}>{f.label}</option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 flex-1">
-                        <label className="text-[10px] text-gray-500">{t('textCards.font')}</label>
-                        <select
-                          value={globalFontFamily}
-                          onChange={(e) => setGlobalFontFamily(e.target.value)}
-                          className="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-white focus:border-purple-500 focus:outline-none"
-                        >
-                          {FONT_OPTIONS.map((f) => (
-                            <option key={f.value} value={f.value}>{f.label}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="flex gap-1">
+                      <div className="flex flex-wrap gap-1">
                         {(['sm', 'md', 'lg'] as const).map((size) => (
                           <button
                             key={size}
                             onClick={() => setGlobalFontSize(size)}
-                            className={`px-2.5 py-1.5 rounded text-[10px] font-medium transition ${
+                            className={`px-2 md:px-2.5 py-1 md:py-1.5 rounded text-[10px] font-medium transition ${
                               globalFontSize === size ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'
                             }`}
                           >
@@ -1365,7 +1371,7 @@ export default function CreatorPage() {
                       </div>
                       <button
                         onClick={applyGlobalSettings}
-                        className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium rounded-lg transition"
+                        className="w-full md:w-auto px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium rounded-lg transition"
                       >
                         {t('textCards.apply')}
                       </button>
@@ -1376,7 +1382,7 @@ export default function CreatorPage() {
                 {/* Rush Grid with text card inserts — Drag & Drop */}
                 <div
                   ref={timelineRef}
-                  className="flex gap-0 flex-wrap pb-2 items-end"
+                  className="flex gap-0 flex-wrap pb-2 items-end overflow-x-auto"
                   onTouchMove={handleTouchMove}
                   onTouchEnd={handleTouchEnd}
                 >
@@ -1398,7 +1404,7 @@ export default function CreatorPage() {
                         {/* Rush slot */}
                         <div className="flex-shrink-0 flex flex-col items-center gap-2">
                           <div
-                            className={`relative w-28 h-40 rounded-xl border-2 border-dashed cursor-grab active:cursor-grabbing transition-all flex items-center justify-center overflow-hidden group ${
+                            className={`relative w-24 sm:w-28 h-32 sm:h-40 rounded-xl border-2 border-dashed cursor-grab active:cursor-grabbing transition-all flex items-center justify-center overflow-hidden group ${
                               rush.file
                                 ? 'border-purple-500/50 bg-black'
                                 : 'border-gray-600 hover:border-gray-500 bg-gray-900/50'
@@ -1446,7 +1452,7 @@ export default function CreatorPage() {
 
                           {/* Clip detection: analyzing indicator */}
                           {rush.isAnalyzing && (
-                            <div className="w-28 mt-1">
+                            <div className="w-24 sm:w-28 mt-1">
                               <div className="flex items-center gap-1 mb-0.5">
                                 <Loader2 size={8} className="animate-spin text-purple-400" />
                                 <span className="text-[8px] text-purple-400">{t('rushVideos.analyzeClips')}</span>
@@ -1509,7 +1515,7 @@ export default function CreatorPage() {
                         {cardsAtPosition.map((card) => (
                           <div key={card.id} className="flex-shrink-0 flex flex-col items-center gap-2 mx-1 relative">
                             <div
-                              className="relative w-28 h-40 rounded-xl border-2 border-solid cursor-pointer flex items-center justify-center overflow-hidden"
+                              className="relative w-24 sm:w-28 h-32 sm:h-40 rounded-xl border-2 border-solid cursor-pointer flex items-center justify-center overflow-hidden"
                               style={{ borderColor: card.color, backgroundColor: `${card.color}15` }}
                               onClick={() => setEditingCardId(editingCardId === card.id ? null : card.id)}
                             >
@@ -1530,7 +1536,7 @@ export default function CreatorPage() {
                             </div>
                             {/* Mini editor when selected */}
                             {editingCardId === card.id && (
-                              <div className="absolute top-44 left-0 z-20 bg-gray-800 border border-gray-600 rounded-lg p-3 shadow-xl space-y-2 w-60">
+                              <div className="absolute top-44 left-0 z-20 bg-gray-800 border border-gray-600 rounded-lg p-3 shadow-xl space-y-2 w-48 sm:w-60">
                                 <div className="flex gap-1.5">
                                   <input
                                     type="text"
@@ -1607,9 +1613,9 @@ export default function CreatorPage() {
                     <div className="flex-shrink-0 flex flex-col items-center gap-2">
                       <button
                         onClick={handleAddRush}
-                        className="w-28 h-40 rounded-xl border-2 border-dashed border-gray-700 hover:border-purple-500/50 bg-gray-900/30 flex items-center justify-center transition cursor-pointer"
+                        className="w-24 sm:w-28 h-32 sm:h-40 rounded-xl border-2 border-dashed border-gray-700 hover:border-purple-500/50 bg-gray-900/30 flex items-center justify-center transition cursor-pointer"
                       >
-                        <Plus size={20} className="text-gray-600" />
+                        <Plus size={16} className="sm:w-5 sm:h-5 text-gray-600" />
                       </button>
                     </div>
                   )}
@@ -1622,9 +1628,9 @@ export default function CreatorPage() {
               </div>
 
               {/* Nombre de vidéos */}
-              <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
-                <h2 className="text-lg font-bold mb-4">{t('batch.count')}</h2>
-                <div className="flex gap-3">
+              <div className="bg-gray-800/60 rounded-xl p-4 md:p-6 border border-gray-700/50">
+                <h2 className="text-base md:text-lg font-bold mb-4">{t('batch.count')}</h2>
+                <div className="flex flex-wrap gap-2 md:gap-3">
                   {[1, 2, 3, 5, 10].map((count) => (
                     <button
                       key={count}
@@ -1642,14 +1648,14 @@ export default function CreatorPage() {
               </div>
 
               {/* Personnage */}
-              <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
-                <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
+              <div className="bg-gray-800/60 rounded-xl p-4 md:p-6 border border-gray-700/50">
+                <h2 className="text-base md:text-lg font-bold flex items-center gap-2 mb-4">
                   <ImageIcon size={20} />
                   {t('character.title')}
                 </h2>
 
                 {/* Tab Toggle */}
-                <div className="flex gap-2 mb-4">
+                <div className="flex gap-2 mb-4 flex-col sm:flex-row">
                   <button
                     onClick={() => setCharacterTab('upload')}
                     className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition border ${
@@ -1710,14 +1716,14 @@ export default function CreatorPage() {
                 ) : (
                   <div className="space-y-3">
                     {/* Search bar */}
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-col sm:flex-row">
                       <input
                         type="text"
                         value={characterPrompt}
                         onChange={(e) => { setCharacterPrompt(e.target.value); setPexelsPage(1); }}
                         onKeyDown={(e) => { if (e.key === 'Enter') { setPexelsPage(1); searchPexelsCharacter(); } }}
                         placeholder={t('character.searchPlaceholder')}
-                        className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
+                        className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 md:px-4 py-2 md:py-2.5 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
                       />
                       <button
                         onClick={() => {
@@ -1729,9 +1735,9 @@ export default function CreatorPage() {
                           }
                         }}
                         disabled={pexelsLoading}
-                        className="px-4 py-2.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded-lg transition"
+                        className="px-3 md:px-4 py-2 md:py-2.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded-lg transition w-full sm:w-auto"
                       >
-                        {pexelsLoading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                        {pexelsLoading ? <Loader2 size={16} className="animate-spin mx-auto" /> : <Search size={16} className="mx-auto" />}
                       </button>
                     </div>
 
@@ -1751,7 +1757,7 @@ export default function CreatorPage() {
 
                     {/* Pexels results grid */}
                     {pexelsResults.length > 0 && !selectedPexelsUrl && (
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                         {pexelsResults.map((photo) => (
                           <button
                             key={photo.id}
@@ -1781,8 +1787,8 @@ export default function CreatorPage() {
               </div>
 
               {/* Logo */}
-              <div className="bg-gray-800/60 rounded-xl p-4 border border-gray-700/50">
-                <h2 className="text-sm font-bold flex items-center gap-2 mb-3">
+              <div className="bg-gray-800/60 rounded-xl p-4 md:p-6 border border-gray-700/50">
+                <h2 className="text-sm md:text-base font-bold flex items-center gap-2 mb-3">
                   <ImageIcon size={16} />
                   {t('logoOptional')}
                 </h2>
@@ -1814,7 +1820,7 @@ export default function CreatorPage() {
           {step === 2 && (
             <div className="space-y-6">
               {/* Phrase de vente */}
-              <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
+              <div className="bg-gray-800/60 rounded-xl p-4 md:p-6 border border-gray-700/50">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-bold">{t('salesPhrase.title')}</h2>
                   <button
@@ -1877,20 +1883,23 @@ export default function CreatorPage() {
                 <h2 className="text-lg font-bold mb-4">{t('batch.destination')}</h2>
                 <div className="flex gap-2 mb-2">
                   {[
-                    { value: 'calendar', label: `📅 ${t('batch.calendar')}` },
-                    { value: 'studio', label: `🎵 ${t('batch.studio')}` },
-                    { value: 'export', label: `📦 ${t('batch.export')}` },
-                    { value: 'both', label: `🔄 ${t('batch.both')}` },
+                    { value: 'calendar', label: t('batch.calendar'), icon: Calendar, color: '#3B82F6' },
+                    { value: 'studio', label: t('batch.studio'), icon: Music, color: '#10B981' },
+                    { value: 'export', label: t('batch.export'), icon: Package, color: '#F59E0B' },
+                    { value: 'both', label: t('batch.both'), icon: RefreshCw, color: '#EC4899' },
                   ].map((dest) => (
                     <button
                       key={dest.value}
                       onClick={() => setDestination(dest.value)}
-                      className={`flex-1 text-center px-1.5 py-2.5 rounded-lg font-medium text-[11px] transition border ${
+                      className={`flex-1 flex flex-col items-center gap-1.5 px-1.5 py-2.5 rounded-lg font-medium text-[11px] transition border ${
                         destination === dest.value
                           ? 'bg-purple-500/20 border-purple-500 text-white'
                           : 'bg-gray-700 border-gray-700 text-gray-300 hover:bg-gray-600'
                       }`}
                     >
+                      <div className="w-7 h-7 rounded-md flex items-center justify-center" style={{ backgroundColor: `${dest.color}20`, color: dest.color }}>
+                        <dest.icon size={14} />
+                      </div>
                       {dest.label}
                     </button>
                   ))}
@@ -1945,10 +1954,10 @@ export default function CreatorPage() {
                 </>
               ) : (
                 /* Rendering Progress */
-                <div className="bg-gray-800/60 rounded-xl p-12 border border-gray-700/50 text-center space-y-6">
-                  <h2 className="text-2xl font-bold">{t('render.creating')}</h2>
+                <div className="bg-gray-800/60 rounded-xl p-6 md:p-12 border border-gray-700/50 text-center space-y-6">
+                  <h2 className="text-lg md:text-2xl font-bold">{t('render.creating')}</h2>
 
-                  <div className="text-6xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                  <div className="text-4xl sm:text-6xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
                     {Math.round(renderProgress)}%
                   </div>
 
@@ -1967,7 +1976,7 @@ export default function CreatorPage() {
         </div>
 
         {/* RIGHT COLUMN - Live Preview */}
-        <div className="w-80 flex-shrink-0 overflow-y-auto pb-24">
+        <div className="hidden lg:flex lg:flex-col lg:w-80 flex-shrink-0 overflow-y-auto pb-24">
           <div className="bg-gray-800/60 rounded-xl border border-gray-700/50 p-5 sticky top-0">
             <div className="flex items-center gap-2 mb-3">
               <Eye size={16} className="text-pink-400" />
@@ -1980,7 +1989,7 @@ export default function CreatorPage() {
               <div
                 className={`rounded-2xl overflow-hidden shadow-2xl ${
                   format === 'reel'
-                    ? 'w-48 aspect-[9/16]'
+                    ? 'w-44 sm:w-48 aspect-[9/16]'
                     : 'w-full aspect-video'
                 }`}
                 style={{
@@ -2135,7 +2144,7 @@ export default function CreatorPage() {
               <div className="flex justify-center">
                 <div
                   className={`rounded-xl overflow-hidden shadow-xl relative ${
-                    format === 'reel' ? 'w-40 aspect-[9/16]' : 'w-full aspect-video'
+                    format === 'reel' ? 'w-32 sm:w-40 aspect-[9/16]' : 'w-full aspect-video'
                   }`}
                   style={{
                     border: branding.borderEnabled ? `2px solid ${branding.borderColor}` : '1px solid rgba(124,58,237,0.3)',
@@ -2220,35 +2229,36 @@ export default function CreatorPage() {
       </div>
 
       {/* Bottom Navigation */}
-      <div className="fixed bottom-0 left-64 right-0 bg-gray-900/95 backdrop-blur border-t border-gray-700 px-8 py-4 flex items-center justify-between z-30">
+      <div className="fixed bottom-0 left-0 sm:left-64 right-0 bg-gray-900/95 backdrop-blur border-t border-gray-700 px-3 sm:px-8 py-3 sm:py-4 flex items-center justify-between z-30 gap-2 sm:gap-4">
         <button
           onClick={goBack}
           disabled={step === 0}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition ${
+          className={`flex items-center gap-1 px-3 sm:px-5 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap ${
             step === 0
               ? 'text-gray-600 cursor-not-allowed'
               : 'text-gray-300 hover:text-white hover:bg-gray-800'
           }`}
         >
-          <ChevronLeft size={16} />
-          {tc('back')}
+          <ChevronLeft size={14} className="sm:w-4 sm:h-4" />
+          <span className="hidden sm:inline">{tc('back')}</span>
         </button>
 
         {step < 3 ? (
           <button
             onClick={goNext}
-            className="flex items-center gap-2 px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg transition text-sm"
+            className="flex items-center gap-1 px-4 sm:px-6 py-2 sm:py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg transition text-xs sm:text-sm whitespace-nowrap"
           >
-            {tc('next')}
-            <ChevronRight size={16} />
+            <span className="hidden sm:inline">{tc('next')}</span>
+            <span className="sm:hidden">→</span>
+            <ChevronRight size={14} className="sm:w-4 sm:h-4" />
           </button>
         ) : !isRendering ? (
           <button
             onClick={handleStartRendering}
-            className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 text-white font-bold rounded-lg transition text-sm"
+            className="flex items-center gap-1 px-3 sm:px-6 py-2 sm:py-2.5 bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 text-white font-bold rounded-lg transition text-xs sm:text-sm whitespace-nowrap"
           >
-            <Zap size={16} />
-            {t('render.launchCreation')}
+            <Zap size={14} className="sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">{t('render.launchCreation')}</span>
           </button>
         ) : null}
       </div>

@@ -19,10 +19,10 @@ export function Navbar() {
   };
 
   return (
-    <nav className="fixed top-0 right-0 left-64 h-16 bg-gray-900 border-b border-gray-800 z-40">
+    <nav className="fixed top-0 right-0 left-0 lg:left-64 h-16 bg-gray-900 border-b border-gray-800 z-40 lg:z-40">
       <div className="h-full px-6 flex justify-between items-center">
-        <div className="text-gray-400">{t('dashboard')}</div>
-        <div className="flex items-center gap-4">
+        <div className="text-gray-400 hidden lg:block">{t('dashboard')}</div>
+        <div className="flex items-center gap-4 lg:ml-0 ml-12">
           <LanguageSelector variant="navbar" />
           {isAdmin && (
             <button

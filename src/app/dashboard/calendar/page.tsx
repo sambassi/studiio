@@ -1280,7 +1280,7 @@ export default function CalendarPage() {
     const isCurrentMonth = today.getFullYear() === currentDate.getFullYear() && today.getMonth() === currentDate.getMonth();
 
     for (let i = 0; i < firstDay; i++) {
-      days.push(<div key={`empty-${i}`} className="aspect-square bg-gray-800/50 rounded-lg" />);
+      days.push(<div key={`empty-${i}`} className="aspect-square bg-gray-800/50 rounded-md sm:rounded-lg" />);
     }
 
     for (let day = 1; day <= daysInMonth; day++) {
@@ -1296,7 +1296,7 @@ export default function CalendarPage() {
           onDragOver={(e) => { e.preventDefault(); setDragOverDay(day); }}
           onDragLeave={() => { if (dragOverDay === day) setDragOverDay(null); }}
           onDrop={(e) => { e.preventDefault(); handleDropOnDay(day); }}
-          className={`aspect-square p-1.5 rounded-lg cursor-pointer transition-all relative ${
+          className={`aspect-square p-0.5 sm:p-1.5 rounded-md sm:rounded-lg cursor-pointer transition-all relative ${
             dragOverDay === day
               ? 'bg-purple-600/30 ring-2 ring-purple-400 scale-105'
               : isSelected
@@ -1306,15 +1306,15 @@ export default function CalendarPage() {
               : 'bg-gray-800 hover:bg-gray-700 border border-gray-700/50'
           }`}
         >
-          <div className={`text-sm font-medium ${isToday ? 'text-pink-400' : isSelected ? 'text-white' : 'text-gray-300'}`}>
+          <div className={`text-xs sm:text-sm font-medium ${isToday ? 'text-pink-400' : isSelected ? 'text-white' : 'text-gray-300'}`}>
             {day}
           </div>
           {dayPosts.length > 0 && (
-            <div className="absolute bottom-1.5 left-1.5 right-1.5 flex gap-0.5 flex-wrap">
+            <div className="absolute bottom-0.5 sm:bottom-1.5 left-0.5 sm:left-1.5 right-0.5 sm:right-1.5 flex gap-0.5 flex-wrap">
               {dayPosts.slice(0, 3).map((post) => (
-                <div key={post.id} className={`w-1.5 h-1.5 rounded-full ${platformColors[post.platforms[0]] || 'bg-gray-400'}`} />
+                <div key={post.id} className={`w-1 sm:w-1.5 h-1 sm:h-1.5 rounded-full ${platformColors[post.platforms[0]] || 'bg-gray-400'}`} />
               ))}
-              {dayPosts.length > 3 && <span className="text-[8px] text-gray-400">+{dayPosts.length - 3}</span>}
+              {dayPosts.length > 3 && <span className="text-[6px] sm:text-[8px] text-gray-400">+{dayPosts.length - 3}</span>}
             </div>
           )}
         </div>
@@ -1356,55 +1356,59 @@ export default function CalendarPage() {
       )}
 
       {/* Page Header */}
-      <div className="px-8 pt-6 pb-4">
-        <h1 className="text-3xl font-bold">{t('title')}</h1>
-        <p className="text-gray-400 text-sm mt-1">{t('subtitle')}</p>
+      <div className="px-4 sm:px-8 pt-6 pb-4">
+        <h1 className="text-2xl sm:text-3xl font-bold">{t('title')}</h1>
+        <p className="text-gray-400 text-xs sm:text-sm mt-1">{t('subtitle')}</p>
       </div>
 
       {/* Stats Cards */}
-      <div className="px-8 mb-6">
-        <div className="grid grid-cols-4 gap-4">
+      <div className="px-4 sm:px-8 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
           {[
             { label: t('stats.total'), value: totalPosts, color: 'text-white' },
             { label: t('stats.drafts'), value: draftPosts, color: 'text-yellow-400' },
             { label: t('stats.scheduled'), value: scheduledPosts, color: 'text-blue-400' },
             { label: t('stats.published'), value: publishedPosts, color: 'text-red-400' },
           ].map((stat) => (
-            <div key={stat.label} className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4 text-center">
-              <div className={`text-2xl font-bold ${stat.color}`}>{stat.value}</div>
-              <div className="text-xs text-gray-400 mt-1">{stat.label}</div>
+            <div key={stat.label} className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-3 sm:p-4 text-center">
+              <div className={`text-xl sm:text-2xl font-bold ${stat.color}`}>{stat.value}</div>
+              <div className="text-[10px] sm:text-xs text-gray-400 mt-1">{stat.label}</div>
             </div>
           ))}
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="px-8 pb-8 flex gap-6">
+      <div className="px-4 sm:px-8 pb-8 flex flex-col lg:flex-row gap-4 lg:gap-6">
         {/* Left: Calendar */}
-        <div className="flex-1">
-          <Card className="p-6">
+        <div className="flex-1 w-full">
+          <Card className="p-4 sm:p-6">
             {/* Month Navigation */}
             <div className="flex items-center justify-between mb-6">
-              <button onClick={handlePrevMonth} className="p-2 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white transition">
-                <ChevronLeft size={20} />
+              <button onClick={handlePrevMonth} className="p-1.5 sm:p-2 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white transition">
+                <ChevronLeft size={18} className="sm:w-5 sm:h-5" />
               </button>
-              <h2 className="text-xl font-bold capitalize">{formatMonthYear(currentDate)}</h2>
-              <button onClick={handleNextMonth} className="p-2 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white transition">
-                <ChevronRight size={20} />
+              <h2 className="text-lg sm:text-xl font-bold capitalize">{formatMonthYear(currentDate)}</h2>
+              <button onClick={handleNextMonth} className="p-1.5 sm:p-2 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white transition">
+                <ChevronRight size={18} className="sm:w-5 sm:h-5" />
               </button>
             </div>
 
             {/* Day Headers */}
-            <div className="grid grid-cols-7 gap-2 mb-3">
-              {[1, 2, 3, 4, 5, 6, 7].map((day) => (
-                <div key={day} className="text-center text-gray-500 text-xs font-medium py-1">
-                  {new Date(2024, 0, day).toLocaleDateString(intlLocale, { weekday: 'short' })}
-                </div>
-              ))}
+            <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2 sm:mb-3">
+              {[1, 2, 3, 4, 5, 6, 7].map((day) => {
+                const weekdayFull = new Date(2024, 0, day).toLocaleDateString(intlLocale, { weekday: 'short' });
+                return (
+                  <div key={day} className="text-center text-gray-500 text-[9px] sm:text-xs font-medium py-1">
+                    <span className="sm:hidden">{weekdayFull[0]}</span>
+                    <span className="hidden sm:inline">{weekdayFull}</span>
+                  </div>
+                );
+              })}
             </div>
 
             {/* Calendar Grid */}
-            <div ref={calendarRef} className="grid grid-cols-7 gap-2" onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
+            <div ref={calendarRef} className="grid grid-cols-7 gap-1 sm:gap-2" onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
               {loading ? (
                 <div className="col-span-7 flex items-center justify-center py-20">
                   <Loader2 className="animate-spin text-purple-500 mr-2" size={20} />
@@ -1416,28 +1420,30 @@ export default function CalendarPage() {
             </div>
 
             {/* Bottom Action Buttons */}
-            <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-700/50">
-              <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-4 mt-6 pt-4 border-t border-gray-700/50">
+              <div className="flex flex-col xs:flex-row gap-1.5 w-full sm:w-auto">
                 <button
                   onClick={() => setShowAIAgent(true)}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm font-medium transition"
+                  className="flex items-center justify-center sm:justify-start gap-1 px-2.5 sm:px-4 py-2 sm:py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-[10px] sm:text-sm font-medium transition"
                 >
-                  <Bot size={16} />
-                  {t('agentIA')}
+                  <Bot size={12} className="sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">{t('agentIA')}</span>
+                  <span className="sm:hidden">{t('agentIA').substring(0, 3)}</span>
                 </button>
                 <button
                   onClick={handleImportClick}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm font-medium transition"
+                  className="flex items-center justify-center sm:justify-start gap-1 px-2.5 sm:px-4 py-2 sm:py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-[10px] sm:text-sm font-medium transition"
                 >
-                  <Upload size={16} />
-                  {t('import')}
+                  <Upload size={12} className="sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">{t('import')}</span>
+                  <span className="sm:hidden">{t('import').substring(0, 3)}</span>
                 </button>
               </div>
               <button
                 onClick={handleNewPost}
-                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 rounded-lg text-sm font-bold transition"
+                className="flex items-center justify-center gap-1 px-3 sm:px-5 py-2 sm:py-2.5 bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 rounded-lg text-[10px] sm:text-sm font-bold transition w-full sm:w-auto"
               >
-                <Plus size={16} />
+                <Plus size={12} className="sm:w-4 sm:h-4" />
                 {t('newPost')}
               </button>
             </div>
@@ -1445,29 +1451,29 @@ export default function CalendarPage() {
         </div>
 
         {/* Right: Sidebar */}
-        <div className="w-80 flex-shrink-0">
-          <Card className="p-5 sticky top-0">
+        <div className="w-full lg:w-80 lg:flex-shrink-0">
+          <Card className="p-4 sm:p-5 sticky top-0 lg:sticky">
             {selectedDay ? (
               <>
-                <div className="flex items-center justify-between mb-1">
-                  <h3 className="text-lg font-bold">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-1">
+                  <h3 className="text-base sm:text-lg font-bold">
                     {new Date(currentDate.getFullYear(), currentDate.getMonth(), selectedDay).toLocaleDateString(intlLocale, { weekday: 'short', day: 'numeric', month: 'short' })}
                   </h3>
                   {selectedDayPosts.length > 0 && (
                     <button
                       onClick={() => { setBulkMode(!bulkMode); setSelectedPostIds(new Set()); }}
-                      className={`text-xs px-2 py-1 rounded transition ${bulkMode ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-400 hover:text-white'}`}
+                      className={`text-[10px] sm:text-xs px-2 py-1 rounded transition w-fit ${bulkMode ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-400 hover:text-white'}`}
                     >
-                      <CheckSquare size={12} className="inline mr-1" />
+                      <CheckSquare size={10} className="sm:w-3 sm:h-3 inline mr-1" />
                       {bulkMode ? tc('cancel') : t('select')}
                     </button>
                   )}
                 </div>
-                <p className="text-xs text-gray-400 mb-3">{selectedDayPosts.length} {selectedDayPosts.length !== 1 ? t('posts') : t('post')}</p>
+                <p className="text-[10px] sm:text-xs text-gray-400 mb-3">{selectedDayPosts.length} {selectedDayPosts.length !== 1 ? t('posts') : t('post')}</p>
 
                 {/* Select all / deselect */}
                 {bulkMode && (
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex flex-col xs:flex-row xs:items-center gap-2 mb-2">
                     <button
                       onClick={() => {
                         if (selectedPostIds.size === selectedDayPosts.length) {
@@ -1476,37 +1482,37 @@ export default function CalendarPage() {
                           setSelectedPostIds(new Set(selectedDayPosts.map(p => p.id)));
                         }
                       }}
-                      className="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 transition"
+                      className="text-[10px] sm:text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 transition"
                     >
                       {selectedPostIds.size === selectedDayPosts.length ? t('deselectAll') : t('selectAll')}
                     </button>
-                    <span className="text-[10px] text-gray-500">{selectedPostIds.size}/{selectedDayPosts.length}</span>
+                    <span className="text-[8px] sm:text-[10px] text-gray-500">{selectedPostIds.size}/{selectedDayPosts.length}</span>
                   </div>
                 )}
 
                 {/* Bulk actions bar */}
                 {bulkMode && selectedPostIds.size > 0 && (
-                  <div className="flex gap-2 mb-3 p-2 bg-gray-800 rounded-lg border border-gray-700">
+                  <div className="flex flex-col xs:flex-row gap-1.5 xs:gap-2 mb-3 p-1.5 xs:p-2 bg-gray-800 rounded-lg border border-gray-700">
                     <button
                       onClick={handleBulkDuplicate}
                       disabled={saving}
-                      className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-[10px] font-medium transition"
+                      className="flex-1 flex items-center justify-center gap-1 py-1 xs:py-1.5 rounded bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-[8px] xs:text-[10px] font-medium transition"
                     >
-                      <Copy className="w-3 h-3" /> {t('bulkDuplicate')}
+                      <Copy className="w-2.5 xs:w-3 h-2.5 xs:h-3" /> {t('bulkDuplicate')}
                     </button>
                     <button
                       onClick={() => { setShowBulkDateModal(true); setBulkNewDate(''); }}
                       disabled={saving}
-                      className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-[10px] font-medium transition"
+                      className="flex-1 flex items-center justify-center gap-1 py-1 xs:py-1.5 rounded bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-[8px] xs:text-[10px] font-medium transition"
                     >
-                      <CalendarDays className="w-3 h-3" /> {t('bulkMove')}
+                      <CalendarDays className="w-2.5 xs:w-3 h-2.5 xs:h-3" /> {t('bulkMove')}
                     </button>
                     <button
                       onClick={handleBulkDelete}
                       disabled={saving}
-                      className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-[10px] font-medium transition"
+                      className="flex-1 flex items-center justify-center gap-1 py-1 xs:py-1.5 rounded bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-[8px] xs:text-[10px] font-medium transition"
                     >
-                      <Trash2 className="w-3 h-3" /> {t('bulkDelete')}
+                      <Trash2 className="w-2.5 xs:w-3 h-2.5 xs:h-3" /> {t('bulkDelete')}
                     </button>
                   </div>
                 )}
@@ -1521,7 +1527,7 @@ export default function CalendarPage() {
                   if (!fpImg && !fp.title && fpTextCards.length === 0) return null;
                   return (
                     <div className="flex justify-center mb-3">
-                      <div className="w-36 aspect-[9/16] rounded-xl overflow-hidden border border-gray-700 bg-black relative">
+                      <div className="w-28 sm:w-36 aspect-[9/16] rounded-xl overflow-hidden border border-gray-700 bg-black relative">
                         {fpImg && (
                           fp.media_type === 'video' && fp.media_url ? (
                             <video src={fp.media_url} className="w-full h-full object-cover" muted />
@@ -1843,7 +1849,7 @@ export default function CalendarPage() {
         <div>
           <div className="text-center mb-4">
             <h2 className="text-lg font-bold flex items-center justify-center gap-2">
-              <span className="text-xl">📅</span>
+              <span className="w-7 h-7 rounded-md flex items-center justify-center" style={{ backgroundColor: '#3B82F620', color: '#3B82F6' }}><CalendarDays size={16} /></span>
               {t('aiAgent.title')}
             </h2>
             <p className="text-gray-400 text-xs mt-1">

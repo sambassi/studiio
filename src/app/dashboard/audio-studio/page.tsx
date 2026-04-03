@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useRef, useState, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Music, Mic, Upload, Play, Pause, Square, Trash2, Volume2, VolumeX, Loader2, ChevronLeft, SkipBack, SkipForward } from 'lucide-react';
+import { Music, Mic, Upload, Play, Pause, Square, Trash2, Volume2, VolumeX, Loader2, ChevronLeft, SkipBack, SkipForward, Calendar, Save, RefreshCw } from 'lucide-react';
 import { composeAndUpload, downloadBlob } from '@/lib/video-composer';
 import { useTranslations } from '@/i18n/client';
 
@@ -1055,11 +1055,14 @@ function AudioStudioContent() {
             <span className="text-xs font-bold text-white uppercase tracking-wider mb-2 block">{t('destination.title')}</span>
             <div className="flex gap-1.5 mb-3">
               {([
-                { v: 'calendar' as ExportDest, l: `📅 ${t('destination.calendar')}` },
-                { v: 'desktop' as ExportDest, l: `💾 ${t('destination.desktop')}` },
-                { v: 'both' as ExportDest, l: `🔄 ${t('destination.both')}` },
+                { v: 'calendar' as ExportDest, l: t('destination.calendar'), icon: Calendar, color: '#3B82F6' },
+                { v: 'desktop' as ExportDest, l: t('destination.desktop'), icon: Save, color: '#F59E0B' },
+                { v: 'both' as ExportDest, l: t('destination.both'), icon: RefreshCw, color: '#EC4899' },
               ]).map(d => (
-                <button key={d.v} onClick={() => setExportDest(d.v)} className={`flex-1 text-center px-1 py-2 rounded-lg font-medium text-[10px] transition border ${exportDest === d.v ? 'bg-pink-600/20 border-pink-500 text-white' : 'bg-gray-700 border-gray-700 text-gray-400 hover:bg-gray-600'}`}>
+                <button key={d.v} onClick={() => setExportDest(d.v)} className={`flex-1 flex flex-col items-center gap-1 px-1 py-2 rounded-lg font-medium text-[10px] transition border ${exportDest === d.v ? 'bg-pink-600/20 border-pink-500 text-white' : 'bg-gray-700 border-gray-700 text-gray-400 hover:bg-gray-600'}`}>
+                  <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ backgroundColor: `${d.color}20`, color: d.color }}>
+                    <d.icon size={12} />
+                  </div>
                   {d.l}
                 </button>
               ))}

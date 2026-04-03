@@ -569,7 +569,7 @@ export default function InfographicPage() {
 
   // ── Render ──────────────────────────────────────────────────
   return (
-    <div className="flex h-full min-h-screen bg-gray-900 text-white">
+    <div className="flex h-full min-h-screen flex-col lg:flex-row bg-gray-900 text-white">
       {/* Toast */}
       {toast && (
         <div className={`fixed top-6 right-6 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium ${
@@ -580,16 +580,16 @@ export default function InfographicPage() {
       )}
 
       {/* Left Panel - Form */}
-      <div className="w-1/2 overflow-y-auto border-r border-gray-800 p-6">
+      <div className="w-full lg:w-1/2 overflow-y-auto border-r-0 lg:border-r border-gray-800 p-3 sm:p-6">
         {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Créer une Infographie</h1>
-          <div className="flex items-center gap-2 text-sm text-gray-400">
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+          <h1 className="text-lg sm:text-2xl font-bold">Créer une Infographie</h1>
+          <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-400 overflow-x-auto">
             {['Contenu', 'Style', 'Export'].map((label, i) => (
               <button
                 key={label}
                 onClick={() => setStep(i)}
-                className={`flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-all ${
+                className={`flex items-center gap-1 rounded-full px-1.5 sm:px-3 py-1 text-[9px] sm:text-xs font-medium transition-all whitespace-nowrap ${
                   step === i ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
                 }`}
               >
@@ -610,7 +610,7 @@ export default function InfographicPage() {
             {/* Content Theme Selector */}
             <div>
               <label className="mb-3 block text-sm font-medium text-gray-300">Thème du contenu</label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
                 {CONTENT_THEMES.map((theme) => (
                   <button
                     key={theme.id}
@@ -723,7 +723,7 @@ export default function InfographicPage() {
                               {card.emoji}
                             </button>
                             {showEmojiPicker === card.id && (
-                              <div className="absolute top-full left-0 z-10 mt-1 grid grid-cols-5 gap-1 rounded-lg border border-gray-600 bg-gray-800 p-2 shadow-xl">
+                              <div className="absolute top-full left-0 z-10 mt-1 grid grid-cols-4 sm:grid-cols-5 gap-1 rounded-lg border border-gray-600 bg-gray-800 p-2 shadow-xl">
                                 {EMOJIS.map((emoji) => (
                                   <button
                                     key={emoji}
@@ -824,7 +824,7 @@ export default function InfographicPage() {
             {/* Color Theme */}
             <div>
               <label className="mb-3 block text-sm font-medium text-gray-300">Couleur du thème</label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
                 {COLOR_THEMES.map((ct) => (
                   <button
                     key={ct.id}
@@ -843,12 +843,12 @@ export default function InfographicPage() {
             {/* Format */}
             <div>
               <label className="mb-3 block text-sm font-medium text-gray-300">Format</label>
-              <div className="flex gap-3">
+              <div className="flex gap-2 sm:gap-3 w-full">
                 {(['9:16', '16:9'] as Format[]).map((fmt) => (
                   <button
                     key={fmt}
                     onClick={() => setFormat(fmt)}
-                    className={`flex-1 rounded-lg px-4 py-2 font-medium transition-colors ${
+                    className={`flex-1 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base font-medium transition-colors ${
                       format === fmt
                         ? 'bg-purple-600 text-white'
                         : 'border border-gray-700 bg-gray-800 text-gray-300 hover:border-purple-500'
@@ -865,12 +865,12 @@ export default function InfographicPage() {
               <label className="mb-3 block text-sm font-medium text-gray-300">
                 Nombre d'infographies: <span className="text-purple-400 font-bold">x{batchCount}</span>
               </label>
-              <div className="flex flex-wrap gap-2">
+              <div className="grid grid-cols-3 sm:flex flex-wrap gap-2 sm:gap-3">
                 {[1, 2, 3, 5, 7, 10].map((count) => (
                   <button
                     key={count}
                     onClick={() => setBatchCount(count)}
-                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                    className={`rounded-lg px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-all ${
                       batchCount === count
                         ? 'bg-purple-600 text-white'
                         : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
@@ -938,7 +938,7 @@ export default function InfographicPage() {
                   <Loader2 size={24} className="animate-spin text-purple-400" />
                 </div>
               ) : pexelsPhotos.length > 0 ? (
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {pexelsPhotos.map((photo, i) => (
                     <button
                       key={photo.id}
@@ -1097,7 +1097,7 @@ export default function InfographicPage() {
             {/* Summary */}
             <div className="rounded-lg border border-gray-700 bg-gray-800 p-4">
               <h3 className="mb-3 text-sm font-semibold text-gray-300">Résumé</h3>
-              <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-sm">
                 <div>
                   <span className="text-gray-500">Thème:</span>
                   <span className="ml-2 text-white">{CONTENT_THEMES.find(t => t.id === contentTheme)?.label}</span>
@@ -1221,8 +1221,8 @@ export default function InfographicPage() {
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* Right Panel - Preview */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <div className="w-1/2 flex flex-col items-center justify-center border-l border-gray-800 bg-gray-950 p-6">
-        <h2 className="mb-4 text-lg font-bold text-gray-400">Aperçu</h2>
+      <div className="w-full lg:w-1/2 flex flex-col items-center justify-center border-l-0 lg:border-l border-gray-800 bg-gray-950 p-3 sm:p-6 mt-6 lg:mt-0">
+        <h2 className="mb-3 sm:mb-4 text-sm sm:text-lg font-bold text-gray-400">Aperçu</h2>
 
         {/* Preview Container */}
         <div className={`relative w-full ${previewClasses.maxW} mx-auto`}>
@@ -1245,11 +1245,11 @@ export default function InfographicPage() {
 
             {/* Top Section: Title */}
             <div className="relative z-10 text-center pt-2">
-              <h3 className={`font-black text-white drop-shadow-lg ${format === '16:9' ? 'text-xl' : 'text-base'}`}>
+              <h3 className={`font-black text-white drop-shadow-lg ${format === '16:9' ? 'text-sm sm:text-lg lg:text-xl' : 'text-xs sm:text-sm lg:text-base'}`}>
                 {title || 'TITRE'}
               </h3>
               {subtitle && (
-                <p className={`mt-1 text-white/80 drop-shadow ${format === '16:9' ? 'text-xs' : 'text-[10px]'}`}>
+                <p className={`mt-1 text-white/80 drop-shadow ${format === '16:9' ? 'text-[10px] sm:text-xs' : 'text-[8px] sm:text-[10px]'}`}>
                   {subtitle}
                 </p>
               )}
@@ -1304,9 +1304,9 @@ export default function InfographicPage() {
 
         {/* Batch Preview Dots */}
         {batchCount > 1 && (
-          <div className="mt-4 flex items-center gap-4">
+          <div className="mt-4 flex items-center gap-1.5 sm:gap-3 flex-wrap justify-center">
             <span className="text-xs text-gray-500">Batch: x{batchCount}</span>
-            <div className="flex gap-1.5">
+            <div className="flex gap-1.5 flex-wrap justify-center">
               {Array.from({ length: Math.min(batchCount, 10) }, (_, i) => (
                 <button
                   key={i}
@@ -1324,7 +1324,7 @@ export default function InfographicPage() {
 
         {/* Photo Preview Grid (small thumbnails) */}
         {pexelsPhotos.length > 0 && (
-          <div className="mt-4 flex gap-2 overflow-x-auto px-4">
+          <div className="mt-4 flex gap-1.5 sm:gap-2 overflow-x-auto px-2 sm:px-4">
             {pexelsPhotos.slice(0, Math.max(batchCount, 4)).map((photo, i) => (
               <button
                 key={photo.id}
@@ -1333,25 +1333,25 @@ export default function InfographicPage() {
                   selectedPhotoIndex === i ? 'ring-2 ring-purple-500' : 'opacity-60 hover:opacity-100'
                 }`}
               >
-                <img src={photo.small} alt="" className="h-16 w-12 object-cover" />
+                <img src={photo.small} alt="" className="h-10 sm:h-16 w-8 sm:w-12 object-cover" />
               </button>
             ))}
           </div>
         )}
 
         {/* Stats */}
-        <div className="mt-6 grid w-full max-w-xs grid-cols-3 gap-4 rounded-lg bg-gray-800 p-3">
+        <div className="mt-3 sm:mt-6 grid w-full max-w-xs grid-cols-3 gap-1.5 sm:gap-4 rounded-lg bg-gray-800 p-2 sm:p-3">
           <div className="text-center">
-            <p className="text-xs text-gray-400">Cartes</p>
-            <p className="text-lg font-bold text-white">{cards.length}</p>
+            <p className="text-[10px] sm:text-xs text-gray-400">Cartes</p>
+            <p className="text-base sm:text-lg font-bold text-white">{cards.length}</p>
           </div>
           <div className="text-center">
-            <p className="text-xs text-gray-400">Batch</p>
-            <p className="text-lg font-bold text-white">x{batchCount}</p>
+            <p className="text-[10px] sm:text-xs text-gray-400">Batch</p>
+            <p className="text-base sm:text-lg font-bold text-white">x{batchCount}</p>
           </div>
           <div className="text-center">
-            <p className="text-xs text-gray-400">Crédits</p>
-            <p className="text-lg font-bold text-yellow-400">{25 * batchCount}</p>
+            <p className="text-[10px] sm:text-xs text-gray-400">Crédits</p>
+            <p className="text-base sm:text-lg font-bold text-yellow-400">{25 * batchCount}</p>
           </div>
         </div>
       </div>

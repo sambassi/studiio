@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Trash2, Upload, Zap, Loader2, Sparkles, Film, X, Play, Volume2, Image as ImageIcon, Search, ChevronRight, ChevronLeft, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Trash2, Upload, Zap, Loader2, Sparkles, Film, X, Play, Volume2, Image as ImageIcon, Search, ChevronRight, ChevronLeft, ArrowUp, ArrowDown, Calendar, Music, Package, RefreshCw } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
 import { useBranding } from '@/lib/hooks/useBranding';
 import BrandingPanel from '@/components/BrandingPanel';
@@ -1011,9 +1011,17 @@ export default function InfographiePage() {
               <div className="mb-6">
                 <h3 className="text-sm font-semibold text-gray-300 mb-2">{t('destination.title')}</h3>
                 <div className="flex gap-2">
-                  {(['calendar', 'export', 'both', 'studio'] as Destination[]).map((dest) => (
-                    <button key={dest} onClick={() => setDestination(dest)} className={`flex-1 text-center px-2 py-2.5 rounded-lg font-medium text-xs transition-all border ${destination === dest ? 'bg-pink-600/20 border-pink-500 text-white' : 'bg-gray-700 border-gray-700 text-gray-300 hover:bg-gray-600'}`}>
-                      {dest === 'calendar' && `📅 ${t('destination.calendar')}`}{dest === 'export' && `📦 ${t('destination.export')}`}{dest === 'both' && `🔄 ${t('destination.both')}`}{dest === 'studio' && `🎵 ${t('destination.studio')}`}
+                  {([
+                    { value: 'calendar' as Destination, label: t('destination.calendar'), icon: Calendar, color: '#3B82F6' },
+                    { value: 'export' as Destination, label: t('destination.export'), icon: Package, color: '#F59E0B' },
+                    { value: 'both' as Destination, label: t('destination.both'), icon: RefreshCw, color: '#EC4899' },
+                    { value: 'studio' as Destination, label: t('destination.studio'), icon: Music, color: '#10B981' },
+                  ]).map((dest) => (
+                    <button key={dest.value} onClick={() => setDestination(dest.value)} className={`flex-1 flex flex-col items-center gap-1.5 px-2 py-2.5 rounded-lg font-medium text-xs transition-all border ${destination === dest.value ? 'bg-pink-600/20 border-pink-500 text-white' : 'bg-gray-700 border-gray-700 text-gray-300 hover:bg-gray-600'}`}>
+                      <div className="w-7 h-7 rounded-md flex items-center justify-center" style={{ backgroundColor: `${dest.color}20`, color: dest.color }}>
+                        <dest.icon size={14} />
+                      </div>
+                      {dest.label}
                     </button>
                   ))}
                 </div>

@@ -6,7 +6,7 @@ import {
   ArrowRight, Zap, Sparkles, BarChart3, Play, Check, Star,
   Video, Calendar, Share2, Target, Palette, Globe, Shield,
   ChevronDown, ChevronUp, Users, TrendingUp, Clock, Award,
-  Smartphone, Monitor, Instagram, Youtube, Facebook, Music,
+  Smartphone, Monitor, Instagram, Youtube, Facebook, Music, Menu, X,
 } from 'lucide-react';
 import { useTranslations } from '@/i18n/client';
 import { LanguageSelector } from '@/components/LanguageSelector';
@@ -90,6 +90,7 @@ export default function LandingPage() {
   const tc = useTranslations('common');
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
   const [cms, setCms] = useState<DynamicContent>({});
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Fetch CMS content from admin panel (non-blocking, merges with defaults)
   useEffect(() => {
@@ -151,7 +152,7 @@ export default function LandingPage() {
   }));
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] text-white overflow-x-hidden">
+    <div className="min-h-screen bg-[#0A0A0F] text-white overflow-x-hidden w-full">
 
       {/* ══════════════════════════════════════════════
           NAVIGATION
@@ -180,8 +181,60 @@ export default function LandingPage() {
               <Link href="/auth/signup" className="bg-gradient-to-r from-violet-600 to-pink-600 hover:from-violet-500 hover:to-pink-500 px-5 py-2 rounded-lg text-white text-sm font-bold transition shadow-lg shadow-violet-500/20">
                 {t('nav.freeTrial')}
               </Link>
+              {/* Mobile Menu Button */}
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="md:hidden text-gray-400 hover:text-white transition"
+                aria-label="Toggle menu"
+              >
+                {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+              </button>
             </div>
           </div>
+          {/* Mobile Menu */}
+          {mobileMenuOpen && (
+            <div className="md:hidden border-t border-gray-800/50 bg-[#0A0A0F] animate-slide-in">
+              <div className="px-4 py-4 space-y-3">
+                <a
+                  href="#features"
+                  className="block py-2 text-sm text-gray-400 hover:text-white transition"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  {t('nav.features')}
+                </a>
+                <a
+                  href="#how"
+                  className="block py-2 text-sm text-gray-400 hover:text-white transition"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  {t('nav.howItWorks')}
+                </a>
+                <a
+                  href="#pricing"
+                  className="block py-2 text-sm text-gray-400 hover:text-white transition"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  {t('nav.pricing')}
+                </a>
+                <a
+                  href="#faq"
+                  className="block py-2 text-sm text-gray-400 hover:text-white transition"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  {t('nav.faq')}
+                </a>
+                <div className="pt-2 border-t border-gray-800/50 space-y-2">
+                  <Link
+                    href="/auth/login"
+                    className="block py-2 text-sm text-gray-300 hover:text-white transition"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    {t('nav.login')}
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </nav>
 
@@ -200,7 +253,7 @@ export default function LandingPage() {
             <span className="text-xs font-semibold text-violet-300 tracking-wide">{hero.badge || t('hero.badge')}</span>
           </div>
 
-          <h1 className="text-4xl sm:text-5xl md:text-7xl font-black mb-6 leading-[1.1] tracking-tight">
+          <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-black mb-6 leading-[1.1] tracking-tight">
             {hero.title ? (
               <span dangerouslySetInnerHTML={{ __html: hero.title.replace(/\*(.*?)\*/g, '<span class="bg-clip-text text-transparent bg-gradient-to-r from-violet-400 via-pink-400 to-violet-400">$1</span>') }} />
             ) : (
@@ -212,18 +265,18 @@ export default function LandingPage() {
             {hero.subtitle || <>{t('hero.subtitle')} <strong className="text-gray-200">{t('hero.subtitleBold')}</strong>.</>}
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-            <Link href="/auth/signup" className="group bg-gradient-to-r from-violet-600 to-pink-600 hover:from-violet-500 hover:to-pink-500 px-8 py-4 rounded-xl text-white font-bold text-lg flex items-center justify-center gap-3 transition shadow-2xl shadow-violet-500/30 hover:shadow-violet-500/40">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12 w-full sm:w-auto">
+            <Link href="/auth/signup" className="group bg-gradient-to-r from-violet-600 to-pink-600 hover:from-violet-500 hover:to-pink-500 px-6 sm:px-8 py-3 sm:py-4 rounded-xl text-white font-bold text-base sm:text-lg flex items-center justify-center gap-3 transition shadow-2xl shadow-violet-500/30 hover:shadow-violet-500/40">
               {hero.cta1 || t('hero.cta1')}
               <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
             </Link>
             {hero.demoVideoUrl ? (
-              <a href={hero.demoVideoUrl} target="_blank" rel="noopener noreferrer" className="border border-gray-700 hover:border-gray-500 hover:bg-white/5 px-8 py-4 rounded-xl text-white font-bold text-lg flex items-center justify-center gap-3 transition">
+              <a href={hero.demoVideoUrl} target="_blank" rel="noopener noreferrer" className="border border-gray-700 hover:border-gray-500 hover:bg-white/5 px-6 sm:px-8 py-3 sm:py-4 rounded-xl text-white font-bold text-base sm:text-lg flex items-center justify-center gap-3 transition">
                 <Play size={20} className="text-violet-400" />
                 {hero.cta2 || t('hero.cta2')}
               </a>
             ) : (
-              <button className="border border-gray-700 hover:border-gray-500 hover:bg-white/5 px-8 py-4 rounded-xl text-white font-bold text-lg flex items-center justify-center gap-3 transition">
+              <button className="border border-gray-700 hover:border-gray-500 hover:bg-white/5 px-6 sm:px-8 py-3 sm:py-4 rounded-xl text-white font-bold text-base sm:text-lg flex items-center justify-center gap-3 transition">
                 <Play size={20} className="text-violet-400" />
                 {hero.cta2 || t('hero.cta2')}
               </button>
@@ -231,7 +284,7 @@ export default function LandingPage() {
           </div>
 
           {/* Social proof */}
-          <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-gray-500">
+          <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-4 sm:gap-6 text-xs sm:text-sm text-gray-500">
             <div className="flex -space-x-2">
               {['S', 'M', 'A', 'L', 'K'].map((l, i) => (
                 <div key={i} className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-pink-500 border-2 border-[#0A0A0F] flex items-center justify-center text-xs font-bold text-white">
@@ -239,7 +292,7 @@ export default function LandingPage() {
                 </div>
               ))}
             </div>
-            <span>{t('hero.socialProofJoinedBy')} <strong className="text-white">{hero.socialProof1 || '12 000+'}</strong> {t('hero.socialProofCreators')}</span>
+            <span className="text-center sm:text-left">{t('hero.socialProofJoinedBy')} <strong className="text-white">{hero.socialProof1 || '12 000+'}</strong> {t('hero.socialProofCreators')}</span>
             <div className="flex items-center gap-1">
               {[1,2,3,4,5].map(i => <Star key={i} size={14} className="text-yellow-500 fill-yellow-500" />)}
               <span className="ml-1">{hero.socialProof3 || '4.9/5'}</span>
@@ -301,8 +354,8 @@ export default function LandingPage() {
       {/* ══════════════════════════════════════════════
           STATS BAR
           ══════════════════════════════════════════════ */}
-      <section className="border-y border-gray-800/50 py-12 px-4">
-        <div className="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8">
+      <section className="border-y border-gray-800/50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-5xl mx-auto grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8">
           {STATS.map((s, i) => {
             const cmsS = cmsStats?.[i];
             return (
@@ -332,7 +385,7 @@ export default function LandingPage() {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {FEATURES.map((f, i) => {
               const cmsF = cmsFeatures?.[i];
               const Icon = f.icon;
@@ -360,13 +413,13 @@ export default function LandingPage() {
             <p className="text-gray-400">{t('formats.subtitle')}</p>
           </div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             {FORMATS.map((f, i) => {
               const Icon = f.icon;
               return (
-                <div key={i} className="bg-gray-900/60 border border-gray-800 rounded-xl p-6 text-center hover:border-violet-500/30 transition">
-                  <Icon size={32} className="mx-auto text-violet-400 mb-3" />
-                  <div className="font-bold text-base mb-1">{f.label}</div>
+                <div key={i} className="bg-gray-900/60 border border-gray-800 rounded-xl p-4 sm:p-6 text-center hover:border-violet-500/30 transition">
+                  <Icon size={32} className="mx-auto text-violet-400 mb-2 sm:mb-3" />
+                  <div className="font-bold text-sm sm:text-base mb-1">{f.label}</div>
                   <div className="text-xs text-gray-500">{f.desc}</div>
                 </div>
               );
@@ -374,14 +427,16 @@ export default function LandingPage() {
           </div>
 
           {/* Social networks */}
-          <div className="flex items-center justify-center gap-8 mt-14">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-8 mt-14">
             <span className="text-sm text-gray-500">{t('formats.publishOn')}</span>
-            {SOCIAL_NETWORKS.map((n, i) => (
-              <div key={i} className="flex items-center gap-2 text-sm" style={{ color: n.color }}>
-                <n.icon size={20} />
-                <span className="hidden sm:inline font-medium">{n.name}</span>
-              </div>
-            ))}
+            <div className="flex flex-wrap items-center justify-center gap-6">
+              {SOCIAL_NETWORKS.map((n, i) => (
+                <div key={i} className="flex items-center gap-2 text-sm" style={{ color: n.color }}>
+                  <n.icon size={20} />
+                  <span className="hidden sm:inline font-medium">{n.name}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -400,7 +455,7 @@ export default function LandingPage() {
             <p className="text-gray-400">{t('howItWorks.subtitle')}</p>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {(cmsHowItWorks || HOW_IT_WORKS).map((s, i) => (
               <div key={i} className="relative">
                 <div className="text-5xl font-black text-violet-500/15 mb-3">{s.step}</div>
@@ -427,7 +482,7 @@ export default function LandingPage() {
             <p className="text-gray-400">{t('testimonials.subtitle')}</p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {(cmsTestimonials || TESTIMONIALS).map((item, i) => (
               <div key={i} className="bg-gray-900/50 border border-gray-800 rounded-2xl p-7">
                 <div className="flex items-center gap-1 mb-4">
@@ -486,7 +541,7 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {(cmsPlans || PLAN_KEYS.map((key, i) => ({
               name: t(`pricing.plans.${key}.name`),
               price: t(`pricing.plans.${key}.price`),
@@ -559,13 +614,13 @@ export default function LandingPage() {
           {/* Credit packs */}
           <div className="mt-12 text-center">
             <p className="text-gray-500 text-sm mb-4">{t('pricing.extraCredits')}</p>
-            <div className="inline-flex gap-4 flex-wrap justify-center">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center flex-wrap">
               {[
                 { credits: 50, price: "9,99" },
                 { credits: 150, price: "19,99" },
                 { credits: 500, price: "49,99" },
               ].map((pack, i) => (
-                <div key={i} className="bg-gray-900/50 border border-gray-800 rounded-xl px-6 py-3 text-sm hover:border-violet-500/30 transition cursor-pointer">
+                <div key={i} className="bg-gray-900/50 border border-gray-800 rounded-xl px-6 py-3 text-sm hover:border-violet-500/30 transition cursor-pointer sm:w-auto w-full sm:inline-block">
                   <span className="font-bold text-white">{pack.credits} {tc('credits')}</span>
                   <span className="text-gray-500 ml-2">— {pack.price}€</span>
                 </div>
@@ -598,18 +653,18 @@ export default function LandingPage() {
       <section className="py-24 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto relative">
           <div className="absolute inset-0 bg-gradient-to-r from-violet-600/20 to-pink-600/20 rounded-3xl blur-3xl" />
-          <div className="relative bg-gray-900/80 border border-violet-500/20 rounded-3xl p-12 sm:p-16 text-center">
-            <h2 className="text-3xl sm:text-5xl font-black mb-6">
+          <div className="relative bg-gray-900/80 border border-violet-500/20 rounded-3xl p-8 sm:p-12 lg:p-16 text-center">
+            <h2 className="text-2xl sm:text-3xl lg:text-5xl font-black mb-6">
               {cmsCta.title ? (
                 <span dangerouslySetInnerHTML={{ __html: cmsCta.title.replace(/\*(.*?)\*/g, '<span class="bg-clip-text text-transparent bg-gradient-to-r from-violet-400 to-pink-400">$1</span>') }} />
               ) : (
                 <>{t('cta.titlePart1')}{' '}<span className="bg-clip-text text-transparent bg-gradient-to-r from-violet-400 to-pink-400">{t('cta.titleHighlight')}</span> {t('cta.titlePart2')}</>
               )}
             </h2>
-            <p className="text-lg text-gray-400 mb-10 max-w-xl mx-auto">
+            <p className="text-base sm:text-lg text-gray-400 mb-10 max-w-xl mx-auto">
               {cmsCta.subtitle || t('cta.subtitle')}
             </p>
-            <Link href="/auth/signup" className="group inline-flex items-center gap-3 bg-gradient-to-r from-violet-600 to-pink-600 hover:from-violet-500 hover:to-pink-500 px-10 py-5 rounded-xl text-white font-bold text-lg transition shadow-2xl shadow-violet-500/30 hover:shadow-violet-500/40">
+            <Link href="/auth/signup" className="group inline-flex items-center gap-3 bg-gradient-to-r from-violet-600 to-pink-600 hover:from-violet-500 hover:to-pink-500 px-6 sm:px-10 py-3 sm:py-5 rounded-xl text-white font-bold text-base sm:text-lg transition shadow-2xl shadow-violet-500/30 hover:shadow-violet-500/40">
               {cmsCta.button || t('cta.button')}
               <ArrowRight size={22} className="group-hover:translate-x-1 transition-transform" />
             </Link>
@@ -623,7 +678,7 @@ export default function LandingPage() {
           ══════════════════════════════════════════════ */}
       <footer className="border-t border-gray-800/50 py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
-          <div className="grid md:grid-cols-4 gap-10 mb-12">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-10 mb-12">
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center font-black text-sm">S</div>
