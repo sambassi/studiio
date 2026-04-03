@@ -19,7 +19,6 @@ export default function PWAInstallPrompt() {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
         .then((reg) => {
-          // Force update check on each page load
           reg.update().catch(() => {});
         })
         .catch((err) => {
@@ -28,28 +27,23 @@ export default function PWAInstallPrompt() {
     }
 
     // Check if it's iOS Safari
-    const isIOSSafari = () => {
-      const userAgent = navigator.userAgent;
-      const isIOS = /iPad|iPhone|iPod/.test(userAgent);
-      const isSafari = /Safari/.test(userAgent) && !/Chrome|Firefox/.test(userAgent);
-      return isIOS && isSafari;
-    };
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome|Firefox/.test(navigator.userAgent);
+
+    let iosTimeout: ReturnType<typeof setTimeout> | null = null;
 
     // Show iOS instructions if applicable
-    if (isIOSSafari() && !dismissedRef.current) {
-      // Delay to avoid showing on every page load
-      const timeout = setTimeout(() => {
+    if (isIOS && isSafari && !dismissedRef.current) {
+      iosTimeout = setTimeout(() => {
         setShowIOSPrompt(true);
       }, 2000);
-      return () => clearTimeout(timeout);
     }
 
-    // Listen for beforeinstallprompt event
+    // Listen for beforeinstallprompt event (Android Chrome, etc.)
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       deferredPromptRef.current = e as BeforeInstallPromptEvent;
 
-      // Show prompt after a short delay to avoid being too intrusive
       if (!dismissedRef.current) {
         setTimeout(() => {
           setShowPrompt(true);
@@ -61,6 +55,7 @@ export default function PWAInstallPrompt() {
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      if (iosTimeout) clearTimeout(iosTimeout);
     };
   }, []);
 
