@@ -751,13 +751,55 @@ export default function CalendarPage() {
   const handleExportPost = async (post: Post) => {
     const meta = post.metadata;
 
-    // If we already have a rendered montage URL in WebM format, download it directly
+    // If we already have a rendered montage URL in WebM format, convert server-side to MP4 then download
     // NEVER reuse old .mp4 montages — Chrome MediaRecorder produces corrupted MP4 in fast mode
     if (meta?.renderedVideoUrl && !meta.renderedVideoUrl.endsWith('.mp4')) {
-      const { downloadBlob: dlBlob } = await import('@/lib/video-composer');
-      const res = await fetch(meta.renderedVideoUrl);
-      const blob = await res.blob();
-      await dlBlob(blob, `${(post.title || 'video').replace(/\s+/g, '_')}.mp4`);
+      setExportRendering(true);
+      setExportRenderProgress(30);
+      setExportRenderStage('Conversion MP4...');
+      try {
+        // Use server-side FFmpeg conversion (reliable H.264 output)
+        const convertRes = await fetch('/api/convert/to-mp4', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ videoUrl: meta.renderedVideoUrl }),
+        });
+        const convertData = await convertRes.json();
+        if (convertData.success && convertData.mp4Url) {
+          setExportRenderProgress(80);
+          setExportRenderStage('Téléchargement...');
+          const mp4Res = await fetch(convertData.mp4Url);
+          const mp4Blob = await mp4Res.blob();
+          const url = URL.createObjectURL(mp4Blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${(post.title || 'video').replace(/\s+/g, '_')}.mp4`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 5000);
+          setExportRenderProgress(100);
+          setExportRenderStage('MP4 prêt !');
+        } else {
+          // Fallback: download WebM with correct extension
+          console.warn('[Export] Server conversion failed:', convertData.error);
+          const res = await fetch(meta.renderedVideoUrl);
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${(post.title || 'video').replace(/\s+/g, '_')}.webm`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 5000);
+        }
+      } catch (err) {
+        console.error('[Export] Server conversion error:', err);
+        setExportRenderStage('Erreur de conversion');
+      } finally {
+        setTimeout(() => { setExportRendering(false); setExportRenderProgress(0); setExportRenderStage(''); }, 3000);
+      }
       return;
     }
 
@@ -806,9 +848,40 @@ export default function CalendarPage() {
         },
       });
 
-      // Download the composed video
+      // Download the composed video — use server-side conversion for proper MP4
       if (blob && blob.size > 0) {
-        downloadBlob(blob, `${(post.title || 'montage').replace(/\s+/g, '_')}.mp4`);
+        if (renderedUrl && renderedUrl.includes('webm')) {
+          // Server-side conversion for reliable MP4 output
+          setExportRenderStage('Conversion MP4...');
+          try {
+            const convertRes = await fetch('/api/convert/to-mp4', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ videoUrl: renderedUrl }),
+            });
+            const convertData = await convertRes.json();
+            if (convertData.success && convertData.mp4Url) {
+              setExportRenderStage('Téléchargement...');
+              const mp4Res = await fetch(convertData.mp4Url);
+              const mp4Blob = await mp4Res.blob();
+              const url = URL.createObjectURL(mp4Blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `${(post.title || 'montage').replace(/\s+/g, '_')}.mp4`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              setTimeout(() => URL.revokeObjectURL(url), 5000);
+            } else {
+              // Fallback to client-side (may produce WebM)
+              downloadBlob(blob, `${(post.title || 'montage').replace(/\s+/g, '_')}.mp4`);
+            }
+          } catch {
+            downloadBlob(blob, `${(post.title || 'montage').replace(/\s+/g, '_')}.mp4`);
+          }
+        } else {
+          downloadBlob(blob, `${(post.title || 'montage').replace(/\s+/g, '_')}.mp4`);
+        }
       }
 
       // Update the post with the rendered URL if upload succeeded

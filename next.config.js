@@ -6,6 +6,7 @@ const nextConfig = {
     // Include ffmpeg-static binary in the cron/publish serverless function bundle
     outputFileTracingIncludes: {
       '/api/cron/publish': ['./node_modules/ffmpeg-static/**/*'],
+      '/api/convert/to-mp4': ['./node_modules/ffmpeg-static/**/*'],
     },
   },
   typescript: {
