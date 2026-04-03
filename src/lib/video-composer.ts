@@ -377,19 +377,29 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   ]);
 
   // Load audio — prefer pre-decoded AudioBuffers (batch mode), fallback to <audio> elements
-  // For each audio source independently: use buffer if provided, else load <audio> element
+  // ALWAYS load voice as <audio> element too (WebM recordings may decode to empty buffers)
   let musicEl: HTMLAudioElement | null = null;
   let voiceEl: HTMLAudioElement | null = null;
   if (!options.musicBuffer && musicUrl) {
     musicEl = await loadAudioElement(musicUrl);
   }
-  if (!options.voiceBuffer && voiceUrl) {
+  // Always load voice element as fallback — decodeAudioData may return empty buffer for WebM recordings
+  if (voiceUrl) {
     voiceEl = await loadAudioElement(voiceUrl);
   }
+  // Validate voice buffer — if duration is too short, discard it so we use the <audio> element instead
+  let validVoiceBuffer = options.voiceBuffer;
+  if (validVoiceBuffer) {
+    console.log('[Composer] Voice buffer check — duration:', validVoiceBuffer.duration.toFixed(2), 's, channels:', validVoiceBuffer.numberOfChannels, ', sampleRate:', validVoiceBuffer.sampleRate);
+    if (validVoiceBuffer.duration < 0.5) {
+      console.warn('[Composer] ⚠️ Voice buffer too short (<0.5s), discarding — will use <audio> element');
+      validVoiceBuffer = undefined;
+    }
+  }
 
-  const hasAudio = !!options.musicBuffer || !!options.voiceBuffer || musicEl !== null || voiceEl !== null;
+  const hasAudio = !!options.musicBuffer || !!validVoiceBuffer || musicEl !== null || voiceEl !== null;
   console.log('[Composer] Media loaded — poster:', !!posterImg, 'logo:', !!logoImg, 'video:', !!videoEl);
-  console.log('[Composer] Audio — musicBuffer:', !!options.musicBuffer, 'voiceBuffer:', !!options.voiceBuffer, 'musicEl:', !!musicEl, 'voiceEl:', !!voiceEl, 'hasAudio:', hasAudio);
+  console.log('[Composer] Audio — musicBuffer:', !!options.musicBuffer, 'voiceBuffer:', !!validVoiceBuffer, 'musicEl:', !!musicEl, 'voiceEl:', !!voiceEl, 'hasAudio:', hasAudio);
 
   // Build sequences
   const sequences: Array<{ type: string; duration: number }> = [{ type: 'intro', duration: introDuration }];
@@ -473,7 +483,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
         musicBufferSource.buffer = options.musicBuffer;
         musicBufferSource.loop = true;
         const musicGain = audioCtx.createGain();
-        musicGain.gain.value = (options.voiceBuffer || voiceEl) ? 0.5 : 0.8;
+        musicGain.gain.value = (validVoiceBuffer || voiceEl) ? 0.5 : 0.8;
         musicBufferSource.connect(musicGain);
         musicGain.connect(audioDest);
         console.log('[Composer] ✅ Music: AudioBuffer connected | duration:', options.musicBuffer.duration.toFixed(1), 's | channels:', options.musicBuffer.numberOfChannels, '| gain:', musicGain.gain.value);
@@ -504,25 +514,22 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     }
 
     // ── VOICE: try AudioBuffer first, then <audio> element ──
-    if (options.voiceBuffer) {
+    if (validVoiceBuffer) {
       try {
         voiceBufferSource = audioCtx.createBufferSource();
-        voiceBufferSource.buffer = options.voiceBuffer;
+        voiceBufferSource.buffer = validVoiceBuffer;
         voiceBufferSource.loop = false;
         const voiceGain = audioCtx.createGain();
         voiceGain.gain.value = 1.0;
         voiceBufferSource.connect(voiceGain);
         voiceGain.connect(audioDest);
-        console.log('[Composer] ✅ Voice: AudioBuffer connected | duration:', options.voiceBuffer.duration.toFixed(1), 's');
+        console.log('[Composer] ✅ Voice: AudioBuffer connected | duration:', validVoiceBuffer.duration.toFixed(1), 's');
       } catch (err) {
         console.error('[Composer] ❌ Voice AudioBuffer setup failed:', err);
         voiceBufferSource = null;
-        if (voiceUrl && !voiceEl) {
-          console.log('[Composer] ↪ Fallback: loading voice <audio> element...');
-          voiceEl = await loadAudioElement(voiceUrl);
-        }
       }
     }
+    // <audio> element approach for voice (always available as fallback)
     if (voiceEl && !voiceBufferSource) {
       try {
         const voiceSource = audioCtx.createMediaElementSource(voiceEl);
