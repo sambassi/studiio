@@ -2061,15 +2061,27 @@ export default function CalendarPage() {
           : fullPreviewPost.title;
         return (
         <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4" onClick={() => setShowFullPreview(false)}>
-          {/* Hidden audio elements — only for NON-montage posts or when video doesn't have embedded audio.
-              For montage posts with hasAudio, the rendered video already contains the music track,
-              so playing a separate <audio> would cause double playback. */}
-          {postHasAudio && !hasMontage && previewMusicUrl && (
-            <audio id="preview-audio-music" src={previewMusicUrl} autoPlay muted={montageMuted} style={{ display: 'none' }} />
-          )}
-          {postHasAudio && !hasMontage && previewVoiceUrl && (
-            <audio id="preview-audio-voice" src={previewVoiceUrl} autoPlay muted={montageMuted} style={{ display: 'none' }} />
-          )}
+          {/* Hidden audio elements for music/voice playback.
+              When hasAudio is true AND the montage preview falls back to the rendered video
+              (which has embedded audio), we must NOT play separate audio to avoid double playback.
+              We check: if there's a raw rush video, the preview uses that (no embedded audio) → safe to play separate audio.
+              If no raw rush video, the preview uses videoUrl (rendered montage with embedded audio) → skip separate audio. */}
+          {(() => {
+            const rawRush = meta?.rawVideoUrl || meta?.rushUrls?.[0];
+            const previewUsesRenderedVideo = postHasAudio && !rawRush && !!meta?.videoUrl;
+            // Only play separate audio if the preview video does NOT already contain embedded audio
+            const shouldPlaySeparateAudio = !previewUsesRenderedVideo;
+            return (
+              <>
+                {shouldPlaySeparateAudio && previewMusicUrl && (
+                  <audio id="preview-audio-music" src={previewMusicUrl} autoPlay muted={montageMuted} style={{ display: 'none' }} />
+                )}
+                {shouldPlaySeparateAudio && previewVoiceUrl && (
+                  <audio id="preview-audio-voice" src={previewVoiceUrl} autoPlay muted={montageMuted} style={{ display: 'none' }} />
+                )}
+              </>
+            );
+          })()}
           <div className="bg-gray-900 rounded-2xl overflow-hidden shadow-2xl max-w-5xl w-full flex max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
             {/* Left: Rich Montage Preview */}
             <div className="flex-1 bg-black flex flex-col items-center justify-center min-h-[60vh] p-4">
