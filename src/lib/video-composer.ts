@@ -193,15 +193,9 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-/** Draw a logo image clipped to a circle (no square background visible) */
-function drawLogoCircular(ctx: CanvasRenderingContext2D, logoImg: HTMLImageElement, x: number, y: number, size: number) {
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
-  ctx.closePath();
-  ctx.clip();
+/** Draw a logo image as-is (no background, no clip — just the image) */
+function drawLogo(ctx: CanvasRenderingContext2D, logoImg: HTMLImageElement, x: number, y: number, size: number) {
   ctx.drawImage(logoImg, x, y, size, size);
-  ctx.restore();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -246,12 +240,7 @@ function drawIntro(
   ctx.lineWidth = 2; ctx.beginPath();
   ctx.moveTo(w / 2 - lineW / 2, h / 2 + fontSize * 1.2);
   ctx.lineTo(w / 2 + lineW / 2, h / 2 + fontSize * 1.2); ctx.stroke();
-  if (logoImg) {
-    ctx.globalAlpha = Math.min(1, progress * 2);
-    const logoSize = Math.round(w * 0.12);
-    drawLogoCircular(ctx, logoImg, (w - logoSize) / 2, h * 0.15, logoSize);
-    ctx.globalAlpha = 1;
-  }
+  // Logo NOT shown on intro — only on video & CTA sequences
   ctx.restore();
 }
 
@@ -292,10 +281,7 @@ function drawCards(
     ctx.fillText(card.value, slideX + cardW - 20, y + cardH * 0.65); ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
   });
-  if (logoImg) {
-    const logoSize = Math.round(w * 0.08), padding = Math.round(w * 0.03);
-    drawLogoCircular(ctx, logoImg, w - logoSize - padding, padding, logoSize);
-  }
+  // Logo NOT shown on cards — only on video & CTA sequences
 }
 
 function drawVideoSeq(
@@ -312,7 +298,7 @@ function drawVideoSeq(
   }
   if (logoImg) {
     const logoSize = Math.round(w * 0.08), padding = Math.round(w * 0.03);
-    drawLogoCircular(ctx, logoImg, w - logoSize - padding, h - logoSize - padding, logoSize);
+    drawLogo(ctx, logoImg, w - logoSize - padding, h - logoSize - padding, logoSize);
   }
 }
 
@@ -322,28 +308,26 @@ function drawCTA(
   salesPhrase: string | undefined, watermark: string | undefined,
   logoImg: HTMLImageElement | null, progress: number
 ) {
-  const grad = ctx.createLinearGradient(0, 0, w, h);
-  grad.addColorStop(0, hexToRgba(accent, 0.9));
-  grad.addColorStop(0.5, 'rgba(255,45,170,0.7)');
-  grad.addColorStop(1, hexToRgba(accent, 0.6));
-  ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
+  // CTA: black background with accent-colored text
+  ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, w, h);
   const scale = 0.92 + Math.min(1, progress * 3) * 0.08;
   ctx.save(); ctx.translate(w / 2, h / 2); ctx.scale(scale, scale); ctx.translate(-w / 2, -h / 2);
   if (logoImg) {
     const logoSize = Math.round(w * 0.12);
-    drawLogoCircular(ctx, logoImg, (w - logoSize) / 2, h * 0.3, logoSize);
+    drawLogo(ctx, logoImg, (w - logoSize) / 2, h * 0.3, logoSize);
   }
-  ctx.font = `900 ${Math.round(w * 0.04)}px sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = 'white';
+  ctx.font = `900 ${Math.round(w * 0.04)}px sans-serif`; ctx.textAlign = 'center';
+  ctx.fillStyle = accent;
   ctx.shadowColor = accent; ctx.shadowBlur = 25;
   ctx.fillText(ctaText.toUpperCase(), w / 2, h * 0.52); ctx.shadowBlur = 0;
-  ctx.font = `400 ${Math.round(w * 0.022)}px sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.font = `400 ${Math.round(w * 0.022)}px sans-serif`; ctx.fillStyle = hexToRgba(accent, 0.6);
   ctx.fillText(ctaSubText.toUpperCase(), w / 2, h * 0.57);
   if (salesPhrase) {
-    ctx.font = `italic 500 ${Math.round(w * 0.026)}px sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.font = `italic 500 ${Math.round(w * 0.026)}px sans-serif`; ctx.fillStyle = hexToRgba(accent, 0.85);
     ctx.fillText(salesPhrase, w / 2, h * 0.63);
   }
   if (watermark) {
-    ctx.font = `400 ${Math.round(w * 0.014)}px sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.font = `400 ${Math.round(w * 0.014)}px sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.15)';
     ctx.fillText(watermark, w / 2, h * 0.9);
   }
   ctx.restore();
