@@ -620,7 +620,7 @@ export default function InfographicPage() {
 
   // ── Render ──────────────────────────────────────────────────
   return (
-    <div className="flex h-full min-h-screen flex-col lg:flex-row bg-gray-900 text-white">
+    <div className="flex min-h-[calc(100vh-4rem)] flex-col lg:flex-row bg-gray-900 text-white overflow-x-hidden">
       {/* Toast */}
       {toast && (
         <div className={`fixed top-6 right-6 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium ${
@@ -631,7 +631,7 @@ export default function InfographicPage() {
       )}
 
       {/* Left Panel - Form */}
-      <div className="w-full lg:w-1/2 overflow-y-auto border-r-0 lg:border-r border-gray-800 p-3 sm:p-6">
+      <div className="w-full lg:w-1/2 overflow-y-auto border-r-0 lg:border-r border-gray-800 p-3 sm:p-6 pb-24 lg:pb-6 lg:max-h-[calc(100vh-4rem)]">
         {/* Header */}
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
           <h1 className="text-lg sm:text-2xl font-bold">Créer une Infographie</h1>
@@ -661,19 +661,19 @@ export default function InfographicPage() {
             {/* Content Theme Selector */}
             <div>
               <label className="mb-3 block text-sm font-medium text-gray-300">Thème du contenu</label>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
+              <div className="grid grid-cols-3 gap-1.5 sm:gap-3">
                 {CONTENT_THEMES.map((theme) => (
                   <button
                     key={theme.id}
                     onClick={() => setContentTheme(theme.id)}
-                    className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                    className={`flex flex-col sm:flex-row items-center gap-1 sm:gap-2 rounded-lg px-2 sm:px-3 py-2 sm:py-2.5 text-[11px] sm:text-sm font-medium transition-all ${
                       contentTheme === theme.id
                         ? 'ring-2 ring-purple-500 bg-gray-800'
                         : 'bg-gray-800/50 hover:bg-gray-800'
                     }`}
                   >
-                    <span className="text-lg">{theme.emoji}</span>
-                    <span>{theme.label}</span>
+                    <span className="text-base sm:text-lg">{theme.emoji}</span>
+                    <span className="text-center leading-tight">{theme.label}</span>
                   </button>
                 ))}
               </div>
@@ -1350,8 +1350,8 @@ export default function InfographicPage() {
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* Right Panel - Preview */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <div className="w-full lg:w-1/2 flex flex-col items-center justify-center border-l-0 lg:border-l border-gray-800 bg-gray-950 p-3 sm:p-6 mt-6 lg:mt-0">
-        <h2 className="mb-3 sm:mb-4 text-sm sm:text-lg font-bold text-gray-400">Aperçu</h2>
+      <div className="hidden lg:flex w-full lg:w-1/2 flex-col items-center justify-center border-l-0 lg:border-l border-gray-800 bg-gray-950 p-3 sm:p-6 mt-6 lg:mt-0 lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto">
+        <h2 className="mb-3 sm:mb-4 text-sm sm:text-lg font-bold text-gray-400">Aperçu Vidéo Finale</h2>
 
         {/* Preview Container */}
         <div className={`relative w-full ${previewClasses.maxW} mx-auto`}>

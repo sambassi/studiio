@@ -182,6 +182,8 @@ export default function InfographiePage() {
   const videoInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const characterInputRef = useRef<HTMLInputElement>(null);
+  const batchPageRef = useRef(1);
+  const [isAddingCard, setIsAddingCard] = useState(false);
 
   // Cleanup object URLs on unmount
   useEffect(() => {
@@ -260,7 +262,41 @@ export default function InfographiePage() {
     }
   };
 
-  const addCard = () => setCards([...cards, { id: Date.now().toString(), emoji: '⭐', label: t('infoCards.newCard'), value: t('infoCards.value'), color: '#ec4899' }]);
+  const addCard = async () => {
+    setIsAddingCard(true);
+    try {
+      const topic = title || THEME_TO_QUERY[selectedTheme] || 'fitness';
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      const res = await fetch('/api/content/ai-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic, locale: 'fr', cardCount: 1, existingCards: cards.map(c => c.label) }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      const data = await res.json();
+      if (data.success && data.content?.cards && data.content.cards.length > 0) {
+        const aiCard = data.content.cards[0];
+        const colors = ['#ec4899', '#ef4444', '#a855f7', '#3b82f6', '#22c55e', '#f59e0b', '#6366f1'];
+        setCards(prev => [...prev, {
+          id: Date.now().toString(),
+          emoji: aiCard.emoji || '⭐',
+          label: aiCard.label || aiCard.title || 'Info',
+          value: aiCard.value || '100%',
+          color: colors[prev.length % colors.length],
+        }]);
+      } else {
+        // Fallback to generic card if AI fails
+        setCards(prev => [...prev, { id: Date.now().toString(), emoji: '⭐', label: t('infoCards.newCard'), value: t('infoCards.value'), color: '#ec4899' }]);
+      }
+    } catch {
+      // Fallback on error
+      setCards(prev => [...prev, { id: Date.now().toString(), emoji: '⭐', label: t('infoCards.newCard'), value: t('infoCards.value'), color: '#ec4899' }]);
+    } finally {
+      setIsAddingCard(false);
+    }
+  };
   const deleteCard = (id: string) => setCards(cards.filter((c) => c.id !== id));
   const updateCard = (id: string, updates: Partial<InfoCard>) => setCards(cards.map((c) => (c.id === id ? { ...c, ...updates } : c)));
 
@@ -327,9 +363,10 @@ export default function InfographiePage() {
     const usedT: string[] = []; const usedS: string[] = [];
     const pickUniq = (arr: string[], used: string[]) => { const pool = arr.filter((x) => !used.includes(x)); return pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : arr[Math.floor(Math.random() * arr.length)]; };
     setBatchPhotosLoading(true);
+    batchPageRef.current += 1;
     let photos: string[] = [];
     try {
-      const pRes = await fetch(`/api/pexels?query=${encodeURIComponent(THEME_TO_QUERY[selectedTheme] || 'fitness dance')}&count=12`);
+      const pRes = await fetch(`/api/pexels?query=${encodeURIComponent(THEME_TO_QUERY[selectedTheme] || 'fitness dance')}&count=12&page=${batchPageRef.current}`);
       const pData = await pRes.json();
       if (pData.success && pData.photos) photos = pData.photos.map((p: { url: string; medium: string }) => p.medium || p.url);
     } catch { /* ignore */ }
@@ -708,16 +745,16 @@ export default function InfographiePage() {
       )}
 
       {/* Header + Step Indicator */}
-      <div className="border-b border-gray-700 bg-gray-800/50 px-8 py-4">
-        <div className="flex items-center justify-between">
+      <div className="border-b border-gray-700 bg-gray-800/50 px-4 sm:px-8 py-3 sm:py-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0">
           <div>
-            <h1 className="text-2xl font-bold">{t('title')}</h1>
-            <p className="text-sm text-gray-400 mt-0.5">{t('stepOf', { step: String(step) })}</p>
+            <h1 className="text-lg sm:text-2xl font-bold">{t('title')}</h1>
+            <p className="text-xs sm:text-sm text-gray-400 mt-0.5">{t('stepOf', { step: String(step) })}</p>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 overflow-x-auto">
             {[1, 2, 3].map((s) => (
-              <button key={s} onClick={() => setStep(s)} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${step === s ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white' : s < step ? 'bg-green-600/20 text-green-400 border border-green-600/30' : 'bg-gray-800 text-gray-400 border border-gray-700'}`}>
-                <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ background: step === s ? 'white' : 'transparent', color: step === s ? '#D91CD2' : 'inherit' }}>{s < step ? '✓' : s}</span>
+              <button key={s} onClick={() => setStep(s)} className={`flex items-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap ${step === s ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white' : s < step ? 'bg-green-600/20 text-green-400 border border-green-600/30' : 'bg-gray-800 text-gray-400 border border-gray-700'}`}>
+                <span className="w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center text-[9px] sm:text-[10px] font-bold" style={{ background: step === s ? 'white' : 'transparent', color: step === s ? '#D91CD2' : 'inherit' }}>{s < step ? '✓' : s}</span>
                 {s === 1 && t('steps.1')}
                 {s === 2 && t('steps.2')}
                 {s === 3 && t('steps.3')}
@@ -728,9 +765,9 @@ export default function InfographiePage() {
       </div>
 
       {/* Main Content */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* LEFT COLUMN — Form (60%) */}
-        <div className="w-3/5 overflow-y-auto border-r border-gray-700 bg-gray-900 px-8 py-6">
+      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
+        {/* LEFT COLUMN — Form */}
+        <div className="w-full lg:w-3/5 overflow-y-auto border-r-0 lg:border-r border-gray-700 bg-gray-900 px-4 sm:px-8 py-4 sm:py-6 pb-24 lg:pb-6">
 
           {/* ===== STEP 1: CONTENU ===== */}
           {step === 1 && (
@@ -765,7 +802,7 @@ export default function InfographiePage() {
               {batchMode && batchVariations.length > 0 && (
                 <div className="mb-6">
                   <h3 className="text-xs font-semibold text-gray-400 mb-2">{t('batch.previewTitle')}</h3>
-                  <div className="grid grid-cols-5 gap-1.5">
+                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
                     {batchVariations.map((v, i) => (
                       <button key={i} onClick={() => setSelectedBatchPreview(selectedBatchPreview === i ? null : i)} className={`relative rounded-lg overflow-hidden border-2 aspect-[9/16] transition-all ${selectedBatchPreview === i ? 'border-pink-500 ring-2 ring-pink-500/30' : 'border-gray-700 hover:border-gray-500'}`}>
                         {v.photoUrl ? <img src={v.photoUrl} alt={v.title} className="absolute inset-0 w-full h-full object-cover" /> : <div className="absolute inset-0 bg-gradient-to-b from-black to-purple-950" />}
@@ -804,11 +841,11 @@ export default function InfographiePage() {
               <div className="mb-6">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-gray-300">{t('infoCards.title')}</h3>
-                  <button onClick={addCard} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-[#D91CD2] border border-[#D91CD2]/30 hover:bg-[#D91CD2]/10 transition"><Plus size={14} /> {t('infoCards.add')}</button>
+                  <button onClick={addCard} disabled={isAddingCard} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-[#D91CD2] border border-[#D91CD2]/30 hover:bg-[#D91CD2]/10 transition disabled:opacity-50">{isAddingCard ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} {isAddingCard ? 'IA...' : t('infoCards.add')}</button>
                 </div>
                 <div className="space-y-2">
                   {cards.map((card) => (
-                    <div key={card.id} className="flex items-center gap-2 bg-gray-800 rounded-lg p-2.5 border border-gray-700">
+                    <div key={card.id} className="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-gray-800 rounded-lg p-2.5 border border-gray-700">
                       <div className="flex-shrink-0 relative group">
                         <button className="w-8 h-8 bg-gray-700 hover:bg-gray-600 rounded text-lg flex items-center justify-center">{card.emoji}</button>
                         <div className="absolute bottom-full mb-2 left-0 hidden group-hover:grid grid-cols-4 gap-1 bg-gray-700 p-2 rounded-lg shadow-lg z-10">
@@ -816,7 +853,7 @@ export default function InfographiePage() {
                         </div>
                       </div>
                       <input type="text" value={card.label} onChange={(e) => updateCard(card.id, { label: e.target.value })} className="flex-1 min-w-0 rounded bg-gray-700 px-2 py-1 text-xs text-white border border-gray-600 focus:border-pink-500 focus:outline-none" />
-                      <input type="text" value={card.value} onChange={(e) => updateCard(card.id, { value: e.target.value })} className="flex-1 min-w-0 rounded bg-gray-700 px-2 py-1 text-xs text-white border border-gray-600 focus:border-pink-500 focus:outline-none" />
+                      <input type="text" value={card.value} onChange={(e) => updateCard(card.id, { value: e.target.value })} className="w-20 sm:flex-1 min-w-0 rounded bg-gray-700 px-2 py-1 text-xs text-white border border-gray-600 focus:border-pink-500 focus:outline-none" />
                       <input type="color" value={card.color} onChange={(e) => updateCard(card.id, { color: e.target.value })} className="h-8 w-10 rounded cursor-pointer border-0 bg-transparent flex-shrink-0" />
                       <button onClick={() => deleteCard(card.id)} className="flex-shrink-0 p-1 text-gray-400 hover:text-red-400 transition"><Trash2 size={14} /></button>
                     </div>
@@ -880,7 +917,7 @@ export default function InfographiePage() {
                     {pexelsResults.length > 0 && (
                       <div>
                         <p className="text-[10px] text-gray-500 mb-2">{t('posterPhoto.clickToSelect')}</p>
-                        <div className="grid grid-cols-4 gap-2">
+                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                           {pexelsResults.map((photo) => (
                             <button key={photo.id} onClick={() => handleSelectPexelsImage(photo.url)} className={`relative rounded-lg overflow-hidden aspect-square transition-all ${selectedPexelsUrl === photo.url ? 'ring-2 ring-pink-500 ring-offset-2 ring-offset-gray-800' : 'hover:opacity-80'}`}>
                               <img src={photo.small} alt={photo.alt || 'Pexels'} className="w-full h-full object-cover" />
@@ -1010,14 +1047,14 @@ export default function InfographiePage() {
               {/* Destination */}
               <div className="mb-6">
                 <h3 className="text-sm font-semibold text-gray-300 mb-2">{t('destination.title')}</h3>
-                <div className="flex gap-2">
+                <div className="grid grid-cols-2 sm:flex gap-2">
                   {([
                     { value: 'calendar' as Destination, label: t('destination.calendar'), icon: Calendar, color: '#3B82F6' },
                     { value: 'export' as Destination, label: t('destination.export'), icon: Package, color: '#F59E0B' },
                     { value: 'both' as Destination, label: t('destination.both'), icon: RefreshCw, color: '#EC4899' },
                     { value: 'studio' as Destination, label: t('destination.studio'), icon: Music, color: '#10B981' },
                   ]).map((dest) => (
-                    <button key={dest.value} onClick={() => setDestination(dest.value)} className={`flex-1 flex flex-col items-center gap-1.5 px-2 py-2.5 rounded-lg font-medium text-xs transition-all border ${destination === dest.value ? 'bg-pink-600/20 border-pink-500 text-white' : 'bg-gray-700 border-gray-700 text-gray-300 hover:bg-gray-600'}`}>
+                    <button key={dest.value} onClick={() => setDestination(dest.value)} className={`sm:flex-1 flex flex-col items-center gap-1.5 px-2 py-2.5 rounded-lg font-medium text-xs transition-all border ${destination === dest.value ? 'bg-pink-600/20 border-pink-500 text-white' : 'bg-gray-700 border-gray-700 text-gray-300 hover:bg-gray-600'}`}>
                       <div className="w-7 h-7 rounded-md flex items-center justify-center" style={{ backgroundColor: `${dest.color}20`, color: dest.color }}>
                         <dest.icon size={14} />
                       </div>
@@ -1049,7 +1086,7 @@ export default function InfographiePage() {
         </div>
 
         {/* RIGHT COLUMN — Montage Preview (40%) */}
-        <div className="w-2/5 bg-gray-800 border-l border-gray-700 px-6 py-6 overflow-y-auto flex flex-col">
+        <div className="hidden lg:flex w-full lg:w-2/5 bg-gray-800 border-l-0 lg:border-l border-gray-700 px-4 sm:px-6 py-4 sm:py-6 overflow-y-auto flex-col">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-gray-300">{t('preview.title')}</h3>
             <button onClick={() => { if (!previewAutoPlay) { setPreviewSeqIndex(0); setPreviewProgress(0); } setPreviewAutoPlay(!previewAutoPlay); }} className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-medium transition ${previewAutoPlay ? 'bg-pink-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600 border border-gray-600'}`}>
