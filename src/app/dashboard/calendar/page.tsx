@@ -612,13 +612,16 @@ export default function CalendarPage() {
     // Store duration for CSS-driven progress bar (no setInterval, no re-renders)
     seqDurationRef.current = currentDuration;
 
-    // Auto-advance to next sequence
+    // Auto-advance to next sequence — stop at end (no loop), pause music
     if (montageTimerRef.current) clearTimeout(montageTimerRef.current);
     montageTimerRef.current = setTimeout(() => {
       if (infoSeqIndex < activeSeqs.length - 1) {
         setInfoSeqIndex(infoSeqIndex + 1);
       } else {
-        setInfoSeqIndex(0);
+        // End of montage: stop auto-play and pause music/voice
+        setMontageAutoPlay(false);
+        document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice').forEach(a => { a.pause(); });
+        document.querySelectorAll<HTMLVideoElement>('#preview-video-infographic, #preview-video').forEach(v => { v.pause(); });
       }
     }, currentDuration);
 
@@ -2060,7 +2063,7 @@ export default function CalendarPage() {
         <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4" onClick={() => setShowFullPreview(false)}>
           {/* Hidden audio elements for posts with separate audio tracks */}
           {postHasAudio && previewMusicUrl && (
-            <audio id="preview-audio-music" src={previewMusicUrl} loop autoPlay muted={montageMuted} style={{ display: 'none' }} />
+            <audio id="preview-audio-music" src={previewMusicUrl} autoPlay muted={montageMuted} style={{ display: 'none' }} />
           )}
           {postHasAudio && previewVoiceUrl && (
             <audio id="preview-audio-voice" src={previewVoiceUrl} autoPlay muted={montageMuted} style={{ display: 'none' }} />
@@ -2134,20 +2137,20 @@ export default function CalendarPage() {
                         />
                         {meta?.logoUrl && (
                           <div className="absolute bottom-6 right-4 z-10">
-                            <img src={meta.logoUrl} alt="Logo" className="w-14 h-14 rounded-xl object-contain bg-black/50 p-1.5 backdrop-blur-sm" />
+                            <img src={meta.logoUrl} alt="Logo" className="w-14 h-14 object-contain" />
                           </div>
                         )}
                       </div>
                       );
                     })()}
 
-                    {/* === CTA: Call to action with gradient === */}
-                    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ opacity: currentSeq === 'cta' ? 1 : 0, transform: currentSeq === 'cta' ? 'scale(1)' : 'scale(0.92)', zIndex: currentSeq === 'cta' ? 10 : 1, background: `linear-gradient(135deg, ${accent}DD, #FF2DAAAA, ${accent}77)`, transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
+                    {/* === CTA: Call to action — black bg, colored text === */}
+                    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ opacity: currentSeq === 'cta' ? 1 : 0, transform: currentSeq === 'cta' ? 'scale(1)' : 'scale(0.92)', zIndex: currentSeq === 'cta' ? 10 : 1, background: '#000000', transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
                       <div className="text-center px-6">
-                        {meta?.logoUrl && <img src={meta.logoUrl} alt="Logo" className="w-20 h-20 rounded-2xl object-contain mx-auto mb-5 bg-black/30 p-2.5" />}
-                        <p className="text-xl font-black text-white uppercase tracking-wider mb-3" style={{ textShadow: `0 0 25px ${accent}` }}>{brd?.ctaText || branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}</p>
-                        <p className="text-sm text-white/70 uppercase tracking-wider">{brd?.ctaSubText || branding.ctaSubText || 'LIEN EN BIO'}</p>
-                        {meta?.salesPhrase && <p className="text-base text-white/90 mt-4 italic font-medium">{meta.salesPhrase}</p>}
+                        {meta?.logoUrl && <img src={meta.logoUrl} alt="Logo" className="w-20 h-20 object-contain mx-auto mb-5" />}
+                        <p className="text-xl font-black uppercase tracking-wider mb-3" style={{ color: accent, textShadow: `0 0 25px ${accent}` }}>{brd?.ctaText || branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}</p>
+                        <p className="text-sm uppercase tracking-wider" style={{ color: `${accent}99` }}>{brd?.ctaSubText || branding.ctaSubText || 'LIEN EN BIO'}</p>
+                        {meta?.salesPhrase && <p className="text-base mt-4 italic font-medium" style={{ color: `${accent}DD` }}>{meta.salesPhrase}</p>}
                         <div className="flex items-center justify-center gap-2 mt-5">
                           {meta?.musicUrl && <span className="text-xs text-white/80 px-3 py-1 rounded-full flex items-center gap-1.5 bg-white/10 backdrop-blur-sm"><Music size={12} /> {t('fullPreview.music')}</span>}
                           {meta?.voiceMode && meta.voiceMode !== 'none' && <span className="text-xs text-white/80 px-3 py-1 rounded-full flex items-center gap-1.5 bg-white/10 backdrop-blur-sm"><Mic size={12} /> {t('fullPreview.voiceOffLabel')}</span>}
@@ -2174,7 +2177,18 @@ export default function CalendarPage() {
                         {montageMuted ? <VolumeX size={12} className="text-white" /> : <Volume2 size={12} className="text-white" />}
                       </button>
                       <button className="w-7 h-7 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center hover:bg-black/50 transition"
-                        onClick={(e) => { e.stopPropagation(); setMontageAutoPlay(!montageAutoPlay); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (montageAutoPlay) {
+                            setMontageAutoPlay(false);
+                            document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice').forEach(a => { a.pause(); });
+                          } else {
+                            // Restart montage from beginning with music
+                            setInfoSeqIndex(0);
+                            setMontageAutoPlay(true);
+                            document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice').forEach(a => { a.currentTime = 0; a.play().catch(() => {}); });
+                          }
+                        }}
                       >
                         {montageAutoPlay ? <span className="text-white text-[10px] font-bold">❚❚</span> : <Play size={12} className="text-white ml-0.5" fill="white" />}
                       </button>
