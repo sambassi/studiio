@@ -160,8 +160,9 @@ export default function CalendarPage() {
   const [montageMuted, setMontageMuted] = useState(true);
   const [videoPlayable, setVideoPlayable] = useState(false); // Track if video file is loadable — default false until proven
   const montageTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const [montageProgress, setMontageProgress] = useState(0);
+  const [montageProgress, setMontageProgress] = useState(0); // only used for non-CSS fallback
   const montageProgressRef = useRef<NodeJS.Timeout | null>(null);
+  const seqDurationRef = useRef<number>(5000); // current sequence duration in ms for CSS animation
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiProgress, setAiProgress] = useState(0);
   const [aiStage, setAiStage] = useState('');
@@ -508,7 +509,6 @@ export default function CalendarPage() {
   useEffect(() => {
     if (!showFullPreview || !fullPreviewPost || !montageAutoPlay) {
       if (montageTimerRef.current) clearTimeout(montageTimerRef.current);
-      if (montageProgressRef.current) clearInterval(montageProgressRef.current);
       return;
     }
     const meta = fullPreviewPost.metadata;
@@ -522,14 +522,8 @@ export default function CalendarPage() {
     const seqs = (meta?.sequences || {}) as Record<string, number>;
     const currentDuration = (seqs[activeSeqs[infoSeqIndex]] || 5) * 1000; // ms
 
-    // Progress bar animation (update every 200ms to reduce re-renders and jank)
-    let elapsed = 0;
-    if (montageProgressRef.current) clearInterval(montageProgressRef.current);
-    setMontageProgress(0);
-    montageProgressRef.current = setInterval(() => {
-      elapsed += 200;
-      setMontageProgress(Math.min(100, (elapsed / currentDuration) * 100));
-    }, 200);
+    // Store duration for CSS-driven progress bar (no setInterval, no re-renders)
+    seqDurationRef.current = currentDuration;
 
     // Auto-advance to next sequence
     if (montageTimerRef.current) clearTimeout(montageTimerRef.current);
@@ -537,14 +531,12 @@ export default function CalendarPage() {
       if (infoSeqIndex < activeSeqs.length - 1) {
         setInfoSeqIndex(infoSeqIndex + 1);
       } else {
-        // Loop back to start
         setInfoSeqIndex(0);
       }
     }, currentDuration);
 
     return () => {
       if (montageTimerRef.current) clearTimeout(montageTimerRef.current);
-      if (montageProgressRef.current) clearInterval(montageProgressRef.current);
     };
   }, [showFullPreview, fullPreviewPost, infoSeqIndex, montageAutoPlay, videoPlayable]);
 
@@ -1984,14 +1976,25 @@ export default function CalendarPage() {
                       </button>
                     </div>
 
-                    {/* Continuous progress bar — thin bottom line */}
-                    <div className="absolute bottom-0 left-0 right-0 z-40 h-[3px] bg-black/20">
-                      <div className="h-full rounded-r-full" style={{
-                        width: `${((safeIdx + (montageProgress / 100)) / activeSeqs.length) * 100}%`,
-                        background: `linear-gradient(90deg, ${accent}, #FF2DAA, #00D4FF)`,
-                        transition: 'width 250ms linear',
-                      }} />
-                    </div>
+                    {/* Continuous progress bar — CSS animation only, no React re-renders */}
+                    {(() => {
+                      const startPct = (safeIdx / activeSeqs.length) * 100;
+                      const endPct = ((safeIdx + 1) / activeSeqs.length) * 100;
+                      const dur = seqDurationRef.current;
+                      return (
+                        <div className="absolute bottom-0 left-0 right-0 z-40 h-[3px] bg-black/20">
+                          <div
+                            key={`progress-${infoSeqIndex}`}
+                            className="h-full rounded-r-full"
+                            style={{
+                              background: `linear-gradient(90deg, ${accent}, #FF2DAA, #00D4FF)`,
+                              animation: `seqProgress ${dur}ms linear forwards`,
+                            }}
+                          />
+                          <style>{`@keyframes seqProgress { from { width: ${startPct}%; } to { width: ${endPct}%; } }`}</style>
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })() : (
