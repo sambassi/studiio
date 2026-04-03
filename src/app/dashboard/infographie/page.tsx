@@ -185,7 +185,7 @@ export default function InfographicPage() {
       const localRes = await fetch('/api/content/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: topicText }),
+        body: JSON.stringify({ topic: topicText }),
       });
       if (localRes.ok) {
         const localData = await localRes.json();

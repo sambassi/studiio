@@ -748,6 +748,103 @@ const KNOWLEDGE_BASE: Record<string, TopicData[]> = {
       ],
     },
   ],
+
+  // ─── MANIOC ───────────────────────────────────────────────────
+  "manioc": [
+    {
+      subtitle: "Le manioc : légume racine riche en énergie pour tes entraînements",
+      tagLine: "MANIOC & PERFORMANCE",
+      cards: [
+        { icon: "energy", title: "ÉNERGIE PURE", description: "160 kcal pour 100g de manioc cuit. Carburant idéal avant un cours de danse", value: "160kcal" },
+        { icon: "leaf", title: "SANS GLUTEN", description: "100% sans gluten naturellement. Alternative parfaite pour les intolérants", value: "100%" },
+        { icon: "muscle", title: "FIBRES DIGESTIVES", description: "1.8g de fibres pour 100g. Améliore ta digestion et nourrit ta flore intestinale", value: "1.8g" },
+        { icon: "shield", title: "VITAMINE C", description: "20mg de vitamine C pour 100g de manioc frais. Renforce ton système immunitaire", value: "20mg" },
+        { icon: "fire", title: "GLUCIDES LENTS", description: "38g de glucides complexes pour 100g. Énergie longue durée sans pic de glycémie", value: "38g" },
+      ],
+    },
+    {
+      subtitle: "Le manioc cuit donne une énergie stable sans le crash du sucre",
+      tagLine: "NUTRITION & SPORT",
+      cards: [
+        { icon: "apple", title: "AMIDON RÉSISTANT", description: "Le manioc refroidi développe de l'amidon résistant qui nourrit tes bonnes bactéries", value: "PRÉBIO" },
+        { icon: "droplet", title: "HYDRATANT", description: "Le manioc cuit contient 60% d'eau. Contribue à ton hydratation quotidienne", value: "60%" },
+        { icon: "bone", title: "CALCIUM", description: "16mg de calcium pour 100g. Contribue à la solidité de tes os pour la danse", value: "16mg" },
+        { icon: "target", title: "AVANT L'EFFORT", description: "Mange du manioc 2h avant ton cours. Ses glucides lents te porteront tout le long", value: "2h" },
+        { icon: "star", title: "POLYVALENT", description: "Bouilli, en farine ou en tapioca : le manioc s'adapte à tous tes repas fitness", value: "3 formes" },
+      ],
+    },
+  ],
+
+  // ─── MORINGA ──────────────────────────────────────────────────
+  "moringa": [
+    {
+      subtitle: "Le moringa : l'arbre miracle avec 92 nutriments identifiés",
+      tagLine: "MORINGA & SUPER NUTRITION",
+      cards: [
+        { icon: "leaf", title: "PROTÉINES VÉGÉTALES", description: "27g de protéines pour 100g de feuilles séchées. Plus que les oeufs ou le lait", value: "27g" },
+        { icon: "bone", title: "CALCIUM ×4", description: "4 fois plus de calcium que le lait. Renforce tes os pour la danse intensive", value: "×4 lait" },
+        { icon: "energy", title: "FER PUISSANT", description: "28mg de fer pour 100g de poudre. Combat la fatigue et booste ton énergie", value: "28mg" },
+        { icon: "brain", title: "ANTIOXYDANTS", description: "46 antioxydants identifiés dans le moringa. Protège tes cellules du stress oxydatif", value: "46" },
+        { icon: "shield", title: "VITAMINE A", description: "10x plus de vitamine A que la carotte. Protège ta vue et renforce ton immunité", value: "×10" },
+      ],
+    },
+    {
+      subtitle: "Le moringa booste ton énergie naturellement sans caféine",
+      tagLine: "LE SAVIEZ-VOUS ?",
+      cards: [
+        { icon: "heart", title: "ANTI-INFLAMMATOIRE", description: "Réduit les marqueurs d'inflammation de 30%. Parfait après un entraînement intense", value: "-30%" },
+        { icon: "droplet", title: "DIGESTION", description: "Les fibres du moringa améliorent le transit intestinal en 48h de cure régulière", value: "48h" },
+        { icon: "fire", title: "MÉTABOLISME", description: "Le moringa accélère le métabolisme de base de 15%. Brûle plus au repos", value: "+15%" },
+        { icon: "muscle", title: "RÉCUPÉRATION", description: "Ses acides aminés essentiels aident tes muscles à se reconstruire après l'effort", value: "9 AA" },
+        { icon: "sun", title: "VITAMINE E", description: "3x plus de vitamine E que les amandes. Peau éclatante et protection cellulaire", value: "×3" },
+      ],
+    },
+  ],
+
+  // ─── BAOBAB ───────────────────────────────────────────────────
+  "baobab": [
+    {
+      subtitle: "Le fruit du baobab : 6x plus de vitamine C que l'orange",
+      tagLine: "BAOBAB & ÉNERGIE",
+      cards: [
+        { icon: "shield", title: "VITAMINE C ×6", description: "6 fois plus de vitamine C que l'orange. Ton système immunitaire te remerciera", value: "×6" },
+        { icon: "muscle", title: "FIBRES RECORD", description: "44g de fibres pour 100g de pulpe. Champion toute catégorie de la digestion", value: "44g" },
+        { icon: "bone", title: "CALCIUM", description: "295mg de calcium pour 100g. Plus que la plupart des produits laitiers", value: "295mg" },
+        { icon: "energy", title: "POTASSIUM", description: "6x plus de potassium que la banane. Anti-crampes naturel pour la danse", value: "×6" },
+        { icon: "heart", title: "PRÉBIOTIQUE", description: "La pulpe de baobab nourrit tes bonnes bactéries intestinales. Digestion optimale", value: "FLORE" },
+      ],
+    },
+  ],
+
+  // ─── IGNAME ───────────────────────────────────────────────────
+  "igname": [
+    {
+      subtitle: "L'igname : le tubercule africain riche en potassium et vitamines",
+      tagLine: "IGNAME & FORCE",
+      cards: [
+        { icon: "energy", title: "ÉNERGIE DURABLE", description: "118 kcal pour 100g. Glucides complexes pour une énergie stable pendant l'effort", value: "118kcal" },
+        { icon: "shield", title: "VITAMINE B6", description: "0.3mg de B6 pour 100g. Essentielle pour le métabolisme des protéines musculaires", value: "0.3mg" },
+        { icon: "heart", title: "POTASSIUM", description: "816mg de potassium pour 100g. Régule ta tension et prévient les crampes", value: "816mg" },
+        { icon: "muscle", title: "MANGANÈSE", description: "0.4mg de manganèse pour 100g. Contribue à la formation des os et du cartilage", value: "0.4mg" },
+        { icon: "leaf", title: "DIOSCORINE", description: "Protéine unique de l'igname avec des propriétés antioxydantes puissantes", value: "UNIQUE" },
+      ],
+    },
+  ],
+
+  // ─── PLANTAIN ─────────────────────────────────────────────────
+  "plantain": [
+    {
+      subtitle: "La banane plantain : source d'énergie lente riche en potassium",
+      tagLine: "PLANTAIN & SPORT",
+      cards: [
+        { icon: "energy", title: "GLUCIDES LENTS", description: "31g de glucides complexes pour 100g. Énergie stable pour danser sans fatigue", value: "31g" },
+        { icon: "heart", title: "POTASSIUM", description: "499mg de potassium pour 100g. Combat les crampes et régule ta tension artérielle", value: "499mg" },
+        { icon: "shield", title: "VITAMINE A", description: "1127 UI de vitamine A pour 100g. Protège ta vision et renforce ton immunité", value: "1127UI" },
+        { icon: "fire", title: "FIBRES", description: "2.3g de fibres pour 100g. Régule ta glycémie et améliore ta digestion", value: "2.3g" },
+        { icon: "muscle", title: "MAGNÉSIUM", description: "37mg de magnésium pour 100g. Réduit la fatigue musculaire après l'entraînement", value: "37mg" },
+      ],
+    },
+  ],
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -848,6 +945,16 @@ const KEYWORD_MAP: Record<string, string> = {
   "cafe": "cafe", "cafeine": "cafe", "expresso": "cafe", "espresso": "cafe",
   // Alcool
   "alcool": "alcool", "biere": "alcool", "vin": "alcool", "aperitif": "alcool",
+  // Manioc
+  "manioc": "manioc", "cassava": "manioc", "tapioca": "manioc", "foufou": "manioc", "fufu": "manioc", "attiéké": "manioc", "attieke": "manioc", "gari": "manioc",
+  // Moringa
+  "moringa": "moringa", "moringue": "moringa", "nebeday": "moringa",
+  // Baobab
+  "baobab": "baobab", "bouye": "baobab", "pain de singe": "baobab",
+  // Igname
+  "igname": "igname", "yam": "igname",
+  // Plantain
+  "plantain": "plantain", "alloco": "plantain", "banane plantain": "plantain",
   // Manger (→ nutrition)
   "manger": "nutrition",
 };
@@ -943,7 +1050,7 @@ function generateDynamicFallback(title: string, _normalized: string): TopicData 
   const displayName = title.charAt(0).toUpperCase() + title.slice(1).toLowerCase();
 
   // Essayer de catégoriser le sujet
-  const nutriKeywords = ["fruit", "legume", "aliment", "nourriture", "plat", "recette", "ingredient", "graine", "noix", "huile", "lait", "yaourt", "fromage", "viande", "oeuf", "tomate", "avocat", "epinard", "brocoli", "quinoa", "lentille", "haricot", "amande", "chocolat", "miel", "gingembre", "ail", "citron", "orange", "mangue", "ananas", "coco", "the"];
+  const nutriKeywords = ["fruit", "legume", "aliment", "nourriture", "plat", "recette", "ingredient", "graine", "noix", "huile", "lait", "yaourt", "fromage", "viande", "oeuf", "tomate", "avocat", "epinard", "brocoli", "quinoa", "lentille", "haricot", "amande", "chocolat", "miel", "gingembre", "ail", "citron", "orange", "mangue", "ananas", "coco", "the", "manioc", "moringa", "baobab", "igname", "plantain", "patate", "riz", "mais", "mil", "sorgho", "fonio", "taro", "gombo", "hibiscus", "bissap", "tamarin", "karite", "arachide", "sesame", "curcuma", "collagene", "spiruline", "acerola", "guarana", "matcha", "ashwagandha", "maca", "goji", "acai", "chia", "lin", "chanvre"];
   const sportKeywords = ["sport", "exercice", "jump", "hiit", "stretch", "yoga", "pilates", "boxe", "combat", "sprint", "marche", "velo", "natation", "nage", "course", "running"];
   const bodyKeywords = ["bras", "jambe", "epaule", "mollet", "cuisse", "poitrine", "taille", "pied", "main", "cou", "nuque", "hanche"];
   const wellnessKeywords = ["meditation", "relaxation", "massage", "sauna", "bain", "detox", "jeune", "intermittent", "aromatherapie", "acupuncture"];
