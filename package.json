@@ -12,6 +12,7 @@
     "@auth/supabase-adapter": "^1.0.0",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
+    "ffmpeg-static": "^5.2.0",
     "@remotion/bundler": "^4.0.441",
     "@remotion/cli": "^4.0.441",
     "@remotion/renderer": "^4.0.441",

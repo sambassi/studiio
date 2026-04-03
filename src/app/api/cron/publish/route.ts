@@ -1,5 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
+import { execFile } from 'child_process';
+import { writeFile, readFile, unlink } from 'fs/promises';
+import { join } from 'path';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
+
+// Allow up to 300s for this function (Vercel Pro plan)
+// Needed because WebM→MP4 conversion + Instagram polling can take 2-4 minutes
+export const maxDuration = 300;
 
 // Verify the request comes from Vercel Cron
 function verifyCronSecret(req: NextRequest): boolean {
@@ -292,6 +302,102 @@ export async function GET(req: NextRequest) {
 
 
 // ══════════════════════════════════════════════════════════════
+// WEBM → MP4 CONVERSION (Instagram/TikTok require H.264 MP4)
+// ══════════════════════════════════════════════════════════════
+
+async function convertToMp4IfNeeded(videoUrl: string): Promise<string> {
+  // Only convert if the URL contains .webm or webm in the path
+  const urlLower = videoUrl.toLowerCase();
+  if (!urlLower.includes('.webm') && !urlLower.includes('/webm')) {
+    console.log(`[CONVERT] Video is not WebM, skipping conversion`);
+    return videoUrl;
+  }
+
+  console.log(`[CONVERT] WebM detected, converting to MP4 (H.264)...`);
+
+  // Get ffmpeg binary path from ffmpeg-static
+  let ffmpegPath: string;
+  try {
+    ffmpegPath = require('ffmpeg-static');
+    console.log(`[CONVERT] FFmpeg binary: ${ffmpegPath}`);
+  } catch (e) {
+    console.error(`[CONVERT] ffmpeg-static not available, trying system ffmpeg`);
+    ffmpegPath = 'ffmpeg';
+  }
+
+  const tmpDir = '/tmp';
+  const timestamp = Date.now();
+  const inputPath = join(tmpDir, `cron_input_${timestamp}.webm`);
+  const outputPath = join(tmpDir, `cron_output_${timestamp}.mp4`);
+
+  try {
+    // Step 1: Download the WebM file
+    console.log(`[CONVERT] Downloading WebM...`);
+    const response = await fetch(videoUrl);
+    if (!response.ok) {
+      throw new Error(`Download failed: HTTP ${response.status}`);
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    await writeFile(inputPath, buffer);
+    const sizeMB = (buffer.length / 1024 / 1024).toFixed(1);
+    console.log(`[CONVERT] Downloaded ${sizeMB}MB to ${inputPath}`);
+
+    // Step 2: Convert with FFmpeg (H.264 + AAC, fast preset, Instagram-compatible)
+    console.log(`[CONVERT] Running FFmpeg conversion...`);
+    const startTime = Date.now();
+    await execFileAsync(ffmpegPath, [
+      '-i', inputPath,
+      '-c:v', 'libx264',
+      '-preset', 'ultrafast',
+      '-crf', '23',
+      '-pix_fmt', 'yuv420p',     // Required for Instagram compatibility
+      '-c:a', 'aac',
+      '-b:a', '128k',
+      '-movflags', '+faststart',  // Move moov atom to start for streaming
+      '-y',                       // Overwrite output
+      outputPath,
+    ], { timeout: 180000 }); // 3 min timeout for conversion
+    const conversionTime = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`[CONVERT] Conversion done in ${conversionTime}s`);
+
+    // Step 3: Read the converted MP4
+    const mp4Buffer = await readFile(outputPath);
+    const mp4SizeMB = (mp4Buffer.length / 1024 / 1024).toFixed(1);
+    console.log(`[CONVERT] MP4 size: ${mp4SizeMB}MB`);
+
+    // Step 4: Upload to Supabase Storage
+    const fileName = `converted_${timestamp}.mp4`;
+    const storagePath = `converted/${fileName}`;
+    const { error: uploadError } = await supabase.storage
+      .from('media')
+      .upload(storagePath, mp4Buffer, {
+        contentType: 'video/mp4',
+        upsert: true,
+      });
+
+    if (uploadError) {
+      throw new Error(`Supabase upload failed: ${uploadError.message}`);
+    }
+
+    // Step 5: Get public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('media')
+      .getPublicUrl(storagePath);
+
+    console.log(`[CONVERT] MP4 uploaded: ${publicUrl.substring(0, 80)}...`);
+    return publicUrl;
+  } catch (error) {
+    console.error(`[CONVERT] Conversion failed:`, error);
+    // Return original URL as fallback (will likely fail on Instagram but worth trying)
+    throw new Error(`WebM→MP4 conversion failed: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    // Cleanup temp files
+    try { await unlink(inputPath); } catch {}
+    try { await unlink(outputPath); } catch {}
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
 // PLATFORM-SPECIFIC PUBLISHING FUNCTIONS (same as /api/social/publish)
 // ══════════════════════════════════════════════════════════════
 
@@ -314,11 +420,19 @@ async function publishToInstagram(
   const fullCaption = caption || video.title || '';
 
   try {
+    // Step 0: Convert WebM to MP4 if needed (Instagram only accepts MP4/MOV H.264)
+    let publishableVideoUrl = video.video_url;
+    if (video.video_url && video.video_url.toLowerCase().includes('webm')) {
+      console.log(`[CRON][IG] Video is WebM format — converting to MP4 for Instagram...`);
+      publishableVideoUrl = await convertToMp4IfNeeded(video.video_url);
+      console.log(`[CRON][IG] Using converted MP4: ${publishableVideoUrl.substring(0, 80)}...`);
+    }
+
     // Step 1: Create media container (Reels)
     console.log(`[CRON][IG] Step 1: Creating media container for Reel...`);
     const createBody = {
       media_type: 'REELS',
-      video_url: video.video_url,
+      video_url: publishableVideoUrl,
       caption: fullCaption,
       share_to_feed: true,
       access_token: accessToken,
