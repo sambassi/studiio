@@ -549,31 +549,24 @@ export default function CalendarPage() {
 
   // Explicit video play/pause when sequence changes — browser autoplay is unreliable
   useEffect(() => {
-    if (!showFullPreview || !fullPreviewPost) return;
+    if (!showFullPreview || !fullPreviewPost || !videoPlayable) return;
     const meta = fullPreviewPost.metadata;
-    if (!meta?.videoUrl || !videoPlayable) return;
+    if (!meta?.videoUrl) return;
     const seqOrder: string[] = meta?.sequences?.order || ['intro', 'cards', 'video', 'cta'];
-    const activeSeqs = seqOrder; // videoPlayable already checked above
-    const safeIdx = infoSeqIndex < activeSeqs.length ? infoSeqIndex : 0;
-    const currentSeq = activeSeqs[safeIdx] || 'intro';
+    const safeIdx = infoSeqIndex < seqOrder.length ? infoSeqIndex : 0;
+    const currentSeq = seqOrder[safeIdx] || 'intro';
 
     const vid = document.getElementById('preview-video-infographic') as HTMLVideoElement | null;
-    if (!vid) return;
+    if (!vid || vid.readyState === 0) return; // Don't try play() if video hasn't loaded
 
     if (currentSeq === 'video') {
-      // Ensure video is playing when video sequence is active
       vid.muted = true; // Must be muted for autoplay policy
       vid.currentTime = 0;
       const playPromise = vid.play();
       if (playPromise) {
         playPromise.then(() => {
-          // After play starts, unmute if user wants sound
           if (!montageMuted) vid.muted = false;
-        }).catch((err) => {
-          console.warn('[Calendar] Video play failed, retrying muted:', err);
-          vid.muted = true;
-          vid.play().catch(() => {});
-        });
+        }).catch(() => {}); // Silently handle — videoPlayable detection will skip this sequence
       }
     } else {
       // Pause video when not in video sequence to save resources
