@@ -556,14 +556,24 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 
   console.log('[Composer] Stream tracks:', combinedStream.getTracks().map(t => t.kind + ':' + t.readyState).join(', '));
 
-  // Choose best mimeType — prefer MP4!
-  const mimeTypes = [
-    'video/mp4;codecs=avc1,mp4a.40.2',
-    'video/mp4',
-    'video/webm;codecs=vp8,opus',
-    'video/webm;codecs=vp9,opus',
-    'video/webm',
-  ];
+  // Choose best mimeType — prefer WebM for reliability
+  // Chrome's MP4 MediaRecorder output has timing issues in fast mode (canvas.captureStream(0))
+  // that produce files Chrome can write but cannot read back. WebM VP8/VP9 handles this correctly.
+  const mimeTypes = useFastMode
+    ? [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm',
+        'video/mp4;codecs=avc1,mp4a.40.2',
+        'video/mp4',
+      ]
+    : [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm',
+        'video/mp4;codecs=avc1,mp4a.40.2',
+        'video/mp4',
+      ];
   let mimeType = 'video/webm';
   for (const t of mimeTypes) {
     if (MediaRecorder.isTypeSupported(t)) { mimeType = t; break; }
@@ -602,7 +612,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
         console.warn('[Composer] requestFrame not available, falling back to timer-based fast mode');
       }
 
-      recorder.start(200);
+      recorder.start(100); // Shorter timeslice for more frequent data collection
       console.log('[Composer] ⚡ Fast recording started for', totalDuration.toFixed(1), 's');
 
       const totalFrames = Math.ceil(totalDuration * fps);
@@ -611,8 +621,8 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       const fastStart = performance.now();
 
       const renderBatch = () => {
-        // Render up to 8 frames per batch to avoid blocking the main thread
-        const batchSize = 8;
+        // Render up to 4 frames per batch — smaller batches give MediaRecorder more encoding time
+        const batchSize = 4;
         for (let b = 0; b < batchSize && frameIdx < totalFrames; b++, frameIdx++) {
           const t = Math.min(frameIdx * frameInterval, totalDuration - 0.001);
 
@@ -635,13 +645,13 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
         onProgress?.(Math.min(pct, 95), `Montage rapide... ${Math.round((frameIdx / totalFrames) * 100)}%`);
 
         if (frameIdx < totalFrames) {
-          // Small delay to let MediaRecorder process frames
-          setTimeout(renderBatch, 2);
+          // Delay between batches — gives MediaRecorder time to encode frames properly
+          setTimeout(renderBatch, 16); // ~60fps pacing, prevents timing corruption
         } else {
-          // Render complete — give MediaRecorder a moment to flush
+          // Render complete — give MediaRecorder time to flush all pending data
           const fastElapsed = ((performance.now() - fastStart) / 1000).toFixed(1);
           console.log(`[Composer] ⚡ Fast render done: ${totalFrames} frames in ${fastElapsed}s (vs ${totalDuration.toFixed(1)}s real-time)`);
-          setTimeout(() => recorder.stop(), 200);
+          setTimeout(() => recorder.stop(), 500);
         }
       };
 
