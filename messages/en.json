@@ -892,7 +892,9 @@
     "status": {
       "published": "Published",
       "scheduled": "Scheduled",
-      "draft": "Draft"
+      "draft": "Draft",
+      "failed": "Failed",
+      "publishing": "Publishing..."
     },
     "actions": {
       "preview": "Preview",
@@ -930,6 +932,10 @@
       "scheduled": "Scheduled",
       "published": "Publish",
       "save": "Save"
+    },
+    "validation": {
+      "noPlatforms": "Please select at least one social network before scheduling.",
+      "noMedia": "Please add media (video or image) before scheduling."
     },
     "exportOverlay": {
       "title": "Composing video...",

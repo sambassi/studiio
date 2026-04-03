@@ -93,7 +93,7 @@ interface Post {
   platforms: string[];
   scheduled_date: string;
   scheduled_time: string;
-  status: 'draft' | 'scheduled' | 'published';
+  status: 'draft' | 'scheduled' | 'published' | 'failed' | 'publishing';
   metadata?: PostMetadata;
 }
 
@@ -340,6 +340,11 @@ export default function CalendarPage() {
   };
 
   const handleSchedulePost = async (post: Post) => {
+    // Validate: must have at least one platform selected
+    if (!post.platforms || post.platforms.length === 0) {
+      alert(t('validation.noPlatforms') || 'Veuillez sélectionner au moins un réseau social avant de planifier.');
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch('/api/posts', {
@@ -354,6 +359,11 @@ export default function CalendarPage() {
   };
 
   const handleSavePost = async () => {
+    // Validate: if scheduling, must have platforms
+    if (editTab === 'scheduled' && (!editFormData.platforms || editFormData.platforms.length === 0)) {
+      alert(t('validation.noPlatforms') || 'Veuillez sélectionner au moins un réseau social avant de planifier.');
+      return;
+    }
     setSaving(true);
     try {
       if (editFormData.id) {
@@ -1432,8 +1442,8 @@ export default function CalendarPage() {
                                 </div>
                               )}
                               <Badge className={`text-white text-[9px] px-1 py-0 ${
-                                post.status === 'published' ? 'bg-green-600' : post.status === 'scheduled' ? 'bg-blue-600' : 'bg-gray-600'
-                              }`}>
+                                post.status === 'published' ? 'bg-green-600' : post.status === 'scheduled' ? 'bg-blue-600' : post.status === 'failed' ? 'bg-red-600' : post.status === 'publishing' ? 'bg-yellow-600' : 'bg-gray-600'
+                              }`} title={post.status === 'failed' ? (post.metadata?.error || post.metadata?.cron_publish_results?.map((r: any) => `${r.platform}: ${r.error}`).join(', ') || '') : ''}>
                                 {t(`status.${post.status}`)}
                               </Badge>
                               {post.metadata?.hasAudio && (
@@ -2242,12 +2252,19 @@ export default function CalendarPage() {
                     ))}
                   </div>
                 )}
-                <div className="flex items-center gap-2">
-                  <Badge className={`text-white text-xs ${
-                    fullPreviewPost.status === 'published' ? 'bg-green-600' : fullPreviewPost.status === 'scheduled' ? 'bg-blue-600' : 'bg-yellow-600'
-                  }`}>
-                    {t(`status.${fullPreviewPost.status}`)}
-                  </Badge>
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <Badge className={`text-white text-xs ${
+                      fullPreviewPost.status === 'published' ? 'bg-green-600' : fullPreviewPost.status === 'scheduled' ? 'bg-blue-600' : fullPreviewPost.status === 'failed' ? 'bg-red-600' : fullPreviewPost.status === 'publishing' ? 'bg-yellow-600' : 'bg-gray-600'
+                    }`}>
+                      {t(`status.${fullPreviewPost.status}`)}
+                    </Badge>
+                  </div>
+                  {fullPreviewPost.status === 'failed' && (fullPreviewPost.metadata?.error || fullPreviewPost.metadata?.cron_publish_results) && (
+                    <p className="text-xs text-red-400">
+                      {fullPreviewPost.metadata?.error || fullPreviewPost.metadata?.cron_publish_results?.filter((r: any) => !r.success).map((r: any) => `${r.platform}: ${r.error}`).join(', ')}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -2276,7 +2293,16 @@ export default function CalendarPage() {
                 )}
                 {fullPreviewPost.status !== 'scheduled' && (
                   <button
-                    onClick={() => handleSchedulePost(fullPreviewPost).then(() => { setShowFullPreview(false); })}
+                    onClick={() => {
+                      if (!fullPreviewPost.platforms || fullPreviewPost.platforms.length === 0) {
+                        // No platforms selected — open edit modal so user can pick them
+                        setShowFullPreview(false);
+                        handleEditPost(fullPreviewPost);
+                        alert(t('validation.noPlatforms') || 'Veuillez sélectionner au moins un réseau social avant de planifier.');
+                        return;
+                      }
+                      handleSchedulePost(fullPreviewPost).then(() => { setShowFullPreview(false); });
+                    }}
                     disabled={saving}
                     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm font-bold text-white transition"
                   >

@@ -898,7 +898,9 @@
     "status": {
       "published": "Publié",
       "scheduled": "Planifié",
-      "draft": "Brouillon"
+      "draft": "Brouillon",
+      "failed": "Échoué",
+      "publishing": "Publication..."
     },
     "actions": {
       "preview": "Aperçu",
@@ -936,6 +938,10 @@
       "scheduled": "Planifié",
       "published": "Publier",
       "save": "Enregistrer"
+    },
+    "validation": {
+      "noPlatforms": "Veuillez sélectionner au moins un réseau social avant de planifier.",
+      "noMedia": "Veuillez ajouter un média (vidéo ou image) avant de planifier."
     },
     "exportOverlay": {
       "title": "Montage vidéo en cours...",

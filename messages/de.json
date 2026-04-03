@@ -910,7 +910,9 @@
     "status": {
       "published": "Veröffentlicht",
       "scheduled": "Geplant",
-      "draft": "Entwurf"
+      "draft": "Entwurf",
+      "failed": "Fehlgeschlagen",
+      "publishing": "Veröffentlichung..."
     },
     "actions": {
       "preview": "Vorschau",
@@ -948,6 +950,10 @@
       "mediaClickToChange": "Zum Ändern klicken",
       "mediaDragDrop": "Datei hierher ziehen",
       "mediaClickToImport": "oder zum Importieren klicken"
+    },
+    "validation": {
+      "noPlatforms": "Bitte wählen Sie mindestens ein soziales Netzwerk aus, bevor Sie planen.",
+      "noMedia": "Bitte fügen Sie Medien (Video oder Bild) hinzu, bevor Sie planen."
     },
     "exportOverlay": {
       "title": "Videoschnitt läuft...",

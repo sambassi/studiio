@@ -65,8 +65,10 @@ export async function GET(req: NextRequest) {
         const userTime = userTimeFmt.format(now);
 
         // Check if post is due in user's timezone
+        // Normalize time to HH:MM for comparison (PostgreSQL time type returns HH:MM:SS)
+        const postTime = (post.scheduled_time || '').substring(0, 5);
         const isDue = post.scheduled_date < userDate ||
-          (post.scheduled_date === userDate && post.scheduled_time <= userTime);
+          (post.scheduled_date === userDate && postTime <= userTime);
         return isDue;
       } catch {
         // If timezone is invalid, fall back to Europe/Paris
@@ -74,8 +76,9 @@ export async function GET(req: NextRequest) {
         const parisTimeFmt = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false });
         const parisDate = parisFmt.format(now);
         const parisTime = parisTimeFmt.format(now);
+        const postTimeFallback = (post.scheduled_time || '').substring(0, 5);
         return post.scheduled_date < parisDate ||
-          (post.scheduled_date === parisDate && post.scheduled_time <= parisTime);
+          (post.scheduled_date === parisDate && postTimeFallback <= parisTime);
       }
     });
 
@@ -118,10 +121,21 @@ export async function GET(req: NextRequest) {
 
         console.log(`[CRON] Social accounts found: ${accounts?.length || 0}, platforms: ${accounts?.map((a: any) => a.platform).join(', ') || 'none'}${accountsError ? ', ERROR: ' + accountsError.message : ''}`);
 
+        // Check if platforms are specified
+        if (!post.platforms || post.platforms.length === 0) {
+          console.log(`[CRON] FAIL: No platforms selected for post ${post.id}`);
+          await supabase
+            .from('scheduled_posts')
+            .update({ status: 'failed', metadata: { ...post.metadata, error: 'Aucun réseau social sélectionné / No platforms selected' } })
+            .eq('id', post.id);
+          results.push({ postId: post.id, title: post.title, platforms: post.platforms, success: false, details: 'No platforms' });
+          continue;
+        }
+
         if (!accounts || accounts.length === 0) {
           await supabase
             .from('scheduled_posts')
-            .update({ status: 'failed', metadata: { ...post.metadata, error: 'No connected social accounts' } })
+            .update({ status: 'failed', metadata: { ...post.metadata, error: 'Aucun compte social connecté / No connected social accounts' } })
             .eq('id', post.id);
           results.push({ postId: post.id, title: post.title, platforms: post.platforms, success: false, details: 'No social accounts' });
           continue;
@@ -137,7 +151,7 @@ export async function GET(req: NextRequest) {
             console.log(`[CRON] FAIL: No video or media URL for post ${post.id}`);
             await supabase
               .from('scheduled_posts')
-              .update({ status: 'failed', metadata: { ...post.metadata, error: 'No video or media URL' } })
+              .update({ status: 'failed', metadata: { ...post.metadata, error: 'Aucune vidéo ou média / No video or media URL' } })
               .eq('id', post.id);
             results.push({ postId: post.id, title: post.title, platforms: post.platforms, success: false, details: 'No media' });
             continue;
