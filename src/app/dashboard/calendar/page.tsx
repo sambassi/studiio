@@ -2061,11 +2061,13 @@ export default function CalendarPage() {
           : fullPreviewPost.title;
         return (
         <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4" onClick={() => setShowFullPreview(false)}>
-          {/* Hidden audio elements for posts with separate audio tracks */}
-          {postHasAudio && previewMusicUrl && (
+          {/* Hidden audio elements — only for NON-montage posts or when video doesn't have embedded audio.
+              For montage posts with hasAudio, the rendered video already contains the music track,
+              so playing a separate <audio> would cause double playback. */}
+          {postHasAudio && !hasMontage && previewMusicUrl && (
             <audio id="preview-audio-music" src={previewMusicUrl} autoPlay muted={montageMuted} style={{ display: 'none' }} />
           )}
-          {postHasAudio && previewVoiceUrl && (
+          {postHasAudio && !hasMontage && previewVoiceUrl && (
             <audio id="preview-audio-voice" src={previewVoiceUrl} autoPlay muted={montageMuted} style={{ display: 'none' }} />
           )}
           <div className="bg-gray-900 rounded-2xl overflow-hidden shadow-2xl max-w-5xl w-full flex max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
@@ -2135,28 +2137,29 @@ export default function CalendarPage() {
                           onLoadedData={(e) => { console.log('[Calendar] Video loaded, readyState:', (e.target as HTMLVideoElement).readyState, 'src:', previewVideoSrc?.substring(previewVideoSrc.lastIndexOf('/') + 1)); }}
                           onError={(e) => { console.error('[Calendar] Video error:', (e.target as HTMLVideoElement).error); }}
                         />
-                        {meta?.logoUrl && (
-                          <div className="absolute bottom-6 right-4 z-10">
-                            <img src={meta.logoUrl} alt="Logo" className="w-14 h-14 object-contain" />
-                          </div>
-                        )}
+                        {/* Logo removed from video sequence — only shown on CTA */}
                       </div>
                       );
                     })()}
 
-                    {/* === CTA: Call to action — black bg, colored text === */}
+                    {/* === CTA: Call to action — black bg, colored text, logo once centered === */}
                     <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ opacity: currentSeq === 'cta' ? 1 : 0, transform: currentSeq === 'cta' ? 'scale(1)' : 'scale(0.92)', zIndex: currentSeq === 'cta' ? 10 : 1, background: '#000000', transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
                       <div className="text-center px-6">
-                        {meta?.logoUrl && <img src={meta.logoUrl} alt="Logo" className="w-32 h-32 object-contain mx-auto mb-6" />}
+                        {meta?.logoUrl && <img src={meta.logoUrl} alt="Logo" className="w-40 h-40 object-contain mx-auto mb-6" />}
                         <p className="text-3xl font-black uppercase tracking-wider mb-4 leading-tight px-2" style={{ color: accent, textShadow: `0 0 30px ${accent}` }}>{brd?.ctaText || branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}</p>
-                        <p className="text-lg uppercase tracking-wider font-semibold" style={{ color: `${accent}BB` }}>{brd?.ctaSubText || branding.ctaSubText || 'LIEN EN BIO'}</p>
+                        <p className="text-lg uppercase tracking-wider font-bold" style={{ color: '#FFFFFF' }}>{brd?.ctaSubText || branding.ctaSubText || 'LIEN EN BIO'}</p>
                         {meta?.salesPhrase && <p className="text-xl mt-5 italic font-medium" style={{ color: `${accent}DD` }}>{meta.salesPhrase}</p>}
                         <div className="flex items-center justify-center gap-2 mt-5">
                           {meta?.musicUrl && <span className="text-xs text-white/80 px-3 py-1 rounded-full flex items-center gap-1.5 bg-white/10 backdrop-blur-sm"><Music size={12} /> {t('fullPreview.music')}</span>}
                           {meta?.voiceMode && meta.voiceMode !== 'none' && <span className="text-xs text-white/80 px-3 py-1 rounded-full flex items-center gap-1.5 bg-white/10 backdrop-blur-sm"><Mic size={12} /> {t('fullPreview.voiceOffLabel')}</span>}
                         </div>
-                        {wm && <p className="text-[9px] text-white/25 mt-5 tracking-[0.2em]">{wm}</p>}
+                        {wm && <p className="text-sm font-bold text-white/30 mt-5 tracking-[0.2em]">{wm}</p>}
                       </div>
+                    </div>
+
+                    {/* === Website link overlay — visible on all sequences from intro to end === */}
+                    <div className="absolute bottom-8 left-0 right-0 z-30 flex justify-center pointer-events-none">
+                      <p className="text-base font-bold text-white/90 tracking-wider" style={{ textShadow: `0 0 10px ${accent}80, 0 2px 4px rgba(0,0,0,0.8)` }}>Afroboost.com</p>
                     </div>
 
                     {/* Play/Pause + Volume — top-right overlay */}

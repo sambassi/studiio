@@ -298,10 +298,7 @@ function drawVideoSeq(
     ctx.font = `400 ${Math.round(w * 0.03)}px sans-serif`; ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fillText('Vidéo', w / 2, h / 2);
   }
-  if (logoImg) {
-    const logoSize = Math.round(w * 0.08), padding = Math.round(w * 0.03);
-    drawLogo(ctx, logoImg, w - logoSize - padding, h - logoSize - padding, logoSize);
-  }
+  // Logo removed from video sequence — only shown on CTA
 }
 
 function drawCTA(
@@ -346,17 +343,18 @@ function drawCTA(
     ctx.fillText(line, w / 2, ctaStartY + i * (ctaFontSize * 1.2));
   });
   ctx.shadowBlur = 0;
-  // Sub-text
+  // Sub-text — WHITE for readability
   const subY = ctaStartY + ctaLines.length * (ctaFontSize * 1.2) + Math.round(w * 0.02);
-  ctx.font = `600 ${Math.round(w * 0.035)}px sans-serif`; ctx.fillStyle = hexToRgba(accent, 0.7);
+  ctx.font = `700 ${Math.round(w * 0.035)}px sans-serif`; ctx.fillStyle = '#FFFFFF';
   ctx.fillText(ctaSubText.toUpperCase(), w / 2, subY);
   // Sales phrase
   if (salesPhrase) {
     ctx.font = `italic 500 ${Math.round(w * 0.032)}px sans-serif`; ctx.fillStyle = hexToRgba(accent, 0.85);
     ctx.fillText(salesPhrase, w / 2, subY + Math.round(w * 0.06));
   }
+  // Watermark — bigger and bold
   if (watermark) {
-    ctx.font = `400 ${Math.round(w * 0.016)}px sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.font = `700 ${Math.round(w * 0.022)}px sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.3)';
     ctx.fillText(watermark, w / 2, h * 0.92);
   }
   ctx.restore();
@@ -478,6 +476,16 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     ctx.strokeStyle = borderGrad;
     ctx.lineWidth = borderW;
     ctx.strokeRect(borderW / 2, borderW / 2, width - borderW, height - borderW);
+
+    // ── Website link overlay — visible on all frames ──
+    const linkFontSize = Math.round(width * 0.028);
+    ctx.save();
+    ctx.font = `700 ${linkFontSize}px sans-serif`; ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.shadowColor = accentColor; ctx.shadowBlur = 8;
+    ctx.fillText('Afroboost.com', width / 2, height * 0.94);
+    ctx.shadowBlur = 0;
+    ctx.restore();
 
     // ── Progress bar ──
     const barH = 3;
