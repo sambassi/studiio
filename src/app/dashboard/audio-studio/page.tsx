@@ -376,31 +376,48 @@ function AudioStudioContent() {
   // ═══ VOICE RECORDING ═══
   const startRecording = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      // Prefer audio/webm;codecs=opus for best compatibility with decodeAudioData
+      const mimeTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
+      let mimeType = 'audio/webm';
+      for (const mt of mimeTypes) {
+        if (MediaRecorder.isTypeSupported(mt)) { mimeType = mt; break; }
+      }
+      console.log('[AudioStudio] Recording mimeType:', mimeType);
       const recorder = new MediaRecorder(stream, { mimeType });
       recordingChunksRef.current = [];
       recorder.ondataavailable = (e) => { if (e.data.size > 0) recordingChunksRef.current.push(e.data); };
       recorder.onstop = () => {
         const blob = new Blob(recordingChunksRef.current, { type: recorder.mimeType });
+        console.log('[AudioStudio] Recording blob:', (blob.size / 1024).toFixed(1), 'KB, type:', blob.type, 'chunks:', recordingChunksRef.current.length);
+        if (blob.size === 0) {
+          console.error('[AudioStudio] Recording blob is empty!');
+          stream.getTracks().forEach(track => track.stop());
+          return;
+        }
         setRecordedBlob(blob);
         const url = URL.createObjectURL(blob);
         if (voiceUrl) URL.revokeObjectURL(voiceUrl);
         setVoiceUrl(url);
         setVoiceName(t('voice.recordingName'));
         setVoiceFile(new File([blob], `voix-off-${Date.now()}.webm`, { type: blob.type }));
-        voiceAudioRef.current = new Audio(url);
-        stream.getTracks().forEach(t => t.stop());
+        // Create audio element for preview and verify it loads
+        const audio = new Audio(url);
+        audio.onloadeddata = () => console.log('[AudioStudio] Voice audio loaded OK, duration:', audio.duration);
+        audio.onerror = () => console.error('[AudioStudio] Voice audio load failed');
+        voiceAudioRef.current = audio;
+        stream.getTracks().forEach(track => track.stop());
       };
       mediaRecorderRef.current = recorder;
-      recorder.start(1000);
+      // Use 100ms timeslice for reliable data capture (1000ms can lose data on quick stops)
+      recorder.start(100);
       setIsRecording(true);
       setRecordingTime(0);
 
       // Start video playback while recording
       startPlayback();
 
-      recordingTimerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000);
+      recordingTimerRef.current = setInterval(() => setRecordingTime(prev => prev + 1), 1000);
     } catch (err) {
       console.error('[AudioStudio] Mic denied:', err);
       alert(t('voice.micDenied'));
@@ -461,6 +478,16 @@ function AudioStudioContent() {
     if (musicFile || voiceFile) {
       sharedAudioCtx = new AudioContext({ sampleRate: 48000 });
       console.log(`[AudioStudio] AudioContext created IN user gesture, state: ${sharedAudioCtx.state}`);
+      // ═══ PRIME audio elements in user gesture so fallback .play() works later ═══
+      // Chrome's autoplay policy requires at least one play() in a user gesture.
+      // If decodeAudioData fails, the composer falls back to <audio>.play() which
+      // would fail if the gesture has expired. Priming prevents this.
+      if (musicUrl && musicAudioRef.current) {
+        musicAudioRef.current.play().then(() => musicAudioRef.current?.pause()).catch(() => {});
+      }
+      if (voiceUrl && voiceAudioRef.current) {
+        voiceAudioRef.current.play().then(() => voiceAudioRef.current?.pause()).catch(() => {});
+      }
     }
 
     setIsExporting(true);

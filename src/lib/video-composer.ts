@@ -473,7 +473,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
         musicBufferSource.buffer = options.musicBuffer;
         musicBufferSource.loop = true;
         const musicGain = audioCtx.createGain();
-        musicGain.gain.value = (options.voiceBuffer || voiceEl) ? 0.3 : 0.8;
+        musicGain.gain.value = (options.voiceBuffer || voiceEl) ? 0.5 : 0.8;
         musicBufferSource.connect(musicGain);
         musicGain.connect(audioDest);
         console.log('[Composer] ✅ Music: AudioBuffer connected | duration:', options.musicBuffer.duration.toFixed(1), 's | channels:', options.musicBuffer.numberOfChannels, '| gain:', musicGain.gain.value);
@@ -492,7 +492,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       try {
         const musicSource = audioCtx.createMediaElementSource(musicEl);
         const musicGain = audioCtx.createGain();
-        musicGain.gain.value = voiceEl ? 0.3 : 0.8;
+        musicGain.gain.value = voiceEl ? 0.5 : 0.8;
         musicSource.connect(musicGain);
         musicGain.connect(audioDest);
         musicEl.loop = true;
@@ -678,14 +678,13 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       reject(new Error('Recording failed'));
     };
 
-    // START recording
-    recorder.start(200);
-
-    // START audio playback — buffer sources first, then <audio> elements as fallback
+    // START audio BEFORE recorder — prime the audio pipeline so MediaRecorder captures it
+    // Use audioCtx.currentTime (not 0) to avoid timing issues with shared/reused contexts
+    const audioStartTime = audioCtx ? audioCtx.currentTime + 0.05 : 0;
     if (musicBufferSource) {
       try {
-        musicBufferSource.start(0);
-        console.log('[Composer] ✅ Music AudioBuffer PLAYING');
+        musicBufferSource.start(audioStartTime);
+        console.log('[Composer] ✅ Music AudioBuffer STARTED at', audioStartTime.toFixed(3));
       } catch (err) {
         console.error('[Composer] ❌ Music AudioBuffer start failed:', err);
       }
@@ -695,8 +694,8 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     }
     if (voiceBufferSource) {
       try {
-        voiceBufferSource.start(0);
-        console.log('[Composer] ✅ Voice AudioBuffer PLAYING');
+        voiceBufferSource.start(audioStartTime);
+        console.log('[Composer] ✅ Voice AudioBuffer STARTED at', audioStartTime.toFixed(3));
       } catch (err) {
         console.error('[Composer] ❌ Voice AudioBuffer start failed:', err);
       }
@@ -704,6 +703,9 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       voiceEl.currentTime = 0;
       voiceEl.play().then(() => console.log('[Composer] ✅ Voice <audio> PLAYING')).catch(err => console.error('[Composer] ❌ Voice play failed:', err));
     }
+
+    // START recording AFTER audio — ensures audio tracks have data flowing
+    recorder.start(200);
 
     // START video element
     if (videoEl) { videoEl.currentTime = 0; videoEl.pause(); }
