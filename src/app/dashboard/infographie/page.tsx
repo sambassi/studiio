@@ -423,6 +423,29 @@ export default function InfographicPage() {
                 // Video URL preservation: ensure Calendar page can access the video source
                 videoUrl: rushUrl || undefined,
                 rushUrls: rushUrl ? [rushUrl] : undefined,
+                // Sequences object: required by Calendar montage preview & export renderer
+                // Without this, Calendar falls back to defaults and video timing breaks
+                sequences: {
+                  intro: 4,
+                  cards: cards.length > 0 ? 6 : 0,
+                  video: rushUrl ? 12 : 0,
+                  cta: 4,
+                  total: 4 + (cards.length > 0 ? 6 : 0) + (rushUrl ? 12 : 0) + 4,
+                  order: [
+                    'intro',
+                    ...(cards.length > 0 ? ['cards'] : []),
+                    ...(rushUrl ? ['video'] : []),
+                    'cta',
+                  ],
+                },
+                // Branding defaults for the infographic montage renderer
+                branding: {
+                  accentColor: COLOR_THEMES.find(ct => ct.id === colorTheme)?.accent || '#a855f7',
+                  ctaText: 'CHAT POUR PLUS D\'INFOS',
+                  ctaSubText: 'LIEN EN BIO',
+                  watermarkText: 'AFROBOOST',
+                  borderColor: null,
+                },
               },
             }),
           });
