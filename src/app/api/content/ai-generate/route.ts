@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
-import Anthropic from '@anthropic-ai/sdk';
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || '' });
 
 // POST /api/content/ai-generate - Generate rich infographic content using Claude
 export async function POST(req: NextRequest) {
@@ -12,7 +9,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (!process.env.ANTHROPIC_API_KEY) {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      console.error('[AI-Generate] ANTHROPIC_API_KEY not set');
       return NextResponse.json({ success: false, error: 'Anthropic API not configured' }, { status: 500 });
     }
 
@@ -34,10 +33,10 @@ RÈGLES ABSOLUES:
 2. Les valeurs DOIVENT être des vrais chiffres/stats/données (ex: "60%", "2L/j", "500mg", "+30%", "48h", "3x/sem")
 3. Les labels DOIVENT décrire un aspect SPÉCIFIQUE du sujet (pas générique)
 4. Les descriptions DOIVENT expliquer le fait de manière claire et éducative (10-20 mots)
-5. Les emojis DOIVENT être pertinents au contenu de CHAQUE carte (pas tous les mêmes)
+5. Les emojis DOIVENT être pertinents au contenu de CHAQUE carte et tous DIFFÉRENTS
 6. Les phrases de vente DOIVENT mentionner le sujet spécifique et Afroboost
 7. Le sous-titre DOIT être un fait accrocheur et vrai sur le sujet
-8. La requête Pexels DOIT être liée au sujet réel (ex: "cassava root food" pour manioc)
+8. La requête Pexels DOIT être liée au sujet réel (ex: "cassava root food" pour manioc, "moringa leaves powder" pour moringa)
 
 EXEMPLES DE QUALITÉ ATTENDUE:
 
@@ -87,66 +86,132 @@ JSON requis (${locale === 'fr' ? 'tout en français' : 'tout en anglais'}):
 
 Génère exactement ${count} cartes. IMPORTANT: chaque carte = un emoji DIFFÉRENT et pertinent.`;
 
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 2048,
-      messages: [{ role: 'user', content: userPrompt }],
-      system: systemPrompt,
+    console.log(`[AI-Generate] Calling Anthropic API for topic: "${topic}", cards: ${count}`);
+
+    // Call Anthropic API directly via fetch (no SDK dependency issues)
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2048,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+      }),
     });
 
-    // Extract text content
-    const textContent = message.content.find(c => c.type === 'text');
-    if (!textContent || textContent.type !== 'text') {
-      return NextResponse.json({ success: false, error: 'No text response from AI' }, { status: 500 });
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[AI-Generate] Anthropic API error ${response.status}:`, errorText);
+
+      // If model not found, try with claude-3-5-sonnet
+      if (response.status === 404 || response.status === 400) {
+        console.log('[AI-Generate] Retrying with claude-3-5-sonnet-20241022...');
+        const retryResponse = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: 'claude-3-5-sonnet-20241022',
+            max_tokens: 2048,
+            system: systemPrompt,
+            messages: [{ role: 'user', content: userPrompt }],
+          }),
+        });
+
+        if (!retryResponse.ok) {
+          const retryError = await retryResponse.text();
+          console.error(`[AI-Generate] Retry also failed ${retryResponse.status}:`, retryError);
+          return NextResponse.json({ success: false, error: `AI API error: ${retryResponse.status}` }, { status: 500 });
+        }
+
+        const retryData = await retryResponse.json();
+        return parseAndReturn(retryData, topic);
+      }
+
+      return NextResponse.json({ success: false, error: `AI API error: ${response.status}` }, { status: 500 });
     }
 
-    // Parse JSON from response (handle potential markdown wrapping)
-    let jsonStr = textContent.text.trim();
-    if (jsonStr.startsWith('```')) {
-      jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-    }
-    // Remove any leading/trailing non-JSON characters
-    const jsonStart = jsonStr.indexOf('{');
-    const jsonEnd = jsonStr.lastIndexOf('}');
-    if (jsonStart !== -1 && jsonEnd !== -1) {
-      jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
-    }
+    const data = await response.json();
+    return parseAndReturn(data, topic);
 
-    const content = JSON.parse(jsonStr);
-
-    // Validate the content has the expected structure
-    if (!content.title || !content.cards || !Array.isArray(content.cards)) {
-      return NextResponse.json({ success: false, error: 'Invalid AI response structure' }, { status: 500 });
-    }
-
-    // Ensure each card has required fields
-    content.cards = content.cards.map((card: any) => ({
-      emoji: card.emoji || '📊',
-      label: card.label || 'INFO',
-      value: card.value || '-',
-      description: card.description || '',
-    }));
-
-    // Ensure salesPhrases exists
-    if (!content.salesPhrases || !Array.isArray(content.salesPhrases)) {
-      content.salesPhrases = [
-        `Découvre les bienfaits de ${topic} avec Afroboost`,
-        `${topic} + Afroboost = ta meilleure version`,
-        `Booste ta santé avec ${topic}`,
-      ];
-    }
-
-    // Ensure pexelsQuery exists
-    if (!content.pexelsQuery) {
-      content.pexelsQuery = topic;
-    }
-
-    return NextResponse.json({ success: true, content });
-  } catch (error) {
-    console.error('AI content generation error:', error);
+  } catch (error: any) {
+    console.error('[AI-Generate] Error:', error?.message || error);
     return NextResponse.json(
-      { success: false, error: 'AI content generation failed' },
+      { success: false, error: 'AI content generation failed: ' + (error?.message || 'unknown') },
       { status: 500 }
     );
   }
+}
+
+function parseAndReturn(data: any, topic: string) {
+  // Extract text content
+  const textContent = data.content?.find((c: any) => c.type === 'text');
+  if (!textContent?.text) {
+    console.error('[AI-Generate] No text in response:', JSON.stringify(data).substring(0, 500));
+    return NextResponse.json({ success: false, error: 'No text response from AI' }, { status: 500 });
+  }
+
+  // Parse JSON from response
+  let jsonStr = textContent.text.trim();
+
+  // Remove markdown code blocks if present
+  if (jsonStr.startsWith('```')) {
+    jsonStr = jsonStr.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?\s*```$/, '');
+  }
+
+  // Extract JSON object
+  const jsonStart = jsonStr.indexOf('{');
+  const jsonEnd = jsonStr.lastIndexOf('}');
+  if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+    jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
+  }
+
+  let content;
+  try {
+    content = JSON.parse(jsonStr);
+  } catch (parseErr) {
+    console.error('[AI-Generate] JSON parse error. Raw text:', textContent.text.substring(0, 1000));
+    return NextResponse.json({ success: false, error: 'Failed to parse AI response' }, { status: 500 });
+  }
+
+  // Validate structure
+  if (!content.title || !content.cards || !Array.isArray(content.cards)) {
+    console.error('[AI-Generate] Invalid structure:', JSON.stringify(content).substring(0, 500));
+    return NextResponse.json({ success: false, error: 'Invalid AI response structure' }, { status: 500 });
+  }
+
+  // Ensure each card has required fields
+  content.cards = content.cards.map((card: any) => ({
+    emoji: card.emoji || '📊',
+    label: card.label || 'INFO',
+    value: card.value || '-',
+    description: card.description || '',
+  }));
+
+  // Ensure salesPhrases exists
+  if (!content.salesPhrases || !Array.isArray(content.salesPhrases) || content.salesPhrases.length === 0) {
+    content.salesPhrases = [
+      `Découvre les bienfaits de ${topic} avec Afroboost`,
+      `${topic} + Afroboost = ta meilleure version`,
+      `Booste ta santé avec ${topic}`,
+      `Rejoins le mouvement Afroboost et profite de ${topic}`,
+      `Transforme ton énergie avec ${topic} et Afroboost`,
+    ];
+  }
+
+  // Ensure pexelsQuery exists
+  if (!content.pexelsQuery) {
+    content.pexelsQuery = topic;
+  }
+
+  console.log(`[AI-Generate] Success: ${content.cards.length} cards, ${content.salesPhrases.length} phrases, pexels: "${content.pexelsQuery}"`);
+  return NextResponse.json({ success: true, content });
 }
