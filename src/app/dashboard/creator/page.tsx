@@ -163,7 +163,7 @@ export default function CreatorPage() {
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   // Step 2: Personnalisation
-  const [batchCount, setBatchCount] = useState(2);
+  const [batchCount, setBatchCount] = useState(1);
   const [destination, setDestination] = useState('calendar');
   const [salesPhrase, setSalesPhrase] = useState('');
 
@@ -917,7 +917,7 @@ export default function CreatorPage() {
                 scheduled_date: scheduledDate, scheduled_time: '12:00', status: 'draft',
                 metadata: {
                   type: 'creator', subtitle: bSubtitle, salesPhrase: bPhrase, objective, mode,
-                  rushUrls, musicUrl: effectiveMusicUrl || null, voiceUrl: effectiveVoiceUrl || null, characterUrl: batchPosterUrl || effectiveCharUrl || null, logoUrl: effectiveLogoUrl || null,
+                  rushUrls, rawVideoUrl: rushUrl || null, musicUrl: effectiveMusicUrl || null, voiceUrl: effectiveVoiceUrl || null, characterUrl: batchPosterUrl || effectiveCharUrl || null, logoUrl: effectiveLogoUrl || null,
                   posterUrl: batchPosterUrl || effectiveCharUrl || null, pexelsUrl: batchPosterUrl || null,
                   renderedVideoUrl: renderedVideoUrl || null, videoUrl: renderedVideoUrl || rushUrl || null,
                   voiceMode: 'none', ttsVoice: null, ttsText: null,
