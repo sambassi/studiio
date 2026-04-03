@@ -698,6 +698,19 @@ export default function CalendarPage() {
     return () => clearTimeout(timer);
   }, [showFullPreview, fullPreviewPost]);
 
+  // Force audio elements to play (muted) when montage preview opens
+  // This ensures they are loaded and ready for unmute
+  useEffect(() => {
+    if (!showFullPreview || !fullPreviewPost) return;
+    const timer = setTimeout(() => {
+      document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice').forEach(a => {
+        a.muted = true;
+        a.play().catch(() => {});
+      });
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [showFullPreview, fullPreviewPost]);
+
   // Force video play/pause when the active sequence changes
   useEffect(() => {
     if (!showFullPreview || !fullPreviewPost) return;
@@ -2168,7 +2181,11 @@ export default function CalendarPage() {
                             const newMuted = !m;
                             // Sync all preview videos AND audio elements
                             document.querySelectorAll<HTMLVideoElement>('#preview-video-infographic, #preview-video').forEach(v => { v.muted = newMuted; });
-                            document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice').forEach(a => { a.muted = newMuted; });
+                            document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice').forEach(a => {
+                              a.muted = newMuted;
+                              // Chrome nécessite play() explicite après interaction utilisateur pour activer l'audio
+                              if (!newMuted) a.play().catch(() => {});
+                            });
                             return newMuted;
                           });
                         }}
