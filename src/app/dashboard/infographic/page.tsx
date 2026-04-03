@@ -1112,7 +1112,8 @@ export default function InfographiePage() {
         </div>
 
         {/* RIGHT COLUMN — Montage Preview (40%) */}
-        <div className="hidden lg:flex w-full lg:w-2/5 bg-gray-800 border-l-0 lg:border-l border-gray-700 px-4 sm:px-6 py-4 sm:py-6 overflow-y-auto flex-col">
+        <div className="hidden lg:flex w-full lg:w-2/5 bg-gray-800 border-l-0 lg:border-l border-gray-700 px-4 sm:px-6 py-4 sm:py-6 flex-col">
+          <div className="sticky top-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-gray-300">{t('preview.title')}</h3>
             <button onClick={() => { if (!previewAutoPlay) { setPreviewSeqIndex(0); setPreviewProgress(0); } setPreviewAutoPlay(!previewAutoPlay); }} className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-medium transition ${previewAutoPlay ? 'bg-pink-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600 border border-gray-600'}`}>
@@ -1121,8 +1122,8 @@ export default function InfographiePage() {
           </div>
 
           {/* Montage preview — all sequences stacked with transitions */}
-          <div className="flex items-center justify-center bg-gray-900 rounded-xl border border-gray-700 p-3 flex-1">
-            <div className={`${format === '9:16' ? 'h-[60vh] max-h-[60vh]' : 'h-48'} aspect-[9/16] rounded-xl shadow-xl relative overflow-hidden`}
+          <div className="flex items-center justify-center bg-gray-900 rounded-xl border border-gray-700 p-3">
+            <div className={`${format === '9:16' ? 'h-[55vh] max-h-[55vh]' : 'h-48'} aspect-[9/16] rounded-xl shadow-xl relative overflow-hidden`}
               style={{
                 border: branding.borderEnabled ? `3px solid ${branding.borderColor}` : 'none',
                 boxShadow: branding.borderEnabled ? `0 0 25px ${branding.borderColor}40` : '0 0 25px rgba(217,28,210,0.3)',
@@ -1185,6 +1186,7 @@ export default function InfographiePage() {
               ))}
             </div>
           </div>
+          </div>{/* end sticky */}
         </div>
       </div>
     </div>
