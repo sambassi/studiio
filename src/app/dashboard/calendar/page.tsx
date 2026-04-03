@@ -499,7 +499,7 @@ export default function CalendarPage() {
     setInfoSeqIndex(0);
     setMontageAutoPlay(true);
     setMontageMuted(true);
-    setVideoPlayable(true); // Reset — will be set to false if video fails to load
+    setVideoPlayable(false); // Default false — only set true after video actually loads
     setMontageProgress(0);
     setShowFullPreview(true);
   };
@@ -516,11 +516,9 @@ export default function CalendarPage() {
     if (!isMontagePost) return;
 
     const seqOrder: string[] = meta?.sequences?.order || ['intro', 'cards', 'video', 'cta'];
-    // Detect corrupted MP4 montage: no raw source + videoUrl ends in .mp4
-    const rawSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0];
-    const isCorruptedMp4 = !rawSrc && typeof meta?.videoUrl === 'string' && meta.videoUrl.endsWith('.mp4');
-    const hasPlayableVideo = meta?.videoUrl && videoPlayable && !isCorruptedMp4;
-    const activeSeqs = hasPlayableVideo ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
+    // Only include video sequence if the video file has been proven playable
+    // videoPlayable starts false and is only set true after onloadeddata fires
+    const activeSeqs = videoPlayable ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
     const seqs = (meta?.sequences || {}) as Record<string, number>;
     const currentDuration = (seqs[activeSeqs[infoSeqIndex]] || 5) * 1000; // ms
 
@@ -626,7 +624,7 @@ export default function CalendarPage() {
     if (!videoSrc) return;
 
     const seqOrder: string[] = meta?.sequences?.order || ['intro', 'cards', 'video', 'cta'];
-    const activeSeqs = videoSrc ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
+    const activeSeqs = videoPlayable ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
     const currentSeq = activeSeqs[infoSeqIndex] || 'intro';
 
     const vid = document.getElementById('preview-video-infographic') as HTMLVideoElement | null;
@@ -1877,11 +1875,8 @@ export default function CalendarPage() {
               {/* Montage video preview — infographic & creator with sequences */}
               {hasMontage ? (() => {
                 const seqOrder: string[] = meta?.sequences?.order || ['intro', 'cards', 'video', 'cta'];
-                // Detect corrupted MP4 montage: no raw source + videoUrl ends in .mp4
-                const rawSrcRender = meta?.rawVideoUrl || meta?.rushUrls?.[0];
-                const isCorruptedMp4Render = !rawSrcRender && typeof meta?.videoUrl === 'string' && meta.videoUrl.endsWith('.mp4');
-                const hasPlayableVideoRender = meta?.videoUrl && videoPlayable && !isCorruptedMp4Render;
-                const activeSeqs = hasPlayableVideoRender ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
+                // Only include video sequence if the video has been proven playable (onloadeddata fired)
+                const activeSeqs = videoPlayable ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
                 const posterImgSrc = meta?.pexelsUrl || meta?.posterUrl || meta?.characterUrl || null;
                 const safeIdx = infoSeqIndex < activeSeqs.length ? infoSeqIndex : 0;
                 const currentSeq = activeSeqs[safeIdx] || 'intro';
@@ -1930,12 +1925,11 @@ export default function CalendarPage() {
 
                     {/* === VIDEO: Full-screen video + Logo overlay === */}
                     {meta?.videoUrl && (() => {
-                      // Prefer raw rush video for preview (rendered montage MP4 may be corrupted by Chrome MediaRecorder)
-                      // If only source is an .mp4 montage, it's likely corrupted — skip video sequence
+                      // Prefer raw rush video for preview (rendered montage may be corrupted by Chrome MediaRecorder)
                       const rawSrc = meta.rawVideoUrl || meta.rushUrls?.[0];
-                      const montageIsCorruptedMp4 = !rawSrc && typeof meta.videoUrl === 'string' && meta.videoUrl.endsWith('.mp4');
-                      const previewVideoSrc = montageIsCorruptedMp4 ? null : (rawSrc || meta.videoUrl);
-                      if (!previewVideoSrc) return null; // Skip rendering video element for corrupted MP4
+                      const previewVideoSrc = rawSrc || meta.videoUrl;
+                      // Always render the video element so the preload useEffect can test if it's playable
+                      // videoPlayable state controls whether the "video" sequence is included in the cycle
                       return (
                       <div className="absolute inset-0" style={{ opacity: currentSeq === 'video' ? 1 : 0, zIndex: currentSeq === 'video' ? 10 : 1, transition: 'opacity 800ms ease-in-out', willChange: 'opacity' }}>
                         <video id="preview-video-infographic" src={previewVideoSrc} muted loop playsInline preload="auto" className="absolute inset-0 w-full h-full object-cover"
