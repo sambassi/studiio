@@ -158,7 +158,7 @@ export default function CalendarPage() {
   const [infoSeqIndex, setInfoSeqIndex] = useState(0);
   const [montageAutoPlay, setMontageAutoPlay] = useState(true);
   const [montageMuted, setMontageMuted] = useState(true);
-  const [videoPlayable, setVideoPlayable] = useState(true); // Track if video file is loadable
+  const [videoPlayable, setVideoPlayable] = useState(false); // Track if video file is loadable — default false until proven
   const montageTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [montageProgress, setMontageProgress] = useState(0);
   const montageProgressRef = useRef<NodeJS.Timeout | null>(null);
@@ -516,7 +516,10 @@ export default function CalendarPage() {
     if (!isMontagePost) return;
 
     const seqOrder: string[] = meta?.sequences?.order || ['intro', 'cards', 'video', 'cta'];
-    const hasPlayableVideo = meta?.videoUrl && videoPlayable;
+    // Detect corrupted MP4 montage: no raw source + videoUrl ends in .mp4
+    const rawSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0];
+    const isCorruptedMp4 = !rawSrc && typeof meta?.videoUrl === 'string' && meta.videoUrl.endsWith('.mp4');
+    const hasPlayableVideo = meta?.videoUrl && videoPlayable && !isCorruptedMp4;
     const activeSeqs = hasPlayableVideo ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
     const seqs = (meta?.sequences || {}) as Record<string, number>;
     const currentDuration = (seqs[activeSeqs[infoSeqIndex]] || 5) * 1000; // ms
@@ -1874,7 +1877,10 @@ export default function CalendarPage() {
               {/* Montage video preview — infographic & creator with sequences */}
               {hasMontage ? (() => {
                 const seqOrder: string[] = meta?.sequences?.order || ['intro', 'cards', 'video', 'cta'];
-                const hasPlayableVideoRender = meta?.videoUrl && videoPlayable;
+                // Detect corrupted MP4 montage: no raw source + videoUrl ends in .mp4
+                const rawSrcRender = meta?.rawVideoUrl || meta?.rushUrls?.[0];
+                const isCorruptedMp4Render = !rawSrcRender && typeof meta?.videoUrl === 'string' && meta.videoUrl.endsWith('.mp4');
+                const hasPlayableVideoRender = meta?.videoUrl && videoPlayable && !isCorruptedMp4Render;
                 const activeSeqs = hasPlayableVideoRender ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
                 const posterImgSrc = meta?.pexelsUrl || meta?.posterUrl || meta?.characterUrl || null;
                 const safeIdx = infoSeqIndex < activeSeqs.length ? infoSeqIndex : 0;
