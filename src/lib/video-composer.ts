@@ -467,6 +467,13 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     if (inTransition && seqIdx < sequences.length - 1) {
       drawTransition(ctx, width, height, (p) => drawSeq(seq.type, p), (p) => drawSeq(sequences[seqIdx + 1].type, p), transProgress);
     } else { drawSeq(seq.type, seqProgress); }
+    // ── Logo overlay on all sequences except CTA (CTA has its own centered logo) ──
+    if (logoImg && seq.type !== 'cta') {
+      const logoSize = Math.round(width * 0.08);
+      const logoPadding = Math.round(width * 0.03);
+      drawLogo(ctx, logoImg, width - logoSize - logoPadding, height - logoSize - logoPadding * 3, logoSize);
+    }
+
     // ── Accent border/contour frame ──
     const borderW = Math.round(width * 0.006);
     const borderGrad = ctx.createLinearGradient(0, 0, width, height);
