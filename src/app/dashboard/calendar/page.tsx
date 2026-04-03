@@ -700,12 +700,27 @@ export default function CalendarPage() {
       const isVideo = file.type.startsWith('video/');
       const title = file.name.replace(/\.[^/.]+$/, '');
       try {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('purpose', isVideo ? 'rush' : 'thumbnail');
-        const uploadRes = await fetch('/api/upload/media', { method: 'POST', body: formData });
-        const uploadData = await uploadRes.json();
-        const mediaUrl = uploadData.success ? uploadData.file.url : null;
+        let mediaUrl: string | null = null;
+        // Use signed URL for large files (> 4MB) to bypass Vercel's 4.5MB body limit
+        if (file.size > 4 * 1024 * 1024) {
+          const signRes = await fetch('/api/upload/signed-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: file.name, contentType: file.type, purpose: isVideo ? 'rush' : 'thumbnail' }),
+          });
+          const signData = await signRes.json();
+          if (signData.success) {
+            const putRes = await fetch(signData.signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+            if (putRes.ok) mediaUrl = signData.publicUrl;
+          }
+        } else {
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('purpose', isVideo ? 'rush' : 'thumbnail');
+          const uploadRes = await fetch('/api/upload/media', { method: 'POST', body: formData });
+          const uploadData = await uploadRes.json();
+          mediaUrl = uploadData.success ? uploadData.file.url : null;
+        }
         setEditFormData({
           platforms: [], status: 'draft', format: 'reel',
           scheduled_date: selectedDay ? formatDateForStorage(currentDate, selectedDay) : formatDateForStorage(new Date(), new Date().getDate()),
@@ -839,13 +854,28 @@ export default function CalendarPage() {
       const rushUrls: string[] = [];
       for (let fi = 0; fi < aiRushFiles.length; fi++) {
         setAiStage(t('aiAgent.stages.uploadingRush', { current: String(fi + 1), total: String(aiRushFiles.length) }));
-        const formData = new FormData();
-        formData.append('file', aiRushFiles[fi]);
-        formData.append('purpose', 'rush');
+        const rushFile = aiRushFiles[fi];
         try {
-          const res = await fetch('/api/upload/media', { method: 'POST', body: formData });
-          const data = await res.json();
-          if (data.success && data.file?.url) rushUrls.push(data.file.url);
+          // Use signed URL for large files (> 4MB) to bypass Vercel's 4.5MB body limit
+          if (rushFile.size > 4 * 1024 * 1024) {
+            const signRes = await fetch('/api/upload/signed-url', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ filename: rushFile.name, contentType: rushFile.type, purpose: 'rush' }),
+            });
+            const signData = await signRes.json();
+            if (signData.success) {
+              const putRes = await fetch(signData.signedUrl, { method: 'PUT', headers: { 'Content-Type': rushFile.type }, body: rushFile });
+              if (putRes.ok) rushUrls.push(signData.publicUrl);
+            }
+          } else {
+            const formData = new FormData();
+            formData.append('file', rushFile);
+            formData.append('purpose', 'rush');
+            const res = await fetch('/api/upload/media', { method: 'POST', body: formData });
+            const data = await res.json();
+            if (data.success && data.file?.url) rushUrls.push(data.file.url);
+          }
         } catch (err) { console.error('Rush upload error:', err); }
         completedSteps++;
         setAiProgress(Math.round((completedSteps / totalSteps) * 100));
@@ -855,13 +885,27 @@ export default function CalendarPage() {
       let musicUrl: string | null = null;
       if (aiMusicFile) {
         setAiStage(t('aiAgent.stages.uploadingMusic'));
-        const formData = new FormData();
-        formData.append('file', aiMusicFile);
-        formData.append('purpose', 'music');
         try {
-          const res = await fetch('/api/upload/media', { method: 'POST', body: formData });
-          const data = await res.json();
-          if (data.success && data.file?.url) musicUrl = data.file.url;
+          // Use signed URL for large audio files (> 4MB)
+          if (aiMusicFile.size > 4 * 1024 * 1024) {
+            const signRes = await fetch('/api/upload/signed-url', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ filename: aiMusicFile.name, contentType: aiMusicFile.type, purpose: 'music' }),
+            });
+            const signData = await signRes.json();
+            if (signData.success) {
+              const putRes = await fetch(signData.signedUrl, { method: 'PUT', headers: { 'Content-Type': aiMusicFile.type }, body: aiMusicFile });
+              if (putRes.ok) musicUrl = signData.publicUrl;
+            }
+          } else {
+            const formData = new FormData();
+            formData.append('file', aiMusicFile);
+            formData.append('purpose', 'music');
+            const res = await fetch('/api/upload/media', { method: 'POST', body: formData });
+            const data = await res.json();
+            if (data.success && data.file?.url) musicUrl = data.file.url;
+          }
         } catch (err) { console.error('Music upload error:', err); }
         completedSteps++;
         setAiProgress(Math.round((completedSteps / totalSteps) * 100));

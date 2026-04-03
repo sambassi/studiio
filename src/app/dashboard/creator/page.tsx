@@ -187,9 +187,9 @@ export default function CreatorPage() {
   // Montage preview (like Infographie "Lire le montage")
   const [previewSeqIndex, setPreviewSeqIndex] = useState(0);
   const [previewAutoPlay, setPreviewAutoPlay] = useState(false);
-  const [previewProgress, setPreviewProgress] = useState(0);
+
   const previewTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const previewProgressRef = useRef<NodeJS.Timeout | null>(null);
+
 
   // Refs
   const rushInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -250,24 +250,21 @@ export default function CreatorPage() {
   const activeMontageSequences = montageSequences.filter(s => s.type !== 'video' || videoRushes.some(r => r.file));
   const montageTotalDuration = activeMontageSequences.reduce((s, x) => s + x.duration, 0);
 
-  // Auto-play montage preview
+  // Auto-play montage preview — uses CSS animation instead of setInterval for smooth playback
+  const previewSeqDurRef = useRef<number>(5000);
   useEffect(() => {
     if (!previewAutoPlay) {
       if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
-      if (previewProgressRef.current) clearInterval(previewProgressRef.current);
       return;
     }
     const currentDur = (activeMontageSequences[previewSeqIndex]?.duration || 5) * 1000;
-    let elapsed = 0;
-    if (previewProgressRef.current) clearInterval(previewProgressRef.current);
-    setPreviewProgress(0);
-    previewProgressRef.current = setInterval(() => { elapsed += 50; setPreviewProgress(Math.min(100, (elapsed / currentDur) * 100)); }, 50);
+    previewSeqDurRef.current = currentDur;
     if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
     previewTimerRef.current = setTimeout(() => {
       if (previewSeqIndex < activeMontageSequences.length - 1) setPreviewSeqIndex(previewSeqIndex + 1);
       else setPreviewSeqIndex(0);
     }, currentDur);
-    return () => { if (previewTimerRef.current) clearTimeout(previewTimerRef.current); if (previewProgressRef.current) clearInterval(previewProgressRef.current); };
+    return () => { if (previewTimerRef.current) clearTimeout(previewTimerRef.current); };
   }, [previewAutoPlay, previewSeqIndex, videoRushes]);
 
   // Render a sequence preview panel (like Infographie)
@@ -708,13 +705,33 @@ export default function CreatorPage() {
 
   const uploadFile = async (file: File, purpose: string): Promise<string | null> => {
     try {
+      // Use signed URL for large files (videos > 4MB) to bypass Vercel's 4.5MB body limit
+      if (file.size > 4 * 1024 * 1024) {
+        const signRes = await fetch('/api/upload/signed-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: file.name, contentType: file.type, purpose }),
+        });
+        const signData = await signRes.json();
+        if (!signData.success) { console.error('[Upload] Signed URL error:', signData.error); return null; }
+        const putRes = await fetch(signData.signedUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type },
+          body: file,
+        });
+        if (!putRes.ok) { console.error('[Upload] PUT failed:', putRes.status); return null; }
+        console.log('[Upload] Signed URL upload OK:', signData.publicUrl);
+        return signData.publicUrl;
+      }
+      // Small files (images, logos) use regular upload
       const formData = new FormData();
       formData.append('file', file);
       formData.append('purpose', purpose);
       const res = await fetch('/api/upload/media', { method: 'POST', body: formData });
       const data = await res.json();
       return data.success ? data.file.url : null;
-    } catch {
+    } catch (err) {
+      console.error('[Upload] Error:', err);
       return null;
     }
   };
@@ -2103,9 +2120,18 @@ export default function CreatorPage() {
                         const isCurrent = idx === previewSeqIndex;
                         const isPast = idx < previewSeqIndex;
                         return (
-                          <div key={seq.id} className="h-full relative overflow-hidden cursor-pointer" style={{ width: `${w}%` }} onClick={() => { setPreviewSeqIndex(idx); setPreviewProgress(0); }}>
+                          <div key={seq.id} className="h-full relative overflow-hidden cursor-pointer" style={{ width: `${w}%` }} onClick={() => { setPreviewSeqIndex(idx); }}>
                             <div className="absolute inset-0" style={{ background: seq.color, opacity: isPast ? 1 : 0.2 }} />
-                            {isCurrent && previewAutoPlay && <div className="absolute inset-y-0 left-0" style={{ width: `${previewProgress}%`, background: seq.color, transition: 'width 50ms linear' }} />}
+                            {isCurrent && previewAutoPlay && (
+                              <>
+                                <div
+                                  key={`seq-progress-${previewSeqIndex}`}
+                                  className="absolute inset-y-0 left-0"
+                                  style={{ background: seq.color, animation: `creatorSeqFill ${previewSeqDurRef.current}ms linear forwards` }}
+                                />
+                                <style>{`@keyframes creatorSeqFill { from { width: 0%; } to { width: 100%; } }`}</style>
+                              </>
+                            )}
                             {isCurrent && !previewAutoPlay && <div className="absolute inset-0" style={{ background: seq.color, opacity: 0.8 }} />}
                           </div>
                         );

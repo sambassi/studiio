@@ -419,13 +419,32 @@ function AudioStudioContent() {
   // ═══ UPLOAD FILE ═══
   const uploadFile = async (file: File, purpose: string): Promise<string | null> => {
     try {
+      // Use signed URL for large files (audio/video > 4MB) to bypass Vercel's 4.5MB body limit
+      if (file.size > 4 * 1024 * 1024) {
+        const signRes = await fetch('/api/upload/signed-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: file.name, contentType: file.type, purpose }),
+        });
+        const signData = await signRes.json();
+        if (!signData.success) { console.error('[Upload] Signed URL error:', signData.error); return null; }
+        const putRes = await fetch(signData.signedUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type },
+          body: file,
+        });
+        if (!putRes.ok) { console.error('[Upload] PUT failed:', putRes.status); return null; }
+        console.log('[Upload] Signed URL upload OK:', signData.publicUrl);
+        return signData.publicUrl;
+      }
+      // Small files use regular upload
       const fd = new FormData();
       fd.append('file', file);
       fd.append('purpose', purpose);
       const res = await fetch('/api/upload/media', { method: 'POST', body: fd });
       const data = await res.json();
       return data.success ? data.file?.url || null : null;
-    } catch { return null; }
+    } catch (err) { console.error('[Upload] Error:', err); return null; }
   };
 
   // ═══ EXPORT WITH AUDIO (supports batch) ═══

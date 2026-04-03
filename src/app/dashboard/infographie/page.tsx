@@ -310,19 +310,37 @@ export default function InfographicPage() {
     setRushFileName(file.name);
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('purpose', 'infographic-video');
-
-      const res = await fetch('/api/upload/media', { method: 'POST', body: formData });
-      const data = await res.json();
-
-      if (data.success && data.file?.url) {
-        setRushUrl(data.file.url);
+      // Use signed URL for large files (videos > 4MB) to bypass Vercel's 4.5MB body limit
+      if (file.size > 4 * 1024 * 1024) {
+        const signRes = await fetch('/api/upload/signed-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: file.name, contentType: file.type, purpose: 'infographic-video' }),
+        });
+        const signData = await signRes.json();
+        if (!signData.success) { showToast('Erreur lors de l\'upload de la vidéo'); setRushFileName(null); setIsUploadingVideo(false); return; }
+        const putRes = await fetch(signData.signedUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type },
+          body: file,
+        });
+        if (!putRes.ok) { showToast('Erreur lors de l\'upload de la vidéo'); setRushFileName(null); setIsUploadingVideo(false); return; }
+        console.log('[Upload] Signed URL upload OK:', signData.publicUrl);
+        setRushUrl(signData.publicUrl);
         showToast('Vidéo uploadée avec succès', 'success');
       } else {
-        showToast('Erreur lors de l\'upload de la vidéo');
-        setRushFileName(null);
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('purpose', 'infographic-video');
+        const res = await fetch('/api/upload/media', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (data.success && data.file?.url) {
+          setRushUrl(data.file.url);
+          showToast('Vidéo uploadée avec succès', 'success');
+        } else {
+          showToast('Erreur lors de l\'upload de la vidéo');
+          setRushFileName(null);
+        }
       }
     } catch (err) {
       console.error('Video upload error:', err);
@@ -375,12 +393,25 @@ export default function InfographicPage() {
         if (b === 0 && characterImage && characterImage.startsWith('data:')) {
           const blob = await fetch(characterImage).then((r) => r.blob());
           const file = new File([blob], 'infographic-character.png', { type: 'image/png' });
-          const formData = new FormData();
-          formData.append('file', file);
-          formData.append('purpose', 'infographic');
-          const uploadRes = await fetch('/api/upload/media', { method: 'POST', body: formData });
-          const uploadData = await uploadRes.json();
-          if (uploadData.success) mediaUrl = uploadData.file.url;
+          if (file.size > 4 * 1024 * 1024) {
+            const signRes = await fetch('/api/upload/signed-url', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ filename: file.name, contentType: file.type, purpose: 'infographic' }),
+            });
+            const signData = await signRes.json();
+            if (signData.success) {
+              const putRes = await fetch(signData.signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+              if (putRes.ok) mediaUrl = signData.publicUrl;
+            }
+          } else {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('purpose', 'infographic');
+            const uploadRes = await fetch('/api/upload/media', { method: 'POST', body: formData });
+            const uploadData = await uploadRes.json();
+            if (uploadData.success) mediaUrl = uploadData.file.url;
+          }
         }
 
         // Determine media type based on whether video is present
