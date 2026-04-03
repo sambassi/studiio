@@ -2062,27 +2062,17 @@ export default function CalendarPage() {
           : fullPreviewPost.title;
         return (
         <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4" onClick={() => setShowFullPreview(false)}>
-          {/* Hidden audio elements for music/voice playback.
-              When hasAudio is true AND the montage preview falls back to the rendered video
-              (which has embedded audio), we must NOT play separate audio to avoid double playback.
-              We check: if there's a raw rush video, the preview uses that (no embedded audio) → safe to play separate audio.
-              If no raw rush video, the preview uses videoUrl (rendered montage with embedded audio) → skip separate audio. */}
-          {(() => {
-            const rawRush = meta?.rawVideoUrl || meta?.rushUrls?.[0];
-            const previewUsesRenderedVideo = postHasAudio && !rawRush && !!meta?.videoUrl;
-            // Only play separate audio if the preview video does NOT already contain embedded audio
-            const shouldPlaySeparateAudio = !previewUsesRenderedVideo;
-            return (
-              <>
-                {shouldPlaySeparateAudio && previewMusicUrl && (
-                  <audio id="preview-audio-music" src={previewMusicUrl} autoPlay muted={montageMuted} style={{ display: 'none' }} />
-                )}
-                {shouldPlaySeparateAudio && previewVoiceUrl && (
-                  <audio id="preview-audio-voice" src={previewVoiceUrl} autoPlay muted={montageMuted} style={{ display: 'none' }} />
-                )}
-              </>
-            );
-          })()}
+          {/* Éléments audio cachés pour musique/voix.
+              L'aperçu montage n'utilise JAMAIS la vidéo rendue (pour éviter double CTA),
+              donc les éléments audio séparés jouent TOUJOURS quand musicUrl/voiceUrl existent. */}
+          <>
+            {previewMusicUrl && (
+              <audio id="preview-audio-music" src={previewMusicUrl} autoPlay muted={montageMuted} style={{ display: 'none' }} />
+            )}
+            {previewVoiceUrl && (
+              <audio id="preview-audio-voice" src={previewVoiceUrl} autoPlay muted={montageMuted} style={{ display: 'none' }} />
+            )}
+          </>
           <div className="bg-gray-900 rounded-2xl overflow-hidden shadow-2xl max-w-5xl w-full flex max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
             {/* Left: Rich Montage Preview */}
             <div className="flex-1 bg-black flex flex-col items-center justify-center min-h-[60vh] p-4">
@@ -2103,7 +2093,7 @@ export default function CalendarPage() {
                       boxShadow: borderCol ? `0 0 30px ${borderCol}40, 0 0 60px ${borderCol}15` : `0 0 30px ${accent}4D, 0 0 60px ${accent}1A`,
                     }}
                   >
-                    {/* === INTRO: Photo Affiche + Title + Subtitle === */}
+                    {/* === INTRO : Photo Affiche + Titre + Sous-titre === */}
                     <div className="absolute inset-0" style={{ opacity: currentSeq === 'intro' ? 1 : 0, transform: currentSeq === 'intro' ? 'scale(1)' : 'scale(1.08)', zIndex: currentSeq === 'intro' ? 10 : 1, transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
                       {posterImgSrc ? <img src={posterImgSrc} alt="Affiche" className="absolute inset-0 w-full h-full object-cover" /> : <div className="absolute inset-0 bg-gradient-to-b from-black to-purple-950" />}
                       <div className="absolute inset-0" style={{ background: posterImgSrc ? 'linear-gradient(to top, rgba(100,0,140,0.85) 0%, rgba(0,0,0,0.35) 40%, transparent 60%)' : 'transparent' }} />
@@ -2114,7 +2104,7 @@ export default function CalendarPage() {
                       </div>
                     </div>
 
-                    {/* === CARDS: Info cards with staggered entrance === */}
+                    {/* === CARTES : Cartes d'info avec animation décalée === */}
                     <div className="absolute inset-0" style={{ opacity: currentSeq === 'cards' ? 1 : 0, zIndex: currentSeq === 'cards' ? 10 : 1, transition: 'opacity 800ms ease-in-out', willChange: 'opacity' }}>
                       <div className="absolute inset-0 bg-gradient-to-b from-purple-950 via-gray-900 to-black" />
                       <div className="absolute inset-0 flex flex-col items-center justify-center z-10 px-6">
@@ -2161,11 +2151,10 @@ export default function CalendarPage() {
                         <p className="text-3xl font-black uppercase tracking-wider mb-4 leading-tight px-2" style={{ color: accent, textShadow: `0 0 30px ${accent}` }}>{brd?.ctaText || branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}</p>
                         <p className="text-2xl uppercase tracking-wider font-bold" style={{ color: '#FFFFFF' }}>{brd?.ctaSubText || branding.ctaSubText || 'LIEN EN BIO'}</p>
                         {meta?.salesPhrase && <p className="text-xl mt-5 italic font-medium" style={{ color: `${accent}DD` }}>{meta.salesPhrase}</p>}
-                        {wm && <p className="text-sm font-bold text-white/30 mt-6 tracking-[0.2em]">{wm}</p>}
                       </div>
                     </div>
 
-                    {/* === Website link overlay — visible on all sequences from intro to end === */}
+                    {/* === Lien site web — visible sur toutes les séquences (intro, cards, video, cta) === */}
                     <div className="absolute bottom-8 left-0 right-0 z-30 flex justify-center pointer-events-none">
                       <p className="text-base font-bold text-white/90 tracking-wider" style={{ textShadow: `0 0 10px ${accent}80, 0 2px 4px rgba(0,0,0,0.8)` }}>Afroboost.com</p>
                     </div>

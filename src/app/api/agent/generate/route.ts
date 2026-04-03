@@ -200,10 +200,24 @@ export async function POST(req: NextRequest) {
           agent_plan_id: plan.id,
           agent_generated: true,
           metadata: {
+            type: 'infographic',
             objective,
             captionStyle,
             hashtags,
             renderSeed: Date.now() + i * 1000,
+            sequences: {
+              order: ['intro', 'cards', 'cta'],
+              intro: 5,
+              cards: 8,
+              cta: 7,
+              total: 20,
+            },
+            branding: {
+              watermarkText: 'AFROBOOST',
+              ctaText: 'CHAT POUR PLUS D\'INFOS',
+              ctaSubText: 'LIEN EN BIO',
+              accentColor: '#7C3AED',
+            },
           },
         })
         .select()

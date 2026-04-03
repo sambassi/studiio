@@ -334,14 +334,15 @@ export default function CreatorPage() {
 
     if (seqType === 'cta') {
       return (
-        <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ background: `linear-gradient(135deg, ${accent}CC, #FF2DAA99, ${accent}66)` }}>
+        <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ background: '#000000' }}>
           <div className="text-center px-3">
-            <p className="text-xs font-black text-white uppercase tracking-wider mb-1" style={{ textShadow: `0 0 15px ${accent}` }}>
+            {logoPreview && <img src={logoPreview} alt="Logo" className="w-16 h-16 object-contain mx-auto mb-3" />}
+            <p className="text-sm font-black uppercase tracking-wider mb-1 leading-tight" style={{ color: accent, textShadow: `0 0 20px ${accent}` }}>
               {branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}
             </p>
-            <p className="text-[7px] text-white/70 uppercase tracking-wider">{branding.ctaSubText || 'LIEN EN BIO'}</p>
-            {salesPhrase && <p className="text-[8px] text-white/90 mt-1 italic font-medium">{salesPhrase}</p>}
-            {branding.watermarkText && <p className="text-[5px] text-white/30 mt-2 tracking-[0.15em]">{branding.watermarkText}</p>}
+            <p className="text-xs uppercase tracking-wider font-bold" style={{ color: '#FFFFFF' }}>{branding.ctaSubText || 'LIEN EN BIO'}</p>
+            {salesPhrase && <p className="text-[8px] mt-2 italic font-medium" style={{ color: `${accent}DD` }}>{salesPhrase}</p>}
+            {branding.watermarkText && <p className="text-[6px] font-bold text-white/30 mt-3 tracking-[0.2em]">{branding.watermarkText}</p>}
           </div>
         </div>
       );
@@ -2139,6 +2140,13 @@ export default function CreatorPage() {
                       </div>
                     );
                   })}
+
+                  {/* Website link overlay — visible on all sequences except CTA */}
+                  {activeMontageSequences[previewSeqIndex]?.type !== 'cta' && (
+                    <div className="absolute bottom-4 left-0 right-0 z-30 flex justify-center pointer-events-none">
+                      <p className="text-[7px] font-bold text-white/90 tracking-wider" style={{ textShadow: `0 0 6px ${branding.accentColor || '#D91CD2'}80, 0 1px 3px rgba(0,0,0,0.8)` }}>Afroboost.com</p>
+                    </div>
+                  )}
 
                   {/* Current sequence label */}
                   <div className="absolute top-1.5 left-1.5 z-20 flex items-center gap-1">

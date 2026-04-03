@@ -192,44 +192,54 @@ export default function InfographicPage() {
         return;
       }
 
-      // Try AI generation first (for custom topics and richer content)
-      const aiRes = await fetch('/api/content/ai-generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          topic: topicText,
-          locale: 'fr',
-          cardCount: 5,
-        }),
-      });
+      // Try AI generation first (with 8s timeout to avoid blocking UI)
+      let aiSuccess = false;
+      try {
+        const aiController = new AbortController();
+        const aiTimeout = setTimeout(() => aiController.abort(), 8000);
+        const aiRes = await fetch('/api/content/ai-generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            topic: topicText,
+            locale: 'fr',
+            cardCount: 5,
+          }),
+          signal: aiController.signal,
+        });
+        clearTimeout(aiTimeout);
 
-      if (aiRes.ok) {
-        const aiData = await aiRes.json();
-        if (aiData.success && aiData.content) {
-          const c = aiData.content;
-          setTitle(c.title || topicText.toUpperCase());
-          setSubtitle(c.subtitle || '');
-          setCards(
-            (c.cards || []).map((card: any, i: number) => ({
-              id: `card-${Date.now()}-${i}`,
-              emoji: card.emoji || '⭐',
-              label: card.label || '',
-              value: card.value || '',
-              description: card.description || '',
-              color: COLOR_THEMES.find(ct => ct.id === colorTheme)?.accent || '#a855f7',
-            }))
-          );
-          setSalesPhrases(c.salesPhrases || []);
+        if (aiRes.ok) {
+          const aiData = await aiRes.json();
+          if (aiData.success && aiData.content) {
+            const c = aiData.content;
+            setTitle(c.title || topicText.toUpperCase());
+            setSubtitle(c.subtitle || '');
+            setCards(
+              (c.cards || []).map((card: any, i: number) => ({
+                id: `card-${Date.now()}-${i}`,
+                emoji: card.emoji || '⭐',
+                label: card.label || '',
+                value: card.value || '',
+                description: card.description || '',
+                color: COLOR_THEMES.find(ct => ct.id === colorTheme)?.accent || '#a855f7',
+              }))
+            );
+            setSalesPhrases(c.salesPhrases || []);
 
-          // Fetch photos matching the AI-suggested query or theme
-          const pQuery = c.pexelsQuery || themeObj?.pexelsQuery || topicText;
-          setPhotoSearchQuery(pQuery);
-          fetchPexelsPhotos(pQuery);
-          return;
+            // Fetch photos matching the AI-suggested query or theme
+            const pQuery = c.pexelsQuery || themeObj?.pexelsQuery || topicText;
+            setPhotoSearchQuery(pQuery);
+            fetchPexelsPhotos(pQuery);
+            aiSuccess = true;
+          }
         }
+      } catch (aiErr: any) {
+        console.warn('[Infographie] AI generation failed/timeout, falling back to local:', aiErr?.name || aiErr?.message);
       }
+      if (aiSuccess) return;
 
-      // Fallback: try local smart content
+      // Fallback: try local smart content (instant, no external API)
       const localRes = await fetch('/api/content/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
