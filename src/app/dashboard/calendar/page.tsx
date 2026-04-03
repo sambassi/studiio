@@ -345,6 +345,83 @@ export default function CalendarPage() {
       alert(t('validation.noPlatforms') || 'Veuillez sélectionner au moins un réseau social avant de planifier.');
       return;
     }
+
+    const meta = post.metadata || {};
+
+    // Auto-compose montage if not already rendered
+    // The montage (with title, cards, transitions) is required for social media publishing.
+    // Without it, only the raw poster/rush would be published.
+    if (!meta.renderedVideoUrl && meta.posterUrl) {
+      console.log('[Schedule] No renderedVideoUrl — auto-composing montage before scheduling...');
+      setExportRendering(true);
+      setExportRenderProgress(0);
+      setExportRenderStage('Rendu du montage...');
+
+      try {
+        const posterUrl = meta.posterUrl || meta.pexelsUrl || meta.characterUrl || null;
+        const videoUrl = meta.rushUrls?.[0] || null;
+        const musicUrl = meta.musicUrl || null;
+        const voiceUrl = meta.voiceUrl || null;
+        const logoUrl = meta.logoUrl || null;
+        const seq = meta.sequences;
+        const brand = meta.branding;
+        const isReel = post.format === 'reel';
+
+        const { url: renderedUrl } = await composeAndUpload({
+          width: isReel ? 1080 : 1920,
+          height: isReel ? 1920 : 1080,
+          fps: 30,
+          title: post.title || 'Vidéo',
+          subtitle: meta.subtitle || undefined,
+          salesPhrase: meta.salesPhrase || undefined,
+          cards: meta.cards?.length > 0
+            ? meta.cards.map((c: any) => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color }))
+            : (meta.textCards || []).map((tCard: any) => ({ emoji: '📝', label: tCard.text, value: tCard.text, color: tCard.color })),
+          posterUrl,
+          videoUrl,
+          logoUrl,
+          musicUrl,
+          voiceUrl,
+          introDuration: seq?.intro ?? 5,
+          cardsDuration: seq?.cards ?? ((meta.cards?.length > 0 || meta.textCards?.length > 0) ? 6 : 0),
+          videoDuration: seq?.video ?? 12,
+          ctaDuration: seq?.cta ?? 5,
+          accentColor: brand?.accentColor || '#D91CD2',
+          ctaText: brand?.ctaText || 'CHAT POUR PLUS D\'INFOS',
+          ctaSubText: brand?.ctaSubText || 'LIEN EN BIO',
+          watermarkText: brand?.watermarkText || undefined,
+          onProgress: (pct, stage) => {
+            setExportRenderProgress(pct);
+            setExportRenderStage(stage);
+          },
+        });
+
+        if (renderedUrl) {
+          // Update post metadata with rendered video URL
+          post = {
+            ...post,
+            media_url: renderedUrl,
+            media_type: 'video',
+            metadata: {
+              ...meta,
+              renderedVideoUrl: renderedUrl,
+              videoUrl: renderedUrl,
+            },
+          };
+          console.log('[Schedule] Montage composed and uploaded:', renderedUrl);
+        }
+      } catch (err) {
+        console.error('[Schedule] Auto-compose failed:', err);
+        setExportRenderStage('Erreur de rendu');
+        setTimeout(() => { setExportRendering(false); setExportRenderProgress(0); setExportRenderStage(''); }, 3000);
+        return; // Don't schedule if compose failed
+      } finally {
+        setExportRendering(false);
+        setExportRenderProgress(0);
+        setExportRenderStage('');
+      }
+    }
+
     setSaving(true);
     try {
       const res = await fetch('/api/posts', {

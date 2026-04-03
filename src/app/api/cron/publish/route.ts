@@ -183,25 +183,30 @@ export async function GET(req: NextRequest) {
         }
 
         // Check if post has a video with a URL
+        // Priority: rendered montage (from metadata) > post.media_url > raw video from videos table
         const video = post.videos;
-        console.log(`[CRON] Video data: video_id=${post.video_id}, video exists=${!!video}, video_url=${video?.video_url ? 'SET' : 'NULL'}, post.media_url=${post.media_url ? 'SET' : 'NULL'}`);
+        const meta = post.metadata || {};
+        const renderedUrl = meta.renderedVideoUrl || meta.videoUrl;
+        console.log(`[CRON] Video data: video_id=${post.video_id}, video exists=${!!video}, video_url=${video?.video_url ? 'SET' : 'NULL'}, post.media_url=${post.media_url ? 'SET' : 'NULL'}, renderedVideoUrl=${renderedUrl ? 'SET' : 'NULL'}`);
 
-        if (!video || !video.video_url) {
-          // If no video_id, try using media_url directly
-          if (!post.media_url) {
-            console.log(`[CRON] FAIL: No video or media URL for post ${post.id}`);
-            await supabase
-              .from('scheduled_posts')
-              .update({ status: 'failed', metadata: { ...post.metadata, error: 'Aucune vidéo ou média / No video or media URL' } })
-              .eq('id', post.id);
-            results.push({ postId: post.id, title: post.title, platforms: post.platforms, success: false, details: 'No media' });
-            continue;
-          }
+        // Use the composed montage URL first (this is the actual infographic video with title, cards, etc.)
+        // Fall back to media_url, then to raw video from videos table
+        const videoUrl = renderedUrl || post.media_url || video?.video_url;
+
+        if (!videoUrl) {
+          console.log(`[CRON] FAIL: No video or media URL for post ${post.id}`);
+          await supabase
+            .from('scheduled_posts')
+            .update({ status: 'failed', metadata: { ...meta, error: 'Aucune vidéo ou média / No video or media URL. Le montage doit être exporté avant la publication.' } })
+            .eq('id', post.id);
+          results.push({ postId: post.id, title: post.title, platforms: post.platforms, success: false, details: 'No media' });
+          continue;
         }
 
-        const videoUrl = video?.video_url || post.media_url;
         const videoData = video || { title: post.title, video_url: videoUrl };
-        console.log(`[CRON] Using video URL: ${videoUrl?.substring(0, 80)}...`);
+        // Override video_url with the best available URL (montage > raw)
+        videoData.video_url = videoUrl;
+        console.log(`[CRON] Using video URL: ${videoUrl?.substring(0, 80)}... (source: ${renderedUrl ? 'renderedVideoUrl' : post.media_url ? 'media_url' : 'video.video_url'})`);
 
         const platformResults: Array<{ platform: string; success: boolean; error?: string }> = [];
 
