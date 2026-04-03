@@ -786,6 +786,21 @@ export default function InfographiePage() {
                 </div>
               </div>
 
+              {/* Format selector */}
+              <div className="mb-6">
+                <h3 className="text-sm font-semibold text-gray-300 mb-3">Format vidéo</h3>
+                <div className="flex gap-2">
+                  <button onClick={() => setFormat('9:16')} className={`flex-1 py-2.5 px-4 rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-2 ${format === '9:16' ? 'bg-gradient-to-r from-pink-600 to-pink-400 text-white' : 'bg-gray-800 text-gray-300 border border-gray-700 hover:border-gray-600'}`}>
+                    <svg width="14" height="20" viewBox="0 0 14 20" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="0.5" y="0.5" width="13" height="19" rx="1.5" stroke="currentColor" strokeWidth="1"/></svg>
+                    9:16 (Reel)
+                  </button>
+                  <button onClick={() => setFormat('16:9')} className={`flex-1 py-2.5 px-4 rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-2 ${format === '16:9' ? 'bg-gradient-to-r from-pink-600 to-pink-400 text-white' : 'bg-gray-800 text-gray-300 border border-gray-700 hover:border-gray-600'}`}>
+                    <svg width="20" height="14" viewBox="0 0 20 14" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="0.5" y="0.5" width="19" height="13" rx="1.5" stroke="currentColor" strokeWidth="1"/></svg>
+                    16:9 (TV)
+                  </button>
+                </div>
+              </div>
+
               {/* Batch mode */}
               <div className="mb-6 flex items-center gap-3 bg-gray-800 rounded-lg p-3 border border-gray-700">
                 <input type="checkbox" checked={batchMode} onChange={(e) => setBatchMode(e.target.checked)} className="w-4 h-4 rounded accent-pink-500" />
