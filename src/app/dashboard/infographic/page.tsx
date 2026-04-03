@@ -1138,7 +1138,7 @@ export default function InfographiePage() {
 
           {/* Montage preview — all sequences stacked with transitions */}
           <div className="flex items-center justify-center bg-gray-900 rounded-xl border border-gray-700 p-3">
-            <div className={`${format === '9:16' ? 'h-[55vh] max-h-[55vh]' : 'h-48'} aspect-[9/16] rounded-xl shadow-xl relative overflow-hidden`}
+            <div className="rounded-xl shadow-xl relative overflow-hidden" style={{ aspectRatio: format === '9:16' ? '9/16' : '16/9', height: format === '9:16' ? '55vh' : 'auto', maxHeight: format === '9:16' ? '55vh' : '40vh', width: format === '16:9' ? '100%' : 'auto' }}
               style={{
                 border: branding.borderEnabled ? `3px solid ${branding.borderColor}` : 'none',
                 boxShadow: branding.borderEnabled ? `0 0 25px ${branding.borderColor}40` : '0 0 25px rgba(217,28,210,0.3)',
