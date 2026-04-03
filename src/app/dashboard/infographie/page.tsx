@@ -155,19 +155,31 @@ export default function InfographicPage() {
   // ── Fetch Pexels photos based on theme ──────────────────────
   const [pexelsPage, setPexelsPage] = useState(1);
 
+  const pexelsPageRef = useRef(1);
   const fetchPexelsPhotos = useCallback(async (query: string, newPage?: boolean) => {
     if (!query.trim()) return;
     setPexelsLoading(true);
-    // Always use a different page when regenerating for variety
-    const page = newPage ? pexelsPage + 1 : 1;
+    // Incrémente la page pour proposer de nouvelles photos à chaque clic
+    const page = newPage ? pexelsPageRef.current + 1 : 1;
+    pexelsPageRef.current = page;
     setPexelsPage(page);
     try {
       const count = Math.max(batchCount * 2, 6);
       const res = await fetch(`/api/pexels?query=${encodeURIComponent(query)}&count=${count}&page=${page}`);
       const data = await res.json();
-      if (data.success && data.photos) {
+      if (data.success && data.photos && data.photos.length > 0) {
         setPexelsPhotos(data.photos);
         setSelectedPhotoIndex(0);
+      } else if (page > 1) {
+        // Plus de résultats, retour à la page 1
+        pexelsPageRef.current = 1;
+        setPexelsPage(1);
+        const res2 = await fetch(`/api/pexels?query=${encodeURIComponent(query)}&count=${count}&page=1`);
+        const data2 = await res2.json();
+        if (data2.success && data2.photos) {
+          setPexelsPhotos(data2.photos);
+          setSelectedPhotoIndex(0);
+        }
       }
     } catch {
       console.error('Pexels fetch error');

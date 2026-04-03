@@ -154,6 +154,7 @@ export default function CreatorPage() {
   const [pexelsResults, setPexelsResults] = useState<PexelsPhoto[]>([]);
   const [pexelsLoading, setPexelsLoading] = useState(false);
   const [selectedPexelsUrl, setSelectedPexelsUrl] = useState<string | null>(null);
+  const [pexelsPage, setPexelsPage] = useState(1);
 
   // Audio removed — handled in Studio Son page
 
@@ -672,17 +673,25 @@ export default function CreatorPage() {
     setDragOverIndex(null);
   };
 
-  // Pexels search for Personnage
-  const searchPexelsCharacter = async (query?: string) => {
+  // Pexels search for Personnage (with pagination support)
+  const searchPexelsCharacter = async (query?: string, nextPage?: boolean) => {
     const q = query || characterPrompt;
     if (!q.trim()) return;
+    const page = nextPage ? pexelsPage + 1 : 1;
     setPexelsLoading(true);
     try {
       const count = batchCount > 1 ? Math.max(batchCount * 2, 6) : 6;
-      const res = await fetch(`/api/pexels?query=${encodeURIComponent(q)}&count=${count}`);
+      const res = await fetch(`/api/pexels?query=${encodeURIComponent(q)}&count=${count}&page=${page}`);
       const data = await res.json();
-      if (data.success && data.photos) {
+      if (data.success && data.photos && data.photos.length > 0) {
         setPexelsResults(data.photos);
+        setPexelsPage(page);
+      } else if (page > 1) {
+        // No more results on this page, wrap back to page 1
+        setPexelsPage(1);
+        const res2 = await fetch(`/api/pexels?query=${encodeURIComponent(q)}&count=${count}&page=1`);
+        const data2 = await res2.json();
+        if (data2.success && data2.photos) setPexelsResults(data2.photos);
       } else {
         setPexelsResults([]);
         showToast(t('character.noImageFound'));
@@ -1705,13 +1714,20 @@ export default function CreatorPage() {
                       <input
                         type="text"
                         value={characterPrompt}
-                        onChange={(e) => setCharacterPrompt(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') searchPexelsCharacter(); }}
+                        onChange={(e) => { setCharacterPrompt(e.target.value); setPexelsPage(1); }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { setPexelsPage(1); searchPexelsCharacter(); } }}
                         placeholder={t('character.searchPlaceholder')}
                         className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
                       />
                       <button
-                        onClick={() => searchPexelsCharacter()}
+                        onClick={() => {
+                          // Si des résultats existent déjà avec la même query → page suivante
+                          if (pexelsResults.length > 0 && characterPrompt.trim()) {
+                            searchPexelsCharacter(undefined, true);
+                          } else {
+                            searchPexelsCharacter();
+                          }
+                        }}
                         disabled={pexelsLoading}
                         className="px-4 py-2.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded-lg transition"
                       >
@@ -1724,7 +1740,7 @@ export default function CreatorPage() {
                       <div className="relative">
                         <img src={characterPreview} alt={t('characterLabel')} className="w-full h-48 rounded-lg object-cover" />
                         <button
-                          onClick={() => searchPexelsCharacter()}
+                          onClick={() => { setSelectedPexelsUrl(null); searchPexelsCharacter(undefined, true); }}
                           className="absolute top-2 right-2 p-1.5 bg-black/50 rounded-full text-white hover:bg-black/70 transition"
                           title={t('change')}
                         >
