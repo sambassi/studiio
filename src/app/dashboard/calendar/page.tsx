@@ -2165,13 +2165,6 @@ export default function CalendarPage() {
                       </div>
                     </div>
 
-                    {/* === Logo overlay — visible on intro, cards, video (bottom-right), centered on CTA === */}
-                    {meta?.logoUrl && currentSeq !== 'cta' && (
-                      <div className="absolute bottom-14 right-4 z-30 pointer-events-none">
-                        <img src={meta.logoUrl} alt="Logo" className="w-16 h-16 object-contain" style={{ filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.7))' }} />
-                      </div>
-                    )}
-
                     {/* === Website link overlay — visible on all sequences from intro to end === */}
                     <div className="absolute bottom-8 left-0 right-0 z-30 flex justify-center pointer-events-none">
                       <p className="text-base font-bold text-white/90 tracking-wider" style={{ textShadow: `0 0 10px ${accent}80, 0 2px 4px rgba(0,0,0,0.8)` }}>Afroboost.com</p>
