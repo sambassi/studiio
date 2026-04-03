@@ -15,6 +15,7 @@ import {
   Image as ImageIcon,
   Edit3,
   Check,
+  Search,
 } from 'lucide-react';
 
 // ── Types ──────────────────────────────────────────────────────
@@ -87,6 +88,7 @@ export default function InfographicPage() {
   const [pexelsPhotos, setPexelsPhotos] = useState<PexelsPhoto[]>([]);
   const [pexelsLoading, setPexelsLoading] = useState(false);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
+  const [photoSearchQuery, setPhotoSearchQuery] = useState('');
 
   // ── Step 2: Export ──────────────────────────────────────────
   const [destination, setDestination] = useState<Destination>('draft');
@@ -112,8 +114,9 @@ export default function InfographicPage() {
   const fetchPexelsPhotos = useCallback(async (query: string, newPage?: boolean) => {
     if (!query.trim()) return;
     setPexelsLoading(true);
-    const page = newPage ? Math.floor(Math.random() * 10) + 1 : pexelsPage;
-    if (newPage) setPexelsPage(page);
+    // Always use a different page when regenerating for variety
+    const page = newPage ? pexelsPage + 1 : 1;
+    setPexelsPage(page);
     try {
       const count = Math.max(batchCount * 2, 6);
       const res = await fetch(`/api/pexels?query=${encodeURIComponent(query)}&count=${count}&page=${page}`);
@@ -176,6 +179,7 @@ export default function InfographicPage() {
 
           // Fetch photos matching the AI-suggested query or theme
           const pQuery = c.pexelsQuery || themeObj?.pexelsQuery || topicText;
+          setPhotoSearchQuery(pQuery);
           fetchPexelsPhotos(pQuery);
           return;
         }
@@ -205,6 +209,7 @@ export default function InfographicPage() {
           );
           setSalesPhrases([]);
           const pQuery = themeObj?.pexelsQuery || topicText;
+          setPhotoSearchQuery(pQuery);
           fetchPexelsPhotos(pQuery);
           return;
         }
@@ -222,6 +227,10 @@ export default function InfographicPage() {
   // ── Auto-generate on theme change ───────────────────────────
   useEffect(() => {
     if (contentTheme !== 'personnalise') {
+      // Set photo search query to theme's pexels query
+      const themeObj = CONTENT_THEMES.find(t => t.id === contentTheme);
+      setPhotoSearchQuery(themeObj?.pexelsQuery || themeObj?.label || '');
+      setPexelsPage(1); // Reset page counter for new theme
       generateContent(contentTheme);
     } else {
       // Clear content when switching to custom
@@ -230,6 +239,8 @@ export default function InfographicPage() {
       setCards([]);
       setSalesPhrases([]);
       setPexelsPhotos([]);
+      setPhotoSearchQuery('');
+      setPexelsPage(1);
     }
   }, [contentTheme]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -695,10 +706,11 @@ export default function InfographicPage() {
                 </label>
                 <button
                   onClick={() => {
-                    const themeObj = CONTENT_THEMES.find(t => t.id === contentTheme);
-                    const query = contentTheme === 'personnalise'
-                      ? customTopic
-                      : (themeObj?.pexelsQuery || themeObj?.label || 'fitness');
+                    const query = photoSearchQuery.trim()
+                      || (contentTheme === 'personnalise' ? customTopic : '')
+                      || CONTENT_THEMES.find(t => t.id === contentTheme)?.pexelsQuery
+                      || CONTENT_THEMES.find(t => t.id === contentTheme)?.label
+                      || 'fitness';
                     fetchPexelsPhotos(query, true);
                   }}
                   disabled={pexelsLoading}
@@ -706,6 +718,35 @@ export default function InfographicPage() {
                 >
                   <RefreshCw size={14} className={pexelsLoading ? 'animate-spin' : ''} />
                   Régénérer
+                </button>
+              </div>
+              {/* Photo search input */}
+              <div className="mb-3 flex gap-2">
+                <div className="relative flex-1">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input
+                    type="text"
+                    value={photoSearchQuery}
+                    onChange={(e) => setPhotoSearchQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && photoSearchQuery.trim()) {
+                        fetchPexelsPhotos(photoSearchQuery.trim(), true);
+                      }
+                    }}
+                    className="w-full rounded-lg border border-gray-700 bg-gray-800 pl-9 pr-3 py-2 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
+                    placeholder="Rechercher des photos... (ex: manioc, yoga, danse)"
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    if (photoSearchQuery.trim()) {
+                      fetchPexelsPhotos(photoSearchQuery.trim(), true);
+                    }
+                  }}
+                  disabled={pexelsLoading || !photoSearchQuery.trim()}
+                  className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                >
+                  {pexelsLoading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
                 </button>
               </div>
               {pexelsLoading ? (
