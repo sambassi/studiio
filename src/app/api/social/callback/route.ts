@@ -135,7 +135,7 @@ async function exchangeMetaToken(code: string, platform: string) {
         `grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${tokenData.access_token}`
       );
     const longTokenData = await longTokenRes.json();
-    const accessToken = longTokenData.access_token || tokenData.access_token;
+    let accessToken = longTokenData.access_token || tokenData.access_token;
 
   // Get account info
   let accountId = '';
