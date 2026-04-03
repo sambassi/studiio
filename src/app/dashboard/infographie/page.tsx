@@ -97,6 +97,12 @@ export default function InfographicPage() {
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
   const [photoSearchQuery, setPhotoSearchQuery] = useState('');
 
+  // ── Sequence Durations ──────────────────────────────────────
+  const [introDuration, setIntroDuration] = useState(4);
+  const [cardsDuration, setCardsDuration] = useState(6);
+  const [videoDuration, setVideoDuration] = useState(12);
+  const [ctaDuration, setCtaDuration] = useState(4);
+
   // ── Step 2: Export ──────────────────────────────────────────
   const [destination, setDestination] = useState<Destination>('draft');
   const [isExporting, setIsExporting] = useState(false);
@@ -457,11 +463,11 @@ export default function InfographicPage() {
                 // Sequences object: required by Calendar montage preview & export renderer
                 // Without this, Calendar falls back to defaults and video timing breaks
                 sequences: {
-                  intro: 4,
-                  cards: cards.length > 0 ? 6 : 0,
-                  video: rushUrl ? 12 : 0,
-                  cta: 4,
-                  total: 4 + (cards.length > 0 ? 6 : 0) + (rushUrl ? 12 : 0) + 4,
+                  intro: introDuration,
+                  cards: cards.length > 0 ? cardsDuration : 0,
+                  video: rushUrl ? videoDuration : 0,
+                  cta: ctaDuration,
+                  total: introDuration + (cards.length > 0 ? cardsDuration : 0) + (rushUrl ? videoDuration : 0) + ctaDuration,
                   order: [
                     'intro',
                     ...(cards.length > 0 ? ['cards'] : []),
@@ -973,6 +979,39 @@ export default function InfographicPage() {
               )}
               <p className="mt-1 text-xs text-gray-500">
                 La vidéo sera utilisée comme fond dans le montage final (max 100 Mo)
+              </p>
+            </div>
+
+            {/* Sequence Durations */}
+            <div>
+              <label className="mb-3 block text-sm font-medium text-gray-300">Durée des séquences</label>
+              <div className="space-y-3">
+                {[
+                  { label: '🖼️ Affiche (Intro)', value: introDuration, setter: setIntroDuration, min: 2, max: 15 },
+                  { label: '📊 Cartes d\'Information', value: cardsDuration, setter: setCardsDuration, min: 3, max: 20, disabled: cards.length === 0 },
+                  { label: '🎬 Vidéo', value: videoDuration, setter: setVideoDuration, min: 3, max: 60, disabled: !rushUrl },
+                  { label: '📢 CTA', value: ctaDuration, setter: setCtaDuration, min: 2, max: 15 },
+                ].map((item) => (
+                  <div key={item.label} className={`flex items-center gap-3 rounded-lg bg-gray-800 px-4 py-2.5 ${item.disabled ? 'opacity-40' : ''}`}>
+                    <span className="flex-1 text-xs font-medium text-gray-300">{item.label}</span>
+                    <button
+                      onClick={() => item.setter(Math.max(item.min, item.value - 1))}
+                      disabled={item.disabled || item.value <= item.min}
+                      className="flex h-7 w-7 items-center justify-center rounded bg-gray-700 text-sm font-bold text-white hover:bg-gray-600 disabled:opacity-30"
+                    >−</button>
+                    <span className="w-10 text-center text-sm font-bold text-purple-400">{item.value}s</span>
+                    <button
+                      onClick={() => item.setter(Math.min(item.max, item.value + 1))}
+                      disabled={item.disabled || item.value >= item.max}
+                      className="flex h-7 w-7 items-center justify-center rounded bg-gray-700 text-sm font-bold text-white hover:bg-gray-600 disabled:opacity-30"
+                    >+</button>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-gray-500">
+                Durée totale: <span className="font-bold text-purple-400">
+                  {introDuration + (cards.length > 0 ? cardsDuration : 0) + (rushUrl ? videoDuration : 0) + ctaDuration}s
+                </span>
               </p>
             </div>
 

@@ -167,6 +167,11 @@ export default function CreatorPage() {
   const [destination, setDestination] = useState('calendar');
   const [salesPhrase, setSalesPhrase] = useState('');
 
+  // Sequence durations (editable)
+  const [introDuration, setIntroDuration] = useState(5);
+  const [cardsDuration, setCardsDuration] = useState(6);
+  const [ctaDuration, setCtaDuration] = useState(5);
+
   // Step 3: Render
   const [isRendering, setIsRendering] = useState(false);
   const [renderProgress, setRenderProgress] = useState(0);
@@ -242,10 +247,10 @@ export default function CreatorPage() {
 
   // Montage sequences definition (like Infographie page)
   const montageSequences = [
-    { id: 'intro', type: 'intro', label: t('montageSequences.intro'), duration: 5, color: '#ec4899', icon: '🖼️' },
-    { id: 'cards', type: 'cards', label: t('montageSequences.cards'), duration: 6, color: '#a855f7', icon: '📊' },
+    { id: 'intro', type: 'intro', label: t('montageSequences.intro'), duration: introDuration, color: '#ec4899', icon: '🖼️' },
+    { id: 'cards', type: 'cards', label: t('montageSequences.cards'), duration: cardsDuration, color: '#a855f7', icon: '📊' },
     { id: 'video', type: 'video', label: t('montageSequences.video'), duration: rushVideoDuration, color: '#3b82f6', icon: '🎬' },
-    { id: 'cta', type: 'cta', label: t('montageSequences.cta'), duration: 5, color: '#22c55e', icon: '📢' },
+    { id: 'cta', type: 'cta', label: t('montageSequences.cta'), duration: ctaDuration, color: '#22c55e', icon: '📢' },
   ];
   const activeMontageSequences = montageSequences.filter(s => s.type !== 'video' || videoRushes.some(r => r.file));
   const montageTotalDuration = activeMontageSequences.reduce((s, x) => s + x.duration, 0);
@@ -879,10 +884,10 @@ export default function CreatorPage() {
               logoUrl: effectiveLogoUrl,
               musicUrl: effectiveMusicUrl || null,
               voiceUrl: effectiveVoiceUrl || null,
-              introDuration: 4,
-              cardsDuration: cardItems.length > 0 ? 6 : 0,
+              introDuration,
+              cardsDuration: cardItems.length > 0 ? cardsDuration : 0,
               videoDuration: rushVideoDuration,
-              ctaDuration: 4,
+              ctaDuration,
               accentColor: branding.accentColor || '#D91CD2',
               ctaText: branding.ctaText || 'CHAT POUR PLUS D\'INFOS',
               ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
@@ -926,11 +931,11 @@ export default function CreatorPage() {
                   cards: cardItems.map((c) => ({ emoji: c.emoji || '📝', label: c.label || c.value, value: c.value, color: c.color })),
                   // Sequence timing so calendar can reconstruct the montage
                   sequences: {
-                    intro: 4,
-                    cards: cardItems.length > 0 ? 6 : 0,
+                    intro: introDuration,
+                    cards: cardItems.length > 0 ? cardsDuration : 0,
                     video: rushUrl ? rushVideoDuration : 0,
-                    cta: 4,
-                    total: 4 + (cardItems.length > 0 ? 6 : 0) + (rushUrl ? rushVideoDuration : 0) + 4,
+                    cta: ctaDuration,
+                    total: introDuration + (cardItems.length > 0 ? cardsDuration : 0) + (rushUrl ? rushVideoDuration : 0) + ctaDuration,
                     order: ['intro', ...(cardItems.length > 0 ? ['cards'] : []), ...(rushUrl ? ['video'] : []), 'cta'],
                   },
                   branding: { watermarkText: branding.watermarkText, borderColor: branding.borderEnabled ? branding.borderColor : null, ctaText: branding.ctaText, ctaSubText: branding.ctaSubText, accentColor: branding.accentColor },
@@ -1002,10 +1007,10 @@ export default function CreatorPage() {
               logoUrl: effectiveLogoUrl,
               musicUrl: effectiveMusicUrl || null,
               voiceUrl: effectiveVoiceUrl || null,
-              introDuration: 5,
-              cardsDuration: cardItems.length > 0 ? 8 : 0,
+              introDuration,
+              cardsDuration: cardItems.length > 0 ? cardsDuration : 0,
               videoDuration: rushVideoDuration,
-              ctaDuration: 5,
+              ctaDuration,
               accentColor: branding.accentColor || '#D91CD2',
               ctaText: branding.ctaText || 'CHAT POUR PLUS D\'INFOS',
               ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
@@ -1817,6 +1822,37 @@ export default function CreatorPage() {
                 <h2 className="text-lg font-bold mb-1">{t('branding.title')}</h2>
                 <p className="text-xs text-gray-500 mb-4">{t('branding.memo')}</p>
                 <BrandingPanel branding={branding} onChange={setBranding} />
+              </div>
+
+              {/* Durée des séquences */}
+              <div className="bg-gray-800/60 rounded-xl p-6 border border-gray-700/50">
+                <h2 className="text-lg font-bold mb-4">Durée des séquences</h2>
+                <div className="space-y-3">
+                  {[
+                    { label: '🖼️ Affiche (Intro)', value: introDuration, setter: setIntroDuration, min: 2, max: 15, disabled: false },
+                    { label: '📊 Cartes', value: cardsDuration, setter: setCardsDuration, min: 3, max: 20, disabled: textCards.filter(c => c.text.trim()).length === 0 },
+                    { label: '🎬 Vidéo', value: rushVideoDuration, setter: setRushVideoDuration, min: 3, max: 60, disabled: !videoRushes.some(r => r.file) },
+                    { label: '📢 CTA', value: ctaDuration, setter: setCtaDuration, min: 2, max: 15, disabled: false },
+                  ].map((item) => (
+                    <div key={item.label} className={`flex items-center gap-3 rounded-lg bg-gray-900 px-4 py-2.5 ${item.disabled ? 'opacity-40' : ''}`}>
+                      <span className="flex-1 text-xs font-medium text-gray-300">{item.label}</span>
+                      <button
+                        onClick={() => item.setter(Math.max(item.min, item.value - 1))}
+                        disabled={item.disabled || item.value <= item.min}
+                        className="flex h-7 w-7 items-center justify-center rounded bg-gray-700 text-sm font-bold text-white hover:bg-gray-600 disabled:opacity-30"
+                      >−</button>
+                      <span className="w-10 text-center text-sm font-bold text-purple-400">{item.value}s</span>
+                      <button
+                        onClick={() => item.setter(Math.min(item.max, item.value + 1))}
+                        disabled={item.disabled || item.value >= item.max}
+                        className="flex h-7 w-7 items-center justify-center rounded bg-gray-700 text-sm font-bold text-white hover:bg-gray-600 disabled:opacity-30"
+                      >+</button>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-gray-500">
+                  Durée totale: <span className="font-bold text-purple-400">{montageTotalDuration}s</span>
+                </p>
               </div>
 
               {/* Destination */}

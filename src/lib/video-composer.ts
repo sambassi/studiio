@@ -193,6 +193,17 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+/** Draw a logo image clipped to a circle (no square background visible) */
+function drawLogoCircular(ctx: CanvasRenderingContext2D, logoImg: HTMLImageElement, x: number, y: number, size: number) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
+  ctx.closePath();
+  ctx.clip();
+  ctx.drawImage(logoImg, x, y, size, size);
+  ctx.restore();
+}
+
 // ═══════════════════════════════════════════════════════════
 // SEQUENCE RENDERERS
 // ═══════════════════════════════════════════════════════════
@@ -238,7 +249,7 @@ function drawIntro(
   if (logoImg) {
     ctx.globalAlpha = Math.min(1, progress * 2);
     const logoSize = Math.round(w * 0.12);
-    ctx.drawImage(logoImg, (w - logoSize) / 2, h * 0.15, logoSize, logoSize);
+    drawLogoCircular(ctx, logoImg, (w - logoSize) / 2, h * 0.15, logoSize);
     ctx.globalAlpha = 1;
   }
   ctx.restore();
@@ -283,7 +294,7 @@ function drawCards(
   });
   if (logoImg) {
     const logoSize = Math.round(w * 0.08), padding = Math.round(w * 0.03);
-    ctx.drawImage(logoImg, w - logoSize - padding, padding, logoSize, logoSize);
+    drawLogoCircular(ctx, logoImg, w - logoSize - padding, padding, logoSize);
   }
 }
 
@@ -301,7 +312,7 @@ function drawVideoSeq(
   }
   if (logoImg) {
     const logoSize = Math.round(w * 0.08), padding = Math.round(w * 0.03);
-    ctx.drawImage(logoImg, w - logoSize - padding, h - logoSize - padding, logoSize, logoSize);
+    drawLogoCircular(ctx, logoImg, w - logoSize - padding, h - logoSize - padding, logoSize);
   }
 }
 
@@ -320,7 +331,7 @@ function drawCTA(
   ctx.save(); ctx.translate(w / 2, h / 2); ctx.scale(scale, scale); ctx.translate(-w / 2, -h / 2);
   if (logoImg) {
     const logoSize = Math.round(w * 0.12);
-    ctx.drawImage(logoImg, (w - logoSize) / 2, h * 0.3, logoSize, logoSize);
+    drawLogoCircular(ctx, logoImg, (w - logoSize) / 2, h * 0.3, logoSize);
   }
   ctx.font = `900 ${Math.round(w * 0.04)}px sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = 'white';
   ctx.shadowColor = accent; ctx.shadowBlur = 25;
@@ -445,6 +456,17 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     if (inTransition && seqIdx < sequences.length - 1) {
       drawTransition(ctx, width, height, (p) => drawSeq(seq.type, p), (p) => drawSeq(sequences[seqIdx + 1].type, p), transProgress);
     } else { drawSeq(seq.type, seqProgress); }
+    // ── Accent border/contour frame ──
+    const borderW = Math.round(width * 0.006);
+    const borderGrad = ctx.createLinearGradient(0, 0, width, height);
+    borderGrad.addColorStop(0, accentColor);
+    borderGrad.addColorStop(0.5, '#FF2DAA');
+    borderGrad.addColorStop(1, accentColor);
+    ctx.strokeStyle = borderGrad;
+    ctx.lineWidth = borderW;
+    ctx.strokeRect(borderW / 2, borderW / 2, width - borderW, height - borderW);
+
+    // ── Progress bar ──
     const barH = 3;
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(0, height - barH, width, barH);
     const barGrad = ctx.createLinearGradient(0, 0, width * (elapsed / totalDuration), 0);
