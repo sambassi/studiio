@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Plus,
@@ -316,12 +316,62 @@ export default function InfographicPage() {
       showToast('Entrez un sujet personnalisé');
       return;
     }
+    // Also fetch new photos (next page) in parallel
+    const themeObj = CONTENT_THEMES.find(t => t.id === contentTheme);
+    const query = photoSearchQuery.trim()
+      || (contentTheme === 'personnalise' ? customTopic : '')
+      || themeObj?.pexelsQuery || themeObj?.label || 'fitness';
+    fetchPexelsPhotos(query, true);
     generateContent();
   };
 
   // ── Card manipulation ───────────────────────────────────────
-  const addCard = () => {
+  const [isAddingCard, setIsAddingCard] = useState(false);
+
+  const addCard = async () => {
     const accent = COLOR_THEMES.find(ct => ct.id === colorTheme)?.accent || '#a855f7';
+    const themeObj = CONTENT_THEMES.find(t => t.id === contentTheme);
+    const topicText = contentTheme === 'personnalise' ? customTopic : (themeObj?.label || 'fitness');
+
+    // Try to generate a smart card via Anthropic
+    setIsAddingCard(true);
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch('/api/content/ai-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: topicText,
+          locale: 'fr',
+          cardCount: 1,
+          existingCards: cards.map(c => c.label), // Avoid duplicate topics
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.content?.cards?.[0]) {
+          const aiCard = data.content.cards[0];
+          setCards([...cards, {
+            id: `card-${Date.now()}`,
+            emoji: aiCard.emoji || '⭐',
+            label: aiCard.label || 'Info',
+            value: aiCard.value || '',
+            description: aiCard.description || '',
+            color: accent,
+          }]);
+          setIsAddingCard(false);
+          return;
+        }
+      }
+    } catch {
+      // AI failed, fallback to generic
+    }
+
+    // Fallback: generic card
     setCards([...cards, {
       id: `card-${Date.now()}`,
       emoji: '⭐',
@@ -330,6 +380,7 @@ export default function InfographicPage() {
       description: '',
       color: accent,
     }]);
+    setIsAddingCard(false);
   };
 
   const deleteCard = (id: string) => setCards(cards.filter(c => c.id !== id));
@@ -670,6 +721,84 @@ export default function InfographicPage() {
               </div>
             )}
 
+            {/* Photo Search — always visible in Step 0 for custom photo selection */}
+            {pexelsPhotos.length > 0 && (
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="text-sm font-medium text-gray-300">
+                    Photos d'affiche ({pexelsPhotos.length})
+                  </label>
+                  <button
+                    onClick={() => {
+                      const query = photoSearchQuery.trim()
+                        || (contentTheme === 'personnalise' ? customTopic : '')
+                        || CONTENT_THEMES.find(t => t.id === contentTheme)?.pexelsQuery
+                        || 'fitness';
+                      fetchPexelsPhotos(query, true);
+                    }}
+                    disabled={pexelsLoading}
+                    className="flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-medium text-purple-400 hover:bg-gray-700"
+                  >
+                    <RefreshCw size={14} className={pexelsLoading ? 'animate-spin' : ''} />
+                    Nouvelles photos
+                  </button>
+                </div>
+                <div className="mb-2 flex gap-2">
+                  <div className="relative flex-1">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                    <input
+                      type="text"
+                      value={photoSearchQuery}
+                      onChange={(e) => setPhotoSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && photoSearchQuery.trim()) {
+                          pexelsPageRef.current = 0;
+                          fetchPexelsPhotos(photoSearchQuery.trim(), true);
+                        }
+                      }}
+                      className="w-full rounded-lg border border-gray-700 bg-gray-800 pl-9 pr-3 py-2 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
+                      placeholder="Rechercher des photos... (ex: manioc, yoga, danse)"
+                    />
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (photoSearchQuery.trim()) {
+                        pexelsPageRef.current = 0;
+                        fetchPexelsPhotos(photoSearchQuery.trim(), true);
+                      }
+                    }}
+                    disabled={pexelsLoading || !photoSearchQuery.trim()}
+                    className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                  >
+                    {pexelsLoading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                  </button>
+                </div>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {pexelsPhotos.map((photo, i) => (
+                    <button
+                      key={photo.id}
+                      onClick={() => setSelectedPhotoIndex(i)}
+                      className={`relative overflow-hidden rounded-lg transition-all ${
+                        selectedPhotoIndex === i ? 'ring-2 ring-purple-500' : 'opacity-70 hover:opacity-100'
+                      }`}
+                    >
+                      <img src={photo.small} alt={photo.alt} className="aspect-[3/4] w-full object-cover" />
+                      {selectedPhotoIndex === i && (
+                        <div className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-purple-500">
+                          <Check size={10} />
+                        </div>
+                      )}
+                      {batchCount > 1 && i < batchCount && (
+                        <div className="absolute bottom-0 left-0 rounded-tr bg-black/70 px-1 py-0.5 text-[8px] font-bold text-white">
+                          #{i + 1}
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Generated Content Preview */}
             {!isGenerating && cards.length > 0 && (
               <>
@@ -772,10 +901,10 @@ export default function InfographicPage() {
                   </div>
                   <button
                     onClick={addCard}
-                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-gray-700 bg-gray-800/50 py-2.5 text-xs font-medium text-gray-400 hover:border-purple-500 hover:text-purple-400"
+                    disabled={isAddingCard}
+                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-gray-700 bg-gray-800/50 py-2.5 text-xs font-medium text-gray-400 hover:border-purple-500 hover:text-purple-400 disabled:opacity-50"
                   >
-                    <Plus size={14} />
-                    Ajouter une carte
+                    {isAddingCard ? <Loader2 size={14} className="animate-spin" /> : <><Sparkles size={14} /> Ajouter une carte IA</>}
                   </button>
                 </div>
 

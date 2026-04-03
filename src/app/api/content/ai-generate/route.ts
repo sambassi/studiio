@@ -16,13 +16,13 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { topic, locale = 'fr', cardCount = 5 } = body;
+    const { topic, locale = 'fr', cardCount = 5, existingCards = [] } = body;
 
     if (!topic || typeof topic !== 'string') {
       return NextResponse.json({ success: false, error: 'Topic is required' }, { status: 400 });
     }
 
-    const count = Math.min(Math.max(cardCount, 3), 8);
+    const count = Math.min(Math.max(cardCount, 1), 8);
 
     const systemPrompt = `Tu es un expert en nutrition, santé, bien-être et fitness. Tu crées du contenu éducatif RICHE et PRÉCIS pour des infographies destinées aux réseaux sociaux.
 
@@ -56,11 +56,15 @@ Sujet "moringa":
 
 Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, sans commentaires.`;
 
+    const existingCardsContext = existingCards.length > 0
+      ? `\n\nCARTES EXISTANTES (NE PAS DUPLIQUER ces sujets, propose des aspects DIFFÉRENTS): ${existingCards.join(', ')}`
+      : '';
+
     const userPrompt = `Génère du contenu d'infographie RICHE et ÉDUCATIF sur: "${topic}"
 
 Le contenu doit être 100% axé sur "${topic}" — pas de contenu générique fitness.
 Chaque carte = un vrai fait/chiffre sur "${topic}".
-Les phrases de vente doivent promouvoir "${topic}" avec Afroboost.
+Les phrases de vente doivent promouvoir "${topic}" avec Afroboost.${existingCardsContext}
 
 JSON requis (${locale === 'fr' ? 'tout en français' : 'tout en anglais'}):
 {
