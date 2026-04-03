@@ -551,7 +551,8 @@ export default function CalendarPage() {
   useEffect(() => {
     if (!showFullPreview || !fullPreviewPost || !videoPlayable) return;
     const meta = fullPreviewPost.metadata;
-    if (!meta?.videoUrl) return;
+    const videoSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0] || meta?.videoUrl;
+    if (!videoSrc) return;
     const seqOrder: string[] = meta?.sequences?.order || ['intro', 'cards', 'video', 'cta'];
     const safeIdx = infoSeqIndex < seqOrder.length ? infoSeqIndex : 0;
     const currentSeq = seqOrder[safeIdx] || 'intro';
@@ -578,7 +579,9 @@ export default function CalendarPage() {
   useEffect(() => {
     if (!showFullPreview || !fullPreviewPost) return;
     const meta = fullPreviewPost.metadata;
-    if (!meta?.videoUrl) return;
+    // Use rawVideoUrl/rushUrls fallback chain (rendered montage MP4 may be corrupted)
+    const videoSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0] || meta?.videoUrl;
+    if (!videoSrc) return;
 
     // Give React a tick to render the video elements
     const timer = setTimeout(() => {
@@ -615,10 +618,12 @@ export default function CalendarPage() {
   useEffect(() => {
     if (!showFullPreview || !fullPreviewPost) return;
     const meta = fullPreviewPost.metadata;
-    if (!meta?.videoUrl) return;
+    // Use rawVideoUrl/rushUrls fallback chain (rendered montage MP4 may be corrupted)
+    const videoSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0] || meta?.videoUrl;
+    if (!videoSrc) return;
 
     const seqOrder: string[] = meta?.sequences?.order || ['intro', 'cards', 'video', 'cta'];
-    const activeSeqs = meta?.videoUrl ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
+    const activeSeqs = videoSrc ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
     const currentSeq = activeSeqs[infoSeqIndex] || 'intro';
 
     const vid = document.getElementById('preview-video-infographic') as HTMLVideoElement | null;
@@ -728,15 +733,13 @@ export default function CalendarPage() {
   const handleExportPost = async (post: Post) => {
     const meta = post.metadata;
 
-    // If we already have a rendered montage URL, download it directly
-    if (meta?.renderedVideoUrl) {
-      const link = document.createElement('a');
-      link.href = meta.renderedVideoUrl;
-      link.download = `${(post.title || 'video').replace(/\s+/g, '_')}.mp4`;
-      link.target = '_blank';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+    // If we already have a rendered montage URL in WebM format, download it directly
+    // NEVER reuse old .mp4 montages — Chrome MediaRecorder produces corrupted MP4 in fast mode
+    if (meta?.renderedVideoUrl && !meta.renderedVideoUrl.endsWith('.mp4')) {
+      const { downloadBlob: dlBlob } = await import('@/lib/video-composer');
+      const res = await fetch(meta.renderedVideoUrl);
+      const blob = await res.blob();
+      await dlBlob(blob, `${(post.title || 'video').replace(/\s+/g, '_')}.mp4`);
       return;
     }
 
@@ -1920,10 +1923,17 @@ export default function CalendarPage() {
                     </div>
 
                     {/* === VIDEO: Full-screen video + Logo overlay === */}
-                    {meta?.videoUrl && (
+                    {meta?.videoUrl && (() => {
+                      // Prefer raw rush video for preview (rendered montage MP4 may be corrupted by Chrome MediaRecorder)
+                      // If only source is an .mp4 montage, it's likely corrupted — skip video sequence
+                      const rawSrc = meta.rawVideoUrl || meta.rushUrls?.[0];
+                      const montageIsCorruptedMp4 = !rawSrc && typeof meta.videoUrl === 'string' && meta.videoUrl.endsWith('.mp4');
+                      const previewVideoSrc = montageIsCorruptedMp4 ? null : (rawSrc || meta.videoUrl);
+                      if (!previewVideoSrc) return null; // Skip rendering video element for corrupted MP4
+                      return (
                       <div className="absolute inset-0" style={{ opacity: currentSeq === 'video' ? 1 : 0, zIndex: currentSeq === 'video' ? 10 : 1, transition: 'opacity 800ms ease-in-out', willChange: 'opacity' }}>
-                        <video id="preview-video-infographic" src={meta.videoUrl} muted loop playsInline preload="auto" className="absolute inset-0 w-full h-full object-cover"
-                          onLoadedData={(e) => { console.log('[Calendar] Video loaded, readyState:', (e.target as HTMLVideoElement).readyState); }}
+                        <video id="preview-video-infographic" src={previewVideoSrc} muted loop playsInline preload="auto" className="absolute inset-0 w-full h-full object-cover"
+                          onLoadedData={(e) => { console.log('[Calendar] Video loaded, readyState:', (e.target as HTMLVideoElement).readyState, 'src:', previewVideoSrc?.substring(previewVideoSrc.lastIndexOf('/') + 1)); }}
                           onError={(e) => { console.error('[Calendar] Video error:', (e.target as HTMLVideoElement).error); }}
                         />
                         {meta?.logoUrl && (
@@ -1932,7 +1942,8 @@ export default function CalendarPage() {
                           </div>
                         )}
                       </div>
-                    )}
+                      );
+                    })()}
 
                     {/* === CTA: Call to action with gradient === */}
                     <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ opacity: currentSeq === 'cta' ? 1 : 0, transform: currentSeq === 'cta' ? 'scale(1)' : 'scale(0.92)', zIndex: currentSeq === 'cta' ? 10 : 1, background: `linear-gradient(135deg, ${accent}DD, #FF2DAAAA, ${accent}77)`, transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
