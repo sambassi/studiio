@@ -157,7 +157,7 @@ export default function CalendarPage() {
   const [fullPreviewPost, setFullPreviewPost] = useState<Post | null>(null);
   const [infoSeqIndex, setInfoSeqIndex] = useState(0);
   const [montageAutoPlay, setMontageAutoPlay] = useState(true);
-  const [montageMuted, setMontageMuted] = useState(true);
+  const [montageMuted, setMontageMuted] = useState(false);
   const montageTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [montageProgress, setMontageProgress] = useState(0);
   const montageProgressRef = useRef<NodeJS.Timeout | null>(null);
@@ -518,14 +518,14 @@ export default function CalendarPage() {
     const seqs = (meta?.sequences || {}) as Record<string, number>;
     const currentDuration = (seqs[activeSeqs[infoSeqIndex]] || 5) * 1000; // ms
 
-    // Progress bar animation (update every 50ms)
+    // Progress bar animation (update every 200ms to reduce re-renders and jank)
     let elapsed = 0;
     if (montageProgressRef.current) clearInterval(montageProgressRef.current);
     setMontageProgress(0);
     montageProgressRef.current = setInterval(() => {
-      elapsed += 50;
+      elapsed += 200;
       setMontageProgress(Math.min(100, (elapsed / currentDuration) * 100));
-    }, 50);
+    }, 200);
 
     // Auto-advance to next sequence
     if (montageTimerRef.current) clearTimeout(montageTimerRef.current);
@@ -1768,7 +1768,7 @@ export default function CalendarPage() {
                     }}
                   >
                     {/* === INTRO: Photo Affiche + Title + Subtitle === */}
-                    <div className="absolute inset-0 transition-all duration-[800ms] ease-in-out" style={{ opacity: currentSeq === 'intro' ? 1 : 0, transform: currentSeq === 'intro' ? 'scale(1)' : 'scale(1.08)', zIndex: currentSeq === 'intro' ? 10 : 1 }}>
+                    <div className="absolute inset-0" style={{ opacity: currentSeq === 'intro' ? 1 : 0, transform: currentSeq === 'intro' ? 'scale(1)' : 'scale(1.08)', zIndex: currentSeq === 'intro' ? 10 : 1, transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
                       {posterImgSrc ? <img src={posterImgSrc} alt="Affiche" className="absolute inset-0 w-full h-full object-cover" /> : <div className="absolute inset-0 bg-gradient-to-b from-black to-purple-950" />}
                       <div className="absolute inset-0" style={{ background: posterImgSrc ? 'linear-gradient(to top, rgba(100,0,140,0.85) 0%, rgba(0,0,0,0.35) 40%, transparent 60%)' : 'transparent' }} />
                       <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 z-10">
@@ -1779,7 +1779,7 @@ export default function CalendarPage() {
                     </div>
 
                     {/* === CARDS: Info cards with staggered entrance === */}
-                    <div className="absolute inset-0 transition-all duration-[800ms] ease-in-out" style={{ opacity: currentSeq === 'cards' ? 1 : 0, zIndex: currentSeq === 'cards' ? 10 : 1 }}>
+                    <div className="absolute inset-0" style={{ opacity: currentSeq === 'cards' ? 1 : 0, zIndex: currentSeq === 'cards' ? 10 : 1, transition: 'opacity 800ms ease-in-out', willChange: 'opacity' }}>
                       <div className="absolute inset-0 bg-gradient-to-b from-purple-950 via-gray-900 to-black" />
                       <div className="absolute inset-0 flex flex-col items-center justify-center z-10 px-6">
                         <p className="text-xs font-bold text-white/50 uppercase tracking-[0.25em] text-center mb-5">{t('fullPreview.information')}</p>
@@ -1803,8 +1803,8 @@ export default function CalendarPage() {
 
                     {/* === VIDEO: Full-screen video + Logo overlay === */}
                     {meta?.videoUrl && (
-                      <div className="absolute inset-0 transition-all duration-[800ms] ease-in-out" style={{ opacity: currentSeq === 'video' ? 1 : 0, zIndex: currentSeq === 'video' ? 10 : 1 }}>
-                        <video id="preview-video-infographic" src={meta.videoUrl} muted={montageMuted} loop playsInline autoPlay className="absolute inset-0 w-full h-full object-cover" />
+                      <div className="absolute inset-0" style={{ opacity: currentSeq === 'video' ? 1 : 0, zIndex: currentSeq === 'video' ? 10 : 1, transition: 'opacity 800ms ease-in-out', willChange: 'opacity' }}>
+                        <video id="preview-video-infographic" src={meta.videoUrl} muted={montageMuted} loop playsInline autoPlay preload="auto" className="absolute inset-0 w-full h-full object-cover" />
                         {meta?.logoUrl && (
                           <div className="absolute bottom-6 right-4 z-10">
                             <img src={meta.logoUrl} alt="Logo" className="w-14 h-14 rounded-xl object-contain bg-black/50 p-1.5 backdrop-blur-sm" />
@@ -1814,7 +1814,7 @@ export default function CalendarPage() {
                     )}
 
                     {/* === CTA: Call to action with gradient === */}
-                    <div className="absolute inset-0 flex flex-col items-center justify-center transition-all duration-[800ms] ease-in-out" style={{ opacity: currentSeq === 'cta' ? 1 : 0, transform: currentSeq === 'cta' ? 'scale(1)' : 'scale(0.92)', zIndex: currentSeq === 'cta' ? 10 : 1, background: `linear-gradient(135deg, ${accent}DD, #FF2DAAAA, ${accent}77)` }}>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ opacity: currentSeq === 'cta' ? 1 : 0, transform: currentSeq === 'cta' ? 'scale(1)' : 'scale(0.92)', zIndex: currentSeq === 'cta' ? 10 : 1, background: `linear-gradient(135deg, ${accent}DD, #FF2DAAAA, ${accent}77)`, transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
                       <div className="text-center px-6">
                         {meta?.logoUrl && <img src={meta.logoUrl} alt="Logo" className="w-20 h-20 rounded-2xl object-contain mx-auto mb-5 bg-black/30 p-2.5" />}
                         <p className="text-xl font-black text-white uppercase tracking-wider mb-3" style={{ textShadow: `0 0 25px ${accent}` }}>{brd?.ctaText || branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}</p>
@@ -1857,7 +1857,7 @@ export default function CalendarPage() {
                       <div className="h-full rounded-r-full" style={{
                         width: `${((safeIdx + (montageProgress / 100)) / activeSeqs.length) * 100}%`,
                         background: `linear-gradient(90deg, ${accent}, #FF2DAA, #00D4FF)`,
-                        transition: 'width 100ms linear',
+                        transition: 'width 250ms linear',
                       }} />
                     </div>
                   </div>
@@ -1888,7 +1888,7 @@ export default function CalendarPage() {
                         <img src={posterImgSrc} alt="Poster" className="absolute inset-0 w-full h-full object-cover" />
                       )}
                       {videoSrc ? (
-                        <video id="preview-video" src={videoSrc} muted={montageMuted} loop playsInline autoPlay className="absolute inset-0 w-full h-full object-cover" />
+                        <video id="preview-video" src={videoSrc} muted={montageMuted} loop playsInline autoPlay preload="auto" className="absolute inset-0 w-full h-full object-cover" />
                       ) : imgSrc ? (
                         <img src={imgSrc} alt={fullPreviewPost.title} className="absolute inset-0 w-full h-full object-cover" />
                       ) : (
