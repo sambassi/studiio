@@ -184,6 +184,7 @@ export default function InfographiePage() {
   const characterInputRef = useRef<HTMLInputElement>(null);
   const batchPageRef = useRef(1);
   const [isAddingCard, setIsAddingCard] = useState(false);
+  const [batchSearchQuery, setBatchSearchQuery] = useState('');
 
   // Cleanup object URLs on unmount
   useEffect(() => {
@@ -357,16 +358,17 @@ export default function InfographiePage() {
     custom: ['Contenu exclusif', 'Découvre maintenant', 'Ne rate rien', 'Nouveau concept', 'À toi de jouer', 'C\'est le moment', 'Fais le premier pas', 'Tu vas adorer', 'Essaie maintenant', 'Le changement commence ici'],
   };
 
-  const generateBatchVariations = async (): Promise<BatchVariation[]> => {
+  const generateBatchVariations = async (customQuery?: string): Promise<BatchVariation[]> => {
     const titlePool = BATCH_TITLE_VARIATIONS[selectedTheme] || BATCH_TITLE_VARIATIONS['custom'];
     const subPool = BATCH_SUB_VARIATIONS[selectedTheme] || BATCH_SUB_VARIATIONS['custom'];
     const usedT: string[] = []; const usedS: string[] = [];
     const pickUniq = (arr: string[], used: string[]) => { const pool = arr.filter((x) => !used.includes(x)); return pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : arr[Math.floor(Math.random() * arr.length)]; };
     setBatchPhotosLoading(true);
     batchPageRef.current += 1;
+    const searchQuery = customQuery || batchSearchQuery.trim() || THEME_TO_QUERY[selectedTheme] || 'fitness dance';
     let photos: string[] = [];
     try {
-      const pRes = await fetch(`/api/pexels?query=${encodeURIComponent(THEME_TO_QUERY[selectedTheme] || 'fitness dance')}&count=12&page=${batchPageRef.current}`);
+      const pRes = await fetch(`/api/pexels?query=${encodeURIComponent(searchQuery)}&count=12&page=${batchPageRef.current}`);
       const pData = await pRes.json();
       if (pData.success && pData.photos) photos = pData.photos.map((p: { url: string; medium: string }) => p.medium || p.url);
     } catch { /* ignore */ }
@@ -797,6 +799,30 @@ export default function InfographiePage() {
                   </button>
                 )}
               </div>
+
+              {/* Batch photo search */}
+              {batchMode && (
+                <div className="mb-4 flex gap-2">
+                  <div className="relative flex-1">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                    <input
+                      type="text"
+                      value={batchSearchQuery}
+                      onChange={(e) => setBatchSearchQuery(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && batchSearchQuery.trim()) { batchPageRef.current = 0; generateBatchVariations(batchSearchQuery.trim()); } }}
+                      className="w-full rounded-lg border border-gray-700 bg-gray-800 pl-9 pr-3 py-2 text-sm text-white placeholder-gray-500 focus:border-pink-500 focus:outline-none"
+                      placeholder="Rechercher des photos... (ex: yoga, manioc, danse)"
+                    />
+                  </div>
+                  <button
+                    onClick={() => { if (batchSearchQuery.trim()) { batchPageRef.current = 0; generateBatchVariations(batchSearchQuery.trim()); } }}
+                    disabled={batchPhotosLoading || !batchSearchQuery.trim()}
+                    className="px-3 py-2 bg-pink-600 hover:bg-pink-700 disabled:opacity-50 rounded-lg transition"
+                  >
+                    {batchPhotosLoading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                  </button>
+                </div>
+              )}
 
               {/* Batch preview grid */}
               {batchMode && batchVariations.length > 0 && (
