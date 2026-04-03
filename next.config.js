@@ -3,6 +3,10 @@ const nextConfig = {
   reactStrictMode: true,
   experimental: {
     serverActionsBodySizeLimit: '50mb',
+    // Include ffmpeg-static binary in the cron/publish serverless function bundle
+    outputFileTracingIncludes: {
+      '/api/cron/publish': ['./node_modules/ffmpeg-static/**/*'],
+    },
   },
   typescript: {
     ignoreBuildErrors: true,

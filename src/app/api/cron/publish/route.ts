@@ -1,11 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { execFile } from 'child_process';
-import { writeFile, readFile, unlink } from 'fs/promises';
+import { writeFile, readFile, unlink, access } from 'fs/promises';
 import { join } from 'path';
 import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
+
+// Resolve FFmpeg binary path — tries multiple locations for Vercel compatibility
+async function resolveFFmpegPath(): Promise<string> {
+  // 1. Try ffmpeg-static package
+  try {
+    const staticPath = require('ffmpeg-static');
+    if (staticPath) {
+      await access(staticPath);
+      console.log(`[CONVERT] FFmpeg found via ffmpeg-static: ${staticPath}`);
+      return staticPath;
+    }
+  } catch {}
+
+  // 2. Try common node_modules locations on Vercel
+  const candidates = [
+    join(process.cwd(), 'node_modules', 'ffmpeg-static', 'ffmpeg'),
+    '/var/task/node_modules/ffmpeg-static/ffmpeg',
+    '/var/task/node_modules/.cache/ffmpeg-static/ffmpeg',
+  ];
+  for (const p of candidates) {
+    try {
+      await access(p);
+      console.log(`[CONVERT] FFmpeg found at: ${p}`);
+      return p;
+    } catch {}
+  }
+
+  // 3. Fallback to system ffmpeg
+  console.log(`[CONVERT] Using system ffmpeg as fallback`);
+  return 'ffmpeg';
+}
 
 // Allow up to 300s for this function (Vercel Pro plan)
 // Needed because WebM→MP4 conversion + Instagram polling can take 2-4 minutes
@@ -315,15 +346,9 @@ async function convertToMp4IfNeeded(videoUrl: string): Promise<string> {
 
   console.log(`[CONVERT] WebM detected, converting to MP4 (H.264)...`);
 
-  // Get ffmpeg binary path from ffmpeg-static
-  let ffmpegPath: string;
-  try {
-    ffmpegPath = require('ffmpeg-static');
-    console.log(`[CONVERT] FFmpeg binary: ${ffmpegPath}`);
-  } catch (e) {
-    console.error(`[CONVERT] ffmpeg-static not available, trying system ffmpeg`);
-    ffmpegPath = 'ffmpeg';
-  }
+  // Resolve FFmpeg binary path (handles Vercel's serverless environment)
+  const ffmpegPath = await resolveFFmpegPath();
+  console.log(`[CONVERT] Using FFmpeg at: ${ffmpegPath}`);
 
   const tmpDir = '/tmp';
   const timestamp = Date.now();
