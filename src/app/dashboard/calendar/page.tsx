@@ -158,6 +158,7 @@ export default function CalendarPage() {
   const [infoSeqIndex, setInfoSeqIndex] = useState(0);
   const [montageAutoPlay, setMontageAutoPlay] = useState(true);
   const [montageMuted, setMontageMuted] = useState(true);
+  const [videoPlayable, setVideoPlayable] = useState(true); // Track if video file is loadable
   const montageTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [montageProgress, setMontageProgress] = useState(0);
   const montageProgressRef = useRef<NodeJS.Timeout | null>(null);
@@ -498,6 +499,7 @@ export default function CalendarPage() {
     setInfoSeqIndex(0);
     setMontageAutoPlay(true);
     setMontageMuted(true);
+    setVideoPlayable(true); // Reset — will be set to false if video fails to load
     setMontageProgress(0);
     setShowFullPreview(true);
   };
@@ -514,7 +516,8 @@ export default function CalendarPage() {
     if (!isMontagePost) return;
 
     const seqOrder: string[] = meta?.sequences?.order || ['intro', 'cards', 'video', 'cta'];
-    const activeSeqs = meta?.videoUrl ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
+    const hasPlayableVideo = meta?.videoUrl && videoPlayable;
+    const activeSeqs = hasPlayableVideo ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
     const seqs = (meta?.sequences || {}) as Record<string, number>;
     const currentDuration = (seqs[activeSeqs[infoSeqIndex]] || 5) * 1000; // ms
 
@@ -542,15 +545,15 @@ export default function CalendarPage() {
       if (montageTimerRef.current) clearTimeout(montageTimerRef.current);
       if (montageProgressRef.current) clearInterval(montageProgressRef.current);
     };
-  }, [showFullPreview, fullPreviewPost, infoSeqIndex, montageAutoPlay]);
+  }, [showFullPreview, fullPreviewPost, infoSeqIndex, montageAutoPlay, videoPlayable]);
 
   // Explicit video play/pause when sequence changes — browser autoplay is unreliable
   useEffect(() => {
     if (!showFullPreview || !fullPreviewPost) return;
     const meta = fullPreviewPost.metadata;
-    if (!meta?.videoUrl) return;
+    if (!meta?.videoUrl || !videoPlayable) return;
     const seqOrder: string[] = meta?.sequences?.order || ['intro', 'cards', 'video', 'cta'];
-    const activeSeqs = meta?.videoUrl ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
+    const activeSeqs = seqOrder; // videoPlayable already checked above
     const safeIdx = infoSeqIndex < activeSeqs.length ? infoSeqIndex : 0;
     const currentSeq = activeSeqs[safeIdx] || 'intro';
 
@@ -578,7 +581,7 @@ export default function CalendarPage() {
     }
   }, [showFullPreview, fullPreviewPost, infoSeqIndex, montageMuted]);
 
-  // Initial video preload when full preview opens
+  // Initial video preload when full preview opens — detect broken files
   useEffect(() => {
     if (!showFullPreview || !fullPreviewPost) return;
     const meta = fullPreviewPost.metadata;
@@ -587,11 +590,29 @@ export default function CalendarPage() {
     // Give React a tick to render the video elements
     const timer = setTimeout(() => {
       const vid = document.getElementById('preview-video-infographic') as HTMLVideoElement | null;
-      if (vid) {
-        vid.muted = true;
-        vid.load(); // Force browser to start loading the video
-        console.log('[Calendar] Video preloaded:', vid.src, 'readyState:', vid.readyState);
-      }
+      if (!vid) return;
+      vid.muted = true;
+
+      // Detect if video can actually load
+      const loadTimeout = setTimeout(() => {
+        if (vid.readyState === 0) {
+          console.warn('[Calendar] Video failed to load after 3s, skipping video sequence:', vid.src);
+          setVideoPlayable(false);
+        }
+      }, 3000);
+
+      vid.onloadeddata = () => {
+        clearTimeout(loadTimeout);
+        console.log('[Calendar] Video loaded OK, readyState:', vid.readyState, 'duration:', vid.duration);
+        setVideoPlayable(true);
+      };
+      vid.onerror = () => {
+        clearTimeout(loadTimeout);
+        console.error('[Calendar] Video load error, skipping video sequence');
+        setVideoPlayable(false);
+      };
+
+      vid.load();
     }, 100);
 
     return () => clearTimeout(timer);
@@ -1807,7 +1828,8 @@ export default function CalendarPage() {
               {/* Montage video preview — infographic & creator with sequences */}
               {hasMontage ? (() => {
                 const seqOrder: string[] = meta?.sequences?.order || ['intro', 'cards', 'video', 'cta'];
-                const activeSeqs = meta?.videoUrl ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
+                const hasPlayableVideoRender = meta?.videoUrl && videoPlayable;
+                const activeSeqs = hasPlayableVideoRender ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
                 const posterImgSrc = meta?.pexelsUrl || meta?.posterUrl || meta?.characterUrl || null;
                 const safeIdx = infoSeqIndex < activeSeqs.length ? infoSeqIndex : 0;
                 const currentSeq = activeSeqs[safeIdx] || 'intro';
