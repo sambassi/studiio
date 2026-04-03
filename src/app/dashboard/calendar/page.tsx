@@ -634,7 +634,8 @@ export default function CalendarPage() {
   useEffect(() => {
     if (!showFullPreview || !fullPreviewPost || !videoPlayable) return;
     const meta = fullPreviewPost.metadata;
-    const videoSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0] || meta?.videoUrl;
+    // Only use raw rush video — never rendered montage (has CTA baked in)
+    const videoSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0];
     if (!videoSrc) return;
     const seqOrder: string[] = meta?.sequences?.order || ['intro', 'cards', 'video', 'cta'];
     const safeIdx = infoSeqIndex < seqOrder.length ? infoSeqIndex : 0;
@@ -662,9 +663,9 @@ export default function CalendarPage() {
   useEffect(() => {
     if (!showFullPreview || !fullPreviewPost) return;
     const meta = fullPreviewPost.metadata;
-    // Use rawVideoUrl/rushUrls fallback chain (rendered montage MP4 may be corrupted)
-    const videoSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0] || meta?.videoUrl;
-    if (!videoSrc) return;
+    // ONLY test raw rush video — never rendered montage (has full montage with CTA baked in)
+    const videoSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0];
+    if (!videoSrc) { setVideoPlayable(false); return; }
 
     // Give React a tick to render the video elements
     const timer = setTimeout(() => {
@@ -701,8 +702,8 @@ export default function CalendarPage() {
   useEffect(() => {
     if (!showFullPreview || !fullPreviewPost) return;
     const meta = fullPreviewPost.metadata;
-    // Use rawVideoUrl/rushUrls fallback chain (rendered montage MP4 may be corrupted)
-    const videoSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0] || meta?.videoUrl;
+    // Only use raw rush video — never rendered montage
+    const videoSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0];
     if (!videoSrc) return;
 
     const seqOrder: string[] = meta?.sequences?.order || ['intro', 'cards', 'video', 'cta'];
@@ -2136,20 +2137,19 @@ export default function CalendarPage() {
                       </div>
                     </div>
 
-                    {/* === VIDEO: Full-screen video + Logo overlay === */}
-                    {meta?.videoUrl && (() => {
-                      // Prefer raw rush video for preview (rendered montage may be corrupted by Chrome MediaRecorder)
-                      const rawSrc = meta.rawVideoUrl || meta.rushUrls?.[0];
-                      const previewVideoSrc = rawSrc || meta.videoUrl;
-                      // Always render the video element so the preload useEffect can test if it's playable
-                      // videoPlayable state controls whether the "video" sequence is included in the cycle
+                    {/* === VIDEO: Full-screen raw rush video only === */}
+                    {(() => {
+                      // ONLY use raw rush video for preview — NEVER the rendered montage.
+                      // The rendered montage (.webm) already contains intro/cards/cta sequences baked in,
+                      // which causes a "double CTA" effect when played inside the HTML montage preview.
+                      const rawSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0];
+                      if (!rawSrc) return null;
                       return (
                       <div className="absolute inset-0" style={{ opacity: currentSeq === 'video' ? 1 : 0, zIndex: currentSeq === 'video' ? 10 : 1, transition: 'opacity 800ms ease-in-out', willChange: 'opacity' }}>
-                        <video id="preview-video-infographic" src={previewVideoSrc} muted loop playsInline preload="auto" className="absolute inset-0 w-full h-full object-cover"
-                          onLoadedData={(e) => { console.log('[Calendar] Video loaded, readyState:', (e.target as HTMLVideoElement).readyState, 'src:', previewVideoSrc?.substring(previewVideoSrc.lastIndexOf('/') + 1)); }}
-                          onError={(e) => { console.error('[Calendar] Video error:', (e.target as HTMLVideoElement).error); }}
+                        <video id="preview-video-infographic" src={rawSrc} muted loop playsInline preload="auto" className="absolute inset-0 w-full h-full object-cover"
+                          onLoadedData={(e) => { console.log('[Calendar] Rush video loaded, readyState:', (e.target as HTMLVideoElement).readyState); }}
+                          onError={(e) => { console.error('[Calendar] Rush video error:', (e.target as HTMLVideoElement).error); }}
                         />
-                        {/* Logo removed from video sequence — only shown on CTA */}
                       </div>
                       );
                     })()}
@@ -2159,13 +2159,9 @@ export default function CalendarPage() {
                       <div className="text-center px-6">
                         {meta?.logoUrl && <img src={meta.logoUrl} alt="Logo" className="w-40 h-40 object-contain mx-auto mb-6" />}
                         <p className="text-3xl font-black uppercase tracking-wider mb-4 leading-tight px-2" style={{ color: accent, textShadow: `0 0 30px ${accent}` }}>{brd?.ctaText || branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}</p>
-                        <p className="text-lg uppercase tracking-wider font-bold" style={{ color: '#FFFFFF' }}>{brd?.ctaSubText || branding.ctaSubText || 'LIEN EN BIO'}</p>
+                        <p className="text-2xl uppercase tracking-wider font-bold" style={{ color: '#FFFFFF' }}>{brd?.ctaSubText || branding.ctaSubText || 'LIEN EN BIO'}</p>
                         {meta?.salesPhrase && <p className="text-xl mt-5 italic font-medium" style={{ color: `${accent}DD` }}>{meta.salesPhrase}</p>}
-                        <div className="flex items-center justify-center gap-2 mt-5">
-                          {meta?.musicUrl && <span className="text-xs text-white/80 px-3 py-1 rounded-full flex items-center gap-1.5 bg-white/10 backdrop-blur-sm"><Music size={12} /> {t('fullPreview.music')}</span>}
-                          {meta?.voiceMode && meta.voiceMode !== 'none' && <span className="text-xs text-white/80 px-3 py-1 rounded-full flex items-center gap-1.5 bg-white/10 backdrop-blur-sm"><Mic size={12} /> {t('fullPreview.voiceOffLabel')}</span>}
-                        </div>
-                        {wm && <p className="text-sm font-bold text-white/30 mt-5 tracking-[0.2em]">{wm}</p>}
+                        {wm && <p className="text-sm font-bold text-white/30 mt-6 tracking-[0.2em]">{wm}</p>}
                       </div>
                     </div>
 
