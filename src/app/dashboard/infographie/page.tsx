@@ -103,6 +103,37 @@ export default function InfographicPage() {
   const [videoDuration, setVideoDuration] = useState(12);
   const [ctaDuration, setCtaDuration] = useState(4);
 
+  // ── Persist configurations across sessions ──────────────────
+  const INFOGRAPHIC_CONFIG_KEY = 'studiio_infographic_config';
+
+  // Load saved config on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(INFOGRAPHIC_CONFIG_KEY);
+      if (saved) {
+        const cfg = JSON.parse(saved);
+        if (cfg.colorTheme) setColorTheme(cfg.colorTheme);
+        if (cfg.format) setFormat(cfg.format);
+        if (cfg.introDuration) setIntroDuration(cfg.introDuration);
+        if (cfg.cardsDuration) setCardsDuration(cfg.cardsDuration);
+        if (cfg.videoDuration) setVideoDuration(cfg.videoDuration);
+        if (cfg.ctaDuration) setCtaDuration(cfg.ctaDuration);
+        if (cfg.rushUrl) { setRushUrl(cfg.rushUrl); setRushFileName(cfg.rushFileName || 'video.mp4'); }
+        if (cfg.characterImage) setCharacterImage(cfg.characterImage);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // Save config on change
+  useEffect(() => {
+    try {
+      localStorage.setItem(INFOGRAPHIC_CONFIG_KEY, JSON.stringify({
+        colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration,
+        rushUrl, rushFileName, characterImage,
+      }));
+    } catch { /* ignore */ }
+  }, [colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration, rushUrl, rushFileName, characterImage]);
+
   // ── Step 2: Export ──────────────────────────────────────────
   const [destination, setDestination] = useState<Destination>('draft');
   const [isExporting, setIsExporting] = useState(false);
@@ -432,6 +463,7 @@ export default function InfographicPage() {
             subtitle,
             cards.map((c) => `${c.emoji} ${c.label}: ${c.value}`).join(' | '),
             salesPhrase ? `\n${salesPhrase}` : '',
+            '\n💬 Plus d\'infos → https://afroboost.com',
           ].filter(Boolean).join('\n');
 
           await fetch('/api/posts', {

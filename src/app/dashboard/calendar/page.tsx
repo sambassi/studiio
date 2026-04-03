@@ -2111,7 +2111,7 @@ export default function CalendarPage() {
                               ? meta.cards.map((c: { emoji: string; label: string; value: string; color?: string }) => c)
                               : (meta?.textCards || []).map((tCard: { text: string; color?: string }) => ({ emoji: '📝', label: tCard.text, value: tCard.text, color: tCard.color }));
                             return displayCards.map((card: { emoji: string; label: string; value: string; color?: string }, i: number) => (
-                              <div key={i} className="flex items-center gap-3 bg-black/40 backdrop-blur-sm rounded-xl px-4 py-3" style={{ borderLeft: `3px solid ${card.color || accent}`, transition: 'all 0.6s cubic-bezier(0.16, 1, 0.3, 1)', transitionDelay: currentSeq === 'cards' ? `${i * 200}ms` : '0ms', opacity: currentSeq === 'cards' ? 1 : 0, transform: currentSeq === 'cards' ? 'translateX(0)' : 'translateX(-30px)' }}>
+                              <div key={i} className="flex items-center gap-3 bg-black/40 rounded-xl px-4 py-3" style={{ borderLeft: `3px solid ${card.color || accent}`, transition: 'opacity 0.5s ease-out, transform 0.5s ease-out', transitionDelay: currentSeq === 'cards' ? `${i * 150}ms` : '0ms', opacity: currentSeq === 'cards' ? 1 : 0, transform: currentSeq === 'cards' ? 'translateX(0) translateZ(0)' : 'translateX(-20px) translateZ(0)', willChange: 'opacity, transform' }}>
                                 <span className="text-2xl">{card.emoji}</span>
                                 <span className="text-sm text-white/80 flex-1">{card.label}</span>
                                 <span className="text-lg font-bold text-white" style={{ textShadow: `0 0 10px ${accent}80` }}>{card.value}</span>
@@ -2147,10 +2147,10 @@ export default function CalendarPage() {
                     {/* === CTA: Call to action — black bg, colored text === */}
                     <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ opacity: currentSeq === 'cta' ? 1 : 0, transform: currentSeq === 'cta' ? 'scale(1)' : 'scale(0.92)', zIndex: currentSeq === 'cta' ? 10 : 1, background: '#000000', transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
                       <div className="text-center px-6">
-                        {meta?.logoUrl && <img src={meta.logoUrl} alt="Logo" className="w-20 h-20 object-contain mx-auto mb-5" />}
-                        <p className="text-xl font-black uppercase tracking-wider mb-3" style={{ color: accent, textShadow: `0 0 25px ${accent}` }}>{brd?.ctaText || branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}</p>
-                        <p className="text-sm uppercase tracking-wider" style={{ color: `${accent}99` }}>{brd?.ctaSubText || branding.ctaSubText || 'LIEN EN BIO'}</p>
-                        {meta?.salesPhrase && <p className="text-base mt-4 italic font-medium" style={{ color: `${accent}DD` }}>{meta.salesPhrase}</p>}
+                        {meta?.logoUrl && <img src={meta.logoUrl} alt="Logo" className="w-32 h-32 object-contain mx-auto mb-6" />}
+                        <p className="text-3xl font-black uppercase tracking-wider mb-4 leading-tight px-2" style={{ color: accent, textShadow: `0 0 30px ${accent}` }}>{brd?.ctaText || branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}</p>
+                        <p className="text-lg uppercase tracking-wider font-semibold" style={{ color: `${accent}BB` }}>{brd?.ctaSubText || branding.ctaSubText || 'LIEN EN BIO'}</p>
+                        {meta?.salesPhrase && <p className="text-xl mt-5 italic font-medium" style={{ color: `${accent}DD` }}>{meta.salesPhrase}</p>}
                         <div className="flex items-center justify-center gap-2 mt-5">
                           {meta?.musicUrl && <span className="text-xs text-white/80 px-3 py-1 rounded-full flex items-center gap-1.5 bg-white/10 backdrop-blur-sm"><Music size={12} /> {t('fullPreview.music')}</span>}
                           {meta?.voiceMode && meta.voiceMode !== 'none' && <span className="text-xs text-white/80 px-3 py-1 rounded-full flex items-center gap-1.5 bg-white/10 backdrop-blur-sm"><Mic size={12} /> {t('fullPreview.voiceOffLabel')}</span>}

@@ -916,7 +916,7 @@ export default function CreatorPage() {
             const postRes = await fetch('/api/posts', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                title: bTitle, caption: `${bSubtitle}\n${bPhrase}`.trim(),
+                title: bTitle, caption: `${bSubtitle}\n${bPhrase}\n\n💬 Plus d'infos → https://afroboost.com`.trim(),
                 media_url: postMediaUrl, media_type: renderedVideoUrl ? 'video' : (effectiveCharUrl ? 'image' : 'video'),
                 format: format === 'tv' ? 'tv' : 'reel', platforms: [],
                 scheduled_date: scheduledDate, scheduled_time: '12:00', status: 'draft',

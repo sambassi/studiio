@@ -256,9 +256,11 @@ function drawCards(
   const cardH = Math.round(h * 0.095), cardW = Math.round(w * 0.88);
   const cardX = (w - cardW) / 2, startY = h * 0.21, gap = cardH * 1.25;
   cards.slice(0, 5).forEach((card, i) => {
-    const cp = Math.max(0, Math.min(1, (progress - i * 0.12) * 4));
-    if (cp <= 0) return;
-    const y = startY + i * gap, slideX = cardX + (1 - cp) * (-w * 0.15);
+    const rawCp = Math.max(0, Math.min(1, (progress - i * 0.1) * 3.5));
+    if (rawCp <= 0) return;
+    // Smooth easing (ease-out cubic) for less choppy animation
+    const cp = 1 - Math.pow(1 - rawCp, 3);
+    const y = startY + i * gap, slideX = cardX + (1 - cp) * (-w * 0.12);
     ctx.globalAlpha = cp;
     // Card background
     ctx.fillStyle = 'rgba(0,0,0,0.55)'; drawRoundRect(ctx, slideX, y, cardW, cardH, 14); ctx.fill();
@@ -308,27 +310,54 @@ function drawCTA(
   salesPhrase: string | undefined, watermark: string | undefined,
   logoImg: HTMLImageElement | null, progress: number
 ) {
-  // CTA: black background with accent-colored text
+  // CTA: black background with accent-colored text — BIG and readable
   ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, w, h);
   const scale = 0.92 + Math.min(1, progress * 3) * 0.08;
   ctx.save(); ctx.translate(w / 2, h / 2); ctx.scale(scale, scale); ctx.translate(-w / 2, -h / 2);
   if (logoImg) {
-    const logoSize = Math.round(w * 0.12);
-    drawLogo(ctx, logoImg, (w - logoSize) / 2, h * 0.3, logoSize);
+    const logoSize = Math.round(w * 0.22);
+    drawLogo(ctx, logoImg, (w - logoSize) / 2, h * 0.18, logoSize);
   }
-  ctx.font = `900 ${Math.round(w * 0.04)}px sans-serif`; ctx.textAlign = 'center';
+  // Main CTA text — large and bold
+  ctx.font = `900 ${Math.round(w * 0.07)}px sans-serif`; ctx.textAlign = 'center';
   ctx.fillStyle = accent;
-  ctx.shadowColor = accent; ctx.shadowBlur = 25;
-  ctx.fillText(ctaText.toUpperCase(), w / 2, h * 0.52); ctx.shadowBlur = 0;
-  ctx.font = `400 ${Math.round(w * 0.022)}px sans-serif`; ctx.fillStyle = hexToRgba(accent, 0.6);
-  ctx.fillText(ctaSubText.toUpperCase(), w / 2, h * 0.57);
+  ctx.shadowColor = accent; ctx.shadowBlur = 30;
+  // Word-wrap CTA text for long phrases
+  const ctaWords = ctaText.toUpperCase().split(' ');
+  const ctaFontSize = Math.round(w * 0.07);
+  let ctaLines: string[] = [];
+  let currentLine = '';
+  for (const word of ctaWords) {
+    const testLine = currentLine ? currentLine + ' ' + word : word;
+    ctx.font = `900 ${ctaFontSize}px sans-serif`;
+    if (ctx.measureText(testLine).width > w * 0.85 && currentLine) {
+      ctaLines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = testLine;
+    }
+  }
+  if (currentLine) ctaLines.push(currentLine);
+  const ctaStartY = logoImg ? h * 0.48 : h * 0.4;
+  ctaLines.forEach((line, i) => {
+    ctx.font = `900 ${ctaFontSize}px sans-serif`;
+    ctx.fillStyle = accent;
+    ctx.shadowColor = accent; ctx.shadowBlur = 30;
+    ctx.fillText(line, w / 2, ctaStartY + i * (ctaFontSize * 1.2));
+  });
+  ctx.shadowBlur = 0;
+  // Sub-text
+  const subY = ctaStartY + ctaLines.length * (ctaFontSize * 1.2) + Math.round(w * 0.02);
+  ctx.font = `600 ${Math.round(w * 0.035)}px sans-serif`; ctx.fillStyle = hexToRgba(accent, 0.7);
+  ctx.fillText(ctaSubText.toUpperCase(), w / 2, subY);
+  // Sales phrase
   if (salesPhrase) {
-    ctx.font = `italic 500 ${Math.round(w * 0.026)}px sans-serif`; ctx.fillStyle = hexToRgba(accent, 0.85);
-    ctx.fillText(salesPhrase, w / 2, h * 0.63);
+    ctx.font = `italic 500 ${Math.round(w * 0.032)}px sans-serif`; ctx.fillStyle = hexToRgba(accent, 0.85);
+    ctx.fillText(salesPhrase, w / 2, subY + Math.round(w * 0.06));
   }
   if (watermark) {
-    ctx.font = `400 ${Math.round(w * 0.014)}px sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.15)';
-    ctx.fillText(watermark, w / 2, h * 0.9);
+    ctx.font = `400 ${Math.round(w * 0.016)}px sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.fillText(watermark, w / 2, h * 0.92);
   }
   ctx.restore();
 }
