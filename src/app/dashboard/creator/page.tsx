@@ -232,6 +232,14 @@ export default function CreatorPage() {
 
   const showToast = (message: string, type: 'success' | 'error' = 'error') => setToast({ message, type });
 
+  // Auto-search Pexels photos based on objective when batch > 1
+  useEffect(() => {
+    if (batchCount > 1 && objective) {
+      const count = batchCount * 2;
+      searchPexelsCharacter(objective);
+    }
+  }, [objective, batchCount]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Montage sequences definition (like Infographie page)
   const montageSequences = [
     { id: 'intro', type: 'intro', label: t('montageSequences.intro'), duration: 5, color: '#ec4899', icon: '🖼️' },
@@ -667,7 +675,8 @@ export default function CreatorPage() {
     if (!q.trim()) return;
     setPexelsLoading(true);
     try {
-      const res = await fetch(`/api/pexels?query=${encodeURIComponent(q)}&count=6`);
+      const count = batchCount > 1 ? Math.max(batchCount * 2, 6) : 6;
+      const res = await fetch(`/api/pexels?query=${encodeURIComponent(q)}&count=${count}`);
       const data = await res.json();
       if (data.success && data.photos) {
         setPexelsResults(data.photos);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Plus,
@@ -8,525 +8,962 @@ import {
   Upload,
   Zap,
   Loader2,
+  RefreshCw,
+  Sparkles,
+  ChevronRight,
+  ChevronLeft,
+  Image as ImageIcon,
+  Edit3,
+  Check,
 } from 'lucide-react';
 
+// ── Types ──────────────────────────────────────────────────────
 interface InfoCard {
   id: string;
   emoji: string;
   label: string;
   value: string;
+  description: string;
   color: string;
 }
 
-type Format = '9:16' | '16:9' | 'both';
-type Theme = 'pink' | 'purple' | 'blue' | 'green';
+interface PexelsPhoto {
+  id: number;
+  url: string;
+  medium: string;
+  small: string;
+  photographer: string;
+  alt: string;
+}
+
+type Format = '9:16' | '16:9';
 type Destination = 'draft' | 'export' | 'both';
 
-const THEMES = {
-  pink: {
-    name: 'Rose/Magenta',
-    bg: 'from-pink-600 to-pink-400',
-    accent: '#ec4899',
-  },
-  purple: {
-    name: 'Violet',
-    bg: 'from-purple-600 to-purple-400',
-    accent: '#a855f7',
-  },
-  blue: {
-    name: 'Bleu',
-    bg: 'from-blue-600 to-blue-400',
-    accent: '#3b82f6',
-  },
-  green: {
-    name: 'Vert',
-    bg: 'from-green-600 to-green-400',
-    accent: '#10b981',
-  },
-};
+// ── Content Themes ─────────────────────────────────────────────
+const CONTENT_THEMES = [
+  { id: 'sommeil-sport', label: 'Sommeil & Sport', emoji: '😴', pexelsQuery: 'sleep fitness recovery rest', color: 'from-indigo-600 to-blue-500' },
+  { id: 'nutrition-danse', label: 'Nutrition & Danse', emoji: '🍎', pexelsQuery: 'healthy food dance nutrition', color: 'from-green-600 to-emerald-400' },
+  { id: 'energie-cardio', label: 'Énergie & Cardio', emoji: '⚡', pexelsQuery: 'cardio energy workout running', color: 'from-orange-500 to-yellow-400' },
+  { id: 'stress-mental', label: 'Stress & Mental', emoji: '🧠', pexelsQuery: 'meditation mental health yoga calm', color: 'from-purple-600 to-pink-400' },
+  { id: 'communaute', label: 'Communauté', emoji: '👥', pexelsQuery: 'group fitness community dance class', color: 'from-pink-600 to-rose-400' },
+  { id: 'personnalise', label: 'Personnalisé', emoji: '✨', pexelsQuery: '', color: 'from-gray-600 to-gray-400' },
+];
 
-const EMOJIS = ['💪', '❤️', '⚡', '🔥', '🎯', '📊', '🏃', '🧠', '💨', '🌟'];
+// ── Color Themes ───────────────────────────────────────────────
+const COLOR_THEMES = [
+  { id: 'pink', name: 'Rose', bg: 'from-pink-600 to-pink-400', accent: '#ec4899' },
+  { id: 'purple', name: 'Violet', bg: 'from-purple-600 to-purple-400', accent: '#a855f7' },
+  { id: 'blue', name: 'Bleu', bg: 'from-blue-600 to-blue-400', accent: '#3b82f6' },
+  { id: 'green', name: 'Vert', bg: 'from-green-600 to-green-400', accent: '#10b981' },
+  { id: 'orange', name: 'Orange', bg: 'from-orange-500 to-yellow-400', accent: '#f59e0b' },
+  { id: 'red', name: 'Rouge', bg: 'from-red-600 to-rose-400', accent: '#ef4444' },
+];
+
+const EMOJIS = ['💪', '❤️', '⚡', '🔥', '🎯', '📊', '🏃', '🧠', '💨', '🌟', '😴', '🍎', '💧', '🛡️', '🏆', '👥', '🌿', '📈', '✨', '🦴'];
 
 export default function InfographicPage() {
   const router = useRouter();
-  const [title, setTitle] = useState('ÉNERGIE & CARDIO');
+
+  // ── Step wizard ─────────────────────────────────────────────
+  const [step, setStep] = useState(0); // 0: Theme & Content, 1: Personnalisation, 2: Export
+
+  // ── Step 0: Theme & Content ─────────────────────────────────
+  const [contentTheme, setContentTheme] = useState('sommeil-sport');
+  const [customTopic, setCustomTopic] = useState('');
+  const [title, setTitle] = useState('');
   const [subtitle, setSubtitle] = useState('');
+  const [cards, setCards] = useState<InfoCard[]>([]);
+  const [salesPhrases, setSalesPhrases] = useState<string[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationError, setGenerationError] = useState('');
+
+  // ── Step 1: Personnalisation ────────────────────────────────
+  const [colorTheme, setColorTheme] = useState('purple');
   const [format, setFormat] = useState<Format>('9:16');
-  const [theme, setTheme] = useState<Theme>('purple');
-  const [cards, setCards] = useState<InfoCard[]>([
-    {
-      id: '1',
-      emoji: '⚡',
-      label: 'Intensité',
-      value: 'MAX',
-      color: '#ec4899',
-    },
-    {
-      id: '2',
-      emoji: '❤️',
-      label: 'Fréquence',
-      value: '140+',
-      color: '#f43f5e',
-    },
-  ]);
-  const [destination, setDestination] = useState<Destination>('draft');
+  const [batchCount, setBatchCount] = useState(1);
   const [characterImage, setCharacterImage] = useState<string | null>(null);
-  const [showEmojiPicker, setShowEmojiPicker] = useState<string | null>(null);
+
+  // ── Pexels Photos ───────────────────────────────────────────
+  const [pexelsPhotos, setPexelsPhotos] = useState<PexelsPhoto[]>([]);
+  const [pexelsLoading, setPexelsLoading] = useState(false);
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
+
+  // ── Step 2: Export ──────────────────────────────────────────
+  const [destination, setDestination] = useState<Destination>('draft');
   const [isExporting, setIsExporting] = useState(false);
-  const [exportToast, setExportToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [exportProgress, setExportProgress] = useState(0);
 
-  const handleExport = async () => {
-    if (cards.length === 0) {
-      setExportToast({ message: 'Ajoutez au moins une carte avant d\'exporter', type: 'error' });
-      setTimeout(() => setExportToast(null), 3000);
-      return;
-    }
+  // ── Toast ───────────────────────────────────────────────────
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState<string | null>(null);
 
-    setIsExporting(true);
+  // Toast auto-dismiss
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'error') => setToast({ message, type });
+
+  // ── Fetch Pexels photos based on theme ──────────────────────
+  const [pexelsPage, setPexelsPage] = useState(1);
+
+  const fetchPexelsPhotos = useCallback(async (query: string, newPage?: boolean) => {
+    if (!query.trim()) return;
+    setPexelsLoading(true);
+    const page = newPage ? Math.floor(Math.random() * 10) + 1 : pexelsPage;
+    if (newPage) setPexelsPage(page);
     try {
-      // Upload character image if present
-      let mediaUrl: string | null = null;
-      if (characterImage && characterImage.startsWith('data:')) {
-        const blob = await fetch(characterImage).then((r) => r.blob());
-        const file = new File([blob], 'infographic-character.png', { type: 'image/png' });
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('purpose', 'infographic');
-        const uploadRes = await fetch('/api/upload/media', { method: 'POST', body: formData });
-        const uploadData = await uploadRes.json();
-        if (uploadData.success) mediaUrl = uploadData.file.url;
+      const count = Math.max(batchCount * 2, 6);
+      const res = await fetch(`/api/pexels?query=${encodeURIComponent(query)}&count=${count}&page=${page}`);
+      const data = await res.json();
+      if (data.success && data.photos) {
+        setPexelsPhotos(data.photos);
+        setSelectedPhotoIndex(0);
+      }
+    } catch {
+      console.error('Pexels fetch error');
+    } finally {
+      setPexelsLoading(false);
+    }
+  }, [batchCount]);
+
+  // ── Generate content (AI or local) ──────────────────────────
+  const generateContent = useCallback(async (themeId?: string) => {
+    const theme = themeId || contentTheme;
+    setIsGenerating(true);
+    setGenerationError('');
+
+    try {
+      // Determine topic text
+      const themeObj = CONTENT_THEMES.find(t => t.id === theme);
+      const topicText = theme === 'personnalise' ? customTopic : (themeObj?.label || theme);
+
+      if (theme === 'personnalise' && !customTopic.trim()) {
+        setIsGenerating(false);
+        return;
       }
 
-      // Save video record
-      await fetch('/api/videos', {
+      // Try AI generation first (for custom topics and richer content)
+      const aiRes = await fetch('/api/content/ai-generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title,
-          format: format === '16:9' ? 'tv' : 'reel',
-          type: 'infographic',
-          metadata: { title, subtitle, format, theme, cards, destination, characterImage: mediaUrl },
+          topic: topicText,
+          locale: 'fr',
+          cardCount: 5,
         }),
       });
 
-      // Add to calendar as draft post
-      if (destination === 'draft' || destination === 'both') {
-        const today = new Date();
-        const scheduledDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-        const caption = [subtitle, cards.map((c) => `${c.emoji} ${c.label}: ${c.value}`).join(' | ')].filter(Boolean).join('\n');
-        const postRes = await fetch('/api/posts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title: title || 'Infographie',
-            caption,
-            media_url: mediaUrl,
-            media_type: 'image',
-            format: format === '16:9' ? 'tv' : 'reel',
-            platforms: [],
-            scheduled_date: scheduledDate,
-            scheduled_time: '12:00',
-            status: 'draft',
-            metadata: {
-              type: 'infographic',
-              subtitle,
-              theme,
-              cards: cards.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color })),
-              characterUrl: mediaUrl,
-            },
-          }),
-        });
-        const postData = await postRes.json();
-        if (postData.success) {
-          setExportToast({ message: 'Ajouté au calendrier en brouillon !', type: 'success' });
+      if (aiRes.ok) {
+        const aiData = await aiRes.json();
+        if (aiData.success && aiData.content) {
+          const c = aiData.content;
+          setTitle(c.title || topicText.toUpperCase());
+          setSubtitle(c.subtitle || '');
+          setCards(
+            (c.cards || []).map((card: any, i: number) => ({
+              id: `card-${Date.now()}-${i}`,
+              emoji: card.emoji || '⭐',
+              label: card.label || '',
+              value: card.value || '',
+              description: card.description || '',
+              color: COLOR_THEMES.find(ct => ct.id === colorTheme)?.accent || '#a855f7',
+            }))
+          );
+          setSalesPhrases(c.salesPhrases || []);
+
+          // Fetch photos matching the AI-suggested query or theme
+          const pQuery = c.pexelsQuery || themeObj?.pexelsQuery || topicText;
+          fetchPexelsPhotos(pQuery);
+          return;
         }
       }
 
-      // Export: show success message (no file to download for infographic yet)
-      if (destination === 'export' || destination === 'both') {
-        setExportToast({ message: 'Infographie exportée avec succès !', type: 'success' });
+      // Fallback: try local smart content
+      const localRes = await fetch('/api/content/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: topicText }),
+      });
+      if (localRes.ok) {
+        const localData = await localRes.json();
+        if (localData.success && localData.content) {
+          const c = localData.content;
+          setTitle(c.tagLine || topicText.toUpperCase());
+          setSubtitle(c.subtitle || '');
+          setCards(
+            (c.cards || []).map((card: any, i: number) => ({
+              id: `card-${Date.now()}-${i}`,
+              emoji: card.icon || '⭐',
+              label: card.title || '',
+              value: card.value || '',
+              description: card.description || '',
+              color: COLOR_THEMES.find(ct => ct.id === colorTheme)?.accent || '#a855f7',
+            }))
+          );
+          setSalesPhrases([]);
+          const pQuery = themeObj?.pexelsQuery || topicText;
+          fetchPexelsPhotos(pQuery);
+          return;
+        }
       }
 
-      if (destination === 'draft') {
-        setTimeout(() => router.push('/dashboard/calendar'), 1500);
-      }
-    } catch (error) {
-      console.error('Export error:', error);
-      setExportToast({ message: 'Erreur lors de l\'export', type: 'error' });
+      setGenerationError('Impossible de générer le contenu. Réessayez.');
+    } catch (err) {
+      console.error('Content generation error:', err);
+      setGenerationError('Erreur de génération. Réessayez.');
     } finally {
-      setIsExporting(false);
-      setTimeout(() => setExportToast(null), 3000);
+      setIsGenerating(false);
     }
+  }, [contentTheme, customTopic, colorTheme, fetchPexelsPhotos]);
+
+  // ── Auto-generate on theme change ───────────────────────────
+  useEffect(() => {
+    if (contentTheme !== 'personnalise') {
+      generateContent(contentTheme);
+    } else {
+      // Clear content when switching to custom
+      setTitle('');
+      setSubtitle('');
+      setCards([]);
+      setSalesPhrases([]);
+      setPexelsPhotos([]);
+    }
+  }, [contentTheme]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Régénérer: regenerate content + new photos ──────────────
+  const handleRegenerate = () => {
+    if (contentTheme === 'personnalise' && !customTopic.trim()) {
+      showToast('Entrez un sujet personnalisé');
+      return;
+    }
+    generateContent();
   };
 
+  // ── Card manipulation ───────────────────────────────────────
   const addCard = () => {
-    const newCard: InfoCard = {
-      id: Date.now().toString(),
+    const accent = COLOR_THEMES.find(ct => ct.id === colorTheme)?.accent || '#a855f7';
+    setCards([...cards, {
+      id: `card-${Date.now()}`,
       emoji: '⭐',
       label: 'Nouveau',
       value: 'Valeur',
-      color: '#a855f7',
-    };
-    setCards([...cards, newCard]);
+      description: '',
+      color: accent,
+    }]);
   };
 
-  const deleteCard = (id: string) => {
-    setCards(cards.filter((card) => card.id !== id));
-  };
+  const deleteCard = (id: string) => setCards(cards.filter(c => c.id !== id));
 
   const updateCard = (id: string, field: keyof InfoCard, value: string) => {
-    setCards(
-      cards.map((card) =>
-        card.id === id ? { ...card, [field]: value } : card
-      )
-    );
+    setCards(cards.map(c => c.id === id ? { ...c, [field]: value } : c));
   };
 
+  // ── Character upload ────────────────────────────────────────
   const handleCharacterUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = (event) => {
-        setCharacterImage(event.target?.result as string);
-      };
+      reader.onload = (event) => setCharacterImage(event.target?.result as string);
       reader.readAsDataURL(file);
     }
   };
 
-  const getPreviewClasses = () => {
-    if (format === '16:9') {
-      return { aspect: 'aspect-[16/9]', maxW: 'max-w-lg', cols: 'grid-cols-3' };
+  // ── Export ──────────────────────────────────────────────────
+  const handleExport = async () => {
+    if (cards.length === 0) {
+      showToast('Ajoutez au moins une carte avant d\'exporter');
+      return;
     }
+    setIsExporting(true);
+    setExportProgress(0);
+
+    try {
+      const total = batchCount;
+      for (let b = 0; b < total; b++) {
+        setExportProgress(Math.round(((b) / total) * 100));
+
+        // Pick a different photo for each batch item
+        const photo = pexelsPhotos.length > 0
+          ? pexelsPhotos[b % pexelsPhotos.length]
+          : null;
+        const posterUrl = photo?.url || null;
+
+        // Pick a different sales phrase per batch item
+        const salesPhrase = salesPhrases.length > 0
+          ? salesPhrases[b % salesPhrases.length]
+          : '';
+
+        // Upload character image if present (first iteration only)
+        let mediaUrl: string | null = posterUrl;
+        if (b === 0 && characterImage && characterImage.startsWith('data:')) {
+          const blob = await fetch(characterImage).then((r) => r.blob());
+          const file = new File([blob], 'infographic-character.png', { type: 'image/png' });
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('purpose', 'infographic');
+          const uploadRes = await fetch('/api/upload/media', { method: 'POST', body: formData });
+          const uploadData = await uploadRes.json();
+          if (uploadData.success) mediaUrl = uploadData.file.url;
+        }
+
+        if (destination === 'draft' || destination === 'both') {
+          const today = new Date();
+          today.setDate(today.getDate() + b); // Spread across days
+          const scheduledDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+          const caption = [
+            subtitle,
+            cards.map((c) => `${c.emoji} ${c.label}: ${c.value}`).join(' | '),
+            salesPhrase ? `\n${salesPhrase}` : '',
+          ].filter(Boolean).join('\n');
+
+          await fetch('/api/posts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: title || 'Infographie',
+              caption,
+              media_url: mediaUrl,
+              media_type: 'image',
+              format: format === '16:9' ? 'tv' : 'reel',
+              platforms: [],
+              scheduled_date: scheduledDate,
+              scheduled_time: '12:00',
+              status: 'draft',
+              metadata: {
+                type: 'infographic',
+                subtitle,
+                theme: contentTheme,
+                colorTheme,
+                salesPhrase,
+                cards: cards.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color })),
+                characterUrl: characterImage ? mediaUrl : null,
+                posterUrl,
+                pexelsUrl: posterUrl,
+              },
+            }),
+          });
+        }
+      }
+
+      setExportProgress(100);
+      showToast(`${total} infographie${total > 1 ? 's' : ''} ajoutée${total > 1 ? 's' : ''} au calendrier !`, 'success');
+
+      if (destination === 'draft' || destination === 'both') {
+        setTimeout(() => router.push('/dashboard/calendar'), 1500);
+      }
+    } catch (error) {
+      console.error('Export error:', error);
+      showToast('Erreur lors de l\'export');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // ── Preview helpers ─────────────────────────────────────────
+  const activeColorTheme = COLOR_THEMES.find(ct => ct.id === colorTheme) || COLOR_THEMES[1];
+  const previewPhoto = pexelsPhotos[selectedPhotoIndex] || null;
+
+  const getPreviewClasses = () => {
+    if (format === '16:9') return { aspect: 'aspect-[16/9]', maxW: 'max-w-lg', cols: 'grid-cols-3' };
     return { aspect: 'aspect-[9/16]', maxW: 'max-w-xs', cols: 'grid-cols-2' };
   };
-
-  const getFormatBadgeText = () => {
-    return format === '9:16' ? '9:16' : '16:9';
-  };
-
   const previewClasses = getPreviewClasses();
-  const themeConfig = THEMES[theme];
 
+  // ── Render ──────────────────────────────────────────────────
   return (
     <div className="flex h-full min-h-screen bg-gray-900 text-white">
-      {/* Toast Notification */}
-      {exportToast && (
-        <div
-          className={`fixed top-6 right-6 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium ${
-            exportToast.type === 'success'
-              ? 'bg-green-600 text-white'
-              : 'bg-red-600 text-white'
-          }`}
-        >
-          {exportToast.message}
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed top-6 right-6 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium ${
+          toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+        }`}>
+          {toast.message}
         </div>
       )}
+
       {/* Left Panel - Form */}
-      <div className="w-1/2 overflow-y-auto border-r border-gray-800 p-8">
-        <h1 className="mb-8 text-3xl font-bold">Créer une Infographie</h1>
-
-        {/* Title Input */}
-        <div className="mb-6">
-          <label className="mb-2 block text-sm font-medium text-gray-300">
-            Titre
-          </label>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
-            placeholder="Ex: ÉNERGIE & CARDIO"
-          />
-        </div>
-
-        {/* Subtitle Input */}
-        <div className="mb-6">
-          <label className="mb-2 block text-sm font-medium text-gray-300">
-            Sous-titre (optionnel)
-          </label>
-          <input
-            type="text"
-            value={subtitle}
-            onChange={(e) => setSubtitle(e.target.value)}
-            className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
-            placeholder="Sous-titre optionnel"
-          />
-        </div>
-
-        {/* Format Selector */}
-        <div className="mb-6">
-          <label className="mb-3 block text-sm font-medium text-gray-300">
-            Format
-          </label>
-          <div className="flex gap-3">
-            {['9:16', '16:9', 'both'].map((fmt) => (
+      <div className="w-1/2 overflow-y-auto border-r border-gray-800 p-6">
+        {/* Header */}
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="text-2xl font-bold">Créer une Infographie</h1>
+          <div className="flex items-center gap-2 text-sm text-gray-400">
+            {['Contenu', 'Style', 'Export'].map((label, i) => (
               <button
-                key={fmt}
-                onClick={() => setFormat(fmt as Format)}
-                className={`flex-1 rounded-lg px-4 py-2 font-medium transition-colors ${
-                  format === fmt
-                    ? 'bg-purple-600 text-white'
-                    : 'border border-gray-700 bg-gray-800 text-gray-300 hover:border-purple-500'
+                key={label}
+                onClick={() => setStep(i)}
+                className={`flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-all ${
+                  step === i ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
                 }`}
               >
-                {fmt === 'both' ? 'Les deux' : fmt}
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-black/30 text-[10px]">
+                  {i + 1}
+                </span>
+                {label}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Theme Selector */}
-        <div className="mb-6">
-          <label className="mb-3 block text-sm font-medium text-gray-300">
-            Thème
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            {Object.entries(THEMES).map(([key, themeInfo]) => (
-              <button
-                key={key}
-                onClick={() => setTheme(key as Theme)}
-                className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-all ${
-                  theme === key
-                    ? 'ring-2 ring-purple-500'
-                    : 'hover:ring-1 hover:ring-gray-600'
-                }`}
-              >
-                <div
-                  className={`h-6 w-6 rounded bg-gradient-to-br ${themeInfo.bg}`}
-                />
-                <span className="text-sm">{themeInfo.name}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Cartes d'Information */}
-        <div className="mb-6">
-          <h3 className="mb-4 text-sm font-semibold text-gray-300">
-            Cartes d'Information
-          </h3>
-          <div className="space-y-4">
-            {cards.map((card) => (
-              <div
-                key={card.id}
-                className="space-y-3 rounded-lg border border-gray-700 bg-gray-800 p-4"
-              >
-                {/* Emoji Picker */}
-                <div className="relative">
-                  <label className="mb-2 block text-xs font-medium text-gray-400">
-                    Emoji
-                  </label>
+        {/* ═══════════════════════════════════════════════════════ */}
+        {/* STEP 0: Content Theme & Generation */}
+        {/* ═══════════════════════════════════════════════════════ */}
+        {step === 0 && (
+          <div className="space-y-6">
+            {/* Content Theme Selector */}
+            <div>
+              <label className="mb-3 block text-sm font-medium text-gray-300">Thème du contenu</label>
+              <div className="grid grid-cols-2 gap-2">
+                {CONTENT_THEMES.map((theme) => (
                   <button
-                    onClick={() =>
-                      setShowEmojiPicker(
-                        showEmojiPicker === card.id ? null : card.id
-                      )
-                    }
-                    className="w-full rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 text-2xl hover:bg-gray-600"
+                    key={theme.id}
+                    onClick={() => setContentTheme(theme.id)}
+                    className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
+                      contentTheme === theme.id
+                        ? 'ring-2 ring-purple-500 bg-gray-800'
+                        : 'bg-gray-800/50 hover:bg-gray-800'
+                    }`}
                   >
-                    {card.emoji}
+                    <span className="text-lg">{theme.emoji}</span>
+                    <span>{theme.label}</span>
                   </button>
-                  {showEmojiPicker === card.id && (
-                    <div className="absolute top-full left-0 right-0 z-10 mt-2 grid grid-cols-5 gap-2 rounded-lg border border-gray-600 bg-gray-800 p-3">
-                      {EMOJIS.map((emoji) => (
-                        <button
-                          key={emoji}
-                          onClick={() => {
-                            updateCard(card.id, 'emoji', emoji);
-                            setShowEmojiPicker(null);
-                          }}
-                          className="rounded px-2 py-1 text-xl hover:bg-gray-700"
-                        >
-                          {emoji}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                ))}
+              </div>
+            </div>
 
-                {/* Label */}
-                <div>
-                  <label className="mb-2 block text-xs font-medium text-gray-400">
-                    Libellé
-                  </label>
+            {/* Custom Topic Input (only for Personnalisé) */}
+            {contentTheme === 'personnalise' && (
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-300">
+                  Votre sujet personnalisé
+                </label>
+                <div className="flex gap-2">
                   <input
                     type="text"
-                    value={card.label}
-                    onChange={(e) =>
-                      updateCard(card.id, 'label', e.target.value)
-                    }
-                    className="w-full rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
-                    placeholder="Ex: Intensité"
+                    value={customTopic}
+                    onChange={(e) => setCustomTopic(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && customTopic.trim()) generateContent(); }}
+                    className="flex-1 rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
+                    placeholder="Ex: moringa, collagène, stretching..."
                   />
+                  <button
+                    onClick={() => generateContent()}
+                    disabled={!customTopic.trim() || isGenerating}
+                    className="rounded-lg bg-purple-600 px-4 py-2.5 font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                  >
+                    {isGenerating ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                  </button>
                 </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  L'IA va générer des cartes d'information riches sur ce sujet
+                </p>
+              </div>
+            )}
 
-                {/* Value */}
-                <div>
-                  <label className="mb-2 block text-xs font-medium text-gray-400">
-                    Valeur
-                  </label>
-                  <input
-                    type="text"
-                    value={card.value}
-                    onChange={(e) =>
-                      updateCard(card.id, 'value', e.target.value)
-                    }
-                    className="w-full rounded-lg border border-gray-600 bg-gray-700 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
-                    placeholder="Ex: MAX"
-                  />
-                </div>
+            {/* Loading / Error State */}
+            {isGenerating && (
+              <div className="flex items-center justify-center gap-3 rounded-lg border border-gray-700 bg-gray-800/50 py-8">
+                <Loader2 size={24} className="animate-spin text-purple-400" />
+                <span className="text-gray-300">Génération du contenu par l'IA...</span>
+              </div>
+            )}
+            {generationError && (
+              <div className="rounded-lg border border-red-800 bg-red-900/30 p-3 text-sm text-red-300">
+                {generationError}
+              </div>
+            )}
 
-                {/* Color Picker */}
-                <div className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <label className="mb-2 block text-xs font-medium text-gray-400">
-                      Couleur
-                    </label>
+            {/* Generated Content Preview */}
+            {!isGenerating && cards.length > 0 && (
+              <>
+                {/* Title & Subtitle */}
+                <div className="space-y-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-400">Titre</label>
                     <input
-                      type="color"
-                      value={card.color}
-                      onChange={(e) =>
-                        updateCard(card.id, 'color', e.target.value)
-                      }
-                      className="h-10 w-full cursor-pointer rounded-lg border border-gray-600"
+                      type="text"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-white focus:border-purple-500 focus:outline-none"
                     />
                   </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-400">Sous-titre</label>
+                    <input
+                      type="text"
+                      value={subtitle}
+                      onChange={(e) => setSubtitle(e.target.value)}
+                      className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-white focus:border-purple-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Info Cards */}
+                <div>
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-gray-300">
+                      Cartes d'Information ({cards.length})
+                    </h3>
+                    <button
+                      onClick={handleRegenerate}
+                      disabled={isGenerating}
+                      className="flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-medium text-purple-400 hover:bg-gray-700"
+                    >
+                      <RefreshCw size={14} className={isGenerating ? 'animate-spin' : ''} />
+                      Régénérer
+                    </button>
+                  </div>
+                  <div className="space-y-3">
+                    {cards.map((card) => (
+                      <div key={card.id} className="rounded-lg border border-gray-700 bg-gray-800 p-3">
+                        <div className="flex items-start gap-3">
+                          {/* Emoji */}
+                          <div className="relative">
+                            <button
+                              onClick={() => setShowEmojiPicker(showEmojiPicker === card.id ? null : card.id)}
+                              className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-700 text-xl hover:bg-gray-600"
+                            >
+                              {card.emoji}
+                            </button>
+                            {showEmojiPicker === card.id && (
+                              <div className="absolute top-full left-0 z-10 mt-1 grid grid-cols-5 gap-1 rounded-lg border border-gray-600 bg-gray-800 p-2 shadow-xl">
+                                {EMOJIS.map((emoji) => (
+                                  <button
+                                    key={emoji}
+                                    onClick={() => { updateCard(card.id, 'emoji', emoji); setShowEmojiPicker(null); }}
+                                    className="rounded p-1 text-lg hover:bg-gray-700"
+                                  >
+                                    {emoji}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          {/* Content */}
+                          <div className="flex-1 space-y-1.5">
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={card.label}
+                                onChange={(e) => updateCard(card.id, 'label', e.target.value)}
+                                className="flex-1 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs font-bold text-white focus:border-purple-500 focus:outline-none"
+                                placeholder="Label"
+                              />
+                              <input
+                                type="text"
+                                value={card.value}
+                                onChange={(e) => updateCard(card.id, 'value', e.target.value)}
+                                className="w-20 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs font-bold text-purple-400 focus:border-purple-500 focus:outline-none"
+                                placeholder="Valeur"
+                              />
+                            </div>
+                            <input
+                              type="text"
+                              value={card.description}
+                              onChange={(e) => updateCard(card.id, 'description', e.target.value)}
+                              className="w-full rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-300 focus:border-purple-500 focus:outline-none"
+                              placeholder="Description courte"
+                            />
+                          </div>
+                          {/* Delete */}
+                          <button onClick={() => deleteCard(card.id)} className="rounded p-1 text-gray-500 hover:bg-red-600 hover:text-white">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                   <button
-                    onClick={() => deleteCard(card.id)}
-                    className="mb-0 rounded-lg bg-red-600 p-2 hover:bg-red-700"
+                    onClick={addCard}
+                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-gray-700 bg-gray-800/50 py-2.5 text-xs font-medium text-gray-400 hover:border-purple-500 hover:text-purple-400"
                   >
-                    <Trash2 size={18} />
+                    <Plus size={14} />
+                    Ajouter une carte
                   </button>
                 </div>
-              </div>
-            ))}
-          </div>
 
-          {/* Add Card Button */}
-          <button
-            onClick={addCard}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-gray-700 bg-gray-800 py-3 text-sm font-medium text-gray-300 hover:border-purple-500 hover:text-purple-400"
-          >
-            <Plus size={18} />
-            Ajouter une carte
-          </button>
-        </div>
+                {/* Sales Phrases */}
+                {salesPhrases.length > 0 && (
+                  <div>
+                    <h3 className="mb-2 text-sm font-semibold text-gray-300">Phrases de vente</h3>
+                    <div className="space-y-1.5">
+                      {salesPhrases.map((phrase, i) => (
+                        <div key={i} className="flex items-center gap-2 rounded-lg bg-gray-800 px-3 py-2 text-xs text-gray-300">
+                          <span className="text-purple-400">#{i + 1}</span>
+                          <input
+                            type="text"
+                            value={phrase}
+                            onChange={(e) => {
+                              const updated = [...salesPhrases];
+                              updated[i] = e.target.value;
+                              setSalesPhrases(updated);
+                            }}
+                            className="flex-1 bg-transparent text-xs text-gray-300 focus:outline-none"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-        {/* Character Image Upload */}
-        <div className="mb-6">
-          <label className="mb-2 block text-sm font-medium text-gray-300">
-            Image du personnage (optionnel)
-          </label>
-          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-700 bg-gray-800 px-4 py-6 hover:border-purple-500 hover:bg-gray-700">
-            <Upload size={20} />
-            <span className="text-sm text-gray-300">
-              {characterImage ? 'Changer l\'image' : 'Télécharger une image'}
-            </span>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleCharacterUpload}
-              className="hidden"
-            />
-          </label>
-        </div>
-
-        {/* Destination */}
-        <div className="mb-6">
-          <label className="mb-3 block text-sm font-medium text-gray-300">
-            Destination
-          </label>
-          <div className="space-y-2">
-            {[
-              { value: 'draft', label: 'Calendrier (brouillon)' },
-              { value: 'export', label: 'Export fichier' },
-              { value: 'both', label: 'Les deux' },
-            ].map((option) => (
-              <label key={option.value} className="flex items-center gap-3">
-                <input
-                  type="radio"
-                  name="destination"
-                  value={option.value}
-                  checked={destination === option.value}
-                  onChange={(e) => setDestination(e.target.value as Destination)}
-                  className="h-4 w-4 cursor-pointer"
-                />
-                <span className="text-sm text-gray-300">{option.label}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        {/* Export Button */}
-        <div className="flex flex-col gap-3">
-          <button
-            onClick={handleExport}
-            disabled={isExporting}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-3 font-bold text-white hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isExporting ? (
-              <Loader2 size={20} className="animate-spin" />
-            ) : (
-              <Zap size={20} />
+                {/* Next Step */}
+                <button
+                  onClick={() => setStep(1)}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-purple-600 py-3 font-bold text-white hover:bg-purple-700"
+                >
+                  Personnaliser le style
+                  <ChevronRight size={18} />
+                </button>
+              </>
             )}
-            {isExporting ? 'EXPORT EN COURS...' : 'EXPORTER LA VIDÉO'}
-          </button>
-          <div className="text-center text-sm text-gray-400">
-            Coût: <span className="font-bold text-yellow-400">25 crédits</span>
           </div>
-        </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════ */}
+        {/* STEP 1: Personnalisation */}
+        {/* ═══════════════════════════════════════════════════════ */}
+        {step === 1 && (
+          <div className="space-y-6">
+            {/* Color Theme */}
+            <div>
+              <label className="mb-3 block text-sm font-medium text-gray-300">Couleur du thème</label>
+              <div className="grid grid-cols-3 gap-2">
+                {COLOR_THEMES.map((ct) => (
+                  <button
+                    key={ct.id}
+                    onClick={() => setColorTheme(ct.id)}
+                    className={`flex items-center gap-2 rounded-lg px-3 py-2 transition-all ${
+                      colorTheme === ct.id ? 'ring-2 ring-white' : 'hover:ring-1 hover:ring-gray-600'
+                    }`}
+                  >
+                    <div className={`h-5 w-5 rounded bg-gradient-to-br ${ct.bg}`} />
+                    <span className="text-xs">{ct.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Format */}
+            <div>
+              <label className="mb-3 block text-sm font-medium text-gray-300">Format</label>
+              <div className="flex gap-3">
+                {(['9:16', '16:9'] as Format[]).map((fmt) => (
+                  <button
+                    key={fmt}
+                    onClick={() => setFormat(fmt)}
+                    className={`flex-1 rounded-lg px-4 py-2 font-medium transition-colors ${
+                      format === fmt
+                        ? 'bg-purple-600 text-white'
+                        : 'border border-gray-700 bg-gray-800 text-gray-300 hover:border-purple-500'
+                    }`}
+                  >
+                    {fmt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Batch Count */}
+            <div>
+              <label className="mb-3 block text-sm font-medium text-gray-300">
+                Nombre d'infographies: <span className="text-purple-400 font-bold">x{batchCount}</span>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {[1, 2, 3, 5, 7, 10].map((count) => (
+                  <button
+                    key={count}
+                    onClick={() => setBatchCount(count)}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                      batchCount === count
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                    }`}
+                  >
+                    x{count}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Pexels Photos */}
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <label className="text-sm font-medium text-gray-300">
+                  Photos d'affiche {pexelsPhotos.length > 0 && `(${pexelsPhotos.length})`}
+                </label>
+                <button
+                  onClick={() => {
+                    const themeObj = CONTENT_THEMES.find(t => t.id === contentTheme);
+                    const query = contentTheme === 'personnalise'
+                      ? customTopic
+                      : (themeObj?.pexelsQuery || themeObj?.label || 'fitness');
+                    fetchPexelsPhotos(query, true);
+                  }}
+                  disabled={pexelsLoading}
+                  className="flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-medium text-purple-400 hover:bg-gray-700"
+                >
+                  <RefreshCw size={14} className={pexelsLoading ? 'animate-spin' : ''} />
+                  Régénérer
+                </button>
+              </div>
+              {pexelsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 size={24} className="animate-spin text-purple-400" />
+                </div>
+              ) : pexelsPhotos.length > 0 ? (
+                <div className="grid grid-cols-3 gap-2">
+                  {pexelsPhotos.map((photo, i) => (
+                    <button
+                      key={photo.id}
+                      onClick={() => setSelectedPhotoIndex(i)}
+                      className={`relative overflow-hidden rounded-lg transition-all ${
+                        selectedPhotoIndex === i ? 'ring-2 ring-purple-500' : 'opacity-70 hover:opacity-100'
+                      }`}
+                    >
+                      <img src={photo.small} alt={photo.alt} className="aspect-[3/4] w-full object-cover" />
+                      {selectedPhotoIndex === i && (
+                        <div className="absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-purple-500">
+                          <Check size={12} />
+                        </div>
+                      )}
+                      {batchCount > 1 && i < batchCount && (
+                        <div className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                          #{i + 1}
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center justify-center rounded-lg border border-dashed border-gray-700 py-8 text-sm text-gray-500">
+                  <ImageIcon size={18} className="mr-2" />
+                  Aucune photo chargée
+                </div>
+              )}
+              {batchCount > 1 && pexelsPhotos.length > 0 && (
+                <p className="mt-2 text-xs text-gray-500">
+                  Chaque infographie du batch utilisera une photo différente
+                </p>
+              )}
+            </div>
+
+            {/* Character Image Upload */}
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-300">
+                Image personnage (optionnel)
+              </label>
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-700 bg-gray-800 px-4 py-4 hover:border-purple-500 hover:bg-gray-700">
+                <Upload size={18} />
+                <span className="text-sm text-gray-300">
+                  {characterImage ? 'Changer l\'image' : 'Télécharger'}
+                </span>
+                <input type="file" accept="image/*" onChange={handleCharacterUpload} className="hidden" />
+              </label>
+            </div>
+
+            {/* Navigation */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setStep(0)}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-gray-700 bg-gray-800 py-3 font-medium text-gray-300 hover:bg-gray-700"
+              >
+                <ChevronLeft size={18} />
+                Contenu
+              </button>
+              <button
+                onClick={() => setStep(2)}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-purple-600 py-3 font-bold text-white hover:bg-purple-700"
+              >
+                Export
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════ */}
+        {/* STEP 2: Export */}
+        {/* ═══════════════════════════════════════════════════════ */}
+        {step === 2 && (
+          <div className="space-y-6">
+            {/* Summary */}
+            <div className="rounded-lg border border-gray-700 bg-gray-800 p-4">
+              <h3 className="mb-3 text-sm font-semibold text-gray-300">Résumé</h3>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <span className="text-gray-500">Thème:</span>
+                  <span className="ml-2 text-white">{CONTENT_THEMES.find(t => t.id === contentTheme)?.label}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Cartes:</span>
+                  <span className="ml-2 text-white">{cards.length}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Format:</span>
+                  <span className="ml-2 text-white">{format}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Batch:</span>
+                  <span className="ml-2 text-white">x{batchCount}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Photos:</span>
+                  <span className="ml-2 text-white">{pexelsPhotos.length}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Phrases:</span>
+                  <span className="ml-2 text-white">{salesPhrases.length}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Destination */}
+            <div>
+              <label className="mb-3 block text-sm font-medium text-gray-300">Destination</label>
+              <div className="space-y-2">
+                {[
+                  { value: 'draft' as Destination, label: 'Calendrier (brouillon)' },
+                  { value: 'export' as Destination, label: 'Export fichier' },
+                  { value: 'both' as Destination, label: 'Les deux' },
+                ].map((option) => (
+                  <label key={option.value} className="flex items-center gap-3 rounded-lg bg-gray-800 px-4 py-3 cursor-pointer hover:bg-gray-700">
+                    <input
+                      type="radio"
+                      name="destination"
+                      value={option.value}
+                      checked={destination === option.value}
+                      onChange={(e) => setDestination(e.target.value as Destination)}
+                      className="h-4 w-4 cursor-pointer"
+                    />
+                    <span className="text-sm text-gray-300">{option.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Export Progress */}
+            {isExporting && (
+              <div className="rounded-lg border border-purple-800 bg-purple-900/20 p-4">
+                <div className="mb-2 flex justify-between text-sm">
+                  <span className="text-purple-300">Export en cours...</span>
+                  <span className="text-purple-400 font-bold">{exportProgress}%</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-gray-700">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300"
+                    style={{ width: `${exportProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Export Button */}
+            <button
+              onClick={handleExport}
+              disabled={isExporting || cards.length === 0}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-3 font-bold text-white hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isExporting ? (
+                <Loader2 size={20} className="animate-spin" />
+              ) : (
+                <Zap size={20} />
+              )}
+              {isExporting
+                ? 'EXPORT EN COURS...'
+                : batchCount > 1
+                  ? `EXPORTER ${batchCount} INFOGRAPHIES`
+                  : 'EXPORTER L\'INFOGRAPHIE'
+              }
+            </button>
+            <div className="text-center text-sm text-gray-400">
+              Coût: <span className="font-bold text-yellow-400">{25 * batchCount} crédits</span>
+            </div>
+
+            {/* Back */}
+            <button
+              onClick={() => setStep(1)}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 bg-gray-800 py-2.5 text-sm font-medium text-gray-300 hover:bg-gray-700"
+            >
+              <ChevronLeft size={16} />
+              Retour
+            </button>
+          </div>
+        )}
       </div>
 
+      {/* ═══════════════════════════════════════════════════════════ */}
       {/* Right Panel - Preview */}
-      <div className="w-1/2 flex flex-col items-center justify-center border-l border-gray-800 bg-gray-950 p-8">
-        <h2 className="mb-8 text-2xl font-bold text-gray-300">Aperçu</h2>
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <div className="w-1/2 flex flex-col items-center justify-center border-l border-gray-800 bg-gray-950 p-6">
+        <h2 className="mb-4 text-lg font-bold text-gray-400">Aperçu</h2>
 
         {/* Preview Container */}
         <div className={`relative w-full ${previewClasses.maxW} mx-auto`}>
           <div
-            className={`${previewClasses.aspect} relative flex flex-col items-center justify-center gap-4 rounded-lg bg-gradient-to-br ${themeConfig.bg} p-6 shadow-2xl overflow-hidden transition-all duration-300`}
+            className={`${previewClasses.aspect} relative flex flex-col items-center justify-between rounded-lg bg-gradient-to-br ${activeColorTheme.bg} p-4 shadow-2xl overflow-hidden transition-all duration-300`}
           >
+            {/* Background Photo */}
+            {previewPhoto && (
+              <img
+                src={previewPhoto.medium}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover opacity-20"
+              />
+            )}
+
             {/* Format Badge */}
-            <div className="absolute top-2 right-2 rounded-full bg-black/40 px-3 py-1 text-xs font-bold text-white backdrop-blur">
-              {getFormatBadgeText()}
+            <div className="absolute top-2 right-2 rounded-full bg-black/40 px-2.5 py-0.5 text-[10px] font-bold text-white backdrop-blur z-10">
+              {format}
             </div>
 
-            {/* Title */}
-            <div className="text-center">
-              <h3 className={`font-black text-white drop-shadow-lg ${format === '16:9' ? 'text-2xl' : 'text-lg'}`}>
-                {title}
+            {/* Top Section: Title */}
+            <div className="relative z-10 text-center pt-2">
+              <h3 className={`font-black text-white drop-shadow-lg ${format === '16:9' ? 'text-xl' : 'text-base'}`}>
+                {title || 'TITRE'}
               </h3>
               {subtitle && (
-                <p className={`mt-1 text-white/80 drop-shadow ${format === '16:9' ? 'text-sm' : 'text-xs'}`}>
+                <p className={`mt-1 text-white/80 drop-shadow ${format === '16:9' ? 'text-xs' : 'text-[10px]'}`}>
                   {subtitle}
                 </p>
               )}
             </div>
 
-            {/* Info Cards Grid */}
-            <div className={`grid gap-2 ${previewClasses.cols}`}>
-              {cards.map((card) => (
+            {/* Cards Grid */}
+            <div className={`relative z-10 grid gap-1.5 w-full ${previewClasses.cols}`}>
+              {cards.slice(0, format === '16:9' ? 6 : 5).map((card) => (
                 <div
                   key={card.id}
-                  className="flex flex-col items-center gap-1 rounded-lg bg-black/20 px-2 py-2 backdrop-blur-sm"
-                  style={{
-                    borderLeft: `3px solid ${card.color}`,
-                  }}
+                  className="flex flex-col items-center gap-0.5 rounded-lg bg-black/30 px-1.5 py-1.5 backdrop-blur-sm"
+                  style={{ borderLeft: `2px solid ${card.color}` }}
                 >
-                  <span className={format === '16:9' ? 'text-xl' : 'text-base'}>
-                    {card.emoji}
-                  </span>
-                  <p className={`text-center font-bold text-white drop-shadow ${format === '16:9' ? 'text-[10px]' : 'text-[8px]'}`}>
+                  <span className={format === '16:9' ? 'text-lg' : 'text-sm'}>{card.emoji}</span>
+                  <p className={`text-center font-bold text-white drop-shadow ${format === '16:9' ? 'text-[9px]' : 'text-[7px]'}`}>
                     {card.label}
                   </p>
-                  <p
-                    className={`text-center font-black drop-shadow ${format === '16:9' ? 'text-[11px]' : 'text-[9px]'}`}
-                    style={{ color: card.color }}
-                  >
+                  <p className={`text-center font-black drop-shadow ${format === '16:9' ? 'text-[10px]' : 'text-[8px]'}`} style={{ color: card.color }}>
                     {card.value}
                   </p>
+                  {card.description && (
+                    <p className={`text-center text-white/60 ${format === '16:9' ? 'text-[7px]' : 'text-[6px]'}`}>
+                      {card.description.substring(0, 30)}
+                    </p>
+                  )}
                 </div>
               ))}
+            </div>
+
+            {/* Bottom: Sales Phrase */}
+            <div className="relative z-10 text-center pb-1">
+              {salesPhrases.length > 0 && (
+                <p className={`font-medium text-white/90 drop-shadow ${format === '16:9' ? 'text-[10px]' : 'text-[8px]'}`}>
+                  {salesPhrases[0]}
+                </p>
+              )}
+              <p className={`mt-0.5 font-bold text-white drop-shadow ${format === '16:9' ? 'text-[10px]' : 'text-[7px]'}`}>
+                AFROBOOST
+              </p>
             </div>
 
             {/* Character Image */}
@@ -534,43 +971,62 @@ export default function InfographicPage() {
               <img
                 src={characterImage}
                 alt="Character"
-                className="absolute bottom-2 right-2 h-1/3 w-auto rounded"
+                className="absolute bottom-2 right-2 h-1/4 w-auto rounded z-10"
               />
             )}
           </div>
         </div>
 
-        {/* Destination Indicator */}
-        <div className="mt-6 text-center">
-          <p className="text-sm text-gray-400">
-            Destination:{' '}
-            <span className="font-bold text-purple-400">
-              {destination === 'draft'
-                ? 'Calendrier'
-                : destination === 'export'
-                  ? 'Export'
-                  : 'Calendrier + Export'}
-            </span>
-          </p>
-        </div>
+        {/* Batch Preview Dots */}
+        {batchCount > 1 && (
+          <div className="mt-4 flex items-center gap-4">
+            <span className="text-xs text-gray-500">Batch: x{batchCount}</span>
+            <div className="flex gap-1.5">
+              {Array.from({ length: Math.min(batchCount, 10) }, (_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setSelectedPhotoIndex(i % pexelsPhotos.length)}
+                  className={`h-2.5 w-2.5 rounded-full transition-all ${
+                    selectedPhotoIndex === i % pexelsPhotos.length
+                      ? 'bg-purple-500 scale-125'
+                      : 'bg-gray-600 hover:bg-gray-500'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
-        {/* Info Stats */}
-        <div className="mt-8 grid w-full max-w-xs grid-cols-3 gap-4 rounded-lg bg-gray-800 p-4">
+        {/* Photo Preview Grid (small thumbnails) */}
+        {pexelsPhotos.length > 0 && (
+          <div className="mt-4 flex gap-2 overflow-x-auto px-4">
+            {pexelsPhotos.slice(0, Math.max(batchCount, 4)).map((photo, i) => (
+              <button
+                key={photo.id}
+                onClick={() => setSelectedPhotoIndex(i)}
+                className={`flex-shrink-0 overflow-hidden rounded transition-all ${
+                  selectedPhotoIndex === i ? 'ring-2 ring-purple-500' : 'opacity-60 hover:opacity-100'
+                }`}
+              >
+                <img src={photo.small} alt="" className="h-16 w-12 object-cover" />
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Stats */}
+        <div className="mt-6 grid w-full max-w-xs grid-cols-3 gap-4 rounded-lg bg-gray-800 p-3">
           <div className="text-center">
             <p className="text-xs text-gray-400">Cartes</p>
             <p className="text-lg font-bold text-white">{cards.length}</p>
           </div>
           <div className="text-center">
-            <p className="text-xs text-gray-400">Format</p>
-            <p className="text-lg font-bold text-white">
-              {format === 'both' ? '2' : '1'}
-            </p>
+            <p className="text-xs text-gray-400">Batch</p>
+            <p className="text-lg font-bold text-white">x{batchCount}</p>
           </div>
           <div className="text-center">
             <p className="text-xs text-gray-400">Crédits</p>
-            <p className="text-lg font-bold text-yellow-400">
-              {format === 'both' ? '50' : '25'}
-            </p>
+            <p className="text-lg font-bold text-yellow-400">{25 * batchCount}</p>
           </div>
         </div>
       </div>
