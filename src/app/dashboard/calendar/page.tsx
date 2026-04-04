@@ -2228,8 +2228,8 @@ export default function CalendarPage() {
                       {posterImgSrc ? <img src={posterImgSrc} alt="Affiche" className="absolute inset-0 w-full h-full object-cover" /> : <div className="absolute inset-0 bg-gradient-to-b from-black to-purple-950" />}
                       <div className="absolute inset-0" style={{ background: posterImgSrc ? 'linear-gradient(to top, rgba(100,0,140,0.85) 0%, rgba(0,0,0,0.35) 40%, transparent 60%)' : 'transparent' }} />
                       <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 z-10">
-                        <h3 className="text-4xl font-black text-white uppercase tracking-wider leading-tight" style={{ textShadow: `0 0 20px ${accent}CC, 0 0 50px ${accent}66` }}>{displayTitle || 'TITRE'}</h3>
-                        {meta?.subtitle && <p className="text-lg text-white/90 mt-3" style={{ textShadow: `0 0 12px ${accent}80` }}>{meta.subtitle}</p>}
+                        <h3 className="text-3xl font-black text-white uppercase tracking-wider leading-tight" style={{ textShadow: `0 0 20px ${accent}CC, 0 0 50px ${accent}66` }}>{displayTitle || 'TITRE'}</h3>
+                        {meta?.subtitle && <p className="text-base text-white/90 mt-3" style={{ textShadow: `0 0 12px ${accent}80` }}>{meta.subtitle}</p>}
                         <div className="w-20 h-0.5 mt-4 mx-auto rounded-full" style={{ background: `linear-gradient(90deg, transparent, ${accent}, transparent)` }} />
                       </div>
                     </div>
@@ -2238,7 +2238,7 @@ export default function CalendarPage() {
                     <div className="absolute inset-0" style={{ opacity: currentSeq === 'cards' ? 1 : 0, zIndex: currentSeq === 'cards' ? 10 : 1, transition: 'opacity 800ms ease-in-out', willChange: 'opacity' }}>
                       <div className="absolute inset-0 bg-gradient-to-b from-purple-950 via-gray-900 to-black" />
                       <div className="absolute inset-0 flex flex-col items-center justify-center z-10 px-6">
-                        <p className="text-sm font-bold text-white/50 uppercase tracking-[0.25em] text-center mb-5">{t('fullPreview.information')}</p>
+                        <p className="text-xs font-bold text-white/50 uppercase tracking-[0.25em] text-center mb-5">{t('fullPreview.information')}</p>
                         <div className="w-full space-y-2.5">
                           {(() => {
                             // Use cards if available, otherwise convert textCards
@@ -2247,9 +2247,9 @@ export default function CalendarPage() {
                               : (meta?.textCards || []).map((tCard: { text: string; color?: string }) => ({ emoji: '📝', label: tCard.text, value: tCard.text, color: tCard.color }));
                             return displayCards.map((card: { emoji: string; label: string; value: string; color?: string }, i: number) => (
                               <div key={i} className="flex items-center gap-3 bg-black/40 rounded-xl px-4 py-3" style={{ borderLeft: `3px solid ${card.color || accent}`, transition: 'opacity 0.5s ease-out, transform 0.5s ease-out', transitionDelay: currentSeq === 'cards' ? `${i * 150}ms` : '0ms', opacity: currentSeq === 'cards' ? 1 : 0, transform: currentSeq === 'cards' ? 'translateX(0) translateZ(0)' : 'translateX(-20px) translateZ(0)', willChange: 'opacity, transform' }}>
-                                <span className="text-3xl">{card.emoji}</span>
-                                <span className="text-base text-white/80 flex-1">{card.label}</span>
-                                <span className="text-xl font-bold text-white" style={{ textShadow: `0 0 10px ${accent}80` }}>{card.value}</span>
+                                <span className="text-2xl">{card.emoji}</span>
+                                <span className="text-sm text-white/80 flex-1">{card.label}</span>
+                                <span className="text-lg font-bold text-white" style={{ textShadow: `0 0 10px ${accent}80` }}>{card.value}</span>
                               </div>
                             ));
                           })()}
@@ -2276,7 +2276,7 @@ export default function CalendarPage() {
                         {/* Video overlay text — optional text set by user in Infographie */}
                         {meta?.videoOverlayText && (
                           <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none px-6">
-                            <p className="text-3xl font-black text-white uppercase tracking-wider text-center" style={{ textShadow: `0 2px 20px rgba(0,0,0,0.9), 0 0 40px ${accent}40, 0 4px 8px rgba(0,0,0,0.7)`, lineHeight: 1.15 }}>{meta.videoOverlayText}</p>
+                            <p className="text-2xl font-black text-white uppercase tracking-wider text-center" style={{ textShadow: `0 2px 20px rgba(0,0,0,0.9), 0 0 40px ${accent}40, 0 4px 8px rgba(0,0,0,0.7)`, lineHeight: 1.15 }}>{meta.videoOverlayText}</p>
                           </div>
                         )}
                       </div>
@@ -2287,16 +2287,16 @@ export default function CalendarPage() {
                     <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ opacity: currentSeq === 'cta' ? 1 : 0, transform: currentSeq === 'cta' ? 'scale(1)' : 'scale(0.92)', zIndex: currentSeq === 'cta' ? 10 : 1, background: '#000000', transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
                       <div className="text-center px-6">
                         {meta?.logoUrl && <img src={meta.logoUrl} alt="Logo" className="w-40 h-40 object-contain mx-auto mb-6" />}
-                        <p className="text-4xl font-black uppercase tracking-wider mb-4 leading-tight px-2" style={{ color: accent, textShadow: `0 0 30px ${accent}` }}>{brd?.ctaText || branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}</p>
-                        <p className="text-3xl uppercase tracking-wider font-bold" style={{ color: '#FFFFFF' }}>{brd?.ctaSubText || branding.ctaSubText || 'LIEN EN BIO'}</p>
-                        {meta?.salesPhrase && <p className="text-3xl mt-5 font-bold" style={{ color: '#FFFFFF' }}>{meta.salesPhrase}</p>}
+                        <p className="text-3xl font-black uppercase tracking-wider mb-4 leading-tight px-2" style={{ color: accent, textShadow: `0 0 30px ${accent}` }}>{brd?.ctaText || branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}</p>
+                        <p className="text-2xl uppercase tracking-wider font-bold" style={{ color: '#FFFFFF' }}>{brd?.ctaSubText || branding.ctaSubText || 'LIEN EN BIO'}</p>
+                        {meta?.salesPhrase && <p className="text-2xl mt-5 font-bold" style={{ color: '#FFFFFF' }}>{meta.salesPhrase}</p>}
                       </div>
                     </div>
 
                     {/* === Lien site web — visible sur toutes les séquences SAUF CTA (CTA a déjà son watermark) === */}
                     {currentSeq !== 'cta' && (
                     <div className="absolute bottom-8 left-0 right-0 z-30 flex justify-center pointer-events-none">
-                      <p className="text-lg font-bold text-white/90 tracking-wider" style={{ textShadow: `0 0 10px ${accent}80, 0 2px 4px rgba(0,0,0,0.8)` }}>Afroboost.com</p>
+                      <p className="text-base font-bold text-white/90 tracking-wider" style={{ textShadow: `0 0 10px ${accent}80, 0 2px 4px rgba(0,0,0,0.8)` }}>Afroboost.com</p>
                     </div>
                     )}
 
