@@ -64,6 +64,15 @@ const COLOR_THEMES = [
 
 const EMOJIS = ['💪', '❤️', '⚡', '🔥', '🎯', '📊', '🏃', '🧠', '💨', '🌟', '😴', '🍎', '💧', '🛡️', '🏆', '👥', '🌿', '📈', '✨', '🦴'];
 
+// Map icon names from smart-content.ts to actual emoji characters
+const ICON_TO_EMOJI: Record<string, string> = {
+  droplet: '💧', brain: '🧠', fire: '🔥', shield: '🛡️', energy: '⚡',
+  thermometer: '🌡️', muscle: '💪', apple: '🍎', heart: '❤️', moon: '😴',
+  sun: '☀️', chart: '📈', audio: '🎵', leaf: '🌿', star: '⭐',
+  clock: '⏰', bone: '🦴', eye: '👁️', running: '🏃', target: '🎯',
+  vitamin: '💊', dna: '🧬', scale: '⚖️', food: '🍽️', water: '💧',
+};
+
 export default function InfographicPage() {
   const router = useRouter();
 
@@ -274,7 +283,7 @@ export default function InfographicPage() {
           setCards(
             (c.cards || []).map((card: any, i: number) => ({
               id: `card-${Date.now()}-${i}`,
-              emoji: card.icon || '⭐',
+              emoji: ICON_TO_EMOJI[card.icon] || card.icon || '⭐',
               label: card.title || '',
               value: card.value || '',
               description: card.description || '',
