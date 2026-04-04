@@ -1,11 +1,11 @@
 import type { Metadata } from 'next'
-import { Inter, Oswald } from 'next/font/google'
+import { Inter } from 'next/font/google'
 import './globals.css'
 import Providers from './providers'
 import PWAInstallPrompt from '@/components/PWAInstallPrompt'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
-const oswald = Oswald({ subsets: ['latin'], variable: '--font-oswald', weight: ['400', '500', '600', '700'] })
+
 
 export const metadata: Metadata = {
   title: 'Studiio - Créez des vidéos virales',
@@ -41,7 +41,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="Studiio" />
       </head>
-      <body className={`${inter.variable} ${oswald.variable} bg-studiio-dark text-gray-100 antialiased`}>
+      <body className={`${inter.variable} bg-studiio-dark text-gray-100 antialiased`}>
         <Providers>{children}</Providers>
         <PWAInstallPrompt />
       </body>
