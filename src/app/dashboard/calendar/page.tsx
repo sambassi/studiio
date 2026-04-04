@@ -689,40 +689,66 @@ export default function CalendarPage() {
     const videoSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0];
     if (!videoSrc) { setVideoPlayable(false); return; }
 
-    // Give React a tick to render the video elements
-    const timer = setTimeout(() => {
-      const vid = document.getElementById('preview-video-infographic') as HTMLVideoElement | null;
-      if (!vid) return;
-      vid.muted = true;
+    let cancelled = false;
 
-      // Detect if video can actually load — 12s timeout for large files (rush MP4 can be 15-20MB)
-      // The #t=0.1 hint forces Chrome to use range requests, which helps with non-faststart MP4s
-      const loadTimeout = setTimeout(() => {
-        if (vid.readyState === 0) {
-          console.warn('[Calendar] Video failed to load after 12s, skipping video sequence:', vid.src);
-          setVideoPlayable(false);
+    // Pré-vérification HEAD : si le fichier est trop gros (>8 Mo) et le serveur ne supporte pas
+    // les range requests, Chrome devra tout télécharger avant de lire les métadonnées → skip immédiat
+    const MAX_SIZE_WITHOUT_RANGES = 8 * 1024 * 1024; // 8 Mo
+
+    const checkAndLoad = async () => {
+      try {
+        const headRes = await fetch(videoSrc, { method: 'HEAD' });
+        const contentLength = parseInt(headRes.headers.get('content-length') || '0', 10);
+        const acceptRanges = headRes.headers.get('accept-ranges');
+        const supportsRanges = acceptRanges === 'bytes';
+
+        if (contentLength > MAX_SIZE_WITHOUT_RANGES && !supportsRanges) {
+          console.warn(`[Calendar] Rush vidéo trop grosse (${(contentLength / 1024 / 1024).toFixed(1)} Mo) sans support range requests — séquence vidéo ignorée`);
+          if (!cancelled) setVideoPlayable(false);
+          return;
         }
-      }, 12000);
+      } catch {
+        // HEAD échoué — on essaie quand même de charger la vidéo
+      }
 
-      vid.onloadeddata = () => {
-        clearTimeout(loadTimeout);
-        console.log('[Calendar] Video loaded OK, readyState:', vid.readyState, 'duration:', vid.duration);
-        setVideoPlayable(true);
-      };
-      // Also listen for loadedmetadata — enough to know file is valid
-      vid.onloadedmetadata = () => {
-        console.log('[Calendar] Video metadata loaded, duration:', vid.duration, 'readyState:', vid.readyState);
-      };
-      vid.onerror = () => {
-        clearTimeout(loadTimeout);
-        console.error('[Calendar] Video load error, skipping video sequence');
-        setVideoPlayable(false);
-      };
+      if (cancelled) return;
 
-      vid.load();
-    }, 100);
+      // Give React a tick to render the video elements
+      setTimeout(() => {
+        if (cancelled) return;
+        const vid = document.getElementById('preview-video-infographic') as HTMLVideoElement | null;
+        if (!vid) return;
+        vid.muted = true;
 
-    return () => clearTimeout(timer);
+        // Timeout de sécurité — 12s pour les fichiers < 8 Mo ou avec range requests
+        const loadTimeout = setTimeout(() => {
+          if (vid.readyState === 0) {
+            console.warn('[Calendar] Vidéo non chargée après 12s, séquence vidéo ignorée:', vid.src);
+            if (!cancelled) setVideoPlayable(false);
+          }
+        }, 12000);
+
+        vid.onloadeddata = () => {
+          clearTimeout(loadTimeout);
+          console.log('[Calendar] Vidéo chargée OK, readyState:', vid.readyState, 'durée:', vid.duration);
+          if (!cancelled) setVideoPlayable(true);
+        };
+        vid.onloadedmetadata = () => {
+          console.log('[Calendar] Métadonnées vidéo chargées, durée:', vid.duration, 'readyState:', vid.readyState);
+        };
+        vid.onerror = () => {
+          clearTimeout(loadTimeout);
+          console.error('[Calendar] Erreur de chargement vidéo, séquence vidéo ignorée');
+          if (!cancelled) setVideoPlayable(false);
+        };
+
+        vid.load();
+      }, 100);
+    };
+
+    checkAndLoad();
+
+    return () => { cancelled = true; };
   }, [showFullPreview, fullPreviewPost]);
 
   // Force separate audio elements to play (muted) when montage preview opens
@@ -2195,15 +2221,15 @@ export default function CalendarPage() {
                       </div>
                     </div>
 
-                    {/* === VIDEO: Full-screen raw rush video only === */}
+                    {/* === VIDÉO : Rush vidéo brut plein écran uniquement === */}
                     {(() => {
-                      // ONLY use raw rush video for preview — NEVER the rendered montage.
-                      // The rendered montage (.webm) already contains intro/cards/cta sequences baked in,
-                      // which causes a "double CTA" effect when played inside the HTML montage preview.
+                      // Utiliser UNIQUEMENT la vidéo rush brute — JAMAIS le montage rendu.
+                      // Le montage rendu (.webm) contient déjà les séquences intro/cartes/cta intégrées,
+                      // ce qui causerait un effet "double CTA" dans la preview HTML.
                       const rawSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0];
                       if (!rawSrc) return null;
-                      // Add #t=0.1 hint to force Chrome range-request for metadata
-                      // This helps large MP4 files without faststart (moov atom at end)
+                      // Ajout du hint #t=0.1 pour forcer Chrome à faire une range-request
+                      // Aide les gros MP4 sans faststart (moov atom à la fin du fichier)
                       const videoSrcWithHint = rawSrc.includes('#') ? rawSrc : `${rawSrc}#t=0.1`;
                       return (
                       <div className="absolute inset-0" style={{ opacity: currentSeq === 'video' ? 1 : 0, zIndex: currentSeq === 'video' ? 10 : 1, transition: 'opacity 800ms ease-in-out', willChange: 'opacity' }}>
