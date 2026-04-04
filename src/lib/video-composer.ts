@@ -509,10 +509,29 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   let voiceElConnected = false;
 
   if (hasAudio) {
-    audioCtx = options.sharedAudioCtx || new AudioContext({ sampleRate: 48000 });
-    // Ensure AudioContext is running — critical for batch mode
+    // For batch mode with shared context: if it's closed or broken, create a fresh one
+    if (options.sharedAudioCtx && options.sharedAudioCtx.state === 'closed') {
+      console.warn('[Composer] ⚠️ Shared AudioContext is CLOSED — creating a new one');
+      audioCtx = new AudioContext({ sampleRate: 48000 });
+    } else {
+      audioCtx = options.sharedAudioCtx || new AudioContext({ sampleRate: 48000 });
+    }
+    // Ensure AudioContext is running — critical for batch mode on mobile
+    // Mobile browsers aggressively suspend AudioContext
+    if (audioCtx.state === 'suspended') {
+      try {
+        await audioCtx.resume();
+      } catch (err) {
+        console.warn('[Composer] ⚠️ AudioContext resume failed, creating new one:', err);
+        audioCtx = new AudioContext({ sampleRate: 48000 });
+        await audioCtx.resume().catch(() => {});
+      }
+    }
+    // Double-check it's running
     if (audioCtx.state !== 'running') {
-      await audioCtx.resume();
+      console.warn('[Composer] ⚠️ AudioContext still not running (state:', audioCtx.state, ') — trying one more resume');
+      await new Promise(r => setTimeout(r, 100));
+      await audioCtx.resume().catch(() => {});
     }
     console.log('[Composer] AudioContext state:', audioCtx.state, '| sampleRate:', audioCtx.sampleRate, isSharedCtx ? '(SHARED)' : '(new)');
 
@@ -728,15 +747,38 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       reject(new Error('Recording failed'));
     };
 
+    // Ensure AudioContext is still running right before starting audio
+    if (audioCtx && audioCtx.state !== 'running') {
+      console.warn('[Composer] ⚠️ AudioContext suspended before audio start, resuming...');
+      await audioCtx.resume().catch(() => {});
+      await new Promise(r => setTimeout(r, 50));
+    }
+
     // START audio BEFORE recorder — prime the audio pipeline so MediaRecorder captures it
     // Use audioCtx.currentTime (not 0) to avoid timing issues with shared/reused contexts
-    const audioStartTime = audioCtx ? audioCtx.currentTime + 0.05 : 0;
+    const audioStartTime = audioCtx ? audioCtx.currentTime + 0.1 : 0;
     if (musicBufferSource) {
       try {
         musicBufferSource.start(audioStartTime);
-        console.log('[Composer] ✅ Music AudioBuffer STARTED at', audioStartTime.toFixed(3));
+        console.log('[Composer] ✅ Music AudioBuffer STARTED at', audioStartTime.toFixed(3), '| ctx.state:', audioCtx?.state);
       } catch (err) {
         console.error('[Composer] ❌ Music AudioBuffer start failed:', err);
+        // If start() failed (e.g. already started), try recreating the source
+        if (audioCtx && options.musicBuffer && audioDest) {
+          try {
+            musicBufferSource = audioCtx.createBufferSource();
+            musicBufferSource.buffer = options.musicBuffer;
+            musicBufferSource.loop = true;
+            const mg = audioCtx.createGain();
+            mg.gain.value = (validVoiceBuffer || voiceEl) ? 0.5 : 0.8;
+            musicBufferSource.connect(mg);
+            mg.connect(audioDest);
+            musicBufferSource.start(audioCtx.currentTime + 0.05);
+            console.log('[Composer] ✅ Music AudioBuffer RECREATED and STARTED');
+          } catch (e2) {
+            console.error('[Composer] ❌ Music AudioBuffer recreation also failed:', e2);
+          }
+        }
       }
     } else if (musicElConnected && musicEl) {
       musicEl.currentTime = 0;
@@ -754,6 +796,9 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       voiceEl.play().then(() => console.log('[Composer] ✅ Voice <audio> PLAYING')).catch(err => console.error('[Composer] ❌ Voice play failed:', err));
     }
 
+    // Wait a moment for audio pipeline to fill before starting recording
+    await new Promise(r => setTimeout(r, 150));
+
     // START recording AFTER audio — ensures audio tracks have data flowing
     recorder.start(200);
 
@@ -761,6 +806,14 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     if (videoEl) { videoEl.currentTime = 0; videoEl.pause(); }
 
     console.log('[Composer] 🔊 Real-time recording started for', totalDuration.toFixed(1), 's');
+
+    // Keep-alive: prevent mobile browsers from suspending AudioContext during render
+    const keepAliveInterval = audioCtx ? setInterval(() => {
+      if (audioCtx && audioCtx.state === 'suspended') {
+        console.warn('[Composer] ⚠️ AudioContext suspended during render, resuming...');
+        audioCtx.resume().catch(() => {});
+      }
+    }, 1000) : null;
 
     const startTime = performance.now();
     let lastProgress = 0;
@@ -770,6 +823,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 
       if (elapsed >= totalDuration + 0.3) {
         console.log('[Composer] Render done, stopping recorder');
+        if (keepAliveInterval) clearInterval(keepAliveInterval);
         if (musicEl) musicEl.pause();
         if (voiceEl) voiceEl.pause();
         try { musicBufferSource?.stop(); } catch {}

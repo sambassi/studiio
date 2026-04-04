@@ -580,9 +580,30 @@ function AudioStudioContent() {
             setExportStage(t('export.composingBatch', { current: String(i + 1), total: String(posts.length) }));
             setExportProgress(progressBase);
 
-            // Resume shared AudioContext before each video (Chrome suspends after inactivity)
-            if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
-              await sharedAudioCtx.resume();
+            // Resume shared AudioContext before each video (mobile browsers aggressively suspend)
+            if (sharedAudioCtx) {
+              if (sharedAudioCtx.state === 'closed') {
+                console.log(`[AudioStudio] ⚠️ AudioContext closed before video ${i + 1}, creating new one`);
+                sharedAudioCtx = new AudioContext({ sampleRate: 48000 });
+                // Re-decode audio buffers with new context
+                if (musicFile) {
+                  try {
+                    const buf = await musicFile.arrayBuffer();
+                    musicBuffer = await sharedAudioCtx.decodeAudioData(buf.slice(0));
+                  } catch (e) { console.error('[AudioStudio] Re-decode music failed:', e); }
+                }
+                if (voiceFile) {
+                  try {
+                    const buf = await voiceFile.arrayBuffer();
+                    voiceBuffer = await sharedAudioCtx.decodeAudioData(buf.slice(0));
+                  } catch (e) { console.error('[AudioStudio] Re-decode voice failed:', e); }
+                }
+              }
+              if (sharedAudioCtx.state === 'suspended') {
+                await sharedAudioCtx.resume();
+                await new Promise(r => setTimeout(r, 50));
+              }
+              console.log(`[AudioStudio] AudioContext state before video ${i + 1}: ${sharedAudioCtx.state}`);
             }
 
             const result = await composeAndUpload({
