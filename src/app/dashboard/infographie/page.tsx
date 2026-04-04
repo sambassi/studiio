@@ -105,6 +105,7 @@ export default function InfographicPage() {
 
   // ── Persist configurations across sessions ──────────────────
   const INFOGRAPHIC_CONFIG_KEY = 'studiio_infographic_config';
+  const [configLoaded, setConfigLoaded] = useState(false);
 
   // Load saved config on mount
   useEffect(() => {
@@ -122,17 +123,20 @@ export default function InfographicPage() {
         if (cfg.characterImage) setCharacterImage(cfg.characterImage);
       }
     } catch { /* ignore */ }
+    // Marquer comme chargé APRÈS la restauration pour éviter que le save n'écrase les valeurs
+    setConfigLoaded(true);
   }, []);
 
-  // Save config on change
+  // Save config on change — seulement APRÈS le chargement initial
   useEffect(() => {
+    if (!configLoaded) return; // Ne pas sauvegarder avant que le load soit terminé
     try {
       localStorage.setItem(INFOGRAPHIC_CONFIG_KEY, JSON.stringify({
         colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration,
         rushUrl, rushFileName, characterImage,
       }));
     } catch { /* ignore */ }
-  }, [colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration, rushUrl, rushFileName, characterImage]);
+  }, [configLoaded, colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration, rushUrl, rushFileName, characterImage]);
 
   // ── Step 2: Export ──────────────────────────────────────────
   const [destination, setDestination] = useState<Destination>('draft');
