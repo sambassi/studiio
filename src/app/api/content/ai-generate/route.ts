@@ -16,10 +16,68 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { topic, locale = 'fr', cardCount = 5, existingCards = [] } = body;
+    const { topic, locale = 'fr', cardCount = 5, existingCards = [], videoOverlayOnly = false } = body;
 
     if (!topic || typeof topic !== 'string') {
       return NextResponse.json({ success: false, error: 'Topic is required' }, { status: 400 });
+    }
+
+    // Mode "video overlay only" — generate just a short overlay text for the video
+    if (videoOverlayOnly) {
+      const overlayPrompt = `Tu es un expert en contenu pour réseaux sociaux. Génère UN SEUL texte court et percutant à afficher en overlay sur une vidéo sur le sujet: "${topic}".
+
+Le texte doit être:
+- Court (3 à 8 mots max)
+- Accrocheur et engageant
+- En lien avec "${topic}" et le bien-être/fitness
+- En ${locale === 'fr' ? 'français' : 'anglais'}
+- En MAJUSCULES
+
+Exemples: "LE SECRET DE L'ÉNERGIE", "BOOSTE TA PERFORMANCE", "DÉCOUVRE SES BIENFAITS"
+
+Réponds UNIQUEMENT en JSON: {"videoOverlayText": "TON TEXTE ICI"}`;
+
+      const overlayRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 256, messages: [{ role: 'user', content: overlayPrompt }] }),
+      });
+
+      if (overlayRes.ok) {
+        const overlayData = await overlayRes.json();
+        const textBlock = overlayData.content?.find((c: any) => c.type === 'text');
+        if (textBlock?.text) {
+          try {
+            let jsonStr = textBlock.text.trim();
+            if (jsonStr.startsWith('```')) jsonStr = jsonStr.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?\s*```$/, '');
+            const s = jsonStr.indexOf('{'), e = jsonStr.lastIndexOf('}');
+            if (s !== -1 && e > s) jsonStr = jsonStr.substring(s, e + 1);
+            const parsed = JSON.parse(jsonStr);
+            return NextResponse.json({ success: true, content: { videoOverlayText: parsed.videoOverlayText || '' } });
+          } catch { /* fall through */ }
+        }
+      }
+      // Retry with fallback model
+      try {
+        const retryRes = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({ model: 'claude-3-5-sonnet-20241022', max_tokens: 256, messages: [{ role: 'user', content: overlayPrompt }] }),
+        });
+        if (retryRes.ok) {
+          const rd = await retryRes.json();
+          const tb = rd.content?.find((c: any) => c.type === 'text');
+          if (tb?.text) {
+            let js = tb.text.trim();
+            if (js.startsWith('```')) js = js.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?\s*```$/, '');
+            const s2 = js.indexOf('{'), e2 = js.lastIndexOf('}');
+            if (s2 !== -1 && e2 > s2) js = js.substring(s2, e2 + 1);
+            const p = JSON.parse(js);
+            return NextResponse.json({ success: true, content: { videoOverlayText: p.videoOverlayText || '' } });
+          }
+        }
+      } catch { /* ignore */ }
+      return NextResponse.json({ success: false, error: 'Could not generate overlay text' }, { status: 500 });
     }
 
     const count = Math.min(Math.max(cardCount, 1), 8);
