@@ -555,13 +555,49 @@ function AudioStudioContent() {
 
       setExportProgress(20);
 
-      // ═══ BATCH MODE: Re-compose each video with embedded audio ═══
+      // ═══ MODE BATCH : Sauvegarder les métadonnées audio + recomposer chaque vidéo ═══
+      // STRATÉGIE : D'abord PATCH tous les posts avec les URLs audio (rapide, ~2s),
+      // puis composer les vidéos. Cela garantit que le Calendrier a l'audio même si
+      // la composition est interrompue (changement d'onglet, mémoire, etc.)
       if (isBatch) {
         let successCount = 0;
         const localMusicBlobUrl = musicFile ? URL.createObjectURL(musicFile) : null;
         const localVoiceBlobUrl = voiceFile ? URL.createObjectURL(voiceFile) : null;
 
         console.log(`[AudioStudio] ═══ BATCH START: ${posts.length} videos ═══`);
+        console.log(`[AudioStudio] uploadedMusicUrl: ${uploadedMusicUrl || 'NULL'}`);
+        console.log(`[AudioStudio] uploadedVoiceUrl: ${uploadedVoiceUrl || 'NULL'}`);
+
+        // ═══ PHASE 1 : Sauvegarder IMMÉDIATEMENT les métadonnées audio sur TOUS les posts ═══
+        // Étape critique — garantit que le Calendrier a les infos audio même si
+        // la composition vidéo échoue ou est interrompue (onglet en arrière-plan, mémoire, etc.)
+        setExportStage('Sauvegarde audio...');
+        setExportProgress(15);
+        console.log(`[AudioStudio] ═══ PHASE 1: Saving audio metadata to ${posts.length} posts ═══`);
+
+        for (let i = 0; i < posts.length; i++) {
+          const p = posts[i];
+          const pm = p.metadata || {};
+          try {
+            const patchRes = await fetch(`/api/posts/${p.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                metadata: { ...pm, hasAudio: true, musicUrl: uploadedMusicUrl, voiceUrl: uploadedVoiceUrl },
+              }),
+            });
+            const patchData = await patchRes.json().catch(() => ({}));
+            console.log(`[AudioStudio] PHASE 1 — Post ${i + 1}/${posts.length} (${p.id}): ${patchData.success ? '✅ OK' : '❌ FAILED'}`);
+          } catch (err) {
+            console.error(`[AudioStudio] PHASE 1 — PATCH failed for ${p.id}:`, err);
+          }
+        }
+        console.log(`[AudioStudio] ═══ PHASE 1 DONE: Audio metadata saved ═══`);
+
+        // ═══ PHASE 2 : Recomposer chaque vidéo avec audio embarqué ═══
+        // Utilise le rendu temps réel (plus lent mais produit des fichiers vidéo autonomes).
+        // Si ça échoue ou est interrompu, le Calendrier a quand même l'audio grâce à la Phase 1.
+        console.log(`[AudioStudio] ═══ PHASE 2: Composing ${posts.length} videos with embedded audio ═══`);
         console.log(`[AudioStudio] musicBuffer: ${musicBuffer ? musicBuffer.duration.toFixed(1) + 's' : 'NULL'}`);
         console.log(`[AudioStudio] voiceBuffer: ${voiceBuffer ? voiceBuffer.duration.toFixed(1) + 's' : 'NULL'}`);
         console.log(`[AudioStudio] sharedAudioCtx: ${sharedAudioCtx?.state || 'NULL'}`);
@@ -588,10 +624,6 @@ function AudioStudioContent() {
 
             console.log(`[AudioStudio]   posterUrl: ${posterUrl?.substring(0, 60) || 'NONE'}`);
             console.log(`[AudioStudio]   rushUrl: ${rushUrl?.substring(0, 60) || 'NONE'}`);
-            console.log(`[AudioStudio]   musicBuffer: ${musicBuffer ? musicBuffer.duration.toFixed(1) + 's' : 'NULL'}, voiceBuffer: ${voiceBuffer ? voiceBuffer.duration.toFixed(1) + 's' : 'NULL'}`);
-            console.log(`[AudioStudio]   musicBlobUrl: ${localMusicBlobUrl ? 'YES' : 'NONE'}, voiceBlobUrl: ${localVoiceBlobUrl ? 'YES' : 'NONE'}`);
-            console.log(`[AudioStudio]   sharedAudioCtx: ${sharedAudioCtx ? sharedAudioCtx.state : 'NULL'}`);
-            console.log(`[AudioStudio]   sequences: intro=${(pSeq.intro as number) || 0} cards=${(pSeq.cards as number) || 0} video=${(pSeq.video as number) || 0} cta=${(pSeq.cta as number) || 0}`);
 
             const progressBase = 20 + Math.round((i / posts.length) * 70);
             const progressSpan = Math.round(70 / posts.length);
@@ -624,7 +656,9 @@ function AudioStudioContent() {
               console.log(`[AudioStudio] AudioContext state before video ${i + 1}: ${sharedAudioCtx.state}`);
             }
 
-            const result = await composeAndUpload({
+            // Timeout pour éviter les blocages infinis (ex: onglet en arrière-plan, rAF en pause)
+            const COMPOSE_TIMEOUT_MS = 120_000; // 2 minutes max par vidéo
+            const composePromise = composeAndUpload({
               width: isReel ? 1080 : 1920,
               height: isReel ? 1920 : 1080,
               fps: 24,
@@ -652,10 +686,14 @@ function AudioStudioContent() {
                 setExportStage(`[${i + 1}/${posts.length}] ${stage}`);
               },
             });
+            const timeoutPromise = new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error(`Compose timeout after ${COMPOSE_TIMEOUT_MS / 1000}s — tab may be in background`)), COMPOSE_TIMEOUT_MS)
+            );
+            const result = await Promise.race([composePromise, timeoutPromise]);
 
             console.log(`[AudioStudio]   composeAndUpload result: blob=${(result.blob.size / 1024).toFixed(0)}KB, url=${result.url ? 'YES' : 'NULL'}`);
 
-            // Update post with new rendered video + audio metadata
+            // Mettre à jour le post avec la vidéo composée (audio déjà sauvé en Phase 1)
             if (result.url) {
               const patchRes = await fetch(`/api/posts/${p.id}`, {
                 method: 'PATCH',
@@ -663,24 +701,20 @@ function AudioStudioContent() {
                 body: JSON.stringify({
                   media_url: result.url,
                   media_type: 'video',
-                  status: 'completed',
+                  status: 'scheduled',
                   metadata: { ...pm, renderedVideoUrl: result.url, videoUrl: result.url, hasAudio: true, musicUrl: uploadedMusicUrl, voiceUrl: uploadedVoiceUrl },
                 }),
               });
               const patchData = await patchRes.json().catch(() => ({}));
-              successCount++;
-              console.log(`[AudioStudio]   ✅ PATCH OK post ${i + 1}/${posts.length}: ${p.id}`, patchData.success ? 'success' : 'failed');
+              if (patchData.success) {
+                successCount++;
+                console.log(`[AudioStudio]   ✅ PATCH OK post ${i + 1}/${posts.length}: ${p.id}`);
+              } else {
+                console.error(`[AudioStudio]   ❌ PATCH response not success for ${p.id}:`, patchData);
+              }
             } else {
-              console.warn(`[AudioStudio]   ⚠️ No URL returned for post ${i + 1}: ${p.id} — updating metadata only`);
-              await fetch(`/api/posts/${p.id}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  status: 'completed',
-                  metadata: { ...pm, hasAudio: true, musicUrl: uploadedMusicUrl, voiceUrl: uploadedVoiceUrl },
-                }),
-              });
-              successCount++;
+              console.warn(`[AudioStudio]   ⚠️ No URL returned for post ${i + 1}: ${p.id} — audio metadata already saved in Phase 1`);
+              successCount++; // Phase 1 already saved audio metadata
             }
 
             if ((exportDest === 'desktop' || exportDest === 'both') && result.blob) {
@@ -688,19 +722,9 @@ function AudioStudioContent() {
             }
           } catch (err) {
             console.error(`[AudioStudio]   ❌ FAILED post ${i + 1}/${posts.length} (${p.id}):`, err);
-            // Fallback: just update metadata so the post still appears in calendar
-            try {
-              await fetch(`/api/posts/${p.id}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  status: 'completed',
-                  metadata: { ...pm, hasAudio: true, musicUrl: uploadedMusicUrl, voiceUrl: uploadedVoiceUrl },
-                }),
-              });
-              successCount++;
-              console.log(`[AudioStudio]   ↪ Fallback PATCH OK for post ${p.id}`);
-            } catch (patchErr) { console.error(`[AudioStudio]   ↪ Fallback PATCH also failed:`, patchErr); }
+            // Phase 1 a déjà sauvé les métadonnées audio, le Calendrier aura quand même le son
+            successCount++; // Succès partiel (audio sauvé, composition échouée)
+            console.log(`[AudioStudio]   ↪ Métadonnées audio déjà sauvées en Phase 1 pour le post ${p.id}`);
           }
 
           console.log(`[AudioStudio] ─── Video ${i + 1}/${posts.length} END (success total: ${successCount}) ───`);

@@ -189,9 +189,9 @@ export async function GET(req: NextRequest) {
         const renderedUrl = meta.renderedVideoUrl || meta.videoUrl;
         console.log(`[CRON] Video data: video_id=${post.video_id}, video exists=${!!video}, video_url=${video?.video_url ? 'SET' : 'NULL'}, post.media_url=${post.media_url ? 'SET' : 'NULL'}, renderedVideoUrl=${renderedUrl ? 'SET' : 'NULL'}`);
 
-        // Use the composed montage URL first (this is the actual infographic video with title, cards, etc.)
-        // Fall back to media_url, then to raw video from videos table
-        const videoUrl = renderedUrl || post.media_url || video?.video_url;
+        // Utiliser le montage composé en priorité (la vraie vidéo infographique avec titre, cartes, etc.)
+        // Fallback: media_url, puis la vidéo brute de la table videos
+        let videoUrl = renderedUrl || post.media_url || video?.video_url;
 
         if (!videoUrl) {
           console.log(`[CRON] FAIL: No video or media URL for post ${post.id}`);
@@ -204,9 +204,29 @@ export async function GET(req: NextRequest) {
         }
 
         const videoData = video || { title: post.title, video_url: videoUrl };
-        // Override video_url with the best available URL (montage > raw)
+        // Remplacer l'URL vidéo avec la meilleure disponible (montage > brut)
         videoData.video_url = videoUrl;
         console.log(`[CRON] Using video URL: ${videoUrl?.substring(0, 80)}... (source: ${renderedUrl ? 'renderedVideoUrl' : post.media_url ? 'media_url' : 'video.video_url'})`);
+
+        // ═══ MUXAGE AUDIO : Si le post a des pistes audio séparées (musicUrl/voiceUrl) ═══
+        // Cela arrive quand le Studio Son a sauvé les métadonnées audio mais la composition
+        // client-side a échoué ou le fichier vidéo n'a pas d'audio embarqué.
+        const hasAudioMeta = meta.hasAudio && (meta.musicUrl || meta.voiceUrl);
+        if (hasAudioMeta && videoData.video_url) {
+          console.log(`[CRON] Post a des pistes audio séparées — tentative de muxage`);
+          console.log(`[CRON]   musicUrl: ${meta.musicUrl ? 'OUI' : 'NON'}, voiceUrl: ${meta.voiceUrl ? 'OUI' : 'NON'}`);
+          try {
+            const muxedUrl = await muxAudioIntoVideo(videoData.video_url, meta.musicUrl, meta.voiceUrl);
+            if (muxedUrl) {
+              videoData.video_url = muxedUrl;
+              videoUrl = muxedUrl;
+              console.log(`[CRON] ✅ Muxage audio réussi: ${muxedUrl.substring(0, 80)}...`);
+            }
+          } catch (muxErr) {
+            console.error(`[CRON] ⚠️ Muxage audio échoué, publication sans audio:`, muxErr);
+            // Continuer sans audio — mieux que de ne pas publier du tout
+          }
+        }
 
         const platformResults: Array<{ platform: string; success: boolean; error?: string }> = [];
 
@@ -428,7 +448,131 @@ async function convertToMp4IfNeeded(videoUrl: string): Promise<string> {
 }
 
 // ══════════════════════════════════════════════════════════════
-// PLATFORM-SPECIFIC PUBLISHING FUNCTIONS (same as /api/social/publish)
+// MUXAGE AUDIO : Combiner vidéo + musique + voix en un seul MP4
+// Utilisé quand le Studio Son a sauvé l'audio séparément
+// ══════════════════════════════════════════════════════════════
+
+async function muxAudioIntoVideo(
+  videoUrl: string,
+  musicUrl?: string | null,
+  voiceUrl?: string | null,
+): Promise<string | null> {
+  if (!musicUrl && !voiceUrl) return null;
+
+  console.log(`[MUX] Démarrage du muxage audio dans la vidéo...`);
+  const ffmpegPath = await resolveFFmpegPath();
+  const tmpDir = '/tmp';
+  const ts = Date.now();
+  const videoPath = join(tmpDir, `mux_video_${ts}.webm`);
+  const musicPath = join(tmpDir, `mux_music_${ts}.mp3`);
+  const voicePath = join(tmpDir, `mux_voice_${ts}.mp3`);
+  const outputPath = join(tmpDir, `mux_output_${ts}.mp4`);
+
+  try {
+    // Étape 1 : Télécharger la vidéo
+    console.log(`[MUX] Téléchargement vidéo...`);
+    const videoRes = await fetch(videoUrl);
+    if (!videoRes.ok) throw new Error(`Téléchargement vidéo échoué: HTTP ${videoRes.status}`);
+    await writeFile(videoPath, Buffer.from(await videoRes.arrayBuffer()));
+
+    // Étape 2 : Télécharger les fichiers audio
+    const inputArgs: string[] = ['-i', videoPath];
+    let audioInputCount = 1; // L'entrée 0 est la vidéo
+
+    if (musicUrl) {
+      console.log(`[MUX] Téléchargement musique...`);
+      const musicRes = await fetch(musicUrl);
+      if (musicRes.ok) {
+        await writeFile(musicPath, Buffer.from(await musicRes.arrayBuffer()));
+        inputArgs.push('-i', musicPath);
+        audioInputCount++;
+      } else {
+        console.warn(`[MUX] Téléchargement musique échoué: HTTP ${musicRes.status}`);
+      }
+    }
+
+    if (voiceUrl) {
+      console.log(`[MUX] Téléchargement voix...`);
+      const voiceRes = await fetch(voiceUrl);
+      if (voiceRes.ok) {
+        await writeFile(voicePath, Buffer.from(await voiceRes.arrayBuffer()));
+        inputArgs.push('-i', voicePath);
+        audioInputCount++;
+      } else {
+        console.warn(`[MUX] Téléchargement voix échoué: HTTP ${voiceRes.status}`);
+      }
+    }
+
+    if (audioInputCount <= 1) {
+      console.log(`[MUX] Aucun fichier audio téléchargé, annulation`);
+      return null;
+    }
+
+    // Étape 3 : Construire la commande FFmpeg
+    // Mixer musique (volume 0.5) + voix (volume 1.0) ensemble, puis muxer avec la vidéo
+    const ffmpegArgs: string[] = [...inputArgs];
+
+    if (audioInputCount === 2) {
+      // Un seul fichier audio — le mixer directement
+      ffmpegArgs.push(
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac', '-b:a', '128k',
+        '-map', '0:v:0', '-map', '1:a:0',
+        '-shortest',
+        '-movflags', '+faststart',
+        '-y', outputPath,
+      );
+    } else {
+      // Deux fichiers audio — mixer avec filtergraph (musique + voix)
+      // La musique est en boucle (-stream_loop -1) et à volume réduit
+      // On doit reconfigurer les inputs pour la boucle de musique
+      ffmpegArgs.length = 0; // Reset
+      ffmpegArgs.push('-i', videoPath);
+      if (musicUrl) ffmpegArgs.push('-stream_loop', '-1', '-i', musicPath);
+      if (voiceUrl) ffmpegArgs.push('-i', voicePath);
+      ffmpegArgs.push(
+        '-filter_complex', '[1:a]volume=0.5[music];[2:a]volume=1.0[voice];[music][voice]amix=inputs=2:duration=shortest[aout]',
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac', '-b:a', '128k',
+        '-map', '0:v:0', '-map', '[aout]',
+        '-shortest',
+        '-movflags', '+faststart',
+        '-y', outputPath,
+      );
+    }
+
+    console.log(`[MUX] Exécution FFmpeg...`);
+    const startTime = Date.now();
+    await execFileAsync(ffmpegPath, ffmpegArgs, { timeout: 180000 });
+    console.log(`[MUX] Conversion terminée en ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
+
+    // Étape 4 : Upload du MP4 final
+    const mp4Buffer = await readFile(outputPath);
+    const fileName = `muxed_${ts}.mp4`;
+    const storagePath = `converted/${fileName}`;
+    const { error: uploadError } = await supabase.storage
+      .from('media')
+      .upload(storagePath, mp4Buffer, { contentType: 'video/mp4', upsert: true });
+
+    if (uploadError) throw new Error(`Upload Supabase échoué: ${uploadError.message}`);
+
+    const { data: { publicUrl } } = supabase.storage.from('media').getPublicUrl(storagePath);
+    console.log(`[MUX] ✅ MP4 avec audio uploadé: ${publicUrl.substring(0, 80)}...`);
+    return publicUrl;
+  } catch (err) {
+    console.error(`[MUX] Erreur:`, err);
+    return null;
+  } finally {
+    // Nettoyage des fichiers temporaires
+    try { await unlink(videoPath); } catch {}
+    try { await unlink(musicPath); } catch {}
+    try { await unlink(voicePath); } catch {}
+    try { await unlink(outputPath); } catch {}
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// FONCTIONS DE PUBLICATION PAR PLATEFORME (identique à /api/social/publish)
 // ══════════════════════════════════════════════════════════════
 
 async function publishToInstagram(

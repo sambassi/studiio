@@ -817,12 +817,17 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 
     const startTime = performance.now();
     let lastProgress = 0;
+    let animStopped = false;
+    let lastAnimTime = performance.now(); // Pour détecter si rAF est en pause
 
-    const animate = () => {
+    const doFrame = () => {
+      if (animStopped) return;
+      lastAnimTime = performance.now();
       const elapsed = (performance.now() - startTime) / 1000;
 
       if (elapsed >= totalDuration + 0.3) {
-        console.log('[Composer] Render done, stopping recorder');
+        animStopped = true;
+        console.log('[Composer] Rendu terminé, arrêt du recorder');
         if (keepAliveInterval) clearInterval(keepAliveInterval);
         if (musicEl) musicEl.pause();
         if (voiceEl) voiceEl.pause();
@@ -834,7 +839,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 
       const t = Math.min(elapsed, totalDuration - 0.001);
 
-      // Handle video element
+      // Gérer l'élément vidéo
       if (videoEl) {
         const videoSeq = sequences.find(s => s.type === 'video');
         if (videoSeq) {
@@ -854,8 +859,23 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
         onProgress?.(Math.min(pct, 95), 'Montage vidéo en cours...');
       }
 
-      requestAnimationFrame(animate);
+      requestAnimationFrame(doFrame);
     };
+
+    // Watchdog : si rAF est en pause (onglet en arrière-plan), setTimeout prend le relais
+    // Chrome met rAF en pause dans les onglets en arrière-plan, ce qui bloque le rendu.
+    // Le watchdog vérifie toutes les 2s si rAF a tourné récemment. Sinon, il force un frame.
+    const watchdogInterval = setInterval(() => {
+      if (animStopped) { clearInterval(watchdogInterval); return; }
+      const timeSinceLastAnim = performance.now() - lastAnimTime;
+      if (timeSinceLastAnim > 2000) {
+        // rAF n'a pas tourné depuis 2s → onglet probablement en arrière-plan
+        console.log('[Composer] ⚠️ rAF en pause (onglet arrière-plan), watchdog force le frame');
+        doFrame();
+      }
+    }, 2000);
+
+    const animate = doFrame;
 
     drawFrame(0);
     requestAnimationFrame(animate);

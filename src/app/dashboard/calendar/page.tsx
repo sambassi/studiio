@@ -751,17 +751,27 @@ export default function CalendarPage() {
     return () => { cancelled = true; };
   }, [showFullPreview, fullPreviewPost]);
 
-  // Force separate audio elements to play (muted) when montage preview opens
-  // This ensures they are loaded and ready for unmute
-  // NOTE: #preview-audio-rendered uses preload="none" — it loads lazily on unmute to avoid
-  // consuming bandwidth/connections that the rush video needs to load
+  // Précharger TOUS les éléments audio (y compris le rendu WebM) quand la preview s'ouvre
+  // #preview-audio-rendered utilise maintenant preload="auto" — on le charge aussi ici
+  // pour qu'il soit prêt quand l'utilisateur clique sur unmute
   useEffect(() => {
     if (!showFullPreview || !fullPreviewPost) return;
     const timer = setTimeout(() => {
+      // Charger musique et voix séparées
       document.querySelectorAll<HTMLMediaElement>('#preview-audio-music, #preview-audio-voice').forEach(a => {
         a.muted = true;
         a.play().catch(() => {});
       });
+      // Charger le rendu vidéo/audio WebM — play() muted pour forcer le chargement complet
+      const rendered = document.getElementById('preview-audio-rendered') as HTMLMediaElement | null;
+      if (rendered) {
+        rendered.muted = true;
+        // Si pas encore chargé, forcer le chargement
+        if (rendered.readyState === 0) {
+          rendered.load();
+        }
+        rendered.play().catch(() => {});
+      }
     }, 200);
     return () => clearTimeout(timer);
   }, [showFullPreview, fullPreviewPost]);
@@ -2137,34 +2147,20 @@ export default function CalendarPage() {
           : fullPreviewPost.title;
         return (
         <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4" onClick={() => setShowFullPreview(false)}>
-          {/* Audio caché : utilise un <video> caché pour lire l'audio embarqué
-              dans le fichier WebM rendu. Les <audio> ne chargent pas les WebM de
-              MediaRecorder (métadonnées de durée manquantes), mais les <video> oui. */}
+          {/* Audio caché : toujours utiliser les fichiers audio séparés (musicUrl/voiceUrl) s'ils existent.
+              Le renderedVideoUrl peut être un WebM mode rapide SANS audio embarqué.
+              Les fichiers musicUrl/voiceUrl sont la source la plus fiable pour l'audio. */}
           <>
-            {postHasAudio && meta?.renderedVideoUrl && (
-              <video id="preview-audio-rendered" src={meta.renderedVideoUrl} loop muted playsInline preload="none" style={{ position: 'fixed', width: 1, height: 1, opacity: 0, pointerEvents: 'none', zIndex: -1 }}
-                onError={() => {
-                  // If rendered video fails, try separate music file as fallback
-                  if (previewMusicUrl && !document.getElementById('preview-audio-music')) {
-                    const fallback = document.createElement('audio');
-                    fallback.id = 'preview-audio-music';
-                    fallback.src = previewMusicUrl;
-                    fallback.loop = true;
-                    fallback.muted = montageMuted;
-                    fallback.autoplay = true;
-                    fallback.style.display = 'none';
-                    document.body.appendChild(fallback);
-                    fallback.play().catch(() => {});
-                  }
-                }}
-              />
-            )}
-            {/* Fallback: if hasAudio but no renderedVideoUrl, try separate files */}
-            {postHasAudio && !meta?.renderedVideoUrl && previewMusicUrl && (
+            {/* Source audio PRINCIPALE : fichiers séparés de musique et voix */}
+            {postHasAudio && previewMusicUrl && (
               <audio id="preview-audio-music" src={previewMusicUrl} autoPlay loop muted={montageMuted} preload="auto" crossOrigin="anonymous" style={{ display: 'none' }} />
             )}
-            {postHasAudio && !meta?.renderedVideoUrl && previewVoiceUrl && (
+            {postHasAudio && previewVoiceUrl && (
               <audio id="preview-audio-voice" src={previewVoiceUrl} autoPlay muted={montageMuted} preload="auto" crossOrigin="anonymous" style={{ display: 'none' }} />
+            )}
+            {/* Fallback : si pas de fichiers séparés mais renderedVideoUrl existe, utiliser le <video> caché pour l'audio */}
+            {postHasAudio && !previewMusicUrl && !previewVoiceUrl && meta?.renderedVideoUrl && (
+              <video id="preview-audio-rendered" src={meta.renderedVideoUrl} loop muted playsInline preload="auto" style={{ position: 'fixed', width: 1, height: 1, opacity: 0, pointerEvents: 'none', zIndex: -1 }} />
             )}
           </>
           <div className="bg-gray-900 rounded-2xl overflow-hidden shadow-2xl max-w-5xl w-full flex max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
@@ -2263,16 +2259,28 @@ export default function CalendarPage() {
                           e.stopPropagation();
                           setMontageMuted(m => {
                             const newMuted = !m;
-                            // Sync all preview videos AND audio elements
+                            // Synchroniser tous les éléments vidéo et audio
                             document.querySelectorAll<HTMLVideoElement>('#preview-video-infographic, #preview-video').forEach(v => { v.muted = newMuted; });
                             document.querySelectorAll<HTMLMediaElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => {
                               a.muted = newMuted;
-                              // Lazy-load audio: if preload="none", load on first unmute
-                              if (!newMuted && (a as HTMLMediaElement).readyState === 0 && (a as HTMLMediaElement).getAttribute('preload') === 'none') {
-                                (a as HTMLMediaElement).load();
+                              if (!newMuted) {
+                                // Si l'élément n'est pas encore chargé, attendre le chargement avant play()
+                                if (a.readyState < 2) {
+                                  // Forcer le chargement si pas encore fait
+                                  if (a.readyState === 0) a.load();
+                                  // Attendre que l'audio soit prêt puis jouer
+                                  const onReady = () => {
+                                    a.removeEventListener('canplay', onReady);
+                                    a.play().catch(() => {});
+                                  };
+                                  a.addEventListener('canplay', onReady);
+                                  // Timeout de sécurité — si ça charge pas en 5s, on abandonne silencieusement
+                                  setTimeout(() => a.removeEventListener('canplay', onReady), 5000);
+                                } else {
+                                  // Déjà chargé — jouer immédiatement
+                                  a.play().catch(() => {});
+                                }
                               }
-                              // Chrome nécessite play() explicite après interaction utilisateur pour activer l'audio
-                              if (!newMuted) a.play().catch(() => {});
                             });
                             return newMuted;
                           });
@@ -2291,7 +2299,17 @@ export default function CalendarPage() {
                             // Restart montage from beginning with music
                             setInfoSeqIndex(0);
                             setMontageAutoPlay(true);
-                            document.querySelectorAll<HTMLMediaElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => { a.currentTime = 0; a.play().catch(() => {}); });
+                            document.querySelectorAll<HTMLMediaElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => {
+                              a.currentTime = 0;
+                              if (a.readyState >= 2) {
+                                a.play().catch(() => {});
+                              } else {
+                                const onReady = () => { a.removeEventListener('canplay', onReady); a.play().catch(() => {}); };
+                                a.addEventListener('canplay', onReady);
+                                if (a.readyState === 0) a.load();
+                                setTimeout(() => a.removeEventListener('canplay', onReady), 5000);
+                              }
+                            });
                           }
                         }}
                       >
@@ -2377,12 +2395,18 @@ export default function CalendarPage() {
                         const btn = document.getElementById('play-btn-overlay');
                         if (vid.paused) {
                           vid.muted = false; vid.play(); if (btn) btn.style.opacity = '0';
-                          // Also play audio tracks (include rendered video fallback)
+                          // Jouer aussi les pistes audio (y compris le rendu vidéo)
                           document.querySelectorAll<HTMLMediaElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => {
                             a.muted = false;
-                            // Lazy-load: trigger load if preload="none" and not yet loaded
-                            if (a.readyState === 0 && a.getAttribute('preload') === 'none') a.load();
-                            a.play().catch(() => {});
+                            // Attendre le chargement avant de jouer
+                            if (a.readyState < 2) {
+                              if (a.readyState === 0) a.load();
+                              const onReady = () => { a.removeEventListener('canplay', onReady); a.play().catch(() => {}); };
+                              a.addEventListener('canplay', onReady);
+                              setTimeout(() => a.removeEventListener('canplay', onReady), 5000);
+                            } else {
+                              a.play().catch(() => {});
+                            }
                           });
                           setMontageMuted(false);
                         } else {
