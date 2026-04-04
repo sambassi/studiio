@@ -691,9 +691,10 @@ export default function CalendarPage() {
 
     let cancelled = false;
 
-    // Pré-vérification HEAD : si le fichier est trop gros (>8 Mo) et le serveur ne supporte pas
-    // les range requests, Chrome devra tout télécharger avant de lire les métadonnées → skip immédiat
-    const MAX_SIZE_WITHOUT_RANGES = 8 * 1024 * 1024; // 8 Mo
+    // Charger la vidéo rush — si le fichier est gros et le serveur ne supporte pas
+    // les range requests (Supabase), on télécharge le fichier complet en blob URL.
+    // Cela permet la lecture même sans range requests (moov atom à la fin du MP4).
+    const MAX_SIZE_DIRECT = 8 * 1024 * 1024; // 8 Mo — au-delà, utiliser blob URL
 
     const checkAndLoad = async () => {
       try {
@@ -702,25 +703,55 @@ export default function CalendarPage() {
         const acceptRanges = headRes.headers.get('accept-ranges');
         const supportsRanges = acceptRanges === 'bytes';
 
-        if (contentLength > MAX_SIZE_WITHOUT_RANGES && !supportsRanges) {
-          console.warn(`[Calendar] Rush vidéo trop grosse (${(contentLength / 1024 / 1024).toFixed(1)} Mo) sans support range requests — séquence vidéo ignorée`);
-          if (!cancelled) setVideoPlayable(false);
+        if (contentLength > MAX_SIZE_DIRECT && !supportsRanges) {
+          // Fichier gros sans range requests → télécharger en blob URL
+          console.log(`[Calendar] Rush vidéo ${(contentLength / 1024 / 1024).toFixed(1)} Mo sans range requests — téléchargement en blob URL...`);
+          if (cancelled) return;
+          try {
+            const res = await fetch(videoSrc);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const blob = await res.blob();
+            if (cancelled) { URL.revokeObjectURL(URL.createObjectURL(blob)); return; }
+            const blobUrl = URL.createObjectURL(blob);
+            console.log(`[Calendar] Blob URL créée: ${(blob.size / 1024 / 1024).toFixed(1)} Mo`);
+            // Mettre à jour le src de la vidéo avec le blob URL
+            setTimeout(() => {
+              if (cancelled) { URL.revokeObjectURL(blobUrl); return; }
+              const vid = document.getElementById('preview-video-infographic') as HTMLVideoElement | null;
+              if (!vid) { URL.revokeObjectURL(blobUrl); return; }
+              vid.muted = true;
+              vid.onloadeddata = () => {
+                console.log('[Calendar] Vidéo blob chargée OK, durée:', vid.duration);
+                if (!cancelled) setVideoPlayable(true);
+              };
+              vid.onerror = () => {
+                console.error('[Calendar] Erreur chargement vidéo blob');
+                URL.revokeObjectURL(blobUrl);
+                if (!cancelled) setVideoPlayable(false);
+              };
+              vid.src = blobUrl;
+              vid.load();
+            }, 100);
+          } catch (dlErr) {
+            console.warn('[Calendar] Téléchargement vidéo échoué:', dlErr);
+            if (!cancelled) setVideoPlayable(false);
+          }
           return;
         }
       } catch {
-        // HEAD échoué — on essaie quand même de charger la vidéo
+        // HEAD échoué — on essaie quand même de charger la vidéo directement
       }
 
       if (cancelled) return;
 
-      // Give React a tick to render the video elements
+      // Fichier petit ou serveur supporte range requests — chargement direct
       setTimeout(() => {
         if (cancelled) return;
         const vid = document.getElementById('preview-video-infographic') as HTMLVideoElement | null;
         if (!vid) return;
         vid.muted = true;
 
-        // Timeout de sécurité — 12s pour les fichiers < 8 Mo ou avec range requests
+        // Timeout de sécurité — 12s pour les fichiers accessibles directement
         const loadTimeout = setTimeout(() => {
           if (vid.readyState === 0) {
             console.warn('[Calendar] Vidéo non chargée après 12s, séquence vidéo ignorée:', vid.src);
