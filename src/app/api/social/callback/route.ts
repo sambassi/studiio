@@ -208,13 +208,36 @@ async function exchangeMetaToken(code: string, platform: string) {
           accountName = fallbackPageName;
         }
   } else {
-        // Facebook Page
-      const meRes = await fetch(
-              `https://graph.facebook.com/v24.0/me?fields=id,name&access_token=${accessToken}`
+        // Facebook Page — we need the PAGE access token and PAGE ID to publish
+        // The user-level token cannot post to Pages; we need a Page Access Token
+        const pagesRes = await fetch(
+              `https://graph.facebook.com/v24.0/me/accounts?fields=id,name,access_token&access_token=${accessToken}`
             );
-        const meData = await meRes.json();
-        accountId = meData.id;
-        accountName = meData.name || 'facebook_user';
+        const pagesData = await pagesRes.json();
+        const pages = pagesData.data || [];
+
+        console.log(`[OAuth/Facebook] Found ${pages.length} Facebook Pages:`, pages.map((p: any) => ({ id: p.id, name: p.name })));
+
+        if (pages.length > 0) {
+          // Use the first page's credentials (most users have one page)
+          const page = pages[0];
+          accountId = page.id;           // Page ID (not user ID!)
+          accountName = page.name || 'facebook_page';
+          // Use the Page Access Token for publishing (long-lived, scoped to the page)
+          if (page.access_token) {
+            accessToken = page.access_token;
+            console.log(`[OAuth/Facebook] Using Page Access Token for page "${page.name}" (page_id: ${page.id})`);
+          }
+        } else {
+          // Fallback: no pages found, use user info (won't be able to publish)
+          console.warn(`[OAuth/Facebook] No Facebook Pages found — publishing will fail. User needs a Facebook Page.`);
+          const meRes = await fetch(
+                `https://graph.facebook.com/v24.0/me?fields=id,name&access_token=${accessToken}`
+              );
+          const meData = await meRes.json();
+          accountId = meData.id;
+          accountName = meData.name || 'facebook_user';
+        }
   }
 
   const expiresAt = longTokenData.expires_in

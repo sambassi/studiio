@@ -2194,9 +2194,17 @@ export default function CalendarPage() {
               <video id="preview-audio-rendered" src={meta.renderedVideoUrl} loop muted playsInline preload="auto" style={{ position: 'fixed', width: 1, height: 1, opacity: 0, pointerEvents: 'none', zIndex: -1 }} />
             )}
           </>
-          <div className="bg-gray-900 rounded-2xl overflow-hidden shadow-2xl max-w-5xl w-full flex max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+          {/* Floating back button — always visible on mobile, overlays on top of everything */}
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowFullPreview(false); }}
+            className="md:hidden fixed top-4 left-4 z-[60] flex items-center gap-1.5 px-3 py-2 rounded-full bg-black/60 backdrop-blur-sm text-white border border-white/20 shadow-lg active:scale-95 transition-transform"
+          >
+            <ChevronLeft size={18} />
+            <span className="text-sm font-medium">Retour</span>
+          </button>
+          <div className="bg-gray-900 rounded-2xl overflow-hidden shadow-2xl max-w-5xl w-full flex flex-col md:flex-row max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             {/* Left: Rich Montage Preview */}
-            <div className="flex-1 bg-black flex flex-col items-center justify-center min-h-[60vh] p-4">
+            <div className="flex-1 bg-black flex flex-col items-center justify-center min-h-[40vh] md:min-h-[60vh] p-4">
               {/* Montage video preview — infographic & creator with sequences */}
               {hasMontage ? (() => {
                 const seqOrder: string[] = meta?.sequences?.order || ['intro', 'cards', 'video', 'cta'];
@@ -2274,14 +2282,16 @@ export default function CalendarPage() {
                         {meta?.logoUrl && <img src={meta.logoUrl} alt="Logo" className="w-40 h-40 object-contain mx-auto mb-6" />}
                         <p className="text-3xl font-black uppercase tracking-wider mb-4 leading-tight px-2" style={{ color: accent, textShadow: `0 0 30px ${accent}` }}>{brd?.ctaText || branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}</p>
                         <p className="text-2xl uppercase tracking-wider font-bold" style={{ color: '#FFFFFF' }}>{brd?.ctaSubText || branding.ctaSubText || 'LIEN EN BIO'}</p>
-                        {meta?.salesPhrase && <p className="text-xl mt-5 italic font-medium" style={{ color: `${accent}DD` }}>{meta.salesPhrase}</p>}
+                        {meta?.salesPhrase && <p className="text-2xl mt-5 font-bold" style={{ color: '#FFFFFF' }}>{meta.salesPhrase}</p>}
                       </div>
                     </div>
 
-                    {/* === Lien site web — visible sur toutes les séquences (intro, cards, video, cta) === */}
+                    {/* === Lien site web — visible sur toutes les séquences SAUF CTA (CTA a déjà son watermark) === */}
+                    {currentSeq !== 'cta' && (
                     <div className="absolute bottom-8 left-0 right-0 z-30 flex justify-center pointer-events-none">
                       <p className="text-base font-bold text-white/90 tracking-wider" style={{ textShadow: `0 0 10px ${accent}80, 0 2px 4px rgba(0,0,0,0.8)` }}>Afroboost.com</p>
                     </div>
+                    )}
 
                     {/* Play/Pause + Volume — top-right overlay */}
                     <div className="absolute top-3 right-3 z-40 flex items-center gap-1.5">
@@ -2528,8 +2538,8 @@ export default function CalendarPage() {
               )}
             </div>
 
-            {/* Right: Post Details */}
-            <div className="w-80 p-6 flex flex-col border-l border-gray-800">
+            {/* Right: Post Details (below on mobile, sidebar on desktop) */}
+            <div className="w-full md:w-80 p-6 flex flex-col border-t md:border-t-0 md:border-l border-gray-800">
               <h3 className="text-xl font-bold text-white mb-1">{fullPreviewPost.title}</h3>
               {meta?.subtitle && <p className="text-sm text-purple-300 mb-2">{meta.subtitle}</p>}
               <p className="text-sm text-gray-300 mb-4 whitespace-pre-line flex-1 overflow-y-auto max-h-32">{fullPreviewPost.caption || t('previewModal.noCaption')}</p>

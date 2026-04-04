@@ -695,8 +695,11 @@ async function publishToFacebook(
   const pageId = account.account_id;
 
   if (!accessToken || !pageId) {
+    console.log(`[CRON][FB] FAIL: Missing credentials. accessToken=${!!accessToken}, pageId=${pageId}`);
     return { success: false, error: 'Facebook credentials missing' };
   }
+
+  console.log(`[CRON][FB] Starting publish to page ${pageId}, video_url=${video.video_url?.substring(0, 80)}...`);
 
   try {
     const res = await fetch(
@@ -713,15 +716,22 @@ async function publishToFacebook(
     );
 
     const data = await res.json();
+    console.log(`[CRON][FB] API response: status=${res.status}, data=${JSON.stringify(data).substring(0, 500)}`);
+
     if (data.id) {
+      console.log(`[CRON][FB] SUCCESS! Video ID: ${data.id}`);
       return {
         success: true,
         platformPostId: data.id,
         platformUrl: `https://www.facebook.com/${pageId}/videos/${data.id}`,
       };
     }
-    return { success: false, error: data.error?.message || 'Facebook upload failed' };
+
+    const errMsg = data.error?.message || JSON.stringify(data);
+    console.log(`[CRON][FB] FAIL: ${errMsg}`);
+    return { success: false, error: errMsg };
   } catch (error) {
+    console.log(`[CRON][FB] EXCEPTION: ${error instanceof Error ? error.message : String(error)}`);
     return { success: false, error: error instanceof Error ? error.message : 'Facebook API error' };
   }
 }
