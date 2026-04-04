@@ -2177,7 +2177,7 @@ export default function CalendarPage() {
           ? fullPreviewPost.title.replace(/\s*\(Rush\s*\d+\)\s*/gi, '').replace(/\s*-\s*(Instagram|Facebook|TikTok|YouTube|YouTube Shorts)\s*/gi, '')
           : fullPreviewPost.title;
         return (
-        <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4" onClick={() => setShowFullPreview(false)}>
+        <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-0 md:p-4" onClick={() => setShowFullPreview(false)}>
           {/* Audio caché : toujours utiliser les fichiers audio séparés (musicUrl/voiceUrl) s'ils existent.
               Le renderedVideoUrl peut être un WebM mode rapide SANS audio embarqué.
               Les fichiers musicUrl/voiceUrl sont la source la plus fiable pour l'audio. */}
@@ -2202,9 +2202,9 @@ export default function CalendarPage() {
             <ChevronLeft size={18} />
             <span className="text-sm font-medium">Retour</span>
           </button>
-          <div className="bg-gray-900 rounded-2xl overflow-hidden shadow-2xl max-w-5xl w-full flex flex-col md:flex-row max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-gray-900 rounded-none md:rounded-2xl overflow-hidden shadow-2xl max-w-5xl w-full flex flex-col md:flex-row max-h-[100dvh] md:max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             {/* Left: Rich Montage Preview */}
-            <div className="flex-1 bg-black flex flex-col items-center justify-center min-h-[40vh] md:min-h-[60vh] p-4">
+            <div className="flex-1 bg-black flex flex-col items-center justify-center p-2 md:p-4" style={{ minHeight: '60dvh' }}>
               {/* Montage video preview — infographic & creator with sequences */}
               {hasMontage ? (() => {
                 const seqOrder: string[] = meta?.sequences?.order || ['intro', 'cards', 'video', 'cta'];
@@ -2216,8 +2216,9 @@ export default function CalendarPage() {
 
                 return (
                   <div
-                    className={`relative overflow-hidden rounded-xl ${fullPreviewPost.format === 'reel' ? 'aspect-[9/16] h-[78vh] max-h-[78vh]' : 'aspect-video w-full'}`}
+                    className={`relative overflow-hidden rounded-xl ${fullPreviewPost.format === 'reel' ? '' : 'aspect-video w-full'}`}
                     style={{
+                      ...(fullPreviewPost.format === 'reel' ? { aspectRatio: '9/16', height: '70dvh', maxHeight: '70dvh' } : {}),
                       border: borderCol ? `3px solid ${borderCol}` : undefined,
                       boxShadow: borderCol ? `0 0 30px ${borderCol}40, 0 0 60px ${borderCol}15` : `0 0 30px ${accent}4D, 0 0 60px ${accent}1A`,
                     }}
@@ -2383,9 +2384,10 @@ export default function CalendarPage() {
               /* Non-infographic preview (Creator, regular posts) */
               <div
                 className={`relative overflow-hidden rounded-xl ${
-                  fullPreviewPost.format === 'reel' ? 'aspect-[9/16] h-[75vh] max-h-[75vh]' : 'aspect-video w-full'
+                  fullPreviewPost.format === 'reel' ? '' : 'aspect-video w-full'
                 }`}
                 style={{
+                  ...(fullPreviewPost.format === 'reel' ? { aspectRatio: '9/16', height: '70dvh', maxHeight: '70dvh' } : {}),
                   border: borderCol ? `3px solid ${borderCol}` : undefined,
                   boxShadow: borderCol
                     ? `0 0 30px ${borderCol}40, 0 0 60px ${borderCol}15`
@@ -2539,7 +2541,7 @@ export default function CalendarPage() {
             </div>
 
             {/* Right: Post Details (below on mobile, sidebar on desktop) */}
-            <div className="w-full md:w-80 p-6 flex flex-col border-t md:border-t-0 md:border-l border-gray-800">
+            <div className="w-full md:w-80 p-4 md:p-6 flex flex-col border-t md:border-t-0 md:border-l border-gray-800">
               <h3 className="text-xl font-bold text-white mb-1">{fullPreviewPost.title}</h3>
               {meta?.subtitle && <p className="text-sm text-purple-300 mb-2">{meta.subtitle}</p>}
               <p className="text-sm text-gray-300 mb-4 whitespace-pre-line flex-1 overflow-y-auto max-h-32">{fullPreviewPost.caption || t('previewModal.noCaption')}</p>
