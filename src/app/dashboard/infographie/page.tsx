@@ -91,6 +91,10 @@ export default function InfographicPage() {
   const [rushFileName, setRushFileName] = useState<string | null>(null);
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
 
+  // ── Video Overlay Text ─────────────────────────────────────
+  const [videoOverlayText, setVideoOverlayText] = useState('');
+  const [isGeneratingOverlay, setIsGeneratingOverlay] = useState(false);
+
   // ── Pexels Photos ───────────────────────────────────────────
   const [pexelsPhotos, setPexelsPhotos] = useState<PexelsPhoto[]>([]);
   const [pexelsLoading, setPexelsLoading] = useState(false);
@@ -559,6 +563,7 @@ export default function InfographicPage() {
               metadata: {
                 type: 'infographic',
                 subtitle,
+                videoOverlayText: videoOverlayText || undefined,
                 theme: contentTheme,
                 colorTheme,
                 salesPhrase,
@@ -1168,6 +1173,65 @@ export default function InfographicPage() {
                 La vidéo sera utilisée comme fond dans le montage final (max 100 Mo)
               </p>
             </div>
+
+            {/* Video Overlay Text */}
+            {rushUrl && (
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-300">
+                Texte sur la vidéo (optionnel)
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={videoOverlayText}
+                  onChange={(e) => setVideoOverlayText(e.target.value)}
+                  placeholder="Ex: Découvrez les bienfaits du moringa"
+                  className="flex-1 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
+                />
+                <button
+                  onClick={async () => {
+                    setIsGeneratingOverlay(true);
+                    try {
+                      const themeObj = CONTENT_THEMES.find(t => t.id === contentTheme);
+                      const topicText = contentTheme === 'personnalise' ? customTopic : (themeObj?.label || contentTheme);
+                      const res = await fetch('/api/content/ai-generate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          topic: topicText,
+                          locale: 'fr',
+                          cardCount: 0,
+                          videoOverlayOnly: true,
+                        }),
+                      });
+                      if (res.ok) {
+                        const data = await res.json();
+                        if (data.success && data.content?.videoOverlayText) {
+                          setVideoOverlayText(data.content.videoOverlayText);
+                        } else if (data.success && data.content?.subtitle) {
+                          // Fallback: use subtitle as overlay text
+                          setVideoOverlayText(data.content.subtitle);
+                        }
+                      }
+                    } catch (err) {
+                      console.warn('[Infographie] AI overlay text generation failed:', err);
+                    } finally {
+                      setIsGeneratingOverlay(false);
+                    }
+                  }}
+                  disabled={isGeneratingOverlay}
+                  className="flex items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white hover:bg-purple-500 disabled:opacity-50"
+                  title="Générer un texte avec l'IA"
+                >
+                  {isGeneratingOverlay ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                  IA
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Ce texte s'affichera en overlay sur la séquence vidéo dans le montage
+              </p>
+            </div>
+            )}
 
             {/* Sequence Durations */}
             <div>

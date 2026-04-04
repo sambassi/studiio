@@ -2285,6 +2285,12 @@ export default function CalendarPage() {
                           onLoadedData={(e) => { console.log('[Calendar] Rush video loaded, readyState:', (e.target as HTMLVideoElement).readyState); }}
                           onError={(e) => { console.error('[Calendar] Rush video error:', (e.target as HTMLVideoElement).error); }}
                         />
+                        {/* Video overlay text — optional text set by user in Infographie */}
+                        {meta?.videoOverlayText && (
+                          <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none" style={{ padding: isLandscape ? '8% 10%' : '15% 8%' }}>
+                            <p style={{ fontFamily: "var(--font-oswald), 'Oswald', sans-serif", fontSize: isLandscape ? 'clamp(1.2rem, 3vw, 2rem)' : 'clamp(1.6rem, 6vw, 2.6rem)', fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.06em', lineHeight: 1.15, textAlign: 'center', textShadow: `0 2px 20px rgba(0,0,0,0.9), 0 0 40px ${accent}40, 0 4px 8px rgba(0,0,0,0.7)` }}>{meta.videoOverlayText}</p>
+                          </div>
+                        )}
                       </div>
                       );
                     })()}
