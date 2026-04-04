@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Plus, Trash2, Upload, Zap, Loader2, Sparkles, Film, X, Play, Volume2, Image as ImageIcon, Search, ChevronRight, ChevronLeft, ArrowUp, ArrowDown, Calendar, Music, Package, RefreshCw } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
 import { useBranding } from '@/lib/hooks/useBranding';
+import { useCreatorPreferences } from '@/lib/hooks/useCreatorPreferences';
 import BrandingPanel from '@/components/BrandingPanel';
 import { composeAndUpload, downloadBlob } from '@/lib/video-composer';
 import { useTranslations } from '@/i18n/client';
@@ -100,6 +101,8 @@ export default function InfographiePage() {
   const t = useTranslations('infographic');
   const tc = useTranslations('common');
   const { branding, setBranding } = useBranding();
+  const { prefs, updatePrefs, loaded: prefsLoaded } = useCreatorPreferences();
+  const prefsAppliedRef = useRef(false);
   const [step, setStep] = useState(1);
 
   // Main content state
@@ -185,6 +188,45 @@ export default function InfographiePage() {
   const batchPageRef = useRef(1);
   const [isAddingCard, setIsAddingCard] = useState(false);
   const [batchSearchQuery, setBatchSearchQuery] = useState('');
+
+  // ═══ LOAD SAVED PREFERENCES ═══
+  useEffect(() => {
+    if (!prefsLoaded || prefsAppliedRef.current) return;
+    prefsAppliedRef.current = true;
+
+    if (prefs.format) setFormat(prefs.format as Format);
+    if (prefs.selectedTheme) setSelectedTheme(prefs.selectedTheme as ThemeType);
+    if (prefs.destination) setDestination(prefs.destination as Destination);
+    // Restore sequence durations
+    if (prefs.introDuration || prefs.cardsDuration || prefs.videoDuration || prefs.ctaDuration) {
+      setSequences(prev => prev.map(seq => {
+        if (seq.type === 'intro' && prefs.introDuration) return { ...seq, duration: prefs.introDuration };
+        if (seq.type === 'cards' && prefs.cardsDuration) return { ...seq, duration: prefs.cardsDuration };
+        if (seq.type === 'video' && prefs.videoDuration) return { ...seq, duration: prefs.videoDuration };
+        if (seq.type === 'cta' && prefs.ctaDuration) return { ...seq, duration: prefs.ctaDuration };
+        return seq;
+      }));
+    }
+    // Restore saved logo from Supabase URL
+    if (prefs.savedLogoUrl) {
+      setLogoPreviewUrl(prefs.savedLogoUrl);
+      setLogoName(prefs.savedLogoName || 'Logo sauvegardé');
+    }
+  }, [prefsLoaded]);
+
+  // ═══ AUTO-SAVE PREFERENCES on change ═══
+  useEffect(() => {
+    if (!prefsAppliedRef.current) return; // Don't save during initial load
+    updatePrefs({
+      format,
+      selectedTheme,
+      destination,
+      introDuration: sequences.find(s => s.type === 'intro')?.duration,
+      cardsDuration: sequences.find(s => s.type === 'cards')?.duration,
+      videoDuration: sequences.find(s => s.type === 'video')?.duration,
+      ctaDuration: sequences.find(s => s.type === 'cta')?.duration,
+    });
+  }, [format, selectedTheme, destination, sequences]);
 
   // Cleanup object URLs on unmount
   useEffect(() => {
@@ -455,6 +497,10 @@ export default function InfographiePage() {
       }));
       const [videoUrl, logoUrl, characterUrl, posterUrl] = uploadResults;
       console.log('[Export] Upload results — videoUrl (rush):', videoUrl, '| logoUrl:', logoUrl, '| characterUrl:', characterUrl, '| posterUrl:', posterUrl);
+      // Save logo URL to preferences for reuse in future sessions
+      if (logoUrl) {
+        updatePrefs({ savedLogoUrl: logoUrl, savedLogoName: logoName || 'Logo' });
+      }
       if (selectedVideo && !videoUrl) {
         console.error('[Export] WARNING: selectedVideo was set but upload returned null! Video will be missing from post.');
       }

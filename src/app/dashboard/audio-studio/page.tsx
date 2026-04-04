@@ -4,6 +4,7 @@ import { Suspense, useEffect, useRef, useState, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Music, Mic, Upload, Play, Pause, Square, Trash2, Volume2, VolumeX, Loader2, ChevronLeft, SkipBack, SkipForward, Calendar, Save, RefreshCw } from 'lucide-react';
 import { composeAndUpload, downloadBlob } from '@/lib/video-composer';
+import { useCreatorPreferences } from '@/lib/hooks/useCreatorPreferences';
 import { useTranslations } from '@/i18n/client';
 
 // ═══════════════════════════════════════════════════════════
@@ -48,6 +49,8 @@ function AudioStudioContent() {
   const tc = useTranslations('common');
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { prefs, updatePrefs, loaded: prefsLoaded } = useCreatorPreferences();
+  const prefsAppliedRef = useRef(false);
   const postId = searchParams.get('postId');
   const postIdsParam = searchParams.get('postIds'); // comma-separated for batch
 
@@ -104,6 +107,21 @@ function AudioStudioContent() {
   // Refs
   const musicInputRef = useRef<HTMLInputElement>(null);
   const voiceInputRef = useRef<HTMLInputElement>(null);
+
+  // ═══ LOAD SAVED PREFERENCES ═══
+  useEffect(() => {
+    if (!prefsLoaded || prefsAppliedRef.current) return;
+    prefsAppliedRef.current = true;
+    if (prefs.musicVolume !== undefined) setMusicVolume(prefs.musicVolume);
+    if (prefs.voiceVolume !== undefined) setVoiceVolume(prefs.voiceVolume);
+    if (prefs.exportDest) setExportDest(prefs.exportDest as ExportDest);
+  }, [prefsLoaded]);
+
+  // ═══ AUTO-SAVE PREFERENCES ═══
+  useEffect(() => {
+    if (!prefsAppliedRef.current) return;
+    updatePrefs({ musicVolume, voiceVolume, exportDest });
+  }, [musicVolume, voiceVolume, exportDest]);
 
   // ═══ SYNC VOLUME TO AUDIO ELEMENTS ═══
   useEffect(() => {
