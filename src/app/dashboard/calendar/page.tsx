@@ -2293,12 +2293,10 @@ export default function CalendarPage() {
                       </div>
                     </div>
 
-                    {/* === Lien site web — visible sur toutes les séquences SAUF CTA (CTA a déjà son watermark) === */}
-                    {currentSeq !== 'cta' && (
+                    {/* === Lien site web — visible sur TOUTES les séquences === */}
                     <div className="absolute bottom-8 left-0 right-0 z-30 flex justify-center pointer-events-none">
                       <p className="text-base font-bold text-white/90 tracking-wider" style={{ textShadow: `0 0 10px ${accent}80, 0 2px 4px rgba(0,0,0,0.8)` }}>Afroboost.com</p>
                     </div>
-                    )}
 
                     {/* Play/Pause + Volume — top-right overlay */}
                     <div className="absolute top-3 right-3 z-40 flex items-center gap-1.5">
