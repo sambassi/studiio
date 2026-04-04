@@ -620,7 +620,7 @@ export default function CalendarPage() {
       } else {
         // End of montage: stop auto-play and pause music/voice
         setMontageAutoPlay(false);
-        document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice').forEach(a => { a.pause(); });
+        document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => { a.pause(); });
         document.querySelectorAll<HTMLVideoElement>('#preview-video-infographic, #preview-video').forEach(v => { v.pause(); });
       }
     }, currentDuration);
@@ -703,7 +703,7 @@ export default function CalendarPage() {
   useEffect(() => {
     if (!showFullPreview || !fullPreviewPost) return;
     const timer = setTimeout(() => {
-      document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice').forEach(a => {
+      document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => {
         a.muted = true;
         a.play().catch(() => {});
       });
@@ -2086,10 +2086,30 @@ export default function CalendarPage() {
               donc les éléments audio séparés jouent TOUJOURS quand musicUrl/voiceUrl existent. */}
           <>
             {previewMusicUrl && (
-              <audio id="preview-audio-music" src={previewMusicUrl} autoPlay muted={montageMuted} style={{ display: 'none' }} />
+              <audio id="preview-audio-music" src={previewMusicUrl} autoPlay loop muted={montageMuted} preload="auto" crossOrigin="anonymous" style={{ display: 'none' }}
+                onError={() => {
+                  // If separate music file fails to load, try playing rendered video as audio fallback
+                  const rendered = meta?.renderedVideoUrl;
+                  if (rendered && !document.getElementById('preview-audio-rendered')) {
+                    const fallback = document.createElement('audio');
+                    fallback.id = 'preview-audio-rendered';
+                    fallback.src = rendered;
+                    fallback.loop = true;
+                    fallback.muted = montageMuted;
+                    fallback.autoplay = true;
+                    fallback.style.display = 'none';
+                    document.body.appendChild(fallback);
+                    fallback.play().catch(() => {});
+                  }
+                }}
+              />
             )}
             {previewVoiceUrl && (
-              <audio id="preview-audio-voice" src={previewVoiceUrl} autoPlay muted={montageMuted} style={{ display: 'none' }} />
+              <audio id="preview-audio-voice" src={previewVoiceUrl} autoPlay muted={montageMuted} preload="auto" crossOrigin="anonymous" style={{ display: 'none' }} />
+            )}
+            {/* Fallback: if hasAudio but no separate musicUrl/voiceUrl, play rendered video as hidden audio source */}
+            {postHasAudio && !previewMusicUrl && !previewVoiceUrl && meta?.renderedVideoUrl && (
+              <audio id="preview-audio-rendered" src={meta.renderedVideoUrl} autoPlay loop muted={montageMuted} preload="auto" crossOrigin="anonymous" style={{ display: 'none' }} />
             )}
           </>
           <div className="bg-gray-900 rounded-2xl overflow-hidden shadow-2xl max-w-5xl w-full flex max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
@@ -2187,7 +2207,7 @@ export default function CalendarPage() {
                             const newMuted = !m;
                             // Sync all preview videos AND audio elements
                             document.querySelectorAll<HTMLVideoElement>('#preview-video-infographic, #preview-video').forEach(v => { v.muted = newMuted; });
-                            document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice').forEach(a => {
+                            document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => {
                               a.muted = newMuted;
                               // Chrome nécessite play() explicite après interaction utilisateur pour activer l'audio
                               if (!newMuted) a.play().catch(() => {});
@@ -2204,12 +2224,12 @@ export default function CalendarPage() {
                           e.stopPropagation();
                           if (montageAutoPlay) {
                             setMontageAutoPlay(false);
-                            document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice').forEach(a => { a.pause(); });
+                            document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => { a.pause(); });
                           } else {
                             // Restart montage from beginning with music
                             setInfoSeqIndex(0);
                             setMontageAutoPlay(true);
-                            document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice').forEach(a => { a.currentTime = 0; a.play().catch(() => {}); });
+                            document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => { a.currentTime = 0; a.play().catch(() => {}); });
                           }
                         }}
                       >
@@ -2293,7 +2313,7 @@ export default function CalendarPage() {
                           setMontageMuted(false);
                         } else {
                           vid.pause(); if (btn) btn.style.opacity = '1';
-                          document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice').forEach(a => { a.pause(); });
+                          document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => { a.pause(); });
                         }
                       }
                     }}
