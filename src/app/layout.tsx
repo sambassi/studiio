@@ -41,7 +41,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="Studiio" />
       </head>
-      <body className={`${inter.variable} bg-studiio-dark text-gray-100 antialiased`}>
+      <body className={`${inter.variable} font-sans bg-studiio-dark text-gray-100 antialiased`}>
         <Providers>{children}</Providers>
         <PWAInstallPrompt />
       </body>
