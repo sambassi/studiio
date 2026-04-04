@@ -2096,7 +2096,8 @@ export default function CalendarPage() {
         const hasMetadata = !!meta;
         const previewMusicUrl = meta?.musicUrl as string | undefined;
         const previewVoiceUrl = meta?.voiceUrl as string | undefined;
-        const postHasAudio = !!meta?.hasAudio;
+        // Detect audio: explicit hasAudio flag OR renderedVideoUrl exists (Studio Son always embeds audio)
+        const postHasAudio = !!meta?.hasAudio || !!meta?.renderedVideoUrl;
         // Display title: use metadata subtitle for the overlay text, keep raw title for the sidebar
         const displayTitle = meta?.subtitle
           ? fullPreviewPost.title.replace(/\s*\(Rush\s*\d+\)\s*/gi, '').replace(/\s*-\s*(Instagram|Facebook|TikTok|YouTube|YouTube Shorts)\s*/gi, '')
