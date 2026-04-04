@@ -2103,19 +2103,18 @@ export default function CalendarPage() {
           : fullPreviewPost.title;
         return (
         <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4" onClick={() => setShowFullPreview(false)}>
-          {/* Éléments audio cachés pour musique/voix.
-              L'aperçu montage n'utilise JAMAIS la vidéo rendue (pour éviter double CTA),
-              donc les éléments audio séparés jouent TOUJOURS quand musicUrl/voiceUrl existent. */}
+          {/* Audio caché : utilise TOUJOURS la vidéo rendue (qui contient l'audio mixé)
+              quand hasAudio est vrai. Les fichiers séparés musicUrl/voiceUrl sont des sources
+              brutes non-mixées — la vidéo rendue a le bon mix de volumes. */}
           <>
-            {previewMusicUrl && (
-              <audio id="preview-audio-music" src={previewMusicUrl} autoPlay loop muted={montageMuted} preload="auto" crossOrigin="anonymous" style={{ display: 'none' }}
+            {postHasAudio && meta?.renderedVideoUrl && (
+              <audio id="preview-audio-rendered" src={meta.renderedVideoUrl} autoPlay loop muted={montageMuted} preload="auto" crossOrigin="anonymous" style={{ display: 'none' }}
                 onError={() => {
-                  // If separate music file fails to load, try playing rendered video as audio fallback
-                  const rendered = meta?.renderedVideoUrl;
-                  if (rendered && !document.getElementById('preview-audio-rendered')) {
+                  // If rendered video fails, try separate music file as fallback
+                  if (previewMusicUrl && !document.getElementById('preview-audio-music')) {
                     const fallback = document.createElement('audio');
-                    fallback.id = 'preview-audio-rendered';
-                    fallback.src = rendered;
+                    fallback.id = 'preview-audio-music';
+                    fallback.src = previewMusicUrl;
                     fallback.loop = true;
                     fallback.muted = montageMuted;
                     fallback.autoplay = true;
@@ -2126,12 +2125,12 @@ export default function CalendarPage() {
                 }}
               />
             )}
-            {previewVoiceUrl && (
-              <audio id="preview-audio-voice" src={previewVoiceUrl} autoPlay muted={montageMuted} preload="auto" crossOrigin="anonymous" style={{ display: 'none' }} />
+            {/* Fallback: if hasAudio but no renderedVideoUrl, try separate files */}
+            {postHasAudio && !meta?.renderedVideoUrl && previewMusicUrl && (
+              <audio id="preview-audio-music" src={previewMusicUrl} autoPlay loop muted={montageMuted} preload="auto" crossOrigin="anonymous" style={{ display: 'none' }} />
             )}
-            {/* Fallback: if hasAudio but no separate musicUrl/voiceUrl, play rendered video as hidden audio source */}
-            {postHasAudio && !previewMusicUrl && !previewVoiceUrl && meta?.renderedVideoUrl && (
-              <audio id="preview-audio-rendered" src={meta.renderedVideoUrl} autoPlay loop muted={montageMuted} preload="auto" crossOrigin="anonymous" style={{ display: 'none' }} />
+            {postHasAudio && !meta?.renderedVideoUrl && previewVoiceUrl && (
+              <audio id="preview-audio-voice" src={previewVoiceUrl} autoPlay muted={montageMuted} preload="auto" crossOrigin="anonymous" style={{ display: 'none' }} />
             )}
           </>
           <div className="bg-gray-900 rounded-2xl overflow-hidden shadow-2xl max-w-5xl w-full flex max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
@@ -2330,8 +2329,8 @@ export default function CalendarPage() {
                         const btn = document.getElementById('play-btn-overlay');
                         if (vid.paused) {
                           vid.muted = false; vid.play(); if (btn) btn.style.opacity = '0';
-                          // Also play audio tracks
-                          document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice').forEach(a => { a.muted = false; a.play().catch(() => {}); });
+                          // Also play audio tracks (include rendered video fallback)
+                          document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => { a.muted = false; a.play().catch(() => {}); });
                           setMontageMuted(false);
                         } else {
                           vid.pause(); if (btn) btn.style.opacity = '1';
