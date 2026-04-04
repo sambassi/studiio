@@ -2299,27 +2299,34 @@ export default function CalendarPage() {
                     : `0 0 30px ${accent}4D, 0 0 60px ${accent}1A`,
                 }}
               >
-                {/* Background layer */}
+                {/* Background layer — use poster image, NOT the rendered montage video.
+                    The rendered montage (.webm) is played as the full montage sequence (intro/cards/video/cta).
+                    Loading it as background wastes a browser connection and blocks the rush video from loading. */}
                 {(() => {
-                  const hasVideo = fullPreviewPost.media_type === 'video' && fullPreviewPost.media_url;
-                  const videoSrc = hasVideo ? fullPreviewPost.media_url : (meta?.videoUrl || null);
                   const posterImgSrc = meta?.pexelsUrl || meta?.posterUrl || meta?.characterUrl || null;
-                  const imgSrc = hasVideo ? posterImgSrc : (fullPreviewPost.media_url || posterImgSrc);
+                  // Use raw rush video for background ONLY (never the rendered montage)
+                  const rawVideoSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0] || null;
+                  // Fallback: media_url ONLY if it's NOT a rendered montage (avoid loading corrupted WebM)
+                  const isRenderedMontage = fullPreviewPost.media_url && meta?.renderedVideoUrl && fullPreviewPost.media_url === meta.renderedVideoUrl;
+                  const bgVideoSrc = !isRenderedMontage && fullPreviewPost.media_type === 'video' && fullPreviewPost.media_url
+                    ? fullPreviewPost.media_url
+                    : null;
+                  const imgSrc = posterImgSrc || (!bgVideoSrc ? fullPreviewPost.media_url : null);
 
                   return (
                     <>
-                      {posterImgSrc && videoSrc && (
+                      {posterImgSrc && (
                         <img src={posterImgSrc} alt="Poster" className="absolute inset-0 w-full h-full object-cover" />
                       )}
-                      {videoSrc ? (
-                        <video id="preview-video" src={videoSrc} muted loop playsInline autoPlay preload="auto" className="absolute inset-0 w-full h-full object-cover"
+                      {!posterImgSrc && bgVideoSrc ? (
+                        <video id="preview-video" src={bgVideoSrc} muted loop playsInline autoPlay preload="metadata" className="absolute inset-0 w-full h-full object-cover"
                           onLoadedData={(e) => { const v = e.target as HTMLVideoElement; console.log('[Calendar] BG video loaded, readyState:', v.readyState); v.play().catch(() => {}); }}
                         />
-                      ) : imgSrc ? (
+                      ) : !posterImgSrc && imgSrc ? (
                         <img src={imgSrc} alt={fullPreviewPost.title} className="absolute inset-0 w-full h-full object-cover" />
-                      ) : (
+                      ) : !posterImgSrc ? (
                         <div className="absolute inset-0 bg-gradient-to-br from-purple-900 via-black to-pink-900" />
-                      )}
+                      ) : null}
                     </>
                   );
                 })()}
