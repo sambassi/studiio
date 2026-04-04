@@ -701,7 +701,7 @@ function AudioStudioContent() {
                 body: JSON.stringify({
                   media_url: result.url,
                   media_type: 'video',
-                  status: 'scheduled',
+                  // Keep existing status (draft) — user must explicitly schedule via Calendar
                   metadata: { ...pm, renderedVideoUrl: result.url, videoUrl: result.url, hasAudio: true, musicUrl: uploadedMusicUrl, voiceUrl: uploadedVoiceUrl },
                 }),
               });
