@@ -1,0 +1,37 @@
+name: CI - Tests Vitest
+
+on:
+  push:
+    branches: ['*']
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests Vitest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Installer Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Installer les dependances
+        run: npm ci --ignore-scripts
+
+      - name: Lancer les tests
+        run: npm test
+
+      - name: Resume des tests
+        if: always()
+        run: echo "### Resultat des tests" >> $GITHUB_STEP_SUMMARY && echo "Les tests Vitest ont termine avec le code ${{ job.status }}." >> $GITHUB_STEP_SUMMARY
