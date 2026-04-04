@@ -2213,52 +2213,43 @@ export default function CalendarPage() {
                 const posterImgSrc = meta?.pexelsUrl || meta?.posterUrl || meta?.characterUrl || null;
                 const safeIdx = infoSeqIndex < activeSeqs.length ? infoSeqIndex : 0;
                 const currentSeq = activeSeqs[safeIdx] || 'intro';
-                const isLandscape = fullPreviewPost.format !== 'reel'; // 16:9
 
                 return (
                   <div
-                    className={`relative overflow-hidden rounded-xl ${isLandscape ? 'aspect-video w-full' : ''}`}
+                    className={`relative overflow-hidden rounded-xl ${fullPreviewPost.format === 'reel' ? '' : 'aspect-video w-full'}`}
                     style={{
                       ...(fullPreviewPost.format === 'reel' ? { aspectRatio: '9/16', height: '70dvh', maxHeight: '70dvh' } : {}),
                       border: borderCol ? `3px solid ${borderCol}` : undefined,
                       boxShadow: borderCol ? `0 0 30px ${borderCol}40, 0 0 60px ${borderCol}15` : `0 0 30px ${accent}4D, 0 0 60px ${accent}1A`,
                     }}
                   >
-                    {/* === INTRO : Cinematic Bold — Photo + Titre XXL + Barres cinéma === */}
+                    {/* === INTRO : Photo Affiche + Titre + Sous-titre === */}
                     <div className="absolute inset-0" style={{ opacity: currentSeq === 'intro' ? 1 : 0, transform: currentSeq === 'intro' ? 'scale(1)' : 'scale(1.08)', zIndex: currentSeq === 'intro' ? 10 : 1, transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
-                      {/* Cinema bars top/bottom — thinner in 16:9 */}
-                      <div className="absolute top-0 left-0 right-0 z-20" style={{ height: isLandscape ? '6%' : '10%', background: '#000' }} />
-                      <div className="absolute bottom-0 left-0 right-0 z-20" style={{ height: isLandscape ? '6%' : '10%', background: '#000' }} />
-                      {/* Poster / fallback */}
-                      {posterImgSrc ? <img src={posterImgSrc} alt="Affiche" className="absolute inset-0 w-full h-full object-cover" /> : <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, #1a0a20 0%, #0a0510 100%)' }} />}
-                      {/* Dark gradient overlay for text readability */}
-                      <div className="absolute inset-0" style={{ background: posterImgSrc ? 'linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.5) 35%, rgba(0,0,0,0.15) 60%, transparent 80%)' : 'transparent' }} />
-                      {/* Top accent line */}
-                      <div className="absolute top-0 left-0 right-0 z-30" style={{ height: '3px', background: `linear-gradient(90deg, ${accent}, #F43F5E, ${accent})` }} />
-                      {/* Title + subtitle centered */}
-                      <div className="absolute inset-0 flex flex-col items-center justify-center text-center z-10" style={{ padding: isLandscape ? '8% 10%' : '0 20px' }}>
-                        <h3 style={{ fontFamily: "var(--font-oswald), 'Oswald', sans-serif", fontSize: isLandscape ? 'clamp(1.6rem, 4vw, 2.8rem)' : 'clamp(2rem, 8vw, 3.2rem)', fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.06em', lineHeight: 1.1, textShadow: `0 2px 20px rgba(0,0,0,0.8), 0 0 40px ${accent}40`, maxWidth: isLandscape ? '80%' : '100%' }}>{displayTitle || 'TITRE'}</h3>
-                        {meta?.subtitle && <p style={{ fontFamily: "var(--font-oswald), 'Oswald', sans-serif", fontSize: isLandscape ? 'clamp(0.75rem, 1.8vw, 1rem)' : 'clamp(0.8rem, 3vw, 1.1rem)', color: accent, marginTop: isLandscape ? '6px' : '8px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.25em' }}>{meta.subtitle}</p>}
-                        <div style={{ width: isLandscape ? '40px' : '50px', height: '3px', background: accent, marginTop: isLandscape ? '8px' : '12px', borderRadius: '2px' }} />
+                      {posterImgSrc ? <img src={posterImgSrc} alt="Affiche" className="absolute inset-0 w-full h-full object-cover" /> : <div className="absolute inset-0 bg-gradient-to-b from-black to-purple-950" />}
+                      <div className="absolute inset-0" style={{ background: posterImgSrc ? 'linear-gradient(to top, rgba(100,0,140,0.85) 0%, rgba(0,0,0,0.35) 40%, transparent 60%)' : 'transparent' }} />
+                      <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 z-10">
+                        <h3 className="font-black text-white uppercase tracking-wider leading-tight" style={{ fontSize: 'clamp(1.8rem, 7vw, 3rem)', textShadow: `0 0 20px ${accent}CC, 0 0 50px ${accent}66` }}>{displayTitle || 'TITRE'}</h3>
+                        {meta?.subtitle && <p className="text-white/90 mt-3" style={{ fontSize: 'clamp(1rem, 3.5vw, 1.3rem)', textShadow: `0 0 12px ${accent}80` }}>{meta.subtitle}</p>}
+                        <div className="w-20 h-0.5 mt-4 mx-auto rounded-full" style={{ background: `linear-gradient(90deg, transparent, ${accent}, transparent)` }} />
                       </div>
                     </div>
 
-                    {/* === CARTES : Cinematic Bold — Grille lisible, adaptée au format === */}
+                    {/* === CARTES : Cartes d'info avec animation décalée === */}
                     <div className="absolute inset-0" style={{ opacity: currentSeq === 'cards' ? 1 : 0, zIndex: currentSeq === 'cards' ? 10 : 1, transition: 'opacity 800ms ease-in-out', willChange: 'opacity' }}>
-                      <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, #0a0510 0%, #000 100%)' }} />
-                      <div className="absolute inset-0 flex flex-col items-center justify-center z-10" style={{ padding: isLandscape ? '4% 6%' : '0 16px' }}>
-                        <p style={{ fontFamily: "var(--font-oswald), 'Oswald', sans-serif", fontSize: isLandscape ? 'clamp(0.6rem, 1.2vw, 0.8rem)' : 'clamp(0.7rem, 2.5vw, 0.9rem)', fontWeight: 600, color: accent, textTransform: 'uppercase', letterSpacing: '0.3em', textAlign: 'center', marginBottom: isLandscape ? '8px' : '14px' }}>{t('fullPreview.information')}</p>
-                        <div style={{ display: isLandscape ? 'grid' : 'flex', gridTemplateColumns: isLandscape ? 'repeat(2, 1fr)' : undefined, flexDirection: isLandscape ? undefined : 'column', gap: isLandscape ? '2px 20px' : '0', width: '100%', maxWidth: isLandscape ? '90%' : '100%' }}>
+                      <div className="absolute inset-0 bg-gradient-to-b from-purple-950 via-gray-900 to-black" />
+                      <div className="absolute inset-0 flex flex-col items-center justify-center z-10 px-6">
+                        <p className="font-bold text-white/50 uppercase tracking-[0.25em] text-center mb-5" style={{ fontSize: 'clamp(0.7rem, 2.5vw, 1rem)' }}>{t('fullPreview.information')}</p>
+                        <div className="w-full space-y-2.5">
                           {(() => {
                             // Use cards if available, otherwise convert textCards
                             const displayCards = meta?.cards?.length > 0
                               ? meta.cards.map((c: { emoji: string; label: string; value: string; color?: string }) => c)
                               : (meta?.textCards || []).map((tCard: { text: string; color?: string }) => ({ emoji: '📝', label: tCard.text, value: tCard.text, color: tCard.color }));
                             return displayCards.map((card: { emoji: string; label: string; value: string; color?: string }, i: number) => (
-                              <div key={i} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', alignItems: 'center', gap: isLandscape ? '8px' : '10px', borderBottom: isLandscape ? (i < displayCards.length - 2 ? '1px solid #1a1a1a' : 'none') : (i < displayCards.length - 1 ? '1px solid #1a1a1a' : 'none'), padding: isLandscape ? '6px 4px' : '10px 6px', transition: 'opacity 0.5s ease-out, transform 0.5s ease-out', transitionDelay: currentSeq === 'cards' ? `${i * 150}ms` : '0ms', opacity: currentSeq === 'cards' ? 1 : 0, transform: currentSeq === 'cards' ? 'translateX(0) translateZ(0)' : 'translateX(-20px) translateZ(0)', willChange: 'opacity, transform' }}>
-                                <span style={{ fontSize: isLandscape ? 'clamp(0.9rem, 2vw, 1.2rem)' : 'clamp(1.2rem, 4vw, 1.6rem)' }}>{card.emoji}</span>
-                                <span style={{ fontFamily: "var(--font-oswald), 'Oswald', sans-serif", fontSize: isLandscape ? 'clamp(0.6rem, 1.3vw, 0.85rem)' : 'clamp(0.75rem, 2.8vw, 1rem)', color: '#ccc', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{card.label}</span>
-                                <span style={{ fontFamily: "var(--font-oswald), 'Oswald', sans-serif", fontSize: isLandscape ? 'clamp(0.8rem, 1.8vw, 1.1rem)' : 'clamp(1rem, 3.5vw, 1.4rem)', fontWeight: 700, color: accent, textAlign: 'right', whiteSpace: 'nowrap' }}>{card.value}</span>
+                              <div key={i} className="flex items-center gap-3 bg-black/40 rounded-xl px-4 py-3" style={{ borderLeft: `3px solid ${card.color || accent}`, transition: 'opacity 0.5s ease-out, transform 0.5s ease-out', transitionDelay: currentSeq === 'cards' ? `${i * 150}ms` : '0ms', opacity: currentSeq === 'cards' ? 1 : 0, transform: currentSeq === 'cards' ? 'translateX(0) translateZ(0)' : 'translateX(-20px) translateZ(0)', willChange: 'opacity, transform' }}>
+                                <span style={{ fontSize: 'clamp(1.5rem, 5vw, 2rem)' }}>{card.emoji}</span>
+                                <span className="text-white/80 flex-1" style={{ fontSize: 'clamp(0.85rem, 3vw, 1.1rem)' }}>{card.label}</span>
+                                <span className="font-bold text-white" style={{ fontSize: 'clamp(1.1rem, 4vw, 1.5rem)', textShadow: `0 0 10px ${accent}80` }}>{card.value}</span>
                               </div>
                             ));
                           })()}
@@ -2278,39 +2269,34 @@ export default function CalendarPage() {
                       const videoSrcWithHint = rawSrc.includes('#') ? rawSrc : `${rawSrc}#t=0.1`;
                       return (
                       <div className="absolute inset-0" style={{ opacity: currentSeq === 'video' ? 1 : 0, zIndex: currentSeq === 'video' ? 10 : 1, transition: 'opacity 800ms ease-in-out', willChange: 'opacity' }}>
-                        {/* Cinema bars — thinner in 16:9 */}
-                        <div className="absolute top-0 left-0 right-0 z-20" style={{ height: isLandscape ? '6%' : '10%', background: '#000' }} />
-                        <div className="absolute bottom-0 left-0 right-0 z-20" style={{ height: isLandscape ? '6%' : '10%', background: '#000' }} />
                         <video id="preview-video-infographic" src={videoSrcWithHint} muted loop playsInline preload="metadata" className="absolute inset-0 w-full h-full object-cover"
                           onLoadedData={(e) => { console.log('[Calendar] Rush video loaded, readyState:', (e.target as HTMLVideoElement).readyState); }}
                           onError={(e) => { console.error('[Calendar] Rush video error:', (e.target as HTMLVideoElement).error); }}
                         />
                         {/* Video overlay text — optional text set by user in Infographie */}
                         {meta?.videoOverlayText && (
-                          <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none" style={{ padding: isLandscape ? '8% 10%' : '15% 8%' }}>
-                            <p style={{ fontFamily: "var(--font-oswald), 'Oswald', sans-serif", fontSize: isLandscape ? 'clamp(1.2rem, 3vw, 2rem)' : 'clamp(1.6rem, 6vw, 2.6rem)', fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.06em', lineHeight: 1.15, textAlign: 'center', textShadow: `0 2px 20px rgba(0,0,0,0.9), 0 0 40px ${accent}40, 0 4px 8px rgba(0,0,0,0.7)` }}>{meta.videoOverlayText}</p>
+                          <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none px-6">
+                            <p className="font-black text-white uppercase tracking-wider text-center" style={{ fontSize: 'clamp(1.5rem, 6vw, 2.5rem)', textShadow: `0 2px 20px rgba(0,0,0,0.9), 0 0 40px ${accent}40, 0 4px 8px rgba(0,0,0,0.7)`, lineHeight: 1.15 }}>{meta.videoOverlayText}</p>
                           </div>
                         )}
                       </div>
                       );
                     })()}
 
-                    {/* === CTA: Cinematic Bold — Logo + CTA XXL + accent line === */}
+                    {/* === CTA: Call to action — black bg, colored text, logo once centered === */}
                     <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ opacity: currentSeq === 'cta' ? 1 : 0, transform: currentSeq === 'cta' ? 'scale(1)' : 'scale(0.92)', zIndex: currentSeq === 'cta' ? 10 : 1, background: '#000000', transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
-                      {/* Top accent line */}
-                      <div className="absolute top-0 left-0 right-0" style={{ height: '3px', background: `linear-gradient(90deg, ${accent}, #F43F5E, ${accent})` }} />
-                      <div className="text-center" style={{ padding: isLandscape ? '0 8%' : '0 20px' }}>
-                        {meta?.logoUrl && <img src={meta.logoUrl} alt="Logo" style={{ width: isLandscape ? '60px' : '90px', height: isLandscape ? '60px' : '90px', objectFit: 'contain', margin: isLandscape ? '0 auto 10px' : '0 auto 18px', borderRadius: '50%', border: `2px solid ${accent}`, boxShadow: `0 0 20px ${accent}30` }} />}
-                        <p style={{ fontFamily: "var(--font-oswald), 'Oswald', sans-serif", fontSize: isLandscape ? 'clamp(1.4rem, 3.5vw, 2.4rem)' : 'clamp(1.8rem, 7vw, 2.8rem)', color: accent, textTransform: 'uppercase', letterSpacing: '0.06em', textShadow: `0 0 40px ${accent}50`, lineHeight: 1.1, marginBottom: isLandscape ? '6px' : '10px', fontWeight: 700 }}>{brd?.ctaText || branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}</p>
-                        <p style={{ fontFamily: "var(--font-oswald), 'Oswald', sans-serif", fontSize: isLandscape ? 'clamp(0.9rem, 2.2vw, 1.3rem)' : 'clamp(1.1rem, 4vw, 1.5rem)', fontWeight: 700, color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: '0.2em' }}>{brd?.ctaSubText || branding.ctaSubText || 'LIEN EN BIO'}</p>
-                        {meta?.salesPhrase && <p style={{ fontFamily: "var(--font-oswald), 'Oswald', sans-serif", fontSize: isLandscape ? 'clamp(0.8rem, 1.8vw, 1rem)' : 'clamp(0.9rem, 3vw, 1.1rem)', color: '#fff', marginTop: isLandscape ? '8px' : '14px', fontWeight: 500, letterSpacing: '0.05em' }}>{meta.salesPhrase}</p>}
+                      <div className="text-center px-6">
+                        {meta?.logoUrl && <img src={meta.logoUrl} alt="Logo" className="w-40 h-40 object-contain mx-auto mb-6" />}
+                        <p className="font-black uppercase tracking-wider mb-4 leading-tight px-2" style={{ fontSize: 'clamp(1.8rem, 7vw, 3rem)', color: accent, textShadow: `0 0 30px ${accent}` }}>{brd?.ctaText || branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}</p>
+                        <p className="uppercase tracking-wider font-bold" style={{ fontSize: 'clamp(1.3rem, 5vw, 2.2rem)', color: '#FFFFFF' }}>{brd?.ctaSubText || branding.ctaSubText || 'LIEN EN BIO'}</p>
+                        {meta?.salesPhrase && <p className="mt-5 font-bold" style={{ fontSize: 'clamp(1.3rem, 5vw, 2.2rem)', color: '#FFFFFF' }}>{meta.salesPhrase}</p>}
                       </div>
                     </div>
 
-                    {/* === Lien site web — visible sur toutes les séquences SAUF CTA === */}
+                    {/* === Lien site web — visible sur toutes les séquences SAUF CTA (CTA a déjà son watermark) === */}
                     {currentSeq !== 'cta' && (
-                    <div className="absolute left-0 right-0 z-30 flex justify-center pointer-events-none" style={{ bottom: isLandscape ? '8%' : '12%' }}>
-                      <p style={{ fontFamily: "var(--font-oswald), 'Oswald', sans-serif", fontSize: isLandscape ? 'clamp(0.55rem, 1.2vw, 0.75rem)' : 'clamp(0.7rem, 2.5vw, 0.9rem)', fontWeight: 500, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.25em', textTransform: 'uppercase', textShadow: '0 2px 8px rgba(0,0,0,0.9)' }}>Afroboost.com</p>
+                    <div className="absolute bottom-8 left-0 right-0 z-30 flex justify-center pointer-events-none">
+                      <p className="font-bold text-white/90 tracking-wider" style={{ fontSize: 'clamp(1rem, 3.5vw, 1.3rem)', textShadow: `0 0 10px ${accent}80, 0 2px 4px rgba(0,0,0,0.8)` }}>Afroboost.com</p>
                     </div>
                     )}
 
