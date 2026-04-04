@@ -724,7 +724,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   // ═══════════════════════════════════════════════════════════
   // REAL-TIME MODE: With audio → must render in sync with audio
   // ═══════════════════════════════════════════════════════════
-  return new Promise<Blob>((resolve, reject) => {
+  return new Promise<Blob>(async (resolve, reject) => {
     recorder.onstop = () => {
       const outputType = isMP4 ? 'video/mp4' : 'video/webm';
       const blob = new Blob(chunks, { type: outputType });
