@@ -695,13 +695,13 @@ export default function CalendarPage() {
       if (!vid) return;
       vid.muted = true;
 
-      // Detect if video can actually load
+      // Detect if video can actually load — 8s timeout for large files (rush MP4 can be 15-20MB)
       const loadTimeout = setTimeout(() => {
         if (vid.readyState === 0) {
-          console.warn('[Calendar] Video failed to load after 3s, skipping video sequence:', vid.src);
+          console.warn('[Calendar] Video failed to load after 8s, skipping video sequence:', vid.src);
           setVideoPlayable(false);
         }
-      }, 3000);
+      }, 8000);
 
       vid.onloadeddata = () => {
         clearTimeout(loadTimeout);
@@ -720,12 +720,14 @@ export default function CalendarPage() {
     return () => clearTimeout(timer);
   }, [showFullPreview, fullPreviewPost]);
 
-  // Force audio elements to play (muted) when montage preview opens
+  // Force separate audio elements to play (muted) when montage preview opens
   // This ensures they are loaded and ready for unmute
+  // NOTE: #preview-audio-rendered uses preload="none" — it loads lazily on unmute to avoid
+  // consuming bandwidth/connections that the rush video needs to load
   useEffect(() => {
     if (!showFullPreview || !fullPreviewPost) return;
     const timer = setTimeout(() => {
-      document.querySelectorAll<HTMLMediaElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => {
+      document.querySelectorAll<HTMLMediaElement>('#preview-audio-music, #preview-audio-voice').forEach(a => {
         a.muted = true;
         a.play().catch(() => {});
       });
@@ -2109,7 +2111,7 @@ export default function CalendarPage() {
               MediaRecorder (métadonnées de durée manquantes), mais les <video> oui. */}
           <>
             {postHasAudio && meta?.renderedVideoUrl && (
-              <video id="preview-audio-rendered" src={meta.renderedVideoUrl} autoPlay loop muted={montageMuted} playsInline preload="auto" style={{ position: 'fixed', width: 1, height: 1, opacity: 0, pointerEvents: 'none', zIndex: -1 }}
+              <video id="preview-audio-rendered" src={meta.renderedVideoUrl} loop muted playsInline preload="none" style={{ position: 'fixed', width: 1, height: 1, opacity: 0, pointerEvents: 'none', zIndex: -1 }}
                 onError={() => {
                   // If rendered video fails, try separate music file as fallback
                   if (previewMusicUrl && !document.getElementById('preview-audio-music')) {
@@ -2231,6 +2233,10 @@ export default function CalendarPage() {
                             document.querySelectorAll<HTMLVideoElement>('#preview-video-infographic, #preview-video').forEach(v => { v.muted = newMuted; });
                             document.querySelectorAll<HTMLMediaElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => {
                               a.muted = newMuted;
+                              // Lazy-load audio: if preload="none", load on first unmute
+                              if (!newMuted && (a as HTMLMediaElement).readyState === 0 && (a as HTMLMediaElement).getAttribute('preload') === 'none') {
+                                (a as HTMLMediaElement).load();
+                              }
                               // Chrome nécessite play() explicite après interaction utilisateur pour activer l'audio
                               if (!newMuted) a.play().catch(() => {});
                             });
@@ -2331,7 +2337,12 @@ export default function CalendarPage() {
                         if (vid.paused) {
                           vid.muted = false; vid.play(); if (btn) btn.style.opacity = '0';
                           // Also play audio tracks (include rendered video fallback)
-                          document.querySelectorAll<HTMLMediaElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => { a.muted = false; a.play().catch(() => {}); });
+                          document.querySelectorAll<HTMLMediaElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => {
+                            a.muted = false;
+                            // Lazy-load: trigger load if preload="none" and not yet loaded
+                            if (a.readyState === 0 && a.getAttribute('preload') === 'none') a.load();
+                            a.play().catch(() => {});
+                          });
                           setMontageMuted(false);
                         } else {
                           vid.pause(); if (btn) btn.style.opacity = '1';
