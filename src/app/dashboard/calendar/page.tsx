@@ -695,18 +695,23 @@ export default function CalendarPage() {
       if (!vid) return;
       vid.muted = true;
 
-      // Detect if video can actually load — 8s timeout for large files (rush MP4 can be 15-20MB)
+      // Detect if video can actually load — 12s timeout for large files (rush MP4 can be 15-20MB)
+      // The #t=0.1 hint forces Chrome to use range requests, which helps with non-faststart MP4s
       const loadTimeout = setTimeout(() => {
         if (vid.readyState === 0) {
-          console.warn('[Calendar] Video failed to load after 8s, skipping video sequence:', vid.src);
+          console.warn('[Calendar] Video failed to load after 12s, skipping video sequence:', vid.src);
           setVideoPlayable(false);
         }
-      }, 8000);
+      }, 12000);
 
       vid.onloadeddata = () => {
         clearTimeout(loadTimeout);
         console.log('[Calendar] Video loaded OK, readyState:', vid.readyState, 'duration:', vid.duration);
         setVideoPlayable(true);
+      };
+      // Also listen for loadedmetadata — enough to know file is valid
+      vid.onloadedmetadata = () => {
+        console.log('[Calendar] Video metadata loaded, duration:', vid.duration, 'readyState:', vid.readyState);
       };
       vid.onerror = () => {
         clearTimeout(loadTimeout);
@@ -2197,9 +2202,12 @@ export default function CalendarPage() {
                       // which causes a "double CTA" effect when played inside the HTML montage preview.
                       const rawSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0];
                       if (!rawSrc) return null;
+                      // Add #t=0.1 hint to force Chrome range-request for metadata
+                      // This helps large MP4 files without faststart (moov atom at end)
+                      const videoSrcWithHint = rawSrc.includes('#') ? rawSrc : `${rawSrc}#t=0.1`;
                       return (
                       <div className="absolute inset-0" style={{ opacity: currentSeq === 'video' ? 1 : 0, zIndex: currentSeq === 'video' ? 10 : 1, transition: 'opacity 800ms ease-in-out', willChange: 'opacity' }}>
-                        <video id="preview-video-infographic" src={rawSrc} muted loop playsInline preload="auto" className="absolute inset-0 w-full h-full object-cover"
+                        <video id="preview-video-infographic" src={videoSrcWithHint} muted loop playsInline preload="metadata" className="absolute inset-0 w-full h-full object-cover"
                           onLoadedData={(e) => { console.log('[Calendar] Rush video loaded, readyState:', (e.target as HTMLVideoElement).readyState); }}
                           onError={(e) => { console.error('[Calendar] Rush video error:', (e.target as HTMLVideoElement).error); }}
                         />
