@@ -642,7 +642,7 @@ export default function CalendarPage() {
       } else {
         // End of montage: stop auto-play and pause music/voice
         setMontageAutoPlay(false);
-        document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => { a.pause(); });
+        document.querySelectorAll<HTMLMediaElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => { a.pause(); });
         document.querySelectorAll<HTMLVideoElement>('#preview-video-infographic, #preview-video').forEach(v => { v.pause(); });
       }
     }, currentDuration);
@@ -725,7 +725,7 @@ export default function CalendarPage() {
   useEffect(() => {
     if (!showFullPreview || !fullPreviewPost) return;
     const timer = setTimeout(() => {
-      document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => {
+      document.querySelectorAll<HTMLMediaElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => {
         a.muted = true;
         a.play().catch(() => {});
       });
@@ -2104,12 +2104,12 @@ export default function CalendarPage() {
           : fullPreviewPost.title;
         return (
         <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4" onClick={() => setShowFullPreview(false)}>
-          {/* Audio caché : utilise TOUJOURS la vidéo rendue (qui contient l'audio mixé)
-              quand hasAudio est vrai. Les fichiers séparés musicUrl/voiceUrl sont des sources
-              brutes non-mixées — la vidéo rendue a le bon mix de volumes. */}
+          {/* Audio caché : utilise un <video> caché pour lire l'audio embarqué
+              dans le fichier WebM rendu. Les <audio> ne chargent pas les WebM de
+              MediaRecorder (métadonnées de durée manquantes), mais les <video> oui. */}
           <>
             {postHasAudio && meta?.renderedVideoUrl && (
-              <audio id="preview-audio-rendered" src={meta.renderedVideoUrl} autoPlay loop muted={montageMuted} preload="auto" crossOrigin="anonymous" style={{ display: 'none' }}
+              <video id="preview-audio-rendered" src={meta.renderedVideoUrl} autoPlay loop muted={montageMuted} playsInline preload="auto" style={{ position: 'fixed', width: 1, height: 1, opacity: 0, pointerEvents: 'none', zIndex: -1 }}
                 onError={() => {
                   // If rendered video fails, try separate music file as fallback
                   if (previewMusicUrl && !document.getElementById('preview-audio-music')) {
@@ -2229,7 +2229,7 @@ export default function CalendarPage() {
                             const newMuted = !m;
                             // Sync all preview videos AND audio elements
                             document.querySelectorAll<HTMLVideoElement>('#preview-video-infographic, #preview-video').forEach(v => { v.muted = newMuted; });
-                            document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => {
+                            document.querySelectorAll<HTMLMediaElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => {
                               a.muted = newMuted;
                               // Chrome nécessite play() explicite après interaction utilisateur pour activer l'audio
                               if (!newMuted) a.play().catch(() => {});
@@ -2246,12 +2246,12 @@ export default function CalendarPage() {
                           e.stopPropagation();
                           if (montageAutoPlay) {
                             setMontageAutoPlay(false);
-                            document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => { a.pause(); });
+                            document.querySelectorAll<HTMLMediaElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => { a.pause(); });
                           } else {
                             // Restart montage from beginning with music
                             setInfoSeqIndex(0);
                             setMontageAutoPlay(true);
-                            document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => { a.currentTime = 0; a.play().catch(() => {}); });
+                            document.querySelectorAll<HTMLMediaElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => { a.currentTime = 0; a.play().catch(() => {}); });
                           }
                         }}
                       >
@@ -2331,11 +2331,11 @@ export default function CalendarPage() {
                         if (vid.paused) {
                           vid.muted = false; vid.play(); if (btn) btn.style.opacity = '0';
                           // Also play audio tracks (include rendered video fallback)
-                          document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => { a.muted = false; a.play().catch(() => {}); });
+                          document.querySelectorAll<HTMLMediaElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => { a.muted = false; a.play().catch(() => {}); });
                           setMontageMuted(false);
                         } else {
                           vid.pause(); if (btn) btn.style.opacity = '1';
-                          document.querySelectorAll<HTMLAudioElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => { a.pause(); });
+                          document.querySelectorAll<HTMLMediaElement>('#preview-audio-music, #preview-audio-voice, #preview-audio-rendered').forEach(a => { a.pause(); });
                         }
                       }
                     }}
