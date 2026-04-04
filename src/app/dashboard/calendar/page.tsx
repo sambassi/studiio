@@ -35,6 +35,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { useBranding } from '@/lib/hooks/useBranding';
+import { useCreatorPreferences } from '@/lib/hooks/useCreatorPreferences';
 import BrandingPanel from '@/components/BrandingPanel';
 import { composeAndUpload, downloadBlob } from '@/lib/video-composer';
 import { useTranslations, useLocale } from '@/i18n/client';
@@ -112,6 +113,8 @@ export default function CalendarPage() {
   const localeMap: Record<string, string> = { fr: 'fr-FR', en: 'en-GB', de: 'de-DE' };
   const intlLocale = localeMap[locale] || 'fr-FR';
   const { branding, setBranding } = useBranding();
+  const { prefs, updatePrefs, loaded: prefsLoaded } = useCreatorPreferences();
+  const prefsAppliedRef = useRef(false);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -173,6 +176,25 @@ export default function CalendarPage() {
   const [exportRenderStage, setExportRenderStage] = useState('');
   const rushInputRef = useRef<HTMLInputElement>(null);
   const musicInputRef = useRef<HTMLInputElement>(null);
+
+  // Load saved preferences
+  useEffect(() => {
+    if (!prefsLoaded || prefsAppliedRef.current) return;
+    prefsAppliedRef.current = true;
+    if (prefs.aiPlanDuration) setAiPlanDuration(prefs.aiPlanDuration);
+    if (prefs.aiPlatforms && prefs.aiPlatforms.length > 0) setAiPlatforms(prefs.aiPlatforms);
+    if (prefs.aiObjectives && prefs.aiObjectives.length > 0) setAiObjectives(prefs.aiObjectives);
+  }, [prefsLoaded]);
+
+  // Auto-save preferences when AI agent settings change
+  useEffect(() => {
+    if (!prefsAppliedRef.current) return;
+    updatePrefs({
+      aiPlanDuration,
+      aiPlatforms,
+      aiObjectives,
+    });
+  }, [aiPlanDuration, aiPlatforms, aiObjectives]);
 
   // Fetch posts
   const fetchPosts = useCallback(async () => {

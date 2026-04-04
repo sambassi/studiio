@@ -26,6 +26,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useBranding } from '@/lib/hooks/useBranding';
+import { useCreatorPreferences } from '@/lib/hooks/useCreatorPreferences';
 import { useTranslations, useLocale } from '@/i18n/client';
 import { getContentPools, pickRandom as pickRandomI18n } from '@/lib/i18n-content';
 import BrandingPanel from '@/components/BrandingPanel';
@@ -95,6 +96,8 @@ export default function CreatorPage() {
   useSession();
   const router = useRouter();
   const { branding, setBranding } = useBranding();
+  const { prefs, updatePrefs, loaded: prefsLoaded } = useCreatorPreferences();
+  const prefsAppliedRef = useRef(false);
   const t = useTranslations('creator');
   const tc = useTranslations('common');
   const locale = useLocale();
@@ -204,6 +207,35 @@ export default function CreatorPage() {
   // Refs
   const rushInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const characterInputRef = useRef<HTMLInputElement>(null);
+
+  // ═══ LOAD SAVED PREFERENCES ═══
+  useEffect(() => {
+    if (!prefsLoaded || prefsAppliedRef.current) return;
+    prefsAppliedRef.current = true;
+    if (prefs.format) setFormat(prefs.format === '16:9' ? 'tv' : 'reel');
+    if (prefs.destination) setDestination(prefs.destination);
+    if (prefs.introDuration) setIntroDuration(prefs.introDuration);
+    if (prefs.cardsDuration) setCardsDuration(prefs.cardsDuration);
+    if (prefs.ctaDuration) setCtaDuration(prefs.ctaDuration);
+    if (prefs.videoDuration) setRushVideoDuration(prefs.videoDuration);
+    // Restore saved logo
+    if (prefs.savedLogoUrl) {
+      setLogoPreview(prefs.savedLogoUrl);
+    }
+  }, [prefsLoaded]);
+
+  // ═══ AUTO-SAVE PREFERENCES ═══
+  useEffect(() => {
+    if (!prefsAppliedRef.current) return;
+    updatePrefs({
+      format: format === 'tv' ? '16:9' : '9:16',
+      destination,
+      introDuration,
+      cardsDuration,
+      ctaDuration,
+      videoDuration: rushVideoDuration,
+    });
+  }, [format, destination, introDuration, cardsDuration, ctaDuration, rushVideoDuration]);
 
   // Cleanup
   useEffect(() => {

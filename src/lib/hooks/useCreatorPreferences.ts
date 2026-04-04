@@ -26,6 +26,10 @@ export interface CreatorPreferences {
   musicVolume?: number;
   voiceVolume?: number;
   exportDest?: string;
+  // Calendar AI Agent
+  aiPlanDuration?: '7' | '14' | '30';
+  aiPlatforms?: string[];
+  aiObjectives?: string[];
 }
 
 const STORAGE_KEY = 'studiio_creator_prefs';
