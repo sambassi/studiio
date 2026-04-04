@@ -2284,7 +2284,7 @@ export default function CalendarPage() {
                     })()}
 
                     {/* === CTA: Call to action — black bg, colored text, logo once centered === */}
-                    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ opacity: currentSeq === 'cta' ? 1 : 0, transform: currentSeq === 'cta' ? 'scale(1)' : 'scale(0.92)', zIndex: currentSeq === 'cta' ? 10 : 1, background: '#000000', transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pb-12" style={{ opacity: currentSeq === 'cta' ? 1 : 0, transform: currentSeq === 'cta' ? 'scale(1)' : 'scale(0.92)', zIndex: currentSeq === 'cta' ? 10 : 1, background: '#000000', transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
                       <div className="text-center px-6">
                         {meta?.logoUrl && <img src={meta.logoUrl} alt="Logo" className="w-40 h-40 object-contain mx-auto mb-6" />}
                         <p className="text-3xl font-black uppercase tracking-wider mb-4 leading-tight px-2" style={{ color: accent, textShadow: `0 0 30px ${accent}` }}>{brd?.ctaText || branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}</p>
@@ -2294,8 +2294,8 @@ export default function CalendarPage() {
                     </div>
 
                     {/* === Lien site web — visible sur TOUTES les séquences === */}
-                    <div className="absolute bottom-8 left-0 right-0 z-30 flex justify-center pointer-events-none">
-                      <p className="text-base font-bold text-white/90 tracking-wider" style={{ textShadow: `0 0 10px ${accent}80, 0 2px 4px rgba(0,0,0,0.8)` }}>Afroboost.com</p>
+                    <div className="absolute bottom-3 left-0 right-0 z-30 flex justify-center pointer-events-none">
+                      <p className="text-sm font-bold text-white/70 tracking-wider" style={{ textShadow: `0 0 10px ${accent}80, 0 2px 4px rgba(0,0,0,0.8)` }}>Afroboost.com</p>
                     </div>
 
                     {/* Play/Pause + Volume — top-right overlay */}
