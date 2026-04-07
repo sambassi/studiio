@@ -101,12 +101,21 @@ export default function InfographicPage() {
 
   // ── Logo Upload ────────────────────────────────────────────
   const [logoImage, setLogoImage] = useState<string | null>(null);
+  const [logoScale, setLogoScale] = useState(1.0); // 0.3 to 3.0
+  const [logoSequences, setLogoSequences] = useState<string[]>(['titre', 'cta']); // which sequences show logo
   const [titleColor, setTitleColor] = useState('#ffffff');
   const [ctaColor, setCtaColor] = useState('#ffffff');
-  // Gradient overlay (user-draggable)
+  // CTA text (customizable)
+  const [ctaMainText, setCtaMainText] = useState('AFROBOOST');
+  const [ctaSubText, setCtaSubText] = useState('CHAT POUR PLUS D\'INFOS');
+  const [isGeneratingCta, setIsGeneratingCta] = useState(false);
+  // Gradient overlay
   const [gradientColor1, setGradientColor1] = useState('#7C3AED');
   const [gradientColor2, setGradientColor2] = useState('#EC4899');
   const [gradientOpacity, setGradientOpacity] = useState(0.3);
+  // Per-sequence no-color mode (user decides which sequences have color or just photo)
+  const [noColorBg, setNoColorBg] = useState(false);
+  const [noColorSequences, setNoColorSequences] = useState<string[]>([]); // sequences where color is disabled
 
   // ── Video Upload ────────────────────────────────────────────
   const [rushUrl, setRushUrl] = useState<string | null>(null);
@@ -199,11 +208,11 @@ export default function InfographicPage() {
   const [resizing, setResizing] = useState<string | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
 
-  // Element sizes (percentage-based widths)
-  const [titleSize, setTitleSize] = useState(100); // % of container width
-  const [cardsSize, setCardsSize] = useState(95);
-  const [watermarkSize, setWatermarkSize] = useState(80);
-  const resizeStart = useRef<{ x: number; size: number } | null>(null);
+  // Element sizes (percentage-based widths, 20-100)
+  const [titleSize, setTitleSize] = useState(90);
+  const [cardsSize, setCardsSize] = useState(92);
+  const [watermarkSize, setWatermarkSize] = useState(70);
+  const resizeStart = useRef<{ x: number; y: number; size: number } | null>(null);
 
   // Sequence view: show individual "pages" in preview
   const [activeSequence, setActiveSequence] = useState<'all' | 'titre' | 'cartes' | 'video' | 'cta'>('all');
@@ -650,11 +659,8 @@ export default function InfographicPage() {
                 characterUrl: characterImage ? mediaUrl : null,
                 posterUrl,
                 pexelsUrl: posterUrl,
-                // Video URL preservation: ensure Calendar page can access the video source
                 videoUrl: rushUrl || undefined,
                 rushUrls: rushUrl ? [rushUrl] : undefined,
-                // Sequences object: required by Calendar montage preview & export renderer
-                // Without this, Calendar falls back to defaults and video timing breaks
                 sequences: {
                   intro: introDuration,
                   cards: cards.length > 0 ? cardsDuration : 0,
@@ -668,13 +674,42 @@ export default function InfographicPage() {
                     'cta',
                   ],
                 },
-                // Branding defaults for the infographic montage renderer
                 branding: {
                   accentColor: COLOR_THEMES.find(ct => ct.id === colorTheme)?.accent || '#a855f7',
-                  ctaText: 'CHAT POUR PLUS D\'INFOS',
+                  ctaText: ctaSubText || 'CHAT POUR PLUS D\'INFOS',
                   ctaSubText: 'LIEN EN BIO',
-                  watermarkText: 'AFROBOOST',
+                  watermarkText: ctaMainText || 'AFROBOOST',
                   borderColor: null,
+                },
+                // ── Design settings (positions, sizes, colors, font, filter, etc.) ──
+                design: {
+                  font: selectedFont,
+                  filter: selectedFilter,
+                  cardStyle: selectedCardStyle,
+                  textScale,
+                  titleColor,
+                  ctaColor,
+                  ctaMainText: ctaMainText || 'AFROBOOST',
+                  ctaSubText: ctaSubText || 'CHAT POUR PLUS D\'INFOS',
+                  noColorBg,
+                  noColorSequences,
+                  gradientColor1,
+                  gradientColor2,
+                  gradientOpacity,
+                  positions: {
+                    title: titlePos,
+                    logo: logoPos,
+                    watermark: watermarkPos,
+                    cards: cardsPos,
+                  },
+                  sizes: {
+                    title: titleSize,
+                    cards: cardsSize,
+                    watermark: watermarkSize,
+                  },
+                  logoScale,
+                  logoSequences,
+                  logoUrl: logoImage || undefined,
                 },
               },
             }),
@@ -749,42 +784,82 @@ export default function InfographicPage() {
         {step === 0 && (
           <div className="space-y-4">
             {/* ── Quick Settings Row (Color + Format) — compact ── */}
-            <div className="flex items-center gap-2 rounded-lg bg-gray-800/50 px-3 py-2">
-              <span className="text-[10px] text-gray-500 uppercase tracking-wider mr-1">Couleur</span>
-              {COLOR_THEMES.map((ct) => (
-                <button
-                  key={ct.id}
-                  onClick={() => setColorTheme(ct.id)}
-                  className={`h-6 w-6 rounded-full bg-gradient-to-br ${ct.bg} transition-all flex-shrink-0 ${
-                    colorTheme === ct.id ? 'ring-2 ring-white scale-110' : 'opacity-60 hover:opacity-100'
-                  }`}
-                  title={ct.name}
-                />
-              ))}
-              <button
-                onClick={() => setColorTheme('custom')}
-                className={`h-6 w-6 rounded-full transition-all flex-shrink-0 ${
-                  colorTheme === 'custom' ? 'ring-2 ring-white scale-110' : 'opacity-60 hover:opacity-100'
-                }`}
-                style={{ background: `conic-gradient(#ef4444, #f59e0b, #10b981, #3b82f6, #a855f7, #ec4899, #ef4444)` }}
-                title="Personnalisé"
-              />
-              {colorTheme === 'custom' && (
-                <input type="color" value={customAccent} onChange={(e) => setCustomAccent(e.target.value)} className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent p-0" />
-              )}
-              <div className="ml-auto flex gap-1">
-                {(['9:16', '16:9'] as Format[]).map((fmt) => (
+            <div className="rounded-lg bg-gray-800/50 px-3 py-2 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-gray-500 uppercase tracking-wider mr-1">Couleur</span>
+                {COLOR_THEMES.map((ct) => (
                   <button
-                    key={fmt}
-                    onClick={() => setFormat(fmt)}
-                    className={`rounded px-2 py-0.5 text-[10px] font-bold transition-all ${
-                      format === fmt ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-400 hover:text-white'
+                    key={ct.id}
+                    onClick={() => { setColorTheme(ct.id); setNoColorBg(false); }}
+                    className={`h-6 w-6 rounded-full bg-gradient-to-br ${ct.bg} transition-all flex-shrink-0 ${
+                      colorTheme === ct.id && !noColorBg ? 'ring-2 ring-white scale-110' : 'opacity-60 hover:opacity-100'
                     }`}
-                  >
-                    {fmt}
-                  </button>
+                    title={ct.name}
+                  />
                 ))}
+                <button
+                  onClick={() => { setColorTheme('custom'); setNoColorBg(false); }}
+                  className={`h-6 w-6 rounded-full transition-all flex-shrink-0 ${
+                    colorTheme === 'custom' && !noColorBg ? 'ring-2 ring-white scale-110' : 'opacity-60 hover:opacity-100'
+                  }`}
+                  style={{ background: `conic-gradient(#ef4444, #f59e0b, #10b981, #3b82f6, #a855f7, #ec4899, #ef4444)` }}
+                  title="Personnalisé"
+                />
+                {/* Sans couleur button */}
+                <button
+                  onClick={() => setNoColorBg(!noColorBg)}
+                  className={`h-6 w-6 rounded-full border-2 transition-all flex-shrink-0 ${
+                    noColorBg ? 'ring-2 ring-white scale-110 border-gray-400 bg-gray-900' : 'border-gray-600 bg-gray-800 opacity-60 hover:opacity-100'
+                  }`}
+                  title="Sans couleur (photo uniquement)"
+                >
+                  {noColorBg && <span className="block w-full h-full rounded-full relative"><span className="absolute inset-0 flex items-center justify-center text-[8px] text-gray-400">∅</span></span>}
+                </button>
+                {colorTheme === 'custom' && !noColorBg && (
+                  <input type="color" value={customAccent} onChange={(e) => setCustomAccent(e.target.value)} className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent p-0" />
+                )}
+                <div className="ml-auto flex gap-1">
+                  {(['9:16', '16:9'] as Format[]).map((fmt) => (
+                    <button
+                      key={fmt}
+                      onClick={() => setFormat(fmt)}
+                      className={`rounded px-2 py-0.5 text-[10px] font-bold transition-all ${
+                        format === fmt ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      {fmt}
+                    </button>
+                  ))}
+                </div>
               </div>
+              {/* Per-sequence color control — shown when noColorBg is on */}
+              {noColorBg && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[9px] text-gray-500">Sans couleur sur :</span>
+                  {['titre', 'cartes', 'video', 'cta'].map((seq) => (
+                    <label key={seq} className="flex items-center gap-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={noColorSequences.includes(seq)}
+                        onChange={(e) => {
+                          if (e.target.checked) setNoColorSequences([...noColorSequences, seq]);
+                          else setNoColorSequences(noColorSequences.filter(s => s !== seq));
+                        }}
+                        className="h-3 w-3 rounded border-gray-600 accent-purple-500"
+                      />
+                      <span className="text-[10px] text-gray-400 capitalize">{seq}</span>
+                    </label>
+                  ))}
+                  <button
+                    onClick={() => setNoColorSequences(['titre', 'cartes', 'video', 'cta'])}
+                    className="text-[9px] text-purple-400 hover:text-purple-300 ml-1"
+                  >Toutes</button>
+                  <button
+                    onClick={() => setNoColorSequences([])}
+                    className="text-[9px] text-gray-500 hover:text-gray-400"
+                  >Aucune</button>
+                </div>
+              )}
             </div>
 
             {/* Content Theme Selector */}
@@ -1152,6 +1227,34 @@ export default function InfographicPage() {
                 )}
               </div>
               <p className="mt-1 text-[10px] text-gray-500">Glissez le logo sur l'aperçu pour le positionner</p>
+              {/* Logo Scale Slider */}
+              {logoImage && (
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-[10px] text-gray-500 w-10">Taille</span>
+                  <input type="range" min="0.3" max="3.0" step="0.1" value={logoScale} onChange={(e) => setLogoScale(parseFloat(e.target.value))} className="flex-1 h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer" />
+                  <span className="text-[10px] text-gray-400 w-8">{Math.round(logoScale * 100)}%</span>
+                </div>
+              )}
+              {/* Logo Sequence Checkboxes */}
+              {logoImage && (
+                <div className="mt-2 flex items-center gap-3 flex-wrap">
+                  <span className="text-[10px] text-gray-500">Afficher sur :</span>
+                  {['titre', 'cartes', 'video', 'cta'].map((seq) => (
+                    <label key={seq} className="flex items-center gap-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={logoSequences.includes(seq)}
+                        onChange={(e) => {
+                          if (e.target.checked) setLogoSequences([...logoSequences, seq]);
+                          else setLogoSequences(logoSequences.filter(s => s !== seq));
+                        }}
+                        className="h-3 w-3 rounded border-gray-600 accent-purple-500"
+                      />
+                      <span className="text-[10px] text-gray-400 capitalize">{seq}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* ── Text Colors ── */}
@@ -1165,6 +1268,55 @@ export default function InfographicPage() {
                 <div className="flex items-center gap-2">
                   <input type="color" value={ctaColor} onChange={(e) => setCtaColor(e.target.value)} className="h-7 w-7 cursor-pointer rounded border-0 bg-transparent p-0" />
                   <span className="text-[10px] text-gray-400">CTA</span>
+                </div>
+              </div>
+            </div>
+
+            {/* ── CTA Text (Customizable) ── */}
+            <div>
+              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Texte CTA</label>
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={ctaMainText}
+                  onChange={(e) => setCtaMainText(e.target.value)}
+                  className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
+                  placeholder="Nom de marque (ex: AFROBOOST)"
+                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={ctaSubText}
+                    onChange={(e) => setCtaSubText(e.target.value)}
+                    className="flex-1 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
+                    placeholder="Call-to-action (ex: CHAT POUR PLUS D'INFOS)"
+                  />
+                  <button
+                    onClick={async () => {
+                      setIsGeneratingCta(true);
+                      try {
+                        const themeObj = CONTENT_THEMES.find(t => t.id === contentTheme);
+                        const topicText = contentTheme === 'personnalise' ? customTopic : (themeObj?.label || contentTheme);
+                        const res = await fetch('/api/content/ai-generate', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ topic: topicText, locale: 'fr', cardCount: 0, ctaOnly: true }),
+                        });
+                        if (res.ok) {
+                          const data = await res.json();
+                          if (data.success && data.content) {
+                            if (data.content.ctaText) setCtaSubText(data.content.ctaText);
+                            if (data.content.ctaMainText) setCtaMainText(data.content.ctaMainText);
+                          }
+                        }
+                      } catch { /* ignore */ } finally { setIsGeneratingCta(false); }
+                    }}
+                    disabled={isGeneratingCta}
+                    className="flex items-center gap-1 rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white hover:bg-purple-500 disabled:opacity-50"
+                    title="Générer un CTA avec l'IA"
+                  >
+                    {isGeneratingCta ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                  </button>
                 </div>
               </div>
             </div>
@@ -1231,25 +1383,26 @@ export default function InfographicPage() {
         {/* ═══════════════════════════════════════════════════════ */}
         {step === 2 && (
           <div className="space-y-4">
-            {/* Batch Count */}
+            {/* Batch Count — arrow counter */}
             <div>
-              <label className="mb-3 block text-sm font-medium text-gray-300">
-                Nombre d'infographies: <span className="text-purple-400 font-bold">x{batchCount}</span>
+              <label className="mb-2 block text-sm font-medium text-gray-300">
+                Nombre d'infographies
               </label>
-              <div className="grid grid-cols-3 sm:flex flex-wrap gap-2 sm:gap-3">
-                {[1, 2, 3, 5, 7, 10].map((count) => (
-                  <button
-                    key={count}
-                    onClick={() => setBatchCount(count)}
-                    className={`rounded-lg px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-all ${
-                      batchCount === count
-                        ? 'bg-purple-600 text-white'
-                        : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                    }`}
-                  >
-                    x{count}
-                  </button>
-                ))}
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setBatchCount(Math.max(1, batchCount - 1))}
+                  disabled={batchCount <= 1}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-800 border border-gray-700 text-lg font-bold text-white hover:bg-gray-700 disabled:opacity-30 transition-all"
+                >−</button>
+                <div className="flex items-center justify-center rounded-lg bg-purple-600/20 border border-purple-500/40 px-5 py-1.5 min-w-[60px]">
+                  <span className="text-lg font-bold text-purple-400">x{batchCount}</span>
+                </div>
+                <button
+                  onClick={() => setBatchCount(Math.min(10, batchCount + 1))}
+                  disabled={batchCount >= 10}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-800 border border-gray-700 text-lg font-bold text-white hover:bg-gray-700 disabled:opacity-30 transition-all"
+                >+</button>
+                <span className="text-[10px] text-gray-500 ml-1">1 à 10</span>
               </div>
             </div>
 
@@ -1698,23 +1851,36 @@ export default function InfographicPage() {
         <div className={`relative w-full ${previewClasses.maxW} mx-auto`}>
           <div
             ref={previewRef}
-            className={`${previewClasses.aspect} relative flex flex-col items-center justify-between rounded-lg ${activeColorTheme.bg ? `bg-gradient-to-br ${activeColorTheme.bg}` : ''} p-4 shadow-2xl overflow-hidden transition-all duration-300`}
+            className={`${previewClasses.aspect} relative flex flex-col items-center justify-between rounded-lg ${
+              // Show color bg only if not in noColor mode for current sequence
+              (() => {
+                const seqNoColor = noColorBg && (activeSequence === 'all' || noColorSequences.includes(activeSequence));
+                return !seqNoColor && activeColorTheme.bg ? `bg-gradient-to-br ${activeColorTheme.bg}` : '';
+              })()
+            } p-4 shadow-2xl overflow-hidden transition-all duration-300`}
             style={{
               fontFamily: FONT_CSS_MAP[selectedFont] || 'inherit',
-              ...FILTER_CSS_MAP[selectedFilter],
-              ...(colorTheme === 'custom' ? { background: `linear-gradient(135deg, ${customAccent}, ${customAccent}99)` } : {}),
+              ...(() => {
+                const seqNoColor = noColorBg && (activeSequence === 'all' ? noColorSequences.length === 4 : noColorSequences.includes(activeSequence));
+                if (seqNoColor) return { background: '#0A0A0F' };
+                if (colorTheme === 'custom') return { ...FILTER_CSS_MAP[selectedFilter], background: `linear-gradient(135deg, ${customAccent}, ${customAccent}99)` };
+                return FILTER_CSS_MAP[selectedFilter];
+              })(),
             }}
             onMouseMove={(e) => {
               if (!previewRef.current) return;
               const rect = previewRef.current.getBoundingClientRect();
-              // Handle resize
+              // Handle resize — use diagonal distance for intuitive scaling
               if (resizing && resizeStart.current) {
-                const deltaX = e.clientX - resizeStart.current.x;
-                const deltaPercent = (deltaX / rect.width) * 200; // *2 because resize from edge
-                const newSize = Math.round(Math.max(30, Math.min(100, resizeStart.current.size + deltaPercent)));
+                const dx = e.clientX - resizeStart.current.x;
+                const dy = e.clientY - resizeStart.current.y;
+                const diagonal = Math.sqrt(dx * dx + dy * dy) * Math.sign(dx || dy || 1);
+                const deltaPercent = (diagonal / Math.min(rect.width, rect.height)) * 150;
+                const newSize = Math.round(Math.max(20, Math.min(100, resizeStart.current.size + deltaPercent)));
                 if (resizing === 'title') setTitleSize(newSize);
                 else if (resizing === 'cards') setCardsSize(newSize);
                 else if (resizing === 'watermark') setWatermarkSize(newSize);
+                else if (resizing === 'logo') setLogoScale(Math.max(0.3, Math.min(3.0, resizeStart.current.size + deltaPercent / 50)));
                 return;
               }
               // Handle drag
@@ -1734,7 +1900,8 @@ export default function InfographicPage() {
               <img
                 src={previewPhoto.medium}
                 alt=""
-                className="absolute inset-0 h-full w-full object-cover opacity-20"
+                className="absolute inset-0 h-full w-full object-cover"
+                style={{ opacity: noColorBg && (activeSequence === 'all' ? noColorSequences.includes('titre') : noColorSequences.includes(activeSequence)) ? 0.85 : 0.2 }}
               />
             )}
 
@@ -1784,9 +1951,9 @@ export default function InfographicPage() {
               >
                 {/* Resize handles — always visible on hover */}
                 <div className="absolute -top-1 -left-1 w-2.5 h-2.5 bg-purple-500 rounded-full cursor-nw-resize z-30 border border-white/50 opacity-0 group-hover/title:opacity-100 transition-opacity"
-                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('title'); resizeStart.current = { x: e.clientX, size: titleSize }; }} />
+                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('title'); resizeStart.current = { x: e.clientX, y: e.clientY, size: titleSize }; }} />
                 <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-purple-500 rounded-full cursor-ne-resize z-30 border border-white/50 opacity-0 group-hover/title:opacity-100 transition-opacity"
-                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('title'); resizeStart.current = { x: e.clientX, size: titleSize }; }} />
+                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('title'); resizeStart.current = { x: e.clientX, y: e.clientY, size: titleSize }; }} />
                 <div className="absolute inset-0 border border-dashed border-purple-500/0 group-hover/title:border-purple-500/40 rounded pointer-events-none transition-colors" />
                 <h3 className="font-black drop-shadow-lg" style={{ fontSize: `${(format === '16:9' ? 18 : 14) * textScale}px`, color: titleColor }}>
                   {title || 'TITRE'}
@@ -1822,9 +1989,9 @@ export default function InfographicPage() {
               >
                 {/* Resize handles — visible on hover */}
                 <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-pink-500 rounded-full cursor-ne-resize z-30 border border-white/50 opacity-0 group-hover/cards:opacity-100 transition-opacity"
-                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('cards'); resizeStart.current = { x: e.clientX, size: cardsSize }; }} />
+                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('cards'); resizeStart.current = { x: e.clientX, y: e.clientY, size: cardsSize }; }} />
                 <div className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-pink-500 rounded-full cursor-se-resize z-30 border border-white/50 opacity-0 group-hover/cards:opacity-100 transition-opacity"
-                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('cards'); resizeStart.current = { x: e.clientX, size: cardsSize }; }} />
+                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('cards'); resizeStart.current = { x: e.clientX, y: e.clientY, size: cardsSize }; }} />
                 <div className="absolute inset-0 border border-dashed border-pink-500/0 group-hover/cards:border-pink-500/40 rounded pointer-events-none transition-colors" />
                 <div className={`grid gap-1.5 w-full ${
                   selectedCardStyle === 'Full Width' ? 'grid-cols-1' : previewClasses.cols
@@ -1906,9 +2073,9 @@ export default function InfographicPage() {
               >
                 {/* Resize handles — visible on hover */}
                 <div className="absolute -bottom-1 -left-1 w-2.5 h-2.5 bg-yellow-500 rounded-full cursor-sw-resize z-30 border border-white/50 opacity-0 group-hover/cta:opacity-100 transition-opacity"
-                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('watermark'); resizeStart.current = { x: e.clientX, size: watermarkSize }; }} />
+                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('watermark'); resizeStart.current = { x: e.clientX, y: e.clientY, size: watermarkSize }; }} />
                 <div className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-yellow-500 rounded-full cursor-se-resize z-30 border border-white/50 opacity-0 group-hover/cta:opacity-100 transition-opacity"
-                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('watermark'); resizeStart.current = { x: e.clientX, size: watermarkSize }; }} />
+                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('watermark'); resizeStart.current = { x: e.clientX, y: e.clientY, size: watermarkSize }; }} />
                 <div className="absolute inset-0 border border-dashed border-yellow-500/0 group-hover/cta:border-yellow-500/40 rounded pointer-events-none transition-colors" />
                 {salesPhrases.length > 0 && (
                   <p className="font-medium drop-shadow" style={{ fontSize: `${(format === '16:9' ? 10 : 8) * textScale}px`, color: `${ctaColor}ee` }}>
@@ -1916,26 +2083,30 @@ export default function InfographicPage() {
                   </p>
                 )}
                 <p className="mt-0.5 font-bold drop-shadow" style={{ fontSize: `${(format === '16:9' ? 10 : 7) * textScale}px`, color: ctaColor }}>
-                  AFROBOOST
+                  {ctaMainText || 'AFROBOOST'}
                 </p>
                 <p className="font-semibold drop-shadow mt-1" style={{ fontSize: `${(format === '16:9' ? 9 : 7) * textScale}px`, color: activeColorTheme.accent }}>
-                  CHAT POUR PLUS D&apos;INFOS
+                  {ctaSubText || 'CHAT POUR PLUS D\'INFOS'}
                 </p>
               </div>
             )}
 
-            {/* ── LOGO (draggable, visible when uploaded) ── */}
-            {logoImage && (
+            {/* ── LOGO (draggable, resizable, visible per sequence) ── */}
+            {logoImage && (activeSequence === 'all' || logoSequences.includes(activeSequence)) && (
               <div
                 className="absolute z-20 cursor-grab active:cursor-grabbing group/logo"
                 style={{
                   left: `${logoPos.x}%`,
                   top: `${logoPos.y}%`,
-                  transform: 'translate(-50%, -50%)',
+                  transform: `translate(-50%, -50%) scale(${logoScale})`,
                 }}
                 onMouseDown={(e) => { e.preventDefault(); setDragging('logo'); }}
               >
                 <div className="absolute inset-0 border border-dashed border-green-500/0 group-hover/logo:border-green-500/40 rounded pointer-events-none transition-colors" />
+                <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-500 rounded-full cursor-ne-resize z-30 border border-white/50 opacity-0 group-hover/logo:opacity-100 transition-opacity"
+                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('logo'); resizeStart.current = { x: e.clientX, y: e.clientY, size: logoScale }; }} />
+                <div className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-green-500 rounded-full cursor-se-resize z-30 border border-white/50 opacity-0 group-hover/logo:opacity-100 transition-opacity"
+                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('logo'); resizeStart.current = { x: e.clientX, y: e.clientY, size: logoScale }; }} />
                 <img src={logoImage} alt="Logo" className="h-8 w-auto max-w-[60px] object-contain drop-shadow-lg" />
               </div>
             )}
