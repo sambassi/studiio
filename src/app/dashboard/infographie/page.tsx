@@ -19,6 +19,8 @@ import {
   Video,
   AlertTriangle,
 } from 'lucide-react';
+import { PlatformIcon, type PlatformKey } from '@/components/ui/PlatformIcon';
+import { PLATFORM_SAFE_ZONES, type SafeZoneArea } from '@/lib/constants/platforms';
 
 // ── Types ──────────────────────────────────────────────────────
 interface InfoCard {
@@ -150,6 +152,9 @@ export default function InfographicPage() {
       }));
     } catch { /* ignore */ }
   }, [configLoaded, colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration, rushUrl, rushFileName, characterImage]);
+
+  // ── Safe Zone Overlay (additive — does not affect existing logic) ────
+  const [safeZonePlatform, setSafeZonePlatform] = useState<string | null>(null);
 
   // ── Step 2: Export ──────────────────────────────────────────
   const [destination, setDestination] = useState<Destination>('draft');
@@ -1430,6 +1435,22 @@ export default function InfographicPage() {
       <div className="hidden lg:flex w-full lg:w-1/2 flex-col items-center justify-center border-l-0 lg:border-l border-gray-800 bg-gray-950 p-3 sm:p-6 mt-6 lg:mt-0 lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto">
         <h2 className="mb-3 sm:mb-4 text-sm sm:text-lg font-bold text-gray-400">Aperçu Vidéo Finale</h2>
 
+        {/* Safe Zone Platform Selector (additive — purely cosmetic overlay) */}
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Zones:</span>
+          <div className="flex gap-1.5">
+            {Object.entries(PLATFORM_SAFE_ZONES).map(([key, zone]) => (
+              <PlatformIcon
+                key={key}
+                platform={zone.platform}
+                isActive={safeZonePlatform === key}
+                size="sm"
+                onClick={() => setSafeZonePlatform(safeZonePlatform === key ? null : key)}
+              />
+            ))}
+          </div>
+        </div>
+
         {/* Preview Container */}
         <div className={`relative w-full ${previewClasses.maxW} mx-auto`}>
           <div
@@ -1504,6 +1525,36 @@ export default function InfographicPage() {
                 alt="Character"
                 className="absolute bottom-2 right-2 h-1/4 w-auto rounded z-10"
               />
+            )}
+
+            {/* Safe Zone Overlay (additive — pointer-events: none, does not affect interactions) */}
+            {safeZonePlatform && PLATFORM_SAFE_ZONES[safeZonePlatform] && (
+              <div className="absolute inset-0 z-50 pointer-events-none">
+                {PLATFORM_SAFE_ZONES[safeZonePlatform].zones.map((zone: SafeZoneArea, i: number) => (
+                  <div
+                    key={i}
+                    className="absolute"
+                    style={{
+                      top: zone.top || 'auto',
+                      right: zone.right || 'auto',
+                      bottom: zone.bottom || 'auto',
+                      left: zone.left || 'auto',
+                      width: zone.width,
+                      height: zone.height,
+                      border: `1.5px dashed ${PLATFORM_SAFE_ZONES[safeZonePlatform].overlayColor}`,
+                      borderRadius: '4px',
+                      background: `${PLATFORM_SAFE_ZONES[safeZonePlatform].overlayColor}10`,
+                    }}
+                  >
+                    <span
+                      className="absolute top-0.5 left-1 text-[7px] font-bold uppercase tracking-wider"
+                      style={{ color: PLATFORM_SAFE_ZONES[safeZonePlatform].overlayColor }}
+                    >
+                      {zone.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
