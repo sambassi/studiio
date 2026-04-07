@@ -99,6 +99,15 @@ export default function InfographicPage() {
   const [batchCount, setBatchCount] = useState(1);
   const [characterImage, setCharacterImage] = useState<string | null>(null);
 
+  // ── Logo Upload ────────────────────────────────────────────
+  const [logoImage, setLogoImage] = useState<string | null>(null);
+  const [titleColor, setTitleColor] = useState('#ffffff');
+  const [ctaColor, setCtaColor] = useState('#ffffff');
+  // Gradient overlay (user-draggable)
+  const [gradientColor1, setGradientColor1] = useState('#7C3AED');
+  const [gradientColor2, setGradientColor2] = useState('#EC4899');
+  const [gradientOpacity, setGradientOpacity] = useState(0.3);
+
   // ── Video Upload ────────────────────────────────────────────
   const [rushUrl, setRushUrl] = useState<string | null>(null);
   const [rushFileName, setRushFileName] = useState<string | null>(null);
@@ -467,6 +476,16 @@ export default function InfographicPage() {
     }
   };
 
+  // ── Logo upload ────────────────────────────────────────────
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => setLogoImage(event.target?.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
   // ── Video upload ───────────────────────────────────────────
   const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -728,23 +747,62 @@ export default function InfographicPage() {
         {/* STEP 0: Content Theme & Generation */}
         {/* ═══════════════════════════════════════════════════════ */}
         {step === 0 && (
-          <div className="space-y-6">
+          <div className="space-y-4">
+            {/* ── Quick Settings Row (Color + Format) — compact ── */}
+            <div className="flex items-center gap-2 rounded-lg bg-gray-800/50 px-3 py-2">
+              <span className="text-[10px] text-gray-500 uppercase tracking-wider mr-1">Couleur</span>
+              {COLOR_THEMES.map((ct) => (
+                <button
+                  key={ct.id}
+                  onClick={() => setColorTheme(ct.id)}
+                  className={`h-6 w-6 rounded-full bg-gradient-to-br ${ct.bg} transition-all flex-shrink-0 ${
+                    colorTheme === ct.id ? 'ring-2 ring-white scale-110' : 'opacity-60 hover:opacity-100'
+                  }`}
+                  title={ct.name}
+                />
+              ))}
+              <button
+                onClick={() => setColorTheme('custom')}
+                className={`h-6 w-6 rounded-full transition-all flex-shrink-0 ${
+                  colorTheme === 'custom' ? 'ring-2 ring-white scale-110' : 'opacity-60 hover:opacity-100'
+                }`}
+                style={{ background: `conic-gradient(#ef4444, #f59e0b, #10b981, #3b82f6, #a855f7, #ec4899, #ef4444)` }}
+                title="Personnalisé"
+              />
+              {colorTheme === 'custom' && (
+                <input type="color" value={customAccent} onChange={(e) => setCustomAccent(e.target.value)} className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent p-0" />
+              )}
+              <div className="ml-auto flex gap-1">
+                {(['9:16', '16:9'] as Format[]).map((fmt) => (
+                  <button
+                    key={fmt}
+                    onClick={() => setFormat(fmt)}
+                    className={`rounded px-2 py-0.5 text-[10px] font-bold transition-all ${
+                      format === fmt ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {fmt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Content Theme Selector */}
             <div>
-              <label className="mb-3 block text-sm font-medium text-gray-300">Thème du contenu</label>
-              <div className="grid grid-cols-3 gap-1.5 sm:gap-3">
+              <label className="mb-2 block text-sm font-medium text-gray-300">Thème du contenu</label>
+              <div className="grid grid-cols-3 gap-1.5">
                 {CONTENT_THEMES.map((theme) => (
                   <button
                     key={theme.id}
                     onClick={() => setContentTheme(theme.id)}
-                    className={`flex flex-col sm:flex-row items-center gap-1 sm:gap-2 rounded-lg px-2 sm:px-3 py-2 sm:py-2.5 text-[11px] sm:text-sm font-medium transition-all ${
+                    className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-medium transition-all ${
                       contentTheme === theme.id
                         ? 'ring-2 ring-purple-500 bg-gray-800'
                         : 'bg-gray-800/50 hover:bg-gray-800'
                     }`}
                   >
-                    <span className="text-base sm:text-lg">{theme.emoji}</span>
-                    <span className="text-center leading-tight">{theme.label}</span>
+                    <span className="text-sm">{theme.emoji}</span>
+                    <span className="leading-tight">{theme.label}</span>
                   </button>
                 ))}
               </div>
@@ -1021,11 +1079,11 @@ export default function InfographicPage() {
         {/* STEP 1: Design (NEW — fonts, filters, card styles) */}
         {/* ═══════════════════════════════════════════════════════ */}
         {step === 1 && (
-          <div className="space-y-6">
+          <div className="space-y-4">
             {/* ── Font Selector ── */}
             <div>
-              <label className="mb-3 block text-sm font-medium text-gray-300">Police</label>
-              <div className="flex flex-wrap gap-2">
+              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Police</label>
+              <div className="flex flex-wrap gap-1.5">
                 {FONT_OPTIONS.map((opt) => (
                   <DesignOption
                     key={opt.label}
@@ -1037,20 +1095,12 @@ export default function InfographicPage() {
                   />
                 ))}
               </div>
-              {/* Font Preview */}
-              <div
-                className="mt-3 rounded-lg border border-gray-700 bg-gray-800/50 px-4 py-3 text-center"
-                style={{ fontFamily: FONT_CSS_MAP[selectedFont] || 'inherit' }}
-              >
-                <p className="text-2xl font-bold text-white tracking-wide">AFROBOOST</p>
-                <p className="text-sm text-white/60 mt-1">Aperçu de la police {selectedFont}</p>
-              </div>
             </div>
 
             {/* ── Filter Selector ── */}
             <div>
-              <label className="mb-3 block text-sm font-medium text-gray-300">Filtre visuel</label>
-              <div className="flex flex-wrap gap-2">
+              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Filtre visuel</label>
+              <div className="flex flex-wrap gap-1.5">
                 {FILTER_OPTIONS.map((opt) => (
                   <DesignOption
                     key={opt.label}
@@ -1068,8 +1118,8 @@ export default function InfographicPage() {
 
             {/* ── Card Style Selector ── */}
             <div>
-              <label className="mb-3 block text-sm font-medium text-gray-300">Style des cartes</label>
-              <div className="flex flex-wrap gap-2">
+              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Style des cartes</label>
+              <div className="flex flex-wrap gap-1.5">
                 {CARD_STYLE_OPTIONS.map((opt) => (
                   <DesignOption
                     key={opt.label}
@@ -1083,167 +1133,104 @@ export default function InfographicPage() {
               </div>
             </div>
 
-            {/* ── Text Size Control ── */}
+            {/* ── Logo Upload ── */}
             <div>
-              <label className="mb-2 block text-sm font-medium text-gray-300">
-                Taille du texte: <span className="text-purple-400 font-bold">{Math.round(textScale * 100)}%</span>
-              </label>
+              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Logo</label>
               <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setTextScale(Math.max(0.6, textScale - 0.1))}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-800 border border-gray-700 text-white font-bold hover:bg-gray-700"
-                >A</button>
-                <input
-                  type="range"
-                  min="0.6"
-                  max="1.8"
-                  step="0.05"
-                  value={textScale}
-                  onChange={(e) => setTextScale(parseFloat(e.target.value))}
-                  className="flex-1 h-2 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
-                />
-                <button
-                  onClick={() => setTextScale(Math.min(1.8, textScale + 0.1))}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-800 border border-gray-700 text-lg text-white font-bold hover:bg-gray-700"
-                >A</button>
+                <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-gray-700 bg-gray-800 px-3 py-2 hover:border-purple-500 hover:bg-gray-700 transition-all">
+                  <Upload size={14} />
+                  <span className="text-xs text-gray-300">{logoImage ? 'Changer' : 'Charger Logo'}</span>
+                  <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+                </label>
+                {logoImage && (
+                  <div className="flex items-center gap-2">
+                    <img src={logoImage} alt="Logo" className="h-8 w-8 rounded object-contain bg-gray-800 border border-gray-700" />
+                    <button onClick={() => setLogoImage(null)} className="rounded p-1 text-gray-500 hover:bg-red-600 hover:text-white">
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                )}
               </div>
-              <div className="flex justify-between mt-1">
-                <span className="text-[10px] text-gray-500">60%</span>
-                <button onClick={() => setTextScale(1.0)} className="text-[10px] text-purple-400 hover:text-purple-300">Réinitialiser (100%)</button>
-                <span className="text-[10px] text-gray-500">180%</span>
+              <p className="mt-1 text-[10px] text-gray-500">Glissez le logo sur l'aperçu pour le positionner</p>
+            </div>
+
+            {/* ── Text Colors ── */}
+            <div>
+              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Couleurs du texte</label>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <input type="color" value={titleColor} onChange={(e) => setTitleColor(e.target.value)} className="h-7 w-7 cursor-pointer rounded border-0 bg-transparent p-0" />
+                  <span className="text-[10px] text-gray-400">Titre</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input type="color" value={ctaColor} onChange={(e) => setCtaColor(e.target.value)} className="h-7 w-7 cursor-pointer rounded border-0 bg-transparent p-0" />
+                  <span className="text-[10px] text-gray-400">CTA</span>
+                </div>
               </div>
             </div>
 
-            {/* ── Drag & Drop Positioning ── */}
+            {/* ── Text Size Control ── */}
             <div>
-              <label className="mb-3 block text-sm font-medium text-gray-300">Positionnement (glisser-déposer)</label>
-              <p className="text-xs text-gray-500 mb-3">
-                Glissez les éléments sur l'aperçu à droite. Utilisez les poignées aux coins pour redimensionner.
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-center">
-                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Titre</p>
-                  <p className="text-xs text-white font-mono">{titlePos.x}%, {titlePos.y}%</p>
-                </div>
-                <div className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-center">
-                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Cartes</p>
-                  <p className="text-xs text-white font-mono">{cardsPos.x}%, {cardsPos.y}%</p>
-                </div>
-                <div className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-center">
-                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Logo</p>
-                  <p className="text-xs text-white font-mono">{logoPos.x}%, {logoPos.y}%</p>
-                </div>
-                <div className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-center">
-                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Watermark</p>
-                  <p className="text-xs text-white font-mono">{watermarkPos.x}%, {watermarkPos.y}%</p>
-                </div>
+              <label className="mb-1 block text-xs font-medium text-gray-400 uppercase tracking-wider">
+                Taille du texte <span className="text-purple-400">{Math.round(textScale * 100)}%</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setTextScale(Math.max(0.6, textScale - 0.1))} className="flex h-7 w-7 items-center justify-center rounded bg-gray-800 border border-gray-700 text-xs text-white font-bold hover:bg-gray-700">A</button>
+                <input type="range" min="0.6" max="1.8" step="0.05" value={textScale} onChange={(e) => setTextScale(parseFloat(e.target.value))} className="flex-1 h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer" />
+                <button onClick={() => setTextScale(Math.min(1.8, textScale + 0.1))} className="flex h-7 w-7 items-center justify-center rounded bg-gray-800 border border-gray-700 text-sm text-white font-bold hover:bg-gray-700">A</button>
+                <button onClick={() => setTextScale(1.0)} className="text-[9px] text-purple-400 hover:text-purple-300 ml-1">Reset</button>
               </div>
-              <button
-                onClick={() => { setTitlePos({ x: 50, y: 10 }); setLogoPos({ x: 50, y: 85 }); setWatermarkPos({ x: 50, y: 97 }); setCardsPos({ x: 50, y: 50 }); setTitleSize(100); setCardsSize(95); setWatermarkSize(80); }}
-                className="mt-2 text-xs text-purple-400 hover:text-purple-300 underline"
-              >
-                Réinitialiser les positions
-              </button>
+            </div>
+
+            {/* ── Gradient Overlay ── */}
+            <div>
+              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Dégradé d'ombre</label>
+              <div className="flex items-center gap-3">
+                <input type="color" value={gradientColor1} onChange={(e) => setGradientColor1(e.target.value)} className="h-7 w-7 cursor-pointer rounded border-0 bg-transparent p-0" />
+                <span className="text-[10px] text-gray-500">→</span>
+                <input type="color" value={gradientColor2} onChange={(e) => setGradientColor2(e.target.value)} className="h-7 w-7 cursor-pointer rounded border-0 bg-transparent p-0" />
+                <input type="range" min="0" max="0.8" step="0.05" value={gradientOpacity} onChange={(e) => setGradientOpacity(parseFloat(e.target.value))} className="flex-1 h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer" />
+                <span className="text-[10px] text-gray-400 w-8">{Math.round(gradientOpacity * 100)}%</span>
+              </div>
+            </div>
+
+            {/* ── Positioning Help ── */}
+            <div className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
+              <p className="text-[10px] text-gray-500">
+                Glissez les éléments sur l'aperçu. Poignées aux coins pour redimensionner.
+                <button
+                  onClick={() => { setTitlePos({ x: 50, y: 10 }); setLogoPos({ x: 50, y: 85 }); setWatermarkPos({ x: 50, y: 97 }); setCardsPos({ x: 50, y: 50 }); setTitleSize(100); setCardsSize(95); setWatermarkSize(80); }}
+                  className="ml-2 text-purple-400 hover:text-purple-300 underline"
+                >
+                  Reset positions
+                </button>
+              </p>
             </div>
 
             {/* Navigation */}
             <div className="flex gap-3">
               <button
                 onClick={() => setStep(0)}
-                className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-gray-700 bg-gray-800 py-3 font-medium text-gray-300 hover:bg-gray-700"
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-gray-700 bg-gray-800 py-2.5 text-sm font-medium text-gray-300 hover:bg-gray-700"
               >
-                <ChevronLeft size={18} />
+                <ChevronLeft size={16} />
                 Contenu
               </button>
               <button
                 onClick={() => setStep(2)}
-                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-purple-600 py-3 font-bold text-white hover:bg-purple-700"
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-purple-600 py-2.5 text-sm font-bold text-white hover:bg-purple-700"
               >
                 Style
-                <ChevronRight size={18} />
+                <ChevronRight size={16} />
               </button>
             </div>
           </div>
         )}
 
-        {/* STEP 2: Personnalisation (was step 1) */}
+        {/* STEP 2: Médias & Export Settings (was step 1) */}
         {/* ═══════════════════════════════════════════════════════ */}
         {step === 2 && (
-          <div className="space-y-6">
-            {/* Color Theme */}
-            <div>
-              <label className="mb-3 block text-sm font-medium text-gray-300">Couleur du thème</label>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
-                {COLOR_THEMES.map((ct) => (
-                  <button
-                    key={ct.id}
-                    onClick={() => setColorTheme(ct.id)}
-                    className={`flex items-center gap-2 rounded-lg px-3 py-2 transition-all ${
-                      colorTheme === ct.id ? 'ring-2 ring-white' : 'hover:ring-1 hover:ring-gray-600'
-                    }`}
-                  >
-                    <div className={`h-5 w-5 rounded bg-gradient-to-br ${ct.bg}`} />
-                    <span className="text-xs">{ct.name}</span>
-                  </button>
-                ))}
-                {/* Custom Color Picker */}
-                <button
-                  onClick={() => setColorTheme('custom')}
-                  className={`flex items-center gap-2 rounded-lg px-3 py-2 transition-all ${
-                    colorTheme === 'custom' ? 'ring-2 ring-white' : 'hover:ring-1 hover:ring-gray-600'
-                  }`}
-                >
-                  <div className="relative h-5 w-5 rounded overflow-hidden" style={{ background: `conic-gradient(#ef4444, #f59e0b, #10b981, #3b82f6, #a855f7, #ec4899, #ef4444)` }} />
-                  <span className="text-xs">Personnalisé</span>
-                </button>
-              </div>
-              {/* Custom Color Input — visible when custom is selected */}
-              {colorTheme === 'custom' && (
-                <div className="mt-3 flex items-center gap-3 rounded-lg border border-gray-700 bg-gray-800 p-3">
-                  <input
-                    type="color"
-                    value={customAccent}
-                    onChange={(e) => setCustomAccent(e.target.value)}
-                    className="h-10 w-14 cursor-pointer rounded border-0 bg-transparent p-0"
-                  />
-                  <div className="flex-1">
-                    <p className="text-xs text-gray-400 mb-1">Couleur personnalisée</p>
-                    <input
-                      type="text"
-                      value={customAccent}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (/^#[0-9a-fA-F]{0,6}$/.test(v)) setCustomAccent(v);
-                      }}
-                      className="w-full rounded border border-gray-600 bg-gray-900 px-2 py-1 text-sm text-white font-mono focus:border-purple-500 focus:outline-none"
-                      placeholder="#a855f7"
-                    />
-                  </div>
-                  <div className="h-10 w-10 rounded-lg" style={{ backgroundColor: customAccent }} />
-                </div>
-              )}
-            </div>
-
-            {/* Format */}
-            <div>
-              <label className="mb-3 block text-sm font-medium text-gray-300">Format</label>
-              <div className="flex gap-2 sm:gap-3 w-full">
-                {(['9:16', '16:9'] as Format[]).map((fmt) => (
-                  <button
-                    key={fmt}
-                    onClick={() => setFormat(fmt)}
-                    className={`flex-1 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base font-medium transition-colors ${
-                      format === fmt
-                        ? 'bg-purple-600 text-white'
-                        : 'border border-gray-700 bg-gray-800 text-gray-300 hover:border-purple-500'
-                    }`}
-                  >
-                    {fmt}
-                  </button>
-                ))}
-              </div>
-            </div>
-
+          <div className="space-y-4">
             {/* Batch Count */}
             <div>
               <label className="mb-3 block text-sm font-medium text-gray-300">
@@ -1776,33 +1763,36 @@ export default function InfographicPage() {
               </div>
             )}
 
-            {/* ── TITLE SECTION (visible in all, titre) ── */}
+            {/* ── Gradient Overlay (user-configurable) ── */}
+            {gradientOpacity > 0 && (
+              <div className="absolute inset-0 z-[1] pointer-events-none" style={{
+                background: `linear-gradient(180deg, ${gradientColor1}${Math.round(gradientOpacity * 255).toString(16).padStart(2, '0')} 0%, transparent 40%, transparent 60%, ${gradientColor2}${Math.round(gradientOpacity * 255).toString(16).padStart(2, '0')} 100%)`,
+              }} />
+            )}
+
+            {/* ── TITLE SECTION (visible in all, titre) — always draggable ── */}
             {(activeSequence === 'all' || activeSequence === 'titre') && (
               <div
-                className={`absolute z-20 text-center ${step === 1 ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                className="absolute z-20 text-center cursor-grab active:cursor-grabbing group/title"
                 style={{
                   left: `${titlePos.x}%`,
                   top: `${titlePos.y}%`,
                   transform: 'translate(-50%, 0)',
                   width: `${titleSize}%`,
                 }}
-                onMouseDown={(e) => { if (step === 1) { e.preventDefault(); setDragging('title'); } }}
+                onMouseDown={(e) => { e.preventDefault(); setDragging('title'); }}
               >
-                {/* Resize handle top-right */}
-                {step === 1 && (
-                  <>
-                    <div className="absolute -top-1 -left-1 w-3 h-3 bg-purple-500 rounded-full cursor-nw-resize z-30 border border-white/50"
-                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('title'); resizeStart.current = { x: e.clientX, size: titleSize }; }} />
-                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-purple-500 rounded-full cursor-ne-resize z-30 border border-white/50"
-                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('title'); resizeStart.current = { x: e.clientX, size: titleSize }; }} />
-                    <div className="absolute inset-0 border border-dashed border-purple-500/40 rounded pointer-events-none" />
-                  </>
-                )}
-                <h3 className="font-black text-white drop-shadow-lg" style={{ fontSize: `${(format === '16:9' ? 18 : 14) * textScale}px` }}>
+                {/* Resize handles — always visible on hover */}
+                <div className="absolute -top-1 -left-1 w-2.5 h-2.5 bg-purple-500 rounded-full cursor-nw-resize z-30 border border-white/50 opacity-0 group-hover/title:opacity-100 transition-opacity"
+                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('title'); resizeStart.current = { x: e.clientX, size: titleSize }; }} />
+                <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-purple-500 rounded-full cursor-ne-resize z-30 border border-white/50 opacity-0 group-hover/title:opacity-100 transition-opacity"
+                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('title'); resizeStart.current = { x: e.clientX, size: titleSize }; }} />
+                <div className="absolute inset-0 border border-dashed border-purple-500/0 group-hover/title:border-purple-500/40 rounded pointer-events-none transition-colors" />
+                <h3 className="font-black drop-shadow-lg" style={{ fontSize: `${(format === '16:9' ? 18 : 14) * textScale}px`, color: titleColor }}>
                   {title || 'TITRE'}
                 </h3>
                 {subtitle && (
-                  <p className="mt-1 text-white/80 drop-shadow" style={{ fontSize: `${(format === '16:9' ? 11 : 9) * textScale}px` }}>
+                  <p className="mt-1 drop-shadow" style={{ fontSize: `${(format === '16:9' ? 11 : 9) * textScale}px`, color: `${titleColor}cc` }}>
                     {subtitle}
                   </p>
                 )}
@@ -1818,28 +1808,24 @@ export default function InfographicPage() {
               </div>
             )}
 
-            {/* ── CARDS GRID (visible in all, cartes) — draggable + resizable ── */}
+            {/* ── CARDS GRID (visible in all, cartes) — always draggable + resizable ── */}
             {(activeSequence === 'all' || activeSequence === 'cartes') && cards.length > 0 && (
               <div
-                className={`absolute z-20 ${step === 1 ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                className="absolute z-20 cursor-grab active:cursor-grabbing group/cards"
                 style={{
                   left: `${cardsPos.x}%`,
                   top: `${cardsPos.y}%`,
                   transform: 'translate(-50%, -50%)',
                   width: `${cardsSize}%`,
                 }}
-                onMouseDown={(e) => { if (step === 1) { e.preventDefault(); setDragging('cards'); } }}
+                onMouseDown={(e) => { e.preventDefault(); setDragging('cards'); }}
               >
-                {/* Resize handles for cards */}
-                {step === 1 && (
-                  <>
-                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-pink-500 rounded-full cursor-ne-resize z-30 border border-white/50"
-                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('cards'); resizeStart.current = { x: e.clientX, size: cardsSize }; }} />
-                    <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-pink-500 rounded-full cursor-se-resize z-30 border border-white/50"
-                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('cards'); resizeStart.current = { x: e.clientX, size: cardsSize }; }} />
-                    <div className="absolute inset-0 border border-dashed border-pink-500/40 rounded pointer-events-none" />
-                  </>
-                )}
+                {/* Resize handles — visible on hover */}
+                <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-pink-500 rounded-full cursor-ne-resize z-30 border border-white/50 opacity-0 group-hover/cards:opacity-100 transition-opacity"
+                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('cards'); resizeStart.current = { x: e.clientX, size: cardsSize }; }} />
+                <div className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-pink-500 rounded-full cursor-se-resize z-30 border border-white/50 opacity-0 group-hover/cards:opacity-100 transition-opacity"
+                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('cards'); resizeStart.current = { x: e.clientX, size: cardsSize }; }} />
+                <div className="absolute inset-0 border border-dashed border-pink-500/0 group-hover/cards:border-pink-500/40 rounded pointer-events-none transition-colors" />
                 <div className={`grid gap-1.5 w-full ${
                   selectedCardStyle === 'Full Width' ? 'grid-cols-1' : previewClasses.cols
                 }`}>
@@ -1906,39 +1892,51 @@ export default function InfographicPage() {
               </div>
             )}
 
-            {/* ── CTA / WATERMARK (visible in all, cta) — draggable + resizable ── */}
+            {/* ── CTA / WATERMARK (visible in all, cta) — always draggable + resizable ── */}
             {(activeSequence === 'all' || activeSequence === 'cta') && (
               <div
-                className={`absolute z-20 text-center ${step === 1 ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                className="absolute z-20 text-center cursor-grab active:cursor-grabbing group/cta"
                 style={{
                   left: `${watermarkPos.x}%`,
                   top: `${watermarkPos.y}%`,
                   transform: 'translate(-50%, -100%)',
                   width: `${watermarkSize}%`,
                 }}
-                onMouseDown={(e) => { if (step === 1) { e.preventDefault(); setDragging('watermark'); } }}
+                onMouseDown={(e) => { e.preventDefault(); setDragging('watermark'); }}
               >
-                {/* Resize handles for CTA */}
-                {step === 1 && (
-                  <>
-                    <div className="absolute -bottom-1 -left-1 w-3 h-3 bg-yellow-500 rounded-full cursor-sw-resize z-30 border border-white/50"
-                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('watermark'); resizeStart.current = { x: e.clientX, size: watermarkSize }; }} />
-                    <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-yellow-500 rounded-full cursor-se-resize z-30 border border-white/50"
-                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('watermark'); resizeStart.current = { x: e.clientX, size: watermarkSize }; }} />
-                    <div className="absolute inset-0 border border-dashed border-yellow-500/40 rounded pointer-events-none" />
-                  </>
-                )}
+                {/* Resize handles — visible on hover */}
+                <div className="absolute -bottom-1 -left-1 w-2.5 h-2.5 bg-yellow-500 rounded-full cursor-sw-resize z-30 border border-white/50 opacity-0 group-hover/cta:opacity-100 transition-opacity"
+                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('watermark'); resizeStart.current = { x: e.clientX, size: watermarkSize }; }} />
+                <div className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-yellow-500 rounded-full cursor-se-resize z-30 border border-white/50 opacity-0 group-hover/cta:opacity-100 transition-opacity"
+                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('watermark'); resizeStart.current = { x: e.clientX, size: watermarkSize }; }} />
+                <div className="absolute inset-0 border border-dashed border-yellow-500/0 group-hover/cta:border-yellow-500/40 rounded pointer-events-none transition-colors" />
                 {salesPhrases.length > 0 && (
-                  <p className="font-medium text-white/90 drop-shadow" style={{ fontSize: `${(format === '16:9' ? 10 : 8) * textScale}px` }}>
+                  <p className="font-medium drop-shadow" style={{ fontSize: `${(format === '16:9' ? 10 : 8) * textScale}px`, color: `${ctaColor}ee` }}>
                     {salesPhrases[0]}
                   </p>
                 )}
-                <p className="mt-0.5 font-bold text-white drop-shadow" style={{ fontSize: `${(format === '16:9' ? 10 : 7) * textScale}px` }}>
+                <p className="mt-0.5 font-bold drop-shadow" style={{ fontSize: `${(format === '16:9' ? 10 : 7) * textScale}px`, color: ctaColor }}>
                   AFROBOOST
                 </p>
                 <p className="font-semibold drop-shadow mt-1" style={{ fontSize: `${(format === '16:9' ? 9 : 7) * textScale}px`, color: activeColorTheme.accent }}>
                   CHAT POUR PLUS D&apos;INFOS
                 </p>
+              </div>
+            )}
+
+            {/* ── LOGO (draggable, visible when uploaded) ── */}
+            {logoImage && (
+              <div
+                className="absolute z-20 cursor-grab active:cursor-grabbing group/logo"
+                style={{
+                  left: `${logoPos.x}%`,
+                  top: `${logoPos.y}%`,
+                  transform: 'translate(-50%, -50%)',
+                }}
+                onMouseDown={(e) => { e.preventDefault(); setDragging('logo'); }}
+              >
+                <div className="absolute inset-0 border border-dashed border-green-500/0 group-hover/logo:border-green-500/40 rounded pointer-events-none transition-colors" />
+                <img src={logoImage} alt="Logo" className="h-8 w-auto max-w-[60px] object-contain drop-shadow-lg" />
               </div>
             )}
 

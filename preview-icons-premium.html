@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Studiio — Preview Icons Premium</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', sans-serif;
+    background: #0A0A0F;
+    color: #e5e5e5;
+    min-height: 100vh;
+    padding: 40px 24px;
+  }
+
+  h1 {
+    font-size: 28px;
+    font-weight: 800;
+    color: #fff;
+    margin-bottom: 8px;
+  }
+  .subtitle {
+    font-size: 14px;
+    color: #888;
+    margin-bottom: 48px;
+  }
+
+  .section-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #ccc;
+    margin-bottom: 20px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #1a1a2e;
+  }
+
+  .section {
+    max-width: 800px;
+    margin: 0 auto 60px;
+  }
+
+  /* ─── ICON CAPSULE SYSTEM ─── */
+  .icon-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 32px;
+  }
+
+  .icon-capsule {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 18px 10px 14px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    transition: all 0.25s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .icon-capsule::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 14px;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+  }
+
+  .icon-capsule:hover {
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
+  }
+
+  .icon-capsule:hover::before {
+    opacity: 1;
+  }
+
+  .icon-capsule.active {
+    border-color: rgba(124, 58, 237, 0.5);
+    background: rgba(124, 58, 237, 0.08);
+  }
+
+  .icon-capsule.active::before {
+    opacity: 1;
+  }
+
+  /* Glow par plateforme */
+  .icon-capsule.instagram::before {
+    background: radial-gradient(ellipse at 30% 50%, rgba(225, 48, 108, 0.12), transparent 70%);
+  }
+  .icon-capsule.instagram.active {
+    border-color: rgba(225, 48, 108, 0.45);
+    background: rgba(225, 48, 108, 0.08);
+    box-shadow: 0 0 20px rgba(225, 48, 108, 0.15), inset 0 0 20px rgba(225, 48, 108, 0.05);
+  }
+
+  .icon-capsule.tiktok::before {
+    background: radial-gradient(ellipse at 30% 50%, rgba(0, 242, 234, 0.12), transparent 70%);
+  }
+  .icon-capsule.tiktok.active {
+    border-color: rgba(0, 242, 234, 0.45);
+    background: rgba(0, 242, 234, 0.08);
+    box-shadow: 0 0 20px rgba(0, 242, 234, 0.15), inset 0 0 20px rgba(0, 242, 234, 0.05);
+  }
+
+  .icon-capsule.youtube::before {
+    background: radial-gradient(ellipse at 30% 50%, rgba(255, 0, 0, 0.12), transparent 70%);
+  }
+  .icon-capsule.youtube.active {
+    border-color: rgba(255, 0, 0, 0.40);
+    background: rgba(255, 0, 0, 0.07);
+    box-shadow: 0 0 20px rgba(255, 0, 0, 0.12), inset 0 0 20px rgba(255, 0, 0, 0.04);
+  }
+
+  .icon-capsule.facebook::before {
+    background: radial-gradient(ellipse at 30% 50%, rgba(24, 119, 242, 0.12), transparent 70%);
+  }
+  .icon-capsule.facebook.active {
+    border-color: rgba(24, 119, 242, 0.45);
+    background: rgba(24, 119, 242, 0.08);
+    box-shadow: 0 0 20px rgba(24, 119, 242, 0.15), inset 0 0 20px rgba(24, 119, 242, 0.05);
+  }
+
+  /* ─── ICON CIRCLE ─── */
+  .icon-circle {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  .icon-circle svg {
+    width: 18px;
+    height: 18px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .icon-circle.instagram {
+    background: linear-gradient(135deg, rgba(225, 48, 108, 0.15), rgba(252, 175, 69, 0.10));
+  }
+  .icon-circle.instagram svg { fill: #E1306C; }
+  .active .icon-circle.instagram {
+    background: linear-gradient(135deg, rgba(225, 48, 108, 0.25), rgba(252, 175, 69, 0.18));
+    box-shadow: 0 0 12px rgba(225, 48, 108, 0.3);
+  }
+
+  .icon-circle.tiktok {
+    background: rgba(0, 242, 234, 0.12);
+  }
+  .icon-circle.tiktok svg { fill: #00F2EA; }
+  .active .icon-circle.tiktok {
+    background: rgba(0, 242, 234, 0.22);
+    box-shadow: 0 0 12px rgba(0, 242, 234, 0.3);
+  }
+
+  .icon-circle.youtube {
+    background: rgba(255, 0, 0, 0.12);
+  }
+  .icon-circle.youtube svg { fill: #FF0000; }
+  .active .icon-circle.youtube {
+    background: rgba(255, 0, 0, 0.20);
+    box-shadow: 0 0 12px rgba(255, 0, 0, 0.25);
+  }
+
+  .icon-circle.facebook {
+    background: rgba(24, 119, 242, 0.12);
+  }
+  .icon-circle.facebook svg { fill: #1877F2; }
+  .active .icon-circle.facebook {
+    background: rgba(24, 119, 242, 0.22);
+    box-shadow: 0 0 12px rgba(24, 119, 242, 0.3);
+  }
+
+  /* ─── LABELS ─── */
+  .icon-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.6);
+    transition: color 0.25s ease;
+    letter-spacing: 0.01em;
+  }
+
+  .icon-capsule:hover .icon-label {
+    color: rgba(255, 255, 255, 0.85);
+  }
+
+  .icon-capsule.active .icon-label {
+    color: #fff;
+  }
+
+  /* ─── DESIGN OPTIONS (Fonts, Filters, Card Styles) ─── */
+  .design-capsule {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 18px 10px 14px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    transition: all 0.25s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .design-capsule::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 14px;
+    background: radial-gradient(ellipse at 30% 50%, rgba(124, 58, 237, 0.10), transparent 70%);
+    opacity: 0;
+    transition: opacity 0.25s ease;
+  }
+
+  .design-capsule:hover {
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
+  }
+
+  .design-capsule:hover::before { opacity: 1; }
+
+  .design-capsule.active {
+    border-color: rgba(124, 58, 237, 0.5);
+    background: rgba(124, 58, 237, 0.08);
+    box-shadow: 0 0 20px rgba(124, 58, 237, 0.15), inset 0 0 20px rgba(124, 58, 237, 0.05);
+  }
+  .design-capsule.active::before { opacity: 1; }
+
+  .design-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: rgba(124, 58, 237, 0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.25s ease;
+  }
+
+  .design-icon svg {
+    width: 18px;
+    height: 18px;
+    fill: #A78BFA;
+    transition: fill 0.25s ease;
+  }
+
+  .design-capsule.active .design-icon {
+    background: rgba(124, 58, 237, 0.22);
+    box-shadow: 0 0 12px rgba(124, 58, 237, 0.3);
+  }
+
+  .design-capsule.active .design-icon svg {
+    fill: #C4B5FD;
+  }
+
+  .design-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.6);
+    transition: color 0.25s ease;
+  }
+  .design-capsule:hover .design-label { color: rgba(255, 255, 255, 0.85); }
+  .design-capsule.active .design-label { color: #fff; }
+
+  .design-sublabel {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.3);
+    margin-top: 1px;
+  }
+  .design-capsule.active .design-sublabel { color: rgba(255, 255, 255, 0.5); }
+
+  /* ─── MINI ICONS (safe zone selector above preview) ─── */
+  .mini-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 24px;
+  }
+
+  .mini-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.25s ease;
+  }
+
+  .mini-icon svg {
+    width: 14px;
+    height: 14px;
+    opacity: 0.5;
+    transition: opacity 0.25s ease;
+  }
+
+  .mini-icon:hover {
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(255, 255, 255, 0.15);
+  }
+  .mini-icon:hover svg { opacity: 0.8; }
+
+  .mini-icon.active.instagram {
+    background: rgba(225, 48, 108, 0.10);
+    border-color: rgba(225, 48, 108, 0.35);
+  }
+  .mini-icon.active.instagram svg { opacity: 1; fill: #E1306C; }
+
+  .mini-icon.active.tiktok {
+    background: rgba(0, 242, 234, 0.10);
+    border-color: rgba(0, 242, 234, 0.35);
+  }
+  .mini-icon.active.tiktok svg { opacity: 1; fill: #00F2EA; }
+
+  .mini-icon.active.youtube {
+    background: rgba(255, 0, 0, 0.10);
+    border-color: rgba(255, 0, 0, 0.35);
+  }
+  .mini-icon.active.youtube svg { opacity: 1; fill: #FF0000; }
+
+  .mini-icon.active.facebook {
+    background: rgba(24, 119, 242, 0.10);
+    border-color: rgba(24, 119, 242, 0.35);
+  }
+  .mini-icon.active.facebook svg { opacity: 1; fill: #1877F2; }
+
+  /* ─── COMPARAISON ─── */
+  .compare-box {
+    display: flex;
+    gap: 40px;
+    align-items: flex-start;
+    margin-bottom: 40px;
+    padding: 24px;
+    border-radius: 16px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  .compare-col {
+    flex: 1;
+  }
+  .compare-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #666;
+    margin-bottom: 16px;
+  }
+
+  .emoji-row {
+    display: flex;
+    gap: 10px;
+  }
+  .emoji-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.10);
+    font-size: 18px;
+    cursor: default;
+  }
+  .emoji-btn span:last-child {
+    font-size: 12px;
+    color: rgba(255,255,255,0.5);
+  }
+
+  /* ─── CODE BLOCK ─── */
+  .code-block {
+    background: #0d0d18;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    padding: 20px;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    color: #A78BFA;
+    overflow-x: auto;
+    white-space: pre;
+    margin-bottom: 24px;
+  }
+  .code-block .comment { color: #4a4a6a; }
+  .code-block .keyword { color: #C792EA; }
+  .code-block .string { color: #C3E88D; }
+  .code-block .type { color: #82AAFF; }
+  .code-block .prop { color: #F78C6C; }
+
+  /* ─── NOTES ─── */
+  .note {
+    font-size: 13px;
+    color: #777;
+    line-height: 1.6;
+    padding: 16px;
+    border-left: 2px solid #7C3AED;
+    background: rgba(124, 58, 237, 0.04);
+    border-radius: 0 8px 8px 0;
+    margin-bottom: 24px;
+  }
+</style>
+</head>
+<body>
+
+<div class="section">
+  <h1>Icons Premium — Preview</h1>
+  <p class="subtitle">Remplacement des emojis par des icônes SVG avec capsules, glow et états actifs</p>
+</div>
+
+<!-- ─── COMPARAISON AVANT/APRÈS ─── -->
+<div class="section">
+  <div class="section-title">Avant / Après</div>
+  <div class="compare-box">
+    <div class="compare-col">
+      <div class="compare-label">Avant (emojis)</div>
+      <div class="emoji-row">
+        <div class="emoji-btn"><span>📸</span><span>Instagram</span></div>
+        <div class="emoji-btn"><span>🎵</span><span>TikTok</span></div>
+        <div class="emoji-btn"><span>▶️</span><span>YouTube</span></div>
+        <div class="emoji-btn"><span>📘</span><span>Facebook</span></div>
+      </div>
+    </div>
+    <div class="compare-col">
+      <div class="compare-label">Après (SVG Premium)</div>
+      <div class="icon-row">
+        <div class="icon-capsule instagram active" onclick="toggleActive(this)">
+          <div class="icon-circle instagram">
+            <svg viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+          </div>
+          <span class="icon-label">Instagram</span>
+        </div>
+        <div class="icon-capsule tiktok" onclick="toggleActive(this)">
+          <div class="icon-circle tiktok">
+            <svg viewBox="0 0 24 24"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.27 6.27 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.75a8.18 8.18 0 004.77 1.52V6.84a4.84 4.84 0 01-1-.15z"/></svg>
+          </div>
+          <span class="icon-label">TikTok</span>
+        </div>
+        <div class="icon-capsule youtube" onclick="toggleActive(this)">
+          <div class="icon-circle youtube">
+            <svg viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+          </div>
+          <span class="icon-label">YouTube</span>
+        </div>
+        <div class="icon-capsule facebook" onclick="toggleActive(this)">
+          <div class="icon-circle facebook">
+            <svg viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+          </div>
+          <span class="icon-label">Facebook</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── PLATEFORMES - TOUS LES ÉTATS ─── -->
+<div class="section">
+  <div class="section-title">Plateformes — États (default, hover, active)</div>
+  <p style="font-size: 13px; color: #666; margin-bottom: 20px;">Cliquez sur les capsules pour basculer l'état actif</p>
+
+  <div class="icon-row">
+    <div class="icon-capsule instagram" onclick="toggleActive(this)">
+      <div class="icon-circle instagram">
+        <svg viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+      </div>
+      <span class="icon-label">Instagram</span>
+    </div>
+    <div class="icon-capsule tiktok" onclick="toggleActive(this)">
+      <div class="icon-circle tiktok">
+        <svg viewBox="0 0 24 24"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.27 6.27 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.75a8.18 8.18 0 004.77 1.52V6.84a4.84 4.84 0 01-1-.15z"/></svg>
+      </div>
+      <span class="icon-label">TikTok</span>
+    </div>
+    <div class="icon-capsule youtube" onclick="toggleActive(this)">
+      <div class="icon-circle youtube">
+        <svg viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+      </div>
+      <span class="icon-label">YouTube</span>
+    </div>
+    <div class="icon-capsule facebook" onclick="toggleActive(this)">
+      <div class="icon-circle facebook">
+        <svg viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+      </div>
+      <span class="icon-label">Facebook</span>
+    </div>
+  </div>
+</div>
+
+<!-- ─── MINI ICONS (zone sécurité above preview) ─── -->
+<div class="section">
+  <div class="section-title">Mini Icons — Sélecteur zones de sécurité (au-dessus de la preview)</div>
+  <p style="font-size: 13px; color: #666; margin-bottom: 20px;">Format compact pour le sélecteur au-dessus de la preview vidéo</p>
+
+  <div class="mini-row">
+    <div class="mini-icon instagram active" onclick="toggleMini(this, 'instagram')">
+      <svg viewBox="0 0 24 24" fill="#E1306C"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+    </div>
+    <div class="mini-icon tiktok" onclick="toggleMini(this, 'tiktok')">
+      <svg viewBox="0 0 24 24" fill="#888"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.27 6.27 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.75a8.18 8.18 0 004.77 1.52V6.84a4.84 4.84 0 01-1-.15z"/></svg>
+    </div>
+    <div class="mini-icon youtube" onclick="toggleMini(this, 'youtube')">
+      <svg viewBox="0 0 24 24" fill="#888"><path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+    </div>
+    <div class="mini-icon facebook" onclick="toggleMini(this, 'facebook')">
+      <svg viewBox="0 0 24 24" fill="#888"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+    </div>
+  </div>
+</div>
+
+<!-- ─── DESIGN OPTIONS ─── -->
+<div class="section">
+  <div class="section-title">Options Design — Polices, Filtres, Styles de carte</div>
+
+  <p style="font-size: 12px; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;">Polices</p>
+  <div class="icon-row" style="margin-bottom: 28px;">
+    <div class="design-capsule active" onclick="toggleDesign(this)">
+      <div class="design-icon">
+        <svg viewBox="0 0 24 24"><path d="M9.93 13.5h4.14L12 7.98zM20 2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-4.05 16.5l-1.14-3H9.17l-1.12 3H5.96l5.11-13h1.86l5.11 13h-2.09z"/></svg>
+      </div>
+      <div>
+        <div class="design-label">Anton</div>
+        <div class="design-sublabel">Impact</div>
+      </div>
+    </div>
+    <div class="design-capsule" onclick="toggleDesign(this)">
+      <div class="design-icon">
+        <svg viewBox="0 0 24 24"><path d="M9.93 13.5h4.14L12 7.98zM20 2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-4.05 16.5l-1.14-3H9.17l-1.12 3H5.96l5.11-13h1.86l5.11 13h-2.09z"/></svg>
+      </div>
+      <div>
+        <div class="design-label">Syne</div>
+        <div class="design-sublabel">Luxe</div>
+      </div>
+    </div>
+    <div class="design-capsule" onclick="toggleDesign(this)">
+      <div class="design-icon">
+        <svg viewBox="0 0 24 24"><path d="M9.93 13.5h4.14L12 7.98zM20 2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-4.05 16.5l-1.14-3H9.17l-1.12 3H5.96l5.11-13h1.86l5.11 13h-2.09z"/></svg>
+      </div>
+      <div>
+        <div class="design-label">Bebas Neue</div>
+        <div class="design-sublabel">Sport</div>
+      </div>
+    </div>
+    <div class="design-capsule" onclick="toggleDesign(this)">
+      <div class="design-icon">
+        <svg viewBox="0 0 24 24"><path d="M9.93 13.5h4.14L12 7.98zM20 2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-4.05 16.5l-1.14-3H9.17l-1.12 3H5.96l5.11-13h1.86l5.11 13h-2.09z"/></svg>
+      </div>
+      <div>
+        <div class="design-label">Poppins</div>
+        <div class="design-sublabel">Minimal</div>
+      </div>
+    </div>
+    <div class="design-capsule" onclick="toggleDesign(this)">
+      <div class="design-icon">
+        <svg viewBox="0 0 24 24"><path d="M9.93 13.5h4.14L12 7.98zM20 2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-4.05 16.5l-1.14-3H9.17l-1.12 3H5.96l5.11-13h1.86l5.11 13h-2.09z"/></svg>
+      </div>
+      <div>
+        <div class="design-label">Space Grotesk</div>
+        <div class="design-sublabel">Futur</div>
+      </div>
+    </div>
+  </div>
+
+  <p style="font-size: 12px; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;">Filtres visuels</p>
+  <div class="icon-row" style="margin-bottom: 28px;">
+    <div class="design-capsule active" onclick="toggleDesign(this)">
+      <div class="design-icon">
+        <svg viewBox="0 0 24 24"><path d="M17.66 7.93L12 2.27 6.34 7.93c-3.12 3.12-3.12 8.19 0 11.31A7.98 7.98 0 0012 21.58c2.05 0 4.1-.78 5.66-2.34 3.12-3.12 3.12-8.19 0-11.31zM12 19.59c-1.6 0-3.11-.62-4.24-1.76C6.62 16.69 6 15.19 6 13.59s.62-3.11 1.76-4.24L12 5.1v14.49z"/></svg>
+      </div>
+      <div>
+        <div class="design-label">Aucun</div>
+        <div class="design-sublabel">Original</div>
+      </div>
+    </div>
+    <div class="design-capsule" onclick="toggleDesign(this)">
+      <div class="design-icon" style="background: rgba(0, 255, 200, 0.12);">
+        <svg viewBox="0 0 24 24" style="fill: #00FFC8;"><path d="M9 21c0 .5.4 1 1 1h4c.6 0 1-.5 1-1v-1H9v1zm3-19C8.1 2 5 5.1 5 9c0 2.4 1.2 4.5 3 5.7V17c0 .5.4 1 1 1h6c.6 0 1-.5 1-1v-2.3c1.8-1.3 3-3.4 3-5.7 0-3.9-3.1-7-7-7z"/></svg>
+      </div>
+      <div>
+        <div class="design-label">Néon Glow</div>
+        <div class="design-sublabel">Vibrant</div>
+      </div>
+    </div>
+    <div class="design-capsule" onclick="toggleDesign(this)">
+      <div class="design-icon" style="background: rgba(255, 170, 50, 0.12);">
+        <svg viewBox="0 0 24 24" style="fill: #FFAA32;"><path d="M20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12 20 8.69zM12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6zm0-10c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4z"/></svg>
+      </div>
+      <div>
+        <div class="design-label">Cinematic</div>
+        <div class="design-sublabel">Dark</div>
+      </div>
+    </div>
+    <div class="design-capsule" onclick="toggleDesign(this)">
+      <div class="design-icon" style="background: rgba(255, 100, 50, 0.12);">
+        <svg viewBox="0 0 24 24" style="fill: #FF6432;"><path d="M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"/></svg>
+      </div>
+      <div>
+        <div class="design-label">Warm Energy</div>
+        <div class="design-sublabel">Chaleur</div>
+      </div>
+    </div>
+    <div class="design-capsule" onclick="toggleDesign(this)">
+      <div class="design-icon" style="background: rgba(100, 180, 255, 0.12);">
+        <svg viewBox="0 0 24 24" style="fill: #64B4FF;"><path d="M22 11h-4.17l3.24-3.24-1.41-1.42L15 11h-2V9l4.66-4.66-1.42-1.41L13 6.17V2h-2v4.17L7.76 2.93 6.34 4.34 11 9v2H9L4.34 6.34 2.93 7.76 6.17 11H2v2h4.17l-3.24 3.24 1.41 1.42L9 13h2v2l-4.66 4.66 1.42 1.41L11 17.83V22h2v-4.17l3.24 3.24 1.42-1.41L13 15v-2h2l4.66 4.66 1.41-1.42L17.83 13H22z"/></svg>
+      </div>
+      <div>
+        <div class="design-label">Cool Frost</div>
+        <div class="design-sublabel">Frais</div>
+      </div>
+    </div>
+  </div>
+
+  <p style="font-size: 12px; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;">Styles de carte</p>
+  <div class="icon-row">
+    <div class="design-capsule active" onclick="toggleDesign(this)">
+      <div class="design-icon">
+        <svg viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>
+      </div>
+      <div>
+        <div class="design-label">Compact</div>
+        <div class="design-sublabel">Par défaut</div>
+      </div>
+    </div>
+    <div class="design-capsule" onclick="toggleDesign(this)">
+      <div class="design-icon">
+        <svg viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>
+      </div>
+      <div>
+        <div class="design-label">Educatif</div>
+        <div class="design-sublabel">Détaillé</div>
+      </div>
+    </div>
+    <div class="design-capsule" onclick="toggleDesign(this)">
+      <div class="design-icon">
+        <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zM7 10h2v7H7zm4-3h2v10h-2zm4 6h2v4h-2z"/></svg>
+      </div>
+      <div>
+        <div class="design-label">Stats Bold</div>
+        <div class="design-sublabel">Chiffres</div>
+      </div>
+    </div>
+    <div class="design-capsule" onclick="toggleDesign(this)">
+      <div class="design-icon">
+        <svg viewBox="0 0 24 24"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>
+      </div>
+      <div>
+        <div class="design-label">Minimal Line</div>
+        <div class="design-sublabel">Épuré</div>
+      </div>
+    </div>
+    <div class="design-capsule" onclick="toggleDesign(this)">
+      <div class="design-icon">
+        <svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14z"/></svg>
+      </div>
+      <div>
+        <div class="design-label">Full Width</div>
+        <div class="design-sublabel">Large</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── STRUCTURE REACT ─── -->
+<div class="section">
+  <div class="section-title">Structure React — Composant PlatformIcon</div>
+
+  <div class="note">
+    Le composant <strong>PlatformIcon</strong> remplace les emojis dans <code>PLATFORM_SAFE_ZONES</code> et dans le sélecteur de plateformes.
+    Chaque plateforme a sa propre couleur de glow et son SVG path officiel.
+  </div>
+
+  <div class="code-block"><span class="comment">// src/components/ui/PlatformIcon.tsx</span>
+
+<span class="keyword">const</span> <span class="type">PLATFORM_CONFIGS</span> = {
+  <span class="prop">instagram</span>: {
+    <span class="prop">color</span>: <span class="string">'#E1306C'</span>,
+    <span class="prop">label</span>: <span class="string">'Instagram'</span>,
+    <span class="prop">path</span>: <span class="string">'M12 2.163c3.204 0 3.584...'</span>,  <span class="comment">// SVG path</span>
+  },
+  <span class="prop">tiktok</span>: {
+    <span class="prop">color</span>: <span class="string">'#00F2EA'</span>,
+    <span class="prop">label</span>: <span class="string">'TikTok'</span>,
+    <span class="prop">path</span>: <span class="string">'M19.59 6.69a4.83...'</span>,
+  },
+  <span class="prop">youtube</span>: {
+    <span class="prop">color</span>: <span class="string">'#FF0000'</span>,
+    <span class="prop">label</span>: <span class="string">'YouTube'</span>,
+    <span class="prop">path</span>: <span class="string">'M23.498 6.186...'</span>,
+  },
+  <span class="prop">facebook</span>: {
+    <span class="prop">color</span>: <span class="string">'#1877F2'</span>,
+    <span class="prop">label</span>: <span class="string">'Facebook'</span>,
+    <span class="prop">path</span>: <span class="string">'M24 12.073c0-6.627...'</span>,
+  },
+};
+
+<span class="keyword">interface</span> <span class="type">PlatformIconProps</span> {
+  <span class="prop">platform</span>: <span class="string">'instagram'</span> | <span class="string">'tiktok'</span> | <span class="string">'youtube'</span> | <span class="string">'facebook'</span>;
+  <span class="prop">isActive</span>?: <span class="type">boolean</span>;
+  <span class="prop">size</span>?: <span class="string">'sm'</span> | <span class="string">'md'</span>;  <span class="comment">// sm = mini-icon, md = capsule</span>
+  <span class="prop">showLabel</span>?: <span class="type">boolean</span>;
+  <span class="prop">onClick</span>?: () => <span class="type">void</span>;
+}
+
+<span class="keyword">export function</span> <span class="type">PlatformIcon</span>({ platform, isActive, size = <span class="string">'md'</span>, showLabel = <span class="keyword">true</span>, onClick }: <span class="type">PlatformIconProps</span>) {
+  <span class="keyword">const</span> config = <span class="type">PLATFORM_CONFIGS</span>[platform];
+
+  <span class="keyword">if</span> (size === <span class="string">'sm'</span>) {
+    <span class="keyword">return</span> (
+      &lt;<span class="type">button</span>
+        <span class="prop">className</span>={`mini-icon ${platform} ${isActive ? <span class="string">'active'</span> : <span class="string">''</span>}`}
+        <span class="prop">onClick</span>={onClick}
+      &gt;
+        &lt;<span class="type">svg</span> viewBox=<span class="string">"0 0 24 24"</span> fill={isActive ? config.color : <span class="string">'#888'</span>}&gt;
+          &lt;<span class="type">path</span> d={config.path} /&gt;
+        &lt;/<span class="type">svg</span>&gt;
+      &lt;/<span class="type">button</span>&gt;
+    );
+  }
+
+  <span class="keyword">return</span> (
+    &lt;<span class="type">button</span>
+      <span class="prop">className</span>={`icon-capsule ${platform} ${isActive ? <span class="string">'active'</span> : <span class="string">''</span>}`}
+      <span class="prop">onClick</span>={onClick}
+    &gt;
+      &lt;<span class="type">div</span> className={`icon-circle ${platform}`}&gt;
+        &lt;<span class="type">svg</span> viewBox=<span class="string">"0 0 24 24"</span>&gt;
+          &lt;<span class="type">path</span> d={config.path} fill={config.color} /&gt;
+        &lt;/<span class="type">svg</span>&gt;
+      &lt;/<span class="type">div</span>&gt;
+      {showLabel && &lt;<span class="type">span</span> className=<span class="string">"icon-label"</span>&gt;{config.label}&lt;/<span class="type">span</span>&gt;}
+    &lt;/<span class="type">button</span>&gt;
+  );
+}</div>
+
+  <div class="code-block"><span class="comment">// Mise à jour de PLATFORM_SAFE_ZONES</span>
+<span class="comment">// Avant:</span>
+<span class="keyword">const</span> <span class="type">PLATFORM_SAFE_ZONES</span> = {
+  instagram: { <span class="prop">icon</span>: <span class="string">'📸'</span>, ... },
+  tiktok:    { <span class="prop">icon</span>: <span class="string">'🎵'</span>, ... },
+};
+
+<span class="comment">// Après: le champ `icon` est remplacé par `platform` (clé du composant)</span>
+<span class="keyword">const</span> <span class="type">PLATFORM_SAFE_ZONES</span> = {
+  instagram: { <span class="prop">platform</span>: <span class="string">'instagram'</span>, <span class="prop">color</span>: <span class="string">'#E1306C'</span>, ... },
+  tiktok:    { <span class="prop">platform</span>: <span class="string">'tiktok'</span>,    <span class="prop">color</span>: <span class="string">'#00F2EA'</span>, ... },
+  youtube:   { <span class="prop">platform</span>: <span class="string">'youtube'</span>,   <span class="prop">color</span>: <span class="string">'#FF0000'</span>, ... },
+  facebook:  { <span class="prop">platform</span>: <span class="string">'facebook'</span>,  <span class="prop">color</span>: <span class="string">'#1877F2'</span>, ... },
+};
+
+<span class="comment">// Usage dans le sélecteur:</span>
+{Object.entries(<span class="type">PLATFORM_SAFE_ZONES</span>).map(([key, zone]) => (
+  &lt;<span class="type">PlatformIcon</span>
+    <span class="prop">key</span>={key}
+    <span class="prop">platform</span>={zone.platform}
+    <span class="prop">isActive</span>={safeZonePlatform === key}
+    <span class="prop">size</span>=<span class="string">"sm"</span>
+    <span class="prop">onClick</span>={() => setSafeZonePlatform(key)}
+  /&gt;
+))}</div>
+</div>
+
+<script>
+  function toggleActive(el) {
+    el.classList.toggle('active');
+  }
+
+  function toggleMini(el, platform) {
+    document.querySelectorAll('.mini-icon').forEach(m => m.classList.remove('active'));
+    el.classList.add('active');
+  }
+
+  function toggleDesign(el) {
+    const row = el.parentElement;
+    row.querySelectorAll('.design-capsule').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+  }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan Visuel — Studiio Infographie v2</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Syne:wght@700;800&family=Bebas+Neue&family=Inter:wght@400;700;900&family=Space+Grotesk:wght@500;700&family=Poppins:wght@600;700;800&family=Archivo+Black&family=Montserrat:wght@800;900&display=swap" rel="stylesheet">
+<style>
+  body { background: #0a0a0f; color: #e5e7eb; font-family: 'Inter', sans-serif; }
+  .glow { box-shadow: 0 0 30px rgba(124,58,237,0.3); }
+  .section-title { border-left: 4px solid #7C3AED; padding-left: 16px; }
+  .font-anton { font-family: 'Anton', sans-serif; }
+  .font-syne { font-family: 'Syne', sans-serif; }
+  .font-bebas { font-family: 'Bebas Neue', sans-serif; }
+  .font-inter-black { font-family: 'Inter', sans-serif; font-weight: 900; }
+  .font-space { font-family: 'Space Grotesk', sans-serif; }
+  .font-poppins { font-family: 'Poppins', sans-serif; }
+  .font-archivo { font-family: 'Archivo Black', sans-serif; }
+  .font-montserrat { font-family: 'Montserrat', sans-serif; font-weight: 900; }
+  .preview-zone { background: linear-gradient(135deg, #1a0a2e 0%, #0d0d1a 50%, #0a0a0f 100%); }
+  .drag-handle { cursor: move; border: 2px dashed rgba(124,58,237,0.5); }
+  .drag-handle:hover { border-color: #7C3AED; background: rgba(124,58,237,0.1); }
+  .tab-active { background: #7C3AED; color: white; }
+  .tab-inactive { background: #1f2937; color: #9ca3af; }
+  .card-new { border: 1px solid rgba(124,58,237,0.3); background: rgba(124,58,237,0.05); }
+  details summary { cursor: pointer; }
+  details summary::-webkit-details-marker { display: none; }
+  .tooltip { position: relative; }
+</style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+
+<!-- HEADER -->
+<div class="max-w-7xl mx-auto mb-12">
+  <div class="flex items-center gap-4 mb-2">
+    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center text-white font-black text-lg">S</div>
+    <div>
+      <h1 class="text-3xl font-black text-white">Plan Visuel — Studiio Infographie v2</h1>
+      <p class="text-gray-500 text-sm">Phase 1 : Planification & Stratégie de personnalisation</p>
+    </div>
+  </div>
+  <div class="mt-4 p-4 rounded-xl bg-yellow-900/20 border border-yellow-600/30">
+    <p class="text-yellow-300 text-sm font-medium">⚠️ Ce document est un PLAN. Aucune ligne de code ne sera modifiée avant ta validation.</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- 1. ARCHITECTURE DE LA PAGE -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="max-w-7xl mx-auto mb-16">
+  <h2 class="section-title text-2xl font-black text-white mb-6">1. Architecture de la page — Où placer les nouveaux réglages</h2>
+
+  <div class="grid md:grid-cols-2 gap-8">
+    <!-- AVANT -->
+    <div>
+      <h3 class="text-lg font-bold text-red-400 mb-3">❌ Actuellement (3 étapes)</h3>
+      <div class="rounded-xl border border-gray-800 overflow-hidden">
+        <div class="flex gap-2 p-3 bg-gray-900">
+          <span class="px-3 py-1 rounded-full text-xs bg-purple-600 text-white">1 Contenu</span>
+          <span class="px-3 py-1 rounded-full text-xs bg-gray-700 text-gray-400">2 Style</span>
+          <span class="px-3 py-1 rounded-full text-xs bg-gray-700 text-gray-400">3 Export</span>
+        </div>
+        <div class="p-4 space-y-2 text-sm text-gray-400">
+          <p><strong class="text-white">Étape 1 — Contenu :</strong> Thème, Titre, Sous-titre, Cartes, Phrase de vente, Rush vidéo, Photos</p>
+          <p><strong class="text-white">Étape 2 — Style :</strong> Couleur, Format (9:16 / 16:9), Batch count, Branding (logo, watermark, CTA)</p>
+          <p><strong class="text-white">Étape 3 — Export :</strong> Bouton exporter</p>
+          <p class="text-red-400 mt-3">→ Pas de choix de police, pas de filtre, pas de drag & drop, texte non personnalisable en taille</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- APRÈS -->
+    <div>
+      <h3 class="text-lg font-bold text-green-400 mb-3">✅ Proposition (4 étapes)</h3>
+      <div class="rounded-xl border border-purple-500/30 overflow-hidden glow">
+        <div class="flex gap-2 p-3 bg-gray-900">
+          <span class="px-3 py-1 rounded-full text-xs bg-purple-600 text-white">1 Contenu</span>
+          <span class="px-3 py-1 rounded-full text-xs bg-pink-600 text-white font-bold">2 Design</span>
+          <span class="px-3 py-1 rounded-full text-xs bg-gray-700 text-gray-400">3 Style</span>
+          <span class="px-3 py-1 rounded-full text-xs bg-gray-700 text-gray-400">4 Export</span>
+        </div>
+        <div class="p-4 space-y-2 text-sm text-gray-400">
+          <p><strong class="text-white">Étape 1 — Contenu :</strong> Inchangée (thème, titre, cartes, rush, photos)</p>
+          <p><strong class="text-pink-300">Étape 2 — Design (NOUVEAU) :</strong></p>
+          <ul class="ml-4 space-y-1">
+            <li>🔤 Sélecteur de police (5 styles)</li>
+            <li>📐 Taille du texte par séquence (slider)</li>
+            <li>🎨 Filtres visuels par séquence</li>
+            <li>📋 Style des cartes (5 designs)</li>
+          </ul>
+          <p><strong class="text-white">Étape 3 — Style :</strong> Couleur, Format, Branding (logo, watermark, CTA)</p>
+          <p><strong class="text-white">Étape 4 — Export :</strong> Bouton exporter</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Détail de l'étape Design -->
+  <div class="mt-8 p-6 rounded-xl bg-gray-900/50 border border-gray-800">
+    <h3 class="text-lg font-bold text-white mb-4">📐 Détail de l'Étape 2 — "Design"</h3>
+    <p class="text-sm text-gray-400 mb-6">Cette nouvelle étape regroupe tous les réglages visuels. L'utilisateur y accède après avoir défini son contenu. Voici les 4 sections dans un seul panneau scrollable :</p>
+
+    <div class="grid md:grid-cols-2 gap-6">
+      <!-- Section Typo -->
+      <div class="card-new rounded-xl p-4">
+        <h4 class="font-bold text-purple-300 mb-2">🔤 Typographie</h4>
+        <div class="space-y-3">
+          <div>
+            <p class="text-xs text-gray-500 mb-2">Choix de la police :</p>
+            <div class="flex flex-wrap gap-2">
+              <span class="px-3 py-2 rounded-lg bg-purple-600/20 border border-purple-500/30 text-xs text-white font-anton">IMPACT</span>
+              <span class="px-3 py-2 rounded-lg bg-gray-800 text-xs text-gray-300 font-syne">LUXE</span>
+              <span class="px-3 py-2 rounded-lg bg-gray-800 text-xs text-gray-300 font-bebas tracking-wider">SPORT</span>
+              <span class="px-3 py-2 rounded-lg bg-gray-800 text-xs text-gray-300 font-poppins">Minimal</span>
+              <span class="px-3 py-2 rounded-lg bg-gray-800 text-xs text-gray-300 font-space">Futur</span>
+            </div>
+          </div>
+          <div>
+            <p class="text-xs text-gray-500 mb-1">Taille par séquence :</p>
+            <div class="space-y-1">
+              <div class="flex items-center gap-2"><span class="text-[10px] text-gray-500 w-16">Titre</span><div class="flex-1 h-1.5 bg-gray-700 rounded-full"><div class="h-full bg-purple-500 rounded-full" style="width:70%"></div></div><span class="text-[10px] text-purple-300">70%</span></div>
+              <div class="flex items-center gap-2"><span class="text-[10px] text-gray-500 w-16">Cartes</span><div class="flex-1 h-1.5 bg-gray-700 rounded-full"><div class="h-full bg-purple-500 rounded-full" style="width:50%"></div></div><span class="text-[10px] text-purple-300">50%</span></div>
+              <div class="flex items-center gap-2"><span class="text-[10px] text-gray-500 w-16">CTA</span><div class="flex-1 h-1.5 bg-gray-700 rounded-full"><div class="h-full bg-purple-500 rounded-full" style="width:80%"></div></div><span class="text-[10px] text-purple-300">80%</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section Filtres -->
+      <div class="card-new rounded-xl p-4">
+        <h4 class="font-bold text-purple-300 mb-2">🎨 Filtres visuels</h4>
+        <p class="text-xs text-gray-500 mb-3">Appliqués par séquence ou globalement :</p>
+        <div class="space-y-2">
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded bg-gray-800 flex items-center justify-center text-[10px]">🚫</div>
+            <span class="text-xs text-gray-300">Aucun</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded bg-gray-800 flex items-center justify-center text-[10px]" style="background: linear-gradient(135deg, rgba(124,58,237,0.3), rgba(236,72,153,0.3));">🎵</div>
+            <span class="text-xs text-gray-300">Néon Glow</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded flex items-center justify-center text-[10px]" style="background: linear-gradient(135deg, rgba(0,0,0,0.7), rgba(50,50,50,0.5));">🖤</div>
+            <span class="text-xs text-gray-300">Cinematic Dark</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded flex items-center justify-center text-[10px]" style="background: linear-gradient(135deg, rgba(245,158,11,0.3), rgba(239,68,68,0.2));">🔥</div>
+            <span class="text-xs text-gray-300">Warm Energy</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded flex items-center justify-center text-[10px]" style="background: linear-gradient(135deg, rgba(59,130,246,0.3), rgba(16,185,129,0.2));">❄️</div>
+            <span class="text-xs text-gray-300">Cool Frost</span>
+          </div>
+        </div>
+        <div class="mt-3 flex items-center gap-2">
+          <div class="w-8 h-4 bg-purple-600 rounded-full relative"><div class="absolute right-0.5 top-0.5 w-3 h-3 bg-white rounded-full"></div></div>
+          <span class="text-[10px] text-gray-400">Appliquer à toutes les séquences</span>
+        </div>
+      </div>
+
+      <!-- Section Style Cartes -->
+      <div class="card-new rounded-xl p-4">
+        <h4 class="font-bold text-purple-300 mb-2">📋 Style des cartes d'information</h4>
+        <p class="text-xs text-gray-500 mb-3">5 designs de cartes — certains affichent plus de texte :</p>
+        <div class="space-y-2">
+          <div class="flex items-center gap-3 bg-black/30 rounded-lg px-3 py-2 border-l-2 border-purple-500">
+            <span>⚡</span>
+            <div class="flex-1">
+              <p class="text-[10px] font-bold text-white">Compact (actuel)</p>
+              <p class="text-[8px] text-gray-500">Emoji + Label + Valeur</p>
+            </div>
+            <div class="w-4 h-4 rounded-full bg-purple-600"></div>
+          </div>
+          <div class="flex items-center gap-3 bg-black/30 rounded-lg px-3 py-2 border-l-2 border-pink-500">
+            <span>📝</span>
+            <div class="flex-1">
+              <p class="text-[10px] font-bold text-white">Éducatif (NOUVEAU)</p>
+              <p class="text-[8px] text-gray-500">Emoji + Label + Valeur + Description complète</p>
+            </div>
+            <div class="w-4 h-4 rounded-full bg-gray-700"></div>
+          </div>
+          <div class="flex items-center gap-3 bg-black/30 rounded-lg px-3 py-2 border-l-2 border-green-500">
+            <span>📊</span>
+            <div class="flex-1">
+              <p class="text-[10px] font-bold text-white">Stats Bold</p>
+              <p class="text-[8px] text-gray-500">Valeur géante + Label petit</p>
+            </div>
+            <div class="w-4 h-4 rounded-full bg-gray-700"></div>
+          </div>
+          <div class="flex items-center gap-3 bg-black/30 rounded-lg px-3 py-2 border-l-2 border-blue-500">
+            <span>🎯</span>
+            <div class="flex-1">
+              <p class="text-[10px] font-bold text-white">Minimal Line</p>
+              <p class="text-[8px] text-gray-500">Ligne horizontale, texte + valeur alignés</p>
+            </div>
+            <div class="w-4 h-4 rounded-full bg-gray-700"></div>
+          </div>
+          <div class="flex items-center gap-3 bg-black/30 rounded-lg px-3 py-2 border-l-2 border-orange-500">
+            <span>🔥</span>
+            <div class="flex-1">
+              <p class="text-[10px] font-bold text-white">Full Width</p>
+              <p class="text-[8px] text-gray-500">Carte pleine largeur avec description longue</p>
+            </div>
+            <div class="w-4 h-4 rounded-full bg-gray-700"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Drag & Drop -->
+      <div class="card-new rounded-xl p-4">
+        <h4 class="font-bold text-purple-300 mb-2">✋ Drag & Drop (Preview interactive)</h4>
+        <p class="text-xs text-gray-500 mb-3">Dans la zone de prévisualisation à droite :</p>
+        <div class="space-y-2 text-xs text-gray-300">
+          <div class="flex items-start gap-2">
+            <span class="text-purple-400 mt-0.5">▸</span>
+            <p>Cliquer sur un élément (Titre, Logo, Watermark) → il s'entoure d'un cadre en pointillé violet</p>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-purple-400 mt-0.5">▸</span>
+            <p>Glisser-déposer pour repositionner librement</p>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-purple-400 mt-0.5">▸</span>
+            <p>Poignées aux 4 coins pour redimensionner</p>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-purple-400 mt-0.5">▸</span>
+            <p>Double-clic pour éditer le texte directement</p>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-purple-400 mt-0.5">▸</span>
+            <p>Bouton "Réinitialiser" pour remettre la position par défaut</p>
+          </div>
+        </div>
+        <div class="mt-4 p-3 rounded-lg bg-black/30 border border-dashed border-purple-500/30">
+          <p class="text-[10px] text-gray-500 text-center">💡 Les positions sont sauvegardées dans metadata du post</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- 2. SCHÉMA VISUEL — ZONE DE PREVIEW INTERACTIVE -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="max-w-7xl mx-auto mb-16">
+  <h2 class="section-title text-2xl font-black text-white mb-6">2. Schéma visuel — Zone de prévisualisation interactive</h2>
+
+  <div class="grid lg:grid-cols-5 gap-6">
+    <!-- LEFT PANEL MOCKUP (2 cols) -->
+    <div class="lg:col-span-2 rounded-xl border border-gray-800 bg-gray-900/30 overflow-hidden">
+      <div class="p-3 bg-gray-900 border-b border-gray-800 flex items-center justify-between">
+        <span class="text-xs font-bold text-gray-300">Panneau gauche — Étape 2: Design</span>
+        <div class="flex gap-1">
+          <span class="px-2 py-0.5 rounded text-[9px] tab-inactive">Contenu</span>
+          <span class="px-2 py-0.5 rounded text-[9px] tab-active font-bold">Design</span>
+          <span class="px-2 py-0.5 rounded text-[9px] tab-inactive">Style</span>
+          <span class="px-2 py-0.5 rounded text-[9px] tab-inactive">Export</span>
+        </div>
+      </div>
+      <div class="p-4 space-y-5 text-xs">
+        <!-- Typo -->
+        <div>
+          <p class="text-gray-400 font-medium mb-2">🔤 Police</p>
+          <div class="flex flex-wrap gap-1.5">
+            <div class="px-2.5 py-1.5 rounded bg-purple-600/20 border border-purple-500 text-white font-anton text-sm">IMPACT</div>
+            <div class="px-2.5 py-1.5 rounded bg-gray-800 text-gray-400 font-syne text-sm">LUXE</div>
+            <div class="px-2.5 py-1.5 rounded bg-gray-800 text-gray-400 font-bebas text-sm tracking-wider">SPORT</div>
+            <div class="px-2.5 py-1.5 rounded bg-gray-800 text-gray-400 font-poppins text-sm">Minimal</div>
+            <div class="px-2.5 py-1.5 rounded bg-gray-800 text-gray-400 font-space text-sm">Futur</div>
+          </div>
+        </div>
+        <!-- Tailles -->
+        <div>
+          <p class="text-gray-400 font-medium mb-2">📐 Taille des textes</p>
+          <div class="space-y-2">
+            <div class="flex items-center gap-2"><span class="text-gray-500 w-12">Titre</span><div class="flex-1 h-2 bg-gray-700 rounded-full"><div class="h-full bg-gradient-to-r from-purple-600 to-pink-500 rounded-full" style="width:75%"></div></div></div>
+            <div class="flex items-center gap-2"><span class="text-gray-500 w-12">Cartes</span><div class="flex-1 h-2 bg-gray-700 rounded-full"><div class="h-full bg-gradient-to-r from-purple-600 to-pink-500 rounded-full" style="width:55%"></div></div></div>
+            <div class="flex items-center gap-2"><span class="text-gray-500 w-12">CTA</span><div class="flex-1 h-2 bg-gray-700 rounded-full"><div class="h-full bg-gradient-to-r from-purple-600 to-pink-500 rounded-full" style="width:85%"></div></div></div>
+            <div class="flex items-center gap-2"><span class="text-gray-500 w-12">Overlay</span><div class="flex-1 h-2 bg-gray-700 rounded-full"><div class="h-full bg-gradient-to-r from-purple-600 to-pink-500 rounded-full" style="width:65%"></div></div></div>
+          </div>
+        </div>
+        <!-- Filtre -->
+        <div>
+          <p class="text-gray-400 font-medium mb-2">🎨 Filtre</p>
+          <div class="flex gap-1.5">
+            <div class="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center text-[10px] border-2 border-purple-500">🚫</div>
+            <div class="w-10 h-10 rounded-lg flex items-center justify-center text-[10px]" style="background: linear-gradient(135deg, rgba(124,58,237,0.4), rgba(236,72,153,0.4));">✨</div>
+            <div class="w-10 h-10 rounded-lg flex items-center justify-center text-[10px]" style="background: linear-gradient(135deg, #1a1a2e, #16213e);">🖤</div>
+            <div class="w-10 h-10 rounded-lg flex items-center justify-center text-[10px]" style="background: linear-gradient(135deg, rgba(245,158,11,0.4), rgba(239,68,68,0.3));">🔥</div>
+            <div class="w-10 h-10 rounded-lg flex items-center justify-center text-[10px]" style="background: linear-gradient(135deg, rgba(59,130,246,0.4), rgba(16,185,129,0.3));">❄️</div>
+          </div>
+          <div class="mt-2 flex items-center gap-2">
+            <div class="w-7 h-3.5 bg-purple-600 rounded-full relative"><div class="absolute right-0.5 top-0.5 w-2.5 h-2.5 bg-white rounded-full"></div></div>
+            <span class="text-[10px] text-gray-500">Global</span>
+          </div>
+        </div>
+        <!-- Cartes -->
+        <div>
+          <p class="text-gray-400 font-medium mb-2">📋 Style des cartes</p>
+          <div class="flex gap-1.5">
+            <div class="w-10 h-10 rounded-lg bg-purple-600/20 border border-purple-500 flex items-center justify-center text-[10px]">📦</div>
+            <div class="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center text-[10px]">📝</div>
+            <div class="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center text-[10px]">📊</div>
+            <div class="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center text-[10px]">🎯</div>
+            <div class="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center text-[10px]">🔥</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL — INTERACTIVE PREVIEW (3 cols) -->
+    <div class="lg:col-span-3 rounded-xl border border-gray-800 bg-gray-900/30 overflow-hidden">
+      <div class="p-3 bg-gray-900 border-b border-gray-800 flex items-center justify-between">
+        <span class="text-xs font-bold text-gray-300">Panneau droit — Aperçu interactif (Drag & Drop)</span>
+        <div class="flex gap-2">
+          <span class="px-2 py-0.5 rounded text-[9px] bg-purple-600/20 text-purple-300">Intro</span>
+          <span class="px-2 py-0.5 rounded text-[9px] bg-gray-800 text-gray-500">Cartes</span>
+          <span class="px-2 py-0.5 rounded text-[9px] bg-gray-800 text-gray-500">Vidéo</span>
+          <span class="px-2 py-0.5 rounded text-[9px] bg-gray-800 text-gray-500">CTA</span>
+        </div>
+      </div>
+      <div class="p-6 flex justify-center">
+        <!-- Phone Preview -->
+        <div class="relative w-64 preview-zone rounded-2xl overflow-hidden border-2 border-gray-700" style="aspect-ratio: 9/16;">
+          <!-- Background image simulation -->
+          <div class="absolute inset-0 bg-gradient-to-b from-purple-950/50 via-black/60 to-black/80"></div>
+          <div class="absolute inset-0" style="background: url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 400 400%22><rect fill=%22%23111%22 width=%22400%22 height=%22400%22/><text x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 fill=%22%23222%22 font-size=%2220%22>Photo affiche</text></svg>') center/cover; opacity: 0.3;"></div>
+
+          <!-- DRAGGABLE: Title -->
+          <div class="absolute top-1/4 left-4 right-4 z-20 drag-handle rounded-lg p-2 text-center transition-all">
+            <div class="absolute -top-1 -left-1 w-2.5 h-2.5 border border-purple-400 bg-purple-600 rounded-sm"></div>
+            <div class="absolute -top-1 -right-1 w-2.5 h-2.5 border border-purple-400 bg-purple-600 rounded-sm"></div>
+            <div class="absolute -bottom-1 -left-1 w-2.5 h-2.5 border border-purple-400 bg-purple-600 rounded-sm"></div>
+            <div class="absolute -bottom-1 -right-1 w-2.5 h-2.5 border border-purple-400 bg-purple-600 rounded-sm"></div>
+            <p class="font-anton text-2xl text-white uppercase tracking-wider" style="text-shadow: 0 0 20px rgba(124,58,237,0.8);">ÉNERGIE & CARDIO</p>
+            <p class="text-xs text-white/70 mt-1">Pousse tes limites</p>
+            <p class="text-[8px] text-purple-300 mt-2">✋ Glisser pour déplacer · Coins pour redimensionner</p>
+          </div>
+
+          <!-- DRAGGABLE: Logo -->
+          <div class="absolute top-4 left-1/2 -translate-x-1/2 z-20 drag-handle rounded-lg p-1">
+            <div class="absolute -top-1 -right-1 w-2 h-2 border border-purple-400 bg-purple-600 rounded-sm"></div>
+            <div class="w-12 h-12 bg-gray-800 rounded-lg flex items-center justify-center text-[8px] text-gray-400">LOGO</div>
+          </div>
+
+          <!-- DRAGGABLE: Watermark -->
+          <div class="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 drag-handle rounded px-2 py-1">
+            <p class="text-[10px] font-bold text-white/60">Afroboost.com</p>
+            <p class="text-[7px] text-purple-300 text-center mt-0.5">✋ Déplaçable</p>
+          </div>
+
+          <!-- Filter overlay indicator -->
+          <div class="absolute top-3 right-3 z-30 px-1.5 py-0.5 rounded bg-purple-600/30 backdrop-blur-sm">
+            <span class="text-[8px] text-purple-200">Filtre: Néon</span>
+          </div>
+        </div>
+      </div>
+      <div class="px-6 pb-4">
+        <div class="flex items-center justify-center gap-3 text-[10px] text-gray-500">
+          <span class="flex items-center gap-1"><span class="w-2 h-2 border border-dashed border-purple-500 rounded-sm"></span> = Élément déplaçable</span>
+          <span class="flex items-center gap-1"><span class="w-2 h-2 bg-purple-600 rounded-sm"></span> = Poignée de redimensionnement</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- 3. LES 5 POLICES PREMIUM -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="max-w-7xl mx-auto mb-16">
+  <h2 class="section-title text-2xl font-black text-white mb-6">3. Les 5 polices Premium — Ambiance & Usage</h2>
+
+  <div class="grid md:grid-cols-5 gap-4">
+    <!-- Impact -->
+    <div class="rounded-xl border border-gray-800 bg-gray-900/50 p-5 hover:border-purple-500/30 transition-all">
+      <div class="flex items-center justify-between mb-3">
+        <span class="px-2 py-0.5 rounded text-[9px] bg-red-600/20 text-red-300 font-medium">IMPACT</span>
+        <span class="text-[10px] text-gray-600">01</span>
+      </div>
+      <p class="font-anton text-3xl text-white uppercase leading-none mb-3">BOOST<br/>TON<br/>ÉNERGIE</p>
+      <p class="text-[10px] text-gray-400 leading-relaxed">Police: <strong class="text-white">Anton</strong> (ou Montserrat ExtraBold)</p>
+      <div class="mt-3 pt-3 border-t border-gray-800">
+        <p class="text-[10px] text-gray-500">🎯 <strong class="text-gray-300">Ambiance :</strong> Agressive, directe, percutante. Attire l'œil immédiatement. Idéale pour les titres courts qui doivent "crier".</p>
+        <p class="text-[10px] text-gray-500 mt-1">📱 <strong class="text-gray-300">Usage :</strong> Titre de l'intro, CTA principal</p>
+      </div>
+    </div>
+
+    <!-- Luxe -->
+    <div class="rounded-xl border border-gray-800 bg-gray-900/50 p-5 hover:border-purple-500/30 transition-all">
+      <div class="flex items-center justify-between mb-3">
+        <span class="px-2 py-0.5 rounded text-[9px] bg-purple-600/20 text-purple-300 font-medium">LUXE</span>
+        <span class="text-[10px] text-gray-600">02</span>
+      </div>
+      <p class="font-syne text-3xl text-white uppercase leading-none mb-3 font-extrabold">POWER<br/>MODE<br/>ON</p>
+      <p class="text-[10px] text-gray-400 leading-relaxed">Police: <strong class="text-white">Syne ExtraBold</strong> (ou Archivo Black)</p>
+      <div class="mt-3 pt-3 border-t border-gray-800">
+        <p class="text-[10px] text-gray-500">🎯 <strong class="text-gray-300">Ambiance :</strong> Moderne, premium, large. Chaque lettre prend de la place. Donne un côté "marque de luxe sportive".</p>
+        <p class="text-[10px] text-gray-500 mt-1">📱 <strong class="text-gray-300">Usage :</strong> Titres fitness, noms de programmes</p>
+      </div>
+    </div>
+
+    <!-- Sport -->
+    <div class="rounded-xl border border-gray-800 bg-gray-900/50 p-5 hover:border-purple-500/30 transition-all">
+      <div class="flex items-center justify-between mb-3">
+        <span class="px-2 py-0.5 rounded text-[9px] bg-orange-600/20 text-orange-300 font-medium">SPORT</span>
+        <span class="text-[10px] text-gray-600">03</span>
+      </div>
+      <p class="font-bebas text-4xl text-white uppercase leading-none mb-3 tracking-wider">CARDIO<br/>INTENSE<br/>48H</p>
+      <p class="text-[10px] text-gray-400 leading-relaxed">Police: <strong class="text-white">Bebas Neue</strong></p>
+      <div class="mt-3 pt-3 border-t border-gray-800">
+        <p class="text-[10px] text-gray-500">🎯 <strong class="text-gray-300">Ambiance :</strong> Allongée, puissante, dynamique. Donne un effet "affiche de compétition sportive". Très lisible même en petit.</p>
+        <p class="text-[10px] text-gray-500 mt-1">📱 <strong class="text-gray-300">Usage :</strong> Valeurs des cartes, stats, chiffres</p>
+      </div>
+    </div>
+
+    <!-- Minimal -->
+    <div class="rounded-xl border border-gray-800 bg-gray-900/50 p-5 hover:border-purple-500/30 transition-all">
+      <div class="flex items-center justify-between mb-3">
+        <span class="px-2 py-0.5 rounded text-[9px] bg-blue-600/20 text-blue-300 font-medium">MINIMAL</span>
+        <span class="text-[10px] text-gray-600">04</span>
+      </div>
+      <p class="font-poppins text-2xl text-white leading-tight mb-3 font-bold">Nutrition<br/>& Bien-être<br/>Quotidien</p>
+      <p class="text-[10px] text-gray-400 leading-relaxed">Police: <strong class="text-white">Poppins Bold</strong> (ou Inter Black)</p>
+      <div class="mt-3 pt-3 border-t border-gray-800">
+        <p class="text-[10px] text-gray-500">🎯 <strong class="text-gray-300">Ambiance :</strong> Propre, lisible, pro. Rondeur des lettres = plus accessible et chaleureux. Parfait pour les descriptions longues.</p>
+        <p class="text-[10px] text-gray-500 mt-1">📱 <strong class="text-gray-300">Usage :</strong> Descriptions des cartes, sous-titres, textes éducatifs</p>
+      </div>
+    </div>
+
+    <!-- Futur -->
+    <div class="rounded-xl border border-gray-800 bg-gray-900/50 p-5 hover:border-purple-500/30 transition-all">
+      <div class="flex items-center justify-between mb-3">
+        <span class="px-2 py-0.5 rounded text-[9px] bg-green-600/20 text-green-300 font-medium">FUTUR</span>
+        <span class="text-[10px] text-gray-600">05</span>
+      </div>
+      <p class="font-space text-2xl text-white leading-tight mb-3 font-bold">Biohack<br/>Ton Corps<br/>2.0</p>
+      <p class="text-[10px] text-gray-400 leading-relaxed">Police: <strong class="text-white">Space Grotesk Bold</strong></p>
+      <div class="mt-3 pt-3 border-t border-gray-800">
+        <p class="text-[10px] text-gray-500">🎯 <strong class="text-gray-300">Ambiance :</strong> Technologique, innovant, "science du corps". Monospaced-feel qui évoque la data et la précision.</p>
+        <p class="text-[10px] text-gray-500 mt-1">📱 <strong class="text-gray-300">Usage :</strong> Contenu scientifique, chiffres, look "labo"</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Exemple combiné -->
+  <div class="mt-8 p-6 rounded-xl bg-gradient-to-r from-purple-950/30 to-pink-950/20 border border-purple-500/20">
+    <h3 class="text-sm font-bold text-purple-300 mb-4">💡 Exemple de combinaison recommandée pour Afroboost :</h3>
+    <div class="flex flex-wrap gap-6 items-end">
+      <div>
+        <p class="text-[10px] text-gray-500 mb-1">Titre (Impact)</p>
+        <p class="font-anton text-4xl text-white uppercase" style="text-shadow: 0 0 20px rgba(124,58,237,0.6);">ÉNERGIE & CARDIO</p>
+      </div>
+      <div>
+        <p class="text-[10px] text-gray-500 mb-1">Sous-titre (Minimal)</p>
+        <p class="font-poppins text-lg text-white/80 font-semibold">Pousse tes limites avec Afroboost</p>
+      </div>
+      <div>
+        <p class="text-[10px] text-gray-500 mb-1">Valeur carte (Sport)</p>
+        <p class="font-bebas text-3xl text-purple-400 tracking-wider">+60%</p>
+      </div>
+      <div>
+        <p class="text-[10px] text-gray-500 mb-1">CTA (Luxe)</p>
+        <p class="font-syne text-2xl text-pink-400 font-extrabold uppercase">LIEN EN BIO</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- 4. EXEMPLES DE CARTES ÉDUCATIVES -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="max-w-7xl mx-auto mb-16">
+  <h2 class="section-title text-2xl font-black text-white mb-6">4. Cartes éducatives — Exemples de contenu enrichi</h2>
+
+  <div class="grid md:grid-cols-2 gap-6">
+    <!-- Style Éducatif -->
+    <div class="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
+      <h3 class="text-sm font-bold text-pink-300 mb-3">📝 Style "Éducatif" — Plus de texte visible</h3>
+      <div class="space-y-2">
+        <div class="bg-black/40 rounded-xl p-3" style="border-left: 3px solid #ec4899;">
+          <div class="flex items-center gap-2 mb-1.5">
+            <span class="text-lg">🔥</span>
+            <span class="font-bebas text-xl tracking-wider text-pink-400">+60%</span>
+          </div>
+          <p class="text-sm font-bold text-white">ÉNERGIE EN 10 MINUTES</p>
+          <p class="text-xs text-white/60 mt-1 leading-relaxed">10 minutes d'Afrobeat suffisent pour booster ton énergie de 60%. Ton rythme cardiaque monte, tes endorphines explosent, et tu te sens invincible.</p>
+        </div>
+        <div class="bg-black/40 rounded-xl p-3" style="border-left: 3px solid #8b5cf6;">
+          <div class="flex items-center gap-2 mb-1.5">
+            <span class="text-lg">🧬</span>
+            <span class="font-bebas text-xl tracking-wider text-purple-400">×2</span>
+          </div>
+          <p class="text-sm font-bold text-white">MITOCHONDRIES ×2</p>
+          <p class="text-xs text-white/60 mt-1 leading-relaxed">Tes usines à énergie cellulaire se multiplient. Plus de mitochondries = plus de gras brûlé au repos, même en dormant.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Style Stats Bold -->
+    <div class="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
+      <h3 class="text-sm font-bold text-green-300 mb-3">📊 Style "Stats Bold" — Chiffre dominant</h3>
+      <div class="space-y-2">
+        <div class="bg-black/40 rounded-xl p-3 text-center" style="border-bottom: 3px solid #10b981;">
+          <p class="font-bebas text-4xl tracking-wider text-green-400">+60%</p>
+          <p class="text-xs font-bold text-white mt-1">ÉNERGIE EN 10 MIN</p>
+        </div>
+        <div class="bg-black/40 rounded-xl p-3 text-center" style="border-bottom: 3px solid #3b82f6;">
+          <p class="font-bebas text-4xl tracking-wider text-blue-400">×2</p>
+          <p class="text-xs font-bold text-white mt-1">MITOCHONDRIES</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- 5. RÉSUMÉ DES MODIFICATIONS -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="max-w-7xl mx-auto mb-16">
+  <h2 class="section-title text-2xl font-black text-white mb-6">5. Résumé — Impact sur le code existant</h2>
+
+  <div class="grid md:grid-cols-3 gap-4">
+    <div class="rounded-xl border border-green-800/30 bg-green-900/10 p-4">
+      <h3 class="text-sm font-bold text-green-300 mb-3">✅ Ce qui ne change PAS</h3>
+      <ul class="space-y-1.5 text-xs text-gray-400">
+        <li>• Étape 1 (Contenu) reste identique</li>
+        <li>• L'étape Style existante reste (couleur, format, branding)</li>
+        <li>• Le flux Infographie → Studio Son → Calendrier</li>
+        <li>• Le compositeur vidéo (video-composer.ts)</li>
+        <li>• L'API AI generate</li>
+        <li>• Le calendrier et ses séquences</li>
+      </ul>
+    </div>
+
+    <div class="rounded-xl border border-yellow-800/30 bg-yellow-900/10 p-4">
+      <h3 class="text-sm font-bold text-yellow-300 mb-3">🔄 Ce qui est AJOUTÉ</h3>
+      <ul class="space-y-1.5 text-xs text-gray-400">
+        <li>• Nouvelle étape "Design" entre Contenu et Style</li>
+        <li>• 5 Google Fonts chargées via next/font</li>
+        <li>• Sliders de taille par séquence</li>
+        <li>• 5 filtres CSS (aucun traitement serveur)</li>
+        <li>• 5 designs de cartes</li>
+        <li>• Drag & Drop dans la preview (react-draggable)</li>
+        <li>• Positions sauvées dans metadata</li>
+      </ul>
+    </div>
+
+    <div class="rounded-xl border border-purple-800/30 bg-purple-900/10 p-4">
+      <h3 class="text-sm font-bold text-purple-300 mb-3">📁 Fichiers impactés</h3>
+      <ul class="space-y-1.5 text-xs text-gray-400">
+        <li>• <code class="text-purple-300">layout.tsx</code> — ajout des 5 fonts</li>
+        <li>• <code class="text-purple-300">infographie/page.tsx</code> — étape Design + drag</li>
+        <li>• <code class="text-purple-300">calendar/page.tsx</code> — appliquer font/filtre/positions</li>
+        <li>• <code class="text-purple-300">video-composer.ts</code> — font + filtre au rendu</li>
+        <li>• <code class="text-purple-300">types/database.ts</code> — types metadata</li>
+        <li>• <code class="text-purple-300">package.json</code> — react-draggable</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- FOOTER / VALIDATION -->
+<div class="max-w-7xl mx-auto mb-16 text-center">
+  <div class="p-8 rounded-2xl bg-gradient-to-r from-purple-950/30 to-pink-950/20 border border-purple-500/20">
+    <h2 class="text-2xl font-black text-white mb-2">En attente de ta validation</h2>
+    <p class="text-gray-400 text-sm mb-6">Ce plan visuel doit être approuvé avant toute modification de code.</p>
+    <div class="flex justify-center gap-4">
+      <div class="px-6 py-3 rounded-xl bg-purple-600 text-white font-bold text-sm">✅ Valider et passer au code</div>
+      <div class="px-6 py-3 rounded-xl bg-gray-800 text-gray-300 font-bold text-sm">🔄 Modifier le plan</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

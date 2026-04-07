@@ -66,7 +66,7 @@ export function DesignOption({
         ${className}
       `}
       style={{
-        padding: '10px 18px 10px 14px',
+        padding: '6px 12px 6px 8px',
         ...(isActive ? {
           background: `${accentColor}14`,
           border: `1px solid ${accentColor}80`,
@@ -84,7 +84,7 @@ export function DesignOption({
 
       {/* Icon container */}
       <div
-        className="relative w-9 h-9 rounded-[10px] flex items-center justify-center flex-shrink-0 transition-all duration-250"
+        className="relative w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-250"
         style={{
           background: isActive
             ? `${iconColor || accentColor}38`
@@ -92,7 +92,7 @@ export function DesignOption({
           boxShadow: isActive ? `0 0 12px ${iconColor || accentColor}4D` : 'none',
         }}
       >
-        <svg viewBox="0 0 24 24" className="w-[18px] h-[18px] relative z-[1]">
+        <svg viewBox="0 0 24 24" className="w-[14px] h-[14px] relative z-[1]">
           <path d={svgPath} fill={fillColor} />
         </svg>
       </div>
@@ -100,7 +100,7 @@ export function DesignOption({
       {/* Labels */}
       <div className="relative z-[1]">
         <div
-          className={`text-[13px] font-semibold transition-colors duration-250 tracking-[0.01em] ${
+          className={`text-[11px] font-semibold transition-colors duration-250 tracking-[0.01em] ${
             isActive ? 'text-white' : 'text-white/60 group-hover:text-white/85'
           }`}
         >
@@ -108,7 +108,7 @@ export function DesignOption({
         </div>
         {sublabel && (
           <div
-            className={`text-[11px] mt-px transition-colors duration-250 ${
+            className={`text-[9px] mt-px transition-colors duration-250 ${
               isActive ? 'text-white/50' : 'text-white/30'
             }`}
           >

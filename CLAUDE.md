@@ -406,6 +406,61 @@ CRON_SECRET=xxx
 
 ---
 
+## Bug actuel — Video et audio dans le Calendrier (avril 2026)
+
+Ce bug concerne les 10 posts existants dans le Calendrier. Les futurs posts crees correctement via le flux Infographie → Studio Son ne seront pas affectes. Voici l'etat des lieux pour comprendre le probleme.
+
+### Contexte : comment un post est cree
+
+Le flux normal de creation d'un post est : (1) l'utilisateur cree une infographie dans `/dashboard/infographie`, ce qui genere un fichier WebM via le compositeur video, (2) il passe au Studio Son pour ajouter musique et/ou voix, ce qui produit un nouveau fichier WebM valide avec audio embarque, (3) le post apparait dans le Calendrier avec toutes les metadonnees necessaires.
+
+### Ce qui s'est passe avec les 10 posts existants
+
+Les 10 posts actuellement dans le Calendrier ont ete crees directement depuis l'Infographie **sans passer par le Studio Son**. Le compositeur video a donc fonctionne en **mode fast** (sans audio), car aucune URL audio n'etait fournie (`musicUrl: null`, `voiceUrl: null`).
+
+### Le probleme du montage WebM (mode fast)
+
+En mode fast, le compositeur utilise `captureStream(0)` + `requestFrame()` par batch de 4. Cette methode est ~10x plus rapide que le temps reel, mais Chrome produit un fichier WebM dont les **metadonnees temporelles sont corrompues**. Le fichier resultant (~1.4 Mo) est techniquement invalide : Chrome peut le lire partiellement mais avec des artefacts, et certains lecteurs refusent de l'ouvrir.
+
+Le champ `metadata.videoUrl` de ces posts pointe vers ce fichier WebM corrompu. **Le Calendrier ne l'utilise pas dans la preview HTML** (car le montage WebM contient deja les sequences intro/cartes/cta, ce qui causerait un doublon). Mais si un processus essayait de lire ce fichier directement (par exemple pour la publication sociale), il rencontrerait un fichier defaillant.
+
+### Le probleme du rush MP4
+
+Chaque post a un champ `metadata.rawVideoUrl` (ou `metadata.rushUrls[0]`) pointant vers la video rush brute originale uploadee par l'utilisateur. Ce fichier est un MP4 de ~18 Mo.
+
+Ce rush MP4 a un probleme de structure interne : l'atome `moov` (qui contient les metadonnees de lecture — duree, codec, index des frames) est positionne **a la fin du fichier**, apres les 18 Mo de donnees video (atome `mdat`). La structure est : `ftyp → free → mdat (18 Mo) → moov`.
+
+Pour qu'un lecteur video puisse commencer la lecture, il doit d'abord lire l'atome `moov`. Si le serveur supporte les **range requests** (en-tete `Accept-Ranges: bytes`), le navigateur peut sauter directement a la fin du fichier pour lire le `moov` sans telecharger les 18 Mo. Mais **Supabase Storage ne supporte pas les range requests** — il retourne `Accept-Ranges: null` dans les reponses HEAD.
+
+Le resultat : Chrome doit telecharger les 18 Mo sequentiellement avant de pouvoir parser les metadonnees video. Dans la preview du Calendrier, la video ne charge jamais dans un delai raisonnable et le `readyState` reste a 0.
+
+### Le contournement actuel (HEAD pre-check)
+
+Le code actuel dans `calendar/page.tsx` effectue une requete HEAD avant de tenter de charger une video. Si le fichier fait plus de 8 Mo et que le serveur ne supporte pas les range requests, la sequence video est **immediatement ignoree** (en ~200ms au lieu d'attendre un timeout de 12 secondes). Le montage se joue alors avec 3 sequences (intro, cartes, CTA) au lieu de 4. C'est un contournement, pas une correction.
+
+### L'absence d'audio
+
+Les 10 posts n'ont aucun audio car ils n'ont jamais ete traites par le Studio Son. Les champs `musicUrl` et `voiceUrl` sont `null`. Le champ `hasAudio` n'existe pas (il a ete ajoute apres la creation de ces posts). Le champ `renderedVideoUrl` (qui pointe vers le montage avec audio du Studio Son) n'existe pas non plus.
+
+La detection d'audio dans le Calendrier utilise `!!meta?.hasAudio || !!meta?.renderedVideoUrl`. Pour ces 10 posts, les deux sont falsy, donc le Calendrier les considere correctement comme sans audio.
+
+### Resume de l'etat des 10 posts
+
+| Champ metadata | Valeur | Etat |
+|----------------|--------|------|
+| `videoUrl` | WebM ~1.4 Mo | Corrompu (mode fast, metadonnees temporelles cassees) |
+| `rawVideoUrl` / `rushUrls[0]` | MP4 ~18 Mo | Valide mais illisible en streaming (moov atom a la fin + pas de range requests) |
+| `musicUrl` | `null` | Jamais passe au Studio Son |
+| `voiceUrl` | `null` | Jamais passe au Studio Son |
+| `hasAudio` | absent | Flag ajoute apres la creation de ces posts |
+| `renderedVideoUrl` | absent | Jamais passe au Studio Son |
+
+### Fichiers concernes
+
+Le code du Calendrier se trouve dans `src/app/dashboard/calendar/page.tsx`. Le compositeur video est dans `src/lib/video-composer.ts`. Le Studio Son est dans `src/app/dashboard/audio-studio/page.tsx`. Les metadonnees des posts sont dans la table `scheduled_posts` (colonne `metadata`, type JSON).
+
+---
+
 ## Conventions de code
 
 - **Langue du code** : Variables et fonctions en anglais, UI et contenu en francais
