@@ -185,8 +185,22 @@ export default function InfographicPage() {
   const [titlePos, setTitlePos] = useState({ x: 50, y: 10 });
   const [logoPos, setLogoPos] = useState({ x: 50, y: 85 });
   const [watermarkPos, setWatermarkPos] = useState({ x: 50, y: 97 });
+  const [cardsPos, setCardsPos] = useState({ x: 50, y: 50 });
   const [dragging, setDragging] = useState<string | null>(null);
+  const [resizing, setResizing] = useState<string | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
+
+  // Element sizes (percentage-based widths)
+  const [titleSize, setTitleSize] = useState(100); // % of container width
+  const [cardsSize, setCardsSize] = useState(95);
+  const [watermarkSize, setWatermarkSize] = useState(80);
+  const resizeStart = useRef<{ x: number; size: number } | null>(null);
+
+  // Sequence view: show individual "pages" in preview
+  const [activeSequence, setActiveSequence] = useState<'all' | 'titre' | 'cartes' | 'video' | 'cta'>('all');
+
+  // Text size scale (0.6 to 1.8)
+  const [textScale, setTextScale] = useState(1.0);
 
   // ── Step 2: Export ──────────────────────────────────────────
   const [destination, setDestination] = useState<Destination>('draft');
@@ -1069,16 +1083,51 @@ export default function InfographicPage() {
               </div>
             </div>
 
+            {/* ── Text Size Control ── */}
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-300">
+                Taille du texte: <span className="text-purple-400 font-bold">{Math.round(textScale * 100)}%</span>
+              </label>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setTextScale(Math.max(0.6, textScale - 0.1))}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-800 border border-gray-700 text-white font-bold hover:bg-gray-700"
+                >A</button>
+                <input
+                  type="range"
+                  min="0.6"
+                  max="1.8"
+                  step="0.05"
+                  value={textScale}
+                  onChange={(e) => setTextScale(parseFloat(e.target.value))}
+                  className="flex-1 h-2 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
+                />
+                <button
+                  onClick={() => setTextScale(Math.min(1.8, textScale + 0.1))}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-800 border border-gray-700 text-lg text-white font-bold hover:bg-gray-700"
+                >A</button>
+              </div>
+              <div className="flex justify-between mt-1">
+                <span className="text-[10px] text-gray-500">60%</span>
+                <button onClick={() => setTextScale(1.0)} className="text-[10px] text-purple-400 hover:text-purple-300">Réinitialiser (100%)</button>
+                <span className="text-[10px] text-gray-500">180%</span>
+              </div>
+            </div>
+
             {/* ── Drag & Drop Positioning ── */}
             <div>
               <label className="mb-3 block text-sm font-medium text-gray-300">Positionnement (glisser-déposer)</label>
               <p className="text-xs text-gray-500 mb-3">
-                Glissez les éléments sur l'aperçu à droite pour repositionner le titre, le logo et le watermark.
+                Glissez les éléments sur l'aperçu à droite. Utilisez les poignées aux coins pour redimensionner.
               </p>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-center">
                   <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Titre</p>
                   <p className="text-xs text-white font-mono">{titlePos.x}%, {titlePos.y}%</p>
+                </div>
+                <div className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-center">
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Cartes</p>
+                  <p className="text-xs text-white font-mono">{cardsPos.x}%, {cardsPos.y}%</p>
                 </div>
                 <div className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-center">
                   <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Logo</p>
@@ -1090,7 +1139,7 @@ export default function InfographicPage() {
                 </div>
               </div>
               <button
-                onClick={() => { setTitlePos({ x: 50, y: 10 }); setLogoPos({ x: 50, y: 85 }); setWatermarkPos({ x: 50, y: 97 }); }}
+                onClick={() => { setTitlePos({ x: 50, y: 10 }); setLogoPos({ x: 50, y: 85 }); setWatermarkPos({ x: 50, y: 97 }); setCardsPos({ x: 50, y: 50 }); setTitleSize(100); setCardsSize(95); setWatermarkSize(80); }}
                 className="mt-2 text-xs text-purple-400 hover:text-purple-300 underline"
               >
                 Réinitialiser les positions
@@ -1615,13 +1664,37 @@ export default function InfographicPage() {
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* Right Panel - Preview */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <div className="hidden lg:flex w-full lg:w-1/2 flex-col items-center justify-center border-l-0 lg:border-l border-gray-800 bg-gray-950 p-3 sm:p-6 mt-6 lg:mt-0 lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto">
-        <h2 className="mb-4 text-base sm:text-xl font-bold text-white">Aperçu Vidéo Finale</h2>
+      <div className="hidden lg:flex w-full lg:w-1/2 flex-col items-center border-l-0 lg:border-l border-gray-800 bg-gray-950 p-3 sm:p-6 mt-6 lg:mt-0 lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto">
+        <h2 className="mb-3 text-base sm:text-xl font-bold text-white">Aperçu Vidéo Finale</h2>
+
+        {/* ── Sequence Selector (view individual pages) ── */}
+        <div className="flex items-center gap-1.5 mb-3 flex-wrap justify-center">
+          {[
+            { key: 'all' as const, label: 'Tout', icon: '🎬' },
+            { key: 'titre' as const, label: 'Titre', icon: '📝' },
+            { key: 'cartes' as const, label: 'Cartes', icon: '📊' },
+            ...(rushUrl ? [{ key: 'video' as const, label: 'Vidéo', icon: '🎥' }] : []),
+            { key: 'cta' as const, label: 'CTA', icon: '📢' },
+          ].map((seq) => (
+            <button
+              key={seq.key}
+              onClick={() => setActiveSequence(seq.key)}
+              className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
+                activeSequence === seq.key
+                  ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20'
+                  : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'
+              }`}
+            >
+              <span>{seq.icon}</span>
+              {seq.label}
+            </button>
+          ))}
+        </div>
 
         {/* Safe Zone Platform Selector */}
-        <div className="flex items-center gap-3 mb-4 rounded-xl bg-gray-800/60 border border-gray-700/50 px-4 py-2.5">
-          <span className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Zones</span>
-          <div className="flex gap-2">
+        <div className="flex items-center gap-2 mb-3 rounded-xl bg-gray-800/60 border border-gray-700/50 px-3 py-2 w-full max-w-xs justify-center flex-wrap">
+          <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Zones</span>
+          <div className="flex gap-1.5 flex-wrap justify-center">
             {Object.entries(PLATFORM_SAFE_ZONES).map(([key, zone]) => (
               <PlatformIcon
                 key={key}
@@ -1645,23 +1718,49 @@ export default function InfographicPage() {
               ...(colorTheme === 'custom' ? { background: `linear-gradient(135deg, ${customAccent}, ${customAccent}99)` } : {}),
             }}
             onMouseMove={(e) => {
-              if (!dragging || !previewRef.current) return;
+              if (!previewRef.current) return;
               const rect = previewRef.current.getBoundingClientRect();
+              // Handle resize
+              if (resizing && resizeStart.current) {
+                const deltaX = e.clientX - resizeStart.current.x;
+                const deltaPercent = (deltaX / rect.width) * 200; // *2 because resize from edge
+                const newSize = Math.round(Math.max(30, Math.min(100, resizeStart.current.size + deltaPercent)));
+                if (resizing === 'title') setTitleSize(newSize);
+                else if (resizing === 'cards') setCardsSize(newSize);
+                else if (resizing === 'watermark') setWatermarkSize(newSize);
+                return;
+              }
+              // Handle drag
+              if (!dragging) return;
               const x = Math.round(Math.max(5, Math.min(95, ((e.clientX - rect.left) / rect.width) * 100)));
               const y = Math.round(Math.max(3, Math.min(97, ((e.clientY - rect.top) / rect.height) * 100)));
               if (dragging === 'title') setTitlePos({ x, y });
               else if (dragging === 'logo') setLogoPos({ x, y });
               else if (dragging === 'watermark') setWatermarkPos({ x, y });
+              else if (dragging === 'cards') setCardsPos({ x, y });
             }}
-            onMouseUp={() => setDragging(null)}
-            onMouseLeave={() => setDragging(null)}
+            onMouseUp={() => { setDragging(null); setResizing(null); resizeStart.current = null; }}
+            onMouseLeave={() => { setDragging(null); setResizing(null); resizeStart.current = null; }}
           >
             {/* Background Photo */}
-            {previewPhoto && (
+            {previewPhoto && (activeSequence === 'all' || activeSequence === 'titre') && (
               <img
                 src={previewPhoto.medium}
                 alt=""
                 className="absolute inset-0 h-full w-full object-cover opacity-20"
+              />
+            )}
+
+            {/* Video Background (when in video sequence or uploaded video exists) */}
+            {rushUrl && (activeSequence === 'all' || activeSequence === 'video') && (
+              <video
+                src={rushUrl}
+                className="absolute inset-0 h-full w-full object-cover opacity-60"
+                autoPlay
+                muted
+                loop
+                playsInline
+                onError={(e) => { (e.target as HTMLVideoElement).style.display = 'none'; }}
               />
             )}
 
@@ -1670,110 +1769,181 @@ export default function InfographicPage() {
               {format}
             </div>
 
-            {/* Top Section: Title (draggable when on Design step) */}
-            <div
-              className={`absolute z-10 text-center ${step === 1 ? 'cursor-grab active:cursor-grabbing ring-1 ring-purple-500/30 ring-offset-1 ring-offset-transparent rounded px-2' : ''}`}
-              style={{
-                left: `${titlePos.x}%`,
-                top: `${titlePos.y}%`,
-                transform: 'translate(-50%, 0)',
-              }}
-              onMouseDown={(e) => { if (step === 1) { e.preventDefault(); setDragging('title'); } }}
-            >
-              <h3 className={`font-black text-white drop-shadow-lg ${format === '16:9' ? 'text-sm sm:text-lg lg:text-xl' : 'text-xs sm:text-sm lg:text-base'}`}>
-                {title || 'TITRE'}
-              </h3>
-              {subtitle && (
-                <p className={`mt-1 text-white/80 drop-shadow ${format === '16:9' ? 'text-[10px] sm:text-xs' : 'text-[8px] sm:text-[10px]'}`}>
-                  {subtitle}
-                </p>
-              )}
-            </div>
+            {/* Sequence label badge */}
+            {activeSequence !== 'all' && (
+              <div className="absolute top-2 left-2 rounded-full bg-purple-600/80 px-2.5 py-0.5 text-[10px] font-bold text-white backdrop-blur z-10 uppercase">
+                {activeSequence}
+              </div>
+            )}
 
-            {/* Cards Grid — style varies by selectedCardStyle */}
-            <div className={`relative z-10 grid gap-1.5 w-full ${
-              selectedCardStyle === 'Full Width' ? 'grid-cols-1' : previewClasses.cols
-            }`}>
-              {cards.slice(0, format === '16:9' ? 6 : 5).map((card) => {
-                // ── Compact (default, unchanged from original) ──
-                if (selectedCardStyle === 'Compact') {
-                  return (
-                    <div key={card.id} className="flex flex-col items-center gap-0.5 rounded-lg bg-black/30 px-1.5 py-1.5 backdrop-blur-sm" style={{ borderLeft: `2px solid ${card.color}` }}>
-                      <span className={format === '16:9' ? 'text-lg' : 'text-sm'}>{card.emoji}</span>
-                      <p className={`text-center font-bold text-white drop-shadow ${format === '16:9' ? 'text-[9px]' : 'text-[7px]'}`}>{card.label}</p>
-                      <p className={`text-center font-black drop-shadow ${format === '16:9' ? 'text-[10px]' : 'text-[8px]'}`} style={{ color: card.color }}>{card.value}</p>
-                      {card.description && <p className={`text-center text-white/60 ${format === '16:9' ? 'text-[7px]' : 'text-[6px]'}`}>{card.description.substring(0, 30)}</p>}
-                    </div>
-                  );
-                }
-                // ── Educatif ──
-                if (selectedCardStyle === 'Educatif') {
-                  return (
-                    <div key={card.id} className="rounded-lg bg-black/40 px-2 py-2 backdrop-blur-sm" style={{ borderTop: `2px solid ${card.color}` }}>
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <span className="text-sm">{card.emoji}</span>
-                        <p className="text-[8px] font-bold text-white">{card.label}</p>
+            {/* ── TITLE SECTION (visible in all, titre) ── */}
+            {(activeSequence === 'all' || activeSequence === 'titre') && (
+              <div
+                className={`absolute z-20 text-center ${step === 1 ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                style={{
+                  left: `${titlePos.x}%`,
+                  top: `${titlePos.y}%`,
+                  transform: 'translate(-50%, 0)',
+                  width: `${titleSize}%`,
+                }}
+                onMouseDown={(e) => { if (step === 1) { e.preventDefault(); setDragging('title'); } }}
+              >
+                {/* Resize handle top-right */}
+                {step === 1 && (
+                  <>
+                    <div className="absolute -top-1 -left-1 w-3 h-3 bg-purple-500 rounded-full cursor-nw-resize z-30 border border-white/50"
+                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('title'); resizeStart.current = { x: e.clientX, size: titleSize }; }} />
+                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-purple-500 rounded-full cursor-ne-resize z-30 border border-white/50"
+                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('title'); resizeStart.current = { x: e.clientX, size: titleSize }; }} />
+                    <div className="absolute inset-0 border border-dashed border-purple-500/40 rounded pointer-events-none" />
+                  </>
+                )}
+                <h3 className="font-black text-white drop-shadow-lg" style={{ fontSize: `${(format === '16:9' ? 18 : 14) * textScale}px` }}>
+                  {title || 'TITRE'}
+                </h3>
+                {subtitle && (
+                  <p className="mt-1 text-white/80 drop-shadow" style={{ fontSize: `${(format === '16:9' ? 11 : 9) * textScale}px` }}>
+                    {subtitle}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* ── VIDEO OVERLAY TEXT (visible in video sequence) ── */}
+            {rushUrl && (activeSequence === 'all' || activeSequence === 'video') && videoOverlayText && (
+              <div className="absolute z-20 inset-x-4 top-1/3 text-center">
+                <p className="font-bold text-white drop-shadow-lg bg-black/30 rounded-lg px-3 py-2 backdrop-blur-sm" style={{ fontSize: `${14 * textScale}px` }}>
+                  {videoOverlayText}
+                </p>
+              </div>
+            )}
+
+            {/* ── CARDS GRID (visible in all, cartes) — draggable + resizable ── */}
+            {(activeSequence === 'all' || activeSequence === 'cartes') && cards.length > 0 && (
+              <div
+                className={`absolute z-20 ${step === 1 ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                style={{
+                  left: `${cardsPos.x}%`,
+                  top: `${cardsPos.y}%`,
+                  transform: 'translate(-50%, -50%)',
+                  width: `${cardsSize}%`,
+                }}
+                onMouseDown={(e) => { if (step === 1) { e.preventDefault(); setDragging('cards'); } }}
+              >
+                {/* Resize handles for cards */}
+                {step === 1 && (
+                  <>
+                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-pink-500 rounded-full cursor-ne-resize z-30 border border-white/50"
+                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('cards'); resizeStart.current = { x: e.clientX, size: cardsSize }; }} />
+                    <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-pink-500 rounded-full cursor-se-resize z-30 border border-white/50"
+                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('cards'); resizeStart.current = { x: e.clientX, size: cardsSize }; }} />
+                    <div className="absolute inset-0 border border-dashed border-pink-500/40 rounded pointer-events-none" />
+                  </>
+                )}
+                <div className={`grid gap-1.5 w-full ${
+                  selectedCardStyle === 'Full Width' ? 'grid-cols-1' : previewClasses.cols
+                }`}>
+                  {cards.slice(0, format === '16:9' ? 6 : 5).map((card) => {
+                    const scaledLabel = `${Math.round(7 * textScale)}px`;
+                    const scaledValue = `${Math.round(9 * textScale)}px`;
+                    const scaledDesc = `${Math.round(6 * textScale)}px`;
+                    // ── Compact ──
+                    if (selectedCardStyle === 'Compact') {
+                      return (
+                        <div key={card.id} className="flex flex-col items-center gap-0.5 rounded-lg bg-black/30 px-1.5 py-1.5 backdrop-blur-sm" style={{ borderLeft: `2px solid ${card.color}` }}>
+                          <span className={format === '16:9' ? 'text-lg' : 'text-sm'}>{card.emoji}</span>
+                          <p className="text-center font-bold text-white drop-shadow" style={{ fontSize: scaledLabel }}>{card.label}</p>
+                          <p className="text-center font-black drop-shadow" style={{ fontSize: scaledValue, color: card.color }}>{card.value}</p>
+                          {card.description && <p className="text-center text-white/60" style={{ fontSize: scaledDesc }}>{card.description.substring(0, 30)}</p>}
+                        </div>
+                      );
+                    }
+                    // ── Educatif ──
+                    if (selectedCardStyle === 'Educatif') {
+                      return (
+                        <div key={card.id} className="rounded-lg bg-black/40 px-2 py-2 backdrop-blur-sm" style={{ borderTop: `2px solid ${card.color}` }}>
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="text-sm">{card.emoji}</span>
+                            <p className="font-bold text-white" style={{ fontSize: scaledLabel }}>{card.label}</p>
+                          </div>
+                          <p className="text-white/70 leading-relaxed mb-1" style={{ fontSize: scaledDesc }}>{card.description?.substring(0, 60) || ''}</p>
+                          <p className="font-black" style={{ fontSize: scaledValue, color: card.color }}>{card.value}</p>
+                        </div>
+                      );
+                    }
+                    // ── Stats Bold ──
+                    if (selectedCardStyle === 'Stats Bold') {
+                      return (
+                        <div key={card.id} className="flex flex-col items-center justify-center rounded-lg bg-black/50 px-2 py-2 backdrop-blur-sm border border-white/10">
+                          <p className="font-black drop-shadow" style={{ fontSize: `${Math.round(13 * textScale)}px`, color: card.color }}>{card.value}</p>
+                          <p className="font-medium text-white/80 mt-0.5 text-center" style={{ fontSize: scaledDesc }}>{card.label}</p>
+                        </div>
+                      );
+                    }
+                    // ── Minimal Line ──
+                    if (selectedCardStyle === 'Minimal Line') {
+                      return (
+                        <div key={card.id} className="flex items-center gap-2 py-1 px-1" style={{ borderBottom: `1px solid ${card.color}40` }}>
+                          <span className="text-xs">{card.emoji}</span>
+                          <p className="text-white/80 flex-1" style={{ fontSize: scaledLabel }}>{card.label}</p>
+                          <p className="font-bold" style={{ fontSize: scaledValue, color: card.color }}>{card.value}</p>
+                        </div>
+                      );
+                    }
+                    // ── Full Width ──
+                    return (
+                      <div key={card.id} className="flex items-center gap-2 rounded-lg bg-black/30 px-3 py-1.5 backdrop-blur-sm" style={{ borderLeft: `3px solid ${card.color}` }}>
+                        <span className="text-base">{card.emoji}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-white truncate" style={{ fontSize: scaledLabel }}>{card.label}</p>
+                          {card.description && <p className="text-white/50 truncate" style={{ fontSize: scaledDesc }}>{card.description.substring(0, 40)}</p>}
+                        </div>
+                        <p className="font-black flex-shrink-0" style={{ fontSize: scaledValue, color: card.color }}>{card.value}</p>
                       </div>
-                      <p className="text-[7px] text-white/70 leading-relaxed mb-1">{card.description?.substring(0, 60) || ''}</p>
-                      <p className="text-[9px] font-black" style={{ color: card.color }}>{card.value}</p>
-                    </div>
-                  );
-                }
-                // ── Stats Bold ──
-                if (selectedCardStyle === 'Stats Bold') {
-                  return (
-                    <div key={card.id} className="flex flex-col items-center justify-center rounded-lg bg-black/50 px-2 py-2 backdrop-blur-sm border border-white/10">
-                      <p className={`font-black drop-shadow ${format === '16:9' ? 'text-base' : 'text-sm'}`} style={{ color: card.color }}>{card.value}</p>
-                      <p className="text-[7px] font-medium text-white/80 mt-0.5 text-center">{card.label}</p>
-                    </div>
-                  );
-                }
-                // ── Minimal Line ──
-                if (selectedCardStyle === 'Minimal Line') {
-                  return (
-                    <div key={card.id} className="flex items-center gap-2 py-1 px-1" style={{ borderBottom: `1px solid ${card.color}40` }}>
-                      <span className="text-xs">{card.emoji}</span>
-                      <p className="text-[7px] text-white/80 flex-1">{card.label}</p>
-                      <p className="text-[8px] font-bold" style={{ color: card.color }}>{card.value}</p>
-                    </div>
-                  );
-                }
-                // ── Full Width ──
-                return (
-                  <div key={card.id} className="flex items-center gap-2 rounded-lg bg-black/30 px-3 py-1.5 backdrop-blur-sm" style={{ borderLeft: `3px solid ${card.color}` }}>
-                    <span className="text-base">{card.emoji}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[8px] font-bold text-white truncate">{card.label}</p>
-                      {card.description && <p className="text-[6px] text-white/50 truncate">{card.description.substring(0, 40)}</p>}
-                    </div>
-                    <p className="text-[10px] font-black flex-shrink-0" style={{ color: card.color }}>{card.value}</p>
-                  </div>
-                );
-              })}
-            </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
-            {/* Bottom: Sales Phrase + Watermark (draggable on Design step) */}
-            <div
-              className={`absolute z-10 text-center ${step === 1 ? 'cursor-grab active:cursor-grabbing ring-1 ring-purple-500/30 ring-offset-1 ring-offset-transparent rounded px-2' : ''}`}
-              style={{
-                left: `${watermarkPos.x}%`,
-                top: `${watermarkPos.y}%`,
-                transform: 'translate(-50%, -100%)',
-              }}
-              onMouseDown={(e) => { if (step === 1) { e.preventDefault(); setDragging('watermark'); } }}
-            >
-              {salesPhrases.length > 0 && (
-                <p className={`font-medium text-white/90 drop-shadow ${format === '16:9' ? 'text-[10px]' : 'text-[8px]'}`}>
-                  {salesPhrases[0]}
+            {/* ── CTA / WATERMARK (visible in all, cta) — draggable + resizable ── */}
+            {(activeSequence === 'all' || activeSequence === 'cta') && (
+              <div
+                className={`absolute z-20 text-center ${step === 1 ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                style={{
+                  left: `${watermarkPos.x}%`,
+                  top: `${watermarkPos.y}%`,
+                  transform: 'translate(-50%, -100%)',
+                  width: `${watermarkSize}%`,
+                }}
+                onMouseDown={(e) => { if (step === 1) { e.preventDefault(); setDragging('watermark'); } }}
+              >
+                {/* Resize handles for CTA */}
+                {step === 1 && (
+                  <>
+                    <div className="absolute -bottom-1 -left-1 w-3 h-3 bg-yellow-500 rounded-full cursor-sw-resize z-30 border border-white/50"
+                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('watermark'); resizeStart.current = { x: e.clientX, size: watermarkSize }; }} />
+                    <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-yellow-500 rounded-full cursor-se-resize z-30 border border-white/50"
+                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('watermark'); resizeStart.current = { x: e.clientX, size: watermarkSize }; }} />
+                    <div className="absolute inset-0 border border-dashed border-yellow-500/40 rounded pointer-events-none" />
+                  </>
+                )}
+                {salesPhrases.length > 0 && (
+                  <p className="font-medium text-white/90 drop-shadow" style={{ fontSize: `${(format === '16:9' ? 10 : 8) * textScale}px` }}>
+                    {salesPhrases[0]}
+                  </p>
+                )}
+                <p className="mt-0.5 font-bold text-white drop-shadow" style={{ fontSize: `${(format === '16:9' ? 10 : 7) * textScale}px` }}>
+                  AFROBOOST
                 </p>
-              )}
-              <p className={`mt-0.5 font-bold text-white drop-shadow ${format === '16:9' ? 'text-[10px]' : 'text-[7px]'}`}>
-                AFROBOOST
-              </p>
-            </div>
+                <p className="font-semibold drop-shadow mt-1" style={{ fontSize: `${(format === '16:9' ? 9 : 7) * textScale}px`, color: activeColorTheme.accent }}>
+                  CHAT POUR PLUS D&apos;INFOS
+                </p>
+              </div>
+            )}
 
             {/* Character Image */}
-            {characterImage && (
+            {characterImage && (activeSequence === 'all' || activeSequence === 'titre') && (
               <img
                 src={characterImage}
                 alt="Character"
@@ -1781,7 +1951,7 @@ export default function InfographicPage() {
               />
             )}
 
-            {/* Safe Zone Overlay (additive — pointer-events: none, does not affect interactions) */}
+            {/* Safe Zone Overlay (pointer-events: none, does not affect interactions) */}
             {safeZonePlatform && PLATFORM_SAFE_ZONES[safeZonePlatform] && (
               <div className="absolute inset-0 z-50 pointer-events-none">
                 {PLATFORM_SAFE_ZONES[safeZonePlatform].zones.map((zone: SafeZoneArea, i: number) => (
@@ -1810,12 +1980,22 @@ export default function InfographicPage() {
                 ))}
               </div>
             )}
+
+            {/* Empty state for video sequence when no video uploaded */}
+            {activeSequence === 'video' && !rushUrl && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center">
+                <div className="text-center text-white/50">
+                  <Video size={32} className="mx-auto mb-2 opacity-50" />
+                  <p className="text-xs">Aucune vidéo uploadée</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Batch Preview Dots */}
         {batchCount > 1 && (
-          <div className="mt-4 flex items-center gap-1.5 sm:gap-3 flex-wrap justify-center">
+          <div className="mt-3 flex items-center gap-1.5 sm:gap-3 flex-wrap justify-center">
             <span className="text-xs text-gray-500">Batch: x{batchCount}</span>
             <div className="flex gap-1.5 flex-wrap justify-center">
               {Array.from({ length: Math.min(batchCount, 10) }, (_, i) => (
@@ -1835,7 +2015,7 @@ export default function InfographicPage() {
 
         {/* Photo Preview Grid (small thumbnails) */}
         {pexelsPhotos.length > 0 && (
-          <div className="mt-4 flex gap-1.5 sm:gap-2 overflow-x-auto px-2 sm:px-4">
+          <div className="mt-3 flex gap-1.5 sm:gap-2 overflow-x-auto px-2 sm:px-4">
             {pexelsPhotos.slice(0, Math.max(batchCount, 4)).map((photo, i) => (
               <button
                 key={photo.id}
@@ -1851,7 +2031,7 @@ export default function InfographicPage() {
         )}
 
         {/* Stats */}
-        <div className="mt-3 sm:mt-6 grid w-full max-w-xs grid-cols-3 gap-1.5 sm:gap-4 rounded-lg bg-gray-800 p-2 sm:p-3">
+        <div className="mt-3 sm:mt-4 grid w-full max-w-xs grid-cols-3 gap-1.5 sm:gap-4 rounded-lg bg-gray-800 p-2 sm:p-3">
           <div className="text-center">
             <p className="text-[10px] sm:text-xs text-gray-400">Cartes</p>
             <p className="text-base sm:text-lg font-bold text-white">{cards.length}</p>
