@@ -22,6 +22,8 @@ import {
 import { PlatformIcon, type PlatformKey } from '@/components/ui/PlatformIcon';
 import { DesignOption, FONT_OPTIONS, FILTER_OPTIONS, CARD_STYLE_OPTIONS } from '@/components/ui/DesignOption';
 import { PLATFORM_SAFE_ZONES, type SafeZoneArea } from '@/lib/constants/platforms';
+import FloatingPanel from '@/components/ui/FloatingPanel';
+import ColorWheel from '@/components/ui/ColorWheel';
 
 // ── Types ──────────────────────────────────────────────────────
 interface InfoCard {
@@ -220,8 +222,25 @@ export default function InfographicPage() {
   // Video overlay text position (draggable)
   const [overlayPos, setOverlayPos] = useState({ x: 50, y: 33 });
 
-  // Text size scale (0.6 to 1.8)
+  // Text size scale (0.5 to 3.0)
   const [textScale, setTextScale] = useState(1.0);
+
+  // CTA sub-text color (separate from main ctaColor)
+  const [ctaSubColor, setCtaSubColor] = useState('#D91CD2');
+
+  // Floating panels — which element panel is open
+  const [activePanel, setActivePanel] = useState<'title' | 'cards' | 'cta' | 'overlay' | 'gradient' | null>(null);
+  const [panelPos, setPanelPos] = useState({ x: 0, y: 0 });
+
+  // Open a floating panel near the clicked element
+  const openPanel = useCallback((panel: typeof activePanel, e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Position panel to the left of click, clamped to viewport
+    const x = Math.min(e.clientX - 130, window.innerWidth - 320);
+    const y = Math.max(20, Math.min(e.clientY - 40, window.innerHeight - 400));
+    setPanelPos({ x, y });
+    setActivePanel(prev => prev === panel ? null : panel);
+  }, []);
 
   // ── Step 2: Export ──────────────────────────────────────────
   const [destination, setDestination] = useState<Destination>('draft');
@@ -692,6 +711,7 @@ export default function InfographicPage() {
                   textScale,
                   titleColor,
                   ctaColor,
+                  ctaSubColor,
                   ctaMainText: ctaMainText || 'AFROBOOST',
                   ctaSubText: ctaSubText || 'CHAT POUR PLUS D\'INFOS',
                   noColorBg,
@@ -1261,110 +1281,11 @@ export default function InfographicPage() {
               )}
             </div>
 
-            {/* ── Text Colors ── */}
-            <div>
-              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Couleurs du texte</label>
-              <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2 cursor-pointer rounded-lg bg-gray-800 px-2 py-1.5 hover:bg-gray-700 transition-colors">
-                  <div className="relative h-8 w-8 rounded-lg overflow-hidden border border-gray-600">
-                    <input type="color" value={titleColor} onChange={(e) => setTitleColor(e.target.value)} className="absolute inset-0 h-full w-full cursor-pointer border-0 p-0" style={{ minWidth: '32px', minHeight: '32px' }} />
-                  </div>
-                  <span className="text-[11px] text-gray-300 font-medium">Titre</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer rounded-lg bg-gray-800 px-2 py-1.5 hover:bg-gray-700 transition-colors">
-                  <div className="relative h-8 w-8 rounded-lg overflow-hidden border border-gray-600">
-                    <input type="color" value={ctaColor} onChange={(e) => setCtaColor(e.target.value)} className="absolute inset-0 h-full w-full cursor-pointer border-0 p-0" style={{ minWidth: '32px', minHeight: '32px' }} />
-                  </div>
-                  <span className="text-[11px] text-gray-300 font-medium">CTA</span>
-                </label>
-              </div>
-            </div>
-
-            {/* ── CTA Text (Customizable) ── */}
-            <div>
-              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Texte CTA</label>
-              <div className="space-y-2">
-                <input
-                  type="text"
-                  value={ctaMainText}
-                  onChange={(e) => setCtaMainText(e.target.value)}
-                  className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
-                  placeholder="Nom de marque (ex: AFROBOOST)"
-                />
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={ctaSubText}
-                    onChange={(e) => setCtaSubText(e.target.value)}
-                    className="flex-1 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
-                    placeholder="Call-to-action (ex: CHAT POUR PLUS D'INFOS)"
-                  />
-                  <button
-                    onClick={async () => {
-                      setIsGeneratingCta(true);
-                      try {
-                        const themeObj = CONTENT_THEMES.find(t => t.id === contentTheme);
-                        const topicText = contentTheme === 'personnalise' ? customTopic : (themeObj?.label || contentTheme);
-                        const controller = new AbortController();
-                        const timeout = setTimeout(() => controller.abort(), 8000);
-                        const res = await fetch('/api/content/ai-generate', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ topic: topicText, locale: 'fr', cardCount: 1 }),
-                          signal: controller.signal,
-                        });
-                        clearTimeout(timeout);
-                        if (res.ok) {
-                          const data = await res.json();
-                          if (data.success && data.content) {
-                            // Use salesPhrases or subtitle as CTA sub text
-                            const phrases = data.content.salesPhrases || [];
-                            if (phrases.length > 0) setCtaSubText(phrases[0].toUpperCase());
-                            else if (data.content.subtitle) setCtaSubText(data.content.subtitle.toUpperCase());
-                            // Use title as brand tagline
-                            if (data.content.title) setCtaMainText(data.content.title.toUpperCase());
-                          }
-                        }
-                      } catch (err: any) {
-                        console.warn('[CTA IA] Erreur:', err?.name || err?.message);
-                        // Fallback: random CTA suggestions
-                        const fallbacks = ['DÉCOUVRIR MAINTENANT', 'EN SAVOIR PLUS', 'COMMENCER AUJOURD\'HUI', 'REJOINS-NOUS', 'VOIR LES DÉTAILS'];
-                        setCtaSubText(fallbacks[Math.floor(Math.random() * fallbacks.length)]);
-                      } finally { setIsGeneratingCta(false); }
-                    }}
-                    disabled={isGeneratingCta}
-                    className="flex items-center gap-1 rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white hover:bg-purple-500 disabled:opacity-50"
-                    title="Générer un CTA avec l'IA"
-                  >
-                    {isGeneratingCta ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* ── Text Size Control ── */}
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-400 uppercase tracking-wider">
-                Taille du texte <span className="text-purple-400">{Math.round(textScale * 100)}%</span>
-              </label>
-              <div className="flex items-center gap-2">
-                <button onClick={() => setTextScale(Math.max(0.5, textScale - 0.1))} className="flex h-7 w-7 items-center justify-center rounded bg-gray-800 border border-gray-700 text-xs text-white font-bold hover:bg-gray-700">A</button>
-                <input type="range" min="0.5" max="3.0" step="0.05" value={textScale} onChange={(e) => setTextScale(parseFloat(e.target.value))} className="flex-1 h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer" />
-                <button onClick={() => setTextScale(Math.min(3.0, textScale + 0.1))} className="flex h-7 w-7 items-center justify-center rounded bg-gray-800 border border-gray-700 text-sm text-white font-bold hover:bg-gray-700">A</button>
-                <button onClick={() => setTextScale(1.0)} className="text-[9px] text-purple-400 hover:text-purple-300 ml-1">Reset</button>
-              </div>
-            </div>
-
-            {/* ── Gradient Overlay ── */}
-            <div>
-              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Dégradé d'ombre</label>
-              <div className="flex items-center gap-3">
-                <input type="color" value={gradientColor1} onChange={(e) => setGradientColor1(e.target.value)} className="h-7 w-7 cursor-pointer rounded border-0 bg-transparent p-0" />
-                <span className="text-[10px] text-gray-500">→</span>
-                <input type="color" value={gradientColor2} onChange={(e) => setGradientColor2(e.target.value)} className="h-7 w-7 cursor-pointer rounded border-0 bg-transparent p-0" />
-                <input type="range" min="0" max="2.0" step="0.05" value={gradientOpacity} onChange={(e) => setGradientOpacity(parseFloat(e.target.value))} className="flex-1 h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer" />
-                <span className="text-[10px] text-gray-400 w-10">{Math.round(gradientOpacity * 100)}%</span>
-              </div>
+            {/* ── Contextual Help ── */}
+            <div className="rounded-lg bg-purple-900/20 border border-purple-500/30 px-3 py-2">
+              <p className="text-[10px] text-purple-300 font-medium">
+                💡 Double-cliquez sur un élément dans l'aperçu pour ouvrir ses réglages (couleurs, texte, taille...)
+              </p>
             </div>
 
             {/* ── Positioning Help ── */}
@@ -1952,10 +1873,10 @@ export default function InfographicPage() {
               </div>
             )}
 
-            {/* ── Gradient Overlay (user-configurable, up to 200%) ── */}
+            {/* ── Gradient Overlay (user-configurable, up to 200%) — double-click for panel ── */}
             {gradientOpacity > 0 && (
               <>
-                <div className="absolute inset-0 z-[1] pointer-events-none" style={{
+                <div className="absolute inset-0 z-[1] cursor-pointer" onDoubleClick={(e) => openPanel('gradient', e)} style={{
                   background: `linear-gradient(180deg, ${gradientColor1}${Math.round(Math.min(gradientOpacity, 1) * 255).toString(16).padStart(2, '0')} 0%, transparent 40%, transparent 60%, ${gradientColor2}${Math.round(Math.min(gradientOpacity, 1) * 255).toString(16).padStart(2, '0')} 100%)`,
                 }} />
                 {/* Second layer for >100% intensity */}
@@ -1967,10 +1888,10 @@ export default function InfographicPage() {
               </>
             )}
 
-            {/* ── TITLE SECTION (visible in all, titre) — always draggable ── */}
+            {/* ── TITLE SECTION (visible in all, titre) — drag + double-click for panel ── */}
             {(activeSequence === 'all' || activeSequence === 'titre') && (
               <div
-                className="absolute z-20 text-center cursor-grab active:cursor-grabbing group/title"
+                className={`absolute z-20 text-center cursor-grab active:cursor-grabbing group/title ${activePanel === 'title' ? 'ring-1 ring-purple-400 ring-offset-1 ring-offset-transparent rounded' : ''}`}
                 style={{
                   left: `${titlePos.x}%`,
                   top: `${titlePos.y}%`,
@@ -1978,6 +1899,7 @@ export default function InfographicPage() {
                   width: `${titleSize}%`,
                 }}
                 onMouseDown={(e) => { e.preventDefault(); setDragging('title'); }}
+                onDoubleClick={(e) => openPanel('title', e)}
               >
                 {/* Resize handles — always visible on hover */}
                 <div className="absolute -top-1 -left-1 w-2.5 h-2.5 bg-purple-500 rounded-full cursor-nw-resize z-30 border border-white/50 opacity-0 group-hover/title:opacity-100 transition-opacity"
@@ -1999,7 +1921,7 @@ export default function InfographicPage() {
             {/* ── VIDEO OVERLAY TEXT (visible in video sequence) — draggable, no bg ── */}
             {rushUrl && (activeSequence === 'all' || activeSequence === 'video') && videoOverlayText && (
               <div
-                className="absolute z-20 text-center cursor-grab active:cursor-grabbing group/overlay"
+                className={`absolute z-20 text-center cursor-grab active:cursor-grabbing group/overlay ${activePanel === 'overlay' ? 'ring-1 ring-cyan-400 ring-offset-1 ring-offset-transparent rounded' : ''}`}
                 style={{
                   left: `${overlayPos.x}%`,
                   top: `${overlayPos.y}%`,
@@ -2007,6 +1929,7 @@ export default function InfographicPage() {
                   width: '85%',
                 }}
                 onMouseDown={(e) => { e.preventDefault(); setDragging('overlay'); }}
+                onDoubleClick={(e) => openPanel('overlay', e)}
               >
                 <div className="absolute inset-0 border border-dashed border-cyan-500/0 group-hover/overlay:border-cyan-500/40 rounded pointer-events-none transition-colors" />
                 <p className="font-black text-white drop-shadow-lg" style={{ fontSize: `${16 * textScale}px`, textShadow: '0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5)' }}>
@@ -2015,10 +1938,10 @@ export default function InfographicPage() {
               </div>
             )}
 
-            {/* ── CARDS GRID (visible in all, cartes) — always draggable + resizable ── */}
+            {/* ── CARDS GRID (visible in all, cartes) — drag + double-click for panel ── */}
             {(activeSequence === 'all' || activeSequence === 'cartes') && cards.length > 0 && (
               <div
-                className="absolute z-20 cursor-grab active:cursor-grabbing group/cards"
+                className={`absolute z-20 cursor-grab active:cursor-grabbing group/cards ${activePanel === 'cards' ? 'ring-1 ring-pink-400 ring-offset-1 ring-offset-transparent rounded' : ''}`}
                 style={{
                   left: `${cardsPos.x}%`,
                   top: `${cardsPos.y}%`,
@@ -2026,6 +1949,7 @@ export default function InfographicPage() {
                   width: `${cardsSize}%`,
                 }}
                 onMouseDown={(e) => { e.preventDefault(); setDragging('cards'); }}
+                onDoubleClick={(e) => openPanel('cards', e)}
               >
                 {/* Resize handles — visible on hover */}
                 <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-pink-500 rounded-full cursor-ne-resize z-30 border border-white/50 opacity-0 group-hover/cards:opacity-100 transition-opacity"
@@ -2099,10 +2023,10 @@ export default function InfographicPage() {
               </div>
             )}
 
-            {/* ── CTA / WATERMARK (visible in all, cta) — always draggable + resizable ── */}
+            {/* ── CTA / WATERMARK (visible in all, cta) — drag + double-click for panel ── */}
             {(activeSequence === 'all' || activeSequence === 'cta') && (
               <div
-                className="absolute z-20 text-center cursor-grab active:cursor-grabbing group/cta"
+                className={`absolute z-20 text-center cursor-grab active:cursor-grabbing group/cta ${activePanel === 'cta' ? 'ring-1 ring-yellow-400 ring-offset-1 ring-offset-transparent rounded' : ''}`}
                 style={{
                   left: `${watermarkPos.x}%`,
                   top: `${watermarkPos.y}%`,
@@ -2110,6 +2034,7 @@ export default function InfographicPage() {
                   width: `${watermarkSize}%`,
                 }}
                 onMouseDown={(e) => { e.preventDefault(); setDragging('watermark'); }}
+                onDoubleClick={(e) => openPanel('cta', e)}
               >
                 {/* Resize handles — visible on hover */}
                 <div className="absolute -bottom-1 -left-1 w-2.5 h-2.5 bg-yellow-500 rounded-full cursor-sw-resize z-30 border border-white/50 opacity-0 group-hover/cta:opacity-100 transition-opacity"
@@ -2125,7 +2050,7 @@ export default function InfographicPage() {
                 <p className="mt-0.5 font-black drop-shadow-lg uppercase" style={{ fontSize: `${(format === '16:9' ? 16 : 12) * textScale}px`, color: ctaColor }}>
                   {ctaMainText || 'AFROBOOST'}
                 </p>
-                <p className="font-bold drop-shadow mt-1 uppercase" style={{ fontSize: `${(format === '16:9' ? 12 : 9) * textScale}px`, color: activeColorTheme.accent }}>
+                <p className="font-bold drop-shadow mt-1 uppercase" style={{ fontSize: `${(format === '16:9' ? 12 : 9) * textScale}px`, color: ctaSubColor }}>
                   {ctaSubText || 'CHAT POUR PLUS D\'INFOS'}
                 </p>
               </div>
@@ -2199,8 +2124,259 @@ export default function InfographicPage() {
                 </div>
               </div>
             )}
+
+            {/* Hint: double-click to open controls */}
+            <div className="absolute bottom-1 inset-x-0 text-center z-[60] pointer-events-none">
+              <span className="text-[8px] text-white/30 bg-black/20 rounded px-1.5 py-0.5">Double-clic sur un élément = réglages</span>
+            </div>
           </div>
         </div>
+
+        {/* ═══════════════════════════════════════════════════ */}
+        {/* FLOATING PANELS — contextual controls per element  */}
+        {/* ═══════════════════════════════════════════════════ */}
+
+        {/* ── Title Panel ── */}
+        <FloatingPanel
+          title="Titre"
+          icon="📝"
+          isOpen={activePanel === 'title'}
+          onClose={() => setActivePanel(null)}
+          initialX={panelPos.x}
+          initialY={panelPos.y}
+        >
+          <div className="space-y-2">
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white focus:border-purple-500 focus:outline-none"
+              placeholder="Titre principal"
+            />
+            <input
+              type="text"
+              value={subtitle}
+              onChange={(e) => setSubtitle(e.target.value)}
+              className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white focus:border-purple-500 focus:outline-none"
+              placeholder="Sous-titre"
+            />
+            <div>
+              <span className="text-[9px] text-gray-500 uppercase">Police</span>
+              <div className="flex flex-wrap gap-1 mt-1">
+                {FONT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.label}
+                    onClick={() => setSelectedFont(opt.label)}
+                    className={`px-2 py-1 rounded text-[9px] font-medium transition-all ${
+                      selectedFont === opt.label ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
+                    }`}
+                  >{opt.label}</button>
+                ))}
+              </div>
+            </div>
+            <ColorWheel color={titleColor} onChange={setTitleColor} label="Couleur" />
+            <div>
+              <span className="text-[9px] text-gray-500 uppercase">Taille {Math.round(textScale * 100)}%</span>
+              <input
+                type="range" min="0.5" max="3.0" step="0.05" value={textScale}
+                onChange={(e) => setTextScale(parseFloat(e.target.value))}
+                className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer mt-1"
+              />
+            </div>
+          </div>
+        </FloatingPanel>
+
+        {/* ── Cards Panel ── */}
+        <FloatingPanel
+          title="Cartes"
+          icon="📊"
+          isOpen={activePanel === 'cards'}
+          onClose={() => setActivePanel(null)}
+          initialX={panelPos.x}
+          initialY={panelPos.y}
+          accentColor="#EC4899"
+        >
+          <div className="space-y-2">
+            <div>
+              <span className="text-[9px] text-gray-500 uppercase">Style</span>
+              <div className="flex flex-wrap gap-1 mt-1">
+                {CARD_STYLE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.label}
+                    onClick={() => setSelectedCardStyle(opt.label)}
+                    className={`px-2 py-1 rounded text-[9px] font-medium transition-all ${
+                      selectedCardStyle === opt.label ? 'bg-pink-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
+                    }`}
+                  >{opt.label}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <span className="text-[9px] text-gray-500 uppercase">Taille {cardsSize}%</span>
+              <input
+                type="range" min="30" max="100" step="1" value={cardsSize}
+                onChange={(e) => setCardsSize(parseInt(e.target.value))}
+                className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-pink-500 cursor-pointer mt-1"
+              />
+            </div>
+            <div>
+              <span className="text-[9px] text-gray-500 uppercase">Filtre</span>
+              <div className="flex flex-wrap gap-1 mt-1">
+                {FILTER_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.label}
+                    onClick={() => setSelectedFilter(opt.label)}
+                    className={`px-2 py-1 rounded text-[9px] font-medium transition-all ${
+                      selectedFilter === opt.label ? 'bg-pink-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
+                    }`}
+                  >{opt.label}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </FloatingPanel>
+
+        {/* ── CTA Panel ── */}
+        <FloatingPanel
+          title="CTA"
+          icon="📢"
+          isOpen={activePanel === 'cta'}
+          onClose={() => setActivePanel(null)}
+          initialX={panelPos.x}
+          initialY={panelPos.y}
+          accentColor="#EAB308"
+        >
+          <div className="space-y-2">
+            <input
+              type="text"
+              value={ctaMainText}
+              onChange={(e) => setCtaMainText(e.target.value)}
+              className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white focus:border-purple-500 focus:outline-none"
+              placeholder="Nom de marque"
+            />
+            <div className="flex gap-1">
+              <input
+                type="text"
+                value={ctaSubText}
+                onChange={(e) => setCtaSubText(e.target.value)}
+                className="flex-1 rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white focus:border-purple-500 focus:outline-none"
+                placeholder="Call-to-action"
+              />
+              <button
+                onClick={async () => {
+                  setIsGeneratingCta(true);
+                  try {
+                    const themeObj = CONTENT_THEMES.find(t => t.id === contentTheme);
+                    const topicText = contentTheme === 'personnalise' ? customTopic : (themeObj?.label || contentTheme);
+                    const controller = new AbortController();
+                    const timeout = setTimeout(() => controller.abort(), 8000);
+                    const res = await fetch('/api/content/ai-generate', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ topic: topicText, locale: 'fr', cardCount: 1 }),
+                      signal: controller.signal,
+                    });
+                    clearTimeout(timeout);
+                    if (res.ok) {
+                      const data = await res.json();
+                      if (data.success && data.content) {
+                        const phrases = data.content.salesPhrases || [];
+                        if (phrases.length > 0) setCtaSubText(phrases[0].toUpperCase());
+                        else if (data.content.subtitle) setCtaSubText(data.content.subtitle.toUpperCase());
+                        if (data.content.title) setCtaMainText(data.content.title.toUpperCase());
+                      }
+                    }
+                  } catch {
+                    const fallbacks = ['DÉCOUVRIR MAINTENANT', 'EN SAVOIR PLUS', 'COMMENCER AUJOURD\'HUI', 'REJOINS-NOUS'];
+                    setCtaSubText(fallbacks[Math.floor(Math.random() * fallbacks.length)]);
+                  } finally { setIsGeneratingCta(false); }
+                }}
+                disabled={isGeneratingCta}
+                className="flex items-center justify-center rounded bg-purple-600 px-2 py-1.5 text-white hover:bg-purple-500 disabled:opacity-50"
+              >
+                {isGeneratingCta ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+              </button>
+            </div>
+            <ColorWheel color={ctaColor} onChange={setCtaColor} label="Couleur titre" />
+            <ColorWheel color={ctaSubColor} onChange={setCtaSubColor} label="Couleur sous-texte" />
+            <div>
+              <span className="text-[9px] text-gray-500 uppercase">Taille {watermarkSize}%</span>
+              <input
+                type="range" min="20" max="100" step="1" value={watermarkSize}
+                onChange={(e) => setWatermarkSize(parseInt(e.target.value))}
+                className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-yellow-500 cursor-pointer mt-1"
+              />
+            </div>
+          </div>
+        </FloatingPanel>
+
+        {/* ── Gradient Panel ── */}
+        <FloatingPanel
+          title="Dégradé"
+          icon="🌈"
+          isOpen={activePanel === 'gradient'}
+          onClose={() => setActivePanel(null)}
+          initialX={panelPos.x}
+          initialY={panelPos.y}
+          accentColor="#7C3AED"
+        >
+          <div className="space-y-2">
+            <ColorWheel color={gradientColor1} onChange={setGradientColor1} label="Couleur haut" />
+            <ColorWheel color={gradientColor2} onChange={setGradientColor2} label="Couleur bas" />
+            <div>
+              <span className="text-[9px] text-gray-500 uppercase">Intensité {Math.round(gradientOpacity * 100)}%</span>
+              <input
+                type="range" min="0" max="2.0" step="0.05" value={gradientOpacity}
+                onChange={(e) => setGradientOpacity(parseFloat(e.target.value))}
+                className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer mt-1"
+              />
+            </div>
+          </div>
+        </FloatingPanel>
+
+        {/* ── Video Overlay Panel ── */}
+        <FloatingPanel
+          title="Texte Vidéo"
+          icon="🎥"
+          isOpen={activePanel === 'overlay'}
+          onClose={() => setActivePanel(null)}
+          initialX={panelPos.x}
+          initialY={panelPos.y}
+          accentColor="#06B6D4"
+        >
+          <div className="space-y-2">
+            <input
+              type="text"
+              value={videoOverlayText}
+              onChange={(e) => setVideoOverlayText(e.target.value)}
+              className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white focus:border-purple-500 focus:outline-none"
+              placeholder="Texte affiché sur la vidéo"
+            />
+            <button
+              onClick={async () => {
+                setIsGeneratingOverlay(true);
+                try {
+                  const themeObj = CONTENT_THEMES.find(t => t.id === contentTheme);
+                  const topicText = contentTheme === 'personnalise' ? customTopic : (themeObj?.label || contentTheme);
+                  const res = await fetch('/api/content/ai-generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ topic: topicText, locale: 'fr', cardCount: 1 }),
+                  });
+                  if (res.ok) {
+                    const data = await res.json();
+                    if (data.success && data.content?.subtitle) setVideoOverlayText(data.content.subtitle);
+                  }
+                } catch { /* ignore */ } finally { setIsGeneratingOverlay(false); }
+              }}
+              disabled={isGeneratingOverlay}
+              className="w-full flex items-center justify-center gap-1.5 rounded bg-cyan-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-cyan-600 disabled:opacity-50"
+            >
+              {isGeneratingOverlay ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+              Générer par IA
+            </button>
+          </div>
+        </FloatingPanel>
 
         {/* Batch Preview Dots */}
         {batchCount > 1 && (
