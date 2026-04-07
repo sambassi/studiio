@@ -94,6 +94,7 @@ export default function InfographicPage() {
 
   // ── Step 1: Personnalisation ────────────────────────────────
   const [colorTheme, setColorTheme] = useState('purple');
+  const [customAccent, setCustomAccent] = useState('#a855f7');
   const [format, setFormat] = useState<Format>('9:16');
   const [batchCount, setBatchCount] = useState(1);
   const [characterImage, setCharacterImage] = useState<string | null>(null);
@@ -663,7 +664,9 @@ export default function InfographicPage() {
   };
 
   // ── Preview helpers ─────────────────────────────────────────
-  const activeColorTheme = COLOR_THEMES.find(ct => ct.id === colorTheme) || COLOR_THEMES[1];
+  const activeColorTheme = colorTheme === 'custom'
+    ? { id: 'custom', name: 'Custom', bg: '', accent: customAccent }
+    : (COLOR_THEMES.find(ct => ct.id === colorTheme) || COLOR_THEMES[1]);
   const previewPhoto = pexelsPhotos[selectedPhotoIndex] || null;
 
   const getPreviewClasses = () => {
@@ -1134,7 +1137,42 @@ export default function InfographicPage() {
                     <span className="text-xs">{ct.name}</span>
                   </button>
                 ))}
+                {/* Custom Color Picker */}
+                <button
+                  onClick={() => setColorTheme('custom')}
+                  className={`flex items-center gap-2 rounded-lg px-3 py-2 transition-all ${
+                    colorTheme === 'custom' ? 'ring-2 ring-white' : 'hover:ring-1 hover:ring-gray-600'
+                  }`}
+                >
+                  <div className="relative h-5 w-5 rounded overflow-hidden" style={{ background: `conic-gradient(#ef4444, #f59e0b, #10b981, #3b82f6, #a855f7, #ec4899, #ef4444)` }} />
+                  <span className="text-xs">Personnalisé</span>
+                </button>
               </div>
+              {/* Custom Color Input — visible when custom is selected */}
+              {colorTheme === 'custom' && (
+                <div className="mt-3 flex items-center gap-3 rounded-lg border border-gray-700 bg-gray-800 p-3">
+                  <input
+                    type="color"
+                    value={customAccent}
+                    onChange={(e) => setCustomAccent(e.target.value)}
+                    className="h-10 w-14 cursor-pointer rounded border-0 bg-transparent p-0"
+                  />
+                  <div className="flex-1">
+                    <p className="text-xs text-gray-400 mb-1">Couleur personnalisée</p>
+                    <input
+                      type="text"
+                      value={customAccent}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (/^#[0-9a-fA-F]{0,6}$/.test(v)) setCustomAccent(v);
+                      }}
+                      className="w-full rounded border border-gray-600 bg-gray-900 px-2 py-1 text-sm text-white font-mono focus:border-purple-500 focus:outline-none"
+                      placeholder="#a855f7"
+                    />
+                  </div>
+                  <div className="h-10 w-10 rounded-lg" style={{ backgroundColor: customAccent }} />
+                </div>
+              )}
             </div>
 
             {/* Format */}
@@ -1600,10 +1638,11 @@ export default function InfographicPage() {
         <div className={`relative w-full ${previewClasses.maxW} mx-auto`}>
           <div
             ref={previewRef}
-            className={`${previewClasses.aspect} relative flex flex-col items-center justify-between rounded-lg bg-gradient-to-br ${activeColorTheme.bg} p-4 shadow-2xl overflow-hidden transition-all duration-300`}
+            className={`${previewClasses.aspect} relative flex flex-col items-center justify-between rounded-lg ${activeColorTheme.bg ? `bg-gradient-to-br ${activeColorTheme.bg}` : ''} p-4 shadow-2xl overflow-hidden transition-all duration-300`}
             style={{
               fontFamily: FONT_CSS_MAP[selectedFont] || 'inherit',
               ...FILTER_CSS_MAP[selectedFilter],
+              ...(colorTheme === 'custom' ? { background: `linear-gradient(135deg, ${customAccent}, ${customAccent}99)` } : {}),
             }}
             onMouseMove={(e) => {
               if (!dragging || !previewRef.current) return;
