@@ -1,10 +1,15 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import { Inter, Anton, Syne, Bebas_Neue, Poppins, Space_Grotesk } from 'next/font/google'
 import './globals.css'
 import Providers from './providers'
 import PWAInstallPrompt from '@/components/PWAInstallPrompt'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
+const anton = Anton({ weight: '400', subsets: ['latin'], variable: '--font-anton' })
+const syne = Syne({ subsets: ['latin'], variable: '--font-syne' })
+const bebasNeue = Bebas_Neue({ weight: '400', subsets: ['latin'], variable: '--font-bebas' })
+const poppins = Poppins({ weight: ['400', '600', '700', '800'], subsets: ['latin'], variable: '--font-poppins' })
+const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], variable: '--font-space' })
 
 
 export const metadata: Metadata = {
@@ -41,7 +46,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="Studiio" />
       </head>
-      <body className={`${inter.variable} font-sans bg-studiio-dark text-gray-100 antialiased`}>
+      <body className={`${inter.variable} ${anton.variable} ${syne.variable} ${bebasNeue.variable} ${poppins.variable} ${spaceGrotesk.variable} font-sans bg-studiio-dark text-gray-100 antialiased`}>
         <Providers>{children}</Providers>
         <PWAInstallPrompt />
       </body>

@@ -20,6 +20,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { PlatformIcon, type PlatformKey } from '@/components/ui/PlatformIcon';
+import { DesignOption, FONT_OPTIONS, FILTER_OPTIONS, CARD_STYLE_OPTIONS } from '@/components/ui/DesignOption';
 import { PLATFORM_SAFE_ZONES, type SafeZoneArea } from '@/lib/constants/platforms';
 
 // ── Types ──────────────────────────────────────────────────────
@@ -155,6 +156,36 @@ export default function InfographicPage() {
 
   // ── Safe Zone Overlay (additive — does not affect existing logic) ────
   const [safeZonePlatform, setSafeZonePlatform] = useState<string | null>(null);
+
+  // ── Design Step (additive — new step 1, shifts old steps) ────
+  const [selectedFont, setSelectedFont] = useState('Anton');
+  const [selectedFilter, setSelectedFilter] = useState('Aucun');
+  const [selectedCardStyle, setSelectedCardStyle] = useState('Compact');
+
+  // Font CSS variable mapping
+  const FONT_CSS_MAP: Record<string, string> = {
+    'Anton': 'var(--font-anton)',
+    'Syne': 'var(--font-syne)',
+    'Bebas Neue': 'var(--font-bebas)',
+    'Poppins': 'var(--font-poppins)',
+    'Space Grotesk': 'var(--font-space)',
+  };
+
+  // Filter CSS mapping (applied as overlay on preview)
+  const FILTER_CSS_MAP: Record<string, React.CSSProperties> = {
+    'Aucun': {},
+    'Neon Glow': { boxShadow: 'inset 0 0 60px rgba(0, 255, 200, 0.15), inset 0 0 120px rgba(124, 58, 237, 0.1)' },
+    'Cinematic': { boxShadow: 'inset 0 0 80px rgba(0, 0, 0, 0.6)', filter: 'contrast(1.1) saturate(0.85)' },
+    'Warm Energy': { boxShadow: 'inset 0 0 60px rgba(255, 100, 50, 0.15)', filter: 'saturate(1.15) brightness(1.05)' },
+    'Cool Frost': { boxShadow: 'inset 0 0 60px rgba(100, 180, 255, 0.15)', filter: 'saturate(0.9) brightness(1.08) hue-rotate(10deg)' },
+  };
+
+  // Drag positions (percentage-based offsets from default)
+  const [titlePos, setTitlePos] = useState({ x: 50, y: 10 });
+  const [logoPos, setLogoPos] = useState({ x: 50, y: 85 });
+  const [watermarkPos, setWatermarkPos] = useState({ x: 50, y: 97 });
+  const [dragging, setDragging] = useState<string | null>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
 
   // ── Step 2: Export ──────────────────────────────────────────
   const [destination, setDestination] = useState<Destination>('draft');
@@ -659,7 +690,7 @@ export default function InfographicPage() {
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
           <h1 className="text-lg sm:text-2xl font-bold">Créer une Infographie</h1>
           <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-400 overflow-x-auto">
-            {['Contenu', 'Style', 'Export'].map((label, i) => (
+            {['Contenu', 'Design', 'Style', 'Export'].map((label, i) => (
               <button
                 key={label}
                 onClick={() => setStep(i)}
@@ -955,12 +986,12 @@ export default function InfographicPage() {
                   </div>
                 )}
 
-                {/* Next Step */}
+                {/* Next Step → Design */}
                 <button
                   onClick={() => setStep(1)}
                   className="flex w-full items-center justify-center gap-2 rounded-lg bg-purple-600 py-3 font-bold text-white hover:bg-purple-700"
                 >
-                  Personnaliser le style
+                  Design
                   <ChevronRight size={18} />
                 </button>
               </>
@@ -969,9 +1000,123 @@ export default function InfographicPage() {
         )}
 
         {/* ═══════════════════════════════════════════════════════ */}
-        {/* STEP 1: Personnalisation */}
+        {/* ═══════════════════════════════════════════════════════ */}
+        {/* STEP 1: Design (NEW — fonts, filters, card styles) */}
         {/* ═══════════════════════════════════════════════════════ */}
         {step === 1 && (
+          <div className="space-y-6">
+            {/* ── Font Selector ── */}
+            <div>
+              <label className="mb-3 block text-sm font-medium text-gray-300">Police</label>
+              <div className="flex flex-wrap gap-2">
+                {FONT_OPTIONS.map((opt) => (
+                  <DesignOption
+                    key={opt.label}
+                    icon={opt.icon}
+                    label={opt.label}
+                    sublabel={opt.sublabel}
+                    isActive={selectedFont === opt.label}
+                    onClick={() => setSelectedFont(opt.label)}
+                  />
+                ))}
+              </div>
+              {/* Font Preview */}
+              <div
+                className="mt-3 rounded-lg border border-gray-700 bg-gray-800/50 px-4 py-3 text-center"
+                style={{ fontFamily: FONT_CSS_MAP[selectedFont] || 'inherit' }}
+              >
+                <p className="text-2xl font-bold text-white tracking-wide">AFROBOOST</p>
+                <p className="text-sm text-white/60 mt-1">Aperçu de la police {selectedFont}</p>
+              </div>
+            </div>
+
+            {/* ── Filter Selector ── */}
+            <div>
+              <label className="mb-3 block text-sm font-medium text-gray-300">Filtre visuel</label>
+              <div className="flex flex-wrap gap-2">
+                {FILTER_OPTIONS.map((opt) => (
+                  <DesignOption
+                    key={opt.label}
+                    icon={opt.icon}
+                    label={opt.label}
+                    sublabel={opt.sublabel}
+                    isActive={selectedFilter === opt.label}
+                    accentColor={opt.accentColor}
+                    iconColor={opt.iconColor}
+                    onClick={() => setSelectedFilter(opt.label)}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* ── Card Style Selector ── */}
+            <div>
+              <label className="mb-3 block text-sm font-medium text-gray-300">Style des cartes</label>
+              <div className="flex flex-wrap gap-2">
+                {CARD_STYLE_OPTIONS.map((opt) => (
+                  <DesignOption
+                    key={opt.label}
+                    icon={opt.icon}
+                    label={opt.label}
+                    sublabel={opt.sublabel}
+                    isActive={selectedCardStyle === opt.label}
+                    onClick={() => setSelectedCardStyle(opt.label)}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* ── Drag & Drop Positioning ── */}
+            <div>
+              <label className="mb-3 block text-sm font-medium text-gray-300">Positionnement (glisser-déposer)</label>
+              <p className="text-xs text-gray-500 mb-3">
+                Glissez les éléments sur l'aperçu à droite pour repositionner le titre, le logo et le watermark.
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-center">
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Titre</p>
+                  <p className="text-xs text-white font-mono">{titlePos.x}%, {titlePos.y}%</p>
+                </div>
+                <div className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-center">
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Logo</p>
+                  <p className="text-xs text-white font-mono">{logoPos.x}%, {logoPos.y}%</p>
+                </div>
+                <div className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-center">
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Watermark</p>
+                  <p className="text-xs text-white font-mono">{watermarkPos.x}%, {watermarkPos.y}%</p>
+                </div>
+              </div>
+              <button
+                onClick={() => { setTitlePos({ x: 50, y: 10 }); setLogoPos({ x: 50, y: 85 }); setWatermarkPos({ x: 50, y: 97 }); }}
+                className="mt-2 text-xs text-purple-400 hover:text-purple-300 underline"
+              >
+                Réinitialiser les positions
+              </button>
+            </div>
+
+            {/* Navigation */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setStep(0)}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-gray-700 bg-gray-800 py-3 font-medium text-gray-300 hover:bg-gray-700"
+              >
+                <ChevronLeft size={18} />
+                Contenu
+              </button>
+              <button
+                onClick={() => setStep(2)}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-purple-600 py-3 font-bold text-white hover:bg-purple-700"
+              >
+                Style
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 2: Personnalisation (was step 1) */}
+        {/* ═══════════════════════════════════════════════════════ */}
+        {step === 2 && (
           <div className="space-y-6">
             {/* Color Theme */}
             <div>
@@ -1283,14 +1428,14 @@ export default function InfographicPage() {
             {/* Navigation */}
             <div className="flex gap-3">
               <button
-                onClick={() => setStep(0)}
+                onClick={() => setStep(1)}
                 className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-gray-700 bg-gray-800 py-3 font-medium text-gray-300 hover:bg-gray-700"
               >
                 <ChevronLeft size={18} />
-                Contenu
+                Design
               </button>
               <button
-                onClick={() => setStep(2)}
+                onClick={() => setStep(3)}
                 className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-purple-600 py-3 font-bold text-white hover:bg-purple-700"
               >
                 Export
@@ -1301,9 +1446,9 @@ export default function InfographicPage() {
         )}
 
         {/* ═══════════════════════════════════════════════════════ */}
-        {/* STEP 2: Export */}
+        {/* STEP 3: Export (was step 2) */}
         {/* ═══════════════════════════════════════════════════════ */}
-        {step === 2 && (
+        {step === 3 && (
           <div className="space-y-6">
             {/* Summary */}
             <div className="rounded-lg border border-gray-700 bg-gray-800 p-4">
@@ -1419,7 +1564,7 @@ export default function InfographicPage() {
 
             {/* Back */}
             <button
-              onClick={() => setStep(1)}
+              onClick={() => setStep(2)}
               className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 bg-gray-800 py-2.5 text-sm font-medium text-gray-300 hover:bg-gray-700"
             >
               <ChevronLeft size={16} />
@@ -1454,7 +1599,23 @@ export default function InfographicPage() {
         {/* Preview Container */}
         <div className={`relative w-full ${previewClasses.maxW} mx-auto`}>
           <div
+            ref={previewRef}
             className={`${previewClasses.aspect} relative flex flex-col items-center justify-between rounded-lg bg-gradient-to-br ${activeColorTheme.bg} p-4 shadow-2xl overflow-hidden transition-all duration-300`}
+            style={{
+              fontFamily: FONT_CSS_MAP[selectedFont] || 'inherit',
+              ...FILTER_CSS_MAP[selectedFilter],
+            }}
+            onMouseMove={(e) => {
+              if (!dragging || !previewRef.current) return;
+              const rect = previewRef.current.getBoundingClientRect();
+              const x = Math.round(Math.max(5, Math.min(95, ((e.clientX - rect.left) / rect.width) * 100)));
+              const y = Math.round(Math.max(3, Math.min(97, ((e.clientY - rect.top) / rect.height) * 100)));
+              if (dragging === 'title') setTitlePos({ x, y });
+              else if (dragging === 'logo') setLogoPos({ x, y });
+              else if (dragging === 'watermark') setWatermarkPos({ x, y });
+            }}
+            onMouseUp={() => setDragging(null)}
+            onMouseLeave={() => setDragging(null)}
           >
             {/* Background Photo */}
             {previewPhoto && (
@@ -1470,8 +1631,16 @@ export default function InfographicPage() {
               {format}
             </div>
 
-            {/* Top Section: Title */}
-            <div className="relative z-10 text-center pt-2">
+            {/* Top Section: Title (draggable when on Design step) */}
+            <div
+              className={`absolute z-10 text-center ${step === 1 ? 'cursor-grab active:cursor-grabbing ring-1 ring-purple-500/30 ring-offset-1 ring-offset-transparent rounded px-2' : ''}`}
+              style={{
+                left: `${titlePos.x}%`,
+                top: `${titlePos.y}%`,
+                transform: 'translate(-50%, 0)',
+              }}
+              onMouseDown={(e) => { if (step === 1) { e.preventDefault(); setDragging('title'); } }}
+            >
               <h3 className={`font-black text-white drop-shadow-lg ${format === '16:9' ? 'text-sm sm:text-lg lg:text-xl' : 'text-xs sm:text-sm lg:text-base'}`}>
                 {title || 'TITRE'}
               </h3>
@@ -1482,32 +1651,78 @@ export default function InfographicPage() {
               )}
             </div>
 
-            {/* Cards Grid */}
-            <div className={`relative z-10 grid gap-1.5 w-full ${previewClasses.cols}`}>
-              {cards.slice(0, format === '16:9' ? 6 : 5).map((card) => (
-                <div
-                  key={card.id}
-                  className="flex flex-col items-center gap-0.5 rounded-lg bg-black/30 px-1.5 py-1.5 backdrop-blur-sm"
-                  style={{ borderLeft: `2px solid ${card.color}` }}
-                >
-                  <span className={format === '16:9' ? 'text-lg' : 'text-sm'}>{card.emoji}</span>
-                  <p className={`text-center font-bold text-white drop-shadow ${format === '16:9' ? 'text-[9px]' : 'text-[7px]'}`}>
-                    {card.label}
-                  </p>
-                  <p className={`text-center font-black drop-shadow ${format === '16:9' ? 'text-[10px]' : 'text-[8px]'}`} style={{ color: card.color }}>
-                    {card.value}
-                  </p>
-                  {card.description && (
-                    <p className={`text-center text-white/60 ${format === '16:9' ? 'text-[7px]' : 'text-[6px]'}`}>
-                      {card.description.substring(0, 30)}
-                    </p>
-                  )}
-                </div>
-              ))}
+            {/* Cards Grid — style varies by selectedCardStyle */}
+            <div className={`relative z-10 grid gap-1.5 w-full ${
+              selectedCardStyle === 'Full Width' ? 'grid-cols-1' : previewClasses.cols
+            }`}>
+              {cards.slice(0, format === '16:9' ? 6 : 5).map((card) => {
+                // ── Compact (default, unchanged from original) ──
+                if (selectedCardStyle === 'Compact') {
+                  return (
+                    <div key={card.id} className="flex flex-col items-center gap-0.5 rounded-lg bg-black/30 px-1.5 py-1.5 backdrop-blur-sm" style={{ borderLeft: `2px solid ${card.color}` }}>
+                      <span className={format === '16:9' ? 'text-lg' : 'text-sm'}>{card.emoji}</span>
+                      <p className={`text-center font-bold text-white drop-shadow ${format === '16:9' ? 'text-[9px]' : 'text-[7px]'}`}>{card.label}</p>
+                      <p className={`text-center font-black drop-shadow ${format === '16:9' ? 'text-[10px]' : 'text-[8px]'}`} style={{ color: card.color }}>{card.value}</p>
+                      {card.description && <p className={`text-center text-white/60 ${format === '16:9' ? 'text-[7px]' : 'text-[6px]'}`}>{card.description.substring(0, 30)}</p>}
+                    </div>
+                  );
+                }
+                // ── Educatif ──
+                if (selectedCardStyle === 'Educatif') {
+                  return (
+                    <div key={card.id} className="rounded-lg bg-black/40 px-2 py-2 backdrop-blur-sm" style={{ borderTop: `2px solid ${card.color}` }}>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="text-sm">{card.emoji}</span>
+                        <p className="text-[8px] font-bold text-white">{card.label}</p>
+                      </div>
+                      <p className="text-[7px] text-white/70 leading-relaxed mb-1">{card.description?.substring(0, 60) || ''}</p>
+                      <p className="text-[9px] font-black" style={{ color: card.color }}>{card.value}</p>
+                    </div>
+                  );
+                }
+                // ── Stats Bold ──
+                if (selectedCardStyle === 'Stats Bold') {
+                  return (
+                    <div key={card.id} className="flex flex-col items-center justify-center rounded-lg bg-black/50 px-2 py-2 backdrop-blur-sm border border-white/10">
+                      <p className={`font-black drop-shadow ${format === '16:9' ? 'text-base' : 'text-sm'}`} style={{ color: card.color }}>{card.value}</p>
+                      <p className="text-[7px] font-medium text-white/80 mt-0.5 text-center">{card.label}</p>
+                    </div>
+                  );
+                }
+                // ── Minimal Line ──
+                if (selectedCardStyle === 'Minimal Line') {
+                  return (
+                    <div key={card.id} className="flex items-center gap-2 py-1 px-1" style={{ borderBottom: `1px solid ${card.color}40` }}>
+                      <span className="text-xs">{card.emoji}</span>
+                      <p className="text-[7px] text-white/80 flex-1">{card.label}</p>
+                      <p className="text-[8px] font-bold" style={{ color: card.color }}>{card.value}</p>
+                    </div>
+                  );
+                }
+                // ── Full Width ──
+                return (
+                  <div key={card.id} className="flex items-center gap-2 rounded-lg bg-black/30 px-3 py-1.5 backdrop-blur-sm" style={{ borderLeft: `3px solid ${card.color}` }}>
+                    <span className="text-base">{card.emoji}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[8px] font-bold text-white truncate">{card.label}</p>
+                      {card.description && <p className="text-[6px] text-white/50 truncate">{card.description.substring(0, 40)}</p>}
+                    </div>
+                    <p className="text-[10px] font-black flex-shrink-0" style={{ color: card.color }}>{card.value}</p>
+                  </div>
+                );
+              })}
             </div>
 
-            {/* Bottom: Sales Phrase */}
-            <div className="relative z-10 text-center pb-1">
+            {/* Bottom: Sales Phrase + Watermark (draggable on Design step) */}
+            <div
+              className={`absolute z-10 text-center ${step === 1 ? 'cursor-grab active:cursor-grabbing ring-1 ring-purple-500/30 ring-offset-1 ring-offset-transparent rounded px-2' : ''}`}
+              style={{
+                left: `${watermarkPos.x}%`,
+                top: `${watermarkPos.y}%`,
+                transform: 'translate(-50%, -100%)',
+              }}
+              onMouseDown={(e) => { if (step === 1) { e.preventDefault(); setDragging('watermark'); } }}
+            >
               {salesPhrases.length > 0 && (
                 <p className={`font-medium text-white/90 drop-shadow ${format === '16:9' ? 'text-[10px]' : 'text-[8px]'}`}>
                   {salesPhrases[0]}
