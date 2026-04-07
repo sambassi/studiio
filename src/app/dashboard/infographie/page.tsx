@@ -507,7 +507,7 @@ export default function InfographicPage() {
 
   // Floating panels — which element panel is open
   const [activePanel, setActivePanel] = useState<
-    "title" | "cards" | "cta" | "overlay" | "gradient" | "logo" | null
+    "title" | "cards" | "cta" | "overlay" | "gradient" | "logo" | "add" | null
   >(null);
   const [panelPos, setPanelPos] = useState({ x: 0, y: 0 });
 
@@ -1132,13 +1132,76 @@ export default function InfographicPage() {
       }
 
       setExportProgress(100);
-      showToast(
-        `${total} infographie${total > 1 ? "s" : ""} ajoutée${total > 1 ? "s" : ""} au calendrier !`,
-        "success",
-      );
+
+      // ── Desktop export: download poster + config ──
+      if (destination === 'export' || destination === 'both') {
+        try {
+          // Download poster image
+          const photo = pexelsPhotos.length > 0 ? pexelsPhotos[0] : null;
+          if (photo?.url) {
+            const link = document.createElement('a');
+            link.href = photo.url;
+            link.download = `infographie-${title || 'afroboost'}-poster.jpg`;
+            link.target = '_blank';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }
+          // Download video if present
+          if (rushUrl) {
+            const vLink = document.createElement('a');
+            vLink.href = rushUrl;
+            vLink.download = `infographie-${title || 'afroboost'}-video.mp4`;
+            vLink.target = '_blank';
+            document.body.appendChild(vLink);
+            vLink.click();
+            document.body.removeChild(vLink);
+          }
+          // Download design config as JSON
+          const configData = {
+            title, subtitle, cards, salesPhrases,
+            format, colorTheme, customAccent,
+            ctaMainText, ctaSubText, videoOverlayText,
+            design: {
+              font: selectedFont, filter: selectedFilter, cardStyle: selectedCardStyle,
+              textScale, ctaTextScale, titleColor, ctaColor, ctaSubColor,
+              gradientColor1, gradientColor2, gradientOpacity,
+              noColorBg, noColorSequences,
+              positions: { title: titlePos, logo: logoPos, watermark: watermarkPos, cards: cardsPos, overlay: overlayPos },
+              sizes: { title: titleSize, cards: cardsSize, watermark: watermarkSize },
+              logoScale, logoSequences, logoUrl: logoImage || undefined,
+              typography: {
+                title: { letterSpacing: titleLetterSpacing, lineHeight: titleLineHeight, bold: titleBold, italic: titleItalic },
+                cta: { letterSpacing: ctaLetterSpacing, lineHeight: ctaLineHeight, bold: ctaBold, italic: ctaItalic },
+                overlay: { letterSpacing: overlayLetterSpacing, lineHeight: overlayLineHeight, bold: overlayBold, italic: overlayItalic },
+              },
+            },
+            sequences: { intro: introDuration, cards: cardsDuration, video: videoDuration, cta: ctaDuration },
+          };
+          const blob = new Blob([JSON.stringify(configData, null, 2)], { type: 'application/json' });
+          const cfgLink = document.createElement('a');
+          cfgLink.href = URL.createObjectURL(blob);
+          cfgLink.download = `infographie-${title || 'afroboost'}-config.json`;
+          document.body.appendChild(cfgLink);
+          cfgLink.click();
+          document.body.removeChild(cfgLink);
+          URL.revokeObjectURL(cfgLink.href);
+        } catch (e) {
+          console.warn('[Export Bureau] Erreur:', e);
+        }
+      }
+
+      const messages: string[] = [];
+      if (destination === 'draft' || destination === 'both') {
+        messages.push(`${total} infographie${total > 1 ? 's' : ''} ajoutée${total > 1 ? 's' : ''} au calendrier`);
+      }
+      if (destination === 'export' || destination === 'both') {
+        messages.push('Fichiers téléchargés');
+      }
+      showToast(messages.join(' + ') + ' !', 'success');
 
       if (destination === "draft" || destination === "both") {
-        setTimeout(() => router.push("/dashboard/calendar"), 1500);
+        setTimeout(() => router.push("/dashboard/calendar"), 2000);
       }
     } catch (error) {
       console.error("Export error:", error);
@@ -2535,6 +2598,13 @@ export default function InfographicPage() {
         >
           <div
             ref={previewRef}
+            onDoubleClick={(e) => {
+              // Only trigger if clicking on the background, not on an element
+              if (e.target === previewRef.current || (e.target as HTMLElement).closest('[data-preview-bg]')) {
+                openPanel('add', e);
+              }
+            }}
+            data-preview-bg
             className={`${previewClasses.aspect} relative flex flex-col items-center justify-between rounded-lg ${
               // Show color bg only if not in noColor mode for current sequence
               (() => {
@@ -3822,6 +3892,72 @@ export default function InfographicPage() {
                 className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-cyan-500 cursor-pointer mt-1"
               />
             </div>
+          </div>
+        </FloatingPanel>
+
+        {/* ── Add Element Panel (opens on background double-click) ── */}
+        <FloatingPanel
+          title="Ajouter un élément"
+          icon="➕"
+          isOpen={activePanel === 'add'}
+          onClose={() => setActivePanel(null)}
+          initialX={panelPos.x}
+          initialY={panelPos.y}
+          accentColor="#D91CD2"
+        >
+          <div className="space-y-2">
+            {/* Upload Logo */}
+            <label className="flex items-center gap-2 w-full cursor-pointer rounded bg-gray-800 px-3 py-2 hover:bg-gray-700 transition-colors">
+              <Upload size={14} className="text-purple-400" />
+              <span className="text-[10px] text-gray-300 font-medium">{logoImage ? 'Changer le logo' : 'Ajouter un logo'}</span>
+              <input type="file" accept="image/*" onChange={(e) => { handleLogoUpload(e); setActivePanel(null); }} className="hidden" />
+            </label>
+            {/* Upload custom icon */}
+            <label className="flex items-center gap-2 w-full cursor-pointer rounded bg-gray-800 px-3 py-2 hover:bg-gray-700 transition-colors">
+              <span className="text-sm">🎨</span>
+              <span className="text-[10px] text-gray-300 font-medium">Ajouter une icône</span>
+              <input type="file" accept="image/*" onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  const reader = new FileReader();
+                  reader.onload = (ev) => {
+                    const dataUrl = ev.target?.result as string;
+                    // Add as a card custom icon with a unique key
+                    const key = `custom-${Date.now()}`;
+                    setCustomCardIcons(prev => ({ ...prev, [key]: dataUrl }));
+                  };
+                  reader.readAsDataURL(file);
+                }
+                setActivePanel(null);
+              }} className="hidden" />
+            </label>
+            {/* Quick actions */}
+            <button
+              onClick={() => { setActivePanel('title'); }}
+              className="flex items-center gap-2 w-full rounded bg-gray-800 px-3 py-2 text-[10px] text-gray-300 font-medium hover:bg-gray-700 transition-colors"
+            >
+              <span>📝</span> Modifier le titre
+            </button>
+            <button
+              onClick={() => { setActivePanel('cta'); }}
+              className="flex items-center gap-2 w-full rounded bg-gray-800 px-3 py-2 text-[10px] text-gray-300 font-medium hover:bg-gray-700 transition-colors"
+            >
+              <span>📢</span> Modifier le CTA
+            </button>
+            <button
+              onClick={() => { setActivePanel('gradient'); }}
+              className="flex items-center gap-2 w-full rounded bg-gray-800 px-3 py-2 text-[10px] text-gray-300 font-medium hover:bg-gray-700 transition-colors"
+            >
+              <span>🌈</span> Dégradé / Ombre
+            </button>
+            {rushUrl && (
+              <button
+                onClick={() => { setActivePanel('overlay'); }}
+                className="flex items-center gap-2 w-full rounded bg-gray-800 px-3 py-2 text-[10px] text-gray-300 font-medium hover:bg-gray-700 transition-colors"
+              >
+                <span>🎥</span> Texte sur la vidéo
+              </button>
+            )}
           </div>
         </FloatingPanel>
 
