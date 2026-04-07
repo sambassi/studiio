@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   Plus,
   Trash2,
@@ -18,12 +18,20 @@ import {
   Search,
   Video,
   AlertTriangle,
-} from 'lucide-react';
-import { PlatformIcon, type PlatformKey } from '@/components/ui/PlatformIcon';
-import { DesignOption, FONT_OPTIONS, FILTER_OPTIONS, CARD_STYLE_OPTIONS } from '@/components/ui/DesignOption';
-import { PLATFORM_SAFE_ZONES, type SafeZoneArea } from '@/lib/constants/platforms';
-import FloatingPanel from '@/components/ui/FloatingPanel';
-import ColorWheel from '@/components/ui/ColorWheel';
+} from "lucide-react";
+import { PlatformIcon, type PlatformKey } from "@/components/ui/PlatformIcon";
+import {
+  DesignOption,
+  FONT_OPTIONS,
+  FILTER_OPTIONS,
+  CARD_STYLE_OPTIONS,
+} from "@/components/ui/DesignOption";
+import {
+  PLATFORM_SAFE_ZONES,
+  type SafeZoneArea,
+} from "@/lib/constants/platforms";
+import FloatingPanel from "@/components/ui/FloatingPanel";
+import ColorWheel from "@/components/ui/ColorWheel";
 
 // ── Types ──────────────────────────────────────────────────────
 interface InfoCard {
@@ -44,38 +52,145 @@ interface PexelsPhoto {
   alt: string;
 }
 
-type Format = '9:16' | '16:9';
-type Destination = 'draft' | 'export' | 'both';
+type Format = "9:16" | "16:9";
+type Destination = "draft" | "export" | "both";
 
 // ── Content Themes ─────────────────────────────────────────────
 const CONTENT_THEMES = [
-  { id: 'sommeil-sport', label: 'Sommeil & Sport', emoji: '😴', pexelsQuery: 'sleep fitness recovery rest', color: 'from-indigo-600 to-blue-500' },
-  { id: 'nutrition-danse', label: 'Nutrition & Danse', emoji: '🍎', pexelsQuery: 'healthy food dance nutrition', color: 'from-green-600 to-emerald-400' },
-  { id: 'energie-cardio', label: 'Énergie & Cardio', emoji: '⚡', pexelsQuery: 'cardio energy workout running', color: 'from-orange-500 to-yellow-400' },
-  { id: 'stress-mental', label: 'Stress & Mental', emoji: '🧠', pexelsQuery: 'meditation mental health yoga calm', color: 'from-purple-600 to-pink-400' },
-  { id: 'communaute', label: 'Communauté', emoji: '👥', pexelsQuery: 'group fitness community dance class', color: 'from-pink-600 to-rose-400' },
-  { id: 'personnalise', label: 'Personnalisé', emoji: '✨', pexelsQuery: '', color: 'from-gray-600 to-gray-400' },
+  {
+    id: "sommeil-sport",
+    label: "Sommeil & Sport",
+    emoji: "😴",
+    pexelsQuery: "sleep fitness recovery rest",
+    color: "from-indigo-600 to-blue-500",
+  },
+  {
+    id: "nutrition-danse",
+    label: "Nutrition & Danse",
+    emoji: "🍎",
+    pexelsQuery: "healthy food dance nutrition",
+    color: "from-green-600 to-emerald-400",
+  },
+  {
+    id: "energie-cardio",
+    label: "Énergie & Cardio",
+    emoji: "⚡",
+    pexelsQuery: "cardio energy workout running",
+    color: "from-orange-500 to-yellow-400",
+  },
+  {
+    id: "stress-mental",
+    label: "Stress & Mental",
+    emoji: "🧠",
+    pexelsQuery: "meditation mental health yoga calm",
+    color: "from-purple-600 to-pink-400",
+  },
+  {
+    id: "communaute",
+    label: "Communauté",
+    emoji: "👥",
+    pexelsQuery: "group fitness community dance class",
+    color: "from-pink-600 to-rose-400",
+  },
+  {
+    id: "personnalise",
+    label: "Personnalisé",
+    emoji: "✨",
+    pexelsQuery: "",
+    color: "from-gray-600 to-gray-400",
+  },
 ];
 
 // ── Color Themes ───────────────────────────────────────────────
 const COLOR_THEMES = [
-  { id: 'pink', name: 'Rose', bg: 'from-pink-600 to-pink-400', accent: '#ec4899' },
-  { id: 'purple', name: 'Violet', bg: 'from-purple-600 to-purple-400', accent: '#a855f7' },
-  { id: 'blue', name: 'Bleu', bg: 'from-blue-600 to-blue-400', accent: '#3b82f6' },
-  { id: 'green', name: 'Vert', bg: 'from-green-600 to-green-400', accent: '#10b981' },
-  { id: 'orange', name: 'Orange', bg: 'from-orange-500 to-yellow-400', accent: '#f59e0b' },
-  { id: 'red', name: 'Rouge', bg: 'from-red-600 to-rose-400', accent: '#ef4444' },
+  {
+    id: "pink",
+    name: "Rose",
+    bg: "from-pink-600 to-pink-400",
+    accent: "#ec4899",
+  },
+  {
+    id: "purple",
+    name: "Violet",
+    bg: "from-purple-600 to-purple-400",
+    accent: "#a855f7",
+  },
+  {
+    id: "blue",
+    name: "Bleu",
+    bg: "from-blue-600 to-blue-400",
+    accent: "#3b82f6",
+  },
+  {
+    id: "green",
+    name: "Vert",
+    bg: "from-green-600 to-green-400",
+    accent: "#10b981",
+  },
+  {
+    id: "orange",
+    name: "Orange",
+    bg: "from-orange-500 to-yellow-400",
+    accent: "#f59e0b",
+  },
+  {
+    id: "red",
+    name: "Rouge",
+    bg: "from-red-600 to-rose-400",
+    accent: "#ef4444",
+  },
 ];
 
-const EMOJIS = ['💪', '❤️', '⚡', '🔥', '🎯', '📊', '🏃', '🧠', '💨', '🌟', '😴', '🍎', '💧', '🛡️', '🏆', '👥', '🌿', '📈', '✨', '🦴'];
+const EMOJIS = [
+  "💪",
+  "❤️",
+  "⚡",
+  "🔥",
+  "🎯",
+  "📊",
+  "🏃",
+  "🧠",
+  "💨",
+  "🌟",
+  "😴",
+  "🍎",
+  "💧",
+  "🛡️",
+  "🏆",
+  "👥",
+  "🌿",
+  "📈",
+  "✨",
+  "🦴",
+];
 
 // Map icon names from smart-content.ts to actual emoji characters
 const ICON_TO_EMOJI: Record<string, string> = {
-  droplet: '💧', brain: '🧠', fire: '🔥', shield: '🛡️', energy: '⚡',
-  thermometer: '🌡️', muscle: '💪', apple: '🍎', heart: '❤️', moon: '😴',
-  sun: '☀️', chart: '📈', audio: '🎵', leaf: '🌿', star: '⭐',
-  clock: '⏰', bone: '🦴', eye: '👁️', running: '🏃', target: '🎯',
-  vitamin: '💊', dna: '🧬', scale: '⚖️', food: '🍽️', water: '💧',
+  droplet: "💧",
+  brain: "🧠",
+  fire: "🔥",
+  shield: "🛡️",
+  energy: "⚡",
+  thermometer: "🌡️",
+  muscle: "💪",
+  apple: "🍎",
+  heart: "❤️",
+  moon: "😴",
+  sun: "☀️",
+  chart: "📈",
+  audio: "🎵",
+  leaf: "🌿",
+  star: "⭐",
+  clock: "⏰",
+  bone: "🦴",
+  eye: "👁️",
+  running: "🏃",
+  target: "🎯",
+  vitamin: "💊",
+  dna: "🧬",
+  scale: "⚖️",
+  food: "🍽️",
+  water: "💧",
 };
 
 export default function InfographicPage() {
@@ -85,35 +200,38 @@ export default function InfographicPage() {
   const [step, setStep] = useState(0); // 0: Theme & Content, 1: Personnalisation, 2: Export
 
   // ── Step 0: Theme & Content ─────────────────────────────────
-  const [contentTheme, setContentTheme] = useState('sommeil-sport');
-  const [customTopic, setCustomTopic] = useState('');
-  const [title, setTitle] = useState('');
-  const [subtitle, setSubtitle] = useState('');
+  const [contentTheme, setContentTheme] = useState("sommeil-sport");
+  const [customTopic, setCustomTopic] = useState("");
+  const [title, setTitle] = useState("");
+  const [subtitle, setSubtitle] = useState("");
   const [cards, setCards] = useState<InfoCard[]>([]);
   const [salesPhrases, setSalesPhrases] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generationError, setGenerationError] = useState('');
+  const [generationError, setGenerationError] = useState("");
 
   // ── Step 1: Personnalisation ────────────────────────────────
-  const [colorTheme, setColorTheme] = useState('purple');
-  const [customAccent, setCustomAccent] = useState('#a855f7');
-  const [format, setFormat] = useState<Format>('9:16');
+  const [colorTheme, setColorTheme] = useState("purple");
+  const [customAccent, setCustomAccent] = useState("#a855f7");
+  const [format, setFormat] = useState<Format>("9:16");
   const [batchCount, setBatchCount] = useState(1);
   const [characterImage, setCharacterImage] = useState<string | null>(null);
 
   // ── Logo Upload ────────────────────────────────────────────
   const [logoImage, setLogoImage] = useState<string | null>(null);
   const [logoScale, setLogoScale] = useState(1.0); // 0.3 to 3.0
-  const [logoSequences, setLogoSequences] = useState<string[]>(['titre', 'cta']); // which sequences show logo
-  const [titleColor, setTitleColor] = useState('#ffffff');
-  const [ctaColor, setCtaColor] = useState('#ffffff');
+  const [logoSequences, setLogoSequences] = useState<string[]>([
+    "titre",
+    "cta",
+  ]); // which sequences show logo
+  const [titleColor, setTitleColor] = useState("#ffffff");
+  const [ctaColor, setCtaColor] = useState("#ffffff");
   // CTA text (customizable)
-  const [ctaMainText, setCtaMainText] = useState('AFROBOOST');
-  const [ctaSubText, setCtaSubText] = useState('CHAT POUR PLUS D\'INFOS');
+  const [ctaMainText, setCtaMainText] = useState("AFROBOOST");
+  const [ctaSubText, setCtaSubText] = useState("CHAT POUR PLUS D'INFOS");
   const [isGeneratingCta, setIsGeneratingCta] = useState(false);
   // Gradient overlay
-  const [gradientColor1, setGradientColor1] = useState('#7C3AED');
-  const [gradientColor2, setGradientColor2] = useState('#EC4899');
+  const [gradientColor1, setGradientColor1] = useState("#7C3AED");
+  const [gradientColor2, setGradientColor2] = useState("#EC4899");
   const [gradientOpacity, setGradientOpacity] = useState(0.3);
   // Per-sequence no-color mode (user decides which sequences have color or just photo)
   const [noColorBg, setNoColorBg] = useState(false);
@@ -125,14 +243,14 @@ export default function InfographicPage() {
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
 
   // ── Video Overlay Text ─────────────────────────────────────
-  const [videoOverlayText, setVideoOverlayText] = useState('');
+  const [videoOverlayText, setVideoOverlayText] = useState("");
   const [isGeneratingOverlay, setIsGeneratingOverlay] = useState(false);
 
   // ── Pexels Photos ───────────────────────────────────────────
   const [pexelsPhotos, setPexelsPhotos] = useState<PexelsPhoto[]>([]);
   const [pexelsLoading, setPexelsLoading] = useState(false);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
-  const [photoSearchQuery, setPhotoSearchQuery] = useState('');
+  const [photoSearchQuery, setPhotoSearchQuery] = useState("");
 
   // ── Sequence Durations ──────────────────────────────────────
   const [introDuration, setIntroDuration] = useState(4);
@@ -140,8 +258,24 @@ export default function InfographicPage() {
   const [videoDuration, setVideoDuration] = useState(12);
   const [ctaDuration, setCtaDuration] = useState(4);
 
+  // ── Typography controls (per-element) — declared early for localStorage ──
+  const [titleLetterSpacing, setTitleLetterSpacing] = useState(0);
+  const [titleLineHeight, setTitleLineHeight] = useState(1.1);
+  const [titleBold, setTitleBold] = useState(true);
+  const [titleItalic, setTitleItalic] = useState(false);
+  const [ctaLetterSpacing, setCtaLetterSpacing] = useState(2);
+  const [ctaLineHeight, setCtaLineHeight] = useState(1.2);
+  const [ctaBold, setCtaBold] = useState(true);
+  const [ctaItalic, setCtaItalic] = useState(false);
+  const [overlayLetterSpacing, setOverlayLetterSpacing] = useState(0);
+  const [overlayLineHeight, setOverlayLineHeight] = useState(1.2);
+  const [overlayBold, setOverlayBold] = useState(true);
+  const [overlayItalic, setOverlayItalic] = useState(false);
+  const [cardsLetterSpacing, setCardsLetterSpacing] = useState(0);
+  const [customCardIcons, setCustomCardIcons] = useState<Record<string, string>>({});
+
   // ── Persist configurations across sessions ──────────────────
-  const INFOGRAPHIC_CONFIG_KEY = 'studiio_infographic_config';
+  const INFOGRAPHIC_CONFIG_KEY = "studiio_infographic_config";
   const [configLoaded, setConfigLoaded] = useState(false);
 
   // Load saved config on mount
@@ -156,10 +290,36 @@ export default function InfographicPage() {
         if (cfg.cardsDuration) setCardsDuration(cfg.cardsDuration);
         if (cfg.videoDuration) setVideoDuration(cfg.videoDuration);
         if (cfg.ctaDuration) setCtaDuration(cfg.ctaDuration);
-        if (cfg.rushUrl) { setRushUrl(cfg.rushUrl); setRushFileName(cfg.rushFileName || 'video.mp4'); }
+        if (cfg.rushUrl) {
+          setRushUrl(cfg.rushUrl);
+          setRushFileName(cfg.rushFileName || "video.mp4");
+        }
         if (cfg.characterImage) setCharacterImage(cfg.characterImage);
+        if (cfg.titleLetterSpacing !== undefined)
+          setTitleLetterSpacing(cfg.titleLetterSpacing);
+        if (cfg.titleLineHeight !== undefined)
+          setTitleLineHeight(cfg.titleLineHeight);
+        if (cfg.titleBold !== undefined) setTitleBold(cfg.titleBold);
+        if (cfg.titleItalic !== undefined) setTitleItalic(cfg.titleItalic);
+        if (cfg.ctaLetterSpacing !== undefined)
+          setCtaLetterSpacing(cfg.ctaLetterSpacing);
+        if (cfg.ctaLineHeight !== undefined)
+          setCtaLineHeight(cfg.ctaLineHeight);
+        if (cfg.ctaBold !== undefined) setCtaBold(cfg.ctaBold);
+        if (cfg.ctaItalic !== undefined) setCtaItalic(cfg.ctaItalic);
+        if (cfg.overlayLetterSpacing !== undefined)
+          setOverlayLetterSpacing(cfg.overlayLetterSpacing);
+        if (cfg.overlayLineHeight !== undefined)
+          setOverlayLineHeight(cfg.overlayLineHeight);
+        if (cfg.overlayBold !== undefined) setOverlayBold(cfg.overlayBold);
+        if (cfg.overlayItalic !== undefined)
+          setOverlayItalic(cfg.overlayItalic);
+        if (cfg.cardsLetterSpacing !== undefined)
+          setCardsLetterSpacing(cfg.cardsLetterSpacing);
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     // Marquer comme chargé APRÈS la restauration pour éviter que le save n'écrase les valeurs
     setConfigLoaded(true);
   }, []);
@@ -168,37 +328,98 @@ export default function InfographicPage() {
   useEffect(() => {
     if (!configLoaded) return; // Ne pas sauvegarder avant que le load soit terminé
     try {
-      localStorage.setItem(INFOGRAPHIC_CONFIG_KEY, JSON.stringify({
-        colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration,
-        rushUrl, rushFileName, characterImage,
-      }));
-    } catch { /* ignore */ }
-  }, [configLoaded, colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration, rushUrl, rushFileName, characterImage]);
+      localStorage.setItem(
+        INFOGRAPHIC_CONFIG_KEY,
+        JSON.stringify({
+          colorTheme,
+          format,
+          introDuration,
+          cardsDuration,
+          videoDuration,
+          ctaDuration,
+          rushUrl,
+          rushFileName,
+          characterImage,
+          titleLetterSpacing,
+          titleLineHeight,
+          titleBold,
+          titleItalic,
+          ctaLetterSpacing,
+          ctaLineHeight,
+          ctaBold,
+          ctaItalic,
+          overlayLetterSpacing,
+          overlayLineHeight,
+          overlayBold,
+          overlayItalic,
+          cardsLetterSpacing,
+        }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [
+    configLoaded,
+    colorTheme,
+    format,
+    introDuration,
+    cardsDuration,
+    videoDuration,
+    ctaDuration,
+    rushUrl,
+    rushFileName,
+    characterImage,
+    titleLetterSpacing,
+    titleLineHeight,
+    titleBold,
+    titleItalic,
+    ctaLetterSpacing,
+    ctaLineHeight,
+    ctaBold,
+    ctaItalic,
+    overlayLetterSpacing,
+    overlayLineHeight,
+    overlayBold,
+    overlayItalic,
+    cardsLetterSpacing,
+  ]);
 
   // ── Safe Zone Overlay (additive — does not affect existing logic) ────
   const [safeZonePlatform, setSafeZonePlatform] = useState<string | null>(null);
 
   // ── Design Step (additive — new step 1, shifts old steps) ────
-  const [selectedFont, setSelectedFont] = useState('Anton');
-  const [selectedFilter, setSelectedFilter] = useState('Aucun');
-  const [selectedCardStyle, setSelectedCardStyle] = useState('Compact');
+  const [selectedFont, setSelectedFont] = useState("Anton");
+  const [selectedFilter, setSelectedFilter] = useState("Aucun");
+  const [selectedCardStyle, setSelectedCardStyle] = useState("Compact");
 
   // Font CSS variable mapping
   const FONT_CSS_MAP: Record<string, string> = {
-    'Anton': 'var(--font-anton)',
-    'Syne': 'var(--font-syne)',
-    'Bebas Neue': 'var(--font-bebas)',
-    'Poppins': 'var(--font-poppins)',
-    'Space Grotesk': 'var(--font-space)',
+    Anton: "var(--font-anton)",
+    Syne: "var(--font-syne)",
+    "Bebas Neue": "var(--font-bebas)",
+    Poppins: "var(--font-poppins)",
+    "Space Grotesk": "var(--font-space)",
   };
 
   // Filter CSS mapping (applied as overlay on preview)
   const FILTER_CSS_MAP: Record<string, React.CSSProperties> = {
-    'Aucun': {},
-    'Neon Glow': { boxShadow: 'inset 0 0 60px rgba(0, 255, 200, 0.15), inset 0 0 120px rgba(124, 58, 237, 0.1)' },
-    'Cinematic': { boxShadow: 'inset 0 0 80px rgba(0, 0, 0, 0.6)', filter: 'contrast(1.1) saturate(0.85)' },
-    'Warm Energy': { boxShadow: 'inset 0 0 60px rgba(255, 100, 50, 0.15)', filter: 'saturate(1.15) brightness(1.05)' },
-    'Cool Frost': { boxShadow: 'inset 0 0 60px rgba(100, 180, 255, 0.15)', filter: 'saturate(0.9) brightness(1.08) hue-rotate(10deg)' },
+    Aucun: {},
+    "Neon Glow": {
+      boxShadow:
+        "inset 0 0 60px rgba(0, 255, 200, 0.15), inset 0 0 120px rgba(124, 58, 237, 0.1)",
+    },
+    Cinematic: {
+      boxShadow: "inset 0 0 80px rgba(0, 0, 0, 0.6)",
+      filter: "contrast(1.1) saturate(0.85)",
+    },
+    "Warm Energy": {
+      boxShadow: "inset 0 0 60px rgba(255, 100, 50, 0.15)",
+      filter: "saturate(1.15) brightness(1.05)",
+    },
+    "Cool Frost": {
+      boxShadow: "inset 0 0 60px rgba(100, 180, 255, 0.15)",
+      filter: "saturate(0.9) brightness(1.08) hue-rotate(10deg)",
+    },
   };
 
   // Drag positions (percentage-based offsets from default)
@@ -214,10 +435,14 @@ export default function InfographicPage() {
   const [titleSize, setTitleSize] = useState(90);
   const [cardsSize, setCardsSize] = useState(92);
   const [watermarkSize, setWatermarkSize] = useState(70);
-  const resizeStart = useRef<{ x: number; y: number; size: number } | null>(null);
+  const resizeStart = useRef<{ x: number; y: number; size: number } | null>(
+    null,
+  );
 
   // Sequence view: show individual "pages" in preview
-  const [activeSequence, setActiveSequence] = useState<'all' | 'titre' | 'cartes' | 'video' | 'cta'>('all');
+  const [activeSequence, setActiveSequence] = useState<
+    "all" | "titre" | "cartes" | "video" | "cta"
+  >("all");
 
   // Video overlay text position (draggable)
   const [overlayPos, setOverlayPos] = useState({ x: 50, y: 33 });
@@ -229,32 +454,45 @@ export default function InfographicPage() {
   const [ctaTextScale, setCtaTextScale] = useState(1.0);
 
   // CTA sub-text color (separate from main ctaColor)
-  const [ctaSubColor, setCtaSubColor] = useState('#D91CD2');
+  const [ctaSubColor, setCtaSubColor] = useState("#D91CD2");
+
+  // (Typography states declared earlier for localStorage compatibility)
 
   // Settings panel visibility
   const [showSettings, setShowSettings] = useState(false);
 
   // Floating panels — which element panel is open
-  const [activePanel, setActivePanel] = useState<'title' | 'cards' | 'cta' | 'overlay' | 'gradient' | 'logo' | null>(null);
+  const [activePanel, setActivePanel] = useState<
+    "title" | "cards" | "cta" | "overlay" | "gradient" | "logo" | null
+  >(null);
   const [panelPos, setPanelPos] = useState({ x: 0, y: 0 });
 
   // Open a floating panel near the clicked element
-  const openPanel = useCallback((panel: typeof activePanel, e: React.MouseEvent) => {
-    e.stopPropagation();
-    // Position panel to the left of click, clamped to viewport
-    const x = Math.min(e.clientX - 130, window.innerWidth - 320);
-    const y = Math.max(20, Math.min(e.clientY - 40, window.innerHeight - 400));
-    setPanelPos({ x, y });
-    setActivePanel(prev => prev === panel ? null : panel);
-  }, []);
+  const openPanel = useCallback(
+    (panel: typeof activePanel, e: React.MouseEvent) => {
+      e.stopPropagation();
+      // Position panel to the left of click, clamped to viewport
+      const x = Math.min(e.clientX - 130, window.innerWidth - 320);
+      const y = Math.max(
+        20,
+        Math.min(e.clientY - 40, window.innerHeight - 400),
+      );
+      setPanelPos({ x, y });
+      setActivePanel((prev) => (prev === panel ? null : panel));
+    },
+    [],
+  );
 
   // ── Step 2: Export ──────────────────────────────────────────
-  const [destination, setDestination] = useState<Destination>('draft');
+  const [destination, setDestination] = useState<Destination>("draft");
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
 
   // ── Toast ───────────────────────────────────────────────────
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [toast, setToast] = useState<{
+    message: string;
+    type: "success" | "error";
+  } | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState<string | null>(null);
 
   // Toast auto-dismiss
@@ -264,177 +502,200 @@ export default function InfographicPage() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const showToast = (message: string, type: 'success' | 'error' = 'error') => setToast({ message, type });
+  const showToast = (message: string, type: "success" | "error" = "error") =>
+    setToast({ message, type });
 
   // ── Fetch Pexels photos based on theme ──────────────────────
   const [pexelsPage, setPexelsPage] = useState(1);
 
   const pexelsPageRef = useRef(1);
-  const fetchPexelsPhotos = useCallback(async (query: string, newPage?: boolean) => {
-    if (!query.trim()) return;
-    setPexelsLoading(true);
-    // Incrémente la page pour proposer de nouvelles photos à chaque clic
-    const page = newPage ? pexelsPageRef.current + 1 : 1;
-    pexelsPageRef.current = page;
-    setPexelsPage(page);
-    try {
-      const count = Math.max(batchCount * 2, 6);
-      const res = await fetch(`/api/pexels?query=${encodeURIComponent(query)}&count=${count}&page=${page}`);
-      const data = await res.json();
-      if (data.success && data.photos && data.photos.length > 0) {
-        setPexelsPhotos(data.photos);
-        setSelectedPhotoIndex(0);
-      } else if (page > 1) {
-        // Plus de résultats, retour à la page 1
-        pexelsPageRef.current = 1;
-        setPexelsPage(1);
-        const res2 = await fetch(`/api/pexels?query=${encodeURIComponent(query)}&count=${count}&page=1`);
-        const data2 = await res2.json();
-        if (data2.success && data2.photos) {
-          setPexelsPhotos(data2.photos);
+  const fetchPexelsPhotos = useCallback(
+    async (query: string, newPage?: boolean) => {
+      if (!query.trim()) return;
+      setPexelsLoading(true);
+      // Incrémente la page pour proposer de nouvelles photos à chaque clic
+      const page = newPage ? pexelsPageRef.current + 1 : 1;
+      pexelsPageRef.current = page;
+      setPexelsPage(page);
+      try {
+        const count = Math.max(batchCount * 2, 6);
+        const res = await fetch(
+          `/api/pexels?query=${encodeURIComponent(query)}&count=${count}&page=${page}`,
+        );
+        const data = await res.json();
+        if (data.success && data.photos && data.photos.length > 0) {
+          setPexelsPhotos(data.photos);
           setSelectedPhotoIndex(0);
+        } else if (page > 1) {
+          // Plus de résultats, retour à la page 1
+          pexelsPageRef.current = 1;
+          setPexelsPage(1);
+          const res2 = await fetch(
+            `/api/pexels?query=${encodeURIComponent(query)}&count=${count}&page=1`,
+          );
+          const data2 = await res2.json();
+          if (data2.success && data2.photos) {
+            setPexelsPhotos(data2.photos);
+            setSelectedPhotoIndex(0);
+          }
         }
+      } catch {
+        console.error("Pexels fetch error");
+      } finally {
+        setPexelsLoading(false);
       }
-    } catch {
-      console.error('Pexels fetch error');
-    } finally {
-      setPexelsLoading(false);
-    }
-  }, [batchCount]);
+    },
+    [batchCount],
+  );
 
   // ── Generate content (AI or local) ──────────────────────────
-  const generateContent = useCallback(async (themeId?: string) => {
-    const theme = themeId || contentTheme;
-    setIsGenerating(true);
-    setGenerationError('');
+  const generateContent = useCallback(
+    async (themeId?: string) => {
+      const theme = themeId || contentTheme;
+      setIsGenerating(true);
+      setGenerationError("");
 
-    try {
-      // Determine topic text
-      const themeObj = CONTENT_THEMES.find(t => t.id === theme);
-      const topicText = theme === 'personnalise' ? customTopic : (themeObj?.label || theme);
-
-      if (theme === 'personnalise' && !customTopic.trim()) {
-        setIsGenerating(false);
-        return;
-      }
-
-      // Try AI generation first (with 8s timeout to avoid blocking UI)
-      let aiSuccess = false;
       try {
-        const aiController = new AbortController();
-        const aiTimeout = setTimeout(() => aiController.abort(), 8000);
-        const aiRes = await fetch('/api/content/ai-generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            topic: topicText,
-            locale: 'fr',
-            cardCount: 5,
-          }),
-          signal: aiController.signal,
-        });
-        clearTimeout(aiTimeout);
+        // Determine topic text
+        const themeObj = CONTENT_THEMES.find((t) => t.id === theme);
+        const topicText =
+          theme === "personnalise" ? customTopic : themeObj?.label || theme;
 
-        if (aiRes.ok) {
-          const aiData = await aiRes.json();
-          if (aiData.success && aiData.content) {
-            const c = aiData.content;
-            setTitle(c.title || topicText.toUpperCase());
-            setSubtitle(c.subtitle || '');
+        if (theme === "personnalise" && !customTopic.trim()) {
+          setIsGenerating(false);
+          return;
+        }
+
+        // Try AI generation first (with 8s timeout to avoid blocking UI)
+        let aiSuccess = false;
+        try {
+          const aiController = new AbortController();
+          const aiTimeout = setTimeout(() => aiController.abort(), 8000);
+          const aiRes = await fetch("/api/content/ai-generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              topic: topicText,
+              locale: "fr",
+              cardCount: 5,
+            }),
+            signal: aiController.signal,
+          });
+          clearTimeout(aiTimeout);
+
+          if (aiRes.ok) {
+            const aiData = await aiRes.json();
+            if (aiData.success && aiData.content) {
+              const c = aiData.content;
+              setTitle(c.title || topicText.toUpperCase());
+              setSubtitle(c.subtitle || "");
+              setCards(
+                (c.cards || []).map((card: any, i: number) => ({
+                  id: `card-${Date.now()}-${i}`,
+                  emoji: card.emoji || "⭐",
+                  label: card.label || "",
+                  value: card.value || "",
+                  description: card.description || "",
+                  color:
+                    COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent ||
+                    "#a855f7",
+                })),
+              );
+              setSalesPhrases(c.salesPhrases || []);
+
+              // Fetch photos matching the AI-suggested query or theme
+              const pQuery =
+                c.pexelsQuery || themeObj?.pexelsQuery || topicText;
+              setPhotoSearchQuery(pQuery);
+              fetchPexelsPhotos(pQuery);
+              aiSuccess = true;
+            }
+          }
+        } catch (aiErr: any) {
+          console.warn(
+            "[Infographie] AI generation failed/timeout, falling back to local:",
+            aiErr?.name || aiErr?.message,
+          );
+        }
+        if (aiSuccess) return;
+
+        // Fallback: try local smart content (instant, no external API)
+        const localRes = await fetch("/api/content/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ topic: topicText }),
+        });
+        if (localRes.ok) {
+          const localData = await localRes.json();
+          if (localData.success && localData.content) {
+            const c = localData.content;
+            setTitle(c.tagLine || topicText.toUpperCase());
+            setSubtitle(c.subtitle || "");
             setCards(
               (c.cards || []).map((card: any, i: number) => ({
                 id: `card-${Date.now()}-${i}`,
-                emoji: card.emoji || '⭐',
-                label: card.label || '',
-                value: card.value || '',
-                description: card.description || '',
-                color: COLOR_THEMES.find(ct => ct.id === colorTheme)?.accent || '#a855f7',
-              }))
+                emoji: ICON_TO_EMOJI[card.icon] || card.icon || "⭐",
+                label: card.title || "",
+                value: card.value || "",
+                description: card.description || "",
+                color:
+                  COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent ||
+                  "#a855f7",
+              })),
             );
-            setSalesPhrases(c.salesPhrases || []);
-
-            // Fetch photos matching the AI-suggested query or theme
-            const pQuery = c.pexelsQuery || themeObj?.pexelsQuery || topicText;
+            setSalesPhrases([]);
+            const pQuery = themeObj?.pexelsQuery || topicText;
             setPhotoSearchQuery(pQuery);
             fetchPexelsPhotos(pQuery);
-            aiSuccess = true;
+            return;
           }
         }
-      } catch (aiErr: any) {
-        console.warn('[Infographie] AI generation failed/timeout, falling back to local:', aiErr?.name || aiErr?.message);
-      }
-      if (aiSuccess) return;
 
-      // Fallback: try local smart content (instant, no external API)
-      const localRes = await fetch('/api/content/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic: topicText }),
-      });
-      if (localRes.ok) {
-        const localData = await localRes.json();
-        if (localData.success && localData.content) {
-          const c = localData.content;
-          setTitle(c.tagLine || topicText.toUpperCase());
-          setSubtitle(c.subtitle || '');
-          setCards(
-            (c.cards || []).map((card: any, i: number) => ({
-              id: `card-${Date.now()}-${i}`,
-              emoji: ICON_TO_EMOJI[card.icon] || card.icon || '⭐',
-              label: card.title || '',
-              value: card.value || '',
-              description: card.description || '',
-              color: COLOR_THEMES.find(ct => ct.id === colorTheme)?.accent || '#a855f7',
-            }))
-          );
-          setSalesPhrases([]);
-          const pQuery = themeObj?.pexelsQuery || topicText;
-          setPhotoSearchQuery(pQuery);
-          fetchPexelsPhotos(pQuery);
-          return;
-        }
+        setGenerationError("Impossible de générer le contenu. Réessayez.");
+      } catch (err) {
+        console.error("Content generation error:", err);
+        setGenerationError("Erreur de génération. Réessayez.");
+      } finally {
+        setIsGenerating(false);
       }
-
-      setGenerationError('Impossible de générer le contenu. Réessayez.');
-    } catch (err) {
-      console.error('Content generation error:', err);
-      setGenerationError('Erreur de génération. Réessayez.');
-    } finally {
-      setIsGenerating(false);
-    }
-  }, [contentTheme, customTopic, colorTheme, fetchPexelsPhotos]);
+    },
+    [contentTheme, customTopic, colorTheme, fetchPexelsPhotos],
+  );
 
   // ── Auto-generate on theme change ───────────────────────────
   useEffect(() => {
-    if (contentTheme !== 'personnalise') {
+    if (contentTheme !== "personnalise") {
       // Set photo search query to theme's pexels query
-      const themeObj = CONTENT_THEMES.find(t => t.id === contentTheme);
-      setPhotoSearchQuery(themeObj?.pexelsQuery || themeObj?.label || '');
+      const themeObj = CONTENT_THEMES.find((t) => t.id === contentTheme);
+      setPhotoSearchQuery(themeObj?.pexelsQuery || themeObj?.label || "");
       setPexelsPage(1); // Reset page counter for new theme
       generateContent(contentTheme);
     } else {
       // Clear content when switching to custom
-      setTitle('');
-      setSubtitle('');
+      setTitle("");
+      setSubtitle("");
       setCards([]);
       setSalesPhrases([]);
       setPexelsPhotos([]);
-      setPhotoSearchQuery('');
+      setPhotoSearchQuery("");
       setPexelsPage(1);
     }
   }, [contentTheme]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Régénérer: regenerate content + new photos ──────────────
   const handleRegenerate = () => {
-    if (contentTheme === 'personnalise' && !customTopic.trim()) {
-      showToast('Entrez un sujet personnalisé');
+    if (contentTheme === "personnalise" && !customTopic.trim()) {
+      showToast("Entrez un sujet personnalisé");
       return;
     }
     // Also fetch new photos (next page) in parallel
-    const themeObj = CONTENT_THEMES.find(t => t.id === contentTheme);
-    const query = photoSearchQuery.trim()
-      || (contentTheme === 'personnalise' ? customTopic : '')
-      || themeObj?.pexelsQuery || themeObj?.label || 'fitness';
+    const themeObj = CONTENT_THEMES.find((t) => t.id === contentTheme);
+    const query =
+      photoSearchQuery.trim() ||
+      (contentTheme === "personnalise" ? customTopic : "") ||
+      themeObj?.pexelsQuery ||
+      themeObj?.label ||
+      "fitness";
     fetchPexelsPhotos(query, true);
     generateContent();
   };
@@ -443,23 +704,27 @@ export default function InfographicPage() {
   const [isAddingCard, setIsAddingCard] = useState(false);
 
   const addCard = async () => {
-    const accent = COLOR_THEMES.find(ct => ct.id === colorTheme)?.accent || '#a855f7';
-    const themeObj = CONTENT_THEMES.find(t => t.id === contentTheme);
-    const topicText = contentTheme === 'personnalise' ? customTopic : (themeObj?.label || 'fitness');
+    const accent =
+      COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent || "#a855f7";
+    const themeObj = CONTENT_THEMES.find((t) => t.id === contentTheme);
+    const topicText =
+      contentTheme === "personnalise"
+        ? customTopic
+        : themeObj?.label || "fitness";
 
     // Try to generate a smart card via Anthropic
     setIsAddingCard(true);
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 8000);
-      const res = await fetch('/api/content/ai-generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/content/ai-generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           topic: topicText,
-          locale: 'fr',
+          locale: "fr",
           cardCount: 1,
-          existingCards: cards.map(c => c.label), // Avoid duplicate topics
+          existingCards: cards.map((c) => c.label), // Avoid duplicate topics
         }),
         signal: controller.signal,
       });
@@ -469,14 +734,17 @@ export default function InfographicPage() {
         const data = await res.json();
         if (data.success && data.content?.cards?.[0]) {
           const aiCard = data.content.cards[0];
-          setCards([...cards, {
-            id: `card-${Date.now()}`,
-            emoji: aiCard.emoji || '⭐',
-            label: aiCard.label || 'Info',
-            value: aiCard.value || '',
-            description: aiCard.description || '',
-            color: accent,
-          }]);
+          setCards([
+            ...cards,
+            {
+              id: `card-${Date.now()}`,
+              emoji: aiCard.emoji || "⭐",
+              label: aiCard.label || "Info",
+              value: aiCard.value || "",
+              description: aiCard.description || "",
+              color: accent,
+            },
+          ]);
           setIsAddingCard(false);
           return;
         }
@@ -486,21 +754,24 @@ export default function InfographicPage() {
     }
 
     // Fallback: generic card
-    setCards([...cards, {
-      id: `card-${Date.now()}`,
-      emoji: '⭐',
-      label: 'Nouveau',
-      value: 'Valeur',
-      description: '',
-      color: accent,
-    }]);
+    setCards([
+      ...cards,
+      {
+        id: `card-${Date.now()}`,
+        emoji: "⭐",
+        label: "Nouveau",
+        value: "Valeur",
+        description: "",
+        color: accent,
+      },
+    ]);
     setIsAddingCard(false);
   };
 
-  const deleteCard = (id: string) => setCards(cards.filter(c => c.id !== id));
+  const deleteCard = (id: string) => setCards(cards.filter((c) => c.id !== id));
 
   const updateCard = (id: string, field: keyof InfoCard, value: string) => {
-    setCards(cards.map(c => c.id === id ? { ...c, [field]: value } : c));
+    setCards(cards.map((c) => (c.id === id ? { ...c, [field]: value } : c)));
   };
 
   // ── Character upload ────────────────────────────────────────
@@ -508,7 +779,8 @@ export default function InfographicPage() {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = (event) => setCharacterImage(event.target?.result as string);
+      reader.onload = (event) =>
+        setCharacterImage(event.target?.result as string);
       reader.readAsDataURL(file);
     }
   };
@@ -529,14 +801,14 @@ export default function InfographicPage() {
     if (!file) return;
 
     // Validate file type
-    if (!file.type.startsWith('video/')) {
-      showToast('Veuillez sélectionner un fichier vidéo');
+    if (!file.type.startsWith("video/")) {
+      showToast("Veuillez sélectionner un fichier vidéo");
       return;
     }
 
     // Validate file size (max 100MB)
     if (file.size > 100 * 1024 * 1024) {
-      showToast('La vidéo ne doit pas dépasser 100 Mo');
+      showToast("La vidéo ne doit pas dépasser 100 Mo");
       return;
     }
 
@@ -546,39 +818,56 @@ export default function InfographicPage() {
     try {
       // Use signed URL for large files (videos > 4MB) to bypass Vercel's 4.5MB body limit
       if (file.size > 4 * 1024 * 1024) {
-        const signRes = await fetch('/api/upload/signed-url', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filename: file.name, contentType: file.type, purpose: 'infographic-video' }),
+        const signRes = await fetch("/api/upload/signed-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: file.name,
+            contentType: file.type,
+            purpose: "infographic-video",
+          }),
         });
         const signData = await signRes.json();
-        if (!signData.success) { showToast('Erreur lors de l\'upload de la vidéo'); setRushFileName(null); setIsUploadingVideo(false); return; }
+        if (!signData.success) {
+          showToast("Erreur lors de l'upload de la vidéo");
+          setRushFileName(null);
+          setIsUploadingVideo(false);
+          return;
+        }
         const putRes = await fetch(signData.signedUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': file.type },
+          method: "PUT",
+          headers: { "Content-Type": file.type },
           body: file,
         });
-        if (!putRes.ok) { showToast('Erreur lors de l\'upload de la vidéo'); setRushFileName(null); setIsUploadingVideo(false); return; }
-        console.log('[Upload] Signed URL upload OK:', signData.publicUrl);
+        if (!putRes.ok) {
+          showToast("Erreur lors de l'upload de la vidéo");
+          setRushFileName(null);
+          setIsUploadingVideo(false);
+          return;
+        }
+        console.log("[Upload] Signed URL upload OK:", signData.publicUrl);
         setRushUrl(signData.publicUrl);
-        showToast('Vidéo uploadée avec succès', 'success');
+        showToast("Vidéo uploadée avec succès", "success");
       } else {
         const formData = new FormData();
-        formData.append('file', file);
-        formData.append('purpose', 'infographic-video');
-        const res = await fetch('/api/upload/media', { method: 'POST', body: formData });
+        formData.append("file", file);
+        formData.append("purpose", "infographic-video");
+        const res = await fetch("/api/upload/media", {
+          method: "POST",
+          body: formData,
+        });
         const data = await res.json();
         if (data.success && data.file?.url) {
           setRushUrl(data.file.url);
-          showToast('Vidéo uploadée avec succès', 'success');
+          showToast("Vidéo uploadée avec succès", "success");
         } else {
-          showToast('Erreur lors de l\'upload de la vidéo');
+          showToast("Erreur lors de l'upload de la vidéo");
           setRushFileName(null);
         }
       }
     } catch (err) {
-      console.error('Video upload error:', err);
-      showToast('Erreur lors de l\'upload de la vidéo');
+      console.error("Video upload error:", err);
+      showToast("Erreur lors de l'upload de la vidéo");
       setRushFileName(null);
     } finally {
       setIsUploadingVideo(false);
@@ -593,13 +882,15 @@ export default function InfographicPage() {
   // ── Export ──────────────────────────────────────────────────
   const handleExport = async () => {
     if (cards.length === 0) {
-      showToast('Ajoutez au moins une carte avant d\'exporter');
+      showToast("Ajoutez au moins une carte avant d'exporter");
       return;
     }
 
     // Safety check: if a video was expected but source is undefined, block export
     if (rushFileName && !rushUrl) {
-      showToast('La vidéo n\'a pas été uploadée correctement. Veuillez re-sélectionner le média.');
+      showToast(
+        "La vidéo n'a pas été uploadée correctement. Veuillez re-sélectionner le média.",
+      );
       return;
     }
 
@@ -609,40 +900,53 @@ export default function InfographicPage() {
     try {
       const total = batchCount;
       for (let b = 0; b < total; b++) {
-        setExportProgress(Math.round(((b) / total) * 100));
+        setExportProgress(Math.round((b / total) * 100));
 
         // Pick a different photo for each batch item
-        const photo = pexelsPhotos.length > 0
-          ? pexelsPhotos[b % pexelsPhotos.length]
-          : null;
+        const photo =
+          pexelsPhotos.length > 0
+            ? pexelsPhotos[b % pexelsPhotos.length]
+            : null;
         const posterUrl = photo?.url || null;
 
         // Pick a different sales phrase per batch item
-        const salesPhrase = salesPhrases.length > 0
-          ? salesPhrases[b % salesPhrases.length]
-          : '';
+        const salesPhrase =
+          salesPhrases.length > 0 ? salesPhrases[b % salesPhrases.length] : "";
 
         // Upload character image if present (first iteration only)
         let mediaUrl: string | null = posterUrl;
-        if (b === 0 && characterImage && characterImage.startsWith('data:')) {
+        if (b === 0 && characterImage && characterImage.startsWith("data:")) {
           const blob = await fetch(characterImage).then((r) => r.blob());
-          const file = new File([blob], 'infographic-character.png', { type: 'image/png' });
+          const file = new File([blob], "infographic-character.png", {
+            type: "image/png",
+          });
           if (file.size > 4 * 1024 * 1024) {
-            const signRes = await fetch('/api/upload/signed-url', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ filename: file.name, contentType: file.type, purpose: 'infographic' }),
+            const signRes = await fetch("/api/upload/signed-url", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                filename: file.name,
+                contentType: file.type,
+                purpose: "infographic",
+              }),
             });
             const signData = await signRes.json();
             if (signData.success) {
-              const putRes = await fetch(signData.signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+              const putRes = await fetch(signData.signedUrl, {
+                method: "PUT",
+                headers: { "Content-Type": file.type },
+                body: file,
+              });
               if (putRes.ok) mediaUrl = signData.publicUrl;
             }
           } else {
             const formData = new FormData();
-            formData.append('file', file);
-            formData.append('purpose', 'infographic');
-            const uploadRes = await fetch('/api/upload/media', { method: 'POST', body: formData });
+            formData.append("file", file);
+            formData.append("purpose", "infographic");
+            const uploadRes = await fetch("/api/upload/media", {
+              method: "POST",
+              body: formData,
+            });
             const uploadData = await uploadRes.json();
             if (uploadData.success) mediaUrl = uploadData.file.url;
           }
@@ -650,40 +954,48 @@ export default function InfographicPage() {
 
         // Determine media type based on whether video is present
         const hasVideo = !!rushUrl;
-        const mediaType = hasVideo ? 'video' : 'image';
+        const mediaType = hasVideo ? "video" : "image";
 
-        if (destination === 'draft' || destination === 'both') {
+        if (destination === "draft" || destination === "both") {
           const today = new Date();
           today.setDate(today.getDate() + b); // Spread across days
-          const scheduledDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+          const scheduledDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
           const caption = [
             subtitle,
-            cards.map((c) => `${c.emoji} ${c.label}: ${c.value}`).join(' | '),
-            salesPhrase ? `\n${salesPhrase}` : '',
-            '\n💬 Plus d\'infos → https://afroboost.com',
-          ].filter(Boolean).join('\n');
+            cards.map((c) => `${c.emoji} ${c.label}: ${c.value}`).join(" | "),
+            salesPhrase ? `\n${salesPhrase}` : "",
+            "\n💬 Plus d'infos → https://afroboost.com",
+          ]
+            .filter(Boolean)
+            .join("\n");
 
-          await fetch('/api/posts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+          await fetch("/api/posts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              title: title || 'Infographie',
+              title: title || "Infographie",
               caption,
               media_url: hasVideo ? rushUrl : mediaUrl,
               media_type: mediaType,
-              format: format === '16:9' ? 'tv' : 'reel',
+              format: format === "16:9" ? "tv" : "reel",
               platforms: [],
               scheduled_date: scheduledDate,
-              scheduled_time: '12:00',
-              status: 'draft',
+              scheduled_time: "12:00",
+              status: "draft",
               metadata: {
-                type: 'infographic',
+                type: "infographic",
                 subtitle,
                 videoOverlayText: videoOverlayText || undefined,
                 theme: contentTheme,
                 colorTheme,
                 salesPhrase,
-                cards: cards.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color })),
+                cards: cards.map((c) => ({
+                  emoji: c.emoji,
+                  label: c.label,
+                  value: c.value,
+                  description: c.description,
+                  color: c.color,
+                })),
                 characterUrl: characterImage ? mediaUrl : null,
                 posterUrl,
                 pexelsUrl: posterUrl,
@@ -694,22 +1006,28 @@ export default function InfographicPage() {
                   cards: cards.length > 0 ? cardsDuration : 0,
                   video: rushUrl ? videoDuration : 0,
                   cta: ctaDuration,
-                  total: introDuration + (cards.length > 0 ? cardsDuration : 0) + (rushUrl ? videoDuration : 0) + ctaDuration,
+                  total:
+                    introDuration +
+                    (cards.length > 0 ? cardsDuration : 0) +
+                    (rushUrl ? videoDuration : 0) +
+                    ctaDuration,
                   order: [
-                    'intro',
-                    ...(cards.length > 0 ? ['cards'] : []),
-                    ...(rushUrl ? ['video'] : []),
-                    'cta',
+                    "intro",
+                    ...(cards.length > 0 ? ["cards"] : []),
+                    ...(rushUrl ? ["video"] : []),
+                    "cta",
                   ],
                 },
                 branding: {
-                  accentColor: COLOR_THEMES.find(ct => ct.id === colorTheme)?.accent || '#a855f7',
-                  ctaText: ctaSubText || 'CHAT POUR PLUS D\'INFOS',
-                  ctaSubText: 'LIEN EN BIO',
-                  watermarkText: ctaMainText || 'AFROBOOST',
+                  accentColor:
+                    COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent ||
+                    "#a855f7",
+                  ctaText: ctaSubText || "CHAT POUR PLUS D'INFOS",
+                  ctaSubText: "LIEN EN BIO",
+                  watermarkText: ctaMainText || "AFROBOOST",
                   borderColor: null,
                 },
-                // ── Design settings (positions, sizes, colors, font, filter, etc.) ──
+                // ── Design settings (positions, sizes, colors, font, filter, typography, etc.) ──
                 design: {
                   font: selectedFont,
                   filter: selectedFilter,
@@ -719,8 +1037,8 @@ export default function InfographicPage() {
                   titleColor,
                   ctaColor,
                   ctaSubColor,
-                  ctaMainText: ctaMainText || 'AFROBOOST',
-                  ctaSubText: ctaSubText || 'CHAT POUR PLUS D\'INFOS',
+                  ctaMainText: ctaMainText || "AFROBOOST",
+                  ctaSubText: ctaSubText || "CHAT POUR PLUS D'INFOS",
                   noColorBg,
                   noColorSequences,
                   gradientColor1,
@@ -741,6 +1059,27 @@ export default function InfographicPage() {
                   logoScale,
                   logoSequences,
                   logoUrl: logoImage || undefined,
+                  typography: {
+                    title: {
+                      letterSpacing: titleLetterSpacing,
+                      lineHeight: titleLineHeight,
+                      bold: titleBold,
+                      italic: titleItalic,
+                    },
+                    cta: {
+                      letterSpacing: ctaLetterSpacing,
+                      lineHeight: ctaLineHeight,
+                      bold: ctaBold,
+                      italic: ctaItalic,
+                    },
+                    overlay: {
+                      letterSpacing: overlayLetterSpacing,
+                      lineHeight: overlayLineHeight,
+                      bold: overlayBold,
+                      italic: overlayItalic,
+                    },
+                  },
+                  cardCustomIcons: customCardIcons,
                 },
               },
             }),
@@ -749,28 +1088,33 @@ export default function InfographicPage() {
       }
 
       setExportProgress(100);
-      showToast(`${total} infographie${total > 1 ? 's' : ''} ajoutée${total > 1 ? 's' : ''} au calendrier !`, 'success');
+      showToast(
+        `${total} infographie${total > 1 ? "s" : ""} ajoutée${total > 1 ? "s" : ""} au calendrier !`,
+        "success",
+      );
 
-      if (destination === 'draft' || destination === 'both') {
-        setTimeout(() => router.push('/dashboard/calendar'), 1500);
+      if (destination === "draft" || destination === "both") {
+        setTimeout(() => router.push("/dashboard/calendar"), 1500);
       }
     } catch (error) {
-      console.error('Export error:', error);
-      showToast('Erreur lors de l\'export');
+      console.error("Export error:", error);
+      showToast("Erreur lors de l'export");
     } finally {
       setIsExporting(false);
     }
   };
 
   // ── Preview helpers ─────────────────────────────────────────
-  const activeColorTheme = colorTheme === 'custom'
-    ? { id: 'custom', name: 'Custom', bg: '', accent: customAccent }
-    : (COLOR_THEMES.find(ct => ct.id === colorTheme) || COLOR_THEMES[1]);
+  const activeColorTheme =
+    colorTheme === "custom"
+      ? { id: "custom", name: "Custom", bg: "", accent: customAccent }
+      : COLOR_THEMES.find((ct) => ct.id === colorTheme) || COLOR_THEMES[1];
   const previewPhoto = pexelsPhotos[selectedPhotoIndex] || null;
 
   const getPreviewClasses = () => {
-    if (format === '16:9') return { aspect: 'aspect-[16/9]', maxW: 'max-w-lg', cols: 'grid-cols-3' };
-    return { aspect: 'aspect-[9/16]', maxW: 'max-w-xs', cols: 'grid-cols-2' };
+    if (format === "16:9")
+      return { aspect: "aspect-[16/9]", maxW: "max-w-lg", cols: "grid-cols-3" };
+    return { aspect: "aspect-[9/16]", maxW: "max-w-xs", cols: "grid-cols-2" };
   };
   const previewClasses = getPreviewClasses();
 
@@ -779,9 +1123,13 @@ export default function InfographicPage() {
     <div className="flex min-h-[calc(100vh-4rem)] flex-col lg:flex-row bg-gray-900 text-white overflow-x-hidden">
       {/* Toast */}
       {toast && (
-        <div className={`fixed top-6 right-6 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium ${
-          toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
-        }`}>
+        <div
+          className={`fixed top-6 right-6 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium ${
+            toast.type === "success"
+              ? "bg-green-600 text-white"
+              : "bg-red-600 text-white"
+          }`}
+        >
           {toast.message}
         </div>
       )}
@@ -790,14 +1138,18 @@ export default function InfographicPage() {
       <div className="w-full lg:w-1/2 overflow-y-auto border-r-0 lg:border-r border-gray-800 p-3 sm:p-6 pb-24 lg:pb-6 lg:max-h-[calc(100vh-4rem)]">
         {/* Header */}
         <div className="mb-6 flex flex-col gap-3">
-          <h1 className="text-lg sm:text-2xl font-bold">Créer une Infographie</h1>
+          <h1 className="text-lg sm:text-2xl font-bold">
+            Créer une Infographie
+          </h1>
           <div className="flex items-center gap-1.5 sm:gap-2">
-            {['Contenu', 'Design', 'Style', 'Export'].map((label, i) => (
+            {["Contenu", "Design", "Style", "Export"].map((label, i) => (
               <button
                 key={label}
                 onClick={() => setStep(i)}
                 className={`flex items-center gap-1 rounded-full px-2.5 sm:px-3 py-1.5 text-[10px] sm:text-xs font-medium transition-all whitespace-nowrap ${
-                  step === i ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
+                  step === i
+                    ? "bg-purple-600 text-white"
+                    : "bg-gray-800 text-gray-400 hover:text-white"
                 }`}
               >
                 <span className="flex h-5 w-5 items-center justify-center rounded-full bg-black/30 text-[10px]">
@@ -807,95 +1159,308 @@ export default function InfographicPage() {
               </button>
             ))}
           </div>
+          {/* Paramètres gear button */}
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className={`flex items-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-medium transition-all ${
+              showSettings
+                ? "bg-purple-600 text-white"
+                : "bg-gray-800 text-gray-400 hover:text-white"
+            }`}
+            title="Paramètres Globaux"
+          >
+            <span>⚙️</span>
+          </button>
         </div>
+
+        {/* ── Quick Settings Row (Color + Format) — shown on ALL steps ── */}
+        <div className="rounded-lg bg-gray-800/50 px-3 py-2 space-y-2 mb-4">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-gray-500 uppercase tracking-wider mr-1">
+              Couleur
+            </span>
+            {COLOR_THEMES.map((ct) => (
+              <button
+                key={ct.id}
+                onClick={() => {
+                  setColorTheme(ct.id);
+                  setNoColorBg(false);
+                }}
+                className={`h-6 w-6 rounded-full bg-gradient-to-br ${ct.bg} transition-all flex-shrink-0 ${
+                  colorTheme === ct.id && !noColorBg
+                    ? "ring-2 ring-white scale-110"
+                    : "opacity-60 hover:opacity-100"
+                }`}
+                title={ct.name}
+              />
+            ))}
+            <button
+              onClick={() => {
+                setColorTheme("custom");
+                setNoColorBg(false);
+              }}
+              className={`h-6 w-6 rounded-full transition-all flex-shrink-0 ${
+                colorTheme === "custom" && !noColorBg
+                  ? "ring-2 ring-white scale-110"
+                  : "opacity-60 hover:opacity-100"
+              }`}
+              style={{
+                background: `conic-gradient(#ef4444, #f59e0b, #10b981, #3b82f6, #a855f7, #ec4899, #ef4444)`,
+              }}
+              title="Personnalisé"
+            />
+            {/* Sans couleur button */}
+            <button
+              onClick={() => setNoColorBg(!noColorBg)}
+              className={`h-6 w-6 rounded-full border-2 transition-all flex-shrink-0 ${
+                noColorBg
+                  ? "ring-2 ring-white scale-110 border-gray-400 bg-gray-900"
+                  : "border-gray-600 bg-gray-800 opacity-60 hover:opacity-100"
+              }`}
+              title="Sans couleur (photo uniquement)"
+            >
+              {noColorBg && (
+                <span className="block w-full h-full rounded-full relative">
+                  <span className="absolute inset-0 flex items-center justify-center text-[8px] text-gray-400">
+                    ∅
+                  </span>
+                </span>
+              )}
+            </button>
+            {colorTheme === "custom" && !noColorBg && (
+              <input
+                type="color"
+                value={customAccent}
+                onChange={(e) => setCustomAccent(e.target.value)}
+                className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent p-0"
+              />
+            )}
+            <div className="ml-auto flex gap-1">
+              {(["9:16", "16:9"] as Format[]).map((fmt) => (
+                <button
+                  key={fmt}
+                  onClick={() => setFormat(fmt)}
+                  className={`rounded px-2 py-0.5 text-[10px] font-bold transition-all ${
+                    format === fmt
+                      ? "bg-purple-600 text-white"
+                      : "bg-gray-700 text-gray-400 hover:text-white"
+                  }`}
+                >
+                  {fmt}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Per-sequence color control — shown when noColorBg is on */}
+          {noColorBg && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[9px] text-gray-500">
+                Sans couleur sur :
+              </span>
+              {["titre", "cartes", "video", "cta"].map((seq) => (
+                <label
+                  key={seq}
+                  className="flex items-center gap-1 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={noColorSequences.includes(seq)}
+                    onChange={(e) => {
+                      if (e.target.checked)
+                        setNoColorSequences([...noColorSequences, seq]);
+                      else
+                        setNoColorSequences(
+                          noColorSequences.filter((s) => s !== seq),
+                        );
+                    }}
+                    className="h-3 w-3 rounded border-gray-600 accent-purple-500"
+                  />
+                  <span className="text-[10px] text-gray-400 capitalize">
+                    {seq}
+                  </span>
+                </label>
+              ))}
+              <button
+                onClick={() =>
+                  setNoColorSequences(["titre", "cartes", "video", "cta"])
+                }
+                className="text-[9px] text-purple-400 hover:text-purple-300 ml-1"
+              >
+                Toutes
+              </button>
+              <button
+                onClick={() => setNoColorSequences([])}
+                className="text-[9px] text-gray-500 hover:text-gray-400"
+              >
+                Aucune
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* ── Settings Panel (overlaid when showSettings is true) — visible on ALL steps ── */}
+        {showSettings && (
+          <div className="rounded-lg bg-gray-800/80 border border-purple-500/30 p-4 space-y-4">
+            {/* Font Selector */}
+            <div>
+              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">
+                Police
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {FONT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.label}
+                    onClick={() => setSelectedFont(opt.label)}
+                    className={`px-2 py-1 rounded text-[9px] font-medium transition-all ${
+                      selectedFont === opt.label
+                        ? "bg-purple-600 text-white"
+                        : "bg-gray-700 text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Filter Selector */}
+            <div>
+              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">
+                Filtre visuel
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {FILTER_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.label}
+                    onClick={() => setSelectedFilter(opt.label)}
+                    className={`px-2 py-1 rounded text-[9px] font-medium transition-all ${
+                      selectedFilter === opt.label
+                        ? "bg-purple-600 text-white"
+                        : "bg-gray-700 text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Card Style Selector */}
+            <div>
+              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">
+                Style des cartes
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {CARD_STYLE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.label}
+                    onClick={() => setSelectedCardStyle(opt.label)}
+                    className={`px-2 py-1 rounded text-[9px] font-medium transition-all ${
+                      selectedCardStyle === opt.label
+                        ? "bg-purple-600 text-white"
+                        : "bg-gray-700 text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Logo Upload */}
+            <div>
+              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">
+                Logo
+              </label>
+              <div className="flex items-center gap-3">
+                <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-gray-700 bg-gray-800 px-3 py-2 hover:border-purple-500 hover:bg-gray-700 transition-all">
+                  <Upload size={14} />
+                  <span className="text-xs text-gray-300">
+                    {logoImage ? "Changer" : "Charger Logo"}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleLogoUpload}
+                    className="hidden"
+                  />
+                </label>
+                {logoImage && (
+                  <div className="flex items-center gap-2">
+                    <img
+                      src={logoImage}
+                      alt="Logo"
+                      className="h-8 w-8 rounded object-contain bg-gray-800 border border-gray-700"
+                    />
+                    <button
+                      onClick={() => setLogoImage(null)}
+                      className="rounded p-1 text-gray-500 hover:bg-red-600 hover:text-white"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Format Selection */}
+            <div>
+              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">
+                Format
+              </label>
+              <div className="flex gap-2">
+                {(["9:16", "16:9"] as Format[]).map((fmt) => (
+                  <button
+                    key={fmt}
+                    onClick={() => setFormat(fmt)}
+                    className={`flex-1 rounded px-3 py-2 text-xs font-bold transition-all ${
+                      format === fmt
+                        ? "bg-purple-600 text-white"
+                        : "bg-gray-700 text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    {fmt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Reset Positions Button */}
+            <button
+              onClick={() => {
+                setTitlePos({ x: 50, y: 10 });
+                setLogoPos({ x: 50, y: 85 });
+                setWatermarkPos({ x: 50, y: 97 });
+                setCardsPos({ x: 50, y: 50 });
+                setTitleSize(100);
+                setCardsSize(95);
+                setWatermarkSize(80);
+              }}
+              className="w-full rounded-lg border border-gray-700 bg-gray-700 px-3 py-2 text-xs font-medium text-gray-300 hover:bg-gray-600"
+            >
+              ↺ Réinitialiser les positions
+            </button>
+
+            {/* Close Settings Button */}
+            <button
+              onClick={() => setShowSettings(false)}
+              className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs font-medium text-gray-300 hover:bg-gray-700"
+            >
+              Fermer les paramètres
+            </button>
+          </div>
+        )}
 
         {/* ═══════════════════════════════════════════════════════ */}
         {/* STEP 0: Content Theme & Generation */}
         {/* ═══════════════════════════════════════════════════════ */}
         {step === 0 && (
           <div className="space-y-4">
-            {/* ── Quick Settings Row (Color + Format) — compact ── */}
-            <div className="rounded-lg bg-gray-800/50 px-3 py-2 space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-gray-500 uppercase tracking-wider mr-1">Couleur</span>
-                {COLOR_THEMES.map((ct) => (
-                  <button
-                    key={ct.id}
-                    onClick={() => { setColorTheme(ct.id); setNoColorBg(false); }}
-                    className={`h-6 w-6 rounded-full bg-gradient-to-br ${ct.bg} transition-all flex-shrink-0 ${
-                      colorTheme === ct.id && !noColorBg ? 'ring-2 ring-white scale-110' : 'opacity-60 hover:opacity-100'
-                    }`}
-                    title={ct.name}
-                  />
-                ))}
-                <button
-                  onClick={() => { setColorTheme('custom'); setNoColorBg(false); }}
-                  className={`h-6 w-6 rounded-full transition-all flex-shrink-0 ${
-                    colorTheme === 'custom' && !noColorBg ? 'ring-2 ring-white scale-110' : 'opacity-60 hover:opacity-100'
-                  }`}
-                  style={{ background: `conic-gradient(#ef4444, #f59e0b, #10b981, #3b82f6, #a855f7, #ec4899, #ef4444)` }}
-                  title="Personnalisé"
-                />
-                {/* Sans couleur button */}
-                <button
-                  onClick={() => setNoColorBg(!noColorBg)}
-                  className={`h-6 w-6 rounded-full border-2 transition-all flex-shrink-0 ${
-                    noColorBg ? 'ring-2 ring-white scale-110 border-gray-400 bg-gray-900' : 'border-gray-600 bg-gray-800 opacity-60 hover:opacity-100'
-                  }`}
-                  title="Sans couleur (photo uniquement)"
-                >
-                  {noColorBg && <span className="block w-full h-full rounded-full relative"><span className="absolute inset-0 flex items-center justify-center text-[8px] text-gray-400">∅</span></span>}
-                </button>
-                {colorTheme === 'custom' && !noColorBg && (
-                  <input type="color" value={customAccent} onChange={(e) => setCustomAccent(e.target.value)} className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent p-0" />
-                )}
-                <div className="ml-auto flex gap-1">
-                  {(['9:16', '16:9'] as Format[]).map((fmt) => (
-                    <button
-                      key={fmt}
-                      onClick={() => setFormat(fmt)}
-                      className={`rounded px-2 py-0.5 text-[10px] font-bold transition-all ${
-                        format === fmt ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-400 hover:text-white'
-                      }`}
-                    >
-                      {fmt}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {/* Per-sequence color control — shown when noColorBg is on */}
-              {noColorBg && (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[9px] text-gray-500">Sans couleur sur :</span>
-                  {['titre', 'cartes', 'video', 'cta'].map((seq) => (
-                    <label key={seq} className="flex items-center gap-1 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={noColorSequences.includes(seq)}
-                        onChange={(e) => {
-                          if (e.target.checked) setNoColorSequences([...noColorSequences, seq]);
-                          else setNoColorSequences(noColorSequences.filter(s => s !== seq));
-                        }}
-                        className="h-3 w-3 rounded border-gray-600 accent-purple-500"
-                      />
-                      <span className="text-[10px] text-gray-400 capitalize">{seq}</span>
-                    </label>
-                  ))}
-                  <button
-                    onClick={() => setNoColorSequences(['titre', 'cartes', 'video', 'cta'])}
-                    className="text-[9px] text-purple-400 hover:text-purple-300 ml-1"
-                  >Toutes</button>
-                  <button
-                    onClick={() => setNoColorSequences([])}
-                    className="text-[9px] text-gray-500 hover:text-gray-400"
-                  >Aucune</button>
-                </div>
-              )}
-            </div>
-
             {/* Content Theme Selector */}
             <div>
-              <label className="mb-2 block text-sm font-medium text-gray-300">Thème du contenu</label>
+              <label className="mb-2 block text-sm font-medium text-gray-300">
+                Thème du contenu
+              </label>
               <div className="grid grid-cols-3 gap-1.5">
                 {CONTENT_THEMES.map((theme) => (
                   <button
@@ -903,8 +1468,8 @@ export default function InfographicPage() {
                     onClick={() => setContentTheme(theme.id)}
                     className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-medium transition-all ${
                       contentTheme === theme.id
-                        ? 'ring-2 ring-purple-500 bg-gray-800'
-                        : 'bg-gray-800/50 hover:bg-gray-800'
+                        ? "ring-2 ring-purple-500 bg-gray-800"
+                        : "bg-gray-800/50 hover:bg-gray-800"
                     }`}
                   >
                     <span className="text-sm">{theme.emoji}</span>
@@ -915,7 +1480,7 @@ export default function InfographicPage() {
             </div>
 
             {/* Custom Topic Input (only for Personnalisé) */}
-            {contentTheme === 'personnalise' && (
+            {contentTheme === "personnalise" && (
               <div>
                 <label className="mb-2 block text-sm font-medium text-gray-300">
                   Votre sujet personnalisé
@@ -925,7 +1490,10 @@ export default function InfographicPage() {
                     type="text"
                     value={customTopic}
                     onChange={(e) => setCustomTopic(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && customTopic.trim()) generateContent(); }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && customTopic.trim())
+                        generateContent();
+                    }}
                     className="flex-1 rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
                     placeholder="Ex: moringa, collagène, stretching..."
                   />
@@ -934,7 +1502,11 @@ export default function InfographicPage() {
                     disabled={!customTopic.trim() || isGenerating}
                     className="rounded-lg bg-purple-600 px-4 py-2.5 font-medium text-white hover:bg-purple-700 disabled:opacity-50"
                   >
-                    {isGenerating ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                    {isGenerating ? (
+                      <Loader2 size={18} className="animate-spin" />
+                    ) : (
+                      <Sparkles size={18} />
+                    )}
                   </button>
                 </div>
                 <p className="mt-1 text-xs text-gray-500">
@@ -947,7 +1519,9 @@ export default function InfographicPage() {
             {isGenerating && (
               <div className="flex items-center justify-center gap-3 rounded-lg border border-gray-700 bg-gray-800/50 py-8">
                 <Loader2 size={24} className="animate-spin text-purple-400" />
-                <span className="text-gray-300">Génération du contenu par l'IA...</span>
+                <span className="text-gray-300">
+                  Génération du contenu par l'IA...
+                </span>
               </div>
             )}
             {generationError && (
@@ -965,28 +1539,36 @@ export default function InfographicPage() {
                   </label>
                   <button
                     onClick={() => {
-                      const query = photoSearchQuery.trim()
-                        || (contentTheme === 'personnalise' ? customTopic : '')
-                        || CONTENT_THEMES.find(t => t.id === contentTheme)?.pexelsQuery
-                        || 'fitness';
+                      const query =
+                        photoSearchQuery.trim() ||
+                        (contentTheme === "personnalise" ? customTopic : "") ||
+                        CONTENT_THEMES.find((t) => t.id === contentTheme)
+                          ?.pexelsQuery ||
+                        "fitness";
                       fetchPexelsPhotos(query, true);
                     }}
                     disabled={pexelsLoading}
                     className="flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-medium text-purple-400 hover:bg-gray-700"
                   >
-                    <RefreshCw size={14} className={pexelsLoading ? 'animate-spin' : ''} />
+                    <RefreshCw
+                      size={14}
+                      className={pexelsLoading ? "animate-spin" : ""}
+                    />
                     Nouvelles photos
                   </button>
                 </div>
                 <div className="mb-2 flex gap-2">
                   <div className="relative flex-1">
-                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                    <Search
+                      size={14}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"
+                    />
                     <input
                       type="text"
                       value={photoSearchQuery}
                       onChange={(e) => setPhotoSearchQuery(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' && photoSearchQuery.trim()) {
+                        if (e.key === "Enter" && photoSearchQuery.trim()) {
                           pexelsPageRef.current = 0;
                           fetchPexelsPhotos(photoSearchQuery.trim(), true);
                         }
@@ -1005,7 +1587,11 @@ export default function InfographicPage() {
                     disabled={pexelsLoading || !photoSearchQuery.trim()}
                     className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
                   >
-                    {pexelsLoading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                    {pexelsLoading ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <Search size={16} />
+                    )}
                   </button>
                 </div>
                 <div className="grid grid-cols-5 gap-1.5">
@@ -1014,10 +1600,16 @@ export default function InfographicPage() {
                       key={photo.id}
                       onClick={() => setSelectedPhotoIndex(i)}
                       className={`relative overflow-hidden rounded-lg transition-all ${
-                        selectedPhotoIndex === i ? 'ring-2 ring-purple-500' : 'opacity-70 hover:opacity-100'
+                        selectedPhotoIndex === i
+                          ? "ring-2 ring-purple-500"
+                          : "opacity-70 hover:opacity-100"
                       }`}
                     >
-                      <img src={photo.small} alt={photo.alt} className="aspect-[3/4] w-full object-cover" />
+                      <img
+                        src={photo.small}
+                        alt={photo.alt}
+                        className="aspect-[3/4] w-full object-cover"
+                      />
                       {selectedPhotoIndex === i && (
                         <div className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-purple-500">
                           <Check size={10} />
@@ -1040,7 +1632,9 @@ export default function InfographicPage() {
                 {/* Title & Subtitle */}
                 <div className="space-y-3">
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-400">Titre</label>
+                    <label className="mb-1 block text-xs font-medium text-gray-400">
+                      Titre
+                    </label>
                     <input
                       type="text"
                       value={title}
@@ -1049,7 +1643,9 @@ export default function InfographicPage() {
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-400">Sous-titre</label>
+                    <label className="mb-1 block text-xs font-medium text-gray-400">
+                      Sous-titre
+                    </label>
                     <input
                       type="text"
                       value={subtitle}
@@ -1070,18 +1666,28 @@ export default function InfographicPage() {
                       disabled={isGenerating}
                       className="flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-medium text-purple-400 hover:bg-gray-700"
                     >
-                      <RefreshCw size={14} className={isGenerating ? 'animate-spin' : ''} />
+                      <RefreshCw
+                        size={14}
+                        className={isGenerating ? "animate-spin" : ""}
+                      />
                       Régénérer
                     </button>
                   </div>
                   <div className="space-y-3">
                     {cards.map((card) => (
-                      <div key={card.id} className="rounded-lg border border-gray-700 bg-gray-800 p-3">
+                      <div
+                        key={card.id}
+                        className="rounded-lg border border-gray-700 bg-gray-800 p-3"
+                      >
                         <div className="flex items-start gap-3">
                           {/* Emoji */}
                           <div className="relative">
                             <button
-                              onClick={() => setShowEmojiPicker(showEmojiPicker === card.id ? null : card.id)}
+                              onClick={() =>
+                                setShowEmojiPicker(
+                                  showEmojiPicker === card.id ? null : card.id,
+                                )
+                              }
                               className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-700 text-xl hover:bg-gray-600"
                             >
                               {card.emoji}
@@ -1091,7 +1697,10 @@ export default function InfographicPage() {
                                 {EMOJIS.map((emoji) => (
                                   <button
                                     key={emoji}
-                                    onClick={() => { updateCard(card.id, 'emoji', emoji); setShowEmojiPicker(null); }}
+                                    onClick={() => {
+                                      updateCard(card.id, "emoji", emoji);
+                                      setShowEmojiPicker(null);
+                                    }}
                                     className="rounded p-1 text-lg hover:bg-gray-700"
                                   >
                                     {emoji}
@@ -1106,14 +1715,18 @@ export default function InfographicPage() {
                               <input
                                 type="text"
                                 value={card.label}
-                                onChange={(e) => updateCard(card.id, 'label', e.target.value)}
+                                onChange={(e) =>
+                                  updateCard(card.id, "label", e.target.value)
+                                }
                                 className="flex-1 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs font-bold text-white focus:border-purple-500 focus:outline-none"
                                 placeholder="Label"
                               />
                               <input
                                 type="text"
                                 value={card.value}
-                                onChange={(e) => updateCard(card.id, 'value', e.target.value)}
+                                onChange={(e) =>
+                                  updateCard(card.id, "value", e.target.value)
+                                }
                                 className="w-20 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs font-bold text-purple-400 focus:border-purple-500 focus:outline-none"
                                 placeholder="Valeur"
                               />
@@ -1121,13 +1734,22 @@ export default function InfographicPage() {
                             <input
                               type="text"
                               value={card.description}
-                              onChange={(e) => updateCard(card.id, 'description', e.target.value)}
+                              onChange={(e) =>
+                                updateCard(
+                                  card.id,
+                                  "description",
+                                  e.target.value,
+                                )
+                              }
                               className="w-full rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-300 focus:border-purple-500 focus:outline-none"
                               placeholder="Description courte"
                             />
                           </div>
                           {/* Delete */}
-                          <button onClick={() => deleteCard(card.id)} className="rounded p-1 text-gray-500 hover:bg-red-600 hover:text-white">
+                          <button
+                            onClick={() => deleteCard(card.id)}
+                            className="rounded p-1 text-gray-500 hover:bg-red-600 hover:text-white"
+                          >
                             <Trash2 size={14} />
                           </button>
                         </div>
@@ -1139,17 +1761,28 @@ export default function InfographicPage() {
                     disabled={isAddingCard}
                     className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-gray-700 bg-gray-800/50 py-2.5 text-xs font-medium text-gray-400 hover:border-purple-500 hover:text-purple-400 disabled:opacity-50"
                   >
-                    {isAddingCard ? <Loader2 size={14} className="animate-spin" /> : <><Sparkles size={14} /> Ajouter une carte IA</>}
+                    {isAddingCard ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <>
+                        <Sparkles size={14} /> Ajouter une carte IA
+                      </>
+                    )}
                   </button>
                 </div>
 
                 {/* Sales Phrases */}
                 {salesPhrases.length > 0 && (
                   <div>
-                    <h3 className="mb-2 text-sm font-semibold text-gray-300">Phrases de vente</h3>
+                    <h3 className="mb-2 text-sm font-semibold text-gray-300">
+                      Phrases de vente
+                    </h3>
                     <div className="space-y-1.5">
                       {salesPhrases.map((phrase, i) => (
-                        <div key={i} className="flex items-center gap-2 rounded-lg bg-gray-800 px-3 py-2 text-xs text-gray-300">
+                        <div
+                          key={i}
+                          className="flex items-center gap-2 rounded-lg bg-gray-800 px-3 py-2 text-xs text-gray-300"
+                        >
                           <span className="text-purple-400">#{i + 1}</span>
                           <input
                             type="text"
@@ -1182,144 +1815,15 @@ export default function InfographicPage() {
 
         {/* ═══════════════════════════════════════════════════════ */}
         {/* ═══════════════════════════════════════════════════════ */}
-        {/* STEP 1: Design (Simplified — now shows instructions + Paramètres button) */}
+        {/* STEP 1: Design (Simplified — now shows instructions + navigation) */}
         {/* ═══════════════════════════════════════════════════════ */}
         {step === 1 && (
           <div className="space-y-4">
-            {/* ── Paramètres Button (visible at top of all steps) ── */}
-            <button
-              onClick={() => setShowSettings(!showSettings)}
-              className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 px-4 py-2.5 font-semibold text-white transition-all"
-            >
-              <span className="text-lg">⚙️</span>
-              <span>Paramètres Globaux</span>
-            </button>
-
-            {/* ── Settings Panel (overlaid when showSettings is true) ── */}
-            {showSettings && (
-              <div className="rounded-lg bg-gray-800/80 border border-purple-500/30 p-4 space-y-4">
-                {/* Font Selector */}
-                <div>
-                  <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Police</label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {FONT_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.label}
-                        onClick={() => setSelectedFont(opt.label)}
-                        className={`px-2 py-1 rounded text-[9px] font-medium transition-all ${
-                          selectedFont === opt.label ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-400 hover:text-white'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Filter Selector */}
-                <div>
-                  <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Filtre visuel</label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {FILTER_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.label}
-                        onClick={() => setSelectedFilter(opt.label)}
-                        className={`px-2 py-1 rounded text-[9px] font-medium transition-all ${
-                          selectedFilter === opt.label ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-400 hover:text-white'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Card Style Selector */}
-                <div>
-                  <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Style des cartes</label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {CARD_STYLE_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.label}
-                        onClick={() => setSelectedCardStyle(opt.label)}
-                        className={`px-2 py-1 rounded text-[9px] font-medium transition-all ${
-                          selectedCardStyle === opt.label ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-400 hover:text-white'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Logo Upload */}
-                <div>
-                  <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Logo</label>
-                  <div className="flex items-center gap-3">
-                    <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-gray-700 bg-gray-800 px-3 py-2 hover:border-purple-500 hover:bg-gray-700 transition-all">
-                      <Upload size={14} />
-                      <span className="text-xs text-gray-300">{logoImage ? 'Changer' : 'Charger Logo'}</span>
-                      <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
-                    </label>
-                    {logoImage && (
-                      <div className="flex items-center gap-2">
-                        <img src={logoImage} alt="Logo" className="h-8 w-8 rounded object-contain bg-gray-800 border border-gray-700" />
-                        <button onClick={() => setLogoImage(null)} className="rounded p-1 text-gray-500 hover:bg-red-600 hover:text-white">
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Format Selection */}
-                <div>
-                  <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Format</label>
-                  <div className="flex gap-2">
-                    {(['9:16', '16:9'] as Format[]).map((fmt) => (
-                      <button
-                        key={fmt}
-                        onClick={() => setFormat(fmt)}
-                        className={`flex-1 rounded px-3 py-2 text-xs font-bold transition-all ${
-                          format === fmt ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-400 hover:text-white'
-                        }`}
-                      >
-                        {fmt}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Reset Positions Button */}
-                <button
-                  onClick={() => {
-                    setTitlePos({ x: 50, y: 10 });
-                    setLogoPos({ x: 50, y: 85 });
-                    setWatermarkPos({ x: 50, y: 97 });
-                    setCardsPos({ x: 50, y: 50 });
-                    setTitleSize(100);
-                    setCardsSize(95);
-                    setWatermarkSize(80);
-                  }}
-                  className="w-full rounded-lg border border-gray-700 bg-gray-700 px-3 py-2 text-xs font-medium text-gray-300 hover:bg-gray-600"
-                >
-                  ↺ Réinitialiser les positions
-                </button>
-
-                {/* Close Settings Button */}
-                <button
-                  onClick={() => setShowSettings(false)}
-                  className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs font-medium text-gray-300 hover:bg-gray-700"
-                >
-                  Fermer les paramètres
-                </button>
-              </div>
-            )}
-
             {/* ── Main Instruction Text ── */}
             <div className="rounded-lg bg-purple-900/20 border border-purple-500/30 px-4 py-3">
               <p className="text-sm text-purple-300 font-medium">
-                Double-cliquez sur les éléments dans l'aperçu pour les modifier (couleurs, texte, taille...)
+                Double-cliquez sur les éléments dans l'aperçu pour les modifier
+                (couleurs, texte, taille...)
               </p>
             </div>
 
@@ -1357,15 +1861,21 @@ export default function InfographicPage() {
                   onClick={() => setBatchCount(Math.max(1, batchCount - 1))}
                   disabled={batchCount <= 1}
                   className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-800 border border-gray-700 text-lg font-bold text-white hover:bg-gray-700 disabled:opacity-30 transition-all"
-                >−</button>
+                >
+                  −
+                </button>
                 <div className="flex items-center justify-center rounded-lg bg-purple-600/20 border border-purple-500/40 px-5 py-1.5 min-w-[60px]">
-                  <span className="text-lg font-bold text-purple-400">x{batchCount}</span>
+                  <span className="text-lg font-bold text-purple-400">
+                    x{batchCount}
+                  </span>
                 </div>
                 <button
                   onClick={() => setBatchCount(Math.min(10, batchCount + 1))}
                   disabled={batchCount >= 10}
                   className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-800 border border-gray-700 text-lg font-bold text-white hover:bg-gray-700 disabled:opacity-30 transition-all"
-                >+</button>
+                >
+                  +
+                </button>
                 <span className="text-[10px] text-gray-500 ml-1">1 à 10</span>
               </div>
             </div>
@@ -1374,34 +1884,44 @@ export default function InfographicPage() {
             <div>
               <div className="mb-3 flex items-center justify-between">
                 <label className="text-sm font-medium text-gray-300">
-                  Photos d'affiche {pexelsPhotos.length > 0 && `(${pexelsPhotos.length})`}
+                  Photos d'affiche{" "}
+                  {pexelsPhotos.length > 0 && `(${pexelsPhotos.length})`}
                 </label>
                 <button
                   onClick={() => {
-                    const query = photoSearchQuery.trim()
-                      || (contentTheme === 'personnalise' ? customTopic : '')
-                      || CONTENT_THEMES.find(t => t.id === contentTheme)?.pexelsQuery
-                      || CONTENT_THEMES.find(t => t.id === contentTheme)?.label
-                      || 'fitness';
+                    const query =
+                      photoSearchQuery.trim() ||
+                      (contentTheme === "personnalise" ? customTopic : "") ||
+                      CONTENT_THEMES.find((t) => t.id === contentTheme)
+                        ?.pexelsQuery ||
+                      CONTENT_THEMES.find((t) => t.id === contentTheme)
+                        ?.label ||
+                      "fitness";
                     fetchPexelsPhotos(query, true);
                   }}
                   disabled={pexelsLoading}
                   className="flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-medium text-purple-400 hover:bg-gray-700"
                 >
-                  <RefreshCw size={14} className={pexelsLoading ? 'animate-spin' : ''} />
+                  <RefreshCw
+                    size={14}
+                    className={pexelsLoading ? "animate-spin" : ""}
+                  />
                   Régénérer
                 </button>
               </div>
               {/* Photo search input */}
               <div className="mb-3 flex gap-2">
                 <div className="relative flex-1">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <Search
+                    size={14}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"
+                  />
                   <input
                     type="text"
                     value={photoSearchQuery}
                     onChange={(e) => setPhotoSearchQuery(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' && photoSearchQuery.trim()) {
+                      if (e.key === "Enter" && photoSearchQuery.trim()) {
                         fetchPexelsPhotos(photoSearchQuery.trim(), true);
                       }
                     }}
@@ -1418,7 +1938,11 @@ export default function InfographicPage() {
                   disabled={pexelsLoading || !photoSearchQuery.trim()}
                   className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
                 >
-                  {pexelsLoading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                  {pexelsLoading ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Search size={16} />
+                  )}
                 </button>
               </div>
               {pexelsLoading ? (
@@ -1432,10 +1956,16 @@ export default function InfographicPage() {
                       key={photo.id}
                       onClick={() => setSelectedPhotoIndex(i)}
                       className={`relative overflow-hidden rounded-lg transition-all ${
-                        selectedPhotoIndex === i ? 'ring-2 ring-purple-500' : 'opacity-70 hover:opacity-100'
+                        selectedPhotoIndex === i
+                          ? "ring-2 ring-purple-500"
+                          : "opacity-70 hover:opacity-100"
                       }`}
                     >
-                      <img src={photo.small} alt={photo.alt} className="aspect-[3/4] w-full object-cover" />
+                      <img
+                        src={photo.small}
+                        alt={photo.alt}
+                        className="aspect-[3/4] w-full object-cover"
+                      />
                       {selectedPhotoIndex === i && (
                         <div className="absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-purple-500">
                           <Check size={12} />
@@ -1470,9 +2000,14 @@ export default function InfographicPage() {
               <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-700 bg-gray-800 px-4 py-4 hover:border-purple-500 hover:bg-gray-700">
                 <Upload size={18} />
                 <span className="text-sm text-gray-300">
-                  {characterImage ? 'Changer l\'image' : 'Télécharger'}
+                  {characterImage ? "Changer l'image" : "Télécharger"}
                 </span>
-                <input type="file" accept="image/*" onChange={handleCharacterUpload} className="hidden" />
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleCharacterUpload}
+                  className="hidden"
+                />
               </label>
             </div>
 
@@ -1485,8 +2020,12 @@ export default function InfographicPage() {
                 <div className="flex items-center gap-3 rounded-lg border border-green-700 bg-green-900/20 px-4 py-3">
                   <Video size={20} className="text-green-400 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-green-300 truncate">{rushFileName}</p>
-                    <p className="text-xs text-green-500">Vidéo prête pour l'export</p>
+                    <p className="text-sm font-medium text-green-300 truncate">
+                      {rushFileName}
+                    </p>
+                    <p className="text-xs text-green-500">
+                      Vidéo prête pour l'export
+                    </p>
                   </div>
                   <button
                     onClick={removeVideo}
@@ -1496,18 +2035,29 @@ export default function InfographicPage() {
                   </button>
                 </div>
               ) : (
-                <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed ${
-                  isUploadingVideo ? 'border-purple-500 bg-purple-900/20' : 'border-gray-700 bg-gray-800 hover:border-purple-500 hover:bg-gray-700'
-                } px-4 py-4`}>
+                <label
+                  className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed ${
+                    isUploadingVideo
+                      ? "border-purple-500 bg-purple-900/20"
+                      : "border-gray-700 bg-gray-800 hover:border-purple-500 hover:bg-gray-700"
+                  } px-4 py-4`}
+                >
                   {isUploadingVideo ? (
                     <>
-                      <Loader2 size={18} className="animate-spin text-purple-400" />
-                      <span className="text-sm text-purple-300">Upload en cours...</span>
+                      <Loader2
+                        size={18}
+                        className="animate-spin text-purple-400"
+                      />
+                      <span className="text-sm text-purple-300">
+                        Upload en cours...
+                      </span>
                     </>
                   ) : (
                     <>
                       <Video size={18} />
-                      <span className="text-sm text-gray-300">Ajouter une vidéo</span>
+                      <span className="text-sm text-gray-300">
+                        Ajouter une vidéo
+                      </span>
                     </>
                   )}
                   <input
@@ -1520,98 +2070,160 @@ export default function InfographicPage() {
                 </label>
               )}
               <p className="mt-1 text-xs text-gray-500">
-                La vidéo sera utilisée comme fond dans le montage final (max 100 Mo)
+                La vidéo sera utilisée comme fond dans le montage final (max 100
+                Mo)
               </p>
             </div>
 
             {/* Video Overlay Text */}
             {rushUrl && (
-            <div>
-              <label className="mb-2 block text-sm font-medium text-gray-300">
-                Texte sur la vidéo (optionnel)
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={videoOverlayText}
-                  onChange={(e) => setVideoOverlayText(e.target.value)}
-                  placeholder="Ex: Découvrez les bienfaits du moringa"
-                  className="flex-1 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
-                />
-                <button
-                  onClick={async () => {
-                    setIsGeneratingOverlay(true);
-                    try {
-                      const themeObj = CONTENT_THEMES.find(t => t.id === contentTheme);
-                      const topicText = contentTheme === 'personnalise' ? customTopic : (themeObj?.label || contentTheme);
-                      const res = await fetch('/api/content/ai-generate', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          topic: topicText,
-                          locale: 'fr',
-                          cardCount: 0,
-                          videoOverlayOnly: true,
-                        }),
-                      });
-                      if (res.ok) {
-                        const data = await res.json();
-                        if (data.success && data.content?.videoOverlayText) {
-                          setVideoOverlayText(data.content.videoOverlayText);
-                        } else if (data.success && data.content?.subtitle) {
-                          // Fallback: use subtitle as overlay text
-                          setVideoOverlayText(data.content.subtitle);
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-300">
+                  Texte sur la vidéo (optionnel)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={videoOverlayText}
+                    onChange={(e) => setVideoOverlayText(e.target.value)}
+                    placeholder="Ex: Découvrez les bienfaits du moringa"
+                    className="flex-1 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
+                  />
+                  <button
+                    onClick={async () => {
+                      setIsGeneratingOverlay(true);
+                      try {
+                        const themeObj = CONTENT_THEMES.find(
+                          (t) => t.id === contentTheme,
+                        );
+                        const topicText =
+                          contentTheme === "personnalise"
+                            ? customTopic
+                            : themeObj?.label || contentTheme;
+                        const res = await fetch("/api/content/ai-generate", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            topic: topicText,
+                            locale: "fr",
+                            cardCount: 0,
+                            videoOverlayOnly: true,
+                          }),
+                        });
+                        if (res.ok) {
+                          const data = await res.json();
+                          if (data.success && data.content?.videoOverlayText) {
+                            setVideoOverlayText(data.content.videoOverlayText);
+                          } else if (data.success && data.content?.subtitle) {
+                            // Fallback: use subtitle as overlay text
+                            setVideoOverlayText(data.content.subtitle);
+                          }
                         }
+                      } catch (err) {
+                        console.warn(
+                          "[Infographie] AI overlay text generation failed:",
+                          err,
+                        );
+                      } finally {
+                        setIsGeneratingOverlay(false);
                       }
-                    } catch (err) {
-                      console.warn('[Infographie] AI overlay text generation failed:', err);
-                    } finally {
-                      setIsGeneratingOverlay(false);
-                    }
-                  }}
-                  disabled={isGeneratingOverlay}
-                  className="flex items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white hover:bg-purple-500 disabled:opacity-50"
-                  title="Générer un texte avec l'IA"
-                >
-                  {isGeneratingOverlay ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                  IA
-                </button>
+                    }}
+                    disabled={isGeneratingOverlay}
+                    className="flex items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white hover:bg-purple-500 disabled:opacity-50"
+                    title="Générer un texte avec l'IA"
+                  >
+                    {isGeneratingOverlay ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <Sparkles size={16} />
+                    )}
+                    IA
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  Ce texte s'affichera en overlay sur la séquence vidéo dans le
+                  montage
+                </p>
               </div>
-              <p className="mt-1 text-xs text-gray-500">
-                Ce texte s'affichera en overlay sur la séquence vidéo dans le montage
-              </p>
-            </div>
             )}
 
             {/* Sequence Durations */}
             <div>
-              <label className="mb-3 block text-sm font-medium text-gray-300">Durée des séquences</label>
+              <label className="mb-3 block text-sm font-medium text-gray-300">
+                Durée des séquences
+              </label>
               <div className="space-y-3">
                 {[
-                  { label: '🖼️ Affiche (Intro)', value: introDuration, setter: setIntroDuration, min: 2, max: 15 },
-                  { label: '📊 Cartes d\'Information', value: cardsDuration, setter: setCardsDuration, min: 3, max: 20, disabled: cards.length === 0 },
-                  { label: '🎬 Vidéo', value: videoDuration, setter: setVideoDuration, min: 3, max: 60, disabled: !rushUrl },
-                  { label: '📢 CTA', value: ctaDuration, setter: setCtaDuration, min: 2, max: 15 },
+                  {
+                    label: "🖼️ Affiche (Intro)",
+                    value: introDuration,
+                    setter: setIntroDuration,
+                    min: 2,
+                    max: 15,
+                  },
+                  {
+                    label: "📊 Cartes d'Information",
+                    value: cardsDuration,
+                    setter: setCardsDuration,
+                    min: 3,
+                    max: 20,
+                    disabled: cards.length === 0,
+                  },
+                  {
+                    label: "🎬 Vidéo",
+                    value: videoDuration,
+                    setter: setVideoDuration,
+                    min: 3,
+                    max: 60,
+                    disabled: !rushUrl,
+                  },
+                  {
+                    label: "📢 CTA",
+                    value: ctaDuration,
+                    setter: setCtaDuration,
+                    min: 2,
+                    max: 15,
+                  },
                 ].map((item) => (
-                  <div key={item.label} className={`flex items-center gap-3 rounded-lg bg-gray-800 px-4 py-2.5 ${item.disabled ? 'opacity-40' : ''}`}>
-                    <span className="flex-1 text-xs font-medium text-gray-300">{item.label}</span>
+                  <div
+                    key={item.label}
+                    className={`flex items-center gap-3 rounded-lg bg-gray-800 px-4 py-2.5 ${item.disabled ? "opacity-40" : ""}`}
+                  >
+                    <span className="flex-1 text-xs font-medium text-gray-300">
+                      {item.label}
+                    </span>
                     <button
-                      onClick={() => item.setter(Math.max(item.min, item.value - 1))}
+                      onClick={() =>
+                        item.setter(Math.max(item.min, item.value - 1))
+                      }
                       disabled={item.disabled || item.value <= item.min}
                       className="flex h-7 w-7 items-center justify-center rounded bg-gray-700 text-sm font-bold text-white hover:bg-gray-600 disabled:opacity-30"
-                    >−</button>
-                    <span className="w-10 text-center text-sm font-bold text-purple-400">{item.value}s</span>
+                    >
+                      −
+                    </button>
+                    <span className="w-10 text-center text-sm font-bold text-purple-400">
+                      {item.value}s
+                    </span>
                     <button
-                      onClick={() => item.setter(Math.min(item.max, item.value + 1))}
+                      onClick={() =>
+                        item.setter(Math.min(item.max, item.value + 1))
+                      }
                       disabled={item.disabled || item.value >= item.max}
                       className="flex h-7 w-7 items-center justify-center rounded bg-gray-700 text-sm font-bold text-white hover:bg-gray-600 disabled:opacity-30"
-                    >+</button>
+                    >
+                      +
+                    </button>
                   </div>
                 ))}
               </div>
               <p className="mt-2 text-xs text-gray-500">
-                Durée totale: <span className="font-bold text-purple-400">
-                  {introDuration + (cards.length > 0 ? cardsDuration : 0) + (rushUrl ? videoDuration : 0) + ctaDuration}s
+                Durée totale:{" "}
+                <span className="font-bold text-purple-400">
+                  {introDuration +
+                    (cards.length > 0 ? cardsDuration : 0) +
+                    (rushUrl ? videoDuration : 0) +
+                    ctaDuration}
+                  s
                 </span>
               </p>
             </div>
@@ -1643,11 +2255,15 @@ export default function InfographicPage() {
           <div className="space-y-6">
             {/* Summary */}
             <div className="rounded-lg border border-gray-700 bg-gray-800 p-4">
-              <h3 className="mb-3 text-sm font-semibold text-gray-300">Résumé</h3>
+              <h3 className="mb-3 text-sm font-semibold text-gray-300">
+                Résumé
+              </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-sm">
                 <div>
                   <span className="text-gray-500">Thème:</span>
-                  <span className="ml-2 text-white">{CONTENT_THEMES.find(t => t.id === contentTheme)?.label}</span>
+                  <span className="ml-2 text-white">
+                    {CONTENT_THEMES.find((t) => t.id === contentTheme)?.label}
+                  </span>
                 </div>
                 <div>
                   <span className="text-gray-500">Cartes:</span>
@@ -1671,8 +2287,10 @@ export default function InfographicPage() {
                 </div>
                 <div>
                   <span className="text-gray-500">Vidéo:</span>
-                  <span className={`ml-2 ${rushUrl ? 'text-green-400' : 'text-gray-500'}`}>
-                    {rushUrl ? '✓ Prête' : 'Aucune'}
+                  <span
+                    className={`ml-2 ${rushUrl ? "text-green-400" : "text-gray-500"}`}
+                  >
+                    {rushUrl ? "✓ Prête" : "Aucune"}
                   </span>
                 </div>
               </div>
@@ -1681,11 +2299,18 @@ export default function InfographicPage() {
             {/* Safety Warning: video source undefined */}
             {rushFileName && !rushUrl && (
               <div className="flex items-start gap-3 rounded-lg border border-yellow-700 bg-yellow-900/20 p-3">
-                <AlertTriangle size={18} className="flex-shrink-0 text-yellow-400 mt-0.5" />
+                <AlertTriangle
+                  size={18}
+                  className="flex-shrink-0 text-yellow-400 mt-0.5"
+                />
                 <div>
-                  <p className="text-sm font-medium text-yellow-300">Source vidéo indéfinie</p>
+                  <p className="text-sm font-medium text-yellow-300">
+                    Source vidéo indéfinie
+                  </p>
                   <p className="text-xs text-yellow-500 mt-0.5">
-                    La vidéo n'a pas été uploadée correctement. Retournez à l'étape Style pour re-sélectionner le fichier vidéo avant d'exporter.
+                    La vidéo n'a pas été uploadée correctement. Retournez à
+                    l'étape Style pour re-sélectionner le fichier vidéo avant
+                    d'exporter.
                   </p>
                 </div>
               </div>
@@ -1693,23 +2318,35 @@ export default function InfographicPage() {
 
             {/* Destination */}
             <div>
-              <label className="mb-3 block text-sm font-medium text-gray-300">Destination</label>
+              <label className="mb-3 block text-sm font-medium text-gray-300">
+                Destination
+              </label>
               <div className="space-y-2">
                 {[
-                  { value: 'draft' as Destination, label: 'Calendrier (brouillon)' },
-                  { value: 'export' as Destination, label: 'Export fichier' },
-                  { value: 'both' as Destination, label: 'Les deux' },
+                  {
+                    value: "draft" as Destination,
+                    label: "Calendrier (brouillon)",
+                  },
+                  { value: "export" as Destination, label: "Export fichier" },
+                  { value: "both" as Destination, label: "Les deux" },
                 ].map((option) => (
-                  <label key={option.value} className="flex items-center gap-3 rounded-lg bg-gray-800 px-4 py-3 cursor-pointer hover:bg-gray-700">
+                  <label
+                    key={option.value}
+                    className="flex items-center gap-3 rounded-lg bg-gray-800 px-4 py-3 cursor-pointer hover:bg-gray-700"
+                  >
                     <input
                       type="radio"
                       name="destination"
                       value={option.value}
                       checked={destination === option.value}
-                      onChange={(e) => setDestination(e.target.value as Destination)}
+                      onChange={(e) =>
+                        setDestination(e.target.value as Destination)
+                      }
                       className="h-4 w-4 cursor-pointer"
                     />
-                    <span className="text-sm text-gray-300">{option.label}</span>
+                    <span className="text-sm text-gray-300">
+                      {option.label}
+                    </span>
                   </label>
                 ))}
               </div>
@@ -1720,7 +2357,9 @@ export default function InfographicPage() {
               <div className="rounded-lg border border-purple-800 bg-purple-900/20 p-4">
                 <div className="mb-2 flex justify-between text-sm">
                   <span className="text-purple-300">Export en cours...</span>
-                  <span className="text-purple-400 font-bold">{exportProgress}%</span>
+                  <span className="text-purple-400 font-bold">
+                    {exportProgress}%
+                  </span>
                 </div>
                 <div className="h-2 w-full overflow-hidden rounded-full bg-gray-700">
                   <div
@@ -1743,14 +2382,16 @@ export default function InfographicPage() {
                 <Zap size={20} />
               )}
               {isExporting
-                ? 'EXPORT EN COURS...'
+                ? "EXPORT EN COURS..."
                 : batchCount > 1
                   ? `EXPORTER ${batchCount} INFOGRAPHIES`
-                  : 'EXPORTER L\'INFOGRAPHIE'
-              }
+                  : "EXPORTER L'INFOGRAPHIE"}
             </button>
             <div className="text-center text-sm text-gray-400">
-              Coût: <span className="font-bold text-yellow-400">{25 * batchCount} crédits</span>
+              Coût:{" "}
+              <span className="font-bold text-yellow-400">
+                {25 * batchCount} crédits
+              </span>
             </div>
 
             {/* Back */}
@@ -1769,24 +2410,33 @@ export default function InfographicPage() {
       {/* Right Panel - Preview */}
       {/* ═══════════════════════════════════════════════════════════ */}
       <div className="hidden lg:flex w-full lg:w-1/2 flex-col items-center border-l-0 lg:border-l border-gray-800 bg-gray-950 p-3 sm:p-6 mt-6 lg:mt-0 lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto">
-        <h2 className="mb-3 text-base sm:text-xl font-bold text-white">Aperçu Vidéo Finale</h2>
+        <h2 className="mb-3 text-base sm:text-xl font-bold text-white">
+          Aperçu Vidéo Finale
+        </h2>
 
         {/* ── Sequence Selector (view individual pages) ── */}
         <div className="flex items-center gap-1.5 mb-3 flex-wrap justify-center">
           {[
-            { key: 'all' as const, label: 'Tout', icon: '🎬' },
-            { key: 'titre' as const, label: 'Titre', icon: '📝' },
-            { key: 'cartes' as const, label: 'Cartes', icon: '📊' },
-            ...(rushUrl ? [{ key: 'video' as const, label: 'Vidéo', icon: '🎥' }] : []),
-            { key: 'cta' as const, label: 'CTA', icon: '📢' },
+            { key: "all" as const, label: "Tout", icon: "🎬" },
+            { key: "titre" as const, label: "Titre", icon: "📝" },
+            { key: "cartes" as const, label: "Cartes", icon: "📊" },
+            ...(rushUrl
+              ? [{ key: "video" as const, label: "Vidéo", icon: "🎥" }]
+              : []),
+            { key: "cta" as const, label: "CTA", icon: "📢" },
           ].map((seq) => (
             <button
               key={seq.key}
-              onClick={() => setActiveSequence(seq.key)}
+              onClick={() => {
+                setActiveSequence(seq.key);
+                // Auto-switch left panel to relevant content
+                if (seq.key === "cartes") setStep(0);
+                else if (seq.key === "video") setStep(2);
+              }}
               className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
                 activeSequence === seq.key
-                  ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20'
-                  : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'
+                  ? "bg-purple-600 text-white shadow-lg shadow-purple-500/20"
+                  : "bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700"
               }`}
             >
               <span>{seq.icon}</span>
@@ -1797,7 +2447,9 @@ export default function InfographicPage() {
 
         {/* Safe Zone Platform Selector */}
         <div className="flex items-center gap-2 mb-3 rounded-xl bg-gray-800/60 border border-gray-700/50 px-3 py-2 w-full max-w-xs justify-center flex-wrap">
-          <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Zones</span>
+          <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
+            Zones
+          </span>
           <div className="flex gap-1.5 flex-wrap justify-center">
             {Object.entries(PLATFORM_SAFE_ZONES).map(([key, zone]) => (
               <PlatformIcon
@@ -1805,29 +2457,49 @@ export default function InfographicPage() {
                 platform={zone.platform}
                 isActive={safeZonePlatform === key}
                 size="sm"
-                onClick={() => setSafeZonePlatform(safeZonePlatform === key ? null : key)}
+                onClick={() =>
+                  setSafeZonePlatform(safeZonePlatform === key ? null : key)
+                }
               />
             ))}
           </div>
         </div>
 
         {/* Preview Container */}
-        <div className={`relative w-full ${previewClasses.maxW} mx-auto`} onClick={() => { if (activePanel) setActivePanel(null); }}>
+        <div
+          className={`relative w-full ${previewClasses.maxW} mx-auto`}
+          onClick={() => {
+            if (activePanel) setActivePanel(null);
+          }}
+        >
           <div
             ref={previewRef}
             className={`${previewClasses.aspect} relative flex flex-col items-center justify-between rounded-lg ${
               // Show color bg only if not in noColor mode for current sequence
               (() => {
-                const seqNoColor = noColorBg && (activeSequence === 'all' || noColorSequences.includes(activeSequence));
-                return !seqNoColor && activeColorTheme.bg ? `bg-gradient-to-br ${activeColorTheme.bg}` : '';
+                const seqNoColor =
+                  noColorBg &&
+                  (activeSequence === "all" ||
+                    noColorSequences.includes(activeSequence));
+                return !seqNoColor && activeColorTheme.bg
+                  ? `bg-gradient-to-br ${activeColorTheme.bg}`
+                  : "";
               })()
             } p-4 shadow-2xl overflow-hidden transition-all duration-300`}
             style={{
-              fontFamily: FONT_CSS_MAP[selectedFont] || 'inherit',
+              fontFamily: FONT_CSS_MAP[selectedFont] || "inherit",
               ...(() => {
-                const seqNoColor = noColorBg && (activeSequence === 'all' ? noColorSequences.length === 4 : noColorSequences.includes(activeSequence));
-                if (seqNoColor) return { background: '#0A0A0F' };
-                if (colorTheme === 'custom') return { ...FILTER_CSS_MAP[selectedFilter], background: `linear-gradient(135deg, ${customAccent}, ${customAccent}99)` };
+                const seqNoColor =
+                  noColorBg &&
+                  (activeSequence === "all"
+                    ? noColorSequences.length === 4
+                    : noColorSequences.includes(activeSequence));
+                if (seqNoColor) return { background: "#0A0A0F" };
+                if (colorTheme === "custom")
+                  return {
+                    ...FILTER_CSS_MAP[selectedFilter],
+                    background: `linear-gradient(135deg, ${customAccent}, ${customAccent}99)`,
+                  };
                 return FILTER_CSS_MAP[selectedFilter];
               })(),
             }}
@@ -1838,50 +2510,96 @@ export default function InfographicPage() {
               if (resizing && resizeStart.current) {
                 const dx = e.clientX - resizeStart.current.x;
                 const dy = e.clientY - resizeStart.current.y;
-                const diagonal = Math.sqrt(dx * dx + dy * dy) * Math.sign(dx || dy || 1);
-                const deltaPercent = (diagonal / Math.min(rect.width, rect.height)) * 150;
-                const newSize = Math.round(Math.max(20, Math.min(100, resizeStart.current.size + deltaPercent)));
-                if (resizing === 'title') setTitleSize(newSize);
-                else if (resizing === 'cards') setCardsSize(newSize);
-                else if (resizing === 'watermark') setWatermarkSize(newSize);
-                else if (resizing === 'logo') setLogoScale(Math.max(0.3, Math.min(3.0, resizeStart.current.size + deltaPercent / 50)));
+                const diagonal =
+                  Math.sqrt(dx * dx + dy * dy) * Math.sign(dx || dy || 1);
+                const deltaPercent =
+                  (diagonal / Math.min(rect.width, rect.height)) * 150;
+                const newSize = Math.round(
+                  Math.max(
+                    20,
+                    Math.min(100, resizeStart.current.size + deltaPercent),
+                  ),
+                );
+                if (resizing === "title") setTitleSize(newSize);
+                else if (resizing === "cards") setCardsSize(newSize);
+                else if (resizing === "watermark") setWatermarkSize(newSize);
+                else if (resizing === "logo")
+                  setLogoScale(
+                    Math.max(
+                      0.3,
+                      Math.min(
+                        3.0,
+                        resizeStart.current.size + deltaPercent / 50,
+                      ),
+                    ),
+                  );
                 return;
               }
               // Handle drag
               if (!dragging) return;
-              const x = Math.round(Math.max(5, Math.min(95, ((e.clientX - rect.left) / rect.width) * 100)));
-              const y = Math.round(Math.max(3, Math.min(97, ((e.clientY - rect.top) / rect.height) * 100)));
-              if (dragging === 'title') setTitlePos({ x, y });
-              else if (dragging === 'logo') setLogoPos({ x, y });
-              else if (dragging === 'watermark') setWatermarkPos({ x, y });
-              else if (dragging === 'cards') setCardsPos({ x, y });
-              else if (dragging === 'overlay') setOverlayPos({ x, y });
+              const x = Math.round(
+                Math.max(
+                  5,
+                  Math.min(95, ((e.clientX - rect.left) / rect.width) * 100),
+                ),
+              );
+              const y = Math.round(
+                Math.max(
+                  3,
+                  Math.min(97, ((e.clientY - rect.top) / rect.height) * 100),
+                ),
+              );
+              if (dragging === "title") setTitlePos({ x, y });
+              else if (dragging === "logo") setLogoPos({ x, y });
+              else if (dragging === "watermark") setWatermarkPos({ x, y });
+              else if (dragging === "cards") setCardsPos({ x, y });
+              else if (dragging === "overlay") setOverlayPos({ x, y });
             }}
-            onMouseUp={() => { setDragging(null); setResizing(null); resizeStart.current = null; }}
-            onMouseLeave={() => { setDragging(null); setResizing(null); resizeStart.current = null; }}
+            onMouseUp={() => {
+              setDragging(null);
+              setResizing(null);
+              resizeStart.current = null;
+            }}
+            onMouseLeave={() => {
+              setDragging(null);
+              setResizing(null);
+              resizeStart.current = null;
+            }}
           >
             {/* Background Photo */}
-            {previewPhoto && (activeSequence === 'all' || activeSequence === 'titre') && (
-              <img
-                src={previewPhoto.medium}
-                alt=""
-                className="absolute inset-0 h-full w-full object-cover"
-                style={{ opacity: noColorBg && (activeSequence === 'all' ? noColorSequences.includes('titre') : noColorSequences.includes(activeSequence)) ? 0.85 : 0.2 }}
-              />
-            )}
+            {previewPhoto &&
+              (activeSequence === "all" || activeSequence === "titre") && (
+                <img
+                  src={previewPhoto.medium}
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover"
+                  style={{
+                    opacity:
+                      noColorBg &&
+                      (activeSequence === "all"
+                        ? noColorSequences.includes("titre")
+                        : noColorSequences.includes(activeSequence))
+                        ? 0.85
+                        : 0.2,
+                  }}
+                />
+              )}
 
             {/* Video Background (when in video sequence or uploaded video exists) */}
-            {rushUrl && (activeSequence === 'all' || activeSequence === 'video') && (
-              <video
-                src={rushUrl}
-                className="absolute inset-0 h-full w-full object-cover opacity-60"
-                autoPlay
-                muted
-                loop
-                playsInline
-                onError={(e) => { (e.target as HTMLVideoElement).style.display = 'none'; }}
-              />
-            )}
+            {rushUrl &&
+              (activeSequence === "all" || activeSequence === "video") && (
+                <video
+                  src={rushUrl}
+                  className="absolute inset-0 h-full w-full object-cover opacity-60"
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  onError={(e) => {
+                    (e.target as HTMLVideoElement).style.display = "none";
+                  }}
+                />
+              )}
 
             {/* Format Badge */}
             <div className="absolute top-2 right-2 rounded-full bg-black/40 px-2.5 py-0.5 text-[10px] font-bold text-white backdrop-blur z-10">
@@ -1889,7 +2607,7 @@ export default function InfographicPage() {
             </div>
 
             {/* Sequence label badge */}
-            {activeSequence !== 'all' && (
+            {activeSequence !== "all" && (
               <div className="absolute top-2 left-2 rounded-full bg-purple-600/80 px-2.5 py-0.5 text-[10px] font-bold text-white backdrop-blur z-10 uppercase">
                 {activeSequence}
               </div>
@@ -1898,42 +2616,116 @@ export default function InfographicPage() {
             {/* ── Gradient Overlay (user-configurable, up to 200%) — double-click for panel ── */}
             {gradientOpacity > 0 && (
               <>
-                <div className="absolute inset-0 z-[1] cursor-pointer" onDoubleClick={(e) => openPanel('gradient', e)} style={{
-                  background: `linear-gradient(180deg, ${gradientColor1}${Math.round(Math.min(gradientOpacity, 1) * 255).toString(16).padStart(2, '0')} 0%, transparent 40%, transparent 60%, ${gradientColor2}${Math.round(Math.min(gradientOpacity, 1) * 255).toString(16).padStart(2, '0')} 100%)`,
-                }} />
+                <div
+                  className="absolute inset-0 z-[1] cursor-pointer"
+                  onDoubleClick={(e) => openPanel("gradient", e)}
+                  style={{
+                    background: `linear-gradient(180deg, ${gradientColor1}${Math.round(
+                      Math.min(gradientOpacity, 1) * 255,
+                    )
+                      .toString(16)
+                      .padStart(
+                        2,
+                        "0",
+                      )} 0%, transparent 40%, transparent 60%, ${gradientColor2}${Math.round(
+                      Math.min(gradientOpacity, 1) * 255,
+                    )
+                      .toString(16)
+                      .padStart(2, "0")} 100%)`,
+                  }}
+                />
                 {/* Second layer for >100% intensity */}
                 {gradientOpacity > 1 && (
-                  <div className="absolute inset-0 z-[1] pointer-events-none" style={{
-                    background: `linear-gradient(180deg, ${gradientColor1}${Math.round((gradientOpacity - 1) * 255).toString(16).padStart(2, '0')} 0%, transparent 35%, transparent 65%, ${gradientColor2}${Math.round((gradientOpacity - 1) * 255).toString(16).padStart(2, '0')} 100%)`,
-                  }} />
+                  <div
+                    className="absolute inset-0 z-[1] pointer-events-none"
+                    style={{
+                      background: `linear-gradient(180deg, ${gradientColor1}${Math.round(
+                        (gradientOpacity - 1) * 255,
+                      )
+                        .toString(16)
+                        .padStart(
+                          2,
+                          "0",
+                        )} 0%, transparent 35%, transparent 65%, ${gradientColor2}${Math.round(
+                        (gradientOpacity - 1) * 255,
+                      )
+                        .toString(16)
+                        .padStart(2, "0")} 100%)`,
+                    }}
+                  />
                 )}
               </>
             )}
 
             {/* ── TITLE SECTION (visible in all, titre) — drag + double-click for panel ── */}
-            {(activeSequence === 'all' || activeSequence === 'titre') && (
+            {(activeSequence === "all" || activeSequence === "titre") && (
               <div
-                className={`absolute z-20 text-center cursor-grab active:cursor-grabbing group/title ${activePanel === 'title' ? 'ring-1 ring-purple-400 ring-offset-1 ring-offset-transparent rounded' : ''}`}
+                className={`absolute z-20 text-center cursor-grab active:cursor-grabbing group/title ${activePanel === "title" ? "ring-1 ring-purple-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
                 style={{
                   left: `${titlePos.x}%`,
                   top: `${titlePos.y}%`,
-                  transform: 'translate(-50%, 0)',
+                  transform: "translate(-50%, 0)",
                   width: `${titleSize}%`,
                 }}
-                onMouseDown={(e) => { e.preventDefault(); setDragging('title'); }}
-                onDoubleClick={(e) => openPanel('title', e)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setDragging("title");
+                }}
+                onDoubleClick={(e) => openPanel("title", e)}
               >
                 {/* Resize handles — always visible on hover */}
-                <div className="absolute -top-1 -left-1 w-2.5 h-2.5 bg-purple-500 rounded-full cursor-nw-resize z-30 border border-white/50 opacity-0 group-hover/title:opacity-100 transition-opacity"
-                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('title'); resizeStart.current = { x: e.clientX, y: e.clientY, size: titleSize }; }} />
-                <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-purple-500 rounded-full cursor-ne-resize z-30 border border-white/50 opacity-0 group-hover/title:opacity-100 transition-opacity"
-                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('title'); resizeStart.current = { x: e.clientX, y: e.clientY, size: titleSize }; }} />
+                <div
+                  className="absolute -top-1 -left-1 w-2.5 h-2.5 bg-purple-500 rounded-full cursor-nw-resize z-30 border border-white/50 opacity-0 group-hover/title:opacity-100 transition-opacity"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setResizing("title");
+                    resizeStart.current = {
+                      x: e.clientX,
+                      y: e.clientY,
+                      size: titleSize,
+                    };
+                  }}
+                />
+                <div
+                  className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-purple-500 rounded-full cursor-ne-resize z-30 border border-white/50 opacity-0 group-hover/title:opacity-100 transition-opacity"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setResizing("title");
+                    resizeStart.current = {
+                      x: e.clientX,
+                      y: e.clientY,
+                      size: titleSize,
+                    };
+                  }}
+                />
                 <div className="absolute inset-0 border border-dashed border-purple-500/0 group-hover/title:border-purple-500/40 rounded pointer-events-none transition-colors" />
-                <h3 className="font-black drop-shadow-lg" style={{ fontSize: `${(format === '16:9' ? 18 : 14) * textScale}px`, color: titleColor }}>
-                  {title || 'TITRE'}
+                <h3
+                  className="font-black drop-shadow-lg"
+                  style={{
+                    fontSize: `${(format === "16:9" ? 18 : 14) * textScale}px`,
+                    color: titleColor,
+                    letterSpacing: `${titleLetterSpacing}px`,
+                    lineHeight: titleLineHeight,
+                    fontWeight: titleBold ? 900 : 400,
+                    fontStyle: titleItalic ? "italic" : "normal",
+                  }}
+                >
+                  {title || "TITRE"}
                 </h3>
                 {subtitle && (
-                  <p className="mt-1 drop-shadow" style={{ fontSize: `${(format === '16:9' ? 11 : 9) * textScale}px`, color: `${titleColor}cc` }}>
+                  <p
+                    className="mt-1 drop-shadow"
+                    style={{
+                      fontSize: `${(format === "16:9" ? 11 : 9) * textScale}px`,
+                      color: `${titleColor}cc`,
+                      letterSpacing: `${titleLetterSpacing}px`,
+                      lineHeight: titleLineHeight,
+                      fontWeight: titleBold ? 900 : 400,
+                      fontStyle: titleItalic ? "italic" : "normal",
+                    }}
+                  >
                     {subtitle}
                   </p>
                 )}
@@ -1941,206 +2733,455 @@ export default function InfographicPage() {
             )}
 
             {/* ── VIDEO OVERLAY TEXT (visible in video sequence) — draggable, no bg ── */}
-            {rushUrl && (activeSequence === 'all' || activeSequence === 'video') && videoOverlayText && (
-              <div
-                className={`absolute z-20 text-center cursor-grab active:cursor-grabbing group/overlay ${activePanel === 'overlay' ? 'ring-1 ring-cyan-400 ring-offset-1 ring-offset-transparent rounded' : ''}`}
-                style={{
-                  left: `${overlayPos.x}%`,
-                  top: `${overlayPos.y}%`,
-                  transform: 'translate(-50%, -50%)',
-                  width: '85%',
-                }}
-                onMouseDown={(e) => { e.preventDefault(); setDragging('overlay'); }}
-                onDoubleClick={(e) => openPanel('overlay', e)}
-              >
-                <div className="absolute inset-0 border border-dashed border-cyan-500/0 group-hover/overlay:border-cyan-500/40 rounded pointer-events-none transition-colors" />
-                <p className="font-black text-white drop-shadow-lg" style={{ fontSize: `${16 * textScale}px`, textShadow: '0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5)' }}>
-                  {videoOverlayText}
-                </p>
-              </div>
-            )}
+            {rushUrl &&
+              (activeSequence === "all" || activeSequence === "video") &&
+              videoOverlayText && (
+                <div
+                  className={`absolute z-20 text-center cursor-grab active:cursor-grabbing group/overlay ${activePanel === "overlay" ? "ring-1 ring-cyan-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
+                  style={{
+                    left: `${overlayPos.x}%`,
+                    top: `${overlayPos.y}%`,
+                    transform: "translate(-50%, -50%)",
+                    width: "85%",
+                  }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setDragging("overlay");
+                  }}
+                  onDoubleClick={(e) => openPanel("overlay", e)}
+                >
+                  <div className="absolute inset-0 border border-dashed border-cyan-500/0 group-hover/overlay:border-cyan-500/40 rounded pointer-events-none transition-colors" />
+                  <p
+                    className="font-black text-white drop-shadow-lg"
+                    style={{
+                      fontSize: `${16 * textScale}px`,
+                      textShadow:
+                        "0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5)",
+                      letterSpacing: `${overlayLetterSpacing}px`,
+                      lineHeight: overlayLineHeight,
+                      fontWeight: overlayBold ? "bold" : "normal",
+                      fontStyle: overlayItalic ? "italic" : "normal",
+                    }}
+                  >
+                    {videoOverlayText}
+                  </p>
+                </div>
+              )}
 
             {/* ── CARDS GRID (visible in all, cartes) — drag + double-click for panel ── */}
-            {(activeSequence === 'all' || activeSequence === 'cartes') && cards.length > 0 && (
-              <div
-                className={`absolute z-20 cursor-grab active:cursor-grabbing group/cards ${activePanel === 'cards' ? 'ring-1 ring-pink-400 ring-offset-1 ring-offset-transparent rounded' : ''}`}
-                style={{
-                  left: `${cardsPos.x}%`,
-                  top: `${cardsPos.y}%`,
-                  transform: 'translate(-50%, -50%)',
-                  width: `${cardsSize}%`,
-                }}
-                onMouseDown={(e) => { e.preventDefault(); setDragging('cards'); }}
-                onDoubleClick={(e) => openPanel('cards', e)}
-              >
-                {/* Resize handles — visible on hover */}
-                <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-pink-500 rounded-full cursor-ne-resize z-30 border border-white/50 opacity-0 group-hover/cards:opacity-100 transition-opacity"
-                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('cards'); resizeStart.current = { x: e.clientX, y: e.clientY, size: cardsSize }; }} />
-                <div className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-pink-500 rounded-full cursor-se-resize z-30 border border-white/50 opacity-0 group-hover/cards:opacity-100 transition-opacity"
-                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('cards'); resizeStart.current = { x: e.clientX, y: e.clientY, size: cardsSize }; }} />
-                <div className="absolute inset-0 border border-dashed border-pink-500/0 group-hover/cards:border-pink-500/40 rounded pointer-events-none transition-colors" />
-                <div className={`grid gap-1.5 w-full ${
-                  selectedCardStyle === 'Full Width' ? 'grid-cols-1' : previewClasses.cols
-                }`}>
-                  {cards.slice(0, format === '16:9' ? 6 : 5).map((card) => {
-                    const scaledLabel = `${Math.round(7 * textScale)}px`;
-                    const scaledValue = `${Math.round(9 * textScale)}px`;
-                    const scaledDesc = `${Math.round(6 * textScale)}px`;
-                    // ── Compact ──
-                    if (selectedCardStyle === 'Compact') {
-                      return (
-                        <div key={card.id} className="flex flex-col items-center gap-0.5 rounded-lg bg-black/30 px-1.5 py-1.5 backdrop-blur-sm" style={{ borderLeft: `2px solid ${card.color}` }}>
-                          <span className={format === '16:9' ? 'text-lg' : 'text-sm'}>{card.emoji}</span>
-                          <p className="text-center font-bold text-white drop-shadow" style={{ fontSize: scaledLabel }}>{card.label}</p>
-                          <p className="text-center font-black drop-shadow" style={{ fontSize: scaledValue, color: card.color }}>{card.value}</p>
-                          {card.description && <p className="text-center text-white/60" style={{ fontSize: scaledDesc }}>{card.description.substring(0, 30)}</p>}
-                        </div>
-                      );
-                    }
-                    // ── Educatif ──
-                    if (selectedCardStyle === 'Educatif') {
-                      return (
-                        <div key={card.id} className="rounded-lg bg-black/40 px-2 py-2 backdrop-blur-sm" style={{ borderTop: `2px solid ${card.color}` }}>
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <span className="text-sm">{card.emoji}</span>
-                            <p className="font-bold text-white" style={{ fontSize: scaledLabel }}>{card.label}</p>
+            {(activeSequence === "all" || activeSequence === "cartes") &&
+              cards.length > 0 && (
+                <div
+                  className={`absolute z-20 cursor-grab active:cursor-grabbing group/cards ${activePanel === "cards" ? "ring-1 ring-pink-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
+                  style={{
+                    left: `${cardsPos.x}%`,
+                    top: `${cardsPos.y}%`,
+                    transform: "translate(-50%, -50%)",
+                    width: `${cardsSize}%`,
+                  }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setDragging("cards");
+                  }}
+                  onDoubleClick={(e) => openPanel("cards", e)}
+                >
+                  {/* Resize handles — visible on hover */}
+                  <div
+                    className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-pink-500 rounded-full cursor-ne-resize z-30 border border-white/50 opacity-0 group-hover/cards:opacity-100 transition-opacity"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setResizing("cards");
+                      resizeStart.current = {
+                        x: e.clientX,
+                        y: e.clientY,
+                        size: cardsSize,
+                      };
+                    }}
+                  />
+                  <div
+                    className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-pink-500 rounded-full cursor-se-resize z-30 border border-white/50 opacity-0 group-hover/cards:opacity-100 transition-opacity"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setResizing("cards");
+                      resizeStart.current = {
+                        x: e.clientX,
+                        y: e.clientY,
+                        size: cardsSize,
+                      };
+                    }}
+                  />
+                  <div className="absolute inset-0 border border-dashed border-pink-500/0 group-hover/cards:border-pink-500/40 rounded pointer-events-none transition-colors" />
+                  <div
+                    className={`grid gap-1.5 w-full ${
+                      selectedCardStyle === "Full Width"
+                        ? "grid-cols-1"
+                        : previewClasses.cols
+                    }`}
+                  >
+                    {cards.slice(0, format === "16:9" ? 6 : 5).map((card) => {
+                      const scaledLabel = `${Math.round(7 * textScale)}px`;
+                      const scaledValue = `${Math.round(9 * textScale)}px`;
+                      const scaledDesc = `${Math.round(6 * textScale)}px`;
+                      // ── Compact ──
+                      if (selectedCardStyle === "Compact") {
+                        return (
+                          <div
+                            key={card.id}
+                            className="flex flex-col items-center gap-0.5 rounded-lg bg-black/30 px-1.5 py-1.5 backdrop-blur-sm"
+                            style={{ borderLeft: `2px solid ${card.color}` }}
+                          >
+                            <span
+                              className={
+                                format === "16:9" ? "text-lg" : "text-sm"
+                              }
+                            >
+                              {card.emoji}
+                            </span>
+                            <p
+                              className="text-center font-bold text-white drop-shadow"
+                              style={{ fontSize: scaledLabel }}
+                            >
+                              {card.label}
+                            </p>
+                            <p
+                              className="text-center font-black drop-shadow"
+                              style={{
+                                fontSize: scaledValue,
+                                color: card.color,
+                              }}
+                            >
+                              {card.value}
+                            </p>
+                            {card.description && (
+                              <p
+                                className="text-center text-white/60"
+                                style={{ fontSize: scaledDesc }}
+                              >
+                                {card.description.substring(0, 30)}
+                              </p>
+                            )}
                           </div>
-                          <p className="text-white/70 leading-relaxed mb-1" style={{ fontSize: scaledDesc }}>{card.description?.substring(0, 60) || ''}</p>
-                          <p className="font-black" style={{ fontSize: scaledValue, color: card.color }}>{card.value}</p>
-                        </div>
-                      );
-                    }
-                    // ── Stats Bold ──
-                    if (selectedCardStyle === 'Stats Bold') {
+                        );
+                      }
+                      // ── Educatif ──
+                      if (selectedCardStyle === "Educatif") {
+                        return (
+                          <div
+                            key={card.id}
+                            className="rounded-lg bg-black/40 px-2 py-2 backdrop-blur-sm"
+                            style={{ borderTop: `2px solid ${card.color}` }}
+                          >
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <span className="text-sm">{card.emoji}</span>
+                              <p
+                                className="font-bold text-white"
+                                style={{ fontSize: scaledLabel }}
+                              >
+                                {card.label}
+                              </p>
+                            </div>
+                            <p
+                              className="text-white/70 leading-relaxed mb-1"
+                              style={{ fontSize: scaledDesc }}
+                            >
+                              {card.description?.substring(0, 60) || ""}
+                            </p>
+                            <p
+                              className="font-black"
+                              style={{
+                                fontSize: scaledValue,
+                                color: card.color,
+                              }}
+                            >
+                              {card.value}
+                            </p>
+                          </div>
+                        );
+                      }
+                      // ── Stats Bold ──
+                      if (selectedCardStyle === "Stats Bold") {
+                        return (
+                          <div
+                            key={card.id}
+                            className="flex flex-col items-center justify-center rounded-lg bg-black/50 px-2 py-2 backdrop-blur-sm border border-white/10"
+                          >
+                            <p
+                              className="font-black drop-shadow"
+                              style={{
+                                fontSize: `${Math.round(13 * textScale)}px`,
+                                color: card.color,
+                              }}
+                            >
+                              {card.value}
+                            </p>
+                            <p
+                              className="font-medium text-white/80 mt-0.5 text-center"
+                              style={{ fontSize: scaledDesc }}
+                            >
+                              {card.label}
+                            </p>
+                          </div>
+                        );
+                      }
+                      // ── Minimal Line ──
+                      if (selectedCardStyle === "Minimal Line") {
+                        return (
+                          <div
+                            key={card.id}
+                            className="flex items-center gap-2 py-1 px-1"
+                            style={{
+                              borderBottom: `1px solid ${card.color}40`,
+                            }}
+                          >
+                            <span className="text-xs">{card.emoji}</span>
+                            <p
+                              className="text-white/80 flex-1"
+                              style={{ fontSize: scaledLabel }}
+                            >
+                              {card.label}
+                            </p>
+                            <p
+                              className="font-bold"
+                              style={{
+                                fontSize: scaledValue,
+                                color: card.color,
+                              }}
+                            >
+                              {card.value}
+                            </p>
+                          </div>
+                        );
+                      }
+                      // ── Full Width ──
                       return (
-                        <div key={card.id} className="flex flex-col items-center justify-center rounded-lg bg-black/50 px-2 py-2 backdrop-blur-sm border border-white/10">
-                          <p className="font-black drop-shadow" style={{ fontSize: `${Math.round(13 * textScale)}px`, color: card.color }}>{card.value}</p>
-                          <p className="font-medium text-white/80 mt-0.5 text-center" style={{ fontSize: scaledDesc }}>{card.label}</p>
+                        <div
+                          key={card.id}
+                          className="flex items-center gap-2 rounded-lg bg-black/30 px-3 py-1.5 backdrop-blur-sm"
+                          style={{ borderLeft: `3px solid ${card.color}` }}
+                        >
+                          <span className="text-base">{card.emoji}</span>
+                          <div className="flex-1 min-w-0">
+                            <p
+                              className="font-bold text-white truncate"
+                              style={{ fontSize: scaledLabel }}
+                            >
+                              {card.label}
+                            </p>
+                            {card.description && (
+                              <p
+                                className="text-white/50 truncate"
+                                style={{ fontSize: scaledDesc }}
+                              >
+                                {card.description.substring(0, 40)}
+                              </p>
+                            )}
+                          </div>
+                          <p
+                            className="font-black flex-shrink-0"
+                            style={{ fontSize: scaledValue, color: card.color }}
+                          >
+                            {card.value}
+                          </p>
                         </div>
                       );
-                    }
-                    // ── Minimal Line ──
-                    if (selectedCardStyle === 'Minimal Line') {
-                      return (
-                        <div key={card.id} className="flex items-center gap-2 py-1 px-1" style={{ borderBottom: `1px solid ${card.color}40` }}>
-                          <span className="text-xs">{card.emoji}</span>
-                          <p className="text-white/80 flex-1" style={{ fontSize: scaledLabel }}>{card.label}</p>
-                          <p className="font-bold" style={{ fontSize: scaledValue, color: card.color }}>{card.value}</p>
-                        </div>
-                      );
-                    }
-                    // ── Full Width ──
-                    return (
-                      <div key={card.id} className="flex items-center gap-2 rounded-lg bg-black/30 px-3 py-1.5 backdrop-blur-sm" style={{ borderLeft: `3px solid ${card.color}` }}>
-                        <span className="text-base">{card.emoji}</span>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-white truncate" style={{ fontSize: scaledLabel }}>{card.label}</p>
-                          {card.description && <p className="text-white/50 truncate" style={{ fontSize: scaledDesc }}>{card.description.substring(0, 40)}</p>}
-                        </div>
-                        <p className="font-black flex-shrink-0" style={{ fontSize: scaledValue, color: card.color }}>{card.value}</p>
-                      </div>
-                    );
-                  })}
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
             {/* ── CTA / WATERMARK (visible in all, cta) — drag + double-click for panel ── */}
-            {(activeSequence === 'all' || activeSequence === 'cta') && (
+            {(activeSequence === "all" || activeSequence === "cta") && (
               <div
-                className={`absolute z-20 text-center cursor-grab active:cursor-grabbing group/cta ${activePanel === 'cta' ? 'ring-1 ring-yellow-400 ring-offset-1 ring-offset-transparent rounded' : ''}`}
+                className={`absolute z-20 text-center cursor-grab active:cursor-grabbing group/cta ${activePanel === "cta" ? "ring-1 ring-yellow-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
                 style={{
                   left: `${watermarkPos.x}%`,
                   top: `${watermarkPos.y}%`,
-                  transform: 'translate(-50%, -100%)',
+                  transform: "translate(-50%, -100%)",
                   width: `${watermarkSize}%`,
                 }}
-                onMouseDown={(e) => { e.preventDefault(); setDragging('watermark'); }}
-                onDoubleClick={(e) => openPanel('cta', e)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setDragging("watermark");
+                }}
+                onDoubleClick={(e) => openPanel("cta", e)}
               >
                 {/* Resize handles — visible on hover */}
-                <div className="absolute -bottom-1 -left-1 w-2.5 h-2.5 bg-yellow-500 rounded-full cursor-sw-resize z-30 border border-white/50 opacity-0 group-hover/cta:opacity-100 transition-opacity"
-                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('watermark'); resizeStart.current = { x: e.clientX, y: e.clientY, size: watermarkSize }; }} />
-                <div className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-yellow-500 rounded-full cursor-se-resize z-30 border border-white/50 opacity-0 group-hover/cta:opacity-100 transition-opacity"
-                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('watermark'); resizeStart.current = { x: e.clientX, y: e.clientY, size: watermarkSize }; }} />
+                <div
+                  className="absolute -bottom-1 -left-1 w-2.5 h-2.5 bg-yellow-500 rounded-full cursor-sw-resize z-30 border border-white/50 opacity-0 group-hover/cta:opacity-100 transition-opacity"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setResizing("watermark");
+                    resizeStart.current = {
+                      x: e.clientX,
+                      y: e.clientY,
+                      size: watermarkSize,
+                    };
+                  }}
+                />
+                <div
+                  className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-yellow-500 rounded-full cursor-se-resize z-30 border border-white/50 opacity-0 group-hover/cta:opacity-100 transition-opacity"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setResizing("watermark");
+                    resizeStart.current = {
+                      x: e.clientX,
+                      y: e.clientY,
+                      size: watermarkSize,
+                    };
+                  }}
+                />
                 <div className="absolute inset-0 border border-dashed border-yellow-500/0 group-hover/cta:border-yellow-500/40 rounded pointer-events-none transition-colors" />
                 {salesPhrases.length > 0 && (
-                  <p className="font-medium drop-shadow" style={{ fontSize: `${(format === '16:9' ? 10 : 8) * ctaTextScale}px`, color: `${ctaColor}ee` }}>
+                  <p
+                    className="font-medium drop-shadow"
+                    style={{
+                      fontSize: `${(format === "16:9" ? 10 : 8) * ctaTextScale}px`,
+                      color: `${ctaColor}ee`,
+                      letterSpacing: `${ctaLetterSpacing}px`,
+                      lineHeight: ctaLineHeight,
+                      fontWeight: ctaBold ? 900 : 400,
+                      fontStyle: ctaItalic ? "italic" : "normal",
+                    }}
+                  >
                     {salesPhrases[0]}
                   </p>
                 )}
-                <p className="mt-0.5 font-black drop-shadow-lg uppercase" style={{ fontSize: `${(format === '16:9' ? 16 : 12) * ctaTextScale}px`, color: ctaColor }}>
-                  {ctaMainText || 'AFROBOOST'}
+                <p
+                  className="mt-0.5 font-black drop-shadow-lg uppercase"
+                  style={{
+                    fontSize: `${(format === "16:9" ? 16 : 12) * ctaTextScale}px`,
+                    color: ctaColor,
+                    letterSpacing: `${ctaLetterSpacing}px`,
+                    lineHeight: ctaLineHeight,
+                    fontWeight: ctaBold ? 900 : 400,
+                    fontStyle: ctaItalic ? "italic" : "normal",
+                  }}
+                >
+                  {ctaMainText || "AFROBOOST"}
                 </p>
-                <p className="font-bold drop-shadow mt-1 uppercase" style={{ fontSize: `${(format === '16:9' ? 12 : 9) * ctaTextScale}px`, color: ctaSubColor }}>
-                  {ctaSubText || 'CHAT POUR PLUS D\'INFOS'}
+                <p
+                  className="font-bold drop-shadow mt-1 uppercase"
+                  style={{
+                    fontSize: `${(format === "16:9" ? 12 : 9) * ctaTextScale}px`,
+                    color: ctaSubColor,
+                    letterSpacing: `${ctaLetterSpacing}px`,
+                    lineHeight: ctaLineHeight,
+                    fontWeight: ctaBold ? 900 : 400,
+                    fontStyle: ctaItalic ? "italic" : "normal",
+                  }}
+                >
+                  {ctaSubText || "CHAT POUR PLUS D'INFOS"}
                 </p>
               </div>
             )}
 
             {/* ── LOGO (draggable, resizable, visible per sequence) ── */}
-            {logoImage && (activeSequence === 'all' || logoSequences.includes(activeSequence)) && (
-              <div
-                className={`absolute z-20 cursor-grab active:cursor-grabbing group/logo ${activePanel === 'logo' ? 'ring-1 ring-green-400 ring-offset-1 ring-offset-transparent rounded' : ''}`}
-                style={{
-                  left: `${logoPos.x}%`,
-                  top: `${logoPos.y}%`,
-                  transform: `translate(-50%, -50%) scale(${logoScale})`,
-                }}
-                onMouseDown={(e) => { e.preventDefault(); setDragging('logo'); }}
-                onDoubleClick={(e) => openPanel('logo', e)}
-              >
-                <div className="absolute inset-0 border border-dashed border-green-500/0 group-hover/logo:border-green-500/40 rounded pointer-events-none transition-colors" />
-                <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-500 rounded-full cursor-ne-resize z-30 border border-white/50 opacity-0 group-hover/logo:opacity-100 transition-opacity"
-                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('logo'); resizeStart.current = { x: e.clientX, y: e.clientY, size: logoScale }; }} />
-                <div className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-green-500 rounded-full cursor-se-resize z-30 border border-white/50 opacity-0 group-hover/logo:opacity-100 transition-opacity"
-                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('logo'); resizeStart.current = { x: e.clientX, y: e.clientY, size: logoScale }; }} />
-                <img src={logoImage} alt="Logo" className="h-8 w-auto max-w-[60px] object-contain drop-shadow-lg" />
-              </div>
-            )}
+            {logoImage &&
+              (activeSequence === "all" ||
+                logoSequences.includes(activeSequence)) && (
+                <div
+                  className={`absolute z-20 cursor-grab active:cursor-grabbing group/logo ${activePanel === "logo" ? "ring-1 ring-green-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
+                  style={{
+                    left: `${logoPos.x}%`,
+                    top: `${logoPos.y}%`,
+                    transform: `translate(-50%, -50%) scale(${logoScale})`,
+                  }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setDragging("logo");
+                  }}
+                  onDoubleClick={(e) => openPanel("logo", e)}
+                >
+                  <div className="absolute inset-0 border border-dashed border-green-500/0 group-hover/logo:border-green-500/40 rounded pointer-events-none transition-colors" />
+                  <div
+                    className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-500 rounded-full cursor-ne-resize z-30 border border-white/50 opacity-0 group-hover/logo:opacity-100 transition-opacity"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setResizing("logo");
+                      resizeStart.current = {
+                        x: e.clientX,
+                        y: e.clientY,
+                        size: logoScale,
+                      };
+                    }}
+                  />
+                  <div
+                    className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-green-500 rounded-full cursor-se-resize z-30 border border-white/50 opacity-0 group-hover/logo:opacity-100 transition-opacity"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setResizing("logo");
+                      resizeStart.current = {
+                        x: e.clientX,
+                        y: e.clientY,
+                        size: logoScale,
+                      };
+                    }}
+                  />
+                  <img
+                    src={logoImage}
+                    alt="Logo"
+                    className="h-8 w-auto max-w-[60px] object-contain drop-shadow-lg"
+                  />
+                </div>
+              )}
 
             {/* Character Image */}
-            {characterImage && (activeSequence === 'all' || activeSequence === 'titre') && (
-              <img
-                src={characterImage}
-                alt="Character"
-                className="absolute bottom-2 right-2 h-1/4 w-auto rounded z-10"
-              />
-            )}
+            {characterImage &&
+              (activeSequence === "all" || activeSequence === "titre") && (
+                <img
+                  src={characterImage}
+                  alt="Character"
+                  className="absolute bottom-2 right-2 h-1/4 w-auto rounded z-10"
+                />
+              )}
 
             {/* Safe Zone Overlay (pointer-events: none, does not affect interactions) */}
             {safeZonePlatform && PLATFORM_SAFE_ZONES[safeZonePlatform] && (
               <div className="absolute inset-0 z-50 pointer-events-none">
-                {PLATFORM_SAFE_ZONES[safeZonePlatform].zones.map((zone: SafeZoneArea, i: number) => (
-                  <div
-                    key={i}
-                    className="absolute"
-                    style={{
-                      top: zone.top || 'auto',
-                      right: zone.right || 'auto',
-                      bottom: zone.bottom || 'auto',
-                      left: zone.left || 'auto',
-                      width: zone.width,
-                      height: zone.height,
-                      border: `1.5px dashed ${PLATFORM_SAFE_ZONES[safeZonePlatform].overlayColor}`,
-                      borderRadius: '4px',
-                      background: `${PLATFORM_SAFE_ZONES[safeZonePlatform].overlayColor}10`,
-                    }}
-                  >
-                    <span
-                      className="absolute top-0.5 left-1 text-[7px] font-bold uppercase tracking-wider"
-                      style={{ color: PLATFORM_SAFE_ZONES[safeZonePlatform].overlayColor }}
+                {PLATFORM_SAFE_ZONES[safeZonePlatform].zones.map(
+                  (zone: SafeZoneArea, i: number) => (
+                    <div
+                      key={i}
+                      className="absolute"
+                      style={{
+                        top: zone.top || "auto",
+                        right: zone.right || "auto",
+                        bottom: zone.bottom || "auto",
+                        left: zone.left || "auto",
+                        width: zone.width,
+                        height: zone.height,
+                        border: `1.5px dashed ${PLATFORM_SAFE_ZONES[safeZonePlatform].overlayColor}`,
+                        borderRadius: "4px",
+                        background: `${PLATFORM_SAFE_ZONES[safeZonePlatform].overlayColor}10`,
+                      }}
                     >
-                      {zone.label}
-                    </span>
-                  </div>
-                ))}
+                      <span
+                        className="absolute top-0.5 left-1 text-[7px] font-bold uppercase tracking-wider"
+                        style={{
+                          color:
+                            PLATFORM_SAFE_ZONES[safeZonePlatform].overlayColor,
+                        }}
+                      >
+                        {zone.label}
+                      </span>
+                    </div>
+                  ),
+                )}
               </div>
             )}
 
             {/* Empty state for video sequence when no video uploaded */}
-            {activeSequence === 'video' && !rushUrl && (
-              <div className="absolute inset-0 z-20 flex items-center justify-center">
+            {activeSequence === "video" && !rushUrl && (
+              <div
+                className="absolute inset-0 z-20 flex items-center justify-center cursor-pointer"
+                onDoubleClick={(e) => openPanel("overlay", e)}
+              >
                 <div className="text-center text-white/50">
                   <Video size={32} className="mx-auto mb-2 opacity-50" />
                   <p className="text-xs">Aucune vidéo uploadée</p>
@@ -2148,9 +3189,30 @@ export default function InfographicPage() {
               </div>
             )}
 
+            {/* Clickable zone to add overlay text when empty */}
+            {(activeSequence === "all" || activeSequence === "video") &&
+              rushUrl &&
+              !videoOverlayText && (
+                <div
+                  className="absolute z-20 cursor-pointer rounded-lg border border-dashed border-white/20 px-4 py-2 hover:border-white/40 transition-colors"
+                  style={{
+                    left: "50%",
+                    top: "33%",
+                    transform: "translate(-50%, -50%)",
+                  }}
+                  onDoubleClick={(e) => openPanel("overlay", e)}
+                >
+                  <span className="text-[10px] text-white/40">
+                    Double-clic = ajouter texte
+                  </span>
+                </div>
+              )}
+
             {/* Hint: double-click to open controls */}
             <div className="absolute bottom-1 inset-x-0 text-center z-[60] pointer-events-none">
-              <span className="text-[8px] text-white/30 bg-black/20 rounded px-1.5 py-0.5">Double-clic sur un élément = réglages</span>
+              <span className="text-[8px] text-white/30 bg-black/20 rounded px-1.5 py-0.5">
+                Double-clic sur un élément = réglages
+              </span>
             </div>
           </div>
         </div>
@@ -2163,7 +3225,7 @@ export default function InfographicPage() {
         <FloatingPanel
           title="Titre"
           icon="📝"
-          isOpen={activePanel === 'title'}
+          isOpen={activePanel === "title"}
           onClose={() => setActivePanel(null)}
           initialX={panelPos.x}
           initialY={panelPos.y}
@@ -2191,18 +3253,77 @@ export default function InfographicPage() {
                     key={opt.label}
                     onClick={() => setSelectedFont(opt.label)}
                     className={`px-2 py-1 rounded text-[9px] font-medium transition-all ${
-                      selectedFont === opt.label ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
+                      selectedFont === opt.label
+                        ? "bg-purple-600 text-white"
+                        : "bg-gray-800 text-gray-400 hover:text-white"
                     }`}
-                  >{opt.label}</button>
+                  >
+                    {opt.label}
+                  </button>
                 ))}
               </div>
             </div>
-            <ColorWheel color={titleColor} onChange={setTitleColor} label="Couleur" />
+            <ColorWheel
+              color={titleColor}
+              onChange={setTitleColor}
+              label="Couleur"
+            />
             <div>
-              <span className="text-[9px] text-gray-500 uppercase">Taille {Math.round(textScale * 100)}%</span>
+              <span className="text-[9px] text-gray-500 uppercase">
+                Taille {Math.round(textScale * 100)}%
+              </span>
               <input
-                type="range" min="0.5" max="3.0" step="0.05" value={textScale}
+                type="range"
+                min="0.5"
+                max="3.0"
+                step="0.05"
+                value={textScale}
                 onChange={(e) => setTextScale(parseFloat(e.target.value))}
+                className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer mt-1"
+              />
+            </div>
+            {/* Typography */}
+            <div className="flex gap-1 mt-1">
+              <button
+                onClick={() => setTitleBold(!titleBold)}
+                className={`px-2 py-1 rounded text-[10px] font-bold transition-all ${titleBold ? "bg-purple-600 text-white" : "bg-gray-800 text-gray-400"}`}
+              >
+                B
+              </button>
+              <button
+                onClick={() => setTitleItalic(!titleItalic)}
+                className={`px-2 py-1 rounded text-[10px] italic transition-all ${titleItalic ? "bg-purple-600 text-white" : "bg-gray-800 text-gray-400"}`}
+              >
+                I
+              </button>
+            </div>
+            <div>
+              <span className="text-[9px] text-gray-500 uppercase">
+                Espacement {titleLetterSpacing}px
+              </span>
+              <input
+                type="range"
+                min="-2"
+                max="15"
+                step="0.5"
+                value={titleLetterSpacing}
+                onChange={(e) =>
+                  setTitleLetterSpacing(parseFloat(e.target.value))
+                }
+                className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer mt-1"
+              />
+            </div>
+            <div>
+              <span className="text-[9px] text-gray-500 uppercase">
+                Interligne {titleLineHeight.toFixed(1)}
+              </span>
+              <input
+                type="range"
+                min="0.8"
+                max="2.5"
+                step="0.1"
+                value={titleLineHeight}
+                onChange={(e) => setTitleLineHeight(parseFloat(e.target.value))}
                 className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer mt-1"
               />
             </div>
@@ -2213,7 +3334,7 @@ export default function InfographicPage() {
         <FloatingPanel
           title="Cartes"
           icon="📊"
-          isOpen={activePanel === 'cards'}
+          isOpen={activePanel === "cards"}
           onClose={() => setActivePanel(null)}
           initialX={panelPos.x}
           initialY={panelPos.y}
@@ -2228,16 +3349,26 @@ export default function InfographicPage() {
                     key={opt.label}
                     onClick={() => setSelectedCardStyle(opt.label)}
                     className={`px-2 py-1 rounded text-[9px] font-medium transition-all ${
-                      selectedCardStyle === opt.label ? 'bg-pink-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
+                      selectedCardStyle === opt.label
+                        ? "bg-pink-600 text-white"
+                        : "bg-gray-800 text-gray-400 hover:text-white"
                     }`}
-                  >{opt.label}</button>
+                  >
+                    {opt.label}
+                  </button>
                 ))}
               </div>
             </div>
             <div>
-              <span className="text-[9px] text-gray-500 uppercase">Taille {cardsSize}%</span>
+              <span className="text-[9px] text-gray-500 uppercase">
+                Taille {cardsSize}%
+              </span>
               <input
-                type="range" min="30" max="100" step="1" value={cardsSize}
+                type="range"
+                min="30"
+                max="100"
+                step="1"
+                value={cardsSize}
                 onChange={(e) => setCardsSize(parseInt(e.target.value))}
                 className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-pink-500 cursor-pointer mt-1"
               />
@@ -2250,9 +3381,13 @@ export default function InfographicPage() {
                     key={opt.label}
                     onClick={() => setSelectedFilter(opt.label)}
                     className={`px-2 py-1 rounded text-[9px] font-medium transition-all ${
-                      selectedFilter === opt.label ? 'bg-pink-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
+                      selectedFilter === opt.label
+                        ? "bg-pink-600 text-white"
+                        : "bg-gray-800 text-gray-400 hover:text-white"
                     }`}
-                  >{opt.label}</button>
+                  >
+                    {opt.label}
+                  </button>
                 ))}
               </div>
             </div>
@@ -2263,7 +3398,7 @@ export default function InfographicPage() {
         <FloatingPanel
           title="CTA"
           icon="📢"
-          isOpen={activePanel === 'cta'}
+          isOpen={activePanel === "cta"}
           onClose={() => setActivePanel(null)}
           initialX={panelPos.x}
           initialY={panelPos.y}
@@ -2289,14 +3424,23 @@ export default function InfographicPage() {
                 onClick={async () => {
                   setIsGeneratingCta(true);
                   try {
-                    const themeObj = CONTENT_THEMES.find(t => t.id === contentTheme);
-                    const topicText = contentTheme === 'personnalise' ? customTopic : (themeObj?.label || contentTheme);
+                    const themeObj = CONTENT_THEMES.find(
+                      (t) => t.id === contentTheme,
+                    );
+                    const topicText =
+                      contentTheme === "personnalise"
+                        ? customTopic
+                        : themeObj?.label || contentTheme;
                     const controller = new AbortController();
                     const timeout = setTimeout(() => controller.abort(), 8000);
-                    const res = await fetch('/api/content/ai-generate', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ topic: topicText, locale: 'fr', cardCount: 1 }),
+                    const res = await fetch("/api/content/ai-generate", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        topic: topicText,
+                        locale: "fr",
+                        cardCount: 1,
+                      }),
                       signal: controller.signal,
                     });
                     clearTimeout(timeout);
@@ -2304,29 +3448,104 @@ export default function InfographicPage() {
                       const data = await res.json();
                       if (data.success && data.content) {
                         const phrases = data.content.salesPhrases || [];
-                        if (phrases.length > 0) setCtaSubText(phrases[0].toUpperCase());
-                        else if (data.content.subtitle) setCtaSubText(data.content.subtitle.toUpperCase());
-                        if (data.content.title) setCtaMainText(data.content.title.toUpperCase());
+                        if (phrases.length > 0)
+                          setCtaSubText(phrases[0].toUpperCase());
+                        else if (data.content.subtitle)
+                          setCtaSubText(data.content.subtitle.toUpperCase());
+                        if (data.content.title)
+                          setCtaMainText(data.content.title.toUpperCase());
                       }
                     }
                   } catch {
-                    const fallbacks = ['DÉCOUVRIR MAINTENANT', 'EN SAVOIR PLUS', 'COMMENCER AUJOURD\'HUI', 'REJOINS-NOUS'];
-                    setCtaSubText(fallbacks[Math.floor(Math.random() * fallbacks.length)]);
-                  } finally { setIsGeneratingCta(false); }
+                    const fallbacks = [
+                      "DÉCOUVRIR MAINTENANT",
+                      "EN SAVOIR PLUS",
+                      "COMMENCER AUJOURD'HUI",
+                      "REJOINS-NOUS",
+                    ];
+                    setCtaSubText(
+                      fallbacks[Math.floor(Math.random() * fallbacks.length)],
+                    );
+                  } finally {
+                    setIsGeneratingCta(false);
+                  }
                 }}
                 disabled={isGeneratingCta}
                 className="flex items-center justify-center rounded bg-purple-600 px-2 py-1.5 text-white hover:bg-purple-500 disabled:opacity-50"
               >
-                {isGeneratingCta ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                {isGeneratingCta ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Sparkles size={12} />
+                )}
               </button>
             </div>
-            <ColorWheel color={ctaColor} onChange={setCtaColor} label="Couleur titre" />
-            <ColorWheel color={ctaSubColor} onChange={setCtaSubColor} label="Couleur sous-texte" />
+            <ColorWheel
+              color={ctaColor}
+              onChange={setCtaColor}
+              label="Couleur titre"
+            />
+            <ColorWheel
+              color={ctaSubColor}
+              onChange={setCtaSubColor}
+              label="Couleur sous-texte"
+            />
             <div>
-              <span className="text-[9px] text-gray-500 uppercase">Taille {Math.round(ctaTextScale * 100)}%</span>
+              <span className="text-[9px] text-gray-500 uppercase">
+                Taille {Math.round(ctaTextScale * 100)}%
+              </span>
               <input
-                type="range" min="0.5" max="3.0" step="0.05" value={ctaTextScale}
+                type="range"
+                min="0.5"
+                max="3.0"
+                step="0.05"
+                value={ctaTextScale}
                 onChange={(e) => setCtaTextScale(parseFloat(e.target.value))}
+                className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-yellow-500 cursor-pointer mt-1"
+              />
+            </div>
+            {/* Typography */}
+            <div className="flex gap-1 mt-1">
+              <button
+                onClick={() => setCtaBold(!ctaBold)}
+                className={`px-2 py-1 rounded text-[10px] font-bold transition-all ${ctaBold ? "bg-yellow-600 text-white" : "bg-gray-800 text-gray-400"}`}
+              >
+                B
+              </button>
+              <button
+                onClick={() => setCtaItalic(!ctaItalic)}
+                className={`px-2 py-1 rounded text-[10px] italic transition-all ${ctaItalic ? "bg-yellow-600 text-white" : "bg-gray-800 text-gray-400"}`}
+              >
+                I
+              </button>
+            </div>
+            <div>
+              <span className="text-[9px] text-gray-500 uppercase">
+                Espacement {ctaLetterSpacing}px
+              </span>
+              <input
+                type="range"
+                min="-2"
+                max="15"
+                step="0.5"
+                value={ctaLetterSpacing}
+                onChange={(e) =>
+                  setCtaLetterSpacing(parseFloat(e.target.value))
+                }
+                className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-yellow-500 cursor-pointer mt-1"
+              />
+            </div>
+            <div>
+              <span className="text-[9px] text-gray-500 uppercase">
+                Interligne {ctaLineHeight.toFixed(1)}
+              </span>
+              <input
+                type="range"
+                min="0.8"
+                max="2.5"
+                step="0.1"
+                value={ctaLineHeight}
+                onChange={(e) => setCtaLineHeight(parseFloat(e.target.value))}
                 className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-yellow-500 cursor-pointer mt-1"
               />
             </div>
@@ -2337,19 +3556,33 @@ export default function InfographicPage() {
         <FloatingPanel
           title="Dégradé"
           icon="🌈"
-          isOpen={activePanel === 'gradient'}
+          isOpen={activePanel === "gradient"}
           onClose={() => setActivePanel(null)}
           initialX={panelPos.x}
           initialY={panelPos.y}
           accentColor="#7C3AED"
         >
           <div className="space-y-2">
-            <ColorWheel color={gradientColor1} onChange={setGradientColor1} label="Couleur haut" />
-            <ColorWheel color={gradientColor2} onChange={setGradientColor2} label="Couleur bas" />
+            <ColorWheel
+              color={gradientColor1}
+              onChange={setGradientColor1}
+              label="Couleur haut"
+            />
+            <ColorWheel
+              color={gradientColor2}
+              onChange={setGradientColor2}
+              label="Couleur bas"
+            />
             <div>
-              <span className="text-[9px] text-gray-500 uppercase">Intensité {Math.round(gradientOpacity * 100)}%</span>
+              <span className="text-[9px] text-gray-500 uppercase">
+                Intensité {Math.round(gradientOpacity * 100)}%
+              </span>
               <input
-                type="range" min="0" max="2.0" step="0.05" value={gradientOpacity}
+                type="range"
+                min="0"
+                max="2.0"
+                step="0.05"
+                value={gradientOpacity}
                 onChange={(e) => setGradientOpacity(parseFloat(e.target.value))}
                 className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer mt-1"
               />
@@ -2361,7 +3594,7 @@ export default function InfographicPage() {
         <FloatingPanel
           title="Logo"
           icon="🎯"
-          isOpen={activePanel === 'logo'}
+          isOpen={activePanel === "logo"}
           onClose={() => setActivePanel(null)}
           initialX={panelPos.x}
           initialY={panelPos.y}
@@ -2369,28 +3602,45 @@ export default function InfographicPage() {
         >
           <div className="space-y-2">
             <div>
-              <span className="text-[9px] text-gray-500 uppercase">Échelle {Math.round(logoScale * 100)}%</span>
+              <span className="text-[9px] text-gray-500 uppercase">
+                Échelle {Math.round(logoScale * 100)}%
+              </span>
               <input
-                type="range" min="0.3" max="3.0" step="0.1" value={logoScale}
+                type="range"
+                min="0.3"
+                max="3.0"
+                step="0.1"
+                value={logoScale}
                 onChange={(e) => setLogoScale(parseFloat(e.target.value))}
                 className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-green-500 cursor-pointer mt-1"
               />
             </div>
             <div>
-              <span className="text-[9px] text-gray-500 uppercase block mb-1.5">Afficher sur:</span>
+              <span className="text-[9px] text-gray-500 uppercase block mb-1.5">
+                Afficher sur:
+              </span>
               <div className="flex flex-wrap gap-1.5">
-                {['titre', 'cartes', 'video', 'cta'].map((seq) => (
-                  <label key={seq} className="flex items-center gap-1.5 cursor-pointer">
+                {["titre", "cartes", "video", "cta"].map((seq) => (
+                  <label
+                    key={seq}
+                    className="flex items-center gap-1.5 cursor-pointer"
+                  >
                     <input
                       type="checkbox"
                       checked={logoSequences.includes(seq)}
                       onChange={(e) => {
-                        if (e.target.checked) setLogoSequences([...logoSequences, seq]);
-                        else setLogoSequences(logoSequences.filter(s => s !== seq));
+                        if (e.target.checked)
+                          setLogoSequences([...logoSequences, seq]);
+                        else
+                          setLogoSequences(
+                            logoSequences.filter((s) => s !== seq),
+                          );
                       }}
                       className="h-3 w-3 rounded border-gray-600 accent-green-500"
                     />
-                    <span className="text-[9px] text-gray-400 capitalize">{seq}</span>
+                    <span className="text-[9px] text-gray-400 capitalize">
+                      {seq}
+                    </span>
                   </label>
                 ))}
               </div>
@@ -2409,7 +3659,7 @@ export default function InfographicPage() {
         <FloatingPanel
           title="Texte Vidéo"
           icon="🎥"
-          isOpen={activePanel === 'overlay'}
+          isOpen={activePanel === "overlay"}
           onClose={() => setActivePanel(null)}
           initialX={panelPos.x}
           initialY={panelPos.y}
@@ -2427,25 +3677,90 @@ export default function InfographicPage() {
               onClick={async () => {
                 setIsGeneratingOverlay(true);
                 try {
-                  const themeObj = CONTENT_THEMES.find(t => t.id === contentTheme);
-                  const topicText = contentTheme === 'personnalise' ? customTopic : (themeObj?.label || contentTheme);
-                  const res = await fetch('/api/content/ai-generate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ topic: topicText, locale: 'fr', cardCount: 1 }),
+                  const themeObj = CONTENT_THEMES.find(
+                    (t) => t.id === contentTheme,
+                  );
+                  const topicText =
+                    contentTheme === "personnalise"
+                      ? customTopic
+                      : themeObj?.label || contentTheme;
+                  const res = await fetch("/api/content/ai-generate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      topic: topicText,
+                      locale: "fr",
+                      cardCount: 1,
+                    }),
                   });
                   if (res.ok) {
                     const data = await res.json();
-                    if (data.success && data.content?.subtitle) setVideoOverlayText(data.content.subtitle);
+                    if (data.success && data.content?.subtitle)
+                      setVideoOverlayText(data.content.subtitle);
                   }
-                } catch { /* ignore */ } finally { setIsGeneratingOverlay(false); }
+                } catch {
+                  /* ignore */
+                } finally {
+                  setIsGeneratingOverlay(false);
+                }
               }}
               disabled={isGeneratingOverlay}
               className="w-full flex items-center justify-center gap-1.5 rounded bg-cyan-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-cyan-600 disabled:opacity-50"
             >
-              {isGeneratingOverlay ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+              {isGeneratingOverlay ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Sparkles size={12} />
+              )}
               Générer par IA
             </button>
+            {/* Typography */}
+            <div className="flex gap-1 mt-1">
+              <button
+                onClick={() => setOverlayBold(!overlayBold)}
+                className={`px-2 py-1 rounded text-[10px] font-bold transition-all ${overlayBold ? "bg-cyan-600 text-white" : "bg-gray-800 text-gray-400"}`}
+              >
+                B
+              </button>
+              <button
+                onClick={() => setOverlayItalic(!overlayItalic)}
+                className={`px-2 py-1 rounded text-[10px] italic transition-all ${overlayItalic ? "bg-cyan-600 text-white" : "bg-gray-800 text-gray-400"}`}
+              >
+                I
+              </button>
+            </div>
+            <div>
+              <span className="text-[9px] text-gray-500 uppercase">
+                Espacement {overlayLetterSpacing}px
+              </span>
+              <input
+                type="range"
+                min="-2"
+                max="15"
+                step="0.5"
+                value={overlayLetterSpacing}
+                onChange={(e) =>
+                  setOverlayLetterSpacing(parseFloat(e.target.value))
+                }
+                className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-cyan-500 cursor-pointer mt-1"
+              />
+            </div>
+            <div>
+              <span className="text-[9px] text-gray-500 uppercase">
+                Interligne {overlayLineHeight.toFixed(1)}
+              </span>
+              <input
+                type="range"
+                min="0.8"
+                max="2.5"
+                step="0.1"
+                value={overlayLineHeight}
+                onChange={(e) =>
+                  setOverlayLineHeight(parseFloat(e.target.value))
+                }
+                className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-cyan-500 cursor-pointer mt-1"
+              />
+            </div>
           </div>
         </FloatingPanel>
 
@@ -2460,8 +3775,8 @@ export default function InfographicPage() {
                   onClick={() => setSelectedPhotoIndex(i % pexelsPhotos.length)}
                   className={`h-2.5 w-2.5 rounded-full transition-all ${
                     selectedPhotoIndex === i % pexelsPhotos.length
-                      ? 'bg-purple-500 scale-125'
-                      : 'bg-gray-600 hover:bg-gray-500'
+                      ? "bg-purple-500 scale-125"
+                      : "bg-gray-600 hover:bg-gray-500"
                   }`}
                 />
               ))}
@@ -2477,10 +3792,16 @@ export default function InfographicPage() {
                 key={photo.id}
                 onClick={() => setSelectedPhotoIndex(i)}
                 className={`flex-shrink-0 overflow-hidden rounded transition-all ${
-                  selectedPhotoIndex === i ? 'ring-2 ring-purple-500' : 'opacity-60 hover:opacity-100'
+                  selectedPhotoIndex === i
+                    ? "ring-2 ring-purple-500"
+                    : "opacity-60 hover:opacity-100"
                 }`}
               >
-                <img src={photo.small} alt="" className="h-10 sm:h-16 w-8 sm:w-12 object-cover" />
+                <img
+                  src={photo.small}
+                  alt=""
+                  className="h-10 sm:h-16 w-8 sm:w-12 object-cover"
+                />
               </button>
             ))}
           </div>
@@ -2490,15 +3811,21 @@ export default function InfographicPage() {
         <div className="mt-3 sm:mt-4 grid w-full max-w-xs grid-cols-3 gap-1.5 sm:gap-4 rounded-lg bg-gray-800 p-2 sm:p-3">
           <div className="text-center">
             <p className="text-[10px] sm:text-xs text-gray-400">Cartes</p>
-            <p className="text-base sm:text-lg font-bold text-white">{cards.length}</p>
+            <p className="text-base sm:text-lg font-bold text-white">
+              {cards.length}
+            </p>
           </div>
           <div className="text-center">
             <p className="text-[10px] sm:text-xs text-gray-400">Batch</p>
-            <p className="text-base sm:text-lg font-bold text-white">x{batchCount}</p>
+            <p className="text-base sm:text-lg font-bold text-white">
+              x{batchCount}
+            </p>
           </div>
           <div className="text-center">
             <p className="text-[10px] sm:text-xs text-gray-400">Crédits</p>
-            <p className="text-base sm:text-lg font-bold text-yellow-400">{25 * batchCount}</p>
+            <p className="text-base sm:text-lg font-bold text-yellow-400">
+              {25 * batchCount}
+            </p>
           </div>
         </div>
       </div>
