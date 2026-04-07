@@ -444,6 +444,50 @@ export default function InfographicPage() {
     "all" | "titre" | "cartes" | "video" | "cta"
   >("all");
 
+  // ── Play montage (auto-cycle through sequences) ────────────
+  const [isPlaying, setIsPlaying] = useState(false);
+  const playTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const stopPlayback = useCallback(() => {
+    if (playTimerRef.current) clearTimeout(playTimerRef.current);
+    playTimerRef.current = null;
+    setIsPlaying(false);
+  }, []);
+
+  const startPlayback = useCallback(() => {
+    stopPlayback();
+    setIsPlaying(true);
+
+    // Build sequence list with durations
+    const sequences: { key: typeof activeSequence; duration: number }[] = [
+      { key: 'titre', duration: introDuration },
+      ...(cards.length > 0 ? [{ key: 'cartes' as const, duration: cardsDuration }] : []),
+      ...(rushUrl ? [{ key: 'video' as const, duration: videoDuration }] : []),
+      { key: 'cta', duration: ctaDuration },
+    ];
+
+    let i = 0;
+    const playNext = () => {
+      if (i >= sequences.length) {
+        // Loop back or stop
+        setActiveSequence('all');
+        setIsPlaying(false);
+        return;
+      }
+      setActiveSequence(sequences[i].key);
+      playTimerRef.current = setTimeout(() => {
+        i++;
+        playNext();
+      }, sequences[i].duration * 1000);
+    };
+    playNext();
+  }, [stopPlayback, introDuration, cardsDuration, videoDuration, ctaDuration, cards.length, rushUrl]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => { if (playTimerRef.current) clearTimeout(playTimerRef.current); };
+  }, []);
+
   // Video overlay text position (draggable)
   const [overlayPos, setOverlayPos] = useState({ x: 50, y: 33 });
 
@@ -2414,10 +2458,26 @@ export default function InfographicPage() {
           Aperçu Vidéo Finale
         </h2>
 
-        {/* ── Sequence Selector (view individual pages) ── */}
+        {/* ── Sequence Selector + Play Button ── */}
         <div className="flex items-center gap-1.5 mb-3 flex-wrap justify-center">
+          {/* Play/Stop button — reads the montage */}
+          <button
+            onClick={() => {
+              if (isPlaying) { stopPlayback(); setActiveSequence('all'); }
+              else startPlayback();
+            }}
+            className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold transition-all ${
+              isPlaying
+                ? 'bg-red-600 text-white shadow-lg shadow-red-500/30 animate-pulse'
+                : 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50'
+            }`}
+          >
+            <span>{isPlaying ? '⏸️' : '▶️'}</span>
+            {isPlaying ? 'Stop' : 'Lire'}
+          </button>
+
+          {/* Sequence pages */}
           {[
-            { key: "all" as const, label: "Tout", icon: "🎬" },
             { key: "titre" as const, label: "Titre", icon: "📝" },
             { key: "cartes" as const, label: "Cartes", icon: "📊" },
             ...(rushUrl
@@ -2428,6 +2488,7 @@ export default function InfographicPage() {
             <button
               key={seq.key}
               onClick={() => {
+                stopPlayback();
                 setActiveSequence(seq.key);
                 // Auto-switch left panel to relevant content
                 if (seq.key === "cartes") setStep(0);
