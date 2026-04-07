@@ -11,7 +11,7 @@ import { LanguageSelector } from '@/components/LanguageSelector';
 const menuKeys = [
   { icon: LayoutDashboard, key: 'dashboard', href: '/dashboard', color: '#7C3AED' },
   { icon: Zap, key: 'create', href: '/dashboard/creator', color: '#F59E0B' },
-  { icon: Image, key: 'infographic', href: '/dashboard/infographic', color: '#EC4899' },
+  { icon: Image, key: 'infographic', href: '/dashboard/infographie', color: '#EC4899' },
   { icon: Volume2, key: 'audioStudio', href: '/dashboard/audio-studio', color: '#10B981' },
   { icon: Calendar, key: 'calendar', href: '/dashboard/calendar', color: '#3B82F6' },
   { icon: Library, key: 'library', href: '/dashboard/library', color: '#8B5CF6' },

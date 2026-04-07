@@ -687,14 +687,14 @@ export default function InfographicPage() {
       {/* Left Panel - Form */}
       <div className="w-full lg:w-1/2 overflow-y-auto border-r-0 lg:border-r border-gray-800 p-3 sm:p-6 pb-24 lg:pb-6 lg:max-h-[calc(100vh-4rem)]">
         {/* Header */}
-        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+        <div className="mb-6 flex flex-col gap-3">
           <h1 className="text-lg sm:text-2xl font-bold">Créer une Infographie</h1>
-          <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-gray-400 overflow-x-auto">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             {['Contenu', 'Design', 'Style', 'Export'].map((label, i) => (
               <button
                 key={label}
                 onClick={() => setStep(i)}
-                className={`flex items-center gap-1 rounded-full px-1.5 sm:px-3 py-1 text-[9px] sm:text-xs font-medium transition-all whitespace-nowrap ${
+                className={`flex items-center gap-1 rounded-full px-2.5 sm:px-3 py-1.5 text-[10px] sm:text-xs font-medium transition-all whitespace-nowrap ${
                   step === i ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
                 }`}
               >
