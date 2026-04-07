@@ -217,6 +217,9 @@ export default function InfographicPage() {
   // Sequence view: show individual "pages" in preview
   const [activeSequence, setActiveSequence] = useState<'all' | 'titre' | 'cartes' | 'video' | 'cta'>('all');
 
+  // Video overlay text position (draggable)
+  const [overlayPos, setOverlayPos] = useState({ x: 50, y: 33 });
+
   // Text size scale (0.6 to 1.8)
   const [textScale, setTextScale] = useState(1.0);
 
@@ -701,6 +704,7 @@ export default function InfographicPage() {
                     logo: logoPos,
                     watermark: watermarkPos,
                     cards: cardsPos,
+                    overlay: overlayPos,
                   },
                   sizes: {
                     title: titleSize,
@@ -1261,14 +1265,18 @@ export default function InfographicPage() {
             <div>
               <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Couleurs du texte</label>
               <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <input type="color" value={titleColor} onChange={(e) => setTitleColor(e.target.value)} className="h-7 w-7 cursor-pointer rounded border-0 bg-transparent p-0" />
-                  <span className="text-[10px] text-gray-400">Titre</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input type="color" value={ctaColor} onChange={(e) => setCtaColor(e.target.value)} className="h-7 w-7 cursor-pointer rounded border-0 bg-transparent p-0" />
-                  <span className="text-[10px] text-gray-400">CTA</span>
-                </div>
+                <label className="flex items-center gap-2 cursor-pointer rounded-lg bg-gray-800 px-2 py-1.5 hover:bg-gray-700 transition-colors">
+                  <div className="relative h-8 w-8 rounded-lg overflow-hidden border border-gray-600">
+                    <input type="color" value={titleColor} onChange={(e) => setTitleColor(e.target.value)} className="absolute inset-0 h-full w-full cursor-pointer border-0 p-0" style={{ minWidth: '32px', minHeight: '32px' }} />
+                  </div>
+                  <span className="text-[11px] text-gray-300 font-medium">Titre</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer rounded-lg bg-gray-800 px-2 py-1.5 hover:bg-gray-700 transition-colors">
+                  <div className="relative h-8 w-8 rounded-lg overflow-hidden border border-gray-600">
+                    <input type="color" value={ctaColor} onChange={(e) => setCtaColor(e.target.value)} className="absolute inset-0 h-full w-full cursor-pointer border-0 p-0" style={{ minWidth: '32px', minHeight: '32px' }} />
+                  </div>
+                  <span className="text-[11px] text-gray-300 font-medium">CTA</span>
+                </label>
               </div>
             </div>
 
@@ -1297,19 +1305,32 @@ export default function InfographicPage() {
                       try {
                         const themeObj = CONTENT_THEMES.find(t => t.id === contentTheme);
                         const topicText = contentTheme === 'personnalise' ? customTopic : (themeObj?.label || contentTheme);
+                        const controller = new AbortController();
+                        const timeout = setTimeout(() => controller.abort(), 8000);
                         const res = await fetch('/api/content/ai-generate', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ topic: topicText, locale: 'fr', cardCount: 0, ctaOnly: true }),
+                          body: JSON.stringify({ topic: topicText, locale: 'fr', cardCount: 1 }),
+                          signal: controller.signal,
                         });
+                        clearTimeout(timeout);
                         if (res.ok) {
                           const data = await res.json();
                           if (data.success && data.content) {
-                            if (data.content.ctaText) setCtaSubText(data.content.ctaText);
-                            if (data.content.ctaMainText) setCtaMainText(data.content.ctaMainText);
+                            // Use salesPhrases or subtitle as CTA sub text
+                            const phrases = data.content.salesPhrases || [];
+                            if (phrases.length > 0) setCtaSubText(phrases[0].toUpperCase());
+                            else if (data.content.subtitle) setCtaSubText(data.content.subtitle.toUpperCase());
+                            // Use title as brand tagline
+                            if (data.content.title) setCtaMainText(data.content.title.toUpperCase());
                           }
                         }
-                      } catch { /* ignore */ } finally { setIsGeneratingCta(false); }
+                      } catch (err: any) {
+                        console.warn('[CTA IA] Erreur:', err?.name || err?.message);
+                        // Fallback: random CTA suggestions
+                        const fallbacks = ['DÉCOUVRIR MAINTENANT', 'EN SAVOIR PLUS', 'COMMENCER AUJOURD\'HUI', 'REJOINS-NOUS', 'VOIR LES DÉTAILS'];
+                        setCtaSubText(fallbacks[Math.floor(Math.random() * fallbacks.length)]);
+                      } finally { setIsGeneratingCta(false); }
                     }}
                     disabled={isGeneratingCta}
                     className="flex items-center gap-1 rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white hover:bg-purple-500 disabled:opacity-50"
@@ -1327,9 +1348,9 @@ export default function InfographicPage() {
                 Taille du texte <span className="text-purple-400">{Math.round(textScale * 100)}%</span>
               </label>
               <div className="flex items-center gap-2">
-                <button onClick={() => setTextScale(Math.max(0.6, textScale - 0.1))} className="flex h-7 w-7 items-center justify-center rounded bg-gray-800 border border-gray-700 text-xs text-white font-bold hover:bg-gray-700">A</button>
-                <input type="range" min="0.6" max="1.8" step="0.05" value={textScale} onChange={(e) => setTextScale(parseFloat(e.target.value))} className="flex-1 h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer" />
-                <button onClick={() => setTextScale(Math.min(1.8, textScale + 0.1))} className="flex h-7 w-7 items-center justify-center rounded bg-gray-800 border border-gray-700 text-sm text-white font-bold hover:bg-gray-700">A</button>
+                <button onClick={() => setTextScale(Math.max(0.5, textScale - 0.1))} className="flex h-7 w-7 items-center justify-center rounded bg-gray-800 border border-gray-700 text-xs text-white font-bold hover:bg-gray-700">A</button>
+                <input type="range" min="0.5" max="3.0" step="0.05" value={textScale} onChange={(e) => setTextScale(parseFloat(e.target.value))} className="flex-1 h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer" />
+                <button onClick={() => setTextScale(Math.min(3.0, textScale + 0.1))} className="flex h-7 w-7 items-center justify-center rounded bg-gray-800 border border-gray-700 text-sm text-white font-bold hover:bg-gray-700">A</button>
                 <button onClick={() => setTextScale(1.0)} className="text-[9px] text-purple-400 hover:text-purple-300 ml-1">Reset</button>
               </div>
             </div>
@@ -1341,8 +1362,8 @@ export default function InfographicPage() {
                 <input type="color" value={gradientColor1} onChange={(e) => setGradientColor1(e.target.value)} className="h-7 w-7 cursor-pointer rounded border-0 bg-transparent p-0" />
                 <span className="text-[10px] text-gray-500">→</span>
                 <input type="color" value={gradientColor2} onChange={(e) => setGradientColor2(e.target.value)} className="h-7 w-7 cursor-pointer rounded border-0 bg-transparent p-0" />
-                <input type="range" min="0" max="0.8" step="0.05" value={gradientOpacity} onChange={(e) => setGradientOpacity(parseFloat(e.target.value))} className="flex-1 h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer" />
-                <span className="text-[10px] text-gray-400 w-8">{Math.round(gradientOpacity * 100)}%</span>
+                <input type="range" min="0" max="2.0" step="0.05" value={gradientOpacity} onChange={(e) => setGradientOpacity(parseFloat(e.target.value))} className="flex-1 h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer" />
+                <span className="text-[10px] text-gray-400 w-10">{Math.round(gradientOpacity * 100)}%</span>
               </div>
             </div>
 
@@ -1891,6 +1912,7 @@ export default function InfographicPage() {
               else if (dragging === 'logo') setLogoPos({ x, y });
               else if (dragging === 'watermark') setWatermarkPos({ x, y });
               else if (dragging === 'cards') setCardsPos({ x, y });
+              else if (dragging === 'overlay') setOverlayPos({ x, y });
             }}
             onMouseUp={() => { setDragging(null); setResizing(null); resizeStart.current = null; }}
             onMouseLeave={() => { setDragging(null); setResizing(null); resizeStart.current = null; }}
@@ -1930,11 +1952,19 @@ export default function InfographicPage() {
               </div>
             )}
 
-            {/* ── Gradient Overlay (user-configurable) ── */}
+            {/* ── Gradient Overlay (user-configurable, up to 200%) ── */}
             {gradientOpacity > 0 && (
-              <div className="absolute inset-0 z-[1] pointer-events-none" style={{
-                background: `linear-gradient(180deg, ${gradientColor1}${Math.round(gradientOpacity * 255).toString(16).padStart(2, '0')} 0%, transparent 40%, transparent 60%, ${gradientColor2}${Math.round(gradientOpacity * 255).toString(16).padStart(2, '0')} 100%)`,
-              }} />
+              <>
+                <div className="absolute inset-0 z-[1] pointer-events-none" style={{
+                  background: `linear-gradient(180deg, ${gradientColor1}${Math.round(Math.min(gradientOpacity, 1) * 255).toString(16).padStart(2, '0')} 0%, transparent 40%, transparent 60%, ${gradientColor2}${Math.round(Math.min(gradientOpacity, 1) * 255).toString(16).padStart(2, '0')} 100%)`,
+                }} />
+                {/* Second layer for >100% intensity */}
+                {gradientOpacity > 1 && (
+                  <div className="absolute inset-0 z-[1] pointer-events-none" style={{
+                    background: `linear-gradient(180deg, ${gradientColor1}${Math.round((gradientOpacity - 1) * 255).toString(16).padStart(2, '0')} 0%, transparent 35%, transparent 65%, ${gradientColor2}${Math.round((gradientOpacity - 1) * 255).toString(16).padStart(2, '0')} 100%)`,
+                  }} />
+                )}
+              </>
             )}
 
             {/* ── TITLE SECTION (visible in all, titre) — always draggable ── */}
@@ -1966,10 +1996,20 @@ export default function InfographicPage() {
               </div>
             )}
 
-            {/* ── VIDEO OVERLAY TEXT (visible in video sequence) ── */}
+            {/* ── VIDEO OVERLAY TEXT (visible in video sequence) — draggable, no bg ── */}
             {rushUrl && (activeSequence === 'all' || activeSequence === 'video') && videoOverlayText && (
-              <div className="absolute z-20 inset-x-4 top-1/3 text-center">
-                <p className="font-bold text-white drop-shadow-lg bg-black/30 rounded-lg px-3 py-2 backdrop-blur-sm" style={{ fontSize: `${14 * textScale}px` }}>
+              <div
+                className="absolute z-20 text-center cursor-grab active:cursor-grabbing group/overlay"
+                style={{
+                  left: `${overlayPos.x}%`,
+                  top: `${overlayPos.y}%`,
+                  transform: 'translate(-50%, -50%)',
+                  width: '85%',
+                }}
+                onMouseDown={(e) => { e.preventDefault(); setDragging('overlay'); }}
+              >
+                <div className="absolute inset-0 border border-dashed border-cyan-500/0 group-hover/overlay:border-cyan-500/40 rounded pointer-events-none transition-colors" />
+                <p className="font-black text-white drop-shadow-lg" style={{ fontSize: `${16 * textScale}px`, textShadow: '0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5)' }}>
                   {videoOverlayText}
                 </p>
               </div>
@@ -2082,10 +2122,10 @@ export default function InfographicPage() {
                     {salesPhrases[0]}
                   </p>
                 )}
-                <p className="mt-0.5 font-bold drop-shadow" style={{ fontSize: `${(format === '16:9' ? 10 : 7) * textScale}px`, color: ctaColor }}>
+                <p className="mt-0.5 font-black drop-shadow-lg uppercase" style={{ fontSize: `${(format === '16:9' ? 16 : 12) * textScale}px`, color: ctaColor }}>
                   {ctaMainText || 'AFROBOOST'}
                 </p>
-                <p className="font-semibold drop-shadow mt-1" style={{ fontSize: `${(format === '16:9' ? 9 : 7) * textScale}px`, color: activeColorTheme.accent }}>
+                <p className="font-bold drop-shadow mt-1 uppercase" style={{ fontSize: `${(format === '16:9' ? 12 : 9) * textScale}px`, color: activeColorTheme.accent }}>
                   {ctaSubText || 'CHAT POUR PLUS D\'INFOS'}
                 </p>
               </div>

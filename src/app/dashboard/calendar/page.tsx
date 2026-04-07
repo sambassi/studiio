@@ -128,6 +128,9 @@ export default function CalendarPage() {
   // Bulk selection
   const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
   const [bulkMode, setBulkMode] = useState(false);
+  // Cross-date bulk selection mode (select posts across multiple days from the calendar grid)
+  const [crossDateBulk, setCrossDateBulk] = useState(false);
+  const [selectedBulkDays, setSelectedBulkDays] = useState<Set<number>>(new Set());
 
   // Edit modal state
   const [editTab, setEditTab] = useState<'draft' | 'scheduled' | 'published'>('draft');
@@ -359,6 +362,45 @@ export default function CalendarPage() {
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
+  };
+
+  // Cross-date bulk: toggle all posts for a day
+  const toggleDaySelection = (day: number) => {
+    const dayPosts = getPostsForDay(day);
+    if (dayPosts.length === 0) return;
+    setSelectedBulkDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(day)) next.delete(day); else next.add(day);
+      return next;
+    });
+    setSelectedPostIds((prev) => {
+      const next = new Set(prev);
+      const allSelected = dayPosts.every(p => prev.has(p.id));
+      if (allSelected) {
+        dayPosts.forEach(p => next.delete(p.id));
+      } else {
+        dayPosts.forEach(p => next.add(p.id));
+      }
+      return next;
+    });
+  };
+
+  // Cross-date bulk delete
+  const handleCrossDateBulkDelete = async () => {
+    if (selectedPostIds.size === 0) return;
+    if (!confirm(`Supprimer ${selectedPostIds.size} post(s) ?`)) return;
+    setSaving(true);
+    try {
+      const ids = Array.from(selectedPostIds);
+      for (const id of ids) {
+        await fetch(`/api/posts?id=${id}`, { method: 'DELETE' });
+      }
+      setPosts((prev) => prev.filter((p) => !selectedPostIds.has(p.id)));
+      setSelectedPostIds(new Set());
+      setSelectedBulkDays(new Set());
+      setCrossDateBulk(false);
+    } catch (error) { console.error('Cross-date bulk delete error:', error); }
+    finally { setSaving(false); }
   };
 
   const handleSchedulePost = async (post: Post) => {
@@ -1388,22 +1430,31 @@ export default function CalendarPage() {
         <div
           key={day}
           data-day={day}
-          onClick={() => handleDayClick(day)}
+          onClick={() => crossDateBulk ? toggleDaySelection(day) : handleDayClick(day)}
           onDragOver={(e) => { e.preventDefault(); setDragOverDay(day); }}
           onDragLeave={() => { if (dragOverDay === day) setDragOverDay(null); }}
           onDrop={(e) => { e.preventDefault(); handleDropOnDay(day); }}
           className={`aspect-square p-0.5 sm:p-1.5 rounded-md sm:rounded-lg cursor-pointer transition-all relative ${
-            dragOverDay === day
+            crossDateBulk && selectedBulkDays.has(day)
+              ? 'bg-red-600/30 ring-2 ring-red-400 scale-105'
+              : dragOverDay === day
               ? 'bg-purple-600/30 ring-2 ring-purple-400 scale-105'
               : isSelected
               ? 'bg-gradient-to-br from-purple-600 to-pink-500 shadow-lg shadow-purple-500/20'
               : isToday
               ? 'bg-gray-700 ring-2 ring-pink-500'
+              : crossDateBulk && dayPosts.length > 0
+              ? 'bg-gray-800 hover:bg-red-900/30 border border-gray-700/50 hover:border-red-500/50'
               : 'bg-gray-800 hover:bg-gray-700 border border-gray-700/50'
           }`}
         >
-          <div className={`text-xs sm:text-sm font-medium ${isToday ? 'text-pink-400' : isSelected ? 'text-white' : 'text-gray-300'}`}>
-            {day}
+          <div className="flex items-center justify-between">
+            <span className={`text-xs sm:text-sm font-medium ${isToday ? 'text-pink-400' : isSelected ? 'text-white' : 'text-gray-300'}`}>
+              {day}
+            </span>
+            {crossDateBulk && selectedBulkDays.has(day) && (
+              <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[8px] text-white font-bold">✓</span>
+            )}
           </div>
           {dayPosts.length > 0 && (
             <div className="absolute bottom-0.5 sm:bottom-1.5 left-0.5 sm:left-1.5 right-0.5 sm:right-1.5 flex gap-0.5 flex-wrap">
@@ -1515,6 +1566,34 @@ export default function CalendarPage() {
               )}
             </div>
 
+            {/* Cross-date bulk selection bar */}
+            {crossDateBulk && (
+              <div className="mt-4 p-3 bg-red-900/20 border border-red-700/50 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs text-red-300 font-medium">
+                    {selectedPostIds.size} post(s) sélectionné(s) sur {selectedBulkDays.size} jour(s)
+                  </p>
+                  <button
+                    onClick={() => { setCrossDateBulk(false); setSelectedPostIds(new Set()); setSelectedBulkDays(new Set()); }}
+                    className="text-[10px] px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 transition"
+                  >
+                    Annuler
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleCrossDateBulkDelete}
+                    disabled={saving || selectedPostIds.size === 0}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-bold transition"
+                  >
+                    {saving ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                    Supprimer {selectedPostIds.size > 0 ? `(${selectedPostIds.size})` : ''}
+                  </button>
+                </div>
+                <p className="text-[9px] text-red-400/60 mt-1.5">Cliquez sur les jours du calendrier pour sélectionner/désélectionner</p>
+              </div>
+            )}
+
             {/* Bottom Action Buttons */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-4 mt-6 pt-4 border-t border-gray-700/50">
               <div className="flex flex-col xs:flex-row gap-1.5 w-full sm:w-auto">
@@ -1533,6 +1612,16 @@ export default function CalendarPage() {
                   <Upload size={12} className="sm:w-4 sm:h-4" />
                   <span className="hidden sm:inline">{t('import')}</span>
                   <span className="sm:hidden">{t('import').substring(0, 3)}</span>
+                </button>
+                <button
+                  onClick={() => { setCrossDateBulk(!crossDateBulk); setSelectedPostIds(new Set()); setSelectedBulkDays(new Set()); }}
+                  className={`flex items-center justify-center sm:justify-start gap-1 px-2.5 sm:px-4 py-2 sm:py-2.5 border rounded-lg text-[10px] sm:text-sm font-medium transition ${
+                    crossDateBulk ? 'bg-red-600 border-red-500 text-white' : 'bg-gray-800 hover:bg-gray-700 border-gray-700'
+                  }`}
+                >
+                  <CheckSquare size={12} className="sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">{crossDateBulk ? 'Annuler sélection' : 'Sélection multiple'}</span>
+                  <span className="sm:hidden">{crossDateBulk ? 'Annuler' : 'Multi'}</span>
                 </button>
               </div>
               <button
