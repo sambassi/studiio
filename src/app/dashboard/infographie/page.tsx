@@ -1616,12 +1616,12 @@ export default function InfographicPage() {
       {/* Right Panel - Preview */}
       {/* ═══════════════════════════════════════════════════════════ */}
       <div className="hidden lg:flex w-full lg:w-1/2 flex-col items-center justify-center border-l-0 lg:border-l border-gray-800 bg-gray-950 p-3 sm:p-6 mt-6 lg:mt-0 lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto">
-        <h2 className="mb-3 sm:mb-4 text-sm sm:text-lg font-bold text-gray-400">Aperçu Vidéo Finale</h2>
+        <h2 className="mb-4 text-base sm:text-xl font-bold text-white">Aperçu Vidéo Finale</h2>
 
-        {/* Safe Zone Platform Selector (additive — purely cosmetic overlay) */}
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Zones:</span>
-          <div className="flex gap-1.5">
+        {/* Safe Zone Platform Selector */}
+        <div className="flex items-center gap-3 mb-4 rounded-xl bg-gray-800/60 border border-gray-700/50 px-4 py-2.5">
+          <span className="text-xs text-gray-400 font-semibold uppercase tracking-wider">Zones</span>
+          <div className="flex gap-2">
             {Object.entries(PLATFORM_SAFE_ZONES).map(([key, zone]) => (
               <PlatformIcon
                 key={key}

@@ -71,26 +71,27 @@ export function PlatformIcon({
         type="button"
         onClick={onClick}
         className={`
-          group relative w-8 h-8 rounded-lg flex items-center justify-center
+          group relative w-10 h-10 rounded-xl flex items-center justify-center
           transition-all duration-200 ease-out
           ${isActive
             ? ''
-            : 'bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.07] hover:border-white/[0.15]'
+            : 'bg-white/[0.06] border border-white/[0.12] hover:bg-white/[0.10] hover:border-white/[0.25]'
           }
           ${className}
         `}
         style={isActive ? {
-          background: `${color}15`,
-          border: `1px solid ${color}55`,
+          background: `${color}20`,
+          border: `1.5px solid ${color}70`,
+          boxShadow: `0 0 12px ${color}30`,
         } : undefined}
         title={label}
       >
         <svg
           viewBox="0 0 24 24"
-          className="w-3.5 h-3.5 transition-opacity duration-200"
-          style={{ opacity: isActive ? 1 : 0.5 }}
+          className="w-5 h-5 transition-opacity duration-200"
+          style={{ opacity: isActive ? 1 : 0.6 }}
         >
-          <path d={path} fill={isActive ? color : '#888'} />
+          <path d={path} fill={isActive ? color : '#aaa'} />
         </svg>
       </button>
     );
