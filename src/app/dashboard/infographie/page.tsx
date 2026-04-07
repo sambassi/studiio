@@ -225,11 +225,17 @@ export default function InfographicPage() {
   // Text size scale (0.5 to 3.0)
   const [textScale, setTextScale] = useState(1.0);
 
+  // CTA text scale (separate from global textScale, for CTA-specific sizing)
+  const [ctaTextScale, setCtaTextScale] = useState(1.0);
+
   // CTA sub-text color (separate from main ctaColor)
   const [ctaSubColor, setCtaSubColor] = useState('#D91CD2');
 
+  // Settings panel visibility
+  const [showSettings, setShowSettings] = useState(false);
+
   // Floating panels — which element panel is open
-  const [activePanel, setActivePanel] = useState<'title' | 'cards' | 'cta' | 'overlay' | 'gradient' | null>(null);
+  const [activePanel, setActivePanel] = useState<'title' | 'cards' | 'cta' | 'overlay' | 'gradient' | 'logo' | null>(null);
   const [panelPos, setPanelPos] = useState({ x: 0, y: 0 });
 
   // Open a floating panel near the clicked element
@@ -709,6 +715,7 @@ export default function InfographicPage() {
                   filter: selectedFilter,
                   cardStyle: selectedCardStyle,
                   textScale,
+                  ctaTextScale,
                   titleColor,
                   ctaColor,
                   ctaSubColor,
@@ -1175,129 +1182,144 @@ export default function InfographicPage() {
 
         {/* ═══════════════════════════════════════════════════════ */}
         {/* ═══════════════════════════════════════════════════════ */}
-        {/* STEP 1: Design (NEW — fonts, filters, card styles) */}
+        {/* STEP 1: Design (Simplified — now shows instructions + Paramètres button) */}
         {/* ═══════════════════════════════════════════════════════ */}
         {step === 1 && (
           <div className="space-y-4">
-            {/* ── Font Selector ── */}
-            <div>
-              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Police</label>
-              <div className="flex flex-wrap gap-1.5">
-                {FONT_OPTIONS.map((opt) => (
-                  <DesignOption
-                    key={opt.label}
-                    icon={opt.icon}
-                    label={opt.label}
-                    sublabel={opt.sublabel}
-                    isActive={selectedFont === opt.label}
-                    onClick={() => setSelectedFont(opt.label)}
-                  />
-                ))}
-              </div>
-            </div>
+            {/* ── Paramètres Button (visible at top of all steps) ── */}
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 px-4 py-2.5 font-semibold text-white transition-all"
+            >
+              <span className="text-lg">⚙️</span>
+              <span>Paramètres Globaux</span>
+            </button>
 
-            {/* ── Filter Selector ── */}
-            <div>
-              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Filtre visuel</label>
-              <div className="flex flex-wrap gap-1.5">
-                {FILTER_OPTIONS.map((opt) => (
-                  <DesignOption
-                    key={opt.label}
-                    icon={opt.icon}
-                    label={opt.label}
-                    sublabel={opt.sublabel}
-                    isActive={selectedFilter === opt.label}
-                    accentColor={opt.accentColor}
-                    iconColor={opt.iconColor}
-                    onClick={() => setSelectedFilter(opt.label)}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* ── Card Style Selector ── */}
-            <div>
-              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Style des cartes</label>
-              <div className="flex flex-wrap gap-1.5">
-                {CARD_STYLE_OPTIONS.map((opt) => (
-                  <DesignOption
-                    key={opt.label}
-                    icon={opt.icon}
-                    label={opt.label}
-                    sublabel={opt.sublabel}
-                    isActive={selectedCardStyle === opt.label}
-                    onClick={() => setSelectedCardStyle(opt.label)}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* ── Logo Upload ── */}
-            <div>
-              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Logo</label>
-              <div className="flex items-center gap-3">
-                <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-gray-700 bg-gray-800 px-3 py-2 hover:border-purple-500 hover:bg-gray-700 transition-all">
-                  <Upload size={14} />
-                  <span className="text-xs text-gray-300">{logoImage ? 'Changer' : 'Charger Logo'}</span>
-                  <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
-                </label>
-                {logoImage && (
-                  <div className="flex items-center gap-2">
-                    <img src={logoImage} alt="Logo" className="h-8 w-8 rounded object-contain bg-gray-800 border border-gray-700" />
-                    <button onClick={() => setLogoImage(null)} className="rounded p-1 text-gray-500 hover:bg-red-600 hover:text-white">
-                      <Trash2 size={12} />
-                    </button>
+            {/* ── Settings Panel (overlaid when showSettings is true) ── */}
+            {showSettings && (
+              <div className="rounded-lg bg-gray-800/80 border border-purple-500/30 p-4 space-y-4">
+                {/* Font Selector */}
+                <div>
+                  <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Police</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {FONT_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.label}
+                        onClick={() => setSelectedFont(opt.label)}
+                        className={`px-2 py-1 rounded text-[9px] font-medium transition-all ${
+                          selectedFont === opt.label ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
                   </div>
-                )}
-              </div>
-              <p className="mt-1 text-[10px] text-gray-500">Glissez le logo sur l'aperçu pour le positionner</p>
-              {/* Logo Scale Slider */}
-              {logoImage && (
-                <div className="mt-2 flex items-center gap-2">
-                  <span className="text-[10px] text-gray-500 w-10">Taille</span>
-                  <input type="range" min="0.3" max="3.0" step="0.1" value={logoScale} onChange={(e) => setLogoScale(parseFloat(e.target.value))} className="flex-1 h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer" />
-                  <span className="text-[10px] text-gray-400 w-8">{Math.round(logoScale * 100)}%</span>
                 </div>
-              )}
-              {/* Logo Sequence Checkboxes */}
-              {logoImage && (
-                <div className="mt-2 flex items-center gap-3 flex-wrap">
-                  <span className="text-[10px] text-gray-500">Afficher sur :</span>
-                  {['titre', 'cartes', 'video', 'cta'].map((seq) => (
-                    <label key={seq} className="flex items-center gap-1 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={logoSequences.includes(seq)}
-                        onChange={(e) => {
-                          if (e.target.checked) setLogoSequences([...logoSequences, seq]);
-                          else setLogoSequences(logoSequences.filter(s => s !== seq));
-                        }}
-                        className="h-3 w-3 rounded border-gray-600 accent-purple-500"
-                      />
-                      <span className="text-[10px] text-gray-400 capitalize">{seq}</span>
+
+                {/* Filter Selector */}
+                <div>
+                  <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Filtre visuel</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {FILTER_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.label}
+                        onClick={() => setSelectedFilter(opt.label)}
+                        className={`px-2 py-1 rounded text-[9px] font-medium transition-all ${
+                          selectedFilter === opt.label ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Card Style Selector */}
+                <div>
+                  <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Style des cartes</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {CARD_STYLE_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.label}
+                        onClick={() => setSelectedCardStyle(opt.label)}
+                        className={`px-2 py-1 rounded text-[9px] font-medium transition-all ${
+                          selectedCardStyle === opt.label ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Logo Upload */}
+                <div>
+                  <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Logo</label>
+                  <div className="flex items-center gap-3">
+                    <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-gray-700 bg-gray-800 px-3 py-2 hover:border-purple-500 hover:bg-gray-700 transition-all">
+                      <Upload size={14} />
+                      <span className="text-xs text-gray-300">{logoImage ? 'Changer' : 'Charger Logo'}</span>
+                      <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
                     </label>
-                  ))}
+                    {logoImage && (
+                      <div className="flex items-center gap-2">
+                        <img src={logoImage} alt="Logo" className="h-8 w-8 rounded object-contain bg-gray-800 border border-gray-700" />
+                        <button onClick={() => setLogoImage(null)} className="rounded p-1 text-gray-500 hover:bg-red-600 hover:text-white">
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
 
-            {/* ── Contextual Help ── */}
-            <div className="rounded-lg bg-purple-900/20 border border-purple-500/30 px-3 py-2">
-              <p className="text-[10px] text-purple-300 font-medium">
-                💡 Double-cliquez sur un élément dans l'aperçu pour ouvrir ses réglages (couleurs, texte, taille...)
-              </p>
-            </div>
+                {/* Format Selection */}
+                <div>
+                  <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">Format</label>
+                  <div className="flex gap-2">
+                    {(['9:16', '16:9'] as Format[]).map((fmt) => (
+                      <button
+                        key={fmt}
+                        onClick={() => setFormat(fmt)}
+                        className={`flex-1 rounded px-3 py-2 text-xs font-bold transition-all ${
+                          format === fmt ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        {fmt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-            {/* ── Positioning Help ── */}
-            <div className="rounded-lg bg-gray-800/40 border border-gray-700/50 px-3 py-2">
-              <p className="text-[10px] text-gray-500">
-                Glissez les éléments sur l'aperçu. Poignées aux coins pour redimensionner.
+                {/* Reset Positions Button */}
                 <button
-                  onClick={() => { setTitlePos({ x: 50, y: 10 }); setLogoPos({ x: 50, y: 85 }); setWatermarkPos({ x: 50, y: 97 }); setCardsPos({ x: 50, y: 50 }); setTitleSize(100); setCardsSize(95); setWatermarkSize(80); }}
-                  className="ml-2 text-purple-400 hover:text-purple-300 underline"
+                  onClick={() => {
+                    setTitlePos({ x: 50, y: 10 });
+                    setLogoPos({ x: 50, y: 85 });
+                    setWatermarkPos({ x: 50, y: 97 });
+                    setCardsPos({ x: 50, y: 50 });
+                    setTitleSize(100);
+                    setCardsSize(95);
+                    setWatermarkSize(80);
+                  }}
+                  className="w-full rounded-lg border border-gray-700 bg-gray-700 px-3 py-2 text-xs font-medium text-gray-300 hover:bg-gray-600"
                 >
-                  Reset positions
+                  ↺ Réinitialiser les positions
                 </button>
+
+                {/* Close Settings Button */}
+                <button
+                  onClick={() => setShowSettings(false)}
+                  className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs font-medium text-gray-300 hover:bg-gray-700"
+                >
+                  Fermer les paramètres
+                </button>
+              </div>
+            )}
+
+            {/* ── Main Instruction Text ── */}
+            <div className="rounded-lg bg-purple-900/20 border border-purple-500/30 px-4 py-3">
+              <p className="text-sm text-purple-300 font-medium">
+                Double-cliquez sur les éléments dans l'aperçu pour les modifier (couleurs, texte, taille...)
               </p>
             </div>
 
@@ -1790,7 +1812,7 @@ export default function InfographicPage() {
         </div>
 
         {/* Preview Container */}
-        <div className={`relative w-full ${previewClasses.maxW} mx-auto`}>
+        <div className={`relative w-full ${previewClasses.maxW} mx-auto`} onClick={() => { if (activePanel) setActivePanel(null); }}>
           <div
             ref={previewRef}
             className={`${previewClasses.aspect} relative flex flex-col items-center justify-between rounded-lg ${
@@ -2043,14 +2065,14 @@ export default function InfographicPage() {
                   onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setResizing('watermark'); resizeStart.current = { x: e.clientX, y: e.clientY, size: watermarkSize }; }} />
                 <div className="absolute inset-0 border border-dashed border-yellow-500/0 group-hover/cta:border-yellow-500/40 rounded pointer-events-none transition-colors" />
                 {salesPhrases.length > 0 && (
-                  <p className="font-medium drop-shadow" style={{ fontSize: `${(format === '16:9' ? 10 : 8) * textScale}px`, color: `${ctaColor}ee` }}>
+                  <p className="font-medium drop-shadow" style={{ fontSize: `${(format === '16:9' ? 10 : 8) * ctaTextScale}px`, color: `${ctaColor}ee` }}>
                     {salesPhrases[0]}
                   </p>
                 )}
-                <p className="mt-0.5 font-black drop-shadow-lg uppercase" style={{ fontSize: `${(format === '16:9' ? 16 : 12) * textScale}px`, color: ctaColor }}>
+                <p className="mt-0.5 font-black drop-shadow-lg uppercase" style={{ fontSize: `${(format === '16:9' ? 16 : 12) * ctaTextScale}px`, color: ctaColor }}>
                   {ctaMainText || 'AFROBOOST'}
                 </p>
-                <p className="font-bold drop-shadow mt-1 uppercase" style={{ fontSize: `${(format === '16:9' ? 12 : 9) * textScale}px`, color: ctaSubColor }}>
+                <p className="font-bold drop-shadow mt-1 uppercase" style={{ fontSize: `${(format === '16:9' ? 12 : 9) * ctaTextScale}px`, color: ctaSubColor }}>
                   {ctaSubText || 'CHAT POUR PLUS D\'INFOS'}
                 </p>
               </div>
@@ -2059,13 +2081,14 @@ export default function InfographicPage() {
             {/* ── LOGO (draggable, resizable, visible per sequence) ── */}
             {logoImage && (activeSequence === 'all' || logoSequences.includes(activeSequence)) && (
               <div
-                className="absolute z-20 cursor-grab active:cursor-grabbing group/logo"
+                className={`absolute z-20 cursor-grab active:cursor-grabbing group/logo ${activePanel === 'logo' ? 'ring-1 ring-green-400 ring-offset-1 ring-offset-transparent rounded' : ''}`}
                 style={{
                   left: `${logoPos.x}%`,
                   top: `${logoPos.y}%`,
                   transform: `translate(-50%, -50%) scale(${logoScale})`,
                 }}
                 onMouseDown={(e) => { e.preventDefault(); setDragging('logo'); }}
+                onDoubleClick={(e) => openPanel('logo', e)}
               >
                 <div className="absolute inset-0 border border-dashed border-green-500/0 group-hover/logo:border-green-500/40 rounded pointer-events-none transition-colors" />
                 <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-500 rounded-full cursor-ne-resize z-30 border border-white/50 opacity-0 group-hover/logo:opacity-100 transition-opacity"
@@ -2300,10 +2323,10 @@ export default function InfographicPage() {
             <ColorWheel color={ctaColor} onChange={setCtaColor} label="Couleur titre" />
             <ColorWheel color={ctaSubColor} onChange={setCtaSubColor} label="Couleur sous-texte" />
             <div>
-              <span className="text-[9px] text-gray-500 uppercase">Taille {watermarkSize}%</span>
+              <span className="text-[9px] text-gray-500 uppercase">Taille {Math.round(ctaTextScale * 100)}%</span>
               <input
-                type="range" min="20" max="100" step="1" value={watermarkSize}
-                onChange={(e) => setWatermarkSize(parseInt(e.target.value))}
+                type="range" min="0.5" max="3.0" step="0.05" value={ctaTextScale}
+                onChange={(e) => setCtaTextScale(parseFloat(e.target.value))}
                 className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-yellow-500 cursor-pointer mt-1"
               />
             </div>
@@ -2331,6 +2354,54 @@ export default function InfographicPage() {
                 className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer mt-1"
               />
             </div>
+          </div>
+        </FloatingPanel>
+
+        {/* ── Logo Panel ── */}
+        <FloatingPanel
+          title="Logo"
+          icon="🎯"
+          isOpen={activePanel === 'logo'}
+          onClose={() => setActivePanel(null)}
+          initialX={panelPos.x}
+          initialY={panelPos.y}
+          accentColor="#10B981"
+        >
+          <div className="space-y-2">
+            <div>
+              <span className="text-[9px] text-gray-500 uppercase">Échelle {Math.round(logoScale * 100)}%</span>
+              <input
+                type="range" min="0.3" max="3.0" step="0.1" value={logoScale}
+                onChange={(e) => setLogoScale(parseFloat(e.target.value))}
+                className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-green-500 cursor-pointer mt-1"
+              />
+            </div>
+            <div>
+              <span className="text-[9px] text-gray-500 uppercase block mb-1.5">Afficher sur:</span>
+              <div className="flex flex-wrap gap-1.5">
+                {['titre', 'cartes', 'video', 'cta'].map((seq) => (
+                  <label key={seq} className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={logoSequences.includes(seq)}
+                      onChange={(e) => {
+                        if (e.target.checked) setLogoSequences([...logoSequences, seq]);
+                        else setLogoSequences(logoSequences.filter(s => s !== seq));
+                      }}
+                      className="h-3 w-3 rounded border-gray-600 accent-green-500"
+                    />
+                    <span className="text-[9px] text-gray-400 capitalize">{seq}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <button
+              onClick={() => setLogoImage(null)}
+              className="w-full flex items-center justify-center gap-1.5 rounded bg-red-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-red-600"
+            >
+              <Trash2 size={12} />
+              Supprimer le logo
+            </button>
           </div>
         </FloatingPanel>
 

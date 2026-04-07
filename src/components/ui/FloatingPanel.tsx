@@ -28,11 +28,36 @@ export default function FloatingPanel({
   const [dragging, setDragging] = useState(false);
   const dragOffset = useRef({ x: 0, y: 0 });
   const panelRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Reset position when panel opens with new initialX/Y
   useEffect(() => {
     if (isOpen) setPos({ x: initialX, y: initialY });
   }, [isOpen, initialX, initialY]);
+
+  // Handle click outside to close
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
+        onClose();
+      }
+    };
+
+    // Add a small delay to avoid closing immediately on the click that opened it
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside);
+    }, 50);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen, onClose]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     // Only drag from header area
@@ -66,16 +91,19 @@ export default function FloatingPanel({
 
   return (
     <div
-      ref={panelRef}
-      className="fixed z-[100] shadow-2xl"
+      ref={containerRef}
+      className="fixed z-[100] shadow-2xl transition-all duration-200 ease-out"
       style={{
         left: `${pos.x}px`,
         top: `${pos.y}px`,
         backdropFilter: 'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',
+        opacity: isOpen ? 1 : 0,
+        transform: isOpen ? 'scale(1)' : 'scale(0.95)',
       }}
     >
       <div
+        ref={panelRef}
         className="rounded-xl overflow-hidden"
         style={{
           background: 'rgba(10, 10, 20, 0.92)',
@@ -104,7 +132,7 @@ export default function FloatingPanel({
         </div>
 
         {/* Body */}
-        <div data-panel-body className="px-3 py-2.5 space-y-2.5 max-h-[60vh] overflow-y-auto custom-scrollbar">
+        <div data-panel-body className="px-3 py-2.5 space-y-2.5 max-h-[60vh] overflow-y-auto custom-scrollbar" onClick={(e) => e.stopPropagation()}>
           {children}
         </div>
       </div>
