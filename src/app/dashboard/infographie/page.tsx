@@ -54,7 +54,7 @@ interface PexelsPhoto {
 }
 
 type Format = "9:16" | "16:9";
-type Destination = "draft" | "export" | "both";
+type Destination = "draft" | "export" | "both" | "audio-studio";
 
 // ── Content Themes ─────────────────────────────────────────────
 const CONTENT_THEMES = [
@@ -1111,7 +1111,7 @@ export default function InfographicPage() {
         const hasVideo = !!rushUrl;
         const mediaType = hasVideo ? "video" : "image";
 
-        if (destination === "draft" || destination === "both") {
+        if (destination === "draft" || destination === "both" || destination === "audio-studio") {
           const today = new Date();
           today.setDate(today.getDate() + b); // Spread across days
           const scheduledDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
@@ -1319,15 +1319,20 @@ export default function InfographicPage() {
       }
 
       const messages: string[] = [];
-      if (destination === 'draft' || destination === 'both') {
+      if (destination === 'draft' || destination === 'both' || destination === 'audio-studio') {
         messages.push(`${total} infographie${total > 1 ? 's' : ''} ajoutée${total > 1 ? 's' : ''} au calendrier`);
       }
       if (destination === 'export' || destination === 'both') {
         messages.push('Fichiers téléchargés');
       }
+      if (destination === 'audio-studio') {
+        messages.push('Redirection vers Studio Son...');
+      }
       showToast(messages.join(' + ') + ' !', 'success');
 
-      if (destination === "draft" || destination === "both") {
+      if (destination === 'audio-studio') {
+        setTimeout(() => router.push("/dashboard/audio-studio"), 1500);
+      } else if (destination === "draft" || destination === "both") {
         setTimeout(() => router.push("/dashboard/calendar"), 2000);
       }
     } catch (error) {
@@ -2563,6 +2568,7 @@ export default function InfographicPage() {
                   },
                   { value: "export" as Destination, label: "Export fichier" },
                   { value: "both" as Destination, label: "Les deux" },
+                  { value: "audio-studio" as Destination, label: "Studio Son (ajouter musique/voix)" },
                 ].map((option) => (
                   <label
                     key={option.value}
