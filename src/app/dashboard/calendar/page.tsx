@@ -1054,7 +1054,10 @@ export default function CalendarPage() {
           const isReel = post.format === 'reel';
           const designMeta = meta.design || {};
 
-          const { url: renderedUrl } = await composeAndUpload({
+          console.log('[Publish] Media URLs:', { posterUrl: posterUrl?.substring(0, 60), videoUrl: videoUrl?.substring(0, 60), logoUrl: logoUrl?.substring(0, 30), musicUrl: musicUrl?.substring(0, 60) });
+
+          // Wrap composition in a 3-minute timeout to prevent hanging forever
+          const composePromise = composeAndUpload({
             width: isReel ? 1080 : 1920,
             height: isReel ? 1920 : 1080,
             fps: 30,
@@ -1107,6 +1110,11 @@ export default function CalendarPage() {
               setExportRenderStage(stage);
             },
           });
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Composition timeout after 3 minutes')), 180_000)
+          );
+          const { url: renderedUrl } = await Promise.race([composePromise, timeoutPromise]);
+          console.log('[Publish] Composition result: url =', renderedUrl ? renderedUrl.substring(0, 60) : 'NULL');
 
           if (renderedUrl) {
             updatedPost = {
@@ -1121,9 +1129,11 @@ export default function CalendarPage() {
             };
             console.log('[Publish] Montage composed:', renderedUrl);
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error('[Publish] Compose failed:', err);
-          alert('Erreur lors du rendu du montage. Veuillez réessayer.');
+          const errMsg = err?.message || String(err);
+          alert(`Erreur lors du rendu du montage:\n${errMsg}\n\nVeuillez réessayer.`);
+          setSaving(false);
           return; // ABORT — don't schedule without a video
         } finally {
           setExportRendering(false);

@@ -136,56 +136,62 @@ async function blobUrlToDataUrl(blobUrl: string): Promise<string> {
   });
 }
 
-function loadImage(src: string): Promise<HTMLImageElement> {
+function loadImage(src: string, timeoutMs = 20000): Promise<HTMLImageElement> {
   if (src.startsWith('blob:')) {
     return blobUrlToDataUrl(src).then(
-      (dataUrl) => loadImage(dataUrl),
+      (dataUrl) => loadImage(dataUrl, timeoutMs),
       () => new Promise<HTMLImageElement>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error(`Image load timeout (blob): ${src.substring(0, 40)}`)), timeoutMs);
         const img = new Image();
-        img.onload = () => resolve(img);
-        img.onerror = () => reject(new Error('Failed to load blob image'));
+        img.onload = () => { clearTimeout(timeout); resolve(img); };
+        img.onerror = () => { clearTimeout(timeout); reject(new Error('Failed to load blob image')); };
         img.src = src;
       })
     );
   }
   if (src.startsWith('data:')) {
     return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Image load timeout (data URL)')), timeoutMs);
       const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error('Failed to load data URL image'));
+      img.onload = () => { clearTimeout(timeout); resolve(img); };
+      img.onerror = () => { clearTimeout(timeout); reject(new Error('Failed to load data URL image')); };
       img.src = src;
     });
   }
   return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error(`Image load timeout: ${src.substring(0, 60)}`)), timeoutMs);
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
+    img.onload = () => { clearTimeout(timeout); resolve(img); };
     img.onerror = () => {
+      console.warn(`[Composer] Image direct load failed, trying proxy: ${src.substring(0, 60)}`);
       const proxyImg = new Image();
       proxyImg.crossOrigin = 'anonymous';
-      proxyImg.onload = () => resolve(proxyImg);
-      proxyImg.onerror = () => reject(new Error('Failed to load image'));
+      proxyImg.onload = () => { clearTimeout(timeout); resolve(proxyImg); };
+      proxyImg.onerror = () => { clearTimeout(timeout); reject(new Error(`Failed to load image (direct + proxy): ${src.substring(0, 60)}`)); };
       proxyImg.src = `/api/proxy-media?url=${encodeURIComponent(src)}`;
     };
     img.src = src;
   });
 }
 
-function loadVideo(src: string): Promise<HTMLVideoElement> {
+function loadVideo(src: string, timeoutMs = 30000): Promise<HTMLVideoElement> {
   return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error(`Video load timeout (${timeoutMs}ms): ${src.substring(0, 60)}`)), timeoutMs);
     const vid = document.createElement('video');
     if (!src.startsWith('blob:') && !src.startsWith('data:')) vid.crossOrigin = 'anonymous';
     vid.muted = true;
     vid.playsInline = true;
     vid.preload = 'auto';
-    vid.oncanplaythrough = () => resolve(vid);
+    vid.oncanplaythrough = () => { clearTimeout(timeout); resolve(vid); };
     vid.onerror = () => {
-      if (src.startsWith('blob:') || src.startsWith('data:')) return reject(new Error('Video load failed'));
+      if (src.startsWith('blob:') || src.startsWith('data:')) { clearTimeout(timeout); return reject(new Error('Video load failed')); }
+      console.warn(`[Composer] Video direct load failed, trying proxy: ${src.substring(0, 60)}`);
       const vid2 = document.createElement('video');
       vid2.crossOrigin = 'anonymous';
       vid2.muted = true; vid2.playsInline = true; vid2.preload = 'auto';
-      vid2.oncanplaythrough = () => resolve(vid2);
-      vid2.onerror = () => reject(new Error('Video load failed'));
+      vid2.oncanplaythrough = () => { clearTimeout(timeout); resolve(vid2); };
+      vid2.onerror = () => { clearTimeout(timeout); reject(new Error(`Video load failed (direct + proxy): ${src.substring(0, 60)}`)); };
       vid2.src = `/api/proxy-media?url=${encodeURIComponent(src)}`;
       vid2.load();
     };
@@ -879,12 +885,15 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     }
   }
 
-  // Load visual media
+  // Load visual media (with individual error logging)
+  console.log('[Composer] Loading media:', { poster: posterUrl?.substring(0, 60) || 'NONE', logo: logoUrl?.substring(0, 30) || 'NONE', video: videoUrl?.substring(0, 60) || 'NONE' });
+  const mediaLoadStart = performance.now();
   const [posterImg, logoImg, videoEl] = await Promise.all([
-    posterUrl ? loadImage(posterUrl).catch(() => null) : null,
-    logoUrl ? loadImage(logoUrl).catch(() => null) : null,
-    videoUrl ? loadVideo(videoUrl).catch(() => null) : null,
+    posterUrl ? loadImage(posterUrl).catch((err) => { console.error('[Composer] ❌ Poster load FAILED:', err.message); return null; }) : null,
+    logoUrl ? loadImage(logoUrl).catch((err) => { console.error('[Composer] ❌ Logo load FAILED:', err.message); return null; }) : null,
+    videoUrl ? loadVideo(videoUrl).catch((err) => { console.error('[Composer] ❌ Video load FAILED:', err.message); return null; }) : null,
   ]);
+  console.log(`[Composer] Media loaded in ${((performance.now() - mediaLoadStart) / 1000).toFixed(1)}s — poster:${!!posterImg} logo:${!!logoImg} video:${!!videoEl}`);
 
   // Load audio — prefer pre-decoded AudioBuffers (batch mode), fallback to <audio> elements
   // ALWAYS load voice as <audio> element too (WebM recordings may decode to empty buffers)
@@ -908,8 +917,12 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   }
 
   const hasAudio = !!options.musicBuffer || !!validVoiceBuffer || musicEl !== null || voiceEl !== null;
-  console.log('[Composer] Media loaded — poster:', !!posterImg, 'logo:', !!logoImg, 'video:', !!videoEl);
   console.log('[Composer] Audio — musicBuffer:', !!options.musicBuffer, 'voiceBuffer:', !!validVoiceBuffer, 'musicEl:', !!musicEl, 'voiceEl:', !!voiceEl, 'hasAudio:', hasAudio);
+
+  // Critical check: if poster is needed but failed to load, abort early with clear error
+  if (posterUrl && !posterImg) {
+    throw new Error(`Impossible de charger l'image de fond (poster). Vérifiez que l'URL est accessible: ${posterUrl.substring(0, 80)}`);
+  }
 
   // Build sequences
   const sequences: Array<{ type: string; duration: number }> = [{ type: 'intro', duration: introDuration }];
@@ -1448,6 +1461,11 @@ export async function composeAndUpload(options: ComposerOptions): Promise<{ blob
       if (data.success && data.file?.url) { url = data.file.url; console.log('[Composer] Fallback upload OK:', url); }
       else console.error('[Composer] Fallback upload failed:', data);
     } catch (err) { console.error('[Composer] Fallback upload error:', err); }
+  }
+
+  if (!url && blob.size > 0) {
+    console.error('[Composer] ❌ Video blob created (' + (blob.size / 1024 / 1024).toFixed(1) + 'MB) but ALL upload strategies failed!');
+    throw new Error(`Le montage a été créé (${(blob.size / 1024 / 1024).toFixed(1)}MB) mais l'upload a échoué. Vérifiez votre connexion internet et réessayez.`);
   }
 
   return { blob, url };
