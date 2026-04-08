@@ -658,16 +658,17 @@ function AudioStudioContent() {
 
             // Timeout pour éviter les blocages infinis (ex: onglet en arrière-plan, rAF en pause)
             const COMPOSE_TIMEOUT_MS = 120_000; // 2 minutes max par vidéo
+            const batchDesign = (pm.design || {}) as Record<string, unknown>;
             const composePromise = composeAndUpload({
               width: isReel ? 1080 : 1920,
               height: isReel ? 1920 : 1080,
-              fps: 24,
+              fps: 30,
               title: p.title || 'Vidéo',
               subtitle: (pm.subtitle as string) || undefined,
               salesPhrase: (pm.salesPhrase as string) || undefined,
               cards: finalCards.length > 0 ? finalCards : undefined,
               posterUrl, videoUrl: rushUrl,
-              logoUrl: (pm.logoUrl as string) || null,
+              logoUrl: (pm.logoUrl as string) || (batchDesign.logoUrl as string) || null,
               musicUrl: localMusicBlobUrl,
               voiceUrl: localVoiceBlobUrl,
               introDuration: (pSeq.intro as number) || seqDurations.intro,
@@ -678,6 +679,7 @@ function AudioStudioContent() {
               ctaText: (brand?.ctaText as string) || 'CHAT POUR PLUS D\'INFOS',
               ctaSubText: (brand?.ctaSubText as string) || 'LIEN EN BIO',
               watermarkText: (brand?.watermarkText as string) || undefined,
+              siteText: (batchDesign.siteText as { text: string; color?: string; opacity?: number; size?: number; sequences?: string[]; enabled?: boolean }) || undefined,
               sharedAudioCtx,
               musicBuffer,
               voiceBuffer,
@@ -779,16 +781,17 @@ function AudioStudioContent() {
         setExportStage(t('export.composingWithAudio'));
         setExportProgress(25);
 
+        const pDesign = (pm.design || {}) as Record<string, unknown>;
         const result = await composeAndUpload({
           width: isReel ? 1080 : 1920,
           height: isReel ? 1920 : 1080,
-          fps: 24,
+          fps: 30,
           title: p.title || 'Vidéo',
           subtitle: (pm.subtitle as string) || undefined,
           salesPhrase: (pm.salesPhrase as string) || undefined,
           cards: finalCards.length > 0 ? finalCards : undefined,
           posterUrl, videoUrl: rushUrl,
-          logoUrl: (pm.logoUrl as string) || null,
+          logoUrl: (pm.logoUrl as string) || (pDesign.logoUrl as string) || null,
           musicUrl: localMusicBlobUrl,
           voiceUrl: localVoiceBlobUrl,
           introDuration: (pSeq.intro as number) || seqDurations.intro,
@@ -799,6 +802,7 @@ function AudioStudioContent() {
           ctaText: (brand?.ctaText as string) || 'CHAT POUR PLUS D\'INFOS',
           ctaSubText: (brand?.ctaSubText as string) || 'LIEN EN BIO',
           watermarkText: (brand?.watermarkText as string) || undefined,
+          siteText: (pDesign.siteText as { text: string; color?: string; opacity?: number; size?: number; sequences?: string[]; enabled?: boolean }) || undefined,
           sharedAudioCtx,
           musicBuffer,
           voiceBuffer,
@@ -847,6 +851,8 @@ function AudioStudioContent() {
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
   const hasAudio = !!musicFile || !!voiceFile;
+  // Allow desktop export even without audio (just the video montage)
+  const canExport = hasAudio || exportDest === 'desktop';
   // Video source: build a fallback chain of all available video URLs
   const rushUrls = (meta.rushUrls || []) as string[];
   const videoSrcCandidates = [
@@ -1131,13 +1137,13 @@ function AudioStudioContent() {
               ))}
             </div>
 
-            <button onClick={handleExport} disabled={isExporting || !hasAudio} className="w-full relative overflow-hidden bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 disabled:opacity-40 text-white font-bold py-2.5 px-3 rounded-xl transition-all text-xs">
+            <button onClick={handleExport} disabled={isExporting || !canExport} className="w-full relative overflow-hidden bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 disabled:opacity-40 text-white font-bold py-2.5 px-3 rounded-xl transition-all text-xs">
               {isExporting && <div className="absolute inset-0 bg-gradient-to-r from-pink-700 to-purple-700 transition-all duration-500" style={{ width: `${exportProgress}%` }} />}
               <span className="relative z-10 flex items-center justify-center gap-1.5">
-                {isExporting ? <><Loader2 size={14} className="animate-spin" /> {Math.round(exportProgress)}%</> : <><Volume2 size={14} /> {isBatch ? t('export.exportBatch', { count: String(posts.length) }) : t('export.exportWithAudio')}</>}
+                {isExporting ? <><Loader2 size={14} className="animate-spin" /> {Math.round(exportProgress)}%</> : <><Volume2 size={14} /> {isBatch ? t('export.exportBatch', { count: String(posts.length) }) : (hasAudio ? t('export.exportWithAudio') : 'Exporter MP4')}</>}
               </span>
             </button>
-            {!hasAudio && <p className="text-[10px] text-gray-500 text-center mt-1.5">{t('export.addAudioFirst')}</p>}
+            {!canExport && <p className="text-[10px] text-gray-500 text-center mt-1.5">{t('export.addAudioFirst')}</p>}
             {isExporting && exportStage && <p className="text-[10px] text-pink-400 text-center mt-1">{exportStage}</p>}
           </div>
 
