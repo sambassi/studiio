@@ -2323,7 +2323,21 @@ export default function CalendarPage() {
         const designLogoUrl = design?.logoUrl || meta?.logoUrl;
         const designCardStyle = design?.cardStyle;
         const designCardCustomIcons = design?.cardCustomIcons;
-        const designLogoSequences = design?.logoSequences;
+        const rawLogoSequences = design?.logoSequences || [];
+        // Map editor sequence names to calendar sequence names:
+        // Editor uses: "titre", "cartes", "video", "cta"
+        // Calendar uses: "intro", "cards", "video", "cta"
+        const seqNameMap: Record<string, string> = { titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' };
+        const designLogoSequences = rawLogoSequences.map((s: string) => seqNameMap[s] || s);
+
+        // Scale factor: design values are for a 1080px-wide canvas (reel format)
+        // The preview container uses height:70dvh, aspect-ratio:9/16 → width ≈ 39.375dvh
+        // We express font sizes as dvh units: designPx / 1080 * 39.375 = designPx * 0.03646
+        // For TV (16:9) format, the container is wider so the scale is different
+        const isReelFormat = fullPreviewPost.format === 'reel';
+        const dvhScale = isReelFormat ? 0.03646 : 0.02917; // 9:16 vs 16:9
+        // Helper to convert design px to preview-friendly dvh units
+        const pxToDvh = (designPx: number) => `${(designPx * dvhScale).toFixed(2)}dvh`;
 
         // Helper: convert hex color to rgba with opacity
         const hexToRgba = (hex: string, opacity: number) => {
@@ -2394,8 +2408,8 @@ export default function CalendarPage() {
                         <h3 style={{
                           fontFamily: designFont,
                           color: designTitleColor,
-                          fontSize: `${(sizes.title || 30) * designTextScale}px`,
-                          letterSpacing: `${titleTypo.letterSpacing || 2}px`,
+                          fontSize: pxToDvh((sizes.title || 30) * designTextScale),
+                          letterSpacing: pxToDvh(titleTypo.letterSpacing || 2),
                           lineHeight: titleTypo.lineHeight || 1.1,
                           fontWeight: titleTypo.bold !== false ? 900 : 400,
                           fontStyle: titleTypo.italic ? 'italic' : 'normal',
@@ -2410,8 +2424,8 @@ export default function CalendarPage() {
                       {designLogoUrl && designLogoSequences?.includes('intro') && (
                         <img src={designLogoUrl} alt="Logo" style={{
                           position: 'absolute',
-                          width: `${160 * designLogoScale}px`,
-                          height: `${160 * designLogoScale}px`,
+                          width: pxToDvh(160 * designLogoScale),
+                          height: pxToDvh(160 * designLogoScale),
                           objectFit: 'contain',
                           left: positions.logo ? `${positions.logo.x}%` : '50%',
                           top: positions.logo ? `${positions.logo.y}%` : '8%',
@@ -2457,8 +2471,8 @@ export default function CalendarPage() {
                       {designLogoUrl && designLogoSequences?.includes('cards') && (
                         <img src={designLogoUrl} alt="Logo" style={{
                           position: 'absolute',
-                          width: `${160 * designLogoScale}px`,
-                          height: `${160 * designLogoScale}px`,
+                          width: pxToDvh(160 * designLogoScale),
+                          height: pxToDvh(160 * designLogoScale),
                           objectFit: 'contain',
                           left: positions.logo ? `${positions.logo.x}%` : '50%',
                           top: positions.logo ? `${positions.logo.y}%` : '8%',
@@ -2490,8 +2504,8 @@ export default function CalendarPage() {
                             <p style={{
                               fontFamily: designFont,
                               color: design?.overlayColor || '#FFFFFF',
-                              fontSize: `${24 * designTextScale}px`,
-                              letterSpacing: `${overlayTypo.letterSpacing || 2}px`,
+                              fontSize: pxToDvh(24 * designTextScale),
+                              letterSpacing: pxToDvh(overlayTypo.letterSpacing || 2),
                               lineHeight: overlayTypo.lineHeight || 1.15,
                               fontWeight: overlayTypo.bold !== false ? 900 : 400,
                               fontStyle: overlayTypo.italic ? 'italic' : 'normal',
@@ -2506,8 +2520,8 @@ export default function CalendarPage() {
                         {designLogoUrl && designLogoSequences?.includes('video') && (
                           <img src={designLogoUrl} alt="Logo" style={{
                             position: 'absolute',
-                            width: `${160 * designLogoScale}px`,
-                            height: `${160 * designLogoScale}px`,
+                            width: pxToDvh(160 * designLogoScale),
+                            height: pxToDvh(160 * designLogoScale),
                             objectFit: 'contain',
                             left: positions.logo ? `${positions.logo.x}%` : '50%',
                             top: positions.logo ? `${positions.logo.y}%` : '8%',
@@ -2523,16 +2537,16 @@ export default function CalendarPage() {
                     <div className="absolute inset-0 flex flex-col items-center justify-center pb-12" style={{ opacity: currentSeq === 'cta' ? 1 : 0, transform: currentSeq === 'cta' ? 'scale(1)' : 'scale(0.92)', zIndex: currentSeq === 'cta' ? 10 : 1, background: '#000000', transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
                       <div className="text-center px-6" style={positions.watermark ? { position: 'absolute', left: `${positions.watermark.x}%`, top: `${positions.watermark.y}%`, transform: 'translate(-50%, -50%)' } : {}}>
                         {designLogoUrl && <img src={designLogoUrl} alt="Logo" style={{
-                          width: `${160 * designLogoScale}px`,
-                          height: `${160 * designLogoScale}px`,
+                          width: pxToDvh(160 * designLogoScale),
+                          height: pxToDvh(160 * designLogoScale),
                           objectFit: 'contain',
                           margin: '0 auto 24px auto',
                         }} />}
                         <p style={{
                           fontFamily: designFont,
                           color: designCtaColor,
-                          fontSize: `${30 * designCtaTextScale}px`,
-                          letterSpacing: `${ctaTypo.letterSpacing || 2}px`,
+                          fontSize: pxToDvh(30 * designCtaTextScale),
+                          letterSpacing: pxToDvh(ctaTypo.letterSpacing || 2),
                           lineHeight: ctaTypo.lineHeight || 1.2,
                           fontWeight: ctaTypo.bold !== false ? 900 : 400,
                           fontStyle: ctaTypo.italic ? 'italic' : 'normal',
@@ -2544,12 +2558,12 @@ export default function CalendarPage() {
                         <p style={{
                           fontFamily: designFont,
                           color: designCtaSubColor,
-                          fontSize: `${24 * designCtaTextScale}px`,
-                          letterSpacing: `${ctaTypo.letterSpacing || 2}px`,
+                          fontSize: pxToDvh(24 * designCtaTextScale),
+                          letterSpacing: pxToDvh(ctaTypo.letterSpacing || 2),
                           textTransform: 'uppercase',
                           fontWeight: 700,
                         }}>{designCtaMainText || brd?.ctaSubText || branding.ctaSubText || 'LIEN EN BIO'}</p>
-                        {meta?.salesPhrase && <p className="mt-5" style={{ color: '#FFFFFF', fontFamily: designFont, fontSize: '24px', fontWeight: 700 }}>{meta.salesPhrase}</p>}
+                        {meta?.salesPhrase && <p className="mt-5" style={{ color: '#FFFFFF', fontFamily: designFont, fontSize: pxToDvh(24 * designTextScale), fontWeight: 700 }}>{meta.salesPhrase}</p>}
                       </div>
                     </div>
 
