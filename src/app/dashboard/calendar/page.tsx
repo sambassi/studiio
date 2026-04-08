@@ -2580,7 +2580,7 @@ export default function CalendarPage() {
                         <div style={{
                           position: 'absolute',
                           left: `${positions.title?.x ?? 50}%`,
-                          top: `${positions.title?.y ?? 10}%`,
+                          top: `${positions.title?.y ?? 75}%`,
                           transform: 'translate(-50%, 0)',
                           display: 'flex',
                           flexDirection: 'column' as const,

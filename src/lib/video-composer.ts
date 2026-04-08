@@ -283,41 +283,48 @@ function drawIntro(
     ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
   }
 
-  // Title at BOTTOM (flex-end with paddingBottom 15%) — matches preview
-  const titleY = h * 0.85; // 85% from top = 15% from bottom
+  // Title at BOTTOM (flex-end with paddingBottom 15%) — matches audio-studio preview
+  // Sizes match HTML clamp(): title=7cqw, subtitle=4.5cqw
   const titleAlpha = Math.min(1, progress * 3);
-  const fontSize = Math.round(w * 0.065);
+  const fontSize = Math.round(w * 0.07); // 7cqw → 76px at 1080w
+  const subFontSize = Math.round(w * 0.045); // 4.5cqw → 49px at 1080w
+
+  // Position: 85% from top (= 15% padding from bottom, like flex-end + paddingBottom 15%)
+  const titleY = h * 0.85;
+
   ctx.save();
-  ctx.font = `900 ${fontSize}px ${fontFamily}`; ctx.textAlign = 'center';
+  ctx.font = `900 ${fontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
   ctx.fillStyle = hexToRgba(titleColor, titleAlpha);
-  ctx.shadowColor = hexToRgba(accent, 0.8); ctx.shadowBlur = 20;
-  fillTextWithOutline(ctx, title.toUpperCase(), w / 2, titleY, 4, 'rgba(0,0,0,0.9)');
+  ctx.shadowColor = hexToRgba(accent, 0.8); ctx.shadowBlur = Math.round(w * 0.02);
+  fillTextWithOutline(ctx, title.toUpperCase(), w / 2, titleY, Math.round(w * 0.004), 'rgba(0,0,0,0.9)');
   ctx.shadowBlur = 0;
 
   // Subtitle below title
   if (subtitle) {
     const subAlpha = Math.max(0, Math.min(1, (progress - 0.2) * 3));
-    ctx.font = `400 ${Math.round(w * 0.028)}px ${fontFamily}`;
+    ctx.font = `400 ${subFontSize}px "${fontFamily}", sans-serif`;
     ctx.fillStyle = hexToRgba(titleColor, subAlpha * 0.8);
+    ctx.shadowColor = hexToRgba(accent, 0.5); ctx.shadowBlur = Math.round(w * 0.006);
     fillTextWithOutline(ctx, subtitle, w / 2, titleY + fontSize * 0.7, 2, 'rgba(0,0,0,0.7)');
+    ctx.shadowBlur = 0;
   }
 
-  // Accent line below title
+  // Accent line below title — gradient line like preview
   const lineAlpha = Math.max(0, Math.min(1, (progress - 0.3) * 3));
-  const lineW = w * 0.12;
+  const lineW = w * 0.15;
   const lineY = titleY + fontSize * (subtitle ? 1.0 : 0.5);
   const lineGrad = ctx.createLinearGradient(w / 2 - lineW / 2, 0, w / 2 + lineW / 2, 0);
   lineGrad.addColorStop(0, 'rgba(0,0,0,0)');
   lineGrad.addColorStop(0.5, hexToRgba(accent, lineAlpha));
   lineGrad.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.strokeStyle = lineGrad;
-  ctx.lineWidth = 2; ctx.beginPath();
+  ctx.lineWidth = 3; ctx.beginPath();
   ctx.moveTo(w / 2 - lineW / 2, lineY);
   ctx.lineTo(w / 2 + lineW / 2, lineY); ctx.stroke();
 
   // Logo on intro if configured
   if (logoImg && design?.logoSequences?.includes('intro')) {
-    const logoSize = Math.round(w * 0.1);
+    const logoSize = Math.round(w * 0.12); // 12cqw like preview
     const lx = ((design.logoPosition?.x ?? 50) / 100) * w - logoSize / 2;
     const ly = ((design.logoPosition?.y ?? 85) / 100) * h - logoSize / 2;
     drawLogo(ctx, logoImg, lx, ly, logoSize);
@@ -327,7 +334,7 @@ function drawIntro(
   const barGrad = ctx.createLinearGradient(0, 0, w, 0);
   barGrad.addColorStop(0, grad1); barGrad.addColorStop(1, grad2);
   ctx.fillStyle = barGrad;
-  ctx.fillRect(0, h - 3, w, 3);
+  ctx.fillRect(0, h - 4, w, 4);
 
   ctx.restore();
 }
@@ -348,49 +355,57 @@ function drawCards(
   grad.addColorStop(1, '#000000');
   ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
 
-  // Cards centered vertically — no "INFORMATIONS" header (matches preview)
+  // Cards centered vertically — sizes match HTML preview cqw proportions
+  // HTML: emoji=5cqw, label=4cqw, value=4.5cqw
   const maxCards = Math.min(cards.length, 5);
-  const cardH = Math.round(h * 0.08);
-  const cardW = Math.round(w * 0.88);
-  const gap = Math.round(h * 0.015);
+  const cardH = Math.round(h * 0.07); // slightly smaller cards for better spacing
+  const cardW = Math.round(w * 0.92); // wider cards
+  const gap = Math.round(h * 0.012);
   const totalCardsH = maxCards * cardH + (maxCards - 1) * gap;
   const startY = (h - totalCardsH) / 2;
   const cardX = (w - cardW) / 2;
 
+  const emojiSize = Math.round(w * 0.05);   // 5cqw → 54px at 1080w
+  const labelSize = Math.round(w * 0.04);   // 4cqw → 43px at 1080w
+  const valueSize = Math.round(w * 0.045);  // 4.5cqw → 49px at 1080w
+  const borderW = Math.round(w * 0.004);    // proportional border
+
   cards.slice(0, 5).forEach((card, i) => {
-    const rawCp = Math.max(0, Math.min(1, (progress - i * 0.1) * 3.5));
+    const rawCp = Math.max(0, Math.min(1, (progress - i * 0.08) * 3.5));
     if (rawCp <= 0) return;
     const cp = 1 - Math.pow(1 - rawCp, 3);
     const y = startY + i * (cardH + gap);
     const slideX = cardX + (1 - cp) * (-w * 0.12);
     ctx.globalAlpha = cp;
 
-    // Card background — rgba(0,0,0,0.3) like preview
-    ctx.fillStyle = 'rgba(0,0,0,0.3)'; drawRoundRect(ctx, slideX, y, cardW, cardH, 8); ctx.fill();
-    // Left accent border — 2px like preview
-    ctx.fillStyle = card.color || accent; ctx.fillRect(slideX, y + 4, 3, cardH - 8);
+    // Card background — rgba(0,0,0,0.3) with backdrop effect
+    ctx.fillStyle = 'rgba(0,0,0,0.35)'; drawRoundRect(ctx, slideX, y, cardW, cardH, Math.round(w * 0.012)); ctx.fill();
+    // Left accent border
+    const cardColor = card.color || accent;
+    ctx.fillStyle = cardColor;
+    ctx.fillRect(slideX, y + Math.round(cardH * 0.12), borderW, cardH - Math.round(cardH * 0.24));
 
-    // Emoji
-    const emojiSize = Math.round(w * 0.045);
+    // Emoji — large and readable
+    const emojiX = slideX + Math.round(w * 0.025);
     ctx.font = `${emojiSize}px sans-serif`; ctx.textAlign = 'left';
     ctx.fillStyle = 'white';
-    ctx.fillText(card.emoji || '●', slideX + 14, y + cardH * 0.65);
+    ctx.fillText(card.emoji || '●', emojiX, y + cardH * 0.65);
 
-    // Label — user font, white, 600 weight
-    const labelX = slideX + 14 + emojiSize + 8;
-    ctx.font = `600 ${Math.round(w * 0.028)}px ${fontFamily}`; ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'left';
-    fillTextWithOutline(ctx, card.label, labelX, y + cardH * 0.55, 2, 'rgba(0,0,0,0.5)');
+    // Label — user font, white, 600 weight, 4cqw
+    const labelX = emojiX + emojiSize + Math.round(w * 0.015);
+    ctx.font = `600 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'left';
+    fillTextWithOutline(ctx, card.label, labelX, y + cardH * 0.58, 2, 'rgba(0,0,0,0.5)');
 
-    // Value — user font, card.color or accent, 800 weight (matches preview)
-    ctx.font = `800 ${Math.round(w * 0.032)}px ${fontFamily}`; ctx.textAlign = 'right';
-    ctx.fillStyle = card.color || accent;
-    fillTextWithOutline(ctx, card.value, slideX + cardW - 14, y + cardH * 0.58, 2, 'rgba(0,0,0,0.6)');
+    // Value — user font, card.color or accent (matches preview), 800 weight, 4.5cqw
+    ctx.font = `800 ${valueSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'right';
+    ctx.fillStyle = cardColor;
+    fillTextWithOutline(ctx, card.value, slideX + cardW - Math.round(w * 0.025), y + cardH * 0.62, 2, 'rgba(0,0,0,0.6)');
     ctx.globalAlpha = 1;
   });
 
   // Logo on cards if configured
   if (logoImg && design?.logoSequences?.includes('cards')) {
-    const logoSize = Math.round(w * 0.1);
+    const logoSize = Math.round(w * 0.12); // 12cqw like preview
     const lx = ((design.logoPosition?.x ?? 50) / 100) * w - logoSize / 2;
     const ly = ((design.logoPosition?.y ?? 85) / 100) * h - logoSize / 2;
     drawLogo(ctx, logoImg, lx, ly, logoSize);
@@ -408,13 +423,13 @@ function drawVideoSeq(
     ctx.drawImage(videoEl, (w - videoEl.videoWidth * scale) / 2, (h - videoEl.videoHeight * scale) / 2, videoEl.videoWidth * scale, videoEl.videoHeight * scale);
   } else {
     ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0, 0, w, h);
-    ctx.font = `400 ${Math.round(w * 0.03)}px ${fontFamily}`; ctx.textAlign = 'center';
+    ctx.font = `400 ${Math.round(w * 0.04)}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fillText('Vidéo', w / 2, h / 2);
   }
   // Video overlay text if configured
   if (design?.overlayText) {
     ctx.save();
-    ctx.font = `700 ${Math.round(w * 0.05)}px ${fontFamily}`; ctx.textAlign = 'center';
+    ctx.font = `700 ${Math.round(w * 0.06)}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center'; // 6cqw
     ctx.fillStyle = design.overlayColor || '#FFFFFF';
     ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 12;
     fillTextWithOutline(ctx, design.overlayText.toUpperCase(), w / 2, h / 2, 3, 'rgba(0,0,0,0.7)');
@@ -444,16 +459,13 @@ function drawCTA(
   const scale = 0.92 + Math.min(1, progress * 3) * 0.08;
   ctx.save(); ctx.translate(w / 2, h / 2); ctx.scale(scale, scale); ctx.translate(-w / 2, -h / 2);
 
-  // Layout: centered vertically — salesPhrase, ctaText, ctaSubText stacked
-  const ctaFontSize = Math.round(w * 0.07);
-  const salesFontSize = Math.round(w * 0.035);
-  const subFontSize = Math.round(w * 0.04);
+  // Sizes match HTML preview cqw: salesPhrase=4cqw, ctaText=8cqw, subText=5cqw
+  const ctaFontSize = Math.round(w * 0.08);   // 8cqw → 86px at 1080w
+  const salesFontSize = Math.round(w * 0.04);  // 4cqw → 43px at 1080w
+  const subFontSize = Math.round(w * 0.05);    // 5cqw → 54px at 1080w
 
-  // Measure total block height for centering
-  let blockH = 0;
-  if (salesPhrase) blockH += salesFontSize * 1.5;
   // Word-wrap CTA text
-  ctx.font = `900 ${ctaFontSize}px ${fontFamily}`;
+  ctx.font = `900 ${ctaFontSize}px "${fontFamily}", sans-serif`;
   const ctaWords = ctaText.toUpperCase().split(' ');
   let ctaLines: string[] = [];
   let currentLine = '';
@@ -467,6 +479,10 @@ function drawCTA(
     }
   }
   if (currentLine) ctaLines.push(currentLine);
+
+  // Measure total block height for centering
+  let blockH = 0;
+  if (salesPhrase) blockH += salesFontSize * 1.5;
   blockH += ctaLines.length * ctaFontSize * 1.2;
   blockH += subFontSize * 1.5;
 
@@ -474,7 +490,7 @@ function drawCTA(
 
   // Sales phrase — accent color with transparency (matches preview: ctaColor + ee)
   if (salesPhrase) {
-    ctx.font = `900 ${salesFontSize}px ${fontFamily}`; ctx.textAlign = 'center';
+    ctx.font = `900 ${salesFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
     ctx.fillStyle = hexToRgba(accent, 0.93);
     ctx.fillText(salesPhrase, w / 2, curY);
     curY += salesFontSize * 1.5;
@@ -482,22 +498,22 @@ function drawCTA(
 
   // Main CTA text — accent color, large, bold (matches preview)
   ctaLines.forEach((line, i) => {
-    ctx.font = `900 ${ctaFontSize}px ${fontFamily}`; ctx.textAlign = 'center';
+    ctx.font = `900 ${ctaFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
     ctx.fillStyle = accent;
-    ctx.shadowColor = hexToRgba(accent, 0.4); ctx.shadowBlur = 20;
+    ctx.shadowColor = hexToRgba(accent, 0.4); ctx.shadowBlur = Math.round(w * 0.02);
     ctx.fillText(line, w / 2, curY + i * (ctaFontSize * 1.2));
   });
   ctx.shadowBlur = 0;
   curY += ctaLines.length * ctaFontSize * 1.2;
 
   // Sub-text — user-configured color, 900 weight (matches preview)
-  ctx.font = `900 ${subFontSize}px ${fontFamily}`; ctx.textAlign = 'center';
+  ctx.font = `900 ${subFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
   ctx.fillStyle = ctaSubColor;
   ctx.fillText(ctaSubText.toUpperCase(), w / 2, curY + subFontSize * 0.3);
 
   // Logo on CTA if configured
   if (logoImg && (!design?.logoSequences || design.logoSequences.includes('cta'))) {
-    const logoSize = Math.round(w * 0.1);
+    const logoSize = Math.round(w * 0.12); // 12cqw like preview
     const lx = ((design?.logoPosition?.x ?? 50) / 100) * w - logoSize / 2;
     const ly = ((design?.logoPosition?.y ?? 85) / 100) * h - logoSize / 2;
     drawLogo(ctx, logoImg, lx, ly, logoSize);
@@ -505,7 +521,7 @@ function drawCTA(
 
   // Watermark
   if (watermark) {
-    ctx.font = `700 ${Math.round(w * 0.022)}px ${fontFamily}`; ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.font = `700 ${Math.round(w * 0.025)}px "${fontFamily}", sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.3)';
     ctx.textAlign = 'center';
     ctx.fillText(watermark, w / 2, h * 0.92);
   }
