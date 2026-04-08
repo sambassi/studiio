@@ -3173,9 +3173,9 @@ export default function InfographicPage() {
                   }}
                   onDoubleClick={(e) => openPanel("cards", e)}
                 >
-                  {/* Resize handles — visible on hover */}
+                  {/* Resize handles — larger and always visible for easier interaction */}
                   <div
-                    className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-pink-500 rounded-full cursor-ne-resize z-30 border border-white/50 opacity-0 group-hover/cards:opacity-100 transition-opacity"
+                    className="absolute -top-2 -right-2 w-4 h-4 bg-pink-500 rounded-full cursor-ne-resize z-30 border-2 border-white/70 shadow-lg shadow-pink-500/30"
                     onMouseDown={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -3188,7 +3188,7 @@ export default function InfographicPage() {
                     }}
                   />
                   <div
-                    className="absolute -bottom-1 -right-1 w-2.5 h-2.5 bg-pink-500 rounded-full cursor-se-resize z-30 border border-white/50 opacity-0 group-hover/cards:opacity-100 transition-opacity"
+                    className="absolute -bottom-2 -right-2 w-4 h-4 bg-pink-500 rounded-full cursor-se-resize z-30 border-2 border-white/70 shadow-lg shadow-pink-500/30"
                     onMouseDown={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -3200,7 +3200,7 @@ export default function InfographicPage() {
                       };
                     }}
                   />
-                  <div className="absolute inset-0 border border-dashed border-pink-500/0 group-hover/cards:border-pink-500/40 rounded pointer-events-none transition-colors" />
+                  <div className="absolute inset-0 border border-dashed border-pink-500/30 group-hover/cards:border-pink-500/60 rounded pointer-events-none transition-colors" />
                   <div
                     className={`grid gap-1.5 w-full ${
                       selectedCardStyle === "Full Width"

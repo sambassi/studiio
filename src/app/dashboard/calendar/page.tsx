@@ -781,12 +781,24 @@ export default function CalendarPage() {
     const isMontagePost = meta?.type === 'infographic' || (meta?.type === 'creator' && meta?.sequences);
     if (!isMontagePost) return;
 
+    // IMPORTANT: Always use the full seqOrder (including video) to avoid index shifts
+    // when videoPlayable changes mid-playback. If video isn't playable, we skip it
+    // instantly rather than removing it from the array.
     const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
-    // Only include video sequence if the video file has been proven playable
-    // videoPlayable starts false and is only set true after onloadeddata fires
-    const activeSeqs = videoPlayable ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
     const seqs = (meta?.sequences || {}) as Record<string, number>;
-    const currentDuration = (seqs[activeSeqs[infoSeqIndex]] || 5) * 1000; // ms
+    const currentSeq = seqOrder[infoSeqIndex] || 'intro';
+
+    // If current sequence is 'video' but not playable, skip it instantly
+    if (currentSeq === 'video' && !videoPlayable) {
+      if (infoSeqIndex < seqOrder.length - 1) {
+        setInfoSeqIndex(infoSeqIndex + 1);
+      } else {
+        setMontageAutoPlay(false);
+      }
+      return;
+    }
+
+    const currentDuration = (seqs[currentSeq] || 5) * 1000; // ms
 
     // Store duration for CSS-driven progress bar (no setInterval, no re-renders)
     seqDurationRef.current = currentDuration;
@@ -794,7 +806,7 @@ export default function CalendarPage() {
     // Auto-advance to next sequence — stop at end (no loop), pause music
     if (montageTimerRef.current) clearTimeout(montageTimerRef.current);
     montageTimerRef.current = setTimeout(() => {
-      if (infoSeqIndex < activeSeqs.length - 1) {
+      if (infoSeqIndex < seqOrder.length - 1) {
         setInfoSeqIndex(infoSeqIndex + 1);
       } else {
         // End of montage: stop auto-play and pause music/voice
@@ -973,8 +985,7 @@ export default function CalendarPage() {
     if (!videoSrc) return;
 
     const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
-    const activeSeqs = videoPlayable ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
-    const currentSeq = activeSeqs[infoSeqIndex] || 'intro';
+    const currentSeq = seqOrder[infoSeqIndex] || 'intro';
 
     const vid = document.getElementById('preview-video-infographic') as HTMLVideoElement | null;
     if (!vid) return;
@@ -990,7 +1001,7 @@ export default function CalendarPage() {
           console.warn('[Calendar] Video readyState still 0 after 3s, skipping sequence');
           setInfoSeqIndex(prev => {
             const next = prev + 1;
-            return next < activeSeqs.length ? next : 0;
+            return next < seqOrder.length ? next : 0;
           });
         }, 3000);
         onLoaded = () => {
@@ -2587,12 +2598,11 @@ export default function CalendarPage() {
             <div className="flex-1 bg-black flex flex-col items-center justify-center p-2 md:p-4" style={{ minHeight: '60dvh' }}>
               {/* Montage video preview — infographic & creator with sequences */}
               {hasMontage ? (() => {
+                // Use stable sequence order (always includes video) to prevent index shifts
                 const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
-                // Only include video sequence if the video has been proven playable (onloadeddata fired)
-                const activeSeqs = videoPlayable ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
                 const posterImgSrc = meta?.pexelsUrl || meta?.posterUrl || meta?.characterUrl || null;
-                const safeIdx = infoSeqIndex < activeSeqs.length ? infoSeqIndex : 0;
-                const currentSeq = activeSeqs[safeIdx] || 'intro';
+                const safeIdx = infoSeqIndex < seqOrder.length ? infoSeqIndex : 0;
+                const currentSeq = seqOrder[safeIdx] || 'intro';
 
                 return (
                   <div
@@ -2998,8 +3008,8 @@ export default function CalendarPage() {
 
                     {/* Continuous progress bar — CSS animation only, no React re-renders */}
                     {(() => {
-                      const startPct = (safeIdx / activeSeqs.length) * 100;
-                      const endPct = ((safeIdx + 1) / activeSeqs.length) * 100;
+                      const startPct = (safeIdx / seqOrder.length) * 100;
+                      const endPct = ((safeIdx + 1) / seqOrder.length) * 100;
                       const dur = seqDurationRef.current;
                       return (
                         <div className="absolute bottom-0 left-0 right-0 z-40 h-[3px] bg-black/20">
