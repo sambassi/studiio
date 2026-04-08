@@ -252,8 +252,10 @@ export default function InfographicPage() {
   // Helper function to get effective gradient for a sequence
   const getSeqGradient = useCallback((seq: string) => {
     const override = seqGradients[seq];
+    // Video sequence: gradient disabled by default unless user explicitly enables it
+    const defaultEnabled = seq === 'video' ? false : true;
     return {
-      enabled: override?.enabled !== false, // default enabled
+      enabled: override?.enabled ?? defaultEnabled,
       color1: override?.color1 || gradientColor1,
       color2: override?.color2 || gradientColor2,
       opacity: override?.opacity ?? gradientOpacity,
@@ -2686,13 +2688,14 @@ export default function InfographicPage() {
             }}
             data-preview-bg
             className={`${previewClasses.aspect} relative flex flex-col items-center justify-between rounded-lg ${
-              // Show color bg only if not in noColor mode for current sequence
+              // Show color bg only if not in noColor mode and not in video-only sequence
               (() => {
+                const isVideoOnly = activeSequence === "video" && rushUrl;
                 const seqNoColor =
                   noColorBg &&
                   (activeSequence === "all" ||
                     noColorSequences.includes(activeSequence));
-                return !seqNoColor && activeColorTheme.bg
+                return !isVideoOnly && !seqNoColor && activeColorTheme.bg
                   ? `bg-gradient-to-br ${activeColorTheme.bg}`
                   : "";
               })()
@@ -2700,6 +2703,8 @@ export default function InfographicPage() {
             style={{
               fontFamily: FONT_CSS_MAP[selectedFont] || "inherit",
               ...(() => {
+                // Video sequence: dark background so video shows without color tint
+                if (activeSequence === "video" && rushUrl) return { background: "#0A0A0F" };
                 const seqNoColor =
                   noColorBg &&
                   (activeSequence === "all"
@@ -2801,7 +2806,10 @@ export default function InfographicPage() {
               (activeSequence === "all" || activeSequence === "video") && (
                 <video
                   src={rushUrl}
-                  className="absolute inset-0 h-full w-full object-cover opacity-60"
+                  className="absolute inset-0 h-full w-full object-cover"
+                  style={{
+                    opacity: activeSequence === "video" ? 1 : 0.6,
+                  }}
                   autoPlay
                   muted
                   loop

@@ -2384,8 +2384,11 @@ export default function CalendarPage() {
 
         // Helper function to get per-sequence gradient CSS
         const getGradientCSS = (seq: string) => {
-          const override = designSeqGradients[seq === 'intro' ? 'titre' : seq === 'cards' ? 'cartes' : seq];
-          const enabled = override?.enabled !== false;
+          const editorKey = seq === 'intro' ? 'titre' : seq === 'cards' ? 'cartes' : seq;
+          const override = designSeqGradients[editorKey];
+          // Video sequence: gradient disabled by default unless user explicitly enables it
+          const defaultEnabled = (seq === 'video') ? false : true;
+          const enabled = override?.enabled ?? defaultEnabled;
           if (!enabled) return 'transparent';
           const c1 = override?.color1 || designGradient1;
           const c2 = override?.color2 || designGradient2;
