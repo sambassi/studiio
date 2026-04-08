@@ -2879,16 +2879,17 @@ export default function InfographicPage() {
               );
               if (dragging === "title") setTitlePos({ x, y });
               else if (dragging === "logo") {
-                // Update logo position for the active sequence (or all enabled sequences in 'all' view)
+                // Update logo position ONLY for the active sequence
+                // In 'all' view, update only the first enabled logo sequence (not all)
+                // User should switch to a specific sequence to position its logo independently
                 if (activeSequence !== 'all') {
                   setLogoPositions(prev => ({ ...prev, [activeSequence]: { x, y } }));
                 } else {
-                  // In 'all' view, update all enabled logo sequences
-                  setLogoPositions(prev => {
-                    const updated = { ...prev };
-                    logoSequences.forEach(seq => { updated[seq] = { x, y }; });
-                    return updated;
-                  });
+                  // In 'all' view, only update the first enabled sequence
+                  const firstSeq = logoSequences[0];
+                  if (firstSeq) {
+                    setLogoPositions(prev => ({ ...prev, [firstSeq]: { x, y } }));
+                  }
                 }
               }
               else if (dragging === "watermark") setWatermarkPos({ x, y });
@@ -3467,7 +3468,7 @@ export default function InfographicPage() {
               </div>
             )}
 
-            {/* ── LOGO (draggable, resizable, visible per sequence) ── */}
+            {/* ── LOGO (draggable, resizable, per-sequence position) ── */}
             {logoImage &&
               (activeSequence === "all" ||
                 logoSequences.includes(activeSequence)) && (
@@ -3483,8 +3484,17 @@ export default function InfographicPage() {
                     setDragging("logo");
                   }}
                   onDoubleClick={(e) => openPanel("logo", e)}
+                  title={activeSequence === 'all'
+                    ? `Logo — vue globale (déplace ${logoSequences[0] || 'titre'}). Sélectionnez une séquence pour positionner indépendamment.`
+                    : `Logo — position pour "${activeSequence}"`}
                 >
                   <div className="absolute inset-0 border border-dashed border-green-500/0 group-hover/logo:border-green-500/40 rounded pointer-events-none transition-colors" />
+                  {/* Indicator: which sequence this logo position belongs to */}
+                  <div className="absolute -top-5 left-1/2 -translate-x-1/2 opacity-0 group-hover/logo:opacity-100 transition-opacity pointer-events-none">
+                    <span className="text-[8px] font-bold bg-green-600/90 text-white px-1.5 py-0.5 rounded whitespace-nowrap">
+                      {activeSequence === 'all' ? (logoSequences[0] || 'titre') : activeSequence}
+                    </span>
+                  </div>
                   <div
                     className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-500 rounded-full cursor-ne-resize z-30 border border-white/50 opacity-0 group-hover/logo:opacity-100 transition-opacity"
                     onMouseDown={(e) => {
