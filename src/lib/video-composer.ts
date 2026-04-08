@@ -261,9 +261,13 @@ function drawRoundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: n
 function getLogoPos(design: DesignOptions | undefined, seq: string): { x: number; y: number } {
   const perSeq = design?.logoPositions?.[seq];
   if (perSeq && (perSeq.x !== undefined || perSeq.y !== undefined)) {
-    return { x: perSeq.x ?? 50, y: perSeq.y ?? 85 };
+    const result = { x: perSeq.x ?? 50, y: perSeq.y ?? 85 };
+    console.log(`[Composer] getLogoPos('${seq}'): FOUND per-sequence → ${JSON.stringify(result)} (keys available: ${Object.keys(design?.logoPositions || {}).join(',')})`);
+    return result;
   }
-  return { x: design?.logoPosition?.x ?? 50, y: design?.logoPosition?.y ?? 85 };
+  const fallback = { x: design?.logoPosition?.x ?? 50, y: design?.logoPosition?.y ?? 85 };
+  console.warn(`[Composer] getLogoPos('${seq}'): ⚠️ FALLBACK to legacy position → ${JSON.stringify(fallback)} (logoPositions keys: ${Object.keys(design?.logoPositions || {}).join(',') || 'NONE'}, logoPosition: ${JSON.stringify(design?.logoPosition)})`);
+  return fallback;
 }
 
 /** Get siteText position for a specific sequence, with fallback to legacy pos or default */

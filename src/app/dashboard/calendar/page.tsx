@@ -1130,10 +1130,20 @@ export default function CalendarPage() {
         }
       }
 
+      // Set status to 'scheduled' with current date/time so the cron publishes it
+      // within the next minute. We can't call the cron directly from the client.
+      const now = new Date();
+      const scheduledDate = now.toISOString().split('T')[0]; // YYYY-MM-DD
+      const scheduledTime = now.toTimeString().substring(0, 5); // HH:MM
       await fetch('/api/posts', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...updatedPost, status: 'published' }),
+        body: JSON.stringify({
+          ...updatedPost,
+          status: 'scheduled',
+          scheduled_date: scheduledDate,
+          scheduled_time: scheduledTime,
+        }),
       });
       await fetchPosts();
       setShowFullPreview(false);
