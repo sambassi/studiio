@@ -365,142 +365,6 @@ export default function InfographicPage() {
     setConfigLoaded(true);
   }, []);
 
-  // Save config on change — seulement APRÈS le chargement initial
-  useEffect(() => {
-    if (!configLoaded) return; // Ne pas sauvegarder avant que le load soit terminé
-    try {
-      localStorage.setItem(
-        INFOGRAPHIC_CONFIG_KEY,
-        JSON.stringify({
-          // Base settings
-          colorTheme,
-          format,
-          introDuration,
-          cardsDuration,
-          videoDuration,
-          ctaDuration,
-          rushUrl,
-          rushFileName,
-          characterImage,
-          // Typography
-          titleLetterSpacing,
-          titleLineHeight,
-          titleBold,
-          titleItalic,
-          ctaLetterSpacing,
-          ctaLineHeight,
-          ctaBold,
-          ctaItalic,
-          overlayLetterSpacing,
-          overlayLineHeight,
-          overlayBold,
-          overlayItalic,
-          cardsLetterSpacing,
-          // Design properties
-          selectedFont,
-          selectedFilter,
-          selectedCardStyle,
-          titleColor,
-          ctaColor,
-          ctaSubColor,
-          ctaMainText,
-          ctaSubText,
-          gradientColor1,
-          gradientColor2,
-          gradientOpacity,
-          noColorBg,
-          noColorSequences,
-          textScale,
-          ctaTextScale,
-          logoScale,
-          logoSequences,
-          logoImage,
-          customAccent,
-          customCardIcons,
-          // Positions
-          titlePos,
-          logoPos,
-          watermarkPos,
-          cardsPos,
-          overlayPos,
-          // Sizes
-          titleSize,
-          cardsSize,
-          watermarkSize,
-          // Content
-          title,
-          subtitle,
-          videoOverlayText,
-          cards,
-          salesPhrases,
-          contentTheme,
-          customTopic,
-        }),
-      );
-    } catch {
-      /* ignore */
-    }
-  }, [
-    configLoaded,
-    colorTheme,
-    format,
-    introDuration,
-    cardsDuration,
-    videoDuration,
-    ctaDuration,
-    rushUrl,
-    rushFileName,
-    characterImage,
-    titleLetterSpacing,
-    titleLineHeight,
-    titleBold,
-    titleItalic,
-    ctaLetterSpacing,
-    ctaLineHeight,
-    ctaBold,
-    ctaItalic,
-    overlayLetterSpacing,
-    overlayLineHeight,
-    overlayBold,
-    overlayItalic,
-    cardsLetterSpacing,
-    selectedFont,
-    selectedFilter,
-    selectedCardStyle,
-    titleColor,
-    ctaColor,
-    ctaSubColor,
-    ctaMainText,
-    ctaSubText,
-    gradientColor1,
-    gradientColor2,
-    gradientOpacity,
-    noColorBg,
-    noColorSequences,
-    textScale,
-    ctaTextScale,
-    logoScale,
-    logoSequences,
-    logoImage,
-    customAccent,
-    customCardIcons,
-    titlePos,
-    logoPos,
-    watermarkPos,
-    cardsPos,
-    overlayPos,
-    titleSize,
-    cardsSize,
-    watermarkSize,
-    title,
-    subtitle,
-    videoOverlayText,
-    cards,
-    salesPhrases,
-    contentTheme,
-    customTopic,
-  ]);
-
   // ── Safe Zone Overlay (additive — does not affect existing logic) ────
   const [safeZonePlatform, setSafeZonePlatform] = useState<string | null>(null);
 
@@ -616,6 +480,44 @@ export default function InfographicPage() {
 
   // CTA sub-text color (separate from main ctaColor)
   const [ctaSubColor, setCtaSubColor] = useState("#D91CD2");
+
+  // ── Save config on change — seulement APRÈS le chargement initial ──
+  // (Placed after ALL useState declarations to avoid temporal dead zone issues)
+  useEffect(() => {
+    if (!configLoaded) return;
+    try {
+      localStorage.setItem(
+        INFOGRAPHIC_CONFIG_KEY,
+        JSON.stringify({
+          colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration,
+          rushUrl, rushFileName, characterImage,
+          titleLetterSpacing, titleLineHeight, titleBold, titleItalic,
+          ctaLetterSpacing, ctaLineHeight, ctaBold, ctaItalic,
+          overlayLetterSpacing, overlayLineHeight, overlayBold, overlayItalic, cardsLetterSpacing,
+          selectedFont, selectedFilter, selectedCardStyle,
+          titleColor, ctaColor, ctaSubColor, ctaMainText, ctaSubText,
+          gradientColor1, gradientColor2, gradientOpacity, noColorBg, noColorSequences,
+          textScale, ctaTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
+          titlePos, logoPos, watermarkPos, cardsPos, overlayPos,
+          titleSize, cardsSize, watermarkSize,
+          title, subtitle, videoOverlayText, cards, salesPhrases, contentTheme, customTopic,
+        }),
+      );
+    } catch { /* ignore */ }
+  }, [
+    configLoaded, colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration,
+    rushUrl, rushFileName, characterImage,
+    titleLetterSpacing, titleLineHeight, titleBold, titleItalic,
+    ctaLetterSpacing, ctaLineHeight, ctaBold, ctaItalic,
+    overlayLetterSpacing, overlayLineHeight, overlayBold, overlayItalic, cardsLetterSpacing,
+    selectedFont, selectedFilter, selectedCardStyle,
+    titleColor, ctaColor, ctaSubColor, ctaMainText, ctaSubText,
+    gradientColor1, gradientColor2, gradientOpacity, noColorBg, noColorSequences,
+    textScale, ctaTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
+    titlePos, logoPos, watermarkPos, cardsPos, overlayPos,
+    titleSize, cardsSize, watermarkSize,
+    title, subtitle, videoOverlayText, cards, salesPhrases, contentTheme, customTopic,
+  ]);
 
   // (Typography states declared earlier for localStorage compatibility)
 
