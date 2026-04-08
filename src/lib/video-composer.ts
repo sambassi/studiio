@@ -641,13 +641,16 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 
   console.log('[Composer] Stream tracks:', combinedStream.getTracks().map(t => t.kind + ':' + t.readyState).join(', '));
 
-  // Choose best mimeType — prefer WebM (Chrome MP4 is buggy with captureStream fast mode)
+  // Choose best mimeType — prefer MP4 (H.264) for universal compatibility (QuickTime, VLC, etc.)
+  // FFmpeg.wasm WebM→MP4 conversion requires SharedArrayBuffer which most sites lack.
+  // Chrome 124+ natively supports MP4 MediaRecorder — use it first, fallback to WebM.
   const mimeTypes = [
+    'video/mp4;codecs=avc1,mp4a.40.2',
+    'video/mp4;codecs=avc1',
+    'video/mp4',
     'video/webm;codecs=vp9,opus',
     'video/webm;codecs=vp8,opus',
     'video/webm',
-    'video/mp4;codecs=avc1,mp4a.40.2',
-    'video/mp4',
   ];
   let mimeType = 'video/webm';
   for (const t of mimeTypes) {
