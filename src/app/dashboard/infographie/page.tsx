@@ -1170,9 +1170,9 @@ export default function InfographicPage() {
             body: JSON.stringify({
               title: title || "Infographie",
               caption,
-              // Use poster as media_url for drafts — montage will be composed at schedule/publish time
-              // Never store raw rushUrl as media_url (it's the unedited video, not the montage)
-              media_url: mediaUrl || posterUrl || null,
+              // For video posts: media_url = null — montage will be composed at schedule/publish time
+              // For image posts: use the uploaded image or poster
+              media_url: hasVideo ? null : (mediaUrl || posterUrl || null),
               media_type: hasVideo ? 'video' : 'image',
               format: format === "16:9" ? "tv" : "reel",
               platforms: [],
