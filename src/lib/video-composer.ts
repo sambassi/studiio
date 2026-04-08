@@ -558,6 +558,20 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   console.log('[Composer] Logo:', logoUrl?.substring(0, 60) || 'NONE');
   console.log('[Composer] Design:', design ? JSON.stringify({ font: design.font, titleColor: design.titleColor, grad1: design.gradientColor1 }) : 'NONE');
 
+  // ── Normalize French sequence names → English ──
+  // The editor (infographie) stores logoSequences with French names ('titre','cartes','video','cta')
+  // but the draw functions check English names ('intro','cards','video','cta').
+  const seqNameMap: Record<string, string> = { titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' };
+  const normalizedDesign: DesignOptions | undefined = design
+    ? {
+        ...design,
+        logoSequences: design.logoSequences?.map(s => seqNameMap[s.toLowerCase()] || s),
+      }
+    : undefined;
+  if (design?.logoSequences) {
+    console.log('[Composer] logoSequences raw:', design.logoSequences, '→ normalized:', normalizedDesign?.logoSequences);
+  }
+
   onProgress?.(2, 'Chargement des médias...');
 
   // Ensure the design font is loaded before rendering (Canvas needs fonts in document.fonts)
@@ -665,10 +679,10 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     ctx.clearRect(0, 0, width, height);
     const drawSeq = (type: string, progress: number) => {
       switch (type) {
-        case 'intro': drawIntro(ctx, width, height, posterImg, logoImg, title, subtitle, accentColor, progress, design); break;
-        case 'cards': drawCards(ctx, width, height, cards, logoImg, accentColor, progress, design); break;
-        case 'video': drawVideoSeq(ctx, width, height, videoEl, logoImg, progress, design); break;
-        case 'cta': drawCTA(ctx, width, height, accentColor, ctaText, ctaSubText, salesPhrase, watermarkText, logoImg, progress, design); break;
+        case 'intro': drawIntro(ctx, width, height, posterImg, logoImg, title, subtitle, accentColor, progress, normalizedDesign); break;
+        case 'cards': drawCards(ctx, width, height, cards, logoImg, accentColor, progress, normalizedDesign); break;
+        case 'video': drawVideoSeq(ctx, width, height, videoEl, logoImg, progress, normalizedDesign); break;
+        case 'cta': drawCTA(ctx, width, height, accentColor, ctaText, ctaSubText, salesPhrase, watermarkText, logoImg, progress, normalizedDesign); break;
       }
     };
     if (inTransition && seqIdx < sequences.length - 1) {
@@ -697,7 +711,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       const stOpacity = siteText?.opacity ?? 0.85;
       const linkFontSize = Math.round(width * 0.028 * stSize);
       ctx.save();
-      ctx.font = `700 ${linkFontSize}px ${design?.font || 'sans-serif'}`; ctx.textAlign = 'center';
+      ctx.font = `700 ${linkFontSize}px ${normalizedDesign?.font || 'sans-serif'}`; ctx.textAlign = 'center';
       ctx.fillStyle = hexToRgba(stColor, stOpacity);
       ctx.shadowColor = accentColor; ctx.shadowBlur = 8;
       fillTextWithOutline(ctx, siteTextLabel, width / 2, height * 0.94, 3, 'rgba(0,0,0,0.85)');
