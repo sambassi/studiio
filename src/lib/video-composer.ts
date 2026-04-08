@@ -158,20 +158,48 @@ function loadImage(src: string, timeoutMs = 20000): Promise<HTMLImageElement> {
       img.src = src;
     });
   }
+  // For external images (Pexels, etc.), ALWAYS use proxy first to guarantee same-origin
+  // and prevent canvas tainting. Direct cross-origin loads can silently taint the canvas
+  // even when crossOrigin='anonymous' is set, if the CDN doesn't return CORS headers
+  // consistently (regional caches, etc.). A tainted canvas produces empty captureStream frames.
+  const isExternal = !src.includes(window.location.hostname) && !src.includes('.supabase.co/');
+  const proxyUrl = `/api/proxy-media?url=${encodeURIComponent(src)}`;
+
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error(`Image load timeout: ${src.substring(0, 60)}`)), timeoutMs);
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => { clearTimeout(timeout); resolve(img); };
-    img.onerror = () => {
-      console.warn(`[Composer] Image direct load failed, trying proxy: ${src.substring(0, 60)}`);
+
+    const loadDirect = () => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => { clearTimeout(timeout); resolve(img); };
+      img.onerror = () => { clearTimeout(timeout); reject(new Error(`Failed to load image: ${src.substring(0, 60)}`)); };
+      img.src = src;
+    };
+
+    if (isExternal) {
+      console.log(`[Composer] External image → proxy first: ${src.substring(0, 60)}`);
       const proxyImg = new Image();
       proxyImg.crossOrigin = 'anonymous';
       proxyImg.onload = () => { clearTimeout(timeout); resolve(proxyImg); };
-      proxyImg.onerror = () => { clearTimeout(timeout); reject(new Error(`Failed to load image (direct + proxy): ${src.substring(0, 60)}`)); };
-      proxyImg.src = `/api/proxy-media?url=${encodeURIComponent(src)}`;
-    };
-    img.src = src;
+      proxyImg.onerror = () => {
+        console.warn(`[Composer] Proxy load failed, trying direct: ${src.substring(0, 60)}`);
+        loadDirect();
+      };
+      proxyImg.src = proxyUrl;
+    } else {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => { clearTimeout(timeout); resolve(img); };
+      img.onerror = () => {
+        console.warn(`[Composer] Image direct load failed, trying proxy: ${src.substring(0, 60)}`);
+        const proxyImg = new Image();
+        proxyImg.crossOrigin = 'anonymous';
+        proxyImg.onload = () => { clearTimeout(timeout); resolve(proxyImg); };
+        proxyImg.onerror = () => { clearTimeout(timeout); reject(new Error(`Failed to load image (direct + proxy): ${src.substring(0, 60)}`)); };
+        proxyImg.src = proxyUrl;
+      };
+      img.src = src;
+    }
   });
 }
 
@@ -313,27 +341,57 @@ function fillTextWithOutline(
   ctx.restore();
 }
 
-/** Draw a logo image preserving aspect ratio (like CSS object-contain) */
-function drawLogo(ctx: CanvasRenderingContext2D, logoImg: HTMLImageElement, x: number, y: number, size: number) {
-  // Preserve aspect ratio — fit within size x size box (like CSS object-contain)
+/**
+ * Compute logo draw dimensions matching the editor's CSS behavior:
+ *   h-8 (32px height), w-auto, max-w-[60px], scale(logoScale)
+ * on a ~320px wide editor preview (9:16 aspect → 320×568).
+ *
+ * Returns { drawW, drawH } in canvas pixels, already scaled by logoScale.
+ */
+function computeLogoDimensions(
+  logoImg: HTMLImageElement, canvasW: number, canvasH: number, logoScale: number
+): { drawW: number; drawH: number } {
   const imgW = logoImg.naturalWidth || logoImg.width;
   const imgH = logoImg.naturalHeight || logoImg.height;
-  if (imgW === 0 || imgH === 0) { ctx.drawImage(logoImg, x, y, size, size); return; }
-  const ratio = imgW / imgH;
-  let drawW: number, drawH: number;
-  if (ratio >= 1) {
-    // Wider than tall — fit to width
-    drawW = size;
-    drawH = size / ratio;
-  } else {
-    // Taller than wide — fit to height
-    drawH = size;
-    drawW = size * ratio;
+
+  // Editor reference: 320px wide, 568px tall (9:16). Logo: h-8 = 32px, w-auto, max-w-[60px]
+  // In canvas coordinates, scale proportionally:
+  //   baseH = 32/568 * canvasH ≈ canvasW * 0.10 for 9:16
+  //   maxW  = 60/320 * canvasW ≈ canvasW * 0.1875
+  const baseH = Math.round(canvasH * (32 / 568));
+  const maxW = Math.round(canvasW * (60 / 320));
+
+  if (imgW === 0 || imgH === 0) {
+    return { drawW: baseH * logoScale, drawH: baseH * logoScale };
   }
-  // Center within the size x size box
-  const dx = x + (size - drawW) / 2;
-  const dy = y + (size - drawH) / 2;
-  ctx.drawImage(logoImg, dx, dy, drawW, drawH);
+
+  const ratio = imgW / imgH;
+  // Height-based sizing (like CSS h-8 w-auto)
+  let drawH = baseH * logoScale;
+  let drawW = Math.round(drawH * ratio);
+  // Apply max-width constraint (like CSS max-w-[60px] scaled)
+  const scaledMaxW = maxW * logoScale;
+  if (drawW > scaledMaxW) {
+    drawW = scaledMaxW;
+    drawH = Math.round(drawW / ratio);
+  }
+  return { drawW, drawH };
+}
+
+/**
+ * Draw logo with accurate editor-matching dimensions and position.
+ * Uses computeLogoDimensions to match the CSS h-8 w-auto max-w-[60px] behavior.
+ * Center of logo is placed at (pos.x%, pos.y%) of canvas.
+ */
+function drawLogoAccurate(
+  ctx: CanvasRenderingContext2D, logoImg: HTMLImageElement,
+  canvasW: number, canvasH: number,
+  pos: { x: number; y: number }, logoScale: number
+) {
+  const { drawW, drawH } = computeLogoDimensions(logoImg, canvasW, canvasH, logoScale);
+  const cx = (pos.x / 100) * canvasW;
+  const cy = (pos.y / 100) * canvasH;
+  ctx.drawImage(logoImg, cx - drawW / 2, cy - drawH / 2, drawW, drawH);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -413,15 +471,12 @@ function drawIntro(
   ctx.lineTo(w / 2 + lineW / 2, lineY); ctx.stroke();
 
   // Logo on intro if configured — uses per-sequence position
-  // Size: 10% of width * logoScale — matches editor's h-8 (32px) on ~320px preview
+  // Uses drawLogoAccurate to match editor's h-8 w-auto max-w-[60px] scale(logoScale)
   if (logoImg && design?.logoSequences?.includes('intro')) {
     const logoScale = design?.logoScale || 1.0;
-    const logoSize = Math.round(w * 0.10 * logoScale);
     const pos = getLogoPos(design, 'intro');
-    console.log(`[Composer] Logo INTRO: pos=${JSON.stringify(pos)}, size=${logoSize}, canvas=${w}x${h}`);
-    const lx = (pos.x / 100) * w - logoSize / 2;
-    const ly = (pos.y / 100) * h - logoSize / 2;
-    drawLogo(ctx, logoImg, lx, ly, logoSize);
+    console.log(`[Composer] Logo INTRO: pos=${JSON.stringify(pos)}, scale=${logoScale}, canvas=${w}x${h}`);
+    drawLogoAccurate(ctx, logoImg, w, h, pos, logoScale);
   }
 
   // Bottom accent bar
@@ -652,12 +707,9 @@ function drawCards(
   // Logo on cards if configured — uses per-sequence position
   if (logoImg && design?.logoSequences?.includes('cards')) {
     const logoScale = design?.logoScale || 1.0;
-    const logoSize = Math.round(w * 0.10 * logoScale);
     const pos = getLogoPos(design, 'cards');
-    console.log(`[Composer] Logo CARDS: pos=${JSON.stringify(pos)}`);
-    const lx = (pos.x / 100) * w - logoSize / 2;
-    const ly = (pos.y / 100) * h - logoSize / 2;
-    drawLogo(ctx, logoImg, lx, ly, logoSize);
+    console.log(`[Composer] Logo CARDS: pos=${JSON.stringify(pos)}, scale=${logoScale}`);
+    drawLogoAccurate(ctx, logoImg, w, h, pos, logoScale);
   }
 }
 
@@ -687,12 +739,9 @@ function drawVideoSeq(
   // Logo on video if configured — uses per-sequence position
   if (logoImg && design?.logoSequences?.includes('video')) {
     const logoScale = design?.logoScale || 1.0;
-    const logoSize = Math.round(w * 0.1 * logoScale);
     const pos = getLogoPos(design, 'video');
-    console.log(`[Composer] Logo VIDEO: pos=${JSON.stringify(pos)}`);
-    const lx = (pos.x / 100) * w - logoSize / 2;
-    const ly = (pos.y / 100) * h - logoSize / 2;
-    drawLogo(ctx, logoImg, lx, ly, logoSize);
+    console.log(`[Composer] Logo VIDEO: pos=${JSON.stringify(pos)}, scale=${logoScale}`);
+    drawLogoAccurate(ctx, logoImg, w, h, pos, logoScale);
   }
 }
 
@@ -773,12 +822,9 @@ function drawCTA(
   // Logo on CTA if configured — uses per-sequence position
   if (logoImg && (!design?.logoSequences || design.logoSequences.includes('cta'))) {
     const logoScale = design?.logoScale || 1.0;
-    const logoSize = Math.round(w * 0.10 * logoScale);
     const pos = getLogoPos(design, 'cta');
-    console.log(`[Composer] Logo CTA: pos=${JSON.stringify(pos)}`);
-    const lx = (pos.x / 100) * w - logoSize / 2;
-    const ly = (pos.y / 100) * h - logoSize / 2;
-    drawLogo(ctx, logoImg, lx, ly, logoSize);
+    console.log(`[Composer] Logo CTA: pos=${JSON.stringify(pos)}, scale=${logoScale}`);
+    drawLogoAccurate(ctx, logoImg, w, h, pos, logoScale);
   }
 
   // Watermark (use design's ctaMainText as brand watermark if available)
@@ -1129,8 +1175,19 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 
   // ═══ MEDIARECORDER SETUP ═══
   // Use manual frame capture (fps=0) for fast mode, auto fps for real-time
+  // Check requestFrame support BEFORE choosing captureStream mode
   const useFastMode = !hasAudio;
-  const videoStream = canvas.captureStream(useFastMode ? 0 : fps);
+  const testStream = canvas.captureStream(0);
+  const testTrack = testStream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack | undefined;
+  const hasRequestFrame = testTrack && typeof testTrack.requestFrame === 'function';
+  // Stop the test stream tracks
+  testStream.getTracks().forEach(t => t.stop());
+  // If requestFrame isn't supported, fall back to timed capture even in fast mode
+  const useManualCapture = useFastMode && hasRequestFrame;
+  if (useFastMode && !hasRequestFrame) {
+    console.warn('[Composer] ⚠️ requestFrame not supported — falling back to timed captureStream for fast mode');
+  }
+  const videoStream = canvas.captureStream(useManualCapture ? 0 : fps);
 
   // Combine video + audio into one MediaStream
   const combinedStream = new MediaStream();
@@ -1184,12 +1241,8 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       };
       recorder.onerror = (e) => { console.error('[Composer] MediaRecorder error:', e); reject(new Error('Recording failed')); };
 
-      // Get video track for manual frame capture
+      // Get video track for manual frame capture (only used if useManualCapture is true)
       const videoTrack = videoStream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
-      const canRequestFrame = videoTrack && typeof videoTrack.requestFrame === 'function';
-      if (!canRequestFrame) {
-        console.warn('[Composer] requestFrame not available, falling back to timer-based fast mode');
-      }
 
       recorder.start(100); // Shorter timeslice for more frequent data collection
       console.log('[Composer] ⚡ Fast recording started for', totalDuration.toFixed(1), 's');
@@ -1216,7 +1269,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
           }
 
           drawFrame(t);
-          if (canRequestFrame) videoTrack.requestFrame();
+          if (useManualCapture) videoTrack.requestFrame();
         }
 
         // Report progress
@@ -1236,7 +1289,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 
       // Kick off fast rendering
       drawFrame(0);
-      if (canRequestFrame) videoTrack.requestFrame();
+      if (useManualCapture) videoTrack.requestFrame();
       setTimeout(renderBatch, 10);
     });
   }
@@ -1408,7 +1461,10 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 
 export async function composeAndUpload(options: ComposerOptions): Promise<{ blob: Blob; url: string | null }> {
   const blob = await composeVideo(options);
-  if (blob.size === 0) return { blob, url: null };
+  if (blob.size === 0) {
+    console.error('[Composer] ❌ composeVideo produced an EMPTY blob (0 bytes). MediaRecorder likely failed to capture frames.');
+    throw new Error('Le rendu vidéo a produit un fichier vide (0 octets). Votre navigateur ne supporte peut-être pas le codec vidéo requis. Essayez avec Chrome ou Edge.');
+  }
 
   const isMP4 = blob.type.includes('mp4');
   const ext = isMP4 ? 'mp4' : 'webm';

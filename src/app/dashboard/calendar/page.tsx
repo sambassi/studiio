@@ -1140,11 +1140,14 @@ export default function CalendarPage() {
         }
       }
 
-      // Safety check: if it's a montage post, we MUST have a renderedVideoUrl
-      // If not, the composition silently failed or produced no output
-      if (hasVisualSource && isMontagePost && !updatedPost.metadata?.renderedVideoUrl && !updatedPost.media_url) {
-        console.error('[Publish] No media URL after composition — aborting');
-        alert('Le montage n\'a pas pu être généré. Vérifiez que les médias sont accessibles et réessayez.');
+      // Safety check: NEVER schedule a post without a media URL
+      // This catches cases where composition silently failed, metadata was incomplete,
+      // or hasVisualSource/isMontagePost conditions didn't match expectations
+      const finalMediaUrl = updatedPost.metadata?.renderedVideoUrl || updatedPost.media_url;
+      if (!finalMediaUrl) {
+        console.error('[Publish] No media URL after composition — aborting. hasVisualSource:', hasVisualSource, 'isMontagePost:', isMontagePost, 'renderedVideoUrl:', updatedPost.metadata?.renderedVideoUrl, 'media_url:', updatedPost.media_url);
+        alert('Le montage n\'a pas pu être généré — aucune URL vidéo disponible.\n\nVérifiez que les médias (image, vidéo) sont accessibles et réessayez.\nSi le problème persiste, essayez de ré-exporter depuis l\'éditeur.');
+        setSaving(false);
         return;
       }
 
@@ -2795,11 +2798,13 @@ export default function CalendarPage() {
                         </div>
                       </div>
                       {/* Logo sur intro si logoSequences inclut 'intro' — per-sequence position */}
+                      {/* Height-based sizing matching editor's h-8 w-auto max-w-[60px] scale(logoScale) */}
                       {designLogoUrl && designLogoSequences?.includes('intro') && (
                         <img src={designLogoUrl} alt="Logo" style={{
                           position: 'absolute',
-                          width: editorPxToDvh(32 * designLogoScale),
                           height: editorPxToDvh(32 * designLogoScale),
+                          width: 'auto',
+                          maxWidth: editorPxToDvh(60 * designLogoScale),
                           objectFit: 'contain',
                           left: `${getCalLogoPos('intro').x}%`,
                           top: `${getCalLogoPos('intro').y}%`,
@@ -2930,8 +2935,9 @@ export default function CalendarPage() {
                       {designLogoUrl && designLogoSequences?.includes('cards') && (
                         <img src={designLogoUrl} alt="Logo" style={{
                           position: 'absolute',
-                          width: editorPxToDvh(32 * designLogoScale),
                           height: editorPxToDvh(32 * designLogoScale),
+                          width: 'auto',
+                          maxWidth: editorPxToDvh(60 * designLogoScale),
                           objectFit: 'contain',
                           left: `${getCalLogoPos('cards').x}%`,
                           top: `${getCalLogoPos('cards').y}%`,
@@ -2988,8 +2994,9 @@ export default function CalendarPage() {
                         {designLogoUrl && designLogoSequences?.includes('video') && (
                           <img src={designLogoUrl} alt="Logo" style={{
                             position: 'absolute',
-                            width: editorPxToDvh(32 * designLogoScale),
                             height: editorPxToDvh(32 * designLogoScale),
+                            width: 'auto',
+                            maxWidth: editorPxToDvh(60 * designLogoScale),
                             objectFit: 'contain',
                             left: `${getCalLogoPos('video').x}%`,
                             top: `${getCalLogoPos('video').y}%`,
@@ -3049,8 +3056,9 @@ export default function CalendarPage() {
                       {designLogoUrl && designLogoSequences?.includes('cta') && (
                         <img src={designLogoUrl} alt="Logo" style={{
                           position: 'absolute',
-                          width: editorPxToDvh(32 * designLogoScale),
                           height: editorPxToDvh(32 * designLogoScale),
+                          width: 'auto',
+                          maxWidth: editorPxToDvh(60 * designLogoScale),
                           objectFit: 'contain',
                           left: `${getCalLogoPos('cta').x}%`,
                           top: `${getCalLogoPos('cta').y}%`,
