@@ -1030,10 +1030,110 @@ export default function CalendarPage() {
   const handlePublishPost = async (post: Post) => {
     setSaving(true);
     try {
+      let updatedPost = { ...post };
+      const meta = post.metadata || {};
+
+      // ALWAYS compose the montage before publishing — ensures the published video
+      // matches the preview (intro + cards + video + cta with all design settings)
+      const hasVisualSource = meta.posterUrl || meta.rushUrls?.length > 0 || meta.characterUrl || meta.pexelsUrl;
+      const isMontagePost = meta.type === 'infographic' || (meta.type === 'creator' && meta.sequences);
+      if (hasVisualSource && isMontagePost) {
+        console.log('[Publish] Composing montage before publishing...');
+        setExportRendering(true);
+        setExportRenderProgress(0);
+        setExportRenderStage('Rendu du montage...');
+
+        try {
+          const posterUrl = meta.posterUrl || meta.pexelsUrl || meta.characterUrl || null;
+          const videoUrl = meta.rushUrls?.[0] || null;
+          const musicUrl = meta.musicUrl || null;
+          const voiceUrl = meta.voiceUrl || null;
+          const logoUrl = meta.logoUrl || null;
+          const seq = meta.sequences;
+          const brand = meta.branding;
+          const isReel = post.format === 'reel';
+          const designMeta = meta.design || {};
+
+          const { url: renderedUrl } = await composeAndUpload({
+            width: isReel ? 1080 : 1920,
+            height: isReel ? 1920 : 1080,
+            fps: 30,
+            title: post.title || 'Vidéo',
+            subtitle: meta.subtitle || undefined,
+            salesPhrase: meta.salesPhrase || undefined,
+            cards: meta.cards?.length > 0
+              ? meta.cards.map((c: any) => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color }))
+              : (meta.textCards || []).map((tCard: any) => ({ emoji: '📝', label: tCard.text, value: tCard.text, color: tCard.color })),
+            posterUrl,
+            videoUrl,
+            logoUrl,
+            musicUrl,
+            voiceUrl,
+            introDuration: seq?.intro ?? 5,
+            cardsDuration: seq?.cards ?? ((meta.cards?.length > 0 || meta.textCards?.length > 0) ? 6 : 0),
+            videoDuration: seq?.video ?? 12,
+            ctaDuration: seq?.cta ?? 5,
+            accentColor: brand?.accentColor || '#D91CD2',
+            ctaText: brand?.ctaText || 'CHAT POUR PLUS D\'INFOS',
+            ctaSubText: brand?.ctaSubText || 'LIEN EN BIO',
+            watermarkText: brand?.watermarkText || undefined,
+            siteText: designMeta.siteText || undefined,
+            design: {
+              font: designMeta.font || undefined,
+              titleColor: designMeta.titleColor || undefined,
+              gradientColor1: designMeta.gradientColor1 || undefined,
+              gradientColor2: designMeta.gradientColor2 || undefined,
+              gradientOpacity: designMeta.gradientOpacity ?? undefined,
+              ctaSubColor: designMeta.ctaSubColor || brand?.ctaSubColor || undefined,
+              ctaColor: designMeta.ctaColor || undefined,
+              logoSequences: designMeta.logoSequences || undefined,
+              logoPosition: designMeta.positions?.logo || undefined,
+              logoPositions: designMeta.logoPositions || undefined,
+              logoScale: designMeta.logoScale || undefined,
+              overlayText: meta.videoOverlayText || undefined,
+              overlayColor: designMeta.overlayColor || undefined,
+              textScale: designMeta.textScale || undefined,
+              ctaTextScale: designMeta.ctaTextScale || undefined,
+              cardStyle: designMeta.cardStyle || undefined,
+              titlePosition: designMeta.positions?.title || undefined,
+              cardsPosition: designMeta.positions?.cards || undefined,
+              cardsSize: designMeta.sizes?.cards || undefined,
+              ctaMainText: designMeta.ctaMainText || undefined,
+              ctaSubTextDesign: designMeta.ctaSubText || undefined,
+              titleTypography: designMeta.typography?.title || undefined,
+            },
+            onProgress: (pct, stage) => {
+              setExportRenderProgress(pct);
+              setExportRenderStage(stage);
+            },
+          });
+
+          if (renderedUrl) {
+            updatedPost = {
+              ...updatedPost,
+              media_url: renderedUrl,
+              media_type: 'video',
+              metadata: {
+                ...meta,
+                renderedVideoUrl: renderedUrl,
+                videoUrl: renderedUrl,
+              },
+            };
+            console.log('[Publish] Montage composed:', renderedUrl);
+          }
+        } catch (err) {
+          console.error('[Publish] Compose failed:', err);
+        } finally {
+          setExportRendering(false);
+          setExportRenderProgress(0);
+          setExportRenderStage('');
+        }
+      }
+
       await fetch('/api/posts', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...post, status: 'published' }),
+        body: JSON.stringify({ ...updatedPost, status: 'published' }),
       });
       await fetchPosts();
       setShowFullPreview(false);
