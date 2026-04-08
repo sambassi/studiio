@@ -401,6 +401,14 @@ export default function InfographicPage() {
         if (cfg.customTopic) setCustomTopic(cfg.customTopic);
         if (cfg.photoSearchQuery) setPhotoSearchQuery(cfg.photoSearchQuery);
         if (cfg.selectedPhotoIndex !== undefined) setSelectedPhotoIndex(cfg.selectedPhotoIndex);
+        // Site text (Afroboost.com)
+        if (cfg.siteText !== undefined) setSiteText(cfg.siteText);
+        if (cfg.siteTextPos) setSiteTextPos(cfg.siteTextPos);
+        if (cfg.siteTextSize !== undefined) setSiteTextSize(cfg.siteTextSize);
+        if (cfg.siteTextColor) setSiteTextColor(cfg.siteTextColor);
+        if (cfg.siteTextOpacity !== undefined) setSiteTextOpacity(cfg.siteTextOpacity);
+        if (cfg.siteTextSequences) setSiteTextSequences(cfg.siteTextSequences);
+        if (cfg.siteTextEnabled !== undefined) setSiteTextEnabled(cfg.siteTextEnabled);
       }
     } catch {
       /* ignore */
@@ -518,6 +526,15 @@ export default function InfographicPage() {
   // Video overlay text position (draggable)
   const [overlayPos, setOverlayPos] = useState({ x: 50, y: 33 });
 
+  // Site text (e.g. "Afroboost.com") — flexible text overlay
+  const [siteText, setSiteText] = useState("Afroboost.com");
+  const [siteTextPos, setSiteTextPos] = useState({ x: 50, y: 95 });
+  const [siteTextSize, setSiteTextSize] = useState(1.0); // scale 0.3 to 3.0
+  const [siteTextColor, setSiteTextColor] = useState("#FFFFFF");
+  const [siteTextOpacity, setSiteTextOpacity] = useState(0.7);
+  const [siteTextSequences, setSiteTextSequences] = useState<string[]>(["titre", "cartes", "video", "cta"]);
+  const [siteTextEnabled, setSiteTextEnabled] = useState(true);
+
   // Text size scale (0.5 to 3.0)
   const [textScale, setTextScale] = useState(1.0);
 
@@ -550,6 +567,7 @@ export default function InfographicPage() {
           titleSize, cardsSize, watermarkSize,
           title, subtitle, videoOverlayText, cards, salesPhrases, contentTheme, customTopic,
           photoSearchQuery, selectedPhotoIndex,
+          siteText, siteTextPos, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
         }),
       );
     } catch { /* ignore */ }
@@ -569,6 +587,7 @@ export default function InfographicPage() {
     titleSize, cardsSize, watermarkSize,
     title, subtitle, videoOverlayText, cards, salesPhrases, contentTheme, customTopic,
     photoSearchQuery, selectedPhotoIndex,
+    siteText, siteTextPos, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
   ]);
 
   // (Typography states declared earlier for localStorage compatibility)
@@ -578,7 +597,7 @@ export default function InfographicPage() {
 
   // Floating panels — which element panel is open
   const [activePanel, setActivePanel] = useState<
-    "title" | "cards" | "cta" | "overlay" | "gradient" | "logo" | "add" | null
+    "title" | "cards" | "cta" | "overlay" | "gradient" | "logo" | "sitetext" | "add" | null
   >(null);
   const [panelPos, setPanelPos] = useState({ x: 0, y: 0 });
 
@@ -1187,6 +1206,15 @@ export default function InfographicPage() {
                   logoScale,
                   logoSequences,
                   logoUrl: logoImage || undefined,
+                  siteText: siteTextEnabled ? {
+                    text: siteText,
+                    pos: siteTextPos,
+                    size: siteTextSize,
+                    color: siteTextColor,
+                    opacity: siteTextOpacity,
+                    sequences: siteTextSequences,
+                    enabled: siteTextEnabled,
+                  } : undefined,
                   typography: {
                     title: {
                       letterSpacing: titleLetterSpacing,
@@ -2770,6 +2798,7 @@ export default function InfographicPage() {
               else if (dragging === "watermark") setWatermarkPos({ x, y });
               else if (dragging === "cards") setCardsPos({ x, y });
               else if (dragging === "overlay") setOverlayPos({ x, y });
+              else if (dragging === "sitetext") setSiteTextPos({ x, y });
             }}
             onMouseUp={() => {
               setDragging(null);
@@ -3403,6 +3432,40 @@ export default function InfographicPage() {
                   className="absolute bottom-2 right-2 h-1/4 w-auto rounded z-10"
                 />
               )}
+
+            {/* ── Site Text (e.g. Afroboost.com) — draggable, per-sequence, double-click for panel ── */}
+            {siteTextEnabled && siteText && (
+              activeSequence === "all"
+                ? siteTextSequences.length > 0
+                : siteTextSequences.includes(activeSequence)
+            ) && (
+              <div
+                className={`absolute z-20 cursor-grab active:cursor-grabbing group/sitetext ${activePanel === "sitetext" ? "ring-1 ring-cyan-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
+                style={{
+                  left: `${siteTextPos.x}%`,
+                  top: `${siteTextPos.y}%`,
+                  transform: "translate(-50%, -50%)",
+                }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setDragging("sitetext");
+                }}
+                onDoubleClick={(e) => openPanel("sitetext", e)}
+              >
+                <div className="absolute inset-0 border border-dashed border-cyan-500/0 group-hover/sitetext:border-cyan-500/40 rounded pointer-events-none transition-colors" />
+                <p
+                  className="font-bold tracking-wider whitespace-nowrap drop-shadow-lg"
+                  style={{
+                    fontSize: `${12 * siteTextSize}px`,
+                    color: siteTextColor,
+                    opacity: siteTextOpacity,
+                    textShadow: `0 0 10px ${siteTextColor}40, 0 2px 4px rgba(0,0,0,0.8)`,
+                  }}
+                >
+                  {siteText}
+                </p>
+              </div>
+            )}
 
             {/* Safe Zone Overlay (pointer-events: none, does not affect interactions) */}
             {safeZonePlatform && PLATFORM_SAFE_ZONES[safeZonePlatform] && (
@@ -4056,12 +4119,143 @@ export default function InfographicPage() {
                 ))}
               </div>
             </div>
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => setLogoSequences(["titre", "cartes", "video", "cta"])}
+                className={`flex-1 flex items-center justify-center gap-1 rounded px-2 py-1.5 text-[10px] font-medium transition-all ${
+                  logoSequences.length === 4
+                    ? "bg-green-600 text-white"
+                    : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                }`}
+              >
+                Toutes les séquences
+              </button>
+              <button
+                onClick={() => setLogoSequences(activeSequence !== "all" ? [activeSequence] : ["titre"])}
+                className="flex-1 flex items-center justify-center gap-1 rounded bg-gray-700 px-2 py-1.5 text-[10px] font-medium text-gray-300 hover:bg-gray-600 transition-all"
+              >
+                Séquence active
+              </button>
+            </div>
             <button
               onClick={() => setLogoImage(null)}
               className="w-full flex items-center justify-center gap-1.5 rounded bg-red-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-red-600"
             >
               <Trash2 size={12} />
               Supprimer le logo
+            </button>
+          </div>
+        </FloatingPanel>
+
+        {/* ── Site Text Panel (Afroboost.com) ── */}
+        <FloatingPanel
+          title="Texte Site"
+          icon="🌐"
+          isOpen={activePanel === "sitetext"}
+          onClose={() => setActivePanel(null)}
+          initialX={panelPos.x}
+          initialY={panelPos.y}
+          accentColor="#06B6D4"
+        >
+          <div className="space-y-2">
+            <input
+              type="text"
+              value={siteText}
+              onChange={(e) => setSiteText(e.target.value)}
+              className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white focus:border-cyan-500 focus:outline-none"
+              placeholder="Ex: Afroboost.com"
+            />
+            <div>
+              <span className="text-[9px] text-gray-500 uppercase">
+                Taille {Math.round(siteTextSize * 100)}%
+              </span>
+              <input
+                type="range"
+                min="0.3"
+                max="3.0"
+                step="0.1"
+                value={siteTextSize}
+                onChange={(e) => setSiteTextSize(parseFloat(e.target.value))}
+                className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-cyan-500 cursor-pointer mt-1"
+              />
+            </div>
+            <div>
+              <span className="text-[9px] text-gray-500 uppercase">
+                Opacité {Math.round(siteTextOpacity * 100)}%
+              </span>
+              <input
+                type="range"
+                min="0.1"
+                max="1.0"
+                step="0.05"
+                value={siteTextOpacity}
+                onChange={(e) => setSiteTextOpacity(parseFloat(e.target.value))}
+                className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-cyan-500 cursor-pointer mt-1"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[9px] text-gray-500 uppercase">Couleur</span>
+              <input
+                type="color"
+                value={siteTextColor}
+                onChange={(e) => setSiteTextColor(e.target.value)}
+                className="h-5 w-8 rounded border border-gray-600 bg-transparent cursor-pointer"
+              />
+            </div>
+            <div>
+              <span className="text-[9px] text-gray-500 uppercase block mb-1.5">
+                Afficher sur:
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {["titre", "cartes", "video", "cta"].map((seq) => (
+                  <label
+                    key={seq}
+                    className="flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={siteTextSequences.includes(seq)}
+                      onChange={(e) => {
+                        if (e.target.checked)
+                          setSiteTextSequences([...siteTextSequences, seq]);
+                        else
+                          setSiteTextSequences(
+                            siteTextSequences.filter((s) => s !== seq),
+                          );
+                      }}
+                      className="h-3 w-3 rounded border-gray-600 accent-cyan-500"
+                    />
+                    <span className="text-[9px] text-gray-400 capitalize">
+                      {seq}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => setSiteTextSequences(["titre", "cartes", "video", "cta"])}
+                className={`flex-1 flex items-center justify-center gap-1 rounded px-2 py-1.5 text-[10px] font-medium transition-all ${
+                  siteTextSequences.length === 4
+                    ? "bg-cyan-600 text-white"
+                    : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                }`}
+              >
+                Toutes
+              </button>
+              <button
+                onClick={() => setSiteTextSequences(activeSequence !== "all" ? [activeSequence] : ["titre"])}
+                className="flex-1 flex items-center justify-center gap-1 rounded bg-gray-700 px-2 py-1.5 text-[10px] font-medium text-gray-300 hover:bg-gray-600 transition-all"
+              >
+                Active seule
+              </button>
+            </div>
+            <button
+              onClick={() => setSiteTextEnabled(false)}
+              className="w-full flex items-center justify-center gap-1.5 rounded bg-red-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-red-600"
+            >
+              <Trash2 size={12} />
+              Masquer le texte
             </button>
           </div>
         </FloatingPanel>
@@ -4238,6 +4432,12 @@ export default function InfographicPage() {
                 <span>🎥</span> Texte sur la vidéo
               </button>
             )}
+            <button
+              onClick={() => { setSiteTextEnabled(true); setActivePanel('sitetext'); }}
+              className="flex items-center gap-2 w-full rounded bg-gray-800 px-3 py-2 text-[10px] text-gray-300 font-medium hover:bg-gray-700 transition-colors"
+            >
+              <span>🌐</span> {siteTextEnabled ? 'Modifier texte site' : 'Ajouter texte site (Afroboost.com)'}
+            </button>
           </div>
         </FloatingPanel>
 

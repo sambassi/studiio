@@ -705,7 +705,7 @@ export default function CalendarPage() {
     const isMontagePost = meta?.type === 'infographic' || (meta?.type === 'creator' && meta?.sequences);
     if (!isMontagePost) return;
 
-    const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { if (s === 'cta') return false; const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
+    const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
     // Only include video sequence if the video file has been proven playable
     // videoPlayable starts false and is only set true after onloadeddata fires
     const activeSeqs = videoPlayable ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
@@ -740,7 +740,7 @@ export default function CalendarPage() {
     // Only use raw rush video — never rendered montage (has CTA baked in)
     const videoSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0];
     if (!videoSrc) return;
-    const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { if (s === 'cta') return false; const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
+    const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
     const safeIdx = infoSeqIndex < seqOrder.length ? infoSeqIndex : 0;
     const currentSeq = seqOrder[safeIdx] || 'intro';
 
@@ -896,7 +896,7 @@ export default function CalendarPage() {
     const videoSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0];
     if (!videoSrc) return;
 
-    const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { if (s === 'cta') return false; const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
+    const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
     const activeSeqs = videoPlayable ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
     const currentSeq = activeSeqs[infoSeqIndex] || 'intro';
 
@@ -2361,6 +2361,10 @@ export default function CalendarPage() {
         // Calendrier utilise : "intro", "cards", "video", "cta"
         const seqNameMap: Record<string, string> = { titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' };
         const designLogoSequences = rawLogoSequences.map((s: string) => seqNameMap[s] || s);
+        // Site text (Afroboost.com) from design metadata
+        const designSiteText = design?.siteText;
+        const siteTextConfig = designSiteText || { text: 'Afroboost.com', pos: { x: 50, y: 95 }, size: 1.0, color: '#FFFFFF', opacity: 0.7, sequences: ['titre', 'cartes', 'video', 'cta'], enabled: true };
+        const siteTextSeqs = (siteTextConfig.sequences || []).map((s: string) => seqNameMap[s] || s);
 
         // Échelle : L'aperçu éditeur pour 9:16 est ~max-w-xs (320px) avec des tailles en px.
         // L'aperçu calendrier utilise height:70dvh, aspect-ratio:9/16 → largeur ≈ 39.375dvh.
@@ -2438,7 +2442,7 @@ export default function CalendarPage() {
             <div className="flex-1 bg-black flex flex-col items-center justify-center p-2 md:p-4" style={{ minHeight: '60dvh' }}>
               {/* Montage video preview — infographic & creator with sequences */}
               {hasMontage ? (() => {
-                const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { if (s === 'cta') return false; const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
+                const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
                 // Only include video sequence if the video has been proven playable (onloadeddata fired)
                 const activeSeqs = videoPlayable ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
                 const posterImgSrc = meta?.pexelsUrl || meta?.posterUrl || meta?.characterUrl || null;
@@ -2766,10 +2770,21 @@ export default function CalendarPage() {
                       )}
                     </div>
 
-                    {/* === Lien site web — visible sur TOUTES les séquences === */}
-                    <div className="absolute bottom-3 left-0 right-0 z-30 flex justify-center pointer-events-none">
-                      <p className="text-sm font-bold text-white/70 tracking-wider" style={{ textShadow: `0 0 10px ${accent}80, 0 2px 4px rgba(0,0,0,0.8)` }}>Afroboost.com</p>
-                    </div>
+                    {/* === Texte site web — affiché selon les séquences configurées === */}
+                    {siteTextConfig.enabled && siteTextConfig.text && siteTextSeqs.includes(currentSeq) && (
+                      <div className="absolute z-30 pointer-events-none" style={{
+                        left: `${siteTextConfig.pos?.x ?? 50}%`,
+                        top: `${siteTextConfig.pos?.y ?? 95}%`,
+                        transform: 'translate(-50%, -50%)',
+                      }}>
+                        <p className="font-bold tracking-wider whitespace-nowrap" style={{
+                          fontSize: editorPxToDvh(12 * (siteTextConfig.size || 1.0)),
+                          color: siteTextConfig.color || '#FFFFFF',
+                          opacity: siteTextConfig.opacity ?? 0.7,
+                          textShadow: `0 0 10px ${(siteTextConfig.color || '#FFFFFF')}40, 0 2px 4px rgba(0,0,0,0.8)`,
+                        }}>{siteTextConfig.text}</p>
+                      </div>
+                    )}
 
                     {/* Play/Pause + Volume — top-right overlay */}
                     <div className="absolute top-3 right-3 z-40 flex items-center gap-1.5">
@@ -3057,7 +3072,7 @@ export default function CalendarPage() {
                 )}
                 {hasMontage && (
                   <div className="flex items-center gap-2 text-xs text-purple-400">
-                    <Film className="w-3 h-3" /> {t('fullPreview.sequences', { count: String([...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { if (s === 'cta') return false; const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))].length) })} • {meta?.sequences?.total || 30}s
+                    <Film className="w-3 h-3" /> {t('fullPreview.sequences', { count: String([...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))].length) })} • {meta?.sequences?.total || 30}s
                   </div>
                 )}
                 {meta?.videoUrl && !hasMontage && (
