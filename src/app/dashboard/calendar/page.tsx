@@ -2780,8 +2780,8 @@ export default function CalendarPage() {
                       {designLogoUrl && designLogoSequences?.includes('intro') && (
                         <img src={designLogoUrl} alt="Logo" style={{
                           position: 'absolute',
-                          width: editorPxToDvh(40 * designLogoScale),
-                          height: editorPxToDvh(40 * designLogoScale),
+                          width: editorPxToDvh(32 * designLogoScale),
+                          height: editorPxToDvh(32 * designLogoScale),
                           objectFit: 'contain',
                           left: `${getCalLogoPos('intro').x}%`,
                           top: `${getCalLogoPos('intro').y}%`,
@@ -2912,8 +2912,8 @@ export default function CalendarPage() {
                       {designLogoUrl && designLogoSequences?.includes('cards') && (
                         <img src={designLogoUrl} alt="Logo" style={{
                           position: 'absolute',
-                          width: editorPxToDvh(40 * designLogoScale),
-                          height: editorPxToDvh(40 * designLogoScale),
+                          width: editorPxToDvh(32 * designLogoScale),
+                          height: editorPxToDvh(32 * designLogoScale),
                           objectFit: 'contain',
                           left: `${getCalLogoPos('cards').x}%`,
                           top: `${getCalLogoPos('cards').y}%`,
@@ -2970,8 +2970,8 @@ export default function CalendarPage() {
                         {designLogoUrl && designLogoSequences?.includes('video') && (
                           <img src={designLogoUrl} alt="Logo" style={{
                             position: 'absolute',
-                            width: editorPxToDvh(40 * designLogoScale),
-                            height: editorPxToDvh(40 * designLogoScale),
+                            width: editorPxToDvh(32 * designLogoScale),
+                            height: editorPxToDvh(32 * designLogoScale),
                             objectFit: 'contain',
                             left: `${getCalLogoPos('video').x}%`,
                             top: `${getCalLogoPos('video').y}%`,
@@ -3031,8 +3031,8 @@ export default function CalendarPage() {
                       {designLogoUrl && designLogoSequences?.includes('cta') && (
                         <img src={designLogoUrl} alt="Logo" style={{
                           position: 'absolute',
-                          width: editorPxToDvh(40 * designLogoScale),
-                          height: editorPxToDvh(40 * designLogoScale),
+                          width: editorPxToDvh(32 * designLogoScale),
+                          height: editorPxToDvh(32 * designLogoScale),
                           objectFit: 'contain',
                           left: `${getCalLogoPos('cta').x}%`,
                           top: `${getCalLogoPos('cta').y}%`,
