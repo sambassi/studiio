@@ -1746,32 +1746,67 @@ export default function CalendarPage() {
                   const fp = selectedDayPosts[0];
                   const fpMeta = fp.metadata;
                   const fpAccent = fpMeta?.branding?.accentColor || '#D91CD2';
-                  const fpImg = fp.media_url || fpMeta?.posterUrl || fpMeta?.pexelsUrl || fpMeta?.characterUrl;
+                  const fpDesign = fpMeta?.design;
+                  // Utiliser les couleurs du design si disponibles, sinon fallback sur accent
+                  const fpGrad1 = fpDesign?.gradientColor1 || fpAccent;
+                  const fpGrad2 = fpDesign?.gradientColor2 || '#000000';
+                  const fpGradOpacity = fpDesign?.gradientOpacity ?? 0.5;
+                  const fpTitleColor = fpDesign?.titleColor || '#FFFFFF';
+                  const FONT_MAP: Record<string, string> = {
+                    Anton: 'var(--font-anton)', Syne: 'var(--font-syne)',
+                    'Bebas Neue': 'var(--font-bebas)', Poppins: 'var(--font-poppins)',
+                    'Space Grotesk': 'var(--font-space)',
+                  };
+                  const fpFont = fpDesign?.font ? (FONT_MAP[fpDesign.font] || fpDesign.font) : 'inherit';
+                  const fpLogoUrl = fpDesign?.logoUrl || (fpMeta?.logoUrl as string) || null;
+                  // Image poster (pas la vidéo rendue)
+                  const fpPosterImg = fpMeta?.pexelsUrl || fpMeta?.posterUrl || fpMeta?.characterUrl || null;
                   const fpTextCards = (fpMeta?.textCards as Array<{ text: string; color: string }>) || [];
-                  if (!fpImg && !fp.title && fpTextCards.length === 0) return null;
+                  const fpCards = fpMeta?.cards as Array<{ emoji: string; label: string; value: string; color?: string }> || [];
+                  if (!fpPosterImg && !fp.title && fpTextCards.length === 0 && fpCards.length === 0) return null;
+                  // Convertir hex en rgba pour la miniature
+                  const hexRgba = (hex: string, a: number) => {
+                    if (hex.startsWith('rgba') || hex.startsWith('rgb')) return hex;
+                    const r = parseInt(hex.slice(1, 3), 16) || 0;
+                    const g = parseInt(hex.slice(3, 5), 16) || 0;
+                    const b = parseInt(hex.slice(5, 7), 16) || 0;
+                    return `rgba(${r},${g},${b},${a})`;
+                  };
                   return (
                     <div className="flex justify-center mb-3">
                       <div className="w-28 sm:w-36 aspect-[9/16] rounded-xl overflow-hidden border border-gray-700 bg-black relative">
-                        {fpImg && (
-                          fp.media_type === 'video' && fp.media_url ? (
-                            <video src={fp.media_url} className="w-full h-full object-cover" muted />
-                          ) : (
-                            <img src={fpImg} alt="" className="w-full h-full object-cover" />
-                          )
+                        {fpPosterImg ? (
+                          <img src={fpPosterImg} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                        ) : (
+                          <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, #000000, ${hexRgba(fpGrad1, 1)})` }} />
                         )}
-                        {!fpImg && <div className="absolute inset-0 bg-gradient-to-br from-purple-900 via-black to-pink-900" />}
-                        {/* Gradient overlay */}
-                        <div className="absolute inset-0" style={{ background: `linear-gradient(to top, ${fpAccent}CC 0%, rgba(0,0,0,0.3) 40%, transparent 65%)` }} />
-                        {/* Title + subtitle + text cards overlay */}
+                        {/* Dégradé overlay — utilise les couleurs du design */}
+                        <div className="absolute inset-0" style={{ background: `linear-gradient(to top, ${hexRgba(fpGrad1, fpGradOpacity)} 0%, ${hexRgba(fpGrad2, fpGradOpacity * 0.4)} 40%, transparent 65%)` }} />
+                        {/* Titre + sous-titre */}
                         <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-2 z-10">
-                          <h4 className="text-[11px] font-black text-white uppercase tracking-wide leading-tight" style={{ textShadow: `0 0 8px ${fpAccent}CC, 0 0 20px ${fpAccent}66` }}>
+                          <h4 className="font-black uppercase tracking-wide leading-tight" style={{
+                            fontSize: '11px', color: fpTitleColor, fontFamily: fpFont,
+                            textShadow: `0 0 8px ${fpAccent}CC, 0 0 20px ${fpAccent}66`,
+                          }}>
                             {fp.title || 'TITRE'}
                           </h4>
                           {fpMeta?.subtitle && (
-                            <p className="text-[7px] text-white/80 mt-0.5" style={{ textShadow: `0 0 6px ${fpAccent}80` }}>{fpMeta.subtitle}</p>
+                            <p className="mt-0.5" style={{ fontSize: '7px', color: `${fpTitleColor}CC`, fontFamily: fpFont, textShadow: `0 0 6px ${fpAccent}80` }}>{fpMeta.subtitle}</p>
                           )}
                           <div className="w-6 h-px mt-1 mx-auto rounded-full" style={{ background: `linear-gradient(90deg, transparent, ${fpAccent}, transparent)` }} />
-                          {fpTextCards.length > 0 && (
+                          {/* Cartes d'info en miniature */}
+                          {fpCards.length > 0 && (
+                            <div className="mt-1.5 space-y-0.5 w-full max-w-[90%]">
+                              {fpCards.slice(0, 2).map((card, ci) => (
+                                <div key={ci} className="flex items-center gap-1 bg-black/40 backdrop-blur-sm rounded px-1 py-px">
+                                  <span style={{ fontSize: '6px' }}>{card.emoji}</span>
+                                  <span className="text-white/80 truncate flex-1" style={{ fontSize: '5px', fontFamily: fpFont }}>{card.label}</span>
+                                  <span className="font-bold" style={{ fontSize: '5px', color: card.color || fpAccent }}>{card.value}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {fpCards.length === 0 && fpTextCards.length > 0 && (
                             <div className="mt-1.5 space-y-0.5 w-full max-w-[90%]">
                               {fpTextCards.slice(0, 2).map((card, ci) => (
                                 <div key={ci} className="flex items-center gap-1 bg-black/40 backdrop-blur-sm rounded px-1 py-px">
@@ -1782,8 +1817,17 @@ export default function CalendarPage() {
                             </div>
                           )}
                         </div>
-                        {/* Bottom bar */}
-                        <div className="absolute bottom-0 inset-x-0 h-0.5 z-20" style={{ background: `linear-gradient(90deg, ${fpAccent}, #FF2DAA, #00D4FF)` }} />
+                        {/* Logo en miniature */}
+                        {fpLogoUrl && (
+                          <img src={fpLogoUrl} alt="" className="absolute z-20" style={{
+                            width: '18px', height: '18px', objectFit: 'contain',
+                            left: `${fpDesign?.positions?.logo?.x ?? 50}%`,
+                            top: `${fpDesign?.positions?.logo?.y ?? 85}%`,
+                            transform: 'translate(-50%, -50%)',
+                          }} />
+                        )}
+                        {/* Barre bas */}
+                        <div className="absolute bottom-0 inset-x-0 h-0.5 z-20" style={{ background: `linear-gradient(90deg, ${fpGrad1}, ${fpGrad2})` }} />
                       </div>
                     </div>
                   );
@@ -2606,6 +2650,11 @@ export default function CalendarPage() {
                           onLoadedData={(e) => { console.log('[Calendar] Rush video loaded, readyState:', (e.target as HTMLVideoElement).readyState); }}
                           onError={(e) => { console.error('[Calendar] Rush video error:', (e.target as HTMLVideoElement).error); }}
                         />
+                        {/* Dégradé overlay sur la vidéo — mêmes couleurs que l'éditeur */}
+                        <div className="absolute inset-0 z-[5]" style={{
+                          background: `linear-gradient(to top, ${hexToRgba(designGradient1, designGradientOpacity)} 0%, ${hexToRgba(designGradient2, designGradientOpacity * 0.4)} 40%, transparent 65%)`,
+                          pointerEvents: 'none',
+                        }} />
                         {/* Texte overlay vidéo — texte optionnel défini par l'utilisateur dans Infographie */}
                         {meta?.videoOverlayText && (
                           <div className="absolute inset-0 z-10 pointer-events-none">
@@ -2689,8 +2738,8 @@ export default function CalendarPage() {
                           marginTop: editorPxToDvh(4),
                         }}>{designCtaSubText || brd?.ctaText || branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}</p>
                       </div>
-                      {/* Logo sur CTA */}
-                      {designLogoUrl && (
+                      {/* Logo sur CTA — seulement si logoSequences inclut 'cta' */}
+                      {designLogoUrl && designLogoSequences?.includes('cta') && (
                         <img src={designLogoUrl} alt="Logo" style={{
                           position: 'absolute',
                           width: editorPxToDvh(40 * designLogoScale),

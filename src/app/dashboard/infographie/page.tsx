@@ -1152,7 +1152,7 @@ export default function InfographicPage() {
 
       setExportProgress(100);
 
-      // ── Export bureau : composition du montage vidéo + téléchargement poster + config ──
+      // ── Export bureau : composition du montage vidéo final (MP4 uniquement) ──
       if (destination === 'export' || destination === 'both') {
         try {
           const exportAccent =
@@ -1161,96 +1161,42 @@ export default function InfographicPage() {
           const exportPhoto = pexelsPhotos.length > 0 ? pexelsPhotos[0] : null;
           const exportPosterUrl = exportPhoto?.url || null;
 
-          // 1. Composer le montage vidéo final
-          setExportProgress(70);
-          try {
-            const composedResult = await composeAndUpload({
-              width: isReel ? 1080 : 1920,
-              height: isReel ? 1920 : 1080,
-              fps: 24,
-              title: title || "Infographie",
-              subtitle: subtitle || undefined,
-              salesPhrase: salesPhrases.length > 0 ? salesPhrases[0] : undefined,
-              cards: cards.length > 0
-                ? cards.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color }))
-                : undefined,
-              posterUrl: exportPosterUrl,
-              videoUrl: rushUrl,
-              logoUrl: logoImage || null,
-              introDuration,
-              cardsDuration: cards.length > 0 ? cardsDuration : 0,
-              videoDuration: rushUrl ? videoDuration : 0,
-              ctaDuration,
-              accentColor: exportAccent,
-              ctaText: ctaSubText || "CHAT POUR PLUS D'INFOS",
-              ctaSubText: "LIEN EN BIO",
-              watermarkText: ctaMainText || "AFROBOOST",
-              onProgress: (pct, stage) => {
-                setExportProgress(70 + Math.round(pct * 0.25));
-              },
-            });
-            setExportProgress(95);
-            // Télécharger la vidéo composée
-            if (composedResult.blob && composedResult.blob.size > 0) {
-              await downloadBlob(
-                composedResult.blob,
-                `infographie-${title || 'afroboost'}-montage.webm`,
-                (pct, stage) => setExportProgress(95 + Math.round(pct * 0.04))
-              );
-            }
-          } catch (composeErr) {
-            console.warn('[Export Bureau] Erreur composition vidéo:', composeErr);
-          }
-
-          // 2. Télécharger l'image poster
-          if (exportPhoto?.url) {
-            const link = document.createElement('a');
-            link.href = exportPhoto.url;
-            link.download = `infographie-${title || 'afroboost'}-poster.jpg`;
-            link.target = '_blank';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-          }
-          // 3. Télécharger le rush vidéo brut si présent
-          if (rushUrl) {
-            const vLink = document.createElement('a');
-            vLink.href = rushUrl;
-            vLink.download = `infographie-${title || 'afroboost'}-rush.mp4`;
-            vLink.target = '_blank';
-            document.body.appendChild(vLink);
-            vLink.click();
-            document.body.removeChild(vLink);
-          }
-          // 4. Télécharger la config design en JSON
-          const configData = {
-            title, subtitle, cards, salesPhrases,
-            format, colorTheme, customAccent,
-            ctaMainText, ctaSubText, videoOverlayText,
-            design: {
-              font: selectedFont, filter: selectedFilter, cardStyle: selectedCardStyle,
-              textScale, ctaTextScale, titleColor, ctaColor, ctaSubColor,
-              gradientColor1, gradientColor2, gradientOpacity,
-              noColorBg, noColorSequences,
-              positions: { title: titlePos, logo: logoPos, watermark: watermarkPos, cards: cardsPos, overlay: overlayPos },
-              sizes: { title: titleSize, cards: cardsSize, watermark: watermarkSize },
-              logoScale, logoSequences, logoUrl: logoImage || undefined,
-              typography: {
-                title: { letterSpacing: titleLetterSpacing, lineHeight: titleLineHeight, bold: titleBold, italic: titleItalic },
-                cta: { letterSpacing: ctaLetterSpacing, lineHeight: ctaLineHeight, bold: ctaBold, italic: ctaItalic },
-                overlay: { letterSpacing: overlayLetterSpacing, lineHeight: overlayLineHeight, bold: overlayBold, italic: overlayItalic },
-              },
+          // Composer le montage vidéo final puis télécharger en MP4
+          setExportProgress(50);
+          const composedResult = await composeAndUpload({
+            width: isReel ? 1080 : 1920,
+            height: isReel ? 1920 : 1080,
+            fps: 24,
+            title: title || "Infographie",
+            subtitle: subtitle || undefined,
+            salesPhrase: salesPhrases.length > 0 ? salesPhrases[0] : undefined,
+            cards: cards.length > 0
+              ? cards.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color }))
+              : undefined,
+            posterUrl: exportPosterUrl,
+            videoUrl: rushUrl,
+            logoUrl: logoImage || null,
+            introDuration,
+            cardsDuration: cards.length > 0 ? cardsDuration : 0,
+            videoDuration: rushUrl ? videoDuration : 0,
+            ctaDuration,
+            accentColor: exportAccent,
+            ctaText: ctaSubText || "CHAT POUR PLUS D'INFOS",
+            ctaSubText: "LIEN EN BIO",
+            watermarkText: ctaMainText || "AFROBOOST",
+            onProgress: (pct, stage) => {
+              setExportProgress(50 + Math.round(pct * 0.35));
             },
-            sequences: { intro: introDuration, cards: cardsDuration, video: videoDuration, cta: ctaDuration },
-          };
-          const blob = new Blob([JSON.stringify(configData, null, 2)], { type: 'application/json' });
-          const cfgLink = document.createElement('a');
-          cfgLink.href = URL.createObjectURL(blob);
-          cfgLink.download = `infographie-${title || 'afroboost'}-config.json`;
-          document.body.appendChild(cfgLink);
-          cfgLink.click();
-          document.body.removeChild(cfgLink);
-          URL.revokeObjectURL(cfgLink.href);
+          });
+          setExportProgress(85);
+          // Télécharger uniquement le fichier MP4
+          if (composedResult.blob && composedResult.blob.size > 0) {
+            await downloadBlob(
+              composedResult.blob,
+              `infographie-${title || 'afroboost'}.mp4`,
+              (pct, stage) => setExportProgress(85 + Math.round(pct * 0.15))
+            );
+          }
         } catch (e) {
           console.warn('[Export Bureau] Erreur:', e);
         }

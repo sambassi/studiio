@@ -979,12 +979,26 @@ export async function convertWebmToMp4(
 
     const ffmpeg = new FFmpeg();
 
-    // Load FFmpeg WASM from CDN
-    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
-    await ffmpeg.load({
-      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-    });
+    // Load FFmpeg WASM from CDN — try jsdelivr first (more reliable), fallback to unpkg
+    let loaded = false;
+    const cdnBases = [
+      'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm',
+      'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm',
+    ];
+    for (const baseURL of cdnBases) {
+      try {
+        await ffmpeg.load({
+          coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+          wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+        });
+        loaded = true;
+        console.log('[Composer] FFmpeg loaded from:', baseURL);
+        break;
+      } catch (cdnErr) {
+        console.warn('[Composer] FFmpeg CDN failed:', baseURL, cdnErr);
+      }
+    }
+    if (!loaded) throw new Error('FFmpeg WASM failed to load from all CDNs');
 
     onProgress?.(20, 'Conversion MP4...');
 
