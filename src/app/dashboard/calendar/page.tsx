@@ -29,6 +29,8 @@ import {
   VolumeX,
   Download,
   Film,
+  RefreshCw,
+  AlertTriangle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -446,15 +448,20 @@ export default function CalendarPage() {
   // Cross-date bulk schedule — set selected posts to 'scheduled' at the chosen time
   const handleCrossDateBulkSchedule = async () => {
     if (selectedPostIds.size === 0) return;
-    const count = selectedPostIds.size;
-    if (!confirm(`Planifier ${count} post(s) à ${bulkScheduleTime} ?`)) return;
+    // Validate: check each selected post has platforms and media
+    const selectedPosts = Array.from(selectedPostIds).map(id => posts.find(p => p.id === id)).filter(Boolean) as Post[];
+    const noPlatform = selectedPosts.filter(p => !p.platforms || p.platforms.length === 0);
+    const noMedia = selectedPosts.filter(p => !p.media_url && !p.metadata?.renderedVideoUrl && !p.metadata?.posterUrl);
+    const warnings: string[] = [];
+    if (noPlatform.length > 0) warnings.push(`${noPlatform.length} post(s) sans réseau social`);
+    if (noMedia.length > 0) warnings.push(`${noMedia.length} post(s) sans média/vidéo`);
+    const msg = warnings.length > 0
+      ? `Planifier ${selectedPosts.length} post(s) à ${bulkScheduleTime} ?\n\n⚠️ Attention :\n${warnings.join('\n')}\nCes posts risquent d'échouer à la publication.`
+      : `Planifier ${selectedPosts.length} post(s) à ${bulkScheduleTime} ?`;
+    if (!confirm(msg)) return;
     setSaving(true);
     try {
-      const ids = Array.from(selectedPostIds);
-      for (const id of ids) {
-        const post = posts.find(p => p.id === id);
-        if (!post) continue;
-        // Update time + status to scheduled
+      for (const post of selectedPosts) {
         await fetch(`/api/posts/${post.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -466,6 +473,21 @@ export default function CalendarPage() {
       setSelectedBulkDays(new Set());
       setCrossDateBulk(false);
     } catch (error) { console.error('Cross-date bulk schedule error:', error); }
+    finally { setSaving(false); }
+  };
+
+  // Retry a failed post — reset status to 'scheduled' so the cron picks it up again
+  const handleRetryPost = async (post: Post) => {
+    if (!confirm('Réessayer la publication de ce post ?')) return;
+    setSaving(true);
+    try {
+      await fetch(`/api/posts/${post.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'scheduled', metadata: { ...post.metadata, error: null, cron_publish_results: null } }),
+      });
+      await fetchPosts();
+    } catch (error) { console.error('Retry error:', error); }
     finally { setSaving(false); }
   };
 
@@ -1933,9 +1955,18 @@ export default function CalendarPage() {
                               {!post.metadata?.hasAudio && post.media_type === 'video' && (
                                 <button onClick={() => { window.location.href = `/dashboard/audio-studio?postId=${post.id}`; }} className="p-1 rounded bg-purple-600 hover:bg-purple-700 text-white transition" title={t('actions.addAudio')}><Volume2 className="w-3 h-3" /></button>
                               )}
+                              {post.status === 'failed' && (
+                                <button onClick={() => handleRetryPost(post)} className="p-1 rounded bg-orange-600 hover:bg-orange-700 text-white transition" title="Réessayer la publication"><RefreshCw className="w-3 h-3" /></button>
+                              )}
                               <button onClick={() => handleFullPreview(post)} className="p-1 rounded bg-green-600 hover:bg-green-700 text-white transition ml-auto" title={t('actions.fullPreview')}><Play className="w-3 h-3" /></button>
                               <button disabled={saving} onClick={() => handleDeletePost(post)} className="p-1 rounded bg-gray-700 hover:bg-red-600 text-gray-300 hover:text-white transition" title={t('actions.delete')}><Trash2 className="w-3 h-3" /></button>
                             </div>
+                            {post.status === 'failed' && (post.metadata?.error || post.metadata?.cron_publish_results) && (
+                              <div className="flex items-start gap-1 px-1 py-1 bg-red-900/30 rounded text-[8px] text-red-300 leading-tight">
+                                <AlertTriangle className="w-2.5 h-2.5 flex-shrink-0 mt-0.5" />
+                                <span className="break-all">{post.metadata?.error || post.metadata?.cron_publish_results?.filter((r: any) => !r.success).map((r: any) => `${r.platform}: ${r.error}`).join(' | ')}</span>
+                              </div>
+                            )}
                           </>
                         )}
                       </div>
