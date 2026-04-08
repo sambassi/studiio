@@ -238,6 +238,29 @@ export default function InfographicPage() {
   const [noColorBg, setNoColorBg] = useState(false);
   const [noColorSequences, setNoColorSequences] = useState<string[]>([]); // sequences where color is disabled
 
+  // Per-sequence gradient settings: each sequence can override the global gradient
+  // Keys: "titre" | "cartes" | "video" | "cta"
+  // Values: { enabled?: boolean, color1?: string, color2?: string, opacity?: number, position?: 'top' | 'bottom' | 'both' | 'left' | 'right' }
+  const [seqGradients, setSeqGradients] = useState<Record<string, {
+    enabled?: boolean;
+    color1?: string;
+    color2?: string;
+    opacity?: number;
+    position?: 'top' | 'bottom' | 'both' | 'left' | 'right';
+  }>>({});
+
+  // Helper function to get effective gradient for a sequence
+  const getSeqGradient = useCallback((seq: string) => {
+    const override = seqGradients[seq];
+    return {
+      enabled: override?.enabled !== false, // default enabled
+      color1: override?.color1 || gradientColor1,
+      color2: override?.color2 || gradientColor2,
+      opacity: override?.opacity ?? gradientOpacity,
+      position: override?.position || 'both',
+    };
+  }, [seqGradients, gradientColor1, gradientColor2, gradientOpacity]);
+
   // ── Video Upload ────────────────────────────────────────────
   const [rushUrl, setRushUrl] = useState<string | null>(null);
   const [rushFileName, setRushFileName] = useState<string | null>(null);
@@ -274,6 +297,14 @@ export default function InfographicPage() {
   const [overlayItalic, setOverlayItalic] = useState(false);
   const [cardsLetterSpacing, setCardsLetterSpacing] = useState(0);
   const [customCardIcons, setCustomCardIcons] = useState<Record<string, string>>({});
+
+  // Advanced text effects
+  const [titleTextGradient, setTitleTextGradient] = useState(false);
+  const [titleGradColor1, setTitleGradColor1] = useState("#FFD700");
+  const [titleGradColor2, setTitleGradColor2] = useState("#FF6B6B");
+  const [titleDuplicate, setTitleDuplicate] = useState(false);
+  const [titleDuplicateOffset, setTitleDuplicateOffset] = useState(5);
+  const [titleDuplicateOpacity, setTitleDuplicateOpacity] = useState(0.3);
 
   // ── Persist configurations across sessions ──────────────────
   const INFOGRAPHIC_CONFIG_KEY = "studiio_infographic_config";
@@ -319,6 +350,13 @@ export default function InfographicPage() {
           setOverlayItalic(cfg.overlayItalic);
         if (cfg.cardsLetterSpacing !== undefined)
           setCardsLetterSpacing(cfg.cardsLetterSpacing);
+        // Advanced text effects
+        if (cfg.titleTextGradient !== undefined) setTitleTextGradient(cfg.titleTextGradient);
+        if (cfg.titleGradColor1) setTitleGradColor1(cfg.titleGradColor1);
+        if (cfg.titleGradColor2) setTitleGradColor2(cfg.titleGradColor2);
+        if (cfg.titleDuplicate !== undefined) setTitleDuplicate(cfg.titleDuplicate);
+        if (cfg.titleDuplicateOffset !== undefined) setTitleDuplicateOffset(cfg.titleDuplicateOffset);
+        if (cfg.titleDuplicateOpacity !== undefined) setTitleDuplicateOpacity(cfg.titleDuplicateOpacity);
         // Propriétés de design (police, filtre, style cartes, couleurs, positions, tailles, échelles)
         if (cfg.selectedFont) setSelectedFont(cfg.selectedFont);
         if (cfg.selectedFilter) setSelectedFilter(cfg.selectedFilter);
@@ -333,6 +371,7 @@ export default function InfographicPage() {
         if (cfg.gradientOpacity !== undefined) setGradientOpacity(cfg.gradientOpacity);
         if (cfg.noColorBg !== undefined) setNoColorBg(cfg.noColorBg);
         if (cfg.noColorSequences) setNoColorSequences(cfg.noColorSequences);
+        if (cfg.seqGradients) setSeqGradients(cfg.seqGradients);
         if (cfg.textScale !== undefined) setTextScale(cfg.textScale);
         if (cfg.ctaTextScale !== undefined) setCtaTextScale(cfg.ctaTextScale);
         if (cfg.logoScale !== undefined) setLogoScale(cfg.logoScale);
@@ -501,7 +540,9 @@ export default function InfographicPage() {
           overlayLetterSpacing, overlayLineHeight, overlayBold, overlayItalic, cardsLetterSpacing,
           selectedFont, selectedFilter, selectedCardStyle,
           titleColor, ctaColor, ctaSubColor, ctaMainText, ctaSubText,
-          gradientColor1, gradientColor2, gradientOpacity, noColorBg, noColorSequences,
+          titleTextGradient, titleGradColor1, titleGradColor2,
+          titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
+          gradientColor1, gradientColor2, gradientOpacity, noColorBg, noColorSequences, seqGradients,
           textScale, ctaTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
           titlePos, logoPos, watermarkPos, cardsPos, overlayPos,
           titleSize, cardsSize, watermarkSize,
@@ -518,7 +559,9 @@ export default function InfographicPage() {
     overlayLetterSpacing, overlayLineHeight, overlayBold, overlayItalic, cardsLetterSpacing,
     selectedFont, selectedFilter, selectedCardStyle,
     titleColor, ctaColor, ctaSubColor, ctaMainText, ctaSubText,
-    gradientColor1, gradientColor2, gradientOpacity, noColorBg, noColorSequences,
+    titleTextGradient, titleGradColor1, titleGradColor2,
+    titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
+    gradientColor1, gradientColor2, gradientOpacity, noColorBg, noColorSequences, seqGradients,
     textScale, ctaTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
     titlePos, logoPos, watermarkPos, cardsPos, overlayPos,
     titleSize, cardsSize, watermarkSize,
@@ -1126,6 +1169,7 @@ export default function InfographicPage() {
                   gradientColor1,
                   gradientColor2,
                   gradientOpacity,
+                  seqGradients,
                   positions: {
                     title: titlePos,
                     logo: logoPos,
@@ -1147,6 +1191,12 @@ export default function InfographicPage() {
                       lineHeight: titleLineHeight,
                       bold: titleBold,
                       italic: titleItalic,
+                      textGradient: titleTextGradient,
+                      gradColor1: titleGradColor1,
+                      gradColor2: titleGradColor2,
+                      duplicate: titleDuplicate,
+                      duplicateOffset: titleDuplicateOffset,
+                      duplicateOpacity: titleDuplicateOpacity,
                     },
                     cta: {
                       letterSpacing: ctaLetterSpacing,
@@ -2774,49 +2824,68 @@ export default function InfographicPage() {
               </div>
             )}
 
-            {/* ── Gradient Overlay (user-configurable, up to 200%) — double-click for panel ── */}
-            {gradientOpacity > 0 && (
-              <>
-                <div
-                  className="absolute inset-0 z-[1] cursor-pointer"
-                  onDoubleClick={(e) => openPanel("gradient", e)}
-                  style={{
-                    background: `linear-gradient(180deg, ${gradientColor1}${Math.round(
-                      Math.min(gradientOpacity, 1) * 255,
-                    )
-                      .toString(16)
-                      .padStart(
-                        2,
-                        "0",
-                      )} 0%, transparent 40%, transparent 60%, ${gradientColor2}${Math.round(
-                      Math.min(gradientOpacity, 1) * 255,
-                    )
-                      .toString(16)
-                      .padStart(2, "0")} 100%)`,
-                  }}
-                />
-                {/* Second layer for >100% intensity */}
-                {gradientOpacity > 1 && (
+            {/* ── Gradient Overlay (per-sequence, up to 200%) — double-click for panel ── */}
+            {(() => {
+              const seqKey = activeSequence === "all" ? "titre" : activeSequence;
+              const gradient = getSeqGradient(seqKey);
+              if (!gradient.enabled || gradient.opacity <= 0) return null;
+
+              // Generate gradient CSS based on position
+              const getGradientCSS = () => {
+                const hex1 = `${gradient.color1}${Math.round(Math.min(gradient.opacity, 1) * 255).toString(16).padStart(2, "0")}`;
+                const hex2 = `${gradient.color2}${Math.round(Math.min(gradient.opacity, 1) * 255).toString(16).padStart(2, "0")}`;
+
+                switch (gradient.position) {
+                  case 'top':
+                    return `linear-gradient(180deg, ${gradient.color1}${Math.round(Math.min(gradient.opacity, 1) * 255).toString(16).padStart(2, "0")} 0%, transparent 50%)`;
+                  case 'bottom':
+                    return `linear-gradient(180deg, transparent 50%, ${gradient.color2}${Math.round(Math.min(gradient.opacity, 1) * 255).toString(16).padStart(2, "0")} 100%)`;
+                  case 'left':
+                    return `linear-gradient(90deg, ${gradient.color1}${Math.round(Math.min(gradient.opacity, 1) * 255).toString(16).padStart(2, "0")} 0%, transparent 50%)`;
+                  case 'right':
+                    return `linear-gradient(270deg, ${gradient.color1}${Math.round(Math.min(gradient.opacity, 1) * 255).toString(16).padStart(2, "0")} 0%, transparent 50%)`;
+                  case 'both':
+                  default:
+                    return `linear-gradient(180deg, ${hex1} 0%, transparent 40%, transparent 60%, ${hex2} 100%)`;
+                }
+              };
+
+              return (
+                <>
                   <div
-                    className="absolute inset-0 z-[1] pointer-events-none"
+                    className="absolute inset-0 z-[1] cursor-pointer"
+                    onDoubleClick={(e) => openPanel("gradient", e)}
                     style={{
-                      background: `linear-gradient(180deg, ${gradientColor1}${Math.round(
-                        (gradientOpacity - 1) * 255,
-                      )
-                        .toString(16)
-                        .padStart(
-                          2,
-                          "0",
-                        )} 0%, transparent 35%, transparent 65%, ${gradientColor2}${Math.round(
-                        (gradientOpacity - 1) * 255,
-                      )
-                        .toString(16)
-                        .padStart(2, "0")} 100%)`,
+                      background: getGradientCSS(),
                     }}
                   />
-                )}
-              </>
-            )}
+                  {/* Second layer for >100% intensity */}
+                  {gradient.opacity > 1 && (
+                    <div
+                      className="absolute inset-0 z-[1] pointer-events-none"
+                      style={{
+                        background: (() => {
+                          const hexBg = `${Math.round((gradient.opacity - 1) * 255).toString(16).padStart(2, "0")}`;
+                          switch (gradient.position) {
+                            case 'top':
+                              return `linear-gradient(180deg, ${gradient.color1}${hexBg} 0%, transparent 50%)`;
+                            case 'bottom':
+                              return `linear-gradient(180deg, transparent 50%, ${gradient.color2}${hexBg} 100%)`;
+                            case 'left':
+                              return `linear-gradient(90deg, ${gradient.color1}${hexBg} 0%, transparent 50%)`;
+                            case 'right':
+                              return `linear-gradient(270deg, ${gradient.color1}${hexBg} 0%, transparent 50%)`;
+                            case 'both':
+                            default:
+                              return `linear-gradient(180deg, ${gradient.color1}${hexBg} 0%, transparent 35%, transparent 65%, ${gradient.color2}${hexBg} 100%)`;
+                          }
+                        })(),
+                      }}
+                    />
+                  )}
+                </>
+              );
+            })()}
 
             {/* ── TITLE SECTION (visible in all, titre) — drag + double-click for panel ── */}
             {(activeSequence === "all" || activeSequence === "titre") && (
@@ -2862,15 +2931,40 @@ export default function InfographicPage() {
                   }}
                 />
                 <div className="absolute inset-0 border border-dashed border-purple-500/0 group-hover/title:border-purple-500/40 rounded pointer-events-none transition-colors" />
+                {titleDuplicate && (
+                  <h3
+                    style={{
+                      fontSize: `${(format === "16:9" ? 18 : 14) * textScale}px`,
+                      letterSpacing: `${titleLetterSpacing}px`,
+                      lineHeight: titleLineHeight,
+                      fontWeight: titleBold ? 900 : 400,
+                      fontStyle: titleItalic ? "italic" : "normal",
+                      color: titleColor,
+                      position: "absolute",
+                      transform: `translate(${titleDuplicateOffset}px, ${titleDuplicateOffset}px)`,
+                      opacity: titleDuplicateOpacity,
+                      zIndex: -1,
+                    }}
+                  >
+                    {title || "TITRE"}
+                  </h3>
+                )}
                 <h3
                   className="font-black drop-shadow-lg"
                   style={{
                     fontSize: `${(format === "16:9" ? 18 : 14) * textScale}px`,
-                    color: titleColor,
                     letterSpacing: `${titleLetterSpacing}px`,
                     lineHeight: titleLineHeight,
                     fontWeight: titleBold ? 900 : 400,
                     fontStyle: titleItalic ? "italic" : "normal",
+                    ...(titleTextGradient ? {
+                      background: `linear-gradient(135deg, ${titleGradColor1}, ${titleGradColor2})`,
+                      WebkitBackgroundClip: "text",
+                      WebkitTextFillColor: "transparent",
+                      backgroundClip: "text",
+                    } : {
+                      color: titleColor,
+                    }),
                   }}
                 >
                   {title || "TITRE"}
@@ -3488,6 +3582,54 @@ export default function InfographicPage() {
                 className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer mt-1"
               />
             </div>
+
+            {/* Text gradient effect */}
+            <div className="mt-2 pt-2 border-t border-gray-800">
+              <label className="flex items-center gap-2 cursor-pointer mb-2">
+                <input
+                  type="checkbox"
+                  checked={titleTextGradient}
+                  onChange={(e) => setTitleTextGradient(e.target.checked)}
+                  className="accent-purple-500"
+                />
+                <span className="text-[9px] text-gray-400 uppercase">Dégradé sur texte</span>
+              </label>
+              {titleTextGradient && (
+                <div className="space-y-1">
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <span className="text-[8px] text-gray-500">Couleur 1</span>
+                      <input type="color" value={titleGradColor1} onChange={(e) => setTitleGradColor1(e.target.value)} className="w-full h-6 rounded cursor-pointer bg-transparent" />
+                    </div>
+                    <div className="flex-1">
+                      <span className="text-[8px] text-gray-500">Couleur 2</span>
+                      <input type="color" value={titleGradColor2} onChange={(e) => setTitleGradColor2(e.target.value)} className="w-full h-6 rounded cursor-pointer bg-transparent" />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Duplicate text effect */}
+            <div className="mt-2 pt-2 border-t border-gray-800">
+              <label className="flex items-center gap-2 cursor-pointer mb-2">
+                <input
+                  type="checkbox"
+                  checked={titleDuplicate}
+                  onChange={(e) => setTitleDuplicate(e.target.checked)}
+                  className="accent-purple-500"
+                />
+                <span className="text-[9px] text-gray-400 uppercase">Dupliquer le texte</span>
+              </label>
+              {titleDuplicate && (
+                <div className="space-y-1">
+                  <span className="text-[8px] text-gray-500">Décalage</span>
+                  <input type="range" min="1" max="20" value={titleDuplicateOffset} onChange={(e) => setTitleDuplicateOffset(parseInt(e.target.value))} className="w-full" />
+                  <span className="text-[8px] text-gray-500">Opacité: {Math.round(titleDuplicateOpacity * 100)}%</span>
+                  <input type="range" min="0.1" max="1" step="0.05" value={titleDuplicateOpacity} onChange={(e) => setTitleDuplicateOpacity(parseFloat(e.target.value))} className="w-full" />
+                </div>
+              )}
+            </div>
           </div>
         </FloatingPanel>
 
@@ -3723,32 +3865,132 @@ export default function InfographicPage() {
           initialY={panelPos.y}
           accentColor="#7C3AED"
         >
-          <div className="space-y-2">
-            <ColorWheel
-              color={gradientColor1}
-              onChange={setGradientColor1}
-              label="Couleur haut"
-            />
-            <ColorWheel
-              color={gradientColor2}
-              onChange={setGradientColor2}
-              label="Couleur bas"
-            />
-            <div>
-              <span className="text-[9px] text-gray-500 uppercase">
-                Intensité {Math.round(gradientOpacity * 100)}%
-              </span>
-              <input
-                type="range"
-                min="0"
-                max="2.0"
-                step="0.05"
-                value={gradientOpacity}
-                onChange={(e) => setGradientOpacity(parseFloat(e.target.value))}
-                className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer mt-1"
-              />
-            </div>
-          </div>
+          {(() => {
+            const seqKey = activeSequence === "all" ? "titre" : activeSequence;
+            const currentGradient = getSeqGradient(seqKey);
+            const isGlobal = activeSequence === "all";
+
+            return (
+              <div className="space-y-3">
+                {/* Mode indicator */}
+                {!isGlobal && (
+                  <div className="text-[9px] text-purple-300 font-semibold uppercase bg-purple-900/30 px-2 py-1 rounded">
+                    Mode: {seqKey}
+                  </div>
+                )}
+
+                {/* Enable/Disable toggle */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={currentGradient.enabled}
+                    onChange={(e) => {
+                      setSeqGradients({
+                        ...seqGradients,
+                        [seqKey]: { ...seqGradients[seqKey], enabled: e.target.checked },
+                      });
+                    }}
+                    className="w-4 h-4 accent-purple-500"
+                  />
+                  <span className="text-[10px] font-semibold text-gray-300 uppercase">
+                    Activer le dégradé
+                  </span>
+                </label>
+
+                {currentGradient.enabled && (
+                  <>
+                    {/* Color selectors */}
+                    <ColorWheel
+                      color={currentGradient.color1}
+                      onChange={(color) => {
+                        setSeqGradients({
+                          ...seqGradients,
+                          [seqKey]: { ...seqGradients[seqKey], color1: color },
+                        });
+                      }}
+                      label="Couleur 1"
+                    />
+                    <ColorWheel
+                      color={currentGradient.color2}
+                      onChange={(color) => {
+                        setSeqGradients({
+                          ...seqGradients,
+                          [seqKey]: { ...seqGradients[seqKey], color2: color },
+                        });
+                      }}
+                      label="Couleur 2"
+                    />
+
+                    {/* Position selector */}
+                    <div>
+                      <span className="text-[9px] text-gray-500 uppercase block mb-1.5">
+                        Position
+                      </span>
+                      <select
+                        value={currentGradient.position}
+                        onChange={(e) => {
+                          setSeqGradients({
+                            ...seqGradients,
+                            [seqKey]: { ...seqGradients[seqKey], position: e.target.value as any },
+                          });
+                        }}
+                        className="w-full px-2 py-1.5 bg-gray-700 text-gray-100 rounded text-[9px] font-semibold border border-gray-600 focus:border-purple-500 focus:outline-none"
+                      >
+                        <option value="both">Haut & Bas</option>
+                        <option value="top">Haut</option>
+                        <option value="bottom">Bas</option>
+                        <option value="left">Gauche</option>
+                        <option value="right">Droite</option>
+                      </select>
+                    </div>
+
+                    {/* Intensity slider */}
+                    <div>
+                      <span className="text-[9px] text-gray-500 uppercase">
+                        Intensité {Math.round(currentGradient.opacity * 100)}%
+                      </span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="2.0"
+                        step="0.05"
+                        value={currentGradient.opacity}
+                        onChange={(e) => {
+                          setSeqGradients({
+                            ...seqGradients,
+                            [seqKey]: { ...seqGradients[seqKey], opacity: parseFloat(e.target.value) },
+                          });
+                        }}
+                        className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer mt-1"
+                      />
+                    </div>
+
+                    {/* Apply to all sequences button */}
+                    {!isGlobal && (
+                      <button
+                        onClick={() => {
+                          const newGradients: Record<string, any> = {};
+                          ["titre", "cartes", "video", "cta"].forEach((seq) => {
+                            newGradients[seq] = {
+                              enabled: currentGradient.enabled,
+                              color1: currentGradient.color1,
+                              color2: currentGradient.color2,
+                              opacity: currentGradient.opacity,
+                              position: currentGradient.position,
+                            };
+                          });
+                          setSeqGradients(newGradients);
+                        }}
+                        className="w-full px-2 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-[9px] font-bold rounded transition-colors uppercase"
+                      >
+                        Appliquer à toutes
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })()}
         </FloatingPanel>
 
         {/* ── Logo Panel ── */}

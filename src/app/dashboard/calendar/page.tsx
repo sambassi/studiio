@@ -2343,6 +2343,7 @@ export default function CalendarPage() {
         const designGradient1 = design?.gradientColor1 || '#7C3AED';
         const designGradient2 = design?.gradientColor2 || '#EC4899';
         const designGradientOpacity = design?.gradientOpacity ?? 0.3;
+        const designSeqGradients = design?.seqGradients || {};
         const designLogoScale = design?.logoScale || 1.0;
         const titleTypo = design?.typography?.title || {};
         const ctaTypo = design?.typography?.cta || {};
@@ -2379,6 +2380,24 @@ export default function CalendarPage() {
           const g = parseInt(hex.slice(3, 5), 16) || 0;
           const b = parseInt(hex.slice(5, 7), 16) || 0;
           return `rgba(${r},${g},${b},${opacity})`;
+        };
+
+        // Helper function to get per-sequence gradient CSS
+        const getGradientCSS = (seq: string) => {
+          const override = designSeqGradients[seq === 'intro' ? 'titre' : seq === 'cards' ? 'cartes' : seq];
+          const enabled = override?.enabled !== false;
+          if (!enabled) return 'transparent';
+          const c1 = override?.color1 || designGradient1;
+          const c2 = override?.color2 || designGradient2;
+          const op = override?.opacity ?? designGradientOpacity;
+          const pos = override?.position || 'both';
+
+          if (pos === 'top') return `linear-gradient(180deg, ${hexToRgba(c1, op)} 0%, transparent 50%)`;
+          if (pos === 'bottom') return `linear-gradient(180deg, transparent 50%, ${hexToRgba(c2, op)} 100%)`;
+          if (pos === 'left') return `linear-gradient(90deg, ${hexToRgba(c1, op)} 0%, transparent 50%)`;
+          if (pos === 'right') return `linear-gradient(270deg, ${hexToRgba(c1, op)} 0%, transparent 50%)`;
+          // 'both' — color1 at top, color2 at bottom (matches editor)
+          return `linear-gradient(180deg, ${hexToRgba(c1, op)} 0%, transparent 40%, transparent 60%, ${hexToRgba(c2, op)} 100%)`;
         };
 
         // Display title: use metadata subtitle for the overlay text, keep raw title for the sidebar
@@ -2435,7 +2454,7 @@ export default function CalendarPage() {
                     {/* === INTRO : Photo affiche + titre + sous-titre (mêmes valeurs que l'éditeur) === */}
                     <div className="absolute inset-0" style={{ opacity: currentSeq === 'intro' ? 1 : 0, transform: currentSeq === 'intro' ? 'scale(1)' : 'scale(1.08)', zIndex: currentSeq === 'intro' ? 10 : 1, transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
                       {posterImgSrc ? <img src={posterImgSrc} alt="Affiche" className="absolute inset-0 w-full h-full object-cover" /> : <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, #000000, ${hexToRgba(designGradient1, 1)})` }} />}
-                      <div className="absolute inset-0" style={{ background: posterImgSrc ? `linear-gradient(to top, ${hexToRgba(designGradient1, designGradientOpacity)} 0%, ${hexToRgba(designGradient2, 0.35)} 40%, transparent 60%)` : 'transparent' }} />
+                      <div className="absolute inset-0" style={{ background: posterImgSrc ? getGradientCSS('intro') : 'transparent' }} />
                       <div className="absolute inset-0 z-10" style={{ pointerEvents: 'none' }}>
                         <div style={{
                           position: 'absolute',
@@ -2643,7 +2662,7 @@ export default function CalendarPage() {
                         />
                         {/* Dégradé overlay sur la vidéo — mêmes couleurs que l'éditeur */}
                         <div className="absolute inset-0 z-[5]" style={{
-                          background: `linear-gradient(to top, ${hexToRgba(designGradient1, designGradientOpacity)} 0%, ${hexToRgba(designGradient2, designGradientOpacity * 0.4)} 40%, transparent 65%)`,
+                          background: getGradientCSS('video'),
                           pointerEvents: 'none',
                         }} />
                         {/* Texte overlay vidéo — texte optionnel défini par l'utilisateur dans Infographie */}
