@@ -479,16 +479,14 @@ export default function CalendarPage() {
   // Retry a failed post — reset status to 'scheduled' so the cron picks it up again
   const handleRetryPost = async (post: Post) => {
     if (!confirm('Réessayer la publication de ce post ?')) return;
-    setSaving(true);
-    try {
-      await fetch(`/api/posts/${post.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'scheduled', metadata: { ...post.metadata, error: null, cron_publish_results: null } }),
-      });
-      await fetchPosts();
-    } catch (error) { console.error('Retry error:', error); }
-    finally { setSaving(false); }
+    // Use the full publish flow (with composition) instead of just resetting status
+    // This ensures the montage is composed and uploaded before scheduling
+    const cleanPost = {
+      ...post,
+      status: 'draft' as const,
+      metadata: { ...post.metadata, error: null, cron_publish_results: null },
+    };
+    await handlePublishPost(cleanPost);
   };
 
   const handleSchedulePost = async (post: Post) => {
