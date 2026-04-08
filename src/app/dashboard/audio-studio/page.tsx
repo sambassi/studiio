@@ -1000,8 +1000,11 @@ function AudioStudioContent() {
     return `linear-gradient(180deg, ${hexToRgba(c1, op)} 0%, transparent 40%, transparent 60%, ${hexToRgba(c2, op)} 100%)`;
   };
 
-  // Utility: editor pixels to relative size for preview
-  const editorPxToRem = (editorPx: number) => `${(editorPx * 0.08).toFixed(2)}rem`;
+  // Utility: editor pixels to container-relative size for preview
+  // Editor uses ~320px wide canvas for reels, ~512px for TV.
+  // Using cqw (container query width) to scale proportionally to the actual preview container size.
+  // 1 editor-px on 320px canvas = 100/320 = 0.3125cqw (reel) or 100/512 = 0.1953cqw (tv)
+  const editorPxToCq = (editorPx: number) => `${(editorPx * (isReelFormat ? 0.3125 : 0.1953)).toFixed(2)}cqw`;
 
   // ═══════════════════════════════════════════════════════════
   // RENDER
@@ -1027,10 +1030,10 @@ function AudioStudioContent() {
           <div className="flex-1 flex items-center justify-center p-2 overflow-hidden" style={{ minHeight: 0 }}>
             <div
               className="relative bg-gray-900 rounded-xl overflow-hidden border border-gray-700/50"
-              style={post.format === 'tv'
+              style={{ containerType: 'size', ...(post.format === 'tv'
                 ? { width: '100%', aspectRatio: '16/9', maxHeight: '100%' }
                 : { height: '100%', aspectRatio: '9/16', maxWidth: 'calc((100vh - 300px) * 9 / 16)' }
-              }
+              )}}
             >
               {isExporting ? (
                 <>
@@ -1075,11 +1078,11 @@ function AudioStudioContent() {
                         top: `${positions.title?.y ?? 10}%`,
                         transform: 'translate(-50%, 0)',
                         display: 'flex', flexDirection: 'column', alignItems: 'center',
-                        gap: editorPxToRem(4), maxWidth: '90%', textAlign: 'center',
+                        gap: editorPxToCq(4), maxWidth: '90%', textAlign: 'center',
                       }}>
                         <h3 style={{
                           fontFamily: designFont, color: designTitleColor,
-                          fontSize: editorPxToRem((isReelFormat ? 14 : 18) * designTextScale),
+                          fontSize: editorPxToCq((isReelFormat ? 14 : 18) * designTextScale),
                           letterSpacing: `${(titleTypo.letterSpacing as number) || 0}px`,
                           lineHeight: (titleTypo.lineHeight as number) || 1.1,
                           fontWeight: titleTypo.bold !== false ? 900 : 400,
@@ -1090,7 +1093,7 @@ function AudioStudioContent() {
                         }}>{montageTitle}</h3>
                         {montageSubtitle && <p style={{
                           fontFamily: designFont, color: `${designTitleColor}CC`,
-                          fontSize: editorPxToRem((isReelFormat ? 9 : 11) * designTextScale),
+                          fontSize: editorPxToCq((isReelFormat ? 9 : 11) * designTextScale),
                           letterSpacing: `${(titleTypo.letterSpacing as number) || 0}px`,
                           lineHeight: (titleTypo.lineHeight as number) || 1.1,
                           fontWeight: titleTypo.bold !== false ? 900 : 400,
@@ -1105,7 +1108,7 @@ function AudioStudioContent() {
                     </div>
                     {designLogoUrl && designLogoSequences.includes('intro') && (
                       <img src={designLogoUrl} alt="Logo" style={{
-                        position: 'absolute', width: editorPxToRem(40 * designLogoScale), height: editorPxToRem(40 * designLogoScale),
+                        position: 'absolute', width: editorPxToCq(40 * designLogoScale), height: editorPxToCq(40 * designLogoScale),
                         objectFit: 'contain', left: `${positions.logo?.x ?? 50}%`, top: `${positions.logo?.y ?? 85}%`,
                         transform: 'translate(-50%, -50%)', zIndex: 20,
                       }} />
@@ -1126,14 +1129,14 @@ function AudioStudioContent() {
                       <div style={{
                         display: 'grid',
                         gridTemplateColumns: designCardStyle === 'Full Width' || designCardStyle === 'Minimal Line' ? '1fr' : isReelFormat ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)',
-                        gap: editorPxToRem(6), width: '100%',
+                        gap: editorPxToCq(6), width: '100%',
                       }}>
                         {(() => {
                           const displayCards = montageCards.length > 0 ? montageCards
                             : ((meta.textCards || []) as Array<{ text: string; color?: string }>).map(tc => ({ emoji: '📝', label: tc.text, value: tc.text, color: tc.color }));
-                          const scaledLabel = editorPxToRem(7 * designTextScale);
-                          const scaledValue = editorPxToRem(9 * designTextScale);
-                          const scaledDesc = editorPxToRem(6 * designTextScale);
+                          const scaledLabel = editorPxToCq(7 * designTextScale);
+                          const scaledValue = editorPxToCq(9 * designTextScale);
+                          const scaledDesc = editorPxToCq(6 * designTextScale);
                           return displayCards.slice(0, isReelFormat ? 5 : 6).map((card: { emoji: string; label: string; value: string; description?: string; color?: string }, i: number) => {
                             const cardIcon = designCardCustomIcons?.[String(i)] || undefined;
                             const animStyle = {
@@ -1143,32 +1146,32 @@ function AudioStudioContent() {
                               transform: currentSeqType === 'cards' ? 'translateX(0)' : 'translateX(-20px)',
                             };
                             const emojiEl = cardIcon
-                              ? <img src={cardIcon} alt="" style={{ width: editorPxToRem(14), height: editorPxToRem(14), objectFit: 'contain' }} />
-                              : <span style={{ fontSize: editorPxToRem(isReelFormat ? 10 : 14) }}>{card.emoji}</span>;
+                              ? <img src={cardIcon} alt="" style={{ width: editorPxToCq(14), height: editorPxToCq(14), objectFit: 'contain' }} />
+                              : <span style={{ fontSize: editorPxToCq(isReelFormat ? 10 : 14) }}>{card.emoji}</span>;
 
                             if (designCardStyle === 'Compact') {
-                              return (<div key={i} style={{ ...animStyle, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: editorPxToRem(2), borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.3)', padding: `${editorPxToRem(6)} ${editorPxToRem(6)}`, backdropFilter: 'blur(4px)', borderLeft: `2px solid ${card.color || accent}` }}>
+                              return (<div key={i} style={{ ...animStyle, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: editorPxToCq(2), borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.3)', padding: `${editorPxToCq(6)} ${editorPxToCq(6)}`, backdropFilter: 'blur(4px)', borderLeft: `2px solid ${card.color || accent}` }}>
                                 {emojiEl}
                                 <p style={{ fontSize: scaledLabel, fontFamily: designFont, color: '#fff', fontWeight: 700, textAlign: 'center' }}>{card.label}</p>
                                 <p style={{ fontSize: scaledValue, fontFamily: designFont, color: card.color || accent, fontWeight: 900, textAlign: 'center' }}>{card.value}</p>
                               </div>);
                             }
                             if (designCardStyle === 'Stats Bold') {
-                              return (<div key={i} style={{ ...animStyle, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.5)', padding: `${editorPxToRem(8)}`, backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                                <p style={{ fontSize: editorPxToRem(13 * designTextScale), fontFamily: designFont, color: card.color || accent, fontWeight: 900 }}>{card.value}</p>
-                                <p style={{ fontSize: scaledDesc, fontFamily: designFont, color: 'rgba(255,255,255,0.8)', fontWeight: 500, marginTop: editorPxToRem(2), textAlign: 'center' }}>{card.label}</p>
+                              return (<div key={i} style={{ ...animStyle, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.5)', padding: `${editorPxToCq(8)}`, backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                <p style={{ fontSize: editorPxToCq(13 * designTextScale), fontFamily: designFont, color: card.color || accent, fontWeight: 900 }}>{card.value}</p>
+                                <p style={{ fontSize: scaledDesc, fontFamily: designFont, color: 'rgba(255,255,255,0.8)', fontWeight: 500, marginTop: editorPxToCq(2), textAlign: 'center' }}>{card.label}</p>
                               </div>);
                             }
                             if (designCardStyle === 'Minimal Line') {
-                              return (<div key={i} style={{ ...animStyle, display: 'flex', alignItems: 'center', gap: editorPxToRem(4), padding: `${editorPxToRem(4)}`, borderBottom: `1px solid ${(card.color || accent)}40` }}>
-                                <span style={{ fontSize: editorPxToRem(8) }}>{card.emoji}</span>
+                              return (<div key={i} style={{ ...animStyle, display: 'flex', alignItems: 'center', gap: editorPxToCq(4), padding: `${editorPxToCq(4)}`, borderBottom: `1px solid ${(card.color || accent)}40` }}>
+                                <span style={{ fontSize: editorPxToCq(8) }}>{card.emoji}</span>
                                 <p style={{ fontSize: scaledLabel, fontFamily: designFont, color: 'rgba(255,255,255,0.8)', flex: 1 }}>{card.label}</p>
                                 <p style={{ fontSize: scaledValue, fontFamily: designFont, color: card.color || accent, fontWeight: 700 }}>{card.value}</p>
                               </div>);
                             }
                             if (designCardStyle === 'Educatif') {
-                              return (<div key={i} style={{ ...animStyle, borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.4)', padding: `${editorPxToRem(8)}`, backdropFilter: 'blur(4px)', borderTop: `2px solid ${card.color || accent}` }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: editorPxToRem(4), marginBottom: editorPxToRem(4) }}>
+                              return (<div key={i} style={{ ...animStyle, borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.4)', padding: `${editorPxToCq(8)}`, backdropFilter: 'blur(4px)', borderTop: `2px solid ${card.color || accent}` }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: editorPxToCq(4), marginBottom: editorPxToCq(4) }}>
                                   {emojiEl}
                                   <p style={{ fontSize: scaledLabel, fontFamily: designFont, color: '#fff', fontWeight: 700 }}>{card.label}</p>
                                 </div>
@@ -1176,7 +1179,7 @@ function AudioStudioContent() {
                               </div>);
                             }
                             // Full Width (default)
-                            return (<div key={i} style={{ ...animStyle, display: 'flex', alignItems: 'center', gap: editorPxToRem(6), borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.3)', padding: `${editorPxToRem(6)} ${editorPxToRem(10)}`, backdropFilter: 'blur(4px)', borderLeft: `3px solid ${card.color || accent}` }}>
+                            return (<div key={i} style={{ ...animStyle, display: 'flex', alignItems: 'center', gap: editorPxToCq(6), borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.3)', padding: `${editorPxToCq(6)} ${editorPxToCq(10)}`, backdropFilter: 'blur(4px)', borderLeft: `3px solid ${card.color || accent}` }}>
                               {emojiEl}
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <p style={{ fontSize: scaledLabel, fontFamily: designFont, color: '#fff', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{card.label}</p>
@@ -1189,7 +1192,7 @@ function AudioStudioContent() {
                     </div>
                     {designLogoUrl && designLogoSequences.includes('cards') && (
                       <img src={designLogoUrl} alt="Logo" style={{
-                        position: 'absolute', width: editorPxToRem(40 * designLogoScale), height: editorPxToRem(40 * designLogoScale),
+                        position: 'absolute', width: editorPxToCq(40 * designLogoScale), height: editorPxToCq(40 * designLogoScale),
                         objectFit: 'contain', left: `${positions.logo?.x ?? 50}%`, top: `${positions.logo?.y ?? 85}%`,
                         transform: 'translate(-50%, -50%)', zIndex: 20,
                       }} />
@@ -1217,7 +1220,7 @@ function AudioStudioContent() {
                         <div className="absolute inset-0 z-10 pointer-events-none">
                           <p style={{
                             fontFamily: designFont, color: (design.overlayColor as string) || '#FFFFFF',
-                            fontSize: editorPxToRem(16 * designTextScale),
+                            fontSize: editorPxToCq(16 * designTextScale),
                             letterSpacing: `${(overlayTypo.letterSpacing as number) || 0}px`,
                             lineHeight: (overlayTypo.lineHeight as number) || 1.2,
                             fontWeight: overlayTypo.bold ? 'bold' : 'normal',
@@ -1231,7 +1234,7 @@ function AudioStudioContent() {
                       )}
                       {designLogoUrl && designLogoSequences.includes('video') && (
                         <img src={designLogoUrl} alt="Logo" style={{
-                          position: 'absolute', width: editorPxToRem(40 * designLogoScale), height: editorPxToRem(40 * designLogoScale),
+                          position: 'absolute', width: editorPxToCq(40 * designLogoScale), height: editorPxToCq(40 * designLogoScale),
                           objectFit: 'contain', left: `${positions.logo?.x ?? 50}%`, top: `${positions.logo?.y ?? 85}%`,
                           transform: 'translate(-50%, -50%)', zIndex: 20,
                         }} />
@@ -1254,16 +1257,16 @@ function AudioStudioContent() {
                     }}>
                       {montageSalesPhrase && <p style={{
                         fontFamily: designFont, color: `${montageCtaColor}ee`,
-                        fontSize: editorPxToRem((isReelFormat ? 8 : 10) * designCtaTextScale),
+                        fontSize: editorPxToCq((isReelFormat ? 8 : 10) * designCtaTextScale),
                         letterSpacing: `${(ctaTypo.letterSpacing as number) || 0}px`,
                         lineHeight: (ctaTypo.lineHeight as number) || 1.2,
                         fontWeight: (ctaTypo.bold as boolean) !== false ? 900 : 400,
                         fontStyle: (ctaTypo.italic as boolean) ? 'italic' : 'normal',
-                        marginBottom: editorPxToRem(4),
+                        marginBottom: editorPxToCq(4),
                       }}>{montageSalesPhrase}</p>}
                       <p style={{
                         fontFamily: designFont, color: montageCtaColor,
-                        fontSize: editorPxToRem((isReelFormat ? 12 : 16) * designCtaTextScale),
+                        fontSize: editorPxToCq((isReelFormat ? 12 : 16) * designCtaTextScale),
                         letterSpacing: `${(ctaTypo.letterSpacing as number) || 0}px`,
                         lineHeight: (ctaTypo.lineHeight as number) || 1.2,
                         fontWeight: (ctaTypo.bold as boolean) !== false ? 900 : 400,
@@ -1273,17 +1276,17 @@ function AudioStudioContent() {
                       }}>{montageCtaMain}</p>
                       <p style={{
                         fontFamily: designFont, color: montageCtaSubColor,
-                        fontSize: editorPxToRem((isReelFormat ? 9 : 12) * designCtaTextScale),
+                        fontSize: editorPxToCq((isReelFormat ? 9 : 12) * designCtaTextScale),
                         letterSpacing: `${(ctaTypo.letterSpacing as number) || 0}px`,
                         textTransform: 'uppercase',
                         fontWeight: (ctaTypo.bold as boolean) !== false ? 900 : 400,
                         fontStyle: (ctaTypo.italic as boolean) ? 'italic' : 'normal',
-                        marginTop: editorPxToRem(4),
+                        marginTop: editorPxToCq(4),
                       }}>{montageCtaSub}</p>
                     </div>
                     {designLogoUrl && designLogoSequences.includes('cta') && (
                       <img src={designLogoUrl} alt="Logo" style={{
-                        position: 'absolute', width: editorPxToRem(40 * designLogoScale), height: editorPxToRem(40 * designLogoScale),
+                        position: 'absolute', width: editorPxToCq(40 * designLogoScale), height: editorPxToCq(40 * designLogoScale),
                         objectFit: 'contain', left: `${positions.logo?.x ?? 50}%`, top: `${positions.logo?.y ?? 85}%`,
                         transform: 'translate(-50%, -50%)', zIndex: 20,
                       }} />
@@ -1297,7 +1300,7 @@ function AudioStudioContent() {
                       transform: 'translate(-50%, -50%)',
                     }}>
                       <p className="font-bold tracking-wider whitespace-nowrap" style={{
-                        fontSize: editorPxToRem(12 * (siteTextConfig.size || 1.0)),
+                        fontSize: editorPxToCq(12 * (siteTextConfig.size || 1.0)),
                         color: siteTextConfig.color || '#FFFFFF',
                         opacity: siteTextConfig.opacity ?? 0.7,
                         textShadow: `0 0 10px ${(siteTextConfig.color || '#FFFFFF')}40, 0 2px 4px rgba(0,0,0,0.8)`,
