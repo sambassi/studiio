@@ -45,6 +45,8 @@ export interface DesignOptions {
   gradientOpacity?: number;
   /** CTA sub-text color (default: #FFFFFF) */
   ctaSubColor?: string;
+  /** CTA main color (default: accentColor) */
+  ctaColor?: string;
   /** Logo sequences — which sequences show the logo (e.g. ['intro','cards','video','cta']) */
   logoSequences?: string[];
   /** Logo position override {x: 0-100, y: 0-100} */
@@ -53,6 +55,31 @@ export interface DesignOptions {
   overlayText?: string;
   /** Video overlay color */
   overlayColor?: string;
+  /** Text scale multiplier (default: 1.0) — matches editor textScale */
+  textScale?: number;
+  /** CTA text scale multiplier (default: 1.0) — matches editor ctaTextScale */
+  ctaTextScale?: number;
+  /** Card style: 'Compact' | 'Educatif' | 'Stats Bold' | 'Minimal Line' | 'Full Width' */
+  cardStyle?: string;
+  /** Title position {x: 0-100, y: 0-100} (default: {x:50, y:75}) */
+  titlePosition?: { x?: number; y?: number };
+  /** Cards position {x: 0-100, y: 0-100} (default: {x:50, y:50}) */
+  cardsPosition?: { x?: number; y?: number };
+  /** Cards container width in % (default: 92) */
+  cardsSize?: number;
+  /** CTA main text override from design (e.g. 'AFROBOOST') */
+  ctaMainText?: string;
+  /** CTA sub text override from design (e.g. "CHAT POUR PLUS D'INFOS") */
+  ctaSubTextDesign?: string;
+  /** Logo scale multiplier (default: 1.0) */
+  logoScale?: number;
+  /** Typography settings for title */
+  titleTypography?: {
+    letterSpacing?: number;
+    lineHeight?: number;
+    bold?: boolean;
+    italic?: boolean;
+  };
 }
 
 export interface ComposerOptions {
@@ -283,36 +310,40 @@ function drawIntro(
     ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
   }
 
-  // Title at BOTTOM (flex-end with paddingBottom 15%) — matches audio-studio preview
-  // Sizes match HTML clamp(): title=7cqw, subtitle=4.5cqw
+  // Title position from design (default: x=50%, y=75%) and textScale
+  const textScale = design?.textScale || 1.0;
   const titleAlpha = Math.min(1, progress * 3);
-  const fontSize = Math.round(w * 0.07); // 7cqw → 76px at 1080w
-  const subFontSize = Math.round(w * 0.045); // 4.5cqw → 49px at 1080w
+  const fontSize = Math.round(w * 0.07 * textScale); // 7cqw * textScale
+  const subFontSize = Math.round(w * 0.045 * textScale); // 4.5cqw * textScale
 
-  // Position: 85% from top (= 15% padding from bottom, like flex-end + paddingBottom 15%)
-  const titleY = h * 0.85;
+  // Position from design metadata (matches HTML preview positions.title)
+  const titlePosX = ((design?.titlePosition?.x ?? 50) / 100) * w;
+  const titlePosY = ((design?.titlePosition?.y ?? 75) / 100) * h;
+
+  const fontWeight = design?.titleTypography?.bold !== false ? 900 : 400;
+  const fontStyle = design?.titleTypography?.italic ? 'italic ' : '';
 
   ctx.save();
-  ctx.font = `900 ${fontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
+  ctx.font = `${fontStyle}${fontWeight} ${fontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
   ctx.fillStyle = hexToRgba(titleColor, titleAlpha);
   ctx.shadowColor = hexToRgba(accent, 0.8); ctx.shadowBlur = Math.round(w * 0.02);
-  fillTextWithOutline(ctx, title.toUpperCase(), w / 2, titleY, Math.round(w * 0.004), 'rgba(0,0,0,0.9)');
+  fillTextWithOutline(ctx, title.toUpperCase(), titlePosX, titlePosY, Math.round(w * 0.004), 'rgba(0,0,0,0.9)');
   ctx.shadowBlur = 0;
 
   // Subtitle below title
   if (subtitle) {
     const subAlpha = Math.max(0, Math.min(1, (progress - 0.2) * 3));
-    ctx.font = `400 ${subFontSize}px "${fontFamily}", sans-serif`;
+    ctx.font = `${fontStyle}${fontWeight} ${subFontSize}px "${fontFamily}", sans-serif`;
     ctx.fillStyle = hexToRgba(titleColor, subAlpha * 0.8);
     ctx.shadowColor = hexToRgba(accent, 0.5); ctx.shadowBlur = Math.round(w * 0.006);
-    fillTextWithOutline(ctx, subtitle, w / 2, titleY + fontSize * 0.7, 2, 'rgba(0,0,0,0.7)');
+    fillTextWithOutline(ctx, subtitle, titlePosX, titlePosY + fontSize * 0.7, 2, 'rgba(0,0,0,0.7)');
     ctx.shadowBlur = 0;
   }
 
   // Accent line below title — gradient line like preview
   const lineAlpha = Math.max(0, Math.min(1, (progress - 0.3) * 3));
   const lineW = w * 0.15;
-  const lineY = titleY + fontSize * (subtitle ? 1.0 : 0.5);
+  const lineY = titlePosY + fontSize * (subtitle ? 1.0 : 0.5);
   const lineGrad = ctx.createLinearGradient(w / 2 - lineW / 2, 0, w / 2 + lineW / 2, 0);
   lineGrad.addColorStop(0, 'rgba(0,0,0,0)');
   lineGrad.addColorStop(0.5, hexToRgba(accent, lineAlpha));
@@ -324,7 +355,8 @@ function drawIntro(
 
   // Logo on intro if configured
   if (logoImg && design?.logoSequences?.includes('intro')) {
-    const logoSize = Math.round(w * 0.12); // 12cqw like preview
+    const logoScale = design?.logoScale || 1.0;
+    const logoSize = Math.round(w * 0.12 * logoScale);
     const lx = ((design.logoPosition?.x ?? 50) / 100) * w - logoSize / 2;
     const ly = ((design.logoPosition?.y ?? 85) / 100) * h - logoSize / 2;
     drawLogo(ctx, logoImg, lx, ly, logoSize);
@@ -347,6 +379,8 @@ function drawCards(
   const fontFamily = design?.font || 'sans-serif';
   const grad1 = design?.gradientColor1 || accent;
   const grad2 = design?.gradientColor2 || accent;
+  const textScale = design?.textScale || 1.0;
+  const cardStyle = design?.cardStyle || 'Full Width';
 
   // Background gradient matching preview: gradient(to bottom, grad1 at 0.9, grad2 at 0.7, #000)
   const grad = ctx.createLinearGradient(0, 0, 0, h);
@@ -355,57 +389,208 @@ function drawCards(
   grad.addColorStop(1, '#000000');
   ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
 
-  // Cards centered vertically — sizes match HTML preview cqw proportions
-  // HTML: emoji=5cqw, label=4cqw, value=4.5cqw
+  // Card sizes from design or defaults
+  const containerW = Math.round(w * ((design?.cardsSize || 92) / 100));
+  const containerX = (w - containerW) / 2;
   const maxCards = Math.min(cards.length, 5);
-  const cardH = Math.round(h * 0.07); // slightly smaller cards for better spacing
-  const cardW = Math.round(w * 0.92); // wider cards
-  const gap = Math.round(h * 0.012);
-  const totalCardsH = maxCards * cardH + (maxCards - 1) * gap;
-  const startY = (h - totalCardsH) / 2;
-  const cardX = (w - cardW) / 2;
 
-  const emojiSize = Math.round(w * 0.05);   // 5cqw → 54px at 1080w
-  const labelSize = Math.round(w * 0.04);   // 4cqw → 43px at 1080w
-  const valueSize = Math.round(w * 0.045);  // 4.5cqw → 49px at 1080w
-  const borderW = Math.round(w * 0.004);    // proportional border
+  // Sizes scaled by textScale to match preview
+  const emojiSize = Math.round(w * 0.05 * textScale);
+  const labelSize = Math.round(w * 0.04 * textScale);
+  const valueSize = Math.round(w * 0.045 * textScale);
+  const descSize = Math.round(w * 0.035 * textScale);
+  const borderW = Math.round(w * 0.004);
+  const radius = Math.round(w * 0.012);
 
-  cards.slice(0, 5).forEach((card, i) => {
-    const rawCp = Math.max(0, Math.min(1, (progress - i * 0.08) * 3.5));
-    if (rawCp <= 0) return;
-    const cp = 1 - Math.pow(1 - rawCp, 3);
-    const y = startY + i * (cardH + gap);
-    const slideX = cardX + (1 - cp) * (-w * 0.12);
-    ctx.globalAlpha = cp;
+  // ── Card style: Stats Bold (value big centered, label small below) ──
+  if (cardStyle === 'Stats Bold') {
+    const cols = 2;
+    const cardW = Math.round((containerW - (cols - 1) * Math.round(w * 0.015)) / cols);
+    const cardH = Math.round(h * 0.11);
+    const gap = Math.round(w * 0.015);
+    const rows = Math.ceil(maxCards / cols);
+    const totalH = rows * cardH + (rows - 1) * gap;
+    const cardsY = ((design?.cardsPosition?.y ?? 50) / 100) * h - totalH / 2;
+    const cardsX = ((design?.cardsPosition?.x ?? 50) / 100) * w - containerW / 2;
 
-    // Card background — rgba(0,0,0,0.3) with backdrop effect
-    ctx.fillStyle = 'rgba(0,0,0,0.35)'; drawRoundRect(ctx, slideX, y, cardW, cardH, Math.round(w * 0.012)); ctx.fill();
-    // Left accent border
-    const cardColor = card.color || accent;
-    ctx.fillStyle = cardColor;
-    ctx.fillRect(slideX, y + Math.round(cardH * 0.12), borderW, cardH - Math.round(cardH * 0.24));
+    cards.slice(0, maxCards).forEach((card, i) => {
+      const rawCp = Math.max(0, Math.min(1, (progress - i * 0.08) * 3.5));
+      if (rawCp <= 0) return;
+      const cp = 1 - Math.pow(1 - rawCp, 3);
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = cardsX + col * (cardW + gap);
+      const y = cardsY + row * (cardH + gap);
+      ctx.globalAlpha = cp;
 
-    // Emoji — large and readable
-    const emojiX = slideX + Math.round(w * 0.025);
-    ctx.font = `${emojiSize}px sans-serif`; ctx.textAlign = 'left';
-    ctx.fillStyle = 'white';
-    ctx.fillText(card.emoji || '●', emojiX, y + cardH * 0.65);
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1;
+      drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.stroke();
 
-    // Label — user font, white, 600 weight, 4cqw
-    const labelX = emojiX + emojiSize + Math.round(w * 0.015);
-    ctx.font = `600 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'left';
-    fillTextWithOutline(ctx, card.label, labelX, y + cardH * 0.58, 2, 'rgba(0,0,0,0.5)');
+      const bigValueSize = Math.round(w * 0.06 * textScale);
+      ctx.font = `900 ${bigValueSize}px "${fontFamily}", sans-serif`;
+      ctx.textAlign = 'center'; ctx.fillStyle = card.color || accent;
+      ctx.fillText(card.value, x + cardW / 2, y + cardH * 0.5);
 
-    // Value — user font, card.color or accent (matches preview), 800 weight, 4.5cqw
-    ctx.font = `800 ${valueSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'right';
-    ctx.fillStyle = cardColor;
-    fillTextWithOutline(ctx, card.value, slideX + cardW - Math.round(w * 0.025), y + cardH * 0.62, 2, 'rgba(0,0,0,0.6)');
-    ctx.globalAlpha = 1;
-  });
+      ctx.font = `500 ${descSize}px "${fontFamily}", sans-serif`;
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx.fillText(card.label, x + cardW / 2, y + cardH * 0.78);
+      ctx.globalAlpha = 1;
+    });
+  }
+  // ── Card style: Compact (column layout: emoji, label, value centered) ──
+  else if (cardStyle === 'Compact') {
+    const cols = 2;
+    const cardW = Math.round((containerW - (cols - 1) * Math.round(w * 0.015)) / cols);
+    const cardH = Math.round(h * 0.1);
+    const gap = Math.round(w * 0.015);
+    const rows = Math.ceil(maxCards / cols);
+    const totalH = rows * cardH + (rows - 1) * gap;
+    const cardsY = ((design?.cardsPosition?.y ?? 50) / 100) * h - totalH / 2;
+    const cardsX = ((design?.cardsPosition?.x ?? 50) / 100) * w - containerW / 2;
+
+    cards.slice(0, maxCards).forEach((card, i) => {
+      const rawCp = Math.max(0, Math.min(1, (progress - i * 0.08) * 3.5));
+      if (rawCp <= 0) return;
+      const cp = 1 - Math.pow(1 - rawCp, 3);
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = cardsX + col * (cardW + gap);
+      const y = cardsY + row * (cardH + gap);
+      ctx.globalAlpha = cp;
+
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.fill();
+      // Left accent border
+      ctx.fillStyle = card.color || accent;
+      ctx.fillRect(x, y + Math.round(cardH * 0.1), borderW, cardH - Math.round(cardH * 0.2));
+
+      // Emoji centered
+      ctx.font = `${emojiSize}px sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = 'white';
+      ctx.fillText(card.emoji || '●', x + cardW / 2, y + cardH * 0.3);
+      // Label
+      ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = '#FFFFFF';
+      ctx.fillText(card.label, x + cardW / 2, y + cardH * 0.58);
+      // Value
+      ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = card.color || accent;
+      ctx.fillText(card.value, x + cardW / 2, y + cardH * 0.83);
+      ctx.globalAlpha = 1;
+    });
+  }
+  // ── Card style: Educatif (emoji + label row, description, value) ──
+  else if (cardStyle === 'Educatif') {
+    const cardW = containerW;
+    const cardH = Math.round(h * 0.09);
+    const gap = Math.round(h * 0.012);
+    const totalH = maxCards * cardH + (maxCards - 1) * gap;
+    const cardsY = ((design?.cardsPosition?.y ?? 50) / 100) * h - totalH / 2;
+    const cardsX = ((design?.cardsPosition?.x ?? 50) / 100) * w - cardW / 2;
+
+    cards.slice(0, maxCards).forEach((card, i) => {
+      const rawCp = Math.max(0, Math.min(1, (progress - i * 0.08) * 3.5));
+      if (rawCp <= 0) return;
+      const cp = 1 - Math.pow(1 - rawCp, 3);
+      const y = cardsY + i * (cardH + gap);
+      const slideX = cardsX + (1 - cp) * (-w * 0.12);
+      ctx.globalAlpha = cp;
+
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      drawRoundRect(ctx, slideX, y, cardW, cardH, radius); ctx.fill();
+      // Top accent border
+      ctx.fillStyle = card.color || accent;
+      ctx.fillRect(slideX + radius, y, cardW - radius * 2, borderW);
+
+      // Emoji + label row
+      const emojiX = slideX + Math.round(w * 0.025);
+      ctx.font = `${emojiSize}px sans-serif`; ctx.textAlign = 'left'; ctx.fillStyle = 'white';
+      ctx.fillText(card.emoji || '●', emojiX, y + cardH * 0.4);
+      ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = '#FFFFFF';
+      ctx.fillText(card.label, emojiX + emojiSize + Math.round(w * 0.01), y + cardH * 0.38);
+      // Value
+      ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = card.color || accent; ctx.textAlign = 'left';
+      ctx.fillText(card.value, emojiX, y + cardH * 0.78);
+      ctx.globalAlpha = 1;
+    });
+  }
+  // ── Card style: Minimal Line (horizontal: emoji, label, value right-aligned) ──
+  else if (cardStyle === 'Minimal Line') {
+    const cardW = containerW;
+    const cardH = Math.round(h * 0.05);
+    const gap = Math.round(h * 0.006);
+    const totalH = maxCards * cardH + (maxCards - 1) * gap;
+    const cardsY = ((design?.cardsPosition?.y ?? 50) / 100) * h - totalH / 2;
+    const cardsX = ((design?.cardsPosition?.x ?? 50) / 100) * w - cardW / 2;
+
+    cards.slice(0, maxCards).forEach((card, i) => {
+      const rawCp = Math.max(0, Math.min(1, (progress - i * 0.08) * 3.5));
+      if (rawCp <= 0) return;
+      const cp = 1 - Math.pow(1 - rawCp, 3);
+      const y = cardsY + i * (cardH + gap);
+      const slideX = cardsX + (1 - cp) * (-w * 0.12);
+      ctx.globalAlpha = cp;
+
+      // Bottom border line
+      ctx.strokeStyle = hexToRgba(card.color || accent, 0.25);
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(slideX, y + cardH); ctx.lineTo(slideX + cardW, y + cardH); ctx.stroke();
+
+      // Emoji
+      ctx.font = `${Math.round(emojiSize * 0.7)}px sans-serif`; ctx.textAlign = 'left'; ctx.fillStyle = 'white';
+      ctx.fillText(card.emoji || '●', slideX + Math.round(w * 0.01), y + cardH * 0.7);
+      // Label
+      ctx.font = `400 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx.fillText(card.label, slideX + Math.round(w * 0.05), y + cardH * 0.7);
+      // Value right-aligned
+      ctx.font = `700 ${valueSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'right';
+      ctx.fillStyle = card.color || accent;
+      ctx.fillText(card.value, slideX + cardW - Math.round(w * 0.01), y + cardH * 0.7);
+      ctx.globalAlpha = 1;
+    });
+  }
+  // ── Card style: Full Width (default — horizontal row with emoji, label left, value right) ──
+  else {
+    const cardW = containerW;
+    const cardH = Math.round(h * 0.07);
+    const gap = Math.round(h * 0.012);
+    const totalH = maxCards * cardH + (maxCards - 1) * gap;
+    const cardsY = ((design?.cardsPosition?.y ?? 50) / 100) * h - totalH / 2;
+    const cardsX = ((design?.cardsPosition?.x ?? 50) / 100) * w - cardW / 2;
+
+    cards.slice(0, maxCards).forEach((card, i) => {
+      const rawCp = Math.max(0, Math.min(1, (progress - i * 0.08) * 3.5));
+      if (rawCp <= 0) return;
+      const cp = 1 - Math.pow(1 - rawCp, 3);
+      const y = cardsY + i * (cardH + gap);
+      const slideX = cardsX + (1 - cp) * (-w * 0.12);
+      ctx.globalAlpha = cp;
+
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      drawRoundRect(ctx, slideX, y, cardW, cardH, radius); ctx.fill();
+      // Left accent border
+      ctx.fillStyle = card.color || accent;
+      ctx.fillRect(slideX, y + Math.round(cardH * 0.12), borderW, cardH - Math.round(cardH * 0.24));
+
+      // Emoji
+      const emojiX = slideX + Math.round(w * 0.025);
+      ctx.font = `${emojiSize}px sans-serif`; ctx.textAlign = 'left'; ctx.fillStyle = 'white';
+      ctx.fillText(card.emoji || '●', emojiX, y + cardH * 0.65);
+      // Label
+      const labelX = emojiX + emojiSize + Math.round(w * 0.015);
+      ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'left';
+      fillTextWithOutline(ctx, card.label, labelX, y + cardH * 0.58, 2, 'rgba(0,0,0,0.5)');
+      // Value right-aligned
+      ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'right';
+      ctx.fillStyle = card.color || accent;
+      fillTextWithOutline(ctx, card.value, slideX + cardW - Math.round(w * 0.025), y + cardH * 0.62, 2, 'rgba(0,0,0,0.6)');
+      ctx.globalAlpha = 1;
+    });
+  }
 
   // Logo on cards if configured
   if (logoImg && design?.logoSequences?.includes('cards')) {
-    const logoSize = Math.round(w * 0.12); // 12cqw like preview
+    const logoScale = design?.logoScale || 1.0;
+    const logoSize = Math.round(w * 0.12 * logoScale);
     const lx = ((design.logoPosition?.x ?? 50) / 100) * w - logoSize / 2;
     const ly = ((design.logoPosition?.y ?? 85) / 100) * h - logoSize / 2;
     drawLogo(ctx, logoImg, lx, ly, logoSize);
@@ -437,7 +622,8 @@ function drawVideoSeq(
   }
   // Logo on video if configured
   if (logoImg && design?.logoSequences?.includes('video')) {
-    const logoSize = Math.round(w * 0.1);
+    const logoScale = design?.logoScale || 1.0;
+    const logoSize = Math.round(w * 0.1 * logoScale);
     const lx = ((design.logoPosition?.x ?? 50) / 100) * w - logoSize / 2;
     const ly = ((design.logoPosition?.y ?? 85) / 100) * h - logoSize / 2;
     drawLogo(ctx, logoImg, lx, ly, logoSize);
@@ -453,20 +639,27 @@ function drawCTA(
 ) {
   const fontFamily = design?.font || 'sans-serif';
   const ctaSubColor = design?.ctaSubColor || '#FFFFFF';
+  const ctaColor = design?.ctaColor || accent;
+  const ctaTextScale = design?.ctaTextScale || 1.0;
+
+  // Use design CTA texts if available (they take priority over ComposerOptions)
+  const effectiveCtaText = design?.ctaSubTextDesign || ctaText;
+  const effectiveSubText = ctaSubText;
+  const effectiveWatermark = design?.ctaMainText || watermark;
 
   // CTA: black background — matches preview
   ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, w, h);
   const scale = 0.92 + Math.min(1, progress * 3) * 0.08;
   ctx.save(); ctx.translate(w / 2, h / 2); ctx.scale(scale, scale); ctx.translate(-w / 2, -h / 2);
 
-  // Sizes match HTML preview cqw: salesPhrase=4cqw, ctaText=8cqw, subText=5cqw
-  const ctaFontSize = Math.round(w * 0.08);   // 8cqw → 86px at 1080w
-  const salesFontSize = Math.round(w * 0.04);  // 4cqw → 43px at 1080w
-  const subFontSize = Math.round(w * 0.05);    // 5cqw → 54px at 1080w
+  // Sizes match HTML preview cqw, scaled by ctaTextScale
+  const ctaFontSize = Math.round(w * 0.08 * ctaTextScale);   // 8cqw
+  const salesFontSize = Math.round(w * 0.04 * ctaTextScale);  // 4cqw
+  const subFontSize = Math.round(w * 0.05 * ctaTextScale);    // 5cqw
 
-  // Word-wrap CTA text
+  // Word-wrap CTA text (use design's CTA text if available)
   ctx.font = `900 ${ctaFontSize}px "${fontFamily}", sans-serif`;
-  const ctaWords = ctaText.toUpperCase().split(' ');
+  const ctaWords = effectiveCtaText.toUpperCase().split(' ');
   let ctaLines: string[] = [];
   let currentLine = '';
   for (const word of ctaWords) {
@@ -488,19 +681,19 @@ function drawCTA(
 
   let curY = (h - blockH) / 2 + ctaFontSize * 0.5;
 
-  // Sales phrase — accent color with transparency (matches preview: ctaColor + ee)
+  // Sales phrase — accent/ctaColor with transparency (matches preview: ctaColor + ee)
   if (salesPhrase) {
     ctx.font = `900 ${salesFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
-    ctx.fillStyle = hexToRgba(accent, 0.93);
+    ctx.fillStyle = hexToRgba(ctaColor, 0.93);
     ctx.fillText(salesPhrase, w / 2, curY);
     curY += salesFontSize * 1.5;
   }
 
-  // Main CTA text — accent color, large, bold (matches preview)
+  // Main CTA text — ctaColor, large, bold (matches preview)
   ctaLines.forEach((line, i) => {
     ctx.font = `900 ${ctaFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
-    ctx.fillStyle = accent;
-    ctx.shadowColor = hexToRgba(accent, 0.4); ctx.shadowBlur = Math.round(w * 0.02);
+    ctx.fillStyle = ctaColor;
+    ctx.shadowColor = hexToRgba(ctaColor, 0.4); ctx.shadowBlur = Math.round(w * 0.02);
     ctx.fillText(line, w / 2, curY + i * (ctaFontSize * 1.2));
   });
   ctx.shadowBlur = 0;
@@ -509,21 +702,22 @@ function drawCTA(
   // Sub-text — user-configured color, 900 weight (matches preview)
   ctx.font = `900 ${subFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
   ctx.fillStyle = ctaSubColor;
-  ctx.fillText(ctaSubText.toUpperCase(), w / 2, curY + subFontSize * 0.3);
+  ctx.fillText(effectiveSubText.toUpperCase(), w / 2, curY + subFontSize * 0.3);
 
   // Logo on CTA if configured
   if (logoImg && (!design?.logoSequences || design.logoSequences.includes('cta'))) {
-    const logoSize = Math.round(w * 0.12); // 12cqw like preview
+    const logoScale = design?.logoScale || 1.0;
+    const logoSize = Math.round(w * 0.12 * logoScale);
     const lx = ((design?.logoPosition?.x ?? 50) / 100) * w - logoSize / 2;
     const ly = ((design?.logoPosition?.y ?? 85) / 100) * h - logoSize / 2;
     drawLogo(ctx, logoImg, lx, ly, logoSize);
   }
 
-  // Watermark
-  if (watermark) {
+  // Watermark (use design's ctaMainText as brand watermark if available)
+  if (effectiveWatermark) {
     ctx.font = `700 ${Math.round(w * 0.025)}px "${fontFamily}", sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.3)';
     ctx.textAlign = 'center';
-    ctx.fillText(watermark, w / 2, h * 0.92);
+    ctx.fillText(effectiveWatermark, w / 2, h * 0.92);
   }
   ctx.restore();
 }
