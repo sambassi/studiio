@@ -1123,11 +1123,21 @@ export default function CalendarPage() {
           }
         } catch (err) {
           console.error('[Publish] Compose failed:', err);
+          alert('Erreur lors du rendu du montage. Veuillez réessayer.');
+          return; // ABORT — don't schedule without a video
         } finally {
           setExportRendering(false);
           setExportRenderProgress(0);
           setExportRenderStage('');
         }
+      }
+
+      // Safety check: if it's a montage post, we MUST have a renderedVideoUrl
+      // If not, the composition silently failed or produced no output
+      if (hasVisualSource && isMontagePost && !updatedPost.metadata?.renderedVideoUrl && !updatedPost.media_url) {
+        console.error('[Publish] No media URL after composition — aborting');
+        alert('Le montage n\'a pas pu être généré. Vérifiez que les médias sont accessibles et réessayez.');
+        return;
       }
 
       // Set status to 'scheduled' with current date/time so the cron publishes it
