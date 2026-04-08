@@ -515,7 +515,7 @@ export default function CalendarPage() {
         const videoUrl = meta.rushUrls?.[0] || null;
         const musicUrl = meta.musicUrl || null;
         const voiceUrl = meta.voiceUrl || null;
-        const logoUrl = meta.logoUrl || null;
+        const logoUrl = meta.logoUrl || meta.design?.logoUrl || null;
         const seq = meta.sequences;
         const brand = meta.branding;
         const isReel = post.format === 'reel';
@@ -1048,7 +1048,7 @@ export default function CalendarPage() {
           const videoUrl = meta.rushUrls?.[0] || null;
           const musicUrl = meta.musicUrl || null;
           const voiceUrl = meta.voiceUrl || null;
-          const logoUrl = meta.logoUrl || null;
+          const logoUrl = meta.logoUrl || meta.design?.logoUrl || null;
           const seq = meta.sequences;
           const brand = meta.branding;
           const isReel = post.format === 'reel';
@@ -1272,7 +1272,7 @@ export default function CalendarPage() {
       const videoUrl = meta?.rushUrls?.[0] || null;
       const musicUrl = meta?.musicUrl || null;
       const voiceUrl = meta?.voiceUrl || null;
-      const logoUrl = meta?.logoUrl || null;
+      const logoUrl = meta?.logoUrl || meta?.design?.logoUrl || null;
       const seq = meta?.sequences;
       const brand = meta?.branding;
       const isReel = post.format === 'reel';

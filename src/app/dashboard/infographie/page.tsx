@@ -1196,6 +1196,7 @@ export default function InfographicPage() {
                 characterUrl: characterImage ? mediaUrl : null,
                 posterUrl,
                 pexelsUrl: posterUrl,
+                logoUrl: logoImage || undefined,
                 videoUrl: rushUrl || undefined,
                 rushUrls: rushUrl ? [rushUrl] : undefined,
                 sequences: {
