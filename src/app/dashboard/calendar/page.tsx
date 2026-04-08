@@ -2458,7 +2458,7 @@ export default function CalendarPage() {
                     <div className="absolute inset-0" style={{ opacity: currentSeq === 'intro' ? 1 : 0, transform: currentSeq === 'intro' ? 'scale(1)' : 'scale(1.08)', zIndex: currentSeq === 'intro' ? 10 : 1, transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
                       {posterImgSrc ? <img src={posterImgSrc} alt="Affiche" className="absolute inset-0 w-full h-full object-cover" /> : <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, #000000, ${hexToRgba(designGradient1, 1)})` }} />}
                       <div className="absolute inset-0" style={{ background: posterImgSrc ? `linear-gradient(to top, ${hexToRgba(designGradient1, designGradientOpacity)} 0%, ${hexToRgba(designGradient2, 0.35)} 40%, transparent 60%)` : 'transparent' }} />
-                      <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 z-10">
+                      <div className="absolute inset-0 text-center px-6 z-10">
                         <h3 style={{
                           fontFamily: designFont,
                           color: designTitleColor,
@@ -2467,9 +2467,10 @@ export default function CalendarPage() {
                           lineHeight: titleTypo.lineHeight || 1.1,
                           fontWeight: titleTypo.bold !== false ? 900 : 400,
                           fontStyle: titleTypo.italic ? 'italic' : 'normal',
-                          textTransform: 'uppercase',
+                          textTransform: 'uppercase' as const,
                           textShadow: `0 0 20px ${accent}CC, 0 0 50px ${accent}66`,
-                          position: 'absolute', left: `${positions.title?.x ?? 50}%`, top: `${positions.title?.y ?? 10}%`, transform: 'translate(-50%, 0)',
+                          position: 'absolute' as const, left: `${positions.title?.x ?? 50}%`, top: `${positions.title?.y ?? 10}%`, transform: 'translate(-50%, 0)',
+                          maxWidth: '90%',
                         }}>{displayTitle || 'TITRE'}</h3>
                         {meta?.subtitle && <p style={{
                           fontFamily: designFont,
@@ -2480,11 +2481,13 @@ export default function CalendarPage() {
                           fontWeight: titleTypo.bold !== false ? 900 : 400,
                           fontStyle: titleTypo.italic ? 'italic' : 'normal',
                           textShadow: `0 0 12px ${accent}80`,
-                          position: 'absolute', left: `${positions.title?.x ?? 50}%`, top: `${(positions.title?.y ?? 10) + 8}%`, transform: 'translate(-50%, 0)',
+                          position: 'absolute' as const, left: `${positions.title?.x ?? 50}%`, top: `${(positions.title?.y ?? 10) + 8}%`, transform: 'translate(-50%, 0)',
+                          maxWidth: '90%',
                         }}>{meta.subtitle}</p>}
-                        <div className="w-20 h-0.5 mx-auto rounded-full" style={{
+                        <div style={{
+                          width: '5rem', height: '2px', borderRadius: '9999px',
                           background: `linear-gradient(90deg, transparent, ${accent}, transparent)`,
-                          position: 'absolute', left: '50%', top: `${(positions.title?.y ?? 10) + (meta?.subtitle ? 16 : 10)}%`, transform: 'translateX(-50%)',
+                          position: 'absolute' as const, left: '50%', top: `${(positions.title?.y ?? 10) + (meta?.subtitle ? 16 : 10)}%`, transform: 'translateX(-50%)',
                         }} />
                       </div>
                       {/* Logo sur intro si logoSequences inclut 'intro' */}

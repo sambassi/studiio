@@ -965,10 +965,12 @@ export default function InfographicPage() {
       for (let b = 0; b < total; b++) {
         setExportProgress(Math.round((b / total) * 100));
 
-        // Pick a different photo for each batch item
+        // Utiliser la photo sélectionnée par l'utilisateur (selectedPhotoIndex)
+        // En mode batch, on peut aussi varier les photos après la première
+        const photoIdx = b === 0 ? selectedPhotoIndex : (selectedPhotoIndex + b) % (pexelsPhotos.length || 1);
         const photo =
           pexelsPhotos.length > 0
-            ? pexelsPhotos[b % pexelsPhotos.length]
+            ? pexelsPhotos[photoIdx]
             : null;
         const posterUrl = photo?.url || null;
 
