@@ -521,6 +521,17 @@ export default function InfographicPage() {
     return () => { if (playTimerRef.current) clearTimeout(playTimerRef.current); };
   }, []);
 
+  // Auto-start looping playback once config is loaded (default behavior on page load/refresh)
+  const autoPlayTriggered = useRef(false);
+  useEffect(() => {
+    if (configLoaded && !autoPlayTriggered.current && !isPlaying) {
+      autoPlayTriggered.current = true;
+      // Small delay to let the UI render first
+      const t = setTimeout(() => startPlayback(), 500);
+      return () => clearTimeout(t);
+    }
+  }, [configLoaded, startPlayback, isPlaying]);
+
   // Video overlay text position (draggable)
   const [overlayPos, setOverlayPos] = useState({ x: 50, y: 33 });
 
