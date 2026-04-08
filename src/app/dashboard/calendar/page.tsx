@@ -705,7 +705,7 @@ export default function CalendarPage() {
     const isMontagePost = meta?.type === 'infographic' || (meta?.type === 'creator' && meta?.sequences);
     if (!isMontagePost) return;
 
-    const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
+    const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { if (s === 'cta') return false; const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
     // Only include video sequence if the video file has been proven playable
     // videoPlayable starts false and is only set true after onloadeddata fires
     const activeSeqs = videoPlayable ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
@@ -740,7 +740,7 @@ export default function CalendarPage() {
     // Only use raw rush video — never rendered montage (has CTA baked in)
     const videoSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0];
     if (!videoSrc) return;
-    const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
+    const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { if (s === 'cta') return false; const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
     const safeIdx = infoSeqIndex < seqOrder.length ? infoSeqIndex : 0;
     const currentSeq = seqOrder[safeIdx] || 'intro';
 
@@ -896,7 +896,7 @@ export default function CalendarPage() {
     const videoSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0];
     if (!videoSrc) return;
 
-    const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
+    const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { if (s === 'cta') return false; const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
     const activeSeqs = videoPlayable ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
     const currentSeq = activeSeqs[infoSeqIndex] || 'intro';
 
@@ -2416,7 +2416,7 @@ export default function CalendarPage() {
             <div className="flex-1 bg-black flex flex-col items-center justify-center p-2 md:p-4" style={{ minHeight: '60dvh' }}>
               {/* Montage video preview — infographic & creator with sequences */}
               {hasMontage ? (() => {
-                const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
+                const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { if (s === 'cta') return false; const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
                 // Only include video sequence if the video has been proven playable (onloadeddata fired)
                 const activeSeqs = videoPlayable ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
                 const posterImgSrc = meta?.pexelsUrl || meta?.posterUrl || meta?.characterUrl || null;
@@ -3035,7 +3035,7 @@ export default function CalendarPage() {
                 )}
                 {hasMontage && (
                   <div className="flex items-center gap-2 text-xs text-purple-400">
-                    <Film className="w-3 h-3" /> {t('fullPreview.sequences', { count: String([...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))].length) })} • {meta?.sequences?.total || 30}s
+                    <Film className="w-3 h-3" /> {t('fullPreview.sequences', { count: String([...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { if (s === 'cta') return false; const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))].length) })} • {meta?.sequences?.total || 30}s
                   </div>
                 )}
                 {meta?.videoUrl && !hasMontage && (
