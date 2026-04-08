@@ -258,14 +258,13 @@ function AudioStudioContent() {
     return () => { tempVid.src = ''; };
   }, [post?.id, meta.renderedVideoUrl, meta.videoUrl, post?.media_url]);
 
-  useEffect(() => {
-    const vid = videoRef.current;
-    if (!vid || videoLoading) return;
-    let rafId = 0;
-    let running = false;
+  // ═══ TIMELINE SYNC — independent RAF loop (works with or without video element) ═══
+  const timelineRunningRef = useRef(false);
+  const timelineRafRef = useRef(0);
 
+  useEffect(() => {
     const syncTimeline = () => {
-      if (!running) return;
+      if (!timelineRunningRef.current) return;
       const now = performance.now();
       const elapsed = timeOffsetRef.current + (now - playStartRef.current) / 1000;
       const mapped = Math.min(Math.max(elapsed, 0), totalDuration);
@@ -274,11 +273,11 @@ function AudioStudioContent() {
       if (mapped >= totalDuration) {
         setCurrentTime(totalDuration);
         setActiveSeqIdx(sequences.length - 1);
-        vid.pause();
+        if (videoRef.current) videoRef.current.pause();
         if (musicAudioRef.current) musicAudioRef.current.pause();
         if (voiceAudioRef.current) voiceAudioRef.current.pause();
         setIsPlaying(false);
-        running = false;
+        timelineRunningRef.current = false;
         return;
       }
 
@@ -288,33 +287,70 @@ function AudioStudioContent() {
         if (mapped >= seqStarts[i]) { idx = i; break; }
       }
       setActiveSeqIdx(idx);
-      rafId = requestAnimationFrame(syncTimeline);
+      timelineRafRef.current = requestAnimationFrame(syncTimeline);
     };
 
-    const onPlay = () => {
-      playStartRef.current = performance.now();
-      setIsPlaying(true);
-      if (!running) { running = true; rafId = requestAnimationFrame(syncTimeline); }
-    };
-    const onPause = () => {
-      // Save current position so we can resume from here
-      const now = performance.now();
-      timeOffsetRef.current = timeOffsetRef.current + (now - playStartRef.current) / 1000;
-      setIsPlaying(false);
-      running = false;
-      cancelAnimationFrame(rafId);
-    };
-
-    vid.addEventListener('play', onPlay);
-    vid.addEventListener('pause', onPause);
-    if (!vid.paused) { playStartRef.current = performance.now(); running = true; setIsPlaying(true); rafId = requestAnimationFrame(syncTimeline); }
+    // For non-montage posts, sync to video element events
+    const vid = videoRef.current;
+    if (vid && !videoLoading) {
+      const onPlay = () => {
+        playStartRef.current = performance.now();
+        setIsPlaying(true);
+        if (!timelineRunningRef.current) { timelineRunningRef.current = true; timelineRafRef.current = requestAnimationFrame(syncTimeline); }
+      };
+      const onPause = () => {
+        const now = performance.now();
+        timeOffsetRef.current = timeOffsetRef.current + (now - playStartRef.current) / 1000;
+        setIsPlaying(false);
+        timelineRunningRef.current = false;
+        cancelAnimationFrame(timelineRafRef.current);
+      };
+      vid.addEventListener('play', onPlay);
+      vid.addEventListener('pause', onPause);
+      if (!vid.paused) { playStartRef.current = performance.now(); timelineRunningRef.current = true; setIsPlaying(true); timelineRafRef.current = requestAnimationFrame(syncTimeline); }
+      return () => {
+        timelineRunningRef.current = false;
+        cancelAnimationFrame(timelineRafRef.current);
+        vid.removeEventListener('play', onPlay);
+        vid.removeEventListener('pause', onPause);
+      };
+    }
+    // Cleanup for montage mode (no video element attached yet)
     return () => {
-      running = false;
-      cancelAnimationFrame(rafId);
-      vid.removeEventListener('play', onPlay);
-      vid.removeEventListener('pause', onPause);
+      timelineRunningRef.current = false;
+      cancelAnimationFrame(timelineRafRef.current);
     };
   }, [post?.id, totalDuration, sequences, seqStarts, videoLoading]);
+
+  // Helper: start the independent timeline RAF loop
+  const startTimelineLoop = useCallback(() => {
+    if (timelineRunningRef.current) return;
+    timelineRunningRef.current = true;
+    const syncTimeline = () => {
+      if (!timelineRunningRef.current) return;
+      const now = performance.now();
+      const elapsed = timeOffsetRef.current + (now - playStartRef.current) / 1000;
+      const mapped = Math.min(Math.max(elapsed, 0), totalDuration);
+      if (mapped >= totalDuration) {
+        setCurrentTime(totalDuration);
+        setActiveSeqIdx(sequences.length - 1);
+        if (videoRef.current) videoRef.current.pause();
+        if (musicAudioRef.current) musicAudioRef.current.pause();
+        if (voiceAudioRef.current) voiceAudioRef.current.pause();
+        setIsPlaying(false);
+        timelineRunningRef.current = false;
+        return;
+      }
+      setCurrentTime(mapped);
+      let idx = 0;
+      for (let i = sequences.length - 1; i >= 0; i--) {
+        if (mapped >= seqStarts[i]) { idx = i; break; }
+      }
+      setActiveSeqIdx(idx);
+      timelineRafRef.current = requestAnimationFrame(syncTimeline);
+    };
+    timelineRafRef.current = requestAnimationFrame(syncTimeline);
+  }, [totalDuration, sequences, seqStarts]);
 
   const startPlayback = useCallback(() => {
     // Reset timeline clock to start from 0
@@ -322,12 +358,21 @@ function AudioStudioContent() {
     playStartRef.current = performance.now();
     setCurrentTime(0);
     setActiveSeqIdx(0);
+    setIsPlaying(true);
     if (videoRef.current) { videoRef.current.currentTime = 0; videoRef.current.play().catch(() => {}); }
     if (musicAudioRef.current) { musicAudioRef.current.currentTime = 0; musicAudioRef.current.play().catch(() => {}); }
     if (voiceAudioRef.current) { voiceAudioRef.current.currentTime = 0; voiceAudioRef.current.play().catch(() => {}); }
-  }, []);
+    // Start independent timeline loop (needed for montage posts where video may not be primary)
+    startTimelineLoop();
+  }, [startTimelineLoop]);
 
   const stopPlayback = useCallback(() => {
+    // Save current offset
+    const now = performance.now();
+    timeOffsetRef.current = timeOffsetRef.current + (now - playStartRef.current) / 1000;
+    timelineRunningRef.current = false;
+    cancelAnimationFrame(timelineRafRef.current);
+    setIsPlaying(false);
     if (videoRef.current) videoRef.current.pause();
     if (musicAudioRef.current) musicAudioRef.current.pause();
     if (voiceAudioRef.current) voiceAudioRef.current.pause();
@@ -349,6 +394,18 @@ function AudioStudioContent() {
     }
     setActiveSeqIdx(idx);
   };
+
+  // ═══ MONTAGE: Play/pause video element based on active sequence ═══
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid) return;
+    const seqType = sequences[activeSeqIdx]?.type;
+    if (isPlaying && seqType === 'video') {
+      vid.play().catch(() => {});
+    } else if (seqType !== 'video') {
+      vid.pause();
+    }
+  }, [activeSeqIdx, isPlaying, sequences]);
 
   // ═══ MUSIC HANDLING ═══
   const handleMusicUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -867,6 +924,85 @@ function AudioStudioContent() {
   // Static poster image for stable preview (avoids video flickering during re-renders)
   const posterImgSrc = (meta.posterUrl || meta.pexelsUrl || meta.characterUrl || null) as string | null;
 
+  // ═══ MONTAGE PREVIEW DATA (mirror calendar rendering) ═══
+  const brand = (meta.branding || {}) as Record<string, string>;
+  const design = (meta.design || {}) as Record<string, unknown>;
+  const accent = brand.accentColor || '#D91CD2';
+  const montageTitle = post?.title || 'Infographie';
+  const montageSubtitle = (meta.subtitle as string) || '';
+  const montageCards = (meta.cards as Array<{ emoji: string; label: string; value: string; color?: string }>) || [];
+  const montageSalesPhrase = (meta.salesPhrase as string) || '';
+  const montageCtaMain = (design.ctaMainText as string) || brand.watermarkText || 'AFROBOOST';
+  const montageCtaSub = (design.ctaSubText as string) || brand.ctaText || 'CHAT POUR PLUS D\'INFOS';
+  const montageCtaColor = (design.ctaColor as string) || accent;
+  const montageCtaSubColor = (design.ctaSubColor as string) || '#FFFFFF';
+  const designSiteText = design.siteText as { text?: string; color?: string; opacity?: number; size?: number; enabled?: boolean; pos?: { x: number; y: number }; sequences?: string[] } | undefined;
+  const rawVideoSrc = (meta.rawVideoUrl as string) || rushUrls[0] || null;
+
+  // Current active sequence based on timeline position
+  const currentSeqType = sequences[activeSeqIdx]?.type || 'intro';
+  const isMontagePost = (meta.type === 'infographic' || meta.type === 'creator') && sequences.length > 0;
+
+  // ── Design variables for montage preview (mirrors calendar extraction) ──
+  const FONT_CSS_MAP: Record<string, string> = {
+    Anton: 'var(--font-anton)', Syne: 'var(--font-syne)', 'Bebas Neue': 'var(--font-bebas)',
+    Poppins: 'var(--font-poppins)', 'Space Grotesk': 'var(--font-space)',
+  };
+  const rawFontName = (design.font as string) || 'sans-serif';
+  const designFont = FONT_CSS_MAP[rawFontName] || rawFontName;
+  const designTitleColor = (design.titleColor as string) || '#FFFFFF';
+  const designTextScale = (design.textScale as number) || 1.0;
+  const designGradient1 = (design.gradientColor1 as string) || '#7C3AED';
+  const designGradient2 = (design.gradientColor2 as string) || '#EC4899';
+  const designGradientOpacity = (design.gradientOpacity as number) ?? 0.3;
+  const designSeqGradients = (design.seqGradients || {}) as Record<string, { enabled?: boolean; color1?: string; color2?: string; opacity?: number; position?: string }>;
+  const designLogoScale = (design.logoScale as number) || 1.0;
+  const designLogoUrl = (design.logoUrl as string) || (meta.logoUrl as string) || null;
+  const designCardStyle = (design.cardStyle as string) || 'Compact';
+  const designCardCustomIcons = design.cardCustomIcons as Record<string, string> | undefined;
+  const designCtaTextScale = (design.ctaTextScale as number) || 1.0;
+  const titleTypo = ((design.typography as Record<string, unknown>)?.title || {}) as Record<string, unknown>;
+  const ctaTypo = ((design.typography as Record<string, unknown>)?.cta || {}) as Record<string, unknown>;
+  const overlayTypo = ((design.typography as Record<string, unknown>)?.overlay || {}) as Record<string, unknown>;
+  const positions = (design.positions || {}) as Record<string, { x?: number; y?: number }>;
+  const sizes = (design.sizes || {}) as Record<string, number>;
+  const rawLogoSequences = (design.logoSequences as string[]) || [];
+  const seqNameMap: Record<string, string> = { titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' };
+  const designLogoSequences = rawLogoSequences.map((s: string) => seqNameMap[s] || s);
+  const siteTextConfig = designSiteText || { text: 'Afroboost.com', pos: { x: 50, y: 95 }, size: 1.0, color: '#FFFFFF', opacity: 0.7, sequences: ['titre', 'cartes', 'video', 'cta'], enabled: true };
+  const siteTextSeqs = (siteTextConfig.sequences || []).map((s: string) => seqNameMap[s] || s);
+  const isReelFormat = post?.format === 'reel' || post?.format !== 'tv';
+
+  // Utility: hex to rgba
+  const hexToRgba = (hex: string, opacity: number) => {
+    if (hex.startsWith('rgba') || hex.startsWith('rgb')) return hex;
+    const r = parseInt(hex.slice(1, 3), 16) || 0;
+    const g = parseInt(hex.slice(3, 5), 16) || 0;
+    const b = parseInt(hex.slice(5, 7), 16) || 0;
+    return `rgba(${r},${g},${b},${opacity})`;
+  };
+
+  // Utility: per-sequence gradient CSS
+  const getGradientCSS = (seq: string) => {
+    const editorKey = seq === 'intro' ? 'titre' : seq === 'cards' ? 'cartes' : seq;
+    const override = designSeqGradients[editorKey];
+    const defaultEnabled = seq === 'video' ? false : true;
+    const enabled = override?.enabled ?? defaultEnabled;
+    if (!enabled) return 'transparent';
+    const c1 = override?.color1 || designGradient1;
+    const c2 = override?.color2 || designGradient2;
+    const op = override?.opacity ?? designGradientOpacity;
+    const pos = override?.position || 'both';
+    if (pos === 'top') return `linear-gradient(180deg, ${hexToRgba(c1, op)} 0%, transparent 50%)`;
+    if (pos === 'bottom') return `linear-gradient(180deg, transparent 50%, ${hexToRgba(c2, op)} 100%)`;
+    if (pos === 'left') return `linear-gradient(90deg, ${hexToRgba(c1, op)} 0%, transparent 50%)`;
+    if (pos === 'right') return `linear-gradient(270deg, ${hexToRgba(c1, op)} 0%, transparent 50%)`;
+    return `linear-gradient(180deg, ${hexToRgba(c1, op)} 0%, transparent 40%, transparent 60%, ${hexToRgba(c2, op)} 100%)`;
+  };
+
+  // Utility: editor pixels to relative size for preview
+  const editorPxToRem = (editorPx: number) => `${(editorPx * 0.08).toFixed(2)}rem`;
+
   // ═══════════════════════════════════════════════════════════
   // RENDER
   // ═══════════════════════════════════════════════════════════
@@ -916,6 +1052,259 @@ function AudioStudioContent() {
                     )}
                   </div>
                 </>
+              ) : isMontagePost ? (
+                /* ═══ FULL MONTAGE PREVIEW — mirrors calendar rendering ═══ */
+                <div className="absolute inset-0">
+                  {/* === INTRO : Poster + title + subtitle === */}
+                  <div className="absolute inset-0" style={{
+                    opacity: currentSeqType === 'intro' ? 1 : 0,
+                    transform: currentSeqType === 'intro' ? 'scale(1)' : 'scale(1.08)',
+                    zIndex: currentSeqType === 'intro' ? 10 : 1,
+                    transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out',
+                  }}>
+                    {posterImgSrc ? (
+                      <img src={posterImgSrc} alt="Affiche" className="absolute inset-0 w-full h-full object-cover" />
+                    ) : (
+                      <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, #000000, ${hexToRgba(designGradient1, 1)})` }} />
+                    )}
+                    <div className="absolute inset-0" style={{ background: posterImgSrc ? getGradientCSS('intro') : 'transparent' }} />
+                    <div className="absolute inset-0 z-10 pointer-events-none">
+                      <div style={{
+                        position: 'absolute',
+                        left: `${positions.title?.x ?? 50}%`,
+                        top: `${positions.title?.y ?? 10}%`,
+                        transform: 'translate(-50%, 0)',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center',
+                        gap: editorPxToRem(4), maxWidth: '90%', textAlign: 'center',
+                      }}>
+                        <h3 style={{
+                          fontFamily: designFont, color: designTitleColor,
+                          fontSize: editorPxToRem((isReelFormat ? 14 : 18) * designTextScale),
+                          letterSpacing: `${(titleTypo.letterSpacing as number) || 0}px`,
+                          lineHeight: (titleTypo.lineHeight as number) || 1.1,
+                          fontWeight: titleTypo.bold !== false ? 900 : 400,
+                          fontStyle: titleTypo.italic ? 'italic' : 'normal',
+                          textTransform: 'uppercase',
+                          textShadow: `0 0 20px ${accent}CC, 0 0 50px ${accent}66`,
+                          margin: 0,
+                        }}>{montageTitle}</h3>
+                        {montageSubtitle && <p style={{
+                          fontFamily: designFont, color: `${designTitleColor}CC`,
+                          fontSize: editorPxToRem((isReelFormat ? 9 : 11) * designTextScale),
+                          letterSpacing: `${(titleTypo.letterSpacing as number) || 0}px`,
+                          lineHeight: (titleTypo.lineHeight as number) || 1.1,
+                          fontWeight: titleTypo.bold !== false ? 900 : 400,
+                          fontStyle: titleTypo.italic ? 'italic' : 'normal',
+                          textShadow: `0 0 12px ${accent}80`, margin: 0,
+                        }}>{montageSubtitle}</p>}
+                        <div style={{
+                          width: '5rem', height: '2px', borderRadius: '9999px',
+                          background: `linear-gradient(90deg, transparent, ${accent}, transparent)`,
+                        }} />
+                      </div>
+                    </div>
+                    {designLogoUrl && designLogoSequences.includes('intro') && (
+                      <img src={designLogoUrl} alt="Logo" style={{
+                        position: 'absolute', width: editorPxToRem(40 * designLogoScale), height: editorPxToRem(40 * designLogoScale),
+                        objectFit: 'contain', left: `${positions.logo?.x ?? 50}%`, top: `${positions.logo?.y ?? 85}%`,
+                        transform: 'translate(-50%, -50%)', zIndex: 20,
+                      }} />
+                    )}
+                  </div>
+
+                  {/* === CARDS : Info cards with styles === */}
+                  <div className="absolute inset-0" style={{
+                    opacity: currentSeqType === 'cards' ? 1 : 0,
+                    zIndex: currentSeqType === 'cards' ? 10 : 1,
+                    transition: 'opacity 800ms ease-in-out',
+                  }}>
+                    <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, ${hexToRgba(designGradient1, 0.9)}, ${hexToRgba(designGradient2, 0.7)}, #000000)` }} />
+                    <div className="absolute z-10 px-3" style={{
+                      left: `${positions.cards?.x ?? 50}%`, top: `${positions.cards?.y ?? 50}%`,
+                      transform: 'translate(-50%, -50%)', width: `${sizes.cards || 92}%`,
+                    }}>
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: designCardStyle === 'Full Width' || designCardStyle === 'Minimal Line' ? '1fr' : isReelFormat ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)',
+                        gap: editorPxToRem(6), width: '100%',
+                      }}>
+                        {(() => {
+                          const displayCards = montageCards.length > 0 ? montageCards
+                            : ((meta.textCards || []) as Array<{ text: string; color?: string }>).map(tc => ({ emoji: '📝', label: tc.text, value: tc.text, color: tc.color }));
+                          const scaledLabel = editorPxToRem(7 * designTextScale);
+                          const scaledValue = editorPxToRem(9 * designTextScale);
+                          const scaledDesc = editorPxToRem(6 * designTextScale);
+                          return displayCards.slice(0, isReelFormat ? 5 : 6).map((card: { emoji: string; label: string; value: string; description?: string; color?: string }, i: number) => {
+                            const cardIcon = designCardCustomIcons?.[String(i)] || undefined;
+                            const animStyle = {
+                              transition: 'opacity 0.5s ease-out, transform 0.5s ease-out',
+                              transitionDelay: currentSeqType === 'cards' ? `${i * 150}ms` : '0ms',
+                              opacity: currentSeqType === 'cards' ? 1 : 0,
+                              transform: currentSeqType === 'cards' ? 'translateX(0)' : 'translateX(-20px)',
+                            };
+                            const emojiEl = cardIcon
+                              ? <img src={cardIcon} alt="" style={{ width: editorPxToRem(14), height: editorPxToRem(14), objectFit: 'contain' }} />
+                              : <span style={{ fontSize: editorPxToRem(isReelFormat ? 10 : 14) }}>{card.emoji}</span>;
+
+                            if (designCardStyle === 'Compact') {
+                              return (<div key={i} style={{ ...animStyle, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: editorPxToRem(2), borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.3)', padding: `${editorPxToRem(6)} ${editorPxToRem(6)}`, backdropFilter: 'blur(4px)', borderLeft: `2px solid ${card.color || accent}` }}>
+                                {emojiEl}
+                                <p style={{ fontSize: scaledLabel, fontFamily: designFont, color: '#fff', fontWeight: 700, textAlign: 'center' }}>{card.label}</p>
+                                <p style={{ fontSize: scaledValue, fontFamily: designFont, color: card.color || accent, fontWeight: 900, textAlign: 'center' }}>{card.value}</p>
+                              </div>);
+                            }
+                            if (designCardStyle === 'Stats Bold') {
+                              return (<div key={i} style={{ ...animStyle, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.5)', padding: `${editorPxToRem(8)}`, backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                <p style={{ fontSize: editorPxToRem(13 * designTextScale), fontFamily: designFont, color: card.color || accent, fontWeight: 900 }}>{card.value}</p>
+                                <p style={{ fontSize: scaledDesc, fontFamily: designFont, color: 'rgba(255,255,255,0.8)', fontWeight: 500, marginTop: editorPxToRem(2), textAlign: 'center' }}>{card.label}</p>
+                              </div>);
+                            }
+                            if (designCardStyle === 'Minimal Line') {
+                              return (<div key={i} style={{ ...animStyle, display: 'flex', alignItems: 'center', gap: editorPxToRem(4), padding: `${editorPxToRem(4)}`, borderBottom: `1px solid ${(card.color || accent)}40` }}>
+                                <span style={{ fontSize: editorPxToRem(8) }}>{card.emoji}</span>
+                                <p style={{ fontSize: scaledLabel, fontFamily: designFont, color: 'rgba(255,255,255,0.8)', flex: 1 }}>{card.label}</p>
+                                <p style={{ fontSize: scaledValue, fontFamily: designFont, color: card.color || accent, fontWeight: 700 }}>{card.value}</p>
+                              </div>);
+                            }
+                            if (designCardStyle === 'Educatif') {
+                              return (<div key={i} style={{ ...animStyle, borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.4)', padding: `${editorPxToRem(8)}`, backdropFilter: 'blur(4px)', borderTop: `2px solid ${card.color || accent}` }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: editorPxToRem(4), marginBottom: editorPxToRem(4) }}>
+                                  {emojiEl}
+                                  <p style={{ fontSize: scaledLabel, fontFamily: designFont, color: '#fff', fontWeight: 700 }}>{card.label}</p>
+                                </div>
+                                <p style={{ fontSize: scaledValue, fontFamily: designFont, color: card.color || accent, fontWeight: 900 }}>{card.value}</p>
+                              </div>);
+                            }
+                            // Full Width (default)
+                            return (<div key={i} style={{ ...animStyle, display: 'flex', alignItems: 'center', gap: editorPxToRem(6), borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.3)', padding: `${editorPxToRem(6)} ${editorPxToRem(10)}`, backdropFilter: 'blur(4px)', borderLeft: `3px solid ${card.color || accent}` }}>
+                              {emojiEl}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{ fontSize: scaledLabel, fontFamily: designFont, color: '#fff', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{card.label}</p>
+                              </div>
+                              <p style={{ fontSize: scaledValue, fontFamily: designFont, color: card.color || accent, fontWeight: 900, flexShrink: 0 }}>{card.value}</p>
+                            </div>);
+                          });
+                        })()}
+                      </div>
+                    </div>
+                    {designLogoUrl && designLogoSequences.includes('cards') && (
+                      <img src={designLogoUrl} alt="Logo" style={{
+                        position: 'absolute', width: editorPxToRem(40 * designLogoScale), height: editorPxToRem(40 * designLogoScale),
+                        objectFit: 'contain', left: `${positions.logo?.x ?? 50}%`, top: `${positions.logo?.y ?? 85}%`,
+                        transform: 'translate(-50%, -50%)', zIndex: 20,
+                      }} />
+                    )}
+                  </div>
+
+                  {/* === VIDEO : Rush video === */}
+                  {rawVideoSrc && (
+                    <div className="absolute inset-0" style={{
+                      opacity: currentSeqType === 'video' ? 1 : 0,
+                      zIndex: currentSeqType === 'video' ? 10 : 1,
+                      transition: 'opacity 800ms ease-in-out',
+                    }}>
+                      <video
+                        key={`montage-video-${post?.id}`}
+                        ref={videoRef}
+                        src={rawVideoSrc.includes('#') ? rawVideoSrc : `${rawVideoSrc}#t=0.1`}
+                        muted loop playsInline preload="metadata"
+                        className="absolute inset-0 w-full h-full object-cover"
+                        onLoadedData={() => { setVideoLoading(false); setVideoError(false); }}
+                        onError={() => { setVideoLoading(false); setVideoError(true); }}
+                      />
+                      <div className="absolute inset-0 z-[5]" style={{ background: getGradientCSS('video'), pointerEvents: 'none' }} />
+                      {(meta.videoOverlayText as string) && (
+                        <div className="absolute inset-0 z-10 pointer-events-none">
+                          <p style={{
+                            fontFamily: designFont, color: (design.overlayColor as string) || '#FFFFFF',
+                            fontSize: editorPxToRem(16 * designTextScale),
+                            letterSpacing: `${(overlayTypo.letterSpacing as number) || 0}px`,
+                            lineHeight: (overlayTypo.lineHeight as number) || 1.2,
+                            fontWeight: overlayTypo.bold ? 'bold' : 'normal',
+                            fontStyle: overlayTypo.italic ? 'italic' : 'normal',
+                            textTransform: 'uppercase', textAlign: 'center',
+                            textShadow: '0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5)',
+                            position: 'absolute', left: `${positions.overlay?.x ?? 50}%`, top: `${positions.overlay?.y ?? 33}%`,
+                            transform: 'translate(-50%, -50%)', width: '85%',
+                          }}>{meta.videoOverlayText as string}</p>
+                        </div>
+                      )}
+                      {designLogoUrl && designLogoSequences.includes('video') && (
+                        <img src={designLogoUrl} alt="Logo" style={{
+                          position: 'absolute', width: editorPxToRem(40 * designLogoScale), height: editorPxToRem(40 * designLogoScale),
+                          objectFit: 'contain', left: `${positions.logo?.x ?? 50}%`, top: `${positions.logo?.y ?? 85}%`,
+                          transform: 'translate(-50%, -50%)', zIndex: 20,
+                        }} />
+                      )}
+                    </div>
+                  )}
+
+                  {/* === CTA : Call to action === */}
+                  <div className="absolute inset-0" style={{
+                    opacity: currentSeqType === 'cta' ? 1 : 0,
+                    transform: currentSeqType === 'cta' ? 'scale(1)' : 'scale(0.92)',
+                    zIndex: currentSeqType === 'cta' ? 10 : 1,
+                    background: '#000000',
+                    transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out',
+                  }}>
+                    <div className="text-center" style={{
+                      position: 'absolute',
+                      left: `${positions.watermark?.x ?? 50}%`, top: `${positions.watermark?.y ?? 97}%`,
+                      transform: 'translate(-50%, -100%)', width: `${sizes.watermark || 70}%`,
+                    }}>
+                      {montageSalesPhrase && <p style={{
+                        fontFamily: designFont, color: `${montageCtaColor}ee`,
+                        fontSize: editorPxToRem((isReelFormat ? 8 : 10) * designCtaTextScale),
+                        letterSpacing: `${(ctaTypo.letterSpacing as number) || 0}px`,
+                        lineHeight: (ctaTypo.lineHeight as number) || 1.2,
+                        fontWeight: (ctaTypo.bold as boolean) !== false ? 900 : 400,
+                        fontStyle: (ctaTypo.italic as boolean) ? 'italic' : 'normal',
+                        marginBottom: editorPxToRem(4),
+                      }}>{montageSalesPhrase}</p>}
+                      <p style={{
+                        fontFamily: designFont, color: montageCtaColor,
+                        fontSize: editorPxToRem((isReelFormat ? 12 : 16) * designCtaTextScale),
+                        letterSpacing: `${(ctaTypo.letterSpacing as number) || 0}px`,
+                        lineHeight: (ctaTypo.lineHeight as number) || 1.2,
+                        fontWeight: (ctaTypo.bold as boolean) !== false ? 900 : 400,
+                        fontStyle: (ctaTypo.italic as boolean) ? 'italic' : 'normal',
+                        textTransform: 'uppercase',
+                        textShadow: `0 0 20px ${montageCtaColor}60`,
+                      }}>{montageCtaMain}</p>
+                      <p style={{
+                        fontFamily: designFont, color: montageCtaSubColor,
+                        fontSize: editorPxToRem((isReelFormat ? 9 : 12) * designCtaTextScale),
+                        letterSpacing: `${(ctaTypo.letterSpacing as number) || 0}px`,
+                        textTransform: 'uppercase',
+                        fontWeight: (ctaTypo.bold as boolean) !== false ? 900 : 400,
+                        fontStyle: (ctaTypo.italic as boolean) ? 'italic' : 'normal',
+                        marginTop: editorPxToRem(4),
+                      }}>{montageCtaSub}</p>
+                    </div>
+                    {designLogoUrl && designLogoSequences.includes('cta') && (
+                      <img src={designLogoUrl} alt="Logo" style={{
+                        position: 'absolute', width: editorPxToRem(40 * designLogoScale), height: editorPxToRem(40 * designLogoScale),
+                        objectFit: 'contain', left: `${positions.logo?.x ?? 50}%`, top: `${positions.logo?.y ?? 85}%`,
+                        transform: 'translate(-50%, -50%)', zIndex: 20,
+                      }} />
+                    )}
+                  </div>
+
+                  {/* === Site text overlay === */}
+                  {siteTextConfig.enabled && siteTextConfig.text && siteTextSeqs.includes(currentSeqType) && (
+                    <div className="absolute z-30 pointer-events-none" style={{
+                      left: `${siteTextConfig.pos?.x ?? 50}%`, top: `${siteTextConfig.pos?.y ?? 95}%`,
+                      transform: 'translate(-50%, -50%)',
+                    }}>
+                      <p className="font-bold tracking-wider whitespace-nowrap" style={{
+                        fontSize: editorPxToRem(12 * (siteTextConfig.size || 1.0)),
+                        color: siteTextConfig.color || '#FFFFFF',
+                        opacity: siteTextConfig.opacity ?? 0.7,
+                        textShadow: `0 0 10px ${(siteTextConfig.color || '#FFFFFF')}40, 0 2px 4px rgba(0,0,0,0.8)`,
+                      }}>{siteTextConfig.text}</p>
+                    </div>
+                  )}
+                </div>
               ) : videoSrc ? (
                 <>
                   <video
@@ -924,21 +1313,13 @@ function AudioStudioContent() {
                     src={videoSrc}
                     poster={posterImgSrc || undefined}
                     className="w-full h-full object-contain"
-                    playsInline
-                    autoPlay
-                    loop
-                    muted
+                    playsInline autoPlay loop muted
                     onLoadedData={() => { setVideoLoading(false); setVideoError(false); }}
                     onError={() => {
-                      console.warn(`[AudioStudio] Video load failed (idx ${videoFallbackIdx}): ${videoSrc?.substring(0, 80)}`);
-                      // Try next fallback URL if available
                       if (videoFallbackIdx < uniqueVideoSrcs.length - 1) {
                         setVideoFallbackIdx(prev => prev + 1);
                         setVideoLoading(true);
-                      } else {
-                        setVideoLoading(false);
-                        setVideoError(true);
-                      }
+                      } else { setVideoLoading(false); setVideoError(true); }
                     }}
                     onWaiting={() => setVideoLoading(true)}
                     onPlaying={() => setVideoLoading(false)}
@@ -950,20 +1331,8 @@ function AudioStudioContent() {
                   )}
                   {videoError && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-10">
-                      {posterImgSrc ? (
-                        <>
-                          <img src={posterImgSrc} alt="" className="absolute inset-0 w-full h-full object-cover opacity-60" />
-                          <div className="relative z-10 flex flex-col items-center">
-                            <Play size={32} className="text-white/60 mb-2" />
-                            <p className="text-xs text-white/60">{t('videoPreview')}</p>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <Volume2 size={32} className="text-gray-600 mb-2" />
-                          <p className="text-xs text-gray-500">{t('videoPreview')}</p>
-                        </>
-                      )}
+                      <Volume2 size={32} className="text-gray-600 mb-2" />
+                      <p className="text-xs text-gray-500">{t('videoPreview')}</p>
                     </div>
                   )}
                 </>
