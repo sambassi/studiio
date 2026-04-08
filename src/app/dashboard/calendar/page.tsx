@@ -521,6 +521,7 @@ export default function CalendarPage() {
         const brand = meta.branding;
         const isReel = post.format === 'reel';
 
+        const designMeta = meta.design || {};
         const { url: renderedUrl } = await composeAndUpload({
           width: isReel ? 1080 : 1920,
           height: isReel ? 1920 : 1080,
@@ -544,7 +545,19 @@ export default function CalendarPage() {
           ctaText: brand?.ctaText || 'CHAT POUR PLUS D\'INFOS',
           ctaSubText: brand?.ctaSubText || 'LIEN EN BIO',
           watermarkText: brand?.watermarkText || undefined,
-          siteText: meta.design?.siteText || undefined,
+          siteText: designMeta.siteText || undefined,
+          design: {
+            font: designMeta.font || undefined,
+            titleColor: designMeta.titleColor || undefined,
+            gradientColor1: designMeta.gradientColor1 || undefined,
+            gradientColor2: designMeta.gradientColor2 || undefined,
+            gradientOpacity: designMeta.gradientOpacity ?? undefined,
+            ctaSubColor: brand?.ctaSubColor || undefined,
+            logoSequences: designMeta.logoSequences || undefined,
+            logoPosition: designMeta.positions?.logo || undefined,
+            overlayText: meta.videoOverlayText || undefined,
+            overlayColor: designMeta.overlayColor || undefined,
+          },
           onProgress: (pct, stage) => {
             setExportRenderProgress(pct);
             setExportRenderStage(stage);
@@ -1170,6 +1183,18 @@ export default function CalendarPage() {
         ctaSubText: brand?.ctaSubText || 'LIEN EN BIO',
         watermarkText: brand?.watermarkText || undefined,
         siteText: calSiteText || undefined,
+        design: {
+          font: calDesign?.font || undefined,
+          titleColor: calDesign?.titleColor || undefined,
+          gradientColor1: calDesign?.gradientColor1 || undefined,
+          gradientColor2: calDesign?.gradientColor2 || undefined,
+          gradientOpacity: calDesign?.gradientOpacity ?? undefined,
+          ctaSubColor: brand?.ctaSubColor || undefined,
+          logoSequences: calDesign?.logoSequences || undefined,
+          logoPosition: calDesign?.positions?.logo || undefined,
+          overlayText: meta?.videoOverlayText || undefined,
+          overlayColor: calDesign?.overlayColor || undefined,
+        },
         onProgress: (pct, stage) => {
           setExportRenderProgress(pct);
           setExportRenderStage(stage);
@@ -1406,6 +1431,13 @@ export default function CalendarPage() {
               ctaText: branding.ctaText || 'CHAT POUR PLUS D\'INFOS',
               ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
               watermarkText: branding.watermarkText || undefined,
+              design: {
+                font: branding.font || undefined,
+                titleColor: branding.titleColor || undefined,
+                gradientColor1: branding.gradientColor1 || undefined,
+                gradientColor2: branding.gradientColor2 || undefined,
+                ctaSubColor: branding.ctaSubColor || undefined,
+              },
               onProgress: (_pct, stage) => {
                 setAiStage(t('aiAgent.stages.videoStage', { current: String(i + 1), total: String(postsToCreate), stage }));
               },

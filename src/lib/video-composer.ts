@@ -31,6 +31,30 @@ export interface SiteTextConfig {
   enabled?: boolean;
 }
 
+/** Design settings matching the HTML preview — ensures published video looks identical */
+export interface DesignOptions {
+  /** Font family name (e.g. 'Anton', 'Syne', 'Poppins') — will be loaded via document.fonts */
+  font?: string;
+  /** Title text color (default: #FFFFFF) */
+  titleColor?: string;
+  /** Primary gradient color (default: accentColor) */
+  gradientColor1?: string;
+  /** Secondary gradient color (default: accentColor lighter) */
+  gradientColor2?: string;
+  /** Gradient opacity 0-1 (default: 0.3) */
+  gradientOpacity?: number;
+  /** CTA sub-text color (default: #FFFFFF) */
+  ctaSubColor?: string;
+  /** Logo sequences — which sequences show the logo (e.g. ['intro','cards','video','cta']) */
+  logoSequences?: string[];
+  /** Logo position override {x: 0-100, y: 0-100} */
+  logoPosition?: { x?: number; y?: number };
+  /** Video overlay text */
+  overlayText?: string;
+  /** Video overlay color */
+  overlayColor?: string;
+}
+
 export interface ComposerOptions {
   width: number;
   height: number;
@@ -54,6 +78,8 @@ export interface ComposerOptions {
   watermarkText?: string;
   /** Flexible site text overlay (e.g. Afroboost.com) */
   siteText?: SiteTextConfig;
+  /** Design options to match HTML preview styling */
+  design?: DesignOptions;
   onProgress?: (percent: number, stage: string) => void;
   /** Shared AudioContext for batch mode — avoids creating/closing multiple contexts */
   sharedAudioCtx?: AudioContext;
@@ -231,128 +257,208 @@ function drawLogo(ctx: CanvasRenderingContext2D, logoImg: HTMLImageElement, x: n
 function drawIntro(
   ctx: CanvasRenderingContext2D, w: number, h: number,
   posterImg: HTMLImageElement | null, logoImg: HTMLImageElement | null,
-  title: string, subtitle: string | undefined, accent: string, progress: number
+  title: string, subtitle: string | undefined, accent: string, progress: number,
+  design?: DesignOptions
 ) {
+  const fontFamily = design?.font || 'sans-serif';
+  const titleColor = design?.titleColor || '#FFFFFF';
+  const grad1 = design?.gradientColor1 || accent;
+  const grad2 = design?.gradientColor2 || accent;
+  const gradOpacity = design?.gradientOpacity ?? 0.3;
+
+  // Background: poster image or dark gradient
   if (posterImg) {
     const scale = Math.max(w / posterImg.width, h / posterImg.height);
     const sw = posterImg.width * scale, sh = posterImg.height * scale;
     ctx.drawImage(posterImg, (w - sw) / 2, (h - sh) / 2, sw, sh);
+    // Bottom-up gradient matching preview: gradient(to top, grad1 at opacity, grad2 at 40%, transparent at 65%)
     const grad = ctx.createLinearGradient(0, h, 0, 0);
-    grad.addColorStop(0, hexToRgba(accent, 0.85));
-    grad.addColorStop(0.4, 'rgba(0,0,0,0.35)');
+    grad.addColorStop(0, hexToRgba(grad1, gradOpacity));
+    grad.addColorStop(0.4, hexToRgba(grad2, gradOpacity * 0.4));
     grad.addColorStop(0.65, 'rgba(0,0,0,0)');
     ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
   } else {
     const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, '#000000'); grad.addColorStop(1, '#1a0030');
+    grad.addColorStop(0, '#000000'); grad.addColorStop(1, hexToRgba(grad1, 1));
     ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
   }
-  const zoomScale = 1 + progress * 0.05;
-  ctx.save(); ctx.translate(w / 2, h / 2); ctx.scale(zoomScale, zoomScale); ctx.translate(-w / 2, -h / 2);
+
+  // Title at BOTTOM (flex-end with paddingBottom 15%) — matches preview
+  const titleY = h * 0.85; // 85% from top = 15% from bottom
+  const titleAlpha = Math.min(1, progress * 3);
   const fontSize = Math.round(w * 0.065);
-  ctx.font = `900 ${fontSize}px sans-serif`; ctx.textAlign = 'center';
-  ctx.fillStyle = `rgba(255,255,255,${Math.min(1, progress * 3)})`;
-  ctx.shadowColor = accent; ctx.shadowBlur = 20;
-  fillTextWithOutline(ctx, title.toUpperCase(), w / 2, h / 2, 4, 'rgba(0,0,0,0.9)'); ctx.shadowBlur = 0;
+  ctx.save();
+  ctx.font = `900 ${fontSize}px ${fontFamily}`; ctx.textAlign = 'center';
+  ctx.fillStyle = hexToRgba(titleColor, titleAlpha);
+  ctx.shadowColor = hexToRgba(accent, 0.8); ctx.shadowBlur = 20;
+  fillTextWithOutline(ctx, title.toUpperCase(), w / 2, titleY, 4, 'rgba(0,0,0,0.9)');
+  ctx.shadowBlur = 0;
+
+  // Subtitle below title
   if (subtitle) {
     const subAlpha = Math.max(0, Math.min(1, (progress - 0.2) * 3));
-    ctx.font = `400 ${Math.round(w * 0.028)}px sans-serif`;
-    ctx.fillStyle = `rgba(255,255,255,${subAlpha * 0.9})`;
-    fillTextWithOutline(ctx, subtitle, w / 2, h / 2 + fontSize * 0.8, 2, 'rgba(0,0,0,0.7)');
+    ctx.font = `400 ${Math.round(w * 0.028)}px ${fontFamily}`;
+    ctx.fillStyle = hexToRgba(titleColor, subAlpha * 0.8);
+    fillTextWithOutline(ctx, subtitle, w / 2, titleY + fontSize * 0.7, 2, 'rgba(0,0,0,0.7)');
   }
+
+  // Accent line below title
   const lineAlpha = Math.max(0, Math.min(1, (progress - 0.3) * 3));
   const lineW = w * 0.12;
-  ctx.strokeStyle = `rgba(${parseInt(accent.slice(1, 3), 16)},${parseInt(accent.slice(3, 5), 16)},${parseInt(accent.slice(5, 7), 16)},${lineAlpha})`;
+  const lineY = titleY + fontSize * (subtitle ? 1.0 : 0.5);
+  const lineGrad = ctx.createLinearGradient(w / 2 - lineW / 2, 0, w / 2 + lineW / 2, 0);
+  lineGrad.addColorStop(0, 'rgba(0,0,0,0)');
+  lineGrad.addColorStop(0.5, hexToRgba(accent, lineAlpha));
+  lineGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.strokeStyle = lineGrad;
   ctx.lineWidth = 2; ctx.beginPath();
-  ctx.moveTo(w / 2 - lineW / 2, h / 2 + fontSize * 1.2);
-  ctx.lineTo(w / 2 + lineW / 2, h / 2 + fontSize * 1.2); ctx.stroke();
-  // Logo NOT shown on intro — only on video & CTA sequences
+  ctx.moveTo(w / 2 - lineW / 2, lineY);
+  ctx.lineTo(w / 2 + lineW / 2, lineY); ctx.stroke();
+
+  // Logo on intro if configured
+  if (logoImg && design?.logoSequences?.includes('intro')) {
+    const logoSize = Math.round(w * 0.1);
+    const lx = ((design.logoPosition?.x ?? 50) / 100) * w - logoSize / 2;
+    const ly = ((design.logoPosition?.y ?? 85) / 100) * h - logoSize / 2;
+    drawLogo(ctx, logoImg, lx, ly, logoSize);
+  }
+
+  // Bottom accent bar
+  const barGrad = ctx.createLinearGradient(0, 0, w, 0);
+  barGrad.addColorStop(0, grad1); barGrad.addColorStop(1, grad2);
+  ctx.fillStyle = barGrad;
+  ctx.fillRect(0, h - 3, w, 3);
+
   ctx.restore();
 }
 
 function drawCards(
   ctx: CanvasRenderingContext2D, w: number, h: number,
-  cards: CardData[], logoImg: HTMLImageElement | null, accent: string, progress: number
+  cards: CardData[], logoImg: HTMLImageElement | null, accent: string, progress: number,
+  design?: DesignOptions
 ) {
+  const fontFamily = design?.font || 'sans-serif';
+  const grad1 = design?.gradientColor1 || accent;
+  const grad2 = design?.gradientColor2 || accent;
+
+  // Background gradient matching preview: gradient(to bottom, grad1 at 0.9, grad2 at 0.7, #000)
   const grad = ctx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, '#1a0030'); grad.addColorStop(0.5, '#0a0a0a'); grad.addColorStop(1, '#000000');
+  grad.addColorStop(0, hexToRgba(grad1, 0.9));
+  grad.addColorStop(0.5, hexToRgba(grad2, 0.7));
+  grad.addColorStop(1, '#000000');
   ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
-  ctx.font = `700 ${Math.round(w * 0.03)}px sans-serif`; ctx.textAlign = 'center';
-  ctx.fillStyle = 'rgba(255,255,255,0.4)'; fillTextWithOutline(ctx, 'INFORMATIONS', w / 2, h * 0.15, 2, 'rgba(0,0,0,0.5)');
-  const cardH = Math.round(h * 0.095), cardW = Math.round(w * 0.88);
-  const cardX = (w - cardW) / 2, startY = h * 0.21, gap = cardH * 1.25;
+
+  // Cards centered vertically — no "INFORMATIONS" header (matches preview)
+  const maxCards = Math.min(cards.length, 5);
+  const cardH = Math.round(h * 0.08);
+  const cardW = Math.round(w * 0.88);
+  const gap = Math.round(h * 0.015);
+  const totalCardsH = maxCards * cardH + (maxCards - 1) * gap;
+  const startY = (h - totalCardsH) / 2;
+  const cardX = (w - cardW) / 2;
+
   cards.slice(0, 5).forEach((card, i) => {
     const rawCp = Math.max(0, Math.min(1, (progress - i * 0.1) * 3.5));
     if (rawCp <= 0) return;
-    // Smooth easing (ease-out cubic) for less choppy animation
     const cp = 1 - Math.pow(1 - rawCp, 3);
-    const y = startY + i * gap, slideX = cardX + (1 - cp) * (-w * 0.12);
+    const y = startY + i * (cardH + gap);
+    const slideX = cardX + (1 - cp) * (-w * 0.12);
     ctx.globalAlpha = cp;
-    // Card background
-    ctx.fillStyle = 'rgba(0,0,0,0.55)'; drawRoundRect(ctx, slideX, y, cardW, cardH, 14); ctx.fill();
-    // Left accent border
-    ctx.fillStyle = card.color || accent; ctx.fillRect(slideX, y + 5, 4, cardH - 10);
-    // Emoji (real emoji, large and visible)
-    const emojiSize = Math.round(w * 0.06);
+
+    // Card background — rgba(0,0,0,0.3) like preview
+    ctx.fillStyle = 'rgba(0,0,0,0.3)'; drawRoundRect(ctx, slideX, y, cardW, cardH, 8); ctx.fill();
+    // Left accent border — 2px like preview
+    ctx.fillStyle = card.color || accent; ctx.fillRect(slideX, y + 4, 3, cardH - 8);
+
+    // Emoji
+    const emojiSize = Math.round(w * 0.045);
     ctx.font = `${emojiSize}px sans-serif`; ctx.textAlign = 'left';
-    ctx.fillText(card.emoji || '●', slideX + 18, y + cardH * 0.62);
-    // Label (bold, bigger)
-    const labelX = slideX + 18 + emojiSize + 12;
-    ctx.font = `700 ${Math.round(w * 0.032)}px sans-serif`; ctx.fillStyle = 'white'; ctx.textAlign = 'left';
-    fillTextWithOutline(ctx, card.label.toUpperCase(), labelX, y + cardH * 0.42, 2, 'rgba(0,0,0,0.7)');
-    // Sublabel if value has description
-    ctx.font = `400 ${Math.round(w * 0.022)}px sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.fillText(card.label !== card.value ? '' : '', labelX, y + cardH * 0.68);
-    // Value (large, glowing)
-    ctx.font = `800 ${Math.round(w * 0.048)}px sans-serif`; ctx.textAlign = 'right'; ctx.fillStyle = 'white';
-    ctx.shadowColor = accent; ctx.shadowBlur = 12;
-    fillTextWithOutline(ctx, card.value, slideX + cardW - 20, y + cardH * 0.65, 3, 'rgba(0,0,0,0.8)'); ctx.shadowBlur = 0;
+    ctx.fillStyle = 'white';
+    ctx.fillText(card.emoji || '●', slideX + 14, y + cardH * 0.65);
+
+    // Label — user font, white, 600 weight
+    const labelX = slideX + 14 + emojiSize + 8;
+    ctx.font = `600 ${Math.round(w * 0.028)}px ${fontFamily}`; ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'left';
+    fillTextWithOutline(ctx, card.label, labelX, y + cardH * 0.55, 2, 'rgba(0,0,0,0.5)');
+
+    // Value — user font, card.color or accent, 800 weight (matches preview)
+    ctx.font = `800 ${Math.round(w * 0.032)}px ${fontFamily}`; ctx.textAlign = 'right';
+    ctx.fillStyle = card.color || accent;
+    fillTextWithOutline(ctx, card.value, slideX + cardW - 14, y + cardH * 0.58, 2, 'rgba(0,0,0,0.6)');
     ctx.globalAlpha = 1;
   });
-  // Logo NOT shown on cards — only on video & CTA sequences
+
+  // Logo on cards if configured
+  if (logoImg && design?.logoSequences?.includes('cards')) {
+    const logoSize = Math.round(w * 0.1);
+    const lx = ((design.logoPosition?.x ?? 50) / 100) * w - logoSize / 2;
+    const ly = ((design.logoPosition?.y ?? 85) / 100) * h - logoSize / 2;
+    drawLogo(ctx, logoImg, lx, ly, logoSize);
+  }
 }
 
 function drawVideoSeq(
   ctx: CanvasRenderingContext2D, w: number, h: number,
-  videoEl: HTMLVideoElement | null, logoImg: HTMLImageElement | null, _progress: number
+  videoEl: HTMLVideoElement | null, logoImg: HTMLImageElement | null, _progress: number,
+  design?: DesignOptions
 ) {
+  const fontFamily = design?.font || 'sans-serif';
   if (videoEl) {
     const scale = Math.max(w / videoEl.videoWidth, h / videoEl.videoHeight);
     ctx.drawImage(videoEl, (w - videoEl.videoWidth * scale) / 2, (h - videoEl.videoHeight * scale) / 2, videoEl.videoWidth * scale, videoEl.videoHeight * scale);
   } else {
     ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0, 0, w, h);
-    ctx.font = `400 ${Math.round(w * 0.03)}px sans-serif`; ctx.textAlign = 'center';
+    ctx.font = `400 ${Math.round(w * 0.03)}px ${fontFamily}`; ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fillText('Vidéo', w / 2, h / 2);
   }
-  // Logo removed from video sequence — only shown on CTA
+  // Video overlay text if configured
+  if (design?.overlayText) {
+    ctx.save();
+    ctx.font = `700 ${Math.round(w * 0.05)}px ${fontFamily}`; ctx.textAlign = 'center';
+    ctx.fillStyle = design.overlayColor || '#FFFFFF';
+    ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 12;
+    fillTextWithOutline(ctx, design.overlayText.toUpperCase(), w / 2, h / 2, 3, 'rgba(0,0,0,0.7)');
+    ctx.restore();
+  }
+  // Logo on video if configured
+  if (logoImg && design?.logoSequences?.includes('video')) {
+    const logoSize = Math.round(w * 0.1);
+    const lx = ((design.logoPosition?.x ?? 50) / 100) * w - logoSize / 2;
+    const ly = ((design.logoPosition?.y ?? 85) / 100) * h - logoSize / 2;
+    drawLogo(ctx, logoImg, lx, ly, logoSize);
+  }
 }
 
 function drawCTA(
   ctx: CanvasRenderingContext2D, w: number, h: number,
   accent: string, ctaText: string, ctaSubText: string,
   salesPhrase: string | undefined, watermark: string | undefined,
-  logoImg: HTMLImageElement | null, progress: number
+  logoImg: HTMLImageElement | null, progress: number,
+  design?: DesignOptions
 ) {
-  // CTA: black background with accent-colored text — BIG and readable
+  const fontFamily = design?.font || 'sans-serif';
+  const ctaSubColor = design?.ctaSubColor || '#FFFFFF';
+
+  // CTA: black background — matches preview
   ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, w, h);
   const scale = 0.92 + Math.min(1, progress * 3) * 0.08;
   ctx.save(); ctx.translate(w / 2, h / 2); ctx.scale(scale, scale); ctx.translate(-w / 2, -h / 2);
-  if (logoImg) {
-    const logoSize = Math.round(w * 0.22);
-    drawLogo(ctx, logoImg, (w - logoSize) / 2, h * 0.18, logoSize);
-  }
-  // Main CTA text — large and bold
-  ctx.font = `900 ${Math.round(w * 0.07)}px sans-serif`; ctx.textAlign = 'center';
-  ctx.fillStyle = accent;
-  ctx.shadowColor = accent; ctx.shadowBlur = 30;
-  // Word-wrap CTA text for long phrases
-  const ctaWords = ctaText.toUpperCase().split(' ');
+
+  // Layout: centered vertically — salesPhrase, ctaText, ctaSubText stacked
   const ctaFontSize = Math.round(w * 0.07);
+  const salesFontSize = Math.round(w * 0.035);
+  const subFontSize = Math.round(w * 0.04);
+
+  // Measure total block height for centering
+  let blockH = 0;
+  if (salesPhrase) blockH += salesFontSize * 1.5;
+  // Word-wrap CTA text
+  ctx.font = `900 ${ctaFontSize}px ${fontFamily}`;
+  const ctaWords = ctaText.toUpperCase().split(' ');
   let ctaLines: string[] = [];
   let currentLine = '';
   for (const word of ctaWords) {
     const testLine = currentLine ? currentLine + ' ' + word : word;
-    ctx.font = `900 ${ctaFontSize}px sans-serif`;
     if (ctx.measureText(testLine).width > w * 0.85 && currentLine) {
       ctaLines.push(currentLine);
       currentLine = word;
@@ -361,26 +467,46 @@ function drawCTA(
     }
   }
   if (currentLine) ctaLines.push(currentLine);
-  const ctaStartY = logoImg ? h * 0.48 : h * 0.4;
+  blockH += ctaLines.length * ctaFontSize * 1.2;
+  blockH += subFontSize * 1.5;
+
+  let curY = (h - blockH) / 2 + ctaFontSize * 0.5;
+
+  // Sales phrase — accent color with transparency (matches preview: ctaColor + ee)
+  if (salesPhrase) {
+    ctx.font = `900 ${salesFontSize}px ${fontFamily}`; ctx.textAlign = 'center';
+    ctx.fillStyle = hexToRgba(accent, 0.93);
+    ctx.fillText(salesPhrase, w / 2, curY);
+    curY += salesFontSize * 1.5;
+  }
+
+  // Main CTA text — accent color, large, bold (matches preview)
   ctaLines.forEach((line, i) => {
-    ctx.font = `900 ${ctaFontSize}px sans-serif`;
+    ctx.font = `900 ${ctaFontSize}px ${fontFamily}`; ctx.textAlign = 'center';
     ctx.fillStyle = accent;
-    ctx.shadowColor = accent; ctx.shadowBlur = 30;
-    ctx.fillText(line, w / 2, ctaStartY + i * (ctaFontSize * 1.2));
+    ctx.shadowColor = hexToRgba(accent, 0.4); ctx.shadowBlur = 20;
+    ctx.fillText(line, w / 2, curY + i * (ctaFontSize * 1.2));
   });
   ctx.shadowBlur = 0;
-  // Sub-text — WHITE for readability
-  const subY = ctaStartY + ctaLines.length * (ctaFontSize * 1.2) + Math.round(w * 0.02);
-  ctx.font = `700 ${Math.round(w * 0.035)}px sans-serif`; ctx.fillStyle = '#FFFFFF';
-  ctx.fillText(ctaSubText.toUpperCase(), w / 2, subY);
-  // Sales phrase — white and slightly bigger for readability
-  if (salesPhrase) {
-    ctx.font = `700 ${Math.round(w * 0.042)}px sans-serif`; ctx.fillStyle = '#FFFFFF';
-    ctx.fillText(salesPhrase, w / 2, subY + Math.round(w * 0.07));
+  curY += ctaLines.length * ctaFontSize * 1.2;
+
+  // Sub-text — user-configured color, 900 weight (matches preview)
+  ctx.font = `900 ${subFontSize}px ${fontFamily}`; ctx.textAlign = 'center';
+  ctx.fillStyle = ctaSubColor;
+  ctx.fillText(ctaSubText.toUpperCase(), w / 2, curY + subFontSize * 0.3);
+
+  // Logo on CTA if configured
+  if (logoImg && (!design?.logoSequences || design.logoSequences.includes('cta'))) {
+    const logoSize = Math.round(w * 0.1);
+    const lx = ((design?.logoPosition?.x ?? 50) / 100) * w - logoSize / 2;
+    const ly = ((design?.logoPosition?.y ?? 85) / 100) * h - logoSize / 2;
+    drawLogo(ctx, logoImg, lx, ly, logoSize);
   }
-  // Watermark — bigger and bold
+
+  // Watermark
   if (watermark) {
-    ctx.font = `700 ${Math.round(w * 0.022)}px sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.font = `700 ${Math.round(w * 0.022)}px ${fontFamily}`; ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.textAlign = 'center';
     ctx.fillText(watermark, w / 2, h * 0.92);
   }
   ctx.restore();
@@ -407,7 +533,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     introDuration = 4, cardsDuration = 6, videoDuration = 10, ctaDuration = 4,
     accentColor = '#D91CD2',
     ctaText = 'CHAT POUR PLUS D\'INFOS', ctaSubText = 'LIEN EN BIO',
-    watermarkText, siteText, onProgress,
+    watermarkText, siteText, design, onProgress,
   } = options;
 
   console.log('[Composer] === START ===');
@@ -484,10 +610,10 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     ctx.clearRect(0, 0, width, height);
     const drawSeq = (type: string, progress: number) => {
       switch (type) {
-        case 'intro': drawIntro(ctx, width, height, posterImg, logoImg, title, subtitle, accentColor, progress); break;
-        case 'cards': drawCards(ctx, width, height, cards, logoImg, accentColor, progress); break;
-        case 'video': drawVideoSeq(ctx, width, height, videoEl, logoImg, progress); break;
-        case 'cta': drawCTA(ctx, width, height, accentColor, ctaText, ctaSubText, salesPhrase, watermarkText, logoImg, progress); break;
+        case 'intro': drawIntro(ctx, width, height, posterImg, logoImg, title, subtitle, accentColor, progress, design); break;
+        case 'cards': drawCards(ctx, width, height, cards, logoImg, accentColor, progress, design); break;
+        case 'video': drawVideoSeq(ctx, width, height, videoEl, logoImg, progress, design); break;
+        case 'cta': drawCTA(ctx, width, height, accentColor, ctaText, ctaSubText, salesPhrase, watermarkText, logoImg, progress, design); break;
       }
     };
     if (inTransition && seqIdx < sequences.length - 1) {
@@ -516,7 +642,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       const stOpacity = siteText?.opacity ?? 0.85;
       const linkFontSize = Math.round(width * 0.028 * stSize);
       ctx.save();
-      ctx.font = `700 ${linkFontSize}px sans-serif`; ctx.textAlign = 'center';
+      ctx.font = `700 ${linkFontSize}px ${design?.font || 'sans-serif'}`; ctx.textAlign = 'center';
       ctx.fillStyle = hexToRgba(stColor, stOpacity);
       ctx.shadowColor = accentColor; ctx.shadowBlur = 8;
       fillTextWithOutline(ctx, siteTextLabel, width / 2, height * 0.94, 3, 'rgba(0,0,0,0.85)');

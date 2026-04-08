@@ -938,6 +938,13 @@ export default function CreatorPage() {
               ctaText: branding.ctaText || 'CHAT POUR PLUS D\'INFOS',
               ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
               watermarkText: branding.watermarkText || undefined,
+              design: {
+                font: branding.font || undefined,
+                titleColor: branding.titleColor || undefined,
+                gradientColor1: branding.gradientColor1 || undefined,
+                gradientColor2: branding.gradientColor2 || undefined,
+                ctaSubColor: branding.ctaSubColor || undefined,
+              },
               onProgress: (pct, stage) => {
                 setRenderProgress(Math.round(renderProgressBase + (pct / 100) * renderProgressSpan));
                 setRenderStage(stage);
@@ -1061,6 +1068,13 @@ export default function CreatorPage() {
               ctaText: branding.ctaText || 'CHAT POUR PLUS D\'INFOS',
               ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
               watermarkText: branding.watermarkText || undefined,
+              design: {
+                font: branding.font || undefined,
+                titleColor: branding.titleColor || undefined,
+                gradientColor1: branding.gradientColor1 || undefined,
+                gradientColor2: branding.gradientColor2 || undefined,
+                ctaSubColor: branding.ctaSubColor || undefined,
+              },
               onProgress: (pct, stage) => {
                 setRenderProgress(90 + Math.round(pct * 0.08));
                 setRenderStage(stage);

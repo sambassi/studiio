@@ -1308,6 +1308,13 @@ export default function InfographicPage() {
               sequences: siteTextSequences,
               enabled: siteTextEnabled,
             } : { text: '', enabled: false },
+            design: {
+              font: selectedFont || undefined,
+              titleColor: titleColor || undefined,
+              gradientColor1: gradientColor1 || undefined,
+              gradientColor2: gradientColor2 || undefined,
+              gradientOpacity: gradientOpacity ?? undefined,
+            },
             onProgress: (pct, stage) => {
               setExportProgress(50 + Math.round(pct * 0.35));
             },

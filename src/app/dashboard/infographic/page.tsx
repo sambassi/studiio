@@ -558,6 +558,13 @@ export default function InfographiePage() {
               ctaText: branding.ctaText || 'CHAT POUR PLUS D\'INFOS',
               ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
               watermarkText: branding.watermarkText,
+              design: {
+                font: branding.font || undefined,
+                titleColor: branding.titleColor || undefined,
+                gradientColor1: branding.gradientColor1 || undefined,
+                gradientColor2: branding.gradientColor2 || undefined,
+                ctaSubColor: branding.ctaSubColor || undefined,
+              },
               onProgress: (pct, stage) => {
                 setExportProgress(Math.round(progressBase + (pct / 100) * progressSpan));
                 setExportToast({ message: stage, type: 'success' });
@@ -663,6 +670,13 @@ export default function InfographiePage() {
               ctaText: branding.ctaText || 'CHAT POUR PLUS D\'INFOS',
               ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
               watermarkText: branding.watermarkText,
+              design: {
+                font: branding.font || undefined,
+                titleColor: branding.titleColor || undefined,
+                gradientColor1: branding.gradientColor1 || undefined,
+                gradientColor2: branding.gradientColor2 || undefined,
+                ctaSubColor: branding.ctaSubColor || undefined,
+              },
               onProgress: (pct, stage) => { setExportProgress(pct); setExportToast({ message: stage, type: 'success' }); },
             });
             exportBlob = result.blob;
