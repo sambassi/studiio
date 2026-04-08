@@ -1052,6 +1052,7 @@ export default function InfographicPage() {
 
     try {
       const total = batchCount;
+      const createdPostIds: string[] = [];
       for (let b = 0; b < total; b++) {
         setExportProgress(Math.round((b / total) * 100));
 
@@ -1124,7 +1125,7 @@ export default function InfographicPage() {
             .filter(Boolean)
             .join("\n");
 
-          await fetch("/api/posts", {
+          const postRes = await fetch("/api/posts", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -1255,6 +1256,13 @@ export default function InfographicPage() {
               },
             }),
           });
+          // Capture created post ID for Studio Son redirect
+          try {
+            const postData = await postRes.json();
+            if (postData.success && postData.post?.id) {
+              createdPostIds.push(postData.post.id);
+            }
+          } catch { /* ignore parse errors */ }
         }
       }
 
@@ -1331,7 +1339,12 @@ export default function InfographicPage() {
       showToast(messages.join(' + ') + ' !', 'success');
 
       if (destination === 'audio-studio') {
-        setTimeout(() => router.push("/dashboard/audio-studio"), 1500);
+        const audioStudioUrl = createdPostIds.length === 1
+          ? `/dashboard/audio-studio?postId=${createdPostIds[0]}`
+          : createdPostIds.length > 1
+            ? `/dashboard/audio-studio?postIds=${createdPostIds.join(',')}`
+            : '/dashboard/audio-studio';
+        setTimeout(() => router.push(audioStudioUrl), 1500);
       } else if (destination === "draft" || destination === "both") {
         setTimeout(() => router.push("/dashboard/calendar"), 2000);
       }
