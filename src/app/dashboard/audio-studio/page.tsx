@@ -1056,150 +1056,81 @@ function AudioStudioContent() {
                   </div>
                 </>
               ) : isMontagePost ? (
-                /* ═══ FULL MONTAGE PREVIEW — mirrors calendar rendering ═══ */
+                /* ═══ MONTAGE PREVIEW — same style as calendar sidebar thumbnail ═══ */
                 <div className="absolute inset-0">
-                  {/* === INTRO : Poster + title + subtitle === */}
+                  {/* === INTRO : Poster + titre en bas (identique miniature calendrier) === */}
                   <div className="absolute inset-0" style={{
                     opacity: currentSeqType === 'intro' ? 1 : 0,
-                    transform: currentSeqType === 'intro' ? 'scale(1)' : 'scale(1.08)',
                     zIndex: currentSeqType === 'intro' ? 10 : 1,
-                    transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out',
+                    transition: 'opacity 800ms ease-in-out',
                   }}>
                     {posterImgSrc ? (
                       <img src={posterImgSrc} alt="Affiche" className="absolute inset-0 w-full h-full object-cover" />
                     ) : (
                       <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, #000000, ${hexToRgba(designGradient1, 1)})` }} />
                     )}
-                    <div className="absolute inset-0" style={{ background: posterImgSrc ? getGradientCSS('intro') : 'transparent' }} />
-                    <div className="absolute inset-0 z-10 pointer-events-none">
-                      <div style={{
-                        position: 'absolute',
-                        left: `${positions.title?.x ?? 50}%`,
-                        top: `${positions.title?.y ?? 10}%`,
-                        transform: 'translate(-50%, 0)',
-                        display: 'flex', flexDirection: 'column', alignItems: 'center',
-                        gap: editorPxToCq(4), maxWidth: '90%', textAlign: 'center',
-                      }}>
-                        <h3 style={{
-                          fontFamily: designFont, color: designTitleColor,
-                          fontSize: editorPxToCq((isReelFormat ? 14 : 18) * designTextScale),
-                          letterSpacing: `${(titleTypo.letterSpacing as number) || 0}px`,
-                          lineHeight: (titleTypo.lineHeight as number) || 1.1,
-                          fontWeight: titleTypo.bold !== false ? 900 : 400,
-                          fontStyle: titleTypo.italic ? 'italic' : 'normal',
-                          textTransform: 'uppercase',
-                          textShadow: `0 0 20px ${accent}CC, 0 0 50px ${accent}66`,
-                          margin: 0,
-                        }}>{montageTitle}</h3>
-                        {montageSubtitle && <p style={{
-                          fontFamily: designFont, color: `${designTitleColor}CC`,
-                          fontSize: editorPxToCq((isReelFormat ? 9 : 11) * designTextScale),
-                          letterSpacing: `${(titleTypo.letterSpacing as number) || 0}px`,
-                          lineHeight: (titleTypo.lineHeight as number) || 1.1,
-                          fontWeight: titleTypo.bold !== false ? 900 : 400,
-                          fontStyle: titleTypo.italic ? 'italic' : 'normal',
-                          textShadow: `0 0 12px ${accent}80`, margin: 0,
-                        }}>{montageSubtitle}</p>}
-                        <div style={{
-                          width: '5rem', height: '2px', borderRadius: '9999px',
-                          background: `linear-gradient(90deg, transparent, ${accent}, transparent)`,
-                        }} />
-                      </div>
+                    {/* Dégradé bottom-up identique calendrier sidebar */}
+                    <div className="absolute inset-0" style={{ background: `linear-gradient(to top, ${hexToRgba(designGradient1, designGradientOpacity)} 0%, ${hexToRgba(designGradient2, designGradientOpacity * 0.4)} 40%, transparent 65%)` }} />
+                    {/* Titre + sous-titre en bas — style calendrier sidebar */}
+                    <div className="absolute inset-0 flex flex-col items-center text-center px-2 z-10" style={{ justifyContent: 'flex-end', paddingBottom: '15%' }}>
+                      <h3 className="font-black uppercase tracking-wide leading-tight" style={{
+                        fontSize: 'clamp(10px, 7cqw, 22px)', color: designTitleColor, fontFamily: designFont,
+                        textShadow: `0 0 8px ${accent}CC, 0 0 20px ${accent}66`,
+                        margin: 0,
+                      }}>{montageTitle}</h3>
+                      {montageSubtitle && (
+                        <p className="mt-0.5" style={{ fontSize: 'clamp(7px, 4.5cqw, 14px)', color: `${designTitleColor}CC`, fontFamily: designFont, textShadow: `0 0 6px ${accent}80` }}>{montageSubtitle}</p>
+                      )}
+                      <div className="w-6 h-px mt-1 mx-auto rounded-full" style={{ background: `linear-gradient(90deg, transparent, ${accent}, transparent)` }} />
                     </div>
+                    {/* Logo */}
                     {designLogoUrl && designLogoSequences.includes('intro') && (
-                      <img src={designLogoUrl} alt="Logo" style={{
-                        position: 'absolute', width: editorPxToCq(40 * designLogoScale), height: editorPxToCq(40 * designLogoScale),
-                        objectFit: 'contain', left: `${positions.logo?.x ?? 50}%`, top: `${positions.logo?.y ?? 85}%`,
-                        transform: 'translate(-50%, -50%)', zIndex: 20,
+                      <img src={designLogoUrl} alt="Logo" className="absolute z-20" style={{
+                        width: 'clamp(14px, 12cqw, 40px)', height: 'clamp(14px, 12cqw, 40px)', objectFit: 'contain',
+                        left: `${positions.logo?.x ?? 50}%`, top: `${positions.logo?.y ?? 85}%`,
+                        transform: 'translate(-50%, -50%)',
                       }} />
                     )}
+                    {/* Barre bas */}
+                    <div className="absolute bottom-0 inset-x-0 h-0.5 z-20" style={{ background: `linear-gradient(90deg, ${designGradient1}, ${designGradient2})` }} />
                   </div>
 
-                  {/* === CARDS : Info cards with styles === */}
+                  {/* === CARDS : Fond dégradé + grille de cartes simplifiée === */}
                   <div className="absolute inset-0" style={{
                     opacity: currentSeqType === 'cards' ? 1 : 0,
                     zIndex: currentSeqType === 'cards' ? 10 : 1,
                     transition: 'opacity 800ms ease-in-out',
                   }}>
                     <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, ${hexToRgba(designGradient1, 0.9)}, ${hexToRgba(designGradient2, 0.7)}, #000000)` }} />
-                    <div className="absolute z-10 px-3" style={{
-                      left: `${positions.cards?.x ?? 50}%`, top: `${positions.cards?.y ?? 50}%`,
-                      transform: 'translate(-50%, -50%)', width: `${sizes.cards || 92}%`,
-                    }}>
-                      <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: designCardStyle === 'Full Width' || designCardStyle === 'Minimal Line' ? '1fr' : isReelFormat ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)',
-                        gap: editorPxToCq(6), width: '100%',
-                      }}>
-                        {(() => {
-                          const displayCards = montageCards.length > 0 ? montageCards
-                            : ((meta.textCards || []) as Array<{ text: string; color?: string }>).map(tc => ({ emoji: '📝', label: tc.text, value: tc.text, color: tc.color }));
-                          const scaledLabel = editorPxToCq(7 * designTextScale);
-                          const scaledValue = editorPxToCq(9 * designTextScale);
-                          const scaledDesc = editorPxToCq(6 * designTextScale);
-                          return displayCards.slice(0, isReelFormat ? 5 : 6).map((card: { emoji: string; label: string; value: string; description?: string; color?: string }, i: number) => {
-                            const cardIcon = designCardCustomIcons?.[String(i)] || undefined;
-                            const animStyle = {
-                              transition: 'opacity 0.5s ease-out, transform 0.5s ease-out',
-                              transitionDelay: currentSeqType === 'cards' ? `${i * 150}ms` : '0ms',
-                              opacity: currentSeqType === 'cards' ? 1 : 0,
-                              transform: currentSeqType === 'cards' ? 'translateX(0)' : 'translateX(-20px)',
-                            };
-                            const emojiEl = cardIcon
-                              ? <img src={cardIcon} alt="" style={{ width: editorPxToCq(14), height: editorPxToCq(14), objectFit: 'contain' }} />
-                              : <span style={{ fontSize: editorPxToCq(isReelFormat ? 10 : 14) }}>{card.emoji}</span>;
-
-                            if (designCardStyle === 'Compact') {
-                              return (<div key={i} style={{ ...animStyle, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: editorPxToCq(2), borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.3)', padding: `${editorPxToCq(6)} ${editorPxToCq(6)}`, backdropFilter: 'blur(4px)', borderLeft: `2px solid ${card.color || accent}` }}>
-                                {emojiEl}
-                                <p style={{ fontSize: scaledLabel, fontFamily: designFont, color: '#fff', fontWeight: 700, textAlign: 'center' }}>{card.label}</p>
-                                <p style={{ fontSize: scaledValue, fontFamily: designFont, color: card.color || accent, fontWeight: 900, textAlign: 'center' }}>{card.value}</p>
-                              </div>);
-                            }
-                            if (designCardStyle === 'Stats Bold') {
-                              return (<div key={i} style={{ ...animStyle, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.5)', padding: `${editorPxToCq(8)}`, backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                                <p style={{ fontSize: editorPxToCq(13 * designTextScale), fontFamily: designFont, color: card.color || accent, fontWeight: 900 }}>{card.value}</p>
-                                <p style={{ fontSize: scaledDesc, fontFamily: designFont, color: 'rgba(255,255,255,0.8)', fontWeight: 500, marginTop: editorPxToCq(2), textAlign: 'center' }}>{card.label}</p>
-                              </div>);
-                            }
-                            if (designCardStyle === 'Minimal Line') {
-                              return (<div key={i} style={{ ...animStyle, display: 'flex', alignItems: 'center', gap: editorPxToCq(4), padding: `${editorPxToCq(4)}`, borderBottom: `1px solid ${(card.color || accent)}40` }}>
-                                <span style={{ fontSize: editorPxToCq(8) }}>{card.emoji}</span>
-                                <p style={{ fontSize: scaledLabel, fontFamily: designFont, color: 'rgba(255,255,255,0.8)', flex: 1 }}>{card.label}</p>
-                                <p style={{ fontSize: scaledValue, fontFamily: designFont, color: card.color || accent, fontWeight: 700 }}>{card.value}</p>
-                              </div>);
-                            }
-                            if (designCardStyle === 'Educatif') {
-                              return (<div key={i} style={{ ...animStyle, borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.4)', padding: `${editorPxToCq(8)}`, backdropFilter: 'blur(4px)', borderTop: `2px solid ${card.color || accent}` }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: editorPxToCq(4), marginBottom: editorPxToCq(4) }}>
-                                  {emojiEl}
-                                  <p style={{ fontSize: scaledLabel, fontFamily: designFont, color: '#fff', fontWeight: 700 }}>{card.label}</p>
-                                </div>
-                                <p style={{ fontSize: scaledValue, fontFamily: designFont, color: card.color || accent, fontWeight: 900 }}>{card.value}</p>
-                              </div>);
-                            }
-                            // Full Width (default)
-                            return (<div key={i} style={{ ...animStyle, display: 'flex', alignItems: 'center', gap: editorPxToCq(6), borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.3)', padding: `${editorPxToCq(6)} ${editorPxToCq(10)}`, backdropFilter: 'blur(4px)', borderLeft: `3px solid ${card.color || accent}` }}>
-                              {emojiEl}
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <p style={{ fontSize: scaledLabel, fontFamily: designFont, color: '#fff', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{card.label}</p>
-                              </div>
-                              <p style={{ fontSize: scaledValue, fontFamily: designFont, color: card.color || accent, fontWeight: 900, flexShrink: 0 }}>{card.value}</p>
-                            </div>);
-                          });
-                        })()}
-                      </div>
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center px-2 gap-1 overflow-hidden">
+                      {(() => {
+                        const displayCards = montageCards.length > 0 ? montageCards
+                          : ((meta.textCards || []) as Array<{ text: string; color?: string }>).map(tc => ({ emoji: '📝', label: tc.text, value: tc.text, color: tc.color }));
+                        return displayCards.slice(0, 5).map((card: { emoji: string; label: string; value: string; color?: string }, i: number) => (
+                          <div key={i} className="flex items-center gap-1 w-full rounded px-1 py-0.5" style={{
+                            backgroundColor: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(4px)',
+                            borderLeft: `2px solid ${card.color || accent}`,
+                            opacity: currentSeqType === 'cards' ? 1 : 0,
+                            transform: currentSeqType === 'cards' ? 'translateX(0)' : 'translateX(-10px)',
+                            transition: `opacity 0.4s ease-out ${i * 100}ms, transform 0.4s ease-out ${i * 100}ms`,
+                          }}>
+                            <span style={{ fontSize: 'clamp(8px, 5cqw, 16px)' }}>{card.emoji}</span>
+                            <span className="truncate" style={{ fontSize: 'clamp(7px, 4cqw, 12px)', fontFamily: designFont, color: '#fff', fontWeight: 600, flex: 1 }}>{card.label}</span>
+                            <span className="flex-shrink-0" style={{ fontSize: 'clamp(7px, 4.5cqw, 13px)', fontFamily: designFont, color: card.color || accent, fontWeight: 800 }}>{card.value}</span>
+                          </div>
+                        ));
+                      })()}
                     </div>
                     {designLogoUrl && designLogoSequences.includes('cards') && (
-                      <img src={designLogoUrl} alt="Logo" style={{
-                        position: 'absolute', width: editorPxToCq(40 * designLogoScale), height: editorPxToCq(40 * designLogoScale),
-                        objectFit: 'contain', left: `${positions.logo?.x ?? 50}%`, top: `${positions.logo?.y ?? 85}%`,
-                        transform: 'translate(-50%, -50%)', zIndex: 20,
+                      <img src={designLogoUrl} alt="Logo" className="absolute z-20" style={{
+                        width: 'clamp(14px, 12cqw, 40px)', height: 'clamp(14px, 12cqw, 40px)', objectFit: 'contain',
+                        left: `${positions.logo?.x ?? 50}%`, top: `${positions.logo?.y ?? 85}%`,
+                        transform: 'translate(-50%, -50%)',
                       }} />
                     )}
                   </div>
 
-                  {/* === VIDEO : Rush video === */}
+                  {/* === VIDEO : Rush vidéo === */}
                   {rawVideoSrc && (
                     <div className="absolute inset-0" style={{
                       opacity: currentSeqType === 'video' ? 1 : 0,
@@ -1217,32 +1148,25 @@ function AudioStudioContent() {
                       />
                       <div className="absolute inset-0 z-[5]" style={{ background: getGradientCSS('video'), pointerEvents: 'none' }} />
                       {(meta.videoOverlayText as string) && (
-                        <div className="absolute inset-0 z-10 pointer-events-none">
-                          <p style={{
+                        <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none px-2">
+                          <p className="text-center uppercase font-bold" style={{
                             fontFamily: designFont, color: (design.overlayColor as string) || '#FFFFFF',
-                            fontSize: editorPxToCq(16 * designTextScale),
-                            letterSpacing: `${(overlayTypo.letterSpacing as number) || 0}px`,
-                            lineHeight: (overlayTypo.lineHeight as number) || 1.2,
-                            fontWeight: overlayTypo.bold ? 'bold' : 'normal',
-                            fontStyle: overlayTypo.italic ? 'italic' : 'normal',
-                            textTransform: 'uppercase', textAlign: 'center',
+                            fontSize: 'clamp(9px, 6cqw, 20px)',
                             textShadow: '0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5)',
-                            position: 'absolute', left: `${positions.overlay?.x ?? 50}%`, top: `${positions.overlay?.y ?? 33}%`,
-                            transform: 'translate(-50%, -50%)', width: '85%',
                           }}>{meta.videoOverlayText as string}</p>
                         </div>
                       )}
                       {designLogoUrl && designLogoSequences.includes('video') && (
-                        <img src={designLogoUrl} alt="Logo" style={{
-                          position: 'absolute', width: editorPxToCq(40 * designLogoScale), height: editorPxToCq(40 * designLogoScale),
-                          objectFit: 'contain', left: `${positions.logo?.x ?? 50}%`, top: `${positions.logo?.y ?? 85}%`,
-                          transform: 'translate(-50%, -50%)', zIndex: 20,
+                        <img src={designLogoUrl} alt="Logo" className="absolute z-20" style={{
+                          width: 'clamp(14px, 12cqw, 40px)', height: 'clamp(14px, 12cqw, 40px)', objectFit: 'contain',
+                          left: `${positions.logo?.x ?? 50}%`, top: `${positions.logo?.y ?? 85}%`,
+                          transform: 'translate(-50%, -50%)',
                         }} />
                       )}
                     </div>
                   )}
 
-                  {/* === CTA : Call to action === */}
+                  {/* === CTA : Appel à l'action === */}
                   <div className="absolute inset-0" style={{
                     opacity: currentSeqType === 'cta' ? 1 : 0,
                     transform: currentSeqType === 'cta' ? 'scale(1)' : 'scale(0.92)',
@@ -1250,45 +1174,27 @@ function AudioStudioContent() {
                     background: '#000000',
                     transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out',
                   }}>
-                    <div className="text-center" style={{
-                      position: 'absolute',
-                      left: `${positions.watermark?.x ?? 50}%`, top: `${positions.watermark?.y ?? 97}%`,
-                      transform: 'translate(-50%, -100%)', width: `${sizes.watermark || 70}%`,
-                    }}>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-3">
                       {montageSalesPhrase && <p style={{
                         fontFamily: designFont, color: `${montageCtaColor}ee`,
-                        fontSize: editorPxToCq((isReelFormat ? 8 : 10) * designCtaTextScale),
-                        letterSpacing: `${(ctaTypo.letterSpacing as number) || 0}px`,
-                        lineHeight: (ctaTypo.lineHeight as number) || 1.2,
-                        fontWeight: (ctaTypo.bold as boolean) !== false ? 900 : 400,
-                        fontStyle: (ctaTypo.italic as boolean) ? 'italic' : 'normal',
-                        marginBottom: editorPxToCq(4),
+                        fontSize: 'clamp(7px, 4cqw, 13px)', fontWeight: 900, marginBottom: '0.3em',
                       }}>{montageSalesPhrase}</p>}
                       <p style={{
                         fontFamily: designFont, color: montageCtaColor,
-                        fontSize: editorPxToCq((isReelFormat ? 12 : 16) * designCtaTextScale),
-                        letterSpacing: `${(ctaTypo.letterSpacing as number) || 0}px`,
-                        lineHeight: (ctaTypo.lineHeight as number) || 1.2,
-                        fontWeight: (ctaTypo.bold as boolean) !== false ? 900 : 400,
-                        fontStyle: (ctaTypo.italic as boolean) ? 'italic' : 'normal',
-                        textTransform: 'uppercase',
-                        textShadow: `0 0 20px ${montageCtaColor}60`,
+                        fontSize: 'clamp(10px, 8cqw, 26px)', fontWeight: 900,
+                        textTransform: 'uppercase', textShadow: `0 0 20px ${montageCtaColor}60`,
                       }}>{montageCtaMain}</p>
                       <p style={{
                         fontFamily: designFont, color: montageCtaSubColor,
-                        fontSize: editorPxToCq((isReelFormat ? 9 : 12) * designCtaTextScale),
-                        letterSpacing: `${(ctaTypo.letterSpacing as number) || 0}px`,
-                        textTransform: 'uppercase',
-                        fontWeight: (ctaTypo.bold as boolean) !== false ? 900 : 400,
-                        fontStyle: (ctaTypo.italic as boolean) ? 'italic' : 'normal',
-                        marginTop: editorPxToCq(4),
+                        fontSize: 'clamp(7px, 5cqw, 16px)', fontWeight: 900,
+                        textTransform: 'uppercase', marginTop: '0.3em',
                       }}>{montageCtaSub}</p>
                     </div>
                     {designLogoUrl && designLogoSequences.includes('cta') && (
-                      <img src={designLogoUrl} alt="Logo" style={{
-                        position: 'absolute', width: editorPxToCq(40 * designLogoScale), height: editorPxToCq(40 * designLogoScale),
-                        objectFit: 'contain', left: `${positions.logo?.x ?? 50}%`, top: `${positions.logo?.y ?? 85}%`,
-                        transform: 'translate(-50%, -50%)', zIndex: 20,
+                      <img src={designLogoUrl} alt="Logo" className="absolute z-20" style={{
+                        width: 'clamp(14px, 12cqw, 40px)', height: 'clamp(14px, 12cqw, 40px)', objectFit: 'contain',
+                        left: `${positions.logo?.x ?? 50}%`, top: `${positions.logo?.y ?? 85}%`,
+                        transform: 'translate(-50%, -50%)',
                       }} />
                     )}
                   </div>
@@ -1300,7 +1206,7 @@ function AudioStudioContent() {
                       transform: 'translate(-50%, -50%)',
                     }}>
                       <p className="font-bold tracking-wider whitespace-nowrap" style={{
-                        fontSize: editorPxToCq(12 * (siteTextConfig.size || 1.0)),
+                        fontSize: 'clamp(6px, 4cqw, 14px)',
                         color: siteTextConfig.color || '#FFFFFF',
                         opacity: siteTextConfig.opacity ?? 0.7,
                         textShadow: `0 0 10px ${(siteTextConfig.color || '#FFFFFF')}40, 0 2px 4px rgba(0,0,0,0.8)`,
