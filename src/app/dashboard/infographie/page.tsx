@@ -408,7 +408,12 @@ export default function InfographicPage() {
         if (cfg.selectedPhotoIndex !== undefined) setSelectedPhotoIndex(cfg.selectedPhotoIndex);
         // Site text (Afroboost.com)
         if (cfg.siteText !== undefined) setSiteText(cfg.siteText);
-        if (cfg.siteTextPos) setSiteTextPos(cfg.siteTextPos);
+        if (cfg.siteTextPositions) {
+          setSiteTextPositions(cfg.siteTextPositions);
+        } else if (cfg.siteTextPos) {
+          // Migrate old single-pos format to per-sequence
+          setSiteTextPositions({ titre: { ...cfg.siteTextPos }, cartes: { ...cfg.siteTextPos }, video: { ...cfg.siteTextPos }, cta: { ...cfg.siteTextPos } });
+        }
         if (cfg.siteTextSize !== undefined) setSiteTextSize(cfg.siteTextSize);
         if (cfg.siteTextColor) setSiteTextColor(cfg.siteTextColor);
         if (cfg.siteTextOpacity !== undefined) setSiteTextOpacity(cfg.siteTextOpacity);
@@ -557,12 +562,26 @@ export default function InfographicPage() {
 
   // Site text (e.g. "Afroboost.com") — flexible text overlay
   const [siteText, setSiteText] = useState("Afroboost.com");
-  const [siteTextPos, setSiteTextPos] = useState({ x: 50, y: 95 });
   const [siteTextSize, setSiteTextSize] = useState(1.0); // scale 0.3 to 3.0
   const [siteTextColor, setSiteTextColor] = useState("#FFFFFF");
   const [siteTextOpacity, setSiteTextOpacity] = useState(0.7);
   const [siteTextSequences, setSiteTextSequences] = useState<string[]>(["titre", "cartes", "video", "cta"]);
   const [siteTextEnabled, setSiteTextEnabled] = useState(true);
+  // Per-sequence siteText positions: each sequence can have its own siteText placement
+  const defaultSiteTextPos = { x: 50, y: 95 };
+  const [siteTextPositions, setSiteTextPositions] = useState<Record<string, { x: number; y: number }>>({
+    titre: { ...defaultSiteTextPos },
+    cartes: { ...defaultSiteTextPos },
+    video: { ...defaultSiteTextPos },
+    cta: { ...defaultSiteTextPos },
+  });
+  // Helper to get siteText pos for current active sequence (or first enabled sequence)
+  const getActiveSiteTextPos = () => {
+    if (activeSequence !== 'all' && siteTextPositions[activeSequence]) return siteTextPositions[activeSequence];
+    const firstSeq = siteTextSequences[0];
+    return (firstSeq && siteTextPositions[firstSeq]) || defaultSiteTextPos;
+  };
+  const siteTextPos = getActiveSiteTextPos();
 
   // Text size scale (0.5 to 3.0)
   const [textScale, setTextScale] = useState(1.0);
@@ -596,7 +615,7 @@ export default function InfographicPage() {
           titleSize, cardsSize, watermarkSize,
           title, subtitle, videoOverlayText, cards, salesPhrases, contentTheme, customTopic,
           photoSearchQuery, selectedPhotoIndex,
-          siteText, siteTextPos, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
+          siteText, siteTextPositions, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
         }),
       );
     } catch { /* ignore */ }
@@ -616,7 +635,7 @@ export default function InfographicPage() {
     titleSize, cardsSize, watermarkSize,
     title, subtitle, videoOverlayText, cards, salesPhrases, contentTheme, customTopic,
     photoSearchQuery, selectedPhotoIndex,
-    siteText, siteTextPos, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
+    siteText, siteTextPositions, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
   ]);
 
   // (Typography states declared earlier for localStorage compatibility)
@@ -1239,7 +1258,8 @@ export default function InfographicPage() {
                   logoUrl: logoImage || undefined,
                   siteText: siteTextEnabled ? {
                     text: siteText,
-                    pos: siteTextPos,
+                    pos: getActiveSiteTextPos(), // Legacy single pos (fallback)
+                    positions: siteTextPositions, // Per-sequence positions
                     size: siteTextSize,
                     color: siteTextColor,
                     opacity: siteTextOpacity,
@@ -1328,6 +1348,7 @@ export default function InfographicPage() {
               size: siteTextSize,
               sequences: siteTextSequences,
               enabled: siteTextEnabled,
+              positions: siteTextPositions,
             } : { text: '', enabled: false },
             design: {
               font: selectedFont || undefined,
@@ -2895,7 +2916,18 @@ export default function InfographicPage() {
               else if (dragging === "watermark") setWatermarkPos({ x, y });
               else if (dragging === "cards") setCardsPos({ x, y });
               else if (dragging === "overlay") setOverlayPos({ x, y });
-              else if (dragging === "sitetext") setSiteTextPos({ x, y });
+              else if (dragging === "sitetext") {
+                // Update siteText position ONLY for the active sequence (same as logo)
+                if (activeSequence !== 'all') {
+                  setSiteTextPositions(prev => ({ ...prev, [activeSequence]: { x, y } }));
+                } else {
+                  // In 'all' view, only update the first enabled sequence
+                  const firstSeq = siteTextSequences[0];
+                  if (firstSeq) {
+                    setSiteTextPositions(prev => ({ ...prev, [firstSeq]: { x, y } }));
+                  }
+                }
+              }
             }}
             onMouseUp={() => {
               setDragging(null);

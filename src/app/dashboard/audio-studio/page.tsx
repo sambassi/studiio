@@ -736,7 +736,7 @@ function AudioStudioContent() {
               ctaText: (brand?.ctaText as string) || 'CHAT POUR PLUS D\'INFOS',
               ctaSubText: (brand?.ctaSubText as string) || 'LIEN EN BIO',
               watermarkText: (brand?.watermarkText as string) || undefined,
-              siteText: (batchDesign.siteText as { text: string; color?: string; opacity?: number; size?: number; sequences?: string[]; enabled?: boolean }) || undefined,
+              siteText: (batchDesign.siteText as { text: string; color?: string; opacity?: number; size?: number; sequences?: string[]; enabled?: boolean; positions?: Record<string, { x?: number; y?: number }> }) || undefined,
               design: {
                 font: (batchDesign.font as string) || undefined,
                 titleColor: (batchDesign.titleColor as string) || undefined,
@@ -883,7 +883,7 @@ function AudioStudioContent() {
           ctaText: (brand?.ctaText as string) || 'CHAT POUR PLUS D\'INFOS',
           ctaSubText: (brand?.ctaSubText as string) || 'LIEN EN BIO',
           watermarkText: (brand?.watermarkText as string) || undefined,
-          siteText: (pDesign.siteText as { text: string; color?: string; opacity?: number; size?: number; sequences?: string[]; enabled?: boolean }) || undefined,
+          siteText: (pDesign.siteText as { text: string; color?: string; opacity?: number; size?: number; sequences?: string[]; enabled?: boolean; positions?: Record<string, { x?: number; y?: number }> }) || undefined,
           design: {
             font: (pDesign.font as string) || undefined,
             titleColor: (pDesign.titleColor as string) || undefined,
@@ -1019,6 +1019,13 @@ function AudioStudioContent() {
   const designLogoSequences = rawLogoSequences.map((s: string) => seqNameMap[s] || s);
   const siteTextConfig = designSiteText || { text: 'Afroboost.com', pos: { x: 50, y: 95 }, size: 1.0, color: '#FFFFFF', opacity: 0.7, sequences: ['titre', 'cartes', 'video', 'cta'], enabled: true };
   const siteTextSeqs = (siteTextConfig.sequences || []).map((s: string) => seqNameMap[s] || s);
+  // Per-sequence siteText positions (normalized from French → English)
+  const rawSiteTextPositions = (siteTextConfig as any).positions || {};
+  const designSiteTextPositions: Record<string, { x: number; y: number }> = {};
+  Object.entries(rawSiteTextPositions).forEach(([k, v]: [string, any]) => {
+    designSiteTextPositions[seqNameMap[k] || k] = v;
+  });
+  const getAudioSiteTextPos = (seq: string) => designSiteTextPositions[seq] || siteTextConfig.pos || { x: 50, y: 95 };
   const isReelFormat = post?.format === 'reel' || post?.format !== 'tv';
 
   // Utility: hex to rgba
@@ -1250,7 +1257,7 @@ function AudioStudioContent() {
                   {/* === Site text overlay === */}
                   {siteTextConfig.enabled && siteTextConfig.text && siteTextSeqs.includes(currentSeqType) && (
                     <div className="absolute z-30 pointer-events-none" style={{
-                      left: `${siteTextConfig.pos?.x ?? 50}%`, top: `${siteTextConfig.pos?.y ?? 95}%`,
+                      left: `${getAudioSiteTextPos(currentSeqType).x}%`, top: `${getAudioSiteTextPos(currentSeqType).y}%`,
                       transform: 'translate(-50%, -50%)',
                     }}>
                       <p className="font-bold tracking-wider whitespace-nowrap" style={{

@@ -2521,6 +2521,13 @@ export default function CalendarPage() {
         const designSiteText = design?.siteText;
         const siteTextConfig = designSiteText || { text: 'Afroboost.com', pos: { x: 50, y: 95 }, size: 1.0, color: '#FFFFFF', opacity: 0.7, sequences: ['titre', 'cartes', 'video', 'cta'], enabled: true };
         const siteTextSeqs = (siteTextConfig.sequences || []).map((s: string) => seqNameMap[s] || s);
+        // Per-sequence siteText positions (normalized from French → English)
+        const rawSiteTextPositions = (siteTextConfig as any).positions || {};
+        const designSiteTextPositions: Record<string, { x: number; y: number }> = {};
+        Object.entries(rawSiteTextPositions).forEach(([k, v]: [string, any]) => {
+          designSiteTextPositions[seqNameMap[k] || k] = v;
+        });
+        const getCalSiteTextPos = (seq: string) => designSiteTextPositions[seq] || siteTextConfig.pos || { x: 50, y: 95 };
 
         // Échelle : L'aperçu éditeur pour 9:16 est ~max-w-xs (320px) avec des tailles en px.
         // L'aperçu calendrier utilise height:70dvh, aspect-ratio:9/16 → largeur ≈ 39.375dvh.
@@ -2928,8 +2935,8 @@ export default function CalendarPage() {
                     {/* === Texte site web — affiché selon les séquences configurées === */}
                     {siteTextConfig.enabled && siteTextConfig.text && siteTextSeqs.includes(currentSeq) && (
                       <div className="absolute z-30 pointer-events-none" style={{
-                        left: `${siteTextConfig.pos?.x ?? 50}%`,
-                        top: `${siteTextConfig.pos?.y ?? 95}%`,
+                        left: `${getCalSiteTextPos(currentSeq).x}%`,
+                        top: `${getCalSiteTextPos(currentSeq).y}%`,
                         transform: 'translate(-50%, -50%)',
                       }}>
                         <p className="font-bold tracking-wider whitespace-nowrap" style={{

@@ -29,6 +29,10 @@ export interface SiteTextConfig {
   /** Sequences where siteText is visible — e.g. ['intro', 'cards', 'video', 'cta'] */
   sequences?: string[];
   enabled?: boolean;
+  /** Per-sequence positions {titre: {x,y}, cartes: {x,y}, video: {x,y}, cta: {x,y}} */
+  positions?: Record<string, { x?: number; y?: number }>;
+  /** Legacy single position fallback */
+  pos?: { x?: number; y?: number };
 }
 
 /** Design settings matching the HTML preview — ensures published video looks identical */
@@ -260,6 +264,22 @@ function getLogoPos(design: DesignOptions | undefined, seq: string): { x: number
     return { x: perSeq.x ?? 50, y: perSeq.y ?? 85 };
   }
   return { x: design?.logoPosition?.x ?? 50, y: design?.logoPosition?.y ?? 85 };
+}
+
+/** Get siteText position for a specific sequence, with fallback to legacy pos or default */
+function getSiteTextPos(siteText: SiteTextConfig | undefined, seq: string): { x: number; y: number } {
+  // Map Canvas sequence name → editor French name for positions lookup
+  const seqToEditor: Record<string, string> = { intro: 'titre', cards: 'cartes', video: 'video', cta: 'cta' };
+  const editorSeq = seqToEditor[seq] || seq;
+  const perSeq = siteText?.positions?.[editorSeq];
+  if (perSeq && (perSeq.x !== undefined || perSeq.y !== undefined)) {
+    return { x: perSeq.x ?? 50, y: perSeq.y ?? 95 };
+  }
+  // Fallback to legacy single pos
+  if (siteText?.pos && (siteText.pos.x !== undefined || siteText.pos.y !== undefined)) {
+    return { x: siteText.pos.x ?? 50, y: siteText.pos.y ?? 95 };
+  }
+  return { x: 50, y: 95 };
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -953,11 +973,15 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       const stColor = siteText?.color || '#FFFFFF';
       const stOpacity = siteText?.opacity ?? 0.85;
       const linkFontSize = Math.round(width * 0.028 * stSize);
+      // Per-sequence position (matches editor drag positions)
+      const stPos = getSiteTextPos(siteText, seq.type);
+      const stX = (stPos.x / 100) * width;
+      const stY = (stPos.y / 100) * height;
       ctx.save();
       ctx.font = `700 ${linkFontSize}px ${normalizedDesign?.font || 'sans-serif'}`; ctx.textAlign = 'center';
       ctx.fillStyle = hexToRgba(stColor, stOpacity);
       ctx.shadowColor = accentColor; ctx.shadowBlur = 8;
-      fillTextWithOutline(ctx, siteTextLabel, width / 2, height * 0.94, 3, 'rgba(0,0,0,0.85)');
+      fillTextWithOutline(ctx, siteTextLabel, stX, stY, 3, 'rgba(0,0,0,0.85)');
       ctx.shadowBlur = 0;
       ctx.restore();
     }
