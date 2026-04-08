@@ -540,8 +540,47 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   console.log('[Composer] Music:', musicUrl?.substring(0, 60) || 'NONE');
   console.log('[Composer] Voice:', voiceUrl?.substring(0, 60) || 'NONE');
   console.log('[Composer] Logo:', logoUrl?.substring(0, 60) || 'NONE');
+  console.log('[Composer] Design:', design ? JSON.stringify({ font: design.font, titleColor: design.titleColor, grad1: design.gradientColor1 }) : 'NONE');
 
   onProgress?.(2, 'Chargement des médias...');
+
+  // Ensure the design font is loaded before rendering (Canvas needs fonts in document.fonts)
+  if (design?.font && design.font !== 'sans-serif') {
+    try {
+      // Google Fonts URL for common fonts used in the app
+      const FONT_URLS: Record<string, string> = {
+        'Anton': 'https://fonts.googleapis.com/css2?family=Anton&display=swap',
+        'Syne': 'https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&display=swap',
+        'Bebas Neue': 'https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap',
+        'Poppins': 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800;900&display=swap',
+        'Space Grotesk': 'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap',
+      };
+      const fontUrl = FONT_URLS[design.font];
+      if (fontUrl) {
+        // Check if already loaded
+        const alreadyLoaded = document.fonts.check(`900 48px "${design.font}"`);
+        if (!alreadyLoaded) {
+          console.log(`[Composer] Loading font: ${design.font}...`);
+          // Inject link if not present
+          if (!document.querySelector(`link[href*="${encodeURIComponent(design.font)}"]`)) {
+            const link = document.createElement('link');
+            link.rel = 'stylesheet'; link.href = fontUrl;
+            document.head.appendChild(link);
+          }
+          // Wait for font to be ready (max 3s)
+          await Promise.race([
+            document.fonts.load(`900 48px "${design.font}"`),
+            new Promise(r => setTimeout(r, 3000)),
+          ]);
+          console.log(`[Composer] Font "${design.font}" loaded:`, document.fonts.check(`900 48px "${design.font}"`));
+        } else {
+          console.log(`[Composer] Font "${design.font}" already loaded`);
+        }
+      }
+    } catch (err) {
+      console.warn('[Composer] Font loading failed, using fallback:', err);
+    }
+  }
 
   // Load visual media
   const [posterImg, logoImg, videoEl] = await Promise.all([
