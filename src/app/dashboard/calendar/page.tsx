@@ -82,6 +82,45 @@ interface PostMetadata {
     order?: string[];
   };
   branding?: PostBranding;
+  design?: {
+    font?: string;
+    filter?: string;
+    cardStyle?: string;
+    textScale?: number;
+    ctaTextScale?: number;
+    titleColor?: string;
+    ctaColor?: string;
+    ctaSubColor?: string;
+    ctaMainText?: string;
+    ctaSubText?: string;
+    noColorBg?: boolean;
+    noColorSequences?: boolean;
+    gradientColor1?: string;
+    gradientColor2?: string;
+    gradientOpacity?: number;
+    positions?: {
+      title?: { x: number; y: number };
+      logo?: { x: number; y: number };
+      watermark?: { x: number; y: number };
+      cards?: { x: number; y: number };
+      overlay?: { x: number; y: number };
+    };
+    sizes?: {
+      title?: number;
+      cards?: number;
+      watermark?: number;
+    };
+    logoScale?: number;
+    logoSequences?: string[];
+    logoUrl?: string;
+    typography?: {
+      title?: { letterSpacing?: number; lineHeight?: number; bold?: boolean; italic?: boolean };
+      cta?: { letterSpacing?: number; lineHeight?: number; bold?: boolean; italic?: boolean };
+      overlay?: { letterSpacing?: number; lineHeight?: number; bold?: boolean; italic?: boolean };
+    };
+    cardCustomIcons?: Record<string, string>;
+    overlayColor?: string;
+  };
 }
 
 interface Post {
@@ -2261,6 +2300,41 @@ export default function CalendarPage() {
         const previewVoiceUrl = meta?.voiceUrl as string | undefined;
         // Detect audio: explicit hasAudio flag OR renderedVideoUrl exists (Studio Son always embeds audio)
         const postHasAudio = !!meta?.hasAudio || !!meta?.renderedVideoUrl;
+
+        // ── Design extraction with fallbacks for old posts without design field ──
+        const design = meta?.design;
+        const designFont = design?.font || 'sans-serif';
+        const designTitleColor = design?.titleColor || '#FFFFFF';
+        const designCtaColor = design?.ctaColor || accent;
+        const designCtaSubColor = design?.ctaSubColor || '#FFFFFF';
+        const designCtaTextScale = design?.ctaTextScale || 1.0;
+        const designTextScale = design?.textScale || 1.0;
+        const designGradient1 = design?.gradientColor1 || 'rgba(100,0,140,1)';
+        const designGradient2 = design?.gradientColor2 || 'rgba(0,0,0,1)';
+        const designGradientOpacity = design?.gradientOpacity ?? 0.85;
+        const designLogoScale = design?.logoScale || 1.0;
+        const titleTypo = design?.typography?.title || {};
+        const ctaTypo = design?.typography?.cta || {};
+        const overlayTypo = design?.typography?.overlay || {};
+        const positions = design?.positions || {};
+        const sizes = design?.sizes || {};
+        const designCtaMainText = design?.ctaMainText;
+        const designCtaSubText = design?.ctaSubText;
+        const designLogoUrl = design?.logoUrl || meta?.logoUrl;
+        const designCardStyle = design?.cardStyle;
+        const designCardCustomIcons = design?.cardCustomIcons;
+        const designLogoSequences = design?.logoSequences;
+
+        // Helper: convert hex color to rgba with opacity
+        const hexToRgba = (hex: string, opacity: number) => {
+          // If already rgba/rgb, just return
+          if (hex.startsWith('rgba') || hex.startsWith('rgb')) return hex;
+          const r = parseInt(hex.slice(1, 3), 16) || 0;
+          const g = parseInt(hex.slice(3, 5), 16) || 0;
+          const b = parseInt(hex.slice(5, 7), 16) || 0;
+          return `rgba(${r},${g},${b},${opacity})`;
+        };
+
         // Display title: use metadata subtitle for the overlay text, keep raw title for the sidebar
         const displayTitle = meta?.subtitle
           ? fullPreviewPost.title.replace(/\s*\(Rush\s*\d+\)\s*/gi, '').replace(/\s*-\s*(Instagram|Facebook|TikTok|YouTube|YouTube Shorts)\s*/gi, '')
@@ -2314,36 +2388,84 @@ export default function CalendarPage() {
                   >
                     {/* === INTRO : Photo Affiche + Titre + Sous-titre === */}
                     <div className="absolute inset-0" style={{ opacity: currentSeq === 'intro' ? 1 : 0, transform: currentSeq === 'intro' ? 'scale(1)' : 'scale(1.08)', zIndex: currentSeq === 'intro' ? 10 : 1, transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
-                      {posterImgSrc ? <img src={posterImgSrc} alt="Affiche" className="absolute inset-0 w-full h-full object-cover" /> : <div className="absolute inset-0 bg-gradient-to-b from-black to-purple-950" />}
-                      <div className="absolute inset-0" style={{ background: posterImgSrc ? 'linear-gradient(to top, rgba(100,0,140,0.85) 0%, rgba(0,0,0,0.35) 40%, transparent 60%)' : 'transparent' }} />
-                      <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 z-10">
-                        <h3 className="text-3xl font-black text-white uppercase tracking-wider leading-tight" style={{ textShadow: `0 0 20px ${accent}CC, 0 0 50px ${accent}66` }}>{displayTitle || 'TITRE'}</h3>
-                        {meta?.subtitle && <p className="text-base text-white/90 mt-3" style={{ textShadow: `0 0 12px ${accent}80` }}>{meta.subtitle}</p>}
+                      {posterImgSrc ? <img src={posterImgSrc} alt="Affiche" className="absolute inset-0 w-full h-full object-cover" /> : <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, #000000, ${design ? hexToRgba(designGradient1, 1) : '#1e003c'})` }} />}
+                      <div className="absolute inset-0" style={{ background: posterImgSrc ? `linear-gradient(to top, ${hexToRgba(designGradient1, designGradientOpacity)} 0%, ${hexToRgba(designGradient2, 0.35)} 40%, transparent 60%)` : 'transparent' }} />
+                      <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 z-10" style={{ position: 'relative' }}>
+                        <h3 style={{
+                          fontFamily: designFont,
+                          color: designTitleColor,
+                          fontSize: `${(sizes.title || 30) * designTextScale}px`,
+                          letterSpacing: `${titleTypo.letterSpacing || 2}px`,
+                          lineHeight: titleTypo.lineHeight || 1.1,
+                          fontWeight: titleTypo.bold !== false ? 900 : 400,
+                          fontStyle: titleTypo.italic ? 'italic' : 'normal',
+                          textTransform: 'uppercase',
+                          textShadow: `0 0 20px ${accent}CC, 0 0 50px ${accent}66`,
+                          ...(positions.title ? { position: 'absolute', left: `${positions.title.x}%`, top: `${positions.title.y}%`, transform: 'translate(-50%, -50%)' } : {}),
+                        }}>{displayTitle || 'TITRE'}</h3>
+                        {meta?.subtitle && <p className="text-base mt-3" style={{ color: `${designTitleColor}E6`, fontFamily: designFont, textShadow: `0 0 12px ${accent}80` }}>{meta.subtitle}</p>}
                         <div className="w-20 h-0.5 mt-4 mx-auto rounded-full" style={{ background: `linear-gradient(90deg, transparent, ${accent}, transparent)` }} />
                       </div>
+                      {/* Logo on intro if logoSequences includes 'intro' */}
+                      {designLogoUrl && designLogoSequences?.includes('intro') && (
+                        <img src={designLogoUrl} alt="Logo" style={{
+                          position: 'absolute',
+                          width: `${160 * designLogoScale}px`,
+                          height: `${160 * designLogoScale}px`,
+                          objectFit: 'contain',
+                          left: positions.logo ? `${positions.logo.x}%` : '50%',
+                          top: positions.logo ? `${positions.logo.y}%` : '8%',
+                          transform: 'translate(-50%, -50%)',
+                          zIndex: 20,
+                        }} />
+                      )}
                     </div>
 
                     {/* === CARTES : Cartes d'info avec animation décalée === */}
                     <div className="absolute inset-0" style={{ opacity: currentSeq === 'cards' ? 1 : 0, zIndex: currentSeq === 'cards' ? 10 : 1, transition: 'opacity 800ms ease-in-out', willChange: 'opacity' }}>
-                      <div className="absolute inset-0 bg-gradient-to-b from-purple-950 via-gray-900 to-black" />
-                      <div className="absolute inset-0 flex flex-col items-center justify-center z-10 px-6">
-                        <p className="text-xs font-bold text-white/50 uppercase tracking-[0.25em] text-center mb-5">{t('fullPreview.information')}</p>
+                      <div className="absolute inset-0" style={{ background: design ? `linear-gradient(to bottom, ${hexToRgba(designGradient1, 0.9)}, ${hexToRgba(designGradient2, 0.7)}, #000000)` : 'linear-gradient(to bottom, rgb(59,7,100), rgb(17,24,39), #000000)' }} />
+                      <div className="absolute inset-0 flex flex-col items-center justify-center z-10 px-6" style={positions.cards ? { position: 'absolute', left: `${positions.cards.x}%`, top: `${positions.cards.y}%`, transform: 'translate(-50%, -50%)' } : {}}>
+                        <p className="text-xs font-bold uppercase text-center mb-5" style={{ color: 'rgba(255,255,255,0.5)', letterSpacing: '0.25em', fontFamily: designFont }}>{t('fullPreview.information')}</p>
                         <div className="w-full space-y-2.5">
                           {(() => {
-                            // Use cards if available, otherwise convert textCards
                             const displayCards = meta?.cards?.length > 0
                               ? meta.cards.map((c: { emoji: string; label: string; value: string; color?: string }) => c)
                               : (meta?.textCards || []).map((tCard: { text: string; color?: string }) => ({ emoji: '📝', label: tCard.text, value: tCard.text, color: tCard.color }));
-                            return displayCards.map((card: { emoji: string; label: string; value: string; color?: string }, i: number) => (
-                              <div key={i} className="flex items-center gap-3 bg-black/40 rounded-xl px-4 py-3" style={{ borderLeft: `3px solid ${card.color || accent}`, transition: 'opacity 0.5s ease-out, transform 0.5s ease-out', transitionDelay: currentSeq === 'cards' ? `${i * 150}ms` : '0ms', opacity: currentSeq === 'cards' ? 1 : 0, transform: currentSeq === 'cards' ? 'translateX(0) translateZ(0)' : 'translateX(-20px) translateZ(0)', willChange: 'opacity, transform' }}>
-                                <span className="text-2xl">{card.emoji}</span>
-                                <span className="text-sm text-white/80 flex-1">{card.label}</span>
-                                <span className="text-lg font-bold text-white" style={{ textShadow: `0 0 10px ${accent}80` }}>{card.value}</span>
+                            return displayCards.map((card: { emoji: string; label: string; value: string; color?: string }, i: number) => {
+                              const cardIcon = designCardCustomIcons?.[String(i)] || undefined;
+                              return (
+                              <div key={i} className="flex items-center gap-3 rounded-xl px-4 py-3" style={{
+                                backgroundColor: 'rgba(0,0,0,0.4)',
+                                borderLeft: `3px solid ${card.color || accent}`,
+                                borderRadius: designCardStyle === 'square' ? '4px' : designCardStyle === 'pill' ? '50px' : '12px',
+                                transition: 'opacity 0.5s ease-out, transform 0.5s ease-out',
+                                transitionDelay: currentSeq === 'cards' ? `${i * 150}ms` : '0ms',
+                                opacity: currentSeq === 'cards' ? 1 : 0,
+                                transform: currentSeq === 'cards' ? 'translateX(0) translateZ(0)' : 'translateX(-20px) translateZ(0)',
+                                willChange: 'opacity, transform',
+                              }}>
+                                {cardIcon ? <img src={cardIcon} alt="" className="w-7 h-7 object-contain" /> : <span className="text-2xl">{card.emoji}</span>}
+                                <span className="text-sm flex-1" style={{ color: 'rgba(255,255,255,0.8)', fontFamily: designFont }}>{card.label}</span>
+                                <span className="text-lg font-bold" style={{ color: '#FFFFFF', fontFamily: designFont, textShadow: `0 0 10px ${accent}80` }}>{card.value}</span>
                               </div>
-                            ));
+                              );
+                            });
                           })()}
                         </div>
                       </div>
+                      {/* Logo on cards if logoSequences includes 'cards' */}
+                      {designLogoUrl && designLogoSequences?.includes('cards') && (
+                        <img src={designLogoUrl} alt="Logo" style={{
+                          position: 'absolute',
+                          width: `${160 * designLogoScale}px`,
+                          height: `${160 * designLogoScale}px`,
+                          objectFit: 'contain',
+                          left: positions.logo ? `${positions.logo.x}%` : '50%',
+                          top: positions.logo ? `${positions.logo.y}%` : '8%',
+                          transform: 'translate(-50%, -50%)',
+                          zIndex: 20,
+                        }} />
+                      )}
                     </div>
 
                     {/* === VIDÉO : Rush vidéo brut plein écran uniquement === */}
@@ -2365,8 +2487,33 @@ export default function CalendarPage() {
                         {/* Video overlay text — optional text set by user in Infographie */}
                         {meta?.videoOverlayText && (
                           <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none px-6">
-                            <p className="text-2xl font-black text-white uppercase tracking-wider text-center" style={{ textShadow: `0 2px 20px rgba(0,0,0,0.9), 0 0 40px ${accent}40, 0 4px 8px rgba(0,0,0,0.7)`, lineHeight: 1.15 }}>{meta.videoOverlayText}</p>
+                            <p style={{
+                              fontFamily: designFont,
+                              color: design?.overlayColor || '#FFFFFF',
+                              fontSize: `${24 * designTextScale}px`,
+                              letterSpacing: `${overlayTypo.letterSpacing || 2}px`,
+                              lineHeight: overlayTypo.lineHeight || 1.15,
+                              fontWeight: overlayTypo.bold !== false ? 900 : 400,
+                              fontStyle: overlayTypo.italic ? 'italic' : 'normal',
+                              textTransform: 'uppercase',
+                              textAlign: 'center',
+                              textShadow: `0 2px 20px rgba(0,0,0,0.9), 0 0 40px ${accent}40, 0 4px 8px rgba(0,0,0,0.7)`,
+                              ...(positions.overlay ? { position: 'absolute' as const, left: `${positions.overlay.x}%`, top: `${positions.overlay.y}%`, transform: 'translate(-50%, -50%)' } : {}),
+                            }}>{meta.videoOverlayText}</p>
                           </div>
+                        )}
+                        {/* Logo on video if logoSequences includes 'video' */}
+                        {designLogoUrl && designLogoSequences?.includes('video') && (
+                          <img src={designLogoUrl} alt="Logo" style={{
+                            position: 'absolute',
+                            width: `${160 * designLogoScale}px`,
+                            height: `${160 * designLogoScale}px`,
+                            objectFit: 'contain',
+                            left: positions.logo ? `${positions.logo.x}%` : '50%',
+                            top: positions.logo ? `${positions.logo.y}%` : '8%',
+                            transform: 'translate(-50%, -50%)',
+                            zIndex: 20,
+                          }} />
                         )}
                       </div>
                       );
@@ -2374,11 +2521,35 @@ export default function CalendarPage() {
 
                     {/* === CTA: Call to action — black bg, colored text, logo once centered === */}
                     <div className="absolute inset-0 flex flex-col items-center justify-center pb-12" style={{ opacity: currentSeq === 'cta' ? 1 : 0, transform: currentSeq === 'cta' ? 'scale(1)' : 'scale(0.92)', zIndex: currentSeq === 'cta' ? 10 : 1, background: '#000000', transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
-                      <div className="text-center px-6">
-                        {meta?.logoUrl && <img src={meta.logoUrl} alt="Logo" className="w-40 h-40 object-contain mx-auto mb-6" />}
-                        <p className="text-3xl font-black uppercase tracking-wider mb-4 leading-tight px-2" style={{ color: accent, textShadow: `0 0 30px ${accent}` }}>{brd?.ctaText || branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}</p>
-                        <p className="text-2xl uppercase tracking-wider font-bold" style={{ color: '#FFFFFF' }}>{brd?.ctaSubText || branding.ctaSubText || 'LIEN EN BIO'}</p>
-                        {meta?.salesPhrase && <p className="text-2xl mt-5 font-bold" style={{ color: '#FFFFFF' }}>{meta.salesPhrase}</p>}
+                      <div className="text-center px-6" style={positions.watermark ? { position: 'absolute', left: `${positions.watermark.x}%`, top: `${positions.watermark.y}%`, transform: 'translate(-50%, -50%)' } : {}}>
+                        {designLogoUrl && <img src={designLogoUrl} alt="Logo" style={{
+                          width: `${160 * designLogoScale}px`,
+                          height: `${160 * designLogoScale}px`,
+                          objectFit: 'contain',
+                          margin: '0 auto 24px auto',
+                        }} />}
+                        <p style={{
+                          fontFamily: designFont,
+                          color: designCtaColor,
+                          fontSize: `${30 * designCtaTextScale}px`,
+                          letterSpacing: `${ctaTypo.letterSpacing || 2}px`,
+                          lineHeight: ctaTypo.lineHeight || 1.2,
+                          fontWeight: ctaTypo.bold !== false ? 900 : 400,
+                          fontStyle: ctaTypo.italic ? 'italic' : 'normal',
+                          textTransform: 'uppercase',
+                          textShadow: `0 0 30px ${designCtaColor}`,
+                          marginBottom: '16px',
+                          padding: '0 8px',
+                        }}>{designCtaSubText || brd?.ctaText || branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}</p>
+                        <p style={{
+                          fontFamily: designFont,
+                          color: designCtaSubColor,
+                          fontSize: `${24 * designCtaTextScale}px`,
+                          letterSpacing: `${ctaTypo.letterSpacing || 2}px`,
+                          textTransform: 'uppercase',
+                          fontWeight: 700,
+                        }}>{designCtaMainText || brd?.ctaSubText || branding.ctaSubText || 'LIEN EN BIO'}</p>
+                        {meta?.salesPhrase && <p className="mt-5" style={{ color: '#FFFFFF', fontFamily: designFont, fontSize: '24px', fontWeight: 700 }}>{meta.salesPhrase}</p>}
                       </div>
                     </div>
 
