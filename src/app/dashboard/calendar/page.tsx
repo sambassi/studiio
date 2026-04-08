@@ -705,7 +705,7 @@ export default function CalendarPage() {
     const isMontagePost = meta?.type === 'infographic' || (meta?.type === 'creator' && meta?.sequences);
     if (!isMontagePost) return;
 
-    const seqOrder: string[] = meta?.sequences?.order || ['intro', 'cards', 'video', 'cta'];
+    const seqOrder: string[] = (meta?.sequences?.order || ['intro', 'cards', 'video']).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; });
     // Only include video sequence if the video file has been proven playable
     // videoPlayable starts false and is only set true after onloadeddata fires
     const activeSeqs = videoPlayable ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
@@ -740,7 +740,7 @@ export default function CalendarPage() {
     // Only use raw rush video — never rendered montage (has CTA baked in)
     const videoSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0];
     if (!videoSrc) return;
-    const seqOrder: string[] = meta?.sequences?.order || ['intro', 'cards', 'video', 'cta'];
+    const seqOrder: string[] = (meta?.sequences?.order || ['intro', 'cards', 'video']).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; });
     const safeIdx = infoSeqIndex < seqOrder.length ? infoSeqIndex : 0;
     const currentSeq = seqOrder[safeIdx] || 'intro';
 
@@ -896,7 +896,7 @@ export default function CalendarPage() {
     const videoSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0];
     if (!videoSrc) return;
 
-    const seqOrder: string[] = meta?.sequences?.order || ['intro', 'cards', 'video', 'cta'];
+    const seqOrder: string[] = (meta?.sequences?.order || ['intro', 'cards', 'video']).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; });
     const activeSeqs = videoPlayable ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
     const currentSeq = activeSeqs[infoSeqIndex] || 'intro';
 
@@ -1743,7 +1743,7 @@ export default function CalendarPage() {
 
                 {/* Post preview — 9:16 phone format with montage-style overlay */}
                 {selectedDayPosts.length > 0 && !bulkMode && (() => {
-                  const fp = selectedDayPosts[0];
+                  const fp = fullPreviewPost || selectedDayPosts[0];
                   const fpMeta = fp.metadata;
                   const fpAccent = fpMeta?.branding?.accentColor || '#D91CD2';
                   const fpDesign = fpMeta?.design;
@@ -2438,7 +2438,7 @@ export default function CalendarPage() {
             <div className="flex-1 bg-black flex flex-col items-center justify-center p-2 md:p-4" style={{ minHeight: '60dvh' }}>
               {/* Montage video preview — infographic & creator with sequences */}
               {hasMontage ? (() => {
-                const seqOrder: string[] = meta?.sequences?.order || ['intro', 'cards', 'video', 'cta'];
+                const seqOrder: string[] = (meta?.sequences?.order || ['intro', 'cards', 'video']).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; });
                 // Only include video sequence if the video has been proven playable (onloadeddata fired)
                 const activeSeqs = videoPlayable ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
                 const posterImgSrc = meta?.pexelsUrl || meta?.posterUrl || meta?.characterUrl || null;
@@ -2458,37 +2458,47 @@ export default function CalendarPage() {
                     <div className="absolute inset-0" style={{ opacity: currentSeq === 'intro' ? 1 : 0, transform: currentSeq === 'intro' ? 'scale(1)' : 'scale(1.08)', zIndex: currentSeq === 'intro' ? 10 : 1, transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
                       {posterImgSrc ? <img src={posterImgSrc} alt="Affiche" className="absolute inset-0 w-full h-full object-cover" /> : <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, #000000, ${hexToRgba(designGradient1, 1)})` }} />}
                       <div className="absolute inset-0" style={{ background: posterImgSrc ? `linear-gradient(to top, ${hexToRgba(designGradient1, designGradientOpacity)} 0%, ${hexToRgba(designGradient2, 0.35)} 40%, transparent 60%)` : 'transparent' }} />
-                      <div className="absolute inset-0 text-center px-6 z-10">
-                        <h3 style={{
-                          fontFamily: designFont,
-                          color: designTitleColor,
-                          fontSize: editorPxToDvh((isReelFormat ? 14 : 18) * designTextScale),
-                          letterSpacing: `${titleTypo.letterSpacing || 0}px`,
-                          lineHeight: titleTypo.lineHeight || 1.1,
-                          fontWeight: titleTypo.bold !== false ? 900 : 400,
-                          fontStyle: titleTypo.italic ? 'italic' : 'normal',
-                          textTransform: 'uppercase' as const,
-                          textShadow: `0 0 20px ${accent}CC, 0 0 50px ${accent}66`,
-                          position: 'absolute' as const, left: `${positions.title?.x ?? 50}%`, top: `${positions.title?.y ?? 10}%`, transform: 'translate(-50%, 0)',
-                          maxWidth: '90%',
-                        }}>{displayTitle || 'TITRE'}</h3>
-                        {meta?.subtitle && <p style={{
-                          fontFamily: designFont,
-                          color: `${designTitleColor}CC`,
-                          fontSize: editorPxToDvh((isReelFormat ? 9 : 11) * designTextScale),
-                          letterSpacing: `${titleTypo.letterSpacing || 0}px`,
-                          lineHeight: titleTypo.lineHeight || 1.1,
-                          fontWeight: titleTypo.bold !== false ? 900 : 400,
-                          fontStyle: titleTypo.italic ? 'italic' : 'normal',
-                          textShadow: `0 0 12px ${accent}80`,
-                          position: 'absolute' as const, left: `${positions.title?.x ?? 50}%`, top: `${(positions.title?.y ?? 10) + 8}%`, transform: 'translate(-50%, 0)',
-                          maxWidth: '90%',
-                        }}>{meta.subtitle}</p>}
+                      <div className="absolute inset-0 z-10" style={{ pointerEvents: 'none' }}>
                         <div style={{
-                          width: '5rem', height: '2px', borderRadius: '9999px',
-                          background: `linear-gradient(90deg, transparent, ${accent}, transparent)`,
-                          position: 'absolute' as const, left: '50%', top: `${(positions.title?.y ?? 10) + (meta?.subtitle ? 16 : 10)}%`, transform: 'translateX(-50%)',
-                        }} />
+                          position: 'absolute',
+                          left: `${positions.title?.x ?? 50}%`,
+                          top: `${positions.title?.y ?? 10}%`,
+                          transform: 'translate(-50%, 0)',
+                          display: 'flex',
+                          flexDirection: 'column' as const,
+                          alignItems: 'center',
+                          gap: editorPxToDvh(4),
+                          maxWidth: '90%',
+                          textAlign: 'center' as const,
+                        }}>
+                          <h3 style={{
+                            fontFamily: designFont,
+                            color: designTitleColor,
+                            fontSize: editorPxToDvh((isReelFormat ? 14 : 18) * designTextScale),
+                            letterSpacing: `${titleTypo.letterSpacing || 0}px`,
+                            lineHeight: titleTypo.lineHeight || 1.1,
+                            fontWeight: titleTypo.bold !== false ? 900 : 400,
+                            fontStyle: titleTypo.italic ? 'italic' : 'normal',
+                            textTransform: 'uppercase' as const,
+                            textShadow: `0 0 20px ${accent}CC, 0 0 50px ${accent}66`,
+                            margin: 0,
+                          }}>{displayTitle || 'TITRE'}</h3>
+                          {meta?.subtitle && <p style={{
+                            fontFamily: designFont,
+                            color: `${designTitleColor}CC`,
+                            fontSize: editorPxToDvh((isReelFormat ? 9 : 11) * designTextScale),
+                            letterSpacing: `${titleTypo.letterSpacing || 0}px`,
+                            lineHeight: titleTypo.lineHeight || 1.1,
+                            fontWeight: titleTypo.bold !== false ? 900 : 400,
+                            fontStyle: titleTypo.italic ? 'italic' : 'normal',
+                            textShadow: `0 0 12px ${accent}80`,
+                            margin: 0,
+                          }}>{meta.subtitle}</p>}
+                          <div style={{
+                            width: '5rem', height: '2px', borderRadius: '9999px',
+                            background: `linear-gradient(90deg, transparent, ${accent}, transparent)`,
+                          }} />
+                        </div>
                       </div>
                       {/* Logo sur intro si logoSequences inclut 'intro' */}
                       {designLogoUrl && designLogoSequences?.includes('intro') && (
@@ -3047,7 +3057,7 @@ export default function CalendarPage() {
                 )}
                 {hasMontage && (
                   <div className="flex items-center gap-2 text-xs text-purple-400">
-                    <Film className="w-3 h-3" /> {t('fullPreview.sequences', { count: String((meta?.sequences?.order || ['intro', 'cards', 'cta']).length) })} • {meta?.sequences?.total || 30}s
+                    <Film className="w-3 h-3" /> {t('fullPreview.sequences', { count: String((meta?.sequences?.order || ['intro', 'cards', 'video']).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }).length) })} • {meta?.sequences?.total || 30}s
                   </div>
                 )}
                 {meta?.videoUrl && !hasMontage && (
