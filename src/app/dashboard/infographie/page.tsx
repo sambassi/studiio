@@ -504,10 +504,8 @@ export default function InfographicPage() {
     let i = 0;
     const playNext = () => {
       if (i >= sequences.length) {
-        // Loop back or stop
-        setActiveSequence('all');
-        setIsPlaying(false);
-        return;
+        // Loop: restart from the beginning
+        i = 0;
       }
       setActiveSequence(sequences[i].key);
       playTimerRef.current = setTimeout(() => {
@@ -1265,7 +1263,7 @@ export default function InfographicPage() {
           const composedResult = await composeAndUpload({
             width: isReel ? 1080 : 1920,
             height: isReel ? 1920 : 1080,
-            fps: 24,
+            fps: 30,
             title: title || "Infographie",
             subtitle: subtitle || undefined,
             salesPhrase: salesPhrases.length > 0 ? salesPhrases[0] : undefined,
@@ -1283,6 +1281,14 @@ export default function InfographicPage() {
             ctaText: ctaSubText || "CHAT POUR PLUS D'INFOS",
             ctaSubText: "LIEN EN BIO",
             watermarkText: ctaMainText || "AFROBOOST",
+            siteText: siteTextEnabled ? {
+              text: siteText,
+              color: siteTextColor,
+              opacity: siteTextOpacity,
+              size: siteTextSize,
+              sequences: siteTextSequences,
+              enabled: siteTextEnabled,
+            } : { text: '', enabled: false },
             onProgress: (pct, stage) => {
               setExportProgress(50 + Math.round(pct * 0.35));
             },

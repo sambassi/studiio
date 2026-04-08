@@ -21,6 +21,16 @@ export interface CardData {
   color?: string;
 }
 
+export interface SiteTextConfig {
+  text: string;
+  color?: string;
+  opacity?: number;
+  size?: number;
+  /** Sequences where siteText is visible — e.g. ['intro', 'cards', 'video', 'cta'] */
+  sequences?: string[];
+  enabled?: boolean;
+}
+
 export interface ComposerOptions {
   width: number;
   height: number;
@@ -42,6 +52,8 @@ export interface ComposerOptions {
   ctaText?: string;
   ctaSubText?: string;
   watermarkText?: string;
+  /** Flexible site text overlay (e.g. Afroboost.com) */
+  siteText?: SiteTextConfig;
   onProgress?: (percent: number, stage: string) => void;
   /** Shared AudioContext for batch mode — avoids creating/closing multiple contexts */
   sharedAudioCtx?: AudioContext;
@@ -389,13 +401,13 @@ function drawTransition(
 
 export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   const {
-    width, height, fps = 24,
+    width, height, fps = 30,
     title, subtitle, salesPhrase, cards = [],
     posterUrl, videoUrl, logoUrl, musicUrl, voiceUrl,
     introDuration = 4, cardsDuration = 6, videoDuration = 10, ctaDuration = 4,
     accentColor = '#D91CD2',
     ctaText = 'CHAT POUR PLUS D\'INFOS', ctaSubText = 'LIEN EN BIO',
-    watermarkText, onProgress,
+    watermarkText, siteText, onProgress,
   } = options;
 
   console.log('[Composer] === START ===');
@@ -491,14 +503,23 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     ctx.lineWidth = borderW;
     ctx.strokeRect(borderW / 2, borderW / 2, width - borderW, height - borderW);
 
-    // ── Website link overlay — visible on all frames EXCEPT CTA (CTA already has its own watermark) ──
-    if (seq.type !== 'cta') {
-      const linkFontSize = Math.round(width * 0.028);
+    // ── Site text overlay (e.g. Afroboost.com) — configurable per sequence ──
+    const siteTextLabel = siteText?.text || 'Afroboost.com';
+    const siteTextEnabled = siteText?.enabled !== false;
+    // Map sequence types to editor sequence names for matching
+    const seqToEditor: Record<string, string> = { intro: 'titre', cards: 'cartes', video: 'video', cta: 'cta' };
+    const siteTextSeqs = siteText?.sequences || ['titre', 'cartes', 'video', 'cta'];
+    const showSiteText = siteTextEnabled && siteTextSeqs.includes(seqToEditor[seq.type] || seq.type);
+    if (showSiteText) {
+      const stSize = siteText?.size || 1.0;
+      const stColor = siteText?.color || '#FFFFFF';
+      const stOpacity = siteText?.opacity ?? 0.85;
+      const linkFontSize = Math.round(width * 0.028 * stSize);
       ctx.save();
       ctx.font = `700 ${linkFontSize}px sans-serif`; ctx.textAlign = 'center';
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillStyle = hexToRgba(stColor, stOpacity);
       ctx.shadowColor = accentColor; ctx.shadowBlur = 8;
-      fillTextWithOutline(ctx, 'Afroboost.com', width / 2, height * 0.94, 3, 'rgba(0,0,0,0.85)');
+      fillTextWithOutline(ctx, siteTextLabel, width / 2, height * 0.94, 3, 'rgba(0,0,0,0.85)');
       ctx.shadowBlur = 0;
       ctx.restore();
     }
@@ -660,7 +681,8 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   console.log('[Composer] MediaRecorder mimeType:', mimeType, '| MP4:', isMP4);
   console.log('[Composer] Mode:', useFastMode ? '⚡ FAST (no audio)' : '🔊 REAL-TIME (with audio)');
 
-  const recorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 4_000_000 });
+  // 8 Mbps for social media quality (Instagram/TikTok/YouTube recommend 5-10 Mbps for 1080p)
+  const recorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 8_000_000 });
   const chunks: Blob[] = [];
   recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
 

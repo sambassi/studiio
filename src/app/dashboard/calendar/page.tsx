@@ -493,6 +493,7 @@ export default function CalendarPage() {
           ctaText: brand?.ctaText || 'CHAT POUR PLUS D\'INFOS',
           ctaSubText: brand?.ctaSubText || 'LIEN EN BIO',
           watermarkText: brand?.watermarkText || undefined,
+          siteText: meta.design?.siteText || undefined,
           onProgress: (pct, stage) => {
             setExportRenderProgress(pct);
             setExportRenderStage(stage);
@@ -1090,6 +1091,10 @@ export default function CalendarPage() {
       const brand = meta?.branding;
       const isReel = post.format === 'reel';
 
+      // Read site text config from design metadata
+      const calDesign = meta?.design;
+      const calSiteText = calDesign?.siteText;
+
       const { blob, url: renderedUrl } = await composeAndUpload({
         width: isReel ? 1080 : 1920,
         height: isReel ? 1920 : 1080,
@@ -1113,6 +1118,7 @@ export default function CalendarPage() {
         ctaText: brand?.ctaText || 'CHAT POUR PLUS D\'INFOS',
         ctaSubText: brand?.ctaSubText || 'LIEN EN BIO',
         watermarkText: brand?.watermarkText || undefined,
+        siteText: calSiteText || undefined,
         onProgress: (pct, stage) => {
           setExportRenderProgress(pct);
           setExportRenderStage(stage);
