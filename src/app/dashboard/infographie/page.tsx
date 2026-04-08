@@ -32,6 +32,7 @@ import {
 } from "@/lib/constants/platforms";
 import FloatingPanel from "@/components/ui/FloatingPanel";
 import ColorWheel from "@/components/ui/ColorWheel";
+import { composeAndUpload, downloadBlob } from "@/lib/video-composer";
 
 // ── Types ──────────────────────────────────────────────────────
 interface InfoCard {
@@ -295,6 +296,7 @@ export default function InfographicPage() {
           setRushFileName(cfg.rushFileName || "video.mp4");
         }
         if (cfg.characterImage) setCharacterImage(cfg.characterImage);
+        // Typography
         if (cfg.titleLetterSpacing !== undefined)
           setTitleLetterSpacing(cfg.titleLetterSpacing);
         if (cfg.titleLineHeight !== undefined)
@@ -316,6 +318,45 @@ export default function InfographicPage() {
           setOverlayItalic(cfg.overlayItalic);
         if (cfg.cardsLetterSpacing !== undefined)
           setCardsLetterSpacing(cfg.cardsLetterSpacing);
+        // Design properties (font, filter, cardStyle, colors, positions, sizes, scales)
+        if (cfg.selectedFont) setSelectedFont(cfg.selectedFont);
+        if (cfg.selectedFilter) setSelectedFilter(cfg.selectedFilter);
+        if (cfg.selectedCardStyle) setSelectedCardStyle(cfg.selectedCardStyle);
+        if (cfg.titleColor) setTitleColor(cfg.titleColor);
+        if (cfg.ctaColor) setCtaColor(cfg.ctaColor);
+        if (cfg.ctaSubColor) setCtaSubColor(cfg.ctaSubColor);
+        if (cfg.ctaMainText) setCtaMainText(cfg.ctaMainText);
+        if (cfg.ctaSubText) setCtaSubText(cfg.ctaSubText);
+        if (cfg.gradientColor1) setGradientColor1(cfg.gradientColor1);
+        if (cfg.gradientColor2) setGradientColor2(cfg.gradientColor2);
+        if (cfg.gradientOpacity !== undefined) setGradientOpacity(cfg.gradientOpacity);
+        if (cfg.noColorBg !== undefined) setNoColorBg(cfg.noColorBg);
+        if (cfg.noColorSequences) setNoColorSequences(cfg.noColorSequences);
+        if (cfg.textScale !== undefined) setTextScale(cfg.textScale);
+        if (cfg.ctaTextScale !== undefined) setCtaTextScale(cfg.ctaTextScale);
+        if (cfg.logoScale !== undefined) setLogoScale(cfg.logoScale);
+        if (cfg.logoSequences) setLogoSequences(cfg.logoSequences);
+        if (cfg.logoImage) setLogoImage(cfg.logoImage);
+        if (cfg.customAccent) setCustomAccent(cfg.customAccent);
+        if (cfg.customCardIcons) setCustomCardIcons(cfg.customCardIcons);
+        // Positions
+        if (cfg.titlePos) setTitlePos(cfg.titlePos);
+        if (cfg.logoPos) setLogoPos(cfg.logoPos);
+        if (cfg.watermarkPos) setWatermarkPos(cfg.watermarkPos);
+        if (cfg.cardsPos) setCardsPos(cfg.cardsPos);
+        if (cfg.overlayPos) setOverlayPos(cfg.overlayPos);
+        // Sizes
+        if (cfg.titleSize) setTitleSize(cfg.titleSize);
+        if (cfg.cardsSize) setCardsSize(cfg.cardsSize);
+        if (cfg.watermarkSize) setWatermarkSize(cfg.watermarkSize);
+        // Content (so re-editing preserves text)
+        if (cfg.title) setTitle(cfg.title);
+        if (cfg.subtitle) setSubtitle(cfg.subtitle);
+        if (cfg.videoOverlayText) setVideoOverlayText(cfg.videoOverlayText);
+        if (cfg.cards && cfg.cards.length > 0) setCards(cfg.cards);
+        if (cfg.salesPhrases && cfg.salesPhrases.length > 0) setSalesPhrases(cfg.salesPhrases);
+        if (cfg.contentTheme) setContentTheme(cfg.contentTheme);
+        if (cfg.customTopic) setCustomTopic(cfg.customTopic);
       }
     } catch {
       /* ignore */
@@ -331,6 +372,7 @@ export default function InfographicPage() {
       localStorage.setItem(
         INFOGRAPHIC_CONFIG_KEY,
         JSON.stringify({
+          // Base settings
           colorTheme,
           format,
           introDuration,
@@ -340,6 +382,7 @@ export default function InfographicPage() {
           rushUrl,
           rushFileName,
           characterImage,
+          // Typography
           titleLetterSpacing,
           titleLineHeight,
           titleBold,
@@ -353,6 +396,45 @@ export default function InfographicPage() {
           overlayBold,
           overlayItalic,
           cardsLetterSpacing,
+          // Design properties
+          selectedFont,
+          selectedFilter,
+          selectedCardStyle,
+          titleColor,
+          ctaColor,
+          ctaSubColor,
+          ctaMainText,
+          ctaSubText,
+          gradientColor1,
+          gradientColor2,
+          gradientOpacity,
+          noColorBg,
+          noColorSequences,
+          textScale,
+          ctaTextScale,
+          logoScale,
+          logoSequences,
+          logoImage,
+          customAccent,
+          customCardIcons,
+          // Positions
+          titlePos,
+          logoPos,
+          watermarkPos,
+          cardsPos,
+          overlayPos,
+          // Sizes
+          titleSize,
+          cardsSize,
+          watermarkSize,
+          // Content
+          title,
+          subtitle,
+          videoOverlayText,
+          cards,
+          salesPhrases,
+          contentTheme,
+          customTopic,
         }),
       );
     } catch {
@@ -382,6 +464,41 @@ export default function InfographicPage() {
     overlayBold,
     overlayItalic,
     cardsLetterSpacing,
+    selectedFont,
+    selectedFilter,
+    selectedCardStyle,
+    titleColor,
+    ctaColor,
+    ctaSubColor,
+    ctaMainText,
+    ctaSubText,
+    gradientColor1,
+    gradientColor2,
+    gradientOpacity,
+    noColorBg,
+    noColorSequences,
+    textScale,
+    ctaTextScale,
+    logoScale,
+    logoSequences,
+    logoImage,
+    customAccent,
+    customCardIcons,
+    titlePos,
+    logoPos,
+    watermarkPos,
+    cardsPos,
+    overlayPos,
+    titleSize,
+    cardsSize,
+    watermarkSize,
+    title,
+    subtitle,
+    videoOverlayText,
+    cards,
+    salesPhrases,
+    contentTheme,
+    customTopic,
   ]);
 
   // ── Safe Zone Overlay (additive — does not affect existing logic) ────
@@ -1133,31 +1250,77 @@ export default function InfographicPage() {
 
       setExportProgress(100);
 
-      // ── Desktop export: download poster + config ──
+      // ── Desktop export: compose video montage + download poster + config ──
       if (destination === 'export' || destination === 'both') {
         try {
-          // Download poster image
-          const photo = pexelsPhotos.length > 0 ? pexelsPhotos[0] : null;
-          if (photo?.url) {
+          const exportAccent =
+            COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent || customAccent || "#a855f7";
+          const isReel = format === "9:16";
+          const exportPhoto = pexelsPhotos.length > 0 ? pexelsPhotos[0] : null;
+          const exportPosterUrl = exportPhoto?.url || null;
+
+          // 1. Compose the final video montage
+          setExportProgress(70);
+          try {
+            const composedResult = await composeAndUpload({
+              width: isReel ? 1080 : 1920,
+              height: isReel ? 1920 : 1080,
+              fps: 24,
+              title: title || "Infographie",
+              subtitle: subtitle || undefined,
+              salesPhrase: salesPhrases.length > 0 ? salesPhrases[0] : undefined,
+              cards: cards.length > 0
+                ? cards.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color }))
+                : undefined,
+              posterUrl: exportPosterUrl,
+              videoUrl: rushUrl,
+              logoUrl: logoImage || null,
+              introDuration,
+              cardsDuration: cards.length > 0 ? cardsDuration : 0,
+              videoDuration: rushUrl ? videoDuration : 0,
+              ctaDuration,
+              accentColor: exportAccent,
+              ctaText: ctaSubText || "CHAT POUR PLUS D'INFOS",
+              ctaSubText: "LIEN EN BIO",
+              watermarkText: ctaMainText || "AFROBOOST",
+              onProgress: (pct, stage) => {
+                setExportProgress(70 + Math.round(pct * 0.25));
+              },
+            });
+            setExportProgress(95);
+            // Download the composed video
+            if (composedResult.blob && composedResult.blob.size > 0) {
+              await downloadBlob(
+                composedResult.blob,
+                `infographie-${title || 'afroboost'}-montage.webm`,
+                (pct, stage) => setExportProgress(95 + Math.round(pct * 0.04))
+              );
+            }
+          } catch (composeErr) {
+            console.warn('[Export Bureau] Erreur composition vidéo:', composeErr);
+          }
+
+          // 2. Download poster image
+          if (exportPhoto?.url) {
             const link = document.createElement('a');
-            link.href = photo.url;
+            link.href = exportPhoto.url;
             link.download = `infographie-${title || 'afroboost'}-poster.jpg`;
             link.target = '_blank';
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
           }
-          // Download video if present
+          // 3. Download raw video rush if present
           if (rushUrl) {
             const vLink = document.createElement('a');
             vLink.href = rushUrl;
-            vLink.download = `infographie-${title || 'afroboost'}-video.mp4`;
+            vLink.download = `infographie-${title || 'afroboost'}-rush.mp4`;
             vLink.target = '_blank';
             document.body.appendChild(vLink);
             vLink.click();
             document.body.removeChild(vLink);
           }
-          // Download design config as JSON
+          // 4. Download design config as JSON
           const configData = {
             title, subtitle, cards, salesPhrases,
             format, colorTheme, customAccent,
