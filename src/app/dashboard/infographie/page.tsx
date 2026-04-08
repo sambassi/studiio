@@ -462,6 +462,11 @@ export default function InfographicPage() {
     },
   };
 
+  // Sequence view: show individual "pages" in preview
+  const [activeSequence, setActiveSequence] = useState<
+    "all" | "titre" | "cartes" | "video" | "cta"
+  >("all");
+
   // Drag positions (percentage-based offsets from default)
   const [titlePos, setTitlePos] = useState({ x: 50, y: 10 });
   // Per-sequence logo positions: each sequence can have its own logo placement
@@ -493,11 +498,6 @@ export default function InfographicPage() {
   const resizeStart = useRef<{ x: number; y: number; size: number } | null>(
     null,
   );
-
-  // Sequence view: show individual "pages" in preview
-  const [activeSequence, setActiveSequence] = useState<
-    "all" | "titre" | "cartes" | "video" | "cta"
-  >("all");
 
   // ── Play montage (auto-cycle through sequences) ────────────
   const [isPlaying, setIsPlaying] = useState(false);
@@ -612,7 +612,7 @@ export default function InfographicPage() {
     titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
     gradientColor1, gradientColor2, gradientOpacity, noColorBg, noColorSequences, seqGradients,
     textScale, ctaTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
-    titlePos, logoPos, watermarkPos, cardsPos, overlayPos,
+    titlePos, logoPositions, watermarkPos, cardsPos, overlayPos,
     titleSize, cardsSize, watermarkSize,
     title, subtitle, videoOverlayText, cards, salesPhrases, contentTheme, customTopic,
     photoSearchQuery, selectedPhotoIndex,
