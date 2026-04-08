@@ -318,7 +318,7 @@ export default function InfographicPage() {
           setOverlayItalic(cfg.overlayItalic);
         if (cfg.cardsLetterSpacing !== undefined)
           setCardsLetterSpacing(cfg.cardsLetterSpacing);
-        // Design properties (font, filter, cardStyle, colors, positions, sizes, scales)
+        // Propriétés de design (police, filtre, style cartes, couleurs, positions, tailles, échelles)
         if (cfg.selectedFont) setSelectedFont(cfg.selectedFont);
         if (cfg.selectedFilter) setSelectedFilter(cfg.selectedFilter);
         if (cfg.selectedCardStyle) setSelectedCardStyle(cfg.selectedCardStyle);
@@ -339,17 +339,17 @@ export default function InfographicPage() {
         if (cfg.logoImage) setLogoImage(cfg.logoImage);
         if (cfg.customAccent) setCustomAccent(cfg.customAccent);
         if (cfg.customCardIcons) setCustomCardIcons(cfg.customCardIcons);
-        // Positions
+        // Positions des éléments
         if (cfg.titlePos) setTitlePos(cfg.titlePos);
         if (cfg.logoPos) setLogoPos(cfg.logoPos);
         if (cfg.watermarkPos) setWatermarkPos(cfg.watermarkPos);
         if (cfg.cardsPos) setCardsPos(cfg.cardsPos);
         if (cfg.overlayPos) setOverlayPos(cfg.overlayPos);
-        // Sizes
+        // Tailles des éléments
         if (cfg.titleSize) setTitleSize(cfg.titleSize);
         if (cfg.cardsSize) setCardsSize(cfg.cardsSize);
         if (cfg.watermarkSize) setWatermarkSize(cfg.watermarkSize);
-        // Content (so re-editing preserves text)
+        // Contenu (pour que la réédition préserve les textes)
         if (cfg.title) setTitle(cfg.title);
         if (cfg.subtitle) setSubtitle(cfg.subtitle);
         if (cfg.videoOverlayText) setVideoOverlayText(cfg.videoOverlayText);
@@ -481,8 +481,8 @@ export default function InfographicPage() {
   // CTA sub-text color (separate from main ctaColor)
   const [ctaSubColor, setCtaSubColor] = useState("#D91CD2");
 
-  // ── Save config on change — seulement APRÈS le chargement initial ──
-  // (Placed after ALL useState declarations to avoid temporal dead zone issues)
+  // ── Sauvegarde config à chaque changement — seulement APRÈS le chargement initial ──
+  // (Placé après TOUTES les déclarations useState pour éviter les erreurs de zone morte temporelle)
   useEffect(() => {
     if (!configLoaded) return;
     try {
@@ -1152,7 +1152,7 @@ export default function InfographicPage() {
 
       setExportProgress(100);
 
-      // ── Desktop export: compose video montage + download poster + config ──
+      // ── Export bureau : composition du montage vidéo + téléchargement poster + config ──
       if (destination === 'export' || destination === 'both') {
         try {
           const exportAccent =
@@ -1161,7 +1161,7 @@ export default function InfographicPage() {
           const exportPhoto = pexelsPhotos.length > 0 ? pexelsPhotos[0] : null;
           const exportPosterUrl = exportPhoto?.url || null;
 
-          // 1. Compose the final video montage
+          // 1. Composer le montage vidéo final
           setExportProgress(70);
           try {
             const composedResult = await composeAndUpload({
@@ -1190,7 +1190,7 @@ export default function InfographicPage() {
               },
             });
             setExportProgress(95);
-            // Download the composed video
+            // Télécharger la vidéo composée
             if (composedResult.blob && composedResult.blob.size > 0) {
               await downloadBlob(
                 composedResult.blob,
@@ -1202,7 +1202,7 @@ export default function InfographicPage() {
             console.warn('[Export Bureau] Erreur composition vidéo:', composeErr);
           }
 
-          // 2. Download poster image
+          // 2. Télécharger l'image poster
           if (exportPhoto?.url) {
             const link = document.createElement('a');
             link.href = exportPhoto.url;
@@ -1212,7 +1212,7 @@ export default function InfographicPage() {
             link.click();
             document.body.removeChild(link);
           }
-          // 3. Download raw video rush if present
+          // 3. Télécharger le rush vidéo brut si présent
           if (rushUrl) {
             const vLink = document.createElement('a');
             vLink.href = rushUrl;
@@ -1222,7 +1222,7 @@ export default function InfographicPage() {
             vLink.click();
             document.body.removeChild(vLink);
           }
-          // 4. Download design config as JSON
+          // 4. Télécharger la config design en JSON
           const configData = {
             title, subtitle, cards, salesPhrases,
             format, colorTheme, customAccent,
