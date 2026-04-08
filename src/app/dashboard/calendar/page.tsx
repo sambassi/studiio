@@ -503,7 +503,9 @@ export default function CalendarPage() {
     // Auto-compose montage if not already rendered
     // The montage (with title, cards, transitions) is required for social media publishing.
     // Without it, only the raw poster/rush would be published.
-    if (!meta.renderedVideoUrl && meta.posterUrl) {
+    // Compose if we have ANY visual source (posterUrl, rushUrls, characterUrl, pexelsUrl) and no renderedVideoUrl yet
+    const hasVisualSource = meta.posterUrl || meta.rushUrls?.length > 0 || meta.characterUrl || meta.pexelsUrl;
+    if (!meta.renderedVideoUrl && hasVisualSource) {
       console.log('[Schedule] No renderedVideoUrl — auto-composing montage before scheduling...');
       setExportRendering(true);
       setExportRenderProgress(0);

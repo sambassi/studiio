@@ -183,14 +183,16 @@ export async function GET(req: NextRequest) {
         }
 
         // Check if post has a video with a URL
-        // Priority: rendered montage (from metadata) > post.media_url > raw video from videos table
+        // STRICT Priority: renderedVideoUrl (montage composé) > media_url > raw video
+        // IMPORTANT: meta.videoUrl is EXCLUDED from priority because it often contains the raw rush URL,
+        // NOT the composed montage. Only renderedVideoUrl is the real montage.
         const video = post.videos;
         const meta = post.metadata || {};
-        const renderedUrl = meta.renderedVideoUrl || meta.videoUrl;
-        console.log(`[CRON] Video data: video_id=${post.video_id}, video exists=${!!video}, video_url=${video?.video_url ? 'SET' : 'NULL'}, post.media_url=${post.media_url ? 'SET' : 'NULL'}, renderedVideoUrl=${renderedUrl ? 'SET' : 'NULL'}`);
+        const renderedUrl = meta.renderedVideoUrl; // Only the composed montage, NOT meta.videoUrl
+        console.log(`[CRON] Video data: video_id=${post.video_id}, video exists=${!!video}, video_url=${video?.video_url ? 'SET' : 'NULL'}, post.media_url=${post.media_url ? 'SET' : 'NULL'}, renderedVideoUrl=${renderedUrl ? 'SET' : 'NULL'}, meta.videoUrl=${meta.videoUrl ? 'SET (ignored — may be raw rush)' : 'NULL'}`);
 
         // Utiliser le montage composé en priorité (la vraie vidéo infographique avec titre, cartes, etc.)
-        // Fallback: media_url, puis la vidéo brute de la table videos
+        // Fallback: media_url (which is also set to renderedUrl during scheduling), puis la vidéo brute
         let videoUrl = renderedUrl || post.media_url || video?.video_url;
 
         if (!videoUrl) {
@@ -206,7 +208,12 @@ export async function GET(req: NextRequest) {
         const videoData = video || { title: post.title, video_url: videoUrl };
         // Remplacer l'URL vidéo avec la meilleure disponible (montage > brut)
         videoData.video_url = videoUrl;
-        console.log(`[CRON] Using video URL: ${videoUrl?.substring(0, 80)}... (source: ${renderedUrl ? 'renderedVideoUrl' : post.media_url ? 'media_url' : 'video.video_url'})`);
+        const videoSource = renderedUrl ? 'renderedVideoUrl (montage composé ✅)' : post.media_url ? 'media_url' : 'video.video_url (rush brut ⚠️)';
+        console.log(`[CRON] Using video URL: ${videoUrl?.substring(0, 80)}... (source: ${videoSource})`);
+        // Warn if using raw rush instead of composed montage
+        if (!renderedUrl && !post.media_url && video?.video_url) {
+          console.warn(`[CRON] ⚠️ Post ${post.id} is using RAW rush video, not the composed montage! The published video will NOT have title/cards/transitions.`);
+        }
 
         // ═══ MUXAGE AUDIO : Si le post a des pistes audio séparées (musicUrl/voiceUrl) ═══
         // Cela arrive quand le Studio Son a sauvé les métadonnées audio mais la composition
