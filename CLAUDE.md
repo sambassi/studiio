@@ -31,8 +31,12 @@ Le public cible est constitue de createurs de contenu, coachs fitness, entrepren
 | i18n | next-intl | 4.x |
 | Deploiement | Vercel | auto-deploy main |
 | Validation | Zod | 3.x |
+| Color Picker | react-colorful | 3.x |
+| Fonts | next/font/google | - |
 
 **Path alias** : `@/*` mappe vers `./src/*` (configure dans tsconfig.json).
+
+**Polices Google Fonts** : 5 polices chargees via `next/font/google` avec CSS variables : Anton (`--font-anton`), Syne (`--font-syne`), Bebas Neue (`--font-bebas`), Poppins (`--font-poppins`), Space Grotesk (`--font-space`).
 
 ---
 
@@ -54,9 +58,43 @@ Le build (`npm run build`) a `ignoreBuildErrors: true` et `ignoreDuringBuilds: t
 
 ### 1. Infographie (creation de contenu visuel)
 
-**Fichiers** : `src/app/dashboard/infographie/page.tsx`, `src/lib/video-composer.ts`, `src/lib/smart-content.ts`
+**Fichiers** : `src/app/dashboard/infographie/page.tsx` (~3900 lignes), `src/lib/video-composer.ts`, `src/lib/smart-content.ts`, `src/components/ui/FloatingPanel.tsx`, `src/components/ui/ColorWheel.tsx`
 
-L'utilisateur choisit un theme (fitness, sante, nutrition...), un template, et le systeme genere 5 cartes d'infographie via `smart-content.ts` (base de connaissances locale, pas d'API externe). Le branding (logo, couleurs, CTA) est configurable via `BrandingPanel.tsx`.
+L'utilisateur choisit un theme (fitness, sante, nutrition...), un template, et le systeme genere 5 cartes d'infographie via `smart-content.ts` (base de connaissances locale, pas d'API externe).
+
+#### Architecture UX : Panneaux flottants et double-clic
+
+L'editeur utilise un systeme de **panneaux flottants contextuels** (`FloatingPanel.tsx`) ouverts par double-clic sur les elements de la preview. Ce systeme remplace les anciens menus dans le panneau gauche pour un workflow plus intuitif :
+
+- **Double-clic sur le titre** → ouvre le panneau "Titre" (police, taille, couleurs, letter-spacing, line-height, bold/italic)
+- **Double-clic sur les cartes** → ouvre le panneau "Cartes" et bascule le panneau gauche sur l'etape Contenu (step 0)
+- **Double-clic sur la zone video** → ouvre le panneau "Overlay Video" (texte, couleur, opacite, upload rush)
+- **Double-clic sur le CTA** → ouvre le panneau "CTA" (texte, couleurs, taille, sous-titre)
+- **Double-clic sur le logo** → ouvre le panneau "Logo" (upload, taille, opacite)
+- **Double-clic sur le fond vide** → ouvre le panneau "Ajouter" (upload logo, element, image)
+
+Chaque panneau contient un **ColorWheel** (`react-colorful`) toujours visible (pas de toggle expand/collapse) et des controles de typographie avances (letter-spacing, line-height, bold, italic).
+
+#### Selecteur de sequences et Play montage
+
+Les boutons de sequence (Titre, Cartes, Video, CTA) sont affiches en permanence. Le bouton "Tout" a ete remplace par un bouton **Play (▶)** qui lance un montage automatique : il cycle sequentiellement a travers chaque sequence avec les durees configurees, puis revient en mode "all" a la fin. Le timer utilise `useRef<NodeJS.Timeout>` et `useCallback` pour eviter les fuites memoire.
+
+Les boutons de sequence sont lies au panneau gauche : cliquer sur "Cartes" bascule automatiquement sur l'etape Contenu (step 0), cliquer sur "Video" bascule sur l'etape Style (step 2).
+
+#### Barre de couleurs et parametres
+
+La barre de couleurs (format 9:16/16:9 + couleurs accent/gradient) est visible sur **toutes les etapes** (pas seulement l'etape Contenu). Le bouton Parametres (engrenage) est dans la barre d'etapes et accessible depuis n'importe quelle etape.
+
+#### Typographie avancee
+
+Chaque element textuel dispose de controles independants : `letterSpacing`, `lineHeight`, `fontWeight` (bold), `fontStyle` (italic). Les etats sont : `titleLetterSpacing`, `titleLineHeight`, `titleBold`, `titleItalic`, `ctaLetterSpacing`, `ctaLineHeight`, `ctaBold`, `ctaItalic`, `overlayLetterSpacing`, `overlayLineHeight`, `overlayBold`, `overlayItalic`, `cardsLetterSpacing`. Tous les parametres sont persistes dans **localStorage** et restaures au chargement.
+
+#### Export double destination
+
+L'export supporte deux destinations simultanees :
+
+- **Calendrier** : Cree un post dans `scheduled_posts` avec toutes les metadonnees (design complet incluant typographie, positions, couleurs, polices, etc.)
+- **Bureau** : Telecharge 3 fichiers — le poster (image), la video rush (si presente), et un fichier JSON de configuration contenant tous les parametres du design
 
 Le compositeur video (`video-composer.ts`, 839 lignes) est le coeur du systeme. Il dessine chaque frame sur un Canvas 2D et encode via MediaRecorder. Deux modes :
 
@@ -185,7 +223,7 @@ src/
 │   ├── billing/                # CreditsDisplay, PricingCards
 │   ├── dashboard/              # RecentVideos, StatsCard
 │   ├── layout/                 # Navbar, Sidebar, AdminSidebar
-│   └── ui/                     # Badge, Button, Card, Input, Modal, Select, Table
+│   └── ui/                     # Badge, Button, Card, ColorWheel, FloatingPanel, Input, Modal, Select, Table
 ├── lib/
 │   ├── db/supabase.ts          # supabase (client) + supabaseAdmin (server)
 │   ├── auth/config.ts          # NextAuth config
@@ -294,6 +332,61 @@ const blob = await composeVideo({
 
 Si `musicUrl` et `voiceUrl` sont absents → mode fast. Sinon → mode normal.
 
+### FloatingPanel — Panneau flottant draggable
+
+```typescript
+import FloatingPanel from '@/components/ui/FloatingPanel';
+import ColorWheel from '@/components/ui/ColorWheel';
+
+// Ouvrir un panneau au double-clic
+const openPanel = (type: 'title' | 'cards' | 'cta' | 'overlay' | 'logo' | 'add', e: React.MouseEvent) => {
+  setPanelPos({ x: e.clientX + 10, y: e.clientY - 50 });
+  setActivePanel(type);
+};
+
+<FloatingPanel
+  title="Titre"
+  icon="✏️"
+  isOpen={activePanel === 'title'}
+  onClose={() => setActivePanel(null)}
+  initialX={panelPos.x}
+  initialY={panelPos.y}
+>
+  <ColorWheel color={titleColor} onChange={setTitleColor} label="Couleur" />
+  {/* ... autres controles ... */}
+</FloatingPanel>
+```
+
+Le panneau est draggable via le header, se ferme au clic exterieur (avec 50ms de delai pour eviter la fermeture instantanee), et utilise `backdrop-filter: blur(20px)` pour un effet glassmorphism.
+
+### Play montage — Cycle automatique des sequences
+
+```typescript
+const playTimerRef = useRef<NodeJS.Timeout | null>(null);
+const stopPlayback = useCallback(() => {
+  if (playTimerRef.current) { clearTimeout(playTimerRef.current); playTimerRef.current = null; }
+  setIsPlaying(false);
+}, []);
+
+const startPlayback = useCallback(() => {
+  stopPlayback();
+  setIsPlaying(true);
+  const sequences = [
+    { key: 'titre', duration: introDuration },
+    ...(cards.length > 0 ? [{ key: 'cartes', duration: cardsDuration }] : []),
+    ...(rushUrl ? [{ key: 'video', duration: videoDuration }] : []),
+    { key: 'cta', duration: ctaDuration },
+  ];
+  let i = 0;
+  const playNext = () => {
+    if (i >= sequences.length) { setActiveSequence('all'); setIsPlaying(false); return; }
+    setActiveSequence(sequences[i].key);
+    playTimerRef.current = setTimeout(() => { i++; playNext(); }, sequences[i].duration * 1000);
+  };
+  playNext();
+}, [/* deps */]);
+```
+
 ### Metadata d'un post (scheduled_posts.metadata)
 
 ```json
@@ -308,14 +401,44 @@ Si `musicUrl` et `voiceUrl` sont absents → mode fast. Sinon → mode normal.
     "ctaText": "Decouvrir",
     "watermarkText": "Afroboost"
   },
+  "design": {
+    "titleFont": "Anton",
+    "titleColor": "#FFFFFF",
+    "titleLetterSpacing": 0,
+    "titleLineHeight": 1.1,
+    "titleBold": true,
+    "titleItalic": false,
+    "ctaLetterSpacing": 2,
+    "ctaLineHeight": 1.2,
+    "ctaBold": true,
+    "ctaItalic": false,
+    "ctaTextScale": 1.0,
+    "ctaSubColor": "#D91CD2",
+    "overlayText": "...",
+    "overlayColor": "#FFFFFF",
+    "overlayLetterSpacing": 0,
+    "overlayLineHeight": 1.2,
+    "overlayBold": true,
+    "overlayItalic": false,
+    "cardsLetterSpacing": 0,
+    "gradientStart": "#7C3AED",
+    "gradientEnd": "#EC4899",
+    "gradientOpacity": 0.6,
+    "logoPosition": { "x": 50, "y": 8 },
+    "logoSize": 80,
+    "logoOpacity": 1
+  },
   "videoUrl": "https://supabase.../montage.webm",
   "posterUrl": "https://supabase.../poster.jpg",
   "musicUrl": "https://...",
   "voiceUrl": "https://...",
   "format": "reel",
-  "cards": [{ "icon": "...", "title": "...", "description": "...", "value": "..." }]
+  "cards": [{ "icon": "...", "title": "...", "description": "...", "value": "..." }],
+  "cardCustomIcons": { "0": "https://..." }
 }
 ```
+
+Le champ `design` contient tous les parametres visuels de l'editeur (typographie, couleurs, positions, opacites). Ce champ est utilise pour reconstruire le design exact lors de la preview dans le Calendrier ou lors d'un re-edit.
 
 ---
 
@@ -468,9 +591,11 @@ Le code du Calendrier se trouve dans `src/app/dashboard/calendar/page.tsx`. Le c
 - **Types** : Definis dans `src/lib/types/database.ts` et `src/lib/types/api.ts`
 - **API routes** : Pattern REST, NextResponse, auth via `getServerSession()`
 - **Composants UI** : Dans `src/components/ui/` (Button, Card, Modal, etc.)
-- **Couleurs** : Primary `#7C3AED` (purple), Accent `#EC4899` (pink), Dark `#0A0A0F`
-- **Font** : Inter (Google Fonts)
+- **Couleurs** : Primary `#7C3AED` (purple), Accent `#EC4899` (pink), Magenta `#D91CD2`, Dark `#0A0A0F`
+- **Fonts** : Inter (UI), Anton, Syne, Bebas Neue, Poppins, Space Grotesk (editeur infographie) — via `next/font/google` avec CSS variables
 - **Theme** : Dark mode uniquement
+- **Panneaux UI** : Les controles contextuels utilisent `FloatingPanel` (draggable, glassmorphism) + `ColorWheel` (react-colorful, toujours visible)
+- **Persistance** : Les preferences utilisateur (couleurs, typo, positions) sont sauvegardees dans localStorage et restaurees au chargement
 
 ---
 

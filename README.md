@@ -50,6 +50,8 @@ Studiio permet aux createurs de contenu, coachs fitness, entrepreneurs et marque
 | Email | Resend (REST) | - | Emails transactionnels fire-and-forget |
 | i18n | next-intl | 4.x | FR (defaut), EN, DE |
 | Validation | Zod | 3.x | Validation schemas API |
+| Color Picker | react-colorful | 3.x | ColorWheel UI dans l'editeur infographie |
+| Fonts | next/font/google | - | 5 polices : Anton, Syne, Bebas Neue, Poppins, Space Grotesk |
 | Tests | Playwright | - | Tests end-to-end |
 | Deploiement | Vercel | auto-deploy | Plan Pro, `maxDuration: 300s` pour fonctions longues |
 
@@ -124,7 +126,7 @@ src/
 │   ├── billing/                # CreditsDisplay, PricingCards
 │   ├── dashboard/              # RecentVideos, StatsCard
 │   ├── layout/                 # Navbar, Sidebar, AdminSidebar
-│   └── ui/                     # Badge, Button, Card, Input, Modal, Select, Table
+│   └── ui/                     # Badge, Button, Card, ColorWheel, FloatingPanel, Input, Modal, Select, Table
 ├── lib/
 │   ├── db/supabase.ts          # Deux clients : supabase (RLS) + supabaseAdmin (bypass)
 │   ├── auth/config.ts          # Config NextAuth (providers Google/Facebook, callbacks JWT)
@@ -163,13 +165,19 @@ Le middleware (`src/middleware.ts`) protege les routes `/dashboard/*`, `/admin/*
 
 ### 1. Infographie — Creation de contenu visuel
 
-**Fichiers principaux** : `src/app/dashboard/infographie/page.tsx`, `src/lib/video-composer.ts`, `src/lib/smart-content.ts`
+**Fichiers principaux** : `src/app/dashboard/infographie/page.tsx` (~3900 lignes), `src/lib/video-composer.ts`, `src/lib/smart-content.ts`, `src/components/ui/FloatingPanel.tsx`, `src/components/ui/ColorWheel.tsx`
 
-C'est le point d'entree principal de la creation. L'utilisateur choisit un theme parmi une liste (fitness, sante, nutrition, bien-etre, etc.), selectionne un template visuel, et le systeme genere automatiquement 5 cartes d'infographie via `smart-content.ts`. Ce module utilise une base de connaissances locale integree au code — il n'appelle aucune API IA externe. Le branding est entierement personnalisable via `BrandingPanel.tsx` : logo, couleur d'accent, texte CTA, watermark.
+C'est le point d'entree principal de la creation. L'utilisateur choisit un theme parmi une liste (fitness, sante, nutrition, bien-etre, etc.), selectionne un template visuel, et le systeme genere automatiquement 5 cartes d'infographie via `smart-content.ts`. Ce module utilise une base de connaissances locale integree au code — il n'appelle aucune API IA externe.
+
+L'editeur utilise un systeme de **panneaux flottants contextuels** (`FloatingPanel.tsx`) ouverts par double-clic sur les elements de la preview. Chaque panneau contient un **ColorWheel** (`react-colorful`, `HexColorPicker` toujours visible) et des controles de typographie avances (letter-spacing, line-height, bold, italic). Les panneaux sont draggables, glassmorphism, et se ferment au clic exterieur.
+
+Les boutons de sequence (Titre, Cartes, Video, CTA) incluent un bouton **Play (▶)** qui lance un montage automatique cyclant a travers chaque sequence. La barre de couleurs et le bouton Parametres sont accessibles depuis toutes les etapes de l'editeur.
+
+L'export supporte deux destinations simultanees : **Calendrier** (cree un post avec metadonnees completes incluant le design) et **Bureau** (telecharge poster + video + config JSON). Les preferences utilisateur sont persistees dans localStorage.
 
 Le coeur technique de ce module est le compositeur video (`video-composer.ts`, 839 lignes). Il dessine chaque frame d'animation sur un Canvas 2D HTML5, puis encode le tout via l'API MediaRecorder du navigateur. Le compositeur fonctionne en deux modes distincts, decrits dans la section Pipeline video.
 
-L'export produit un fichier WebM uploade sur Supabase Storage via signed URL, et cree un enregistrement dans `scheduled_posts` avec toutes les metadonnees necessaires au montage (sequences, branding, URLs media).
+L'export produit un fichier WebM uploade sur Supabase Storage via signed URL, et cree un enregistrement dans `scheduled_posts` avec toutes les metadonnees necessaires au montage (sequences, branding, design, URLs media).
 
 ### 2. Studio Son — Audio
 
@@ -249,6 +257,29 @@ Les metadonnees d'un post (`scheduled_posts.metadata`) contiennent toutes les in
     "ctaText": "Decouvrir",
     "watermarkText": "Afroboost"
   },
+  "design": {
+    "titleFont": "Anton",
+    "titleColor": "#FFFFFF",
+    "titleLetterSpacing": 0,
+    "titleLineHeight": 1.1,
+    "titleBold": true,
+    "titleItalic": false,
+    "ctaLetterSpacing": 2,
+    "ctaLineHeight": 1.2,
+    "ctaTextScale": 1.0,
+    "ctaSubColor": "#D91CD2",
+    "overlayText": "...",
+    "overlayColor": "#FFFFFF",
+    "overlayLetterSpacing": 0,
+    "overlayLineHeight": 1.2,
+    "cardsLetterSpacing": 0,
+    "gradientStart": "#7C3AED",
+    "gradientEnd": "#EC4899",
+    "gradientOpacity": 0.6,
+    "logoPosition": { "x": 50, "y": 8 },
+    "logoSize": 80,
+    "logoOpacity": 1
+  },
   "videoUrl": "https://supabase.../montage.webm",
   "rawVideoUrl": "https://supabase.../rush.mp4",
   "rushUrls": ["https://supabase.../rush.mp4"],
@@ -258,11 +289,12 @@ Les metadonnees d'un post (`scheduled_posts.metadata`) contiennent toutes les in
   "hasAudio": true,
   "renderedVideoUrl": "https://supabase.../montage-audio.webm",
   "format": "reel",
-  "cards": [{ "icon": "...", "title": "...", "description": "...", "value": "..." }]
+  "cards": [{ "icon": "...", "title": "...", "description": "...", "value": "..." }],
+  "cardCustomIcons": { "0": "https://..." }
 }
 ```
 
-Les champs `rawVideoUrl` / `rushUrls` pointent vers la video rush brute originale. `videoUrl` pointe vers le montage WebM rendu par le compositeur. `renderedVideoUrl` pointe vers le montage avec audio (apres passage au Studio Son). `hasAudio` indique si le post contient de l'audio.
+Les champs `rawVideoUrl` / `rushUrls` pointent vers la video rush brute originale. `videoUrl` pointe vers le montage WebM rendu par le compositeur. `renderedVideoUrl` pointe vers le montage avec audio (apres passage au Studio Son). `hasAudio` indique si le post contient de l'audio. Le champ `design` contient tous les parametres visuels de l'editeur (typographie, couleurs, positions, opacites) pour reconstruire le design exact.
 
 ### Upload vers Supabase Storage
 
@@ -564,6 +596,8 @@ CRON_SECRET=                             # Bearer token pour cron jobs
 ## Historique des changements
 
 ### Avril 2026
+
+**Refonte UX Editeur Infographie** : Remplacement des menus du panneau gauche par un systeme de panneaux flottants contextuels ouverts par double-clic sur les elements de la preview. Nouveaux composants `FloatingPanel.tsx` (draggable, glassmorphism, clic exterieur pour fermer) et `ColorWheel.tsx` (react-colorful, `HexColorPicker` toujours visible). Ajout de controles typographiques avances (letter-spacing, line-height, bold, italic) pour tous les elements textuels. Bouton Play montage remplacant le bouton "Tout" pour cycler automatiquement les sequences. Barre de couleurs et bouton Parametres accessibles depuis toutes les etapes. Export double destination : Calendrier (post avec metadonnees design completes) + Bureau (telecharge poster + video + config JSON). Persistance de toutes les preferences dans localStorage. 5 polices Google Fonts (Anton, Syne, Bebas Neue, Poppins, Space Grotesk) via `next/font/google` avec CSS variables.
 
 **Pipeline video et audio** : Preference WebM au lieu de MP4 dans le compositeur video pour corriger les metadonnees temporelles corrompues en mode fast. Ajout de la detection HEAD pre-check pour les fichiers video volumineux sans support des range requests dans la preview du Calendrier. Le Studio Son produit maintenant des fichiers WebM valides avec audio embarque en mode normal.
 
