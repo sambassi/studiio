@@ -555,6 +555,7 @@ export default function CalendarPage() {
             ctaColor: designMeta.ctaColor || undefined,
             logoSequences: designMeta.logoSequences || undefined,
             logoPosition: designMeta.positions?.logo || undefined,
+            logoPositions: designMeta.logoPositions || undefined,
             logoScale: designMeta.logoScale || undefined,
             overlayText: meta.videoOverlayText || undefined,
             overlayColor: designMeta.overlayColor || undefined,
@@ -1203,6 +1204,7 @@ export default function CalendarPage() {
           ctaColor: calDesign?.ctaColor || undefined,
           logoSequences: calDesign?.logoSequences || undefined,
           logoPosition: calDesign?.positions?.logo || undefined,
+          logoPositions: calDesign?.logoPositions || undefined,
           logoScale: calDesign?.logoScale || undefined,
           overlayText: meta?.videoOverlayText || undefined,
           overlayColor: calDesign?.overlayColor || undefined,
@@ -2497,6 +2499,13 @@ export default function CalendarPage() {
         // Calendrier utilise : "intro", "cards", "video", "cta"
         const seqNameMap: Record<string, string> = { titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' };
         const designLogoSequences = rawLogoSequences.map((s: string) => seqNameMap[s] || s);
+        // Per-sequence logo positions (normalized from French → English)
+        const rawLogoPositions = design?.logoPositions || {};
+        const designLogoPositions: Record<string, { x: number; y: number }> = {};
+        Object.entries(rawLogoPositions).forEach(([k, v]: [string, any]) => {
+          designLogoPositions[seqNameMap[k] || k] = v;
+        });
+        const getCalLogoPos = (seq: string) => designLogoPositions[seq] || positions.logo || { x: 50, y: 85 };
         // Site text (Afroboost.com) from design metadata
         const designSiteText = design?.siteText;
         const siteTextConfig = designSiteText || { text: 'Afroboost.com', pos: { x: 50, y: 95 }, size: 1.0, color: '#FFFFFF', opacity: 0.7, sequences: ['titre', 'cartes', 'video', 'cta'], enabled: true };
@@ -2640,15 +2649,15 @@ export default function CalendarPage() {
                           }} />
                         </div>
                       </div>
-                      {/* Logo sur intro si logoSequences inclut 'intro' */}
+                      {/* Logo sur intro si logoSequences inclut 'intro' — per-sequence position */}
                       {designLogoUrl && designLogoSequences?.includes('intro') && (
                         <img src={designLogoUrl} alt="Logo" style={{
                           position: 'absolute',
                           width: editorPxToDvh(40 * designLogoScale),
                           height: editorPxToDvh(40 * designLogoScale),
                           objectFit: 'contain',
-                          left: `${positions.logo?.x ?? 50}%`,
-                          top: `${positions.logo?.y ?? 85}%`,
+                          left: `${getCalLogoPos('intro').x}%`,
+                          top: `${getCalLogoPos('intro').y}%`,
                           transform: 'translate(-50%, -50%)',
                           zIndex: 20,
                         }} />
@@ -2772,15 +2781,15 @@ export default function CalendarPage() {
                           })()}
                         </div>
                       </div>
-                      {/* Logo sur cartes si logoSequences inclut 'cards' */}
+                      {/* Logo sur cartes si logoSequences inclut 'cards' — per-sequence position */}
                       {designLogoUrl && designLogoSequences?.includes('cards') && (
                         <img src={designLogoUrl} alt="Logo" style={{
                           position: 'absolute',
                           width: editorPxToDvh(40 * designLogoScale),
                           height: editorPxToDvh(40 * designLogoScale),
                           objectFit: 'contain',
-                          left: `${positions.logo?.x ?? 50}%`,
-                          top: `${positions.logo?.y ?? 85}%`,
+                          left: `${getCalLogoPos('cards').x}%`,
+                          top: `${getCalLogoPos('cards').y}%`,
                           transform: 'translate(-50%, -50%)',
                           zIndex: 20,
                         }} />
@@ -2830,15 +2839,15 @@ export default function CalendarPage() {
                             }}>{meta.videoOverlayText}</p>
                           </div>
                         )}
-                        {/* Logo sur vidéo si logoSequences inclut 'video' */}
+                        {/* Logo sur vidéo si logoSequences inclut 'video' — per-sequence position */}
                         {designLogoUrl && designLogoSequences?.includes('video') && (
                           <img src={designLogoUrl} alt="Logo" style={{
                             position: 'absolute',
                             width: editorPxToDvh(40 * designLogoScale),
                             height: editorPxToDvh(40 * designLogoScale),
                             objectFit: 'contain',
-                            left: `${positions.logo?.x ?? 50}%`,
-                            top: `${positions.logo?.y ?? 85}%`,
+                            left: `${getCalLogoPos('video').x}%`,
+                            top: `${getCalLogoPos('video').y}%`,
                             transform: 'translate(-50%, -50%)',
                             zIndex: 20,
                           }} />
@@ -2891,15 +2900,15 @@ export default function CalendarPage() {
                           marginTop: editorPxToDvh(4),
                         }}>{designCtaSubText || brd?.ctaText || branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}</p>
                       </div>
-                      {/* Logo sur CTA — seulement si logoSequences inclut 'cta' */}
+                      {/* Logo sur CTA — per-sequence position */}
                       {designLogoUrl && designLogoSequences?.includes('cta') && (
                         <img src={designLogoUrl} alt="Logo" style={{
                           position: 'absolute',
                           width: editorPxToDvh(40 * designLogoScale),
                           height: editorPxToDvh(40 * designLogoScale),
                           objectFit: 'contain',
-                          left: `${positions.logo?.x ?? 50}%`,
-                          top: `${positions.logo?.y ?? 85}%`,
+                          left: `${getCalLogoPos('cta').x}%`,
+                          top: `${getCalLogoPos('cta').y}%`,
                           transform: 'translate(-50%, -50%)',
                           zIndex: 20,
                         }} />

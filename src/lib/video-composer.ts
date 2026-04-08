@@ -49,8 +49,10 @@ export interface DesignOptions {
   ctaColor?: string;
   /** Logo sequences — which sequences show the logo (e.g. ['intro','cards','video','cta']) */
   logoSequences?: string[];
-  /** Logo position override {x: 0-100, y: 0-100} */
+  /** Logo position override {x: 0-100, y: 0-100} (legacy single position, used as fallback) */
   logoPosition?: { x?: number; y?: number };
+  /** Per-sequence logo positions {intro: {x,y}, cards: {x,y}, video: {x,y}, cta: {x,y}} */
+  logoPositions?: Record<string, { x?: number; y?: number }>;
   /** Video overlay text */
   overlayText?: string;
   /** Video overlay color */
@@ -251,6 +253,15 @@ function drawRoundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: n
   ctx.closePath();
 }
 
+/** Get logo position for a specific sequence, with fallback to global logoPosition */
+function getLogoPos(design: DesignOptions | undefined, seq: string): { x: number; y: number } {
+  const perSeq = design?.logoPositions?.[seq];
+  if (perSeq && (perSeq.x !== undefined || perSeq.y !== undefined)) {
+    return { x: perSeq.x ?? 50, y: perSeq.y ?? 85 };
+  }
+  return { x: design?.logoPosition?.x ?? 50, y: design?.logoPosition?.y ?? 85 };
+}
+
 function hexToRgba(hex: string, alpha: number): string {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
@@ -353,12 +364,13 @@ function drawIntro(
   ctx.moveTo(w / 2 - lineW / 2, lineY);
   ctx.lineTo(w / 2 + lineW / 2, lineY); ctx.stroke();
 
-  // Logo on intro if configured
+  // Logo on intro if configured — uses per-sequence position
   if (logoImg && design?.logoSequences?.includes('intro')) {
     const logoScale = design?.logoScale || 1.0;
     const logoSize = Math.round(w * 0.12 * logoScale);
-    const lx = ((design.logoPosition?.x ?? 50) / 100) * w - logoSize / 2;
-    const ly = ((design.logoPosition?.y ?? 85) / 100) * h - logoSize / 2;
+    const pos = getLogoPos(design, 'intro');
+    const lx = (pos.x / 100) * w - logoSize / 2;
+    const ly = (pos.y / 100) * h - logoSize / 2;
     drawLogo(ctx, logoImg, lx, ly, logoSize);
   }
 
@@ -587,12 +599,13 @@ function drawCards(
     });
   }
 
-  // Logo on cards if configured
+  // Logo on cards if configured — uses per-sequence position
   if (logoImg && design?.logoSequences?.includes('cards')) {
     const logoScale = design?.logoScale || 1.0;
     const logoSize = Math.round(w * 0.12 * logoScale);
-    const lx = ((design.logoPosition?.x ?? 50) / 100) * w - logoSize / 2;
-    const ly = ((design.logoPosition?.y ?? 85) / 100) * h - logoSize / 2;
+    const pos = getLogoPos(design, 'cards');
+    const lx = (pos.x / 100) * w - logoSize / 2;
+    const ly = (pos.y / 100) * h - logoSize / 2;
     drawLogo(ctx, logoImg, lx, ly, logoSize);
   }
 }
@@ -620,12 +633,13 @@ function drawVideoSeq(
     fillTextWithOutline(ctx, design.overlayText.toUpperCase(), w / 2, h / 2, 3, 'rgba(0,0,0,0.7)');
     ctx.restore();
   }
-  // Logo on video if configured
+  // Logo on video if configured — uses per-sequence position
   if (logoImg && design?.logoSequences?.includes('video')) {
     const logoScale = design?.logoScale || 1.0;
     const logoSize = Math.round(w * 0.1 * logoScale);
-    const lx = ((design.logoPosition?.x ?? 50) / 100) * w - logoSize / 2;
-    const ly = ((design.logoPosition?.y ?? 85) / 100) * h - logoSize / 2;
+    const pos = getLogoPos(design, 'video');
+    const lx = (pos.x / 100) * w - logoSize / 2;
+    const ly = (pos.y / 100) * h - logoSize / 2;
     drawLogo(ctx, logoImg, lx, ly, logoSize);
   }
 }
@@ -704,12 +718,13 @@ function drawCTA(
   ctx.fillStyle = ctaSubColor;
   ctx.fillText(effectiveSubText.toUpperCase(), w / 2, curY + subFontSize * 0.3);
 
-  // Logo on CTA if configured
+  // Logo on CTA if configured — uses per-sequence position
   if (logoImg && (!design?.logoSequences || design.logoSequences.includes('cta'))) {
     const logoScale = design?.logoScale || 1.0;
     const logoSize = Math.round(w * 0.12 * logoScale);
-    const lx = ((design?.logoPosition?.x ?? 50) / 100) * w - logoSize / 2;
-    const ly = ((design?.logoPosition?.y ?? 85) / 100) * h - logoSize / 2;
+    const pos = getLogoPos(design, 'cta');
+    const lx = (pos.x / 100) * w - logoSize / 2;
+    const ly = (pos.y / 100) * h - logoSize / 2;
     drawLogo(ctx, logoImg, lx, ly, logoSize);
   }
 
@@ -756,14 +771,25 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   // The editor (infographie) stores logoSequences with French names ('titre','cartes','video','cta')
   // but the draw functions check English names ('intro','cards','video','cta').
   const seqNameMap: Record<string, string> = { titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' };
+  // Normalize logoPositions keys from French → English too
+  const normalizedLogoPositions: Record<string, { x?: number; y?: number }> | undefined =
+    design?.logoPositions
+      ? Object.fromEntries(
+          Object.entries(design.logoPositions).map(([k, v]) => [seqNameMap[k.toLowerCase()] || k, v])
+        )
+      : undefined;
   const normalizedDesign: DesignOptions | undefined = design
     ? {
         ...design,
         logoSequences: design.logoSequences?.map(s => seqNameMap[s.toLowerCase()] || s),
+        logoPositions: normalizedLogoPositions,
       }
     : undefined;
   if (design?.logoSequences) {
     console.log('[Composer] logoSequences raw:', design.logoSequences, '→ normalized:', normalizedDesign?.logoSequences);
+  }
+  if (design?.logoPositions) {
+    console.log('[Composer] logoPositions raw:', JSON.stringify(design.logoPositions), '→ normalized:', JSON.stringify(normalizedLogoPositions));
   }
 
   onProgress?.(2, 'Chargement des médias...');

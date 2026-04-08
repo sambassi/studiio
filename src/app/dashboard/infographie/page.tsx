@@ -383,7 +383,12 @@ export default function InfographicPage() {
         if (cfg.customCardIcons) setCustomCardIcons(cfg.customCardIcons);
         // Positions des éléments
         if (cfg.titlePos) setTitlePos(cfg.titlePos);
-        if (cfg.logoPos) setLogoPos(cfg.logoPos);
+        if (cfg.logoPositions) {
+          setLogoPositions(cfg.logoPositions);
+        } else if (cfg.logoPos) {
+          // Migrate old single-pos format to per-sequence
+          setLogoPositions({ titre: { ...cfg.logoPos }, cartes: { ...cfg.logoPos }, video: { ...cfg.logoPos }, cta: { ...cfg.logoPos } });
+        }
         if (cfg.watermarkPos) setWatermarkPos(cfg.watermarkPos);
         if (cfg.cardsPos) setCardsPos(cfg.cardsPos);
         if (cfg.overlayPos) setOverlayPos(cfg.overlayPos);
@@ -459,7 +464,22 @@ export default function InfographicPage() {
 
   // Drag positions (percentage-based offsets from default)
   const [titlePos, setTitlePos] = useState({ x: 50, y: 10 });
-  const [logoPos, setLogoPos] = useState({ x: 50, y: 85 });
+  // Per-sequence logo positions: each sequence can have its own logo placement
+  const defaultLogoPos = { x: 50, y: 85 };
+  const [logoPositions, setLogoPositions] = useState<Record<string, { x: number; y: number }>>({
+    titre: { ...defaultLogoPos },
+    cartes: { ...defaultLogoPos },
+    video: { ...defaultLogoPos },
+    cta: { ...defaultLogoPos },
+  });
+  // Helper to get logo pos for current active sequence (or first enabled sequence)
+  const getActiveLogoPos = () => {
+    if (activeSequence !== 'all' && logoPositions[activeSequence]) return logoPositions[activeSequence];
+    // In 'all' view, show the position of the first enabled logo sequence
+    const firstSeq = logoSequences[0];
+    return (firstSeq && logoPositions[firstSeq]) || defaultLogoPos;
+  };
+  const logoPos = getActiveLogoPos();
   const [watermarkPos, setWatermarkPos] = useState({ x: 50, y: 97 });
   const [cardsPos, setCardsPos] = useState({ x: 50, y: 50 });
   const [dragging, setDragging] = useState<string | null>(null);
@@ -572,7 +592,7 @@ export default function InfographicPage() {
           titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
           gradientColor1, gradientColor2, gradientOpacity, noColorBg, noColorSequences, seqGradients,
           textScale, ctaTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
-          titlePos, logoPos, watermarkPos, cardsPos, overlayPos,
+          titlePos, logoPositions, watermarkPos, cardsPos, overlayPos,
           titleSize, cardsSize, watermarkSize,
           title, subtitle, videoOverlayText, cards, salesPhrases, contentTheme, customTopic,
           photoSearchQuery, selectedPhotoIndex,
@@ -1203,11 +1223,12 @@ export default function InfographicPage() {
                   seqGradients,
                   positions: {
                     title: titlePos,
-                    logo: logoPos,
+                    logo: getActiveLogoPos(), // Legacy single pos (fallback for old callers)
                     watermark: watermarkPos,
                     cards: cardsPos,
                     overlay: overlayPos,
                   },
+                  logoPositions, // Per-sequence logo positions
                   sizes: {
                     title: titleSize,
                     cards: cardsSize,
@@ -1323,7 +1344,8 @@ export default function InfographicPage() {
               cardsPosition: cardsPos || undefined,
               cardsSize: cardsSize || undefined,
               logoSequences: logoSequences || undefined,
-              logoPosition: logoPos || undefined,
+              logoPosition: getActiveLogoPos() || undefined,
+              logoPositions: logoPositions || undefined,
               logoScale: logoScale || undefined,
               ctaMainText: ctaMainText || undefined,
               ctaSubTextDesign: ctaSubText || undefined,
@@ -1707,7 +1729,7 @@ export default function InfographicPage() {
             <button
               onClick={() => {
                 setTitlePos({ x: 50, y: 10 });
-                setLogoPos({ x: 50, y: 85 });
+                setLogoPositions({ titre: { x: 50, y: 85 }, cartes: { x: 50, y: 85 }, video: { x: 50, y: 85 }, cta: { x: 50, y: 85 } });
                 setWatermarkPos({ x: 50, y: 97 });
                 setCardsPos({ x: 50, y: 50 });
                 setTitleSize(100);
@@ -2856,7 +2878,19 @@ export default function InfographicPage() {
                 ),
               );
               if (dragging === "title") setTitlePos({ x, y });
-              else if (dragging === "logo") setLogoPos({ x, y });
+              else if (dragging === "logo") {
+                // Update logo position for the active sequence (or all enabled sequences in 'all' view)
+                if (activeSequence !== 'all') {
+                  setLogoPositions(prev => ({ ...prev, [activeSequence]: { x, y } }));
+                } else {
+                  // In 'all' view, update all enabled logo sequences
+                  setLogoPositions(prev => {
+                    const updated = { ...prev };
+                    logoSequences.forEach(seq => { updated[seq] = { x, y }; });
+                    return updated;
+                  });
+                }
+              }
               else if (dragging === "watermark") setWatermarkPos({ x, y });
               else if (dragging === "cards") setCardsPos({ x, y });
               else if (dragging === "overlay") setOverlayPos({ x, y });
