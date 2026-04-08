@@ -5,7 +5,7 @@ import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 // GET /api/posts/[id] — fetch a single post by ID
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
@@ -13,7 +13,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id } = params;
+    const { id } = await params;
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing post ID' }, { status: 400 });
     }
@@ -40,7 +40,7 @@ export async function GET(
 // PATCH /api/posts/[id] — update a post (used by Audio Studio to save audio)
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
@@ -48,7 +48,7 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id } = params;
+    const { id } = await params;
     const body = await req.json();
 
     const { data, error } = await supabase
