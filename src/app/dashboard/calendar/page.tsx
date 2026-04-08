@@ -170,6 +170,7 @@ export default function CalendarPage() {
   // Cross-date bulk selection mode (select posts across multiple days from the calendar grid)
   const [crossDateBulk, setCrossDateBulk] = useState(false);
   const [selectedBulkDays, setSelectedBulkDays] = useState<Set<number>>(new Set());
+  const [bulkScheduleTime, setBulkScheduleTime] = useState('12:00');
 
   // Edit modal state
   const [editTab, setEditTab] = useState<'draft' | 'scheduled' | 'published'>('draft');
@@ -439,6 +440,32 @@ export default function CalendarPage() {
       setSelectedBulkDays(new Set());
       setCrossDateBulk(false);
     } catch (error) { console.error('Cross-date bulk delete error:', error); }
+    finally { setSaving(false); }
+  };
+
+  // Cross-date bulk schedule — set selected posts to 'scheduled' at the chosen time
+  const handleCrossDateBulkSchedule = async () => {
+    if (selectedPostIds.size === 0) return;
+    const count = selectedPostIds.size;
+    if (!confirm(`Planifier ${count} post(s) à ${bulkScheduleTime} ?`)) return;
+    setSaving(true);
+    try {
+      const ids = Array.from(selectedPostIds);
+      for (const id of ids) {
+        const post = posts.find(p => p.id === id);
+        if (!post) continue;
+        // Update time + status to scheduled
+        await fetch(`/api/posts/${post.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scheduled_time: bulkScheduleTime + ':00', status: 'scheduled' }),
+        });
+      }
+      await fetchPosts();
+      setSelectedPostIds(new Set());
+      setSelectedBulkDays(new Set());
+      setCrossDateBulk(false);
+    } catch (error) { console.error('Cross-date bulk schedule error:', error); }
     finally { setSaving(false); }
   };
 
@@ -1613,10 +1640,10 @@ export default function CalendarPage() {
 
             {/* Cross-date bulk selection bar */}
             {crossDateBulk && (
-              <div className="mt-4 p-3 bg-red-900/20 border border-red-700/50 rounded-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs text-red-300 font-medium">
-                    {selectedPostIds.size} post(s) sélectionné(s) sur {selectedBulkDays.size} jour(s)
+              <div className="mt-4 p-3 bg-gray-800/80 border border-purple-700/50 rounded-lg space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-purple-300 font-medium">
+                    {selectedPostIds.size} post(s) sur {selectedBulkDays.size} jour(s)
                   </p>
                   <button
                     onClick={() => { setCrossDateBulk(false); setSelectedPostIds(new Set()); setSelectedBulkDays(new Set()); }}
@@ -1625,17 +1652,34 @@ export default function CalendarPage() {
                     Annuler
                   </button>
                 </div>
+                {/* Horaire de publication */}
+                <div className="flex items-center gap-2">
+                  <label className="text-[10px] text-gray-400 whitespace-nowrap">Heure :</label>
+                  <input
+                    type="time"
+                    value={bulkScheduleTime}
+                    onChange={(e) => setBulkScheduleTime(e.target.value)}
+                    className="flex-1 bg-gray-900 border border-gray-600 rounded-lg px-2 py-1.5 text-sm text-white focus:border-purple-500 focus:outline-none"
+                  />
+                </div>
                 <div className="flex gap-2">
+                  <button
+                    onClick={handleCrossDateBulkSchedule}
+                    disabled={saving || selectedPostIds.size === 0}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 disabled:opacity-50 text-white text-xs font-bold transition"
+                  >
+                    {saving ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />}
+                    Planifier à {bulkScheduleTime}
+                  </button>
                   <button
                     onClick={handleCrossDateBulkDelete}
                     disabled={saving || selectedPostIds.size === 0}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-bold transition"
+                    className="flex items-center justify-center gap-1 px-3 py-2 rounded-lg bg-red-600/80 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-bold transition"
                   >
-                    {saving ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                    Supprimer {selectedPostIds.size > 0 ? `(${selectedPostIds.size})` : ''}
+                    <Trash2 size={14} />
                   </button>
                 </div>
-                <p className="text-[9px] text-red-400/60 mt-1.5">Cliquez sur les jours du calendrier pour sélectionner/désélectionner</p>
+                <p className="text-[9px] text-gray-500">Cliquez sur les jours du calendrier pour sélectionner/désélectionner les posts</p>
               </div>
             )}
 
