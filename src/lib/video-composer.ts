@@ -283,9 +283,27 @@ function fillTextWithOutline(
   ctx.restore();
 }
 
-/** Draw a logo image as-is (no background, no clip — just the image) */
+/** Draw a logo image preserving aspect ratio (like CSS object-contain) */
 function drawLogo(ctx: CanvasRenderingContext2D, logoImg: HTMLImageElement, x: number, y: number, size: number) {
-  ctx.drawImage(logoImg, x, y, size, size);
+  // Preserve aspect ratio — fit within size x size box (like CSS object-contain)
+  const imgW = logoImg.naturalWidth || logoImg.width;
+  const imgH = logoImg.naturalHeight || logoImg.height;
+  if (imgW === 0 || imgH === 0) { ctx.drawImage(logoImg, x, y, size, size); return; }
+  const ratio = imgW / imgH;
+  let drawW: number, drawH: number;
+  if (ratio >= 1) {
+    // Wider than tall — fit to width
+    drawW = size;
+    drawH = size / ratio;
+  } else {
+    // Taller than wide — fit to height
+    drawH = size;
+    drawW = size * ratio;
+  }
+  // Center within the size x size box
+  const dx = x + (size - drawW) / 2;
+  const dy = y + (size - drawH) / 2;
+  ctx.drawImage(logoImg, dx, dy, drawW, drawH);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -365,10 +383,12 @@ function drawIntro(
   ctx.lineTo(w / 2 + lineW / 2, lineY); ctx.stroke();
 
   // Logo on intro if configured — uses per-sequence position
+  // Size: 10% of width * logoScale — matches editor's h-8 (32px) on ~320px preview
   if (logoImg && design?.logoSequences?.includes('intro')) {
     const logoScale = design?.logoScale || 1.0;
-    const logoSize = Math.round(w * 0.12 * logoScale);
+    const logoSize = Math.round(w * 0.10 * logoScale);
     const pos = getLogoPos(design, 'intro');
+    console.log(`[Composer] Logo INTRO: pos=${JSON.stringify(pos)}, size=${logoSize}, canvas=${w}x${h}`);
     const lx = (pos.x / 100) * w - logoSize / 2;
     const ly = (pos.y / 100) * h - logoSize / 2;
     drawLogo(ctx, logoImg, lx, ly, logoSize);
@@ -602,8 +622,9 @@ function drawCards(
   // Logo on cards if configured — uses per-sequence position
   if (logoImg && design?.logoSequences?.includes('cards')) {
     const logoScale = design?.logoScale || 1.0;
-    const logoSize = Math.round(w * 0.12 * logoScale);
+    const logoSize = Math.round(w * 0.10 * logoScale);
     const pos = getLogoPos(design, 'cards');
+    console.log(`[Composer] Logo CARDS: pos=${JSON.stringify(pos)}`);
     const lx = (pos.x / 100) * w - logoSize / 2;
     const ly = (pos.y / 100) * h - logoSize / 2;
     drawLogo(ctx, logoImg, lx, ly, logoSize);
@@ -638,6 +659,7 @@ function drawVideoSeq(
     const logoScale = design?.logoScale || 1.0;
     const logoSize = Math.round(w * 0.1 * logoScale);
     const pos = getLogoPos(design, 'video');
+    console.log(`[Composer] Logo VIDEO: pos=${JSON.stringify(pos)}`);
     const lx = (pos.x / 100) * w - logoSize / 2;
     const ly = (pos.y / 100) * h - logoSize / 2;
     drawLogo(ctx, logoImg, lx, ly, logoSize);
@@ -721,8 +743,9 @@ function drawCTA(
   // Logo on CTA if configured — uses per-sequence position
   if (logoImg && (!design?.logoSequences || design.logoSequences.includes('cta'))) {
     const logoScale = design?.logoScale || 1.0;
-    const logoSize = Math.round(w * 0.12 * logoScale);
+    const logoSize = Math.round(w * 0.10 * logoScale);
     const pos = getLogoPos(design, 'cta');
+    console.log(`[Composer] Logo CTA: pos=${JSON.stringify(pos)}`);
     const lx = (pos.x / 100) * w - logoSize / 2;
     const ly = (pos.y / 100) * h - logoSize / 2;
     drawLogo(ctx, logoImg, lx, ly, logoSize);
@@ -765,7 +788,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   console.log('[Composer] Music:', musicUrl?.substring(0, 60) || 'NONE');
   console.log('[Composer] Voice:', voiceUrl?.substring(0, 60) || 'NONE');
   console.log('[Composer] Logo:', logoUrl?.substring(0, 60) || 'NONE');
-  console.log('[Composer] Design:', design ? JSON.stringify({ font: design.font, titleColor: design.titleColor, grad1: design.gradientColor1 }) : 'NONE');
+  console.log('[Composer] Design:', design ? JSON.stringify({ font: design.font, titleColor: design.titleColor, grad1: design.gradientColor1, logoPos: design.logoPosition, logoPositions: design.logoPositions, logoSeqs: design.logoSequences, logoScale: design.logoScale }) : 'NONE');
 
   // ── Normalize French sequence names → English ──
   // The editor (infographie) stores logoSequences with French names ('titre','cartes','video','cta')
