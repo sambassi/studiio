@@ -278,6 +278,7 @@ export default function InfographicPage() {
   // ── Persist configurations across sessions ──────────────────
   const INFOGRAPHIC_CONFIG_KEY = "studiio_infographic_config";
   const [configLoaded, setConfigLoaded] = useState(false);
+  const restoringFromStorage = useRef(true); // Skip auto-generate during initial localStorage restore
 
   // Load saved config on mount
   useEffect(() => {
@@ -357,12 +358,16 @@ export default function InfographicPage() {
         if (cfg.salesPhrases && cfg.salesPhrases.length > 0) setSalesPhrases(cfg.salesPhrases);
         if (cfg.contentTheme) setContentTheme(cfg.contentTheme);
         if (cfg.customTopic) setCustomTopic(cfg.customTopic);
+        if (cfg.photoSearchQuery) setPhotoSearchQuery(cfg.photoSearchQuery);
+        if (cfg.selectedPhotoIndex !== undefined) setSelectedPhotoIndex(cfg.selectedPhotoIndex);
       }
     } catch {
       /* ignore */
     }
     // Marquer comme chargé APRÈS la restauration pour éviter que le save n'écrase les valeurs
     setConfigLoaded(true);
+    // Allow auto-generate to work again after initial restore (next tick)
+    requestAnimationFrame(() => { restoringFromStorage.current = false; });
   }, []);
 
   // ── Safe Zone Overlay (additive — does not affect existing logic) ────
@@ -501,6 +506,7 @@ export default function InfographicPage() {
           titlePos, logoPos, watermarkPos, cardsPos, overlayPos,
           titleSize, cardsSize, watermarkSize,
           title, subtitle, videoOverlayText, cards, salesPhrases, contentTheme, customTopic,
+          photoSearchQuery, selectedPhotoIndex,
         }),
       );
     } catch { /* ignore */ }
@@ -517,6 +523,7 @@ export default function InfographicPage() {
     titlePos, logoPos, watermarkPos, cardsPos, overlayPos,
     titleSize, cardsSize, watermarkSize,
     title, subtitle, videoOverlayText, cards, salesPhrases, contentTheme, customTopic,
+    photoSearchQuery, selectedPhotoIndex,
   ]);
 
   // (Typography states declared earlier for localStorage compatibility)
@@ -727,6 +734,16 @@ export default function InfographicPage() {
 
   // ── Auto-generate on theme change ───────────────────────────
   useEffect(() => {
+    // Skip auto-generation when restoring from localStorage to preserve user's saved work
+    if (restoringFromStorage.current) {
+      // Still fetch photos for the restored theme so the gallery isn't empty
+      if (contentTheme !== "personnalise") {
+        const themeObj = CONTENT_THEMES.find((t) => t.id === contentTheme);
+        const query = photoSearchQuery || themeObj?.pexelsQuery || themeObj?.label || "";
+        if (query) fetchPexelsPhotos(query);
+      }
+      return;
+    }
     if (contentTheme !== "personnalise") {
       // Set photo search query to theme's pexels query
       const themeObj = CONTENT_THEMES.find((t) => t.id === contentTheme);
