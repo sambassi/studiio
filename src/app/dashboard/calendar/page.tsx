@@ -705,7 +705,7 @@ export default function CalendarPage() {
     const isMontagePost = meta?.type === 'infographic' || (meta?.type === 'creator' && meta?.sequences);
     if (!isMontagePost) return;
 
-    const seqOrder: string[] = (meta?.sequences?.order || ['intro', 'cards', 'video']).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; });
+    const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
     // Only include video sequence if the video file has been proven playable
     // videoPlayable starts false and is only set true after onloadeddata fires
     const activeSeqs = videoPlayable ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
@@ -740,7 +740,7 @@ export default function CalendarPage() {
     // Only use raw rush video — never rendered montage (has CTA baked in)
     const videoSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0];
     if (!videoSrc) return;
-    const seqOrder: string[] = (meta?.sequences?.order || ['intro', 'cards', 'video']).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; });
+    const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
     const safeIdx = infoSeqIndex < seqOrder.length ? infoSeqIndex : 0;
     const currentSeq = seqOrder[safeIdx] || 'intro';
 
@@ -896,7 +896,7 @@ export default function CalendarPage() {
     const videoSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0];
     if (!videoSrc) return;
 
-    const seqOrder: string[] = (meta?.sequences?.order || ['intro', 'cards', 'video']).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; });
+    const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
     const activeSeqs = videoPlayable ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
     const currentSeq = activeSeqs[infoSeqIndex] || 'intro';
 
@@ -1782,8 +1782,8 @@ export default function CalendarPage() {
                         )}
                         {/* Dégradé overlay — utilise les couleurs du design */}
                         <div className="absolute inset-0" style={{ background: `linear-gradient(to top, ${hexRgba(fpGrad1, fpGradOpacity)} 0%, ${hexRgba(fpGrad2, fpGradOpacity * 0.4)} 40%, transparent 65%)` }} />
-                        {/* Titre + sous-titre */}
-                        <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-2 z-10">
+                        {/* Titre + sous-titre — style intro (poster + titre) */}
+                        <div className="absolute inset-0 flex flex-col items-center text-center px-2 z-10" style={{ justifyContent: 'flex-end', paddingBottom: '15%' }}>
                           <h4 className="font-black uppercase tracking-wide leading-tight" style={{
                             fontSize: '11px', color: fpTitleColor, fontFamily: fpFont,
                             textShadow: `0 0 8px ${fpAccent}CC, 0 0 20px ${fpAccent}66`,
@@ -1794,28 +1794,6 @@ export default function CalendarPage() {
                             <p className="mt-0.5" style={{ fontSize: '7px', color: `${fpTitleColor}CC`, fontFamily: fpFont, textShadow: `0 0 6px ${fpAccent}80` }}>{fpMeta.subtitle}</p>
                           )}
                           <div className="w-6 h-px mt-1 mx-auto rounded-full" style={{ background: `linear-gradient(90deg, transparent, ${fpAccent}, transparent)` }} />
-                          {/* Cartes d'info en miniature */}
-                          {fpCards.length > 0 && (
-                            <div className="mt-1.5 space-y-0.5 w-full max-w-[90%]">
-                              {fpCards.slice(0, 2).map((card, ci) => (
-                                <div key={ci} className="flex items-center gap-1 bg-black/40 backdrop-blur-sm rounded px-1 py-px">
-                                  <span style={{ fontSize: '6px' }}>{card.emoji}</span>
-                                  <span className="text-white/80 truncate flex-1" style={{ fontSize: '5px', fontFamily: fpFont }}>{card.label}</span>
-                                  <span className="font-bold" style={{ fontSize: '5px', color: card.color || fpAccent }}>{card.value}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {fpCards.length === 0 && fpTextCards.length > 0 && (
-                            <div className="mt-1.5 space-y-0.5 w-full max-w-[90%]">
-                              {fpTextCards.slice(0, 2).map((card, ci) => (
-                                <div key={ci} className="flex items-center gap-1 bg-black/40 backdrop-blur-sm rounded px-1 py-px">
-                                  <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: card.color || fpAccent }} />
-                                  <span className="text-[6px] text-white/80 truncate">{card.text}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
                         </div>
                         {/* Logo en miniature */}
                         {fpLogoUrl && (
@@ -2438,7 +2416,7 @@ export default function CalendarPage() {
             <div className="flex-1 bg-black flex flex-col items-center justify-center p-2 md:p-4" style={{ minHeight: '60dvh' }}>
               {/* Montage video preview — infographic & creator with sequences */}
               {hasMontage ? (() => {
-                const seqOrder: string[] = (meta?.sequences?.order || ['intro', 'cards', 'video']).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; });
+                const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
                 // Only include video sequence if the video has been proven playable (onloadeddata fired)
                 const activeSeqs = videoPlayable ? seqOrder : seqOrder.filter((s: string) => s !== 'video');
                 const posterImgSrc = meta?.pexelsUrl || meta?.posterUrl || meta?.characterUrl || null;
@@ -3057,7 +3035,7 @@ export default function CalendarPage() {
                 )}
                 {hasMontage && (
                   <div className="flex items-center gap-2 text-xs text-purple-400">
-                    <Film className="w-3 h-3" /> {t('fullPreview.sequences', { count: String((meta?.sequences?.order || ['intro', 'cards', 'video']).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }).length) })} • {meta?.sequences?.total || 30}s
+                    <Film className="w-3 h-3" /> {t('fullPreview.sequences', { count: String([...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))].length) })} • {meta?.sequences?.total || 30}s
                   </div>
                 )}
                 {meta?.videoUrl && !hasMontage && (

@@ -1008,10 +1008,13 @@ export async function convertWebmToMp4(
 
     onProgress?.(40, 'Encodage H.264...');
 
-    // Convert WebM → MP4 (H.264 + AAC)
+    // Convert WebM → MP4 (H.264 Baseline + AAC) — QuickTime compatible
     await ffmpeg.exec([
       '-i', 'input.webm',
       '-c:v', 'libx264',
+      '-profile:v', 'baseline',
+      '-level', '3.1',
+      '-pix_fmt', 'yuv420p',
       '-preset', 'fast',
       '-crf', '23',
       '-c:a', 'aac',
