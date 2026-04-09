@@ -479,7 +479,7 @@ function drawLogoAccurate(
 function drawIntro(
   ctx: CanvasRenderingContext2D, w: number, h: number,
   posterImg: HTMLImageElement | null, logoImg: HTMLImageElement | null,
-  title: string, subtitle: string | undefined, accent: string, progress: number,
+  title: string, subtitle: string | undefined, accent: string, _progress: number,
   design?: DesignOptions
 ) {
   const fontFamily = design?.font || 'sans-serif';
@@ -524,7 +524,8 @@ function drawIntro(
   //   Subtitle: 9/320 = 0.028 (9:16), 11/512 = 0.0215 (16:9)
   //   Default title position: Y=10% from top (editor), not 75%
   const textScale = design?.textScale || 1.0;
-  const titleAlpha = Math.min(1, progress * 3);
+  // NO animation — editor is static, video must match exactly
+  const titleAlpha = 1;
   const isReel = h > w; // 9:16 = reel, 16:9 = landscape
   const fontSize = Math.round(w * (isReel ? 0.04375 : 0.035) * textScale);
   const subFontSize = Math.round(w * (isReel ? 0.028 : 0.0215) * textScale);
@@ -581,29 +582,17 @@ function drawIntro(
 
   const titleBlockBottom = titleDrawY + (titleLines.length - 1) * lineSpacing;
 
-  // Subtitle below title
+  // Subtitle below title — no animation, static like editor
   if (subtitle) {
-    const subAlpha = Math.max(0, Math.min(1, (progress - 0.2) * 3));
     ctx.font = `${fontStyle}${fontWeight} ${subFontSize}px "${fontFamily}", sans-serif`;
-    ctx.fillStyle = hexToRgba(titleColor, subAlpha * 0.8);
+    ctx.fillStyle = hexToRgba(titleColor, 0.8);
     ctx.shadowColor = hexToRgba(accent, 0.5); ctx.shadowBlur = Math.round(w * 0.006);
     // mt-1 in editor ≈ 4px on 320px → ~1.25% of width
     fillTextWithOutline(ctx, subtitle, titlePosX, titleBlockBottom + fontSize * 0.4, 2, 'rgba(0,0,0,0.7)');
     ctx.shadowBlur = 0;
   }
 
-  // Accent line below title — gradient line (not present in editor but kept for video polish)
-  const lineAlpha = Math.max(0, Math.min(1, (progress - 0.3) * 3));
-  const lineW = w * 0.15;
-  const lineY = titleBlockBottom + fontSize * (subtitle ? 0.7 : 0.3);
-  const lineGrad = ctx.createLinearGradient(w / 2 - lineW / 2, 0, w / 2 + lineW / 2, 0);
-  lineGrad.addColorStop(0, 'rgba(0,0,0,0)');
-  lineGrad.addColorStop(0.5, hexToRgba(accent, lineAlpha));
-  lineGrad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.strokeStyle = lineGrad;
-  ctx.lineWidth = 3; ctx.beginPath();
-  ctx.moveTo(w / 2 - lineW / 2, lineY);
-  ctx.lineTo(w / 2 + lineW / 2, lineY); ctx.stroke();
+  // Accent line removed — not present in editor, video must match exactly
 
   // Logo on intro if configured — uses per-sequence position
   // Uses drawLogoAccurate to match editor's h-8 w-auto max-w-[60px] scale(logoScale)
@@ -614,18 +603,14 @@ function drawIntro(
     drawLogoAccurate(ctx, logoImg, w, h, pos, logoScale);
   }
 
-  // Bottom accent bar
-  const barGrad = ctx.createLinearGradient(0, 0, w, 0);
-  barGrad.addColorStop(0, grad1); barGrad.addColorStop(1, grad2);
-  ctx.fillStyle = barGrad;
-  ctx.fillRect(0, h - 4, w, 4);
+  // Bottom accent bar removed — not present in editor
 
   ctx.restore();
 }
 
 function drawCards(
   ctx: CanvasRenderingContext2D, w: number, h: number,
-  cards: CardData[], logoImg: HTMLImageElement | null, accent: string, progress: number,
+  cards: CardData[], logoImg: HTMLImageElement | null, accent: string, _progress: number,
   design?: DesignOptions
 ) {
   const fontFamily = design?.font || 'sans-serif';
@@ -669,6 +654,7 @@ function drawCards(
   const radius = Math.round(w * 0.012);
 
   // ── Card style: Stats Bold (value big centered, label small below) ──
+  // ALL card styles: NO animation — render static like editor (no fade-in, no slide, no stagger)
   if (cardStyle === 'Stats Bold') {
     const cols = 2;
     const cardW = Math.round((containerW - (cols - 1) * Math.round(w * 0.015)) / cols);
@@ -680,14 +666,10 @@ function drawCards(
     const cardsX = ((design?.cardsPosition?.x ?? 50) / 100) * w - containerW / 2;
 
     cards.slice(0, maxCards).forEach((card, i) => {
-      const rawCp = Math.max(0, Math.min(1, (progress - i * 0.08) * 3.5));
-      if (rawCp <= 0) return;
-      const cp = 1 - Math.pow(1 - rawCp, 3);
       const col = i % cols;
       const row = Math.floor(i / cols);
       const x = cardsX + col * (cardW + gap);
       const y = cardsY + row * (cardH + gap);
-      ctx.globalAlpha = cp;
 
       ctx.fillStyle = 'rgba(0,0,0,0.5)';
       drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.fill();
@@ -702,7 +684,6 @@ function drawCards(
       ctx.font = `500 ${descSize}px "${fontFamily}", sans-serif`;
       ctx.fillStyle = 'rgba(255,255,255,0.8)';
       ctx.fillText(card.label, x + cardW / 2, y + cardH * 0.78);
-      ctx.globalAlpha = 1;
     });
   }
   // ── Card style: Compact (column layout: emoji, label, value centered) ──
@@ -717,14 +698,10 @@ function drawCards(
     const cardsX = ((design?.cardsPosition?.x ?? 50) / 100) * w - containerW / 2;
 
     cards.slice(0, maxCards).forEach((card, i) => {
-      const rawCp = Math.max(0, Math.min(1, (progress - i * 0.08) * 3.5));
-      if (rawCp <= 0) return;
-      const cp = 1 - Math.pow(1 - rawCp, 3);
       const col = i % cols;
       const row = Math.floor(i / cols);
       const x = cardsX + col * (cardW + gap);
       const y = cardsY + row * (cardH + gap);
-      ctx.globalAlpha = cp;
 
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
       drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.fill();
@@ -741,7 +718,6 @@ function drawCards(
       // Value
       ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = card.color || accent;
       ctx.fillText(card.value, x + cardW / 2, y + cardH * 0.83);
-      ctx.globalAlpha = 1;
     });
   }
   // ── Card style: Educatif (emoji + label row, description, value) ──
@@ -754,21 +730,17 @@ function drawCards(
     const cardsX = ((design?.cardsPosition?.x ?? 50) / 100) * w - cardW / 2;
 
     cards.slice(0, maxCards).forEach((card, i) => {
-      const rawCp = Math.max(0, Math.min(1, (progress - i * 0.08) * 3.5));
-      if (rawCp <= 0) return;
-      const cp = 1 - Math.pow(1 - rawCp, 3);
       const y = cardsY + i * (cardH + gap);
-      const slideX = cardsX + (1 - cp) * (-w * 0.12);
-      ctx.globalAlpha = cp;
+      const x = cardsX;
 
       ctx.fillStyle = 'rgba(0,0,0,0.4)';
-      drawRoundRect(ctx, slideX, y, cardW, cardH, radius); ctx.fill();
+      drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.fill();
       // Top accent border
       ctx.fillStyle = card.color || accent;
-      ctx.fillRect(slideX + radius, y, cardW - radius * 2, borderW);
+      ctx.fillRect(x + radius, y, cardW - radius * 2, borderW);
 
       // Emoji + label row
-      const emojiX = slideX + Math.round(w * 0.025);
+      const emojiX = x + Math.round(w * 0.025);
       ctx.font = `${emojiSize}px sans-serif`; ctx.textAlign = 'left'; ctx.fillStyle = 'white';
       ctx.fillText(card.emoji || '●', emojiX, y + cardH * 0.4);
       ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = '#FFFFFF';
@@ -776,7 +748,6 @@ function drawCards(
       // Value
       ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = card.color || accent; ctx.textAlign = 'left';
       ctx.fillText(card.value, emojiX, y + cardH * 0.78);
-      ctx.globalAlpha = 1;
     });
   }
   // ── Card style: Minimal Line (horizontal: emoji, label, value right-aligned) ──
@@ -789,29 +760,24 @@ function drawCards(
     const cardsX = ((design?.cardsPosition?.x ?? 50) / 100) * w - cardW / 2;
 
     cards.slice(0, maxCards).forEach((card, i) => {
-      const rawCp = Math.max(0, Math.min(1, (progress - i * 0.08) * 3.5));
-      if (rawCp <= 0) return;
-      const cp = 1 - Math.pow(1 - rawCp, 3);
       const y = cardsY + i * (cardH + gap);
-      const slideX = cardsX + (1 - cp) * (-w * 0.12);
-      ctx.globalAlpha = cp;
+      const x = cardsX;
 
       // Bottom border line
       ctx.strokeStyle = hexToRgba(card.color || accent, 0.25);
       ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(slideX, y + cardH); ctx.lineTo(slideX + cardW, y + cardH); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x, y + cardH); ctx.lineTo(x + cardW, y + cardH); ctx.stroke();
 
       // Emoji
       ctx.font = `${Math.round(emojiSize * 0.7)}px sans-serif`; ctx.textAlign = 'left'; ctx.fillStyle = 'white';
-      ctx.fillText(card.emoji || '●', slideX + Math.round(w * 0.01), y + cardH * 0.7);
+      ctx.fillText(card.emoji || '●', x + Math.round(w * 0.01), y + cardH * 0.7);
       // Label
       ctx.font = `400 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.8)';
-      ctx.fillText(card.label, slideX + Math.round(w * 0.05), y + cardH * 0.7);
+      ctx.fillText(card.label, x + Math.round(w * 0.05), y + cardH * 0.7);
       // Value right-aligned
       ctx.font = `700 ${valueSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'right';
       ctx.fillStyle = card.color || accent;
-      ctx.fillText(card.value, slideX + cardW - Math.round(w * 0.01), y + cardH * 0.7);
-      ctx.globalAlpha = 1;
+      ctx.fillText(card.value, x + cardW - Math.round(w * 0.01), y + cardH * 0.7);
     });
   }
   // ── Card style: Full Width (default — horizontal row with emoji, label left, value right) ──
@@ -824,21 +790,17 @@ function drawCards(
     const cardsX = ((design?.cardsPosition?.x ?? 50) / 100) * w - cardW / 2;
 
     cards.slice(0, maxCards).forEach((card, i) => {
-      const rawCp = Math.max(0, Math.min(1, (progress - i * 0.08) * 3.5));
-      if (rawCp <= 0) return;
-      const cp = 1 - Math.pow(1 - rawCp, 3);
       const y = cardsY + i * (cardH + gap);
-      const slideX = cardsX + (1 - cp) * (-w * 0.12);
-      ctx.globalAlpha = cp;
+      const x = cardsX;
 
       ctx.fillStyle = 'rgba(0,0,0,0.3)'; // matches editor bg-black/30
-      drawRoundRect(ctx, slideX, y, cardW, cardH, radius); ctx.fill();
+      drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.fill();
       // Left accent border
       ctx.fillStyle = card.color || accent;
-      ctx.fillRect(slideX, y + Math.round(cardH * 0.12), borderW, cardH - Math.round(cardH * 0.24));
+      ctx.fillRect(x, y + Math.round(cardH * 0.12), borderW, cardH - Math.round(cardH * 0.24));
 
       // Emoji
-      const emojiX = slideX + Math.round(w * 0.025);
+      const emojiX = x + Math.round(w * 0.025);
       ctx.font = `${emojiSize}px sans-serif`; ctx.textAlign = 'left'; ctx.fillStyle = 'white';
       ctx.fillText(card.emoji || '●', emojiX, y + cardH * 0.65);
       // Label
@@ -848,8 +810,7 @@ function drawCards(
       // Value right-aligned
       ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'right';
       ctx.fillStyle = card.color || accent;
-      fillTextWithOutline(ctx, card.value, slideX + cardW - Math.round(w * 0.025), y + cardH * 0.62, 2, 'rgba(0,0,0,0.6)');
-      ctx.globalAlpha = 1;
+      fillTextWithOutline(ctx, card.value, x + cardW - Math.round(w * 0.025), y + cardH * 0.62, 2, 'rgba(0,0,0,0.6)');
     });
   }
 
@@ -916,7 +877,7 @@ function drawCTA(
   ctx: CanvasRenderingContext2D, w: number, h: number,
   accent: string, ctaText: string, ctaSubTextParam: string,
   salesPhrase: string | undefined, watermark: string | undefined,
-  logoImg: HTMLImageElement | null, progress: number,
+  logoImg: HTMLImageElement | null, _progress: number,
   design?: DesignOptions
 ) {
   // ctaSubTextParam kept for backward compat but design.ctaSubTextDesign takes priority
@@ -935,8 +896,8 @@ function drawCTA(
 
   // CTA: black background — matches preview
   ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, w, h);
-  const scale = 0.92 + Math.min(1, progress * 3) * 0.08;
-  ctx.save(); ctx.translate(w / 2, h / 2); ctx.scale(scale, scale); ctx.translate(-w / 2, -h / 2);
+  // NO animation — editor is static, no scale bounce
+  ctx.save();
 
   // Font sizes matched to editor CSS:
   //   Editor (9:16): ctaMainText = 12px, ctaSubText = 9px, salesPhrase = 8px on 320px wide
