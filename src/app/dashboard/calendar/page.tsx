@@ -462,11 +462,15 @@ export default function CalendarPage() {
     setSaving(true);
     try {
       for (const post of selectedPosts) {
+        // Update time first
         await fetch(`/api/posts/${post.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scheduled_time: bulkScheduleTime + ':00', status: 'scheduled' }),
+          body: JSON.stringify({ scheduled_time: bulkScheduleTime + ':00' }),
         });
+        // Use handleSchedulePost to compose the montage before scheduling
+        const updatedPost = { ...post, scheduled_time: bulkScheduleTime + ':00' };
+        await handleSchedulePost(updatedPost);
       }
       await fetchPosts();
       setSelectedPostIds(new Set());
@@ -639,6 +643,20 @@ export default function CalendarPage() {
       alert(t('validation.noPlatforms') || 'Veuillez sélectionner au moins un réseau social avant de planifier.');
       return;
     }
+
+    // If scheduling an existing infographic post, use handleSchedulePost to compose the montage first
+    if (editTab === 'scheduled' && editFormData.id) {
+      const meta = editFormData.metadata || {};
+      const isInfographic = meta.type === 'infographic' || (meta.type === 'creator' && meta.sequences);
+      const hasVisualSource = meta.posterUrl || meta.rushUrls?.length > 0 || meta.characterUrl || meta.pexelsUrl || editFormData.media_url;
+      if (isInfographic && hasVisualSource) {
+        console.log('[SavePost→Schedule] Delegating to handleSchedulePost for montage composition');
+        setShowEditModal(false); setEditFormData({});
+        await handleSchedulePost(editFormData as Post);
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       if (editFormData.id) {
