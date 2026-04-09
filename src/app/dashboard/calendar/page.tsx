@@ -2058,86 +2058,40 @@ export default function CalendarPage() {
                 )}
 
                 {/* Post preview — 9:16 phone format with montage-style overlay */}
+                {/* ── Sidebar thumbnail: show the ACTUAL composed video, not an HTML approximation ──
+                     One export = one video = one rendering everywhere. */}
                 {selectedDayPosts.length > 0 && !bulkMode && (() => {
                   const fp = fullPreviewPost || selectedDayPosts[0];
                   const fpMeta = fp.metadata;
-                  const fpAccent = fpMeta?.branding?.accentColor || '#D91CD2';
-                  const fpDesign = fpMeta?.design;
-
-                  // ── Gradient: use per-sequence gradient for intro (seqGradients.titre) like full preview ──
-                  const fpSeqGradients = (fpDesign as any)?.seqGradients || {};
-                  const introGrad = fpSeqGradients.titre || fpSeqGradients.intro;
-                  const fpGrad1 = introGrad?.color1 || fpDesign?.gradientColor1 || fpAccent;
-                  const fpGrad2 = introGrad?.color2 || fpDesign?.gradientColor2 || '#000000';
-                  const fpGradOpacity = introGrad?.opacity ?? fpDesign?.gradientOpacity ?? 0.3;
-                  const gradEnabled = introGrad?.enabled ?? true;
-
-                  const fpTitleColor = fpDesign?.titleColor || '#FFFFFF';
-                  const FONT_MAP: Record<string, string> = {
-                    Anton: 'var(--font-anton)', Syne: 'var(--font-syne)',
-                    'Bebas Neue': 'var(--font-bebas)', Poppins: 'var(--font-poppins)',
-                    'Space Grotesk': 'var(--font-space)',
-                  };
-                  const fpFont = fpDesign?.font ? (FONT_MAP[fpDesign.font] || fpDesign.font) : 'inherit';
-                  const fpLogoUrl = fpDesign?.logoUrl || (fpMeta?.logoUrl as string) || null;
-
-                  // ── Logo: ONLY show if logoSequences includes 'titre' (intro) — like full preview ──
-                  const fpLogoSequences: string[] = fpDesign?.logoSequences || [];
-                  const showLogoOnIntro = fpLogoUrl && fpLogoSequences.some((s: string) => s === 'titre' || s === 'intro');
-
-                  // Image poster (pas la vidéo rendue)
+                  // Priority: renderedVideoUrl (composed montage) → media_url (published) → poster image fallback
+                  const videoUrl = fpMeta?.renderedVideoUrl || fp.media_url;
                   const fpPosterImg = fpMeta?.pexelsUrl || fpMeta?.posterUrl || fpMeta?.characterUrl || null;
-                  const fpTextCards = (fpMeta?.textCards as Array<{ text: string; color: string }>) || [];
-                  const fpCards = fpMeta?.cards as Array<{ emoji: string; label: string; value: string; color?: string }> || [];
-                  if (!fpPosterImg && !fp.title && fpTextCards.length === 0 && fpCards.length === 0) return null;
-                  // Convertir hex en rgba pour la miniature
-                  const hexRgba = (hex: string, a: number) => {
-                    if (hex.startsWith('rgba') || hex.startsWith('rgb')) return hex;
-                    const r = parseInt(hex.slice(1, 3), 16) || 0;
-                    const g = parseInt(hex.slice(3, 5), 16) || 0;
-                    const b = parseInt(hex.slice(5, 7), 16) || 0;
-                    return `rgba(${r},${g},${b},${a})`;
-                  };
 
-                  // ── Title: use the same title shown in the editor/composer, not the post calendar title ──
-                  // The editor title is stored in the post's root 'title' field but formatted with uppercase in preview
-                  const fpTitle = fp.title || 'TITRE';
-
-                  // Logo position for intro/titre sequence
-                  const fpLogoPositions = (fpDesign as any)?.logoPositions || {};
-                  const introLogoPos = fpLogoPositions.titre || fpLogoPositions.intro || fpDesign?.positions?.logo || { x: 50, y: 85 };
+                  if (!videoUrl && !fpPosterImg && !fp.title) return null;
 
                   return (
                     <div className="flex justify-center mb-3">
                       <div className="w-28 sm:w-36 aspect-[9/16] rounded-xl overflow-hidden border border-gray-700 bg-black relative">
-                        {fpPosterImg ? (
+                        {videoUrl ? (
+                          /* Show the REAL composed video — first frame as thumbnail */
+                          <video
+                            src={videoUrl as string}
+                            className="absolute inset-0 w-full h-full object-cover"
+                            muted
+                            playsInline
+                            preload="metadata"
+                            onLoadedMetadata={(e) => {
+                              // Seek to 0.5s to show the intro frame (not a black frame)
+                              const v = e.target as HTMLVideoElement;
+                              v.currentTime = 0.5;
+                            }}
+                          />
+                        ) : fpPosterImg ? (
                           <img src={fpPosterImg} alt="" className="absolute inset-0 w-full h-full object-cover" />
                         ) : (
-                          <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, #000000, ${hexRgba(fpGrad1, 1)})` }} />
-                        )}
-                        {/* Dégradé overlay — uses per-sequence gradient (seqGradients.titre) like full preview */}
-                        {gradEnabled && fpGradOpacity > 0 && (
-                          <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, ${hexRgba(fpGrad1, fpGradOpacity)} 0%, transparent 40%, transparent 60%, ${hexRgba(fpGrad2, fpGradOpacity)} 100%)` }} />
-                        )}
-                        {/* Titre + sous-titre — position from design, drop-shadow-lg */}
-                        <div className="absolute inset-0 flex flex-col items-center text-center px-2 z-10" style={{ justifyContent: 'flex-start', paddingTop: `${fpDesign?.positions?.title?.y ?? 10}%` }}>
-                          <h4 className="font-black uppercase tracking-wide leading-tight drop-shadow-lg" style={{
-                            fontSize: '11px', color: fpTitleColor, fontFamily: fpFont,
-                          }}>
-                            {fpTitle}
-                          </h4>
-                          {fpMeta?.subtitle && (
-                            <p className="mt-0.5 drop-shadow" style={{ fontSize: '7px', color: `${fpTitleColor}CC`, fontFamily: fpFont }}>{fpMeta.subtitle}</p>
-                          )}
-                        </div>
-                        {/* Logo en miniature — ONLY if logoSequences includes intro/titre */}
-                        {showLogoOnIntro && (
-                          <img src={fpLogoUrl!} alt="" className="absolute z-20" style={{
-                            width: '18px', height: '18px', objectFit: 'contain',
-                            left: `${introLogoPos.x ?? 50}%`,
-                            top: `${introLogoPos.y ?? 85}%`,
-                            transform: 'translate(-50%, -50%)',
-                          }} />
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="text-white/50 text-xs">{fp.title || 'TITRE'}</span>
+                          </div>
                         )}
                       </div>
                     </div>
