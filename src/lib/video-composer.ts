@@ -9,11 +9,6 @@
 // TYPES
 // ═══════════════════════════════════════════════════════════
 
-// Extend MediaStreamTrack for canvas capture manual frame requests
-interface CanvasCaptureMediaStreamTrack extends MediaStreamTrack {
-  requestFrame(): void;
-}
-
 export interface CardData {
   emoji: string;
   label: string;
@@ -1368,20 +1363,12 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   }
 
   // ═══ MEDIARECORDER SETUP ═══
-  // Use manual frame capture (fps=0) for fast mode, auto fps for real-time
-  // Check requestFrame support BEFORE choosing captureStream mode
+  // ALWAYS use captureStream(fps) — this lets the browser control frame timing,
+  // ensuring correct video duration. Manual captureStream(0) + requestFrame()
+  // caused slow-motion/fast-motion issues because MediaRecorder timestamps
+  // frames based on wall-clock time, not the intended frame rate.
   const useFastMode = !hasAudio;
-  const testStream = canvas.captureStream(0);
-  const testTrack = testStream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack | undefined;
-  const hasRequestFrame = testTrack && typeof testTrack.requestFrame === 'function';
-  // Stop the test stream tracks
-  testStream.getTracks().forEach(t => t.stop());
-  // If requestFrame isn't supported, fall back to timed capture even in fast mode
-  const useManualCapture = useFastMode && hasRequestFrame;
-  if (useFastMode && !hasRequestFrame) {
-    console.warn('[Composer] ⚠️ requestFrame not supported — falling back to timed captureStream for fast mode');
-  }
-  const videoStream = canvas.captureStream(useManualCapture ? 0 : fps);
+  const videoStream = canvas.captureStream(fps);
 
   // Combine video + audio into one MediaStream
   const combinedStream = new MediaStream();
@@ -1411,16 +1398,20 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   console.log('[Composer] MediaRecorder mimeType:', mimeType, '| MP4:', isMP4);
   console.log('[Composer] Mode:', useFastMode ? '⚡ FAST (no audio)' : '🔊 REAL-TIME (with audio)');
 
-  // 8 Mbps for social media quality (Instagram/TikTok/YouTube recommend 5-10 Mbps for 1080p)
-  const recorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 8_000_000 });
+  // 12 Mbps for high quality — Instagram re-encodes at ~3.5 Mbps so we provide extra headroom
+  // to preserve colors and text sharpness after Instagram's compression
+  const recorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 12_000_000 });
   const chunks: Blob[] = [];
   recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
 
   onProgress?.(15, useFastMode ? 'Rendu rapide...' : 'Rendu en cours...');
 
   // ═══════════════════════════════════════════════════════════
-  // FAST MODE: No audio → render frames as fast as possible
-  // Instead of waiting 18s real-time, renders ~2s total
+  // UNIFIED MODE: Both with and without audio use the same render loop.
+  // captureStream(fps) handles frame timing — we just draw each frame
+  // at the right time using requestAnimationFrame + wall-clock sync.
+  // This eliminates slow-motion/fast-motion bugs caused by manual
+  // frame pushing with captureStream(0) + requestFrame().
   // ═══════════════════════════════════════════════════════════
   if (useFastMode) {
     return new Promise<Blob>((resolve, reject) => {
@@ -1435,74 +1426,52 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       };
       recorder.onerror = (e) => { console.error('[Composer] MediaRecorder error:', e); reject(new Error('Recording failed')); };
 
-      // Get video track for manual frame capture (only used if useManualCapture is true)
-      const videoTrack = videoStream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
+      recorder.start(200);
+      console.log('[Composer] Recording started for', totalDuration.toFixed(1), 's at', fps, 'fps');
 
-      recorder.start(100); // Shorter timeslice for more frequent data collection
-      console.log('[Composer] ⚡ Fast recording started for', totalDuration.toFixed(1), 's');
+      // Start video element paused — we'll control seeking
+      if (videoEl) { videoEl.currentTime = 0; videoEl.pause(); }
 
-      const totalFrames = Math.ceil(totalDuration * fps);
-      const frameInterval = 1 / fps;
-      let frameIdx = 0;
-      const fastStart = performance.now();
+      const startTime = performance.now();
+      let animStopped = false;
 
-      // Helper: seek video and wait for frame to be decoded
-      const seekVideoAndWait = (el: HTMLVideoElement, time: number): Promise<void> => {
-        return new Promise<void>(resolve => {
-          el.currentTime = time;
-          const onSeeked = () => { el.removeEventListener('seeked', onSeeked); resolve(); };
-          el.addEventListener('seeked', onSeeked, { once: true });
-          // Timeout fallback in case seeked never fires (e.g. time is already at target)
-          setTimeout(resolve, 150);
-        });
-      };
+      const doFrame = () => {
+        if (animStopped) return;
+        const elapsed = (performance.now() - startTime) / 1000;
 
-      // Pre-compute video sequence timing for fast lookup
-      const videoSeqInfo = (() => {
-        const videoSeq = sequences.find(s => s.type === 'video');
-        if (!videoSeq || !videoEl) return null;
-        const idx = sequences.indexOf(videoSeq);
-        return { start: seqStarts[idx], end: seqStarts[idx] + videoSeq.duration };
-      })();
+        if (elapsed >= totalDuration + 0.3) {
+          animStopped = true;
+          console.log('[Composer] Render complete, stopping recorder');
+          recorder.stop();
+          return;
+        }
 
-      const renderBatch = async () => {
-        // Render frames one at a time with a real-time delay matching the frame interval.
-        // This ensures the MediaRecorder encodes correct timing metadata in the output file.
-        // Without this delay, the MediaRecorder produces a file where frames are timestamped
-        // based on wall-clock time (milliseconds apart), causing slow-motion playback.
-        const batchSize = 1; // One frame at a time for correct timing
-        const frameDelayMs = (1000 / fps); // Real-time delay per frame (e.g. 33ms for 30fps)
-        for (let b = 0; b < batchSize && frameIdx < totalFrames; b++, frameIdx++) {
-          const t = Math.min(frameIdx * frameInterval, totalDuration - 0.001);
+        const t = Math.min(elapsed, totalDuration - 0.001);
 
-          // Seek video element and WAIT for frame decode before drawing
-          if (videoEl && videoSeqInfo && t >= videoSeqInfo.start && t < videoSeqInfo.end) {
-            await seekVideoAndWait(videoEl, t - videoSeqInfo.start);
+        // Manage video element playback
+        if (videoEl) {
+          const videoSeq = sequences.find(s => s.type === 'video');
+          if (videoSeq) {
+            const vs = seqStarts[sequences.indexOf(videoSeq)];
+            const ve = vs + videoSeq.duration;
+            if (t >= vs && t < ve) {
+              if (videoEl.paused) { videoEl.currentTime = t - vs; videoEl.play().catch(() => {}); }
+            } else if (!videoEl.paused) { videoEl.pause(); }
           }
-
-          drawFrame(t);
-          if (useManualCapture) videoTrack.requestFrame();
         }
 
-        // Report progress
-        const pct = Math.round(15 + (frameIdx / totalFrames) * 80);
-        onProgress?.(Math.min(pct, 95), `Montage rapide... ${Math.round((frameIdx / totalFrames) * 100)}%`);
+        drawFrame(t);
 
-        if (frameIdx < totalFrames) {
-          // Real-time delay between frames — ensures MediaRecorder timestamps are correct
-          setTimeout(renderBatch, frameDelayMs);
-        } else {
-          // Render complete — give MediaRecorder time to flush all pending data
-          const fastElapsed = ((performance.now() - fastStart) / 1000).toFixed(1);
-          console.log(`[Composer] ⚡ Fast render done: ${totalFrames} frames in ${fastElapsed}s (vs ${totalDuration.toFixed(1)}s real-time)`);
-          setTimeout(() => recorder.stop(), 500);
-        }
+        // Report progress every 0.5s
+        const pct = Math.round(15 + (elapsed / totalDuration) * 80);
+        onProgress?.(Math.min(pct, 95), `Montage en cours... ${Math.round((elapsed / totalDuration) * 100)}%`);
+
+        requestAnimationFrame(doFrame);
       };
 
-      // Kick off fast rendering
+      // Kick off rendering
       drawFrame(0);
-      if (useManualCapture) videoTrack.requestFrame();
-      setTimeout(renderBatch, 10);
+      requestAnimationFrame(doFrame);
     });
   }
 
