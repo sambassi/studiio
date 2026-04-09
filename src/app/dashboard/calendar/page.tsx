@@ -500,8 +500,12 @@ export default function CalendarPage() {
 
     // ALWAYS re-compose montage when scheduling — ensures the published video
     // matches the current preview (title, colors, fonts, cards, etc.)
-    // Previously we skipped if renderedVideoUrl existed, but that caused stale videos to be published.
-    const hasVisualSource = meta.posterUrl || meta.rushUrls?.length > 0 || meta.characterUrl || meta.pexelsUrl;
+    // Check ALL possible visual sources including media_url fallback
+    const hasVisualSource = meta.posterUrl || meta.rushUrls?.length > 0 || meta.characterUrl || meta.pexelsUrl || post.media_url;
+    if (!hasVisualSource && !meta.renderedVideoUrl) {
+      alert('Aucune source visuelle trouvée. Veuillez ajouter un poster, une vidéo rush, ou un personnage avant de programmer.');
+      return;
+    }
     if (hasVisualSource) {
       console.log('[Schedule] Composing fresh montage for scheduling (always re-render to match preview)...');
       setExportRendering(true);
@@ -607,6 +611,13 @@ export default function CalendarPage() {
         setExportRenderProgress(0);
         setExportRenderStage('');
       }
+    }
+
+    // Final guard: refuse to schedule if no media URL exists after composition attempt
+    if (!post.media_url && !post.metadata?.renderedVideoUrl) {
+      alert('Erreur : le montage vidéo n\'a pas pu être généré. Veuillez réessayer ou exporter la vidéo d\'abord.');
+      console.error('[Schedule] BLOCKED: no media_url or renderedVideoUrl after compose attempt');
+      return;
     }
 
     setSaving(true);
@@ -1043,7 +1054,7 @@ export default function CalendarPage() {
 
       // ALWAYS compose the montage before publishing — ensures the published video
       // matches the preview (intro + cards + video + cta with all design settings)
-      const hasVisualSource = meta.posterUrl || meta.rushUrls?.length > 0 || meta.characterUrl || meta.pexelsUrl;
+      const hasVisualSource = meta.posterUrl || meta.rushUrls?.length > 0 || meta.characterUrl || meta.pexelsUrl || post.media_url;
       const isMontagePost = meta.type === 'infographic' || (meta.type === 'creator' && meta.sequences);
       if (hasVisualSource && isMontagePost) {
         console.log('[Publish] Composing montage before publishing...');
