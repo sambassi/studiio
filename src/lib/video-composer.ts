@@ -327,6 +327,24 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+/** Word-wrap text to fit within maxWidth, splitting at word boundaries */
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let currentLine = '';
+  for (const word of words) {
+    const testLine = currentLine ? `${currentLine} ${word}` : word;
+    if (ctx.measureText(testLine).width > maxWidth && currentLine) {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = testLine;
+    }
+  }
+  if (currentLine) lines.push(currentLine);
+  return lines.length > 0 ? lines : [text];
+}
+
 /** Draw text with a dark outline for better readability on any background */
 function fillTextWithOutline(
   ctx: CanvasRenderingContext2D, text: string, x: number, y: number,
@@ -427,25 +445,43 @@ function drawIntro(
     ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
   }
 
-  // Title position from design (default: x=50%, y=75%) and textScale
+  // Title sizing and position — matched to editor CSS:
+  //   Editor (9:16): fontSize = 14 * textScale px on 320px wide = 14/320 = 0.04375 of width
+  //   Editor (16:9): fontSize = 18 * textScale px on 512px wide ≈ 0.035 of width
+  //   Subtitle: 9/320 = 0.028 (9:16), 11/512 = 0.0215 (16:9)
+  //   Default title position: Y=10% from top (editor), not 75%
   const textScale = design?.textScale || 1.0;
   const titleAlpha = Math.min(1, progress * 3);
-  const fontSize = Math.round(w * 0.07 * textScale); // 7cqw * textScale
-  const subFontSize = Math.round(w * 0.045 * textScale); // 4.5cqw * textScale
+  const isReel = h > w; // 9:16 = reel, 16:9 = landscape
+  const fontSize = Math.round(w * (isReel ? 0.04375 : 0.035) * textScale);
+  const subFontSize = Math.round(w * (isReel ? 0.028 : 0.0215) * textScale);
 
-  // Position from design metadata (matches HTML preview positions.title)
+  // Position from design metadata — editor default is (50%, 10%)
+  // The editor uses translate(-50%, 0) so Y% is the TOP edge of the text block
   const titlePosX = ((design?.titlePosition?.x ?? 50) / 100) * w;
-  const titlePosY = ((design?.titlePosition?.y ?? 75) / 100) * h;
+  const titlePosY = ((design?.titlePosition?.y ?? 10) / 100) * h;
 
   const fontWeight = design?.titleTypography?.bold !== false ? 900 : 400;
   const fontStyle = design?.titleTypography?.italic ? 'italic ' : '';
 
+  // Title text — editor does NOT force uppercase, preserves original case
+  // Editor uses width constraint (titleSize%, default 90%) for wrapping
+  const titleWidth = w * 0.90; // matches editor default titleSize=90%
   ctx.save();
   ctx.font = `${fontStyle}${fontWeight} ${fontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
   ctx.fillStyle = hexToRgba(titleColor, titleAlpha);
   ctx.shadowColor = hexToRgba(accent, 0.8); ctx.shadowBlur = Math.round(w * 0.02);
-  fillTextWithOutline(ctx, title.toUpperCase(), titlePosX, titlePosY, Math.round(w * 0.004), 'rgba(0,0,0,0.9)');
+
+  // Word-wrap title to match editor behavior (text wraps within titleWidth)
+  const titleLines = wrapText(ctx, title, titleWidth);
+  const lineSpacing = fontSize * 1.1; // matches editor lineHeight: 1.1
+  let titleDrawY = titlePosY + fontSize; // baseline offset (canvas draws text from baseline)
+  for (let i = 0; i < titleLines.length; i++) {
+    fillTextWithOutline(ctx, titleLines[i], titlePosX, titleDrawY + i * lineSpacing, Math.round(w * 0.004), 'rgba(0,0,0,0.9)');
+  }
   ctx.shadowBlur = 0;
+
+  const titleBlockBottom = titleDrawY + (titleLines.length - 1) * lineSpacing;
 
   // Subtitle below title
   if (subtitle) {
@@ -453,14 +489,15 @@ function drawIntro(
     ctx.font = `${fontStyle}${fontWeight} ${subFontSize}px "${fontFamily}", sans-serif`;
     ctx.fillStyle = hexToRgba(titleColor, subAlpha * 0.8);
     ctx.shadowColor = hexToRgba(accent, 0.5); ctx.shadowBlur = Math.round(w * 0.006);
-    fillTextWithOutline(ctx, subtitle, titlePosX, titlePosY + fontSize * 0.7, 2, 'rgba(0,0,0,0.7)');
+    // mt-1 in editor ≈ 4px on 320px → ~1.25% of width
+    fillTextWithOutline(ctx, subtitle, titlePosX, titleBlockBottom + fontSize * 0.4, 2, 'rgba(0,0,0,0.7)');
     ctx.shadowBlur = 0;
   }
 
-  // Accent line below title — gradient line like preview
+  // Accent line below title — gradient line (not present in editor but kept for video polish)
   const lineAlpha = Math.max(0, Math.min(1, (progress - 0.3) * 3));
   const lineW = w * 0.15;
-  const lineY = titlePosY + fontSize * (subtitle ? 1.0 : 0.5);
+  const lineY = titleBlockBottom + fontSize * (subtitle ? 0.7 : 0.3);
   const lineGrad = ctx.createLinearGradient(w / 2 - lineW / 2, 0, w / 2 + lineW / 2, 0);
   lineGrad.addColorStop(0, 'rgba(0,0,0,0)');
   lineGrad.addColorStop(0.5, hexToRgba(accent, lineAlpha));
@@ -511,11 +548,14 @@ function drawCards(
   const containerX = (w - containerW) / 2;
   const maxCards = Math.min(cards.length, 5);
 
-  // Sizes scaled by textScale to match preview
-  const emojiSize = Math.round(w * 0.05 * textScale);
-  const labelSize = Math.round(w * 0.04 * textScale);
-  const valueSize = Math.round(w * 0.045 * textScale);
-  const descSize = Math.round(w * 0.035 * textScale);
+  // Font sizes matched to editor CSS:
+  //   Editor label = 7px, value = 9px, desc = 6px, emoji ≈ 14px (text-sm)
+  //   On 320px wide editor → label: 7/320=0.022, value: 9/320=0.028, desc: 6/320=0.019
+  //   Stats Bold value: 13/320=0.041
+  const emojiSize = Math.round(w * 0.028 * textScale);
+  const labelSize = Math.round(w * 0.022 * textScale);
+  const valueSize = Math.round(w * 0.028 * textScale);
+  const descSize = Math.round(w * 0.019 * textScale);
   const borderW = Math.round(w * 0.004);
   const radius = Math.round(w * 0.012);
 
@@ -545,7 +585,7 @@ function drawCards(
       ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1;
       drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.stroke();
 
-      const bigValueSize = Math.round(w * 0.06 * textScale);
+      const bigValueSize = Math.round(w * 0.041 * textScale); // editor: 13/320 = 0.041
       ctx.font = `900 ${bigValueSize}px "${fontFamily}", sans-serif`;
       ctx.textAlign = 'center'; ctx.fillStyle = card.color || accent;
       ctx.fillText(card.value, x + cardW / 2, y + cardH * 0.5);
@@ -753,7 +793,7 @@ function drawCTA(
   design?: DesignOptions
 ) {
   const fontFamily = design?.font || 'sans-serif';
-  const ctaSubColor = design?.ctaSubColor || '#FFFFFF';
+  const ctaSubColor = design?.ctaSubColor || accent; // editor default is accent color (#D91CD2), not white
   const ctaColor = design?.ctaColor || accent;
   const ctaTextScale = design?.ctaTextScale || 1.0;
 
@@ -767,10 +807,13 @@ function drawCTA(
   const scale = 0.92 + Math.min(1, progress * 3) * 0.08;
   ctx.save(); ctx.translate(w / 2, h / 2); ctx.scale(scale, scale); ctx.translate(-w / 2, -h / 2);
 
-  // Sizes match HTML preview cqw, scaled by ctaTextScale
-  const ctaFontSize = Math.round(w * 0.08 * ctaTextScale);   // 8cqw
-  const salesFontSize = Math.round(w * 0.04 * ctaTextScale);  // 4cqw
-  const subFontSize = Math.round(w * 0.05 * ctaTextScale);    // 5cqw
+  // Font sizes matched to editor CSS:
+  //   Editor (9:16): ctaMainText = 12px, ctaSubText = 9px, salesPhrase = 8px on 320px wide
+  //   12/320 = 0.0375, 9/320 = 0.028, 8/320 = 0.025
+  const isReel = h > w;
+  const ctaFontSize = Math.round(w * (isReel ? 0.0375 : 0.031) * ctaTextScale);
+  const salesFontSize = Math.round(w * (isReel ? 0.025 : 0.020) * ctaTextScale);
+  const subFontSize = Math.round(w * (isReel ? 0.028 : 0.023) * ctaTextScale);
 
   // Word-wrap CTA text (use design's CTA text if available)
   ctx.font = `900 ${ctaFontSize}px "${fontFamily}", sans-serif`;
