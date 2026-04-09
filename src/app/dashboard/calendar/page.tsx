@@ -502,14 +502,14 @@ export default function CalendarPage() {
 
     const meta = post.metadata || {};
 
-    // ALWAYS re-compose montage when scheduling — ensures the published video
-    // matches the current preview (title, colors, fonts, cards, etc.)
-    // Infographic posts ALWAYS need composition (even with just a gradient, no image)
+    // Only compose if no rendered video exists yet (editor already composes at export time)
+    // Skip recomposition if renderedVideoUrl or media_url already has a montage URL
+    const alreadyHasVideo = !!(meta.renderedVideoUrl || post.media_url);
     const isInfographic = meta.type === 'infographic' || (meta.type === 'creator' && meta.sequences);
     const hasVisualSource = meta.posterUrl || meta.rushUrls?.length > 0 || meta.characterUrl || meta.pexelsUrl || post.media_url;
-    const needsComposition = isInfographic || hasVisualSource;
+    const needsComposition = !alreadyHasVideo && (isInfographic || hasVisualSource);
     if (needsComposition) {
-      console.log('[Schedule] Composing fresh montage for scheduling (always re-render to match preview)...');
+      console.log('[Schedule] No video found, composing montage...');
       setExportRendering(true);
       setExportRenderProgress(0);
       setExportRenderStage('Rendu du montage...');
@@ -1067,12 +1067,11 @@ export default function CalendarPage() {
       let updatedPost = { ...post };
       const meta = post.metadata || {};
 
-      // ALWAYS compose the montage before publishing — ensures the published video
-      // matches the preview (intro + cards + video + cta with all design settings)
-      // Infographic posts ALWAYS need composition (even gradient-only, no poster image)
+      // Only compose if no rendered video exists yet (editor already composes at export time)
+      const alreadyHasVideo = !!(meta.renderedVideoUrl || updatedPost.media_url);
       const isMontagePost = meta.type === 'infographic' || (meta.type === 'creator' && meta.sequences);
-      if (isMontagePost) {
-        console.log('[Publish] Composing montage before publishing...');
+      if (isMontagePost && !alreadyHasVideo) {
+        console.log('[Publish] No video found, composing montage...');
         setExportRendering(true);
         setExportRenderProgress(0);
         setExportRenderStage('Rendu du montage...');
