@@ -4,7 +4,7 @@
  * Audio elements handle MP3/OGG/WAV decoding natively (no OfflineAudioContext).
  * Outputs MP4 if supported, otherwise WebM.
  */
-const COMPOSER_VERSION = 'v5-static-2024-04-09';
+const COMPOSER_VERSION = 'v6-match-editor-2026-04-09';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // ═══════════════════════════════════════════════════════════
@@ -329,6 +329,8 @@ function drawRoundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: n
 
 /** Get logo position for a specific sequence, with fallback to global logoPosition */
 function getLogoPos(design: DesignOptions | undefined, seq: string): { x: number; y: number } {
+  // NOTE: design.logoPositions keys are already normalized from French → English
+  // (titre→intro, cartes→cards) in composeAndUpload before being passed here
   const perSeq = design?.logoPositions?.[seq];
   if (perSeq && (perSeq.x !== undefined || perSeq.y !== undefined)) {
     const result = { x: perSeq.x ?? 50, y: perSeq.y ?? 85 };
@@ -547,7 +549,11 @@ function drawIntro(
   ctx.save();
   ctx.font = `${fontStyle}${fontWeight} ${fontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
   ctx.fillStyle = hexToRgba(titleColor, titleAlpha);
-  ctx.shadowColor = hexToRgba(accent, 0.8); ctx.shadowBlur = Math.round(w * 0.02);
+  // Editor uses Tailwind drop-shadow-lg = subtle dark shadow, NOT colored glow
+  // drop-shadow-lg: drop-shadow(0 10px 8px rgb(0 0 0 / 0.04)) drop-shadow(0 4px 3px rgb(0 0 0 / 0.1))
+  ctx.shadowColor = 'rgba(0,0,0,0.15)';
+  ctx.shadowBlur = Math.round(w * 0.008);
+  ctx.shadowOffsetY = Math.round(w * 0.005);
 
   // Word-wrap title to match editor behavior (text wraps within titleWidth)
   const titleLines = wrapText(ctx, title, titleWidth);
@@ -561,7 +567,7 @@ function drawIntro(
     const dupOpacity = (design!.titleTypography as any).duplicateOpacity || 0.3;
     ctx.save();
     ctx.fillStyle = hexToRgba(titleColor, titleAlpha * dupOpacity);
-    ctx.shadowBlur = 0;
+    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
     for (let i = 0; i < titleLines.length; i++) {
       fillTextWithSpacing(ctx, titleLines[i], titlePosX + dupOffset, titleDrawY + i * lineSpacing + dupOffset, titleLetterSpacing);
     }
@@ -569,29 +575,34 @@ function drawIntro(
     // Restore main text style
     ctx.font = `${fontStyle}${fontWeight} ${fontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
     ctx.fillStyle = hexToRgba(titleColor, titleAlpha);
-    ctx.shadowColor = hexToRgba(accent, 0.8); ctx.shadowBlur = Math.round(w * 0.02);
+    ctx.shadowColor = 'rgba(0,0,0,0.15)';
+    ctx.shadowBlur = Math.round(w * 0.008);
+    ctx.shadowOffsetY = Math.round(w * 0.005);
   }
 
-  // Main title text with letter-spacing
+  // Main title text — same rendering whether letterSpacing or not
+  // Editor does NOT use outlines, just drop-shadow-lg
   for (let i = 0; i < titleLines.length; i++) {
     if (titleLetterSpacing) {
       fillTextWithSpacing(ctx, titleLines[i], titlePosX, titleDrawY + i * lineSpacing, titleLetterSpacing);
     } else {
-      fillTextWithOutline(ctx, titleLines[i], titlePosX, titleDrawY + i * lineSpacing, Math.round(w * 0.004), 'rgba(0,0,0,0.9)');
+      ctx.fillText(titleLines[i], titlePosX, titleDrawY + i * lineSpacing);
     }
   }
-  ctx.shadowBlur = 0;
+  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
 
   const titleBlockBottom = titleDrawY + (titleLines.length - 1) * lineSpacing;
 
   // Subtitle below title — no animation, static like editor
+  // Editor: color = titleColor + cc (80% opacity), same font settings, mt-1 margin
   if (subtitle) {
     ctx.font = `${fontStyle}${fontWeight} ${subFontSize}px "${fontFamily}", sans-serif`;
     ctx.fillStyle = hexToRgba(titleColor, 0.8);
-    ctx.shadowColor = hexToRgba(accent, 0.5); ctx.shadowBlur = Math.round(w * 0.006);
+    ctx.shadowColor = 'rgba(0,0,0,0.15)'; ctx.shadowBlur = Math.round(w * 0.006);
+    ctx.shadowOffsetY = Math.round(w * 0.003);
     // mt-1 in editor ≈ 4px on 320px → ~1.25% of width
-    fillTextWithOutline(ctx, subtitle, titlePosX, titleBlockBottom + fontSize * 0.4, 2, 'rgba(0,0,0,0.7)');
-    ctx.shadowBlur = 0;
+    ctx.fillText(subtitle, titlePosX, titleBlockBottom + fontSize * 0.4);
+    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
   }
 
   // Accent line removed — not present in editor, video must match exactly
@@ -620,6 +631,7 @@ function drawCards(
   const grad2 = design?.gradientColor2 || accent;
   const textScale = design?.textScale || 1.0;
   const cardStyle = design?.cardStyle || 'Full Width';
+  const isReel = h > w; // 9:16 = reel, 16:9 = landscape
 
   // Background gradient matching editor: same format as intro (top-to-bottom, color1→transparent→color2)
   const gradOpacity = design?.gradientOpacity ?? 0.3;
@@ -688,12 +700,15 @@ function drawCards(
       ctx.fillText(card.label, x + cardW / 2, y + cardH * 0.78);
     });
   }
-  // ── Card style: Compact (column layout: emoji, label, value centered) ──
+  // ── Card style: Compact (column layout: emoji, label, value, description centered) ──
+  // Editor: flex flex-col items-center gap-0.5 rounded-lg bg-black/30 px-1.5 py-1.5
+  //         borderLeft: 2px solid card.color
+  //         Emoji (text-sm=14px), Label (7px bold), Value (9px black), Description (6px white/60)
   else if (cardStyle === 'Compact') {
-    const cols = 2;
-    const cardW = Math.round((containerW - (cols - 1) * Math.round(w * 0.015)) / cols);
-    const cardH = Math.round(h * 0.1);
-    const gap = Math.round(w * 0.015);
+    const cols = isReel ? 2 : 3; // Editor: grid-cols-2 (9:16), grid-cols-3 (16:9)
+    const gap = Math.round(w * (6 / 320)); // gap-1.5 = 6px on 320px
+    const cardW = Math.round((containerW - (cols - 1) * gap) / cols);
+    const cardH = Math.round(h * 0.12); // taller to fit description
     const rows = Math.ceil(maxCards / cols);
     const totalH = rows * cardH + (rows - 1) * gap;
     const cardsY = ((design?.cardsPosition?.y ?? 50) / 100) * h - totalH / 2;
@@ -705,21 +720,37 @@ function drawCards(
       const x = cardsX + col * (cardW + gap);
       const y = cardsY + row * (cardH + gap);
 
+      // Background: bg-black/30 rounded-lg
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
       drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.fill();
-      // Left accent border
+      // Left accent border: 2px solid card.color
       ctx.fillStyle = card.color || accent;
-      ctx.fillRect(x, y + Math.round(cardH * 0.1), borderW, cardH - Math.round(cardH * 0.2));
+      const bw = Math.round(w * (2 / 320)); // 2px on 320px editor
+      ctx.fillRect(x, y + Math.round(cardH * 0.08), bw, cardH - Math.round(cardH * 0.16));
 
-      // Emoji centered
-      ctx.font = `${emojiSize}px sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = 'white';
-      ctx.fillText(card.emoji || '●', x + cardW / 2, y + cardH * 0.3);
-      // Label
+      // Emoji: text-sm = 14px (9:16) / text-lg = 18px (16:9)
+      const emojiSizeLocal = Math.round(w * (isReel ? 14 / 320 : 18 / 512) * textScale);
+      ctx.font = `${emojiSizeLocal}px sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = 'white';
+      ctx.fillText(card.emoji || '●', x + cardW / 2, y + cardH * 0.22);
+
+      // Label: 7px * textScale, font-bold (700), white
       ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = '#FFFFFF';
-      ctx.fillText(card.label, x + cardW / 2, y + cardH * 0.58);
-      // Value
+      ctx.fillText(card.label, x + cardW / 2, y + cardH * 0.42);
+
+      // Value: 9px * textScale, font-black (900), card.color
       ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = card.color || accent;
-      ctx.fillText(card.value, x + cardW / 2, y + cardH * 0.83);
+      ctx.fillText(card.value, x + cardW / 2, y + cardH * 0.6);
+
+      // Description: 6px * textScale, white/60, truncated to 30 chars
+      if (card.description) {
+        const descText = card.description.length > 30 ? card.description.substring(0, 30) + '...' : card.description;
+        ctx.font = `400 ${descSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        // Word-wrap description within card width (minus padding)
+        const descLines = wrapText(ctx, descText, cardW - Math.round(w * 0.02));
+        descLines.slice(0, 2).forEach((line, li) => {
+          ctx.fillText(line, x + cardW / 2, y + cardH * 0.75 + li * (descSize * 1.2));
+        });
+      }
     });
   }
   // ── Card style: Educatif (emoji + label row, description, value) ──
@@ -1170,15 +1201,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     if (inTransition && seqIdx < sequences.length - 1) {
       drawTransition(ctx, width, height, (p) => drawSeq(seq.type, p), (p) => drawSeq(sequences[seqIdx + 1].type, p), transProgress);
     } else { drawSeq(seq.type, seqProgress); }
-    // ── Accent border/contour frame ──
-    const borderW = Math.round(width * 0.006);
-    const borderGrad = ctx.createLinearGradient(0, 0, width, height);
-    borderGrad.addColorStop(0, accentColor);
-    borderGrad.addColorStop(0.5, '#FF2DAA');
-    borderGrad.addColorStop(1, accentColor);
-    ctx.strokeStyle = borderGrad;
-    ctx.lineWidth = borderW;
-    ctx.strokeRect(borderW / 2, borderW / 2, width - borderW, height - borderW);
+    // NOTE: No accent border/frame — editor doesn't have one
 
     // ── Site text overlay (e.g. Afroboost.com) — configurable per sequence ──
     const siteTextLabel = siteText?.text || 'Afroboost.com';

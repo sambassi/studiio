@@ -2066,7 +2066,7 @@ export default function CalendarPage() {
                   // Utiliser les couleurs du design si disponibles, sinon fallback sur accent
                   const fpGrad1 = fpDesign?.gradientColor1 || fpAccent;
                   const fpGrad2 = fpDesign?.gradientColor2 || '#000000';
-                  const fpGradOpacity = fpDesign?.gradientOpacity ?? 0.5;
+                  const fpGradOpacity = fpDesign?.gradientOpacity ?? 0.3;
                   const fpTitleColor = fpDesign?.titleColor || '#FFFFFF';
                   const FONT_MAP: Record<string, string> = {
                     Anton: 'var(--font-anton)', Syne: 'var(--font-syne)',
@@ -2096,20 +2096,18 @@ export default function CalendarPage() {
                         ) : (
                           <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, #000000, ${hexRgba(fpGrad1, 1)})` }} />
                         )}
-                        {/* Dégradé overlay — utilise les couleurs du design */}
-                        <div className="absolute inset-0" style={{ background: `linear-gradient(to top, ${hexRgba(fpGrad1, fpGradOpacity)} 0%, ${hexRgba(fpGrad2, fpGradOpacity * 0.4)} 40%, transparent 65%)` }} />
-                        {/* Titre + sous-titre — style intro (poster + titre) */}
-                        <div className="absolute inset-0 flex flex-col items-center text-center px-2 z-10" style={{ justifyContent: 'flex-end', paddingBottom: '15%' }}>
-                          <h4 className="font-black uppercase tracking-wide leading-tight" style={{
+                        {/* Dégradé overlay — matches editor: 180deg, color1 top → transparent middle → color2 bottom */}
+                        <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, ${hexRgba(fpGrad1, fpGradOpacity)} 0%, transparent 40%, transparent 60%, ${hexRgba(fpGrad2, fpGradOpacity)} 100%)` }} />
+                        {/* Titre + sous-titre — matches editor: title at titlePos.y%, drop-shadow-lg (dark, no colored glow) */}
+                        <div className="absolute inset-0 flex flex-col items-center text-center px-2 z-10" style={{ justifyContent: 'flex-start', paddingTop: `${fpDesign?.positions?.title?.y ?? 10}%` }}>
+                          <h4 className="font-black uppercase tracking-wide leading-tight drop-shadow-lg" style={{
                             fontSize: '11px', color: fpTitleColor, fontFamily: fpFont,
-                            textShadow: `0 0 8px ${fpAccent}CC, 0 0 20px ${fpAccent}66`,
                           }}>
                             {fp.title || 'TITRE'}
                           </h4>
                           {fpMeta?.subtitle && (
-                            <p className="mt-0.5" style={{ fontSize: '7px', color: `${fpTitleColor}CC`, fontFamily: fpFont, textShadow: `0 0 6px ${fpAccent}80` }}>{fpMeta.subtitle}</p>
+                            <p className="mt-0.5 drop-shadow" style={{ fontSize: '7px', color: `${fpTitleColor}CC`, fontFamily: fpFont }}>{fpMeta.subtitle}</p>
                           )}
-                          <div className="w-6 h-px mt-1 mx-auto rounded-full" style={{ background: `linear-gradient(90deg, transparent, ${fpAccent}, transparent)` }} />
                         </div>
                         {/* Logo en miniature */}
                         {fpLogoUrl && (
@@ -2120,8 +2118,7 @@ export default function CalendarPage() {
                             transform: 'translate(-50%, -50%)',
                           }} />
                         )}
-                        {/* Barre bas */}
-                        <div className="absolute bottom-0 inset-x-0 h-0.5 z-20" style={{ background: `linear-gradient(90deg, ${fpGrad1}, ${fpGrad2})` }} />
+                        {/* No bottom bar — editor doesn't have one */}
                       </div>
                     </div>
                   );
@@ -2804,7 +2801,7 @@ export default function CalendarPage() {
                         <div style={{
                           position: 'absolute',
                           left: `${positions.title?.x ?? 50}%`,
-                          top: `${positions.title?.y ?? 75}%`,
+                          top: `${positions.title?.y ?? 10}%`,
                           transform: 'translate(-50%, 0)',
                           display: 'flex',
                           flexDirection: 'column' as const,
@@ -2822,7 +2819,7 @@ export default function CalendarPage() {
                             fontWeight: titleTypo.bold !== false ? 900 : 400,
                             fontStyle: titleTypo.italic ? 'italic' : 'normal',
                             textTransform: 'uppercase' as const,
-                            textShadow: `0 0 20px ${accent}CC, 0 0 50px ${accent}66`,
+                            textShadow: '0 4px 6px rgba(0,0,0,0.15)',
                             margin: 0,
                           }}>{displayTitle || 'TITRE'}</h3>
                           {meta?.subtitle && <p style={{
@@ -2833,13 +2830,9 @@ export default function CalendarPage() {
                             lineHeight: titleTypo.lineHeight || 1.1,
                             fontWeight: titleTypo.bold !== false ? 900 : 400,
                             fontStyle: titleTypo.italic ? 'italic' : 'normal',
-                            textShadow: `0 0 12px ${accent}80`,
+                            textShadow: '0 2px 4px rgba(0,0,0,0.15)',
                             margin: 0,
                           }}>{meta.subtitle}</p>}
-                          <div style={{
-                            width: '5rem', height: '2px', borderRadius: '9999px',
-                            background: `linear-gradient(90deg, transparent, ${accent}, transparent)`,
-                          }} />
                         </div>
                       </div>
                       {/* Logo sur intro si logoSequences inclut 'intro' — per-sequence position */}
