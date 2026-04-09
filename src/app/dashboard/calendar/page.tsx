@@ -2063,10 +2063,15 @@ export default function CalendarPage() {
                   const fpMeta = fp.metadata;
                   const fpAccent = fpMeta?.branding?.accentColor || '#D91CD2';
                   const fpDesign = fpMeta?.design;
-                  // Utiliser les couleurs du design si disponibles, sinon fallback sur accent
-                  const fpGrad1 = fpDesign?.gradientColor1 || fpAccent;
-                  const fpGrad2 = fpDesign?.gradientColor2 || '#000000';
-                  const fpGradOpacity = fpDesign?.gradientOpacity ?? 0.3;
+
+                  // ── Gradient: use per-sequence gradient for intro (seqGradients.titre) like full preview ──
+                  const fpSeqGradients = (fpDesign as any)?.seqGradients || {};
+                  const introGrad = fpSeqGradients.titre || fpSeqGradients.intro;
+                  const fpGrad1 = introGrad?.color1 || fpDesign?.gradientColor1 || fpAccent;
+                  const fpGrad2 = introGrad?.color2 || fpDesign?.gradientColor2 || '#000000';
+                  const fpGradOpacity = introGrad?.opacity ?? fpDesign?.gradientOpacity ?? 0.3;
+                  const gradEnabled = introGrad?.enabled ?? true;
+
                   const fpTitleColor = fpDesign?.titleColor || '#FFFFFF';
                   const FONT_MAP: Record<string, string> = {
                     Anton: 'var(--font-anton)', Syne: 'var(--font-syne)',
@@ -2075,6 +2080,11 @@ export default function CalendarPage() {
                   };
                   const fpFont = fpDesign?.font ? (FONT_MAP[fpDesign.font] || fpDesign.font) : 'inherit';
                   const fpLogoUrl = fpDesign?.logoUrl || (fpMeta?.logoUrl as string) || null;
+
+                  // ── Logo: ONLY show if logoSequences includes 'titre' (intro) — like full preview ──
+                  const fpLogoSequences: string[] = fpDesign?.logoSequences || [];
+                  const showLogoOnIntro = fpLogoUrl && fpLogoSequences.some((s: string) => s === 'titre' || s === 'intro');
+
                   // Image poster (pas la vidéo rendue)
                   const fpPosterImg = fpMeta?.pexelsUrl || fpMeta?.posterUrl || fpMeta?.characterUrl || null;
                   const fpTextCards = (fpMeta?.textCards as Array<{ text: string; color: string }>) || [];
@@ -2088,6 +2098,15 @@ export default function CalendarPage() {
                     const b = parseInt(hex.slice(5, 7), 16) || 0;
                     return `rgba(${r},${g},${b},${a})`;
                   };
+
+                  // ── Title: use the same title shown in the editor/composer, not the post calendar title ──
+                  // The editor title is stored in the post's root 'title' field but formatted with uppercase in preview
+                  const fpTitle = fp.title || 'TITRE';
+
+                  // Logo position for intro/titre sequence
+                  const fpLogoPositions = (fpDesign as any)?.logoPositions || {};
+                  const introLogoPos = fpLogoPositions.titre || fpLogoPositions.intro || fpDesign?.positions?.logo || { x: 50, y: 85 };
+
                   return (
                     <div className="flex justify-center mb-3">
                       <div className="w-28 sm:w-36 aspect-[9/16] rounded-xl overflow-hidden border border-gray-700 bg-black relative">
@@ -2096,29 +2115,30 @@ export default function CalendarPage() {
                         ) : (
                           <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, #000000, ${hexRgba(fpGrad1, 1)})` }} />
                         )}
-                        {/* Dégradé overlay — matches editor: 180deg, color1 top → transparent middle → color2 bottom */}
-                        <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, ${hexRgba(fpGrad1, fpGradOpacity)} 0%, transparent 40%, transparent 60%, ${hexRgba(fpGrad2, fpGradOpacity)} 100%)` }} />
-                        {/* Titre + sous-titre — matches editor: title at titlePos.y%, drop-shadow-lg (dark, no colored glow) */}
+                        {/* Dégradé overlay — uses per-sequence gradient (seqGradients.titre) like full preview */}
+                        {gradEnabled && fpGradOpacity > 0 && (
+                          <div className="absolute inset-0" style={{ background: `linear-gradient(180deg, ${hexRgba(fpGrad1, fpGradOpacity)} 0%, transparent 40%, transparent 60%, ${hexRgba(fpGrad2, fpGradOpacity)} 100%)` }} />
+                        )}
+                        {/* Titre + sous-titre — position from design, drop-shadow-lg */}
                         <div className="absolute inset-0 flex flex-col items-center text-center px-2 z-10" style={{ justifyContent: 'flex-start', paddingTop: `${fpDesign?.positions?.title?.y ?? 10}%` }}>
                           <h4 className="font-black uppercase tracking-wide leading-tight drop-shadow-lg" style={{
                             fontSize: '11px', color: fpTitleColor, fontFamily: fpFont,
                           }}>
-                            {fp.title || 'TITRE'}
+                            {fpTitle}
                           </h4>
                           {fpMeta?.subtitle && (
                             <p className="mt-0.5 drop-shadow" style={{ fontSize: '7px', color: `${fpTitleColor}CC`, fontFamily: fpFont }}>{fpMeta.subtitle}</p>
                           )}
                         </div>
-                        {/* Logo en miniature */}
-                        {fpLogoUrl && (
-                          <img src={fpLogoUrl} alt="" className="absolute z-20" style={{
+                        {/* Logo en miniature — ONLY if logoSequences includes intro/titre */}
+                        {showLogoOnIntro && (
+                          <img src={fpLogoUrl!} alt="" className="absolute z-20" style={{
                             width: '18px', height: '18px', objectFit: 'contain',
-                            left: `${fpDesign?.positions?.logo?.x ?? 50}%`,
-                            top: `${fpDesign?.positions?.logo?.y ?? 85}%`,
+                            left: `${introLogoPos.x ?? 50}%`,
+                            top: `${introLogoPos.y ?? 85}%`,
                             transform: 'translate(-50%, -50%)',
                           }} />
                         )}
-                        {/* No bottom bar — editor doesn't have one */}
                       </div>
                     </div>
                   );
