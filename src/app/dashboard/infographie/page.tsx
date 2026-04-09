@@ -1164,16 +1164,85 @@ export default function InfographicPage() {
             .filter(Boolean)
             .join("\n");
 
+          // ── Compose montage video NOW at export time (not deferred to calendar) ──
+          // This ensures the exported post always has a ready-to-publish video
+          const exportAccent = COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent || customAccent || "#a855f7";
+          const isReel = format === "9:16";
+          let renderedVideoUrl: string | null = null;
+          try {
+            setExportProgress(Math.round(((b + 0.3) / total) * 100));
+            const { url: composedUrl } = await composeAndUpload({
+              width: isReel ? 1080 : 1920,
+              height: isReel ? 1920 : 1080,
+              fps: 30,
+              title: title || "Infographie",
+              subtitle: subtitle || undefined,
+              salesPhrase: salesPhrase || undefined,
+              cards: cards.length > 0
+                ? cards.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color }))
+                : undefined,
+              posterUrl: posterUrl,
+              videoUrl: rushUrl || undefined,
+              logoUrl: logoImage || null,
+              musicUrl: undefined, // Audio added later in Studio Son
+              voiceUrl: undefined,
+              introDuration,
+              cardsDuration: cards.length > 0 ? cardsDuration : 0,
+              videoDuration: rushUrl ? videoDuration : 0,
+              ctaDuration,
+              accentColor: exportAccent,
+              ctaText: ctaSubText || "CHAT POUR PLUS D'INFOS",
+              ctaSubText: "LIEN EN BIO",
+              watermarkText: ctaMainText || "AFROBOOST",
+              siteText: siteTextEnabled ? {
+                text: siteText, color: siteTextColor, opacity: siteTextOpacity,
+                size: siteTextSize, sequences: siteTextSequences, enabled: siteTextEnabled,
+                positions: siteTextPositions,
+              } : undefined,
+              design: {
+                font: selectedFont, filter: selectedFilter, cardStyle: selectedCardStyle,
+                textScale, ctaTextScale, titleColor, ctaColor, ctaSubColor,
+                ctaMainText: ctaMainText || "AFROBOOST",
+                ctaSubTextDesign: ctaSubText || "CHAT POUR PLUS D'INFOS",
+                noColorBg, noColorSequences,
+                gradientColor1, gradientColor2, gradientOpacity, seqGradients,
+                logoPosition: getActiveLogoPos(),
+                logoPositions, cardsSize,
+                logoScale, logoSequences,
+                overlayText: videoOverlayText || undefined,
+                overlayColor: undefined,
+                titlePosition: titlePos, cardsPosition: cardsPos,
+                watermarkPosition: watermarkPos, overlayPosition: overlayPos,
+                titleSize, watermarkSize: watermarkSize,
+                titleTypography: {
+                  letterSpacing: titleLetterSpacing, lineHeight: titleLineHeight,
+                  bold: titleBold, italic: titleItalic,
+                  textGradient: titleTextGradient, gradColor1: titleGradColor1, gradColor2: titleGradColor2,
+                  duplicate: titleDuplicate, duplicateOffset: titleDuplicateOffset, duplicateOpacity: titleDuplicateOpacity,
+                },
+                ctaTypography: { letterSpacing: ctaLetterSpacing, lineHeight: ctaLineHeight, bold: ctaBold, italic: ctaItalic },
+                overlayTypography: { letterSpacing: overlayLetterSpacing, lineHeight: overlayLineHeight, bold: overlayBold, italic: overlayItalic },
+              },
+              onProgress: (pct) => {
+                setExportProgress(Math.round(((b + 0.3 + pct / 100 * 0.6) / total) * 100));
+              },
+            });
+            renderedVideoUrl = composedUrl;
+            console.log('[Export→Calendar] Montage composed and uploaded:', renderedVideoUrl);
+          } catch (err) {
+            console.error('[Export→Calendar] Montage composition failed:', err);
+            // Continue — post will be saved without video, calendar can retry
+          }
+
           const postRes = await fetch("/api/posts", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               title: title || "Infographie",
               caption,
-              // For video posts: media_url = null — montage will be composed at schedule/publish time
-              // For image posts: use the uploaded image or poster
-              media_url: hasVideo ? null : (mediaUrl || posterUrl || null),
-              media_type: hasVideo ? 'video' : 'image',
+              // Use the composed video URL if available, otherwise fallback to image
+              media_url: renderedVideoUrl || (hasVideo ? null : (mediaUrl || posterUrl || null)),
+              media_type: 'video',
               format: format === "16:9" ? "tv" : "reel",
               platforms: [],
               scheduled_date: scheduledDate,
@@ -1196,6 +1265,7 @@ export default function InfographicPage() {
                 characterUrl: characterImage ? mediaUrl : null,
                 posterUrl,
                 pexelsUrl: posterUrl,
+                renderedVideoUrl: renderedVideoUrl || undefined,
                 logoUrl: logoImage || undefined,
                 videoUrl: rushUrl || undefined,
                 rushUrls: rushUrl ? [rushUrl] : undefined,
