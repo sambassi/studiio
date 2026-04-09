@@ -566,6 +566,16 @@ export default function CalendarPage() {
             ctaMainText: designMeta.ctaMainText || undefined,
             ctaSubTextDesign: designMeta.ctaSubText || undefined,
             titleTypography: designMeta.typography?.title || undefined,
+            watermarkPosition: designMeta.positions?.watermark || undefined,
+            watermarkSize: designMeta.sizes?.watermark || undefined,
+            overlayPosition: designMeta.positions?.overlay || undefined,
+            titleSize: designMeta.sizes?.title || undefined,
+            ctaTypography: designMeta.typography?.cta || undefined,
+            overlayTypography: designMeta.typography?.overlay || undefined,
+            seqGradients: (designMeta as any).seqGradients || undefined,
+            noColorBg: (designMeta as any).noColorBg || undefined,
+            noColorSequences: (designMeta as any).noColorSequences || undefined,
+            filter: designMeta.filter || undefined,
           },
           onProgress: (pct, stage) => {
             setExportRenderProgress(pct);
@@ -1102,6 +1112,16 @@ export default function CalendarPage() {
               ctaMainText: designMeta.ctaMainText || undefined,
               ctaSubTextDesign: designMeta.ctaSubText || undefined,
               titleTypography: designMeta.typography?.title || undefined,
+              watermarkPosition: designMeta.positions?.watermark || undefined,
+              watermarkSize: designMeta.sizes?.watermark || undefined,
+              overlayPosition: designMeta.positions?.overlay || undefined,
+              titleSize: designMeta.sizes?.title || undefined,
+              ctaTypography: designMeta.typography?.cta || undefined,
+              overlayTypography: designMeta.typography?.overlay || undefined,
+              seqGradients: (designMeta as any).seqGradients || undefined,
+              noColorBg: (designMeta as any).noColorBg || undefined,
+              noColorSequences: (designMeta as any).noColorSequences || undefined,
+              filter: designMeta.filter || undefined,
             },
             onProgress: (pct, stage) => {
               setExportRenderProgress(pct);

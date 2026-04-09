@@ -1379,6 +1379,23 @@ export default function InfographicPage() {
                 bold: titleBold,
                 italic: titleItalic,
               },
+              watermarkPosition: watermarkPos || undefined,
+              watermarkSize: watermarkSize || undefined,
+              overlayPosition: overlayPos || undefined,
+              titleSize: titleSize || undefined,
+              ctaTypography: {
+                letterSpacing: ctaLetterSpacing || undefined,
+                lineHeight: ctaLineHeight || undefined,
+                bold: ctaBold,
+                italic: ctaItalic,
+              },
+              overlayTypography: {
+                letterSpacing: overlayLetterSpacing || undefined,
+                lineHeight: overlayLineHeight || undefined,
+                bold: overlayBold,
+                italic: overlayItalic,
+              },
+              overlayText: videoOverlayText || undefined,
             },
             onProgress: (pct, stage) => {
               setExportProgress(50 + Math.round(pct * 0.35));

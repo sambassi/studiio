@@ -86,6 +86,36 @@ export interface DesignOptions {
     bold?: boolean;
     italic?: boolean;
   };
+  /** CTA/Watermark position {x: 0-100, y: 0-100} (default: {x:50, y:97}) — editor uses translate(-50%, -100%) */
+  watermarkPosition?: { x?: number; y?: number };
+  /** CTA/Watermark container width % (default: 70) — matches editor watermarkSize */
+  watermarkSize?: number;
+  /** Video overlay text position {x: 0-100, y: 0-100} (default: {x:50, y:33}) */
+  overlayPosition?: { x?: number; y?: number };
+  /** Title container width % (default: 90) — matches editor titleSize */
+  titleSize?: number;
+  /** CTA typography (letterSpacing, lineHeight) */
+  ctaTypography?: {
+    letterSpacing?: number;
+    lineHeight?: number;
+    bold?: boolean;
+    italic?: boolean;
+  };
+  /** Overlay typography */
+  overlayTypography?: {
+    letterSpacing?: number;
+    lineHeight?: number;
+    bold?: boolean;
+    italic?: boolean;
+  };
+  /** Sequence-level gradient overrides */
+  seqGradients?: Record<string, { enabled?: boolean; color1?: string; color2?: string; opacity?: number }>;
+  /** No-color background flag */
+  noColorBg?: boolean;
+  /** Sequences with no color overlay */
+  noColorSequences?: string[];
+  /** Selected filter name */
+  filter?: string;
 }
 
 export interface ComposerOptions {
@@ -466,7 +496,7 @@ function drawIntro(
 
   // Title text — editor does NOT force uppercase, preserves original case
   // Editor uses width constraint (titleSize%, default 90%) for wrapping
-  const titleWidth = w * 0.90; // matches editor default titleSize=90%
+  const titleWidth = w * ((design?.titleSize ?? 90) / 100);
   ctx.save();
   ctx.font = `${fontStyle}${fontWeight} ${fontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
   ctx.fillStyle = hexToRgba(titleColor, titleAlpha);
@@ -474,7 +504,7 @@ function drawIntro(
 
   // Word-wrap title to match editor behavior (text wraps within titleWidth)
   const titleLines = wrapText(ctx, title, titleWidth);
-  const lineSpacing = fontSize * 1.1; // matches editor lineHeight: 1.1
+  const lineSpacing = fontSize * (design?.titleTypography?.lineHeight || 1.1);
   let titleDrawY = titlePosY + fontSize; // baseline offset (canvas draws text from baseline)
   for (let i = 0; i < titleLines.length; i++) {
     fillTextWithOutline(ctx, titleLines[i], titlePosX, titleDrawY + i * lineSpacing, Math.round(w * 0.004), 'rgba(0,0,0,0.9)');
@@ -549,10 +579,10 @@ function drawCards(
   const maxCards = Math.min(cards.length, 5);
 
   // Font sizes matched to editor CSS:
-  //   Editor label = 7px, value = 9px, desc = 6px, emoji ≈ 14px (text-sm)
-  //   On 320px wide editor → label: 7/320=0.022, value: 9/320=0.028, desc: 6/320=0.019
+  //   Editor label = 7px, value = 9px, desc = 6px, emoji = text-sm = 14px
+  //   On 320px wide editor → emoji: 14/320=0.04375, label: 7/320=0.022, value: 9/320=0.028, desc: 6/320=0.019
   //   Stats Bold value: 13/320=0.041
-  const emojiSize = Math.round(w * 0.028 * textScale);
+  const emojiSize = Math.round(w * 0.04375 * textScale);
   const labelSize = Math.round(w * 0.022 * textScale);
   const valueSize = Math.round(w * 0.028 * textScale);
   const descSize = Math.round(w * 0.019 * textScale);
@@ -768,12 +798,30 @@ function drawVideoSeq(
     ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fillText('Vidéo', w / 2, h / 2);
   }
   // Video overlay text if configured
+  // Editor: fontSize = 16 * textScale px on 320px → ratio = 16/320 = 0.05
+  // Editor: position from overlayPos (default: x=50%, y=33%), width 85%
+  // Editor does NOT force uppercase — preserves original case
   if (design?.overlayText) {
+    const textScale = design?.textScale || 1.0;
+    const overlayFontSize = Math.round(w * 0.05 * textScale);
+    const overlayX = ((design?.overlayPosition?.x ?? 50) / 100) * w;
+    const overlayY = ((design?.overlayPosition?.y ?? 33) / 100) * h;
+    const overlayBold = design?.overlayTypography?.bold !== false;
+    const overlayItalic = design?.overlayTypography?.italic ? 'italic ' : '';
+    const overlayWeight = overlayBold ? 700 : 400;
     ctx.save();
-    ctx.font = `700 ${Math.round(w * 0.06)}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center'; // 6cqw
+    ctx.font = `${overlayItalic}${overlayWeight} ${overlayFontSize}px "${fontFamily}", sans-serif`;
+    ctx.textAlign = 'center';
     ctx.fillStyle = design.overlayColor || '#FFFFFF';
     ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 12;
-    fillTextWithOutline(ctx, design.overlayText.toUpperCase(), w / 2, h / 2, 3, 'rgba(0,0,0,0.7)');
+    // Word-wrap overlay text within 85% width (matches editor width: 85%)
+    const overlayLines = wrapText(ctx, design.overlayText, w * 0.85);
+    const overlayLineH = overlayFontSize * (design?.overlayTypography?.lineHeight || 1.2);
+    const overlayBlockH = overlayLines.length * overlayLineH;
+    const overlayStartY = overlayY - overlayBlockH / 2 + overlayFontSize;
+    for (let i = 0; i < overlayLines.length; i++) {
+      fillTextWithOutline(ctx, overlayLines[i], overlayX, overlayStartY + i * overlayLineH, 3, 'rgba(0,0,0,0.7)');
+    }
     ctx.restore();
   }
   // Logo on video if configured — uses per-sequence position
@@ -793,14 +841,16 @@ function drawCTA(
   design?: DesignOptions
 ) {
   const fontFamily = design?.font || 'sans-serif';
-  const ctaSubColor = design?.ctaSubColor || accent; // editor default is accent color (#D91CD2), not white
-  const ctaColor = design?.ctaColor || accent;
+  const ctaSubColor = design?.ctaSubColor || accent; // editor default is accent color (#D91CD2)
+  const ctaColor = design?.ctaColor || '#FFFFFF'; // editor default is white, not accent
   const ctaTextScale = design?.ctaTextScale || 1.0;
 
-  // Use design CTA texts if available (they take priority over ComposerOptions)
-  const effectiveCtaText = design?.ctaSubTextDesign || ctaText;
-  const effectiveSubText = ctaSubText;
-  const effectiveWatermark = design?.ctaMainText || watermark;
+  // CTA text mapping — editor renders:
+  //   BIG text = ctaMainText state ("AFROBOOST")     → saved in design.ctaMainText & branding.watermarkText
+  //   Sub text = ctaSubText state ("CHAT POUR PLUS D'INFOS") → saved in design.ctaSubTextDesign & branding.ctaText
+  // Note: branding naming is confusing (ctaText = editor's ctaSubText, watermarkText = editor's ctaMainText)
+  const effectiveCtaText = design?.ctaMainText || watermark || 'AFROBOOST';
+  const effectiveSubText = design?.ctaSubTextDesign || ctaText || "CHAT POUR PLUS D'INFOS";
 
   // CTA: black background — matches preview
   ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, w, h);
@@ -815,14 +865,20 @@ function drawCTA(
   const salesFontSize = Math.round(w * (isReel ? 0.025 : 0.020) * ctaTextScale);
   const subFontSize = Math.round(w * (isReel ? 0.028 : 0.023) * ctaTextScale);
 
-  // Word-wrap CTA text (use design's CTA text if available)
+  // CTA position — editor uses translate(-50%, -100%) at watermarkPos (default: x=50%, y=97%)
+  // This means the BOTTOM of the text block is at the specified Y position
+  const ctaPosX = ((design?.watermarkPosition?.x ?? 50) / 100) * w;
+  const ctaPosY = ((design?.watermarkPosition?.y ?? 97) / 100) * h;
+  const ctaContainerW = w * ((design?.watermarkSize ?? 70) / 100);
+
+  // Word-wrap CTA text within container width
   ctx.font = `900 ${ctaFontSize}px "${fontFamily}", sans-serif`;
   const ctaWords = effectiveCtaText.toUpperCase().split(' ');
   let ctaLines: string[] = [];
   let currentLine = '';
   for (const word of ctaWords) {
     const testLine = currentLine ? currentLine + ' ' + word : word;
-    if (ctx.measureText(testLine).width > w * 0.85 && currentLine) {
+    if (ctx.measureText(testLine).width > ctaContainerW && currentLine) {
       ctaLines.push(currentLine);
       currentLine = word;
     } else {
@@ -831,36 +887,37 @@ function drawCTA(
   }
   if (currentLine) ctaLines.push(currentLine);
 
-  // Measure total block height for centering
+  // Measure total block height
   let blockH = 0;
   if (salesPhrase) blockH += salesFontSize * 1.5;
   blockH += ctaLines.length * ctaFontSize * 1.2;
   blockH += subFontSize * 1.5;
 
-  let curY = (h - blockH) / 2 + ctaFontSize * 0.5;
+  // Bottom-anchored: block bottom at ctaPosY, so top = ctaPosY - blockH
+  let curY = ctaPosY - blockH + ctaFontSize * 0.5;
 
   // Sales phrase — accent/ctaColor with transparency (matches preview: ctaColor + ee)
   if (salesPhrase) {
     ctx.font = `900 ${salesFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
     ctx.fillStyle = hexToRgba(ctaColor, 0.93);
-    ctx.fillText(salesPhrase, w / 2, curY);
+    ctx.fillText(salesPhrase, ctaPosX, curY);
     curY += salesFontSize * 1.5;
   }
 
-  // Main CTA text — ctaColor, large, bold (matches preview)
+  // Main CTA text — ctaColor, large, bold, uppercase (matches editor .uppercase class)
   ctaLines.forEach((line, i) => {
     ctx.font = `900 ${ctaFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
     ctx.fillStyle = ctaColor;
     ctx.shadowColor = hexToRgba(ctaColor, 0.4); ctx.shadowBlur = Math.round(w * 0.02);
-    ctx.fillText(line, w / 2, curY + i * (ctaFontSize * 1.2));
+    ctx.fillText(line, ctaPosX, curY + i * (ctaFontSize * 1.2));
   });
   ctx.shadowBlur = 0;
   curY += ctaLines.length * ctaFontSize * 1.2;
 
-  // Sub-text — user-configured color, 900 weight (matches preview)
+  // Sub-text — user-configured color, 900 weight, uppercase (matches editor)
   ctx.font = `900 ${subFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
   ctx.fillStyle = ctaSubColor;
-  ctx.fillText(effectiveSubText.toUpperCase(), w / 2, curY + subFontSize * 0.3);
+  ctx.fillText(effectiveSubText.toUpperCase(), ctaPosX, curY + subFontSize * 0.3);
 
   // Logo on CTA if configured — uses per-sequence position
   if (logoImg && (!design?.logoSequences || design.logoSequences.includes('cta'))) {
@@ -868,13 +925,6 @@ function drawCTA(
     const pos = getLogoPos(design, 'cta');
     console.log(`[Composer] Logo CTA: pos=${JSON.stringify(pos)}, scale=${logoScale}`);
     drawLogoAccurate(ctx, logoImg, w, h, pos, logoScale);
-  }
-
-  // Watermark (use design's ctaMainText as brand watermark if available)
-  if (effectiveWatermark) {
-    ctx.font = `700 ${Math.round(w * 0.025)}px "${fontFamily}", sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.3)';
-    ctx.textAlign = 'center';
-    ctx.fillText(effectiveWatermark, w / 2, h * 0.92);
   }
   ctx.restore();
 }
@@ -1078,7 +1128,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       const stSize = siteText?.size || 1.0;
       const stColor = siteText?.color || '#FFFFFF';
       const stOpacity = siteText?.opacity ?? 0.85;
-      const linkFontSize = Math.round(width * 0.028 * stSize);
+      const linkFontSize = Math.round(width * 0.0375 * stSize); // editor: 12/320 = 0.0375
       // Per-sequence position (matches editor drag positions)
       const stPos = getSiteTextPos(siteText, seq.type);
       const stX = (stPos.x / 100) * width;
