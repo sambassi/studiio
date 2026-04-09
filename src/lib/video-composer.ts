@@ -4,7 +4,7 @@
  * Audio elements handle MP3/OGG/WAV decoding natively (no OfflineAudioContext).
  * Outputs MP4 if supported, otherwise WebM.
  */
-const COMPOSER_VERSION = 'v6-match-editor-2026-04-09';
+const COMPOSER_VERSION = 'v7-pixel-perfect-2026-04-09';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // ═══════════════════════════════════════════════════════════
@@ -547,10 +547,12 @@ function drawIntro(
   // Editor uses width constraint (titleSize%, default 90%) for wrapping
   const titleWidth = w * ((design?.titleSize ?? 90) / 100);
   ctx.save();
+  // Use 'top' baseline so Y coordinate = top edge of text (matches CSS top: Y%)
+  ctx.textBaseline = 'top';
   ctx.font = `${fontStyle}${fontWeight} ${fontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
   ctx.fillStyle = hexToRgba(titleColor, titleAlpha);
   // Editor uses Tailwind drop-shadow-lg = subtle dark shadow, NOT colored glow
-  // drop-shadow-lg: drop-shadow(0 10px 8px rgb(0 0 0 / 0.04)) drop-shadow(0 4px 3px rgb(0 0 0 / 0.1))
+  // drop-shadow-lg ≈ drop-shadow(0 10px 8px rgb(0 0 0 / 0.04)) drop-shadow(0 4px 3px rgb(0 0 0 / 0.1))
   ctx.shadowColor = 'rgba(0,0,0,0.15)';
   ctx.shadowBlur = Math.round(w * 0.008);
   ctx.shadowOffsetY = Math.round(w * 0.005);
@@ -558,7 +560,8 @@ function drawIntro(
   // Word-wrap title to match editor behavior (text wraps within titleWidth)
   const titleLines = wrapText(ctx, title, titleWidth);
   const lineSpacing = fontSize * (design?.titleTypography?.lineHeight || 1.1);
-  let titleDrawY = titlePosY + fontSize; // baseline offset (canvas draws text from baseline)
+  // With textBaseline='top', Y = top of text — matches CSS top: Y% with translate(-50%, 0)
+  let titleDrawY = titlePosY;
 
   // Title duplicate/shadow layer (editor feature: duplicated text offset behind main text)
   const hasDuplicate = design?.titleTypography && (design.titleTypography as any).duplicate;
@@ -572,7 +575,8 @@ function drawIntro(
       fillTextWithSpacing(ctx, titleLines[i], titlePosX + dupOffset, titleDrawY + i * lineSpacing + dupOffset, titleLetterSpacing);
     }
     ctx.restore();
-    // Restore main text style
+    // Restore main text style (including textBaseline which was reset by restore)
+    ctx.textBaseline = 'top';
     ctx.font = `${fontStyle}${fontWeight} ${fontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
     ctx.fillStyle = hexToRgba(titleColor, titleAlpha);
     ctx.shadowColor = 'rgba(0,0,0,0.15)';
@@ -580,28 +584,64 @@ function drawIntro(
     ctx.shadowOffsetY = Math.round(w * 0.005);
   }
 
-  // Main title text — same rendering whether letterSpacing or not
-  // Editor does NOT use outlines, just drop-shadow-lg
-  for (let i = 0; i < titleLines.length; i++) {
-    if (titleLetterSpacing) {
-      fillTextWithSpacing(ctx, titleLines[i], titlePosX, titleDrawY + i * lineSpacing, titleLetterSpacing);
-    } else {
-      ctx.fillText(titleLines[i], titlePosX, titleDrawY + i * lineSpacing);
-    }
-  }
-  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  // Text gradient support: editor uses linear-gradient(135deg, color1, color2) + background-clip: text
+  const hasTextGradient = design?.titleTypography?.textGradient;
+  const gradC1 = (design?.titleTypography as any)?.gradColor1 || '#FFD700';
+  const gradC2 = (design?.titleTypography as any)?.gradColor2 || '#FF6B6B';
 
-  const titleBlockBottom = titleDrawY + (titleLines.length - 1) * lineSpacing;
+  // Main title text — draw shadow pass first, then gradient pass on top
+  if (hasTextGradient) {
+    // Pass 1: draw text with shadow (in solid color for shadow layer)
+    for (let i = 0; i < titleLines.length; i++) {
+      if (titleLetterSpacing) {
+        fillTextWithSpacing(ctx, titleLines[i], titlePosX, titleDrawY + i * lineSpacing, titleLetterSpacing);
+      } else {
+        ctx.fillText(titleLines[i], titlePosX, titleDrawY + i * lineSpacing);
+      }
+    }
+    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+
+    // Pass 2: overdraw with gradient fill (no shadow)
+    // 135deg gradient: from top-left to bottom-right across the text block
+    const totalTextH = titleLines.length * lineSpacing;
+    const textGrad = ctx.createLinearGradient(
+      titlePosX - titleWidth / 2, titleDrawY,
+      titlePosX + titleWidth / 2, titleDrawY + totalTextH
+    );
+    textGrad.addColorStop(0, gradC1);
+    textGrad.addColorStop(1, gradC2);
+    ctx.fillStyle = textGrad;
+    for (let i = 0; i < titleLines.length; i++) {
+      if (titleLetterSpacing) {
+        fillTextWithSpacing(ctx, titleLines[i], titlePosX, titleDrawY + i * lineSpacing, titleLetterSpacing);
+      } else {
+        ctx.fillText(titleLines[i], titlePosX, titleDrawY + i * lineSpacing);
+      }
+    }
+  } else {
+    // No gradient — single pass with solid color
+    for (let i = 0; i < titleLines.length; i++) {
+      if (titleLetterSpacing) {
+        fillTextWithSpacing(ctx, titleLines[i], titlePosX, titleDrawY + i * lineSpacing, titleLetterSpacing);
+      } else {
+        ctx.fillText(titleLines[i], titlePosX, titleDrawY + i * lineSpacing);
+      }
+    }
+    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  }
+
+  const titleBlockBottom = titleDrawY + (titleLines.length - 1) * lineSpacing + fontSize;
 
   // Subtitle below title — no animation, static like editor
-  // Editor: color = titleColor + cc (80% opacity), same font settings, mt-1 margin
+  // Editor: mt-1 (4px on 320px), color = titleColor+cc (80%), drop-shadow
   if (subtitle) {
     ctx.font = `${fontStyle}${fontWeight} ${subFontSize}px "${fontFamily}", sans-serif`;
     ctx.fillStyle = hexToRgba(titleColor, 0.8);
     ctx.shadowColor = 'rgba(0,0,0,0.15)'; ctx.shadowBlur = Math.round(w * 0.006);
     ctx.shadowOffsetY = Math.round(w * 0.003);
-    // mt-1 in editor ≈ 4px on 320px → ~1.25% of width
-    ctx.fillText(subtitle, titlePosX, titleBlockBottom + fontSize * 0.4);
+    // mt-1 in editor ≈ 4px on 320px → scale to canvas
+    const mt1 = Math.round(w * (4 / 320));
+    ctx.fillText(subtitle, titlePosX, titleBlockBottom + mt1);
     ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
   }
 
@@ -654,7 +694,8 @@ function drawCards(
 
   // Card sizes from design or defaults
   const containerW = Math.round(w * ((design?.cardsSize || 92) / 100));
-  const maxCards = Math.min(cards.length, 5);
+  // Editor: 9:16 shows max 5 cards, 16:9 shows max 6 cards
+  const maxCards = Math.min(cards.length, isReel ? 5 : 6);
 
   // Font sizes matched to editor CSS:
   //   Editor label = 7px, value = 9px, desc = 6px, emoji = text-sm = 14px
@@ -706,9 +747,17 @@ function drawCards(
   //         Emoji (text-sm=14px), Label (7px bold), Value (9px black), Description (6px white/60)
   else if (cardStyle === 'Compact') {
     const cols = isReel ? 2 : 3; // Editor: grid-cols-2 (9:16), grid-cols-3 (16:9)
-    const gap = Math.round(w * (6 / 320)); // gap-1.5 = 6px on 320px
+    const gap = Math.round(w * (6 / 320)); // gap-1.5 = 6px on 320px editor
     const cardW = Math.round((containerW - (cols - 1) * gap) / cols);
-    const cardH = Math.round(h * 0.12); // taller to fit description
+    // Editor: px-1.5 py-1.5 (6px padding) + flex col with emoji(14)+gap(2)+label(7)+gap(2)+value(9)+gap(2)+desc(6)
+    // Total inner height ≈ 42px on 320px editor → 42/568 ≈ 0.074 of height for 9:16
+    // But with textScale and variable content, use a proportional height
+    const paddingY = Math.round(w * (6 / 320)); // py-1.5 = 6px on 320px
+    const innerGap = Math.round(w * (2 / 320)); // gap-0.5 = 2px on 320px
+    const emojiSizeLocal = Math.round(w * (isReel ? 14 / 320 : 18 / 512) * textScale);
+    // Compute card height from content: padding + emoji + gap + label + gap + value + gap + desc + padding
+    const cardContentH = emojiSizeLocal + innerGap + labelSize + innerGap + valueSize + innerGap + descSize;
+    const cardH = cardContentH + paddingY * 2;
     const rows = Math.ceil(maxCards / cols);
     const totalH = rows * cardH + (rows - 1) * gap;
     const cardsY = ((design?.cardsPosition?.y ?? 50) / 100) * h - totalH / 2;
@@ -720,37 +769,53 @@ function drawCards(
       const x = cardsX + col * (cardW + gap);
       const y = cardsY + row * (cardH + gap);
 
-      // Background: bg-black/30 rounded-lg
-      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      // Background: bg-black/30 rounded-lg backdrop-blur-sm
+      // Note: Canvas doesn't support backdrop-blur, use slightly higher opacity to compensate
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
       drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.fill();
       // Left accent border: 2px solid card.color
       ctx.fillStyle = card.color || accent;
       const bw = Math.round(w * (2 / 320)); // 2px on 320px editor
-      ctx.fillRect(x, y + Math.round(cardH * 0.08), bw, cardH - Math.round(cardH * 0.16));
+      ctx.fillRect(x, y + radius, bw, cardH - radius * 2);
 
-      // Emoji: text-sm = 14px (9:16) / text-lg = 18px (16:9)
-      const emojiSizeLocal = Math.round(w * (isReel ? 14 / 320 : 18 / 512) * textScale);
+      // Layout elements top-down with flex-like gap spacing
+      // textBaseline 'top' for predictable positioning
+      ctx.textBaseline = 'top';
+      let curY = y + paddingY;
+
+      // Emoji: text-sm = 14px (9:16) / text-lg = 18px (16:9), centered
       ctx.font = `${emojiSizeLocal}px sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = 'white';
-      ctx.fillText(card.emoji || '●', x + cardW / 2, y + cardH * 0.22);
+      ctx.fillText(card.emoji || '●', x + cardW / 2, curY);
+      curY += emojiSizeLocal + innerGap;
 
-      // Label: 7px * textScale, font-bold (700), white
+      // Label: 7px * textScale, font-bold (700), white, drop-shadow
       ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = '#FFFFFF';
-      ctx.fillText(card.label, x + cardW / 2, y + cardH * 0.42);
+      ctx.shadowColor = 'rgba(0,0,0,0.2)'; ctx.shadowBlur = 2; ctx.shadowOffsetY = 1;
+      ctx.fillText(card.label, x + cardW / 2, curY);
+      ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+      curY += labelSize + innerGap;
 
-      // Value: 9px * textScale, font-black (900), card.color
+      // Value: 9px * textScale, font-black (900), card.color, drop-shadow
       ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = card.color || accent;
-      ctx.fillText(card.value, x + cardW / 2, y + cardH * 0.6);
+      ctx.shadowColor = 'rgba(0,0,0,0.2)'; ctx.shadowBlur = 2; ctx.shadowOffsetY = 1;
+      ctx.fillText(card.value, x + cardW / 2, curY);
+      ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+      curY += valueSize + innerGap;
 
-      // Description: 6px * textScale, white/60, truncated to 30 chars
+      // Description: 6px * textScale, white/60, truncated to 30 chars, centered
       if (card.description) {
         const descText = card.description.length > 30 ? card.description.substring(0, 30) + '...' : card.description;
         ctx.font = `400 ${descSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.6)';
         // Word-wrap description within card width (minus padding)
-        const descLines = wrapText(ctx, descText, cardW - Math.round(w * 0.02));
+        const paddingX = Math.round(w * (6 / 320)); // px-1.5
+        const descLines = wrapText(ctx, descText, cardW - paddingX * 2);
         descLines.slice(0, 2).forEach((line, li) => {
-          ctx.fillText(line, x + cardW / 2, y + cardH * 0.75 + li * (descSize * 1.2));
+          ctx.fillText(line, x + cardW / 2, curY + li * (descSize * 1.3));
         });
       }
+
+      // Reset textBaseline for other elements
+      ctx.textBaseline = 'alphabetic';
     });
   }
   // ── Card style: Educatif (emoji + label row, description, value) ──
