@@ -498,12 +498,25 @@ function drawIntro(
     const scale = Math.max(w / posterImg.width, h / posterImg.height);
     const sw = posterImg.width * scale, sh = posterImg.height * scale;
     ctx.drawImage(posterImg, (w - sw) / 2, (h - sh) / 2, sw, sh);
-    // Bottom-up gradient matching preview: gradient(to top, grad1 at opacity, grad2 at 40%, transparent at 65%)
-    const grad = ctx.createLinearGradient(0, h, 0, 0);
-    grad.addColorStop(0, hexToRgba(grad1, gradOpacity));
-    grad.addColorStop(0.4, hexToRgba(grad2, gradOpacity * 0.4));
-    grad.addColorStop(0.65, 'rgba(0,0,0,0)');
+    // Gradient matching editor CSS: linear-gradient(180deg, color1+alpha 0%, transparent 40%, transparent 60%, color2+alpha 100%)
+    // 180deg in CSS = top to bottom → createLinearGradient(0, 0, 0, h)
+    const clampedOpacity = Math.min(gradOpacity, 1);
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, hexToRgba(grad1, clampedOpacity));
+    grad.addColorStop(0.4, 'rgba(0,0,0,0)');
+    grad.addColorStop(0.6, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, hexToRgba(grad2, clampedOpacity));
     ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
+    // Second layer for >100% intensity (matches editor double-layer CSS)
+    if (gradOpacity > 1) {
+      const extraOpacity = gradOpacity - 1;
+      const grad2Layer = ctx.createLinearGradient(0, 0, 0, h);
+      grad2Layer.addColorStop(0, hexToRgba(grad1, extraOpacity));
+      grad2Layer.addColorStop(0.35, 'rgba(0,0,0,0)');
+      grad2Layer.addColorStop(0.65, 'rgba(0,0,0,0)');
+      grad2Layer.addColorStop(1, hexToRgba(grad2, extraOpacity));
+      ctx.fillStyle = grad2Layer; ctx.fillRect(0, 0, w, h);
+    }
   } else {
     const grad = ctx.createLinearGradient(0, 0, 0, h);
     grad.addColorStop(0, '#000000'); grad.addColorStop(1, hexToRgba(grad1, 1));
@@ -626,12 +639,24 @@ function drawCards(
   const textScale = design?.textScale || 1.0;
   const cardStyle = design?.cardStyle || 'Full Width';
 
-  // Background gradient matching preview: gradient(to bottom, grad1 at 0.9, grad2 at 0.7, #000)
+  // Background gradient matching editor: same format as intro (top-to-bottom, color1→transparent→color2)
+  const gradOpacity = design?.gradientOpacity ?? 0.3;
+  const clampedOp = Math.min(gradOpacity, 1);
   const grad = ctx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, hexToRgba(grad1, 0.9));
-  grad.addColorStop(0.5, hexToRgba(grad2, 0.7));
-  grad.addColorStop(1, '#000000');
+  grad.addColorStop(0, hexToRgba(grad1, clampedOp));
+  grad.addColorStop(0.4, 'rgba(0,0,0,0)');
+  grad.addColorStop(0.6, 'rgba(0,0,0,0)');
+  grad.addColorStop(1, hexToRgba(grad2, clampedOp));
   ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
+  if (gradOpacity > 1) {
+    const extra = gradOpacity - 1;
+    const grad2L = ctx.createLinearGradient(0, 0, 0, h);
+    grad2L.addColorStop(0, hexToRgba(grad1, extra));
+    grad2L.addColorStop(0.35, 'rgba(0,0,0,0)');
+    grad2L.addColorStop(0.65, 'rgba(0,0,0,0)');
+    grad2L.addColorStop(1, hexToRgba(grad2, extra));
+    ctx.fillStyle = grad2L; ctx.fillRect(0, 0, w, h);
+  }
 
   // Card sizes from design or defaults
   const containerW = Math.round(w * ((design?.cardsSize || 92) / 100));
@@ -811,7 +836,7 @@ function drawCards(
       const slideX = cardsX + (1 - cp) * (-w * 0.12);
       ctx.globalAlpha = cp;
 
-      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillStyle = 'rgba(0,0,0,0.3)'; // matches editor bg-black/30
       drawRoundRect(ctx, slideX, y, cardW, cardH, radius); ctx.fill();
       // Left accent border
       ctx.fillStyle = card.color || accent;
@@ -1084,7 +1109,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       console.log(`[Composer] Loading font "${design.font}" weights: ${weightsNeeded.join(', ')}...`);
       await Promise.race([
         Promise.all(fontLoaders),
-        new Promise(r => setTimeout(r, 5000)), // 5s timeout (was 3s — more time for multiple weights)
+        new Promise(r => setTimeout(r, 8000)), // 8s timeout — multiple weights can be slow
       ]);
 
       // Verify all weights loaded
@@ -1441,13 +1466,16 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       })();
 
       const renderBatch = async () => {
-        // Render up to 4 frames per batch — smaller batches give MediaRecorder more encoding time
-        const batchSize = 4;
+        // Render frames one at a time with a real-time delay matching the frame interval.
+        // This ensures the MediaRecorder encodes correct timing metadata in the output file.
+        // Without this delay, the MediaRecorder produces a file where frames are timestamped
+        // based on wall-clock time (milliseconds apart), causing slow-motion playback.
+        const batchSize = 1; // One frame at a time for correct timing
+        const frameDelayMs = (1000 / fps); // Real-time delay per frame (e.g. 33ms for 30fps)
         for (let b = 0; b < batchSize && frameIdx < totalFrames; b++, frameIdx++) {
           const t = Math.min(frameIdx * frameInterval, totalDuration - 0.001);
 
           // Seek video element and WAIT for frame decode before drawing
-          // Without waiting, ctx.drawImage() draws a stale/blank frame
           if (videoEl && videoSeqInfo && t >= videoSeqInfo.start && t < videoSeqInfo.end) {
             await seekVideoAndWait(videoEl, t - videoSeqInfo.start);
           }
@@ -1461,8 +1489,8 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
         onProgress?.(Math.min(pct, 95), `Montage rapide... ${Math.round((frameIdx / totalFrames) * 100)}%`);
 
         if (frameIdx < totalFrames) {
-          // Delay between batches — gives MediaRecorder time to encode frames properly
-          setTimeout(renderBatch, 16); // ~60fps pacing, prevents timing corruption
+          // Real-time delay between frames — ensures MediaRecorder timestamps are correct
+          setTimeout(renderBatch, frameDelayMs);
         } else {
           // Render complete — give MediaRecorder time to flush all pending data
           const fastElapsed = ((performance.now() - fastStart) / 1000).toFixed(1);
