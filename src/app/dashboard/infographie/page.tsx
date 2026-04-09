@@ -1171,7 +1171,7 @@ export default function InfographicPage() {
           let renderedVideoUrl: string | null = null;
           try {
             console.log('[Export→Calendar] Starting montage composition...', { posterUrl, rushUrl, isReel, format });
-            showToast('Composition du montage vidéo en cours...');
+            showToast('Composition v5 en cours...');
             setExportProgress(Math.round(((b + 0.3) / total) * 100));
             const { url: composedUrl } = await composeAndUpload({
               width: isReel ? 1080 : 1920,
@@ -1232,7 +1232,7 @@ export default function InfographicPage() {
             renderedVideoUrl = composedUrl;
             console.log('[Export→Calendar] Montage composed and uploaded:', renderedVideoUrl);
             if (renderedVideoUrl) {
-              showToast('Montage vidéo composé avec succès !');
+              showToast('Montage v5 composé avec succès !');
             } else {
               showToast('Attention : la vidéo a été composée mais l\'upload a échoué');
             }

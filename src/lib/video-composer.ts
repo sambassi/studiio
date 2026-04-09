@@ -4,6 +4,8 @@
  * Audio elements handle MP3/OGG/WAV decoding natively (no OfflineAudioContext).
  * Outputs MP4 if supported, otherwise WebM.
  */
+const COMPOSER_VERSION = 'v5-static-2024-04-09';
+console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // ═══════════════════════════════════════════════════════════
 // TYPES
@@ -996,7 +998,11 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
     watermarkText, siteText, design, onProgress,
   } = options;
 
-  console.log('[Composer] === START ===');
+  console.log(`[Composer] === START ${COMPOSER_VERSION} ===`);
+  console.log('[Composer] cardStyle:', design?.cardStyle || 'DEFAULT (Full Width)');
+  console.log('[Composer] captureStream: fps-based (NO requestFrame)');
+  console.log('[Composer] animations: NONE (static mode)');
+  console.log('[Composer] bitrate: 12Mbps');
   console.log('[Composer] Music:', musicUrl?.substring(0, 60) || 'NONE');
   console.log('[Composer] Voice:', voiceUrl?.substring(0, 60) || 'NONE');
   console.log('[Composer] Logo:', logoUrl?.substring(0, 60) || 'NONE');
