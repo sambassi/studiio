@@ -527,7 +527,7 @@ export default function CalendarPage() {
           subtitle: meta.subtitle || undefined,
           salesPhrase: meta.salesPhrase || undefined,
           cards: meta.cards?.length > 0
-            ? meta.cards.map((c: any) => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color }))
+            ? meta.cards.map((c: any) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color }))
             : (meta.textCards || []).map((tCard: any) => ({ emoji: '📝', label: tCard.text, value: tCard.text, color: tCard.color })),
           posterUrl,
           videoUrl,
@@ -1073,7 +1073,7 @@ export default function CalendarPage() {
             subtitle: meta.subtitle || undefined,
             salesPhrase: meta.salesPhrase || undefined,
             cards: meta.cards?.length > 0
-              ? meta.cards.map((c: any) => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color }))
+              ? meta.cards.map((c: any) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color }))
               : (meta.textCards || []).map((tCard: any) => ({ emoji: '📝', label: tCard.text, value: tCard.text, color: tCard.color })),
             posterUrl,
             videoUrl,

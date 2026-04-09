@@ -18,6 +18,7 @@ export interface CardData {
   emoji: string;
   label: string;
   value: string;
+  description?: string;
   color?: string;
 }
 
@@ -85,6 +86,14 @@ export interface DesignOptions {
     lineHeight?: number;
     bold?: boolean;
     italic?: boolean;
+    /** Gradient text fill */
+    textGradient?: boolean;
+    gradColor1?: string;
+    gradColor2?: string;
+    /** Duplicate/shadow text layer */
+    duplicate?: boolean;
+    duplicateOffset?: number;
+    duplicateOpacity?: number;
   };
   /** CTA/Watermark position {x: 0-100, y: 0-100} (default: {x:50, y:97}) — editor uses translate(-50%, -100%) */
   watermarkPosition?: { x?: number; y?: number };
@@ -350,6 +359,32 @@ function getSiteTextPos(siteText: SiteTextConfig | undefined, seq: string): { x:
   return { x: 50, y: 95 };
 }
 
+/** Draw text with letter-spacing (Canvas 2D doesn't natively support it) */
+function fillTextWithSpacing(
+  ctx: CanvasRenderingContext2D, text: string, x: number, y: number, spacing: number
+) {
+  if (!spacing || spacing === 0) {
+    ctx.fillText(text, x, y);
+    return;
+  }
+  // For center alignment, calculate total width first and offset
+  const chars = Array.from(text);
+  const totalExtra = (chars.length - 1) * spacing;
+  const textWidth = ctx.measureText(text).width + totalExtra;
+  let offsetX = 0;
+  if (ctx.textAlign === 'center') offsetX = -textWidth / 2;
+  else if (ctx.textAlign === 'right') offsetX = -textWidth;
+
+  let curX = x + offsetX;
+  const savedAlign = ctx.textAlign;
+  ctx.textAlign = 'left';
+  for (const char of chars) {
+    ctx.fillText(char, curX, y);
+    curX += ctx.measureText(char).width + spacing;
+  }
+  ctx.textAlign = savedAlign;
+}
+
 function hexToRgba(hex: string, alpha: number): string {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
@@ -493,6 +528,7 @@ function drawIntro(
 
   const fontWeight = design?.titleTypography?.bold !== false ? 900 : 400;
   const fontStyle = design?.titleTypography?.italic ? 'italic ' : '';
+  const titleLetterSpacing = (design?.titleTypography?.letterSpacing || 0) * (w / 320); // scale px from editor viewport
 
   // Title text — editor does NOT force uppercase, preserves original case
   // Editor uses width constraint (titleSize%, default 90%) for wrapping
@@ -506,8 +542,32 @@ function drawIntro(
   const titleLines = wrapText(ctx, title, titleWidth);
   const lineSpacing = fontSize * (design?.titleTypography?.lineHeight || 1.1);
   let titleDrawY = titlePosY + fontSize; // baseline offset (canvas draws text from baseline)
+
+  // Title duplicate/shadow layer (editor feature: duplicated text offset behind main text)
+  const hasDuplicate = design?.titleTypography && (design.titleTypography as any).duplicate;
+  if (hasDuplicate) {
+    const dupOffset = ((design!.titleTypography as any).duplicateOffset || 5) * (w / 320);
+    const dupOpacity = (design!.titleTypography as any).duplicateOpacity || 0.3;
+    ctx.save();
+    ctx.fillStyle = hexToRgba(titleColor, titleAlpha * dupOpacity);
+    ctx.shadowBlur = 0;
+    for (let i = 0; i < titleLines.length; i++) {
+      fillTextWithSpacing(ctx, titleLines[i], titlePosX + dupOffset, titleDrawY + i * lineSpacing + dupOffset, titleLetterSpacing);
+    }
+    ctx.restore();
+    // Restore main text style
+    ctx.font = `${fontStyle}${fontWeight} ${fontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
+    ctx.fillStyle = hexToRgba(titleColor, titleAlpha);
+    ctx.shadowColor = hexToRgba(accent, 0.8); ctx.shadowBlur = Math.round(w * 0.02);
+  }
+
+  // Main title text with letter-spacing
   for (let i = 0; i < titleLines.length; i++) {
-    fillTextWithOutline(ctx, titleLines[i], titlePosX, titleDrawY + i * lineSpacing, Math.round(w * 0.004), 'rgba(0,0,0,0.9)');
+    if (titleLetterSpacing) {
+      fillTextWithSpacing(ctx, titleLines[i], titlePosX, titleDrawY + i * lineSpacing, titleLetterSpacing);
+    } else {
+      fillTextWithOutline(ctx, titleLines[i], titlePosX, titleDrawY + i * lineSpacing, Math.round(w * 0.004), 'rgba(0,0,0,0.9)');
+    }
   }
   ctx.shadowBlur = 0;
 
@@ -575,7 +635,6 @@ function drawCards(
 
   // Card sizes from design or defaults
   const containerW = Math.round(w * ((design?.cardsSize || 92) / 100));
-  const containerX = (w - containerW) / 2;
   const maxCards = Math.min(cards.length, 5);
 
   // Font sizes matched to editor CSS:
@@ -835,11 +894,13 @@ function drawVideoSeq(
 
 function drawCTA(
   ctx: CanvasRenderingContext2D, w: number, h: number,
-  accent: string, ctaText: string, ctaSubText: string,
+  accent: string, ctaText: string, ctaSubTextParam: string,
   salesPhrase: string | undefined, watermark: string | undefined,
   logoImg: HTMLImageElement | null, progress: number,
   design?: DesignOptions
 ) {
+  // ctaSubTextParam kept for backward compat but design.ctaSubTextDesign takes priority
+  void ctaSubTextParam;
   const fontFamily = design?.font || 'sans-serif';
   const ctaSubColor = design?.ctaSubColor || accent; // editor default is accent color (#D91CD2)
   const ctaColor = design?.ctaColor || '#FFFFFF'; // editor default is white, not accent
@@ -864,6 +925,7 @@ function drawCTA(
   const ctaFontSize = Math.round(w * (isReel ? 0.0375 : 0.031) * ctaTextScale);
   const salesFontSize = Math.round(w * (isReel ? 0.025 : 0.020) * ctaTextScale);
   const subFontSize = Math.round(w * (isReel ? 0.028 : 0.023) * ctaTextScale);
+  const ctaLetterSpacing = (design?.ctaTypography?.letterSpacing || 0) * (w / 320); // scale from editor
 
   // CTA position — editor uses translate(-50%, -100%) at watermarkPos (default: x=50%, y=97%)
   // This means the BOTTOM of the text block is at the specified Y position
@@ -900,7 +962,7 @@ function drawCTA(
   if (salesPhrase) {
     ctx.font = `900 ${salesFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
     ctx.fillStyle = hexToRgba(ctaColor, 0.93);
-    ctx.fillText(salesPhrase, ctaPosX, curY);
+    fillTextWithSpacing(ctx, salesPhrase, ctaPosX, curY, ctaLetterSpacing);
     curY += salesFontSize * 1.5;
   }
 
@@ -909,7 +971,7 @@ function drawCTA(
     ctx.font = `900 ${ctaFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
     ctx.fillStyle = ctaColor;
     ctx.shadowColor = hexToRgba(ctaColor, 0.4); ctx.shadowBlur = Math.round(w * 0.02);
-    ctx.fillText(line, ctaPosX, curY + i * (ctaFontSize * 1.2));
+    fillTextWithSpacing(ctx, line, ctaPosX, curY + i * (ctaFontSize * 1.2), ctaLetterSpacing);
   });
   ctx.shadowBlur = 0;
   curY += ctaLines.length * ctaFontSize * 1.2;
@@ -917,7 +979,7 @@ function drawCTA(
   // Sub-text — user-configured color, 900 weight, uppercase (matches editor)
   ctx.font = `900 ${subFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
   ctx.fillStyle = ctaSubColor;
-  ctx.fillText(effectiveSubText.toUpperCase(), ctaPosX, curY + subFontSize * 0.3);
+  fillTextWithSpacing(ctx, effectiveSubText.toUpperCase(), ctaPosX, curY + subFontSize * 0.3, ctaLetterSpacing);
 
   // Logo on CTA if configured — uses per-sequence position
   if (logoImg && (!design?.logoSequences || design.logoSequences.includes('cta'))) {
@@ -987,37 +1049,51 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   onProgress?.(2, 'Chargement des médias...');
 
   // Ensure the design font is loaded before rendering (Canvas needs fonts in document.fonts)
+  // Must load ALL weight variants used by draw functions (400, 500, 700, 900)
   if (design?.font && design.font !== 'sans-serif') {
     try {
-      // Google Fonts URL for common fonts used in the app
+      // Google Fonts URL for common fonts used in the app — include ALL weights needed
       const FONT_URLS: Record<string, string> = {
         'Anton': 'https://fonts.googleapis.com/css2?family=Anton&display=swap',
-        'Syne': 'https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&display=swap',
+        'Syne': 'https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800;900&display=swap',
         'Bebas Neue': 'https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap',
-        'Poppins': 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800;900&display=swap',
-        'Space Grotesk': 'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap',
+        'Poppins': 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap',
+        'Space Grotesk': 'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap',
+        'Montserrat': 'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap',
+        'Inter': 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap',
+        'Oswald': 'https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap',
+        'Playfair Display': 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&display=swap',
+        'Raleway': 'https://fonts.googleapis.com/css2?family=Raleway:wght@400;500;600;700;800;900&display=swap',
       };
-      const fontUrl = FONT_URLS[design.font];
-      if (fontUrl) {
-        // Check if already loaded
-        const alreadyLoaded = document.fonts.check(`900 48px "${design.font}"`);
-        if (!alreadyLoaded) {
-          console.log(`[Composer] Loading font: ${design.font}...`);
-          // Inject link if not present
-          if (!document.querySelector(`link[href*="${encodeURIComponent(design.font)}"]`)) {
-            const link = document.createElement('link');
-            link.rel = 'stylesheet'; link.href = fontUrl;
-            document.head.appendChild(link);
-          }
-          // Wait for font to be ready (max 3s)
-          await Promise.race([
-            document.fonts.load(`900 48px "${design.font}"`),
-            new Promise(r => setTimeout(r, 3000)),
-          ]);
-          console.log(`[Composer] Font "${design.font}" loaded:`, document.fonts.check(`900 48px "${design.font}"`));
-        } else {
-          console.log(`[Composer] Font "${design.font}" already loaded`);
-        }
+      const fontUrl = FONT_URLS[design.font] ||
+        `https://fonts.googleapis.com/css2?family=${encodeURIComponent(design.font)}:wght@400;500;600;700;800;900&display=swap`;
+
+      // Inject CSS link if not present
+      if (!document.querySelector(`link[href*="${encodeURIComponent(design.font)}"]`)) {
+        console.log(`[Composer] Injecting font stylesheet: ${design.font}`);
+        const link = document.createElement('link');
+        link.rel = 'stylesheet'; link.href = fontUrl;
+        document.head.appendChild(link);
+      }
+
+      // Wait for ALL weight variants used by draw functions
+      const weightsNeeded = [400, 500, 700, 900];
+      const fontLoaders = weightsNeeded.map(w =>
+        document.fonts.load(`${w} 48px "${design!.font}"`)
+      );
+      console.log(`[Composer] Loading font "${design.font}" weights: ${weightsNeeded.join(', ')}...`);
+      await Promise.race([
+        Promise.all(fontLoaders),
+        new Promise(r => setTimeout(r, 5000)), // 5s timeout (was 3s — more time for multiple weights)
+      ]);
+
+      // Verify all weights loaded
+      const loadedWeights = weightsNeeded.filter(w =>
+        document.fonts.check(`${w} 48px "${design!.font}"`)
+      );
+      console.log(`[Composer] Font "${design.font}" loaded weights: ${loadedWeights.join(', ')} / ${weightsNeeded.join(', ')}`);
+      if (loadedWeights.length === 0) {
+        console.warn(`[Composer] ⚠️ Font "${design.font}" failed to load ANY weight — falling back to sans-serif`);
       }
     } catch (err) {
       console.warn('[Composer] Font loading failed, using fallback:', err);
@@ -1345,20 +1421,35 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       let frameIdx = 0;
       const fastStart = performance.now();
 
-      const renderBatch = () => {
+      // Helper: seek video and wait for frame to be decoded
+      const seekVideoAndWait = (el: HTMLVideoElement, time: number): Promise<void> => {
+        return new Promise<void>(resolve => {
+          el.currentTime = time;
+          const onSeeked = () => { el.removeEventListener('seeked', onSeeked); resolve(); };
+          el.addEventListener('seeked', onSeeked, { once: true });
+          // Timeout fallback in case seeked never fires (e.g. time is already at target)
+          setTimeout(resolve, 150);
+        });
+      };
+
+      // Pre-compute video sequence timing for fast lookup
+      const videoSeqInfo = (() => {
+        const videoSeq = sequences.find(s => s.type === 'video');
+        if (!videoSeq || !videoEl) return null;
+        const idx = sequences.indexOf(videoSeq);
+        return { start: seqStarts[idx], end: seqStarts[idx] + videoSeq.duration };
+      })();
+
+      const renderBatch = async () => {
         // Render up to 4 frames per batch — smaller batches give MediaRecorder more encoding time
         const batchSize = 4;
         for (let b = 0; b < batchSize && frameIdx < totalFrames; b++, frameIdx++) {
           const t = Math.min(frameIdx * frameInterval, totalDuration - 0.001);
 
-          // Seek video element to correct position
-          if (videoEl) {
-            const videoSeq = sequences.find(s => s.type === 'video');
-            if (videoSeq) {
-              const vs = seqStarts[sequences.indexOf(videoSeq)];
-              const ve = vs + videoSeq.duration;
-              if (t >= vs && t < ve) { videoEl.currentTime = t - vs; }
-            }
+          // Seek video element and WAIT for frame decode before drawing
+          // Without waiting, ctx.drawImage() draws a stale/blank frame
+          if (videoEl && videoSeqInfo && t >= videoSeqInfo.start && t < videoSeqInfo.end) {
+            await seekVideoAndWait(videoEl, t - videoSeqInfo.start);
           }
 
           drawFrame(t);
