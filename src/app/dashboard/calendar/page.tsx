@@ -504,13 +504,11 @@ export default function CalendarPage() {
 
     // ALWAYS re-compose montage when scheduling — ensures the published video
     // matches the current preview (title, colors, fonts, cards, etc.)
-    // Check ALL possible visual sources including media_url fallback
+    // Infographic posts ALWAYS need composition (even with just a gradient, no image)
+    const isInfographic = meta.type === 'infographic' || (meta.type === 'creator' && meta.sequences);
     const hasVisualSource = meta.posterUrl || meta.rushUrls?.length > 0 || meta.characterUrl || meta.pexelsUrl || post.media_url;
-    if (!hasVisualSource && !meta.renderedVideoUrl) {
-      alert('Aucune source visuelle trouvée. Veuillez ajouter un poster, une vidéo rush, ou un personnage avant de programmer.');
-      return;
-    }
-    if (hasVisualSource) {
+    const needsComposition = isInfographic || hasVisualSource;
+    if (needsComposition) {
       console.log('[Schedule] Composing fresh montage for scheduling (always re-render to match preview)...');
       setExportRendering(true);
       setExportRenderProgress(0);
@@ -648,8 +646,7 @@ export default function CalendarPage() {
     if (editTab === 'scheduled' && editFormData.id) {
       const meta = editFormData.metadata || {};
       const isInfographic = meta.type === 'infographic' || (meta.type === 'creator' && meta.sequences);
-      const hasVisualSource = meta.posterUrl || meta.rushUrls?.length > 0 || meta.characterUrl || meta.pexelsUrl || editFormData.media_url;
-      if (isInfographic && hasVisualSource) {
+      if (isInfographic) {
         console.log('[SavePost→Schedule] Delegating to handleSchedulePost for montage composition');
         setShowEditModal(false); setEditFormData({});
         await handleSchedulePost(editFormData as Post);
@@ -1072,9 +1069,9 @@ export default function CalendarPage() {
 
       // ALWAYS compose the montage before publishing — ensures the published video
       // matches the preview (intro + cards + video + cta with all design settings)
-      const hasVisualSource = meta.posterUrl || meta.rushUrls?.length > 0 || meta.characterUrl || meta.pexelsUrl || post.media_url;
+      // Infographic posts ALWAYS need composition (even gradient-only, no poster image)
       const isMontagePost = meta.type === 'infographic' || (meta.type === 'creator' && meta.sequences);
-      if (hasVisualSource && isMontagePost) {
+      if (isMontagePost) {
         console.log('[Publish] Composing montage before publishing...');
         setExportRendering(true);
         setExportRenderProgress(0);
