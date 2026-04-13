@@ -581,7 +581,13 @@ export default function CalendarPage() {
 
   const handlePrevMonth = () => { setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1)); setSelectedDay(null); };
   const handleNextMonth = () => { setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1)); setSelectedDay(null); };
-  const handleDayClick = (day: number) => { setSelectedDay(selectedDay === day ? null : day); };
+  const handleDayClick = (day: number) => {
+    setSelectedDay(selectedDay === day ? null : day);
+    // Clear any stale fullPreviewPost from a previously-opened preview.
+    // Otherwise the sidebar miniature keeps showing the poster of the post
+    // that was previewed on some earlier day instead of today's first post.
+    setFullPreviewPost(null);
+  };
 
   const handlePostClick = (post: Post) => {
     setSelectedPost(post);
@@ -2342,7 +2348,12 @@ export default function CalendarPage() {
                   const videoUrl = (fpMeta?.renderedVideoUrl || fp.media_url || null) as string | null;
                   return (
                     <div className="flex justify-center mb-3">
+                      {/* `key={fp.id}` forces React to remount PostThumbnail when
+                           the post changes. Resets the internal `extractedThumb`
+                           state so a previous day's extracted frame can't leak
+                           into the current day's miniature. */}
                       <PostThumbnail
+                        key={fp.id}
                         thumbnailUrl={thumbnailUrl}
                         posterUrl={fpPosterImg}
                         videoUrl={videoUrl}
