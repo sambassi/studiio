@@ -939,11 +939,17 @@ export default function CreatorPage() {
               ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
               watermarkText: branding.watermarkText || undefined,
               design: {
-                font: branding.font || undefined,
-                titleColor: branding.titleColor || undefined,
-                gradientColor1: branding.gradientColor1 || undefined,
-                gradientColor2: branding.gradientColor2 || undefined,
-                ctaSubColor: branding.ctaSubColor || undefined,
+                font: globalFontFamily || undefined,
+                titleColor: globalTextColor || branding.accentColor || undefined,
+                ctaColor: branding.accentColor || undefined,
+                ctaSubColor: branding.accentColor || undefined,
+                ctaMainText: branding.watermarkText || undefined,
+                ctaSubTextDesign: branding.ctaText || undefined,
+                gradientColor1: branding.accentColor || undefined,
+                gradientColor2: branding.accentColor || undefined,
+                textScale: 1.0,
+                ctaTextScale: 1.0,
+                cardStyle: 'Full Width',
               },
               onProgress: (pct, stage) => {
                 setRenderProgress(Math.round(renderProgressBase + (pct / 100) * renderProgressSpan));
@@ -1069,11 +1075,21 @@ export default function CreatorPage() {
               ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
               watermarkText: branding.watermarkText || undefined,
               design: {
-                font: branding.font || undefined,
-                titleColor: branding.titleColor || undefined,
-                gradientColor1: branding.gradientColor1 || undefined,
-                gradientColor2: branding.gradientColor2 || undefined,
-                ctaSubColor: branding.ctaSubColor || undefined,
+                // Creator page exposes a simpler state than Infographie. Map
+                // what IS available (globalTextColor, globalFontFamily, accent)
+                // to the composer's design fields. Positions/typography fall
+                // to composer defaults, which mirror the editor's own defaults.
+                font: globalFontFamily || undefined,
+                titleColor: globalTextColor || branding.accentColor || undefined,
+                ctaColor: branding.accentColor || undefined,
+                ctaSubColor: branding.accentColor || undefined,
+                ctaMainText: branding.watermarkText || undefined,
+                ctaSubTextDesign: branding.ctaText || undefined,
+                gradientColor1: branding.accentColor || undefined,
+                gradientColor2: branding.accentColor || undefined,
+                textScale: 1.0,
+                ctaTextScale: 1.0,
+                cardStyle: 'Full Width',
               },
               onProgress: (pct, stage) => {
                 setRenderProgress(90 + Math.round(pct * 0.08));
