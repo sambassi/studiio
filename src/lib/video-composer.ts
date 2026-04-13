@@ -4,7 +4,7 @@
  * Audio elements handle MP3/OGG/WAV decoding natively (no OfflineAudioContext).
  * Outputs MP4 if supported, otherwise WebM.
  */
-const COMPOSER_VERSION = 'v8-nocolor-fix-2026-04-13';
+const COMPOSER_VERSION = 'v9-backdrop-theme-2026-04-13';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -607,6 +607,38 @@ function paintSeqGradient(
   if (g.opacity > 1) paintLayer(g.opacity - 1);
 }
 
+/**
+ * Paint the SEQUENCE BACKDROP — i.e. the base fill under everything else.
+ * Matches the editor's `activeColorTheme.bg` (a `bg-gradient-to-br` Tailwind
+ * class): a diagonal gradient from `gradientColor1` (top-left) to
+ * `gradientColor2` (bottom-right). Without this, the composer used a
+ * hard-coded `#0A0A0F` which turned any dark CTA text into "black on black".
+ *
+ * When the sequence is listed in `noColorSequences` AND `noColorBg` is true,
+ * we paint the editor's dark `#0A0A0F` (matches the no-color mode).
+ */
+function paintSeqBackdrop(
+  ctx: CanvasRenderingContext2D, w: number, h: number, seq: string,
+  design: DesignOptions | undefined, accent: string
+): void {
+  const editorSeq = SEQ_NAME_REVERSE[seq] || seq;
+  const listedAsNoColor = design?.noColorSequences?.includes(seq)
+    || design?.noColorSequences?.includes(editorSeq);
+  if (design?.noColorBg === true && listedAsNoColor) {
+    ctx.fillStyle = '#0A0A0F';
+    ctx.fillRect(0, 0, w, h);
+    return;
+  }
+  // Color-theme gradient backdrop (matches editor's bg-gradient-to-br).
+  const c1 = design?.gradientColor1 || accent || '#7C3AED';
+  const c2 = design?.gradientColor2 || accent || '#EC4899';
+  const grad = ctx.createLinearGradient(0, 0, w, h);
+  grad.addColorStop(0, c1);
+  grad.addColorStop(1, c2);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+}
+
 // ═══════════════════════════════════════════════════════════
 // SEQUENCE RENDERERS
 // ═══════════════════════════════════════════════════════════
@@ -780,9 +812,9 @@ function drawCards(
   const cardStyle = design?.cardStyle || 'Full Width';
   const isReel = h > w; // 9:16 = reel, 16:9 = landscape
 
-  // Dark backdrop + per-sequence gradient (matches editor CSS output exactly).
-  ctx.fillStyle = '#0A0A0F';
-  ctx.fillRect(0, 0, w, h);
+  // Backdrop from the color theme (or dark if the sequence is marked noColor),
+  // then the seqGradient overlay on top. Matches editor's bg-gradient-to-br.
+  paintSeqBackdrop(ctx, w, h, 'cards', design, accent);
   paintSeqGradient(ctx, w, h, 'cards', design);
 
   // Card sizes from design or defaults
@@ -1114,9 +1146,10 @@ function drawCTA(
   const effectiveCtaText = design?.ctaMainText || watermark || 'AFROBOOST';
   const effectiveSubText = design?.ctaSubTextDesign || ctaText || "CHAT POUR PLUS D'INFOS";
 
-  // CTA background: dark backdrop + per-sequence gradient (matches editor — the
-  // gradient overlay is visible over the CTA sequence too, not a solid black).
-  ctx.fillStyle = '#0A0A0F'; ctx.fillRect(0, 0, w, h);
+  // CTA background: color-theme gradient backdrop (matches editor's
+  // bg-gradient-to-br) + seqGradient overlay. Dark-hardcoded previously made
+  // black CTA text invisible on top of it.
+  paintSeqBackdrop(ctx, w, h, 'cta', design, accent);
   paintSeqGradient(ctx, w, h, 'cta', design);
   // NO animation — editor is static, no scale bounce
   ctx.save();
