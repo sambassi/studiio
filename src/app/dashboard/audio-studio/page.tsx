@@ -290,9 +290,16 @@ function AudioStudioContent() {
       timelineRafRef.current = requestAnimationFrame(syncTimeline);
     };
 
-    // For non-montage posts, sync to video element events
+    // For non-montage posts, sync to video element events.
+    // Skipped for full-montage mode: the <video> drives `currentTime`
+    // directly via its onTimeUpdate handler, and adding a wall-clock
+    // RAF on top would fight it (cursor flicker).
     const vid = videoRef.current;
-    if (vid && !videoLoading) {
+    const isFullMontageVideo =
+      (meta.type === 'infographic' || meta.type === 'creator')
+      && sequences.length > 0
+      && !!meta.renderedVideoUrl;
+    if (vid && !videoLoading && !isFullMontageVideo) {
       const onPlay = () => {
         playStartRef.current = performance.now();
         setIsPlaying(true);
@@ -320,34 +327,27 @@ function AudioStudioContent() {
       timelineRunningRef.current = false;
       cancelAnimationFrame(timelineRafRef.current);
     };
-  }, [post?.id, totalDuration, sequences, seqStarts, videoLoading]);
+  }, [post?.id, totalDuration, sequences, seqStarts, videoLoading, meta.type, meta.renderedVideoUrl]);
 
-  // Helper: start the timeline RAF loop. When a rendered montage <video>
-  // is driving playback, we derive `currentTime` from its actual
-  // `videoRef.current.currentTime` instead of a wall-clock. This guarantees
-  // the progress cursor and the segment boundaries stay frame-accurate with
-  // what the user is actually watching (the composer baked intro→cards→
-  // video→cta at specific durations, the <video> enforces them).
+  // Helper: start the wall-clock timeline RAF loop. ONLY used for posts
+  // with no <video> element (audio-only clips etc.). When a montage video
+  // is loaded, the <video>'s native `onTimeUpdate` handler is the sole
+  // driver for `currentTime` — running a RAF on top would fight the
+  // native event and cause the cursor to flicker.
   const startTimelineLoop = useCallback(() => {
     if (timelineRunningRef.current) return;
+    const vid = videoRef.current;
+    const hasMontageVideo = !!vid && !!vid.src && vid.readyState > 0;
+    if (hasMontageVideo) return; // onTimeUpdate is in charge
     timelineRunningRef.current = true;
     const syncTimeline = () => {
       if (!timelineRunningRef.current) return;
-      const vid = videoRef.current;
-      const hasMontageVideo = !!vid && !!vid.src && vid.readyState > 0;
-      let mapped: number;
-      if (hasMontageVideo) {
-        // Source of truth = the <video>'s own playback time.
-        mapped = Math.min(Math.max(vid.currentTime, 0), totalDuration);
-      } else {
-        const now = performance.now();
-        const elapsed = timeOffsetRef.current + (now - playStartRef.current) / 1000;
-        mapped = Math.min(Math.max(elapsed, 0), totalDuration);
-      }
+      const now = performance.now();
+      const elapsed = timeOffsetRef.current + (now - playStartRef.current) / 1000;
+      const mapped = Math.min(Math.max(elapsed, 0), totalDuration);
       if (mapped >= totalDuration) {
         setCurrentTime(totalDuration);
         setActiveSeqIdx(sequences.length - 1);
-        if (videoRef.current) videoRef.current.pause();
         if (musicAudioRef.current) musicAudioRef.current.pause();
         if (voiceAudioRef.current) voiceAudioRef.current.pause();
         setIsPlaying(false);
