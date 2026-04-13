@@ -353,13 +353,20 @@ function AudioStudioContent() {
   }, [totalDuration, sequences, seqStarts]);
 
   const startPlayback = useCallback(() => {
+    console.log('[AudioStudio] startPlayback called, videoRef:', !!videoRef.current, 'src:', videoRef.current?.src?.slice(0, 60));
     // Reset timeline clock to start from 0
     timeOffsetRef.current = 0;
     playStartRef.current = performance.now();
     setCurrentTime(0);
     setActiveSeqIdx(0);
     setIsPlaying(true);
-    if (videoRef.current) { videoRef.current.currentTime = 0; videoRef.current.play().catch(() => {}); }
+    if (videoRef.current) {
+      videoRef.current.currentTime = 0;
+      videoRef.current.play().then(
+        () => console.log('[AudioStudio] video.play() resolved'),
+        (err) => console.error('[AudioStudio] video.play() rejected:', err?.message, '| paused:', videoRef.current?.paused)
+      );
+    }
     if (musicAudioRef.current) { musicAudioRef.current.currentTime = 0; musicAudioRef.current.play().catch(() => {}); }
     if (voiceAudioRef.current) { voiceAudioRef.current.currentTime = 0; voiceAudioRef.current.play().catch(() => {}); }
     // Start independent timeline loop (needed for montage posts where video may not be primary)
@@ -1123,7 +1130,7 @@ function AudioStudioContent() {
                     src={meta.renderedVideoUrl as string}
                     poster={posterImgSrc || undefined}
                     className="w-full h-full object-contain"
-                    playsInline loop preload="metadata"
+                    playsInline loop muted preload="metadata"
                     onLoadedMetadata={() => {
                       console.log('[AudioStudio] Montage video loadedMetadata');
                       setVideoLoading(false);
@@ -1136,6 +1143,8 @@ function AudioStudioContent() {
                       setVideoLoading(false);
                       setVideoError(true);
                     }}
+                    onPlay={() => console.log('[AudioStudio] video PLAY fired')}
+                    onPause={() => console.log('[AudioStudio] video PAUSE fired')}
                   />
                   {videoLoading && (
                     <div className="absolute inset-0 flex items-center justify-center bg-gray-900/60 z-10 pointer-events-none">
