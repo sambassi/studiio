@@ -1174,6 +1174,20 @@ function AudioStudioContent() {
                     }}
                     onPlay={() => console.log('[AudioStudio] video PLAY fired')}
                     onPause={() => console.log('[AudioStudio] video PAUSE fired')}
+                    onTimeUpdate={(e) => {
+                      // Native video timeupdate is the authoritative clock for
+                      // the progress bar + active segment. Fires ~4x per second
+                      // while playing. Keeps the cursor frame-accurate without
+                      // a separate wall-clock RAF.
+                      const v = e.target as HTMLVideoElement;
+                      const t = Math.min(Math.max(v.currentTime, 0), totalDuration);
+                      setCurrentTime(t);
+                      let idx = 0;
+                      for (let i = sequences.length - 1; i >= 0; i--) {
+                        if (t >= seqStarts[i]) { idx = i; break; }
+                      }
+                      setActiveSeqIdx(idx);
+                    }}
                   />
                   {videoLoading && (
                     <div className="absolute inset-0 flex items-center justify-center bg-gray-900/60 z-10 pointer-events-none">
