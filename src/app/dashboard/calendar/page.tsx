@@ -149,6 +149,97 @@ const platformColors: Record<string, string> = {
   'YouTube Shorts': 'bg-red-600',
 };
 
+/**
+ * Sidebar thumbnail with an on-demand frame-extraction fallback.
+ *
+ * Priority chain:
+ *   1. `thumbnailUrl` (JPEG captured by the composer at export time, ~100 KB)
+ *   2. `posterUrl / pexelsUrl / characterUrl` (static images)
+ *   3. Frame extracted CLIENT-SIDE from the composed video at t=0.5s (~100 ms)
+ *   4. `<video>` fallback (30 MB download, slow on mobile)
+ *   5. Title text on black (last resort)
+ *
+ * Step 3 kicks in for older posts that predate the thumbnailUrl feature but
+ * still have a `renderedVideoUrl`. It avoids the "sans photo" state while
+ * we progressively regenerate old posts via the "Régénérer" button.
+ */
+function PostThumbnail({
+  thumbnailUrl,
+  posterUrl,
+  videoUrl,
+  title,
+  className,
+}: {
+  thumbnailUrl: string | null;
+  posterUrl: string | null;
+  videoUrl: string | null;
+  title: string;
+  className?: string;
+}) {
+  const [extractedThumb, setExtractedThumb] = useState<string | null>(null);
+  const staticImg = thumbnailUrl || posterUrl;
+
+  useEffect(() => {
+    // Only extract a frame when we have NO static image and we DO have a video.
+    // CORS-safe: we crossOrigin='anonymous' and gracefully degrade on SecurityError.
+    if (staticImg || !videoUrl || extractedThumb) return;
+    let cancelled = false;
+    const v = document.createElement('video');
+    v.crossOrigin = 'anonymous';
+    v.muted = true;
+    v.preload = 'metadata';
+    v.src = videoUrl;
+    v.onloadedmetadata = () => {
+      try { v.currentTime = 0.5; } catch { /* ignore */ }
+    };
+    v.onseeked = () => {
+      if (cancelled) return;
+      try {
+        const c = document.createElement('canvas');
+        c.width = v.videoWidth || 320;
+        c.height = v.videoHeight || 568;
+        const ctx = c.getContext('2d');
+        if (!ctx) return;
+        ctx.drawImage(v, 0, 0, c.width, c.height);
+        const dataUrl = c.toDataURL('image/jpeg', 0.8);
+        setExtractedThumb(dataUrl);
+      } catch {
+        // Tainted canvas (CORS) or decode error — fall back to <video> in the render.
+      }
+    };
+    v.onerror = () => { /* ignore, fall back to <video> */ };
+    return () => { cancelled = true; v.src = ''; };
+  }, [videoUrl, staticImg, extractedThumb]);
+
+  const displayImg = staticImg || extractedThumb;
+
+  if (!displayImg && !videoUrl && !title) return null;
+
+  return (
+    <div className={className || 'w-28 sm:w-36 aspect-[9/16] rounded-xl overflow-hidden border border-gray-700 bg-black relative'}>
+      {displayImg ? (
+        <img src={displayImg} alt="" className="absolute inset-0 w-full h-full object-cover" />
+      ) : videoUrl ? (
+        <video
+          src={videoUrl}
+          className="absolute inset-0 w-full h-full object-cover"
+          muted
+          playsInline
+          preload="metadata"
+          onLoadedMetadata={(e) => {
+            const v = e.target as HTMLVideoElement;
+            try { v.currentTime = 0.5; } catch { /* ignore */ }
+          }}
+        />
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-white/50 text-xs">{title || 'TITRE'}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CalendarPage() {
   const t = useTranslations('calendar');
   const tc = useTranslations('common');
@@ -209,6 +300,11 @@ export default function CalendarPage() {
   const [montageAutoPlay, setMontageAutoPlay] = useState(true);
   const [montageMuted, setMontageMuted] = useState(true);
   const [videoPlayable, setVideoPlayable] = useState(false); // Track if video file is loadable — default false until proven
+
+  // Regenerate-montage state (for posts missing renderedVideoUrl or thumbnailUrl)
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenProgress, setRegenProgress] = useState(0);
+  const [regenStage, setRegenStage] = useState('');
   const montageTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [montageProgress, setMontageProgress] = useState(0); // only used for non-CSS fallback
   const montageProgressRef = useRef<NodeJS.Timeout | null>(null);
@@ -276,6 +372,118 @@ export default function CalendarPage() {
   useEffect(() => {
     fetchPosts();
   }, [fetchPosts]);
+
+  /**
+   * Regenerate the montage video + thumbnail for an existing post.
+   *
+   * Targets posts that predate the thumbnailUrl feature (or never passed
+   * through the composer at all). Re-runs composeAndUpload with the stored
+   * metadata so the new video matches the current editor→composer parity,
+   * then PATCHes the post with the fresh `renderedVideoUrl` + `thumbnailUrl`
+   * and reloads the month.
+   */
+  const regenerateMontage = useCallback(async (post: Post) => {
+    if (regenerating) return;
+    const meta: any = post.metadata || {};
+    const brand = meta.branding;
+    const designMeta: any = meta.design || {};
+    const isReel = post.format === 'reel';
+
+    setRegenerating(true);
+    setRegenProgress(0);
+    setRegenStage('Préparation...');
+
+    try {
+      const { url: renderedUrl, thumbnailUrl: freshThumb } = await composeAndUpload({
+        width: isReel ? 1080 : 1920,
+        height: isReel ? 1920 : 1080,
+        fps: 30,
+        title: post.title || 'Vidéo',
+        subtitle: meta.subtitle || undefined,
+        salesPhrase: meta.salesPhrase || undefined,
+        cards: meta.cards?.length > 0
+          ? meta.cards.map((c: any) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color }))
+          : (meta.textCards || []).map((tCard: any) => ({ emoji: '📝', label: tCard.text, value: tCard.text, color: tCard.color })),
+        posterUrl: meta.posterUrl || meta.pexelsUrl || meta.characterUrl || null,
+        videoUrl: meta.rushUrls?.[0] || null,
+        logoUrl: meta.logoUrl || designMeta.logoUrl || null,
+        musicUrl: meta.musicUrl || null,
+        voiceUrl: meta.voiceUrl || null,
+        introDuration: meta.sequences?.intro ?? 5,
+        cardsDuration: meta.sequences?.cards ?? ((meta.cards?.length > 0 || meta.textCards?.length > 0) ? 6 : 0),
+        videoDuration: meta.sequences?.video ?? 12,
+        ctaDuration: meta.sequences?.cta ?? 5,
+        accentColor: brand?.accentColor || '#D91CD2',
+        ctaText: brand?.ctaText || "CHAT POUR PLUS D'INFOS",
+        ctaSubText: brand?.ctaSubText || 'LIEN EN BIO',
+        watermarkText: brand?.watermarkText || undefined,
+        siteText: designMeta.siteText || undefined,
+        design: {
+          font: designMeta.font || undefined,
+          titleColor: designMeta.titleColor || undefined,
+          gradientColor1: designMeta.gradientColor1 || undefined,
+          gradientColor2: designMeta.gradientColor2 || undefined,
+          gradientOpacity: designMeta.gradientOpacity ?? undefined,
+          ctaSubColor: designMeta.ctaSubColor || brand?.ctaSubColor || undefined,
+          ctaColor: designMeta.ctaColor || undefined,
+          logoSequences: designMeta.logoSequences || undefined,
+          logoPosition: designMeta.positions?.logo || undefined,
+          logoPositions: designMeta.logoPositions || undefined,
+          logoScale: designMeta.logoScale || undefined,
+          overlayText: meta.videoOverlayText || undefined,
+          overlayColor: designMeta.overlayColor || undefined,
+          textScale: designMeta.textScale || undefined,
+          ctaTextScale: designMeta.ctaTextScale || undefined,
+          cardStyle: designMeta.cardStyle || undefined,
+          titlePosition: designMeta.positions?.title || undefined,
+          cardsPosition: designMeta.positions?.cards || undefined,
+          cardsSize: designMeta.sizes?.cards || undefined,
+          ctaMainText: designMeta.ctaMainText || undefined,
+          ctaSubTextDesign: designMeta.ctaSubText || undefined,
+          titleTypography: designMeta.typography?.title || undefined,
+          watermarkPosition: designMeta.positions?.watermark || undefined,
+          watermarkSize: designMeta.sizes?.watermark || undefined,
+          overlayPosition: designMeta.positions?.overlay || undefined,
+          titleSize: designMeta.sizes?.title || undefined,
+          ctaTypography: designMeta.typography?.cta || undefined,
+          overlayTypography: designMeta.typography?.overlay || undefined,
+          seqGradients: designMeta.seqGradients || undefined,
+          noColorBg: designMeta.noColorBg || undefined,
+          noColorSequences: designMeta.noColorSequences || undefined,
+          filter: designMeta.filter || undefined,
+        },
+        onProgress: (pct, stage) => { setRegenProgress(pct); setRegenStage(stage); },
+      });
+
+      if (!renderedUrl) {
+        throw new Error('Le montage a été rendu mais l\'upload a échoué.');
+      }
+
+      // Persist fresh URLs into metadata
+      const nextMetadata = { ...meta, renderedVideoUrl: renderedUrl, videoUrl: renderedUrl, thumbnailUrl: freshThumb || meta.thumbnailUrl };
+      const patchRes = await fetch(`/api/posts/${post.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ media_url: renderedUrl, media_type: 'video', metadata: nextMetadata }),
+      });
+      const patchData = await patchRes.json();
+      if (!patchData?.success) {
+        console.warn('[Regenerate] PATCH response:', patchData);
+      }
+
+      // Reflect locally so the modal updates immediately
+      const updatedPost: Post = { ...post, media_url: renderedUrl, media_type: 'video', metadata: nextMetadata };
+      setFullPreviewPost(updatedPost);
+      setPosts(prev => prev.map(p => p.id === post.id ? updatedPost : p));
+    } catch (err) {
+      console.error('[Regenerate] Failed:', err);
+      alert(`Erreur de régénération : ${err instanceof Error ? err.message : 'inconnue'}`);
+    } finally {
+      setRegenerating(false);
+      setRegenProgress(0);
+      setRegenStage('');
+    }
+  }, [regenerating]);
 
   // Stats
   const totalPosts = posts.length;
@@ -2065,42 +2273,17 @@ export default function CalendarPage() {
                 {selectedDayPosts.length > 0 && !bulkMode && (() => {
                   const fp = fullPreviewPost || selectedDayPosts[0];
                   const fpMeta = fp.metadata;
-                  // Priority: thumbnailUrl (JPEG captured at export, ~100 KB) →
-                  //           posterUrl/pexelsUrl/characterUrl → renderedVideoUrl/media_url (~20-30 MB).
-                  // Prefer the static image whenever possible: loads instantly, no black-frame bug,
-                  // no 30 MB download for a tiny sidebar miniature.
                   const thumbnailUrl = fpMeta?.thumbnailUrl || null;
                   const fpPosterImg = fpMeta?.pexelsUrl || fpMeta?.posterUrl || fpMeta?.characterUrl || null;
-                  const videoUrl = fpMeta?.renderedVideoUrl || fp.media_url;
-                  const staticImg = thumbnailUrl || fpPosterImg;
-
-                  if (!staticImg && !videoUrl && !fp.title) return null;
-
+                  const videoUrl = (fpMeta?.renderedVideoUrl || fp.media_url || null) as string | null;
                   return (
                     <div className="flex justify-center mb-3">
-                      <div className="w-28 sm:w-36 aspect-[9/16] rounded-xl overflow-hidden border border-gray-700 bg-black relative">
-                        {staticImg ? (
-                          // Instant static thumbnail (JPEG preferred, poster fallback).
-                          <img src={staticImg} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                        ) : videoUrl ? (
-                          // Legacy fallback: load the composed video and seek to 0.5s.
-                          <video
-                            src={videoUrl as string}
-                            className="absolute inset-0 w-full h-full object-cover"
-                            muted
-                            playsInline
-                            preload="metadata"
-                            onLoadedMetadata={(e) => {
-                              const v = e.target as HTMLVideoElement;
-                              v.currentTime = 0.5;
-                            }}
-                          />
-                        ) : (
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <span className="text-white/50 text-xs">{fp.title || 'TITRE'}</span>
-                          </div>
-                        )}
-                      </div>
+                      <PostThumbnail
+                        thumbnailUrl={thumbnailUrl}
+                        posterUrl={fpPosterImg}
+                        videoUrl={videoUrl}
+                        title={fp.title}
+                      />
                     </div>
                   );
                 })()}
@@ -2754,11 +2937,50 @@ export default function CalendarPage() {
             <ChevronLeft size={18} />
             <span className="text-sm font-medium">Retour</span>
           </button>
+
+          {/* Regenerate-montage floating button — shown when the post is missing
+              either `renderedVideoUrl` or `thumbnailUrl`. Clicking re-composes
+              the video with the current editor↔composer parity and persists the
+              fresh URLs so the preview, miniature, and social publication all
+              match what the editor showed. */}
+          {(!meta?.renderedVideoUrl || !meta?.thumbnailUrl) && (
+            <button
+              onClick={(e) => { e.stopPropagation(); regenerateMontage(fullPreviewPost); }}
+              disabled={regenerating}
+              className="fixed top-4 right-4 z-[60] flex items-center gap-1.5 px-3 py-2 rounded-full bg-purple-600/90 hover:bg-purple-600 backdrop-blur-sm text-white border border-white/20 shadow-lg disabled:opacity-60 disabled:cursor-wait active:scale-95 transition-transform"
+              title={regenerating ? `${regenStage} ${regenProgress}%` : 'Re-générer le montage'}
+            >
+              <span className={`text-sm font-medium ${regenerating ? 'animate-pulse' : ''}`}>
+                {regenerating ? `${regenStage || 'Rendu...'} ${regenProgress}%` : 'Régénérer'}
+              </span>
+            </button>
+          )}
           <div className="bg-gray-900 rounded-none md:rounded-2xl overflow-hidden shadow-2xl max-w-5xl w-full flex flex-col md:flex-row max-h-[100dvh] md:max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             {/* Left: Rich Montage Preview */}
             <div className="flex-1 bg-black flex flex-col items-center justify-center p-2 md:p-4" style={{ minHeight: '60dvh' }}>
               {/* Montage video preview — infographic & creator with sequences */}
-              {hasMontage ? (() => {
+              {/* ── Parity with social media: if we have the composed video, PLAY IT
+                   directly instead of rebuilding the montage in HTML. This guarantees
+                   editor export == calendar preview == Instagram/TikTok post. The HTML
+                   rebuild below is kept as a legacy fallback for posts that never got
+                   a `renderedVideoUrl` (never passed through the composer). ── */}
+              {hasMontage && meta?.renderedVideoUrl ? (
+                <div
+                  className={`relative overflow-hidden rounded-xl bg-black ${fullPreviewPost.format === 'reel' ? '' : 'aspect-video w-full'}`}
+                  style={fullPreviewPost.format === 'reel' ? { aspectRatio: '9/16', height: '70dvh', maxHeight: '70dvh' } : undefined}
+                >
+                  <video
+                    src={meta.renderedVideoUrl}
+                    autoPlay
+                    loop
+                    muted={montageMuted}
+                    playsInline
+                    controls
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                </div>
+              ) : hasMontage ? (() => {
+                // Legacy HTML montage rebuild — used only for posts without renderedVideoUrl.
                 // Use stable sequence order (always includes video) to prevent index shifts
                 const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
                 const posterImgSrc = meta?.pexelsUrl || meta?.posterUrl || meta?.characterUrl || null;
