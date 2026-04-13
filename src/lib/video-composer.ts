@@ -540,9 +540,14 @@ function paintSeqGradient(
   ctx: CanvasRenderingContext2D, w: number, h: number, seq: string, design?: DesignOptions
 ): void {
   const editorSeq = SEQ_NAME_REVERSE[seq] || seq;
-  const noColor = design?.noColorBg === true
-    || design?.noColorSequences?.includes(seq)
+  // Editor semantics (confirmed at infographie/page.tsx:2928-2946):
+  //   seqNoColor = noColorBg === true AND the sequence is listed in noColorSequences.
+  //                noColorBg alone does NOT apply to every sequence — it's a gate.
+  // Previously we treated `noColorBg === true` as "apply dark to every sequence",
+  // which produced black backgrounds everywhere and hid any dark-colored text.
+  const listedAsNoColor = design?.noColorSequences?.includes(seq)
     || design?.noColorSequences?.includes(editorSeq);
+  const noColor = design?.noColorBg === true && !!listedAsNoColor;
   if (noColor) {
     ctx.fillStyle = '#0A0A0F';
     ctx.fillRect(0, 0, w, h);

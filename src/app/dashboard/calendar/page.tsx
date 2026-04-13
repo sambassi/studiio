@@ -2992,23 +2992,26 @@ export default function CalendarPage() {
             <span className="text-sm font-medium">Retour</span>
           </button>
 
-          {/* Regenerate-montage floating button — ALWAYS visible in the preview
-              modal. Clicking re-composes the video with the current editor↔
-              composer parity and persists the fresh URLs so the preview,
-              miniature, and social publication all match what the editor shows.
-              Useful whenever an old post was rendered with an older composer
-              version (wrong cards, wrong overlay position, missing thumbnail…). */}
-          <button
-            onClick={(e) => { e.stopPropagation(); regenerateMontage(fullPreviewPost); }}
-            disabled={regenerating}
-            className="fixed top-4 right-4 z-[60] flex items-center gap-2 px-4 py-2 rounded-full bg-purple-600 hover:bg-purple-500 backdrop-blur-sm text-white border-2 border-white/30 shadow-2xl disabled:opacity-70 disabled:cursor-wait active:scale-95 transition-transform font-semibold"
-            title={regenerating ? `${regenStage} ${regenProgress}%` : 'Re-générer le montage avec la dernière version du composer'}
-          >
-            <RefreshCw size={16} className={regenerating ? 'animate-spin' : ''} />
-            <span className={`text-sm ${regenerating ? 'animate-pulse' : ''}`}>
-              {regenerating ? `${regenStage || 'Rendu...'} ${regenProgress}%` : 'Régénérer le montage'}
-            </span>
-          </button>
+          {/* Regenerate-montage floating button — shown ONLY when the post
+              clearly needs an update (legacy posts without a thumbnail or
+              without a rendered video). A freshly exported post from the
+              editor has both `renderedVideoUrl` and `thumbnailUrl` populated,
+              so the button is hidden — the user doesn't need it.
+              Also shown while a regeneration is in progress so the progress
+              label stays visible for the entire operation. */}
+          {(regenerating || !meta?.renderedVideoUrl || !meta?.thumbnailUrl) && (
+            <button
+              onClick={(e) => { e.stopPropagation(); regenerateMontage(fullPreviewPost); }}
+              disabled={regenerating}
+              className="fixed top-4 right-4 z-[60] flex items-center gap-2 px-4 py-2 rounded-full bg-purple-600 hover:bg-purple-500 backdrop-blur-sm text-white border-2 border-white/30 shadow-2xl disabled:opacity-70 disabled:cursor-wait active:scale-95 transition-transform font-semibold"
+              title={regenerating ? `${regenStage} ${regenProgress}%` : 'Re-générer le montage avec la dernière version du composer'}
+            >
+              <RefreshCw size={16} className={regenerating ? 'animate-spin' : ''} />
+              <span className={`text-sm ${regenerating ? 'animate-pulse' : ''}`}>
+                {regenerating ? `${regenStage || 'Rendu...'} ${regenProgress}%` : 'Régénérer le montage'}
+              </span>
+            </button>
+          )}
           <div className="bg-gray-900 rounded-none md:rounded-2xl overflow-hidden shadow-2xl max-w-5xl w-full flex flex-col md:flex-row max-h-[100dvh] md:max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             {/* Left: Rich Montage Preview */}
             <div className="flex-1 bg-black flex flex-col items-center justify-center p-2 md:p-4" style={{ minHeight: '60dvh' }}>
