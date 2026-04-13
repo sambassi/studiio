@@ -4,7 +4,7 @@
  * Audio elements handle MP3/OGG/WAV decoding natively (no OfflineAudioContext).
  * Outputs MP4 if supported, otherwise WebM.
  */
-const COMPOSER_VERSION = 'v9-backdrop-theme-2026-04-13';
+const COMPOSER_VERSION = 'v10-poster-preserved-2026-04-13';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -544,21 +544,10 @@ function resolveSeqGradient(
 function paintSeqGradient(
   ctx: CanvasRenderingContext2D, w: number, h: number, seq: string, design?: DesignOptions
 ): void {
-  const editorSeq = SEQ_NAME_REVERSE[seq] || seq;
-  // Editor semantics (confirmed at infographie/page.tsx:2928-2946):
-  //   seqNoColor = noColorBg === true AND the sequence is listed in noColorSequences.
-  //                noColorBg alone does NOT apply to every sequence — it's a gate.
-  // Previously we treated `noColorBg === true` as "apply dark to every sequence",
-  // which produced black backgrounds everywhere and hid any dark-colored text.
-  const listedAsNoColor = design?.noColorSequences?.includes(seq)
-    || design?.noColorSequences?.includes(editorSeq);
-  const noColor = design?.noColorBg === true && !!listedAsNoColor;
-  if (noColor) {
-    ctx.fillStyle = '#0A0A0F';
-    ctx.fillRect(0, 0, w, h);
-    return;
-  }
-
+  // NOTE: noColor mode is a BACKDROP concern, not an overlay concern.
+  // Handled by paintSeqBackdrop. Previously we painted `#0A0A0F` here too,
+  // which wiped out any existing poster in drawIntro when the intro was
+  // listed in `noColorSequences`.
   const g = resolveSeqGradient(design, seq);
   if (!g.enabled || g.opacity <= 0) return;
 
@@ -652,16 +641,16 @@ function drawIntro(
   const fontFamily = design?.font || 'sans-serif';
   const titleColor = design?.titleColor || '#FFFFFF';
 
-  // Background: poster image (if any) then per-sequence gradient matching editor CSS.
-  // When no poster is provided, fall back to a dark backdrop BEFORE the gradient
-  // so the colored overlay still has something to sit on.
+  // Background: poster image (if any) covers the canvas. When no poster is
+  // set, paint the color-theme backdrop (or dark if noColor). Then the
+  // seqGradient OVERLAY is drawn on top in BOTH cases — that's what the
+  // editor does (poster img + gradient div overlaid on top).
   if (posterImg) {
     const scale = Math.max(w / posterImg.width, h / posterImg.height);
     const sw = posterImg.width * scale, sh = posterImg.height * scale;
     ctx.drawImage(posterImg, (w - sw) / 2, (h - sh) / 2, sw, sh);
   } else {
-    ctx.fillStyle = '#0A0A0F';
-    ctx.fillRect(0, 0, w, h);
+    paintSeqBackdrop(ctx, w, h, 'intro', design, _accent);
   }
   paintSeqGradient(ctx, w, h, 'intro', design);
 
