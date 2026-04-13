@@ -939,16 +939,27 @@ export default function CreatorPage() {
               ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
               watermarkText: branding.watermarkText || undefined,
               design: {
+                // Creator page exposes a simpler state than Infographie. Map
+                // what IS available to the composer's design fields. The rest
+                // (positions, typography) falls to composer defaults.
                 font: globalFontFamily || undefined,
-                titleColor: globalTextColor || branding.accentColor || undefined,
-                ctaColor: branding.accentColor || undefined,
-                ctaSubColor: branding.accentColor || undefined,
+                titleColor: globalTextColor || '#FFFFFF',
+                ctaColor: '#FFFFFF',
+                ctaSubColor: branding.accentColor || '#D91CD2',
                 ctaMainText: branding.watermarkText || undefined,
                 ctaSubTextDesign: branding.ctaText || undefined,
-                gradientColor1: branding.accentColor || undefined,
-                gradientColor2: branding.accentColor || undefined,
-                textScale: 1.0,
-                ctaTextScale: 1.0,
+                // Use a 2-color gradient (accent + darker) instead of a solid
+                // one-color fill. Default accent magenta on both makes the
+                // canvas a flat pink/magenta rectangle which is not what the
+                // Creator preview shows.
+                gradientColor1: branding.accentColor || '#7C3AED',
+                gradientColor2: '#EC4899',
+                // Creator editor preview renders title/cards at a larger scale
+                // than the composer's 1.0 default (so the title fills the
+                // phone-format preview). Match that so the exported video's
+                // text is readable.
+                textScale: 2.0,
+                ctaTextScale: 2.0,
                 cardStyle: 'Full Width',
               },
               onProgress: (pct, stage) => {
@@ -1075,20 +1086,16 @@ export default function CreatorPage() {
               ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
               watermarkText: branding.watermarkText || undefined,
               design: {
-                // Creator page exposes a simpler state than Infographie. Map
-                // what IS available (globalTextColor, globalFontFamily, accent)
-                // to the composer's design fields. Positions/typography fall
-                // to composer defaults, which mirror the editor's own defaults.
                 font: globalFontFamily || undefined,
-                titleColor: globalTextColor || branding.accentColor || undefined,
-                ctaColor: branding.accentColor || undefined,
-                ctaSubColor: branding.accentColor || undefined,
+                titleColor: globalTextColor || '#FFFFFF',
+                ctaColor: '#FFFFFF',
+                ctaSubColor: branding.accentColor || '#D91CD2',
                 ctaMainText: branding.watermarkText || undefined,
                 ctaSubTextDesign: branding.ctaText || undefined,
-                gradientColor1: branding.accentColor || undefined,
-                gradientColor2: branding.accentColor || undefined,
-                textScale: 1.0,
-                ctaTextScale: 1.0,
+                gradientColor1: branding.accentColor || '#7C3AED',
+                gradientColor2: '#EC4899',
+                textScale: 2.0,
+                ctaTextScale: 2.0,
                 cardStyle: 'Full Width',
               },
               onProgress: (pct, stage) => {
