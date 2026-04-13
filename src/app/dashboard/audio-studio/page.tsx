@@ -322,15 +322,28 @@ function AudioStudioContent() {
     };
   }, [post?.id, totalDuration, sequences, seqStarts, videoLoading]);
 
-  // Helper: start the independent timeline RAF loop
+  // Helper: start the timeline RAF loop. When a rendered montage <video>
+  // is driving playback, we derive `currentTime` from its actual
+  // `videoRef.current.currentTime` instead of a wall-clock. This guarantees
+  // the progress cursor and the segment boundaries stay frame-accurate with
+  // what the user is actually watching (the composer baked intro→cards→
+  // video→cta at specific durations, the <video> enforces them).
   const startTimelineLoop = useCallback(() => {
     if (timelineRunningRef.current) return;
     timelineRunningRef.current = true;
     const syncTimeline = () => {
       if (!timelineRunningRef.current) return;
-      const now = performance.now();
-      const elapsed = timeOffsetRef.current + (now - playStartRef.current) / 1000;
-      const mapped = Math.min(Math.max(elapsed, 0), totalDuration);
+      const vid = videoRef.current;
+      const hasMontageVideo = !!vid && !!vid.src && vid.readyState > 0;
+      let mapped: number;
+      if (hasMontageVideo) {
+        // Source of truth = the <video>'s own playback time.
+        mapped = Math.min(Math.max(vid.currentTime, 0), totalDuration);
+      } else {
+        const now = performance.now();
+        const elapsed = timeOffsetRef.current + (now - playStartRef.current) / 1000;
+        mapped = Math.min(Math.max(elapsed, 0), totalDuration);
+      }
       if (mapped >= totalDuration) {
         setCurrentTime(totalDuration);
         setActiveSeqIdx(sequences.length - 1);
