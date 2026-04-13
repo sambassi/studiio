@@ -1123,13 +1123,27 @@ function AudioStudioContent() {
                     poster={posterImgSrc || undefined}
                     className="w-full h-full object-contain"
                     playsInline autoPlay loop muted
+                    onLoadedMetadata={() => {
+                      console.log('[AudioStudio] Rendered video loadedMetadata');
+                      setVideoLoading(false);
+                      setVideoError(false);
+                      // Chrome sometimes blocks autoplay silently even with muted;
+                      // explicit play() makes sure the video actually starts.
+                      const v = videoRef.current;
+                      if (v) v.play().catch(e => console.warn('[AudioStudio] autoplay blocked:', e?.message));
+                    }}
+                    onCanPlay={() => { setVideoLoading(false); }}
                     onLoadedData={() => { setVideoLoading(false); setVideoError(false); }}
-                    onError={() => { setVideoLoading(false); setVideoError(true); }}
+                    onError={(e) => {
+                      console.error('[AudioStudio] Rendered video error:', (e.target as HTMLVideoElement)?.error?.message);
+                      setVideoLoading(false);
+                      setVideoError(true);
+                    }}
                     onWaiting={() => setVideoLoading(true)}
                     onPlaying={() => setVideoLoading(false)}
                   />
                   {videoLoading && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-10">
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-900/60 z-10 pointer-events-none">
                       <Loader2 className="animate-spin text-pink-500" size={32} />
                     </div>
                   )}
