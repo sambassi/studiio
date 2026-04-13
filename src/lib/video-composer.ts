@@ -4,7 +4,7 @@
  * Audio elements handle MP3/OGG/WAV decoding natively (no OfflineAudioContext).
  * Outputs MP4 if supported, otherwise WebM.
  */
-const COMPOSER_VERSION = 'v11-educatif-cards-2026-04-13';
+const COMPOSER_VERSION = 'v12-all-card-styles-2026-04-13';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -418,6 +418,22 @@ function dropShadowBaseFilter(w: number): string {
   return `drop-shadow(0 ${y}px ${b}px rgba(0,0,0,0.1))`;
 }
 
+/** Truncate text with ellipsis so it fits within `maxWidth`. Preserves the
+ *  CSS `truncate` behaviour used by Full Width card labels/descriptions. */
+function truncateToWidth(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+  if (!text || maxWidth <= 0) return '';
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  const ellipsis = '…';
+  let lo = 0, hi = text.length;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    const candidate = text.slice(0, mid) + ellipsis;
+    if (ctx.measureText(candidate).width <= maxWidth) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo > 0 ? text.slice(0, lo) + ellipsis : ellipsis;
+}
+
 /** Word-wrap text to fit within maxWidth, splitting at word boundaries */
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
   const words = text.split(' ');
@@ -819,17 +835,26 @@ function drawCards(
   const labelSize = Math.round(w * 0.022 * textScale);
   const valueSize = Math.round(w * 0.028 * textScale);
   const descSize = Math.round(w * 0.019 * textScale);
-  const borderW = Math.round(w * 0.004);
   // Editor: rounded-lg = 8px on 320px viewport → scale proportionally.
   const radius = Math.max(2, Math.round(w * (8 / 320)));
 
-  // ── Card style: Stats Bold (value big centered, label small below) ──
-  // ALL card styles: NO animation — render static like editor (no fade-in, no slide, no stagger)
+  // ── Card style: Stats Bold ──
+  // Editor (infographie/page.tsx:3429-3452):
+  //   grid per `previewClasses.cols` (grid-cols-2 for 9:16, grid-cols-3 for 16:9)
+  //   flex flex-col items-center justify-center rounded-lg bg-black/50 px-2 py-2
+  //   border border-white/10
+  //   Row 1: value (13 * textScale px, font-black, card.color, drop-shadow)
+  //   Row 2: label (6 * textScale px, font-medium 500, text-white/80, mt-0.5)
   if (cardStyle === 'Stats Bold') {
-    const cols = 2;
-    const cardW = Math.round((containerW - (cols - 1) * Math.round(w * 0.015)) / cols);
-    const cardH = Math.round(h * 0.11);
-    const gap = Math.round(w * 0.015);
+    const cols = isReel ? 2 : 3;
+    const gap = Math.round(w * (6 / 320)); // gap-1.5
+    const cardW = Math.round((containerW - (cols - 1) * gap) / cols);
+    const paddingY = Math.round(w * (8 / 320));   // py-2
+    const paddingX = Math.round(w * (8 / 320));   // px-2
+    const innerGap = Math.round(w * (2 / 320));   // mt-0.5
+    const bigValueSize = Math.round(w * 0.041 * textScale); // 13/320
+    const contentH = bigValueSize + innerGap + descSize;
+    const cardH = contentH + paddingY * 2;
     const rows = Math.ceil(maxCards / cols);
     const totalH = rows * cardH + (rows - 1) * gap;
     const cardsY = ((design?.cardsPosition?.y ?? 50) / 100) * h - totalH / 2;
@@ -841,19 +866,34 @@ function drawCards(
       const x = cardsX + col * (cardW + gap);
       const y = cardsY + row * (cardH + gap);
 
+      // bg-black/50 rounded-lg
       ctx.fillStyle = 'rgba(0,0,0,0.5)';
       drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.fill();
+      // border border-white/10
       ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1;
       drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.stroke();
 
-      const bigValueSize = Math.round(w * 0.041 * textScale); // editor: 13/320 = 0.041
+      ctx.textBaseline = 'top';
+      // Center content block vertically inside card (items-center justify-center).
+      let curY = y + (cardH - contentH) / 2;
+
+      // Row 1: value (big, font-black, card.color, drop-shadow)
       ctx.font = `900 ${bigValueSize}px "${fontFamily}", sans-serif`;
       ctx.textAlign = 'center'; ctx.fillStyle = card.color || accent;
-      ctx.fillText(card.value, x + cardW / 2, y + cardH * 0.5);
+      ctx.shadowColor = 'rgba(0,0,0,0.2)'; ctx.shadowBlur = 2; ctx.shadowOffsetY = 1;
+      ctx.fillText(card.value, x + cardW / 2, curY);
+      ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+      curY += bigValueSize + innerGap;
 
+      // Row 2: label (small, font-medium, text-white/80)
       ctx.font = `500 ${descSize}px "${fontFamily}", sans-serif`;
       ctx.fillStyle = 'rgba(255,255,255,0.8)';
-      ctx.fillText(card.label, x + cardW / 2, y + cardH * 0.78);
+      ctx.fillText(card.label, x + cardW / 2, curY);
+
+      // Keep paddingX referenced (lint-safe for unused var in some paths).
+      void paddingX;
+
+      ctx.textBaseline = 'alphabetic';
     });
   }
   // ── Card style: Compact (column layout: emoji, label, value, description centered) ──
@@ -1001,10 +1041,21 @@ function drawCards(
       ctx.textBaseline = 'alphabetic';
     });
   }
-  // ── Card style: Minimal Line (horizontal: emoji, label, value right-aligned) ──
+  // ── Card style: Minimal Line ──
+  // Editor (infographie/page.tsx:3454-3480):
+  //   flex items-center gap-2 py-1 px-1
+  //   borderBottom: 1px solid ${card.color}40  (25% alpha)
+  //   emoji text-xs (12 * textScale), label scaledLabel white/80 flex-1,
+  //   value scaledValue font-bold card.color
   else if (cardStyle === 'Minimal Line') {
     const cardW = containerW;
-    const cardH = Math.round(h * 0.05);
+    const paddingY = Math.round(w * (4 / 320));   // py-1
+    const paddingX = Math.round(w * (4 / 320));   // px-1
+    const contentGap = Math.round(w * (8 / 320)); // gap-2 between flex items
+    // Minimal Line uses text-xs for emoji (12 * textScale)
+    const minEmojiSize = Math.round(w * (12 / 320) * textScale);
+    const rowH = Math.max(minEmojiSize, labelSize, valueSize);
+    const cardH = rowH + paddingY * 2;
     const gap = Math.round(h * 0.006);
     const totalH = maxCards * cardH + (maxCards - 1) * gap;
     const cardsY = ((design?.cardsPosition?.y ?? 50) / 100) * h - totalH / 2;
@@ -1014,27 +1065,59 @@ function drawCards(
       const y = cardsY + i * (cardH + gap);
       const x = cardsX;
 
-      // Bottom border line
+      // borderBottom: 1px solid card.color @ 25% alpha
       ctx.strokeStyle = hexToRgba(card.color || accent, 0.25);
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(x, y + cardH); ctx.lineTo(x + cardW, y + cardH); ctx.stroke();
+      ctx.lineWidth = Math.max(1, Math.round(w * (1 / 320)));
+      ctx.beginPath();
+      ctx.moveTo(x, y + cardH);
+      ctx.lineTo(x + cardW, y + cardH);
+      ctx.stroke();
 
-      // Emoji
-      ctx.font = `${Math.round(emojiSize * 0.7)}px sans-serif`; ctx.textAlign = 'left'; ctx.fillStyle = 'white';
-      ctx.fillText(card.emoji || '●', x + Math.round(w * 0.01), y + cardH * 0.7);
-      // Label
-      ctx.font = `400 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.8)';
-      ctx.fillText(card.label, x + Math.round(w * 0.05), y + cardH * 0.7);
-      // Value right-aligned
-      ctx.font = `700 ${valueSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'right';
+      ctx.textBaseline = 'top';
+      const rowY = y + paddingY;
+
+      // Emoji (left) — text-xs
+      ctx.font = `${minEmojiSize}px sans-serif`;
+      ctx.textAlign = 'left'; ctx.fillStyle = '#FFFFFF';
+      ctx.fillText(card.emoji || '●', x + paddingX, rowY + (rowH - minEmojiSize) / 2);
+      const emojiW = ctx.measureText(card.emoji || '●').width;
+
+      // Label (middle, flex-1, text-white/80)
+      ctx.font = `400 ${labelSize}px "${fontFamily}", sans-serif`;
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx.fillText(card.label, x + paddingX + emojiW + contentGap, rowY + (rowH - labelSize) / 2);
+
+      // Value (right, font-bold, card.color)
+      ctx.font = `700 ${valueSize}px "${fontFamily}", sans-serif`;
+      ctx.textAlign = 'right';
       ctx.fillStyle = card.color || accent;
-      ctx.fillText(card.value, x + cardW - Math.round(w * 0.01), y + cardH * 0.7);
+      ctx.fillText(card.value, x + cardW - paddingX, rowY + (rowH - valueSize) / 2);
+
+      ctx.textBaseline = 'alphabetic';
     });
   }
-  // ── Card style: Full Width (default — horizontal row with emoji, label left, value right) ──
+  // ── Card style: Full Width (default) ──
+  // Editor (infographie/page.tsx:3483-3513):
+  //   grid-cols-1 (ALWAYS single column, ignores previewClasses.cols)
+  //   flex items-center gap-2 rounded-lg bg-black/30 px-3 py-1.5
+  //   borderLeft: 3px solid ${card.color}  (3px not 2!)
+  //   emoji text-base (16 * textScale), left
+  //   middle: label (scaledLabel font-bold white truncate) + description
+  //           (scaledDesc text-white/50 truncate, 40 chars max) stacked
+  //   right: value (scaledValue font-black card.color)
   else {
+    // grid-cols-1: one column always
     const cardW = containerW;
-    const cardH = Math.round(h * 0.07);
+    const paddingY = Math.round(w * (6 / 320));   // py-1.5
+    const paddingX = Math.round(w * (12 / 320));  // px-3
+    const contentGap = Math.round(w * (8 / 320)); // gap-2
+    const innerTextGap = Math.round(w * (2 / 320)); // between stacked label and description
+    const fullEmojiSize = Math.round(w * (16 / 320) * textScale); // text-base
+    // Middle column height: label + (description if present)
+    const hasAnyDesc = cards.slice(0, maxCards).some(c => !!c.description);
+    const middleH = labelSize + (hasAnyDesc ? innerTextGap + descSize : 0);
+    const rowH = Math.max(fullEmojiSize, middleH, valueSize);
+    const cardH = rowH + paddingY * 2;
     const gap = Math.round(h * 0.012);
     const totalH = maxCards * cardH + (maxCards - 1) * gap;
     const cardsY = ((design?.cardsPosition?.y ?? 50) / 100) * h - totalH / 2;
@@ -1044,24 +1127,50 @@ function drawCards(
       const y = cardsY + i * (cardH + gap);
       const x = cardsX;
 
-      ctx.fillStyle = 'rgba(0,0,0,0.3)'; // matches editor bg-black/30
+      // bg-black/30 rounded-lg
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
       drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.fill();
-      // Left accent border
+      // borderLeft: 3px solid card.color, FULL height (matches CSS border-left)
+      const leftBw = Math.round(w * (3 / 320)); // 3px (not 2)
       ctx.fillStyle = card.color || accent;
-      ctx.fillRect(x, y + Math.round(cardH * 0.12), borderW, cardH - Math.round(cardH * 0.24));
+      ctx.fillRect(x, y, leftBw, cardH);
 
-      // Emoji
-      const emojiX = x + Math.round(w * 0.025);
-      ctx.font = `${emojiSize}px sans-serif`; ctx.textAlign = 'left'; ctx.fillStyle = 'white';
-      ctx.fillText(card.emoji || '●', emojiX, y + cardH * 0.65);
+      ctx.textBaseline = 'top';
+      const rowY = y + paddingY;
+
+      // Emoji (left)
+      ctx.font = `${fullEmojiSize}px sans-serif`;
+      ctx.textAlign = 'left'; ctx.fillStyle = '#FFFFFF';
+      ctx.fillText(card.emoji || '●', x + paddingX + leftBw, rowY + (rowH - fullEmojiSize) / 2);
+      const emojiW = ctx.measureText(card.emoji || '●').width;
+
+      // Middle column (label + optional description, stacked, vertically centered)
+      const middleX = x + paddingX + leftBw + emojiW + contentGap;
+      // Value measured first so we know middle column width.
+      ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`;
+      const valueText = card.value;
+      const valueW = ctx.measureText(valueText).width;
+      const middleW = cardW - (middleX - x) - paddingX - contentGap - valueW;
+      const middleTop = rowY + (rowH - middleH) / 2;
       // Label
-      const labelX = emojiX + emojiSize + Math.round(w * 0.015);
-      ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'left';
-      fillTextWithOutline(ctx, card.label, labelX, y + cardH * 0.58, 2, 'rgba(0,0,0,0.5)');
-      // Value right-aligned
+      ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = '#FFFFFF';
+      // Truncate label if too wide
+      const truncatedLabel = truncateToWidth(ctx, card.label, middleW);
+      ctx.fillText(truncatedLabel, middleX, middleTop);
+      // Description (if present) — 40 chars max, truncated
+      if (card.description) {
+        const descSrc = card.description.substring(0, 40);
+        ctx.font = `400 ${descSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        const truncatedDesc = truncateToWidth(ctx, descSrc, middleW);
+        ctx.fillText(truncatedDesc, middleX, middleTop + labelSize + innerTextGap);
+      }
+
+      // Value (right-aligned)
       ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'right';
       ctx.fillStyle = card.color || accent;
-      fillTextWithOutline(ctx, card.value, x + cardW - Math.round(w * 0.025), y + cardH * 0.62, 2, 'rgba(0,0,0,0.6)');
+      ctx.fillText(valueText, x + cardW - paddingX, rowY + (rowH - valueSize) / 2);
+
+      ctx.textBaseline = 'alphabetic';
     });
   }
 
