@@ -402,17 +402,33 @@ function AudioStudioContent() {
     setActiveSeqIdx(idx);
   };
 
-  // ═══ MONTAGE: Play/pause video element based on active sequence ═══
+  // ═══ MONTAGE: play/pause the <video> based on timeline state ═══
+  // Two modes:
+  //   1. renderedVideoUrl present  → the <video> IS the full montage
+  //      (intro + cards + video + cta all baked in). Play whenever the
+  //      timeline is running, pause otherwise. No per-sequence gating.
+  //   2. Legacy HTML rebuild       → the <video> only shows the rush
+  //      during the 'video' sequence, paused elsewhere.
   useEffect(() => {
     const vid = videoRef.current;
     if (!vid) return;
+    // Inline check — `isMontagePost` is declared lower in the file.
+    const isFullMontageVideo =
+      (meta.type === 'infographic' || meta.type === 'creator')
+      && sequences.length > 0
+      && !!meta.renderedVideoUrl;
+    if (isFullMontageVideo) {
+      if (isPlaying) vid.play().catch(() => {});
+      else if (!vid.paused) vid.pause();
+      return;
+    }
     const seqType = sequences[activeSeqIdx]?.type;
     if (isPlaying && seqType === 'video') {
       vid.play().catch(() => {});
     } else if (seqType !== 'video') {
       vid.pause();
     }
-  }, [activeSeqIdx, isPlaying, sequences]);
+  }, [activeSeqIdx, isPlaying, sequences, meta.type, meta.renderedVideoUrl]);
 
   // ═══ MUSIC HANDLING ═══
   const handleMusicUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
