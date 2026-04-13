@@ -1170,11 +1170,12 @@ export default function InfographicPage() {
           const isReel = format === "9:16";
           let renderedVideoUrl: string | null = null;
           let renderedThumbnailUrl: string | null = null;
+          let renderedComposerVersion: string | null = null;
           try {
             console.log('[Export→Calendar] Starting montage composition...', { posterUrl, rushUrl, isReel, format });
             showToast('Composition v5 en cours...');
             setExportProgress(Math.round(((b + 0.3) / total) * 100));
-            const { url: composedUrl, thumbnailUrl: composedThumbUrl } = await composeAndUpload({
+            const { url: composedUrl, thumbnailUrl: composedThumbUrl, composerVersion: composedVersion } = await composeAndUpload({
               width: isReel ? 1080 : 1920,
               height: isReel ? 1920 : 1080,
               fps: 30,
@@ -1232,7 +1233,8 @@ export default function InfographicPage() {
             });
             renderedVideoUrl = composedUrl;
             renderedThumbnailUrl = composedThumbUrl || null;
-            console.log('[Export→Calendar] Montage composed and uploaded:', renderedVideoUrl, 'thumb:', renderedThumbnailUrl);
+            renderedComposerVersion = composedVersion || null;
+            console.log('[Export→Calendar] Montage composed and uploaded:', renderedVideoUrl, 'thumb:', renderedThumbnailUrl, 'version:', renderedComposerVersion);
             if (renderedVideoUrl) {
               showToast('Montage v5 composé avec succès !');
             } else {
@@ -1277,6 +1279,7 @@ export default function InfographicPage() {
                 pexelsUrl: posterUrl,
                 renderedVideoUrl: renderedVideoUrl || undefined,
                 thumbnailUrl: renderedThumbnailUrl || undefined,
+                composerVersion: renderedComposerVersion || undefined,
                 logoUrl: logoImage || undefined,
                 videoUrl: rushUrl || undefined,
                 rushUrls: rushUrl ? [rushUrl] : undefined,

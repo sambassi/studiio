@@ -4,8 +4,13 @@
  * Audio elements handle MP3/OGG/WAV decoding natively (no OfflineAudioContext).
  * Outputs MP4 if supported, otherwise WebM.
  */
-const COMPOSER_VERSION = 'v7-pixel-perfect-2026-04-09';
+const COMPOSER_VERSION = 'v8-nocolor-fix-2026-04-13';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
+
+// Exported so the calendar UI can detect stale videos and show a "Régénérer"
+// button when a post was rendered by an older composer. Bump the version
+// string every time the composer's visual output changes meaningfully.
+export const CURRENT_COMPOSER_VERSION = COMPOSER_VERSION;
 
 // ═══════════════════════════════════════════════════════════
 // TYPES
@@ -1885,7 +1890,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
 // UPLOAD + DOWNLOAD
 // ═══════════════════════════════════════════════════════════
 
-export async function composeAndUpload(options: ComposerOptions): Promise<{ blob: Blob; url: string | null; thumbnailUrl: string | null }> {
+export async function composeAndUpload(options: ComposerOptions): Promise<{ blob: Blob; url: string | null; thumbnailUrl: string | null; composerVersion: string }> {
   const { video: blob, thumbnail: thumbnailBlob } = await composeVideo(options);
   if (blob.size === 0) {
     console.error('[Composer] ❌ composeVideo produced an EMPTY blob (0 bytes). MediaRecorder likely failed to capture frames.');
@@ -1984,7 +1989,7 @@ export async function composeAndUpload(options: ComposerOptions): Promise<{ blob
     }
   }
 
-  return { blob, url, thumbnailUrl };
+  return { blob, url, thumbnailUrl, composerVersion: COMPOSER_VERSION };
 }
 
 /**

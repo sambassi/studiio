@@ -39,7 +39,7 @@ import { Modal } from '@/components/ui/Modal';
 import { useBranding } from '@/lib/hooks/useBranding';
 import { useCreatorPreferences } from '@/lib/hooks/useCreatorPreferences';
 import BrandingPanel from '@/components/BrandingPanel';
-import { composeAndUpload, downloadBlob } from '@/lib/video-composer';
+import { composeAndUpload, downloadBlob, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
 import { useTranslations, useLocale } from '@/i18n/client';
 import { getContentPools, pickRandom as pickRandomI18n } from '@/lib/i18n-content';
 
@@ -76,6 +76,9 @@ interface PostMetadata {
   rawVideoUrl?: string;
   /** JPEG thumbnail captured by the composer at export time (~100-200 KB). Used as the sidebar miniature. */
   thumbnailUrl?: string;
+  /** Composer version that produced `renderedVideoUrl`. Used to detect stale
+   *  videos that need regeneration after a composer bug fix. */
+  composerVersion?: string;
   hasAudio?: boolean;
   sequences?: {
     intro?: number;
@@ -436,7 +439,7 @@ export default function CalendarPage() {
     setRegenStage('Préparation...');
 
     try {
-      const { url: renderedUrl, thumbnailUrl: freshThumb } = await composeAndUpload({
+      const { url: renderedUrl, thumbnailUrl: freshThumb, composerVersion: freshVersion } = await composeAndUpload({
         width: isReel ? 1080 : 1920,
         height: isReel ? 1920 : 1080,
         fps: 30,
@@ -506,8 +509,15 @@ export default function CalendarPage() {
       console.log('[Regenerate] ✅ Composed:', { renderedUrl, thumbnailUrl: freshThumb });
       setRegenStage('Sauvegarde...');
 
-      // Persist fresh URLs into metadata
-      const nextMetadata = { ...meta, renderedVideoUrl: renderedUrl, videoUrl: renderedUrl, thumbnailUrl: freshThumb || meta.thumbnailUrl };
+      // Persist fresh URLs + composer version into metadata so future loads
+      // know this post was produced by the current code and hide the button.
+      const nextMetadata = {
+        ...meta,
+        renderedVideoUrl: renderedUrl,
+        videoUrl: renderedUrl,
+        thumbnailUrl: freshThumb || meta.thumbnailUrl,
+        composerVersion: freshVersion,
+      };
       const patchRes = await fetch(`/api/posts/${post.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -2993,13 +3003,17 @@ export default function CalendarPage() {
           </button>
 
           {/* Regenerate-montage floating button — shown ONLY when the post
-              clearly needs an update (legacy posts without a thumbnail or
-              without a rendered video). A freshly exported post from the
-              editor has both `renderedVideoUrl` and `thumbnailUrl` populated,
-              so the button is hidden — the user doesn't need it.
-              Also shown while a regeneration is in progress so the progress
-              label stays visible for the entire operation. */}
-          {(regenerating || !meta?.renderedVideoUrl || !meta?.thumbnailUrl) && (
+              is NOT up to date:
+                - missing renderedVideoUrl  → never got a montage
+                - missing thumbnailUrl      → legacy post pre-thumbnail feature
+                - composerVersion outdated  → rendered by an older/buggy composer
+              Freshly exported posts (all three present + matching version)
+              hide the button so the UI stays clean. Also shown while a
+              regeneration is in progress so the progress label is readable. */}
+          {(regenerating
+            || !meta?.renderedVideoUrl
+            || !meta?.thumbnailUrl
+            || meta?.composerVersion !== CURRENT_COMPOSER_VERSION) && (
             <button
               onClick={(e) => { e.stopPropagation(); regenerateMontage(fullPreviewPost); }}
               disabled={regenerating}
