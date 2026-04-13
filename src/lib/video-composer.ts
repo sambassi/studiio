@@ -1039,7 +1039,13 @@ function drawVideoSeq(
     const overlayBold = design?.overlayTypography?.bold !== false;
     const overlayItalic = design?.overlayTypography?.italic ? 'italic ' : '';
     const overlayWeight = overlayBold ? 700 : 400;
+    const overlayLetterSpacing = (design?.overlayTypography?.letterSpacing || 0) * (w / 320);
     ctx.save();
+    // Editor uses translate(-50%, -50%) on the overlay → the CENTER of the
+    // text block must sit at (overlayX, overlayY). Use textBaseline='top' and
+    // position the block's TOP at (overlayY - blockHeight/2) so the geometry
+    // matches the editor exactly (no alphabetic-baseline offset drift).
+    ctx.textBaseline = 'top';
     ctx.font = `${overlayItalic}${overlayWeight} ${overlayFontSize}px "${fontFamily}", sans-serif`;
     ctx.textAlign = 'center';
     ctx.fillStyle = design.overlayColor || '#FFFFFF';
@@ -1048,9 +1054,30 @@ function drawVideoSeq(
     const overlayLines = wrapText(ctx, design.overlayText, w * 0.85);
     const overlayLineH = overlayFontSize * (design?.overlayTypography?.lineHeight || 1.2);
     const overlayBlockH = overlayLines.length * overlayLineH;
-    const overlayStartY = overlayY - overlayBlockH / 2 + overlayFontSize;
+    const overlayTopY = overlayY - overlayBlockH / 2;
     for (let i = 0; i < overlayLines.length; i++) {
-      fillTextWithOutline(ctx, overlayLines[i], overlayX, overlayStartY + i * overlayLineH, 3, 'rgba(0,0,0,0.7)');
+      const lineY = overlayTopY + i * overlayLineH;
+      if (overlayLetterSpacing) {
+        // Outline pass: stroke each character with spacing, then fill with spacing.
+        ctx.save();
+        ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+        ctx.lineWidth = 3;
+        ctx.lineJoin = 'round';
+        const chars = Array.from(overlayLines[i]);
+        const totalW = chars.reduce((a, c) => a + ctx.measureText(c).width, 0) + (chars.length - 1) * overlayLetterSpacing;
+        let cursor = overlayX - totalW / 2;
+        const prevAlign: CanvasTextAlign = ctx.textAlign;
+        ctx.textAlign = 'left';
+        for (const ch of chars) {
+          ctx.strokeText(ch, cursor, lineY);
+          ctx.fillText(ch, cursor, lineY);
+          cursor += ctx.measureText(ch).width + overlayLetterSpacing;
+        }
+        ctx.textAlign = prevAlign;
+        ctx.restore();
+      } else {
+        fillTextWithOutline(ctx, overlayLines[i], overlayX, lineY, 3, 'rgba(0,0,0,0.7)');
+      }
     }
     ctx.restore();
   }
