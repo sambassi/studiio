@@ -4,7 +4,7 @@
  * Audio elements handle MP3/OGG/WAV decoding natively (no OfflineAudioContext).
  * Outputs MP4 if supported, otherwise WebM.
  */
-const COMPOSER_VERSION = 'v14-cta-spacing-cards-wrap-2026-04-13';
+const COMPOSER_VERSION = 'v15-subtitle-wrap-2026-04-13';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -782,13 +782,19 @@ function drawIntro(
 
   // Subtitle below title — no animation, static like editor
   // Editor: mt-1 (4px on 320px), color = titleColor+cc (80%), drop-shadow (base, not lg)
+  // Wraps to fit within the same `titleWidth` as the title (CSS .mt-1 div is
+  // a child of the same width-constrained title container). Without wrapping,
+  // long subtitles overflow the right edge of the canvas.
   if (subtitle) {
     ctx.font = `${fontStyle}${fontWeight} ${subFontSize}px "${fontFamily}", sans-serif`;
     ctx.fillStyle = hexToRgba(titleColor, 0.8);
     ctx.filter = dropShadowBaseFilter(w);
-    // mt-1 in editor ≈ 4px on 320px → scale to canvas
     const mt1 = Math.round(w * (4 / 320));
-    ctx.fillText(subtitle, titlePosX, titleBlockBottom + mt1);
+    const subLines = wrapText(ctx, subtitle, titleWidth);
+    const subLineSpacing = subFontSize * (design?.titleTypography?.lineHeight || 1.1);
+    for (let i = 0; i < subLines.length; i++) {
+      ctx.fillText(subLines[i], titlePosX, titleBlockBottom + mt1 + i * subLineSpacing);
+    }
     ctx.filter = 'none';
   }
 
