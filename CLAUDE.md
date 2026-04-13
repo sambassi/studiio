@@ -608,6 +608,27 @@ Chaque push sur `main` declenche un auto-deploy Vercel. Le build prend ~45-60s. 
 
 ---
 
+## Automatisation navigateur
+
+Quand l'utilisateur te demande de **scraper une page web** ou **d'interagir avec un site** (vérifier un rendu en ligne, extraire du contenu, tester une URL, lire une doc externe, etc.), utilise **toujours** le skill Playwright local situé dans `.claude/skills/playwright/`.
+
+### Protocole obligatoire
+
+1. **Lis d'abord `SKILL.md`** (`.claude/skills/playwright/SKILL.md`) avant d'écrire ou de modifier le moindre script. C'est la source de vérité pour l'usage, la sortie attendue et les dépendances.
+2. **Utilise le script existant** `.claude/skills/playwright/scripts/run.js` plutôt que de créer un nouveau script ad-hoc. Si un cas particulier nécessite une variante, ajoute un nouveau fichier dans `.claude/skills/playwright/scripts/` — ne crée rien en dehors du dossier du skill.
+3. **Renvoie uniquement du JSON** dans la réponse finale à l'utilisateur pour ce genre de tâche. Pas de commentaire en prose, pas de markdown autour — juste le bloc JSON brut (ou un bloc ```json``` s'il faut le rendre lisible).
+4. Si Chromium n'est pas installé dans l'environnement courant, indique-le clairement et propose `npx playwright install chromium` plutôt que d'inventer un fallback.
+
+### Exemple d'invocation
+
+```bash
+node .claude/skills/playwright/scripts/run.js https://example.com
+```
+
+Retourne un objet `{ title, text, links }` après avoir retiré nav/footer/bannières cookies.
+
+---
+
 ## Pour commencer a contribuer
 
 1. Lire ce fichier en entier
