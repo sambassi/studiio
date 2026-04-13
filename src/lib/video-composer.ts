@@ -4,7 +4,7 @@
  * Audio elements handle MP3/OGG/WAV decoding natively (no OfflineAudioContext).
  * Outputs MP4 if supported, otherwise WebM.
  */
-const COMPOSER_VERSION = 'v18-cards-cap-2lines-2026-04-13';
+const COMPOSER_VERSION = 'v19-emoji-not-scaled-2026-04-13';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -842,14 +842,20 @@ function drawCards(
   // adjacent card).
   const editorViewportPx = isReel ? 320 : 512;
   const fontPx = (cssPx: number) => Math.round(w * cssPx / editorViewportPx * textScale);
+  // Same as fontPx but WITHOUT textScale — for elements the editor renders
+  // at a fixed pixel size regardless of the global text scale (notably the
+  // emoji on Compact/Educatif/etc cards, which uses Tailwind `text-sm`/
+  // `text-lg` and is not multiplied by textScale in the editor).
+  const fixedFontPx = (cssPx: number) => Math.round(w * cssPx / editorViewportPx);
   // Non-font CSS pixels (padding, gap, border, radius) also live in the
-  // editor's fixed-pixel Tailwind world. Scale them with the same viewport
-  // ratio so cards have the correct inter-card gap and padding relative to
-  // the label/value sizes. Previously these used hardcoded /320 which made
-  // gaps 60% larger in 16:9 relative to fonts, squishing card contents.
+  // editor's fixed-pixel Tailwind world.
   const cssPx = (pxAt320: number) => Math.max(1, Math.round(w * pxAt320 / editorViewportPx));
 
-  const emojiSize = fontPx(14);
+  // Editor emoji is `text-sm` (14px) for 9:16 / `text-lg` (18px) for 16:9,
+  // NOT scaled by textScale. Previously fontPx(14) scaled it 2.2× when the
+  // user had textScale=2.2, blowing up card heights and pushing content
+  // into adjacent cards.
+  const emojiSize = fixedFontPx(isReel ? 14 : 18);
   const labelSize = fontPx(7);
   const valueSize = fontPx(9);
   const descSize = fontPx(6);
@@ -925,7 +931,8 @@ function drawCards(
     const paddingY = cssPx(6); // py-1.5 = 6px on 320px
     const paddingX = cssPx(6); // px-1.5
     const innerGap = cssPx(2); // gap-0.5 = 2px on 320px
-    const emojiSizeLocal = fontPx(isReel ? 14 : 18);
+    // Editor uses fixed Tailwind text-sm / text-lg here — NOT scaled.
+    const emojiSizeLocal = fixedFontPx(isReel ? 14 : 18);
     const lineMul = 1.2; // line-height for wrapped lines
 
     // Pre-measure each card's wrapped lines. Cap EACH element to 2 lines
@@ -1122,7 +1129,8 @@ function drawCards(
     const paddingX = cssPx(4);   // px-1
     const contentGap = cssPx(8); // gap-2 between flex items
     // Minimal Line uses text-xs for emoji (12 * textScale)
-    const minEmojiSize = fontPx(12);
+    // Editor uses fixed text-xs (12px), not scaled by textScale.
+    const minEmojiSize = fixedFontPx(12);
     const rowH = Math.max(minEmojiSize, labelSize, valueSize);
     const cardH = rowH + paddingY * 2;
     const rows = Math.ceil(maxCards / cols);
@@ -1183,7 +1191,8 @@ function drawCards(
     const paddingX = cssPx(12);  // px-3
     const contentGap = cssPx(8); // gap-2
     const innerTextGap = cssPx(2); // between stacked label and description
-    const fullEmojiSize = Math.round(w * (16 / 320) * textScale); // text-base
+    // Editor uses fixed text-base (16px), not scaled by textScale.
+    const fullEmojiSize = fixedFontPx(16);
     // Middle column height: label + (description if present)
     const hasAnyDesc = cards.slice(0, maxCards).some(c => !!c.description);
     const middleH = labelSize + (hasAnyDesc ? innerTextGap + descSize : 0);
