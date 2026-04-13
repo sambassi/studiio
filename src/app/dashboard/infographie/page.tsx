@@ -1092,21 +1092,39 @@ export default function InfographicPage() {
     try {
       const total = batchCount;
       const createdPostIds: string[] = [];
-      // Helper: fetch fresh AI-generated content for the SAME theme so each
-      // batch iteration shows DIFFERENT cards/title/subtitle. Falls back to
-      // the local generator (instant) if AI fails. Returns null if both fail
-      // (caller keeps the editor's current values).
-      const generateBatchVariation = async (): Promise<{ title: string; subtitle: string; cards: typeof cards; salesPhrases: string[] } | null> => {
+      // A short rotating list of ANGLES so each batch iteration asks the AI
+      // for a distinct perspective on the theme. Without this hint Claude
+      // tends to return near-identical content for the same topic string.
+      const ANGLES = [
+        "axe scientifique : données, études, chiffres précis",
+        "axe pratique : routines quotidiennes, conseils actionnables",
+        "axe débutant : vocabulaire simple, erreurs à éviter",
+        "axe avancé : techniques pointues, optimisations",
+        "axe motivation : transformation, gains concrets",
+        "axe santé mentale : bien-être, récupération, stress",
+        "axe alimentation : nutriments, timing des repas",
+        "axe matériel / équipement : ce qu'il faut vraiment",
+        "axe mythes et vérités : idées reçues vs réalité",
+      ];
+      // Helper: fetch fresh AI-generated content for the SAME theme but a
+      // DIFFERENT angle each iteration, so each batch video carries its own
+      // title / subtitle / cards. Falls back to the local generator if AI
+      // fails. Returns null if both fail (caller keeps the editor's values).
+      const generateBatchVariation = async (batchIndex: number): Promise<{ title: string; subtitle: string; cards: typeof cards; salesPhrases: string[] } | null> => {
         const themeObj = CONTENT_THEMES.find((t) => t.id === contentTheme);
         const topicText = contentTheme === "personnalise" ? customTopic : themeObj?.label || contentTheme;
         if (!topicText.trim()) return null;
         const accent = COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent || customAccent || "#a855f7";
+        const angle = ANGLES[(batchIndex - 1) % ANGLES.length];
+        // The topic itself stays clean; we add an explicit angle + variation
+        // nonce so the model produces genuinely different content each call.
+        const variationTopic = `${topicText} — ${angle} (variation #${batchIndex + 1}/${total}, ${Date.now().toString(36)})`;
         // AI first
         try {
           const r = await fetch("/api/content/ai-generate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ topic: topicText, locale: "fr", cardCount: 5 }),
+            body: JSON.stringify({ topic: variationTopic, locale: "fr", cardCount: 5 }),
           });
           if (r.ok) {
             const d = await r.json();
@@ -1127,12 +1145,13 @@ export default function InfographicPage() {
             }
           }
         } catch {}
-        // Local fallback
+        // Local fallback (will be the same lookup-table result each time —
+        // better than nothing but not true variation).
         try {
           const r = await fetch("/api/content/generate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ topic: topicText }),
+            body: JSON.stringify({ topic: variationTopic }),
           });
           if (r.ok) {
             const d = await r.json();
@@ -1167,7 +1186,7 @@ export default function InfographicPage() {
         let bCards = cards;
         let bSalesPhrases = salesPhrases;
         if (b > 0) {
-          const variation = await generateBatchVariation();
+          const variation = await generateBatchVariation(b);
           if (variation) {
             bTitle = variation.title;
             bSubtitle = variation.subtitle;
