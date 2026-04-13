@@ -785,7 +785,7 @@ function AudioStudioContent() {
                   media_url: result.url,
                   media_type: 'video',
                   // Keep existing status (draft) — user must explicitly schedule via Calendar
-                  metadata: { ...pm, renderedVideoUrl: result.url, videoUrl: result.url, hasAudio: true, musicUrl: uploadedMusicUrl, voiceUrl: uploadedVoiceUrl },
+                  metadata: { ...pm, renderedVideoUrl: result.url, videoUrl: result.url, thumbnailUrl: result.thumbnailUrl || (pm as any).thumbnailUrl, hasAudio: true, musicUrl: uploadedMusicUrl, voiceUrl: uploadedVoiceUrl },
                 }),
               });
               const patchData = await patchRes.json().catch(() => ({}));
@@ -933,7 +933,7 @@ function AudioStudioContent() {
               body: JSON.stringify({
                 media_url: result.url,
                 media_type: 'video',
-                metadata: { ...pm, renderedVideoUrl: result.url, videoUrl: result.url, hasAudio: true, musicUrl: uploadedMusicUrl, voiceUrl: uploadedVoiceUrl },
+                metadata: { ...pm, renderedVideoUrl: result.url, videoUrl: result.url, thumbnailUrl: result.thumbnailUrl || (pm as any).thumbnailUrl, hasAudio: true, musicUrl: uploadedMusicUrl, voiceUrl: uploadedVoiceUrl },
               }),
             });
           } catch (err) { console.error('[AudioStudio] Update failed:', err); }

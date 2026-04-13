@@ -74,6 +74,8 @@ interface PostMetadata {
   voiceUrl?: string;
   renderedVideoUrl?: string;
   rawVideoUrl?: string;
+  /** JPEG thumbnail captured by the composer at export time (~100-200 KB). Used as the sidebar miniature. */
+  thumbnailUrl?: string;
   hasAudio?: boolean;
   sequences?: {
     intro?: number;
@@ -2063,17 +2065,25 @@ export default function CalendarPage() {
                 {selectedDayPosts.length > 0 && !bulkMode && (() => {
                   const fp = fullPreviewPost || selectedDayPosts[0];
                   const fpMeta = fp.metadata;
-                  // Priority: renderedVideoUrl (composed montage) → media_url (published) → poster image fallback
-                  const videoUrl = fpMeta?.renderedVideoUrl || fp.media_url;
+                  // Priority: thumbnailUrl (JPEG captured at export, ~100 KB) →
+                  //           posterUrl/pexelsUrl/characterUrl → renderedVideoUrl/media_url (~20-30 MB).
+                  // Prefer the static image whenever possible: loads instantly, no black-frame bug,
+                  // no 30 MB download for a tiny sidebar miniature.
+                  const thumbnailUrl = fpMeta?.thumbnailUrl || null;
                   const fpPosterImg = fpMeta?.pexelsUrl || fpMeta?.posterUrl || fpMeta?.characterUrl || null;
+                  const videoUrl = fpMeta?.renderedVideoUrl || fp.media_url;
+                  const staticImg = thumbnailUrl || fpPosterImg;
 
-                  if (!videoUrl && !fpPosterImg && !fp.title) return null;
+                  if (!staticImg && !videoUrl && !fp.title) return null;
 
                   return (
                     <div className="flex justify-center mb-3">
                       <div className="w-28 sm:w-36 aspect-[9/16] rounded-xl overflow-hidden border border-gray-700 bg-black relative">
-                        {videoUrl ? (
-                          /* Show the REAL composed video — first frame as thumbnail */
+                        {staticImg ? (
+                          // Instant static thumbnail (JPEG preferred, poster fallback).
+                          <img src={staticImg} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                        ) : videoUrl ? (
+                          // Legacy fallback: load the composed video and seek to 0.5s.
                           <video
                             src={videoUrl as string}
                             className="absolute inset-0 w-full h-full object-cover"
@@ -2081,13 +2091,10 @@ export default function CalendarPage() {
                             playsInline
                             preload="metadata"
                             onLoadedMetadata={(e) => {
-                              // Seek to 0.5s to show the intro frame (not a black frame)
                               const v = e.target as HTMLVideoElement;
                               v.currentTime = 0.5;
                             }}
                           />
-                        ) : fpPosterImg ? (
-                          <img src={fpPosterImg} alt="" className="absolute inset-0 w-full h-full object-cover" />
                         ) : (
                           <div className="absolute inset-0 flex items-center justify-center">
                             <span className="text-white/50 text-xs">{fp.title || 'TITRE'}</span>

@@ -114,8 +114,8 @@ export interface DesignOptions {
     bold?: boolean;
     italic?: boolean;
   };
-  /** Sequence-level gradient overrides */
-  seqGradients?: Record<string, { enabled?: boolean; color1?: string; color2?: string; opacity?: number }>;
+  /** Sequence-level gradient overrides (keys: 'titre'|'intro' 'cartes'|'cards' 'video' 'cta') */
+  seqGradients?: Record<string, { enabled?: boolean; color1?: string; color2?: string; opacity?: number; position?: 'top' | 'bottom' | 'left' | 'right' | 'both' }>;
   /** No-color background flag */
   noColorBg?: boolean;
   /** Sequences with no color overlay */
@@ -391,6 +391,32 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+/**
+ * Tailwind's `drop-shadow-lg` is a COMPOUND shadow:
+ *   drop-shadow(0 10px 8px rgb(0 0 0 / 0.04))
+ *   drop-shadow(0 4px 3px  rgb(0 0 0 / 0.1))
+ * Canvas's `ctx.shadow*` only supports ONE shadow. We emulate the compound
+ * shadow via `ctx.filter`, scaled from the editor's 320-px viewport to canvas.
+ * Returns the filter string to assign to `ctx.filter` — remember to reset it
+ * to 'none' after drawing.
+ */
+function dropShadowLgFilter(w: number): string {
+  const s = w / 320; // scale px from editor viewport to canvas
+  const y1 = Math.max(1, Math.round(4 * s));
+  const b1 = Math.max(1, Math.round(3 * s));
+  const y2 = Math.max(1, Math.round(10 * s));
+  const b2 = Math.max(1, Math.round(8 * s));
+  return `drop-shadow(0 ${y1}px ${b1}px rgba(0,0,0,0.1)) drop-shadow(0 ${y2}px ${b2}px rgba(0,0,0,0.04))`;
+}
+
+/** Tailwind's `drop-shadow` (base) is a single softer shadow. Used for subtitle/cards. */
+function dropShadowBaseFilter(w: number): string {
+  const s = w / 320;
+  const y = Math.max(1, Math.round(1 * s));
+  const b = Math.max(1, Math.round(2 * s));
+  return `drop-shadow(0 ${y}px ${b}px rgba(0,0,0,0.1))`;
+}
+
 /** Word-wrap text to fit within maxWidth, splitting at word boundaries */
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
   const words = text.split(' ');
@@ -477,50 +503,129 @@ function drawLogoAccurate(
 }
 
 // ═══════════════════════════════════════════════════════════
+// SEQUENCE NAME NORMALIZATION
+// ═══════════════════════════════════════════════════════════
+// The editor stores sequence keys in French ('titre','cartes','video','cta')
+// but the draw functions think in English ('intro','cards','video','cta').
+// Keep a single source of truth for both directions.
+
+const SEQ_NAME_MAP: Record<string, string> = { titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' };
+const SEQ_NAME_REVERSE: Record<string, string> = { intro: 'titre', cards: 'cartes', video: 'video', cta: 'cta' };
+
+/**
+ * Look up a per-sequence gradient override with FR-key fallback.
+ * `seq` is the English name ('intro'|'cards'|'video'|'cta').
+ */
+function resolveSeqGradient(
+  design: DesignOptions | undefined, seq: string
+): { enabled: boolean; color1: string; color2: string; opacity: number; position: 'top'|'bottom'|'left'|'right'|'both' } {
+  const frKey = SEQ_NAME_REVERSE[seq] || seq;
+  const override = design?.seqGradients?.[seq] ?? design?.seqGradients?.[frKey];
+  // Editor default: video has gradient disabled, others enabled
+  const defaultEnabled = seq === 'video' ? false : true;
+  return {
+    enabled: override?.enabled ?? defaultEnabled,
+    color1: override?.color1 || design?.gradientColor1 || '#7C3AED',
+    color2: override?.color2 || design?.gradientColor2 || '#EC4899',
+    opacity: override?.opacity ?? design?.gradientOpacity ?? 0.3,
+    position: override?.position || 'both',
+  };
+}
+
+/**
+ * Paint the per-sequence gradient matching the editor's CSS output exactly
+ * (see page.tsx:3098-3148). Respects:
+ *   - `design.noColorBg` / `design.noColorSequences` → solid dark #0A0A0F
+ *   - `seqGradients[seq].enabled === false` → no paint (caller already cleared or drew a background)
+ *   - `position`: 'top' | 'bottom' | 'left' | 'right' | 'both'
+ *   - `opacity > 1` → second layer for >100% intensity
+ */
+function paintSeqGradient(
+  ctx: CanvasRenderingContext2D, w: number, h: number, seq: string, design?: DesignOptions
+): void {
+  const editorSeq = SEQ_NAME_REVERSE[seq] || seq;
+  const noColor = design?.noColorBg === true
+    || design?.noColorSequences?.includes(seq)
+    || design?.noColorSequences?.includes(editorSeq);
+  if (noColor) {
+    ctx.fillStyle = '#0A0A0F';
+    ctx.fillRect(0, 0, w, h);
+    return;
+  }
+
+  const g = resolveSeqGradient(design, seq);
+  if (!g.enabled || g.opacity <= 0) return;
+
+  const paintLayer = (alpha: number) => {
+    if (alpha <= 0) return;
+    const c1 = hexToRgba(g.color1, alpha);
+    const c2 = hexToRgba(g.color2, alpha);
+    let grad: CanvasGradient;
+    switch (g.position) {
+      case 'top':
+        grad = ctx.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0, c1);
+        grad.addColorStop(0.5, 'rgba(0,0,0,0)');
+        break;
+      case 'bottom':
+        grad = ctx.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0.5, 'rgba(0,0,0,0)');
+        grad.addColorStop(1, c2);
+        break;
+      case 'left':
+        grad = ctx.createLinearGradient(0, 0, w, 0);
+        grad.addColorStop(0, c1);
+        grad.addColorStop(0.5, 'rgba(0,0,0,0)');
+        break;
+      case 'right':
+        grad = ctx.createLinearGradient(w, 0, 0, 0);
+        grad.addColorStop(0, c1);
+        grad.addColorStop(0.5, 'rgba(0,0,0,0)');
+        break;
+      case 'both':
+      default:
+        grad = ctx.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0, c1);
+        grad.addColorStop(0.4, 'rgba(0,0,0,0)');
+        grad.addColorStop(0.6, 'rgba(0,0,0,0)');
+        grad.addColorStop(1, c2);
+        break;
+    }
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+  };
+
+  // First layer: opacity clamped to 1
+  paintLayer(Math.min(g.opacity, 1));
+  // Second layer for >100% intensity (matches editor)
+  if (g.opacity > 1) paintLayer(g.opacity - 1);
+}
+
+// ═══════════════════════════════════════════════════════════
 // SEQUENCE RENDERERS
 // ═══════════════════════════════════════════════════════════
 
 function drawIntro(
   ctx: CanvasRenderingContext2D, w: number, h: number,
   posterImg: HTMLImageElement | null, logoImg: HTMLImageElement | null,
-  title: string, subtitle: string | undefined, accent: string, _progress: number,
+  title: string, subtitle: string | undefined, _accent: string, _progress: number,
   design?: DesignOptions
 ) {
   const fontFamily = design?.font || 'sans-serif';
   const titleColor = design?.titleColor || '#FFFFFF';
-  const grad1 = design?.gradientColor1 || accent;
-  const grad2 = design?.gradientColor2 || accent;
-  const gradOpacity = design?.gradientOpacity ?? 0.3;
 
-  // Background: poster image or dark gradient
+  // Background: poster image (if any) then per-sequence gradient matching editor CSS.
+  // When no poster is provided, fall back to a dark backdrop BEFORE the gradient
+  // so the colored overlay still has something to sit on.
   if (posterImg) {
     const scale = Math.max(w / posterImg.width, h / posterImg.height);
     const sw = posterImg.width * scale, sh = posterImg.height * scale;
     ctx.drawImage(posterImg, (w - sw) / 2, (h - sh) / 2, sw, sh);
-    // Gradient matching editor CSS: linear-gradient(180deg, color1+alpha 0%, transparent 40%, transparent 60%, color2+alpha 100%)
-    // 180deg in CSS = top to bottom → createLinearGradient(0, 0, 0, h)
-    const clampedOpacity = Math.min(gradOpacity, 1);
-    const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, hexToRgba(grad1, clampedOpacity));
-    grad.addColorStop(0.4, 'rgba(0,0,0,0)');
-    grad.addColorStop(0.6, 'rgba(0,0,0,0)');
-    grad.addColorStop(1, hexToRgba(grad2, clampedOpacity));
-    ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
-    // Second layer for >100% intensity (matches editor double-layer CSS)
-    if (gradOpacity > 1) {
-      const extraOpacity = gradOpacity - 1;
-      const grad2Layer = ctx.createLinearGradient(0, 0, 0, h);
-      grad2Layer.addColorStop(0, hexToRgba(grad1, extraOpacity));
-      grad2Layer.addColorStop(0.35, 'rgba(0,0,0,0)');
-      grad2Layer.addColorStop(0.65, 'rgba(0,0,0,0)');
-      grad2Layer.addColorStop(1, hexToRgba(grad2, extraOpacity));
-      ctx.fillStyle = grad2Layer; ctx.fillRect(0, 0, w, h);
-    }
   } else {
-    const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, '#000000'); grad.addColorStop(1, hexToRgba(grad1, 1));
-    ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#0A0A0F';
+    ctx.fillRect(0, 0, w, h);
   }
+  paintSeqGradient(ctx, w, h, 'intro', design);
 
   // Title sizing and position — matched to editor CSS:
   //   Editor (9:16): fontSize = 14 * textScale px on 320px wide = 14/320 = 0.04375 of width
@@ -551,11 +656,11 @@ function drawIntro(
   ctx.textBaseline = 'top';
   ctx.font = `${fontStyle}${fontWeight} ${fontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
   ctx.fillStyle = hexToRgba(titleColor, titleAlpha);
-  // Editor uses Tailwind drop-shadow-lg = subtle dark shadow, NOT colored glow
-  // drop-shadow-lg ≈ drop-shadow(0 10px 8px rgb(0 0 0 / 0.04)) drop-shadow(0 4px 3px rgb(0 0 0 / 0.1))
-  ctx.shadowColor = 'rgba(0,0,0,0.15)';
-  ctx.shadowBlur = Math.round(w * 0.008);
-  ctx.shadowOffsetY = Math.round(w * 0.005);
+  // Editor uses Tailwind `drop-shadow-lg` — a COMPOUND filter that single-shadow
+  // ctx.shadow* cannot reproduce. Use ctx.filter to match exactly.
+  ctx.filter = dropShadowLgFilter(w);
+  // Make sure no legacy ctx.shadow* values leak through and double-shadow
+  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0; ctx.shadowOffsetX = 0;
 
   // Word-wrap title to match editor behavior (text wraps within titleWidth)
   const titleLines = wrapText(ctx, title, titleWidth);
@@ -569,19 +674,17 @@ function drawIntro(
     const dupOffset = ((design!.titleTypography as any).duplicateOffset || 5) * (w / 320);
     const dupOpacity = (design!.titleTypography as any).duplicateOpacity || 0.3;
     ctx.save();
+    ctx.filter = 'none';
     ctx.fillStyle = hexToRgba(titleColor, titleAlpha * dupOpacity);
-    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
     for (let i = 0; i < titleLines.length; i++) {
       fillTextWithSpacing(ctx, titleLines[i], titlePosX + dupOffset, titleDrawY + i * lineSpacing + dupOffset, titleLetterSpacing);
     }
     ctx.restore();
-    // Restore main text style (including textBaseline which was reset by restore)
+    // Restore main text style (save/restore already restored filter, but reset explicitly)
     ctx.textBaseline = 'top';
     ctx.font = `${fontStyle}${fontWeight} ${fontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
     ctx.fillStyle = hexToRgba(titleColor, titleAlpha);
-    ctx.shadowColor = 'rgba(0,0,0,0.15)';
-    ctx.shadowBlur = Math.round(w * 0.008);
-    ctx.shadowOffsetY = Math.round(w * 0.005);
+    ctx.filter = dropShadowLgFilter(w);
   }
 
   // Text gradient support: editor uses linear-gradient(135deg, color1, color2) + background-clip: text
@@ -591,7 +694,7 @@ function drawIntro(
 
   // Main title text — draw shadow pass first, then gradient pass on top
   if (hasTextGradient) {
-    // Pass 1: draw text with shadow (in solid color for shadow layer)
+    // Pass 1: draw text with compound drop-shadow in solid color for shadow layer
     for (let i = 0; i < titleLines.length; i++) {
       if (titleLetterSpacing) {
         fillTextWithSpacing(ctx, titleLines[i], titlePosX, titleDrawY + i * lineSpacing, titleLetterSpacing);
@@ -599,7 +702,9 @@ function drawIntro(
         ctx.fillText(titleLines[i], titlePosX, titleDrawY + i * lineSpacing);
       }
     }
-    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    // Disable filter before the gradient overlay pass so the gradient fill
+    // itself doesn't get re-shadowed (editor clips the gradient inside text).
+    ctx.filter = 'none';
 
     // Pass 2: overdraw with gradient fill (no shadow)
     // 135deg gradient: from top-left to bottom-right across the text block
@@ -619,7 +724,7 @@ function drawIntro(
       }
     }
   } else {
-    // No gradient — single pass with solid color
+    // No gradient — single pass with solid color (filter already drop-shadow-lg)
     for (let i = 0; i < titleLines.length; i++) {
       if (titleLetterSpacing) {
         fillTextWithSpacing(ctx, titleLines[i], titlePosX, titleDrawY + i * lineSpacing, titleLetterSpacing);
@@ -627,22 +732,21 @@ function drawIntro(
         ctx.fillText(titleLines[i], titlePosX, titleDrawY + i * lineSpacing);
       }
     }
-    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    ctx.filter = 'none';
   }
 
   const titleBlockBottom = titleDrawY + (titleLines.length - 1) * lineSpacing + fontSize;
 
   // Subtitle below title — no animation, static like editor
-  // Editor: mt-1 (4px on 320px), color = titleColor+cc (80%), drop-shadow
+  // Editor: mt-1 (4px on 320px), color = titleColor+cc (80%), drop-shadow (base, not lg)
   if (subtitle) {
     ctx.font = `${fontStyle}${fontWeight} ${subFontSize}px "${fontFamily}", sans-serif`;
     ctx.fillStyle = hexToRgba(titleColor, 0.8);
-    ctx.shadowColor = 'rgba(0,0,0,0.15)'; ctx.shadowBlur = Math.round(w * 0.006);
-    ctx.shadowOffsetY = Math.round(w * 0.003);
+    ctx.filter = dropShadowBaseFilter(w);
     // mt-1 in editor ≈ 4px on 320px → scale to canvas
     const mt1 = Math.round(w * (4 / 320));
     ctx.fillText(subtitle, titlePosX, titleBlockBottom + mt1);
-    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    ctx.filter = 'none';
   }
 
   // Accent line removed — not present in editor, video must match exactly
@@ -667,30 +771,14 @@ function drawCards(
   design?: DesignOptions
 ) {
   const fontFamily = design?.font || 'sans-serif';
-  const grad1 = design?.gradientColor1 || accent;
-  const grad2 = design?.gradientColor2 || accent;
   const textScale = design?.textScale || 1.0;
   const cardStyle = design?.cardStyle || 'Full Width';
   const isReel = h > w; // 9:16 = reel, 16:9 = landscape
 
-  // Background gradient matching editor: same format as intro (top-to-bottom, color1→transparent→color2)
-  const gradOpacity = design?.gradientOpacity ?? 0.3;
-  const clampedOp = Math.min(gradOpacity, 1);
-  const grad = ctx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, hexToRgba(grad1, clampedOp));
-  grad.addColorStop(0.4, 'rgba(0,0,0,0)');
-  grad.addColorStop(0.6, 'rgba(0,0,0,0)');
-  grad.addColorStop(1, hexToRgba(grad2, clampedOp));
-  ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
-  if (gradOpacity > 1) {
-    const extra = gradOpacity - 1;
-    const grad2L = ctx.createLinearGradient(0, 0, 0, h);
-    grad2L.addColorStop(0, hexToRgba(grad1, extra));
-    grad2L.addColorStop(0.35, 'rgba(0,0,0,0)');
-    grad2L.addColorStop(0.65, 'rgba(0,0,0,0)');
-    grad2L.addColorStop(1, hexToRgba(grad2, extra));
-    ctx.fillStyle = grad2L; ctx.fillRect(0, 0, w, h);
-  }
+  // Dark backdrop + per-sequence gradient (matches editor CSS output exactly).
+  ctx.fillStyle = '#0A0A0F';
+  ctx.fillRect(0, 0, w, h);
+  paintSeqGradient(ctx, w, h, 'cards', design);
 
   // Card sizes from design or defaults
   const containerW = Math.round(w * ((design?.cardsSize || 92) / 100));
@@ -706,7 +794,8 @@ function drawCards(
   const valueSize = Math.round(w * 0.028 * textScale);
   const descSize = Math.round(w * 0.019 * textScale);
   const borderW = Math.round(w * 0.004);
-  const radius = Math.round(w * 0.012);
+  // Editor: rounded-lg = 8px on 320px viewport → scale proportionally.
+  const radius = Math.max(2, Math.round(w * (8 / 320)));
 
   // ── Card style: Stats Bold (value big centered, label small below) ──
   // ALL card styles: NO animation — render static like editor (no fade-in, no slide, no stagger)
@@ -769,14 +858,14 @@ function drawCards(
       const x = cardsX + col * (cardW + gap);
       const y = cardsY + row * (cardH + gap);
 
-      // Background: bg-black/30 rounded-lg backdrop-blur-sm
-      // Note: Canvas doesn't support backdrop-blur, use slightly higher opacity to compensate
-      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      // Background: bg-black/30 rounded-lg (editor uses backdrop-blur but Canvas
+      // has no equivalent; keep the SAME opacity as the editor = 0.30).
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
       drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.fill();
-      // Left accent border: 2px solid card.color
+      // Left accent border: 2px solid card.color — painted FULL height, like CSS border-left.
       ctx.fillStyle = card.color || accent;
       const bw = Math.round(w * (2 / 320)); // 2px on 320px editor
-      ctx.fillRect(x, y + radius, bw, cardH - radius * 2);
+      ctx.fillRect(x, y, bw, cardH);
 
       // Layout elements top-down with flex-like gap spacing
       // textBaseline 'top' for predictable positioning
@@ -935,6 +1024,9 @@ function drawVideoSeq(
     ctx.font = `400 ${Math.round(w * 0.04)}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fillText('Vidéo', w / 2, h / 2);
   }
+  // Per-sequence gradient overlay (default: disabled for 'video', but the user
+  // can opt-in via seqGradients). Paints on top of the video frame.
+  paintSeqGradient(ctx, w, h, 'video', design);
   // Video overlay text if configured
   // Editor: fontSize = 16 * textScale px on 320px → ratio = 16/320 = 0.05
   // Editor: position from overlayPos (default: x=50%, y=33%), width 85%
@@ -992,8 +1084,10 @@ function drawCTA(
   const effectiveCtaText = design?.ctaMainText || watermark || 'AFROBOOST';
   const effectiveSubText = design?.ctaSubTextDesign || ctaText || "CHAT POUR PLUS D'INFOS";
 
-  // CTA: black background — matches preview
-  ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, w, h);
+  // CTA background: dark backdrop + per-sequence gradient (matches editor — the
+  // gradient overlay is visible over the CTA sequence too, not a solid black).
+  ctx.fillStyle = '#0A0A0F'; ctx.fillRect(0, 0, w, h);
+  paintSeqGradient(ctx, w, h, 'cta', design);
   // NO animation — editor is static, no scale bounce
   ctx.save();
 
@@ -1028,37 +1122,42 @@ function drawCTA(
   }
   if (currentLine) ctaLines.push(currentLine);
 
-  // Measure total block height
-  let blockH = 0;
-  if (salesPhrase) blockH += salesFontSize * 1.5;
-  blockH += ctaLines.length * ctaFontSize * 1.2;
-  blockH += subFontSize * 1.5;
+  // Vertical layout math — use `textBaseline='top'` so `curY` is always the
+  // top edge of whatever we draw next, no more `+ fontSize*0.5` fudge factor.
+  ctx.textBaseline = 'top';
+  const ctaLineH = ctaFontSize * (design?.ctaTypography?.lineHeight || 1.2);
+  const salesBlockH = salesPhrase ? salesFontSize * 1.5 : 0;
+  const ctaBlockH = ctaLines.length * ctaLineH;
+  const subBlockH = subFontSize * 1.5;
+  const blockH = salesBlockH + ctaBlockH + subBlockH;
 
-  // Bottom-anchored: block bottom at ctaPosY, so top = ctaPosY - blockH
-  let curY = ctaPosY - blockH + ctaFontSize * 0.5;
+  // Editor uses translate(-50%, -100%) → the BOTTOM of the block sits at ctaPosY.
+  let curY = ctaPosY - blockH;
 
   // Sales phrase — accent/ctaColor with transparency (matches preview: ctaColor + ee)
   if (salesPhrase) {
     ctx.font = `900 ${salesFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
     ctx.fillStyle = hexToRgba(ctaColor, 0.93);
     fillTextWithSpacing(ctx, salesPhrase, ctaPosX, curY, ctaLetterSpacing);
-    curY += salesFontSize * 1.5;
+    curY += salesBlockH;
   }
 
   // Main CTA text — ctaColor, large, bold, uppercase (matches editor .uppercase class)
+  ctx.font = `900 ${ctaFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
+  ctx.fillStyle = ctaColor;
+  ctx.shadowColor = hexToRgba(ctaColor, 0.4); ctx.shadowBlur = Math.round(w * 0.02);
   ctaLines.forEach((line, i) => {
-    ctx.font = `900 ${ctaFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
-    ctx.fillStyle = ctaColor;
-    ctx.shadowColor = hexToRgba(ctaColor, 0.4); ctx.shadowBlur = Math.round(w * 0.02);
-    fillTextWithSpacing(ctx, line, ctaPosX, curY + i * (ctaFontSize * 1.2), ctaLetterSpacing);
+    fillTextWithSpacing(ctx, line, ctaPosX, curY + i * ctaLineH, ctaLetterSpacing);
   });
   ctx.shadowBlur = 0;
-  curY += ctaLines.length * ctaFontSize * 1.2;
+  curY += ctaBlockH;
 
   // Sub-text — user-configured color, 900 weight, uppercase (matches editor)
   ctx.font = `900 ${subFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
   ctx.fillStyle = ctaSubColor;
-  fillTextWithSpacing(ctx, effectiveSubText.toUpperCase(), ctaPosX, curY + subFontSize * 0.3, ctaLetterSpacing);
+  // Small top gap (matches editor's default vertical rhythm inside CTA block).
+  fillTextWithSpacing(ctx, effectiveSubText.toUpperCase(), ctaPosX, curY + subFontSize * 0.25, ctaLetterSpacing);
+  ctx.textBaseline = 'alphabetic';
 
   // Logo on CTA if configured — uses per-sequence position
   if (logoImg && (!design?.logoSequences || design.logoSequences.includes('cta'))) {
@@ -1083,7 +1182,7 @@ function drawTransition(
 // MAIN COMPOSER — MediaRecorder + <audio> elements
 // ═══════════════════════════════════════════════════════════
 
-export async function composeVideo(options: ComposerOptions): Promise<Blob> {
+export async function composeVideo(options: ComposerOptions): Promise<{ video: Blob; thumbnail: Blob | null }> {
   const {
     width, height, fps = 30,
     title, subtitle, salesPhrase, cards = [],
@@ -1105,21 +1204,23 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   console.log('[Composer] Design:', design ? JSON.stringify({ font: design.font, titleColor: design.titleColor, grad1: design.gradientColor1, logoPos: design.logoPosition, logoPositions: design.logoPositions, logoSeqs: design.logoSequences, logoScale: design.logoScale }) : 'NONE');
 
   // ── Normalize French sequence names → English ──
-  // The editor (infographie) stores logoSequences with French names ('titre','cartes','video','cta')
-  // but the draw functions check English names ('intro','cards','video','cta').
-  const seqNameMap: Record<string, string> = { titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' };
-  // Normalize logoPositions keys from French → English too
-  const normalizedLogoPositions: Record<string, { x?: number; y?: number }> | undefined =
-    design?.logoPositions
+  // The editor (infographie) stores logoSequences / seqGradients with French
+  // names ('titre','cartes','video','cta') but the draw functions check English
+  // names ('intro','cards','video','cta'). Use the module-scope SEQ_NAME_MAP.
+  const normalizeKeys = <V>(obj: Record<string, V> | undefined): Record<string, V> | undefined =>
+    obj
       ? Object.fromEntries(
-          Object.entries(design.logoPositions).map(([k, v]) => [seqNameMap[k.toLowerCase()] || k, v])
+          Object.entries(obj).map(([k, v]) => [SEQ_NAME_MAP[k.toLowerCase()] || k, v])
         )
       : undefined;
+  const normalizedLogoPositions = normalizeKeys(design?.logoPositions);
+  const normalizedSeqGradients = normalizeKeys(design?.seqGradients);
   const normalizedDesign: DesignOptions | undefined = design
     ? {
         ...design,
-        logoSequences: design.logoSequences?.map(s => seqNameMap[s.toLowerCase()] || s),
+        logoSequences: design.logoSequences?.map(s => SEQ_NAME_MAP[s.toLowerCase()] || s),
         logoPositions: normalizedLogoPositions,
+        seqGradients: normalizedSeqGradients,
       }
     : undefined;
   if (design?.logoSequences) {
@@ -1244,6 +1345,27 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   const ctx = canvas.getContext('2d')!;
   canvas.style.cssText = 'position:fixed;top:-9999px;left:-9999px;pointer-events:none;opacity:0;';
   document.body.appendChild(canvas);
+
+  // Thumbnail capture state — we snapshot the first frame past 0.5s into the
+  // intro sequence. Saved as JPEG 0.85 quality and uploaded alongside the video
+  // so the calendar can render a static miniature instead of loading the full
+  // 20–30 MB rush.
+  let thumbnailBlob: Blob | null = null;
+  let thumbnailRequested = false;
+  const captureThumbnail = () => {
+    if (thumbnailRequested) return;
+    thumbnailRequested = true;
+    try {
+      canvas.toBlob((b) => {
+        if (b) {
+          thumbnailBlob = b;
+          console.log(`[Composer] 📸 Thumbnail captured: ${(b.size / 1024).toFixed(1)} KB`);
+        }
+      }, 'image/jpeg', 0.85);
+    } catch (err) {
+      console.warn('[Composer] Thumbnail capture failed:', err);
+    }
+  };
 
   // Draw frame helper
   const drawFrame = (elapsed: number) => {
@@ -1469,7 +1591,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   // frame pushing with captureStream(0) + requestFrame().
   // ═══════════════════════════════════════════════════════════
   if (useFastMode) {
-    return new Promise<Blob>((resolve, reject) => {
+    return new Promise<{ video: Blob; thumbnail: Blob | null }>((resolve, reject) => {
       recorder.onstop = () => {
         const outputType = isMP4 ? 'video/mp4' : 'video/webm';
         const blob = new Blob(chunks, { type: outputType });
@@ -1477,7 +1599,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
         if (videoEl) videoEl.pause();
         try { document.body.removeChild(canvas); } catch {}
         onProgress?.(100, 'Terminé !');
-        resolve(blob);
+        resolve({ video: blob, thumbnail: thumbnailBlob });
       };
       recorder.onerror = (e) => { console.error('[Composer] MediaRecorder error:', e); reject(new Error('Recording failed')); };
 
@@ -1516,6 +1638,8 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
         }
 
         drawFrame(t);
+        // Capture a JPEG thumbnail ~0.5s into the intro — non-blocking.
+        if (t >= 0.5) captureThumbnail();
 
         // Report progress every 0.5s
         const pct = Math.round(15 + (elapsed / totalDuration) * 80);
@@ -1533,7 +1657,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
   // ═══════════════════════════════════════════════════════════
   // REAL-TIME MODE: With audio → must render in sync with audio
   // ═══════════════════════════════════════════════════════════
-  return new Promise<Blob>(async (resolve, reject) => {
+  return new Promise<{ video: Blob; thumbnail: Blob | null }>(async (resolve, reject) => {
     recorder.onstop = () => {
       const outputType = isMP4 ? 'video/mp4' : 'video/webm';
       const blob = new Blob(chunks, { type: outputType });
@@ -1546,7 +1670,7 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       if (videoEl) videoEl.pause();
       try { document.body.removeChild(canvas); } catch {}
       onProgress?.(100, 'Terminé !');
-      resolve(blob);
+      resolve({ video: blob, thumbnail: thumbnailBlob });
       // Only close AudioContext if we created it (NOT shared in batch mode)
       if (audioCtx && !isSharedCtx) { audioCtx.close().catch(() => {}); }
     };
@@ -1661,6 +1785,8 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
       }
 
       drawFrame(t);
+      // Capture a JPEG thumbnail ~0.5s into the intro — non-blocking.
+      if (t >= 0.5) captureThumbnail();
 
       if (elapsed - lastProgress > 0.5) {
         lastProgress = elapsed;
@@ -1695,8 +1821,8 @@ export async function composeVideo(options: ComposerOptions): Promise<Blob> {
 // UPLOAD + DOWNLOAD
 // ═══════════════════════════════════════════════════════════
 
-export async function composeAndUpload(options: ComposerOptions): Promise<{ blob: Blob; url: string | null }> {
-  const blob = await composeVideo(options);
+export async function composeAndUpload(options: ComposerOptions): Promise<{ blob: Blob; url: string | null; thumbnailUrl: string | null }> {
+  const { video: blob, thumbnail: thumbnailBlob } = await composeVideo(options);
   if (blob.size === 0) {
     console.error('[Composer] ❌ composeVideo produced an EMPTY blob (0 bytes). MediaRecorder likely failed to capture frames.');
     throw new Error('Le rendu vidéo a produit un fichier vide (0 octets). Votre navigateur ne supporte peut-être pas le codec vidéo requis. Essayez avec Chrome ou Edge.');
@@ -1760,7 +1886,41 @@ export async function composeAndUpload(options: ComposerOptions): Promise<{ blob
     throw new Error(`Le montage a été créé (${(blob.size / 1024 / 1024).toFixed(1)}MB) mais l'upload a échoué. Vérifiez votre connexion internet et réessayez.`);
   }
 
-  return { blob, url };
+  // Upload the JPEG thumbnail (if captured) so the calendar can render a cheap
+  // <img> miniature instead of loading the 20–30 MB rush video. Failures are
+  // non-fatal — we degrade to the legacy `poster/video` fallbacks.
+  let thumbnailUrl: string | null = null;
+  if (thumbnailBlob && thumbnailBlob.size > 0) {
+    try {
+      const thumbFilename = `thumb-${Date.now()}.jpg`;
+      console.log('[Composer] Requesting signed URL for thumbnail...', (thumbnailBlob.size / 1024).toFixed(1), 'KB');
+      const signedThumb = await fetch('/api/upload/signed-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: thumbFilename, contentType: 'image/jpeg', purpose: 'thumbnail' }),
+      });
+      const signedThumbData = await signedThumb.json();
+      if (signedThumbData.success && signedThumbData.signedUrl) {
+        const thumbUp = await fetch(signedThumbData.signedUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'image/jpeg' },
+          body: thumbnailBlob,
+        });
+        if (thumbUp.ok) {
+          thumbnailUrl = signedThumbData.publicUrl;
+          console.log('[Composer] ✅ Thumbnail uploaded:', thumbnailUrl);
+        } else {
+          console.warn('[Composer] Thumbnail upload failed:', thumbUp.status, thumbUp.statusText);
+        }
+      } else {
+        console.warn('[Composer] Thumbnail signed URL request failed:', signedThumbData);
+      }
+    } catch (err) {
+      console.warn('[Composer] Thumbnail upload error (non-fatal):', err);
+    }
+  }
+
+  return { blob, url, thumbnailUrl };
 }
 
 /**
