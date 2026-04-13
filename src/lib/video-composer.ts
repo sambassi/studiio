@@ -4,7 +4,7 @@
  * Audio elements handle MP3/OGG/WAV decoding natively (no OfflineAudioContext).
  * Outputs MP4 if supported, otherwise WebM.
  */
-const COMPOSER_VERSION = 'v16-cards-viewport-aware-2026-04-13';
+const COMPOSER_VERSION = 'v17-card-clip-cta-wrap-2026-04-13';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -842,13 +842,19 @@ function drawCards(
   // adjacent card).
   const editorViewportPx = isReel ? 320 : 512;
   const fontPx = (cssPx: number) => Math.round(w * cssPx / editorViewportPx * textScale);
+  // Non-font CSS pixels (padding, gap, border, radius) also live in the
+  // editor's fixed-pixel Tailwind world. Scale them with the same viewport
+  // ratio so cards have the correct inter-card gap and padding relative to
+  // the label/value sizes. Previously these used hardcoded /320 which made
+  // gaps 60% larger in 16:9 relative to fonts, squishing card contents.
+  const cssPx = (pxAt320: number) => Math.max(1, Math.round(w * pxAt320 / editorViewportPx));
 
   const emojiSize = fontPx(14);
   const labelSize = fontPx(7);
   const valueSize = fontPx(9);
   const descSize = fontPx(6);
-  // Editor: rounded-lg = 8px on 320px viewport → scale proportionally.
-  const radius = Math.max(2, Math.round(w * (8 / 320)));
+  // Editor: rounded-lg = 8px in the editor viewport.
+  const radius = Math.max(2, cssPx(8));
 
   // ── Card style: Stats Bold ──
   // Editor (infographie/page.tsx:3429-3452):
@@ -859,11 +865,11 @@ function drawCards(
   //   Row 2: label (6 * textScale px, font-medium 500, text-white/80, mt-0.5)
   if (cardStyle === 'Stats Bold') {
     const cols = isReel ? 2 : 3;
-    const gap = Math.round(w * (6 / 320)); // gap-1.5
+    const gap = cssPx(6); // gap-1.5
     const cardW = Math.round((containerW - (cols - 1) * gap) / cols);
-    const paddingY = Math.round(w * (8 / 320));   // py-2
-    const paddingX = Math.round(w * (8 / 320));   // px-2
-    const innerGap = Math.round(w * (2 / 320));   // mt-0.5
+    const paddingY = cssPx(8);   // py-2
+    const paddingX = cssPx(8);   // px-2
+    const innerGap = cssPx(2);   // mt-0.5
     const bigValueSize = Math.round(w * 0.041 * textScale); // 13/320
     const contentH = bigValueSize + innerGap + descSize;
     const cardH = contentH + paddingY * 2;
@@ -914,32 +920,38 @@ function drawCards(
   //         Emoji (text-sm=14px), Label (7px bold), Value (9px black), Description (6px white/60)
   else if (cardStyle === 'Compact') {
     const cols = isReel ? 2 : 3; // Editor: grid-cols-2 (9:16), grid-cols-3 (16:9)
-    const gap = Math.round(w * (6 / 320)); // gap-1.5 = 6px on 320px editor
+    const gap = cssPx(6); // gap-1.5 = 6px on 320px editor
     const cardW = Math.round((containerW - (cols - 1) * gap) / cols);
-    const paddingY = Math.round(w * (6 / 320)); // py-1.5 = 6px on 320px
-    const paddingX = Math.round(w * (6 / 320)); // px-1.5
-    const innerGap = Math.round(w * (2 / 320)); // gap-0.5 = 2px on 320px
-    const emojiSizeLocal = Math.round(w * (isReel ? 14 / 320 : 18 / 512) * textScale);
+    const paddingY = cssPx(6); // py-1.5 = 6px on 320px
+    const paddingX = cssPx(6); // px-1.5
+    const innerGap = cssPx(2); // gap-0.5 = 2px on 320px
+    const emojiSizeLocal = fontPx(isReel ? 14 : 18);
     const lineMul = 1.2; // line-height for wrapped lines
 
-    // Pre-measure each card's wrapped lines so the height computed BELOW
-    // matches what we actually render. Without this, label/value/desc that
-    // wrap to 2 lines overflow the bottom of the card and the next card's
-    // text overlaps it ("text qui s'entremêlent").
-    const innerW = cardW - paddingX * 2;
+    // Pre-measure each card's wrapped lines. We also truncate any individual
+    // line that remains wider than innerW (single words that don't fit on one
+    // line — e.g. "EXTRACTION"). Without this the last character spills past
+    // the card's right edge visually (user report: "EXTRACTION À FROI[D]").
+    // Reserve a 4px safety margin so letter-spacing / shadow blur doesn't
+    // tip things over the edge.
+    const safety = Math.max(2, cssPx(4));
+    const innerW = cardW - paddingX * 2 - safety;
+    const clipLines = (lines: string[]) => lines.map(l =>
+      ctx.measureText(l).width > innerW ? truncateToWidth(ctx, l, innerW) : l
+    );
     type Pre = { labelLines: string[]; valueLines: string[]; descLines: string[] };
     const pre: Pre[] = cards.slice(0, maxCards).map(card => {
       ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`;
-      const labelLines = wrapText(ctx, card.label, innerW);
+      const labelLines = clipLines(wrapText(ctx, card.label, innerW));
       ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`;
-      const valueLines = wrapText(ctx, card.value, innerW);
+      const valueLines = clipLines(wrapText(ctx, card.value, innerW));
       let descLines: string[] = [];
       if (card.description) {
         const descText = card.description.length > 30
           ? card.description.substring(0, 30) + '...'
           : card.description;
         ctx.font = `400 ${descSize}px "${fontFamily}", sans-serif`;
-        descLines = wrapText(ctx, descText, innerW).slice(0, 2);
+        descLines = clipLines(wrapText(ctx, descText, innerW)).slice(0, 2);
       }
       return { labelLines, valueLines, descLines };
     });
@@ -974,7 +986,7 @@ function drawCards(
       drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.fill();
       // Left accent border: 2px solid card.color — painted FULL height.
       ctx.fillStyle = card.color || accent;
-      const bw = Math.round(w * (2 / 320));
+      const bw = cssPx(2);
       ctx.fillRect(x, y, bw, cardH);
 
       ctx.textBaseline = 'top';
@@ -1024,12 +1036,12 @@ function drawCards(
   //   Grid: editor uses previewClasses.cols → grid-cols-2 (9:16) or grid-cols-3 (16:9).
   else if (cardStyle === 'Educatif') {
     const cols = isReel ? 2 : 3;
-    const gridGap = Math.round(w * (6 / 320)); // gap-1.5
+    const gridGap = cssPx(6); // gap-1.5
     const cardW = Math.round((containerW - (cols - 1) * gridGap) / cols);
-    const paddingX = Math.round(w * (8 / 320));   // px-2 = 8px on 320px
-    const paddingY = Math.round(w * (8 / 320));   // py-2 = 8px on 320px
-    const rowGap = Math.round(w * (4 / 320));      // mb-1 = 4px between rows
-    const emojiGap = Math.round(w * (6 / 320));    // gap-1.5 emoji↔label row
+    const paddingX = cssPx(8);   // px-2 = 8px on 320px
+    const paddingY = cssPx(8);   // py-2 = 8px on 320px
+    const rowGap = cssPx(4);      // mb-1 = 4px between rows
+    const emojiGap = cssPx(6);    // gap-1.5 emoji↔label row
     // Card height from content: padding + row1 + gap + row2 + gap + row3 + padding
     const row1H = Math.max(emojiSize, labelSize);
     // Description wraps to at most 2 lines
@@ -1052,7 +1064,7 @@ function drawCards(
       ctx.fillStyle = 'rgba(0,0,0,0.4)';
       drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.fill();
       // borderTop: 2px solid card.color — full width, top edge
-      const topBw = Math.round(w * (2 / 320));
+      const topBw = cssPx(2);
       ctx.fillStyle = card.color || accent;
       ctx.fillRect(x, y, cardW, topBw);
 
@@ -1097,13 +1109,13 @@ function drawCards(
   //   Grid: editor uses previewClasses.cols → grid-cols-2 (9:16) or grid-cols-3 (16:9).
   else if (cardStyle === 'Minimal Line') {
     const cols = isReel ? 2 : 3;
-    const gridGap = Math.round(w * (6 / 320)); // gap-1.5
+    const gridGap = cssPx(6); // gap-1.5
     const cardW = Math.round((containerW - (cols - 1) * gridGap) / cols);
-    const paddingY = Math.round(w * (4 / 320));   // py-1
-    const paddingX = Math.round(w * (4 / 320));   // px-1
-    const contentGap = Math.round(w * (8 / 320)); // gap-2 between flex items
+    const paddingY = cssPx(4);   // py-1
+    const paddingX = cssPx(4);   // px-1
+    const contentGap = cssPx(8); // gap-2 between flex items
     // Minimal Line uses text-xs for emoji (12 * textScale)
-    const minEmojiSize = Math.round(w * (12 / 320) * textScale);
+    const minEmojiSize = fontPx(12);
     const rowH = Math.max(minEmojiSize, labelSize, valueSize);
     const cardH = rowH + paddingY * 2;
     const rows = Math.ceil(maxCards / cols);
@@ -1119,7 +1131,7 @@ function drawCards(
 
       // borderBottom: 1px solid card.color @ 25% alpha
       ctx.strokeStyle = hexToRgba(card.color || accent, 0.25);
-      ctx.lineWidth = Math.max(1, Math.round(w * (1 / 320)));
+      ctx.lineWidth = Math.max(1, cssPx(1));
       ctx.beginPath();
       ctx.moveTo(x, y + cardH);
       ctx.lineTo(x + cardW, y + cardH);
@@ -1160,10 +1172,10 @@ function drawCards(
   else {
     // grid-cols-1: one column always
     const cardW = containerW;
-    const paddingY = Math.round(w * (6 / 320));   // py-1.5
-    const paddingX = Math.round(w * (12 / 320));  // px-3
-    const contentGap = Math.round(w * (8 / 320)); // gap-2
-    const innerTextGap = Math.round(w * (2 / 320)); // between stacked label and description
+    const paddingY = cssPx(6);   // py-1.5
+    const paddingX = cssPx(12);  // px-3
+    const contentGap = cssPx(8); // gap-2
+    const innerTextGap = cssPx(2); // between stacked label and description
     const fullEmojiSize = Math.round(w * (16 / 320) * textScale); // text-base
     // Middle column height: label + (description if present)
     const hasAnyDesc = cards.slice(0, maxCards).some(c => !!c.description);
@@ -1183,7 +1195,7 @@ function drawCards(
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
       drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.fill();
       // borderLeft: 3px solid card.color, FULL height (matches CSS border-left)
-      const leftBw = Math.round(w * (3 / 320)); // 3px (not 2)
+      const leftBw = cssPx(3); // 3px (not 2)
       ctx.fillStyle = card.color || accent;
       ctx.fillRect(x, y, leftBw, cardH);
 
@@ -1387,12 +1399,21 @@ function drawCTA(
   const lineMul = design?.ctaTypography?.lineHeight || 1.2;
   const mt05 = Math.max(1, Math.round(w * (2 / 320))); // mt-0.5 = 2px
   const mt1 = Math.max(1, Math.round(w * (4 / 320)));  // mt-1   = 4px
+
+  // Wrap sales phrase + sub-text within the CTA container width — without
+  // this, long phrases like "Atteignez le bien-être avec nos optimisations
+  // expertes" overflow the canvas to the left/right.
+  ctx.font = `900 ${salesFontSize}px "${fontFamily}", sans-serif`;
+  const salesLines: string[] = salesPhrase ? wrapText(ctx, salesPhrase, ctaContainerW) : [];
+  ctx.font = `900 ${subFontSize}px "${fontFamily}", sans-serif`;
+  const subLines: string[] = wrapText(ctx, effectiveSubText.toUpperCase(), ctaContainerW);
+
   const salesLineH = salesFontSize * lineMul;
   const ctaLineH = ctaFontSize * lineMul;
   const subLineH = subFontSize * lineMul;
-  const salesBlockH = salesPhrase ? salesLineH : 0;
+  const salesBlockH = salesLines.length * salesLineH;
   const ctaBlockH = ctaLines.length * ctaLineH;
-  const subBlockH = subLineH;
+  const subBlockH = subLines.length * subLineH;
   const blockH = salesBlockH
     + (salesPhrase ? mt05 : 0) // gap sales → main
     + ctaBlockH
@@ -1402,15 +1423,17 @@ function drawCTA(
   // Editor uses translate(-50%, -100%) → the BOTTOM of the block sits at ctaPosY.
   let curY = ctaPosY - blockH;
 
-  // Sales phrase — accent/ctaColor with transparency (matches preview: ctaColor + ee)
-  if (salesPhrase) {
+  // Sales phrase (multi-line)
+  if (salesLines.length > 0) {
     ctx.font = `900 ${salesFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
     ctx.fillStyle = hexToRgba(ctaColor, 0.93);
-    fillTextWithSpacing(ctx, salesPhrase, ctaPosX, curY, ctaLetterSpacing);
+    salesLines.forEach((line, i) => {
+      fillTextWithSpacing(ctx, line, ctaPosX, curY + i * salesLineH, ctaLetterSpacing);
+    });
     curY += salesBlockH + mt05;
   }
 
-  // Main CTA text — ctaColor, large, bold, uppercase (matches editor .uppercase class)
+  // Main CTA text (multi-line)
   ctx.font = `900 ${ctaFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
   ctx.fillStyle = ctaColor;
   ctx.shadowColor = hexToRgba(ctaColor, 0.4); ctx.shadowBlur = Math.round(w * 0.02);
@@ -1420,10 +1443,12 @@ function drawCTA(
   ctx.shadowBlur = 0;
   curY += ctaBlockH + mt1;
 
-  // Sub-text — user-configured color, 900 weight, uppercase (matches editor)
+  // Sub-text (multi-line) — user-configured color, 900 weight, uppercase
   ctx.font = `900 ${subFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
   ctx.fillStyle = ctaSubColor;
-  fillTextWithSpacing(ctx, effectiveSubText.toUpperCase(), ctaPosX, curY, ctaLetterSpacing);
+  subLines.forEach((line, i) => {
+    fillTextWithSpacing(ctx, line, ctaPosX, curY + i * subLineH, ctaLetterSpacing);
+  });
   ctx.textBaseline = 'alphabetic';
 
   // Logo on CTA if configured — uses per-sequence position
