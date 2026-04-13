@@ -1112,9 +1112,10 @@ function AudioStudioContent() {
                 </>
               ) : isMontagePost && (meta.renderedVideoUrl as string | undefined) ? (
                 /* ═══ MONTAGE PREVIEW — play the REAL exported video ═══
-                   One source of truth: the mp4 from composeAndUpload. No HTML
-                   reconstruction that drifts from editor. Timeline (music/voice
-                   sync) still uses `videoRef` so all existing handlers work. */
+                   Native HTML5 `controls` so user can play/pause/seek without
+                   fighting the timeline's internal isPlaying state machine.
+                   Not autoplay — too many interruption loops between timeline
+                   and media element. Click the play button to start. */
                 <>
                   <video
                     key={`montage-rendered-${post?.id}`}
@@ -1122,25 +1123,14 @@ function AudioStudioContent() {
                     src={meta.renderedVideoUrl as string}
                     poster={posterImgSrc || undefined}
                     className="w-full h-full object-contain"
-                    playsInline autoPlay loop muted
+                    playsInline loop controls preload="metadata"
                     onLoadedMetadata={() => {
-                      console.log('[AudioStudio] Rendered video loadedMetadata');
                       setVideoLoading(false);
                       setVideoError(false);
-                      // Chrome sometimes blocks autoplay silently even with muted;
-                      // explicit play() makes sure the video actually starts.
-                      const v = videoRef.current;
-                      if (v) v.play().catch(e => console.warn('[AudioStudio] autoplay blocked:', e?.message));
                     }}
                     onCanPlay={() => { setVideoLoading(false); }}
                     onLoadedData={() => { setVideoLoading(false); setVideoError(false); }}
-                    onError={(e) => {
-                      console.error('[AudioStudio] Rendered video error:', (e.target as HTMLVideoElement)?.error?.message);
-                      setVideoLoading(false);
-                      setVideoError(true);
-                    }}
-                    onWaiting={() => setVideoLoading(true)}
-                    onPlaying={() => setVideoLoading(false)}
+                    onError={() => { setVideoLoading(false); setVideoError(true); }}
                   />
                   {videoLoading && (
                     <div className="absolute inset-0 flex items-center justify-center bg-gray-900/60 z-10 pointer-events-none">

@@ -1173,7 +1173,6 @@ export default function InfographicPage() {
           let renderedComposerVersion: string | null = null;
           try {
             console.log('[Export→Calendar] Starting montage composition...', { posterUrl, rushUrl, isReel, format });
-            showToast('Composition v5 en cours...');
             setExportProgress(Math.round(((b + 0.3) / total) * 100));
             const { url: composedUrl, thumbnailUrl: composedThumbUrl, composerVersion: composedVersion } = await composeAndUpload({
               width: isReel ? 1080 : 1920,
@@ -1235,9 +1234,9 @@ export default function InfographicPage() {
             renderedThumbnailUrl = composedThumbUrl || null;
             renderedComposerVersion = composedVersion || null;
             console.log('[Export→Calendar] Montage composed and uploaded:', renderedVideoUrl, 'thumb:', renderedThumbnailUrl, 'version:', renderedComposerVersion);
-            if (renderedVideoUrl) {
-              showToast('Montage v5 composé avec succès !');
-            } else {
+            if (!renderedVideoUrl) {
+              // Only surface errors as toasts — success is conveyed by the
+              // progress bar reaching 100%.
               showToast('Attention : la vidéo a été composée mais l\'upload a échoué');
             }
           } catch (err) {
@@ -1499,17 +1498,8 @@ export default function InfographicPage() {
         }
       }
 
-      const messages: string[] = [];
-      if (destination === 'draft' || destination === 'both' || destination === 'audio-studio') {
-        messages.push(`${total} infographie${total > 1 ? 's' : ''} ajoutée${total > 1 ? 's' : ''} au calendrier`);
-      }
-      if (destination === 'export' || destination === 'both') {
-        messages.push('Fichiers téléchargés');
-      }
-      if (destination === 'audio-studio') {
-        messages.push('Redirection vers Studio Son...');
-      }
-      showToast(messages.join(' + ') + ' !', 'success');
+      // Success is conveyed by the progress bar reaching 100%; no extra toast.
+      // (User explicitly asked: ne pas en afficher ailleurs.)
 
       if (destination === 'audio-studio') {
         const audioStudioUrl = createdPostIds.length === 1
