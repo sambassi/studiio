@@ -4,7 +4,7 @@
  * Audio elements handle MP3/OGG/WAV decoding natively (no OfflineAudioContext).
  * Outputs MP4 if supported, otherwise WebM.
  */
-const COMPOSER_VERSION = 'v10-poster-preserved-2026-04-13';
+const COMPOSER_VERSION = 'v11-educatif-cards-2026-04-13';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -933,10 +933,25 @@ function drawCards(
       ctx.textBaseline = 'alphabetic';
     });
   }
-  // ── Card style: Educatif (emoji + label row, description, value) ──
+  // ── Card style: Educatif ──
+  // Editor (infographie/page.tsx:3394-3427):
+  //   rounded-lg bg-black/40 px-2 py-2  borderTop: 2px solid card.color
+  //   Row 1: emoji (text-sm) + label (scaledLabel bold white) with gap-1.5
+  //   Row 2: description (scaledDesc, text-white/70) max 60 chars
+  //   Row 3: value (scaledValue font-black, color: card.color)
   else if (cardStyle === 'Educatif') {
     const cardW = containerW;
-    const cardH = Math.round(h * 0.09);
+    const paddingX = Math.round(w * (8 / 320));   // px-2 = 8px on 320px
+    const paddingY = Math.round(w * (8 / 320));   // py-2 = 8px on 320px
+    const rowGap = Math.round(w * (4 / 320));      // mb-1 = 4px between rows
+    const emojiGap = Math.round(w * (6 / 320));    // gap-1.5 emoji↔label row
+    // Card height from content: padding + row1 + gap + row2 + gap + row3 + padding
+    const row1H = Math.max(emojiSize, labelSize);
+    // Description wraps to at most 2 lines
+    const descLineH = descSize * 1.4; // leading-relaxed ≈ 1.625, tighten to 1.4 for canvas
+    const row2H = descLineH * 2;
+    const row3H = valueSize;
+    const cardH = paddingY * 2 + row1H + rowGap + row2H + rowGap + row3H;
     const gap = Math.round(h * 0.012);
     const totalH = maxCards * cardH + (maxCards - 1) * gap;
     const cardsY = ((design?.cardsPosition?.y ?? 50) / 100) * h - totalH / 2;
@@ -946,21 +961,44 @@ function drawCards(
       const y = cardsY + i * (cardH + gap);
       const x = cardsX;
 
+      // Background bg-black/40 rounded-lg
       ctx.fillStyle = 'rgba(0,0,0,0.4)';
       drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.fill();
-      // Top accent border
+      // borderTop: 2px solid card.color — full width, top edge
+      const topBw = Math.round(w * (2 / 320));
       ctx.fillStyle = card.color || accent;
-      ctx.fillRect(x + radius, y, cardW - radius * 2, borderW);
+      ctx.fillRect(x, y, cardW, topBw);
 
-      // Emoji + label row
-      const emojiX = x + Math.round(w * 0.025);
-      ctx.font = `${emojiSize}px sans-serif`; ctx.textAlign = 'left'; ctx.fillStyle = 'white';
-      ctx.fillText(card.emoji || '●', emojiX, y + cardH * 0.4);
+      ctx.textBaseline = 'top';
+      let curY = y + paddingY;
+      const contentX = x + paddingX;
+
+      // Row 1: emoji + label (horizontal)
+      ctx.font = `${emojiSize}px sans-serif`; ctx.textAlign = 'left'; ctx.fillStyle = '#FFFFFF';
+      ctx.fillText(card.emoji || '●', contentX, curY);
+      const emojiW = ctx.measureText(card.emoji || '●').width;
       ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = '#FFFFFF';
-      ctx.fillText(card.label, emojiX + emojiSize + Math.round(w * 0.01), y + cardH * 0.38);
-      // Value
-      ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = card.color || accent; ctx.textAlign = 'left';
-      ctx.fillText(card.value, emojiX, y + cardH * 0.78);
+      ctx.fillText(card.label, contentX + emojiW + emojiGap, curY + (row1H - labelSize) / 2);
+      curY += row1H + rowGap;
+
+      // Row 2: description (text-white/70, max 60 chars, 2 lines)
+      if (card.description) {
+        const descText = card.description.length > 60 ? card.description.substring(0, 60) : card.description;
+        ctx.font = `400 ${descSize}px "${fontFamily}", sans-serif`;
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        const descLines = wrapText(ctx, descText, cardW - paddingX * 2);
+        descLines.slice(0, 2).forEach((line, li) => {
+          ctx.fillText(line, contentX, curY + li * descLineH);
+        });
+      }
+      curY += row2H + rowGap;
+
+      // Row 3: value (font-black, color: card.color)
+      ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`;
+      ctx.fillStyle = card.color || accent;
+      ctx.fillText(card.value, contentX, curY);
+
+      ctx.textBaseline = 'alphabetic';
     });
   }
   // ── Card style: Minimal Line (horizontal: emoji, label, value right-aligned) ──
