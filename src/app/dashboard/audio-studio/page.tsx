@@ -1112,10 +1112,10 @@ function AudioStudioContent() {
                 </>
               ) : isMontagePost && (meta.renderedVideoUrl as string | undefined) ? (
                 /* ═══ MONTAGE PREVIEW — play the REAL exported video ═══
-                   Native HTML5 `controls` so user can play/pause/seek without
-                   fighting the timeline's internal isPlaying state machine.
-                   Not autoplay — too many interruption loops between timeline
-                   and media element. Click the play button to start. */
+                   Controlled by Studio Son's own Play button on the timeline
+                   (togglePlayback → videoRef.play/pause). No native HTML5
+                   `controls` — that would show a 2nd play button that confuses
+                   the UX. Click the big Play button under the video. */
                 <>
                   <video
                     key={`montage-rendered-${post?.id}`}
@@ -1123,14 +1123,19 @@ function AudioStudioContent() {
                     src={meta.renderedVideoUrl as string}
                     poster={posterImgSrc || undefined}
                     className="w-full h-full object-contain"
-                    playsInline loop controls preload="metadata"
+                    playsInline loop preload="metadata"
                     onLoadedMetadata={() => {
+                      console.log('[AudioStudio] Montage video loadedMetadata');
                       setVideoLoading(false);
                       setVideoError(false);
                     }}
                     onCanPlay={() => { setVideoLoading(false); }}
                     onLoadedData={() => { setVideoLoading(false); setVideoError(false); }}
-                    onError={() => { setVideoLoading(false); setVideoError(true); }}
+                    onError={(e) => {
+                      console.error('[AudioStudio] Montage video error:', (e.target as HTMLVideoElement)?.error?.message);
+                      setVideoLoading(false);
+                      setVideoError(true);
+                    }}
                   />
                   {videoLoading && (
                     <div className="absolute inset-0 flex items-center justify-center bg-gray-900/60 z-10 pointer-events-none">
