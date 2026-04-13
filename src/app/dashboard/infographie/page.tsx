@@ -1092,8 +1092,89 @@ export default function InfographicPage() {
     try {
       const total = batchCount;
       const createdPostIds: string[] = [];
+      // Helper: fetch fresh AI-generated content for the SAME theme so each
+      // batch iteration shows DIFFERENT cards/title/subtitle. Falls back to
+      // the local generator (instant) if AI fails. Returns null if both fail
+      // (caller keeps the editor's current values).
+      const generateBatchVariation = async (): Promise<{ title: string; subtitle: string; cards: typeof cards; salesPhrases: string[] } | null> => {
+        const themeObj = CONTENT_THEMES.find((t) => t.id === contentTheme);
+        const topicText = contentTheme === "personnalise" ? customTopic : themeObj?.label || contentTheme;
+        if (!topicText.trim()) return null;
+        const accent = COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent || customAccent || "#a855f7";
+        // AI first
+        try {
+          const r = await fetch("/api/content/ai-generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ topic: topicText, locale: "fr", cardCount: 5 }),
+          });
+          if (r.ok) {
+            const d = await r.json();
+            if (d.success && d.content) {
+              return {
+                title: d.content.title || topicText.toUpperCase(),
+                subtitle: d.content.subtitle || "",
+                cards: (d.content.cards || []).map((c: any, i: number) => ({
+                  id: `batch-${Date.now()}-${i}`,
+                  emoji: c.emoji || "⭐",
+                  label: c.label || "",
+                  value: c.value || "",
+                  description: c.description || "",
+                  color: accent,
+                })),
+                salesPhrases: d.content.salesPhrases || [],
+              };
+            }
+          }
+        } catch {}
+        // Local fallback
+        try {
+          const r = await fetch("/api/content/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ topic: topicText }),
+          });
+          if (r.ok) {
+            const d = await r.json();
+            if (d.success && d.content) {
+              return {
+                title: d.content.tagLine || topicText.toUpperCase(),
+                subtitle: d.content.subtitle || "",
+                cards: (d.content.cards || []).map((c: any, i: number) => ({
+                  id: `batch-${Date.now()}-${i}`,
+                  emoji: ICON_TO_EMOJI[c.icon] || c.icon || "⭐",
+                  label: c.title || "",
+                  value: c.value || "",
+                  description: c.description || "",
+                  color: accent,
+                })),
+                salesPhrases: [],
+              };
+            }
+          }
+        } catch {}
+        return null;
+      };
+
       for (let b = 0; b < total; b++) {
         setExportProgress(Math.round((b / total) * 100));
+
+        // Per-batch content. b=0 keeps the editor's current values so the
+        // user's manual edits ship with the first video. b>0 fetches a
+        // fresh variation on the same theme — different cards/title/sub.
+        let bTitle = title;
+        let bSubtitle = subtitle;
+        let bCards = cards;
+        let bSalesPhrases = salesPhrases;
+        if (b > 0) {
+          const variation = await generateBatchVariation();
+          if (variation) {
+            bTitle = variation.title;
+            bSubtitle = variation.subtitle;
+            bCards = variation.cards;
+            if (variation.salesPhrases.length > 0) bSalesPhrases = variation.salesPhrases;
+          }
+        }
 
         // Utiliser la photo sélectionnée par l'utilisateur (selectedPhotoIndex)
         // En mode batch, on peut aussi varier les photos après la première
@@ -1106,7 +1187,7 @@ export default function InfographicPage() {
 
         // Pick a different sales phrase per batch item
         const salesPhrase =
-          salesPhrases.length > 0 ? salesPhrases[b % salesPhrases.length] : "";
+          bSalesPhrases.length > 0 ? bSalesPhrases[b % bSalesPhrases.length] : "";
 
         // Upload character image if present (first iteration only)
         let mediaUrl: string | null = posterUrl;
@@ -1156,8 +1237,8 @@ export default function InfographicPage() {
           today.setDate(today.getDate() + b); // Spread across days
           const scheduledDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
           const caption = [
-            subtitle,
-            cards.map((c) => `${c.emoji} ${c.label}: ${c.value}`).join(" | "),
+            bSubtitle,
+            bCards.map((c) => `${c.emoji} ${c.label}: ${c.value}`).join(" | "),
             salesPhrase ? `\n${salesPhrase}` : "",
             "\n💬 Plus d'infos → https://afroboost.com",
           ]
@@ -1172,17 +1253,17 @@ export default function InfographicPage() {
           let renderedThumbnailUrl: string | null = null;
           let renderedComposerVersion: string | null = null;
           try {
-            console.log('[Export→Calendar] Starting montage composition...', { posterUrl, rushUrl, isReel, format });
+            console.log('[Export→Calendar] Starting montage composition...', { batchIdx: b, posterUrl, rushUrl, isReel, format, title: bTitle, cardsCount: bCards.length });
             setExportProgress(Math.round(((b + 0.3) / total) * 100));
             const { url: composedUrl, thumbnailUrl: composedThumbUrl, composerVersion: composedVersion } = await composeAndUpload({
               width: isReel ? 1080 : 1920,
               height: isReel ? 1920 : 1080,
               fps: 30,
-              title: title || "Infographie",
-              subtitle: subtitle || undefined,
+              title: bTitle || "Infographie",
+              subtitle: bSubtitle || undefined,
               salesPhrase: salesPhrase || undefined,
-              cards: cards.length > 0
-                ? cards.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color }))
+              cards: bCards.length > 0
+                ? bCards.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color }))
                 : undefined,
               posterUrl: posterUrl,
               videoUrl: rushUrl || undefined,
@@ -1190,7 +1271,7 @@ export default function InfographicPage() {
               musicUrl: undefined, // Audio added later in Studio Son
               voiceUrl: undefined,
               introDuration,
-              cardsDuration: cards.length > 0 ? cardsDuration : 0,
+              cardsDuration: bCards.length > 0 ? cardsDuration : 0,
               videoDuration: rushUrl ? videoDuration : 0,
               ctaDuration,
               accentColor: exportAccent,
@@ -1249,7 +1330,7 @@ export default function InfographicPage() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              title: title || "Infographie",
+              title: bTitle || "Infographie",
               caption,
               // Use the composed video URL if available, otherwise fallback to image
               media_url: renderedVideoUrl || (hasVideo ? null : (mediaUrl || posterUrl || null)),
@@ -1261,12 +1342,12 @@ export default function InfographicPage() {
               status: "draft",
               metadata: {
                 type: "infographic",
-                subtitle,
+                subtitle: bSubtitle,
                 videoOverlayText: videoOverlayText || undefined,
                 theme: contentTheme,
                 colorTheme,
                 salesPhrase,
-                cards: cards.map((c) => ({
+                cards: bCards.map((c) => ({
                   emoji: c.emoji,
                   label: c.label,
                   value: c.value,
