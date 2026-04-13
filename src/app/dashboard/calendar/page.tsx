@@ -218,9 +218,12 @@ function PostThumbnail({
   return (
     <div className={className || 'w-28 sm:w-36 aspect-[9/16] rounded-xl overflow-hidden border border-gray-700 bg-black relative'}>
       {displayImg ? (
-        <img src={displayImg} alt="" className="absolute inset-0 w-full h-full object-cover" />
+        // `key` forces remount when the URL changes (e.g. after a regenerate),
+        // so the new thumbnail actually displays instead of a stale cached <img>.
+        <img key={displayImg} src={displayImg} alt="" className="absolute inset-0 w-full h-full object-cover" />
       ) : videoUrl ? (
         <video
+          key={videoUrl}
           src={videoUrl}
           className="absolute inset-0 w-full h-full object-cover"
           muted
@@ -388,6 +391,20 @@ export default function CalendarPage() {
     const brand = meta.branding;
     const designMeta: any = meta.design || {};
     const isReel = post.format === 'reel';
+    const hasRush = !!meta.rushUrls?.[0];
+
+    // Sanity-clamp durations: a stored `sequences.video = 1` (or any sub-2s value)
+    // is almost certainly corrupted metadata from an old export and would produce
+    // the "1 second flash" bug. Fall back to the editor defaults.
+    const safeDuration = (val: unknown, fallback: number, min = 2) =>
+      (typeof val === 'number' && val >= min) ? val : fallback;
+
+    console.log('[Regenerate] Starting montage regeneration for post:', post.id, {
+      title: post.title,
+      hasRush,
+      sequences: meta.sequences,
+      designKeys: Object.keys(designMeta),
+    });
 
     setRegenerating(true);
     setRegenProgress(0);
@@ -409,10 +426,12 @@ export default function CalendarPage() {
         logoUrl: meta.logoUrl || designMeta.logoUrl || null,
         musicUrl: meta.musicUrl || null,
         voiceUrl: meta.voiceUrl || null,
-        introDuration: meta.sequences?.intro ?? 5,
-        cardsDuration: meta.sequences?.cards ?? ((meta.cards?.length > 0 || meta.textCards?.length > 0) ? 6 : 0),
-        videoDuration: meta.sequences?.video ?? 12,
-        ctaDuration: meta.sequences?.cta ?? 5,
+        introDuration: safeDuration(meta.sequences?.intro, 5),
+        cardsDuration: (meta.cards?.length > 0 || meta.textCards?.length > 0)
+          ? safeDuration(meta.sequences?.cards, 6)
+          : 0,
+        videoDuration: hasRush ? safeDuration(meta.sequences?.video, 12) : 0,
+        ctaDuration: safeDuration(meta.sequences?.cta, 5),
         accentColor: brand?.accentColor || '#D91CD2',
         ctaText: brand?.ctaText || "CHAT POUR PLUS D'INFOS",
         ctaSubText: brand?.ctaSubText || 'LIEN EN BIO',
@@ -459,6 +478,9 @@ export default function CalendarPage() {
         throw new Error('Le montage a été rendu mais l\'upload a échoué.');
       }
 
+      console.log('[Regenerate] ✅ Composed:', { renderedUrl, thumbnailUrl: freshThumb });
+      setRegenStage('Sauvegarde...');
+
       // Persist fresh URLs into metadata
       const nextMetadata = { ...meta, renderedVideoUrl: renderedUrl, videoUrl: renderedUrl, thumbnailUrl: freshThumb || meta.thumbnailUrl };
       const patchRes = await fetch(`/api/posts/${post.id}`, {
@@ -468,20 +490,27 @@ export default function CalendarPage() {
       });
       const patchData = await patchRes.json();
       if (!patchData?.success) {
-        console.warn('[Regenerate] PATCH response:', patchData);
+        console.error('[Regenerate] ❌ PATCH failed:', patchData);
+        throw new Error(`Sauvegarde en base échouée : ${patchData?.error || 'erreur inconnue'}`);
       }
+      console.log('[Regenerate] ✅ Persisted to DB for post', post.id);
 
       // Reflect locally so the modal updates immediately
       const updatedPost: Post = { ...post, media_url: renderedUrl, media_type: 'video', metadata: nextMetadata };
       setFullPreviewPost(updatedPost);
       setPosts(prev => prev.map(p => p.id === post.id ? updatedPost : p));
+      setRegenProgress(100);
+      setRegenStage('Terminé !');
     } catch (err) {
-      console.error('[Regenerate] Failed:', err);
+      console.error('[Regenerate] ❌ Failed:', err);
       alert(`Erreur de régénération : ${err instanceof Error ? err.message : 'inconnue'}`);
     } finally {
-      setRegenerating(false);
-      setRegenProgress(0);
-      setRegenStage('');
+      // Small delay so user sees "Terminé !" before the button reverts
+      setTimeout(() => {
+        setRegenerating(false);
+        setRegenProgress(0);
+        setRegenStage('');
+      }, 800);
     }
   }, [regenerating]);
 
@@ -2969,7 +2998,13 @@ export default function CalendarPage() {
                   className={`relative overflow-hidden rounded-xl bg-black ${fullPreviewPost.format === 'reel' ? '' : 'aspect-video w-full'}`}
                   style={fullPreviewPost.format === 'reel' ? { aspectRatio: '9/16', height: '70dvh', maxHeight: '70dvh' } : undefined}
                 >
+                  {/* `key` forces React to remount the <video> element when the URL
+                       changes — HTML5 `<video>` doesn't always reload a new `src`
+                       without an explicit `.load()`, and without a remount the
+                       user keeps seeing the old stale composed video even after
+                       a successful regeneration. */}
                   <video
+                    key={meta.renderedVideoUrl}
                     src={meta.renderedVideoUrl}
                     autoPlay
                     loop
