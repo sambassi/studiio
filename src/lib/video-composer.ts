@@ -4,7 +4,7 @@
  * Audio elements handle MP3/OGG/WAV decoding natively (no OfflineAudioContext).
  * Outputs MP4 if supported, otherwise WebM.
  */
-const COMPOSER_VERSION = 'v13-16-9-grid-2026-04-13';
+const COMPOSER_VERSION = 'v14-cta-spacing-cards-wrap-2026-04-13';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -904,14 +904,46 @@ function drawCards(
     const cols = isReel ? 2 : 3; // Editor: grid-cols-2 (9:16), grid-cols-3 (16:9)
     const gap = Math.round(w * (6 / 320)); // gap-1.5 = 6px on 320px editor
     const cardW = Math.round((containerW - (cols - 1) * gap) / cols);
-    // Editor: px-1.5 py-1.5 (6px padding) + flex col with emoji(14)+gap(2)+label(7)+gap(2)+value(9)+gap(2)+desc(6)
-    // Total inner height ≈ 42px on 320px editor → 42/568 ≈ 0.074 of height for 9:16
-    // But with textScale and variable content, use a proportional height
     const paddingY = Math.round(w * (6 / 320)); // py-1.5 = 6px on 320px
+    const paddingX = Math.round(w * (6 / 320)); // px-1.5
     const innerGap = Math.round(w * (2 / 320)); // gap-0.5 = 2px on 320px
     const emojiSizeLocal = Math.round(w * (isReel ? 14 / 320 : 18 / 512) * textScale);
-    // Compute card height from content: padding + emoji + gap + label + gap + value + gap + desc + padding
-    const cardContentH = emojiSizeLocal + innerGap + labelSize + innerGap + valueSize + innerGap + descSize;
+    const lineMul = 1.2; // line-height for wrapped lines
+
+    // Pre-measure each card's wrapped lines so the height computed BELOW
+    // matches what we actually render. Without this, label/value/desc that
+    // wrap to 2 lines overflow the bottom of the card and the next card's
+    // text overlaps it ("text qui s'entremêlent").
+    const innerW = cardW - paddingX * 2;
+    type Pre = { labelLines: string[]; valueLines: string[]; descLines: string[] };
+    const pre: Pre[] = cards.slice(0, maxCards).map(card => {
+      ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`;
+      const labelLines = wrapText(ctx, card.label, innerW);
+      ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`;
+      const valueLines = wrapText(ctx, card.value, innerW);
+      let descLines: string[] = [];
+      if (card.description) {
+        const descText = card.description.length > 30
+          ? card.description.substring(0, 30) + '...'
+          : card.description;
+        ctx.font = `400 ${descSize}px "${fontFamily}", sans-serif`;
+        descLines = wrapText(ctx, descText, innerW).slice(0, 2);
+      }
+      return { labelLines, valueLines, descLines };
+    });
+
+    // Card height = MAX of all cards' content heights so all cards in the
+    // grid stay aligned and the same shape (matches CSS grid behaviour).
+    const labelH = (n: number) => n * labelSize * lineMul;
+    const valueH = (n: number) => n * valueSize * lineMul;
+    const descH = (n: number) => n * descSize * lineMul;
+    const contentHs = pre.map(p =>
+      emojiSizeLocal + innerGap +
+      labelH(p.labelLines.length) + innerGap +
+      valueH(p.valueLines.length) +
+      (p.descLines.length > 0 ? innerGap + descH(p.descLines.length) : 0)
+    );
+    const cardContentH = Math.max(...contentHs, 0);
     const cardH = cardContentH + paddingY * 2;
     const rows = Math.ceil(maxCards / cols);
     const totalH = rows * cardH + (rows - 1) * gap;
@@ -923,53 +955,51 @@ function drawCards(
       const row = Math.floor(i / cols);
       const x = cardsX + col * (cardW + gap);
       const y = cardsY + row * (cardH + gap);
+      const { labelLines, valueLines, descLines } = pre[i];
 
-      // Background: bg-black/30 rounded-lg (editor uses backdrop-blur but Canvas
-      // has no equivalent; keep the SAME opacity as the editor = 0.30).
+      // Background: bg-black/30 rounded-lg
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
       drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.fill();
-      // Left accent border: 2px solid card.color — painted FULL height, like CSS border-left.
+      // Left accent border: 2px solid card.color — painted FULL height.
       ctx.fillStyle = card.color || accent;
-      const bw = Math.round(w * (2 / 320)); // 2px on 320px editor
+      const bw = Math.round(w * (2 / 320));
       ctx.fillRect(x, y, bw, cardH);
 
-      // Layout elements top-down with flex-like gap spacing
-      // textBaseline 'top' for predictable positioning
       ctx.textBaseline = 'top';
       let curY = y + paddingY;
 
-      // Emoji: text-sm = 14px (9:16) / text-lg = 18px (16:9), centered
+      // Emoji
       ctx.font = `${emojiSizeLocal}px sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = 'white';
       ctx.fillText(card.emoji || '●', x + cardW / 2, curY);
       curY += emojiSizeLocal + innerGap;
 
-      // Label: 7px * textScale, font-bold (700), white, drop-shadow
+      // Label (multi-line)
       ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = '#FFFFFF';
       ctx.shadowColor = 'rgba(0,0,0,0.2)'; ctx.shadowBlur = 2; ctx.shadowOffsetY = 1;
-      ctx.fillText(card.label, x + cardW / 2, curY);
+      labelLines.forEach((line, li) => {
+        ctx.fillText(line, x + cardW / 2, curY + li * labelSize * lineMul);
+      });
       ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
-      curY += labelSize + innerGap;
+      curY += labelH(labelLines.length) + innerGap;
 
-      // Value: 9px * textScale, font-black (900), card.color, drop-shadow
+      // Value (multi-line)
       ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = card.color || accent;
       ctx.shadowColor = 'rgba(0,0,0,0.2)'; ctx.shadowBlur = 2; ctx.shadowOffsetY = 1;
-      ctx.fillText(card.value, x + cardW / 2, curY);
+      valueLines.forEach((line, li) => {
+        ctx.fillText(line, x + cardW / 2, curY + li * valueSize * lineMul);
+      });
       ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
-      curY += valueSize + innerGap;
+      curY += valueH(valueLines.length);
 
-      // Description: 6px * textScale, white/60, truncated to 30 chars, centered
-      if (card.description) {
-        const descText = card.description.length > 30 ? card.description.substring(0, 30) + '...' : card.description;
+      // Description (multi-line, max 2)
+      if (descLines.length > 0) {
+        curY += innerGap;
         ctx.font = `400 ${descSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.6)';
-        // Word-wrap description within card width (minus padding)
-        const paddingX = Math.round(w * (6 / 320)); // px-1.5
-        const descLines = wrapText(ctx, descText, cardW - paddingX * 2);
-        descLines.slice(0, 2).forEach((line, li) => {
-          ctx.fillText(line, x + cardW / 2, curY + li * (descSize * 1.3));
+        descLines.forEach((line, li) => {
+          ctx.fillText(line, x + cardW / 2, curY + li * descSize * lineMul);
         });
       }
 
-      // Reset textBaseline for other elements
       ctx.textBaseline = 'alphabetic';
     });
   }
@@ -1331,14 +1361,31 @@ function drawCTA(
   }
   if (currentLine) ctaLines.push(currentLine);
 
-  // Vertical layout math — use `textBaseline='top'` so `curY` is always the
-  // top edge of whatever we draw next, no more `+ fontSize*0.5` fudge factor.
+  // Vertical layout math — MATCHES EDITOR EXACTLY
+  // (infographie/page.tsx:3553-3593). Each element is ONE LINE at its own
+  // `fontSize * lineHeight`. The SPACING between elements is the editor's
+  // FIXED Tailwind margins, NOT a proportion of font size:
+  //   - sales → main:   `mt-0.5` = 2px on 320-px preview → 2 * w/320 scaled
+  //   - main  → sub:    `mt-1`   = 4px on 320-px preview → 4 * w/320 scaled
+  // Previously we used `fontSize * 1.5` as per-block height. With large
+  // ctaTextScale that produced a block much TALLER than the editor, and
+  // the bottom-anchor math pushed the CTA far above the user's chosen
+  // watermark position.
   ctx.textBaseline = 'top';
-  const ctaLineH = ctaFontSize * (design?.ctaTypography?.lineHeight || 1.2);
-  const salesBlockH = salesPhrase ? salesFontSize * 1.5 : 0;
+  const lineMul = design?.ctaTypography?.lineHeight || 1.2;
+  const mt05 = Math.max(1, Math.round(w * (2 / 320))); // mt-0.5 = 2px
+  const mt1 = Math.max(1, Math.round(w * (4 / 320)));  // mt-1   = 4px
+  const salesLineH = salesFontSize * lineMul;
+  const ctaLineH = ctaFontSize * lineMul;
+  const subLineH = subFontSize * lineMul;
+  const salesBlockH = salesPhrase ? salesLineH : 0;
   const ctaBlockH = ctaLines.length * ctaLineH;
-  const subBlockH = subFontSize * 1.5;
-  const blockH = salesBlockH + ctaBlockH + subBlockH;
+  const subBlockH = subLineH;
+  const blockH = salesBlockH
+    + (salesPhrase ? mt05 : 0) // gap sales → main
+    + ctaBlockH
+    + mt1                      // gap main → sub
+    + subBlockH;
 
   // Editor uses translate(-50%, -100%) → the BOTTOM of the block sits at ctaPosY.
   let curY = ctaPosY - blockH;
@@ -1348,7 +1395,7 @@ function drawCTA(
     ctx.font = `900 ${salesFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
     ctx.fillStyle = hexToRgba(ctaColor, 0.93);
     fillTextWithSpacing(ctx, salesPhrase, ctaPosX, curY, ctaLetterSpacing);
-    curY += salesBlockH;
+    curY += salesBlockH + mt05;
   }
 
   // Main CTA text — ctaColor, large, bold, uppercase (matches editor .uppercase class)
@@ -1359,13 +1406,12 @@ function drawCTA(
     fillTextWithSpacing(ctx, line, ctaPosX, curY + i * ctaLineH, ctaLetterSpacing);
   });
   ctx.shadowBlur = 0;
-  curY += ctaBlockH;
+  curY += ctaBlockH + mt1;
 
   // Sub-text — user-configured color, 900 weight, uppercase (matches editor)
   ctx.font = `900 ${subFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
   ctx.fillStyle = ctaSubColor;
-  // Small top gap (matches editor's default vertical rhythm inside CTA block).
-  fillTextWithSpacing(ctx, effectiveSubText.toUpperCase(), ctaPosX, curY + subFontSize * 0.25, ctaLetterSpacing);
+  fillTextWithSpacing(ctx, effectiveSubText.toUpperCase(), ctaPosX, curY, ctaLetterSpacing);
   ctx.textBaseline = 'alphabetic';
 
   // Logo on CTA if configured — uses per-sequence position
