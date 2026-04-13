@@ -4,7 +4,7 @@
  * Audio elements handle MP3/OGG/WAV decoding natively (no OfflineAudioContext).
  * Outputs MP4 if supported, otherwise WebM.
  */
-const COMPOSER_VERSION = 'v15-subtitle-wrap-2026-04-13';
+const COMPOSER_VERSION = 'v16-cards-viewport-aware-2026-04-13';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -833,14 +833,20 @@ function drawCards(
   // Editor: 9:16 shows max 5 cards, 16:9 shows max 6 cards
   const maxCards = Math.min(cards.length, isReel ? 5 : 6);
 
-  // Font sizes matched to editor CSS:
-  //   Editor label = 7px, value = 9px, desc = 6px, emoji = text-sm = 14px
-  //   On 320px wide editor → emoji: 14/320=0.04375, label: 7/320=0.022, value: 9/320=0.028, desc: 6/320=0.019
-  //   Stats Bold value: 13/320=0.041
-  const emojiSize = Math.round(w * 0.04375 * textScale);
-  const labelSize = Math.round(w * 0.022 * textScale);
-  const valueSize = Math.round(w * 0.028 * textScale);
-  const descSize = Math.round(w * 0.019 * textScale);
+  // Editor preview viewport: 320px (9:16) or 512px (16:9). The editor uses
+  // FIXED Tailwind/css px values for fonts and paddings (e.g. 7px label,
+  // 6px gap), regardless of which format. To reproduce on the canvas we
+  // must scale by `w / editorViewportPx` — using the wrong viewport ratio
+  // makes 16:9 cards' fonts 60% too large vs the editor and labels overflow
+  // the card boundary (user's "MITOCHONDRIES" label was clipping into the
+  // adjacent card).
+  const editorViewportPx = isReel ? 320 : 512;
+  const fontPx = (cssPx: number) => Math.round(w * cssPx / editorViewportPx * textScale);
+
+  const emojiSize = fontPx(14);
+  const labelSize = fontPx(7);
+  const valueSize = fontPx(9);
+  const descSize = fontPx(6);
   // Editor: rounded-lg = 8px on 320px viewport → scale proportionally.
   const radius = Math.max(2, Math.round(w * (8 / 320)));
 
