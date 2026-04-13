@@ -648,19 +648,39 @@ export default function CalendarPage() {
     finally { setSaving(false); setShowPreviewModal(false); }
   };
 
-  // Bulk delete
+  // Bulk delete — with explicit confirmation + diagnostic logs so the UX
+  // failure is visible if anything blocks (network error, auth, etc.).
   const handleBulkDelete = async () => {
+    console.log('[Calendar] handleBulkDelete called, selected:', selectedPostIds.size);
     if (selectedPostIds.size === 0) return;
+    const ids = Array.from(selectedPostIds);
+    if (!confirm(`Supprimer ${ids.length} post${ids.length > 1 ? 's' : ''} ? Cette action est irréversible.`)) {
+      console.log('[Calendar] handleBulkDelete cancelled by user');
+      return;
+    }
     setSaving(true);
     try {
-      const ids = Array.from(selectedPostIds);
+      let okCount = 0;
+      let failCount = 0;
       for (const id of ids) {
-        await fetch(`/api/posts?id=${id}`, { method: 'DELETE' });
+        try {
+          const r = await fetch(`/api/posts?id=${id}`, { method: 'DELETE' });
+          const d = await r.json().catch(() => null);
+          if (r.ok && d?.success !== false) okCount++; else { failCount++; console.error('[Calendar] delete failed for', id, r.status, d); }
+        } catch (err) {
+          failCount++;
+          console.error('[Calendar] delete network error for', id, err);
+        }
       }
+      console.log(`[Calendar] Bulk delete done: ${okCount} ok, ${failCount} failed`);
       setPosts((prev) => prev.filter((p) => !selectedPostIds.has(p.id)));
       setSelectedPostIds(new Set());
       setBulkMode(false);
-    } catch (error) { console.error('Bulk delete error:', error); }
+      if (failCount > 0) alert(`${failCount} post${failCount > 1 ? 's' : ''} n'ont pas pu être supprimés.`);
+    } catch (error) {
+      console.error('Bulk delete error:', error);
+      alert(`Erreur de suppression : ${error instanceof Error ? error.message : 'inconnue'}`);
+    }
     finally { setSaving(false); }
   };
 
@@ -2392,7 +2412,7 @@ export default function CalendarPage() {
                           draggedPost?.id === post.id ? 'border-purple-400 opacity-50' :
                           'border-gray-700 hover:border-gray-600'
                         } ${!bulkMode ? 'cursor-grab active:cursor-grabbing' : ''}`}
-                        onClick={bulkMode ? () => togglePostSelection(post.id) : undefined}
+                        onClick={bulkMode ? (e) => { e.stopPropagation(); console.log('[Calendar] post click in bulk mode, toggling', post.id); togglePostSelection(post.id); } : undefined}
                       >
                         {bulkMode && (
                           <div className="flex items-center gap-2 mb-1.5">
