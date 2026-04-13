@@ -333,13 +333,9 @@ function getLogoPos(design: DesignOptions | undefined, seq: string): { x: number
   // (titre→intro, cartes→cards) in composeAndUpload before being passed here
   const perSeq = design?.logoPositions?.[seq];
   if (perSeq && (perSeq.x !== undefined || perSeq.y !== undefined)) {
-    const result = { x: perSeq.x ?? 50, y: perSeq.y ?? 85 };
-    console.log(`[Composer] getLogoPos('${seq}'): FOUND per-sequence → ${JSON.stringify(result)} (keys available: ${Object.keys(design?.logoPositions || {}).join(',')})`);
-    return result;
+    return { x: perSeq.x ?? 50, y: perSeq.y ?? 85 };
   }
-  const fallback = { x: design?.logoPosition?.x ?? 50, y: design?.logoPosition?.y ?? 85 };
-  console.warn(`[Composer] getLogoPos('${seq}'): ⚠️ FALLBACK to legacy position → ${JSON.stringify(fallback)} (logoPositions keys: ${Object.keys(design?.logoPositions || {}).join(',') || 'NONE'}, logoPosition: ${JSON.stringify(design?.logoPosition)})`);
-  return fallback;
+  return { x: design?.logoPosition?.x ?? 50, y: design?.logoPosition?.y ?? 85 };
 }
 
 /** Get siteText position for a specific sequence, with fallback to legacy pos or default */
@@ -756,7 +752,6 @@ function drawIntro(
   if (logoImg && design?.logoSequences?.includes('intro')) {
     const logoScale = design?.logoScale || 1.0;
     const pos = getLogoPos(design, 'intro');
-    console.log(`[Composer] Logo INTRO: pos=${JSON.stringify(pos)}, scale=${logoScale}, canvas=${w}x${h}`);
     drawLogoAccurate(ctx, logoImg, w, h, pos, logoScale);
   }
 
@@ -1005,7 +1000,6 @@ function drawCards(
   if (logoImg && design?.logoSequences?.includes('cards')) {
     const logoScale = design?.logoScale || 1.0;
     const pos = getLogoPos(design, 'cards');
-    console.log(`[Composer] Logo CARDS: pos=${JSON.stringify(pos)}, scale=${logoScale}`);
     drawLogoAccurate(ctx, logoImg, w, h, pos, logoScale);
   }
 }
@@ -1085,7 +1079,6 @@ function drawVideoSeq(
   if (logoImg && design?.logoSequences?.includes('video')) {
     const logoScale = design?.logoScale || 1.0;
     const pos = getLogoPos(design, 'video');
-    console.log(`[Composer] Logo VIDEO: pos=${JSON.stringify(pos)}, scale=${logoScale}`);
     drawLogoAccurate(ctx, logoImg, w, h, pos, logoScale);
   }
 }
@@ -1190,7 +1183,6 @@ function drawCTA(
   if (logoImg && (!design?.logoSequences || design.logoSequences.includes('cta'))) {
     const logoScale = design?.logoScale || 1.0;
     const pos = getLogoPos(design, 'cta');
-    console.log(`[Composer] Logo CTA: pos=${JSON.stringify(pos)}, scale=${logoScale}`);
     drawLogoAccurate(ctx, logoImg, w, h, pos, logoScale);
   }
   ctx.restore();
@@ -1228,7 +1220,47 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   console.log('[Composer] Music:', musicUrl?.substring(0, 60) || 'NONE');
   console.log('[Composer] Voice:', voiceUrl?.substring(0, 60) || 'NONE');
   console.log('[Composer] Logo:', logoUrl?.substring(0, 60) || 'NONE');
-  console.log('[Composer] Design:', design ? JSON.stringify({ font: design.font, titleColor: design.titleColor, grad1: design.gradientColor1, logoPos: design.logoPosition, logoPositions: design.logoPositions, logoSeqs: design.logoSequences, logoScale: design.logoScale }) : 'NONE');
+  // Full design log — shows every field the draw functions actually read.
+  // Gaps here (e.g. `cardsPosition: undefined`) immediately explain why a
+  // regenerated video doesn't match the editor preview.
+  if (design) {
+    console.log('[Composer] Design received:', JSON.stringify({
+      font: design.font,
+      cardStyle: design.cardStyle,
+      titleColor: design.titleColor,
+      ctaColor: design.ctaColor,
+      ctaSubColor: design.ctaSubColor,
+      gradientColor1: design.gradientColor1,
+      gradientColor2: design.gradientColor2,
+      gradientOpacity: design.gradientOpacity,
+      textScale: design.textScale,
+      ctaTextScale: design.ctaTextScale,
+      titlePosition: design.titlePosition,
+      cardsPosition: design.cardsPosition,
+      watermarkPosition: design.watermarkPosition,
+      overlayPosition: design.overlayPosition,
+      titleSize: design.titleSize,
+      cardsSize: design.cardsSize,
+      watermarkSize: design.watermarkSize,
+      logoPosition: design.logoPosition,
+      logoPositions: design.logoPositions,
+      logoSequences: design.logoSequences,
+      logoScale: design.logoScale,
+      titleTypography: design.titleTypography,
+      ctaTypography: design.ctaTypography,
+      overlayTypography: design.overlayTypography,
+      seqGradients: design.seqGradients,
+      ctaMainText: design.ctaMainText,
+      ctaSubTextDesign: design.ctaSubTextDesign,
+      overlayText: design.overlayText,
+      overlayColor: design.overlayColor,
+      noColorBg: design.noColorBg,
+      noColorSequences: design.noColorSequences,
+      filter: design.filter,
+    }, null, 2));
+  } else {
+    console.log('[Composer] Design: NONE');
+  }
 
   // ── Normalize French sequence names → English ──
   // The editor (infographie) stores logoSequences / seqGradients with French

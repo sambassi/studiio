@@ -399,11 +399,36 @@ export default function CalendarPage() {
     const safeDuration = (val: unknown, fallback: number, min = 2) =>
       (typeof val === 'number' && val >= min) ? val : fallback;
 
-    console.log('[Regenerate] Starting montage regeneration for post:', post.id, {
+    console.log('[Regenerate] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('[Regenerate] Starting montage regeneration for post:', post.id);
+    console.log('[Regenerate] Input metadata:', {
       title: post.title,
+      format: post.format,
       hasRush,
-      sequences: meta.sequences,
+      sequencesStored: meta.sequences,
+      cardsCount: meta.cards?.length,
+      cardStyle: designMeta.cardStyle,
       designKeys: Object.keys(designMeta),
+      // These are what matter for visual parity — if any are undefined the
+      // composer will fall back to defaults instead of the editor's values.
+      positions: {
+        title: designMeta.positions?.title,
+        cards: designMeta.positions?.cards,
+        watermark: designMeta.positions?.watermark,
+        overlay: designMeta.positions?.overlay,
+        logo: designMeta.positions?.logo,
+      },
+      sizes: {
+        title: designMeta.sizes?.title,
+        cards: designMeta.sizes?.cards,
+        watermark: designMeta.sizes?.watermark,
+      },
+      typography: {
+        title: designMeta.typography?.title,
+        cta: designMeta.typography?.cta,
+        overlay: designMeta.typography?.overlay,
+      },
+      seqGradients: designMeta.seqGradients,
     });
 
     setRegenerating(true);
