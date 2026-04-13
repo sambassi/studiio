@@ -171,12 +171,15 @@ function PostThumbnail({
   posterUrl,
   videoUrl,
   title,
+  format,
   className,
 }: {
   thumbnailUrl: string | null;
   posterUrl: string | null;
   videoUrl: string | null;
   title: string;
+  /** 'tv' → 16:9, 'reel' (default) → 9:16. Controls the miniature's aspect ratio. */
+  format?: string | null;
   className?: string;
 }) {
   const [extractedThumb, setExtractedThumb] = useState<string | null>(null);
@@ -218,8 +221,14 @@ function PostThumbnail({
 
   if (!displayImg && !videoUrl && !title) return null;
 
+  // Match the post's format: 16:9 landscape for 'tv', 9:16 portrait otherwise.
+  const isTv = format === 'tv';
+  const defaultCls = isTv
+    ? 'w-48 sm:w-64 aspect-[16/9] rounded-xl overflow-hidden border border-gray-700 bg-black relative'
+    : 'w-28 sm:w-36 aspect-[9/16] rounded-xl overflow-hidden border border-gray-700 bg-black relative';
+
   return (
-    <div className={className || 'w-28 sm:w-36 aspect-[9/16] rounded-xl overflow-hidden border border-gray-700 bg-black relative'}>
+    <div className={className || defaultCls}>
       {displayImg ? (
         // `key` forces remount when the URL changes (e.g. after a regenerate),
         // so the new thumbnail actually displays instead of a stale cached <img>.
@@ -2358,6 +2367,7 @@ export default function CalendarPage() {
                         posterUrl={fpPosterImg}
                         videoUrl={videoUrl}
                         title={fp.title}
+                        format={fp.format}
                       />
                     </div>
                   );

@@ -4,7 +4,7 @@
  * Audio elements handle MP3/OGG/WAV decoding natively (no OfflineAudioContext).
  * Outputs MP4 if supported, otherwise WebM.
  */
-const COMPOSER_VERSION = 'v12-all-card-styles-2026-04-13';
+const COMPOSER_VERSION = 'v13-16-9-grid-2026-04-13';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -979,8 +979,11 @@ function drawCards(
   //   Row 1: emoji (text-sm) + label (scaledLabel bold white) with gap-1.5
   //   Row 2: description (scaledDesc, text-white/70) max 60 chars
   //   Row 3: value (scaledValue font-black, color: card.color)
+  //   Grid: editor uses previewClasses.cols → grid-cols-2 (9:16) or grid-cols-3 (16:9).
   else if (cardStyle === 'Educatif') {
-    const cardW = containerW;
+    const cols = isReel ? 2 : 3;
+    const gridGap = Math.round(w * (6 / 320)); // gap-1.5
+    const cardW = Math.round((containerW - (cols - 1) * gridGap) / cols);
     const paddingX = Math.round(w * (8 / 320));   // px-2 = 8px on 320px
     const paddingY = Math.round(w * (8 / 320));   // py-2 = 8px on 320px
     const rowGap = Math.round(w * (4 / 320));      // mb-1 = 4px between rows
@@ -992,14 +995,16 @@ function drawCards(
     const row2H = descLineH * 2;
     const row3H = valueSize;
     const cardH = paddingY * 2 + row1H + rowGap + row2H + rowGap + row3H;
-    const gap = Math.round(h * 0.012);
-    const totalH = maxCards * cardH + (maxCards - 1) * gap;
+    const rows = Math.ceil(maxCards / cols);
+    const totalH = rows * cardH + (rows - 1) * gridGap;
     const cardsY = ((design?.cardsPosition?.y ?? 50) / 100) * h - totalH / 2;
-    const cardsX = ((design?.cardsPosition?.x ?? 50) / 100) * w - cardW / 2;
+    const cardsX = ((design?.cardsPosition?.x ?? 50) / 100) * w - containerW / 2;
 
     cards.slice(0, maxCards).forEach((card, i) => {
-      const y = cardsY + i * (cardH + gap);
-      const x = cardsX;
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = cardsX + col * (cardW + gridGap);
+      const y = cardsY + row * (cardH + gridGap);
 
       // Background bg-black/40 rounded-lg
       ctx.fillStyle = 'rgba(0,0,0,0.4)';
@@ -1047,8 +1052,11 @@ function drawCards(
   //   borderBottom: 1px solid ${card.color}40  (25% alpha)
   //   emoji text-xs (12 * textScale), label scaledLabel white/80 flex-1,
   //   value scaledValue font-bold card.color
+  //   Grid: editor uses previewClasses.cols → grid-cols-2 (9:16) or grid-cols-3 (16:9).
   else if (cardStyle === 'Minimal Line') {
-    const cardW = containerW;
+    const cols = isReel ? 2 : 3;
+    const gridGap = Math.round(w * (6 / 320)); // gap-1.5
+    const cardW = Math.round((containerW - (cols - 1) * gridGap) / cols);
     const paddingY = Math.round(w * (4 / 320));   // py-1
     const paddingX = Math.round(w * (4 / 320));   // px-1
     const contentGap = Math.round(w * (8 / 320)); // gap-2 between flex items
@@ -1056,14 +1064,16 @@ function drawCards(
     const minEmojiSize = Math.round(w * (12 / 320) * textScale);
     const rowH = Math.max(minEmojiSize, labelSize, valueSize);
     const cardH = rowH + paddingY * 2;
-    const gap = Math.round(h * 0.006);
-    const totalH = maxCards * cardH + (maxCards - 1) * gap;
+    const rows = Math.ceil(maxCards / cols);
+    const totalH = rows * cardH + (rows - 1) * gridGap;
     const cardsY = ((design?.cardsPosition?.y ?? 50) / 100) * h - totalH / 2;
-    const cardsX = ((design?.cardsPosition?.x ?? 50) / 100) * w - cardW / 2;
+    const cardsX = ((design?.cardsPosition?.x ?? 50) / 100) * w - containerW / 2;
 
     cards.slice(0, maxCards).forEach((card, i) => {
-      const y = cardsY + i * (cardH + gap);
-      const x = cardsX;
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = cardsX + col * (cardW + gridGap);
+      const y = cardsY + row * (cardH + gridGap);
 
       // borderBottom: 1px solid card.color @ 25% alpha
       ctx.strokeStyle = hexToRgba(card.color || accent, 0.25);
