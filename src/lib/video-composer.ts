@@ -4,7 +4,7 @@
  * Audio elements handle MP3/OGG/WAV decoding natively (no OfflineAudioContext).
  * Outputs MP4 if supported, otherwise WebM.
  */
-const COMPOSER_VERSION = 'v17-card-clip-cta-wrap-2026-04-13';
+const COMPOSER_VERSION = 'v18-cards-cap-2lines-2026-04-13';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -928,30 +928,37 @@ function drawCards(
     const emojiSizeLocal = fontPx(isReel ? 14 : 18);
     const lineMul = 1.2; // line-height for wrapped lines
 
-    // Pre-measure each card's wrapped lines. We also truncate any individual
-    // line that remains wider than innerW (single words that don't fit on one
-    // line — e.g. "EXTRACTION"). Without this the last character spills past
-    // the card's right edge visually (user report: "EXTRACTION À FROI[D]").
-    // Reserve a 4px safety margin so letter-spacing / shadow blur doesn't
-    // tip things over the edge.
+    // Pre-measure each card's wrapped lines. Cap EACH element to 2 lines
+    // max (label / value / desc) so no single card stretches taller than
+    // ~2× its neighbours and spills text into the next row. Long trailing
+    // content is truncated with an ellipsis via `truncateToWidth` on the
+    // 2nd line.
     const safety = Math.max(2, cssPx(4));
     const innerW = cardW - paddingX * 2 - safety;
     const clipLines = (lines: string[]) => lines.map(l =>
       ctx.measureText(l).width > innerW ? truncateToWidth(ctx, l, innerW) : l
     );
+    const capLines = (lines: string[], maxN: number): string[] => {
+      if (lines.length <= maxN) return clipLines(lines);
+      // Keep (maxN-1) lines as-is, then truncate the joined remainder onto one
+      // final line so nothing is silently dropped.
+      const head = lines.slice(0, maxN - 1);
+      const tail = lines.slice(maxN - 1).join(' ');
+      return clipLines([...head, truncateToWidth(ctx, tail, innerW)]);
+    };
     type Pre = { labelLines: string[]; valueLines: string[]; descLines: string[] };
     const pre: Pre[] = cards.slice(0, maxCards).map(card => {
       ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`;
-      const labelLines = clipLines(wrapText(ctx, card.label, innerW));
+      const labelLines = capLines(wrapText(ctx, card.label, innerW), 2);
       ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`;
-      const valueLines = clipLines(wrapText(ctx, card.value, innerW));
+      const valueLines = capLines(wrapText(ctx, card.value, innerW), 2);
       let descLines: string[] = [];
       if (card.description) {
         const descText = card.description.length > 30
           ? card.description.substring(0, 30) + '...'
           : card.description;
         ctx.font = `400 ${descSize}px "${fontFamily}", sans-serif`;
-        descLines = clipLines(wrapText(ctx, descText, innerW)).slice(0, 2);
+        descLines = capLines(wrapText(ctx, descText, innerW), 2);
       }
       return { labelLines, valueLines, descLines };
     });
