@@ -1110,8 +1110,40 @@ function AudioStudioContent() {
                     )}
                   </div>
                 </>
+              ) : isMontagePost && (meta.renderedVideoUrl as string | undefined) ? (
+                /* ═══ MONTAGE PREVIEW — play the REAL exported video ═══
+                   One source of truth: the mp4 from composeAndUpload. No HTML
+                   reconstruction that drifts from editor. Timeline (music/voice
+                   sync) still uses `videoRef` so all existing handlers work. */
+                <>
+                  <video
+                    key={`montage-rendered-${post?.id}`}
+                    ref={videoRef}
+                    src={meta.renderedVideoUrl as string}
+                    poster={posterImgSrc || undefined}
+                    className="w-full h-full object-contain"
+                    playsInline autoPlay loop muted
+                    onLoadedData={() => { setVideoLoading(false); setVideoError(false); }}
+                    onError={() => { setVideoLoading(false); setVideoError(true); }}
+                    onWaiting={() => setVideoLoading(true)}
+                    onPlaying={() => setVideoLoading(false)}
+                  />
+                  {videoLoading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-10">
+                      <Loader2 className="animate-spin text-pink-500" size={32} />
+                    </div>
+                  )}
+                  {videoError && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-10">
+                      <Volume2 size={32} className="text-gray-600 mb-2" />
+                      <p className="text-xs text-gray-500">{t('videoPreview')}</p>
+                    </div>
+                  )}
+                </>
               ) : isMontagePost ? (
-                /* ═══ MONTAGE PREVIEW — same style as calendar sidebar thumbnail ═══ */
+                /* ═══ LEGACY FALLBACK — HTML rebuild for old posts that never
+                     got a renderedVideoUrl. Will be progressively eliminated
+                     as users re-export via the Régénérer button. ═══ */
                 <div className="absolute inset-0">
                   {/* === INTRO : Poster + titre en bas (identique miniature calendrier) === */}
                   <div className="absolute inset-0" style={{
