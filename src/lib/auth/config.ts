@@ -76,6 +76,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
+        try {
+          const { data: u } = await supabaseAdmin
+            .from('users')
+            .select('plan')
+            .eq('id', token.id as string)
+            .single();
+          (session.user as any).plan = u?.plan || 'free';
+        } catch {
+          (session.user as any).plan = 'free';
+        }
       }
       return session;
     },

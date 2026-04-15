@@ -20,6 +20,7 @@ import {
   AlertTriangle,
   Eye,
   EyeOff,
+  Crop,
 } from "lucide-react";
 import { PlatformIcon, type PlatformKey } from "@/components/ui/PlatformIcon";
 import {
@@ -37,6 +38,7 @@ import ColorWheel from "@/components/ui/ColorWheel";
 import { composeAndUpload, downloadBlob } from "@/lib/video-composer";
 import { Modal } from "@/components/ui/Modal";
 import { detectClips, extractClip, type DetectedClip } from "@/lib/clip-detector";
+import CropRushModal from "@/components/creer/CropRushModal";
 import { useSession } from "next-auth/react";
 import { BuyCreditsModal } from "@/components/billing/BuyCreditsModal";
 
@@ -275,7 +277,8 @@ export default function InfographicPage() {
   // kept as derived convenience values = first item of rushList, so
   // that all existing composer/export code paths continue to work
   // unchanged (they read rushUrl).
-  const [rushList, setRushList] = useState<{ url: string; name: string }[]>([]);
+  const [rushList, setRushList] = useState<{ url: string; name: string; transform?: { scale: number; offsetX: number; offsetY: number } }[]>([]);
+  const [cropRushIdx, setCropRushIdx] = useState<number | null>(null);
   const [rushUrl, setRushUrl] = useState<string | null>(null);
   const [rushFileName, setRushFileName] = useState<string | null>(null);
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
@@ -382,9 +385,10 @@ export default function InfographicPage() {
               .filter((r: unknown): r is { url: string; name: string } =>
                 !!r && typeof (r as { url?: unknown }).url === "string",
               )
-              .map((r: { url: string; name?: string }) => ({
+              .map((r: { url: string; name?: string; transform?: { scale: number; offsetX: number; offsetY: number } }) => ({
                 url: r.url,
                 name: r.name || "video.mp4",
+                transform: r.transform,
               })),
           );
         } else if (cfg.rushUrl) {
@@ -1571,6 +1575,7 @@ export default function InfographicPage() {
                 : undefined,
               posterUrl: posterUrl,
               videoUrl: exportedSequences.video ? (rushUrl || undefined) : undefined,
+              rushTransform: rushList[0]?.transform,
               logoUrl: logoImage || null,
               musicUrl: undefined, // Audio added later in Studio Son
               voiceUrl: undefined,
@@ -1810,6 +1815,7 @@ export default function InfographicPage() {
               : undefined,
             posterUrl: exportPosterUrl,
             videoUrl: exportedSequences.video ? rushUrl : undefined,
+            rushTransform: rushList[0]?.transform,
             logoUrl: logoImage || null,
             introDuration: exportedSequences.titre ? introDuration : 0,
             cardsDuration: cards.length > 0 && exportedSequences.cartes ? cardsDuration : 0,
@@ -2900,6 +2906,16 @@ export default function InfographicPage() {
                       >
                         <Sparkles size={12} />
                       </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCropRushIdx(idx);
+                        }}
+                        className="absolute left-1 bottom-5 rounded bg-blue-600/80 p-1 text-white opacity-0 transition hover:bg-blue-700 group-hover:opacity-100"
+                        title="Recadrer la vidéo"
+                      >
+                        <Crop size={12} />
+                      </button>
                       <div className="absolute bottom-0 left-0 right-0 truncate bg-black/70 px-1 py-0.5 text-[10px] text-white">
                         {rush.name}
                       </div>
@@ -3542,6 +3558,10 @@ export default function InfographicPage() {
                   className="absolute inset-0 h-full w-full object-cover"
                   style={{
                     opacity: activeSequence === "video" ? 1 : 0.6,
+                    transform: rushList[0]?.transform
+                      ? `translate(${(rushList[0].transform.offsetX || 0) * 100}%, ${(rushList[0].transform.offsetY || 0) * 100}%) scale(${rushList[0].transform.scale || 1})`
+                      : undefined,
+                    transformOrigin: "center center",
                   }}
                   autoPlay
                   muted
@@ -5491,6 +5511,18 @@ export default function InfographicPage() {
         })()}
       </Modal>
       <BuyCreditsModal isOpen={showBuyCreditsModal} onClose={() => setShowBuyCreditsModal(false)} />
+      <CropRushModal
+        isOpen={cropRushIdx !== null}
+        onClose={() => setCropRushIdx(null)}
+        rush={cropRushIdx !== null ? rushList[cropRushIdx] ?? null : null}
+        format={format}
+        onApply={(t) => {
+          setRushList((list) =>
+            list.map((r, i) => (i === cropRushIdx ? { ...r, transform: t } : r)),
+          );
+          setCropRushIdx(null);
+        }}
+      />
     </div>
   );
 }

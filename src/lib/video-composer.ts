@@ -139,6 +139,8 @@ export interface ComposerOptions {
   cards?: CardData[];
   posterUrl?: string | null;
   videoUrl?: string | null;
+  /** Optional crop transform for the rush/background video (scale + fractional offsets). */
+  rushTransform?: { scale?: number; offsetX?: number; offsetY?: number };
   logoUrl?: string | null;
   musicUrl?: string | null;
   voiceUrl?: string | null;
@@ -1267,12 +1269,26 @@ function drawCards(
 function drawVideoSeq(
   ctx: CanvasRenderingContext2D, w: number, h: number,
   videoEl: HTMLVideoElement | null, logoImg: HTMLImageElement | null, _progress: number,
-  design?: DesignOptions
+  design?: DesignOptions,
+  rushTransform?: { scale?: number; offsetX?: number; offsetY?: number }
 ) {
   const fontFamily = design?.font || 'sans-serif';
   if (videoEl) {
-    const scale = Math.max(w / videoEl.videoWidth, h / videoEl.videoHeight);
-    ctx.drawImage(videoEl, (w - videoEl.videoWidth * scale) / 2, (h - videoEl.videoHeight * scale) / 2, videoEl.videoWidth * scale, videoEl.videoHeight * scale);
+    const srcW = videoEl.videoWidth;
+    const srcH = videoEl.videoHeight;
+    if (srcW && srcH) {
+      const t = rushTransform || {};
+      const userScale = t.scale || 1;
+      const offX = t.offsetX || 0;
+      const offY = t.offsetY || 0;
+      const baseScale = Math.max(w / srcW, h / srcH);
+      const drawScale = baseScale * userScale;
+      const drawW = srcW * drawScale;
+      const drawH = srcH * drawScale;
+      const cx = w / 2 + offX * w;
+      const cy = h / 2 + offY * h;
+      ctx.drawImage(videoEl, cx - drawW / 2, cy - drawH / 2, drawW, drawH);
+    }
   } else {
     ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0, 0, w, h);
     ctx.font = `400 ${Math.round(w * 0.04)}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
@@ -1495,7 +1511,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   const {
     width, height, fps = 30,
     title, subtitle, salesPhrase, cards = [],
-    posterUrl, videoUrl, logoUrl, musicUrl, voiceUrl,
+    posterUrl, videoUrl, rushTransform, logoUrl, musicUrl, voiceUrl,
     introDuration = 4, cardsDuration = 6, videoDuration = 10, ctaDuration = 4,
     accentColor = '#D91CD2',
     ctaText = 'CHAT POUR PLUS D\'INFOS', ctaSubText = 'LIEN EN BIO',
@@ -1730,7 +1746,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       switch (type) {
         case 'intro': drawIntro(ctx, width, height, posterImg, logoImg, title, subtitle, accentColor, progress, normalizedDesign); break;
         case 'cards': drawCards(ctx, width, height, cards, logoImg, accentColor, progress, normalizedDesign); break;
-        case 'video': drawVideoSeq(ctx, width, height, videoEl, logoImg, progress, normalizedDesign); break;
+        case 'video': drawVideoSeq(ctx, width, height, videoEl, logoImg, progress, normalizedDesign, rushTransform); break;
         case 'cta': drawCTA(ctx, width, height, accentColor, ctaText, ctaSubText, salesPhrase, watermarkText, logoImg, progress, normalizedDesign); break;
       }
     };
@@ -1781,7 +1797,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       ctx.fillStyle = 'rgba(255,255,255,0.5)';
       ctx.shadowColor = 'rgba(0,0,0,0.6)';
       ctx.shadowBlur = 4;
-      ctx.fillText('Studiio', width - wmSize, height - wmSize - barH);
+      ctx.fillText('studiio.pro', width - wmSize, height - wmSize - barH);
       ctx.restore();
     }
   };
