@@ -18,6 +18,8 @@ import {
   Search,
   Video,
   AlertTriangle,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { PlatformIcon, type PlatformKey } from "@/components/ui/PlatformIcon";
 import {
@@ -320,6 +322,12 @@ export default function InfographicPage() {
   const [cardsDuration, setCardsDuration] = useState(6);
   const [videoDuration, setVideoDuration] = useState(12);
   const [ctaDuration, setCtaDuration] = useState(4);
+  const [exportedSequences, setExportedSequences] = useState<{
+    titre: boolean;
+    cartes: boolean;
+    video: boolean;
+    cta: boolean;
+  }>({ titre: true, cartes: true, video: true, cta: true });
 
   // ── Typography controls (per-element) — declared early for localStorage ──
   const [titleLetterSpacing, setTitleLetterSpacing] = useState(0);
@@ -362,6 +370,9 @@ export default function InfographicPage() {
         if (cfg.cardsDuration) setCardsDuration(cfg.cardsDuration);
         if (cfg.videoDuration) setVideoDuration(cfg.videoDuration);
         if (cfg.ctaDuration) setCtaDuration(cfg.ctaDuration);
+        if (cfg.exportedSequences && typeof cfg.exportedSequences === "object") {
+          setExportedSequences((prev) => ({ ...prev, ...cfg.exportedSequences }));
+        }
         if (Array.isArray(cfg.rushList) && cfg.rushList.length > 0) {
           // New multi-rush format
           setRushList(
@@ -571,10 +582,10 @@ export default function InfographicPage() {
 
     // Build sequence list with durations
     const sequences: { key: typeof activeSequence; duration: number }[] = [
-      { key: 'titre', duration: introDuration },
-      ...(cards.length > 0 ? [{ key: 'cartes' as const, duration: cardsDuration }] : []),
-      ...(rushUrl ? [{ key: 'video' as const, duration: videoDuration }] : []),
-      { key: 'cta', duration: ctaDuration },
+      ...(exportedSequences.titre ? [{ key: 'titre' as const, duration: introDuration }] : []),
+      ...(cards.length > 0 && exportedSequences.cartes ? [{ key: 'cartes' as const, duration: cardsDuration }] : []),
+      ...(rushUrl && exportedSequences.video ? [{ key: 'video' as const, duration: videoDuration }] : []),
+      ...(exportedSequences.cta ? [{ key: 'cta' as const, duration: ctaDuration }] : []),
     ];
 
     let i = 0;
@@ -590,7 +601,7 @@ export default function InfographicPage() {
       }, sequences[i].duration * 1000);
     };
     playNext();
-  }, [stopPlayback, introDuration, cardsDuration, videoDuration, ctaDuration, cards.length, rushUrl]);
+  }, [stopPlayback, introDuration, cardsDuration, videoDuration, ctaDuration, cards.length, rushUrl, exportedSequences]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -651,7 +662,7 @@ export default function InfographicPage() {
       localStorage.setItem(
         INFOGRAPHIC_CONFIG_KEY,
         JSON.stringify({
-          colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration,
+          colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration, exportedSequences,
           rushUrl, rushFileName, rushList, characterImage,
           titleLetterSpacing, titleLineHeight, titleBold, titleItalic,
           ctaLetterSpacing, ctaLineHeight, ctaBold, ctaItalic,
@@ -671,7 +682,7 @@ export default function InfographicPage() {
       );
     } catch { /* ignore */ }
   }, [
-    configLoaded, colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration,
+    configLoaded, colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration, exportedSequences,
     rushUrl, rushFileName, rushList, characterImage,
     titleLetterSpacing, titleLineHeight, titleBold, titleItalic,
     ctaLetterSpacing, ctaLineHeight, ctaBold, ctaItalic,
@@ -1169,6 +1180,7 @@ export default function InfographicPage() {
       });
       setDetectedClips(result.clips);
       setSelectedClipIds(new Set(result.clips.map((c) => c.id)));
+      if (result.clips.length > 0) setPreviewClipId(result.clips[0].id);
       if (result.clips.length === 0) {
         showToast("Aucune séquence détectée");
       }
@@ -1232,6 +1244,16 @@ export default function InfographicPage() {
       previewStopTimerRef.current = requestAnimationFrame(tick);
     };
     previewStopTimerRef.current = requestAnimationFrame(tick);
+  };
+
+  const pausePreview = () => {
+    if (previewStopTimerRef.current) {
+      cancelAnimationFrame(previewStopTimerRef.current);
+      previewStopTimerRef.current = null;
+    }
+    try {
+      previewVideoRef.current?.pause();
+    } catch {}
   };
 
   useEffect(() => {
@@ -1525,18 +1547,18 @@ export default function InfographicPage() {
               title: bTitle || "Infographie",
               subtitle: bSubtitle || undefined,
               salesPhrase: salesPhrase || undefined,
-              cards: bCards.length > 0
+              cards: bCards.length > 0 && exportedSequences.cartes
                 ? bCards.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color }))
                 : undefined,
               posterUrl: posterUrl,
-              videoUrl: rushUrl || undefined,
+              videoUrl: exportedSequences.video ? (rushUrl || undefined) : undefined,
               logoUrl: logoImage || null,
               musicUrl: undefined, // Audio added later in Studio Son
               voiceUrl: undefined,
-              introDuration,
-              cardsDuration: bCards.length > 0 ? cardsDuration : 0,
-              videoDuration: rushUrl ? videoDuration : 0,
-              ctaDuration,
+              introDuration: exportedSequences.titre ? introDuration : 0,
+              cardsDuration: bCards.length > 0 && exportedSequences.cartes ? cardsDuration : 0,
+              videoDuration: rushUrl && exportedSequences.video ? videoDuration : 0,
+              ctaDuration: exportedSequences.cta ? ctaDuration : 0,
               accentColor: exportAccent,
               ctaText: ctaSubText || "CHAT POUR PLUS D'INFOS",
               ctaSubText: "LIEN EN BIO",
@@ -1627,20 +1649,20 @@ export default function InfographicPage() {
                 videoUrl: rushUrl || undefined,
                 rushUrls: rushUrl ? [rushUrl] : undefined,
                 sequences: {
-                  intro: introDuration,
-                  cards: cards.length > 0 ? cardsDuration : 0,
-                  video: rushUrl ? videoDuration : 0,
-                  cta: ctaDuration,
+                  intro: exportedSequences.titre ? introDuration : 0,
+                  cards: cards.length > 0 && exportedSequences.cartes ? cardsDuration : 0,
+                  video: rushUrl && exportedSequences.video ? videoDuration : 0,
+                  cta: exportedSequences.cta ? ctaDuration : 0,
                   total:
-                    introDuration +
-                    (cards.length > 0 ? cardsDuration : 0) +
-                    (rushUrl ? videoDuration : 0) +
-                    ctaDuration,
+                    (exportedSequences.titre ? introDuration : 0) +
+                    (cards.length > 0 && exportedSequences.cartes ? cardsDuration : 0) +
+                    (rushUrl && exportedSequences.video ? videoDuration : 0) +
+                    (exportedSequences.cta ? ctaDuration : 0),
                   order: [
-                    "intro",
-                    ...(cards.length > 0 ? ["cards"] : []),
-                    ...(rushUrl ? ["video"] : []),
-                    "cta",
+                    ...(exportedSequences.titre ? ["intro"] : []),
+                    ...(cards.length > 0 && exportedSequences.cartes ? ["cards"] : []),
+                    ...(rushUrl && exportedSequences.video ? ["video"] : []),
+                    ...(exportedSequences.cta ? ["cta"] : []),
                   ],
                 },
                 branding: {
@@ -1757,16 +1779,16 @@ export default function InfographicPage() {
             title: title || "Infographie",
             subtitle: subtitle || undefined,
             salesPhrase: salesPhrases.length > 0 ? salesPhrases[0] : undefined,
-            cards: cards.length > 0
+            cards: cards.length > 0 && exportedSequences.cartes
               ? cards.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color }))
               : undefined,
             posterUrl: exportPosterUrl,
-            videoUrl: rushUrl,
+            videoUrl: exportedSequences.video ? rushUrl : undefined,
             logoUrl: logoImage || null,
-            introDuration,
-            cardsDuration: cards.length > 0 ? cardsDuration : 0,
-            videoDuration: rushUrl ? videoDuration : 0,
-            ctaDuration,
+            introDuration: exportedSequences.titre ? introDuration : 0,
+            cardsDuration: cards.length > 0 && exportedSequences.cartes ? cardsDuration : 0,
+            videoDuration: rushUrl && exportedSequences.video ? videoDuration : 0,
+            ctaDuration: exportedSequences.cta ? ctaDuration : 0,
             accentColor: exportAccent,
             ctaText: ctaSubText || "CHAT POUR PLUS D'INFOS",
             ctaSubText: "LIEN EN BIO",
@@ -3264,26 +3286,46 @@ export default function InfographicPage() {
               ? [{ key: "video" as const, label: "Vidéo", icon: "🎥" }]
               : []),
             { key: "cta" as const, label: "CTA", icon: "📢" },
-          ].map((seq) => (
-            <button
-              key={seq.key}
-              onClick={() => {
-                stopPlayback();
-                setActiveSequence(seq.key);
-                // Auto-switch left panel to relevant content
-                if (seq.key === "cartes") setStep(0);
-                else if (seq.key === "video") setStep(2);
-              }}
-              className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
-                activeSequence === seq.key
-                  ? "bg-purple-600 text-white shadow-lg shadow-purple-500/20"
-                  : "bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700"
-              }`}
-            >
-              <span>{seq.icon}</span>
-              {seq.label}
-            </button>
-          ))}
+          ].map((seq) => {
+            const seqKey = seq.key as "titre" | "cartes" | "video" | "cta";
+            const included = exportedSequences[seqKey];
+            return (
+              <div
+                key={seq.key}
+                className={`flex items-center gap-0.5 rounded-full transition-all ${
+                  activeSequence === seq.key
+                    ? "bg-purple-600 text-white shadow-lg shadow-purple-500/20"
+                    : "bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700"
+                } ${!included ? "opacity-50" : ""}`}
+              >
+                <button
+                  onClick={() => {
+                    stopPlayback();
+                    setActiveSequence(seq.key);
+                    if (seq.key === "cartes") setStep(0);
+                    else if (seq.key === "video") setStep(2);
+                  }}
+                  className="flex items-center gap-1 rounded-l-full py-1.5 pl-3 pr-1 text-xs font-medium"
+                >
+                  <span>{seq.icon}</span>
+                  {seq.label}
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setExportedSequences((prev) => ({
+                      ...prev,
+                      [seqKey]: !prev[seqKey],
+                    }));
+                  }}
+                  title={included ? "Inclure dans l'export" : "Exclu de l'export"}
+                  className="rounded-r-full py-1.5 pl-1 pr-2 hover:text-white"
+                >
+                  {included ? <Eye size={12} /> : <EyeOff size={12} />}
+                </button>
+              </div>
+            );
+          })}
         </div>
 
         {/* Safe Zone Platform Selector */}
@@ -5179,181 +5221,11 @@ export default function InfographicPage() {
               {clipExtractProgress}%
             </p>
           </div>
-        ) : (
+        ) : detectedClips.length === 0 ? (
           <div>
-            {detectedClips.length === 0 ? (
-              <p className="py-6 text-center text-sm text-gray-400">
-                Aucune séquence détectée dans cette vidéo.
-              </p>
-            ) : (
-              <>
-                <p className="mb-3 text-sm text-gray-400">
-                  {detectedClips.length} séquence
-                  {detectedClips.length > 1 ? "s" : ""} détectée
-                  {detectedClips.length > 1 ? "s" : ""}. Cochez celles à garder.
-                </p>
-                <div className="grid max-h-[50vh] grid-cols-2 gap-3 overflow-y-auto sm:grid-cols-3">
-                  {detectedClips.map((clip) => {
-                    const selected = selectedClipIds.has(clip.id);
-                    const trim = clipTrims[clip.id];
-                    const effStart = trim?.startTime ?? clip.startTime;
-                    const effEnd = trim?.endTime ?? clip.endTime;
-                    const effDur = effEnd - effStart;
-                    const trimmed = !!trim;
-                    return (
-                      <div key={clip.id} className="flex flex-col gap-1">
-                        <button
-                          onClick={() => {
-                            toggleClipSelection(clip.id);
-                            setPreviewClipId(clip.id);
-                          }}
-                          className={`group relative overflow-hidden rounded-lg border-2 text-left transition ${
-                            selected
-                              ? "border-purple-500"
-                              : "border-gray-700 opacity-60 hover:opacity-100"
-                          }`}
-                          style={{ aspectRatio: "16/9" }}
-                        >
-                          <img
-                            src={clip.thumbnailUrl}
-                            alt={clip.label}
-                            className="h-full w-full object-cover"
-                          />
-                          <div
-                            className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded border-2"
-                            style={{
-                              borderColor: selected ? "#A855F7" : "#9CA3AF",
-                              background: selected ? "#A855F7" : "rgba(0,0,0,0.5)",
-                            }}
-                          >
-                            {selected && <Check size={12} className="text-white" />}
-                          </div>
-                          <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-2 py-1">
-                            <p className="truncate text-[11px] font-semibold text-white">
-                              {clip.label}
-                            </p>
-                            <p className="text-[10px] text-gray-300">
-                              {effDur.toFixed(1)}s{trimmed ? " (coupée)" : ""} · score {clip.score}
-                            </p>
-                          </div>
-                        </button>
-                        {selected && (
-                          <div className="rounded-md bg-gray-800/60 p-2 text-[11px] text-gray-300">
-                            <div className="flex items-center gap-2">
-                              <span className="w-10 shrink-0 text-gray-400">Début</span>
-                              <input
-                                type="range"
-                                min={clip.startTime}
-                                max={Math.max(clip.startTime, effEnd - 0.5)}
-                                step={0.1}
-                                value={effStart}
-                                onChange={(ev) => {
-                                  const v = parseFloat(ev.target.value);
-                                  setClipTrims((prev) => {
-                                    const curr = prev[clip.id] ?? {
-                                      startTime: clip.startTime,
-                                      endTime: clip.endTime,
-                                    };
-                                    const clamped = Math.min(
-                                      Math.max(v, clip.startTime),
-                                      curr.endTime - 0.5,
-                                    );
-                                    return {
-                                      ...prev,
-                                      [clip.id]: { ...curr, startTime: clamped },
-                                    };
-                                  });
-                                  if (
-                                    previewClipId === clip.id &&
-                                    previewVideoRef.current
-                                  ) {
-                                    try {
-                                      previewVideoRef.current.currentTime = v;
-                                    } catch {}
-                                  }
-                                }}
-                                className="flex-1 accent-purple-500"
-                              />
-                              <span className="min-w-[44px] text-right font-mono">
-                                {effStart.toFixed(1)}s
-                              </span>
-                            </div>
-                            <div className="mt-1 flex items-center gap-2">
-                              <span className="w-10 shrink-0 text-gray-400">Fin</span>
-                              <input
-                                type="range"
-                                min={Math.min(clip.endTime, effStart + 0.5)}
-                                max={clip.endTime}
-                                step={0.1}
-                                value={effEnd}
-                                onChange={(ev) => {
-                                  const v = parseFloat(ev.target.value);
-                                  setClipTrims((prev) => {
-                                    const curr = prev[clip.id] ?? {
-                                      startTime: clip.startTime,
-                                      endTime: clip.endTime,
-                                    };
-                                    const clamped = Math.max(
-                                      Math.min(v, clip.endTime),
-                                      curr.startTime + 0.5,
-                                    );
-                                    return {
-                                      ...prev,
-                                      [clip.id]: { ...curr, endTime: clamped },
-                                    };
-                                  });
-                                }}
-                                className="flex-1 accent-purple-500"
-                              />
-                              <span className="min-w-[44px] text-right font-mono">
-                                {effEnd.toFixed(1)}s
-                              </span>
-                            </div>
-                            {trimmed && (
-                              <button
-                                onClick={() => resetClipTrim(clip.id)}
-                                className="mt-1 w-full rounded bg-gray-700/50 py-0.5 text-[10px] text-gray-300 hover:bg-gray-700"
-                              >
-                                Réinitialiser
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-            {previewClipId && (() => {
-              const clip = detectedClips.find((c) => c.id === previewClipId);
-              if (!clip) return null;
-              const trim = clipTrims[clip.id];
-              const effStart = trim?.startTime ?? clip.startTime;
-              const effEnd = trim?.endTime ?? clip.endTime;
-              const effDur = effEnd - effStart;
-              return (
-                <div className="mt-4 rounded-lg border border-purple-500/40 bg-gray-900 p-3">
-                  <video
-                    ref={previewVideoRef}
-                    src={previewUrlRef.current ?? undefined}
-                    muted
-                    playsInline
-                    className="w-full rounded bg-black"
-                    style={{ maxHeight: 280 }}
-                  />
-                  <div className="mt-2 flex items-center justify-between text-xs text-gray-400">
-                    <button
-                      onClick={() => playPreview(clip)}
-                      className="rounded bg-purple-600 px-3 py-1 text-white hover:bg-purple-700"
-                    >
-                      ▶ Lire la sélection
-                    </button>
-                    <span>Durée : {effDur.toFixed(1)}s</span>
-                  </div>
-                </div>
-              );
-            })()}
+            <p className="py-6 text-center text-sm text-gray-400">
+              Aucune séquence détectée dans cette vidéo.
+            </p>
             <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-gray-800 pt-4">
               <button
                 onClick={keepOriginalRush}
@@ -5361,16 +5233,219 @@ export default function InfographicPage() {
               >
                 Garder l'original
               </button>
-              <button
-                onClick={confirmClipExtraction}
-                disabled={detectedClips.length === 0 || selectedClipIds.size === 0}
-                className="rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Extraire {selectedClipIds.size > 0 ? `(${selectedClipIds.size})` : ""}
-              </button>
             </div>
           </div>
-        )}
+        ) : (() => {
+          const activeClip =
+            detectedClips.find((c) => c.id === previewClipId) ??
+            detectedClips[0];
+          const trim = clipTrims[activeClip.id];
+          const effStart = trim?.startTime ?? activeClip.startTime;
+          const effEnd = trim?.endTime ?? activeClip.endTime;
+          const effDur = effEnd - effStart;
+          const trimmed = !!trim;
+          return (
+            <div>
+              {/* Horizontal thumbnail strip */}
+              <div className="mb-3 flex gap-2 overflow-x-auto pb-2">
+                {detectedClips.map((clip) => {
+                  const sel = selectedClipIds.has(clip.id);
+                  const isActive = clip.id === activeClip.id;
+                  return (
+                    <button
+                      key={clip.id}
+                      onClick={() => {
+                        setPreviewClipId(clip.id);
+                        toggleClipSelection(clip.id);
+                        pausePreview();
+                      }}
+                      className={`group relative shrink-0 overflow-hidden rounded-lg border-2 transition ${
+                        isActive
+                          ? "border-purple-400 ring-2 ring-purple-400/40"
+                          : sel
+                            ? "border-purple-500/60"
+                            : "border-gray-700 opacity-60 hover:opacity-100"
+                      }`}
+                      style={{ width: 120, aspectRatio: "16/9" }}
+                      title={clip.label}
+                    >
+                      <img
+                        src={clip.thumbnailUrl}
+                        alt={clip.label}
+                        className="h-full w-full object-cover"
+                      />
+                      <div
+                        className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded border"
+                        style={{
+                          borderColor: sel ? "#A855F7" : "#9CA3AF",
+                          background: sel ? "#A855F7" : "rgba(0,0,0,0.5)",
+                        }}
+                      >
+                        {sel && <Check size={10} className="text-white" />}
+                      </div>
+                      <div className="absolute bottom-0 left-0 right-0 truncate bg-black/70 px-1 py-0.5 text-[10px] text-white">
+                        {clip.label}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Main video player */}
+              <div className="rounded-lg border border-purple-500/40 bg-gray-900 p-3">
+                <video
+                  ref={previewVideoRef}
+                  src={previewUrlRef.current ?? undefined}
+                  muted
+                  playsInline
+                  className="w-full rounded bg-black"
+                  style={{ maxHeight: 320 }}
+                />
+
+                {/* Dual-handle trim slider */}
+                <div className="mt-3">
+                  <div
+                    className="relative h-8"
+                    style={{
+                      // range track area
+                    }}
+                  >
+                    {/* Filled selection band */}
+                    <div className="absolute left-0 right-0 top-1/2 h-1.5 -translate-y-1/2 rounded bg-gray-700" />
+                    <div
+                      className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded bg-gradient-to-r from-purple-500 to-pink-500"
+                      style={{
+                        left: `${
+                          ((effStart - activeClip.startTime) /
+                            Math.max(0.001, activeClip.endTime - activeClip.startTime)) *
+                          100
+                        }%`,
+                        right: `${
+                          (1 -
+                            (effEnd - activeClip.startTime) /
+                              Math.max(0.001, activeClip.endTime - activeClip.startTime)) *
+                          100
+                        }%`,
+                      }}
+                    />
+                    <input
+                      type="range"
+                      min={activeClip.startTime}
+                      max={activeClip.endTime}
+                      step={0.1}
+                      value={effStart}
+                      onChange={(ev) => {
+                        const v = parseFloat(ev.target.value);
+                        setClipTrims((prev) => {
+                          const curr = prev[activeClip.id] ?? {
+                            startTime: activeClip.startTime,
+                            endTime: activeClip.endTime,
+                          };
+                          const clamped = Math.min(
+                            Math.max(v, activeClip.startTime),
+                            curr.endTime - 0.5,
+                          );
+                          return {
+                            ...prev,
+                            [activeClip.id]: { ...curr, startTime: clamped },
+                          };
+                        });
+                        if (previewVideoRef.current) {
+                          try {
+                            previewVideoRef.current.currentTime = v;
+                          } catch {}
+                        }
+                      }}
+                      className="range-dual pointer-events-auto absolute left-0 right-0 top-0 h-8 w-full appearance-none bg-transparent accent-purple-500"
+                      style={{ zIndex: 2 }}
+                    />
+                    <input
+                      type="range"
+                      min={activeClip.startTime}
+                      max={activeClip.endTime}
+                      step={0.1}
+                      value={effEnd}
+                      onChange={(ev) => {
+                        const v = parseFloat(ev.target.value);
+                        setClipTrims((prev) => {
+                          const curr = prev[activeClip.id] ?? {
+                            startTime: activeClip.startTime,
+                            endTime: activeClip.endTime,
+                          };
+                          const clamped = Math.max(
+                            Math.min(v, activeClip.endTime),
+                            curr.startTime + 0.5,
+                          );
+                          return {
+                            ...prev,
+                            [activeClip.id]: { ...curr, endTime: clamped },
+                          };
+                        });
+                      }}
+                      className="range-dual pointer-events-auto absolute left-0 right-0 top-0 h-8 w-full appearance-none bg-transparent accent-pink-500"
+                      style={{ zIndex: 3 }}
+                    />
+                  </div>
+                  <div className="mt-1 flex items-center justify-between text-[11px] font-mono text-gray-400">
+                    <span>{effStart.toFixed(1)}s</span>
+                    <span>{effEnd.toFixed(1)}s</span>
+                  </div>
+                </div>
+
+                {/* Controls row */}
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => playPreview(activeClip)}
+                      className="rounded bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-700"
+                    >
+                      ▶ Lire la sélection
+                    </button>
+                    <button
+                      onClick={pausePreview}
+                      className="rounded bg-gray-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-gray-600"
+                    >
+                      ⏸ Pause
+                    </button>
+                    {trimmed && (
+                      <button
+                        onClick={() => resetClipTrim(activeClip.id)}
+                        className="rounded bg-gray-700/60 px-3 py-1.5 text-xs text-gray-200 hover:bg-gray-700"
+                      >
+                        Réinitialiser
+                      </button>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <div className="text-lg font-bold text-white">
+                      {effDur.toFixed(1)}s
+                    </div>
+                    <div className="text-[10px] text-gray-500">
+                      {trimmed ? "coupée" : "durée"} · score {activeClip.score}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-gray-800 pt-4">
+                <button
+                  onClick={keepOriginalRush}
+                  className="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300 transition hover:border-gray-500 hover:text-white"
+                >
+                  Garder l'original
+                </button>
+                <button
+                  onClick={confirmClipExtraction}
+                  disabled={selectedClipIds.size === 0}
+                  className="rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Extraire {selectedClipIds.size > 0 ? `(${selectedClipIds.size})` : ""}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
       </Modal>
     </div>
   );
