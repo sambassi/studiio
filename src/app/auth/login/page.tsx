@@ -17,37 +17,6 @@ export default function LoginPage() {
     signIn(provider, { callbackUrl: '/dashboard' });
   };
 
-  const handleEmailLogin = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setLoading('email');
-    setError('');
-    const formData = new FormData(e.currentTarget);
-    const email = formData.get('email') as string;
-    const password = formData.get('password') as string;
-
-    if (!email || !password) {
-      setError(t('login.errorFillAll'));
-      setLoading(null);
-      return;
-    }
-
-    try {
-      const res = await signIn('credentials', {
-        email,
-        password,
-        redirect: false,
-      });
-      if (res?.error) {
-        setError(t('login.errorInvalid'));
-      } else {
-        window.location.href = '/dashboard';
-      }
-    } catch {
-      setError(t('login.errorGeneric'));
-    }
-    setLoading(null);
-  };
-
   return (
     <div className="min-h-screen bg-studiio-dark flex items-center justify-center px-4">
       <div className="w-full max-w-md">
@@ -81,45 +50,6 @@ export default function LoginPage() {
               {t('login.facebook')}
             </button>
           </div>
-
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-700"></div>
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-gray-900 text-gray-500">{t('login.or')}</span>
-            </div>
-          </div>
-
-          <form onSubmit={handleEmailLogin} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">{t('login.email')}</label>
-              <input
-                type="email"
-                name="email"
-                className="input-base w-full"
-                placeholder={t('login.emailPlaceholder')}
-                disabled={!!loading}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">{t('login.password')}</label>
-              <input
-                type="password"
-                name="password"
-                className="input-base w-full"
-                placeholder="••••••••"
-                disabled={!!loading}
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={!!loading}
-              className="w-full button-primary disabled:opacity-50"
-            >
-              {loading === 'email' ? t('login.connecting') : t('login.submit')}
-            </button>
-          </form>
 
           <div className="text-center">
             <p className="text-gray-400">
