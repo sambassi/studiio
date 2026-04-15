@@ -289,6 +289,7 @@ export default function InfographicPage() {
   const [clipExtracting, setClipExtracting] = useState(false);
   const [clipExtractProgress, setClipExtractProgress] = useState(0);
   const [clipExtractStage, setClipExtractStage] = useState("");
+  const [clipTrims, setClipTrims] = useState<Record<string, { startTime: number; endTime: number }>>({});
   const clipSourceFileRef = useRef<File | null>(null);
 
   // Keep rushUrl/rushFileName in sync with rushList[0]
@@ -1188,7 +1189,42 @@ export default function InfographicPage() {
     setClipSourceIdx(null);
     setDetectedClips([]);
     setSelectedClipIds(new Set());
+    setClipTrims({});
     clipSourceFileRef.current = null;
+  };
+
+  const adjustClipTrim = (
+    clip: DetectedClip,
+    field: "startTime" | "endTime",
+    deltaSec: number,
+  ) => {
+    setClipTrims((prev) => {
+      const curr = prev[clip.id] ?? {
+        startTime: clip.startTime,
+        endTime: clip.endTime,
+      };
+      let next = { ...curr, [field]: curr[field] + deltaSec };
+      if (field === "startTime") {
+        next.startTime = Math.min(
+          Math.max(next.startTime, clip.startTime),
+          next.endTime - 0.5,
+        );
+      } else {
+        next.endTime = Math.max(
+          Math.min(next.endTime, clip.endTime),
+          next.startTime + 0.5,
+        );
+      }
+      return { ...prev, [clip.id]: next };
+    });
+  };
+
+  const resetClipTrim = (clipId: string) => {
+    setClipTrims((prev) => {
+      const next = { ...prev };
+      delete next[clipId];
+      return next;
+    });
   };
 
   const keepOriginalRush = () => {
@@ -1213,10 +1249,12 @@ export default function InfographicPage() {
           `Extraction ${i + 1}/${chosen.length} — ${clip.label}`,
         );
         setClipExtractProgress(0);
+        const s = clipTrims[clip.id]?.startTime ?? clip.startTime;
+        const e = clipTrims[clip.id]?.endTime ?? clip.endTime;
         const clipFile = await extractClip(
           file,
-          clip.startTime,
-          clip.endTime,
+          s,
+          e,
           (p) => setClipExtractProgress(p),
         );
         setClipExtractStage(`Upload ${i + 1}/${chosen.length}...`);
@@ -1238,6 +1276,7 @@ export default function InfographicPage() {
       setClipSourceIdx(null);
       setDetectedClips([]);
       setSelectedClipIds(new Set());
+      setClipTrims({});
       clipSourceFileRef.current = null;
     } catch (err) {
       console.error("[Clip] extract error:", err);
@@ -2458,7 +2497,10 @@ export default function InfographicPage() {
                       <Loader2 size={14} className="animate-spin" />
                     ) : (
                       <>
-                        <Sparkles size={14} /> Ajouter une carte IA
+                        <Plus size={16} /> Ajouter une carte{" "}
+                        <span className="text-purple-400">
+                          <Sparkles size={12} className="inline" /> IA
+                        </span>
                       </>
                     )}
                   </button>
@@ -5126,40 +5168,98 @@ export default function InfographicPage() {
                 <div className="grid max-h-[50vh] grid-cols-2 gap-3 overflow-y-auto sm:grid-cols-3">
                   {detectedClips.map((clip) => {
                     const selected = selectedClipIds.has(clip.id);
+                    const trim = clipTrims[clip.id];
+                    const effStart = trim?.startTime ?? clip.startTime;
+                    const effEnd = trim?.endTime ?? clip.endTime;
+                    const effDur = effEnd - effStart;
+                    const trimmed = !!trim;
                     return (
-                      <button
-                        key={clip.id}
-                        onClick={() => toggleClipSelection(clip.id)}
-                        className={`group relative overflow-hidden rounded-lg border-2 text-left transition ${
-                          selected
-                            ? "border-purple-500"
-                            : "border-gray-700 opacity-60 hover:opacity-100"
-                        }`}
-                        style={{ aspectRatio: "16/9" }}
-                      >
-                        <img
-                          src={clip.thumbnailUrl}
-                          alt={clip.label}
-                          className="h-full w-full object-cover"
-                        />
-                        <div
-                          className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded border-2"
-                          style={{
-                            borderColor: selected ? "#A855F7" : "#9CA3AF",
-                            background: selected ? "#A855F7" : "rgba(0,0,0,0.5)",
-                          }}
+                      <div key={clip.id} className="flex flex-col gap-1">
+                        <button
+                          onClick={() => toggleClipSelection(clip.id)}
+                          className={`group relative overflow-hidden rounded-lg border-2 text-left transition ${
+                            selected
+                              ? "border-purple-500"
+                              : "border-gray-700 opacity-60 hover:opacity-100"
+                          }`}
+                          style={{ aspectRatio: "16/9" }}
                         >
-                          {selected && <Check size={12} className="text-white" />}
-                        </div>
-                        <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-2 py-1">
-                          <p className="truncate text-[11px] font-semibold text-white">
-                            {clip.label}
-                          </p>
-                          <p className="text-[10px] text-gray-300">
-                            {clip.duration}s · score {clip.score}
-                          </p>
-                        </div>
-                      </button>
+                          <img
+                            src={clip.thumbnailUrl}
+                            alt={clip.label}
+                            className="h-full w-full object-cover"
+                          />
+                          <div
+                            className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded border-2"
+                            style={{
+                              borderColor: selected ? "#A855F7" : "#9CA3AF",
+                              background: selected ? "#A855F7" : "rgba(0,0,0,0.5)",
+                            }}
+                          >
+                            {selected && <Check size={12} className="text-white" />}
+                          </div>
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-2 py-1">
+                            <p className="truncate text-[11px] font-semibold text-white">
+                              {clip.label}
+                            </p>
+                            <p className="text-[10px] text-gray-300">
+                              {effDur.toFixed(1)}s{trimmed ? " (coupée)" : ""} · score {clip.score}
+                            </p>
+                          </div>
+                        </button>
+                        {selected && (
+                          <div className="rounded-md bg-gray-800/60 p-2 text-[11px] text-gray-300">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-gray-400">Début</span>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => adjustClipTrim(clip, "startTime", -0.5)}
+                                  className="rounded bg-gray-700 px-1.5 py-0.5 text-white hover:bg-gray-600"
+                                >
+                                  −
+                                </button>
+                                <span className="min-w-[44px] text-center font-mono">
+                                  {effStart.toFixed(1)}s
+                                </span>
+                                <button
+                                  onClick={() => adjustClipTrim(clip, "startTime", 0.5)}
+                                  className="rounded bg-gray-700 px-1.5 py-0.5 text-white hover:bg-gray-600"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </div>
+                            <div className="mt-1 flex items-center justify-between gap-1">
+                              <span className="text-gray-400">Fin</span>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => adjustClipTrim(clip, "endTime", -0.5)}
+                                  className="rounded bg-gray-700 px-1.5 py-0.5 text-white hover:bg-gray-600"
+                                >
+                                  −
+                                </button>
+                                <span className="min-w-[44px] text-center font-mono">
+                                  {effEnd.toFixed(1)}s
+                                </span>
+                                <button
+                                  onClick={() => adjustClipTrim(clip, "endTime", 0.5)}
+                                  className="rounded bg-gray-700 px-1.5 py-0.5 text-white hover:bg-gray-600"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </div>
+                            {trimmed && (
+                              <button
+                                onClick={() => resetClipTrim(clip.id)}
+                                className="mt-1 w-full rounded bg-gray-700/50 py-0.5 text-[10px] text-gray-300 hover:bg-gray-700"
+                              >
+                                Réinitialiser
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
