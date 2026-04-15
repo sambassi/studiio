@@ -290,7 +290,11 @@ export default function InfographicPage() {
   const [clipExtractProgress, setClipExtractProgress] = useState(0);
   const [clipExtractStage, setClipExtractStage] = useState("");
   const [clipTrims, setClipTrims] = useState<Record<string, { startTime: number; endTime: number }>>({});
+  const [previewClipId, setPreviewClipId] = useState<string | null>(null);
   const clipSourceFileRef = useRef<File | null>(null);
+  const previewUrlRef = useRef<string | null>(null);
+  const previewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const previewStopTimerRef = useRef<number | null>(null);
 
   // Keep rushUrl/rushFileName in sync with rushList[0]
   useEffect(() => {
@@ -1155,6 +1159,8 @@ export default function InfographicPage() {
         type: blob.type || "video/mp4",
       });
       clipSourceFileRef.current = file;
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = URL.createObjectURL(file);
       const result = await detectClips(file, {
         onProgress: (p, s) => {
           setClipProgress(p);
@@ -1190,34 +1196,55 @@ export default function InfographicPage() {
     setDetectedClips([]);
     setSelectedClipIds(new Set());
     setClipTrims({});
+    setPreviewClipId(null);
+    if (previewStopTimerRef.current) {
+      cancelAnimationFrame(previewStopTimerRef.current);
+      previewStopTimerRef.current = null;
+    }
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
     clipSourceFileRef.current = null;
   };
 
-  const adjustClipTrim = (
-    clip: DetectedClip,
-    field: "startTime" | "endTime",
-    deltaSec: number,
-  ) => {
-    setClipTrims((prev) => {
-      const curr = prev[clip.id] ?? {
-        startTime: clip.startTime,
-        endTime: clip.endTime,
-      };
-      let next = { ...curr, [field]: curr[field] + deltaSec };
-      if (field === "startTime") {
-        next.startTime = Math.min(
-          Math.max(next.startTime, clip.startTime),
-          next.endTime - 0.5,
-        );
-      } else {
-        next.endTime = Math.max(
-          Math.min(next.endTime, clip.endTime),
-          next.startTime + 0.5,
-        );
+  const playPreview = (clip: DetectedClip) => {
+    const vid = previewVideoRef.current;
+    if (!vid) return;
+    const trim = clipTrims[clip.id];
+    const effStart = trim?.startTime ?? clip.startTime;
+    const effEnd = trim?.endTime ?? clip.endTime;
+    if (previewStopTimerRef.current) {
+      cancelAnimationFrame(previewStopTimerRef.current);
+      previewStopTimerRef.current = null;
+    }
+    try {
+      vid.currentTime = effStart;
+      vid.play().catch(() => {});
+    } catch {}
+    const tick = () => {
+      if (!previewVideoRef.current) return;
+      if (previewVideoRef.current.currentTime >= effEnd) {
+        previewVideoRef.current.pause();
+        previewStopTimerRef.current = null;
+        return;
       }
-      return { ...prev, [clip.id]: next };
-    });
+      previewStopTimerRef.current = requestAnimationFrame(tick);
+    };
+    previewStopTimerRef.current = requestAnimationFrame(tick);
   };
+
+  useEffect(() => {
+    if (!previewClipId) return;
+    const clip = detectedClips.find((c) => c.id === previewClipId);
+    if (!clip) return;
+    const vid = previewVideoRef.current;
+    if (!vid) return;
+    const effStart = clipTrims[clip.id]?.startTime ?? clip.startTime;
+    try {
+      vid.currentTime = effStart;
+    } catch {}
+  }, [previewClipId, detectedClips, clipTrims]);
 
   const resetClipTrim = (clipId: string) => {
     setClipTrims((prev) => {
@@ -5176,7 +5203,10 @@ export default function InfographicPage() {
                     return (
                       <div key={clip.id} className="flex flex-col gap-1">
                         <button
-                          onClick={() => toggleClipSelection(clip.id)}
+                          onClick={() => {
+                            toggleClipSelection(clip.id);
+                            setPreviewClipId(clip.id);
+                          }}
                           className={`group relative overflow-hidden rounded-lg border-2 text-left transition ${
                             selected
                               ? "border-purple-500"
@@ -5209,45 +5239,75 @@ export default function InfographicPage() {
                         </button>
                         {selected && (
                           <div className="rounded-md bg-gray-800/60 p-2 text-[11px] text-gray-300">
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="text-gray-400">Début</span>
-                              <div className="flex items-center gap-1">
-                                <button
-                                  onClick={() => adjustClipTrim(clip, "startTime", -0.5)}
-                                  className="rounded bg-gray-700 px-1.5 py-0.5 text-white hover:bg-gray-600"
-                                >
-                                  −
-                                </button>
-                                <span className="min-w-[44px] text-center font-mono">
-                                  {effStart.toFixed(1)}s
-                                </span>
-                                <button
-                                  onClick={() => adjustClipTrim(clip, "startTime", 0.5)}
-                                  className="rounded bg-gray-700 px-1.5 py-0.5 text-white hover:bg-gray-600"
-                                >
-                                  +
-                                </button>
-                              </div>
+                            <div className="flex items-center gap-2">
+                              <span className="w-10 shrink-0 text-gray-400">Début</span>
+                              <input
+                                type="range"
+                                min={clip.startTime}
+                                max={Math.max(clip.startTime, effEnd - 0.5)}
+                                step={0.1}
+                                value={effStart}
+                                onChange={(ev) => {
+                                  const v = parseFloat(ev.target.value);
+                                  setClipTrims((prev) => {
+                                    const curr = prev[clip.id] ?? {
+                                      startTime: clip.startTime,
+                                      endTime: clip.endTime,
+                                    };
+                                    const clamped = Math.min(
+                                      Math.max(v, clip.startTime),
+                                      curr.endTime - 0.5,
+                                    );
+                                    return {
+                                      ...prev,
+                                      [clip.id]: { ...curr, startTime: clamped },
+                                    };
+                                  });
+                                  if (
+                                    previewClipId === clip.id &&
+                                    previewVideoRef.current
+                                  ) {
+                                    try {
+                                      previewVideoRef.current.currentTime = v;
+                                    } catch {}
+                                  }
+                                }}
+                                className="flex-1 accent-purple-500"
+                              />
+                              <span className="min-w-[44px] text-right font-mono">
+                                {effStart.toFixed(1)}s
+                              </span>
                             </div>
-                            <div className="mt-1 flex items-center justify-between gap-1">
-                              <span className="text-gray-400">Fin</span>
-                              <div className="flex items-center gap-1">
-                                <button
-                                  onClick={() => adjustClipTrim(clip, "endTime", -0.5)}
-                                  className="rounded bg-gray-700 px-1.5 py-0.5 text-white hover:bg-gray-600"
-                                >
-                                  −
-                                </button>
-                                <span className="min-w-[44px] text-center font-mono">
-                                  {effEnd.toFixed(1)}s
-                                </span>
-                                <button
-                                  onClick={() => adjustClipTrim(clip, "endTime", 0.5)}
-                                  className="rounded bg-gray-700 px-1.5 py-0.5 text-white hover:bg-gray-600"
-                                >
-                                  +
-                                </button>
-                              </div>
+                            <div className="mt-1 flex items-center gap-2">
+                              <span className="w-10 shrink-0 text-gray-400">Fin</span>
+                              <input
+                                type="range"
+                                min={Math.min(clip.endTime, effStart + 0.5)}
+                                max={clip.endTime}
+                                step={0.1}
+                                value={effEnd}
+                                onChange={(ev) => {
+                                  const v = parseFloat(ev.target.value);
+                                  setClipTrims((prev) => {
+                                    const curr = prev[clip.id] ?? {
+                                      startTime: clip.startTime,
+                                      endTime: clip.endTime,
+                                    };
+                                    const clamped = Math.max(
+                                      Math.min(v, clip.endTime),
+                                      curr.startTime + 0.5,
+                                    );
+                                    return {
+                                      ...prev,
+                                      [clip.id]: { ...curr, endTime: clamped },
+                                    };
+                                  });
+                                }}
+                                className="flex-1 accent-purple-500"
+                              />
+                              <span className="min-w-[44px] text-right font-mono">
+                                {effEnd.toFixed(1)}s
+                              </span>
                             </div>
                             {trimmed && (
                               <button
@@ -5265,6 +5325,35 @@ export default function InfographicPage() {
                 </div>
               </>
             )}
+            {previewClipId && (() => {
+              const clip = detectedClips.find((c) => c.id === previewClipId);
+              if (!clip) return null;
+              const trim = clipTrims[clip.id];
+              const effStart = trim?.startTime ?? clip.startTime;
+              const effEnd = trim?.endTime ?? clip.endTime;
+              const effDur = effEnd - effStart;
+              return (
+                <div className="mt-4 rounded-lg border border-purple-500/40 bg-gray-900 p-3">
+                  <video
+                    ref={previewVideoRef}
+                    src={previewUrlRef.current ?? undefined}
+                    muted
+                    playsInline
+                    className="w-full rounded bg-black"
+                    style={{ maxHeight: 280 }}
+                  />
+                  <div className="mt-2 flex items-center justify-between text-xs text-gray-400">
+                    <button
+                      onClick={() => playPreview(clip)}
+                      className="rounded bg-purple-600 px-3 py-1 text-white hover:bg-purple-700"
+                    >
+                      ▶ Lire la sélection
+                    </button>
+                    <span>Durée : {effDur.toFixed(1)}s</span>
+                  </div>
+                </div>
+              );
+            })()}
             <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-gray-800 pt-4">
               <button
                 onClick={keepOriginalRush}
