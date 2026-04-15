@@ -1,25 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
-import { getUserCredits } from '@/lib/credits/system';
-import { ApiResponse } from '@/lib/types/api';
+import { requireCredits } from '@/lib/credits/guard';
 
-export async function GET(req: NextRequest): Promise<NextResponse<ApiResponse<{ credits: number }>>> {
+export async function GET(_req: NextRequest) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ ok: false, balance: 0, error: 'Unauthorized' }, { status: 401 });
     }
-
-    const credits = await getUserCredits(session.user.id);
-
-    return NextResponse.json({ success: true, data: { credits } });
-  } catch (error) {
-    return NextResponse.json(
-      { success: false, error: 'Failed to fetch credits balance' },
-      { status: 500 }
-    );
+    const r = await requireCredits(session.user.id, 0);
+    return NextResponse.json({ ok: true, balance: r.balance });
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, balance: 0, error: e?.message || 'failed' }, { status: 500 });
   }
 }

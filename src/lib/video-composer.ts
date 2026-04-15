@@ -150,6 +150,8 @@ export interface ComposerOptions {
   ctaText?: string;
   ctaSubText?: string;
   watermarkText?: string;
+  /** Free-plan "Studiio" watermark overlay (distinct from watermarkText which is CTA) */
+  watermark?: boolean;
   /** Flexible site text overlay (e.g. Afroboost.com) */
   siteText?: SiteTextConfig;
   /** Design options to match HTML preview styling */
@@ -1497,7 +1499,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     introDuration = 4, cardsDuration = 6, videoDuration = 10, ctaDuration = 4,
     accentColor = '#D91CD2',
     ctaText = 'CHAT POUR PLUS D\'INFOS', ctaSubText = 'LIEN EN BIO',
-    watermarkText, siteText, design, onProgress,
+    watermarkText, watermark: freeWatermark, siteText, design, onProgress,
   } = options;
 
   console.log(`[Composer] === START ${COMPOSER_VERSION} ===`);
@@ -1768,6 +1770,20 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     const barGrad = ctx.createLinearGradient(0, 0, width * (elapsed / totalDuration), 0);
     barGrad.addColorStop(0, accentColor); barGrad.addColorStop(0.5, '#FF2DAA'); barGrad.addColorStop(1, '#00D4FF');
     ctx.fillStyle = barGrad; ctx.fillRect(0, height - barH, width * (elapsed / totalDuration), barH);
+
+    // ── Free-plan "Studiio" watermark (bottom-right) ──
+    if (freeWatermark) {
+      ctx.save();
+      const wmSize = Math.round(height * 0.02);
+      ctx.font = `600 ${wmSize}px sans-serif`;
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'bottom';
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.shadowColor = 'rgba(0,0,0,0.6)';
+      ctx.shadowBlur = 4;
+      ctx.fillText('Studiio', width - wmSize, height - wmSize - barH);
+      ctx.restore();
+    }
   };
 
   // ═══ AUDIO SETUP ═══

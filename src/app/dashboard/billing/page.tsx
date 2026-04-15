@@ -1,90 +1,61 @@
 'use client';
 
-import { useState } from 'react';
-import { CreditsDisplay } from '@/components/billing/CreditsDisplay';
+import { useEffect, useState } from 'react';
 import { PricingCards } from '@/components/billing/PricingCards';
+import { BuyCreditsModal } from '@/components/billing/BuyCreditsModal';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { CREDIT_PACKAGES } from '@/lib/stripe/constants';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Zap } from 'lucide-react';
 import { useTranslations } from '@/i18n/client';
 
-const mockTransactions = [
-  { id: '1', date: '2024-03-25', description: 'Rendu vidéo - Reel 9:16', credits: -10, balance: 1250 },
-  { id: '2', date: '2024-03-24', description: 'Achat 150 crédits', credits: 150, balance: 1260 },
-  { id: '3', date: '2024-03-23', description: 'Rendu vidéo - TV 16:9', credits: -15, balance: 1110 },
-  { id: '4', date: '2024-03-22', description: 'Abonnement Pro', credits: 500, balance: 1125 },
-  { id: '5', date: '2024-03-20', description: 'Crédits bonus', credits: 100, balance: 625 },
-];
+interface SubscriptionInfo {
+  plan: string;
+  status: string;
+  current_period_end: string | null;
+}
+
+interface Transaction {
+  id: string;
+  amount: number;
+  type: string;
+  created_at: string;
+}
 
 export default function BillingPage() {
-  const [loadingPortal, setLoadingPortal] = useState(false);
-  const [loadingCredits, setLoadingCredits] = useState<string | null>(null);
   const t = useTranslations('billing');
   const tc = useTranslations('common');
+  const [loadingPortal, setLoadingPortal] = useState(false);
+  const [credits, setCredits] = useState<number | null>(null);
+  const [sub, setSub] = useState<SubscriptionInfo | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [showBuy, setShowBuy] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/credits/balance').then(r => r.json()).then(d => { if (d?.ok) setCredits(d.balance); }).catch(() => {});
+    fetch('/api/billing/summary').then(r => r.json()).then(d => {
+      if (d?.ok) { setSub(d.subscription); setTransactions(d.transactions || []); }
+    }).catch(() => {});
+  }, []);
 
   const handleManageSubscription = async () => {
     setLoadingPortal(true);
     try {
       const res = await fetch('/api/stripe/create-portal', { method: 'POST' });
       const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        alert(t('errors.portalFailed'));
-      }
-    } catch (error) {
-      console.error('Error opening portal:', error);
-      alert(t('errors.connectionError'));
+      if (data.url) window.location.href = data.url;
+      else alert(data.error || 'Erreur');
+    } catch {
+      alert('Erreur de connexion');
     } finally {
       setLoadingPortal(false);
     }
   };
 
-  const handleBuyCredits = async (packageKey: string) => {
-    setLoadingCredits(packageKey);
-    try {
-      const res = await fetch('/api/stripe/create-checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ packageId: packageKey }),
-      });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        alert(t('errors.checkoutFailed'));
-      }
-    } catch (error) {
-      console.error('Error creating checkout:', error);
-      alert(t('errors.connectionError'));
-    } finally {
-      setLoadingCredits(null);
-    }
-  };
-
-  const handleSelectPlan = async (planId: string) => {
-    setLoadingCredits('plan');
-    try {
-      const res = await fetch('/api/stripe/create-checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planId }),
-      });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        alert(t('errors.checkoutFailed'));
-      }
-    } catch (error) {
-      console.error('Error creating checkout:', error);
-      alert(t('errors.connectionError'));
-    } finally {
-      setLoadingCredits(null);
-    }
-  };
+  const planName = sub?.plan || 'free';
+  const nextDate = sub?.current_period_end
+    ? new Date(sub.current_period_end).toLocaleDateString('fr-FR')
+    : '—';
 
   return (
     <div className="space-y-8">
@@ -93,10 +64,26 @@ export default function BillingPage() {
         <p className="text-gray-400">{t('subtitle')}</p>
       </div>
 
-      <CreditsDisplay credits={1250} isPro={true} />
+      <div className="grid md:grid-cols-3 gap-6">
+        <Card className="md:col-span-1">
+          <CardHeader className="border-b border-gray-800">
+            <CardTitle>Crédits</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <Zap className="text-purple-400" size={32} />
+              <div>
+                <div className="text-4xl font-bold text-white">{credits ?? '—'}</div>
+                <div className="text-xs text-gray-400">crédits restants</div>
+              </div>
+            </div>
+            <Button variant="primary" className="w-full mt-4" onClick={() => setShowBuy(true)}>
+              Acheter des crédits
+            </Button>
+          </CardContent>
+        </Card>
 
-      <div className="grid md:grid-cols-2 gap-6">
-        <Card>
+        <Card className="md:col-span-2">
           <CardHeader className="border-b border-gray-800">
             <CardTitle>{t('currentPlan')}</CardTitle>
           </CardHeader>
@@ -104,13 +91,15 @@ export default function BillingPage() {
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-sm text-gray-400 mb-1">{t('plan')}</p>
-                <p className="text-2xl font-bold text-white">Pro</p>
+                <p className="text-2xl font-bold text-white capitalize">{planName}</p>
               </div>
-              <Badge variant="success">{tc('status.active')}</Badge>
+              <Badge variant={sub?.status === 'active' ? 'success' : 'default'}>
+                {sub?.status || 'free'}
+              </Badge>
             </div>
             <div className="pt-4 border-t border-gray-800">
-              <p className="text-sm text-gray-400 mb-1">{t('renewal')}</p>
-              <p className="text-white font-semibold">2 avril 2024</p>
+              <p className="text-sm text-gray-400 mb-1">Prochain renouvellement</p>
+              <p className="text-white font-semibold">{nextDate}</p>
             </div>
             <Button
               variant="secondary"
@@ -118,63 +107,37 @@ export default function BillingPage() {
               onClick={handleManageSubscription}
               disabled={loadingPortal}
             >
-              {loadingPortal ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{tc('loading')}</>
-              ) : (
-                t('manageSubscription')
-              )}
+              {loadingPortal ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{tc('loading')}</> : 'Gérer l\'abonnement'}
             </Button>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="border-b border-gray-800">
-            <CardTitle>{t('buyCredits')}</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-6 space-y-3">
-            {Object.entries(CREDIT_PACKAGES).map(([key, pkg]) => (
-              <Button
-                key={key}
-                variant="secondary"
-                className="w-full"
-                onClick={() => handleBuyCredits(key)}
-                disabled={loadingCredits === key}
-              >
-                {loadingCredits === key ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{tc('loading')}</>
-                ) : (
-                  <>{pkg.name} - {pkg.priceFr}</>
-                )}
-              </Button>
-            ))}
           </CardContent>
         </Card>
       </div>
 
       <Card>
         <CardHeader className="border-b border-gray-800">
-          <CardTitle>{t('transactionHistory')}</CardTitle>
+          <CardTitle>Dernières transactions</CardTitle>
         </CardHeader>
         <CardContent className="pt-6">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-800">
-                  <th className="text-left py-2 text-gray-400 font-medium">{t('table.date')}</th>
-                  <th className="text-left py-2 text-gray-400 font-medium">{t('table.description')}</th>
-                  <th className="text-right py-2 text-gray-400 font-medium">{t('table.credits')}</th>
-                  <th className="text-right py-2 text-gray-400 font-medium">{t('table.balance')}</th>
+                  <th className="text-left py-2 text-gray-400 font-medium">Date</th>
+                  <th className="text-left py-2 text-gray-400 font-medium">Type</th>
+                  <th className="text-right py-2 text-gray-400 font-medium">Crédits</th>
                 </tr>
               </thead>
               <tbody>
-                {mockTransactions.map((tx) => (
+                {transactions.length === 0 && (
+                  <tr><td colSpan={3} className="py-6 text-center text-gray-500">Aucune transaction</td></tr>
+                )}
+                {transactions.map((tx) => (
                   <tr key={tx.id} className="border-b border-gray-800 last:border-0">
-                    <td className="py-3 text-gray-300">{tx.date}</td>
-                    <td className="py-3 text-gray-300">{tx.description}</td>
-                    <td className={`text-right py-3 font-semibold ${tx.credits > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {tx.credits > 0 ? '+' : ''}{tx.credits}
+                    <td className="py-3 text-gray-300">{new Date(tx.created_at).toLocaleDateString('fr-FR')}</td>
+                    <td className="py-3 text-gray-300">{tx.type}</td>
+                    <td className={`text-right py-3 font-semibold ${tx.amount > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {tx.amount > 0 ? '+' : ''}{tx.amount}
                     </td>
-                    <td className="text-right py-3 text-white">{tx.balance}</td>
                   </tr>
                 ))}
               </tbody>
@@ -185,8 +148,10 @@ export default function BillingPage() {
 
       <div>
         <h2 className="text-2xl font-bold text-white mb-6">{t('changePlan')}</h2>
-        <PricingCards onSelectPlan={handleSelectPlan} />
+        <PricingCards />
       </div>
+
+      <BuyCreditsModal isOpen={showBuy} onClose={() => setShowBuy(false)} />
     </div>
   );
 }

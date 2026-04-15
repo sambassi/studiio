@@ -37,6 +37,8 @@ import ColorWheel from "@/components/ui/ColorWheel";
 import { composeAndUpload, downloadBlob } from "@/lib/video-composer";
 import { Modal } from "@/components/ui/Modal";
 import { detectClips, extractClip, type DetectedClip } from "@/lib/clip-detector";
+import { useSession } from "next-auth/react";
+import { BuyCreditsModal } from "@/components/billing/BuyCreditsModal";
 
 // ── Types ──────────────────────────────────────────────────────
 interface InfoCard {
@@ -731,6 +733,10 @@ export default function InfographicPage() {
   const [destination, setDestination] = useState<Destination>("draft");
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
+  const [showBuyCreditsModal, setShowBuyCreditsModal] = useState(false);
+  const { data: authSession } = useSession();
+  const userPlan = ((authSession?.user as any)?.plan as string) || 'free';
+  const useWatermark = !userPlan || userPlan === 'free';
 
   // ── Toast ───────────────────────────────────────────────────
   const [toast, setToast] = useState<{
@@ -1355,6 +1361,18 @@ export default function InfographicPage() {
     setIsExporting(true);
     setExportProgress(0);
 
+    // Credit check before export (cost × batchCount)
+    const renderFormat: 'reel' | 'tv' = format === '16:9' ? 'tv' : 'reel';
+    const cost = renderFormat === 'tv' ? 15 : 10;
+    const totalCost = cost * (batchCount || 1);
+    const check = await fetch('/api/credits/balance').then(r => r.json()).catch(() => ({ ok: false, balance: 0 }));
+    if (!check.ok || (check.balance ?? 0) < totalCost) {
+      showToast(`Crédits insuffisants (${check.balance ?? 0} / ${totalCost}). Achetez un pack ou passez au plan Pro.`);
+      setShowBuyCreditsModal(true);
+      setIsExporting(false);
+      return;
+    }
+
     try {
       const total = batchCount;
       const createdPostIds: string[] = [];
@@ -1544,6 +1562,7 @@ export default function InfographicPage() {
               width: isReel ? 1080 : 1920,
               height: isReel ? 1920 : 1080,
               fps: 30,
+              watermark: useWatermark,
               title: bTitle || "Infographie",
               subtitle: bSubtitle || undefined,
               salesPhrase: salesPhrase || undefined,
@@ -1600,6 +1619,12 @@ export default function InfographicPage() {
             renderedThumbnailUrl = composedThumbUrl || null;
             renderedComposerVersion = composedVersion || null;
             console.log('[Export→Calendar] Montage composed and uploaded:', renderedVideoUrl, 'thumb:', renderedThumbnailUrl, 'version:', renderedComposerVersion);
+            // Deduct credits for this successful render
+            await fetch('/api/credits/deduct', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ cost, reason: 'render', format: renderFormat }),
+            }).catch(() => {});
             if (!renderedVideoUrl) {
               // Only surface errors as toasts — success is conveyed by the
               // progress bar reaching 100%.
@@ -1776,6 +1801,7 @@ export default function InfographicPage() {
             width: isReel ? 1080 : 1920,
             height: isReel ? 1920 : 1080,
             fps: 30,
+            watermark: useWatermark,
             title: title || "Infographie",
             subtitle: subtitle || undefined,
             salesPhrase: salesPhrases.length > 0 ? salesPhrases[0] : undefined,
@@ -1858,6 +1884,11 @@ export default function InfographicPage() {
               `infographie-${title || 'afroboost'}.mp4`,
               (pct, stage) => setExportProgress(85 + Math.round(pct * 0.15))
             );
+            await fetch('/api/credits/deduct', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ cost, reason: 'render', format: renderFormat }),
+            }).catch(() => {});
           }
         } catch (e) {
           console.warn('[Export Bureau] Erreur:', e);
@@ -5459,6 +5490,7 @@ export default function InfographicPage() {
           );
         })()}
       </Modal>
+      <BuyCreditsModal isOpen={showBuyCreditsModal} onClose={() => setShowBuyCreditsModal(false)} />
     </div>
   );
 }

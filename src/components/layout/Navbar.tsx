@@ -1,8 +1,9 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
-import { Bell, User, LogOut, Shield } from 'lucide-react';
+import { Bell, User, LogOut, Shield, Zap } from 'lucide-react';
 import { useTranslations } from '@/i18n/client';
 import { LanguageSelector } from '@/components/LanguageSelector';
 
@@ -13,6 +14,15 @@ export function Navbar() {
   const { data: session } = useSession();
   const isAdmin = ADMIN_EMAILS.includes(session?.user?.email?.toLowerCase() || '');
   const t = useTranslations('navbar');
+  const [credits, setCredits] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    fetch('/api/credits/balance')
+      .then((r) => r.json())
+      .then((d) => { if (d?.ok) setCredits(d.balance ?? 0); })
+      .catch(() => {});
+  }, [session?.user?.id]);
 
   const handleLogout = async () => {
     await signOut({ callbackUrl: '/' });
@@ -24,6 +34,16 @@ export function Navbar() {
         <div className="text-gray-400 hidden lg:block">{t('dashboard')}</div>
         <div className="flex items-center gap-4 lg:ml-0 ml-12">
           <LanguageSelector variant="navbar" />
+          {credits !== null && (
+            <button
+              onClick={() => router.push('/dashboard/billing')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-600/20 border border-purple-500/40 text-purple-200 hover:bg-purple-600/30 transition text-sm font-semibold"
+              title="Crédits restants"
+            >
+              <Zap size={14} className="text-purple-300" />
+              {credits}
+            </button>
+          )}
           {isAdmin && (
             <button
               onClick={() => router.push('/admin')}

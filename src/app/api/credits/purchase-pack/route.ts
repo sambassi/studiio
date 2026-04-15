@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { stripe, createCustomer } from '@/lib/stripe/client';
-import { STRIPE_PLANS } from '@/lib/stripe/constants';
+import { CREDIT_PACKAGES } from '@/lib/stripe/constants';
 import { supabaseAdmin } from '@/lib/db/supabase';
-
-type PlanKey = 'starter' | 'pro' | 'enterprise';
-type Billing = 'monthly' | 'yearly';
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,19 +10,18 @@ export async function POST(req: NextRequest) {
     if (!session?.user?.id || !session?.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const body = await req.json();
-    const plan: PlanKey = body.plan;
-    const billingCycle: Billing = body.billingCycle === 'yearly' ? 'yearly' : 'monthly';
-    if (!plan || !['starter', 'pro', 'enterprise'].includes(plan) || !(plan in STRIPE_PLANS)) {
-      return NextResponse.json({ error: 'invalid plan' }, { status: 400 });
+    const { pack } = await req.json();
+    if (!pack || !(pack in CREDIT_PACKAGES)) {
+      return NextResponse.json({ error: 'invalid pack' }, { status: 400 });
     }
-
-    const envKey = `STRIPE_PRICE_ID_${plan.toUpperCase()}_${billingCycle.toUpperCase()}`;
+    const pkg = (CREDIT_PACKAGES as any)[pack];
+    const envKey = `STRIPE_PRICE_ID_PACK_${String(pack).toUpperCase()}`;
     const priceId = process.env[envKey];
     if (!priceId) {
       return NextResponse.json({ error: `price not configured (${envKey})` }, { status: 400 });
     }
 
+    // Reuse stored customer id if present
     let customerId: string | undefined;
     try {
       const { data } = await supabaseAdmin.from('users').select('stripe_customer_id').eq('id', session.user.id).single();
@@ -37,25 +33,20 @@ export async function POST(req: NextRequest) {
       try { await supabaseAdmin.from('users').update({ stripe_customer_id: customerId }).eq('id', session.user.id); } catch {}
     }
 
-    const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL;
+    const successUrl = `${process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL}/dashboard/billing?success=true`;
+    const cancelUrl = `${process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL}/dashboard/billing?canceled=true`;
+
     const checkout = await stripe.checkout.sessions.create({
       customer: customerId,
-      mode: 'subscription',
+      mode: 'payment',
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${baseUrl}/dashboard/billing?success=true`,
-      cancel_url: `${baseUrl}/dashboard/billing?canceled=true`,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
       metadata: {
         userId: session.user.id,
-        plan,
-        billingCycle,
-      },
-      subscription_data: {
-        metadata: {
-          userId: session.user.id,
-          plan,
-          billingCycle,
-        },
+        packKey: String(pack),
+        creditAmount: String(pkg.amount),
       },
     });
 
