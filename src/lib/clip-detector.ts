@@ -184,14 +184,25 @@ export async function detectClips(
     rawClips = [];
   }
 
-  // If not enough scene-based clips, create evenly spaced clips
+  // If not enough scene-based clips, create evenly spaced clips.
+  // Cap the effective clip count so each fallback clip is at least
+  // minClipDuration long — otherwise clipDuration would be too small
+  // (e.g. 5s video / 10 clips = 0.5s each < minClipDuration=2s) and
+  // every clip would be rejected by the `< minClipDuration` guard below,
+  // leaving rawClips empty and the UI saying "Aucune séquence détectée".
   if (rawClips.length < maxClips && totalDuration > minClipDuration * 2) {
-    const clipDuration = Math.min(maxClipDuration, totalDuration / maxClips);
-    for (let t = 0; t < totalDuration - minClipDuration; t += clipDuration) {
+    const effMaxClips = Math.max(
+      1,
+      Math.min(maxClips, Math.floor(totalDuration / minClipDuration)),
+    );
+    const clipDuration = Math.max(
+      minClipDuration,
+      Math.min(maxClipDuration, totalDuration / effMaxClips),
+    );
+    for (let t = 0; t < totalDuration - minClipDuration + 0.001; t += clipDuration) {
       const start = t;
       const end = Math.min(t + clipDuration, totalDuration);
       if (end - start < minClipDuration) continue;
-      // Check if overlaps with existing clip
       const overlaps = rawClips.some(c => start < c.end && end > c.start);
       if (!overlaps) {
         const segFrames = frameDiffs.filter(f => f.time >= start && f.time < end);
@@ -199,6 +210,16 @@ export async function detectClips(
         rawClips.push({ start, end, score: motionScore });
       }
     }
+  }
+
+  // Safety net: if we still have no clips (edge case: very short video),
+  // return one clip covering the whole video so the user can at least
+  // trim it manually instead of hitting a dead-end.
+  if (rawClips.length === 0 && totalDuration >= minClipDuration) {
+    const segFrames = frameDiffs;
+    const motionScore =
+      segFrames.reduce((s, f) => s + f.diff, 0) / (segFrames.length || 1);
+    rawClips.push({ start: 0, end: totalDuration, score: motionScore });
   }
 
   // Sort by score (best first) and take top N
