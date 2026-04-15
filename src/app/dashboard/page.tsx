@@ -60,7 +60,7 @@ export default function DashboardPage() {
           <CreditsDisplay credits={1250} isPro={true} />
           <div className="card-base p-6 space-y-4">
             <h3 className="font-bold text-white">{t('quickActions')}</h3>
-            <Link href="/dashboard/creator" className="block">
+            <Link href="/dashboard/creer" className="block">
               <Button variant="primary" size="lg" className="w-full">
                 {t('createVideo')}
               </Button>

@@ -247,7 +247,7 @@ export default function LibraryPage() {
               : t('subtitleManage')}
           </p>
         </div>
-        <Link href="/dashboard/creator">
+        <Link href="/dashboard/creer">
           <Button variant="primary" size="md">
             {t('createVideo')}
           </Button>
@@ -291,7 +291,7 @@ export default function LibraryPage() {
               : t('noVideosCreate')}
           </p>
           {!search && !filterStatus && (
-            <Link href="/dashboard/creator">
+            <Link href="/dashboard/creer">
               <Button variant="primary" size="lg">
                 {t('createFirstVideo')}
               </Button>

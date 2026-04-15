@@ -10,8 +10,10 @@ import { LanguageSelector } from '@/components/LanguageSelector';
 
 const menuKeys = [
   { icon: LayoutDashboard, key: 'dashboard', href: '/dashboard', color: '#7C3AED' },
-  { icon: Zap, key: 'create', href: '/dashboard/creator', color: '#F59E0B' },
-  { icon: Image, key: 'infographic', href: '/dashboard/infographie', color: '#EC4899' },
+  // "Créer" now points to the unified page (formerly /infographie) which has
+  // the full feature set. The old /creator page is kept as a redirect for
+  // existing bookmarks.
+  { icon: Zap, key: 'create', href: '/dashboard/creer', color: '#F59E0B' },
   { icon: Volume2, key: 'audioStudio', href: '/dashboard/audio-studio', color: '#10B981' },
   { icon: Calendar, key: 'calendar', href: '/dashboard/calendar', color: '#3B82F6' },
   { icon: Library, key: 'library', href: '/dashboard/library', color: '#8B5CF6' },
