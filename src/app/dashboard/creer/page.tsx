@@ -33,6 +33,8 @@ import {
 import FloatingPanel from "@/components/ui/FloatingPanel";
 import ColorWheel from "@/components/ui/ColorWheel";
 import { composeAndUpload, downloadBlob } from "@/lib/video-composer";
+import { Modal } from "@/components/ui/Modal";
+import { detectClips, extractClip, type DetectedClip } from "@/lib/clip-detector";
 
 // ── Types ──────────────────────────────────────────────────────
 interface InfoCard {
@@ -275,6 +277,19 @@ export default function InfographicPage() {
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
   const [rushDragIdx, setRushDragIdx] = useState<number | null>(null);
   const [rushDragOverIdx, setRushDragOverIdx] = useState<number | null>(null);
+
+  // Clip detection modal state
+  const [clipModalOpen, setClipModalOpen] = useState(false);
+  const [clipSourceIdx, setClipSourceIdx] = useState<number | null>(null);
+  const [clipAnalyzing, setClipAnalyzing] = useState(false);
+  const [clipProgress, setClipProgress] = useState(0);
+  const [clipStage, setClipStage] = useState("");
+  const [detectedClips, setDetectedClips] = useState<DetectedClip[]>([]);
+  const [selectedClipIds, setSelectedClipIds] = useState<Set<string>>(new Set());
+  const [clipExtracting, setClipExtracting] = useState(false);
+  const [clipExtractProgress, setClipExtractProgress] = useState(0);
+  const [clipExtractStage, setClipExtractStage] = useState("");
+  const clipSourceFileRef = useRef<File | null>(null);
 
   // Keep rushUrl/rushFileName in sync with rushList[0]
   useEffect(() => {
@@ -1118,6 +1133,120 @@ export default function InfographicPage() {
       next.splice(to, 0, item);
       return next;
     });
+  };
+
+  const openClipAnalysis = async (idx: number) => {
+    const rush = rushList[idx];
+    if (!rush) return;
+    setClipSourceIdx(idx);
+    setClipModalOpen(true);
+    setClipAnalyzing(true);
+    setClipProgress(0);
+    setClipStage("Téléchargement de la vidéo...");
+    setDetectedClips([]);
+    setSelectedClipIds(new Set());
+    clipSourceFileRef.current = null;
+    try {
+      const res = await fetch(rush.url);
+      if (!res.ok) throw new Error("fetch failed");
+      const blob = await res.blob();
+      const file = new File([blob], rush.name, {
+        type: blob.type || "video/mp4",
+      });
+      clipSourceFileRef.current = file;
+      const result = await detectClips(file, {
+        onProgress: (p, s) => {
+          setClipProgress(p);
+          setClipStage(s);
+        },
+      });
+      setDetectedClips(result.clips);
+      setSelectedClipIds(new Set(result.clips.map((c) => c.id)));
+      if (result.clips.length === 0) {
+        showToast("Aucune séquence détectée");
+      }
+    } catch (err) {
+      console.error("[Clip] analyze error:", err);
+      showToast("Échec de l'analyse vidéo");
+    } finally {
+      setClipAnalyzing(false);
+    }
+  };
+
+  const toggleClipSelection = (id: string) => {
+    setSelectedClipIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const closeClipModal = () => {
+    if (clipExtracting) return;
+    setClipModalOpen(false);
+    setClipSourceIdx(null);
+    setDetectedClips([]);
+    setSelectedClipIds(new Set());
+    clipSourceFileRef.current = null;
+  };
+
+  const keepOriginalRush = () => {
+    closeClipModal();
+  };
+
+  const confirmClipExtraction = async () => {
+    const file = clipSourceFileRef.current;
+    const srcIdx = clipSourceIdx;
+    if (!file || srcIdx === null) return;
+    const chosen = detectedClips.filter((c) => selectedClipIds.has(c.id));
+    if (chosen.length === 0) {
+      showToast("Sélectionnez au moins une séquence");
+      return;
+    }
+    setClipExtracting(true);
+    const extracted: { url: string; name: string }[] = [];
+    try {
+      for (let i = 0; i < chosen.length; i++) {
+        const clip = chosen[i];
+        setClipExtractStage(
+          `Extraction ${i + 1}/${chosen.length} — ${clip.label}`,
+        );
+        setClipExtractProgress(0);
+        const clipFile = await extractClip(
+          file,
+          clip.startTime,
+          clip.endTime,
+          (p) => setClipExtractProgress(p),
+        );
+        setClipExtractStage(`Upload ${i + 1}/${chosen.length}...`);
+        const up = await uploadSingleVideo(clipFile);
+        if (up) extracted.push(up);
+      }
+      if (extracted.length > 0) {
+        setRushList((prev) => {
+          const next = [...prev];
+          next.splice(srcIdx, 1, ...extracted);
+          return next;
+        });
+        showToast(
+          `${extracted.length} séquence${extracted.length > 1 ? "s" : ""} extraite${extracted.length > 1 ? "s" : ""}`,
+          "success",
+        );
+      }
+      setClipModalOpen(false);
+      setClipSourceIdx(null);
+      setDetectedClips([]);
+      setSelectedClipIds(new Set());
+      clipSourceFileRef.current = null;
+    } catch (err) {
+      console.error("[Clip] extract error:", err);
+      showToast("Échec de l'extraction");
+    } finally {
+      setClipExtracting(false);
+      setClipExtractProgress(0);
+      setClipExtractStage("");
+    }
   };
 
   // ── Export ──────────────────────────────────────────────────
@@ -2638,6 +2767,16 @@ export default function InfographicPage() {
                         title="Supprimer"
                       >
                         <Trash2 size={12} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openClipAnalysis(idx);
+                        }}
+                        className="absolute right-1 bottom-5 rounded bg-purple-600/80 p-1 text-white opacity-0 transition hover:bg-purple-700 group-hover:opacity-100"
+                        title="Analyser les meilleurs cuts"
+                      >
+                        <Sparkles size={12} />
                       </button>
                       <div className="absolute bottom-0 left-0 right-0 truncate bg-black/70 px-1 py-0.5 text-[10px] text-white">
                         {rush.name}
@@ -4938,6 +5077,112 @@ export default function InfographicPage() {
           </div>
         </div>
       </div>
+
+      <Modal
+        isOpen={clipModalOpen}
+        onClose={closeClipModal}
+        title="Analyser les meilleurs cuts"
+        size="xl"
+      >
+        {clipAnalyzing ? (
+          <div className="py-8">
+            <p className="mb-3 text-sm text-gray-300">{clipStage}</p>
+            <div className="h-2 w-full overflow-hidden rounded bg-gray-800">
+              <div
+                className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all"
+                style={{ width: `${clipProgress}%` }}
+              />
+            </div>
+            <p className="mt-2 text-right text-xs text-gray-500">
+              {clipProgress}%
+            </p>
+          </div>
+        ) : clipExtracting ? (
+          <div className="py-8">
+            <p className="mb-3 text-sm text-gray-300">{clipExtractStage}</p>
+            <div className="h-2 w-full overflow-hidden rounded bg-gray-800">
+              <div
+                className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all"
+                style={{ width: `${clipExtractProgress}%` }}
+              />
+            </div>
+            <p className="mt-2 text-right text-xs text-gray-500">
+              {clipExtractProgress}%
+            </p>
+          </div>
+        ) : (
+          <div>
+            {detectedClips.length === 0 ? (
+              <p className="py-6 text-center text-sm text-gray-400">
+                Aucune séquence détectée dans cette vidéo.
+              </p>
+            ) : (
+              <>
+                <p className="mb-3 text-sm text-gray-400">
+                  {detectedClips.length} séquence
+                  {detectedClips.length > 1 ? "s" : ""} détectée
+                  {detectedClips.length > 1 ? "s" : ""}. Cochez celles à garder.
+                </p>
+                <div className="grid max-h-[50vh] grid-cols-2 gap-3 overflow-y-auto sm:grid-cols-3">
+                  {detectedClips.map((clip) => {
+                    const selected = selectedClipIds.has(clip.id);
+                    return (
+                      <button
+                        key={clip.id}
+                        onClick={() => toggleClipSelection(clip.id)}
+                        className={`group relative overflow-hidden rounded-lg border-2 text-left transition ${
+                          selected
+                            ? "border-purple-500"
+                            : "border-gray-700 opacity-60 hover:opacity-100"
+                        }`}
+                        style={{ aspectRatio: "16/9" }}
+                      >
+                        <img
+                          src={clip.thumbnailUrl}
+                          alt={clip.label}
+                          className="h-full w-full object-cover"
+                        />
+                        <div
+                          className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded border-2"
+                          style={{
+                            borderColor: selected ? "#A855F7" : "#9CA3AF",
+                            background: selected ? "#A855F7" : "rgba(0,0,0,0.5)",
+                          }}
+                        >
+                          {selected && <Check size={12} className="text-white" />}
+                        </div>
+                        <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-2 py-1">
+                          <p className="truncate text-[11px] font-semibold text-white">
+                            {clip.label}
+                          </p>
+                          <p className="text-[10px] text-gray-300">
+                            {clip.duration}s · score {clip.score}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+            <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-gray-800 pt-4">
+              <button
+                onClick={keepOriginalRush}
+                className="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300 transition hover:border-gray-500 hover:text-white"
+              >
+                Garder l'original
+              </button>
+              <button
+                onClick={confirmClipExtraction}
+                disabled={detectedClips.length === 0 || selectedClipIds.size === 0}
+                className="rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Extraire {selectedClipIds.size > 0 ? `(${selectedClipIds.size})` : ""}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
