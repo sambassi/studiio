@@ -35,7 +35,7 @@ export async function detectClips(
   }
 ): Promise<ClipDetectionResult> {
   const {
-    maxClips = 6,
+    maxClips = 10,
     minClipDuration = 2,
     maxClipDuration = 15,
     sampleInterval = 0.5,
@@ -170,6 +170,18 @@ export async function detectClips(
     const score = motionScore * 0.7 + (brightnessScore / 255) * 30;
 
     rawClips.push({ start, end, score });
+  }
+
+  // If the scene detection produced only one big clip that covers most
+  // of the video (typical for static shots / single-scene rushes), discard
+  // it so the fallback can rebuild proper evenly-spaced cuts. Otherwise
+  // the overlap check below would reject every fallback attempt and the
+  // user gets a single 15s clip with no way to choose real best moments.
+  if (
+    rawClips.length === 1 &&
+    rawClips[0].end - rawClips[0].start >= totalDuration * 0.9
+  ) {
+    rawClips = [];
   }
 
   // If not enough scene-based clips, create evenly spaced clips

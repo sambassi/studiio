@@ -5246,6 +5246,18 @@ export default function InfographicPage() {
           const trimmed = !!trim;
           return (
             <div>
+              {/* Selection counter */}
+              <div className="mb-2 flex items-center justify-between text-sm">
+                <p className="text-gray-400">
+                  {detectedClips.length} séquence
+                  {detectedClips.length > 1 ? "s" : ""} détectée
+                  {detectedClips.length > 1 ? "s" : ""} par l'IA
+                </p>
+                <p className="font-semibold text-purple-300">
+                  {selectedClipIds.size} / {detectedClips.length} sélectionnée
+                  {selectedClipIds.size > 1 ? "s" : ""}
+                </p>
+              </div>
               {/* Horizontal thumbnail strip */}
               <div className="mb-3 flex gap-2 overflow-x-auto pb-2">
                 {detectedClips.map((clip) => {
