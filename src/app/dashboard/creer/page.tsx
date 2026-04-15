@@ -264,9 +264,26 @@ export default function InfographicPage() {
   }, [seqGradients, gradientColor1, gradientColor2, gradientOpacity]);
 
   // ── Video Upload ────────────────────────────────────────────
+  // `rushList` is the source of truth for multi-rush (user can upload
+  // several videos and reorder them). `rushUrl` / `rushFileName` are
+  // kept as derived convenience values = first item of rushList, so
+  // that all existing composer/export code paths continue to work
+  // unchanged (they read rushUrl).
+  const [rushList, setRushList] = useState<{ url: string; name: string }[]>([]);
   const [rushUrl, setRushUrl] = useState<string | null>(null);
   const [rushFileName, setRushFileName] = useState<string | null>(null);
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [rushDragIdx, setRushDragIdx] = useState<number | null>(null);
+  const [rushDragOverIdx, setRushDragOverIdx] = useState<number | null>(null);
+
+  // Keep rushUrl/rushFileName in sync with rushList[0]
+  useEffect(() => {
+    const first = rushList[0];
+    const nextUrl = first?.url ?? null;
+    const nextName = first?.name ?? null;
+    setRushUrl((p) => (p === nextUrl ? p : nextUrl));
+    setRushFileName((p) => (p === nextName ? p : nextName));
+  }, [rushList]);
 
   // ── Video Overlay Text ─────────────────────────────────────
   const [videoOverlayText, setVideoOverlayText] = useState("");
@@ -325,9 +342,23 @@ export default function InfographicPage() {
         if (cfg.cardsDuration) setCardsDuration(cfg.cardsDuration);
         if (cfg.videoDuration) setVideoDuration(cfg.videoDuration);
         if (cfg.ctaDuration) setCtaDuration(cfg.ctaDuration);
-        if (cfg.rushUrl) {
-          setRushUrl(cfg.rushUrl);
-          setRushFileName(cfg.rushFileName || "video.mp4");
+        if (Array.isArray(cfg.rushList) && cfg.rushList.length > 0) {
+          // New multi-rush format
+          setRushList(
+            cfg.rushList
+              .filter((r: unknown): r is { url: string; name: string } =>
+                !!r && typeof (r as { url?: unknown }).url === "string",
+              )
+              .map((r: { url: string; name?: string }) => ({
+                url: r.url,
+                name: r.name || "video.mp4",
+              })),
+          );
+        } else if (cfg.rushUrl) {
+          // Legacy single-rush format — upgrade to list
+          setRushList([
+            { url: cfg.rushUrl, name: cfg.rushFileName || "video.mp4" },
+          ]);
         }
         if (cfg.characterImage) setCharacterImage(cfg.characterImage);
         // Typography
@@ -601,7 +632,7 @@ export default function InfographicPage() {
         INFOGRAPHIC_CONFIG_KEY,
         JSON.stringify({
           colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration,
-          rushUrl, rushFileName, characterImage,
+          rushUrl, rushFileName, rushList, characterImage,
           titleLetterSpacing, titleLineHeight, titleBold, titleItalic,
           ctaLetterSpacing, ctaLineHeight, ctaBold, ctaItalic,
           overlayLetterSpacing, overlayLineHeight, overlayBold, overlayItalic, cardsLetterSpacing,
@@ -621,7 +652,7 @@ export default function InfographicPage() {
     } catch { /* ignore */ }
   }, [
     configLoaded, colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration,
-    rushUrl, rushFileName, characterImage,
+    rushUrl, rushFileName, rushList, characterImage,
     titleLetterSpacing, titleLineHeight, titleBold, titleItalic,
     ctaLetterSpacing, ctaLineHeight, ctaBold, ctaItalic,
     overlayLetterSpacing, overlayLineHeight, overlayBold, overlayItalic, cardsLetterSpacing,
@@ -988,25 +1019,17 @@ export default function InfographicPage() {
   };
 
   // ── Video upload ───────────────────────────────────────────
-  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validate file type
+  const uploadSingleVideo = async (
+    file: File,
+  ): Promise<{ url: string; name: string } | null> => {
     if (!file.type.startsWith("video/")) {
-      showToast("Veuillez sélectionner un fichier vidéo");
-      return;
+      showToast(`"${file.name}" n'est pas une vidéo`);
+      return null;
     }
-
-    // Validate file size (max 100MB)
     if (file.size > 100 * 1024 * 1024) {
-      showToast("La vidéo ne doit pas dépasser 100 Mo");
-      return;
+      showToast(`"${file.name}" dépasse 100 Mo`);
+      return null;
     }
-
-    setIsUploadingVideo(true);
-    setRushFileName(file.name);
-
     try {
       // Use signed URL for large files (videos > 4MB) to bypass Vercel's 4.5MB body limit
       if (file.size > 4 * 1024 * 1024) {
@@ -1021,10 +1044,8 @@ export default function InfographicPage() {
         });
         const signData = await signRes.json();
         if (!signData.success) {
-          showToast("Erreur lors de l'upload de la vidéo");
-          setRushFileName(null);
-          setIsUploadingVideo(false);
-          return;
+          showToast(`Échec upload "${file.name}"`);
+          return null;
         }
         const putRes = await fetch(signData.signedUrl, {
           method: "PUT",
@@ -1032,43 +1053,71 @@ export default function InfographicPage() {
           body: file,
         });
         if (!putRes.ok) {
-          showToast("Erreur lors de l'upload de la vidéo");
-          setRushFileName(null);
-          setIsUploadingVideo(false);
-          return;
+          showToast(`Échec upload "${file.name}"`);
+          return null;
         }
         console.log("[Upload] Signed URL upload OK:", signData.publicUrl);
-        setRushUrl(signData.publicUrl);
-        showToast("Vidéo uploadée avec succès", "success");
-      } else {
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("purpose", "infographic-video");
-        const res = await fetch("/api/upload/media", {
-          method: "POST",
-          body: formData,
-        });
-        const data = await res.json();
-        if (data.success && data.file?.url) {
-          setRushUrl(data.file.url);
-          showToast("Vidéo uploadée avec succès", "success");
-        } else {
-          showToast("Erreur lors de l'upload de la vidéo");
-          setRushFileName(null);
-        }
+        return { url: signData.publicUrl, name: file.name };
       }
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("purpose", "infographic-video");
+      const res = await fetch("/api/upload/media", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.success && data.file?.url) {
+        return { url: data.file.url, name: file.name };
+      }
+      showToast(`Échec upload "${file.name}"`);
+      return null;
     } catch (err) {
       console.error("Video upload error:", err);
-      showToast("Erreur lors de l'upload de la vidéo");
-      setRushFileName(null);
-    } finally {
-      setIsUploadingVideo(false);
+      showToast(`Échec upload "${file.name}"`);
+      return null;
     }
   };
 
-  const removeVideo = () => {
-    setRushUrl(null);
-    setRushFileName(null);
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    setIsUploadingVideo(true);
+    const uploaded: { url: string; name: string }[] = [];
+    try {
+      for (const file of files) {
+        const result = await uploadSingleVideo(file);
+        if (result) uploaded.push(result);
+      }
+      if (uploaded.length > 0) {
+        setRushList((prev) => [...prev, ...uploaded]);
+        showToast(
+          uploaded.length === 1
+            ? "Vidéo uploadée avec succès"
+            : `${uploaded.length} vidéos uploadées`,
+          "success",
+        );
+      }
+    } finally {
+      setIsUploadingVideo(false);
+      // Reset input so the same file can be re-selected after removal
+      e.target.value = "";
+    }
+  };
+
+  const removeRushAt = (idx: number) => {
+    setRushList((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const reorderRush = (from: number, to: number) => {
+    if (from === to) return;
+    setRushList((prev) => {
+      const next = [...prev];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
+    });
   };
 
   // ── Export ──────────────────────────────────────────────────
@@ -2526,67 +2575,118 @@ export default function InfographicPage() {
               </label>
             </div>
 
-            {/* Video Upload (Médias) */}
+            {/* Video Upload (Médias) — multi-rush grid with drag-to-reorder */}
             <div>
               <label className="mb-2 block text-sm font-medium text-gray-300">
-                Vidéo de fond (optionnel)
+                Vidéos de fond (optionnel){rushList.length > 0 && (
+                  <span className="ml-2 text-xs text-gray-500">
+                    {rushList.length} vidéo{rushList.length > 1 ? "s" : ""}
+                  </span>
+                )}
               </label>
-              {rushUrl ? (
-                <div className="flex items-center gap-3 rounded-lg border border-green-700 bg-green-900/20 px-4 py-3">
-                  <Video size={20} className="text-green-400 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-green-300 truncate">
-                      {rushFileName}
-                    </p>
-                    <p className="text-xs text-green-500">
-                      Vidéo prête pour l'export
-                    </p>
-                  </div>
-                  <button
-                    onClick={removeVideo}
-                    className="rounded p-1 text-gray-400 hover:bg-red-600 hover:text-white"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ) : (
-                <label
-                  className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed ${
-                    isUploadingVideo
-                      ? "border-purple-500 bg-purple-900/20"
-                      : "border-gray-700 bg-gray-800 hover:border-purple-500 hover:bg-gray-700"
-                  } px-4 py-4`}
-                >
-                  {isUploadingVideo ? (
-                    <>
-                      <Loader2
-                        size={18}
-                        className="animate-spin text-purple-400"
+
+              {rushList.length > 0 && (
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  {rushList.map((rush, idx) => (
+                    <div
+                      key={`${rush.url}-${idx}`}
+                      draggable
+                      onDragStart={() => setRushDragIdx(idx)}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setRushDragOverIdx(idx);
+                      }}
+                      onDragLeave={() => setRushDragOverIdx(null)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        if (rushDragIdx !== null && rushDragIdx !== idx) {
+                          reorderRush(rushDragIdx, idx);
+                        }
+                        setRushDragIdx(null);
+                        setRushDragOverIdx(null);
+                      }}
+                      onDragEnd={() => {
+                        setRushDragIdx(null);
+                        setRushDragOverIdx(null);
+                      }}
+                      className={`group relative aspect-video cursor-move overflow-hidden rounded-lg border-2 bg-gray-800 transition ${
+                        idx === 0 ? "border-green-500" : "border-gray-700"
+                      } ${
+                        rushDragOverIdx === idx
+                          ? "scale-105 border-purple-500"
+                          : ""
+                      } ${rushDragIdx === idx ? "opacity-40" : ""}`}
+                      title={`${rush.name} — glisser pour réordonner`}
+                    >
+                      <video
+                        src={rush.url}
+                        muted
+                        preload="metadata"
+                        className="h-full w-full object-cover"
                       />
-                      <span className="text-sm text-purple-300">
-                        Upload en cours...
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <Video size={18} />
-                      <span className="text-sm text-gray-300">
-                        Ajouter une vidéo
-                      </span>
-                    </>
-                  )}
-                  <input
-                    type="file"
-                    accept="video/*"
-                    onChange={handleVideoUpload}
-                    disabled={isUploadingVideo}
-                    className="hidden"
-                  />
-                </label>
+                      {idx === 0 && (
+                        <div className="absolute left-1 top-1 rounded bg-green-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                          1ᵉʳ
+                        </div>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeRushAt(idx);
+                        }}
+                        className="absolute right-1 top-1 rounded bg-red-600/80 p-1 text-white opacity-0 transition hover:bg-red-700 group-hover:opacity-100"
+                        title="Supprimer"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                      <div className="absolute bottom-0 left-0 right-0 truncate bg-black/70 px-1 py-0.5 text-[10px] text-white">
+                        {rush.name}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
+
+              <label
+                className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed ${
+                  isUploadingVideo
+                    ? "border-purple-500 bg-purple-900/20"
+                    : "border-gray-700 bg-gray-800 hover:border-purple-500 hover:bg-gray-700"
+                } px-4 py-3`}
+              >
+                {isUploadingVideo ? (
+                  <>
+                    <Loader2
+                      size={18}
+                      className="animate-spin text-purple-400"
+                    />
+                    <span className="text-sm text-purple-300">
+                      Upload en cours...
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Video size={18} />
+                    <span className="text-sm text-gray-300">
+                      {rushList.length === 0
+                        ? "Ajouter une ou plusieurs vidéos"
+                        : "Ajouter d'autres vidéos"}
+                    </span>
+                  </>
+                )}
+                <input
+                  type="file"
+                  accept="video/*"
+                  multiple
+                  onChange={handleVideoUpload}
+                  disabled={isUploadingVideo}
+                  className="hidden"
+                />
+              </label>
               <p className="mt-1 text-xs text-gray-500">
-                La vidéo sera utilisée comme fond dans le montage final (max 100
-                Mo)
+                {rushList.length > 1
+                  ? "La 1ʳᵉ vidéo est utilisée dans le montage principal. Glisse pour réordonner."
+                  : "La vidéo sera utilisée comme fond dans le montage final (max 100 Mo)."}
               </p>
             </div>
 
