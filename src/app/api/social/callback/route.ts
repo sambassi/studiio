@@ -80,28 +80,32 @@ export async function GET(req: NextRequest) {
 }
 
 function redirectWithMessage(type: string, message: string): NextResponse {
-    // Close the popup window and notify the opener
-  const html = `
-      <!DOCTYPE html>
-          <html>
-              <head><title>Connexion ${type === 'success' ? 'reussie' : 'echouee'}</title></head>
-                  <body>
-                        <script>
-                                if (window.opener) {
-                                          window.opener.postMessage({
-                                                      type: 'social-oauth-${type}',
-                                                                  message: '${message.replace(/'/g, "\\'")}'
-                                                                            }, '*');
-                                                                                    }
-                                                                                            window.close();
-                                                                                                  </script>
-                                                                                                        <p>${message}</p>
-                                                                                                              <p>Cette fenetre va se fermer automatiquement...</p>
-                                                                                                                  </body>
-                                                                                                                      </html>
-                                                                                                                        `;
+    const isSuccess = type === 'success';
+    const safeMessage = message.replace(/'/g, "\\'").replace(/</g, '&lt;');
+    const html = isSuccess
+      ? `<!DOCTYPE html><html><head><title>Connexion reussie</title></head><body style="font-family:sans-serif;padding:40px;text-align:center">
+<script>
+  if (window.opener) {
+    window.opener.postMessage({ type: 'social-oauth-success', message: '${safeMessage}' }, '*');
+  }
+  setTimeout(() => window.close(), 800);
+</script>
+<p>✓ ${safeMessage}</p>
+<p style="color:#888">Cette fenetre va se fermer automatiquement.</p>
+</body></html>`
+      : `<!DOCTYPE html><html><head><title>Erreur de connexion</title></head><body style="font-family:sans-serif;padding:40px;max-width:600px;margin:auto">
+<h2 style="color:#c00">Echec de la connexion</h2>
+<p style="background:#fee;padding:16px;border-radius:8px;border:1px solid #fcc"><strong>Detail :</strong> ${safeMessage}</p>
+<p style="color:#555">Copiez le message ci-dessus et renvoyez-le pour diagnostic.</p>
+<button onclick="window.close()" style="padding:10px 20px;background:#333;color:#fff;border:0;border-radius:6px;cursor:pointer">Fermer</button>
+<script>
+  if (window.opener) {
+    window.opener.postMessage({ type: 'social-oauth-error', message: '${safeMessage}' }, '*');
+  }
+</script>
+</body></html>`;
     return new NextResponse(html, {
-          headers: { 'Content-Type': 'text/html' },
+      headers: { 'Content-Type': 'text/html' },
     });
 }
 
