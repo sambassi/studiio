@@ -24,6 +24,16 @@ import {
   Grid,
   Grid3x3,
   Move,
+  LayoutTemplate,
+  Type,
+  LayoutGrid,
+  Film,
+  Music,
+  Settings as SettingsIcon,
+  Bold,
+  Italic,
+  Copy as CopyIcon,
+  X,
 } from "lucide-react";
 import { PlatformIcon, type PlatformKey } from "@/components/ui/PlatformIcon";
 import {
@@ -847,6 +857,31 @@ export default function InfographicPage() {
     "title" | "cards" | "cta" | "overlay" | "gradient" | "logo" | "sitetext" | "add" | null
   >(null);
   const [panelPos, setPanelPos] = useState({ x: 0, y: 0 });
+
+  // ── B3: Canva-style rail (icon sidebar) ───────────────────────
+  type RailTab =
+    | 'templates'
+    | 'elements'
+    | 'text'
+    | 'cards'
+    | 'media'
+    | 'audio'
+    | 'settings'
+    | null;
+  const [activeRailTab, setActiveRailTab] = useState<RailTab>(null);
+
+  // ── B3: Contextual toolbar — selected element in the preview ──
+  type SelectedEl =
+    | null
+    | { type: 'title' | 'logo' | 'overlay' | 'cta' }
+    | { type: 'card'; index: number };
+  const [selectedEl, setSelectedEl] = useState<SelectedEl>(null);
+
+  // Helper: single-click selection (does not stop event propagation so that
+  // existing drag / double-click handlers keep working).
+  const selectEl = useCallback((el: SelectedEl) => {
+    setSelectedEl(el);
+  }, []);
 
   // Open a floating panel near the clicked element
   const openPanel = useCallback(
@@ -2098,6 +2133,38 @@ export default function InfographicPage() {
   const previewClasses = getPreviewClasses();
 
   // ── Render ──────────────────────────────────────────────────
+  // ── B3: Rail configuration ────────────────────────────────────
+  const railItems: Array<{
+    id: Exclude<RailTab, null>;
+    label: string;
+    Icon: typeof LayoutTemplate;
+  }> = [
+    { id: 'templates', label: 'Modèles', Icon: LayoutTemplate },
+    { id: 'elements', label: 'Éléments', Icon: Sparkles },
+    { id: 'text', label: 'Texte', Icon: Type },
+    { id: 'cards', label: 'Cartes', Icon: LayoutGrid },
+    { id: 'media', label: 'Médias', Icon: Film },
+    { id: 'audio', label: 'Audio', Icon: Music },
+    { id: 'settings', label: 'Paramètres', Icon: SettingsIcon },
+  ];
+
+  // Rail click routes to the matching existing step when relevant
+  const handleRailClick = (id: Exclude<RailTab, null>) => {
+    // Toggle off if already active
+    if (activeRailTab === id) {
+      setActiveRailTab(null);
+      return;
+    }
+    setActiveRailTab(id);
+    // Step-shortcut wiring: make the existing step panel follow the rail tab
+    if (id === 'templates') setStep(1); // Design
+    else if (id === 'cards') setStep(0); // Contenu
+    else if (id === 'text') setStep(0); // Contenu
+    else if (id === 'media') setStep(2); // Style (rush)
+    else if (id === 'elements') setStep(1); // Design (logo etc.)
+    else if (id === 'settings') setShowSettings(true);
+  };
+
   return (
     <div className="flex min-h-[calc(100vh-4rem)] flex-col lg:flex-row bg-gray-900 text-white overflow-x-hidden">
       {/* Toast */}
@@ -2110,6 +2177,405 @@ export default function InfographicPage() {
           }`}
         >
           {toast.message}
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* B3: Canva-style icon rail (secondary left rail)              */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <div className="hidden lg:flex flex-col items-center gap-1 bg-gray-950 border-r border-gray-800 py-3 px-2 flex-shrink-0 lg:max-h-[calc(100vh-4rem)] overflow-y-auto">
+        {railItems.map(({ id, label, Icon }) => (
+          <button
+            key={id}
+            onClick={() => handleRailClick(id)}
+            className={`flex flex-col items-center justify-center gap-0.5 rounded-lg w-16 h-16 transition-all ${
+              activeRailTab === id
+                ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30'
+                : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+            }`}
+            title={label}
+          >
+            <Icon size={20} />
+            <span className="text-[9px] font-medium leading-tight">{label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* B3: Rail slide-in panel — opens to the right of the rail    */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {activeRailTab && (
+        <div
+          className="hidden lg:flex flex-col w-[320px] flex-shrink-0 bg-gray-900 border-r border-gray-800 overflow-y-auto lg:max-h-[calc(100vh-4rem)]"
+          style={{ backdropFilter: 'blur(20px)' }}
+        >
+          <div className="flex items-center justify-between border-b border-gray-800 px-4 py-3">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-white">
+              {railItems.find((r) => r.id === activeRailTab)?.label}
+            </h3>
+            <button
+              onClick={() => setActiveRailTab(null)}
+              className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-white"
+              title="Fermer"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <div className="p-4 space-y-4 text-sm">
+            {activeRailTab === 'templates' && (
+              <>
+                <p className="text-xs text-gray-400">
+                  Choisissez un thème de couleur, un style de carte, une police et un filtre.
+                </p>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">
+                    Couleur
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {COLOR_THEMES.map((ct) => (
+                      <button
+                        key={ct.id}
+                        onClick={() => {
+                          setColorTheme(ct.id);
+                          setNoColorBg(false);
+                        }}
+                        className={`h-8 w-8 rounded-full bg-gradient-to-br ${ct.bg} transition-all ${
+                          colorTheme === ct.id && !noColorBg
+                            ? 'ring-2 ring-white scale-110'
+                            : 'opacity-60 hover:opacity-100'
+                        }`}
+                        title={ct.name}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">
+                    Police
+                  </div>
+                  <select
+                    value={selectedFont}
+                    onChange={(e) => setSelectedFont(e.target.value)}
+                    className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white"
+                  >
+                    {FONT_OPTIONS.map((opt) => (
+                      <option key={opt.label} value={opt.label}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">
+                    Style de carte
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {CARD_STYLE_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.label}
+                        onClick={() => setSelectedCardStyle(opt.label)}
+                        className={`rounded border px-2 py-1 text-[11px] transition ${
+                          selectedCardStyle === opt.label
+                            ? 'border-purple-500 bg-purple-600/20 text-white'
+                            : 'border-gray-700 bg-gray-800 text-gray-300 hover:border-gray-500'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <p className="text-[11px] text-gray-500 italic">
+                  Les réglages avancés (gradient, filtres) restent accessibles dans le panneau Design à gauche.
+                </p>
+              </>
+            )}
+
+            {activeRailTab === 'elements' && (
+              <>
+                <p className="text-xs text-gray-400">
+                  Ajoutez un logo ou un personnage. Double-cliquez sur le logo dans l'aperçu pour plus d'options.
+                </p>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">
+                    Logo
+                  </div>
+                  {logoImage ? (
+                    <div className="flex items-center gap-2">
+                      <img src={logoImage} alt="Logo" className="h-10 w-10 rounded object-contain bg-gray-800" />
+                      <button
+                        onClick={() => setLogoImage(null)}
+                        className="text-xs text-red-400 hover:text-red-300"
+                      >
+                        Retirer
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="flex items-center justify-center gap-2 rounded border border-dashed border-gray-600 px-3 py-4 text-xs text-gray-400 cursor-pointer hover:border-purple-500 hover:text-white transition">
+                      <Upload size={14} /> Téléverser un logo
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = (ev) => setLogoImage(ev.target?.result as string);
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+              </>
+            )}
+
+            {activeRailTab === 'text' && (
+              <>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
+                    Titre
+                  </div>
+                  <input
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Titre principal"
+                    className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white placeholder-gray-500"
+                  />
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
+                    Sous-titre
+                  </div>
+                  <input
+                    type="text"
+                    value={subtitle}
+                    onChange={(e) => setSubtitle(e.target.value)}
+                    placeholder="Sous-titre"
+                    className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white placeholder-gray-500"
+                  />
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
+                    CTA — Principal
+                  </div>
+                  <input
+                    type="text"
+                    value={ctaMainText}
+                    onChange={(e) => setCtaMainText(e.target.value)}
+                    placeholder="AFROBOOST"
+                    className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white placeholder-gray-500"
+                  />
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
+                    CTA — Sous-texte
+                  </div>
+                  <input
+                    type="text"
+                    value={ctaSubText}
+                    onChange={(e) => setCtaSubText(e.target.value)}
+                    placeholder="CHAT POUR PLUS D'INFOS"
+                    className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white placeholder-gray-500"
+                  />
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
+                    Overlay (vidéo)
+                  </div>
+                  <input
+                    type="text"
+                    value={videoOverlayText}
+                    onChange={(e) => setVideoOverlayText(e.target.value)}
+                    placeholder="Texte superposé à la vidéo"
+                    className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white placeholder-gray-500"
+                  />
+                </div>
+                <p className="text-[11px] text-gray-500 italic">
+                  Double-cliquez un texte dans l'aperçu pour accéder à la typographie complète.
+                </p>
+              </>
+            )}
+
+            {activeRailTab === 'cards' && (
+              <>
+                <p className="text-xs text-gray-400">
+                  Gérez les cartes d'infographie. Ouvrez le panneau Contenu à gauche pour l'éditeur complet.
+                </p>
+                <button
+                  onClick={() => {
+                    setCards((prev) => [
+                      ...prev,
+                      {
+                        id: `c_${Date.now()}`,
+                        emoji: '✨',
+                        label: 'Nouveau',
+                        value: '100%',
+                        description: 'Description',
+                        color: '#a855f7',
+                      },
+                    ]);
+                  }}
+                  className="w-full rounded bg-purple-600 hover:bg-purple-500 px-3 py-2 text-xs font-semibold text-white flex items-center justify-center gap-1"
+                >
+                  <Plus size={12} /> Ajouter une carte
+                </button>
+                <div className="space-y-1">
+                  {cards.map((c, i) => (
+                    <div
+                      key={c.id}
+                      className={`flex items-center gap-2 rounded border px-2 py-1.5 ${
+                        selectedEl?.type === 'card' && selectedEl.index === i
+                          ? 'border-pink-500 bg-pink-900/20'
+                          : 'border-gray-700 bg-gray-800'
+                      }`}
+                    >
+                      <span className="text-base">{c.emoji}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs text-white truncate">{c.label || '—'}</div>
+                        <div className="text-[10px] text-gray-400 truncate">{c.value}</div>
+                      </div>
+                      <button
+                        onClick={() => setCards((prev) => prev.filter((_, j) => j !== i))}
+                        className="rounded p-1 text-gray-400 hover:bg-red-900/40 hover:text-red-300"
+                        title="Supprimer"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {cardPositionMode === 'free' && (
+                  <button
+                    onClick={() => {
+                      setCards((prev) => prev.map((c) => ({ ...c, position: undefined })));
+                    }}
+                    className="w-full rounded bg-gray-800 hover:bg-gray-700 px-3 py-2 text-xs text-gray-300"
+                  >
+                    Réinitialiser positions
+                  </button>
+                )}
+              </>
+            )}
+
+            {activeRailTab === 'media' && (
+              <>
+                <p className="text-xs text-gray-400">
+                  Ajoutez un rush vidéo. L'éditeur complet (recherche Pexels, crop, détection de clips) est dans le panneau Style à gauche.
+                </p>
+                <label className="flex items-center justify-center gap-2 rounded border border-dashed border-gray-600 px-3 py-4 text-xs text-gray-400 cursor-pointer hover:border-purple-500 hover:text-white transition">
+                  <Video size={14} /> Téléverser un rush vidéo
+                  <input
+                    type="file"
+                    accept="video/*"
+                    multiple
+                    className="hidden"
+                    onChange={handleVideoUpload}
+                  />
+                </label>
+                {rushUrl && (
+                  <div className="rounded border border-gray-700 bg-gray-800 p-2 text-xs text-gray-300">
+                    {rushFileName || 'Rush chargé.'}
+                  </div>
+                )}
+              </>
+            )}
+
+            {activeRailTab === 'audio' && (
+              <>
+                <p className="text-xs text-gray-400">
+                  Ajoutez musique et voix dans le Studio Son après l'export, ou configurez vos durées ici.
+                </p>
+                <a
+                  href="/dashboard/audio-studio"
+                  className="block w-full rounded bg-gradient-to-r from-purple-600 to-pink-600 px-3 py-2 text-center text-xs font-semibold text-white hover:opacity-90"
+                >
+                  Ouvrir le Studio Son
+                </a>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
+                    Durée cartes (s)
+                  </div>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={cardsDuration}
+                    onChange={(e) => setCardsDuration(Number(e.target.value))}
+                    className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white"
+                  />
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
+                    Durée CTA (s)
+                  </div>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={ctaDuration}
+                    onChange={(e) => setCtaDuration(Number(e.target.value))}
+                    className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white"
+                  />
+                </div>
+              </>
+            )}
+
+            {activeRailTab === 'settings' && (
+              <>
+                <p className="text-xs text-gray-400">
+                  Le panneau complet des paramètres est disponible à gauche (icône engrenage).
+                </p>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
+                    Format
+                  </div>
+                  <div className="flex gap-1">
+                    {(['9:16', '16:9'] as Format[]).map((fmt) => (
+                      <button
+                        key={fmt}
+                        onClick={() => setFormat(fmt)}
+                        className={`flex-1 rounded px-3 py-1.5 text-xs font-bold transition ${
+                          format === fmt
+                            ? 'bg-purple-600 text-white'
+                            : 'bg-gray-800 text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        {fmt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
+                    Mode position cartes
+                  </div>
+                  <button
+                    onClick={() =>
+                      setCardPositionMode((m) => (m === 'grid' ? 'free' : 'grid'))
+                    }
+                    className="w-full rounded bg-gray-800 hover:bg-gray-700 px-3 py-2 text-xs text-white flex items-center justify-center gap-2"
+                  >
+                    {cardPositionMode === 'grid' ? <Grid3x3 size={12} /> : <Move size={12} />}
+                    {cardPositionMode === 'grid' ? 'Grille' : 'Libre'}
+                  </button>
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 text-xs text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={showCenterGuides}
+                      onChange={(e) => setShowCenterGuides(e.target.checked)}
+                      className="accent-purple-500"
+                    />
+                    Afficher les repères de centre
+                  </label>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
 
@@ -3643,11 +4109,262 @@ export default function InfographicPage() {
           </div>
         </div>
 
+        {/* ═══════════════════════════════════════════════════════════ */}
+        {/* B3: Contextual toolbar — shown when an element is selected  */}
+        {/* ═══════════════════════════════════════════════════════════ */}
+        {selectedEl && (
+          <div className="mb-3 w-full max-w-xl">
+            <div
+              className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-700/70 bg-gray-900/90 px-3 py-2 shadow-lg backdrop-blur"
+              style={{ backdropFilter: 'blur(20px)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-300">
+                {selectedEl.type === 'title' && 'Titre'}
+                {selectedEl.type === 'cta' && 'CTA'}
+                {selectedEl.type === 'overlay' && 'Overlay'}
+                {selectedEl.type === 'logo' && 'Logo'}
+                {selectedEl.type === 'card' && `Carte ${selectedEl.index + 1}`}
+              </span>
+
+              {/* Title toolbar */}
+              {selectedEl.type === 'title' && (
+                <>
+                  <select
+                    value={selectedFont}
+                    onChange={(e) => setSelectedFont(e.target.value)}
+                    className="rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white"
+                    title="Police"
+                  >
+                    {FONT_OPTIONS.map((opt) => (
+                      <option key={opt.label} value={opt.label}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="flex items-center gap-1 text-[10px] text-gray-300">
+                    Taille
+                    <input
+                      type="range"
+                      min={40}
+                      max={140}
+                      value={titleSize}
+                      onChange={(e) => setTitleSize(Number(e.target.value))}
+                      className="w-20 accent-purple-500"
+                    />
+                  </label>
+                  <button
+                    onClick={() => setTitleBold((v) => !v)}
+                    className={`rounded p-1.5 transition ${titleBold ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+                    title="Gras"
+                  >
+                    <Bold size={12} />
+                  </button>
+                  <button
+                    onClick={() => setTitleItalic((v) => !v)}
+                    className={`rounded p-1.5 transition ${titleItalic ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+                    title="Italique"
+                  >
+                    <Italic size={12} />
+                  </button>
+                  <label className="flex items-center gap-1 text-[10px] text-gray-300">
+                    Couleur
+                    <input
+                      type="color"
+                      value={titleColor}
+                      onChange={(e) => setTitleColor(e.target.value)}
+                      className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent p-0"
+                    />
+                  </label>
+                </>
+              )}
+
+              {/* CTA toolbar */}
+              {selectedEl.type === 'cta' && (
+                <>
+                  <select
+                    value={selectedFont}
+                    onChange={(e) => setSelectedFont(e.target.value)}
+                    className="rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white"
+                    title="Police"
+                  >
+                    {FONT_OPTIONS.map((opt) => (
+                      <option key={opt.label} value={opt.label}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="flex items-center gap-1 text-[10px] text-gray-300">
+                    Taille
+                    <input
+                      type="range"
+                      min={0.5}
+                      max={2}
+                      step={0.05}
+                      value={ctaTextScale}
+                      onChange={(e) => setCtaTextScale(Number(e.target.value))}
+                      className="w-20 accent-yellow-500"
+                    />
+                  </label>
+                  <button
+                    onClick={() => setCtaBold((v) => !v)}
+                    className={`rounded p-1.5 transition ${ctaBold ? 'bg-yellow-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+                    title="Gras"
+                  >
+                    <Bold size={12} />
+                  </button>
+                  <button
+                    onClick={() => setCtaItalic((v) => !v)}
+                    className={`rounded p-1.5 transition ${ctaItalic ? 'bg-yellow-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+                    title="Italique"
+                  >
+                    <Italic size={12} />
+                  </button>
+                  <label className="flex items-center gap-1 text-[10px] text-gray-300">
+                    Principal
+                    <input
+                      type="color"
+                      value={ctaColor}
+                      onChange={(e) => setCtaColor(e.target.value)}
+                      className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent p-0"
+                    />
+                  </label>
+                  <label className="flex items-center gap-1 text-[10px] text-gray-300">
+                    Sous-titre
+                    <input
+                      type="color"
+                      value={ctaSubColor}
+                      onChange={(e) => setCtaSubColor(e.target.value)}
+                      className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent p-0"
+                    />
+                  </label>
+                </>
+              )}
+
+              {/* Card toolbar */}
+              {selectedEl.type === 'card' && cards[selectedEl.index] && (
+                <>
+                  <label className="flex items-center gap-1 text-[10px] text-gray-300">
+                    Fond
+                    <input
+                      type="color"
+                      value={cards[selectedEl.index].color}
+                      onChange={(e) => {
+                        const idx = selectedEl.index;
+                        setCards((prev) =>
+                          prev.map((c, i) => (i === idx ? { ...c, color: e.target.value } : c)),
+                        );
+                      }}
+                      className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent p-0"
+                    />
+                  </label>
+                  <button
+                    onClick={() => {
+                      const idx = selectedEl.index;
+                      const src = cards[idx];
+                      if (!src) return;
+                      const copy: InfoCard = {
+                        ...src,
+                        id: `c_${Date.now()}`,
+                        position: src.position
+                          ? { x: Math.min(95, src.position.x + 5), y: Math.min(95, src.position.y + 5) }
+                          : undefined,
+                      };
+                      setCards((prev) => [...prev.slice(0, idx + 1), copy, ...prev.slice(idx + 1)]);
+                    }}
+                    className="flex items-center gap-1 rounded bg-gray-800 px-2 py-1 text-xs text-gray-300 hover:bg-gray-700 hover:text-white"
+                  >
+                    <CopyIcon size={12} /> Dupliquer
+                  </button>
+                  <button
+                    onClick={() => {
+                      const idx = selectedEl.index;
+                      setCards((prev) => prev.filter((_, i) => i !== idx));
+                      setSelectedEl(null);
+                    }}
+                    className="flex items-center gap-1 rounded bg-red-900/60 px-2 py-1 text-xs text-red-200 hover:bg-red-900 hover:text-white"
+                  >
+                    <Trash2 size={12} /> Supprimer
+                  </button>
+                </>
+              )}
+
+              {/* Logo toolbar */}
+              {selectedEl.type === 'logo' && (
+                <>
+                  <label className="flex items-center gap-1 text-[10px] text-gray-300">
+                    Taille
+                    <input
+                      type="range"
+                      min={0.3}
+                      max={3}
+                      step={0.05}
+                      value={logoScale}
+                      onChange={(e) => setLogoScale(Number(e.target.value))}
+                      className="w-24 accent-green-500"
+                    />
+                  </label>
+                  <button
+                    onClick={() => {
+                      setLogoImage(null);
+                      setSelectedEl(null);
+                    }}
+                    className="flex items-center gap-1 rounded bg-red-900/60 px-2 py-1 text-xs text-red-200 hover:bg-red-900 hover:text-white"
+                  >
+                    <Trash2 size={12} /> Supprimer
+                  </button>
+                </>
+              )}
+
+              {/* Overlay toolbar */}
+              {selectedEl.type === 'overlay' && (
+                <>
+                  <input
+                    type="text"
+                    value={videoOverlayText}
+                    onChange={(e) => setVideoOverlayText(e.target.value)}
+                    placeholder="Texte overlay"
+                    className="rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white placeholder-gray-500 w-40"
+                  />
+                  <button
+                    onClick={() => setOverlayBold((v) => !v)}
+                    className={`rounded p-1.5 transition ${overlayBold ? 'bg-cyan-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+                    title="Gras"
+                  >
+                    <Bold size={12} />
+                  </button>
+                  <button
+                    onClick={() => setOverlayItalic((v) => !v)}
+                    className={`rounded p-1.5 transition ${overlayItalic ? 'bg-cyan-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+                    title="Italique"
+                  >
+                    <Italic size={12} />
+                  </button>
+                </>
+              )}
+
+              <button
+                onClick={() => setSelectedEl(null)}
+                className="ml-auto rounded p-1 text-gray-500 hover:bg-gray-800 hover:text-white"
+                title="Fermer"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Preview Container */}
         <div
           className={`relative w-full ${previewClasses.maxW} mx-auto`}
-          onClick={() => {
+          onClick={(e) => {
             if (activePanel) setActivePanel(null);
+            // Deselect only when the click lands on the preview background itself,
+            // not bubbled up from an element that already set a selection.
+            const target = e.target as HTMLElement;
+            if (target === previewRef.current || target.closest('[data-preview-bg]') === previewRef.current) {
+              setSelectedEl(null);
+            }
           }}
         >
           <div
@@ -3959,7 +4676,7 @@ export default function InfographicPage() {
             {/* ── TITLE SECTION (visible in all, titre) — drag + double-click for panel ── */}
             {(activeSequence === "all" || activeSequence === "titre") && (
               <div
-                className={`absolute z-20 text-center cursor-grab active:cursor-grabbing group/title ${activePanel === "title" ? "ring-1 ring-purple-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
+                className={`absolute z-20 text-center cursor-grab active:cursor-grabbing group/title ${activePanel === "title" || (selectedEl?.type === 'title') ? "ring-1 ring-purple-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
                 style={{
                   left: `${titlePos.x}%`,
                   top: `${titlePos.y}%`,
@@ -3970,6 +4687,7 @@ export default function InfographicPage() {
                   e.preventDefault();
                   setDragging("title");
                 }}
+                onClick={(e) => { e.stopPropagation(); selectEl({ type: 'title' }); }}
                 onDoubleClick={(e) => openPanel("title", e)}
               >
                 {/* Resize handles — always visible on hover */}
@@ -4061,7 +4779,7 @@ export default function InfographicPage() {
               (activeSequence === "all" || activeSequence === "video") &&
               videoOverlayText && (
                 <div
-                  className={`absolute z-20 text-center cursor-grab active:cursor-grabbing group/overlay ${activePanel === "overlay" ? "ring-1 ring-cyan-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
+                  className={`absolute z-20 text-center cursor-grab active:cursor-grabbing group/overlay ${activePanel === "overlay" || (selectedEl?.type === 'overlay') ? "ring-1 ring-cyan-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
                   style={{
                     left: `${overlayPos.x}%`,
                     top: `${overlayPos.y}%`,
@@ -4072,6 +4790,7 @@ export default function InfographicPage() {
                     e.preventDefault();
                     setDragging("overlay");
                   }}
+                  onClick={(e) => { e.stopPropagation(); selectEl({ type: 'overlay' }); }}
                   onDoubleClick={(e) => openPanel("overlay", e)}
                 >
                   <div className="absolute inset-0 border border-dashed border-cyan-500/0 group-hover/overlay:border-cyan-500/40 rounded pointer-events-none transition-colors" />
@@ -4272,7 +4991,7 @@ export default function InfographicPage() {
                         return (
                           <div
                             key={card.id}
-                            className={`absolute z-20 select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} ${activePanel === 'cards' ? 'ring-1 ring-pink-400 ring-offset-1 ring-offset-transparent rounded' : ''}`}
+                            className={`absolute z-20 select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} ${activePanel === 'cards' || (selectedEl?.type === 'card' && selectedEl.index === i) ? 'ring-1 ring-pink-400 ring-offset-1 ring-offset-transparent rounded' : ''}`}
                             style={{
                               left: `${pos.x}%`,
                               top: `${pos.y}%`,
@@ -4289,6 +5008,7 @@ export default function InfographicPage() {
                               e.stopPropagation();
                               setDragCardIdx(i);
                             }}
+                            onClick={(e) => { e.stopPropagation(); selectEl({ type: 'card', index: i }); }}
                             onDoubleClick={(e) => openPanel('cards', e)}
                             title={`Carte ${i + 1} — glisser pour déplacer`}
                           >
@@ -4304,7 +5024,7 @@ export default function InfographicPage() {
                 // ── GRID mode (default, existing behaviour) ──
                 return (
                   <div
-                    className={`absolute z-20 cursor-grab active:cursor-grabbing group/cards ${activePanel === "cards" ? "ring-1 ring-pink-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
+                    className={`absolute z-20 cursor-grab active:cursor-grabbing group/cards ${activePanel === "cards" || (selectedEl?.type === 'card') ? "ring-1 ring-pink-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
                     style={{
                       left: `${cardsPos.x}%`,
                       top: `${cardsPos.y}%`,
@@ -4315,6 +5035,7 @@ export default function InfographicPage() {
                       e.preventDefault();
                       setDragging("cards");
                     }}
+                    onClick={(e) => { e.stopPropagation(); selectEl({ type: 'card', index: 0 }); }}
                     onDoubleClick={(e) => openPanel("cards", e)}
                   >
                     {/* Resize handles — larger and always visible for easier interaction */}
@@ -4363,7 +5084,7 @@ export default function InfographicPage() {
             {/* ── CTA / WATERMARK (visible in all, cta) — drag + double-click for panel ── */}
             {(activeSequence === "all" || activeSequence === "cta") && (
               <div
-                className={`absolute z-20 text-center cursor-grab active:cursor-grabbing group/cta ${activePanel === "cta" ? "ring-1 ring-yellow-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
+                className={`absolute z-20 text-center cursor-grab active:cursor-grabbing group/cta ${activePanel === "cta" || (selectedEl?.type === 'cta') ? "ring-1 ring-yellow-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
                 style={{
                   left: `${watermarkPos.x}%`,
                   top: `${watermarkPos.y}%`,
@@ -4374,6 +5095,7 @@ export default function InfographicPage() {
                   e.preventDefault();
                   setDragging("watermark");
                 }}
+                onClick={(e) => { e.stopPropagation(); selectEl({ type: 'cta' }); }}
                 onDoubleClick={(e) => openPanel("cta", e)}
               >
                 {/* Resize handles — visible on hover */}
@@ -4453,7 +5175,7 @@ export default function InfographicPage() {
               (activeSequence === "all" ||
                 logoSequences.includes(activeSequence)) && (
                 <div
-                  className={`absolute z-20 cursor-grab active:cursor-grabbing group/logo ${activePanel === "logo" ? "ring-1 ring-green-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
+                  className={`absolute z-20 cursor-grab active:cursor-grabbing group/logo ${activePanel === "logo" || (selectedEl?.type === 'logo') ? "ring-1 ring-green-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
                   style={{
                     left: `${logoPos.x}%`,
                     top: `${logoPos.y}%`,
@@ -4463,6 +5185,7 @@ export default function InfographicPage() {
                     e.preventDefault();
                     setDragging("logo");
                   }}
+                  onClick={(e) => { e.stopPropagation(); selectEl({ type: 'logo' }); }}
                   onDoubleClick={(e) => openPanel("logo", e)}
                   title={activeSequence === 'all'
                     ? `Logo — vue globale (déplace ${logoSequences[0] || 'titre'}). Sélectionnez une séquence pour positionner indépendamment.`
