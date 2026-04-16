@@ -22,8 +22,6 @@ function getOAuthUrl(platform: string, state: string): string | null {
                 'instagram_content_publish',
                 'pages_show_list',
                 'pages_read_engagement',
-                'pages_manage_posts',
-                'business_management',
               ].join(',');
               return `https://www.facebook.com/v24.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&scope=${scopes}&response_type=code&state=${state}`;
       }
@@ -35,9 +33,7 @@ function getOAuthUrl(platform: string, state: string): string | null {
               const scopes = [
                 'pages_show_list',
                 'pages_read_engagement',
-                'pages_manage_posts',
                 'publish_video',
-                'business_management',
               ].join(',');
               return `https://www.facebook.com/v24.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&scope=${scopes}&response_type=code&state=${state}`;
       }
