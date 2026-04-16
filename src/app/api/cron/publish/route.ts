@@ -50,14 +50,40 @@ function verifyCronSecret(req: NextRequest): boolean {
 }
 
 // GET /api/cron/publish - Automatically publish scheduled posts whose time has passed
+// Supports ?force=true — picks the first scheduled/draft post and publishes it immediately,
+// skipping the time check. CRON_SECRET bearer check is still required.
 export async function GET(req: NextRequest) {
-  // Security: only allow Vercel Cron to trigger this
+  // Security: only allow Vercel Cron (or authenticated manual triggers) to run
   if (!verifyCronSecret(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const { searchParams } = new URL(req.url);
+  const force = searchParams.get('force') === 'true';
+
   try {
     const now = new Date();
+
+    // force=true — pick the first scheduled/draft post and publish immediately
+    let forcedPosts: any[] | null = null;
+    if (force) {
+      console.log('[CRON] force=true — picking first scheduled/draft post, skipping time check');
+      const { data: forcePosts, error: forceErr } = await supabase
+        .from('scheduled_posts')
+        .select('*, videos:video_id(*)')
+        .in('status', ['scheduled', 'draft'])
+        .order('scheduled_date', { ascending: true })
+        .order('scheduled_time', { ascending: true })
+        .limit(1);
+      if (forceErr) {
+        console.error('[CRON] force query error:', forceErr);
+        return NextResponse.json({ error: 'Database query failed' }, { status: 500 });
+      }
+      if (!forcePosts || forcePosts.length === 0) {
+        return NextResponse.json({ success: true, published: 0, message: 'No scheduled/draft post found' });
+      }
+      forcedPosts = forcePosts;
+    }
 
     // We need to check posts across all timezones
     // Strategy: get all scheduled posts, then check each one against its own timezone
@@ -86,17 +112,19 @@ export async function GET(req: NextRequest) {
     // Find all posts that are scheduled and whose date/time has potentially passed
     // We use the latest timezone (UTC+14) for the query to cast a wide net,
     // then filter precisely per-post timezone in code
-    const { data: candidatePosts, error: fetchError } = await supabase
-      .from('scheduled_posts')
-      .select('*, videos:video_id(*)')
-      .eq('status', 'scheduled')
-      .or(`scheduled_date.lt.${latestDate},and(scheduled_date.eq.${latestDate},scheduled_time.lte.${latestTime})`)
-      .order('scheduled_date', { ascending: true })
-      .order('scheduled_time', { ascending: true })
-      .limit(20);
+    const { data: candidatePosts, error: fetchError } = forcedPosts
+      ? { data: null, error: null }
+      : await supabase
+          .from('scheduled_posts')
+          .select('*, videos:video_id(*)')
+          .eq('status', 'scheduled')
+          .or(`scheduled_date.lt.${latestDate},and(scheduled_date.eq.${latestDate},scheduled_time.lte.${latestTime})`)
+          .order('scheduled_date', { ascending: true })
+          .order('scheduled_time', { ascending: true })
+          .limit(20);
 
-    // Filter posts by their actual timezone
-    const duePosts = (candidatePosts || []).filter((post) => {
+    // Filter posts by their actual timezone (skipped when force=true)
+    const duePosts = forcedPosts ?? (candidatePosts || []).filter((post) => {
       // Get user's timezone from post metadata, default to Europe/Paris
       const userTz = post.metadata?.timezone || 'Europe/Paris';
       try {
@@ -582,6 +610,24 @@ async function muxAudioIntoVideo(
 // FONCTIONS DE PUBLICATION PAR PLATEFORME (identique à /api/social/publish)
 // ══════════════════════════════════════════════════════════════
 
+// Resolve a publicly-fetchable URL for the Graph API / platform fetchers.
+// If the URL is a private Supabase path, create a 1h signed URL.
+async function ensurePublicUrl(url: string): Promise<string> {
+  if (!url) return url;
+  if (url.includes('/storage/v1/object/public/')) return url;
+  if (!url.includes('/storage/v1/object/')) return url;
+  try {
+    const m = url.match(/\/storage\/v1\/object\/(?:sign|authenticated|private)\/([^/]+)\/([^?]+)/);
+    if (!m) return url;
+    const [, bucket, path] = m;
+    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600);
+    if (error || !data?.signedUrl) return url;
+    return data.signedUrl;
+  } catch {
+    return url;
+  }
+}
+
 async function publishToInstagram(
   account: any,
   video: any,
@@ -608,6 +654,7 @@ async function publishToInstagram(
       publishableVideoUrl = await convertToMp4IfNeeded(video.video_url);
       console.log(`[CRON][IG] Using converted MP4: ${publishableVideoUrl.substring(0, 80)}...`);
     }
+    publishableVideoUrl = await ensurePublicUrl(publishableVideoUrl);
 
     // Step 1: Create media container (Reels)
     console.log(`[CRON][IG] Step 1: Creating media container for Reel...`);
@@ -633,6 +680,14 @@ async function publishToInstagram(
     if (!createData.id) {
       const errMsg = createData.error?.message || JSON.stringify(createData);
       console.log(`[CRON][IG] FAIL at Step 1: ${errMsg}`);
+      console.error('[SOCIAL_PUBLISH_ERROR]', {
+        platform: 'instagram',
+        step: 'container_create',
+        code: createData.error?.code,
+        message: createData.error?.message,
+        fbtrace_id: createData.error?.fbtrace_id,
+        response: createData,
+      });
       return { success: false, error: `IG container creation failed: ${errMsg}` };
     }
 
@@ -686,9 +741,22 @@ async function publishToInstagram(
 
     const errMsg = publishData.error?.message || JSON.stringify(publishData);
     console.log(`[CRON][IG] FAIL at Step 3: ${errMsg}`);
+    console.error('[SOCIAL_PUBLISH_ERROR]', {
+      platform: 'instagram',
+      step: 'media_publish',
+      code: publishData.error?.code,
+      message: publishData.error?.message,
+      fbtrace_id: publishData.error?.fbtrace_id,
+      response: publishData,
+    });
     return { success: false, error: `IG publish failed: ${errMsg}` };
   } catch (error) {
     console.log(`[CRON][IG] EXCEPTION: ${error instanceof Error ? error.message : String(error)}`);
+    console.error('[SOCIAL_PUBLISH_ERROR]', {
+      platform: 'instagram',
+      step: 'exception',
+      message: error instanceof Error ? error.message : String(error),
+    });
     return { success: false, error: error instanceof Error ? error.message : 'Instagram API error' };
   }
 }
@@ -709,13 +777,14 @@ async function publishToFacebook(
   console.log(`[CRON][FB] Starting publish to page ${pageId}, video_url=${video.video_url?.substring(0, 80)}...`);
 
   try {
+    const publicUrl = await ensurePublicUrl(video.video_url);
     const res = await fetch(
       `https://graph.facebook.com/v24.0/${pageId}/videos`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          file_url: video.video_url,
+          file_url: publicUrl,
           description: caption || video.title || '',
           access_token: accessToken,
         }),
@@ -736,9 +805,22 @@ async function publishToFacebook(
 
     const errMsg = data.error?.message || JSON.stringify(data);
     console.log(`[CRON][FB] FAIL: ${errMsg}`);
+    console.error('[SOCIAL_PUBLISH_ERROR]', {
+      platform: 'facebook',
+      step: 'video_post',
+      code: data.error?.code,
+      message: data.error?.message,
+      fbtrace_id: data.error?.fbtrace_id,
+      response: data,
+    });
     return { success: false, error: errMsg };
   } catch (error) {
     console.log(`[CRON][FB] EXCEPTION: ${error instanceof Error ? error.message : String(error)}`);
+    console.error('[SOCIAL_PUBLISH_ERROR]', {
+      platform: 'facebook',
+      step: 'exception',
+      message: error instanceof Error ? error.message : String(error),
+    });
     return { success: false, error: error instanceof Error ? error.message : 'Facebook API error' };
   }
 }
@@ -828,16 +910,26 @@ async function publishToYouTube(
 
     if (!initRes.ok) {
       const errData = await initRes.json().catch(() => ({}));
+      console.error('[SOCIAL_PUBLISH_ERROR]', {
+        platform: 'youtube',
+        step: 'upload_init',
+        status: initRes.status,
+        message: errData.error?.message,
+        response: errData,
+      });
       return { success: false, error: errData.error?.message || `YouTube API error: ${initRes.status}` };
     }
 
     const uploadUrl = initRes.headers.get('Location');
     if (!uploadUrl) {
+      console.error('[SOCIAL_PUBLISH_ERROR]', { platform: 'youtube', step: 'upload_init', message: 'No Location header' });
       return { success: false, error: 'YouTube did not return upload URL' };
     }
 
-    const videoRes = await fetch(video.video_url);
+    const publicVideoUrl = await ensurePublicUrl(video.video_url);
+    const videoRes = await fetch(publicVideoUrl);
     if (!videoRes.ok) {
+      console.error('[SOCIAL_PUBLISH_ERROR]', { platform: 'youtube', step: 'download', status: videoRes.status });
       return { success: false, error: 'Failed to download video for YouTube upload' };
     }
 
@@ -859,8 +951,19 @@ async function publishToYouTube(
         platformUrl: `https://www.youtube.com/shorts/${uploadData.id}`,
       };
     }
+    console.error('[SOCIAL_PUBLISH_ERROR]', {
+      platform: 'youtube',
+      step: 'upload',
+      message: uploadData.error?.message,
+      response: uploadData,
+    });
     return { success: false, error: uploadData.error?.message || 'YouTube upload failed' };
   } catch (error) {
+    console.error('[SOCIAL_PUBLISH_ERROR]', {
+      platform: 'youtube',
+      step: 'exception',
+      message: error instanceof Error ? error.message : String(error),
+    });
     return { success: false, error: error instanceof Error ? error.message : 'YouTube API error' };
   }
 }

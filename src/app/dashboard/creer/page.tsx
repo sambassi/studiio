@@ -21,6 +21,7 @@ import {
   Eye,
   EyeOff,
   Crop,
+  Grid,
 } from "lucide-react";
 import { PlatformIcon, type PlatformKey } from "@/components/ui/PlatformIcon";
 import {
@@ -277,7 +278,7 @@ export default function InfographicPage() {
   // kept as derived convenience values = first item of rushList, so
   // that all existing composer/export code paths continue to work
   // unchanged (they read rushUrl).
-  const [rushList, setRushList] = useState<{ url: string; name: string; transform?: { scale: number; offsetX: number; offsetY: number } }[]>([]);
+  const [rushList, setRushList] = useState<{ url: string; name: string; transform?: { scale: number; offsetX: number; offsetY: number }; fromClip?: boolean }[]>([]);
   const [cropRushIdx, setCropRushIdx] = useState<number | null>(null);
   const [rushUrl, setRushUrl] = useState<string | null>(null);
   const [rushFileName, setRushFileName] = useState<string | null>(null);
@@ -385,10 +386,11 @@ export default function InfographicPage() {
               .filter((r: unknown): r is { url: string; name: string } =>
                 !!r && typeof (r as { url?: unknown }).url === "string",
               )
-              .map((r: { url: string; name?: string; transform?: { scale: number; offsetX: number; offsetY: number } }) => ({
+              .map((r: { url: string; name?: string; transform?: { scale: number; offsetX: number; offsetY: number }; fromClip?: boolean }) => ({
                 url: r.url,
                 name: r.name || "video.mp4",
                 transform: r.transform,
+                fromClip: r.fromClip,
               })),
           );
         } else if (cfg.rushUrl) {
@@ -487,6 +489,7 @@ export default function InfographicPage() {
         if (cfg.siteTextOpacity !== undefined) setSiteTextOpacity(cfg.siteTextOpacity);
         if (cfg.siteTextSequences) setSiteTextSequences(cfg.siteTextSequences);
         if (cfg.siteTextEnabled !== undefined) setSiteTextEnabled(cfg.siteTextEnabled);
+        if (typeof cfg.showCenterGuides === 'boolean') setShowCenterGuides(cfg.showCenterGuides);
       }
     } catch {
       /* ignore */
@@ -499,6 +502,9 @@ export default function InfographicPage() {
 
   // ── Safe Zone Overlay (additive — does not affect existing logic) ────
   const [safeZonePlatform, setSafeZonePlatform] = useState<string | null>(null);
+
+  // ── Center guides (horizontal + vertical dashed lines through preview center) ────
+  const [showCenterGuides, setShowCenterGuides] = useState(false);
 
   // ── Design Step (additive — new step 1, shifts old steps) ────
   const [selectedFont, setSelectedFont] = useState("Anton");
@@ -684,6 +690,7 @@ export default function InfographicPage() {
           title, subtitle, videoOverlayText, cards, salesPhrases, contentTheme, customTopic,
           photoSearchQuery, selectedPhotoIndex,
           siteText, siteTextPositions, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
+          showCenterGuides,
         }),
       );
     } catch { /* ignore */ }
@@ -704,6 +711,7 @@ export default function InfographicPage() {
     title, subtitle, videoOverlayText, cards, salesPhrases, contentTheme, customTopic,
     photoSearchQuery, selectedPhotoIndex,
     siteText, siteTextPositions, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
+    showCenterGuides,
   ]);
 
   // (Typography states declared earlier for localStorage compatibility)
@@ -1300,7 +1308,7 @@ export default function InfographicPage() {
       return;
     }
     setClipExtracting(true);
-    const extracted: { url: string; name: string }[] = [];
+    const extracted: { url: string; name: string; fromClip: true }[] = [];
     try {
       for (let i = 0; i < chosen.length; i++) {
         const clip = chosen[i];
@@ -1318,7 +1326,8 @@ export default function InfographicPage() {
         );
         setClipExtractStage(`Upload ${i + 1}/${chosen.length}...`);
         const up = await uploadSingleVideo(clipFile);
-        if (up) extracted.push(up);
+        // Mark as fromClip=true so the 🎯 crop button appears on extracted tiles
+        if (up) extracted.push({ ...up, fromClip: true });
       }
       if (extracted.length > 0) {
         setRushList((prev) => {
@@ -2906,16 +2915,18 @@ export default function InfographicPage() {
                       >
                         <Sparkles size={12} />
                       </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setCropRushIdx(idx);
-                        }}
-                        className="absolute left-1 bottom-5 rounded bg-blue-600/80 p-1 text-white opacity-0 transition hover:bg-blue-700 group-hover:opacity-100"
-                        title="Recadrer la vidéo"
-                      >
-                        <Crop size={12} />
-                      </button>
+                      {rush.fromClip && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCropRushIdx(idx);
+                          }}
+                          className="absolute left-1 bottom-5 rounded bg-blue-600/80 p-1 text-white opacity-0 transition hover:bg-blue-700 group-hover:opacity-100"
+                          title="Recadrer la vidéo"
+                        >
+                          <Crop size={12} />
+                        </button>
+                      )}
                       <div className="absolute bottom-0 left-0 right-0 truncate bg-black/70 px-1 py-0.5 text-[10px] text-white">
                         {rush.name}
                       </div>
@@ -3373,6 +3384,20 @@ export default function InfographicPage() {
               </div>
             );
           })}
+
+          {/* Center guides toggle — horizontal + vertical dashed lines through preview center */}
+          <button
+            onClick={() => setShowCenterGuides((v) => !v)}
+            title={showCenterGuides ? "Masquer les repères de centre" : "Afficher les repères de centre"}
+            className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
+              showCenterGuides
+                ? "bg-purple-600 text-white shadow-lg shadow-purple-500/20"
+                : "bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700"
+            }`}
+          >
+            <Grid size={12} />
+            Centre
+          </button>
         </div>
 
         {/* Safe Zone Platform Selector */}
@@ -3531,6 +3556,20 @@ export default function InfographicPage() {
               resizeStart.current = null;
             }}
           >
+            {/* Center guides — vertical + horizontal dashed lines through the preview center */}
+            {showCenterGuides && (
+              <>
+                <div
+                  className="pointer-events-none absolute inset-y-0 left-1/2 border-l border-dashed z-20"
+                  style={{ borderColor: 'rgba(168, 85, 247, 0.3)' }}
+                />
+                <div
+                  className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-dashed z-20"
+                  style={{ borderColor: 'rgba(168, 85, 247, 0.3)' }}
+                />
+              </>
+            )}
+
             {/* Background Photo */}
             {previewPhoto &&
               (activeSequence === "all" || activeSequence === "titre") && (

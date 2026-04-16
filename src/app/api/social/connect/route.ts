@@ -16,14 +16,30 @@ function getOAuthUrl(platform: string, state: string): string | null {
               const redirectUri = encodeURIComponent(`${APP_URL}/api/social/callback?platform=instagram`);
               const appId = process.env.META_INSTAGRAM_APP_ID || process.env.FACEBOOK_CLIENT_ID;
               if (!appId) return null;
-              return `https://www.facebook.com/v24.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&scope=instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement&response_type=code&state=${state}`;
+              // Required scopes for IG Graph publishing (Reels)
+              const scopes = [
+                'instagram_basic',
+                'instagram_content_publish',
+                'pages_show_list',
+                'pages_read_engagement',
+                'pages_manage_posts',
+                'business_management',
+              ].join(',');
+              return `https://www.facebook.com/v24.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&scope=${scopes}&response_type=code&state=${state}`;
       }
 
       case 'facebook': {
               const redirectUri = encodeURIComponent(`${APP_URL}/api/social/callback?platform=facebook`);
               const appId = process.env.FACEBOOK_CLIENT_ID;
               if (!appId) return null;
-              return `https://www.facebook.com/v24.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&scope=pages_manage_posts,pages_read_engagement,publish_video&response_type=code&state=${state}`;
+              const scopes = [
+                'pages_show_list',
+                'pages_read_engagement',
+                'pages_manage_posts',
+                'publish_video',
+                'business_management',
+              ].join(',');
+              return `https://www.facebook.com/v24.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&scope=${scopes}&response_type=code&state=${state}`;
       }
 
       case 'tiktok': {

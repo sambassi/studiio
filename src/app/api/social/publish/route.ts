@@ -206,6 +206,8 @@ async function publishToInstagram(
   ].join('\n').trim();
 
   try {
+    const publicVideoUrl = await ensurePublicUrl(video.video_url);
+
     // Step 1: Create media container (Reels)
     const createRes = await fetch(
       `https://graph.facebook.com/v24.0/${igAccountId}/media`,
@@ -214,7 +216,7 @@ async function publishToInstagram(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           media_type: 'REELS',
-          video_url: video.video_url,
+          video_url: publicVideoUrl,
           caption: fullCaption,
           share_to_feed: true,
           access_token: accessToken,
@@ -224,6 +226,14 @@ async function publishToInstagram(
 
     const createData = await createRes.json();
     if (!createData.id) {
+      console.error('[SOCIAL_PUBLISH_ERROR]', {
+        platform: 'instagram',
+        step: 'container_create',
+        code: createData.error?.code,
+        message: createData.error?.message,
+        fbtrace_id: createData.error?.fbtrace_id,
+        response: createData,
+      });
       return { success: false, error: createData.error?.message || 'Failed to create media container' };
     }
 
@@ -268,8 +278,21 @@ async function publishToInstagram(
       };
     }
 
+    console.error('[SOCIAL_PUBLISH_ERROR]', {
+      platform: 'instagram',
+      step: 'media_publish',
+      code: publishData.error?.code,
+      message: publishData.error?.message,
+      fbtrace_id: publishData.error?.fbtrace_id,
+      response: publishData,
+    });
     return { success: false, error: publishData.error?.message || 'Failed to publish' };
   } catch (error) {
+    console.error('[SOCIAL_PUBLISH_ERROR]', {
+      platform: 'instagram',
+      step: 'exception',
+      message: error instanceof Error ? error.message : String(error),
+    });
     return { success: false, error: error instanceof Error ? error.message : 'Instagram API error' };
   }
 }
@@ -290,48 +313,44 @@ async function publishToFacebook(
   const fullCaption = [caption || video.title, '', hashtags?.join(' ') || ''].join('\n').trim();
 
   try {
-    // Step 1: Initialize resumable upload
-    const initRes = await fetch(
+    const publicVideoUrl = await ensurePublicUrl(video.video_url);
+
+    // Post video directly by file_url (simpler + works for most FB page video uploads)
+    const directRes = await fetch(
       `https://graph.facebook.com/v24.0/${pageId}/videos`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          upload_phase: 'start',
-          file_size: 0, // Will be determined by Facebook from URL
+          file_url: publicVideoUrl,
+          description: fullCaption,
           access_token: accessToken,
         }),
       }
     );
-
-    const initData = await initRes.json();
-    if (!initData.upload_session_id) {
-      // Fallback: direct video URL posting
-      const directRes = await fetch(
-        `https://graph.facebook.com/v24.0/${pageId}/videos`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            file_url: video.video_url,
-            description: fullCaption,
-            access_token: accessToken,
-          }),
-        }
-      );
-      const directData = await directRes.json();
-      if (directData.id) {
-        return {
-          success: true,
-          platformPostId: directData.id,
-          platformUrl: `https://www.facebook.com/${pageId}/videos/${directData.id}`,
-        };
-      }
-      return { success: false, error: directData.error?.message || 'Facebook upload failed' };
+    const directData = await directRes.json();
+    if (directData.id) {
+      return {
+        success: true,
+        platformPostId: directData.id,
+        platformUrl: `https://www.facebook.com/${pageId}/videos/${directData.id}`,
+      };
     }
-
-    return { success: true, platformPostId: initData.video_id };
+    console.error('[SOCIAL_PUBLISH_ERROR]', {
+      platform: 'facebook',
+      step: 'video_post',
+      code: directData.error?.code,
+      message: directData.error?.message,
+      fbtrace_id: directData.error?.fbtrace_id,
+      response: directData,
+    });
+    return { success: false, error: directData.error?.message || 'Facebook upload failed' };
   } catch (error) {
+    console.error('[SOCIAL_PUBLISH_ERROR]', {
+      platform: 'facebook',
+      step: 'exception',
+      message: error instanceof Error ? error.message : String(error),
+    });
     return { success: false, error: error instanceof Error ? error.message : 'Facebook API error' };
   }
 }
@@ -447,6 +466,13 @@ async function publishToYouTube(
 
     if (!initRes.ok) {
       const errData = await initRes.json().catch(() => ({}));
+      console.error('[SOCIAL_PUBLISH_ERROR]', {
+        platform: 'youtube',
+        step: 'upload_init',
+        status: initRes.status,
+        message: errData.error?.message,
+        response: errData,
+      });
       return {
         success: false,
         error: errData.error?.message || `YouTube API error: ${initRes.status}`,
@@ -455,12 +481,15 @@ async function publishToYouTube(
 
     const uploadUrl = initRes.headers.get('Location');
     if (!uploadUrl) {
+      console.error('[SOCIAL_PUBLISH_ERROR]', { platform: 'youtube', step: 'upload_init', message: 'No Location header' });
       return { success: false, error: 'YouTube did not return upload URL' };
     }
 
     // Download video and upload to YouTube
-    const videoRes = await fetch(video.video_url);
+    const publicVideoUrl = await ensurePublicUrl(video.video_url);
+    const videoRes = await fetch(publicVideoUrl);
     if (!videoRes.ok) {
+      console.error('[SOCIAL_PUBLISH_ERROR]', { platform: 'youtube', step: 'download', status: videoRes.status });
       return { success: false, error: 'Failed to download video for YouTube upload' };
     }
 
@@ -483,11 +512,47 @@ async function publishToYouTube(
       };
     }
 
+    console.error('[SOCIAL_PUBLISH_ERROR]', {
+      platform: 'youtube',
+      step: 'upload',
+      message: uploadData.error?.message,
+      response: uploadData,
+    });
     return {
       success: false,
       error: uploadData.error?.message || 'YouTube upload failed',
     };
   } catch (error) {
+    console.error('[SOCIAL_PUBLISH_ERROR]', {
+      platform: 'youtube',
+      step: 'exception',
+      message: error instanceof Error ? error.message : String(error),
+    });
     return { success: false, error: error instanceof Error ? error.message : 'YouTube API error' };
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// Ensure the media URL is fetchable by the platform.
+// If it's a private Supabase path, create a 1h signed URL.
+// Otherwise return it as-is (already public).
+// ══════════════════════════════════════════════════════════════
+async function ensurePublicUrl(url: string): Promise<string> {
+  if (!url) return url;
+  // Already a public Supabase URL or any external HTTPS URL → pass through
+  if (url.includes('/storage/v1/object/public/')) return url;
+  if (!url.includes('/storage/v1/object/')) return url;
+
+  // Private Supabase path — try to derive { bucket, path } and sign for 1h
+  try {
+    // Pattern: .../storage/v1/object/(sign|authenticated|private)/<bucket>/<path...>?...
+    const m = url.match(/\/storage\/v1\/object\/(?:sign|authenticated|private)\/([^/]+)\/([^?]+)/);
+    if (!m) return url;
+    const [, bucket, path] = m;
+    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600);
+    if (error || !data?.signedUrl) return url;
+    return data.signedUrl;
+  } catch {
+    return url;
   }
 }

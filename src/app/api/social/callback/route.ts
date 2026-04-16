@@ -170,10 +170,12 @@ async function exchangeMetaToken(code: string, platform: string) {
         }
 
         // If no page has IG Business Account, try querying each page individually
+        // (fields=instagram_business_account sometimes omits it depending on app review status)
         if (!igAccountId) {
           for (const page of pages) {
+            const pageToken = page.access_token || accessToken;
             const igRes = await fetch(
-              `https://graph.facebook.com/v24.0/${page.id}?fields=instagram_business_account&access_token=${accessToken}`
+              `https://graph.facebook.com/v24.0/${page.id}?fields=instagram_business_account&access_token=${pageToken}`
             );
             const igData = await igRes.json();
             if (igData.instagram_business_account?.id) {
@@ -187,26 +189,27 @@ async function exchangeMetaToken(code: string, platform: string) {
           }
         }
 
-        accountId = igAccountId || pages[0]?.id || '';
-
-        // Use the Page Access Token for Instagram publishing (required by Graph API)
-        // The page access token is scoped to the specific page that owns the IG account
-        if (pageAccessToken) {
-          accessToken = pageAccessToken;
-          console.log(`[OAuth/Instagram] Using page access token from page ${linkedPageId} for IG publishing`);
+        if (!igAccountId) {
+          // Hard fail — storing the wrong ID causes Graph API error #100 "does not exist"
+          console.error('[OAuth/Instagram] No Instagram Business Account found on any Page. User must (1) have a Business/Creator IG account, (2) link it to a FB Page they admin, (3) grant instagram_basic + instagram_content_publish.');
+          throw new Error('Aucun compte Instagram Business trouvé. Vérifiez que votre compte IG est en mode Business/Creator et lié à une Page Facebook que vous administrez.');
         }
+        if (!pageAccessToken) {
+          console.error('[OAuth/Instagram] Found IG Business Account but no Page Access Token returned. Check pages_show_list scope.');
+          throw new Error('Token de page Facebook manquant. Vérifiez les permissions pages_show_list et pages_read_engagement.');
+        }
+
+        accountId = igAccountId;          // IG Business Account ID (17841...)
+        accessToken = pageAccessToken;    // Page Access Token (required by Graph API for IG publishing)
+        console.log(`[OAuth/Instagram] Stored account_id=${accountId} with page_access_token from page ${linkedPageId}`);
 
         // Get IG username from the Instagram Business Account
-        if (accountId) {
-          const igInfoRes = await fetch(
-            `https://graph.facebook.com/v24.0/${accountId}?fields=username,name&access_token=${accessToken}`
-          );
-          const igInfo = await igInfoRes.json();
-          accountName = igInfo.username || igInfo.name || fallbackPageName;
-          console.log(`[OAuth/Instagram] IG username resolved: "${accountName}" (from account ${accountId})`);
-        } else {
-          accountName = fallbackPageName;
-        }
+        const igInfoRes = await fetch(
+          `https://graph.facebook.com/v24.0/${accountId}?fields=username,name&access_token=${accessToken}`
+        );
+        const igInfo = await igInfoRes.json();
+        accountName = igInfo.username || igInfo.name || fallbackPageName;
+        console.log(`[OAuth/Instagram] IG username resolved: "${accountName}" (from account ${accountId})`);
   } else {
         // Facebook Page — we need the PAGE access token and PAGE ID to publish
         // The user-level token cannot post to Pages; we need a Page Access Token
@@ -221,22 +224,18 @@ async function exchangeMetaToken(code: string, platform: string) {
         if (pages.length > 0) {
           // Use the first page's credentials (most users have one page)
           const page = pages[0];
-          accountId = page.id;           // Page ID (not user ID!)
-          accountName = page.name || 'facebook_page';
-          // Use the Page Access Token for publishing (long-lived, scoped to the page)
-          if (page.access_token) {
-            accessToken = page.access_token;
-            console.log(`[OAuth/Facebook] Using Page Access Token for page "${page.name}" (page_id: ${page.id})`);
+          if (!page.access_token) {
+            console.error('[OAuth/Facebook] Page found but no Page Access Token returned. Check pages_show_list scope.');
+            throw new Error('Token de page Facebook manquant. Vérifiez les permissions pages_show_list et pages_manage_posts.');
           }
+          accountId = page.id;              // Page ID (not user ID!) — used as /{page_id}/videos target
+          accountName = page.name || 'facebook_page';
+          accessToken = page.access_token;  // Page Access Token — required to publish to a Page
+          console.log(`[OAuth/Facebook] Using Page Access Token for page "${page.name}" (page_id: ${page.id})`);
         } else {
-          // Fallback: no pages found, use user info (won't be able to publish)
-          console.warn(`[OAuth/Facebook] No Facebook Pages found — publishing will fail. User needs a Facebook Page.`);
-          const meRes = await fetch(
-                `https://graph.facebook.com/v24.0/me?fields=id,name&access_token=${accessToken}`
-              );
-          const meData = await meRes.json();
-          accountId = meData.id;
-          accountName = meData.name || 'facebook_user';
+          // Hard fail — no Page means publishing is impossible
+          console.error('[OAuth/Facebook] No Facebook Pages found on this account.');
+          throw new Error('Aucune Page Facebook trouvée sur ce compte. Vous devez administrer au moins une Page Facebook pour publier.');
         }
   }
 
