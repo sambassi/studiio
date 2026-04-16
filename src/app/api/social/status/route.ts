@@ -13,11 +13,27 @@ export async function GET(req: NextRequest) {
     }
 
     // Check DB for user's connected accounts (only real OAuth connections)
-    const { data: dbAccounts } = await supabase
+    let { data: dbAccounts } = await supabase
       .from('social_accounts')
       .select('*')
       .eq('user_id', session.user.id)
       .eq('connected', true);
+
+    if ((!dbAccounts || dbAccounts.length === 0) && session.user.email) {
+      const { data: userRow } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', session.user.email)
+        .single();
+      if (userRow && userRow.id !== session.user.id) {
+        const retry = await supabase
+          .from('social_accounts')
+          .select('*')
+          .eq('user_id', userRow.id)
+          .eq('connected', true);
+        dbAccounts = retry.data;
+      }
+    }
 
     const dbMap: Record<string, any> = {};
     dbAccounts?.forEach((acc) => {
