@@ -18,10 +18,7 @@ import {
   Search,
   Video,
   AlertTriangle,
-  Eye,
-  EyeOff,
   Crop,
-  Grid,
   Grid3x3,
   Move,
   LayoutTemplate,
@@ -2680,21 +2677,6 @@ export default function InfographicPage() {
                 className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent p-0"
               />
             )}
-            <div className="ml-auto flex gap-1">
-              {(["9:16", "16:9"] as Format[]).map((fmt) => (
-                <button
-                  key={fmt}
-                  onClick={() => setFormat(fmt)}
-                  className={`rounded px-2 py-0.5 text-[10px] font-bold transition-all ${
-                    format === fmt
-                      ? "bg-purple-600 text-white"
-                      : "bg-gray-700 text-gray-400 hover:text-white"
-                  }`}
-                >
-                  {fmt}
-                </button>
-              ))}
-            </div>
           </div>
           {/* Per-sequence color control — shown when noColorBg is on */}
           {noColorBg && (
@@ -2744,30 +2726,10 @@ export default function InfographicPage() {
         </div>
 
         {/* ── Settings Panel (overlaid when showSettings is true) — visible on ALL steps ── */}
+        {/* Font, Card Style, Logo et Format sont dans la sidebar Canva (Modèles / Éléments / Paramètres). */}
+        {/* Ce panneau conserve uniquement les contrôles uniques : Filtre visuel + Réinitialiser les positions. */}
         {showSettings && (
           <div className="rounded-lg bg-gray-800/80 border border-purple-500/30 p-4 space-y-4">
-            {/* Font Selector */}
-            <div>
-              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">
-                Police
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {FONT_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.label}
-                    onClick={() => setSelectedFont(opt.label)}
-                    className={`px-2 py-1 rounded text-[9px] font-medium transition-all ${
-                      selectedFont === opt.label
-                        ? "bg-purple-600 text-white"
-                        : "bg-gray-700 text-gray-400 hover:text-white"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             {/* Filter Selector */}
             <div>
               <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">
@@ -2785,86 +2747,6 @@ export default function InfographicPage() {
                     }`}
                   >
                     {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Card Style Selector */}
-            <div>
-              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">
-                Style des cartes
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {CARD_STYLE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.label}
-                    onClick={() => setSelectedCardStyle(opt.label)}
-                    className={`px-2 py-1 rounded text-[9px] font-medium transition-all ${
-                      selectedCardStyle === opt.label
-                        ? "bg-purple-600 text-white"
-                        : "bg-gray-700 text-gray-400 hover:text-white"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Logo Upload */}
-            <div>
-              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">
-                Logo
-              </label>
-              <div className="flex items-center gap-3">
-                <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-gray-700 bg-gray-800 px-3 py-2 hover:border-purple-500 hover:bg-gray-700 transition-all">
-                  <Upload size={14} />
-                  <span className="text-xs text-gray-300">
-                    {logoImage ? "Changer" : "Charger Logo"}
-                  </span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleLogoUpload}
-                    className="hidden"
-                  />
-                </label>
-                {logoImage && (
-                  <div className="flex items-center gap-2">
-                    <img
-                      src={logoImage}
-                      alt="Logo"
-                      className="h-8 w-8 rounded object-contain bg-gray-800 border border-gray-700"
-                    />
-                    <button
-                      onClick={() => setLogoImage(null)}
-                      className="rounded p-1 text-gray-500 hover:bg-red-600 hover:text-white"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Format Selection */}
-            <div>
-              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">
-                Format
-              </label>
-              <div className="flex gap-2">
-                {(["9:16", "16:9"] as Format[]).map((fmt) => (
-                  <button
-                    key={fmt}
-                    onClick={() => setFormat(fmt)}
-                    className={`flex-1 rounded px-3 py-2 text-xs font-bold transition-all ${
-                      format === fmt
-                        ? "bg-purple-600 text-white"
-                        : "bg-gray-700 text-gray-400 hover:text-white"
-                    }`}
-                  >
-                    {fmt}
                   </button>
                 ))}
               </div>
@@ -3992,31 +3874,33 @@ export default function InfographicPage() {
         </h2>
 
         {/* ── Sequence Selector + Play Button ── */}
-        <div className="flex items-center gap-1.5 mb-3 flex-wrap justify-center">
+        <div className="flex items-center gap-2 mb-3 flex-wrap justify-center">
           {/* Play/Stop button — reads the montage */}
           <button
             onClick={() => {
               if (isPlaying) { stopPlayback(); setActiveSequence('all'); }
               else startPlayback();
             }}
-            className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 rounded-full pl-1 pr-3 py-1 text-xs font-bold transition-all ${
               isPlaying
                 ? 'bg-red-600 text-white shadow-lg shadow-red-500/30 animate-pulse'
                 : 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50'
             }`}
           >
-            <span>{isPlaying ? '⏸️' : '▶️'}</span>
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 text-[20px] leading-none">
+              {isPlaying ? '⏸️' : '▶️'}
+            </span>
             {isPlaying ? 'Stop' : 'Lire'}
           </button>
 
           {/* Sequence pages */}
           {[
-            { key: "titre" as const, label: "Titre", icon: "📝" },
-            { key: "cartes" as const, label: "Cartes", icon: "📊" },
+            { key: "titre" as const, label: "Titre", icon: "📝", tint: "bg-blue-500/30" },
+            { key: "cartes" as const, label: "Cartes", icon: "📊", tint: "bg-emerald-500/30" },
             ...(rushUrl
-              ? [{ key: "video" as const, label: "Vidéo", icon: "🎥" }]
+              ? [{ key: "video" as const, label: "Vidéo", icon: "🎥", tint: "bg-orange-500/30" }]
               : []),
-            { key: "cta" as const, label: "CTA", icon: "📢" },
+            { key: "cta" as const, label: "CTA", icon: "📢", tint: "bg-pink-500/30" },
           ].map((seq) => {
             const seqKey = seq.key as "titre" | "cartes" | "video" | "cta";
             const included = exportedSequences[seqKey];
@@ -4036,9 +3920,11 @@ export default function InfographicPage() {
                     if (seq.key === "cartes") setStep(0);
                     else if (seq.key === "video") setStep(2);
                   }}
-                  className="flex items-center gap-1 rounded-l-full py-1.5 pl-3 pr-1 text-xs font-medium"
+                  className="flex items-center gap-2 rounded-l-full pl-1 pr-1 py-1 text-xs font-medium"
                 >
-                  <span>{seq.icon}</span>
+                  <span className={`flex h-7 w-7 items-center justify-center rounded-full ${activeSequence === seq.key ? 'bg-white/20' : seq.tint} text-[20px] leading-none`}>
+                    {seq.icon}
+                  </span>
                   {seq.label}
                 </button>
                 <button
@@ -4050,9 +3936,9 @@ export default function InfographicPage() {
                     }));
                   }}
                   title={included ? "Inclure dans l'export" : "Exclu de l'export"}
-                  className="rounded-r-full py-1.5 pl-1 pr-2 hover:text-white"
+                  className="rounded-r-full py-1.5 pl-1 pr-2 hover:text-white text-[14px] leading-none"
                 >
-                  {included ? <Eye size={12} /> : <EyeOff size={12} />}
+                  {included ? '👁️' : '🚫'}
                 </button>
               </div>
             );
@@ -4062,13 +3948,15 @@ export default function InfographicPage() {
           <button
             onClick={() => setShowCenterGuides((v) => !v)}
             title={showCenterGuides ? "Masquer les repères de centre" : "Afficher les repères de centre"}
-            className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
+            className={`flex items-center gap-2 rounded-full pl-1 pr-3 py-1 text-xs font-medium transition-all ${
               showCenterGuides
                 ? "bg-purple-600 text-white shadow-lg shadow-purple-500/20"
                 : "bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700"
             }`}
           >
-            <Grid size={12} />
+            <span className={`flex h-7 w-7 items-center justify-center rounded-full ${showCenterGuides ? 'bg-white/20' : 'bg-purple-500/30'} text-[18px] leading-none`}>
+              🎯
+            </span>
             Centre
           </button>
 
@@ -4078,13 +3966,15 @@ export default function InfographicPage() {
               setCardPositionMode((m) => (m === 'grid' ? 'free' : 'grid'))
             }
             title={cardPositionMode === 'grid' ? "Mode grille" : "Mode libre"}
-            className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
+            className={`flex items-center gap-2 rounded-full pl-1 pr-3 py-1 text-xs font-medium transition-all ${
               cardPositionMode === 'free'
                 ? "bg-pink-600 text-white shadow-lg shadow-pink-500/20"
                 : "bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700"
             }`}
           >
-            {cardPositionMode === 'grid' ? <Grid3x3 size={12} /> : <Move size={12} />}
+            <span className={`flex h-7 w-7 items-center justify-center rounded-full ${cardPositionMode === 'free' ? 'bg-white/20' : 'bg-pink-500/30'} text-[18px] leading-none`}>
+              {cardPositionMode === 'grid' ? '🔲' : '✋'}
+            </span>
             {cardPositionMode === 'grid' ? 'Grille' : 'Libre'}
           </button>
         </div>
