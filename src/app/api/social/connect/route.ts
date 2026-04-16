@@ -12,30 +12,17 @@ function generateState(userId: string): string {
 
 function getOAuthUrl(platform: string, state: string): string | null {
     switch (platform) {
-      case 'instagram': {
-              const redirectUri = encodeURIComponent(`${APP_URL}/api/social/callback?platform=instagram`);
-              const appId = process.env.META_INSTAGRAM_APP_ID || process.env.FACEBOOK_CLIENT_ID;
-              if (!appId) return null;
-              // Required scopes for IG Graph publishing (Reels)
-              const scopes = [
-                'instagram_basic',
-                'instagram_content_publish',
-                'pages_show_list',
-                'pages_read_engagement',
-              ].join(',');
-              return `https://www.facebook.com/v24.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&scope=${scopes}&response_type=code&state=${state}`;
-      }
-
+      // Instagram + Facebook go through the same unified Meta app using
+      // Facebook Login for Business. Scopes are bound to the Login
+      // Configuration on Meta's side — the client passes `config_id`
+      // instead of `scope`.
+      case 'instagram':
       case 'facebook': {
-              const redirectUri = encodeURIComponent(`${APP_URL}/api/social/callback?platform=facebook`);
-              const appId = process.env.FACEBOOK_CLIENT_ID;
-              if (!appId) return null;
-              const scopes = [
-                'pages_show_list',
-                'pages_read_engagement',
-                'publish_video',
-              ].join(',');
-              return `https://www.facebook.com/v24.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&scope=${scopes}&response_type=code&state=${state}`;
+              const redirectUri = encodeURIComponent(`${APP_URL}/api/social/callback?platform=${platform}`);
+              const appId = process.env.META_INSTAGRAM_APP_ID || process.env.FACEBOOK_CLIENT_ID;
+              const configId = process.env.META_CONFIG_ID;
+              if (!appId || !configId) return null;
+              return `https://www.facebook.com/v23.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&config_id=${configId}&response_type=code&state=${state}`;
       }
 
       case 'tiktok': {
@@ -84,8 +71,8 @@ export async function POST(req: NextRequest) {
       }
 
       const platformNames: Record<string, string> = {
-              instagram: 'META_INSTAGRAM_APP_ID',
-              facebook: 'FACEBOOK_CLIENT_ID',
+              instagram: 'META_INSTAGRAM_APP_ID + META_CONFIG_ID',
+              facebook: 'FACEBOOK_CLIENT_ID + META_CONFIG_ID',
               tiktok: 'TIKTOK_CLIENT_KEY',
               youtube: 'YOUTUBE_CLIENT_ID ou GOOGLE_CLIENT_ID',
       };
