@@ -73,9 +73,11 @@ export async function GET(req: NextRequest) {
       }
 
       return redirectWithMessage('success', `${platform} connecte avec succes!`);
-    } catch (error) {
-          console.error('OAuth callback error:', error);
-          return redirectWithMessage('error', 'Erreur de connexion');
+    } catch (error: any) {
+          const msg = error?.message || String(error) || 'Erreur inconnue';
+          const stack = error?.stack ? error.stack.split('\n').slice(0, 3).join(' | ') : '';
+          console.error('[SOCIAL_CALLBACK_ERROR]', { platform: req.nextUrl.searchParams.get('platform'), msg, stack });
+          return redirectWithMessage('error', msg + (stack ? ' — ' + stack : ''));
     }
 }
 
