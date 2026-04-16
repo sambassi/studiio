@@ -22,6 +22,13 @@ export interface CardData {
   value: string;
   description?: string;
   color?: string;
+  /**
+   * Free-positioning mode (per-card): x/y are percentages (0–100) of the
+   * canvas dimensions (card center). When present, overrides the default
+   * grid layout for this card. When absent, the card falls into the grid
+   * at its natural index.
+   */
+  position?: { x: number; y: number };
 }
 
 export interface SiteTextConfig {
@@ -860,6 +867,18 @@ function drawCards(
   // user had textScale=2.2, blowing up card heights and pushing content
   // into adjacent cards.
   const emojiSize = fixedFontPx(isReel ? 14 : 18);
+
+  /**
+   * Free-positioning mode: if a card has a `position: { x, y }` (percentages
+   * of canvas, card center), translate the computed grid-top-left (x, y) to
+   * honour the custom position. Returns adjusted { x, y } top-left.
+   */
+  const applyCardPos = (card: CardData, x: number, y: number, cardW: number, cardH: number) => {
+    if (!card.position) return { x, y };
+    const cx = (card.position.x / 100) * w;
+    const cy = (card.position.y / 100) * h;
+    return { x: cx - cardW / 2, y: cy - cardH / 2 };
+  };
   const labelSize = fontPx(7);
   const valueSize = fontPx(9);
   const descSize = fontPx(6);
@@ -891,8 +910,9 @@ function drawCards(
     cards.slice(0, maxCards).forEach((card, i) => {
       const col = i % cols;
       const row = Math.floor(i / cols);
-      const x = cardsX + col * (cardW + gap);
-      const y = cardsY + row * (cardH + gap);
+      const gridX = cardsX + col * (cardW + gap);
+      const gridY = cardsY + row * (cardH + gap);
+      const { x, y } = applyCardPos(card, gridX, gridY, cardW, cardH);
 
       // bg-black/50 rounded-lg
       ctx.fillStyle = 'rgba(0,0,0,0.5)';
@@ -995,8 +1015,9 @@ function drawCards(
     cards.slice(0, maxCards).forEach((card, i) => {
       const col = i % cols;
       const row = Math.floor(i / cols);
-      const x = cardsX + col * (cardW + gap);
-      const y = cardsY + row * (cardH + gap);
+      const gridX = cardsX + col * (cardW + gap);
+      const gridY = cardsY + row * (cardH + gap);
+      const { x, y } = applyCardPos(card, gridX, gridY, cardW, cardH);
       const { labelLines, valueLines, descLines } = pre[i];
 
       // Background: bg-black/30 rounded-lg
@@ -1081,8 +1102,9 @@ function drawCards(
     cards.slice(0, maxCards).forEach((card, i) => {
       const col = i % cols;
       const row = Math.floor(i / cols);
-      const x = cardsX + col * (cardW + gridGap);
-      const y = cardsY + row * (cardH + gridGap);
+      const gridX = cardsX + col * (cardW + gridGap);
+      const gridY = cardsY + row * (cardH + gridGap);
+      const { x, y } = applyCardPos(card, gridX, gridY, cardW, cardH);
 
       // Background bg-black/40 rounded-lg
       ctx.fillStyle = 'rgba(0,0,0,0.4)';
@@ -1156,8 +1178,9 @@ function drawCards(
     cards.slice(0, maxCards).forEach((card, i) => {
       const col = i % cols;
       const row = Math.floor(i / cols);
-      const x = cardsX + col * (cardW + gridGap);
-      const y = cardsY + row * (cardH + gridGap);
+      const gridX = cardsX + col * (cardW + gridGap);
+      const gridY = cardsY + row * (cardH + gridGap);
+      const { x, y } = applyCardPos(card, gridX, gridY, cardW, cardH);
 
       // borderBottom: 1px solid card.color @ 25% alpha
       ctx.strokeStyle = hexToRgba(card.color || accent, 0.25);
@@ -1224,8 +1247,9 @@ function drawCards(
     const cardsX = ((design?.cardsPosition?.x ?? 50) / 100) * w - cardW / 2;
 
     cards.slice(0, maxCards).forEach((card, i) => {
-      const y = cardsY + i * (cardH + gap);
-      const x = cardsX;
+      const gridY = cardsY + i * (cardH + gap);
+      const gridX = cardsX;
+      const { x, y } = applyCardPos(card, gridX, gridY, cardW, cardH);
 
       // bg-black/30 rounded-lg
       ctx.fillStyle = 'rgba(0,0,0,0.3)';

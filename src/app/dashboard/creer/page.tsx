@@ -22,6 +22,8 @@ import {
   EyeOff,
   Crop,
   Grid,
+  Grid3x3,
+  Move,
 } from "lucide-react";
 import { PlatformIcon, type PlatformKey } from "@/components/ui/PlatformIcon";
 import {
@@ -52,6 +54,11 @@ interface InfoCard {
   value: string;
   description: string;
   color: string;
+  /**
+   * Free-positioning mode: x/y are percentages (0–100) of the preview
+   * container (card center). When absent, falls back to the grid layout.
+   */
+  position?: { x: number; y: number };
 }
 
 interface PexelsPhoto {
@@ -597,6 +604,7 @@ export default function InfographicPage() {
         if (cfg.siteTextSequences) setSiteTextSequences(cfg.siteTextSequences);
         if (cfg.siteTextEnabled !== undefined) setSiteTextEnabled(cfg.siteTextEnabled);
         if (typeof cfg.showCenterGuides === 'boolean') setShowCenterGuides(cfg.showCenterGuides);
+        if (cfg.cardPositionMode === 'grid' || cfg.cardPositionMode === 'free') setCardPositionMode(cfg.cardPositionMode);
       }
     } catch {
       /* ignore */
@@ -612,6 +620,12 @@ export default function InfographicPage() {
 
   // ── Center guides (horizontal + vertical dashed lines through preview center) ────
   const [showCenterGuides, setShowCenterGuides] = useState(false);
+
+  // ── Card position mode: 'grid' (default) uses the grid layout, 'free'
+  // allows each card to be dragged independently using its `position` field.
+  const [cardPositionMode, setCardPositionMode] = useState<'grid' | 'free'>('grid');
+  // Index of the card being dragged in free mode (null when not dragging).
+  const [dragCardIdx, setDragCardIdx] = useState<number | null>(null);
 
   // ── Design Step (additive — new step 1, shifts old steps) ────
   const [selectedFont, setSelectedFont] = useState("Anton");
@@ -798,6 +812,7 @@ export default function InfographicPage() {
           photoSearchQuery, selectedPhotoIndex,
           siteText, siteTextPositions, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
           showCenterGuides,
+          cardPositionMode,
         }),
       );
     } catch { /* ignore */ }
@@ -819,6 +834,7 @@ export default function InfographicPage() {
     photoSearchQuery, selectedPhotoIndex,
     siteText, siteTextPositions, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
     showCenterGuides,
+    cardPositionMode,
   ]);
 
   // (Typography states declared earlier for localStorage compatibility)
@@ -1715,7 +1731,7 @@ export default function InfographicPage() {
               subtitle: bSubtitle || undefined,
               salesPhrase: salesPhrase || undefined,
               cards: bCards.length > 0 && exportedSequences.cartes
-                ? bCards.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color }))
+                ? bCards.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color, position: c.position }))
                 : undefined,
               posterUrl: posterUrl,
               videoUrl: exportedSequences.video ? (rushUrl || undefined) : undefined,
@@ -1812,6 +1828,7 @@ export default function InfographicPage() {
                   value: c.value,
                   description: c.description,
                   color: c.color,
+                  position: c.position,
                 })),
                 characterUrl: characterImage ? mediaUrl : null,
                 posterUrl,
@@ -1955,7 +1972,7 @@ export default function InfographicPage() {
             subtitle: subtitle || undefined,
             salesPhrase: salesPhrases.length > 0 ? salesPhrases[0] : undefined,
             cards: cards.length > 0 && exportedSequences.cartes
-              ? cards.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color }))
+              ? cards.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color, position: c.position }))
               : undefined,
             posterUrl: exportPosterUrl,
             videoUrl: exportedSequences.video ? rushUrl : undefined,
@@ -2619,21 +2636,35 @@ export default function InfographicPage() {
 
                 {/* Info Cards */}
                 <div>
-                  <div className="mb-3 flex items-center justify-between">
+                  <div className="mb-3 flex items-center justify-between flex-wrap gap-2">
                     <h3 className="text-sm font-semibold text-gray-300">
                       Cartes d'Information ({cards.length})
                     </h3>
-                    <button
-                      onClick={handleRegenerate}
-                      disabled={isGenerating}
-                      className="flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-medium text-purple-400 hover:bg-gray-700"
-                    >
-                      <RefreshCw
-                        size={14}
-                        className={isGenerating ? "animate-spin" : ""}
-                      />
-                      Régénérer
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() =>
+                          setCards((prev) =>
+                            prev.map((c) => ({ ...c, position: undefined })),
+                          )
+                        }
+                        title="Réinitialiser les positions individuelles des cartes"
+                        className="flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-medium text-pink-400 hover:bg-gray-700"
+                      >
+                        <Grid3x3 size={14} />
+                        Réinitialiser positions
+                      </button>
+                      <button
+                        onClick={handleRegenerate}
+                        disabled={isGenerating}
+                        className="flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-medium text-purple-400 hover:bg-gray-700"
+                      >
+                        <RefreshCw
+                          size={14}
+                          className={isGenerating ? "animate-spin" : ""}
+                        />
+                        Régénérer
+                      </button>
+                    </div>
                   </div>
                   <div className="space-y-3">
                     {cards.map((card) => (
@@ -3574,6 +3605,22 @@ export default function InfographicPage() {
             <Grid size={12} />
             Centre
           </button>
+
+          {/* Card position mode toggle — grid vs free positioning */}
+          <button
+            onClick={() =>
+              setCardPositionMode((m) => (m === 'grid' ? 'free' : 'grid'))
+            }
+            title={cardPositionMode === 'grid' ? "Mode grille" : "Mode libre"}
+            className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
+              cardPositionMode === 'free'
+                ? "bg-pink-600 text-white shadow-lg shadow-pink-500/20"
+                : "bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700"
+            }`}
+          >
+            {cardPositionMode === 'grid' ? <Grid3x3 size={12} /> : <Move size={12} />}
+            {cardPositionMode === 'grid' ? 'Grille' : 'Libre'}
+          </button>
         </div>
 
         {/* Safe Zone Platform Selector */}
@@ -3647,6 +3694,24 @@ export default function InfographicPage() {
             onMouseMove={(e) => {
               if (!previewRef.current) return;
               const rect = previewRef.current.getBoundingClientRect();
+              // Free-mode card dragging — each card moved independently
+              if (dragCardIdx !== null) {
+                const x = Math.max(
+                  0,
+                  Math.min(100, ((e.clientX - rect.left) / rect.width) * 100),
+                );
+                const y = Math.max(
+                  0,
+                  Math.min(100, ((e.clientY - rect.top) / rect.height) * 100),
+                );
+                setCards((prev) => {
+                  if (dragCardIdx >= prev.length) return prev;
+                  const next = prev.slice();
+                  next[dragCardIdx] = { ...next[dragCardIdx], position: { x, y } };
+                  return next;
+                });
+                return;
+              }
               // Handle resize — use diagonal distance for intuitive scaling
               if (resizing && resizeStart.current) {
                 const dx = e.clientX - resizeStart.current.x;
@@ -3724,12 +3789,40 @@ export default function InfographicPage() {
             onMouseUp={() => {
               setDragging(null);
               setResizing(null);
+              setDragCardIdx(null);
               resizeStart.current = null;
             }}
             onMouseLeave={() => {
               setDragging(null);
               setResizing(null);
+              setDragCardIdx(null);
               resizeStart.current = null;
+            }}
+            onTouchMove={(e) => {
+              if (dragCardIdx === null || !previewRef.current) return;
+              const t = e.touches[0];
+              if (!t) return;
+              const rect = previewRef.current.getBoundingClientRect();
+              const x = Math.max(
+                0,
+                Math.min(100, ((t.clientX - rect.left) / rect.width) * 100),
+              );
+              const y = Math.max(
+                0,
+                Math.min(100, ((t.clientY - rect.top) / rect.height) * 100),
+              );
+              setCards((prev) => {
+                if (dragCardIdx >= prev.length) return prev;
+                const next = prev.slice();
+                next[dragCardIdx] = { ...next[dragCardIdx], position: { x, y } };
+                return next;
+              });
+            }}
+            onTouchEnd={() => {
+              setDragCardIdx(null);
+            }}
+            onTouchCancel={() => {
+              setDragCardIdx(null);
             }}
           >
             {/* Center guides — vertical + horizontal dashed lines through the preview center */}
@@ -3999,236 +4092,273 @@ export default function InfographicPage() {
                 </div>
               )}
 
-            {/* ── CARDS GRID (visible in all, cartes) — drag + double-click for panel ── */}
+            {/* ── CARDS (visible in all, cartes) — grid or free-positioning mode ── */}
             {(activeSequence === "all" || activeSequence === "cartes") &&
-              cards.length > 0 && (
-                <div
-                  className={`absolute z-20 cursor-grab active:cursor-grabbing group/cards ${activePanel === "cards" ? "ring-1 ring-pink-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
-                  style={{
-                    left: `${cardsPos.x}%`,
-                    top: `${cardsPos.y}%`,
-                    transform: "translate(-50%, -50%)",
-                    width: `${cardsSize}%`,
-                  }}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    setDragging("cards");
-                  }}
-                  onDoubleClick={(e) => openPanel("cards", e)}
-                >
-                  {/* Resize handles — larger and always visible for easier interaction */}
-                  <div
-                    className="absolute -top-2 -right-2 w-4 h-4 bg-pink-500 rounded-full cursor-ne-resize z-30 border-2 border-white/70 shadow-lg shadow-pink-500/30"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setResizing("cards");
-                      resizeStart.current = {
-                        x: e.clientX,
-                        y: e.clientY,
-                        size: cardsSize,
-                      };
-                    }}
-                  />
-                  <div
-                    className="absolute -bottom-2 -right-2 w-4 h-4 bg-pink-500 rounded-full cursor-se-resize z-30 border-2 border-white/70 shadow-lg shadow-pink-500/30"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setResizing("cards");
-                      resizeStart.current = {
-                        x: e.clientX,
-                        y: e.clientY,
-                        size: cardsSize,
-                      };
-                    }}
-                  />
-                  <div className="absolute inset-0 border border-dashed border-pink-500/30 group-hover/cards:border-pink-500/60 rounded pointer-events-none transition-colors" />
-                  <div
-                    className={`grid gap-1.5 w-full ${
-                      selectedCardStyle === "Full Width"
-                        ? "grid-cols-1"
-                        : previewClasses.cols
-                    }`}
-                  >
-                    {cards.slice(0, format === "16:9" ? 6 : 5).map((card) => {
-                      const scaledLabel = `${Math.round(7 * textScale)}px`;
-                      const scaledValue = `${Math.round(9 * textScale)}px`;
-                      const scaledDesc = `${Math.round(6 * textScale)}px`;
-                      // ── Compact ──
-                      if (selectedCardStyle === "Compact") {
-                        return (
-                          <div
-                            key={card.id}
-                            className="flex flex-col items-center gap-0.5 rounded-lg bg-black/30 px-1.5 py-1.5 backdrop-blur-sm"
-                            style={{ borderLeft: `2px solid ${card.color}` }}
+              cards.length > 0 && (() => {
+                const scaledLabel = `${Math.round(7 * textScale)}px`;
+                const scaledValue = `${Math.round(9 * textScale)}px`;
+                const scaledDesc = `${Math.round(6 * textScale)}px`;
+                const renderCardInner = (card: InfoCard) => {
+                  // ── Compact ──
+                  if (selectedCardStyle === "Compact") {
+                    return (
+                      <div
+                        className="flex flex-col items-center gap-0.5 rounded-lg bg-black/30 px-1.5 py-1.5 backdrop-blur-sm w-full"
+                        style={{ borderLeft: `2px solid ${card.color}` }}
+                      >
+                        {card.emoji && card.emoji.trim() !== "" && (
+                          <span
+                            className={
+                              format === "16:9" ? "text-lg" : "text-sm"
+                            }
                           >
-                            {card.emoji && card.emoji.trim() !== "" && (
-                              <span
-                                className={
-                                  format === "16:9" ? "text-lg" : "text-sm"
-                                }
-                              >
-                                {card.emoji}
-                              </span>
-                            )}
-                            <p
-                              className="text-center font-bold text-white drop-shadow"
-                              style={{ fontSize: scaledLabel }}
-                            >
-                              {card.label}
-                            </p>
-                            <p
-                              className="text-center font-black drop-shadow"
-                              style={{
-                                fontSize: scaledValue,
-                                color: card.color,
-                              }}
-                            >
-                              {card.value}
-                            </p>
-                            {card.description && (
-                              <p
-                                className="text-center text-white/60"
-                                style={{ fontSize: scaledDesc }}
-                              >
-                                {card.description.substring(0, 30)}
-                              </p>
-                            )}
-                          </div>
-                        );
-                      }
-                      // ── Educatif ──
-                      if (selectedCardStyle === "Educatif") {
-                        return (
-                          <div
-                            key={card.id}
-                            className="rounded-lg bg-black/40 px-2 py-2 backdrop-blur-sm"
-                            style={{ borderTop: `2px solid ${card.color}` }}
-                          >
-                            <div className="flex items-center gap-1.5 mb-1">
-                              {card.emoji && card.emoji.trim() !== "" && (
-                                <span className="text-sm">{card.emoji}</span>
-                              )}
-                              <p
-                                className="font-bold text-white"
-                                style={{ fontSize: scaledLabel }}
-                              >
-                                {card.label}
-                              </p>
-                            </div>
-                            <p
-                              className="text-white/70 leading-relaxed mb-1"
-                              style={{ fontSize: scaledDesc }}
-                            >
-                              {card.description?.substring(0, 60) || ""}
-                            </p>
-                            <p
-                              className="font-black"
-                              style={{
-                                fontSize: scaledValue,
-                                color: card.color,
-                              }}
-                            >
-                              {card.value}
-                            </p>
-                          </div>
-                        );
-                      }
-                      // ── Stats Bold ──
-                      if (selectedCardStyle === "Stats Bold") {
-                        return (
-                          <div
-                            key={card.id}
-                            className="flex flex-col items-center justify-center rounded-lg bg-black/50 px-2 py-2 backdrop-blur-sm border border-white/10"
-                          >
-                            <p
-                              className="font-black drop-shadow"
-                              style={{
-                                fontSize: `${Math.round(13 * textScale)}px`,
-                                color: card.color,
-                              }}
-                            >
-                              {card.value}
-                            </p>
-                            <p
-                              className="font-medium text-white/80 mt-0.5 text-center"
-                              style={{ fontSize: scaledDesc }}
-                            >
-                              {card.label}
-                            </p>
-                          </div>
-                        );
-                      }
-                      // ── Minimal Line ──
-                      if (selectedCardStyle === "Minimal Line") {
-                        return (
-                          <div
-                            key={card.id}
-                            className="flex items-center gap-2 py-1 px-1"
-                            style={{
-                              borderBottom: `1px solid ${card.color}40`,
-                            }}
-                          >
-                            {card.emoji && card.emoji.trim() !== "" && (
-                              <span className="text-xs">{card.emoji}</span>
-                            )}
-                            <p
-                              className="text-white/80 flex-1"
-                              style={{ fontSize: scaledLabel }}
-                            >
-                              {card.label}
-                            </p>
-                            <p
-                              className="font-bold"
-                              style={{
-                                fontSize: scaledValue,
-                                color: card.color,
-                              }}
-                            >
-                              {card.value}
-                            </p>
-                          </div>
-                        );
-                      }
-                      // ── Full Width ──
-                      return (
-                        <div
-                          key={card.id}
-                          className="flex items-center gap-2 rounded-lg bg-black/30 px-3 py-1.5 backdrop-blur-sm"
-                          style={{ borderLeft: `3px solid ${card.color}` }}
+                            {card.emoji}
+                          </span>
+                        )}
+                        <p
+                          className="text-center font-bold text-white drop-shadow"
+                          style={{ fontSize: scaledLabel }}
                         >
-                          {card.emoji && card.emoji.trim() !== "" && (
-                            <span className="text-base">{card.emoji}</span>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <p
-                              className="font-bold text-white truncate"
-                              style={{ fontSize: scaledLabel }}
-                            >
-                              {card.label}
-                            </p>
-                            {card.description && (
-                              <p
-                                className="text-white/50 truncate"
-                                style={{ fontSize: scaledDesc }}
-                              >
-                                {card.description.substring(0, 40)}
-                              </p>
-                            )}
-                          </div>
+                          {card.label}
+                        </p>
+                        <p
+                          className="text-center font-black drop-shadow"
+                          style={{ fontSize: scaledValue, color: card.color }}
+                        >
+                          {card.value}
+                        </p>
+                        {card.description && (
                           <p
-                            className="font-black flex-shrink-0"
-                            style={{ fontSize: scaledValue, color: card.color }}
+                            className="text-center text-white/60"
+                            style={{ fontSize: scaledDesc }}
                           >
-                            {card.value}
+                            {card.description.substring(0, 30)}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  }
+                  // ── Educatif ──
+                  if (selectedCardStyle === "Educatif") {
+                    return (
+                      <div
+                        className="rounded-lg bg-black/40 px-2 py-2 backdrop-blur-sm w-full"
+                        style={{ borderTop: `2px solid ${card.color}` }}
+                      >
+                        <div className="flex items-center gap-1.5 mb-1">
+                          {card.emoji && card.emoji.trim() !== "" && (
+                            <span className="text-sm">{card.emoji}</span>
+                          )}
+                          <p
+                            className="font-bold text-white"
+                            style={{ fontSize: scaledLabel }}
+                          >
+                            {card.label}
                           </p>
                         </div>
-                      );
-                    })}
+                        <p
+                          className="text-white/70 leading-relaxed mb-1"
+                          style={{ fontSize: scaledDesc }}
+                        >
+                          {card.description?.substring(0, 60) || ""}
+                        </p>
+                        <p
+                          className="font-black"
+                          style={{ fontSize: scaledValue, color: card.color }}
+                        >
+                          {card.value}
+                        </p>
+                      </div>
+                    );
+                  }
+                  // ── Stats Bold ──
+                  if (selectedCardStyle === "Stats Bold") {
+                    return (
+                      <div className="flex flex-col items-center justify-center rounded-lg bg-black/50 px-2 py-2 backdrop-blur-sm border border-white/10 w-full">
+                        <p
+                          className="font-black drop-shadow"
+                          style={{
+                            fontSize: `${Math.round(13 * textScale)}px`,
+                            color: card.color,
+                          }}
+                        >
+                          {card.value}
+                        </p>
+                        <p
+                          className="font-medium text-white/80 mt-0.5 text-center"
+                          style={{ fontSize: scaledDesc }}
+                        >
+                          {card.label}
+                        </p>
+                      </div>
+                    );
+                  }
+                  // ── Minimal Line ──
+                  if (selectedCardStyle === "Minimal Line") {
+                    return (
+                      <div
+                        className="flex items-center gap-2 py-1 px-1 w-full"
+                        style={{ borderBottom: `1px solid ${card.color}40` }}
+                      >
+                        {card.emoji && card.emoji.trim() !== "" && (
+                          <span className="text-xs">{card.emoji}</span>
+                        )}
+                        <p
+                          className="text-white/80 flex-1"
+                          style={{ fontSize: scaledLabel }}
+                        >
+                          {card.label}
+                        </p>
+                        <p
+                          className="font-bold"
+                          style={{ fontSize: scaledValue, color: card.color }}
+                        >
+                          {card.value}
+                        </p>
+                      </div>
+                    );
+                  }
+                  // ── Full Width ──
+                  return (
+                    <div
+                      className="flex items-center gap-2 rounded-lg bg-black/30 px-3 py-1.5 backdrop-blur-sm w-full"
+                      style={{ borderLeft: `3px solid ${card.color}` }}
+                    >
+                      {card.emoji && card.emoji.trim() !== "" && (
+                        <span className="text-base">{card.emoji}</span>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p
+                          className="font-bold text-white truncate"
+                          style={{ fontSize: scaledLabel }}
+                        >
+                          {card.label}
+                        </p>
+                        {card.description && (
+                          <p
+                            className="text-white/50 truncate"
+                            style={{ fontSize: scaledDesc }}
+                          >
+                            {card.description.substring(0, 40)}
+                          </p>
+                        )}
+                      </div>
+                      <p
+                        className="font-black flex-shrink-0"
+                        style={{ fontSize: scaledValue, color: card.color }}
+                      >
+                        {card.value}
+                      </p>
+                    </div>
+                  );
+                };
+
+                const visibleCards = cards.slice(0, format === "16:9" ? 6 : 5);
+
+                // ── FREE mode: each card absolutely positioned, individually draggable ──
+                if (cardPositionMode === 'free') {
+                  const cols = format === "16:9" ? 3 : 2;
+                  // Approximate width for an absolutely-positioned card
+                  // (percentage of preview container).
+                  const cardWidthPct = cardsSize / cols;
+                  return (
+                    <>
+                      {visibleCards.map((card, i) => {
+                        // Default position derived from grid index when unset
+                        const defaultX = 25 + (i % cols) * 25;
+                        const defaultY = 40 + Math.floor(i / cols) * 18;
+                        const pos = card.position || { x: defaultX, y: defaultY };
+                        const isDragging = dragCardIdx === i;
+                        return (
+                          <div
+                            key={card.id}
+                            className={`absolute z-20 select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} ${activePanel === 'cards' ? 'ring-1 ring-pink-400 ring-offset-1 ring-offset-transparent rounded' : ''}`}
+                            style={{
+                              left: `${pos.x}%`,
+                              top: `${pos.y}%`,
+                              transform: 'translate(-50%, -50%)',
+                              width: `${cardWidthPct}%`,
+                              touchAction: 'none',
+                            }}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setDragCardIdx(i);
+                            }}
+                            onTouchStart={(e) => {
+                              e.stopPropagation();
+                              setDragCardIdx(i);
+                            }}
+                            onDoubleClick={(e) => openPanel('cards', e)}
+                            title={`Carte ${i + 1} — glisser pour déplacer`}
+                          >
+                            <div className="pointer-events-none absolute inset-0 border border-dashed border-pink-500/30 hover:border-pink-500/60 rounded transition-colors" />
+                            {renderCardInner(card)}
+                          </div>
+                        );
+                      })}
+                    </>
+                  );
+                }
+
+                // ── GRID mode (default, existing behaviour) ──
+                return (
+                  <div
+                    className={`absolute z-20 cursor-grab active:cursor-grabbing group/cards ${activePanel === "cards" ? "ring-1 ring-pink-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
+                    style={{
+                      left: `${cardsPos.x}%`,
+                      top: `${cardsPos.y}%`,
+                      transform: "translate(-50%, -50%)",
+                      width: `${cardsSize}%`,
+                    }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setDragging("cards");
+                    }}
+                    onDoubleClick={(e) => openPanel("cards", e)}
+                  >
+                    {/* Resize handles — larger and always visible for easier interaction */}
+                    <div
+                      className="absolute -top-2 -right-2 w-4 h-4 bg-pink-500 rounded-full cursor-ne-resize z-30 border-2 border-white/70 shadow-lg shadow-pink-500/30"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setResizing("cards");
+                        resizeStart.current = {
+                          x: e.clientX,
+                          y: e.clientY,
+                          size: cardsSize,
+                        };
+                      }}
+                    />
+                    <div
+                      className="absolute -bottom-2 -right-2 w-4 h-4 bg-pink-500 rounded-full cursor-se-resize z-30 border-2 border-white/70 shadow-lg shadow-pink-500/30"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setResizing("cards");
+                        resizeStart.current = {
+                          x: e.clientX,
+                          y: e.clientY,
+                          size: cardsSize,
+                        };
+                      }}
+                    />
+                    <div className="absolute inset-0 border border-dashed border-pink-500/30 group-hover/cards:border-pink-500/60 rounded pointer-events-none transition-colors" />
+                    <div
+                      className={`grid gap-1.5 w-full ${
+                        selectedCardStyle === "Full Width"
+                          ? "grid-cols-1"
+                          : previewClasses.cols
+                      }`}
+                    >
+                      {visibleCards.map((card) => (
+                        <div key={card.id}>{renderCardInner(card)}</div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
             {/* ── CTA / WATERMARK (visible in all, cta) — drag + double-click for panel ── */}
             {(activeSequence === "all" || activeSequence === "cta") && (
