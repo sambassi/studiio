@@ -20,6 +20,7 @@ import {
   AlertTriangle,
   Crop,
   Grid3x3,
+  Grid2x2,
   Move,
   LayoutTemplate,
   Type,
@@ -31,6 +32,12 @@ import {
   Italic,
   Copy as CopyIcon,
   X,
+  Play,
+  Pause,
+  Megaphone,
+  Crosshair,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { PlatformIcon, type PlatformKey } from "@/components/ui/PlatformIcon";
 import {
@@ -51,6 +58,56 @@ import { detectClips, extractClip, type DetectedClip } from "@/lib/clip-detector
 import CropRushModal from "@/components/creer/CropRushModal";
 import { useSession } from "next-auth/react";
 import { BuyCreditsModal } from "@/components/billing/BuyCreditsModal";
+
+// ── Unified icon badge style — filled Lucide icon + colored tint container ──
+// Each color maps to literal Tailwind classes so JIT keeps them in the build.
+const ICON_BADGE_STYLES = {
+  purple: { bg: "bg-purple-500/[0.12]", text: "text-purple-500", solid: "bg-purple-500" },
+  amber: { bg: "bg-amber-500/[0.12]", text: "text-amber-500", solid: "bg-amber-500" },
+  blue: { bg: "bg-blue-500/[0.12]", text: "text-blue-500", solid: "bg-blue-500" },
+  pink: { bg: "bg-pink-500/[0.12]", text: "text-pink-500", solid: "bg-pink-500" },
+  emerald: { bg: "bg-emerald-500/[0.12]", text: "text-emerald-500", solid: "bg-emerald-500" },
+  cyan: { bg: "bg-cyan-500/[0.12]", text: "text-cyan-500", solid: "bg-cyan-500" },
+  slate: { bg: "bg-slate-500/[0.12]", text: "text-slate-300", solid: "bg-slate-500" },
+  orange: { bg: "bg-orange-500/[0.12]", text: "text-orange-500", solid: "bg-orange-500" },
+  red: { bg: "bg-red-500/[0.12]", text: "text-red-400", solid: "bg-red-500" },
+} as const;
+type IconBadgeColor = keyof typeof ICON_BADGE_STYLES;
+
+function IconBadge({
+  Icon,
+  color,
+  active = false,
+  fill = true,
+  size = 40,
+  iconSize,
+}: {
+  Icon: React.ComponentType<any>;
+  color: IconBadgeColor;
+  active?: boolean;
+  fill?: boolean;
+  size?: number;
+  iconSize?: number;
+}) {
+  const s = ICON_BADGE_STYLES[color];
+  const innerSize = iconSize ?? Math.round(size * 0.5);
+  const containerStyle: React.CSSProperties = { width: size, height: size };
+  return (
+    <span
+      className={`inline-flex items-center justify-center rounded-xl flex-shrink-0 transition-colors ${
+        active ? `${s.solid} text-white` : `${s.bg} ${s.text}`
+      }`}
+      style={containerStyle}
+    >
+      <Icon
+        size={innerSize}
+        className={active ? "text-white" : s.text}
+        fill={fill ? "currentColor" : "none"}
+        strokeWidth={fill ? 1.5 : 2}
+      />
+    </span>
+  );
+}
 
 // ── Types ──────────────────────────────────────────────────────
 interface InfoCard {
@@ -2135,14 +2192,15 @@ export default function InfographicPage() {
     id: Exclude<RailTab, null>;
     label: string;
     Icon: typeof LayoutTemplate;
+    color: IconBadgeColor;
   }> = [
-    { id: 'templates', label: 'Modèles', Icon: LayoutTemplate },
-    { id: 'elements', label: 'Éléments', Icon: Sparkles },
-    { id: 'text', label: 'Texte', Icon: Type },
-    { id: 'cards', label: 'Cartes', Icon: LayoutGrid },
-    { id: 'media', label: 'Médias', Icon: Film },
-    { id: 'audio', label: 'Audio', Icon: Music },
-    { id: 'settings', label: 'Paramètres', Icon: SettingsIcon },
+    { id: 'templates', label: 'Modèles', Icon: LayoutGrid, color: 'purple' },
+    { id: 'elements', label: 'Éléments', Icon: Sparkles, color: 'amber' },
+    { id: 'text', label: 'Texte', Icon: Type, color: 'blue' },
+    { id: 'cards', label: 'Cartes', Icon: Grid2x2, color: 'pink' },
+    { id: 'media', label: 'Médias', Icon: Film, color: 'emerald' },
+    { id: 'audio', label: 'Audio', Icon: Music, color: 'cyan' },
+    { id: 'settings', label: 'Paramètres', Icon: SettingsIcon, color: 'slate' },
   ];
 
   // Rail click routes to the matching existing step when relevant
@@ -2180,20 +2238,16 @@ export default function InfographicPage() {
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* B3: Canva-style icon rail (secondary left rail)              */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <div className="hidden lg:flex flex-col items-center gap-1 bg-gray-950 border-r border-gray-800 py-3 px-2 flex-shrink-0 lg:max-h-[calc(100vh-4rem)] overflow-y-auto">
-        {railItems.map(({ id, label, Icon }) => (
+      <div className="hidden lg:flex flex-col items-center gap-2 bg-gray-950 border-r border-gray-800 py-3 px-2 flex-shrink-0 lg:max-h-[calc(100vh-4rem)] overflow-y-auto">
+        {railItems.map(({ id, label, Icon, color }) => (
           <button
             key={id}
             onClick={() => handleRailClick(id)}
-            className={`flex flex-col items-center justify-center gap-0.5 rounded-lg w-16 h-16 transition-all ${
-              activeRailTab === id
-                ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30'
-                : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-            }`}
+            className="group flex flex-col items-center justify-center gap-1 rounded-xl w-16 py-2 transition-all hover:bg-gray-900"
             title={label}
           >
-            <Icon size={20} />
-            <span className="text-[9px] font-medium leading-tight">{label}</span>
+            <IconBadge Icon={Icon} color={color} active={activeRailTab === id} />
+            <span className="text-[10px] font-medium leading-tight text-gray-300">{label}</span>
           </button>
         ))}
       </div>
@@ -3881,36 +3935,42 @@ export default function InfographicPage() {
               if (isPlaying) { stopPlayback(); setActiveSequence('all'); }
               else startPlayback();
             }}
-            className={`flex items-center gap-2 rounded-full pl-1 pr-3 py-1 text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 rounded-2xl pl-1 pr-3 py-1 text-xs font-bold transition-all ${
               isPlaying
                 ? 'bg-red-600 text-white shadow-lg shadow-red-500/30 animate-pulse'
                 : 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50'
             }`}
           >
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 text-[20px] leading-none">
-              {isPlaying ? '⏸️' : '▶️'}
+            <span
+              className="inline-flex items-center justify-center rounded-xl bg-white/20 flex-shrink-0"
+              style={{ width: 36, height: 36 }}
+            >
+              {isPlaying
+                ? <Pause size={20} fill="currentColor" className="text-white" strokeWidth={1.5} />
+                : <Play size={20} fill="currentColor" className="text-white" strokeWidth={1.5} />}
             </span>
             {isPlaying ? 'Stop' : 'Lire'}
           </button>
 
           {/* Sequence pages */}
-          {[
-            { key: "titre" as const, label: "Titre", icon: "📝", tint: "bg-blue-500/30" },
-            { key: "cartes" as const, label: "Cartes", icon: "📊", tint: "bg-emerald-500/30" },
+          {([
+            { key: "titre" as const, label: "Titre", Icon: Type, color: "amber" as IconBadgeColor },
+            { key: "cartes" as const, label: "Cartes", Icon: LayoutGrid, color: "pink" as IconBadgeColor },
             ...(rushUrl
-              ? [{ key: "video" as const, label: "Vidéo", icon: "🎥", tint: "bg-orange-500/30" }]
+              ? [{ key: "video" as const, label: "Vidéo", Icon: Film, color: "emerald" as IconBadgeColor }]
               : []),
-            { key: "cta" as const, label: "CTA", icon: "📢", tint: "bg-pink-500/30" },
-          ].map((seq) => {
+            { key: "cta" as const, label: "CTA", Icon: Megaphone, color: "blue" as IconBadgeColor },
+          ]).map((seq) => {
             const seqKey = seq.key as "titre" | "cartes" | "video" | "cta";
             const included = exportedSequences[seqKey];
+            const isActive = activeSequence === seq.key;
             return (
               <div
                 key={seq.key}
-                className={`flex items-center gap-0.5 rounded-full transition-all ${
-                  activeSequence === seq.key
-                    ? "bg-purple-600 text-white shadow-lg shadow-purple-500/20"
-                    : "bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700"
+                className={`flex items-center gap-0.5 rounded-2xl transition-all ${
+                  isActive
+                    ? "bg-gray-800/80 shadow-lg shadow-black/20"
+                    : "bg-gray-900/60 hover:bg-gray-800/80"
                 } ${!included ? "opacity-50" : ""}`}
               >
                 <button
@@ -3920,11 +3980,11 @@ export default function InfographicPage() {
                     if (seq.key === "cartes") setStep(0);
                     else if (seq.key === "video") setStep(2);
                   }}
-                  className="flex items-center gap-2 rounded-l-full pl-1 pr-1 py-1 text-xs font-medium"
+                  className={`flex items-center gap-2 rounded-l-2xl pl-1 pr-2 py-1 text-xs font-medium ${
+                    isActive ? "text-white" : "text-gray-300"
+                  }`}
                 >
-                  <span className={`flex h-7 w-7 items-center justify-center rounded-full ${activeSequence === seq.key ? 'bg-white/20' : seq.tint} text-[20px] leading-none`}>
-                    {seq.icon}
-                  </span>
+                  <IconBadge Icon={seq.Icon} color={seq.color} active={isActive} size={36} iconSize={18} />
                   {seq.label}
                 </button>
                 <button
@@ -3936,9 +3996,13 @@ export default function InfographicPage() {
                     }));
                   }}
                   title={included ? "Inclure dans l'export" : "Exclu de l'export"}
-                  className="rounded-r-full py-1.5 pl-1 pr-2 hover:text-white text-[14px] leading-none"
+                  className={`rounded-r-2xl py-2 pl-1 pr-2 transition-colors ${
+                    included ? "text-gray-300 hover:text-white" : "text-gray-500 hover:text-gray-300"
+                  }`}
                 >
-                  {included ? '👁️' : '🚫'}
+                  {included
+                    ? <Eye size={16} strokeWidth={2} />
+                    : <EyeOff size={16} strokeWidth={2} />}
                 </button>
               </div>
             );
@@ -3948,15 +4012,13 @@ export default function InfographicPage() {
           <button
             onClick={() => setShowCenterGuides((v) => !v)}
             title={showCenterGuides ? "Masquer les repères de centre" : "Afficher les repères de centre"}
-            className={`flex items-center gap-2 rounded-full pl-1 pr-3 py-1 text-xs font-medium transition-all ${
+            className={`flex items-center gap-2 rounded-2xl pl-1 pr-3 py-1 text-xs font-medium transition-all ${
               showCenterGuides
-                ? "bg-purple-600 text-white shadow-lg shadow-purple-500/20"
-                : "bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700"
+                ? "bg-gray-800/80 text-white shadow-lg shadow-black/20"
+                : "bg-gray-900/60 text-gray-300 hover:bg-gray-800/80 hover:text-white"
             }`}
           >
-            <span className={`flex h-7 w-7 items-center justify-center rounded-full ${showCenterGuides ? 'bg-white/20' : 'bg-purple-500/30'} text-[18px] leading-none`}>
-              🎯
-            </span>
+            <IconBadge Icon={Crosshair} color="purple" active={showCenterGuides} size={36} iconSize={18} />
             Centre
           </button>
 
@@ -3966,15 +4028,19 @@ export default function InfographicPage() {
               setCardPositionMode((m) => (m === 'grid' ? 'free' : 'grid'))
             }
             title={cardPositionMode === 'grid' ? "Mode grille" : "Mode libre"}
-            className={`flex items-center gap-2 rounded-full pl-1 pr-3 py-1 text-xs font-medium transition-all ${
+            className={`flex items-center gap-2 rounded-2xl pl-1 pr-3 py-1 text-xs font-medium transition-all ${
               cardPositionMode === 'free'
-                ? "bg-pink-600 text-white shadow-lg shadow-pink-500/20"
-                : "bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700"
+                ? "bg-gray-800/80 text-white shadow-lg shadow-black/20"
+                : "bg-gray-900/60 text-gray-300 hover:bg-gray-800/80 hover:text-white"
             }`}
           >
-            <span className={`flex h-7 w-7 items-center justify-center rounded-full ${cardPositionMode === 'free' ? 'bg-white/20' : 'bg-pink-500/30'} text-[18px] leading-none`}>
-              {cardPositionMode === 'grid' ? '🔲' : '✋'}
-            </span>
+            <IconBadge
+              Icon={cardPositionMode === 'grid' ? Grid3x3 : Move}
+              color={cardPositionMode === 'grid' ? 'slate' : 'orange'}
+              active={cardPositionMode === 'free'}
+              size={36}
+              iconSize={18}
+            />
             {cardPositionMode === 'grid' ? 'Grille' : 'Libre'}
           </button>
         </div>
