@@ -23,6 +23,23 @@ const ICONS: Record<string, string> = {
   star: "⭐", brain: "🧠", shield: "🛡️", target: "🎯", trophy: "🏆",
   people: "👥", sun: "☀️", leaf: "🌿", chart: "📈", sparkle: "✨",
   thermometer: "🌡️", bone: "🦴", eye: "👁️", lungs: "🫁", dna: "🧬",
+  // Extended icons for new content themes
+  lipstick: "💄", perfume: "🧴", mirror: "🪞", nailpolish: "💅",
+  baby: "👶", family: "👨‍👩‍👧", bottle: "🍼", school: "🏫",
+  plane: "✈️", map: "🗺️", suitcase: "🧳", beach: "🏖️", mountain: "⛰️",
+  compass: "🧭", camera: "📸",
+  checklist: "✅", calendar: "📅", rocket: "🚀", hourglass: "⏳",
+  money: "💰", bank: "🏦", coin: "🪙", piggy: "🐷", bill: "💵",
+  code: "💻", bug: "🐛", gear: "⚙️", keyboard: "⌨️", cloud: "☁️",
+  crypto: "🪙", chain: "⛓️", bitcoin: "₿", trend: "📊",
+  game: "🎮", joystick: "🕹️", controller: "🎮", dice: "🎲",
+  pizza: "🍕", burger: "🍔", salad: "🥗", chef: "👨‍🍳", knife: "🔪",
+  dog: "🐕", cat: "🐈", paw: "🐾", fish: "🐟", bird: "🐦",
+  car: "🚗", fuel: "⛽", wheel: "🛞", key: "🔑", road: "🛣️",
+  house: "🏠", door: "🚪", keys: "🗝️", building: "🏢",
+  book: "📚", pencil: "✏️", graduation: "🎓", lightbulb: "💡", teacher: "👨‍🏫",
+  zodiac: "♈", stars: "🌟", crystal: "🔮", planet: "🪐", tarot: "🃏",
+  flex: "💪", flame: "🔥", crown: "👑", thunder: "⚡",
 };
 
 // ── TYPES ────────────────────────────────────────────────────
@@ -845,7 +862,250 @@ const KNOWLEDGE_BASE: Record<string, TopicData[]> = {
       ],
     },
   ],
+
+  // ══════════════════════════════════════════════════════════════
+  // ══  NOUVEAUX THÈMES — 15 univers de contenu                 ══
+  // ══════════════════════════════════════════════════════════════
+
+  // ─── BEAUTÉ ──────────────────────────────────────────────────
+  "beauty": [
+    {
+      subtitle: "La beauté, c'est 80% de routine et 20% de bons produits.",
+      tagLine: "BEAUTÉ & ROUTINE",
+      cards: [
+        { icon: "lipstick", title: "ROUTINE 5 MIN", description: "Teint zéro défaut en 5 minutes chrono. Le secret des pros du maquillage", value: "5 min" },
+        { icon: "droplet", title: "HYDRATATION PEAU", description: "Boire 2L d'eau par jour réduit les rides de 25% en 4 semaines", value: "-25%" },
+        { icon: "moon", title: "SOMMEIL BEAUTÉ", description: "7h de sommeil = régénération cellulaire maximale. La meilleure crème anti-âge", value: "7h" },
+        { icon: "perfume", title: "SÉRUM VITAMINE C", description: "Appliqué le matin, il illumine le teint en 15 jours. Boost éclat naturel", value: "15j" },
+        { icon: "nailpolish", title: "BASE + TOP COAT", description: "Vernis qui tient 10 jours sans s'écailler. Le duo indispensable", value: "10j" },
+        { icon: "mirror", title: "DOUBLE NETTOYAGE", description: "Huile puis mousse : pores ×2 plus propres qu'avec un seul produit", value: "×2" },
+      ],
+    },
+  ],
+
+  // ─── PARENTING ───────────────────────────────────────────────
+  "parenting": [
+    {
+      subtitle: "Élever un enfant, c'est la mission la plus importante. Voici les clés.",
+      tagLine: "PARENTALITÉ POSITIVE",
+      cards: [
+        { icon: "baby", title: "ROUTINE DU SOIR", description: "Un rituel stable de 20 min réduit les réveils nocturnes de 60%", value: "-60%" },
+        { icon: "family", title: "TEMPS DE QUALITÉ", description: "15 min de jeu exclusif par jour = enfant 3x plus épanoui", value: "15 min" },
+        { icon: "book", title: "LECTURE DU SOIR", description: "Lire 10 min/jour booste le vocabulaire de 32% avant 6 ans", value: "+32%" },
+        { icon: "brain", title: "LIMITES CLAIRES", description: "Les enfants ont besoin de règles. Cadre = sécurité émotionnelle", value: "CADRE" },
+        { icon: "heart", title: "CÂLINS X3", description: "3 câlins/jour = ocytocine boostée + stress divisé par 2", value: "3/j" },
+        { icon: "bottle", title: "ÉCRANS 1H MAX", description: "Moins d'1h d'écran/jour avant 6 ans : concentration +45%", value: "1h" },
+      ],
+    },
+  ],
+
+  // ─── VOYAGE ──────────────────────────────────────────────────
+  "travel": [
+    {
+      subtitle: "Voyager change ta vie. Voici comment le faire malin.",
+      tagLine: "VOYAGE & DÉCOUVERTE",
+      cards: [
+        { icon: "plane", title: "VOLS -40%", description: "Réserver mardi matin entre 6h et 8h : prix jusqu'à 40% moins chers", value: "-40%" },
+        { icon: "suitcase", title: "BAGAGE CABINE", description: "7 kg bien organisés = 10 jours de voyage. La technique du rolling", value: "7 kg" },
+        { icon: "map", title: "APPS HORS LIGNE", description: "Google Maps offline + Maps.me : zéro panique sans data à l'étranger", value: "ZÉRO" },
+        { icon: "beach", title: "BASSE SAISON", description: "Partir en mi-saison : -50% sur les hôtels, 3x moins de foule", value: "-50%" },
+        { icon: "camera", title: "LUMIÈRE DORÉE", description: "1h avant le coucher du soleil : photos magiques garanties", value: "1h" },
+        { icon: "compass", title: "LOCAL = AUTHENTIQUE", description: "Mange là où mangent les locaux. Google Maps filtre 4★ uniquement", value: "4★" },
+      ],
+    },
+  ],
+
+  // ─── PRODUCTIVITÉ ────────────────────────────────────────────
+  "productivity": [
+    {
+      subtitle: "Fais plus en moins de temps. Les méthodes qui marchent vraiment.",
+      tagLine: "PRODUCTIVITÉ & FOCUS",
+      cards: [
+        { icon: "hourglass", title: "POMODORO 25/5", description: "25 min focus + 5 min pause : concentration ×2, fatigue -40%", value: "25/5" },
+        { icon: "checklist", title: "3 TÂCHES MAX", description: "Limite ta to-do à 3 tâches prioritaires. Accomplissement ×4", value: "×4" },
+        { icon: "rocket", title: "2 MIN RULE", description: "Si ça prend moins de 2 min, fais-le tout de suite. Zéro procrastination", value: "2 min" },
+        { icon: "calendar", title: "TIME BLOCKING", description: "Bloque ton agenda par thèmes : productivité en hausse de 80%", value: "+80%" },
+        { icon: "brain", title: "DEEP WORK 90 MIN", description: "90 min sans interruption = l'équivalent de 4h fragmentées", value: "4x" },
+        { icon: "moon", title: "DÉCONNEXION 21H", description: "Plus d'écrans après 21h : sommeil profond +35%, énergie au top", value: "+35%" },
+      ],
+    },
+  ],
+
+  // ─── FINANCE ─────────────────────────────────────────────────
+  "finance": [
+    {
+      subtitle: "L'argent n'est pas tabou. C'est un outil. Apprends à l'utiliser.",
+      tagLine: "FINANCES PERSONNELLES",
+      cards: [
+        { icon: "piggy", title: "RÈGLE 50/30/20", description: "50% besoins, 30% envies, 20% épargne. Le budget qui fonctionne", value: "50/30/20" },
+        { icon: "money", title: "ÉPARGNE AUTO", description: "Virement automatique le 1er du mois : tu épargnes 3x plus sans y penser", value: "×3" },
+        { icon: "bank", title: "LIVRET A PLEIN", description: "Remplis ton livret A avant tout investissement risqué. Filet de sécurité", value: "3 mois" },
+        { icon: "trend", title: "ETF MONDE", description: "Investir 100€/mois sur un ETF MSCI World : 8% par an en moyenne", value: "8%/an" },
+        { icon: "coin", title: "DETTE -30%", description: "Rembourser ses dettes avant d'investir = rendement garanti équivalent", value: "-30%" },
+        { icon: "bill", title: "3 COMPTES", description: "Courant, épargne, plaisir : sépare pour mieux contrôler. Méthode pro", value: "3" },
+      ],
+    },
+  ],
+
+  // ─── CODING ──────────────────────────────────────────────────
+  "coding": [
+    {
+      subtitle: "Coder, c'est écrire le futur. Les règles d'or du dev efficace.",
+      tagLine: "DÉVELOPPEMENT & CODE",
+      cards: [
+        { icon: "code", title: "COMMIT SOUVENT", description: "Un commit toutes les 30 min : bugs 4x plus faciles à retrouver", value: "30 min" },
+        { icon: "bug", title: "RUBBER DUCK", description: "Explique ton code à un canard en plastique : 80% des bugs trouvés", value: "80%" },
+        { icon: "keyboard", title: "RACCOURCIS", description: "Maîtrise 10 raccourcis clavier : vitesse de dev ×2", value: "×2" },
+        { icon: "cloud", title: "BACKUP 3-2-1", description: "3 copies, 2 supports, 1 hors site. Zéro perte garantie", value: "3-2-1" },
+        { icon: "gear", title: "REFACTOR 10%", description: "10% du temps sur le refactoring : dette technique divisée par 2", value: "÷2" },
+        { icon: "brain", title: "DOCS D'ABORD", description: "Lire la doc avant Stack Overflow : compréhension ×3 plus profonde", value: "×3" },
+      ],
+    },
+  ],
+
+  // ─── CRYPTO ──────────────────────────────────────────────────
+  "crypto": [
+    {
+      subtitle: "La crypto change la finance. Investis malin, pas à l'aveugle.",
+      tagLine: "CRYPTO & BLOCKCHAIN",
+      cards: [
+        { icon: "bitcoin", title: "DCA CHAQUE MOIS", description: "Acheter 100€/mois lisse la volatilité. Performance +45% vs timing", value: "+45%" },
+        { icon: "shield", title: "COLD WALLET", description: "Les clés sur hardware wallet : 99% des hacks évités", value: "99%" },
+        { icon: "crypto", title: "BTC + ETH 80%", description: "80% du portefeuille sur BTC et ETH, 20% altcoins max. Risque maîtrisé", value: "80/20" },
+        { icon: "trend", title: "HODL 4 ANS", description: "Tenir pendant un cycle complet (4 ans) : 90% des pertes évitées", value: "4 ans" },
+        { icon: "chain", title: "VÉRIFIE ON-CHAIN", description: "Avant chaque trade, regarde le volume on-chain. Données = vérité", value: "ON-CHAIN" },
+        { icon: "brain", title: "JAMAIS +5%", description: "Ne jamais investir plus de 5% de ton patrimoine en crypto. Règle d'or", value: "5%" },
+      ],
+    },
+  ],
+
+  // ─── GAMING ──────────────────────────────────────────────────
+  "gaming": [
+    {
+      subtitle: "Le gaming, ce n'est pas que du fun. C'est un art de vivre.",
+      tagLine: "GAMING & PERFORMANCE",
+      cards: [
+        { icon: "game", title: "SETUP 144 HZ", description: "Passer de 60 à 144 Hz : temps de réaction -30%, kills +20%", value: "+20%" },
+        { icon: "controller", title: "MANETTE SANS FIL", description: "La latence de la manette pro est divisée par 3 vs standard", value: "÷3" },
+        { icon: "brain", title: "APM 120+", description: "120 actions par minute : le niveau minimum pour les esports", value: "120" },
+        { icon: "joystick", title: "WARM-UP 10 MIN", description: "10 min d'aim trainer avant une session : précision +35%", value: "+35%" },
+        { icon: "clock", title: "PAUSES 50/10", description: "50 min de jeu + 10 min pause : tilt divisé par 4", value: "÷4" },
+        { icon: "eye", title: "LUMIÈRE TAMISÉE", description: "Écran + lampe derrière : fatigue oculaire -60%", value: "-60%" },
+      ],
+    },
+  ],
+
+  // ─── FOOD ────────────────────────────────────────────────────
+  "food": [
+    {
+      subtitle: "Bien manger, c'est vivre mieux. Les secrets des grands chefs.",
+      tagLine: "CUISINE & SAVEURS",
+      cards: [
+        { icon: "chef", title: "MISE EN PLACE", description: "Tout préparer avant de cuisiner : temps en cuisine divisé par 2", value: "÷2" },
+        { icon: "knife", title: "COUTEAU AFFÛTÉ", description: "Un bon couteau bien aiguisé = 3x moins de coupures. Et plus rapide", value: "÷3" },
+        { icon: "salad", title: "5 FRUITS LÉGUMES", description: "5 portions par jour : espérance de vie +3 ans prouvée", value: "+3 ans" },
+        { icon: "pizza", title: "PÂTE MAISON", description: "30 min de préparation, 0€ de coût : 5x meilleur que surgelé", value: "×5" },
+        { icon: "burger", title: "BATCH COOKING", description: "2h le dimanche = 5 repas prêts pour la semaine. Zéro stress", value: "2h" },
+        { icon: "thermometer", title: "SONDE CUISSON", description: "Viande à 58°C = parfaitement saignant. La technique des pros", value: "58°C" },
+      ],
+    },
+  ],
+
+  // ─── PETS ────────────────────────────────────────────────────
+  "pets": [
+    {
+      subtitle: "Nos animaux nous rendent meilleurs. Prends-en soin comme il se doit.",
+      tagLine: "ANIMAUX & BIEN-ÊTRE",
+      cards: [
+        { icon: "dog", title: "BALADE 2x/J", description: "2 sorties de 30 min par jour : chien équilibré et serein", value: "2×30min" },
+        { icon: "cat", title: "JEUX 15 MIN", description: "15 min de jeu interactif avec ton chat = stress divisé par 3", value: "15 min" },
+        { icon: "paw", title: "BROSSAGE HEBDO", description: "Brossage chaque semaine : boules de poils -80%, lien renforcé", value: "-80%" },
+        { icon: "fish", title: "EAU CHANGÉE 25%", description: "Changer 25% de l'eau de l'aquarium chaque semaine. Poissons heureux", value: "25%" },
+        { icon: "bone", title: "VACCINS À JOUR", description: "Rappel annuel : 95% des maladies évitées. Prévention avant tout", value: "95%" },
+        { icon: "bird", title: "CAGE 2x VOL", description: "La cage doit faire 2x l'envergure des ailes minimum. Espace vital", value: "×2" },
+      ],
+    },
+  ],
+
+  // ─── CARS ────────────────────────────────────────────────────
+  "cars": [
+    {
+      subtitle: "Une voiture bien entretenue dure 500 000 km. Voici comment.",
+      tagLine: "AUTO & ENTRETIEN",
+      cards: [
+        { icon: "car", title: "RÉVISION 15K KM", description: "Entretien tous les 15 000 km : durée de vie moteur ×3", value: "×3" },
+        { icon: "fuel", title: "PLEIN LE MATIN", description: "L'essence est plus dense à froid : 2% de carburant en plus gratis", value: "+2%" },
+        { icon: "wheel", title: "PRESSION +0.2", description: "Gonflage +0.2 bar pour autoroute : consommation -5%", value: "-5%" },
+        { icon: "gear", title: "90 KM/H OPTIMAL", description: "Rouler à 90 au lieu de 130 : -30% de carburant, +50% d'autonomie", value: "-30%" },
+        { icon: "key", title: "BATTERIE 4 ANS", description: "Remplace ta batterie avant 4 ans : panne matinale évitée garantie", value: "4 ans" },
+        { icon: "road", title: "FREINS 60K KM", description: "Plaquettes à changer tous les 60 000 km. Sécurité non négociable", value: "60K" },
+      ],
+    },
+  ],
+
+  // ─── IMMOBILIER ──────────────────────────────────────────────
+  "realestate": [
+    {
+      subtitle: "L'immobilier reste le meilleur investissement à long terme. Fais-le bien.",
+      tagLine: "IMMOBILIER & INVESTISSEMENT",
+      cards: [
+        { icon: "house", title: "APPORT 10% MIN", description: "10% d'apport minimum : taux négociés 0.3 point plus bas", value: "-0.3%" },
+        { icon: "money", title: "TAUX D'EFFORT 33%", description: "Ne jamais dépasser 33% de tes revenus en crédit. Règle bancaire", value: "33%" },
+        { icon: "building", title: "LOCATION 4-6%", description: "Un bon locatif rapporte 4 à 6% net par an. En dessous : à éviter", value: "4-6%" },
+        { icon: "keys", title: "VISITES 15+", description: "Visiter au moins 15 biens avant d'acheter : regret divisé par 5", value: "15+" },
+        { icon: "door", title: "DIAGNOSTIC F/G", description: "Évite F et G : travaux obligatoires et revente difficile en 2028", value: "F/G" },
+        { icon: "chart", title: "SCPI DÈS 200€", description: "Investir dans la pierre sans les soucis : rendement 4,5% moyen", value: "4.5%" },
+      ],
+    },
+  ],
+
+  // ─── ÉDUCATION ───────────────────────────────────────────────
+  "education": [
+    {
+      subtitle: "Apprendre, c'est le super-pouvoir du 21e siècle. Voici comment maximiser.",
+      tagLine: "APPRENTISSAGE & MÉMOIRE",
+      cards: [
+        { icon: "book", title: "LIRE 30 MIN/J", description: "30 min de lecture par jour = 15 livres par an. Expertise garantie", value: "15/an" },
+        { icon: "graduation", title: "RÉPÉTITION ESPACÉE", description: "Réviser à J+1, J+3, J+7 : rétention mémoire +80% vs bachotage", value: "+80%" },
+        { icon: "pencil", title: "FEYNMAN METHOD", description: "Explique ce que tu apprends comme à un enfant de 10 ans", value: "FEYNMAN" },
+        { icon: "lightbulb", title: "CARTE MENTALE", description: "Mindmap après chaque cours : rétention ×2 par rapport à des notes linéaires", value: "×2" },
+        { icon: "teacher", title: "ENSEIGNER = APPRENDRE", description: "Tu retiens 90% de ce que tu enseignes vs 10% de ce que tu lis", value: "90%" },
+        { icon: "brain", title: "POMODORO STUDY", description: "25 min d'étude + 5 min pause : concentration ×3 vs marathon", value: "×3" },
+      ],
+    },
+  ],
+
+  // ─── ASTROLOGIE ──────────────────────────────────────────────
+  "astrology": [
+    {
+      subtitle: "Les astres nous guident. Voici ce que ton signe révèle sur toi.",
+      tagLine: "ASTROLOGIE & ÉNERGIES",
+      cards: [
+        { icon: "zodiac", title: "12 SIGNES", description: "Chaque signe = 30° du zodiaque. Ton ascendant compte autant que ton soleil", value: "30°" },
+        { icon: "stars", title: "NOUVELLE LUNE", description: "Chaque nouvelle lune = fenêtre d'intention. Énergie de départ maximale", value: "28j" },
+        { icon: "moon", title: "PLEINE LUNE", description: "14 jours après : moment idéal pour libérer. Émotions à leur apogée", value: "14j" },
+        { icon: "crystal", title: "MERCURE RÉTRO", description: "3 fois par an, 3 semaines : évite les contrats et gros achats", value: "3×" },
+        { icon: "planet", title: "VÉNUS AMOUR", description: "Vénus en transit = périodes de relations et créativité boostées", value: "VÉNUS" },
+        { icon: "tarot", title: "THÈME NATAL", description: "Ta carte du ciel à la naissance révèle tes forces et tes défis", value: "NATAL" },
+      ],
+    },
+  ],
+
 };
+
+// Extend existing "motivation" topic with an additional mindset variant
+KNOWLEDGE_BASE["motivation"].push({
+  subtitle: "La motivation t'ouvre la porte. La discipline te fait passer le seuil.",
+  tagLine: "MINDSET & DISCIPLINE",
+  cards: [
+    { icon: "flame", title: "1% PAR JOUR", description: "Progresser 1% par jour = 37x meilleur en un an. Math simple, résultat énorme", value: "×37" },
+    { icon: "rocket", title: "LÈVE-TOI À 5H", description: "90 min de focus avant tout le monde : productivité ×3", value: "5h" },
+    { icon: "flex", title: "TRANSPIRE CHAQUE JOUR", description: "15 min de sport quotidien : humeur +45%, discipline mentale acquise", value: "15 min" },
+    { icon: "crown", title: "PAS D'EXCUSES", description: "Les excuses sont des limites que tu t'imposes. Supprime-les", value: "ZÉRO" },
+    { icon: "thunder", title: "ACTION > PLAN", description: "Un plan imparfait exécuté bat un plan parfait jamais lancé", value: "ACT" },
+    { icon: "target", title: "OBJECTIF ÉCRIT", description: "Écrire ses objectifs = 42% de chances supplémentaires de les atteindre", value: "+42%" },
+  ],
+});
 
 // ══════════════════════════════════════════════════════════════
 // ══  KEYWORD MAP — Mots-clés → Topic                        ══
@@ -957,6 +1217,22 @@ const KEYWORD_MAP: Record<string, string> = {
   "plantain": "plantain", "alloco": "plantain", "banane plantain": "plantain",
   // Manger (→ nutrition)
   "manger": "nutrition",
+  // ── 15 NOUVEAUX THÈMES ──
+  "beauty": "beauty", "beaute": "beauty", "maquillage": "beauty", "makeup": "beauty", "peau": "beauty", "skincare": "beauty", "cosmetique": "beauty",
+  "parenting": "parenting", "parentalite": "parenting", "enfant": "parenting", "bebe": "parenting", "maman": "parenting", "papa": "parenting", "famille": "parenting", "parent": "parenting",
+  "travel": "travel", "voyage": "travel", "voyager": "travel", "vacances": "travel", "tourisme": "travel", "destination": "travel",
+  "productivity": "productivity", "productivite": "productivity", "efficacite": "productivity", "focus": "productivity", "concentration": "productivity", "organisation": "productivity",
+  "finance": "finance", "argent": "finance", "budget": "finance", "epargne": "finance", "investir": "finance", "bourse": "finance", "patrimoine": "finance",
+  "coding": "coding", "code": "coding", "developpement": "coding", "developpeur": "coding", "programmation": "coding", "dev": "coding",
+  "crypto": "crypto", "bitcoin": "crypto", "ethereum": "crypto", "blockchain": "crypto", "nft": "crypto", "defi": "crypto",
+  "gaming": "gaming", "jeu": "gaming", "jeux": "gaming", "gamer": "gaming", "esport": "gaming", "console": "gaming", "pc gaming": "gaming",
+  "food": "food", "cuisine": "food", "cuisiner": "food", "recette": "food", "plat": "food", "gastronomie": "food",
+  "pets": "pets", "animal": "pets", "animaux": "pets", "chien": "pets", "chat": "pets", "compagnon": "pets",
+  "cars": "cars", "voiture": "cars", "auto": "cars", "automobile": "cars", "vehicule": "cars",
+  "realestate": "realestate", "immobilier": "realestate", "immobiliere": "realestate", "appartement": "realestate", "maison": "realestate", "locatif": "realestate",
+  "education": "education", "apprendre": "education", "etude": "education", "etudier": "education", "memoire": "education", "cerveau": "education",
+  "astrology": "astrology", "astrologie": "astrology", "horoscope": "astrology", "zodiaque": "astrology", "astres": "astrology", "signe": "astrology",
+  "mindset": "motivation", "objectif": "motivation", "objectifs": "motivation", "reussir": "motivation", "reussite": "motivation",
 };
 
 // ══════════════════════════════════════════════════════════════

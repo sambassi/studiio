@@ -8,6 +8,7 @@ _Fichier vivant. Claude y écrit les plans en cours et coche les étapes au fur 
 
 ## Dernières tâches terminées
 
+- 2026-04-15 — Commit B1 : icône optionnelle + génération IA + 15 nouveaux thèmes (refonte /creer)
 - 2026-04-13 — Creator page : fix text size + gradient + white title on export (commit `6ab8e8f`)
 - 2026-04-13 — Studio Son : forward tous les design fields au composer (`9dc884e`)
 - 2026-04-13 — Composer v19 : emoji cartes à taille fixe (pas scalé par textScale)

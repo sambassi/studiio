@@ -46,6 +46,7 @@ import { BuyCreditsModal } from "@/components/billing/BuyCreditsModal";
 // ── Types ──────────────────────────────────────────────────────
 interface InfoCard {
   id: string;
+  // Empty string ("" or whitespace) means "no icon" — the card renders without the icon slot.
   emoji: string;
   label: string;
   value: string;
@@ -101,6 +102,112 @@ const CONTENT_THEMES = [
     emoji: "👥",
     pexelsQuery: "group fitness community dance class",
     color: "from-pink-600 to-rose-400",
+  },
+  // ── 15 nouveaux univers de contenu ──
+  {
+    id: "beauty",
+    label: "Beauté",
+    emoji: "💄",
+    pexelsQuery: "beauty makeup skincare cosmetics",
+    color: "from-pink-500 to-rose-300",
+  },
+  {
+    id: "parenting",
+    label: "Parentalité",
+    emoji: "👶",
+    pexelsQuery: "family parenting children baby",
+    color: "from-yellow-500 to-pink-300",
+  },
+  {
+    id: "travel",
+    label: "Voyage",
+    emoji: "✈️",
+    pexelsQuery: "travel destination adventure plane",
+    color: "from-sky-500 to-cyan-300",
+  },
+  {
+    id: "productivity",
+    label: "Productivité",
+    emoji: "🚀",
+    pexelsQuery: "productivity workspace laptop focus",
+    color: "from-lime-500 to-green-300",
+  },
+  {
+    id: "finance",
+    label: "Finance",
+    emoji: "💰",
+    pexelsQuery: "finance money stock market investment",
+    color: "from-emerald-600 to-teal-400",
+  },
+  {
+    id: "coding",
+    label: "Coding",
+    emoji: "💻",
+    pexelsQuery: "coding developer programming laptop",
+    color: "from-slate-700 to-slate-400",
+  },
+  {
+    id: "crypto",
+    label: "Crypto",
+    emoji: "🪙",
+    pexelsQuery: "bitcoin cryptocurrency blockchain trading",
+    color: "from-amber-500 to-yellow-300",
+  },
+  {
+    id: "gaming",
+    label: "Gaming",
+    emoji: "🎮",
+    pexelsQuery: "gaming esports console controller",
+    color: "from-fuchsia-600 to-purple-400",
+  },
+  {
+    id: "food",
+    label: "Food",
+    emoji: "🍕",
+    pexelsQuery: "food cooking chef recipe kitchen",
+    color: "from-red-500 to-orange-400",
+  },
+  {
+    id: "pets",
+    label: "Animaux",
+    emoji: "🐾",
+    pexelsQuery: "pets dog cat animals",
+    color: "from-orange-400 to-amber-300",
+  },
+  {
+    id: "cars",
+    label: "Auto",
+    emoji: "🚗",
+    pexelsQuery: "car automobile driving road",
+    color: "from-red-700 to-rose-500",
+  },
+  {
+    id: "realestate",
+    label: "Immobilier",
+    emoji: "🏠",
+    pexelsQuery: "real estate house apartment keys",
+    color: "from-stone-600 to-amber-400",
+  },
+  {
+    id: "education",
+    label: "Éducation",
+    emoji: "📚",
+    pexelsQuery: "education books study learning",
+    color: "from-blue-600 to-indigo-400",
+  },
+  {
+    id: "astrology",
+    label: "Astrologie",
+    emoji: "🔮",
+    pexelsQuery: "astrology zodiac stars mystical",
+    color: "from-violet-700 to-fuchsia-400",
+  },
+  {
+    id: "motivation",
+    label: "Motivation",
+    emoji: "🔥",
+    pexelsQuery: "motivation mindset success discipline",
+    color: "from-red-600 to-orange-400",
   },
   {
     id: "personnalise",
@@ -756,6 +863,34 @@ export default function InfographicPage() {
     type: "success" | "error";
   } | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState<string | null>(null);
+  // Per-card AI icon generation state
+  const [iconPrompts, setIconPrompts] = useState<Record<string, string>>({});
+  const [iconLoadingId, setIconLoadingId] = useState<string | null>(null);
+
+  const generateIconForCard = async (cardId: string) => {
+    const prompt = (iconPrompts[cardId] || "").trim();
+    if (!prompt) return;
+    setIconLoadingId(cardId);
+    try {
+      const res = await fetch("/api/content/generate-icon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.icon) {
+          setCards((prev) =>
+            prev.map((c) => (c.id === cardId ? { ...c, emoji: data.icon } : c)),
+          );
+        }
+      }
+    } catch {
+      // silent — keep existing emoji on error
+    } finally {
+      setIconLoadingId(null);
+    }
+  };
 
   // Toast auto-dismiss
   useEffect(() => {
@@ -2508,7 +2643,7 @@ export default function InfographicPage() {
                       >
                         <div className="flex items-start gap-3">
                           {/* Emoji */}
-                          <div className="relative">
+                          <div className="relative flex flex-col items-stretch gap-1">
                             <button
                               onClick={() =>
                                 setShowEmojiPicker(
@@ -2516,11 +2651,22 @@ export default function InfographicPage() {
                                 )
                               }
                               className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-700 text-xl hover:bg-gray-600"
+                              title={card.emoji ? "Changer l'icône" : "Aucune icône"}
                             >
-                              {card.emoji}
+                              {card.emoji || "∅"}
                             </button>
                             {showEmojiPicker === card.id && (
                               <div className="absolute top-full left-0 z-10 mt-1 grid grid-cols-4 sm:grid-cols-5 gap-1 rounded-lg border border-gray-600 bg-gray-800 p-2 shadow-xl">
+                                <button
+                                  onClick={() => {
+                                    updateCard(card.id, "emoji", "");
+                                    setShowEmojiPicker(null);
+                                  }}
+                                  className="col-span-4 sm:col-span-5 rounded p-1 text-xs text-gray-400 hover:bg-gray-700"
+                                  title="Aucune icône"
+                                >
+                                  ∅ Aucune
+                                </button>
                                 {EMOJIS.map((emoji) => (
                                   <button
                                     key={emoji}
@@ -2535,6 +2681,36 @@ export default function InfographicPage() {
                                 ))}
                               </div>
                             )}
+                            {/* AI icon generator */}
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                value={iconPrompts[card.id] || ""}
+                                onChange={(e) =>
+                                  setIconPrompts((prev) => ({
+                                    ...prev,
+                                    [card.id]: e.target.value,
+                                  }))
+                                }
+                                placeholder="Décris l'icône"
+                                className="w-24 rounded border border-gray-600 bg-gray-700 px-1.5 py-0.5 text-[10px] text-white placeholder:text-gray-500 focus:border-purple-500 focus:outline-none"
+                              />
+                              <button
+                                onClick={() => generateIconForCard(card.id)}
+                                disabled={
+                                  iconLoadingId === card.id ||
+                                  !(iconPrompts[card.id] || "").trim()
+                                }
+                                className="flex items-center justify-center rounded bg-purple-600 px-1.5 py-0.5 text-[10px] font-medium text-white hover:bg-purple-500 disabled:opacity-40"
+                                title="Générer une icône avec l'IA"
+                              >
+                                {iconLoadingId === card.id ? (
+                                  <Loader2 size={10} className="animate-spin" />
+                                ) : (
+                                  <Sparkles size={10} />
+                                )}
+                              </button>
+                            </div>
                           </div>
                           {/* Content */}
                           <div className="flex-1 space-y-1.5">
@@ -3887,13 +4063,15 @@ export default function InfographicPage() {
                             className="flex flex-col items-center gap-0.5 rounded-lg bg-black/30 px-1.5 py-1.5 backdrop-blur-sm"
                             style={{ borderLeft: `2px solid ${card.color}` }}
                           >
-                            <span
-                              className={
-                                format === "16:9" ? "text-lg" : "text-sm"
-                              }
-                            >
-                              {card.emoji}
-                            </span>
+                            {card.emoji && card.emoji.trim() !== "" && (
+                              <span
+                                className={
+                                  format === "16:9" ? "text-lg" : "text-sm"
+                                }
+                              >
+                                {card.emoji}
+                              </span>
+                            )}
                             <p
                               className="text-center font-bold text-white drop-shadow"
                               style={{ fontSize: scaledLabel }}
@@ -3929,7 +4107,9 @@ export default function InfographicPage() {
                             style={{ borderTop: `2px solid ${card.color}` }}
                           >
                             <div className="flex items-center gap-1.5 mb-1">
-                              <span className="text-sm">{card.emoji}</span>
+                              {card.emoji && card.emoji.trim() !== "" && (
+                                <span className="text-sm">{card.emoji}</span>
+                              )}
                               <p
                                 className="font-bold text-white"
                                 style={{ fontSize: scaledLabel }}
@@ -3990,7 +4170,9 @@ export default function InfographicPage() {
                               borderBottom: `1px solid ${card.color}40`,
                             }}
                           >
-                            <span className="text-xs">{card.emoji}</span>
+                            {card.emoji && card.emoji.trim() !== "" && (
+                              <span className="text-xs">{card.emoji}</span>
+                            )}
                             <p
                               className="text-white/80 flex-1"
                               style={{ fontSize: scaledLabel }}
@@ -4016,7 +4198,9 @@ export default function InfographicPage() {
                           className="flex items-center gap-2 rounded-lg bg-black/30 px-3 py-1.5 backdrop-blur-sm"
                           style={{ borderLeft: `3px solid ${card.color}` }}
                         >
-                          <span className="text-base">{card.emoji}</span>
+                          {card.emoji && card.emoji.trim() !== "" && (
+                            <span className="text-base">{card.emoji}</span>
+                          )}
                           <div className="flex-1 min-w-0">
                             <p
                               className="font-bold text-white truncate"

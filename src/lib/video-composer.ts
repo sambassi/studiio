@@ -1010,10 +1010,16 @@ function drawCards(
       ctx.textBaseline = 'top';
       let curY = y + paddingY;
 
-      // Emoji
-      ctx.font = `${emojiSizeLocal}px sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = 'white';
-      ctx.fillText(card.emoji || '●', x + cardW / 2, curY);
-      curY += emojiSizeLocal + innerGap;
+      // Emoji (skipped when empty → re-center content vertically)
+      const hasEmoji = !!card.emoji && card.emoji.trim() !== '';
+      if (hasEmoji) {
+        ctx.font = `${emojiSizeLocal}px sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = 'white';
+        ctx.fillText(card.emoji, x + cardW / 2, curY);
+        curY += emojiSizeLocal + innerGap;
+      } else {
+        // Re-center remaining content: skip one emoji slot worth of space
+        curY += (emojiSizeLocal + innerGap) / 2;
+      }
 
       // Label (multi-line)
       ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = '#FFFFFF';
@@ -1090,12 +1096,17 @@ function drawCards(
       let curY = y + paddingY;
       const contentX = x + paddingX;
 
-      // Row 1: emoji + label (horizontal)
-      ctx.font = `${emojiSize}px sans-serif`; ctx.textAlign = 'left'; ctx.fillStyle = '#FFFFFF';
-      ctx.fillText(card.emoji || '●', contentX, curY);
-      const emojiW = ctx.measureText(card.emoji || '●').width;
+      // Row 1: emoji + label (horizontal). When emoji is empty, label starts at contentX (no offset).
+      const hasEmojiEdu = !!card.emoji && card.emoji.trim() !== '';
+      let labelStartX = contentX;
+      if (hasEmojiEdu) {
+        ctx.font = `${emojiSize}px sans-serif`; ctx.textAlign = 'left'; ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(card.emoji, contentX, curY);
+        const emojiW = ctx.measureText(card.emoji).width;
+        labelStartX = contentX + emojiW + emojiGap;
+      }
       ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = '#FFFFFF';
-      ctx.fillText(card.label, contentX + emojiW + emojiGap, curY + (row1H - labelSize) / 2);
+      ctx.fillText(card.label, labelStartX, curY + (row1H - labelSize) / 2);
       curY += row1H + rowGap;
 
       // Row 2: description (text-white/70, max 60 chars, 2 lines)
@@ -1159,16 +1170,21 @@ function drawCards(
       ctx.textBaseline = 'top';
       const rowY = y + paddingY;
 
-      // Emoji (left) — text-xs
-      ctx.font = `${minEmojiSize}px sans-serif`;
-      ctx.textAlign = 'left'; ctx.fillStyle = '#FFFFFF';
-      ctx.fillText(card.emoji || '●', x + paddingX, rowY + (rowH - minEmojiSize) / 2);
-      const emojiW = ctx.measureText(card.emoji || '●').width;
+      // Emoji (left) — text-xs. When empty, label slides left (no emoji offset).
+      const hasEmojiMin = !!card.emoji && card.emoji.trim() !== '';
+      let labelX = x + paddingX;
+      if (hasEmojiMin) {
+        ctx.font = `${minEmojiSize}px sans-serif`;
+        ctx.textAlign = 'left'; ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(card.emoji, x + paddingX, rowY + (rowH - minEmojiSize) / 2);
+        const emojiW = ctx.measureText(card.emoji).width;
+        labelX = x + paddingX + emojiW + contentGap;
+      }
 
       // Label (middle, flex-1, text-white/80)
       ctx.font = `400 ${labelSize}px "${fontFamily}", sans-serif`;
       ctx.fillStyle = 'rgba(255,255,255,0.8)';
-      ctx.fillText(card.label, x + paddingX + emojiW + contentGap, rowY + (rowH - labelSize) / 2);
+      ctx.fillText(card.label, labelX, rowY + (rowH - labelSize) / 2);
 
       // Value (right, font-bold, card.color)
       ctx.font = `700 ${valueSize}px "${fontFamily}", sans-serif`;
@@ -1222,14 +1238,18 @@ function drawCards(
       ctx.textBaseline = 'top';
       const rowY = y + paddingY;
 
-      // Emoji (left)
-      ctx.font = `${fullEmojiSize}px sans-serif`;
-      ctx.textAlign = 'left'; ctx.fillStyle = '#FFFFFF';
-      ctx.fillText(card.emoji || '●', x + paddingX + leftBw, rowY + (rowH - fullEmojiSize) / 2);
-      const emojiW = ctx.measureText(card.emoji || '●').width;
+      // Emoji (left). When empty, the middle column slides left (no emoji offset).
+      const hasEmojiFull = !!card.emoji && card.emoji.trim() !== '';
+      let emojiW = 0;
+      if (hasEmojiFull) {
+        ctx.font = `${fullEmojiSize}px sans-serif`;
+        ctx.textAlign = 'left'; ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(card.emoji, x + paddingX + leftBw, rowY + (rowH - fullEmojiSize) / 2);
+        emojiW = ctx.measureText(card.emoji).width;
+      }
 
       // Middle column (label + optional description, stacked, vertically centered)
-      const middleX = x + paddingX + leftBw + emojiW + contentGap;
+      const middleX = x + paddingX + leftBw + (hasEmojiFull ? emojiW + contentGap : 0);
       // Value measured first so we know middle column width.
       ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`;
       const valueText = card.value;
