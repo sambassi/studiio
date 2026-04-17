@@ -151,6 +151,8 @@ export interface ComposerOptions {
   logoUrl?: string | null;
   musicUrl?: string | null;
   voiceUrl?: string | null;
+  musicVolume?: number;
+  voiceVolume?: number;
   introDuration?: number;
   cardsDuration?: number;
   videoDuration?: number;
@@ -1896,7 +1898,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         musicBufferSource.buffer = options.musicBuffer;
         musicBufferSource.loop = true;
         const musicGain = audioCtx.createGain();
-        musicGain.gain.value = (validVoiceBuffer || voiceEl) ? 0.5 : 0.8;
+        musicGain.gain.value = options.musicVolume ?? ((validVoiceBuffer || voiceEl) ? 0.5 : 0.8);
         musicBufferSource.connect(musicGain);
         musicGain.connect(audioDest);
         console.log('[Composer] ✅ Music: AudioBuffer connected | duration:', options.musicBuffer.duration.toFixed(1), 's | channels:', options.musicBuffer.numberOfChannels, '| gain:', musicGain.gain.value);
@@ -1915,7 +1917,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       try {
         const musicSource = audioCtx.createMediaElementSource(musicEl);
         const musicGain = audioCtx.createGain();
-        musicGain.gain.value = voiceEl ? 0.5 : 0.8;
+        musicGain.gain.value = options.musicVolume ?? (voiceEl ? 0.5 : 0.8);
         musicSource.connect(musicGain);
         musicGain.connect(audioDest);
         musicEl.loop = true;
@@ -1933,7 +1935,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         voiceBufferSource.buffer = validVoiceBuffer;
         voiceBufferSource.loop = false;
         const voiceGain = audioCtx.createGain();
-        voiceGain.gain.value = 1.0;
+        voiceGain.gain.value = options.voiceVolume ?? 1.0;
         voiceBufferSource.connect(voiceGain);
         voiceGain.connect(audioDest);
         console.log('[Composer] ✅ Voice: AudioBuffer connected | duration:', validVoiceBuffer.duration.toFixed(1), 's');
@@ -1947,7 +1949,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       try {
         const voiceSource = audioCtx.createMediaElementSource(voiceEl);
         const voiceGain = audioCtx.createGain();
-        voiceGain.gain.value = 1.0;
+        voiceGain.gain.value = options.voiceVolume ?? 1.0;
         voiceSource.connect(voiceGain);
         voiceGain.connect(audioDest);
         voiceElConnected = true;

@@ -1902,6 +1902,8 @@ export default function InfographicPage() {
               logoUrl: logoImage || null,
               musicUrl: audioMusicUrl || undefined,
               voiceUrl: audioVoiceUrl || undefined,
+              musicVolume: audioMusicVolume,
+              voiceVolume: audioVoiceVolume,
               introDuration: exportedSequences.titre ? introDuration : 0,
               cardsDuration: bCards.length > 0 && exportedSequences.cartes ? cardsDuration : 0,
               videoDuration: rushUrl && exportedSequences.video ? videoDuration : 0,
