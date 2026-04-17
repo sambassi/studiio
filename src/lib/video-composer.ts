@@ -640,7 +640,7 @@ function paintSeqBackdrop(
   const editorSeq = SEQ_NAME_REVERSE[seq] || seq;
   const listedAsNoColor = design?.noColorSequences?.includes(seq)
     || design?.noColorSequences?.includes(editorSeq);
-  if (design?.noColorBg === true && listedAsNoColor) {
+  if (listedAsNoColor) {
     ctx.fillStyle = '#0A0A0F';
     ctx.fillRect(0, 0, w, h);
     return;

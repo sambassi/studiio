@@ -431,6 +431,7 @@ export default function InfographicPage() {
   // Per-sequence no-color mode (user decides which sequences have color or just photo)
   const [noColorBg, setNoColorBg] = useState(false);
   const [noColorSequences, setNoColorSequences] = useState<string[]>(['cartes', 'video', 'cta']);
+  const [noColorUserOverride, setNoColorUserOverride] = useState<Record<string, boolean>>({});
   const [syncColorsGlobal, setSyncColorsGlobal] = useState(false);
 
   // Per-sequence gradient settings: each sequence can override the global gradient
@@ -645,6 +646,7 @@ export default function InfographicPage() {
         if (cfg.gradientOpacity !== undefined) setGradientOpacity(cfg.gradientOpacity);
         if (cfg.noColorBg !== undefined) setNoColorBg(cfg.noColorBg);
         if (cfg.noColorSequences) setNoColorSequences(cfg.noColorSequences);
+        if (cfg.noColorUserOverride) setNoColorUserOverride(cfg.noColorUserOverride);
         if (typeof cfg.syncColorsGlobal === 'boolean') setSyncColorsGlobal(cfg.syncColorsGlobal);
         if (cfg.seqGradients) setSeqGradients(cfg.seqGradients);
         if (cfg.textScale !== undefined) setTextScale(cfg.textScale);
@@ -703,6 +705,20 @@ export default function InfographicPage() {
     // Allow auto-generate to work again after initial restore (next tick)
     requestAnimationFrame(() => { restoringFromStorage.current = false; });
   }, []);
+
+  // ── Auto-rule: titre gets noColor when a poster photo is loaded ────
+  const selectedPhotoUrl = (pexelsPhotos as any[])?.[selectedPhotoIndex]?.url;
+  useEffect(() => {
+    if (!configLoaded) return;
+    if (noColorUserOverride?.titre) return;
+    const hasPhoto = !!selectedPhotoUrl;
+    setNoColorSequences((prev) => {
+      const has = prev.includes('titre');
+      if (hasPhoto && !has) return [...prev, 'titre'];
+      if (!hasPhoto && has) return prev.filter((s) => s !== 'titre');
+      return prev;
+    });
+  }, [selectedPhotoUrl, configLoaded, noColorUserOverride?.titre]);
 
   // ── Safe Zone Overlay (additive — does not affect existing logic) ────
   const [safeZonePlatform, setSafeZonePlatform] = useState<string | null>(null);
@@ -894,7 +910,7 @@ export default function InfographicPage() {
           titleColor, ctaColor, ctaSubColor, ctaMainText, ctaSubText,
           titleTextGradient, titleGradColor1, titleGradColor2,
           titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
-          gradientColor1, gradientColor2, gradientOpacity, noColorBg, noColorSequences, syncColorsGlobal, seqGradients,
+          gradientColor1, gradientColor2, gradientOpacity, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, seqGradients,
           textScale, ctaTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
           titlePos, logoPositions, watermarkPos, cardsPos, overlayPos,
           titleSize, cardsSize, watermarkSize,
@@ -918,7 +934,7 @@ export default function InfographicPage() {
     titleColor, ctaColor, ctaSubColor, ctaMainText, ctaSubText,
     titleTextGradient, titleGradColor1, titleGradColor2,
     titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
-    gradientColor1, gradientColor2, gradientOpacity, noColorBg, noColorSequences, syncColorsGlobal, seqGradients,
+    gradientColor1, gradientColor2, gradientOpacity, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, seqGradients,
     textScale, ctaTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
     titlePos, logoPositions, watermarkPos, cardsPos, overlayPos,
     titleSize, cardsSize, watermarkSize,
@@ -4215,13 +4231,12 @@ export default function InfographicPage() {
             }}
             data-preview-bg
             className={`${previewClasses.aspect} relative flex flex-col items-center justify-between rounded-lg ${
-              // Show color bg only if not in noColor mode and not in video-only sequence
               (() => {
                 const isVideoOnly = activeSequence === "video" && rushUrl;
                 const seqNoColor =
-                  noColorBg &&
-                  (activeSequence === "all" ||
-                    noColorSequences.includes(activeSequence));
+                  activeSequence === "all"
+                    ? noColorSequences.length >= 4
+                    : noColorSequences.includes(activeSequence);
                 return !isVideoOnly && !seqNoColor && activeColorTheme.bg
                   ? `bg-gradient-to-br ${activeColorTheme.bg}`
                   : "";
@@ -4230,13 +4245,11 @@ export default function InfographicPage() {
             style={{
               fontFamily: FONT_CSS_MAP[selectedFont] || "inherit",
               ...(() => {
-                // Video sequence: dark background so video shows without color tint
                 if (activeSequence === "video" && rushUrl) return { background: "#0A0A0F" };
                 const seqNoColor =
-                  noColorBg &&
-                  (activeSequence === "all"
-                    ? noColorSequences.length === 4
-                    : noColorSequences.includes(activeSequence));
+                  activeSequence === "all"
+                    ? noColorSequences.length >= 4
+                    : noColorSequences.includes(activeSequence);
                 if (seqNoColor) return { background: "#0A0A0F" };
                 if (colorTheme === "custom")
                   return {
@@ -4406,7 +4419,6 @@ export default function InfographicPage() {
                   className="absolute inset-0 h-full w-full object-cover"
                   style={{
                     opacity:
-                      noColorBg &&
                       (activeSequence === "all"
                         ? noColorSequences.includes("titre")
                         : noColorSequences.includes(activeSequence))
@@ -6182,47 +6194,104 @@ export default function InfographicPage() {
           initialY={panelPos.y}
           accentColor="#7C3AED"
         >
-          <div className="space-y-3">
-            <div className="text-[10px] text-gray-400">
-              Séquence : <span className="text-white font-medium capitalize">{activeSequence === 'all' ? 'Toutes' : activeSequence}</span>
-            </div>
-            {(() => {
-              const seq = activeSequence === 'all' ? 'titre' : activeSequence;
-              const isNoColor = noColorSequences.includes(seq);
-              return (
-                <>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-gray-300">Sans couleur de fond</span>
-                    <button
-                      onClick={() => {
-                        if (syncColorsGlobal) {
-                          if (isNoColor) setNoColorSequences([]);
-                          else setNoColorSequences(['titre', 'cartes', 'video', 'cta']);
-                        } else {
-                          if (isNoColor) setNoColorSequences(noColorSequences.filter((s) => s !== seq));
-                          else setNoColorSequences([...noColorSequences, seq]);
-                        }
-                      }}
-                      className={`relative w-9 h-5 rounded-full transition-colors ${isNoColor ? 'bg-purple-600' : 'bg-gray-700'}`}
-                    >
-                      <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${isNoColor ? 'translate-x-4' : ''}`} />
-                    </button>
+          {(() => {
+            const seq = activeSequence === 'all' ? 'titre' : activeSequence;
+            const isNoColor = noColorSequences.includes(seq);
+            const currentGrad = getSeqGradient(seq);
+            return (
+              <div className="space-y-3">
+                <div className="text-[10px] text-gray-400">
+                  Séquence : <span className="text-white font-medium capitalize">{activeSequence === 'all' ? 'Toutes' : activeSequence}</span>
+                </div>
+
+                {/* No-color toggle */}
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-gray-300">Sans couleur de fond</span>
+                  <button
+                    onClick={() => {
+                      setNoColorUserOverride((prev) => ({ ...prev, [seq]: true }));
+                      if (syncColorsGlobal) {
+                        if (isNoColor) setNoColorSequences([]);
+                        else setNoColorSequences(['titre', 'cartes', 'video', 'cta']);
+                      } else {
+                        if (isNoColor) setNoColorSequences(noColorSequences.filter((s) => s !== seq));
+                        else setNoColorSequences([...noColorSequences, seq]);
+                      }
+                    }}
+                    className={`relative w-9 h-5 rounded-full transition-colors ${isNoColor ? 'bg-purple-600' : 'bg-gray-700'}`}
+                  >
+                    <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${isNoColor ? 'translate-x-4' : ''}`} />
+                  </button>
+                </div>
+
+                {/* Color picker */}
+                {!isNoColor && (
+                  <ColorWheel
+                    color={colorTheme === 'custom' ? customAccent : gradientColor1}
+                    onChange={(c) => {
+                      setColorTheme('custom');
+                      setCustomAccent(c);
+                      setNoColorBg(false);
+                    }}
+                    label="Couleur de fond"
+                  />
+                )}
+
+                {/* Gradient overlay controls */}
+                <div className="border-t border-gray-700 pt-3">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2">
+                    Dégradé superposé
                   </div>
-                  {!isNoColor && (
-                    <ColorWheel
-                      color={colorTheme === 'custom' ? customAccent : gradientColor1}
-                      onChange={(c) => {
-                        setColorTheme('custom');
-                        setCustomAccent(c);
-                        setNoColorBg(false);
-                      }}
-                      label="Couleur"
+                  <label className="flex items-center gap-2 cursor-pointer mb-2">
+                    <input
+                      type="checkbox"
+                      checked={currentGrad.enabled}
+                      onChange={(e) => setSeqGradients({ ...seqGradients, [seq]: { ...seqGradients[seq], enabled: e.target.checked } })}
+                      className="w-3.5 h-3.5 accent-purple-500"
                     />
+                    <span className="text-[10px] text-gray-300">Activer</span>
+                  </label>
+                  {currentGrad.enabled && (
+                    <div className="space-y-2">
+                      <select
+                        value={currentGrad.position}
+                        onChange={(e) => setSeqGradients({ ...seqGradients, [seq]: { ...seqGradients[seq], position: e.target.value as any } })}
+                        className="w-full px-2 py-1.5 bg-gray-700 text-gray-100 rounded text-[9px] border border-gray-600 focus:border-purple-500 focus:outline-none"
+                      >
+                        <option value="top">Haut</option>
+                        <option value="bottom">Bas</option>
+                        <option value="both">Haut + Bas</option>
+                        <option value="left">Gauche</option>
+                        <option value="right">Droite</option>
+                      </select>
+                      <ColorWheel
+                        color={currentGrad.color1}
+                        onChange={(c) => setSeqGradients({ ...seqGradients, [seq]: { ...seqGradients[seq], color1: c } })}
+                        label="Couleur 1"
+                      />
+                      <ColorWheel
+                        color={currentGrad.color2}
+                        onChange={(c) => setSeqGradients({ ...seqGradients, [seq]: { ...seqGradients[seq], color2: c } })}
+                        label="Couleur 2"
+                      />
+                      <div>
+                        <span className="text-[9px] text-gray-500">Intensité {Math.round(currentGrad.opacity * 100)}%</span>
+                        <input
+                          type="range"
+                          min="0"
+                          max="2.0"
+                          step="0.05"
+                          value={currentGrad.opacity}
+                          onChange={(e) => setSeqGradients({ ...seqGradients, [seq]: { ...seqGradients[seq], opacity: parseFloat(e.target.value) } })}
+                          className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer mt-1"
+                        />
+                      </div>
+                    </div>
                   )}
-                </>
-              );
-            })()}
-          </div>
+                </div>
+              </div>
+            );
+          })()}
         </FloatingPanel>
 
         {/* Batch Preview Dots */}
