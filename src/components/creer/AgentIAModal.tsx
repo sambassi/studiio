@@ -67,6 +67,9 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiProgress, setAiProgress] = useState(0);
   const [aiStage, setAiStage] = useState('');
+  const [montageMode, setMontageMode] = useState(false);
+  const [montageDuration, setMontageDuration] = useState<15 | 20 | 30>(20);
+  const [customPrompt, setCustomPrompt] = useState('');
 
   const rushInputRef = useRef<HTMLInputElement>(null);
   const musicInputRef = useRef<HTMLInputElement>(null);
@@ -92,8 +95,86 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
     setAiObjectives((prev) => (prev.includes(o) ? prev.filter((x) => x !== o) : [...prev, o]));
   };
 
+  const handleMontagGenerate = async () => {
+    if (aiRushFiles.length === 0) return;
+    setAiGenerating(true);
+    setAiProgress(0);
+    setAiStage('Upload des rushes...');
+    try {
+      const rushUrls: string[] = [];
+      for (let i = 0; i < aiRushFiles.length; i++) {
+        setAiStage(`Upload rush ${i + 1}/${aiRushFiles.length}...`);
+        const file = aiRushFiles[i];
+        try {
+          const signRes = await fetch('/api/upload/signed-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: file.name, contentType: file.type, purpose: 'rush' }),
+          });
+          const signData = await signRes.json();
+          if (signData.success) {
+            await fetch(signData.signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+            rushUrls.push(signData.publicUrl);
+          }
+        } catch {}
+        setAiProgress(Math.round(((i + 1) / (aiRushFiles.length + 2)) * 100));
+      }
+
+      let musicUrl: string | null = null;
+      if (aiMusicFile) {
+        setAiStage('Upload musique...');
+        try {
+          const signRes = await fetch('/api/upload/signed-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: aiMusicFile.name, contentType: aiMusicFile.type, purpose: 'music' }),
+          });
+          const signData = await signRes.json();
+          if (signData.success) {
+            await fetch(signData.signedUrl, { method: 'PUT', headers: { 'Content-Type': aiMusicFile.type }, body: aiMusicFile });
+            musicUrl = signData.publicUrl;
+          }
+        } catch {}
+      }
+
+      setAiStage('Génération du montage IA...');
+      setAiProgress(80);
+      const theme = aiObjectives[0] || 'motivation';
+      const res = await fetch('/api/agent/montage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rushUrls,
+          duration: montageDuration,
+          theme,
+          customPrompt: customPrompt || undefined,
+          musicUrl,
+          platforms: aiPlatforms,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAiStage('Montage IA créé !');
+        setAiProgress(100);
+        await new Promise((r) => setTimeout(r, 800));
+        if (onAfterGenerate) await onAfterGenerate();
+      } else {
+        setAiStage(`Erreur: ${data.error}`);
+      }
+    } catch (err) {
+      console.error('[AgentIA Montage] Error:', err);
+      setAiStage('Erreur de génération');
+    } finally {
+      setAiGenerating(false);
+      setAiProgress(0);
+      setAiStage('');
+      onClose();
+    }
+  };
+
   const handleAIGenerate = async () => {
     if (aiRushFiles.length === 0) return;
+    if (montageMode) { handleMontagGenerate(); return; }
     setAiGenerating(true);
     setAiProgress(0);
     setAiStage(t('aiAgent.stages.preparing'));
@@ -440,6 +521,41 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
               )}
             </button>
           </div>
+
+          {/* Mode selector: Planning vs Montage */}
+          <div className="flex gap-2 mb-4">
+            <button onClick={() => setMontageMode(false)}
+              className={`flex-1 py-2 rounded-lg text-xs font-bold transition border ${!montageMode ? 'bg-purple-500/20 border-purple-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>
+              📅 Planning ({aiPlanDuration}j)
+            </button>
+            <button onClick={() => setMontageMode(true)}
+              className={`flex-1 py-2 rounded-lg text-xs font-bold transition border ${montageMode ? 'bg-pink-500/20 border-pink-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>
+              🎬 Montage IA
+            </button>
+          </div>
+
+          {/* Montage mode options */}
+          {montageMode && (
+            <div className="mb-4 space-y-3 rounded-lg border border-pink-500/20 bg-pink-500/5 p-3">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1.5">Durée cible</label>
+                <div className="flex gap-1.5">
+                  {([15, 20, 30] as const).map((d) => (
+                    <button key={d} onClick={() => setMontageDuration(d)}
+                      className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${montageDuration === d ? 'bg-gradient-to-r from-pink-600 to-purple-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+                      {d}s
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1.5">Prompt personnalisé (optionnel)</label>
+                <textarea value={customPrompt} onChange={(e) => setCustomPrompt(e.target.value)}
+                  placeholder="Ex: montre l'ambiance joyeuse du cours de danse, focus sur les sourires"
+                  className="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-xs text-white placeholder-gray-500 focus:border-pink-500 focus:outline-none resize-none" rows={2} />
+              </div>
+            </div>
+          )}
 
           {/* Compact config — two columns */}
           <div className="grid grid-cols-2 gap-4 mb-4">
