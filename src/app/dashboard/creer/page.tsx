@@ -2729,7 +2729,7 @@ export default function InfographicPage() {
       )}
 
       {/* Left Panel - Form */}
-      <div className="w-full lg:w-1/2 overflow-y-auto border-r-0 lg:border-r border-gray-800 p-3 sm:p-6 pb-24 lg:pb-6 lg:max-h-[calc(100vh-4rem)]">
+      <div className={`w-full lg:w-1/2 overflow-y-auto border-r-0 lg:border-r border-gray-800 p-3 sm:p-6 pb-24 lg:pb-6 lg:max-h-[calc(100vh-4rem)] ${activeRailTab ? 'hidden' : ''}`}>
         {/* Header — minimal, controls live in the Canva sidebar */}
         <div className="mb-4 flex items-center justify-between">
           <h1 className="text-lg sm:text-2xl font-bold">Créer</h1>
