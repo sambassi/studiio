@@ -409,14 +409,14 @@ export function AudioStudioPanel({
         </div>
         <textarea value={ttsText} onChange={(e) => { setTtsText(e.target.value); setTtsError(''); }} placeholder="Tapez votre texte ici..."
           className="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-xs text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none resize-none" rows={3} />
-        <div className="flex items-center gap-2 mt-2">
+        <div className="flex flex-wrap items-center gap-2 mt-2">
           <select value={ttsVoiceIdx} onChange={(e) => setTtsVoiceIdx(Number(e.target.value))}
-            className="flex-1 rounded-lg bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white">
+            className="flex-1 min-w-[140px] rounded-lg bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white">
             {browserVoices.length === 0 && <option value={0}>Voix par défaut</option>}
             {browserVoices.map((v, i) => <option key={`${v.name}-${i}`} value={i}>{v.name} ({v.lang})</option>)}
           </select>
           <button onClick={generateTTS} disabled={ttsLoading || !ttsText.trim()}
-            className="flex items-center gap-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 transition">
+            className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-50 transition">
             {ttsLoading ? <Loader2 size={12} className="animate-spin" /> : <Mic size={12} />} Générer
           </button>
         </div>
