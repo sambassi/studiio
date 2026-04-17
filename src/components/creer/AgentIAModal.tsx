@@ -17,6 +17,7 @@ import { useBranding } from '@/lib/hooks/useBranding';
 import { useCreatorPreferences } from '@/lib/hooks/useCreatorPreferences';
 import { BrandingIndicator } from '@/components/shared/BrandingIndicator';
 import { composeAndUpload } from '@/lib/video-composer';
+import { renderMontage, type MontageSpec } from '@/lib/ffmpeg-montage';
 import { useTranslations, useLocale } from '@/i18n/client';
 import { getContentPools } from '@/lib/i18n-content';
 
@@ -157,79 +158,100 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
         } catch {}
       }
 
-      // Real-time elapsed status indicator
-      let elapsed = 0;
-      const statusMessages = [
-        [0, 'Préparation du montage...'],
-        [10, 'Lancement du moteur de rendu (premier lancement plus long)...'],
-        [30, 'Rendu des séquences vidéo en cours...'],
-        [60, 'Composition et transitions...'],
-        [120, 'Finalisation et upload...'],
-        [180, 'Le rendu prend plus de temps que prévu. Patience...'],
-      ] as const;
-      const statusTimer = setInterval(() => {
-        elapsed++;
-        const msg = [...statusMessages].reverse().find(([t]) => elapsed >= t)?.[1] || statusMessages[0][1];
-        setAiStage(`${msg} (${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')})`);
-        setAiProgress(Math.min(95, Math.round((elapsed / 180) * 100)));
-      }, 1000);
+      // 1. Get montage specs from API (AI hints, no server render)
+      setAiStage('Génération des instructions de montage...');
+      setAiProgress(50);
 
-      const controller = new AbortController();
-      montageAbortRef.current = controller;
-
-      try {
-        const timeoutId = setTimeout(() => controller.abort(), 300_000);
-        const res = await fetch('/api/agent/montage', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: controller.signal,
-          body: JSON.stringify({
-            rushUrls,
-            count: montageCount,
-            duration: montageDuration,
-            theme,
-            customPrompt: customPrompt || undefined,
-            musicUrl,
-            posterUrl,
-            platforms: aiPlatforms,
-            subtitle: AGENT_THEMES.find(t => t.id === theme)?.label || '',
-          }),
-        });
-        clearTimeout(timeoutId);
-        clearInterval(statusTimer);
-        montageAbortRef.current = null;
-
-        const data = await res.json();
-        console.log('[AgentIA Montage] API response:', data);
-
-        if (!data.success) {
-          setAiStage(`Erreur : ${data.error || data.detail || 'Rendu échoué'}`);
-          console.error('[AgentIA Montage] Error detail:', data);
-          await new Promise((r) => setTimeout(r, 4000));
-        } else {
-          setAiStage(`Montage terminé ! ${data.postIds?.length || 0} vidéo(s) créée(s). Redirection...`);
-          setAiProgress(100);
-          await new Promise((r) => setTimeout(r, 1000));
-          if (onAfterGenerate) await onAfterGenerate();
-          onClose();
-          router.push('/dashboard/calendar');
-          return;
-        }
-      } catch (fetchErr: any) {
-        clearInterval(statusTimer);
-        montageAbortRef.current = null;
-        if (fetchErr.name === 'AbortError') {
-          if (elapsed >= 295) {
-            setAiStage('Le rendu a expiré (5 min). Réessayez avec une vidéo plus courte ou moins de montages.');
-          } else {
-            setAiStage('Montage annulé.');
-          }
-        } else {
-          console.error('[AgentIA Montage] Fetch error:', fetchErr);
-          setAiStage(`Erreur réseau : ${fetchErr.message}`);
-        }
+      const res = await fetch('/api/agent/montage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rushUrls,
+          count: montageCount,
+          duration: montageDuration,
+          theme,
+          customPrompt: customPrompt || undefined,
+          musicUrl,
+          posterUrl,
+          platforms: aiPlatforms,
+          subtitle: AGENT_THEMES.find(t => t.id === theme)?.label || '',
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setAiStage(`Erreur : ${data.error || 'Échec'}`);
+        console.error('[Montage] API error:', data);
         await new Promise((r) => setTimeout(r, 3000));
+        return;
       }
+
+      const specs: MontageSpec[] = data.specs;
+      console.log('[Montage] Received', specs.length, 'specs from API');
+
+      // 2. Render each montage client-side with FFmpeg WASM
+      for (let m = 0; m < specs.length; m++) {
+        const spec = specs[m];
+        setAiStage(`Montage ${m + 1}/${specs.length} — chargement FFmpeg...`);
+
+        try {
+          const blob = await renderMontage(spec, (pct, stage) => {
+            const globalPct = 50 + ((m + pct / 100) / specs.length) * 45;
+            setAiProgress(Math.round(globalPct));
+            setAiStage(`Montage ${m + 1}/${specs.length} — ${stage}`);
+          });
+
+          // 3. Upload to Supabase
+          setAiStage(`Montage ${m + 1} — upload...`);
+          const file = new File([blob], `montage-${Date.now()}-${m}.mp4`, { type: 'video/mp4' });
+          const signRes = await fetch('/api/upload/signed-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: file.name, contentType: 'video/mp4', purpose: 'montage' }),
+          });
+          const signData = await signRes.json();
+          if (!signData.success) throw new Error('Upload URL failed');
+
+          await fetch(signData.signedUrl, { method: 'PUT', headers: { 'Content-Type': 'video/mp4' }, body: file });
+          const videoUrl = signData.publicUrl;
+
+          // 4. Create post
+          const postDate = new Date();
+          postDate.setDate(postDate.getDate() + 1 + m);
+          const dateStr = `${postDate.getFullYear()}-${String(postDate.getMonth() + 1).padStart(2, '0')}-${String(postDate.getDate()).padStart(2, '0')}`;
+
+          await fetch('/api/posts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: spec.title.text,
+              caption: `${spec.subtitle}\n\n#${spec.theme} #IA`,
+              media_url: videoUrl,
+              media_type: 'video',
+              format: 'reel',
+              platforms: spec.platforms || ['Instagram'],
+              scheduled_date: dateStr,
+              scheduled_time: '10:00:00',
+              status: 'draft',
+              metadata: { type: 'ai-montage', videoUrl, renderedVideoUrl: videoUrl, theme: spec.theme },
+            }),
+          });
+
+          console.log(`[Montage] ${m + 1}/${specs.length} uploaded:`, videoUrl);
+        } catch (renderErr: any) {
+          console.error(`[Montage] Render ${m + 1} failed:`, renderErr);
+          setAiStage(`Montage ${m + 1} échoué : ${renderErr.message}`);
+          await new Promise((r) => setTimeout(r, 2000));
+        }
+      }
+
+      // 5. Done — redirect
+      setAiStage('Montage terminé ! Redirection...');
+      setAiProgress(100);
+      await new Promise((r) => setTimeout(r, 1000));
+      if (onAfterGenerate) await onAfterGenerate();
+      onClose();
+      router.push('/dashboard/calendar');
+      return;
     } catch (err) {
       console.error('[AgentIA Montage] Error:', err);
       setAiStage('Erreur de génération');

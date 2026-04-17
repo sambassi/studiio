@@ -27,6 +27,17 @@ const nextConfig = {
       },
     ],
   },
+  async headers() {
+    return [
+      {
+        source: '/dashboard/creer',
+        headers: [
+          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+          { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp' },
+        ],
+      },
+    ];
+  },
   webpack: (config, { isServer }) => {
     // Externalize Remotion packages that are incompatible with webpack
     // They will be loaded at runtime only when the render API is called
