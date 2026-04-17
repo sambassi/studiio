@@ -1,23 +1,24 @@
-import { Composition } from "remotion";
+import React from "react";
+import { registerRoot, Composition } from "remotion";
 import { AfroboostComposition } from "./AfroboostComposition";
 import { InfographicComposition } from "./InfographicComposition";
 import { AiMontageComposition } from "./AiMontageComposition";
 import type { AfroboostProps, InfographicProps } from "./types";
 import type { AiMontageProps } from "./AiMontageComposition";
 
-export const RemotionRoot: React.FC = () => {
+const RemotionRoot: React.FC = () => {
   return (
     <>
       {/* AI Montage — dynamic duration from props */}
       <Composition
         id="AiMontage"
-        component={AiMontageComposition}
+        component={AiMontageComposition as any}
         durationInFrames={450}
         fps={30}
         width={1080}
         height={1920}
         defaultProps={{
-          clips: [{ src: '', startSec: 0, endSec: 10 }],
+          clips: [],
           transition: 'crossfade' as const,
           title: { text: 'MONTAGE IA', color: '#FFFFFF' },
           subtitle: '',
@@ -27,9 +28,9 @@ export const RemotionRoot: React.FC = () => {
           totalDurationFrames: 450,
           format: '9:16' as const,
           watermark: false,
-        } satisfies AiMontageProps}
-        calculateMetadata={({ props }) => ({
-          durationInFrames: (props as AiMontageProps).totalDurationFrames || 450,
+        }}
+        calculateMetadata={({ props }: { props: any }) => ({
+          durationInFrames: props.totalDurationFrames || 450,
         })}
       />
 
@@ -109,3 +110,5 @@ export const RemotionRoot: React.FC = () => {
     </>
   );
 };
+
+registerRoot(RemotionRoot);
