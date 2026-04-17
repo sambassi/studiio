@@ -19,7 +19,10 @@ export const supabase = new Proxy({} as SupabaseClient, {
 });
 
 // Server-side Supabase with service key (bypasses RLS, for API routes only)
-// Lazy-initialized to prevent crash when this module is bundled client-side
+// Lazy-initialized to prevent crash when this module is bundled client-side.
+// Configured with `cache: 'no-store'` because Next.js wraps the global fetch
+// with a caching layer that would otherwise return stale reads after writes
+// from another route.
 let _supabaseAdmin: SupabaseClient | null = null;
 function getSupabaseAdmin(): SupabaseClient {
     if (!_supabaseAdmin) {
@@ -28,7 +31,12 @@ function getSupabaseAdmin(): SupabaseClient {
           if (!supabaseUrl || !key) {
                   throw new Error('supabaseAdmin requires SUPABASE_URL and SUPABASE_SERVICE_KEY (server-side only)');
           }
-          _supabaseAdmin = createClient(supabaseUrl, key);
+          _supabaseAdmin = createClient(supabaseUrl, key, {
+              global: {
+                  fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+                      fetch(input, { ...init, cache: 'no-store' }),
+              },
+          });
     }
     return _supabaseAdmin;
 }

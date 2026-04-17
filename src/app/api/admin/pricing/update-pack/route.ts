@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { stripe } from '@/lib/stripe/client';
+import { invalidatePricingCache } from '@/lib/pricing/fetch';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,5 +55,6 @@ export async function POST(req: NextRequest) {
 
   const { error } = await supabaseAdmin.from('credit_packs').update(patch).eq('key', key);
   if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  invalidatePricingCache();
   return NextResponse.json({ success: true });
 }

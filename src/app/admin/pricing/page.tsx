@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2, Save } from 'lucide-react';
+import { Loader2, Save, Download } from 'lucide-react';
 
 interface Plan {
   key: string; name: string; price_cents: number; yearly_price_cents: number;
@@ -17,24 +17,33 @@ export default function PricingAdminPage() {
   const [packs, setPacks] = useState<Pack[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
+  const [seeding, setSeeding] = useState(false);
   const [toast, setToast] = useState('');
 
+  const loadPricing = async () => {
+    const res = await fetch('/api/pricing', { cache: 'no-store' });
+    const { plans: p = [], packs: pk = [] } = await res.json();
+    setPlans(p);
+    setPacks(pk);
+    setLoading(false);
+  };
+
   useEffect(() => {
-    Promise.all([
-      fetch('/api/admin/pricing/seed', { method: 'POST' }).then(r => r.json()),
-    ]).then(() => {
-      fetch('/api/admin/pricing/seed', { method: 'POST' })
-        .then(r => r.json())
-        .finally(() => setLoading(false));
-    });
-    // Load from DB
-    import('@/lib/pricing/fetch').then(async (mod) => {
-      const [p, pk] = await Promise.all([mod.getPlans(), mod.getPacks()]);
-      setPlans(p as Plan[]);
-      setPacks(pk as Pack[]);
-      setLoading(false);
-    });
+    loadPricing();
   }, []);
+
+  const runSeed = async () => {
+    setSeeding(true);
+    try {
+      const res = await fetch('/api/admin/pricing/seed', { method: 'POST' });
+      const data = await res.json();
+      setToast(data.success ? 'Tarification initialisée' : `Erreur: ${data.error || 'seed'}`);
+      setTimeout(() => setToast(''), 3000);
+      await loadPricing();
+    } finally {
+      setSeeding(false);
+    }
+  };
 
   const savePlan = async (plan: Plan) => {
     setSaving(plan.key);
@@ -85,6 +94,23 @@ export default function PricingAdminPage() {
         <h1 className="text-3xl font-bold text-white mb-1">Tarification</h1>
         <p className="text-gray-400 text-sm">Gérez les plans et packs de crédits.</p>
       </div>
+
+      {plans.length === 0 && packs.length === 0 && (
+        <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 p-4 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold text-blue-300">Initialisation requise</p>
+            <p className="text-xs text-blue-400/80 mt-0.5">Aucun plan ou pack trouvé en base. Importez les valeurs par défaut depuis les constantes du code.</p>
+          </div>
+          <button
+            onClick={runSeed}
+            disabled={seeding}
+            className="flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 whitespace-nowrap"
+          >
+            {seeding ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+            Initialiser depuis les constantes
+          </button>
+        </div>
+      )}
 
       {/* Plans */}
       <div>
