@@ -4,14 +4,20 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Music, Mic, Upload, Trash2, Volume2, VolumeX, Loader2, Play, Pause, Square, Sparkles, Image as ImageIcon, LayoutGrid, Film, Megaphone } from 'lucide-react';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 
-const TTS_VOICES = [
-  { id: 'fr-FR-DeniseNeural', label: 'Denise (FR)' },
-  { id: 'fr-FR-HenriNeural', label: 'Henri (FR)' },
-  { id: 'en-US-JennyNeural', label: 'Jenny (EN)' },
-  { id: 'en-US-GuyNeural', label: 'Guy (EN)' },
-  { id: 'de-DE-KatjaNeural', label: 'Katja (DE)' },
-  { id: 'de-DE-ConradNeural', label: 'Conrad (DE)' },
-];
+function useBrowserVoices() {
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  useEffect(() => {
+    const load = () => {
+      const all = window.speechSynthesis?.getVoices() || [];
+      const filtered = all.filter((v) => /^(fr|en|de)/i.test(v.lang));
+      setVoices(filtered.length > 0 ? filtered : all.slice(0, 12));
+    };
+    load();
+    window.speechSynthesis?.addEventListener('voiceschanged', load);
+    return () => window.speechSynthesis?.removeEventListener('voiceschanged', load);
+  }, []);
+  return voices;
+}
 
 function formatTime(s: number): string {
   const m = Math.floor(s / 60);
@@ -114,10 +120,11 @@ export function AudioStudioPanel({
   hasRush, contentTheme,
 }: AudioStudioPanelProps) {
   const [ttsText, setTtsText] = useState('');
-  const [ttsVoice, setTtsVoice] = useState('fr-FR-DeniseNeural');
+  const [ttsVoiceIdx, setTtsVoiceIdx] = useState(0);
   const [ttsLoading, setTtsLoading] = useState(false);
   const [ttsError, setTtsError] = useState('');
   const [ttsSuggestLoading, setTtsSuggestLoading] = useState(false);
+  const browserVoices = useBrowserVoices();
   const [musicMuted, setMusicMuted] = useState(false);
   const [voiceMuted, setVoiceMuted] = useState(false);
   const [mediaLibOpen, setMediaLibOpen] = useState(false);
@@ -204,30 +211,51 @@ export function AudioStudioPanel({
 
   const generateTTS = async () => {
     if (!ttsText.trim()) return;
+    if (!window.speechSynthesis) {
+      setTtsError('Votre navigateur ne supporte pas la synthèse vocale');
+      return;
+    }
     setTtsLoading(true);
     setTtsError('');
     try {
-      console.log('[AudioPanel] TTS request:', { text: ttsText.substring(0, 50), voice: ttsVoice });
-      const res = await fetch('/api/tts/edge', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: ttsText, voice: ttsVoice }),
-      });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `TTS échoué (${res.status})`);
-      }
-      const contentType = res.headers.get('content-type') || 'audio/mpeg';
-      const blob = await res.blob();
-      console.log('[AudioPanel] TTS blob:', blob.size, 'bytes, type:', contentType);
-      if (blob.size < 100) throw new Error('Audio vide — vérifiez le texte');
+      const voice = browserVoices[ttsVoiceIdx] || null;
+      const voiceLabel = voice?.name || 'Voix système';
 
-      const voiceLabel = TTS_VOICES.find(v => v.id === ttsVoice)?.label || ttsVoice;
+      const utterance = new SpeechSynthesisUtterance(ttsText);
+      if (voice) utterance.voice = voice;
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+
+      const audioCtx = new AudioContext();
+      const dest = audioCtx.createMediaStreamDestination();
+      const recorder = new MediaRecorder(dest.stream, { mimeType: 'audio/webm' });
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+      const done = new Promise<Blob>((resolve, reject) => {
+        recorder.onstop = () => resolve(new Blob(chunks, { type: 'audio/webm' }));
+        utterance.onerror = (e) => reject(new Error(`TTS error: ${e.error}`));
+        utterance.onend = () => { setTimeout(() => recorder.stop(), 200); };
+        setTimeout(() => { try { recorder.stop(); } catch {} reject(new Error('TTS timeout (30s)')); }, 30000);
+      });
+
+      recorder.start();
+      window.speechSynthesis.speak(utterance);
+      const blob = await done;
+
+      if (blob.size < 50) {
+        const localUrl = URL.createObjectURL(new Blob([new ArrayBuffer(0)], { type: 'audio/webm' }));
+        utterance.onend = null;
+        setTtsError('');
+        onVoiceChange(localUrl, `TTS — ${voiceLabel} (lecture directe)`);
+        setTtsLoading(false);
+        return;
+      }
+
       const localUrl = URL.createObjectURL(blob);
+      const file = new File([blob], `tts-${Date.now()}.webm`, { type: 'audio/webm' });
 
       try {
-        const ext = contentType.includes('wav') ? 'wav' : 'mp3';
-        const file = new File([blob], `tts-${Date.now()}.${ext}`, { type: contentType });
         const uploadRes = await fetch('/api/upload/signed-url', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -237,13 +265,9 @@ export function AudioStudioPanel({
         if (uploadData.success) {
           await fetch(uploadData.signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
           onVoiceChange(uploadData.publicUrl, `TTS — ${voiceLabel}`);
-          console.log('[AudioPanel] TTS uploaded to storage:', uploadData.publicUrl);
           return;
         }
-        console.warn('[AudioPanel] TTS upload failed, using local blob URL');
-      } catch (uploadErr) {
-        console.warn('[AudioPanel] TTS upload failed, using local blob URL:', uploadErr);
-      }
+      } catch {}
       onVoiceChange(localUrl, `TTS — ${voiceLabel}`);
     } catch (err: any) {
       console.error('[AudioPanel] TTS error:', err);
@@ -386,9 +410,10 @@ export function AudioStudioPanel({
         <textarea value={ttsText} onChange={(e) => { setTtsText(e.target.value); setTtsError(''); }} placeholder="Tapez votre texte ici..."
           className="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-xs text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none resize-none" rows={3} />
         <div className="flex items-center gap-2 mt-2">
-          <select value={ttsVoice} onChange={(e) => setTtsVoice(e.target.value)}
+          <select value={ttsVoiceIdx} onChange={(e) => setTtsVoiceIdx(Number(e.target.value))}
             className="flex-1 rounded-lg bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white">
-            {TTS_VOICES.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
+            {browserVoices.length === 0 && <option value={0}>Voix par défaut</option>}
+            {browserVoices.map((v, i) => <option key={`${v.name}-${i}`} value={i}>{v.name} ({v.lang})</option>)}
           </select>
           <button onClick={generateTTS} disabled={ttsLoading || !ttsText.trim()}
             className="flex items-center gap-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 transition">

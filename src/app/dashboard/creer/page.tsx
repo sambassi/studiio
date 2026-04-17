@@ -3833,6 +3833,26 @@ export default function InfographicPage() {
             <IconBadge Icon={Crosshair} color="purple" active={showCenterGuides || showThirdsGuides} size={36} iconSize={18} />
             Guides
           </button>
+
+          {/* Card position mode toggle */}
+          <button
+            onClick={() => setCardPositionMode((m) => (m === 'grid' ? 'free' : 'grid'))}
+            title={cardPositionMode === 'grid' ? "Mode libre" : "Mode grille"}
+            className={`flex items-center gap-2 rounded-2xl pl-1 pr-3 py-1 text-xs font-medium transition-all ${
+              cardPositionMode === 'free'
+                ? "bg-gray-800/80 text-white shadow-lg shadow-black/20"
+                : "bg-gray-900/60 text-gray-300 hover:bg-gray-800/80 hover:text-white"
+            }`}
+          >
+            <IconBadge
+              Icon={cardPositionMode === 'grid' ? Grid3x3 : Move}
+              color={cardPositionMode === 'grid' ? 'slate' : 'orange'}
+              active={cardPositionMode === 'free'}
+              size={36}
+              iconSize={18}
+            />
+            {cardPositionMode === 'grid' ? 'Grille' : 'Libre'}
+          </button>
         </div>
 
         {/* Safe Zone Platform Selector */}
@@ -3897,10 +3917,11 @@ export default function InfographicPage() {
                     Taille
                     <input
                       type="range"
-                      min={40}
-                      max={140}
-                      value={titleSize}
-                      onChange={(e) => setTitleSize(Number(e.target.value))}
+                      min={0.5}
+                      max={3.0}
+                      step={0.05}
+                      value={textScale}
+                      onChange={(e) => setTextScale(Number(e.target.value))}
                       className="w-20 accent-purple-500"
                     />
                   </label>
