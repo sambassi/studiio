@@ -38,6 +38,9 @@ import {
   Crosshair,
   Eye,
   EyeOff,
+  Calendar,
+  Download,
+  Layers,
 } from "lucide-react";
 import { PlatformIcon, type PlatformKey } from "@/components/ui/PlatformIcon";
 import {
@@ -2313,13 +2316,13 @@ export default function InfographicPage() {
       return;
     }
     setActiveRailTab(id);
-    // Step-shortcut wiring: make the existing step panel follow the rail tab
-    if (id === 'templates') setStep(1); // Design
-    else if (id === 'cards') setStep(0); // Contenu
-    else if (id === 'text') setStep(0); // Contenu
-    else if (id === 'media') setStep(2); // Style (rush)
-    else if (id === 'elements') setStep(1); // Design (logo etc.)
-    // settings tab just opens its rail panel (no separate overlay)
+    if (id === 'templates') setStep(0);
+    else if (id === 'cards') setStep(0);
+    else if (id === 'text') setStep(0);
+    else if (id === 'media') setStep(2);
+    else if (id === 'elements') setStep(0);
+    else if (id === 'audio') setStep(2);
+    else if (id === 'settings') setStep(3);
   };
 
   return (
@@ -3036,66 +3039,25 @@ export default function InfographicPage() {
                             </div>
                           </div>
                           {/* Content */}
-                          <div className="flex-1 space-y-1.5">
+                          <div className="flex-1 space-y-1.5 min-w-0">
                             <div className="flex gap-1">
-                              <input
-                                type="text"
-                                value={card.label}
-                                onChange={(e) =>
-                                  updateCard(card.id, "label", e.target.value)
-                                }
-                                className="flex-1 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs font-bold text-white focus:border-purple-500 focus:outline-none"
-                                placeholder="Label"
-                              />
-                              <button
-                                onClick={() => suggestCardField(card.id, 'label')}
-                                disabled={aiFieldLoading === `${card.id}-label`}
-                                className="rounded bg-purple-600/20 px-1.5 py-1 text-purple-400 hover:bg-purple-600/40 disabled:opacity-50 transition flex-shrink-0"
-                                title="Suggérer avec IA"
-                              >
-                                {aiFieldLoading === `${card.id}-label` ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                              </button>
-                              <input
-                                type="text"
-                                value={card.value}
-                                onChange={(e) =>
-                                  updateCard(card.id, "value", e.target.value)
-                                }
-                                className="w-16 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs font-bold text-purple-400 focus:border-purple-500 focus:outline-none"
-                                placeholder="Valeur"
-                              />
+                              <input type="text" value={card.label} onChange={(e) => updateCard(card.id, "label", e.target.value)}
+                                className="flex-1 min-w-0 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs font-bold text-white focus:border-purple-500 focus:outline-none" placeholder="Label" />
+                              <input type="text" value={card.value} onChange={(e) => updateCard(card.id, "value", e.target.value)}
+                                className="w-14 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs font-bold text-purple-400 focus:border-purple-500 focus:outline-none" placeholder="Val" />
                             </div>
-                            <div className="flex gap-1">
-                              <input
-                                type="text"
-                                value={card.description}
-                                onChange={(e) =>
-                                  updateCard(
-                                    card.id,
-                                    "description",
-                                    e.target.value,
-                                  )
-                                }
-                                className="flex-1 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-300 focus:border-purple-500 focus:outline-none"
-                                placeholder="Description courte"
-                              />
-                              <button
-                                onClick={() => suggestCardField(card.id, 'description')}
-                                disabled={aiFieldLoading === `${card.id}-description`}
-                                className="rounded bg-purple-600/20 px-1.5 py-1 text-purple-400 hover:bg-purple-600/40 disabled:opacity-50 transition flex-shrink-0"
-                                title="Suggérer avec IA"
-                              >
-                                {aiFieldLoading === `${card.id}-description` ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                              </button>
-                            </div>
+                            <input type="text" value={card.description} onChange={(e) => updateCard(card.id, "description", e.target.value)}
+                              className="w-full rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-300 focus:border-purple-500 focus:outline-none" placeholder="Description courte" />
                           </div>
-                          {/* Delete */}
-                          <button
-                            onClick={() => deleteCard(card.id)}
-                            className="rounded p-1 text-gray-500 hover:bg-red-600 hover:text-white"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          <div className="flex flex-col gap-1 flex-shrink-0">
+                            <button onClick={() => suggestCardField(card.id, 'label')} disabled={aiFieldLoading === `${card.id}-label`}
+                              className="h-7 w-7 rounded-lg bg-purple-600/20 flex items-center justify-center text-purple-400 hover:bg-purple-600/40 disabled:opacity-50 transition" title="Régénérer IA">
+                              {aiFieldLoading === `${card.id}-label` ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                            </button>
+                            <button onClick={() => deleteCard(card.id)} className="h-7 w-7 rounded-lg flex items-center justify-center text-gray-500 hover:bg-red-600/20 hover:text-red-400 transition" title="Supprimer">
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -6295,20 +6257,28 @@ export default function InfographicPage() {
 
         {/* ── Sticky Export Bar (always visible at bottom of preview) ── */}
         <div className="sticky bottom-0 w-full mt-4 bg-gray-950/95 backdrop-blur border-t border-gray-800 px-3 py-3">
-          <div className="flex items-center gap-2 max-w-md mx-auto">
-            <select
-              value={destination}
-              onChange={(e) => setDestination(e.target.value as Destination)}
-              className="rounded-lg bg-gray-800 border border-gray-700 px-2 py-2.5 text-xs text-white flex-shrink-0"
-            >
-              <option value="draft">📅 Calendrier</option>
-              <option value="export">⬇ Fichier</option>
-              <option value="both">📅+⬇ Les deux</option>
-              <option value="audio-studio">🎵 Studio Son</option>
-            </select>
-            <button
-              onClick={handleExport}
-              disabled={isExporting || cards.length === 0}
+          {isExporting && (
+            <div className="h-1 w-full bg-gray-800 rounded-full mb-2 overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300" style={{ width: `${exportProgress}%` }} />
+            </div>
+          )}
+          <div className="flex items-center gap-1.5 max-w-md mx-auto">
+            {([
+              { key: 'draft' as Destination, Icon: Calendar, color: '#3B82F6', tip: 'Calendrier' },
+              { key: 'export' as Destination, Icon: Download, color: '#10B981', tip: 'Fichier' },
+              { key: 'both' as Destination, Icon: Layers, color: '#A855F7', tip: 'Les deux' },
+              { key: 'audio-studio' as Destination, Icon: Music, color: '#EC4899', tip: 'Studio Son' },
+            ] as const).map(({ key, Icon, color, tip }) => (
+              <button key={key} onClick={() => setDestination(key)} title={tip}
+                className={`h-9 w-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all ${
+                  destination === key ? 'ring-2 ring-white/40 scale-105' : 'opacity-60 hover:opacity-100'
+                }`}
+                style={{ backgroundColor: `${color}20`, color }}
+              >
+                <Icon size={16} fill="currentColor" strokeWidth={1.5} />
+              </button>
+            ))}
+            <button onClick={handleExport} disabled={isExporting || cards.length === 0}
               className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 h-11 px-4 font-semibold text-white hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-500/25 transition-all"
             >
               {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}

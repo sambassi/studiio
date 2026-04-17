@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 
-// Accept all Edge TTS neural voices (including Multilingual variants)
+export const maxDuration = 60;
+
 const VALID_VOICE_PATTERN = /^[a-z]{2}-[A-Z]{2}-\w+Neural$/;
 
 // Timeout for TTS synthesis (45 seconds — Vercel Pro allows up to 300s)
@@ -127,9 +128,6 @@ async function synthesizeTTS(
     try { tts.close(); } catch { /* ignore close errors */ }
   }
 }
-
-// Increase function timeout for Vercel
-export const maxDuration = 30;
 
 // GET /api/tts/edge - List available voices
 export async function GET() {
