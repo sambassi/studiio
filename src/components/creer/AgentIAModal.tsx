@@ -137,8 +137,8 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
         } catch {}
       }
 
-      setAiStage('Génération du montage IA...');
-      setAiProgress(80);
+      setAiStage('Préparation du montage IA...');
+      setAiProgress(70);
       const theme = aiObjectives[0] || 'motivation';
       const res = await fetch('/api/agent/montage', {
         method: 'POST',
@@ -153,13 +153,63 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
         }),
       });
       const data = await res.json();
-      if (data.success) {
-        setAiStage('Montage IA créé !');
+      if (!data.success) {
+        setAiStage(`Erreur: ${data.error}`);
+        return;
+      }
+
+      // Compose the actual video client-side using the montage spec
+      const spec = data.montageSpec;
+      setAiStage('Composition vidéo en cours...');
+      setAiProgress(80);
+      try {
+        const { url: renderedUrl } = await composeAndUpload({
+          width: 1080,
+          height: 1920,
+          fps: 30,
+          title: spec.title || 'MONTAGE IA',
+          subtitle: spec.subtitle || undefined,
+          salesPhrase: spec.cta || 'DÉCOUVRIR',
+          posterUrl: null,
+          videoUrl: rushUrls[0],
+          logoUrl: null,
+          musicUrl: musicUrl || null,
+          voiceUrl: null,
+          introDuration: 3,
+          cardsDuration: 0,
+          videoDuration: montageDuration - 6,
+          ctaDuration: 3,
+          accentColor: branding.accentColor || '#D91CD2',
+          ctaText: spec.cta || 'DÉCOUVRIR',
+          ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
+          watermarkText: branding.watermarkText || undefined,
+          onProgress: (pct, stage) => {
+            setAiProgress(80 + Math.round(pct * 0.2));
+            setAiStage(`Rendu: ${stage}`);
+          },
+        });
+
+        if (renderedUrl && data.postId) {
+          await fetch('/api/posts', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: data.postId,
+              media_url: renderedUrl,
+              metadata: { ...data.montageSpec, renderedVideoUrl: renderedUrl, videoUrl: renderedUrl },
+            }),
+          }).catch(() => {});
+        }
+
+        setAiStage('Montage IA terminé !');
         setAiProgress(100);
         await new Promise((r) => setTimeout(r, 800));
         if (onAfterGenerate) await onAfterGenerate();
-      } else {
-        setAiStage(`Erreur: ${data.error}`);
+      } catch (composeErr) {
+        console.error('[AgentIA Montage] Compose error:', composeErr);
+        setAiStage('Post créé (brouillon) — rendu échoué');
+        await new Promise((r) => setTimeout(r, 2000));
+        if (onAfterGenerate) await onAfterGenerate();
       }
     } catch (err) {
       console.error('[AgentIA Montage] Error:', err);
