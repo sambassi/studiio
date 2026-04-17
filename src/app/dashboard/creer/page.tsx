@@ -1909,7 +1909,7 @@ export default function InfographicPage() {
           let renderedThumbnailUrl: string | null = null;
           let renderedComposerVersion: string | null = null;
           try {
-            console.log('[Export→Calendar] Starting montage composition...', { batchIdx: b, posterUrl, rushUrl, isReel, format, title: bTitle, cardsCount: bCards.length });
+            console.log('[Export→Calendar] Starting montage composition...', { batchIdx: b, posterUrl, rushUrl, isReel, format, title: bTitle, cardsCount: bCards.length, musicUrl: audioMusicUrl?.substring(0, 60) || 'NONE', voiceUrl: audioVoiceUrl?.substring(0, 60) || 'NONE', musicVolume: audioMusicVolume, voiceVolume: audioVoiceVolume });
             setExportProgress(Math.round(((b + 0.3) / total) * 100));
             const { url: composedUrl, thumbnailUrl: composedThumbUrl, composerVersion: composedVersion } = await composeAndUpload({
               width: isReel ? 1080 : 1920,
@@ -2172,6 +2172,10 @@ export default function InfographicPage() {
             videoUrl: exportedSequences.video ? rushUrl : undefined,
             rushTransform: rushList[0]?.transform,
             logoUrl: logoImage || null,
+            musicUrl: audioMusicUrl || undefined,
+            voiceUrl: audioVoiceUrl || undefined,
+            musicVolume: audioMusicVolume,
+            voiceVolume: audioVoiceVolume,
             introDuration: exportedSequences.titre ? introDuration : 0,
             cardsDuration: cards.length > 0 && exportedSequences.cartes ? cardsDuration : 0,
             videoDuration: rushUrl && exportedSequences.video ? videoDuration : 0,
