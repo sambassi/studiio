@@ -77,20 +77,36 @@ export async function POST(req: NextRequest) {
     }
 
     // Bundle Remotion (once, reused for all iterations)
+    const entryPoint = path.join(process.cwd(), 'remotion/index.tsx');
+    log('entry point path: ' + entryPoint);
+
+    const existsSync = (await import('fs')).existsSync;
+    if (!existsSync(entryPoint)) {
+      const remotionDir = path.join(process.cwd(), 'remotion');
+      let dirContents = '(dir not found)';
+      try { dirContents = (await fs.readdir(remotionDir)).join(', '); } catch {}
+      log(`CRITICAL: remotion/index.tsx not found at ${entryPoint}. remotion/ contents: ${dirContents}. cwd: ${process.cwd()}`);
+      return NextResponse.json({
+        success: false,
+        error: `Remotion entry point not found: ${entryPoint}`,
+        detail: `remotion/ contents: ${dirContents}`,
+      }, { status: 503 });
+    }
+
     log('bundling Remotion...');
     let bundled: string;
     try {
       const { bundle } = await import('@remotion/bundler');
       bundled = await bundle({
-        entryPoint: path.join(process.cwd(), 'remotion/index.tsx'),
+        entryPoint,
         outDir: '/tmp/remotion-bundle-' + Date.now(),
       });
       log('bundle done: ' + bundled);
     } catch (bundleErr: any) {
-      log('bundle FAILED: ' + bundleErr.message);
+      console.error('[montage] bundle error FULL:', bundleErr, bundleErr?.stack, bundleErr?.message);
       return NextResponse.json({
-        error: 'Remotion bundle failed. This requires production environment with Chromium.',
-        detail: bundleErr.message,
+        success: false,
+        error: `Remotion: ${bundleErr?.message || String(bundleErr)}`,
       }, { status: 503 });
     }
 
