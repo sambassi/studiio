@@ -142,14 +142,24 @@ export default function PricingAdminPage() {
                     className="w-full rounded bg-gray-700 border border-gray-600 px-2 py-1.5 text-sm text-white" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-gray-500 uppercase">Prix mensuel (centimes CHF)</label>
-                  <input type="number" value={plan.price_cents} onChange={(e) => setPlans(plans.map(p => p.key === plan.key ? { ...p, price_cents: Number(e.target.value) } : p))}
+                  <label className="text-[10px] text-gray-500 uppercase">Prix mensuel (CHF)</label>
+                  <input type="number" step="0.01" min="0" value={plan.price_cents / 100}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value) || 0;
+                      setPlans(plans.map(p => p.key === plan.key ? { ...p, price_cents: Math.round(val * 100) } : p));
+                    }}
                     className="w-full rounded bg-gray-700 border border-gray-600 px-2 py-1.5 text-sm text-white" />
+                  <p className="text-[9px] text-gray-500 mt-0.5">= {plan.price_cents} centimes</p>
                 </div>
                 <div>
-                  <label className="text-[10px] text-gray-500 uppercase">Prix annuel (centimes CHF/mois)</label>
-                  <input type="number" value={plan.yearly_price_cents} onChange={(e) => setPlans(plans.map(p => p.key === plan.key ? { ...p, yearly_price_cents: Number(e.target.value) } : p))}
+                  <label className="text-[10px] text-gray-500 uppercase">Prix annuel (CHF/mois)</label>
+                  <input type="number" step="0.01" min="0" value={plan.yearly_price_cents / 100}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value) || 0;
+                      setPlans(plans.map(p => p.key === plan.key ? { ...p, yearly_price_cents: Math.round(val * 100) } : p));
+                    }}
                     className="w-full rounded bg-gray-700 border border-gray-600 px-2 py-1.5 text-sm text-white" />
+                  <p className="text-[9px] text-gray-500 mt-0.5">= {plan.yearly_price_cents} centimes</p>
                 </div>
                 <div>
                   <label className="text-[10px] text-gray-500 uppercase">Crédits/mois</label>
@@ -200,9 +210,14 @@ export default function PricingAdminPage() {
                     className="w-full rounded bg-gray-700 border border-gray-600 px-2 py-1.5 text-sm text-white" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-gray-500 uppercase">Prix (centimes CHF)</label>
-                  <input type="number" value={pack.price_cents} onChange={(e) => setPacks(packs.map(p => p.key === pack.key ? { ...p, price_cents: Number(e.target.value) } : p))}
+                  <label className="text-[10px] text-gray-500 uppercase">Prix (CHF)</label>
+                  <input type="number" step="0.01" min="0" value={pack.price_cents / 100}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value) || 0;
+                      setPacks(packs.map(p => p.key === pack.key ? { ...p, price_cents: Math.round(val * 100) } : p));
+                    }}
                     className="w-full rounded bg-gray-700 border border-gray-600 px-2 py-1.5 text-sm text-white" />
+                  <p className="text-[9px] text-gray-500 mt-0.5">= {pack.price_cents} centimes</p>
                 </div>
               </div>
               <button onClick={() => savePack(pack)} disabled={saving === pack.key}

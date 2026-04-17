@@ -91,6 +91,8 @@ export default function LandingPage() {
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
   const [cms, setCms] = useState<DynamicContent>({});
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [apiPlans, setApiPlans] = useState<Record<string, { price_cents: number; yearly_price_cents: number; credits: number; features: string[]; name: string }>>({});
+  const [apiPacks, setApiPacks] = useState<Array<{ key: string; amount: number; price_cents: number }>>([]);
 
   // Fetch CMS content from admin panel (non-blocking, merges with defaults)
   useEffect(() => {
@@ -99,6 +101,36 @@ export default function LandingPage() {
       .then(data => { if (data?.content) setCms(data.content); })
       .catch(() => {}); // Silently fail — defaults will be used
   }, []);
+
+  // Fetch live pricing from DB — overrides hardcoded translation values
+  useEffect(() => {
+    fetch('/api/pricing', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => {
+        if (Array.isArray(d?.plans)) {
+          const map: typeof apiPlans = {};
+          for (const p of d.plans) {
+            const features = typeof p.features === 'string' ? (() => { try { return JSON.parse(p.features); } catch { return []; } })() : (p.features || []);
+            map[p.key] = {
+              price_cents: p.price_cents,
+              yearly_price_cents: p.yearly_price_cents,
+              credits: p.credits,
+              features,
+              name: p.name,
+            };
+          }
+          setApiPlans(map);
+        }
+        if (Array.isArray(d?.packs)) setApiPacks(d.packs);
+      })
+      .catch(() => {}); // Silently fail — translation fallbacks will be used
+  }, []);
+
+  const centsToChf = (cents: number): string => {
+    if (!cents) return '0';
+    const francs = cents / 100;
+    return francs % 1 === 0 ? String(francs) : francs.toFixed(2).replace('.', ',');
+  };
 
   // Merge helpers: CMS overrides defaults
   const hero = cms.hero || {};
@@ -565,7 +597,13 @@ export default function LandingPage() {
               popular: PLAN_DEFAULTS[i].popular,
             }))).map((p, i) => {
               const popular = p.popular ?? PLAN_DEFAULTS[i]?.popular ?? false;
-              const credits = p.credits || PLAN_DEFAULTS[i]?.credits || 300;
+              const planKey = PLAN_KEYS[i];
+              const apiPlan = apiPlans[planKey];
+              const credits = apiPlan?.credits ?? p.credits ?? PLAN_DEFAULTS[i]?.credits ?? 300;
+              const priceLabel = apiPlan
+                ? (billingPeriod === 'yearly' ? centsToChf(apiPlan.yearly_price_cents) : centsToChf(apiPlan.price_cents))
+                : (billingPeriod === 'yearly' ? p.yearlyPrice : p.price);
+              const features = (apiPlan?.features?.length ? apiPlan.features : p.features) || [];
               const planSlug = p.name.toLowerCase().replace(/\s+/g, '-');
               return (
                 <div key={i} className={`relative bg-gray-900/50 border rounded-2xl p-8 transition-all hover:shadow-lg hover:shadow-violet-500/5 ${
@@ -580,7 +618,7 @@ export default function LandingPage() {
                   <p className="text-sm text-gray-500 mb-5">{p.desc || ''}</p>
                   <div className="mb-6">
                     <span className="text-4xl font-black">
-                      {billingPeriod === 'yearly' ? p.yearlyPrice : p.price}€
+                      {priceLabel} CHF
                     </span>
                     <span className="text-gray-500 text-sm">{tc('perMonth')}</span>
                     {billingPeriod === 'yearly' && (
@@ -589,7 +627,7 @@ export default function LandingPage() {
                   </div>
                   <div className="text-sm text-violet-400 font-bold mb-5">{credits.toLocaleString()} {t('pricing.creditsPerMonth')}</div>
                   <ul className="space-y-3 mb-8">
-                    {(p.features || []).map((f, j) => (
+                    {features.map((f: string, j: number) => (
                       <li key={j} className="flex items-start gap-3 text-sm text-gray-300">
                         <Check size={16} className="text-violet-400 shrink-0 mt-0.5" />
                         {f}
@@ -615,14 +653,17 @@ export default function LandingPage() {
           <div className="mt-12 text-center">
             <p className="text-gray-500 text-sm mb-4">{t('pricing.extraCredits')}</p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center flex-wrap">
-              {[
-                { credits: 50, price: "9,99" },
-                { credits: 150, price: "19,99" },
-                { credits: 500, price: "49,99" },
-              ].map((pack, i) => (
+              {(apiPacks.length > 0
+                ? apiPacks.map(p => ({ credits: p.amount, price: centsToChf(p.price_cents) }))
+                : [
+                    { credits: 50, price: "9,99" },
+                    { credits: 150, price: "19,99" },
+                    { credits: 500, price: "49,99" },
+                  ]
+              ).map((pack, i) => (
                 <div key={i} className="bg-gray-900/50 border border-gray-800 rounded-xl px-6 py-3 text-sm hover:border-violet-500/30 transition cursor-pointer sm:w-auto w-full sm:inline-block">
                   <span className="font-bold text-white">{pack.credits} {tc('credits')}</span>
-                  <span className="text-gray-500 ml-2">— {pack.price}€</span>
+                  <span className="text-gray-500 ml-2">— {pack.price} CHF</span>
                 </div>
               ))}
             </div>
