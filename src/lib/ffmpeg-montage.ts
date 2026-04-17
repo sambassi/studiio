@@ -28,7 +28,7 @@ async function getFFmpeg(onLog: (msg: string) => void): Promise<FFmpeg> {
   if (ffmpegInstance) return ffmpegInstance;
   const ffmpeg = new FFmpeg();
   ffmpeg.on('log', ({ message }) => onLog(message));
-  const baseURL = 'https://unpkg.com/@ffmpeg/[email protected]/dist/umd';
+  const baseURL = '/ffmpeg';
   await ffmpeg.load({
     coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
     wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
