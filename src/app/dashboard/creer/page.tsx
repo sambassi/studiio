@@ -41,6 +41,7 @@ import {
   Calendar,
   Download,
   Layers,
+  Palette,
 } from "lucide-react";
 import { PlatformIcon, type PlatformKey } from "@/components/ui/PlatformIcon";
 import {
@@ -2342,6 +2343,17 @@ export default function InfographicPage() {
       {/* Top horizontal toolbar — replaces the former vertical rail   */}
       {/* ═══════════════════════════════════════════════════════════ */}
       <div className="hidden lg:flex items-center justify-center gap-1 bg-gray-950 border-b border-gray-800 px-4 py-2 flex-shrink-0">
+        <button
+          onClick={() => { setActiveRailTab(null); setStep(0); }}
+          className={`group flex items-center gap-2 rounded-lg px-3 py-2 transition-all ${
+            !activeRailTab ? 'bg-gray-800 ring-1 ring-orange-500/40' : 'hover:bg-gray-900'
+          }`}
+          title="Thème"
+        >
+          <IconBadge Icon={Palette} color="orange" active={!activeRailTab} size={28} />
+          <span className="text-xs font-medium text-gray-300">Thème</span>
+        </button>
+        <div className="mx-1 h-8 w-px bg-gray-800" />
         {railItems.map(({ id, label, Icon, color }) => (
           <button
             key={id}
