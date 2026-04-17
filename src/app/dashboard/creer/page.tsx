@@ -61,6 +61,7 @@ import { MediaLibrary } from "@/components/shared/MediaLibrary";
 import { ExportBar } from "@/components/shared/ExportBar";
 import { BrandingIndicator } from "@/components/shared/BrandingIndicator";
 import { useBranding } from "@/lib/hooks/useBranding";
+import { getExpiresAt, formatRemaining, getRetentionColor } from "@/lib/storage/retention";
 
 // ── Unified icon badge style — filled Lucide icon + colored tint container ──
 // Each color maps to literal Tailwind classes so JIT keeps them in the build.
@@ -3563,8 +3564,18 @@ export default function InfographicPage() {
                           <Crop size={12} />
                         </button>
                       )}
-                      <div className="absolute bottom-0 left-0 right-0 truncate bg-black/70 px-1 py-0.5 text-[10px] text-white">
-                        {rush.name}
+                      <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-1 py-0.5">
+                        <div className="truncate text-[10px] text-white">{rush.name}</div>
+                        {rush.url && (() => {
+                          const expires = getExpiresAt(new Date(), 'video');
+                          const remaining = expires.getTime() - Date.now();
+                          const color = getRetentionColor(remaining);
+                          return (
+                            <div className={`text-[9px] ${color} flex items-center gap-0.5`}>
+                              <span>⏰</span> {formatRemaining(remaining)}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   ))}

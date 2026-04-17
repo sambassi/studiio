@@ -73,6 +73,14 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Retention policy note */}
+      <div className="flex items-center gap-2 rounded-lg bg-gray-800/50 border border-gray-700/50 px-4 py-2.5 mt-2">
+        <span className="text-gray-500 text-xs">ℹ️</span>
+        <p className="text-[11px] text-gray-500">
+          Rétention médias : vidéos 24h · audio/images 7j · préservés si post programmé
+        </p>
+      </div>
     </div>
   );
 }

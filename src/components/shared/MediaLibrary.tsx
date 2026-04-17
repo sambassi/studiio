@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Upload, Loader2, Film, Music, X } from 'lucide-react';
+import { Search, Upload, Loader2, Film, Music, X, Clock, ShieldCheck } from 'lucide-react';
+import { getExpiresAt, formatRemaining, getRetentionColor, getRetentionBgColor } from '@/lib/storage/retention';
 
 type MediaType = 'image' | 'video' | 'audio' | 'all';
 
@@ -12,6 +13,7 @@ interface MediaFile {
   type: 'image' | 'video' | 'audio';
   size: number;
   createdAt: string;
+  preserved?: boolean;
 }
 
 interface MediaLibraryProps {
@@ -33,6 +35,34 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function ExpiryBadge({ file }: { file: MediaFile }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (file.preserved) {
+    return (
+      <span className="inline-flex items-center gap-0.5 rounded-full bg-green-500/15 border border-green-500/30 px-1.5 py-0.5 text-[9px] font-medium text-green-400">
+        <ShieldCheck size={9} /> Préservé
+      </span>
+    );
+  }
+
+  const created = new Date(file.createdAt);
+  const expires = getExpiresAt(created, file.type);
+  const remaining = expires.getTime() - now;
+  const color = getRetentionColor(remaining);
+  const bgColor = getRetentionBgColor(remaining);
+
+  return (
+    <span className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[9px] font-medium ${color} ${bgColor}`}>
+      <Clock size={9} /> {remaining > 0 ? formatRemaining(remaining) : 'Expiré'}
+    </span>
+  );
 }
 
 export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibraryProps) {
@@ -120,6 +150,14 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibr
           </button>
         </div>
 
+        {/* Retention policy banner */}
+        <div className="mx-5 mt-3 flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2">
+          <Clock size={14} className="text-amber-400 mt-0.5 flex-shrink-0" />
+          <p className="text-[11px] text-amber-300/90 leading-relaxed">
+            Vidéos conservées <strong>24h</strong> · Audio et images conservés <strong>7 jours</strong> · Fichiers liés à un post programmé : conservés jusqu'à publication
+          </p>
+        </div>
+
         {/* Toolbar */}
         <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-800">
           <div className="relative flex-1">
@@ -186,7 +224,11 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibr
                       <Music size={28} className="text-cyan-400" />
                     </div>
                   )}
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {/* Expiry badge */}
+                  <div className="absolute top-1 right-1">
+                    <ExpiryBadge file={file} />
+                  </div>
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2">
                     <p className="text-[10px] text-white truncate">{file.name}</p>
                     {file.size > 0 && <p className="text-[9px] text-gray-400">{formatSize(file.size)}</p>}
                   </div>
