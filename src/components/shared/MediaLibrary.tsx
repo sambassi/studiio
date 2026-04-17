@@ -72,6 +72,35 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibr
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<MediaType>(mediaType === 'all' ? 'all' : mediaType);
   const [uploading, setUploading] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
+
+  const toggleSelect = (url: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(url)) next.delete(url);
+      else next.add(url);
+      return next;
+    });
+  };
+
+  const deleteSelected = async () => {
+    if (!window.confirm(`Supprimer ${selected.size} fichier(s) ?`)) return;
+    setDeleting(true);
+    const toDelete = files.filter((f) => selected.has(f.url));
+    await Promise.allSettled(
+      toDelete.map((f) =>
+        fetch('/api/media/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bucket: f.bucket, path: f.path }),
+        }),
+      ),
+    );
+    setFiles((prev) => prev.filter((f) => !selected.has(f.url)));
+    setSelected(new Set());
+    setDeleting(false);
+  };
 
   const fetchFiles = useCallback(async () => {
     setLoading(true);
@@ -160,7 +189,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibr
         </div>
 
         {/* Toolbar */}
-        <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-800">
+        <div className="flex items-center gap-2 px-5 py-3 border-b border-gray-800">
           <div className="relative flex-1">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
             <input
@@ -188,6 +217,17 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibr
               ))}
             </div>
           )}
+          {filtered.length > 0 && (
+            <button
+              onClick={() => {
+                if (selected.size === filtered.length) setSelected(new Set());
+                else setSelected(new Set(filtered.map((f) => f.url)));
+              }}
+              className="rounded-lg px-2 py-1.5 text-[10px] font-medium bg-gray-800 text-gray-400 hover:text-white transition whitespace-nowrap"
+            >
+              {selected.size === filtered.length ? 'Désélectionner' : 'Tout sélectionner'}
+            </button>
+          )}
           <label className={`flex items-center gap-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 px-3 py-2 text-xs font-semibold text-white cursor-pointer transition ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
             {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
             Uploader
@@ -208,11 +248,19 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibr
             </div>
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-              {filtered.map((file, i) => (
+              {filtered.map((file, i) => {
+                const isSelected = selected.has(file.url);
+                return (
                 <div
                   key={`${file.url}-${i}`}
-                  className="group relative rounded-xl overflow-hidden border border-gray-700 bg-gray-800 hover:border-purple-500 transition-all aspect-square cursor-pointer"
-                  onClick={() => { onSelect(file.url, file.name); onClose(); }}
+                  className={`group relative rounded-xl overflow-hidden border-2 bg-gray-800 transition-all aspect-square cursor-pointer ${
+                    isSelected ? 'border-purple-500 ring-1 ring-purple-500/30' : 'border-gray-700 hover:border-purple-500'
+                  }`}
+                  onClick={(e) => {
+                    if (selected.size > 0) { e.stopPropagation(); toggleSelect(file.url); return; }
+                    onSelect(file.url, file.name); onClose();
+                  }}
+                  onContextMenu={(e) => { e.preventDefault(); toggleSelect(file.url); }}
                 >
                   {file.type === 'image' ? (
                     <img src={file.url} alt={file.name} loading="lazy" className="absolute inset-0 h-full w-full rounded-lg object-cover" />
@@ -252,15 +300,42 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibr
                   <div className="absolute top-1 right-1 z-10">
                     <ExpiryBadge file={file} />
                   </div>
-                  <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/80 to-transparent p-2">
+                  {/* Selection checkbox */}
+                  {(selected.size > 0 || isSelected) && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); toggleSelect(file.url); }}
+                      className={`absolute bottom-1 left-1 z-10 h-5 w-5 rounded border-2 flex items-center justify-center text-[10px] transition ${
+                        isSelected ? 'bg-purple-600 border-purple-600 text-white' : 'bg-black/40 border-gray-400 text-transparent'
+                      }`}
+                    >
+                      {isSelected && '✓'}
+                    </button>
+                  )}
+                  <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/80 to-transparent p-2 pl-7">
                     <p className="text-[10px] text-white truncate">{file.name}</p>
                     {file.size > 0 && <p className="text-[9px] text-gray-400">{formatSize(file.size)}</p>}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
+
+        {/* Bulk action bar */}
+        {selected.size > 0 && (
+          <div className="flex items-center justify-between px-5 py-3 border-t border-gray-800 bg-gray-900/95">
+            <span className="text-xs text-gray-300">{selected.size} fichier(s) sélectionné(s)</span>
+            <button
+              onClick={deleteSelected}
+              disabled={deleting}
+              className="flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 transition"
+            >
+              {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+              Supprimer
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

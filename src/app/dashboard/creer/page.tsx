@@ -407,6 +407,8 @@ export default function InfographicPage() {
   const [format, setFormat] = useState<Format>("9:16");
   const [batchCount, setBatchCount] = useState(1);
   const [characterImage, setCharacterImage] = useState<string | null>(null);
+  const [characterScale, setCharacterScale] = useState(1);
+  const [characterPosition, setCharacterPosition] = useState({ x: 85, y: 75 });
 
   // ── Logo Upload ────────────────────────────────────────────
   const [logoImage, setLogoImage] = useState<string | null>(null);
@@ -582,6 +584,8 @@ export default function InfographicPage() {
           ]);
         }
         if (cfg.characterImage) setCharacterImage(cfg.characterImage);
+        if (cfg.characterScale !== undefined) setCharacterScale(cfg.characterScale);
+        if (cfg.characterPosition) setCharacterPosition(cfg.characterPosition);
         // Typography
         if (cfg.titleLetterSpacing !== undefined)
           setTitleLetterSpacing(cfg.titleLetterSpacing);
@@ -881,12 +885,13 @@ export default function InfographicPage() {
           siteText, siteTextPositions, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
           showCenterGuides,
           cardPositionMode,
+          characterScale, characterPosition,
         }),
       );
     } catch { /* ignore */ }
   }, [
     configLoaded, colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration, exportedSequences,
-    rushUrl, rushFileName, rushList, characterImage,
+    rushUrl, rushFileName, rushList, characterImage, characterScale, characterPosition,
     titleLetterSpacing, titleLineHeight, titleBold, titleItalic,
     ctaLetterSpacing, ctaLineHeight, ctaBold, ctaItalic,
     overlayLetterSpacing, overlayLineHeight, overlayBold, overlayItalic, cardsLetterSpacing,
@@ -903,12 +908,12 @@ export default function InfographicPage() {
     siteText, siteTextPositions, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
     showCenterGuides,
     cardPositionMode,
+    characterScale, characterPosition,
   ]);
 
   // (Typography states declared earlier for localStorage compatibility)
 
-  // Settings panel visibility
-  const [showSettings, setShowSettings] = useState(false);
+  // (Settings panel removed — controls live in the Canva sidebar rail)
 
   // Floating panels — which element panel is open
   const [activePanel, setActivePanel] = useState<
@@ -2224,7 +2229,7 @@ export default function InfographicPage() {
     else if (id === 'text') setStep(0); // Contenu
     else if (id === 'media') setStep(2); // Style (rush)
     else if (id === 'elements') setStep(1); // Design (logo etc.)
-    else if (id === 'settings') setShowSettings(true);
+    // settings tab just opens its rail panel (no separate overlay)
   };
 
   return (
@@ -2599,9 +2604,6 @@ export default function InfographicPage() {
 
             {activeRailTab === 'settings' && (
               <>
-                <p className="text-xs text-gray-400">
-                  Le panneau complet des paramètres est disponible à gauche (icône engrenage).
-                </p>
                 <div>
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
                     Format
@@ -2647,6 +2649,42 @@ export default function InfographicPage() {
                     Afficher les repères de centre
                   </label>
                 </div>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
+                    Filtre visuel
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {FILTER_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.label}
+                        onClick={() => setSelectedFilter(opt.label)}
+                        className={`px-2 py-1 rounded text-[9px] font-medium transition-all ${
+                          selectedFilter === opt.label
+                            ? 'bg-purple-600 text-white'
+                            : 'bg-gray-800 text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setTitlePos({ x: 50, y: 10 });
+                    setLogoPositions({ titre: { x: 50, y: 85 }, cartes: { x: 50, y: 85 }, video: { x: 50, y: 85 }, cta: { x: 50, y: 85 } });
+                    setWatermarkPos({ x: 50, y: 97 });
+                    setCardsPos({ x: 50, y: 50 });
+                    setTitleSize(100);
+                    setCardsSize(95);
+                    setWatermarkSize(80);
+                    setCharacterPosition({ x: 85, y: 75 });
+                    setCharacterScale(1);
+                  }}
+                  className="w-full rounded bg-gray-800 hover:bg-gray-700 px-3 py-2 text-xs text-gray-300"
+                >
+                  ↺ Réinitialiser les positions
+                </button>
               </>
             )}
           </div>
@@ -2655,210 +2693,11 @@ export default function InfographicPage() {
 
       {/* Left Panel - Form */}
       <div className="w-full lg:w-1/2 overflow-y-auto border-r-0 lg:border-r border-gray-800 p-3 sm:p-6 pb-24 lg:pb-6 lg:max-h-[calc(100vh-4rem)]">
-        {/* Header */}
-        <div className="mb-6 flex flex-col gap-3">
-          <h1 className="text-lg sm:text-2xl font-bold">
-            Créer une Infographie
-          </h1>
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            {["Contenu", "Design", "Style", "Export"].map((label, i) => (
-              <button
-                key={label}
-                onClick={() => setStep(i)}
-                className={`flex items-center gap-1 rounded-full px-2.5 sm:px-3 py-1.5 text-[10px] sm:text-xs font-medium transition-all whitespace-nowrap ${
-                  step === i
-                    ? "bg-purple-600 text-white"
-                    : "bg-gray-800 text-gray-400 hover:text-white"
-                }`}
-              >
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-black/30 text-[10px]">
-                  {i + 1}
-                </span>
-                {label}
-              </button>
-            ))}
-          </div>
-          {/* Paramètres gear button */}
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className={`flex items-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-medium transition-all ${
-              showSettings
-                ? "bg-purple-600 text-white"
-                : "bg-gray-800 text-gray-400 hover:text-white"
-            }`}
-            title="Paramètres Globaux"
-          >
-            <span>⚙️</span>
-          </button>
-        </div>
-
-        {/* ── Branding indicator — links to /settings?tab=branding ── */}
-        <div className="mb-3">
+        {/* Header — minimal, controls live in the Canva sidebar */}
+        <div className="mb-4 flex items-center justify-between">
+          <h1 className="text-lg sm:text-2xl font-bold">Créer</h1>
           <BrandingIndicator branding={branding} />
         </div>
-
-        {/* ── Quick Settings Row (Color + Format) — shown on ALL steps ── */}
-        <div className="rounded-lg bg-gray-800/50 px-3 py-2 space-y-2 mb-4">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-gray-500 uppercase tracking-wider mr-1">
-              Couleur
-            </span>
-            {COLOR_THEMES.map((ct) => (
-              <button
-                key={ct.id}
-                onClick={() => {
-                  setColorTheme(ct.id);
-                  setNoColorBg(false);
-                }}
-                className={`h-6 w-6 rounded-full bg-gradient-to-br ${ct.bg} transition-all flex-shrink-0 ${
-                  colorTheme === ct.id && !noColorBg
-                    ? "ring-2 ring-white scale-110"
-                    : "opacity-60 hover:opacity-100"
-                }`}
-                title={ct.name}
-              />
-            ))}
-            <button
-              onClick={() => {
-                setColorTheme("custom");
-                setNoColorBg(false);
-              }}
-              className={`h-6 w-6 rounded-full transition-all flex-shrink-0 ${
-                colorTheme === "custom" && !noColorBg
-                  ? "ring-2 ring-white scale-110"
-                  : "opacity-60 hover:opacity-100"
-              }`}
-              style={{
-                background: `conic-gradient(#ef4444, #f59e0b, #10b981, #3b82f6, #a855f7, #ec4899, #ef4444)`,
-              }}
-              title="Personnalisé"
-            />
-            {/* Sans couleur button */}
-            <button
-              onClick={() => setNoColorBg(!noColorBg)}
-              className={`h-6 w-6 rounded-full border-2 transition-all flex-shrink-0 ${
-                noColorBg
-                  ? "ring-2 ring-white scale-110 border-gray-400 bg-gray-900"
-                  : "border-gray-600 bg-gray-800 opacity-60 hover:opacity-100"
-              }`}
-              title="Sans couleur (photo uniquement)"
-            >
-              {noColorBg && (
-                <span className="block w-full h-full rounded-full relative">
-                  <span className="absolute inset-0 flex items-center justify-center text-[8px] text-gray-400">
-                    ∅
-                  </span>
-                </span>
-              )}
-            </button>
-            {colorTheme === "custom" && !noColorBg && (
-              <input
-                type="color"
-                value={customAccent}
-                onChange={(e) => setCustomAccent(e.target.value)}
-                className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent p-0"
-              />
-            )}
-          </div>
-          {/* Per-sequence color control — shown when noColorBg is on */}
-          {noColorBg && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[9px] text-gray-500">
-                Sans couleur sur :
-              </span>
-              {["titre", "cartes", "video", "cta"].map((seq) => (
-                <label
-                  key={seq}
-                  className="flex items-center gap-1 cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    checked={noColorSequences.includes(seq)}
-                    onChange={(e) => {
-                      if (e.target.checked)
-                        setNoColorSequences([...noColorSequences, seq]);
-                      else
-                        setNoColorSequences(
-                          noColorSequences.filter((s) => s !== seq),
-                        );
-                    }}
-                    className="h-3 w-3 rounded border-gray-600 accent-purple-500"
-                  />
-                  <span className="text-[10px] text-gray-400 capitalize">
-                    {seq}
-                  </span>
-                </label>
-              ))}
-              <button
-                onClick={() =>
-                  setNoColorSequences(["titre", "cartes", "video", "cta"])
-                }
-                className="text-[9px] text-purple-400 hover:text-purple-300 ml-1"
-              >
-                Toutes
-              </button>
-              <button
-                onClick={() => setNoColorSequences([])}
-                className="text-[9px] text-gray-500 hover:text-gray-400"
-              >
-                Aucune
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* ── Settings Panel (overlaid when showSettings is true) — visible on ALL steps ── */}
-        {/* Font, Card Style, Logo et Format sont dans la sidebar Canva (Modèles / Éléments / Paramètres). */}
-        {/* Ce panneau conserve uniquement les contrôles uniques : Filtre visuel + Réinitialiser les positions. */}
-        {showSettings && (
-          <div className="rounded-lg bg-gray-800/80 border border-purple-500/30 p-4 space-y-4">
-            {/* Filter Selector */}
-            <div>
-              <label className="mb-2 block text-xs font-medium text-gray-400 uppercase tracking-wider">
-                Filtre visuel
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {FILTER_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.label}
-                    onClick={() => setSelectedFilter(opt.label)}
-                    className={`px-2 py-1 rounded text-[9px] font-medium transition-all ${
-                      selectedFilter === opt.label
-                        ? "bg-purple-600 text-white"
-                        : "bg-gray-700 text-gray-400 hover:text-white"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Reset Positions Button */}
-            <button
-              onClick={() => {
-                setTitlePos({ x: 50, y: 10 });
-                setLogoPositions({ titre: { x: 50, y: 85 }, cartes: { x: 50, y: 85 }, video: { x: 50, y: 85 }, cta: { x: 50, y: 85 } });
-                setWatermarkPos({ x: 50, y: 97 });
-                setCardsPos({ x: 50, y: 50 });
-                setTitleSize(100);
-                setCardsSize(95);
-                setWatermarkSize(80);
-              }}
-              className="w-full rounded-lg border border-gray-700 bg-gray-700 px-3 py-2 text-xs font-medium text-gray-300 hover:bg-gray-600"
-            >
-              ↺ Réinitialiser les positions
-            </button>
-
-            {/* Close Settings Button */}
-            <button
-              onClick={() => setShowSettings(false)}
-              className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs font-medium text-gray-300 hover:bg-gray-700"
-            >
-              Fermer les paramètres
-            </button>
-          </div>
-        )}
 
         {/* ═══════════════════════════════════════════════════════ */}
         {/* STEP 0: Content Theme & Generation */}
@@ -3285,32 +3124,11 @@ export default function InfographicPage() {
         {/* STEP 1: Design (Simplified — now shows instructions + navigation) */}
         {/* ═══════════════════════════════════════════════════════ */}
         {step === 1 && (
-          <div className="space-y-4">
-            {/* ── Main Instruction Text ── */}
-            <div className="rounded-lg bg-purple-900/20 border border-purple-500/30 px-4 py-3">
-              <p className="text-sm text-purple-300 font-medium">
-                Double-cliquez sur les éléments dans l'aperçu pour les modifier
-                (couleurs, texte, taille...)
-              </p>
-            </div>
-
-            {/* Navigation */}
-            <div className="flex gap-3">
-              <button
-                onClick={() => setStep(0)}
-                className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-gray-700 bg-gray-800 py-2.5 text-sm font-medium text-gray-300 hover:bg-gray-700"
-              >
-                <ChevronLeft size={16} />
-                Contenu
-              </button>
-              <button
-                onClick={() => setStep(2)}
-                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-purple-600 py-2.5 text-sm font-bold text-white hover:bg-purple-700"
-              >
-                Style
-                <ChevronRight size={16} />
-              </button>
-            </div>
+          <div className="flex items-center justify-center py-12 text-center">
+            <p className="text-sm text-gray-500">
+              Utilisez la sidebar à gauche pour modifier les couleurs, polices et
+              éléments. Double-cliquez sur un élément dans l'aperçu pour l'éditer.
+            </p>
           </div>
         )}
 
@@ -3464,18 +3282,50 @@ export default function InfographicPage() {
               <label className="mb-2 block text-sm font-medium text-gray-300">
                 Image personnage (optionnel)
               </label>
-              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-700 bg-gray-800 px-4 py-4 hover:border-purple-500 hover:bg-gray-700">
-                <Upload size={18} />
-                <span className="text-sm text-gray-300">
-                  {characterImage ? "Changer l'image" : "Télécharger"}
-                </span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleCharacterUpload}
-                  className="hidden"
-                />
-              </label>
+              {characterImage ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <img src={characterImage} alt="Personnage" className="h-14 w-14 rounded-lg object-cover bg-gray-800 border border-gray-700" />
+                    <div className="flex-1 space-y-1">
+                      <label className="flex items-center gap-2 text-[10px] text-gray-400">
+                        Taille {Math.round(characterScale * 100)}%
+                        <input
+                          type="range"
+                          min={0.3}
+                          max={2.5}
+                          step={0.05}
+                          value={characterScale}
+                          onChange={(e) => setCharacterScale(Number(e.target.value))}
+                          className="flex-1 accent-purple-500"
+                        />
+                      </label>
+                    </div>
+                    <label className="rounded-lg bg-gray-700 px-2 py-1.5 text-[10px] text-gray-300 hover:bg-gray-600 cursor-pointer transition">
+                      Changer
+                      <input type="file" accept="image/*" onChange={handleCharacterUpload} className="hidden" />
+                    </label>
+                    <button
+                      onClick={() => { setCharacterImage(null); setCharacterScale(1); setCharacterPosition({ x: 85, y: 75 }); }}
+                      className="rounded-lg bg-red-600/20 p-1.5 text-red-400 hover:bg-red-600/40 transition"
+                      title="Supprimer"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                  <p className="text-[9px] text-gray-500">Glissez l'image dans l'aperçu pour la repositionner</p>
+                </div>
+              ) : (
+                <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-700 bg-gray-800 px-4 py-4 hover:border-purple-500 hover:bg-gray-700">
+                  <Upload size={18} />
+                  <span className="text-sm text-gray-300">Télécharger</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleCharacterUpload}
+                    className="hidden"
+                  />
+                </label>
+              )}
             </div>
 
             {/* Video Upload (Médias) — multi-rush grid with drag-to-reorder */}
@@ -4071,9 +3921,14 @@ export default function InfographicPage() {
           </div>
         </div>
 
-        {/* ═══════════════════════════════════════════════════════════ */}
-        {/* B3: Contextual toolbar — shown when an element is selected  */}
-        {/* ═══════════════════════════════════════════════════════════ */}
+        {/* Hint when nothing is selected */}
+        {!selectedEl && !isPlaying && (
+          <p className="mb-2 text-center text-[11px] text-gray-600 italic">
+            Double-cliquez sur un élément dans l'aperçu pour le modifier
+          </p>
+        )}
+
+        {/* B3: Contextual toolbar — shown when an element is selected */}
         {selectedEl && (
           <div className="mb-3 w-full max-w-xl">
             <div
@@ -5194,14 +5049,46 @@ export default function InfographicPage() {
                 </div>
               )}
 
-            {/* Character Image */}
+            {/* Character Image — draggable + resizable */}
             {characterImage &&
               (activeSequence === "all" || activeSequence === "titre") && (
-                <img
-                  src={characterImage}
-                  alt="Character"
-                  className="absolute bottom-2 right-2 h-1/4 w-auto rounded z-10"
-                />
+                <div
+                  className="absolute z-10 cursor-grab active:cursor-grabbing group/char"
+                  style={{
+                    left: `${characterPosition.x}%`,
+                    top: `${characterPosition.y}%`,
+                    transform: `translate(-50%, -50%) scale(${characterScale})`,
+                    height: '25%',
+                  }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    const container = e.currentTarget.parentElement;
+                    if (!container) return;
+                    const rect = container.getBoundingClientRect();
+                    const onMove = (ev: MouseEvent) => {
+                      const x = Math.max(0, Math.min(100, ((ev.clientX - rect.left) / rect.width) * 100));
+                      const y = Math.max(0, Math.min(100, ((ev.clientY - rect.top) / rect.height) * 100));
+                      setCharacterPosition({ x, y });
+                    };
+                    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+                    document.addEventListener('mousemove', onMove);
+                    document.addEventListener('mouseup', onUp);
+                  }}
+                >
+                  <img
+                    src={characterImage}
+                    alt="Character"
+                    className="h-full w-auto rounded"
+                    draggable={false}
+                  />
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setCharacterImage(null); setCharacterScale(1); setCharacterPosition({ x: 85, y: 75 }); }}
+                    className="absolute -top-2 -right-2 rounded-full bg-red-600 p-0.5 text-white opacity-0 group-hover/char:opacity-100 transition-opacity"
+                    title="Supprimer"
+                  >
+                    <Trash2 size={10} />
+                  </button>
+                </div>
               )}
 
             {/* ── Site Text (e.g. Afroboost.com) — draggable, per-sequence, double-click for panel ── */}
