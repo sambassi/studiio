@@ -45,6 +45,7 @@ import {
   Share2,
 } from "lucide-react";
 import { PlatformIcon, type PlatformKey } from "@/components/ui/PlatformIcon";
+import { AgentIAModal } from "@/components/creer/AgentIAModal";
 import {
   DesignOption,
   FONT_OPTIONS,
@@ -983,6 +984,7 @@ export default function InfographicPage() {
     | null;
   const [activeRailTab, setActiveRailTab] = useState<RailTab>(null);
   const [zonesOpen, setZonesOpen] = useState(false);
+  const [agentIAOpen, setAgentIAOpen] = useState(false);
 
   useEffect(() => {
     if (!zonesOpen) return;
@@ -2417,14 +2419,16 @@ export default function InfographicPage() {
           )}
         </div>
         <div className="mx-1 h-8 w-px bg-gray-800" />
-        <a
-          href="/dashboard/calendar"
-          className="group flex items-center gap-2 rounded-lg px-3 py-2 transition-all hover:bg-gray-900"
+        <button
+          onClick={() => setAgentIAOpen(true)}
+          className={`group flex items-center gap-2 rounded-lg px-3 py-2 transition-all ${
+            agentIAOpen ? 'bg-gray-800 ring-1 ring-amber-500/40' : 'hover:bg-gray-900'
+          }`}
           title="Agent IA — Planificateur autonome"
         >
-          <IconBadge Icon={Sparkles} color="amber" size={28} />
+          <IconBadge Icon={Sparkles} color="amber" active={agentIAOpen} size={28} />
           <span className="text-xs font-medium text-gray-300">Agent IA</span>
-        </a>
+        </button>
       </div>
 
       <div className="flex flex-col lg:flex-row flex-1 min-h-0">
@@ -6664,6 +6668,10 @@ export default function InfographicPage() {
           );
           setCropRushIdx(null);
         }}
+      />
+      <AgentIAModal
+        isOpen={agentIAOpen}
+        onClose={() => setAgentIAOpen(false)}
       />
       </div>
     </div>
