@@ -1,104 +1,95 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Check, Loader2 } from 'lucide-react';
-import { STRIPE_PLANS } from '@/lib/stripe/constants';
 
-interface PricingCardsProps {
-  onSelectPlan?: (plan: string) => void;
+function centsToFr(cents: number): string {
+  if (cents === 0) return '0€';
+  const euros = cents / 100;
+  return euros % 1 === 0 ? `${euros}€` : `${euros.toFixed(2).replace('.', ',')}€`;
 }
 
-type PlanKey = 'free' | 'starter' | 'pro' | 'enterprise';
-const PLAN_ORDER: PlanKey[] = ['free', 'starter', 'pro', 'enterprise'];
+interface Plan {
+  key: string; name: string; price_cents: number; yearly_price_cents: number;
+  credits: number; features: string[] | string; popular?: boolean;
+  watermark?: boolean; yearly_total?: number;
+}
+
+interface PricingCardsProps { onSelectPlan?: (plan: string) => void; }
+
+const PLAN_ORDER = ['free', 'starter', 'pro', 'enterprise'];
 
 export function PricingCards({ onSelectPlan }: PricingCardsProps) {
   const router = useRouter();
   const { data: session } = useSession();
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [loading, setLoading] = useState<string | null>(null);
-  const currentPlan = ((session?.user as any)?.plan as PlanKey) || 'free';
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const currentPlan = ((session?.user as any)?.plan as string) || 'free';
 
-  const handleSubscribe = async (plan: PlanKey) => {
-    if (plan === 'free') {
+  useEffect(() => {
+    fetch('/api/pricing').then(r => r.json()).then(d => {
+      if (d.plans) setPlans(d.plans);
+    }).catch(() => {});
+  }, []);
+
+  const handleSubscribe = async (planKey: string) => {
+    if (planKey === 'free') {
       if (!session) router.push('/auth/signup');
       return;
     }
-    if (onSelectPlan) {
-      onSelectPlan(plan);
-      return;
-    }
-    setLoading(plan);
+    if (onSelectPlan) { onSelectPlan(planKey); return; }
+    setLoading(planKey);
     try {
       const res = await fetch('/api/stripe/create-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan, billingCycle }),
+        body: JSON.stringify({ plan: planKey, billingCycle }),
       });
       const data = await res.json();
-      if (data.url) window.location.href = data.url;
+      const url = data.url || data.data?.sessionUrl;
+      if (url) window.location.href = url;
       else alert(data.error || 'Erreur');
-    } catch (e) {
-      alert('Erreur de connexion');
-    } finally {
-      setLoading(null);
-    }
+    } catch { alert('Erreur de connexion'); } finally { setLoading(null); }
   };
+
+  const ordered = PLAN_ORDER.map(k => plans.find(p => p.key === k)).filter(Boolean) as Plan[];
 
   return (
     <div className="space-y-6">
       <div className="flex justify-center">
         <div className="inline-flex bg-gray-800 rounded-full p-1">
-          <button
-            onClick={() => setBillingCycle('monthly')}
-            className={`px-4 py-2 rounded-full text-sm font-semibold transition ${
-              billingCycle === 'monthly' ? 'bg-studiio-accent text-white' : 'text-gray-400 hover:text-white'
-            }`}
-          >
+          <button onClick={() => setBillingCycle('monthly')}
+            className={`px-4 py-2 rounded-full text-sm font-semibold transition ${billingCycle === 'monthly' ? 'bg-studiio-accent text-white' : 'text-gray-400 hover:text-white'}`}>
             Mensuel
           </button>
-          <button
-            onClick={() => setBillingCycle('yearly')}
-            className={`px-4 py-2 rounded-full text-sm font-semibold transition ${
-              billingCycle === 'yearly' ? 'bg-studiio-accent text-white' : 'text-gray-400 hover:text-white'
-            }`}
-          >
+          <button onClick={() => setBillingCycle('yearly')}
+            className={`px-4 py-2 rounded-full text-sm font-semibold transition ${billingCycle === 'yearly' ? 'bg-studiio-accent text-white' : 'text-gray-400 hover:text-white'}`}>
             Annuel <span className="text-xs text-green-400 ml-1">-17%</span>
           </button>
         </div>
       </div>
 
       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {PLAN_ORDER.map((key) => {
-          const plan = (STRIPE_PLANS as any)[key];
+        {ordered.map((plan) => {
           const isPopular = !!plan.popular;
-          const isCurrent = currentPlan === key;
-          const priceLabel =
-            billingCycle === 'yearly' ? plan.yearlyPriceFr : plan.priceFr;
-          const period = key === 'free' ? '' : '/mois';
-
-          const cta =
-            key === 'free'
-              ? isCurrent || !!session
-                ? 'Plan actuel'
-                : 'Commencer gratuitement'
-              : isCurrent
-              ? 'Plan actuel'
-              : "S'abonner";
+          const isCurrent = currentPlan === plan.key;
+          const priceLabel = billingCycle === 'yearly' ? centsToFr(plan.yearly_price_cents || 0) : centsToFr(plan.price_cents);
+          const period = plan.key === 'free' ? '' : '/mois';
+          const features = typeof plan.features === 'string' ? JSON.parse(plan.features) : (plan.features || []);
+          const cta = plan.key === 'free'
+            ? (isCurrent || !!session ? 'Plan actuel' : 'Commencer gratuitement')
+            : (isCurrent ? 'Plan actuel' : "S'abonner");
 
           return (
-            <Card
-              key={key}
-              className={isPopular ? 'border-studiio-accent border-2 relative' : 'relative'}
-            >
+            <Card key={plan.key} className={isPopular ? 'border-studiio-accent border-2 relative' : 'relative'}>
               {isPopular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <span className="inline-block bg-purple-600 text-white px-3 py-1 rounded-full text-xs font-bold">
-                    Plus populaire
-                  </span>
+                  <span className="inline-block bg-purple-600 text-white px-3 py-1 rounded-full text-xs font-bold">Plus populaire</span>
                 </div>
               )}
               <CardHeader className="border-b border-gray-800">
@@ -107,15 +98,13 @@ export function PricingCards({ onSelectPlan }: PricingCardsProps) {
                   <span className="text-4xl font-bold text-white">{priceLabel}</span>
                   <span className="text-gray-400 text-sm">{period}</span>
                 </div>
-                {billingCycle === 'yearly' && key !== 'free' && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    {plan.yearlyTotalFr} facturé annuellement
-                  </p>
+                {billingCycle === 'yearly' && plan.key !== 'free' && plan.yearly_price_cents > 0 && (
+                  <p className="text-xs text-gray-500 mt-1">{centsToFr((plan.yearly_price_cents || 0) * 12)} facturé annuellement</p>
                 )}
               </CardHeader>
               <CardContent className="pt-6">
                 <ul className="space-y-3">
-                  {plan.features.map((feature: string, idx: number) => (
+                  {features.map((feature: string, idx: number) => (
                     <li key={idx} className="flex items-start gap-2 text-gray-300 text-sm">
                       <Check size={16} className="text-studiio-accent flex-shrink-0 mt-0.5" />
                       <span>{feature}</span>
@@ -124,13 +113,9 @@ export function PricingCards({ onSelectPlan }: PricingCardsProps) {
                 </ul>
               </CardContent>
               <CardFooter>
-                <Button
-                  variant={isPopular ? 'primary' : 'secondary'}
-                  className="w-full"
-                  disabled={isCurrent || loading === key}
-                  onClick={() => handleSubscribe(key)}
-                >
-                  {loading === key ? <Loader2 className="w-4 h-4 animate-spin" /> : cta}
+                <Button variant={isPopular ? 'primary' : 'secondary'} className="w-full"
+                  disabled={isCurrent || loading === plan.key} onClick={() => handleSubscribe(plan.key)}>
+                  {loading === plan.key ? <Loader2 className="w-4 h-4 animate-spin" /> : cta}
                 </Button>
               </CardFooter>
             </Card>

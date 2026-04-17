@@ -20,10 +20,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'invalid plan' }, { status: 400 });
     }
 
-    const envKey = `STRIPE_PRICE_ID_${plan.toUpperCase()}_${billingCycle.toUpperCase()}`;
-    const priceId = process.env[envKey];
+    // Resolve priceId: DB first, env var fallback
+    let priceId: string | undefined;
+    try {
+      const { data: dbPlan } = await supabaseAdmin.from('plans').select('stripe_price_id, stripe_yearly_price_id').eq('key', plan).single();
+      priceId = (billingCycle === 'yearly' ? dbPlan?.stripe_yearly_price_id : dbPlan?.stripe_price_id) || undefined;
+    } catch {}
     if (!priceId) {
-      return NextResponse.json({ error: `price not configured (${envKey})` }, { status: 400 });
+      const envKey = `STRIPE_PRICE_ID_${plan.toUpperCase()}_${billingCycle.toUpperCase()}`;
+      priceId = process.env[envKey];
+    }
+    if (!priceId) {
+      return NextResponse.json({ error: `price not configured for ${plan}/${billingCycle}` }, { status: 400 });
     }
 
     let customerId: string | undefined;
@@ -45,18 +53,8 @@ export async function POST(req: NextRequest) {
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${baseUrl}/dashboard/billing?success=true`,
       cancel_url: `${baseUrl}/dashboard/billing?canceled=true`,
-      metadata: {
-        userId: session.user.id,
-        plan,
-        billingCycle,
-      },
-      subscription_data: {
-        metadata: {
-          userId: session.user.id,
-          plan,
-          billingCycle,
-        },
-      },
+      metadata: { userId: session.user.id, plan, billingCycle },
+      subscription_data: { metadata: { userId: session.user.id, plan, billingCycle } },
     });
 
     return NextResponse.json({ url: checkout.url });

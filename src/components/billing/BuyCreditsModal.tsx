@@ -1,10 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Loader2 } from 'lucide-react';
-import { CREDIT_PACKAGES } from '@/lib/stripe/constants';
+
+interface Pack {
+  key: string; name: string; amount: number; price_cents: number; popular?: boolean;
+}
+
+function centsToFr(cents: number): string {
+  const euros = cents / 100;
+  return euros % 1 === 0 ? `${euros}€` : `${euros.toFixed(2).replace('.', ',')}€`;
+}
 
 interface BuyCreditsModalProps {
   isOpen: boolean;
@@ -13,6 +21,14 @@ interface BuyCreditsModalProps {
 
 export function BuyCreditsModal({ isOpen, onClose }: BuyCreditsModalProps) {
   const [loading, setLoading] = useState<string | null>(null);
+  const [packs, setPacks] = useState<Pack[]>([]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch('/api/pricing').then(r => r.json()).then(d => {
+      if (d.packs) setPacks(d.packs);
+    }).catch(() => {});
+  }, [isOpen]);
 
   const buy = async (pack: string) => {
     setLoading(pack);
@@ -23,42 +39,29 @@ export function BuyCreditsModal({ isOpen, onClose }: BuyCreditsModalProps) {
         body: JSON.stringify({ pack }),
       });
       const data = await res.json();
-      if (data.url) window.location.href = data.url;
+      const url = data.url || data.data?.sessionUrl;
+      if (url) window.location.href = url;
       else alert(data.error || 'Erreur');
-    } catch {
-      alert('Erreur de connexion');
-    } finally {
-      setLoading(null);
-    }
+    } catch { alert('Erreur de connexion'); } finally { setLoading(null); }
   };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Acheter des crédits" size="lg">
       <div className="grid sm:grid-cols-2 gap-4">
-        {Object.entries(CREDIT_PACKAGES).map(([key, pkg]) => {
-          const isPopular = (pkg as any).popular;
+        {packs.map((pkg) => {
+          const unitLabel = pkg.amount > 0 ? `${centsToFr(Math.round(pkg.price_cents / pkg.amount * 100) / 100)}/crédit` : '';
           return (
-            <div
-              key={key}
-              className={`relative rounded-xl border p-4 ${
-                isPopular ? 'border-studiio-accent bg-studiio-accent/5' : 'border-gray-800 bg-gray-900'
-              }`}
-            >
-              {isPopular && (
-                <span className="absolute -top-2 left-4 bg-purple-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                  Populaire
-                </span>
+            <div key={pkg.key}
+              className={`relative rounded-xl border p-4 ${pkg.popular ? 'border-studiio-accent bg-studiio-accent/5' : 'border-gray-800 bg-gray-900'}`}>
+              {pkg.popular && (
+                <span className="absolute -top-2 left-4 bg-purple-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">Populaire</span>
               )}
               <div className="text-lg font-bold text-white">{pkg.name}</div>
-              <div className="text-2xl font-bold text-white mt-2">{pkg.priceFr}</div>
-              <div className="text-xs text-gray-400 mt-1">{(pkg as any).unitPrice}</div>
-              <Button
-                variant={isPopular ? 'primary' : 'secondary'}
-                className="w-full mt-4"
-                onClick={() => buy(key)}
-                disabled={loading === key}
-              >
-                {loading === key ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Acheter'}
+              <div className="text-2xl font-bold text-white mt-2">{centsToFr(pkg.price_cents)}</div>
+              <div className="text-xs text-gray-400 mt-1">{unitLabel}</div>
+              <Button variant={pkg.popular ? 'primary' : 'secondary'} className="w-full mt-4"
+                onClick={() => buy(pkg.key)} disabled={loading === pkg.key}>
+                {loading === pkg.key ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Acheter'}
               </Button>
             </div>
           );

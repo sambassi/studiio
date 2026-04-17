@@ -6,8 +6,15 @@ import { STRIPE_PLANS } from '@/lib/stripe/constants';
 
 type PlanKey = 'starter' | 'pro' | 'enterprise' | 'free';
 
-// Resolve plan from a Stripe price id by matching env vars
-function planFromPriceId(priceId: string): { plan: PlanKey; billingCycle: 'monthly' | 'yearly' } | null {
+async function planFromPriceId(priceId: string): Promise<{ plan: PlanKey; billingCycle: 'monthly' | 'yearly' } | null> {
+  // DB lookup first
+  try {
+    const { data: monthly } = await supabase.from('plans').select('key').eq('stripe_price_id', priceId).single();
+    if (monthly?.key) return { plan: monthly.key as PlanKey, billingCycle: 'monthly' };
+    const { data: yearly } = await supabase.from('plans').select('key').eq('stripe_yearly_price_id', priceId).single();
+    if (yearly?.key) return { plan: yearly.key as PlanKey, billingCycle: 'yearly' };
+  } catch {}
+  // Env var fallback
   const plans: PlanKey[] = ['starter', 'pro', 'enterprise'];
   for (const p of plans) {
     for (const cycle of ['monthly', 'yearly'] as const) {
@@ -102,7 +109,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         const sub = event.data.object as any;
         const userId = sub.metadata?.userId;
         const priceId = sub.items?.data?.[0]?.price?.id;
-        const resolved = priceId ? planFromPriceId(priceId) : null;
+        const resolved = priceId ? await planFromPriceId(priceId) : null;
         if (userId && resolved) {
           await supabase.from('users').update({ plan: resolved.plan }).eq('id', userId);
           await supabase.from('subscriptions').upsert({
@@ -137,7 +144,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           const { data: subRow } = await supabase.from('subscriptions').select('user_id, plan').eq('stripe_subscription_id', subId).single();
           const userId = subRow?.user_id;
           const plan = (subRow?.plan || 'free') as PlanKey;
-          const monthly = (STRIPE_PLANS as any)[plan]?.credits ?? 0;
+          let monthly = (STRIPE_PLANS as any)[plan]?.credits ?? 0;
+          try {
+            const { data: dbPlan } = await supabase.from('plans').select('credits').eq('key', plan).single();
+            if (dbPlan?.credits) monthly = dbPlan.credits;
+          } catch {}
           if (userId && monthly > 0) {
             await supabase.from('users').update({ credits: monthly }).eq('id', userId);
             await supabase.from('credit_transactions').insert({

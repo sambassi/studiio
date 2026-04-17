@@ -72,6 +72,15 @@ export default function PricingAdminPage() {
         </div>
       )}
 
+      <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-1">
+        <p className="text-sm font-semibold text-amber-300">⚠️ Changement de prix = nouveau Stripe Price</p>
+        <ul className="text-xs text-amber-400/80 list-disc pl-4 space-y-0.5">
+          <li>Les nouveaux clients paieront le nouveau prix</li>
+          <li>Les abonnés existants conservent leur tarif jusqu'à résiliation</li>
+          <li>Si la sauvegarde Stripe échoue, la DB n'est pas modifiée</li>
+        </ul>
+      </div>
+
       <div>
         <h1 className="text-3xl font-bold text-white mb-1">Tarification</h1>
         <p className="text-gray-400 text-sm">Gérez les plans et packs de crédits.</p>
