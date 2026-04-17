@@ -692,6 +692,7 @@ export default function InfographicPage() {
 
   // ── Center guides (horizontal + vertical dashed lines through preview center) ────
   const [showCenterGuides, setShowCenterGuides] = useState(false);
+  const [showThirdsGuides, setShowThirdsGuides] = useState(false);
 
   // ── Card position mode: 'grid' (default) uses the grid layout, 'free'
   // allows each card to be dragged independently using its `position` field.
@@ -917,7 +918,7 @@ export default function InfographicPage() {
 
   // Floating panels — which element panel is open
   const [activePanel, setActivePanel] = useState<
-    "title" | "cards" | "cta" | "overlay" | "gradient" | "logo" | "sitetext" | "add" | null
+    "title" | "cards" | "cta" | "overlay" | "gradient" | "logo" | "sitetext" | "add" | "character" | null
   >(null);
   const [panelPos, setPanelPos] = useState({ x: 0, y: 0 });
 
@@ -3864,40 +3865,22 @@ export default function InfographicPage() {
             );
           })}
 
-          {/* Center guides toggle — horizontal + vertical dashed lines through preview center */}
+          {/* Guides toggle — center lines + rule of thirds */}
           <button
-            onClick={() => setShowCenterGuides((v) => !v)}
-            title={showCenterGuides ? "Masquer les repères de centre" : "Afficher les repères de centre"}
+            onClick={() => {
+              const anyOn = showCenterGuides || showThirdsGuides;
+              setShowCenterGuides(!anyOn);
+              setShowThirdsGuides(!anyOn);
+            }}
+            title={showCenterGuides ? "Masquer les guides" : "Afficher les guides"}
             className={`flex items-center gap-2 rounded-2xl pl-1 pr-3 py-1 text-xs font-medium transition-all ${
-              showCenterGuides
+              showCenterGuides || showThirdsGuides
                 ? "bg-gray-800/80 text-white shadow-lg shadow-black/20"
                 : "bg-gray-900/60 text-gray-300 hover:bg-gray-800/80 hover:text-white"
             }`}
           >
-            <IconBadge Icon={Crosshair} color="purple" active={showCenterGuides} size={36} iconSize={18} />
-            Centre
-          </button>
-
-          {/* Card position mode toggle — grid vs free positioning */}
-          <button
-            onClick={() =>
-              setCardPositionMode((m) => (m === 'grid' ? 'free' : 'grid'))
-            }
-            title={cardPositionMode === 'grid' ? "Mode grille" : "Mode libre"}
-            className={`flex items-center gap-2 rounded-2xl pl-1 pr-3 py-1 text-xs font-medium transition-all ${
-              cardPositionMode === 'free'
-                ? "bg-gray-800/80 text-white shadow-lg shadow-black/20"
-                : "bg-gray-900/60 text-gray-300 hover:bg-gray-800/80 hover:text-white"
-            }`}
-          >
-            <IconBadge
-              Icon={cardPositionMode === 'grid' ? Grid3x3 : Move}
-              color={cardPositionMode === 'grid' ? 'slate' : 'orange'}
-              active={cardPositionMode === 'free'}
-              size={36}
-              iconSize={18}
-            />
-            {cardPositionMode === 'grid' ? 'Grille' : 'Libre'}
+            <IconBadge Icon={Crosshair} color="purple" active={showCenterGuides || showThirdsGuides} size={36} iconSize={18} />
+            Guides
           </button>
         </div>
 
@@ -4360,16 +4343,19 @@ export default function InfographicPage() {
             }}
           >
             {/* Center guides — vertical + horizontal dashed lines through the preview center */}
+            {/* Center + thirds guide lines */}
             {showCenterGuides && (
               <>
-                <div
-                  className="pointer-events-none absolute inset-y-0 left-1/2 border-l border-dashed z-20"
-                  style={{ borderColor: 'rgba(168, 85, 247, 0.3)' }}
-                />
-                <div
-                  className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-dashed z-20"
-                  style={{ borderColor: 'rgba(168, 85, 247, 0.3)' }}
-                />
+                <div className="pointer-events-none absolute inset-y-0 left-1/2 border-l border-dashed z-20" style={{ borderColor: 'rgba(168,85,247,0.3)' }} />
+                <div className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-dashed z-20" style={{ borderColor: 'rgba(168,85,247,0.3)' }} />
+              </>
+            )}
+            {showThirdsGuides && (
+              <>
+                <div className="pointer-events-none absolute inset-y-0 z-20" style={{ left: '33.33%', borderLeft: '1px dashed rgba(168,85,247,0.2)' }} />
+                <div className="pointer-events-none absolute inset-y-0 z-20" style={{ left: '66.66%', borderLeft: '1px dashed rgba(168,85,247,0.2)' }} />
+                <div className="pointer-events-none absolute inset-x-0 z-20" style={{ top: '33.33%', borderTop: '1px dashed rgba(168,85,247,0.2)' }} />
+                <div className="pointer-events-none absolute inset-x-0 z-20" style={{ top: '66.66%', borderTop: '1px dashed rgba(168,85,247,0.2)' }} />
               </>
             )}
 
@@ -5060,7 +5046,13 @@ export default function InfographicPage() {
                     transform: `translate(-50%, -50%) scale(${characterScale})`,
                     height: '25%',
                   }}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    setPanelPos({ x: e.clientX + 10, y: e.clientY - 50 });
+                    setActivePanel('character');
+                  }}
                   onMouseDown={(e) => {
+                    if (e.detail >= 2) return;
                     e.preventDefault();
                     const container = e.currentTarget.parentElement;
                     if (!container) return;
@@ -6096,6 +6088,49 @@ export default function InfographicPage() {
             >
               <span>🌐</span> {siteTextEnabled ? 'Modifier texte site' : 'Ajouter texte site (Afroboost.com)'}
             </button>
+          </div>
+        </FloatingPanel>
+
+        {/* Character FloatingPanel — opened by double-clicking character image */}
+        <FloatingPanel
+          title="Personnage"
+          icon="👤"
+          isOpen={activePanel === 'character'}
+          onClose={() => setActivePanel(null)}
+          initialX={panelPos.x}
+          initialY={panelPos.y}
+          accentColor="#EC4899"
+        >
+          <div className="space-y-3">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Taille</div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min={0.3}
+                  max={2.5}
+                  step={0.05}
+                  value={characterScale}
+                  onChange={(e) => setCharacterScale(Number(e.target.value))}
+                  className="flex-1 accent-pink-500"
+                />
+                <span className="text-xs text-gray-300 w-10 text-right">{Math.round(characterScale * 100)}%</span>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setCharacterPosition({ x: 85, y: 75 })}
+                className="flex-1 rounded bg-gray-800 px-2 py-1.5 text-[10px] text-gray-300 hover:bg-gray-700 transition"
+              >
+                ↺ Réinitialiser
+              </button>
+              <button
+                onClick={() => { setCharacterImage(null); setCharacterScale(1); setCharacterPosition({ x: 85, y: 75 }); setActivePanel(null); }}
+                className="flex-1 rounded bg-red-600/20 px-2 py-1.5 text-[10px] text-red-400 hover:bg-red-600/40 transition"
+              >
+                Supprimer
+              </button>
+            </div>
           </div>
         </FloatingPanel>
 
