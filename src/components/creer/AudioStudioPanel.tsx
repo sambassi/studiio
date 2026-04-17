@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Music, Mic, Upload, Trash2, Volume2, VolumeX, Loader2, Play, Pause, Square, Sparkles } from 'lucide-react';
+import { Music, Mic, Upload, Trash2, Volume2, VolumeX, Loader2, Play, Pause, Square, Sparkles, Image as ImageIcon, LayoutGrid, Film, Megaphone } from 'lucide-react';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 
 const TTS_VOICES = [
@@ -367,24 +367,36 @@ export function AudioStudioPanel({
         <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Durées des séquences</div>
         <div className={`grid gap-2 ${hasRush ? 'grid-cols-4' : 'grid-cols-3'}`}>
           <div>
-            <label className="text-[9px] text-gray-500">Titre (s)</label>
+            <label className="flex items-center gap-1 text-[9px] text-gray-500 mb-1">
+              <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-amber-500/[0.12]"><ImageIcon size={10} className="text-amber-500" fill="currentColor" /></span>
+              Titre
+            </label>
             <input type="number" min={1} max={30} value={introDuration} onChange={(e) => onIntroDurationChange(Number(e.target.value))}
               className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white" />
           </div>
           <div>
-            <label className="text-[9px] text-gray-500">Cartes (s)</label>
+            <label className="flex items-center gap-1 text-[9px] text-gray-500 mb-1">
+              <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-pink-500/[0.12]"><LayoutGrid size={10} className="text-pink-500" fill="currentColor" /></span>
+              Cartes
+            </label>
             <input type="number" min={1} max={30} value={cardsDuration} onChange={(e) => onCardsDurationChange(Number(e.target.value))}
               className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white" />
           </div>
           {hasRush && (
             <div>
-              <label className="text-[9px] text-gray-500">Vidéo (s)</label>
+              <label className="flex items-center gap-1 text-[9px] text-gray-500 mb-1">
+                <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-emerald-500/[0.12]"><Film size={10} className="text-emerald-500" fill="currentColor" /></span>
+                Vidéo
+              </label>
               <input type="number" min={1} max={30} value={videoDuration} onChange={(e) => onVideoDurationChange(Number(e.target.value))}
                 className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white" />
             </div>
           )}
           <div>
-            <label className="text-[9px] text-gray-500">CTA (s)</label>
+            <label className="flex items-center gap-1 text-[9px] text-gray-500 mb-1">
+              <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-blue-500/[0.12]"><Megaphone size={10} className="text-blue-500" fill="currentColor" /></span>
+              CTA
+            </label>
             <input type="number" min={1} max={30} value={ctaDuration} onChange={(e) => onCtaDurationChange(Number(e.target.value))}
               className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white" />
           </div>

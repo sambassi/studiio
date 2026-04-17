@@ -152,6 +152,14 @@ export const FONT_OPTIONS = [
   { icon: 'font', label: 'Bebas Neue', sublabel: 'Sport' },
   { icon: 'font', label: 'Poppins', sublabel: 'Minimal' },
   { icon: 'font', label: 'Space Grotesk', sublabel: 'Futur' },
+  { icon: 'font', label: 'Montserrat', sublabel: 'Classique' },
+  { icon: 'font', label: 'Oswald', sublabel: 'Condensé' },
+  { icon: 'font', label: 'Playfair Display', sublabel: 'Élégant' },
+  { icon: 'font', label: 'Raleway', sublabel: 'Aéré' },
+  { icon: 'font', label: 'Roboto Condensed', sublabel: 'Compact' },
+  { icon: 'font', label: 'Lora', sublabel: 'Serif' },
+  { icon: 'font', label: 'Dancing Script', sublabel: 'Script' },
+  { icon: 'font', label: 'Permanent Marker', sublabel: 'Marker' },
 ];
 
 export const FILTER_OPTIONS = [

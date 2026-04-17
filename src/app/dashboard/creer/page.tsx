@@ -746,6 +746,14 @@ export default function InfographicPage() {
     "Bebas Neue": "var(--font-bebas)",
     Poppins: "var(--font-poppins)",
     "Space Grotesk": "var(--font-space)",
+    Montserrat: "var(--font-montserrat)",
+    Oswald: "var(--font-oswald)",
+    "Playfair Display": "var(--font-playfair)",
+    Raleway: "var(--font-raleway)",
+    "Roboto Condensed": "var(--font-roboto-condensed)",
+    Lora: "var(--font-lora)",
+    "Dancing Script": "var(--font-dancing)",
+    "Permanent Marker": "var(--font-marker)",
   };
 
   // Filter CSS mapping (applied as overlay on preview)
@@ -1336,6 +1344,20 @@ export default function InfographicPage() {
   };
 
   const [aiFieldLoading, setAiFieldLoading] = useState<string | null>(null);
+
+  const suggestField = async (fieldType: string, setter: (v: string) => void) => {
+    setAiFieldLoading(fieldType);
+    try {
+      const res = await fetch('/api/content/ai-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: contentTheme || 'fitness', fieldType }),
+      });
+      const data = await res.json();
+      if (data.success && data.text) setter(data.text);
+    } catch {} finally { setAiFieldLoading(null); }
+  };
+
   const suggestCardField = async (cardId: string, field: 'label' | 'description') => {
     const loadingKey = `${cardId}-${field}`;
     setAiFieldLoading(loadingKey);
@@ -2472,77 +2494,44 @@ export default function InfographicPage() {
 
             {activeRailTab === 'text' && (
               <>
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
-                    Titre
+                {[
+                  { label: 'Titre', value: title, set: setTitle, field: 'title', ph: 'Titre principal' },
+                  { label: 'Sous-titre', value: subtitle, set: setSubtitle, field: 'subtitle', ph: 'Sous-titre' },
+                  { label: 'CTA — Principal', value: ctaMainText, set: setCtaMainText, field: 'cta', ph: 'AFROBOOST' },
+                  { label: 'CTA — Sous-texte', value: ctaSubText, set: setCtaSubText, field: 'ctaSub', ph: "CHAT POUR PLUS D'INFOS" },
+                  { label: 'Overlay (vidéo)', value: videoOverlayText, set: setVideoOverlayText, field: 'overlay', ph: 'Texte superposé' },
+                ].map((f) => (
+                  <div key={f.field}>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
+                      {f.label}
+                    </div>
+                    <div className="flex gap-1">
+                      <input
+                        type="text"
+                        value={f.value}
+                        onChange={(e) => f.set(e.target.value)}
+                        placeholder={f.ph}
+                        className="flex-1 rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white placeholder-gray-500"
+                      />
+                      <button
+                        onClick={() => suggestField(f.field, f.set)}
+                        disabled={aiFieldLoading === f.field}
+                        className="rounded bg-purple-600/20 px-1.5 py-1.5 text-purple-400 hover:bg-purple-600/40 disabled:opacity-50 transition flex-shrink-0"
+                        title="Générer avec IA"
+                      >
+                        {aiFieldLoading === f.field ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                      </button>
+                    </div>
                   </div>
-                  <input
-                    type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Titre principal"
-                    className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white placeholder-gray-500"
-                  />
-                </div>
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
-                    Sous-titre
-                  </div>
-                  <input
-                    type="text"
-                    value={subtitle}
-                    onChange={(e) => setSubtitle(e.target.value)}
-                    placeholder="Sous-titre"
-                    className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white placeholder-gray-500"
-                  />
-                </div>
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
-                    CTA — Principal
-                  </div>
-                  <input
-                    type="text"
-                    value={ctaMainText}
-                    onChange={(e) => setCtaMainText(e.target.value)}
-                    placeholder="AFROBOOST"
-                    className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white placeholder-gray-500"
-                  />
-                </div>
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
-                    CTA — Sous-texte
-                  </div>
-                  <input
-                    type="text"
-                    value={ctaSubText}
-                    onChange={(e) => setCtaSubText(e.target.value)}
-                    placeholder="CHAT POUR PLUS D'INFOS"
-                    className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white placeholder-gray-500"
-                  />
-                </div>
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
-                    Overlay (vidéo)
-                  </div>
-                  <input
-                    type="text"
-                    value={videoOverlayText}
-                    onChange={(e) => setVideoOverlayText(e.target.value)}
-                    placeholder="Texte superposé à la vidéo"
-                    className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white placeholder-gray-500"
-                  />
-                </div>
+                ))}
                 <p className="text-[11px] text-gray-500 italic">
-                  Double-cliquez un texte dans l'aperçu pour accéder à la typographie complète.
+                  Double-cliquez un texte dans l'aperçu pour la typographie.
                 </p>
               </>
             )}
 
             {activeRailTab === 'cards' && (
               <>
-                <p className="text-xs text-gray-400">
-                  Gérez les cartes d'infographie. Ouvrez le panneau Contenu à gauche pour l'éditeur complet.
-                </p>
                 <button
                   onClick={() => {
                     setCards((prev) => [
@@ -2557,45 +2546,13 @@ export default function InfographicPage() {
                       },
                     ]);
                   }}
-                  className="w-full rounded bg-purple-600 hover:bg-purple-500 px-3 py-2 text-xs font-semibold text-white flex items-center justify-center gap-1"
+                  className="w-full rounded bg-purple-600 hover:bg-purple-500 px-3 py-2.5 text-xs font-semibold text-white flex items-center justify-center gap-1"
                 >
-                  <Plus size={12} /> Ajouter une carte
+                  <Plus size={12} /> Ajouter une carte IA
                 </button>
-                <div className="space-y-1">
-                  {cards.map((c, i) => (
-                    <div
-                      key={c.id}
-                      className={`flex items-center gap-2 rounded border px-2 py-1.5 ${
-                        selectedEl?.type === 'card' && selectedEl.index === i
-                          ? 'border-pink-500 bg-pink-900/20'
-                          : 'border-gray-700 bg-gray-800'
-                      }`}
-                    >
-                      <span className="text-base">{c.emoji}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs text-white truncate">{c.label || '—'}</div>
-                        <div className="text-[10px] text-gray-400 truncate">{c.value}</div>
-                      </div>
-                      <button
-                        onClick={() => setCards((prev) => prev.filter((_, j) => j !== i))}
-                        className="rounded p-1 text-gray-400 hover:bg-red-900/40 hover:text-red-300"
-                        title="Supprimer"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                {cardPositionMode === 'free' && (
-                  <button
-                    onClick={() => {
-                      setCards((prev) => prev.map((c) => ({ ...c, position: undefined })));
-                    }}
-                    className="w-full rounded bg-gray-800 hover:bg-gray-700 px-3 py-2 text-xs text-gray-300"
-                  >
-                    Réinitialiser positions
-                  </button>
-                )}
+                <p className="text-[10px] text-gray-500 text-center">
+                  Cliquez sur une carte dans l'aperçu pour l'éditer
+                </p>
               </>
             )}
 
@@ -3800,96 +3757,10 @@ export default function InfographicPage() {
               </div>
             )}
 
-            {/* Destination */}
-            <div>
-              <label className="mb-3 block text-sm font-medium text-gray-300">
-                Destination
-              </label>
-              <div className="space-y-2">
-                {[
-                  {
-                    value: "draft" as Destination,
-                    label: "Calendrier (brouillon)",
-                  },
-                  { value: "export" as Destination, label: "Export fichier" },
-                  { value: "both" as Destination, label: "Les deux" },
-                  { value: "audio-studio" as Destination, label: "Studio Son (ajouter musique/voix)" },
-                ].map((option) => (
-                  <label
-                    key={option.value}
-                    className="flex items-center gap-3 rounded-lg bg-gray-800 px-4 py-3 cursor-pointer hover:bg-gray-700"
-                  >
-                    <input
-                      type="radio"
-                      name="destination"
-                      value={option.value}
-                      checked={destination === option.value}
-                      onChange={(e) =>
-                        setDestination(e.target.value as Destination)
-                      }
-                      className="h-4 w-4 cursor-pointer"
-                    />
-                    <span className="text-sm text-gray-300">
-                      {option.label}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {/* Batch count summary (quick access from step 3) */}
-            {batchCount > 1 && (
-              <div className="flex items-center gap-2 rounded-lg bg-purple-900/20 border border-purple-500/30 px-4 py-2">
-                <span className="text-sm text-purple-300 font-medium">Batch : x{batchCount} vidéos</span>
-                <span className="text-xs text-gray-500">({25 * batchCount} crédits)</span>
-              </div>
-            )}
-
-            {/* Export Progress */}
-            {isExporting && (
-              <div className="rounded-lg border border-purple-800 bg-purple-900/20 p-4">
-                <div className="mb-2 flex justify-between text-sm">
-                  <span className="text-purple-300">Export en cours...</span>
-                  <span className="text-purple-400 font-bold">{exportProgress}%</span>
-                </div>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-gray-700">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300"
-                    style={{ width: `${exportProgress}%` }}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Export Button — respects selected destination */}
-            <button
-              onClick={handleExport}
-              disabled={isExporting || cards.length === 0}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-3.5 text-base font-semibold text-white hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-500/20"
-            >
-              {isExporting ? (
-                <Loader2 size={20} className="animate-spin" />
-              ) : (
-                <Zap size={20} />
-              )}
-              {isExporting
-                ? "EXPORT EN COURS..."
-                : batchCount > 1
-                  ? `Export ${batchCount} Créations`
-                  : "Export Création"}
-            </button>
-            <div className="text-center text-sm text-gray-400">
-              Coût : <span className="font-bold text-yellow-400">{25 * batchCount} crédits</span>
-            </div>
-
-            {/* Back */}
-            <button
-              onClick={() => setStep(2)}
-              className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 bg-gray-800 py-2.5 text-sm font-medium text-gray-300 hover:bg-gray-700"
-            >
-              <ChevronLeft size={16} />
-              Retour
-            </button>
+            {/* Export via sticky bar at bottom of preview */}
+            <p className="text-center text-sm text-gray-500">
+              Utilisez le bouton <span className="text-purple-400 font-medium">⚡ Export</span> en bas de l'aperçu
+            </p>
           </div>
         )}
       </div>

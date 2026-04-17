@@ -16,10 +16,39 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { topic, locale = 'fr', cardCount = 5, existingCards = [], videoOverlayOnly = false } = body;
+    const { topic, locale = 'fr', cardCount = 5, existingCards = [], videoOverlayOnly = false, fieldType } = body;
 
     if (!topic || typeof topic !== 'string') {
       return NextResponse.json({ success: false, error: 'Topic is required' }, { status: 400 });
+    }
+
+    // Mode "single field" — generate one text for a specific field
+    if (fieldType) {
+      const fieldPrompts: Record<string, string> = {
+        title: `Génère UN titre accrocheur en MAJUSCULES (3-6 mots) pour une infographie sur "${topic}". Réponse JSON: {"text":"..."}`,
+        subtitle: `Génère UN sous-titre engageant (5-10 mots) pour une infographie sur "${topic}". Réponse JSON: {"text":"..."}`,
+        cta: `Génère UN texte CTA court et percutant (1-3 mots) pour "${topic}". Exemples: "DÉCOUVRIR", "EN SAVOIR PLUS", "COMMENCER". Réponse JSON: {"text":"..."}`,
+        ctaSub: `Génère UN sous-texte CTA (2-4 mots) pour "${topic}". Exemples: "LIEN EN BIO", "CHAT POUR PLUS D'INFOS". Réponse JSON: {"text":"..."}`,
+        overlay: `Génère UN texte overlay vidéo court et accrocheur (3-8 mots, MAJUSCULES) pour "${topic}". Réponse JSON: {"text":"..."}`,
+        tts: `Génère un script voix-off court (2-3 phrases, ~30 mots) pour une vidéo sur "${topic}". Ton engageant et motivant. En ${locale === 'fr' ? 'français' : 'anglais'}. Réponse JSON: {"text":"..."}`,
+      };
+      const prompt = fieldPrompts[fieldType] || fieldPrompts.title;
+      try {
+        const r = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 256, messages: [{ role: 'user', content: prompt }] }),
+        });
+        if (r.ok) {
+          const d = await r.json();
+          const block = d.content?.find((c: any) => c.type === 'text');
+          if (block?.text) {
+            const match = block.text.match(/\{[^}]*"text"\s*:\s*"([^"]+)"/);
+            if (match) return NextResponse.json({ success: true, text: match[1] });
+          }
+        }
+      } catch {}
+      return NextResponse.json({ success: false, error: 'AI generation failed' }, { status: 500 });
     }
 
     // Mode "video overlay only" — generate just a short overlay text for the video
