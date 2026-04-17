@@ -79,12 +79,10 @@
     "dashboard": "Dashboard",
     "create": "Create",
     "infographic": "Infographic",
-    "audioStudio": "Audio Studio",
     "calendar": "AI Calendar",
     "library": "Library",
-    "objectives": "Objectives",
     "social": "Social Networks",
-    "billing": "Billing",
+    "settings": "Settings",
     "admin": "Administration",
     "creditsAvailable": "Available credits",
     "buy": "Buy"

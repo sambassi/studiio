@@ -4,22 +4,17 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { LayoutDashboard, Zap, Library, Target, Share2, CreditCard, Image, Calendar, Shield, Volume2, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Zap, Library, Share2, Calendar, Shield, Settings, Menu, X } from 'lucide-react';
 import { useTranslations } from '@/i18n/client';
 import { LanguageSelector } from '@/components/LanguageSelector';
 
 const menuKeys = [
   { icon: LayoutDashboard, key: 'dashboard', href: '/dashboard', color: '#7C3AED' },
-  // "Créer" now points to the unified page (formerly /infographie) which has
-  // the full feature set. The old /creator page is kept as a redirect for
-  // existing bookmarks.
   { icon: Zap, key: 'create', href: '/dashboard/creer', color: '#F59E0B' },
-  { icon: Volume2, key: 'audioStudio', href: '/dashboard/audio-studio', color: '#10B981' },
   { icon: Calendar, key: 'calendar', href: '/dashboard/calendar', color: '#3B82F6' },
   { icon: Library, key: 'library', href: '/dashboard/library', color: '#8B5CF6' },
-  { icon: Target, key: 'objectives', href: '/dashboard/objectives', color: '#F97316' },
   { icon: Share2, key: 'social', href: '/dashboard/social', color: '#06B6D4' },
-  { icon: CreditCard, key: 'billing', href: '/dashboard/billing', color: '#EF4444' },
+  { icon: Settings, key: 'settings', href: '/dashboard/settings', color: '#6B7280' },
 ];
 
 export function Sidebar() {
@@ -110,7 +105,7 @@ export function Sidebar() {
           <div className="text-2xl font-bold text-studiio-accent mb-4">
             {credits !== null ? credits.toLocaleString() : '...'}
           </div>
-          <Link href="/dashboard/billing" className="w-full button-primary text-center text-sm block">
+          <Link href="/dashboard/settings?tab=abonnement" className="w-full button-primary text-center text-sm block">
             {t('buy')}
           </Link>
         </div>
