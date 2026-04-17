@@ -485,6 +485,7 @@ export default function InfographicPage() {
   const [rushUrl, setRushUrl] = useState<string | null>(null);
   const [rushFileName, setRushFileName] = useState<string | null>(null);
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [videoUploadProgress, setVideoUploadProgress] = useState(0);
   const [rushDragIdx, setRushDragIdx] = useState<number | null>(null);
   const [rushDragOverIdx, setRushDragOverIdx] = useState<number | null>(null);
 
@@ -550,6 +551,7 @@ export default function InfographicPage() {
   const [overlayLineHeight, setOverlayLineHeight] = useState(1.2);
   const [overlayBold, setOverlayBold] = useState(true);
   const [overlayItalic, setOverlayItalic] = useState(false);
+  const [overlayColor, setOverlayColor] = useState('#FFFFFF');
   const [cardsLetterSpacing, setCardsLetterSpacing] = useState(0);
   const [customCardIcons, setCustomCardIcons] = useState<Record<string, string>>({});
 
@@ -630,6 +632,7 @@ export default function InfographicPage() {
         if (cfg.overlayBold !== undefined) setOverlayBold(cfg.overlayBold);
         if (cfg.overlayItalic !== undefined)
           setOverlayItalic(cfg.overlayItalic);
+        if (cfg.overlayColor) setOverlayColor(cfg.overlayColor);
         if (cfg.cardsLetterSpacing !== undefined)
           setCardsLetterSpacing(cfg.cardsLetterSpacing);
         // Advanced text effects
@@ -920,7 +923,7 @@ export default function InfographicPage() {
           rushUrl, rushFileName, rushList, characterImage,
           titleLetterSpacing, titleLineHeight, titleBold, titleItalic,
           ctaLetterSpacing, ctaLineHeight, ctaBold, ctaItalic,
-          overlayLetterSpacing, overlayLineHeight, overlayBold, overlayItalic, cardsLetterSpacing,
+          overlayLetterSpacing, overlayLineHeight, overlayBold, overlayItalic, overlayColor, cardsLetterSpacing,
           selectedFont, selectedFilter, selectedCardStyle,
           titleColor, ctaColor, ctaSubColor, ctaMainText, ctaSubText,
           titleTextGradient, titleGradColor1, titleGradColor2,
@@ -1451,12 +1454,19 @@ export default function InfographicPage() {
           showToast(`Échec upload "${file.name}"`);
           return null;
         }
-        const putRes = await fetch(signData.signedUrl, {
-          method: "PUT",
-          headers: { "Content-Type": file.type },
-          body: file,
+        const putOk = await new Promise<boolean>((resolve) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('PUT', signData.signedUrl);
+          xhr.setRequestHeader('Content-Type', file.type);
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) setVideoUploadProgress(Math.round((e.loaded / e.total) * 100));
+          };
+          xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300);
+          xhr.onerror = () => resolve(false);
+          xhr.send(file);
         });
-        if (!putRes.ok) {
+        setVideoUploadProgress(0);
+        if (!putOk) {
           showToast(`Échec upload "${file.name}"`);
           return null;
         }
@@ -3519,15 +3529,20 @@ export default function InfographicPage() {
                 } px-4 py-3`}
               >
                 {isUploadingVideo ? (
-                  <>
-                    <Loader2
-                      size={18}
-                      className="animate-spin text-purple-400"
-                    />
-                    <span className="text-sm text-purple-300">
+                  <div className="w-full space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <Loader2 size={18} className="animate-spin text-purple-400" />
+                      <span className="text-sm text-purple-300 flex-1">
                       Upload en cours...
-                    </span>
-                  </>
+                      </span>
+                      {videoUploadProgress > 0 && <span className="text-xs text-purple-400 font-bold">{videoUploadProgress}%</span>}
+                    </div>
+                    {videoUploadProgress > 0 && (
+                      <div className="h-1 w-full bg-gray-700 rounded-full overflow-hidden">
+                        <div className="h-full bg-purple-500 rounded-full transition-all duration-200" style={{ width: `${videoUploadProgress}%` }} />
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <>
                     <Video size={18} />
@@ -4621,9 +4636,10 @@ export default function InfographicPage() {
                 >
                   <div className="absolute inset-0 border border-dashed border-cyan-500/0 group-hover/overlay:border-cyan-500/40 rounded pointer-events-none transition-colors" />
                   <p
-                    className="font-black text-white drop-shadow-lg"
+                    className="font-black drop-shadow-lg"
                     style={{
                       fontSize: `${16 * textScale}px`,
+                      color: overlayColor,
                       textShadow:
                         "0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5)",
                       letterSpacing: `${overlayLetterSpacing}px`,
@@ -5951,6 +5967,7 @@ export default function InfographicPage() {
               className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white focus:border-purple-500 focus:outline-none"
               placeholder="Texte affiché sur la vidéo"
             />
+            <ColorWheel color={overlayColor} onChange={setOverlayColor} label="Couleur" />
             <button
               onClick={async () => {
                 setIsGeneratingOverlay(true);
@@ -6338,6 +6355,7 @@ export default function InfographicPage() {
       {/* Compact Vertical Export Bar — right edge of preview area    */}
       {/* ═══════════════════════════════════════════════════════════ */}
       <div className="hidden lg:flex fixed right-2 top-1/2 -translate-y-1/2 z-40 flex-col items-center gap-1.5 bg-gray-900/80 backdrop-blur-sm border border-gray-700/50 rounded-xl p-1.5 shadow-2xl">
+        <span className="text-[8px] font-bold uppercase tracking-wider text-gray-500 leading-none">Export</span>
         {isExporting && (
           <div className="h-10 w-0.5 bg-gray-800 rounded-full overflow-hidden">
             <div className="w-full bg-gradient-to-b from-purple-500 to-pink-500 transition-all duration-300" style={{ height: `${exportProgress}%` }} />
@@ -6370,6 +6388,17 @@ export default function InfographicPage() {
         <span className="text-[9px] text-yellow-400 font-bold leading-none">
           {isExporting ? `${exportProgress}%` : `${25 * batchCount}cr`}
         </span>
+        <div className="h-px w-7 bg-gray-700/50" />
+        <div className="flex flex-col items-center gap-0.5">
+          <span className="text-[7px] uppercase tracking-wider text-gray-500">Batch</span>
+          <div className="flex items-center gap-px">
+            <button onClick={() => setBatchCount(Math.max(1, batchCount - 1))} disabled={batchCount <= 1}
+              className="h-5 w-5 rounded text-[10px] font-bold text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 transition">−</button>
+            <span className="text-[10px] font-bold text-purple-400 w-5 text-center">x{batchCount}</span>
+            <button onClick={() => setBatchCount(Math.min(10, batchCount + 1))} disabled={batchCount >= 10}
+              className="h-5 w-5 rounded text-[10px] font-bold text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 transition">+</button>
+          </div>
+        </div>
       </div>
 
       <Modal

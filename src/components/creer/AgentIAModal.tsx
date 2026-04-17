@@ -19,6 +19,29 @@ import { composeAndUpload } from '@/lib/video-composer';
 import { useTranslations, useLocale } from '@/i18n/client';
 import { getContentPools } from '@/lib/i18n-content';
 
+const AGENT_THEMES = [
+  { id: 'sommeil-sport', label: 'Sommeil & Sport', emoji: '😴' },
+  { id: 'nutrition-danse', label: 'Nutrition & Danse', emoji: '🍎' },
+  { id: 'energie-cardio', label: 'Énergie & Cardio', emoji: '⚡' },
+  { id: 'stress-mental', label: 'Stress & Mental', emoji: '🧠' },
+  { id: 'communaute', label: 'Communauté', emoji: '👥' },
+  { id: 'beauty', label: 'Beauté', emoji: '💄' },
+  { id: 'parenting', label: 'Parentalité', emoji: '👶' },
+  { id: 'travel', label: 'Voyage', emoji: '✈️' },
+  { id: 'productivity', label: 'Productivité', emoji: '🚀' },
+  { id: 'finance', label: 'Finance', emoji: '💰' },
+  { id: 'coding', label: 'Coding', emoji: '💻' },
+  { id: 'crypto', label: 'Crypto', emoji: '🪙' },
+  { id: 'gaming', label: 'Gaming', emoji: '🎮' },
+  { id: 'food', label: 'Food', emoji: '🍕' },
+  { id: 'pets', label: 'Animaux', emoji: '🐾' },
+  { id: 'cars', label: 'Auto', emoji: '🚗' },
+  { id: 'realestate', label: 'Immobilier', emoji: '🏠' },
+  { id: 'education', label: 'Éducation', emoji: '📚' },
+  { id: 'astrology', label: 'Astrologie', emoji: '🔮' },
+  { id: 'motivation', label: 'Motivation', emoji: '🔥' },
+];
+
 interface AgentIAModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -464,25 +487,20 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
             {/* Right col */}
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-gray-400 mb-1.5">{t('aiAgent.objectives.label')}</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {[
-                    { id: 'promo', emoji: '📁' },
-                    { id: 'motiv', emoji: '💪' },
-                    { id: 'bienfaits', emoji: '✨' },
-                    { id: 'abo', emoji: '❤️' },
-                    { id: 'nutri', emoji: '🥗' },
-                  ].map((obj) => (
+                <label className="block text-xs text-gray-400 mb-1.5">Thèmes de contenu</label>
+                <div className="grid grid-cols-2 gap-1 max-h-[180px] overflow-y-auto pr-1">
+                  {AGENT_THEMES.map((theme) => (
                     <button
-                      key={obj.id}
-                      onClick={() => toggleAiObjective(obj.id)}
-                      className={`px-2.5 py-1.5 rounded-full text-xs font-medium transition border ${
-                        aiObjectives.includes(obj.id)
+                      key={theme.id}
+                      onClick={() => toggleAiObjective(theme.id)}
+                      className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition border ${
+                        aiObjectives.includes(theme.id)
                           ? 'bg-purple-500/20 border-purple-500 text-white'
                           : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'
                       }`}
                     >
-                      {obj.emoji} {t(`aiAgent.objectives.${obj.id}`)}
+                      <span>{theme.emoji}</span>
+                      <span className="truncate">{theme.label}</span>
                     </button>
                   ))}
                 </div>
