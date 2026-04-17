@@ -430,7 +430,7 @@ export default function InfographicPage() {
   const [gradientOpacity, setGradientOpacity] = useState(0.3);
   // Per-sequence no-color mode (user decides which sequences have color or just photo)
   const [noColorBg, setNoColorBg] = useState(false);
-  const [noColorSequences, setNoColorSequences] = useState<string[]>(['cartes', 'video', 'cta']);
+  const [noColorSequences, setNoColorSequences] = useState<string[]>(['video']);
   const [noColorUserOverride, setNoColorUserOverride] = useState<Record<string, boolean>>({});
   const [syncColorsGlobal, setSyncColorsGlobal] = useState(false);
 
@@ -1332,6 +1332,32 @@ export default function InfographicPage() {
 
   const updateCard = (id: string, field: keyof InfoCard, value: string) => {
     setCards(cards.map((c) => (c.id === id ? { ...c, [field]: value } : c)));
+  };
+
+  const [aiFieldLoading, setAiFieldLoading] = useState<string | null>(null);
+  const suggestCardField = async (cardId: string, field: 'label' | 'description') => {
+    const loadingKey = `${cardId}-${field}`;
+    setAiFieldLoading(loadingKey);
+    try {
+      const res = await fetch('/api/content/ai-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: contentTheme || 'fitness',
+          locale: 'fr',
+          cardCount: 1,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.cards?.[0]) {
+        const suggestion = field === 'label' ? data.cards[0].label : data.cards[0].description;
+        if (suggestion) updateCard(cardId, field, suggestion);
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setAiFieldLoading(null);
+    }
   };
 
   // ── Character upload ────────────────────────────────────────
@@ -2614,36 +2640,16 @@ export default function InfographicPage() {
                   onVoiceChange={(url, name) => { setAudioVoiceUrl(url); setAudioVoiceName(name); }}
                   onMusicVolumeChange={setAudioMusicVolume}
                   onVoiceVolumeChange={setAudioVoiceVolume}
+                  introDuration={introDuration}
+                  cardsDuration={cardsDuration}
+                  videoDuration={videoDuration}
+                  ctaDuration={ctaDuration}
+                  onIntroDurationChange={setIntroDuration}
+                  onCardsDurationChange={setCardsDuration}
+                  onVideoDurationChange={setVideoDuration}
+                  onCtaDurationChange={setCtaDuration}
+                  hasRush={rushList.length > 0}
                 />
-                <div className="border-t border-gray-700 pt-3 mt-1 space-y-2">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                    Durées des séquences
-                  </div>
-                  <div className="flex gap-2">
-                    <div className="flex-1">
-                      <label className="text-[9px] text-gray-500">Cartes (s)</label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={60}
-                        value={cardsDuration}
-                        onChange={(e) => setCardsDuration(Number(e.target.value))}
-                        className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white"
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <label className="text-[9px] text-gray-500">CTA (s)</label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={60}
-                        value={ctaDuration}
-                        onChange={(e) => setCtaDuration(Number(e.target.value))}
-                        className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white"
-                      />
-                    </div>
-                  </div>
-                </div>
               </>
             )}
 
@@ -2965,7 +2971,7 @@ export default function InfographicPage() {
                     <h3 className="text-sm font-semibold text-gray-300">
                       Cartes d'Information ({cards.length})
                     </h3>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <button
                         onClick={() =>
                           setCards((prev) =>
@@ -2973,21 +2979,21 @@ export default function InfographicPage() {
                           )
                         }
                         title="Réinitialiser les positions individuelles des cartes"
-                        className="flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-medium text-pink-400 hover:bg-gray-700"
+                        className="flex items-center gap-1 rounded-lg bg-gray-800 px-2 py-1.5 text-[10px] font-medium text-pink-400 hover:bg-gray-700"
                       >
-                        <Grid3x3 size={14} />
-                        Réinitialiser positions
+                        <Grid3x3 size={12} />
+                        <span className="truncate">Positions</span>
                       </button>
                       <button
                         onClick={handleRegenerate}
                         disabled={isGenerating}
-                        className="flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-medium text-purple-400 hover:bg-gray-700"
+                        className="flex items-center gap-1 rounded-lg bg-gray-800 px-2 py-1.5 text-[10px] font-medium text-purple-400 hover:bg-gray-700"
                       >
                         <RefreshCw
-                          size={14}
+                          size={12}
                           className={isGenerating ? "animate-spin" : ""}
                         />
-                        Régénérer
+                        <span className="truncate">Régénérer</span>
                       </button>
                     </div>
                   </div>
@@ -3070,7 +3076,7 @@ export default function InfographicPage() {
                           </div>
                           {/* Content */}
                           <div className="flex-1 space-y-1.5">
-                            <div className="flex gap-2">
+                            <div className="flex gap-1">
                               <input
                                 type="text"
                                 value={card.label}
@@ -3080,29 +3086,47 @@ export default function InfographicPage() {
                                 className="flex-1 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs font-bold text-white focus:border-purple-500 focus:outline-none"
                                 placeholder="Label"
                               />
+                              <button
+                                onClick={() => suggestCardField(card.id, 'label')}
+                                disabled={aiFieldLoading === `${card.id}-label`}
+                                className="rounded bg-purple-600/20 px-1.5 py-1 text-purple-400 hover:bg-purple-600/40 disabled:opacity-50 transition flex-shrink-0"
+                                title="Suggérer avec IA"
+                              >
+                                {aiFieldLoading === `${card.id}-label` ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                              </button>
                               <input
                                 type="text"
                                 value={card.value}
                                 onChange={(e) =>
                                   updateCard(card.id, "value", e.target.value)
                                 }
-                                className="w-20 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs font-bold text-purple-400 focus:border-purple-500 focus:outline-none"
+                                className="w-16 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs font-bold text-purple-400 focus:border-purple-500 focus:outline-none"
                                 placeholder="Valeur"
                               />
                             </div>
-                            <input
-                              type="text"
-                              value={card.description}
-                              onChange={(e) =>
-                                updateCard(
-                                  card.id,
-                                  "description",
-                                  e.target.value,
-                                )
-                              }
-                              className="w-full rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-300 focus:border-purple-500 focus:outline-none"
-                              placeholder="Description courte"
-                            />
+                            <div className="flex gap-1">
+                              <input
+                                type="text"
+                                value={card.description}
+                                onChange={(e) =>
+                                  updateCard(
+                                    card.id,
+                                    "description",
+                                    e.target.value,
+                                  )
+                                }
+                                className="flex-1 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-300 focus:border-purple-500 focus:outline-none"
+                                placeholder="Description courte"
+                              />
+                              <button
+                                onClick={() => suggestCardField(card.id, 'description')}
+                                disabled={aiFieldLoading === `${card.id}-description`}
+                                className="rounded bg-purple-600/20 px-1.5 py-1 text-purple-400 hover:bg-purple-600/40 disabled:opacity-50 transition flex-shrink-0"
+                                title="Suggérer avec IA"
+                              >
+                                {aiFieldLoading === `${card.id}-description` ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                              </button>
+                            </div>
                           </div>
                           {/* Delete */}
                           <button
