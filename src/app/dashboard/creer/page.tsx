@@ -58,7 +58,7 @@ import CropRushModal from "@/components/creer/CropRushModal";
 import { useSession } from "next-auth/react";
 import { BuyCreditsModal } from "@/components/billing/BuyCreditsModal";
 import { MediaLibrary } from "@/components/shared/MediaLibrary";
-import { ExportBar } from "@/components/shared/ExportBar";
+// ExportBar removed — using inline export button that respects destination selection
 import { BrandingIndicator } from "@/components/shared/BrandingIndicator";
 import { useBranding } from "@/lib/hooks/useBranding";
 import { AudioStudioPanel } from "@/components/creer/AudioStudioPanel";
@@ -3835,15 +3835,48 @@ export default function InfographicPage() {
               </div>
             </div>
 
-            {/* Export Bar — unified bottom bar */}
-            <ExportBar
-              onSchedule={() => { setDestination('draft'); handleExport(); }}
-              onDownload={() => { setDestination('export'); handleExport(); }}
-              disabled={cards.length === 0}
-              isProcessing={isExporting}
-              progress={exportProgress}
-              creditCost={25 * batchCount}
-            />
+            {/* Batch count summary (quick access from step 3) */}
+            {batchCount > 1 && (
+              <div className="flex items-center gap-2 rounded-lg bg-purple-900/20 border border-purple-500/30 px-4 py-2">
+                <span className="text-sm text-purple-300 font-medium">Batch : x{batchCount} vidéos</span>
+                <span className="text-xs text-gray-500">({25 * batchCount} crédits)</span>
+              </div>
+            )}
+
+            {/* Export Progress */}
+            {isExporting && (
+              <div className="rounded-lg border border-purple-800 bg-purple-900/20 p-4">
+                <div className="mb-2 flex justify-between text-sm">
+                  <span className="text-purple-300">Export en cours...</span>
+                  <span className="text-purple-400 font-bold">{exportProgress}%</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-gray-700">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300"
+                    style={{ width: `${exportProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Export Button — respects selected destination */}
+            <button
+              onClick={handleExport}
+              disabled={isExporting || cards.length === 0}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-3 font-bold text-white hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isExporting ? (
+                <Loader2 size={20} className="animate-spin" />
+              ) : null}
+              {isExporting
+                ? "EXPORT EN COURS..."
+                : batchCount > 1
+                  ? `EXPORTER ${batchCount} INFOGRAPHIES`
+                  : "EXPORTER L'INFOGRAPHIE"}
+            </button>
+            <div className="text-center text-sm text-gray-400">
+              Coût : <span className="font-bold text-yellow-400">{25 * batchCount} crédits</span>
+            </div>
 
             {/* Back */}
             <button
