@@ -17,6 +17,7 @@ export function AdminSidebar() {
     { icon: Film, label: t('videos'), href: '/admin/videos' },
     { icon: Globe, label: t('landingPage'), href: '/admin/landing' },
     { icon: Settings, label: t('settings'), href: '/admin/settings' },
+    { icon: CreditCard, label: 'Tarification', href: '/admin/pricing' },
     { icon: FileText, label: t('terms'), href: '/admin/terms' },
     { icon: Mail, label: t('emails'), href: '/admin/emails' },
     { icon: Shield, label: t('auditLog'), href: '/admin/logs' },

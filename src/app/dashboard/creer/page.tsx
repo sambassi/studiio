@@ -2359,6 +2359,16 @@ export default function InfographicPage() {
             <span className="text-[10px] font-medium leading-tight text-gray-300">{label}</span>
           </button>
         ))}
+        <div className="mt-auto pt-2 border-t border-gray-800">
+          <a
+            href="/dashboard/calendar"
+            className="group flex flex-col items-center justify-center gap-1 rounded-xl w-16 py-2 transition-all hover:bg-gray-900"
+            title="Agent IA — Planificateur autonome"
+          >
+            <IconBadge Icon={Sparkles} color="amber" size={40} />
+            <span className="text-[10px] font-medium leading-tight text-gray-300">Agent IA</span>
+          </a>
+        </div>
       </div>
 
       {/* ═══════════════════════════════════════════════════════════ */}
