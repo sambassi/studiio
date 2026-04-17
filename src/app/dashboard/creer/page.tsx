@@ -42,6 +42,7 @@ import {
   Download,
   Layers,
   Palette,
+  Share2,
 } from "lucide-react";
 import { PlatformIcon, type PlatformKey } from "@/components/ui/PlatformIcon";
 import {
@@ -981,6 +982,17 @@ export default function InfographicPage() {
     | 'settings'
     | null;
   const [activeRailTab, setActiveRailTab] = useState<RailTab>(null);
+  const [zonesOpen, setZonesOpen] = useState(false);
+
+  useEffect(() => {
+    if (!zonesOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target?.closest('[data-zones-menu]')) setZonesOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [zonesOpen]);
 
   // ── B3: Contextual toolbar — selected element in the preview ──
   type SelectedEl =
@@ -2367,6 +2379,43 @@ export default function InfographicPage() {
             <span className="text-xs font-medium text-gray-300">{label}</span>
           </button>
         ))}
+        <div className="relative" data-zones-menu>
+          <button
+            onClick={() => setZonesOpen((v) => !v)}
+            className={`group flex items-center gap-2 rounded-lg px-3 py-2 transition-all ${
+              zonesOpen ? 'bg-gray-800 ring-1 ring-cyan-500/40' : 'hover:bg-gray-900'
+            }`}
+            title="Zone — Safe zones réseaux sociaux"
+          >
+            <span
+              className="inline-flex items-center justify-center rounded-lg"
+              style={{
+                width: 28,
+                height: 28,
+                backgroundColor: zonesOpen ? '#06B6D4' : '#06B6D420',
+                color: zonesOpen ? '#FFFFFF' : '#06B6D4',
+              }}
+            >
+              <Share2 size={16} strokeWidth={2} />
+            </span>
+            <span className="text-xs font-medium text-gray-300">Zone</span>
+          </button>
+          {zonesOpen && (
+            <div className="absolute top-full right-0 mt-2 z-50 flex items-center gap-1.5 rounded-xl bg-gray-900/95 backdrop-blur border border-gray-700/50 px-3 py-2 shadow-2xl">
+              {Object.entries(PLATFORM_SAFE_ZONES).map(([key, zone]) => (
+                <PlatformIcon
+                  key={key}
+                  platform={zone.platform}
+                  isActive={safeZonePlatform === key}
+                  size="sm"
+                  onClick={() =>
+                    setSafeZonePlatform(safeZonePlatform === key ? null : key)
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </div>
         <div className="mx-1 h-8 w-px bg-gray-800" />
         <a
           href="/dashboard/calendar"
@@ -6282,33 +6331,11 @@ export default function InfographicPage() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/* Fixed Social Zones selector — top-right of preview area     */}
+      {/* Compact Vertical Export Bar — right edge of preview area    */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <div className="hidden lg:flex fixed top-24 right-24 z-40 items-center gap-2 rounded-xl bg-gray-800/90 backdrop-blur border border-gray-700/50 px-3 py-2 shadow-xl">
-        <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
-          Zones
-        </span>
-        <div className="flex gap-1.5">
-          {Object.entries(PLATFORM_SAFE_ZONES).map(([key, zone]) => (
-            <PlatformIcon
-              key={key}
-              platform={zone.platform}
-              isActive={safeZonePlatform === key}
-              size="sm"
-              onClick={() =>
-                setSafeZonePlatform(safeZonePlatform === key ? null : key)
-              }
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════════ */}
-      {/* Fixed Vertical Export Bar — right edge of preview area      */}
-      {/* ═══════════════════════════════════════════════════════════ */}
-      <div className="hidden lg:flex fixed right-0 top-1/2 -translate-y-1/2 z-40 flex-col items-center gap-2 bg-gray-950/95 backdrop-blur border-l border-y border-gray-800 rounded-l-2xl px-2 py-3 shadow-2xl">
+      <div className="hidden lg:flex fixed right-2 top-1/2 -translate-y-1/2 z-40 flex-col items-center gap-1.5 bg-gray-900/80 backdrop-blur-sm border border-gray-700/50 rounded-xl p-1.5 shadow-2xl">
         {isExporting && (
-          <div className="h-16 w-1 bg-gray-800 rounded-full mb-1 overflow-hidden">
+          <div className="h-10 w-0.5 bg-gray-800 rounded-full overflow-hidden">
             <div className="w-full bg-gradient-to-b from-purple-500 to-pink-500 transition-all duration-300" style={{ height: `${exportProgress}%` }} />
           </div>
         )}
@@ -6319,25 +6346,26 @@ export default function InfographicPage() {
           { key: 'audio-studio' as Destination, Icon: Music, color: '#EC4899', tip: 'Studio Son' },
         ] as const).map(({ key, Icon, color, tip }) => (
           <button key={key} onClick={() => setDestination(key)} title={tip}
-            className={`h-10 w-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all ${
+            className={`h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 transition-all ${
               destination === key ? 'ring-2 ring-white/40 scale-105' : 'opacity-60 hover:opacity-100'
             }`}
             style={{ backgroundColor: `${color}20`, color }}
           >
-            <Icon size={18} fill="currentColor" strokeWidth={1.5} />
+            <Icon size={16} fill="currentColor" strokeWidth={1.5} />
           </button>
         ))}
-        <div className="h-px w-8 bg-gray-800 my-0.5" />
+        <div className="h-px w-7 bg-gray-700/50" />
         <button onClick={handleExport} disabled={isExporting || cards.length === 0}
-          className="flex flex-col items-center justify-center gap-1 rounded-xl bg-gradient-to-b from-purple-600 to-pink-600 h-16 w-10 font-semibold text-white hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-500/25 transition-all"
+          className="flex items-center justify-center rounded-lg bg-gradient-to-b from-purple-600 to-pink-600 h-10 w-10 text-white hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-500/25 transition-all"
           title={isExporting ? `${exportProgress}%` : batchCount > 1 ? `Export x${batchCount}` : 'Export Création'}
         >
-          {isExporting ? <Loader2 size={20} className="animate-spin" /> : <Zap size={20} />}
-          <span className="text-[9px] leading-none">
-            {isExporting ? `${exportProgress}%` : batchCount > 1 ? `x${batchCount}` : 'Export'}
-          </span>
+          {isExporting
+            ? <Loader2 size={16} className="animate-spin" />
+            : <Zap size={16} fill="currentColor" strokeWidth={1.5} />}
         </button>
-        <span className="text-[10px] text-yellow-400 font-bold whitespace-nowrap">{25 * batchCount}cr</span>
+        <span className="text-[9px] text-yellow-400 font-bold leading-none">
+          {isExporting ? `${exportProgress}%` : `${25 * batchCount}cr`}
+        </span>
       </div>
 
       <Modal
