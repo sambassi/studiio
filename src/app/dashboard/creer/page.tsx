@@ -6,6 +6,7 @@ import {
   Plus,
   Trash2,
   Upload,
+  Zap,
   Loader2,
   RefreshCw,
   Sparkles,
@@ -2651,6 +2652,7 @@ export default function InfographicPage() {
                   onVideoDurationChange={setVideoDuration}
                   onCtaDurationChange={setCtaDuration}
                   hasRush={rushList.length > 0}
+                  contentTheme={contentTheme}
                 />
               </>
             )}
@@ -3863,16 +3865,18 @@ export default function InfographicPage() {
             <button
               onClick={handleExport}
               disabled={isExporting || cards.length === 0}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-3 font-bold text-white hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-3.5 text-base font-semibold text-white hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-500/20"
             >
               {isExporting ? (
                 <Loader2 size={20} className="animate-spin" />
-              ) : null}
+              ) : (
+                <Zap size={20} />
+              )}
               {isExporting
                 ? "EXPORT EN COURS..."
                 : batchCount > 1
-                  ? `EXPORTER ${batchCount} INFOGRAPHIES`
-                  : "EXPORTER L'INFOGRAPHIE"}
+                  ? `Export ${batchCount} Créations`
+                  : "Export Création"}
             </button>
             <div className="text-center text-sm text-gray-400">
               Coût : <span className="font-bold text-yellow-400">{25 * batchCount} crédits</span>
@@ -6415,6 +6419,31 @@ export default function InfographicPage() {
             <p className="text-base sm:text-lg font-bold text-yellow-400">
               {25 * batchCount}
             </p>
+          </div>
+        </div>
+
+        {/* ── Sticky Export Bar (always visible at bottom of preview) ── */}
+        <div className="sticky bottom-0 w-full mt-4 bg-gray-950/95 backdrop-blur border-t border-gray-800 px-3 py-3">
+          <div className="flex items-center gap-2 max-w-md mx-auto">
+            <select
+              value={destination}
+              onChange={(e) => setDestination(e.target.value as Destination)}
+              className="rounded-lg bg-gray-800 border border-gray-700 px-2 py-2.5 text-xs text-white flex-shrink-0"
+            >
+              <option value="draft">📅 Calendrier</option>
+              <option value="export">⬇ Fichier</option>
+              <option value="both">📅+⬇ Les deux</option>
+              <option value="audio-studio">🎵 Studio Son</option>
+            </select>
+            <button
+              onClick={handleExport}
+              disabled={isExporting || cards.length === 0}
+              className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 h-11 px-4 font-semibold text-white hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-500/25 transition-all"
+            >
+              {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
+              {isExporting ? `${exportProgress}%` : batchCount > 1 ? `Export x${batchCount}` : 'Export Création'}
+            </button>
+            <span className="text-[10px] text-yellow-400 font-bold whitespace-nowrap">{25 * batchCount}cr</span>
           </div>
         </div>
       </div>

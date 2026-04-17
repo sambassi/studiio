@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Music, Mic, Upload, Trash2, Volume2, VolumeX, Loader2, Play, Pause, Square } from 'lucide-react';
+import { Music, Mic, Upload, Trash2, Volume2, VolumeX, Loader2, Play, Pause, Square, Sparkles } from 'lucide-react';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 
 const TTS_VOICES = [
@@ -101,6 +101,7 @@ interface AudioStudioPanelProps {
   onVideoDurationChange: (v: number) => void;
   onCtaDurationChange: (v: number) => void;
   hasRush: boolean;
+  contentTheme?: string;
 }
 
 export function AudioStudioPanel({
@@ -110,11 +111,13 @@ export function AudioStudioPanel({
   onMusicVolumeChange, onVoiceVolumeChange,
   introDuration, cardsDuration, videoDuration, ctaDuration,
   onIntroDurationChange, onCardsDurationChange, onVideoDurationChange, onCtaDurationChange,
-  hasRush,
+  hasRush, contentTheme,
 }: AudioStudioPanelProps) {
   const [ttsText, setTtsText] = useState('');
   const [ttsVoice, setTtsVoice] = useState('fr-FR-DeniseNeural');
   const [ttsLoading, setTtsLoading] = useState(false);
+  const [ttsError, setTtsError] = useState('');
+  const [ttsSuggestLoading, setTtsSuggestLoading] = useState(false);
   const [musicMuted, setMusicMuted] = useState(false);
   const [voiceMuted, setVoiceMuted] = useState(false);
   const [mediaLibOpen, setMediaLibOpen] = useState(false);
@@ -181,28 +184,56 @@ export function AudioStudioPanel({
   const generateTTS = async () => {
     if (!ttsText.trim()) return;
     setTtsLoading(true);
+    setTtsError('');
     try {
       const res = await fetch('/api/tts/edge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: ttsText, voice: ttsVoice }),
       });
-      if (!res.ok) throw new Error('TTS failed');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `TTS failed (${res.status})`);
+      }
+      const contentType = res.headers.get('content-type') || 'audio/mpeg';
       const blob = await res.blob();
-      const file = new File([blob], `tts-${Date.now()}.mp3`, { type: 'audio/mpeg' });
+      if (blob.size < 100) throw new Error('Audio vide — vérifiez le texte');
+      const ext = contentType.includes('wav') ? 'wav' : 'mp3';
+      const file = new File([blob], `tts-${Date.now()}.${ext}`, { type: contentType });
       const uploadRes = await fetch('/api/upload/signed-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename: file.name, contentType: file.type, purpose: 'voice' }),
       });
       const uploadData = await uploadRes.json();
-      if (!uploadData.success) throw new Error('Upload failed');
+      if (!uploadData.success) throw new Error('Upload failed: ' + (uploadData.error || ''));
       await fetch(uploadData.signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
-      onVoiceChange(uploadData.publicUrl, `TTS — ${ttsVoice.split('-')[0]}`);
-    } catch (err) {
+      onVoiceChange(uploadData.publicUrl, `TTS — ${TTS_VOICES.find(v => v.id === ttsVoice)?.label || ttsVoice}`);
+    } catch (err: any) {
       console.error('[AudioPanel] TTS error:', err);
+      setTtsError(err.message || 'Erreur de synthèse vocale');
     } finally {
       setTtsLoading(false);
+    }
+  };
+
+  const suggestTtsText = async () => {
+    setTtsSuggestLoading(true);
+    try {
+      const res = await fetch('/api/content/ai-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: contentTheme || 'fitness et bien-être', locale: 'fr', cardCount: 1 }),
+      });
+      const data = await res.json();
+      if (data.success && data.cards?.[0]) {
+        const card = data.cards[0];
+        setTtsText(`${card.label}. ${card.description}`);
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setTtsSuggestLoading(false);
     }
   };
 
@@ -304,19 +335,31 @@ export function AudioStudioPanel({
 
       {/* ── TTS ── */}
       <div>
-        <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Synthèse vocale (TTS)</div>
-        <textarea value={ttsText} onChange={(e) => setTtsText(e.target.value)} placeholder="Tapez votre texte ici..."
-          className="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-xs text-white placeholder-gray-500 focus:border-pink-500 focus:outline-none resize-none" rows={3} />
+        <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2 flex items-center justify-between">
+          <span>Synthèse vocale (TTS)</span>
+          <button
+            onClick={suggestTtsText}
+            disabled={ttsSuggestLoading}
+            className="flex items-center gap-1 text-purple-400 hover:text-purple-300 disabled:opacity-50 transition"
+            title="Suggérer un texte avec IA"
+          >
+            {ttsSuggestLoading ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+            <span className="text-[9px]">IA</span>
+          </button>
+        </div>
+        <textarea value={ttsText} onChange={(e) => { setTtsText(e.target.value); setTtsError(''); }} placeholder="Tapez votre texte ici..."
+          className="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-xs text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none resize-none" rows={3} />
         <div className="flex items-center gap-2 mt-2">
           <select value={ttsVoice} onChange={(e) => setTtsVoice(e.target.value)}
             className="flex-1 rounded-lg bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white">
             {TTS_VOICES.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
           </select>
           <button onClick={generateTTS} disabled={ttsLoading || !ttsText.trim()}
-            className="flex items-center gap-1.5 rounded-lg bg-pink-600 hover:bg-pink-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 transition">
+            className="flex items-center gap-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 transition">
             {ttsLoading ? <Loader2 size={12} className="animate-spin" /> : <Mic size={12} />} Générer
           </button>
         </div>
+        {ttsError && <p className="mt-1 text-[10px] text-red-400">{ttsError}</p>}
       </div>
 
       {/* ── Sequence Durations ── */}
