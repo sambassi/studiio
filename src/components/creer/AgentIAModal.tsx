@@ -76,6 +76,7 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
 
   const rushInputRef = useRef<HTMLInputElement>(null);
   const musicInputRef = useRef<HTMLInputElement>(null);
+  const montageAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!prefsLoaded || prefsAppliedRef.current) return;
@@ -156,44 +157,85 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
         } catch {}
       }
 
-      // Single server-side call — Remotion renders everything
-      setAiStage(`Rendu IA en cours... jusqu'à ${montageCount > 1 ? montageCount * 2 : 3} minutes`);
-      setAiProgress(80);
+      // Real-time elapsed status indicator
+      let elapsed = 0;
+      const statusMessages = [
+        [0, 'Préparation du montage...'],
+        [10, 'Lancement du moteur de rendu (premier lancement plus long)...'],
+        [30, 'Rendu des séquences vidéo en cours...'],
+        [60, 'Composition et transitions...'],
+        [120, 'Finalisation et upload...'],
+        [180, 'Le rendu prend plus de temps que prévu. Patience...'],
+      ] as const;
+      const statusTimer = setInterval(() => {
+        elapsed++;
+        const msg = [...statusMessages].reverse().find(([t]) => elapsed >= t)?.[1] || statusMessages[0][1];
+        setAiStage(`${msg} (${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')})`);
+        setAiProgress(Math.min(95, Math.round((elapsed / 180) * 100)));
+      }, 1000);
 
-      const res = await fetch('/api/agent/montage', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          rushUrls,
-          count: montageCount,
-          duration: montageDuration,
-          theme,
-          customPrompt: customPrompt || undefined,
-          musicUrl,
-          posterUrl,
-          platforms: aiPlatforms,
-          subtitle: AGENT_THEMES.find(t => t.id === theme)?.label || '',
-        }),
-      });
-      const data = await res.json();
+      const controller = new AbortController();
+      montageAbortRef.current = controller;
 
-      if (!data.success) {
-        setAiStage(`Erreur : ${data.error || 'Rendu échoué'}`);
+      try {
+        const timeoutId = setTimeout(() => controller.abort(), 300_000);
+        const res = await fetch('/api/agent/montage', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            rushUrls,
+            count: montageCount,
+            duration: montageDuration,
+            theme,
+            customPrompt: customPrompt || undefined,
+            musicUrl,
+            posterUrl,
+            platforms: aiPlatforms,
+            subtitle: AGENT_THEMES.find(t => t.id === theme)?.label || '',
+          }),
+        });
+        clearTimeout(timeoutId);
+        clearInterval(statusTimer);
+        montageAbortRef.current = null;
+
+        const data = await res.json();
+        console.log('[AgentIA Montage] API response:', data);
+
+        if (!data.success) {
+          setAiStage(`Erreur : ${data.error || data.detail || 'Rendu échoué'}`);
+          console.error('[AgentIA Montage] Error detail:', data);
+          await new Promise((r) => setTimeout(r, 4000));
+        } else {
+          setAiStage(`Montage terminé ! ${data.postIds?.length || 0} vidéo(s) créée(s). Redirection...`);
+          setAiProgress(100);
+          await new Promise((r) => setTimeout(r, 1000));
+          if (onAfterGenerate) await onAfterGenerate();
+          onClose();
+          router.push('/dashboard/calendar');
+          return;
+        }
+      } catch (fetchErr: any) {
+        clearInterval(statusTimer);
+        montageAbortRef.current = null;
+        if (fetchErr.name === 'AbortError') {
+          if (elapsed >= 295) {
+            setAiStage('Le rendu a expiré (5 min). Réessayez avec une vidéo plus courte ou moins de montages.');
+          } else {
+            setAiStage('Montage annulé.');
+          }
+        } else {
+          console.error('[AgentIA Montage] Fetch error:', fetchErr);
+          setAiStage(`Erreur réseau : ${fetchErr.message}`);
+        }
         await new Promise((r) => setTimeout(r, 3000));
-      } else {
-        setAiStage(`Montage terminé ! ${data.postIds?.length || 0} vidéo(s) créée(s). Redirection...`);
-        setAiProgress(100);
-        await new Promise((r) => setTimeout(r, 1000));
-        if (onAfterGenerate) await onAfterGenerate();
-        onClose();
-        router.push('/dashboard/calendar');
-        return;
       }
     } catch (err) {
       console.error('[AgentIA Montage] Error:', err);
       setAiStage('Erreur de génération');
       await new Promise((r) => setTimeout(r, 2000));
     } finally {
+      montageAbortRef.current = null;
       setAiGenerating(false);
       setAiProgress(0);
       setAiStage('');
@@ -719,10 +761,15 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
             <Button
               variant="secondary"
               className="flex-1"
-              onClick={() => !aiGenerating && onClose()}
-              disabled={aiGenerating}
+              onClick={() => {
+                if (aiGenerating && montageAbortRef.current) {
+                  montageAbortRef.current.abort();
+                  return;
+                }
+                if (!aiGenerating) onClose();
+              }}
             >
-              {tc('cancel')}
+              {aiGenerating ? 'Annuler' : tc('cancel')}
             </Button>
             <button
               onClick={handleAIGenerate}
