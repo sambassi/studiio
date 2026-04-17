@@ -96,12 +96,22 @@ export async function renderMontage(
 
   onProgress(75, 'Ajout titre et CTA...');
 
-  const safeTitle = spec.title.text.replace(/'/g, "\\'").replace(/:/g, '\\:');
-  const safeCta = spec.cta.text.replace(/'/g, "\\'").replace(/:/g, '\\:');
+  // Load font into FFmpeg virtual FS
+  await ffmpeg.writeFile('anton.ttf', await fetchFile('/ffmpeg/Anton-Regular.ttf'));
+
+  const escDt = (s: string) => s
+    .replace(/\\/g, '\\\\\\\\')
+    .replace(/:/g, '\\\\:')
+    .replace(/'/g, "\\\\\\'")
+    .replace(/\[/g, '\\\\[')
+    .replace(/\]/g, '\\\\]')
+    .replace(/#/g, '');
+  const safeTitle = escDt(spec.title.text);
+  const safeCta = escDt(spec.cta.text);
   const totalSec = spec.totalDuration;
 
-  const titleFilter = `drawtext=text='${safeTitle}':fontcolor=white:fontsize=72:x=(w-text_w)/2:y=h/4:enable='between(t,0,2.5)':shadowcolor=black:shadowx=2:shadowy=2`;
-  const ctaFilter = `drawtext=text='${safeCta}':fontcolor=white:fontsize=52:x=(w-text_w)/2:y=h-h/4:enable='gte(t,${Math.max(0, totalSec - 2)})':shadowcolor=black:shadowx=2:shadowy=2`;
+  const titleFilter = `drawtext=fontfile=anton.ttf:text='${safeTitle}':fontcolor=white:fontsize=72:x=(w-text_w)/2:y=h/4:enable='between(t,0,2.5)':shadowcolor=black:shadowx=2:shadowy=2`;
+  const ctaFilter = `drawtext=fontfile=anton.ttf:text='${safeCta}':fontcolor=white:fontsize=52:x=(w-text_w)/2:y=h-h/4:enable='gte(t,${Math.max(0, totalSec - 2)})':shadowcolor=black:shadowx=2:shadowy=2`;
 
   await ffmpeg.exec([
     '-i', 'concat.mp4',
