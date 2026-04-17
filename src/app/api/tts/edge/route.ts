@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 const VALID_VOICE_PATTERN = /^[a-z]{2}-[A-Z]{2}-\w+Neural$/;

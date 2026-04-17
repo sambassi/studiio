@@ -134,14 +134,35 @@ export function AudioStudioPanel({
     if (target === 'music') setIsUploadingMusic(true);
     else setIsUploadingVoice(true);
     try {
+      console.log(`[AudioPanel] Uploading ${target}: ${file.name} (${file.size} bytes, ${file.type})`);
+
+      if (file.size < 4 * 1024 * 1024) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('purpose', target === 'music' ? 'music' : 'voice');
+        const res = await fetch('/api/upload/media', { method: 'POST', body: formData });
+        const data = await res.json();
+        console.log('[AudioPanel] FormData upload result:', data);
+        if (data.success && data.file?.url) {
+          if (target === 'music') onMusicChange(data.file.url, file.name);
+          else onVoiceChange(data.file.url, file.name);
+          return;
+        }
+      }
+
       const res = await fetch('/api/upload/signed-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename: file.name, contentType: file.type, purpose: target === 'music' ? 'music' : 'voice' }),
       });
       const data = await res.json();
-      if (!data.success) return;
-      await fetch(data.signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+      console.log('[AudioPanel] Signed URL result:', data.success, data.error || '');
+      if (!data.success) {
+        console.error('[AudioPanel] Signed URL failed:', data.error);
+        return;
+      }
+      const putRes = await fetch(data.signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+      console.log('[AudioPanel] PUT to storage:', putRes.status);
       if (target === 'music') onMusicChange(data.publicUrl, file.name);
       else onVoiceChange(data.publicUrl, file.name);
     } catch (err) {
@@ -186,6 +207,7 @@ export function AudioStudioPanel({
     setTtsLoading(true);
     setTtsError('');
     try {
+      console.log('[AudioPanel] TTS request:', { text: ttsText.substring(0, 50), voice: ttsVoice });
       const res = await fetch('/api/tts/edge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -193,22 +215,36 @@ export function AudioStudioPanel({
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `TTS failed (${res.status})`);
+        throw new Error(errData.error || `TTS échoué (${res.status})`);
       }
       const contentType = res.headers.get('content-type') || 'audio/mpeg';
       const blob = await res.blob();
+      console.log('[AudioPanel] TTS blob:', blob.size, 'bytes, type:', contentType);
       if (blob.size < 100) throw new Error('Audio vide — vérifiez le texte');
-      const ext = contentType.includes('wav') ? 'wav' : 'mp3';
-      const file = new File([blob], `tts-${Date.now()}.${ext}`, { type: contentType });
-      const uploadRes = await fetch('/api/upload/signed-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: file.name, contentType: file.type, purpose: 'voice' }),
-      });
-      const uploadData = await uploadRes.json();
-      if (!uploadData.success) throw new Error('Upload failed: ' + (uploadData.error || ''));
-      await fetch(uploadData.signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
-      onVoiceChange(uploadData.publicUrl, `TTS — ${TTS_VOICES.find(v => v.id === ttsVoice)?.label || ttsVoice}`);
+
+      const voiceLabel = TTS_VOICES.find(v => v.id === ttsVoice)?.label || ttsVoice;
+      const localUrl = URL.createObjectURL(blob);
+
+      try {
+        const ext = contentType.includes('wav') ? 'wav' : 'mp3';
+        const file = new File([blob], `tts-${Date.now()}.${ext}`, { type: contentType });
+        const uploadRes = await fetch('/api/upload/signed-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: file.name, contentType: file.type, purpose: 'voice' }),
+        });
+        const uploadData = await uploadRes.json();
+        if (uploadData.success) {
+          await fetch(uploadData.signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+          onVoiceChange(uploadData.publicUrl, `TTS — ${voiceLabel}`);
+          console.log('[AudioPanel] TTS uploaded to storage:', uploadData.publicUrl);
+          return;
+        }
+        console.warn('[AudioPanel] TTS upload failed, using local blob URL');
+      } catch (uploadErr) {
+        console.warn('[AudioPanel] TTS upload failed, using local blob URL:', uploadErr);
+      }
+      onVoiceChange(localUrl, `TTS — ${voiceLabel}`);
     } catch (err: any) {
       console.error('[AudioPanel] TTS error:', err);
       setTtsError(err.message || 'Erreur de synthèse vocale');
