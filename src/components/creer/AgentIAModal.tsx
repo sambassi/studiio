@@ -144,119 +144,51 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
 
       const theme = aiObjectives[0] || 'motivation';
 
-      // 3. Loop N times (montageCount)
-      for (let m = 0; m < montageCount; m++) {
-        setAiStage(`Montage ${m + 1}/${montageCount} — préparation...`);
-
-        // Rotate rush order for variety between montages
-        const rotatedRushes = [...rushUrls.slice(m % rushUrls.length), ...rushUrls.slice(0, m % rushUrls.length)];
-
-        const res = await fetch('/api/agent/montage', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            rushUrls: rotatedRushes,
-            duration: montageDuration,
-            theme,
-            customPrompt: montageCount > 1
-              ? `${customPrompt || ''} (variation ${m + 1}/${montageCount})`.trim()
-              : customPrompt || undefined,
-            musicUrl,
-            platforms: aiPlatforms,
-          }),
-        });
-        const data = await res.json();
-        if (!data.success) {
-          setAiStage(`Erreur montage ${m + 1}: ${data.error}`);
-          continue;
-        }
-
-        const spec = data.montageSpec;
-        setAiStage(`Montage ${m + 1}/${montageCount} — rendu vidéo...`);
+      // Fetch poster URL if user enabled it
+      let posterUrl: string | null = null;
+      if (aiPhotoAffiche) {
+        const themeObj = AGENT_THEMES.find(t => t.id === theme);
+        const query = themeObj?.label || theme || 'fitness';
         try {
-          const primaryRush = rotatedRushes[0] || rushUrls[0];
-
-          // Fetch a poster photo if user enabled it
-          let posterUrl: string | null = null;
-          if (aiPhotoAffiche) {
-            const themeObj = AGENT_THEMES.find(t => t.id === theme);
-            const query = themeObj?.label || theme || 'fitness';
-            try {
-              const pxRes = await fetch(`/api/pexels?query=${encodeURIComponent(query)}&count=5`);
-              const pxData = await pxRes.json();
-              if (pxData.success && pxData.photos?.length > 0) {
-                posterUrl = pxData.photos[m % pxData.photos.length]?.url || null;
-              }
-            } catch {}
-          }
-
-          const composeParams = {
-            width: 1080,
-            height: 1920,
-            fps: 30,
-            title: spec.title || theme?.toUpperCase() || 'MONTAGE IA',
-            subtitle: spec.subtitle || AGENT_THEMES.find(t => t.id === theme)?.label || '',
-            salesPhrase: spec.cta || 'DÉCOUVRIR',
-            posterUrl,
-            videoUrl: primaryRush,
-            logoUrl: null,
-            musicUrl: musicUrl || null,
-            voiceUrl: null,
-            introDuration: posterUrl ? 3 : 0,
-            cardsDuration: 0,
-            videoDuration: posterUrl ? montageDuration - 5 : montageDuration - 2,
-            ctaDuration: 2,
-            accentColor: branding.accentColor || '#D91CD2',
-            ctaText: spec.cta || 'DÉCOUVRIR',
-            ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
-            watermarkText: branding.watermarkText || undefined,
-            onProgress: (pct: number, stage: string) => {
-              const base = ((aiRushFiles.length + m) / (aiRushFiles.length + montageCount + 1)) * 100;
-              const range = (1 / (aiRushFiles.length + montageCount + 1)) * 100;
-              setAiProgress(Math.round(base + pct * range / 100));
-              setAiStage(`Montage ${m + 1} — ${stage}`);
-            },
-          };
-          console.log('[montage] compose params:', JSON.stringify({
-            title: composeParams.title,
-            subtitle: composeParams.subtitle,
-            ctaText: composeParams.ctaText,
-            posterUrl: composeParams.posterUrl?.substring(0, 60) || null,
-            videoUrl: composeParams.videoUrl?.substring(0, 60) || null,
-            introDuration: composeParams.introDuration,
-            videoDuration: composeParams.videoDuration,
-            ctaDuration: composeParams.ctaDuration,
-          }, null, 2));
-
-          const { url: renderedUrl } = await composeAndUpload(composeParams);
-
-          // Update the post with the rendered video
-          if (renderedUrl && data.postId) {
-            await fetch('/api/posts', {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                id: data.postId,
-                media_url: renderedUrl,
-                metadata: { ...spec, renderedVideoUrl: renderedUrl, videoUrl: renderedUrl },
-              }),
-            }).catch(() => {});
-          }
-        } catch (composeErr) {
-          console.error(`[AgentIA Montage] Compose error ${m + 1}:`, composeErr);
-        }
-
-        setAiProgress(Math.round(((aiRushFiles.length + m + 1) / (aiRushFiles.length + montageCount + 1)) * 100));
+          const pxRes = await fetch(`/api/pexels?query=${encodeURIComponent(query)}&count=5`);
+          const pxData = await pxRes.json();
+          if (pxData.success && pxData.photos?.length > 0) posterUrl = pxData.photos[0]?.url || null;
+        } catch {}
       }
 
-      // 5. Done — redirect to calendar
-      setAiStage(`Montage terminé ! Redirection...`);
-      setAiProgress(100);
-      await new Promise((r) => setTimeout(r, 1000));
-      if (onAfterGenerate) await onAfterGenerate();
-      onClose();
-      router.push('/dashboard/calendar');
-      return;
+      // Single server-side call — Remotion renders everything
+      setAiStage(`Rendu IA en cours... jusqu'à ${montageCount > 1 ? montageCount * 2 : 3} minutes`);
+      setAiProgress(80);
+
+      const res = await fetch('/api/agent/montage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rushUrls,
+          count: montageCount,
+          duration: montageDuration,
+          theme,
+          customPrompt: customPrompt || undefined,
+          musicUrl,
+          posterUrl,
+          platforms: aiPlatforms,
+          subtitle: AGENT_THEMES.find(t => t.id === theme)?.label || '',
+        }),
+      });
+      const data = await res.json();
+
+      if (!data.success) {
+        setAiStage(`Erreur : ${data.error || 'Rendu échoué'}`);
+        await new Promise((r) => setTimeout(r, 3000));
+      } else {
+        setAiStage(`Montage terminé ! ${data.postIds?.length || 0} vidéo(s) créée(s). Redirection...`);
+        setAiProgress(100);
+        await new Promise((r) => setTimeout(r, 1000));
+        if (onAfterGenerate) await onAfterGenerate();
+        onClose();
+        router.push('/dashboard/calendar');
+        return;
+      }
     } catch (err) {
       console.error('[AgentIA Montage] Error:', err);
       setAiStage('Erreur de génération');

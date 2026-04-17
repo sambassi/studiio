@@ -8,5 +8,11 @@
       "path": "/api/cron/cleanup-media",
       "schedule": "0 */3 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "src/app/api/agent/montage/route.ts": {
+      "maxDuration": 300,
+      "memory": 3008
+    }
+  }
 }

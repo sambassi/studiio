@@ -1,11 +1,38 @@
 import { Composition } from "remotion";
 import { AfroboostComposition } from "./AfroboostComposition";
 import { InfographicComposition } from "./InfographicComposition";
+import { AiMontageComposition } from "./AiMontageComposition";
 import type { AfroboostProps, InfographicProps } from "./types";
+import type { AiMontageProps } from "./AiMontageComposition";
 
 export const RemotionRoot: React.FC = () => {
   return (
     <>
+      {/* AI Montage — dynamic duration from props */}
+      <Composition
+        id="AiMontage"
+        component={AiMontageComposition}
+        durationInFrames={450}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={{
+          clips: [{ src: '', startSec: 0, endSec: 10 }],
+          transition: 'crossfade' as const,
+          title: { text: 'MONTAGE IA', color: '#FFFFFF' },
+          subtitle: '',
+          cta: { text: 'DÉCOUVRIR', subText: 'LIEN EN BIO', color: '#FFFFFF' },
+          posterUrl: null,
+          musicUrl: null,
+          totalDurationFrames: 450,
+          format: '9:16' as const,
+          watermark: false,
+        } satisfies AiMontageProps}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: (props as AiMontageProps).totalDurationFrames || 450,
+        })}
+      />
+
       {/* Reel 9:16 - 30fps - 30s */}
       <Composition
         id="AfroboostReel"

@@ -36,6 +36,8 @@ const nextConfig = {
         '@remotion/bundler': 'commonjs @remotion/bundler',
         '@remotion/renderer': 'commonjs @remotion/renderer',
         '@remotion/cli': 'commonjs @remotion/cli',
+        '@remotion/transitions': 'commonjs @remotion/transitions',
+        '@sparticuz/chromium': 'commonjs @sparticuz/chromium',
         'esbuild': 'commonjs esbuild',
       });
     }

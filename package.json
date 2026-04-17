@@ -18,6 +18,8 @@
     "@remotion/bundler": "^4.0.441",
     "@remotion/cli": "^4.0.441",
     "@remotion/renderer": "^4.0.441",
+    "@remotion/transitions": "^4.0.448",
+    "@sparticuz/chromium": "^147.0.0",
     "@stripe/stripe-js": "^3.0.0",
     "@supabase/supabase-js": "^2.42.0",
     "ffmpeg-static": "^5.2.0",
