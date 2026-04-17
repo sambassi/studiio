@@ -171,40 +171,64 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
           continue;
         }
 
-        // 4. Compose the video client-side — use first rush as main video,
-        //    with intro/CTA derived from AI hints
         const spec = data.montageSpec;
         setAiStage(`Montage ${m + 1}/${montageCount} — rendu vidéo...`);
         try {
-          // Use a different rush per montage if available
           const primaryRush = rotatedRushes[0] || rushUrls[0];
-          const { url: renderedUrl } = await composeAndUpload({
+
+          // Fetch a poster photo if user enabled it
+          let posterUrl: string | null = null;
+          if (aiPhotoAffiche) {
+            const themeObj = AGENT_THEMES.find(t => t.id === theme);
+            const query = themeObj?.label || theme || 'fitness';
+            try {
+              const pxRes = await fetch(`/api/pexels?query=${encodeURIComponent(query)}&count=5`);
+              const pxData = await pxRes.json();
+              if (pxData.success && pxData.photos?.length > 0) {
+                posterUrl = pxData.photos[m % pxData.photos.length]?.url || null;
+              }
+            } catch {}
+          }
+
+          const composeParams = {
             width: 1080,
             height: 1920,
             fps: 30,
-            title: spec.title || 'MONTAGE IA',
-            subtitle: spec.subtitle || undefined,
+            title: spec.title || theme?.toUpperCase() || 'MONTAGE IA',
+            subtitle: spec.subtitle || AGENT_THEMES.find(t => t.id === theme)?.label || '',
             salesPhrase: spec.cta || 'DÉCOUVRIR',
-            posterUrl: null,
+            posterUrl,
             videoUrl: primaryRush,
             logoUrl: null,
             musicUrl: musicUrl || null,
             voiceUrl: null,
-            introDuration: 2,
+            introDuration: posterUrl ? 3 : 0,
             cardsDuration: 0,
-            videoDuration: montageDuration - 4,
+            videoDuration: posterUrl ? montageDuration - 5 : montageDuration - 2,
             ctaDuration: 2,
             accentColor: branding.accentColor || '#D91CD2',
             ctaText: spec.cta || 'DÉCOUVRIR',
             ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
             watermarkText: branding.watermarkText || undefined,
-            onProgress: (pct, stage) => {
+            onProgress: (pct: number, stage: string) => {
               const base = ((aiRushFiles.length + m) / (aiRushFiles.length + montageCount + 1)) * 100;
               const range = (1 / (aiRushFiles.length + montageCount + 1)) * 100;
               setAiProgress(Math.round(base + pct * range / 100));
               setAiStage(`Montage ${m + 1} — ${stage}`);
             },
-          });
+          };
+          console.log('[montage] compose params:', JSON.stringify({
+            title: composeParams.title,
+            subtitle: composeParams.subtitle,
+            ctaText: composeParams.ctaText,
+            posterUrl: composeParams.posterUrl?.substring(0, 60) || null,
+            videoUrl: composeParams.videoUrl?.substring(0, 60) || null,
+            introDuration: composeParams.introDuration,
+            videoDuration: composeParams.videoDuration,
+            ctaDuration: composeParams.ctaDuration,
+          }, null, 2));
+
+          const { url: renderedUrl } = await composeAndUpload(composeParams);
 
           // Update the post with the rendered video
           if (renderedUrl && data.postId) {

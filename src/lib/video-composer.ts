@@ -1737,8 +1737,14 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // Build sequences
   const sequences: Array<{ type: string; duration: number }> = [{ type: 'intro', duration: introDuration }];
   if (cards.length > 0) sequences.push({ type: 'cards', duration: cardsDuration });
-  if (videoEl) sequences.push({ type: 'video', duration: videoDuration });
-  sequences.push({ type: 'cta', duration: ctaDuration });
+  if (videoEl) {
+    sequences.push({ type: 'video', duration: videoDuration });
+  } else if (videoUrl) {
+    // Video was requested but failed to load — redistribute its duration to intro/CTA
+    console.warn('[Composer] ⚠️ Video requested but failed to load — extending intro/CTA to fill duration');
+    sequences[0].duration += Math.floor(videoDuration / 2);
+  }
+  sequences.push({ type: 'cta', duration: ctaDuration + ((!videoEl && videoUrl) ? Math.ceil(videoDuration / 2) : 0) });
 
   const totalDuration = sequences.reduce((s, seq) => s + seq.duration, 0);
   const transitionDur = 0.8;
@@ -2057,7 +2063,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
             const vs = seqStarts[sequences.indexOf(videoSeq)];
             const ve = vs + videoSeq.duration;
             if (t >= vs && t < ve) {
-              if (videoEl.paused) { videoEl.currentTime = t - vs; videoEl.play().catch(() => {}); }
+              if (videoEl.paused) { videoEl.currentTime = Math.max(0, t - vs); videoEl.play().catch((e) => console.warn('[Composer] Video play failed:', e.message)); }
             } else if (!videoEl.paused) { videoEl.pause(); }
           }
         }
