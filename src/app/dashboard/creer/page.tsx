@@ -2312,25 +2312,19 @@ export default function InfographicPage() {
     { id: 'settings', label: 'Paramètres', Icon: SettingsIcon, color: 'slate' },
   ];
 
-  // Rail click routes to the matching existing step when relevant
+  // Rail click: just toggle the relevant panel. Never touch `step` — the
+  // Left Form panel stays at whatever step the user last selected, so opening
+  // a rail tab never pulls unrelated content panels into view.
   const handleRailClick = (id: Exclude<RailTab, null>) => {
-    // Toggle off if already active
     if (activeRailTab === id) {
       setActiveRailTab(null);
       return;
     }
     setActiveRailTab(id);
-    if (id === 'templates') setStep(0);
-    else if (id === 'cards') setStep(0);
-    else if (id === 'text') setStep(0);
-    else if (id === 'media') setStep(2);
-    else if (id === 'elements') setStep(0);
-    else if (id === 'audio') setStep(2);
-    else if (id === 'settings') setStep(3);
   };
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] flex-col lg:flex-row bg-gray-900 text-white overflow-x-hidden">
+    <div className="flex min-h-[calc(100vh-4rem)] flex-col bg-gray-900 text-white overflow-x-hidden">
       {/* Toast */}
       {toast && (
         <div
@@ -2345,34 +2339,37 @@ export default function InfographicPage() {
       )}
 
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/* B3: Canva-style icon rail (secondary left rail)              */}
+      {/* Top horizontal toolbar — replaces the former vertical rail   */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <div className="hidden lg:flex flex-col items-center gap-2 bg-gray-950 border-r border-gray-800 py-3 px-2 flex-shrink-0 lg:max-h-[calc(100vh-4rem)] overflow-y-auto">
+      <div className="hidden lg:flex items-center justify-center gap-1 bg-gray-950 border-b border-gray-800 px-4 py-2 flex-shrink-0">
         {railItems.map(({ id, label, Icon, color }) => (
           <button
             key={id}
             onClick={() => handleRailClick(id)}
-            className="group flex flex-col items-center justify-center gap-1 rounded-xl w-16 py-2 transition-all hover:bg-gray-900"
+            className={`group flex items-center gap-2 rounded-lg px-3 py-2 transition-all ${
+              activeRailTab === id ? 'bg-gray-800 ring-1 ring-purple-500/40' : 'hover:bg-gray-900'
+            }`}
             title={label}
           >
-            <IconBadge Icon={Icon} color={color} active={activeRailTab === id} />
-            <span className="text-[10px] font-medium leading-tight text-gray-300">{label}</span>
+            <IconBadge Icon={Icon} color={color} active={activeRailTab === id} size={28} />
+            <span className="text-xs font-medium text-gray-300">{label}</span>
           </button>
         ))}
-        <div className="mt-auto pt-2 border-t border-gray-800">
-          <a
-            href="/dashboard/calendar"
-            className="group flex flex-col items-center justify-center gap-1 rounded-xl w-16 py-2 transition-all hover:bg-gray-900"
-            title="Agent IA — Planificateur autonome"
-          >
-            <IconBadge Icon={Sparkles} color="amber" size={40} />
-            <span className="text-[10px] font-medium leading-tight text-gray-300">Agent IA</span>
-          </a>
-        </div>
+        <div className="mx-1 h-8 w-px bg-gray-800" />
+        <a
+          href="/dashboard/calendar"
+          className="group flex items-center gap-2 rounded-lg px-3 py-2 transition-all hover:bg-gray-900"
+          title="Agent IA — Planificateur autonome"
+        >
+          <IconBadge Icon={Sparkles} color="amber" size={28} />
+          <span className="text-xs font-medium text-gray-300">Agent IA</span>
+        </a>
       </div>
 
+      <div className="flex flex-col lg:flex-row flex-1 min-h-0">
+
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/* B3: Rail slide-in panel — opens to the right of the rail    */}
+      {/* Rail slide-in panel — opens below the top toolbar           */}
       {/* ═══════════════════════════════════════════════════════════ */}
       {activeRailTab && (
         <div
@@ -6621,6 +6618,7 @@ export default function InfographicPage() {
           setCropRushIdx(null);
         }}
       />
+      </div>
     </div>
   );
 }
