@@ -429,7 +429,8 @@ export default function InfographicPage() {
   const [gradientOpacity, setGradientOpacity] = useState(0.3);
   // Per-sequence no-color mode (user decides which sequences have color or just photo)
   const [noColorBg, setNoColorBg] = useState(false);
-  const [noColorSequences, setNoColorSequences] = useState<string[]>([]); // sequences where color is disabled
+  const [noColorSequences, setNoColorSequences] = useState<string[]>(['cartes', 'video', 'cta']);
+  const [syncColorsGlobal, setSyncColorsGlobal] = useState(false);
 
   // Per-sequence gradient settings: each sequence can override the global gradient
   // Keys: "titre" | "cartes" | "video" | "cta"
@@ -629,6 +630,7 @@ export default function InfographicPage() {
         if (cfg.gradientOpacity !== undefined) setGradientOpacity(cfg.gradientOpacity);
         if (cfg.noColorBg !== undefined) setNoColorBg(cfg.noColorBg);
         if (cfg.noColorSequences) setNoColorSequences(cfg.noColorSequences);
+        if (typeof cfg.syncColorsGlobal === 'boolean') setSyncColorsGlobal(cfg.syncColorsGlobal);
         if (cfg.seqGradients) setSeqGradients(cfg.seqGradients);
         if (cfg.textScale !== undefined) setTextScale(cfg.textScale);
         if (cfg.ctaTextScale !== undefined) setCtaTextScale(cfg.ctaTextScale);
@@ -877,7 +879,7 @@ export default function InfographicPage() {
           titleColor, ctaColor, ctaSubColor, ctaMainText, ctaSubText,
           titleTextGradient, titleGradColor1, titleGradColor2,
           titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
-          gradientColor1, gradientColor2, gradientOpacity, noColorBg, noColorSequences, seqGradients,
+          gradientColor1, gradientColor2, gradientOpacity, noColorBg, noColorSequences, syncColorsGlobal, seqGradients,
           textScale, ctaTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
           titlePos, logoPositions, watermarkPos, cardsPos, overlayPos,
           titleSize, cardsSize, watermarkSize,
@@ -900,7 +902,7 @@ export default function InfographicPage() {
     titleColor, ctaColor, ctaSubColor, ctaMainText, ctaSubText,
     titleTextGradient, titleGradColor1, titleGradColor2,
     titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
-    gradientColor1, gradientColor2, gradientOpacity, noColorBg, noColorSequences, seqGradients,
+    gradientColor1, gradientColor2, gradientOpacity, noColorBg, noColorSequences, syncColorsGlobal, seqGradients,
     textScale, ctaTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
     titlePos, logoPositions, watermarkPos, cardsPos, overlayPos,
     titleSize, cardsSize, watermarkSize,
@@ -918,7 +920,7 @@ export default function InfographicPage() {
 
   // Floating panels — which element panel is open
   const [activePanel, setActivePanel] = useState<
-    "title" | "cards" | "cta" | "overlay" | "gradient" | "logo" | "sitetext" | "add" | "character" | null
+    "title" | "cards" | "cta" | "overlay" | "gradient" | "logo" | "sitetext" | "add" | "character" | "background" | null
   >(null);
   const [panelPos, setPanelPos] = useState({ x: 0, y: 0 });
 
@@ -2651,6 +2653,17 @@ export default function InfographicPage() {
                   </label>
                 </div>
                 <div>
+                  <label className="flex items-center gap-2 text-xs text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={syncColorsGlobal}
+                      onChange={(e) => setSyncColorsGlobal(e.target.checked)}
+                      className="accent-purple-500"
+                    />
+                    Synchroniser les couleurs entre séquences
+                  </label>
+                </div>
+                <div>
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
                     Filtre visuel
                   </div>
@@ -4170,9 +4183,8 @@ export default function InfographicPage() {
           <div
             ref={previewRef}
             onDoubleClick={(e) => {
-              // Only trigger if clicking on the background, not on an element
               if (e.target === previewRef.current || (e.target as HTMLElement).closest('[data-preview-bg]')) {
-                openPanel('add', e);
+                openPanel('background', e);
               }
             }}
             data-preview-bg
@@ -6131,6 +6143,59 @@ export default function InfographicPage() {
                 Supprimer
               </button>
             </div>
+          </div>
+        </FloatingPanel>
+
+        {/* Background FloatingPanel — per-sequence color control */}
+        <FloatingPanel
+          title="Arrière-plan"
+          icon="🎨"
+          isOpen={activePanel === 'background'}
+          onClose={() => setActivePanel(null)}
+          initialX={panelPos.x}
+          initialY={panelPos.y}
+          accentColor="#7C3AED"
+        >
+          <div className="space-y-3">
+            <div className="text-[10px] text-gray-400">
+              Séquence : <span className="text-white font-medium capitalize">{activeSequence === 'all' ? 'Toutes' : activeSequence}</span>
+            </div>
+            {(() => {
+              const seq = activeSequence === 'all' ? 'titre' : activeSequence;
+              const isNoColor = noColorSequences.includes(seq);
+              return (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-gray-300">Sans couleur de fond</span>
+                    <button
+                      onClick={() => {
+                        if (syncColorsGlobal) {
+                          if (isNoColor) setNoColorSequences([]);
+                          else setNoColorSequences(['titre', 'cartes', 'video', 'cta']);
+                        } else {
+                          if (isNoColor) setNoColorSequences(noColorSequences.filter((s) => s !== seq));
+                          else setNoColorSequences([...noColorSequences, seq]);
+                        }
+                      }}
+                      className={`relative w-9 h-5 rounded-full transition-colors ${isNoColor ? 'bg-purple-600' : 'bg-gray-700'}`}
+                    >
+                      <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${isNoColor ? 'translate-x-4' : ''}`} />
+                    </button>
+                  </div>
+                  {!isNoColor && (
+                    <ColorWheel
+                      color={colorTheme === 'custom' ? customAccent : gradientColor1}
+                      onChange={(c) => {
+                        setColorTheme('custom');
+                        setCustomAccent(c);
+                        setNoColorBg(false);
+                      }}
+                      label="Couleur"
+                    />
+                  )}
+                </>
+              );
+            })()}
           </div>
         </FloatingPanel>
 
