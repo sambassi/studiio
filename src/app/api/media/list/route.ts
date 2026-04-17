@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
     const files: Array<{
       name: string;
       url: string;
+      path: string;
       bucket: string;
       type: 'image' | 'video' | 'audio';
       size: number;
@@ -56,6 +57,7 @@ export async function GET(req: NextRequest) {
             files.push({
               name: f.name,
               url: urlData.publicUrl,
+              path,
               bucket,
               type: fileType,
               size: (f.metadata as any)?.size || 0,
@@ -76,6 +78,7 @@ export async function GET(req: NextRequest) {
           files.push({
             name: folder.name,
             url: urlData.publicUrl,
+            path,
             bucket,
             type: fileType,
             size: (folder.metadata as any)?.size || 0,

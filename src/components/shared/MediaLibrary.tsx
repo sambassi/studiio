@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Upload, Loader2, Film, Music, X, Clock, ShieldCheck } from 'lucide-react';
+import { Search, Upload, Loader2, Music, X, Clock, ShieldCheck, Trash2 } from 'lucide-react';
 import { getExpiresAt, formatRemaining, getRetentionColor, getRetentionBgColor } from '@/lib/storage/retention';
 
 type MediaType = 'image' | 'video' | 'audio' | 'all';
@@ -9,6 +9,7 @@ type MediaType = 'image' | 'video' | 'audio' | 'all';
 interface MediaFile {
   name: string;
   url: string;
+  path: string;
   bucket: string;
   type: 'image' | 'video' | 'audio';
   size: number;
@@ -208,31 +209,54 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibr
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
               {filtered.map((file, i) => (
-                <button
+                <div
                   key={`${file.url}-${i}`}
+                  className="group relative rounded-xl overflow-hidden border border-gray-700 bg-gray-800 hover:border-purple-500 transition-all aspect-square cursor-pointer"
                   onClick={() => { onSelect(file.url, file.name); onClose(); }}
-                  className="group relative rounded-xl overflow-hidden border border-gray-700 bg-gray-800 hover:border-purple-500 transition-all aspect-square"
                 >
                   {file.type === 'image' ? (
-                    <img src={file.url} alt={file.name} className="w-full h-full object-cover" />
+                    <img src={file.url} alt={file.name} loading="lazy" className="absolute inset-0 h-full w-full rounded-lg object-cover" />
                   ) : file.type === 'video' ? (
-                    <div className="w-full h-full flex items-center justify-center bg-gray-800">
-                      <Film size={28} className="text-emerald-400" />
-                    </div>
+                    <video
+                      src={file.url}
+                      muted
+                      playsInline
+                      preload="metadata"
+                      className="absolute inset-0 h-full w-full rounded-lg object-cover"
+                      onLoadedMetadata={(e) => { try { e.currentTarget.currentTime = 0.5; } catch {} }}
+                    />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gray-800">
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-800 rounded-lg">
                       <Music size={28} className="text-cyan-400" />
                     </div>
                   )}
+                  {/* Delete button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!window.confirm('Supprimer ce fichier ?')) return;
+                      fetch('/api/media/delete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ bucket: file.bucket, path: file.path }),
+                      }).then(() => {
+                        setFiles((prev) => prev.filter((f) => f.url !== file.url));
+                      }).catch(() => {});
+                    }}
+                    className="absolute top-1 left-1 z-10 rounded-lg bg-red-600/80 p-1.5 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"
+                    title="Supprimer"
+                  >
+                    <Trash2 size={12} />
+                  </button>
                   {/* Expiry badge */}
-                  <div className="absolute top-1 right-1">
+                  <div className="absolute top-1 right-1 z-10">
                     <ExpiryBadge file={file} />
                   </div>
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2">
+                  <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/80 to-transparent p-2">
                     <p className="text-[10px] text-white truncate">{file.name}</p>
                     {file.size > 0 && <p className="text-[9px] text-gray-400">{formatSize(file.size)}</p>}
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           )}
