@@ -10,8 +10,8 @@ interface Pack {
 }
 
 function centsToFr(cents: number): string {
-  const euros = cents / 100;
-  return euros % 1 === 0 ? `${euros}€` : `${euros.toFixed(2).replace('.', ',')}€`;
+  const francs = cents / 100;
+  return francs % 1 === 0 ? `${francs} CHF` : `${francs.toFixed(2).replace('.', ',')} CHF`;
 }
 
 interface BuyCreditsModalProps {

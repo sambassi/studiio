@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
       const newPrice = await stripe.prices.create({
         product: productId,
         unit_amount: price_cents,
-        currency: 'eur',
+        currency: 'chf',
         recurring: { interval: 'month' },
         metadata: { plan_key: key, cycle: 'monthly' },
       });
@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
       const newYearlyPrice = await stripe.prices.create({
         product: productId,
         unit_amount: yearlyUnitAmount,
-        currency: 'eur',
+        currency: 'chf',
         recurring: { interval: 'year' },
         metadata: { plan_key: key, cycle: 'yearly' },
       });

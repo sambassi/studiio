@@ -40,7 +40,7 @@ export async function createOneTimeCheckout(
     line_items: [
       {
         price_data: {
-          currency: 'eur',
+          currency: 'chf',
           product_data: {
             name: description,
           },

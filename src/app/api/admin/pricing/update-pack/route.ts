@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
       const newPrice = await stripe.prices.create({
         product: productId,
         unit_amount: price_cents,
-        currency: 'eur',
+        currency: 'chf',
         metadata: { pack_key: key, credits: String(amount) },
       });
       if (current?.stripe_price_id) {
