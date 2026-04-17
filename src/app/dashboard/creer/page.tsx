@@ -3878,26 +3878,6 @@ export default function InfographicPage() {
           </button>
         </div>
 
-        {/* Safe Zone Platform Selector */}
-        <div className="flex items-center gap-2 mb-3 rounded-xl bg-gray-800/60 border border-gray-700/50 px-3 py-2 w-full max-w-xs justify-center flex-wrap">
-          <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
-            Zones
-          </span>
-          <div className="flex gap-1.5 flex-wrap justify-center">
-            {Object.entries(PLATFORM_SAFE_ZONES).map(([key, zone]) => (
-              <PlatformIcon
-                key={key}
-                platform={zone.platform}
-                isActive={safeZonePlatform === key}
-                size="sm"
-                onClick={() =>
-                  setSafeZonePlatform(safeZonePlatform === key ? null : key)
-                }
-              />
-            ))}
-          </div>
-        </div>
-
         {/* Hint when nothing is selected */}
         {!selectedEl && !isPlaying && (
           <p className="mb-2 text-center text-[11px] text-gray-600 italic">
@@ -6299,38 +6279,65 @@ export default function InfographicPage() {
           </div>
         </div>
 
-        {/* ── Sticky Export Bar (always visible at bottom of preview) ── */}
-        <div className="sticky bottom-0 w-full mt-4 bg-gray-950/95 backdrop-blur border-t border-gray-800 px-3 py-3">
-          {isExporting && (
-            <div className="h-1 w-full bg-gray-800 rounded-full mb-2 overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300" style={{ width: `${exportProgress}%` }} />
-            </div>
-          )}
-          <div className="flex items-center gap-1.5 max-w-md mx-auto">
-            {([
-              { key: 'draft' as Destination, Icon: Calendar, color: '#3B82F6', tip: 'Calendrier' },
-              { key: 'export' as Destination, Icon: Download, color: '#10B981', tip: 'Fichier' },
-              { key: 'both' as Destination, Icon: Layers, color: '#A855F7', tip: 'Les deux' },
-              { key: 'audio-studio' as Destination, Icon: Music, color: '#EC4899', tip: 'Studio Son' },
-            ] as const).map(({ key, Icon, color, tip }) => (
-              <button key={key} onClick={() => setDestination(key)} title={tip}
-                className={`h-9 w-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all ${
-                  destination === key ? 'ring-2 ring-white/40 scale-105' : 'opacity-60 hover:opacity-100'
-                }`}
-                style={{ backgroundColor: `${color}20`, color }}
-              >
-                <Icon size={16} fill="currentColor" strokeWidth={1.5} />
-              </button>
-            ))}
-            <button onClick={handleExport} disabled={isExporting || cards.length === 0}
-              className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 h-11 px-4 font-semibold text-white hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-500/25 transition-all"
-            >
-              {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
-              {isExporting ? `${exportProgress}%` : batchCount > 1 ? `Export x${batchCount}` : 'Export Création'}
-            </button>
-            <span className="text-[10px] text-yellow-400 font-bold whitespace-nowrap">{25 * batchCount}cr</span>
-          </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* Fixed Social Zones selector — top-right of preview area     */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <div className="hidden lg:flex fixed top-24 right-24 z-40 items-center gap-2 rounded-xl bg-gray-800/90 backdrop-blur border border-gray-700/50 px-3 py-2 shadow-xl">
+        <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
+          Zones
+        </span>
+        <div className="flex gap-1.5">
+          {Object.entries(PLATFORM_SAFE_ZONES).map(([key, zone]) => (
+            <PlatformIcon
+              key={key}
+              platform={zone.platform}
+              isActive={safeZonePlatform === key}
+              size="sm"
+              onClick={() =>
+                setSafeZonePlatform(safeZonePlatform === key ? null : key)
+              }
+            />
+          ))}
         </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* Fixed Vertical Export Bar — right edge of preview area      */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <div className="hidden lg:flex fixed right-0 top-1/2 -translate-y-1/2 z-40 flex-col items-center gap-2 bg-gray-950/95 backdrop-blur border-l border-y border-gray-800 rounded-l-2xl px-2 py-3 shadow-2xl">
+        {isExporting && (
+          <div className="h-16 w-1 bg-gray-800 rounded-full mb-1 overflow-hidden">
+            <div className="w-full bg-gradient-to-b from-purple-500 to-pink-500 transition-all duration-300" style={{ height: `${exportProgress}%` }} />
+          </div>
+        )}
+        {([
+          { key: 'draft' as Destination, Icon: Calendar, color: '#3B82F6', tip: 'Calendrier' },
+          { key: 'export' as Destination, Icon: Download, color: '#10B981', tip: 'Fichier' },
+          { key: 'both' as Destination, Icon: Layers, color: '#A855F7', tip: 'Les deux' },
+          { key: 'audio-studio' as Destination, Icon: Music, color: '#EC4899', tip: 'Studio Son' },
+        ] as const).map(({ key, Icon, color, tip }) => (
+          <button key={key} onClick={() => setDestination(key)} title={tip}
+            className={`h-10 w-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all ${
+              destination === key ? 'ring-2 ring-white/40 scale-105' : 'opacity-60 hover:opacity-100'
+            }`}
+            style={{ backgroundColor: `${color}20`, color }}
+          >
+            <Icon size={18} fill="currentColor" strokeWidth={1.5} />
+          </button>
+        ))}
+        <div className="h-px w-8 bg-gray-800 my-0.5" />
+        <button onClick={handleExport} disabled={isExporting || cards.length === 0}
+          className="flex flex-col items-center justify-center gap-1 rounded-xl bg-gradient-to-b from-purple-600 to-pink-600 h-16 w-10 font-semibold text-white hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-500/25 transition-all"
+          title={isExporting ? `${exportProgress}%` : batchCount > 1 ? `Export x${batchCount}` : 'Export Création'}
+        >
+          {isExporting ? <Loader2 size={20} className="animate-spin" /> : <Zap size={20} />}
+          <span className="text-[9px] leading-none">
+            {isExporting ? `${exportProgress}%` : batchCount > 1 ? `x${batchCount}` : 'Export'}
+          </span>
+        </button>
+        <span className="text-[10px] text-yellow-400 font-bold whitespace-nowrap">{25 * batchCount}cr</span>
       </div>
 
       <Modal
