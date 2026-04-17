@@ -6,7 +6,7 @@ import { Plus, Trash2, Upload, Zap, Loader2, Sparkles, Film, X, Play, Volume2, I
 import { generateSmartContent } from '@/lib/smart-content';
 import { useBranding } from '@/lib/hooks/useBranding';
 import { useCreatorPreferences } from '@/lib/hooks/useCreatorPreferences';
-import BrandingPanel from '@/components/BrandingPanel';
+import { BrandingIndicator } from '@/components/shared/BrandingIndicator';
 import { composeAndUpload, downloadBlob } from '@/lib/video-composer';
 import { useTranslations } from '@/i18n/client';
 
@@ -100,7 +100,7 @@ const SALES_PHRASES = [
 export default function InfographiePage() {
   const t = useTranslations('infographic');
   const tc = useTranslations('common');
-  const { branding, setBranding } = useBranding();
+  const { branding } = useBranding();
   const { prefs, updatePrefs, loaded: prefsLoaded } = useCreatorPreferences();
   const prefsAppliedRef = useRef(false);
   const [step, setStep] = useState(1);
@@ -1138,11 +1138,9 @@ export default function InfographiePage() {
                 </div>
               </div>
 
-              {/* Branding */}
-              <div className="mb-6 p-4 bg-gray-800 rounded-xl border border-gray-700">
-                <h3 className="text-sm font-semibold text-gray-300 mb-1">{t('branding.title')}</h3>
-                <p className="text-[10px] text-gray-500 mb-3">{t('branding.memo')}</p>
-                <BrandingPanel branding={branding} onChange={setBranding} compact />
+              {/* Branding indicator — links to /settings?tab=branding */}
+              <div className="mb-6">
+                <BrandingIndicator branding={branding} />
               </div>
 
               {/* Destination */}

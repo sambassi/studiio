@@ -38,7 +38,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { useBranding } from '@/lib/hooks/useBranding';
 import { useCreatorPreferences } from '@/lib/hooks/useCreatorPreferences';
-import BrandingPanel from '@/components/BrandingPanel';
+import { BrandingIndicator } from '@/components/shared/BrandingIndicator';
 import { composeAndUpload, downloadBlob, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
 import { useTranslations, useLocale } from '@/i18n/client';
 import { getContentPools, pickRandom as pickRandomI18n } from '@/lib/i18n-content';
@@ -261,7 +261,7 @@ export default function CalendarPage() {
   const locale = useLocale();
   const localeMap: Record<string, string> = { fr: 'fr-FR', en: 'en-GB', de: 'de-DE' };
   const intlLocale = localeMap[locale] || 'fr-FR';
-  const { branding, setBranding } = useBranding();
+  const { branding } = useBranding();
   const { prefs, updatePrefs, loaded: prefsLoaded } = useCreatorPreferences();
   const prefsAppliedRef = useRef(false);
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -2822,13 +2822,9 @@ export default function CalendarPage() {
             </div>
           </div>
 
-          {/* Branding / Personnalisation */}
-          <div className="mb-4 p-3 bg-gray-800/50 rounded-lg border border-gray-700">
-            <h3 className="text-xs font-bold text-gray-300 mb-2 flex items-center gap-1.5">
-              <Sparkles size={12} className="text-purple-400" />
-              {t('aiAgent.branding.title')}
-            </h3>
-            <BrandingPanel branding={branding} onChange={setBranding} compact />
+          {/* Branding indicator — links to /settings?tab=branding */}
+          <div className="mb-4">
+            <BrandingIndicator branding={branding} />
           </div>
 
           {/* Progress bar during generation */}

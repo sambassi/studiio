@@ -6,7 +6,6 @@ import {
   Plus,
   Trash2,
   Upload,
-  Zap,
   Loader2,
   RefreshCw,
   Sparkles,
@@ -58,6 +57,10 @@ import { detectClips, extractClip, type DetectedClip } from "@/lib/clip-detector
 import CropRushModal from "@/components/creer/CropRushModal";
 import { useSession } from "next-auth/react";
 import { BuyCreditsModal } from "@/components/billing/BuyCreditsModal";
+import { MediaLibrary } from "@/components/shared/MediaLibrary";
+import { ExportBar } from "@/components/shared/ExportBar";
+import { BrandingIndicator } from "@/components/shared/BrandingIndicator";
+import { useBranding } from "@/lib/hooks/useBranding";
 
 // ── Unified icon badge style — filled Lucide icon + colored tint container ──
 // Each color maps to literal Tailwind classes so JIT keeps them in the build.
@@ -958,9 +961,12 @@ export default function InfographicPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [showBuyCreditsModal, setShowBuyCreditsModal] = useState(false);
+  const [mediaLibOpen, setMediaLibOpen] = useState(false);
+  const [mediaLibTarget, setMediaLibTarget] = useState<'rush' | 'logo'>('rush');
   const { data: authSession } = useSession();
   const userPlan = ((authSession?.user as any)?.plan as string) || 'free';
   const useWatermark = !userPlan || userPlan === 'free';
+  const { branding } = useBranding();
 
   // ── Toast ───────────────────────────────────────────────────
   const [toast, setToast] = useState<{
@@ -2362,21 +2368,29 @@ export default function InfographicPage() {
                       </button>
                     </div>
                   ) : (
-                    <label className="flex items-center justify-center gap-2 rounded border border-dashed border-gray-600 px-3 py-4 text-xs text-gray-400 cursor-pointer hover:border-purple-500 hover:text-white transition">
-                      <Upload size={14} /> Téléverser un logo
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          const reader = new FileReader();
-                          reader.onload = (ev) => setLogoImage(ev.target?.result as string);
-                          reader.readAsDataURL(file);
-                        }}
-                      />
-                    </label>
+                    <div className="flex gap-2">
+                      <label className="flex-1 flex items-center justify-center gap-2 rounded border border-dashed border-gray-600 px-3 py-4 text-xs text-gray-400 cursor-pointer hover:border-purple-500 hover:text-white transition">
+                        <Upload size={14} /> Téléverser
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onload = (ev) => setLogoImage(ev.target?.result as string);
+                            reader.readAsDataURL(file);
+                          }}
+                        />
+                      </label>
+                      <button
+                        onClick={() => { setMediaLibTarget('logo'); setMediaLibOpen(true); }}
+                        className="flex items-center justify-center gap-1.5 rounded border border-gray-600 px-3 py-4 text-xs text-gray-400 hover:border-purple-500 hover:text-white transition"
+                      >
+                        <ImageIcon size={14} /> Médiathèque
+                      </button>
+                    </div>
                   )}
                 </div>
               </>
@@ -2516,16 +2530,24 @@ export default function InfographicPage() {
                 <p className="text-xs text-gray-400">
                   Ajoutez un rush vidéo. L'éditeur complet (recherche Pexels, crop, détection de clips) est dans le panneau Style à gauche.
                 </p>
-                <label className="flex items-center justify-center gap-2 rounded border border-dashed border-gray-600 px-3 py-4 text-xs text-gray-400 cursor-pointer hover:border-purple-500 hover:text-white transition">
-                  <Video size={14} /> Téléverser un rush vidéo
-                  <input
-                    type="file"
-                    accept="video/*"
-                    multiple
-                    className="hidden"
-                    onChange={handleVideoUpload}
-                  />
-                </label>
+                <div className="flex gap-2">
+                  <label className="flex-1 flex items-center justify-center gap-2 rounded border border-dashed border-gray-600 px-3 py-4 text-xs text-gray-400 cursor-pointer hover:border-purple-500 hover:text-white transition">
+                    <Video size={14} /> Téléverser
+                    <input
+                      type="file"
+                      accept="video/*"
+                      multiple
+                      className="hidden"
+                      onChange={handleVideoUpload}
+                    />
+                  </label>
+                  <button
+                    onClick={() => { setMediaLibTarget('rush'); setMediaLibOpen(true); }}
+                    className="flex items-center justify-center gap-1.5 rounded border border-gray-600 px-3 py-4 text-xs text-gray-400 hover:border-purple-500 hover:text-white transition"
+                  >
+                    <Film size={14} /> Médiathèque
+                  </button>
+                </div>
                 {rushUrl && (
                   <div className="rounded border border-gray-700 bg-gray-800 p-2 text-xs text-gray-300">
                     {rushFileName || 'Rush chargé.'}
@@ -2667,6 +2689,11 @@ export default function InfographicPage() {
           >
             <span>⚙️</span>
           </button>
+        </div>
+
+        {/* ── Branding indicator — links to /settings?tab=branding ── */}
+        <div className="mb-3">
+          <BrandingIndicator branding={branding} />
         </div>
 
         {/* ── Quick Settings Row (Color + Format) — shown on ALL steps ── */}
@@ -3865,47 +3892,15 @@ export default function InfographicPage() {
               </div>
             </div>
 
-            {/* Export Progress */}
-            {isExporting && (
-              <div className="rounded-lg border border-purple-800 bg-purple-900/20 p-4">
-                <div className="mb-2 flex justify-between text-sm">
-                  <span className="text-purple-300">Export en cours...</span>
-                  <span className="text-purple-400 font-bold">
-                    {exportProgress}%
-                  </span>
-                </div>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-gray-700">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300"
-                    style={{ width: `${exportProgress}%` }}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Export Button */}
-            <button
-              onClick={handleExport}
-              disabled={isExporting || cards.length === 0}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-3 font-bold text-white hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isExporting ? (
-                <Loader2 size={20} className="animate-spin" />
-              ) : (
-                <Zap size={20} />
-              )}
-              {isExporting
-                ? "EXPORT EN COURS..."
-                : batchCount > 1
-                  ? `EXPORTER ${batchCount} INFOGRAPHIES`
-                  : "EXPORTER L'INFOGRAPHIE"}
-            </button>
-            <div className="text-center text-sm text-gray-400">
-              Coût:{" "}
-              <span className="font-bold text-yellow-400">
-                {25 * batchCount} crédits
-              </span>
-            </div>
+            {/* Export Bar — unified bottom bar */}
+            <ExportBar
+              onSchedule={() => { setDestination('draft'); handleExport(); }}
+              onDownload={() => { setDestination('export'); handleExport(); }}
+              disabled={cards.length === 0}
+              isProcessing={isExporting}
+              progress={exportProgress}
+              creditCost={25 * batchCount}
+            />
 
             {/* Back */}
             <button
@@ -6543,6 +6538,20 @@ export default function InfographicPage() {
         })()}
       </Modal>
       <BuyCreditsModal isOpen={showBuyCreditsModal} onClose={() => setShowBuyCreditsModal(false)} />
+      <MediaLibrary
+        isOpen={mediaLibOpen}
+        onClose={() => setMediaLibOpen(false)}
+        mediaType={mediaLibTarget === 'rush' ? 'video' : 'image'}
+        onSelect={(url, name) => {
+          if (mediaLibTarget === 'logo') {
+            setLogoImage(url);
+          } else {
+            setRushList((prev) => [...prev, { file: null as any, url, name, duration: 0, clips: [], transform: undefined }]);
+            setRushUrl(url);
+            setRushFileName(name);
+          }
+        }}
+      />
       <CropRushModal
         isOpen={cropRushIdx !== null}
         onClose={() => setCropRushIdx(null)}
