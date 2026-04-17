@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Bot,
   Loader2,
@@ -51,6 +52,7 @@ interface AgentIAModalProps {
 }
 
 export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalProps) {
+  const router = useRouter();
   const t = useTranslations('calendar');
   const tc = useTranslations('common');
   const locale = useLocale();
@@ -69,6 +71,7 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
   const [aiStage, setAiStage] = useState('');
   const [montageMode, setMontageMode] = useState(false);
   const [montageDuration, setMontageDuration] = useState<15 | 20 | 30>(20);
+  const [montageCount, setMontageCount] = useState(1);
   const [customPrompt, setCustomPrompt] = useState('');
 
   const rushInputRef = useRef<HTMLInputElement>(null);
@@ -101,6 +104,7 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
     setAiProgress(0);
     setAiStage('Upload des rushes...');
     try {
+      // 1. Upload all rush files
       const rushUrls: string[] = [];
       for (let i = 0; i < aiRushFiles.length; i++) {
         setAiStage(`Upload rush ${i + 1}/${aiRushFiles.length}...`);
@@ -117,9 +121,10 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
             rushUrls.push(signData.publicUrl);
           }
         } catch {}
-        setAiProgress(Math.round(((i + 1) / (aiRushFiles.length + 2)) * 100));
+        setAiProgress(Math.round(((i + 1) / (aiRushFiles.length + montageCount + 1)) * 100));
       }
 
+      // 2. Upload music
       let musicUrl: string | null = null;
       if (aiMusicFile) {
         setAiStage('Upload musique...');
@@ -137,88 +142,105 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
         } catch {}
       }
 
-      setAiStage('Préparation du montage IA...');
-      setAiProgress(70);
       const theme = aiObjectives[0] || 'motivation';
-      const res = await fetch('/api/agent/montage', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          rushUrls,
-          duration: montageDuration,
-          theme,
-          customPrompt: customPrompt || undefined,
-          musicUrl,
-          platforms: aiPlatforms,
-        }),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        setAiStage(`Erreur: ${data.error}`);
-        return;
-      }
 
-      // Compose the actual video client-side using the montage spec
-      const spec = data.montageSpec;
-      setAiStage('Composition vidéo en cours...');
-      setAiProgress(80);
-      try {
-        const { url: renderedUrl } = await composeAndUpload({
-          width: 1080,
-          height: 1920,
-          fps: 30,
-          title: spec.title || 'MONTAGE IA',
-          subtitle: spec.subtitle || undefined,
-          salesPhrase: spec.cta || 'DÉCOUVRIR',
-          posterUrl: null,
-          videoUrl: rushUrls[0],
-          logoUrl: null,
-          musicUrl: musicUrl || null,
-          voiceUrl: null,
-          introDuration: 3,
-          cardsDuration: 0,
-          videoDuration: montageDuration - 6,
-          ctaDuration: 3,
-          accentColor: branding.accentColor || '#D91CD2',
-          ctaText: spec.cta || 'DÉCOUVRIR',
-          ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
-          watermarkText: branding.watermarkText || undefined,
-          onProgress: (pct, stage) => {
-            setAiProgress(80 + Math.round(pct * 0.2));
-            setAiStage(`Rendu: ${stage}`);
-          },
+      // 3. Loop N times (montageCount)
+      for (let m = 0; m < montageCount; m++) {
+        setAiStage(`Montage ${m + 1}/${montageCount} — préparation...`);
+
+        // Rotate rush order for variety between montages
+        const rotatedRushes = [...rushUrls.slice(m % rushUrls.length), ...rushUrls.slice(0, m % rushUrls.length)];
+
+        const res = await fetch('/api/agent/montage', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            rushUrls: rotatedRushes,
+            duration: montageDuration,
+            theme,
+            customPrompt: montageCount > 1
+              ? `${customPrompt || ''} (variation ${m + 1}/${montageCount})`.trim()
+              : customPrompt || undefined,
+            musicUrl,
+            platforms: aiPlatforms,
+          }),
         });
-
-        if (renderedUrl && data.postId) {
-          await fetch('/api/posts', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              id: data.postId,
-              media_url: renderedUrl,
-              metadata: { ...data.montageSpec, renderedVideoUrl: renderedUrl, videoUrl: renderedUrl },
-            }),
-          }).catch(() => {});
+        const data = await res.json();
+        if (!data.success) {
+          setAiStage(`Erreur montage ${m + 1}: ${data.error}`);
+          continue;
         }
 
-        setAiStage('Montage IA terminé !');
-        setAiProgress(100);
-        await new Promise((r) => setTimeout(r, 800));
-        if (onAfterGenerate) await onAfterGenerate();
-      } catch (composeErr) {
-        console.error('[AgentIA Montage] Compose error:', composeErr);
-        setAiStage('Post créé (brouillon) — rendu échoué');
-        await new Promise((r) => setTimeout(r, 2000));
-        if (onAfterGenerate) await onAfterGenerate();
+        // 4. Compose the video client-side — use first rush as main video,
+        //    with intro/CTA derived from AI hints
+        const spec = data.montageSpec;
+        setAiStage(`Montage ${m + 1}/${montageCount} — rendu vidéo...`);
+        try {
+          // Use a different rush per montage if available
+          const primaryRush = rotatedRushes[0] || rushUrls[0];
+          const { url: renderedUrl } = await composeAndUpload({
+            width: 1080,
+            height: 1920,
+            fps: 30,
+            title: spec.title || 'MONTAGE IA',
+            subtitle: spec.subtitle || undefined,
+            salesPhrase: spec.cta || 'DÉCOUVRIR',
+            posterUrl: null,
+            videoUrl: primaryRush,
+            logoUrl: null,
+            musicUrl: musicUrl || null,
+            voiceUrl: null,
+            introDuration: 2,
+            cardsDuration: 0,
+            videoDuration: montageDuration - 4,
+            ctaDuration: 2,
+            accentColor: branding.accentColor || '#D91CD2',
+            ctaText: spec.cta || 'DÉCOUVRIR',
+            ctaSubText: branding.ctaSubText || 'LIEN EN BIO',
+            watermarkText: branding.watermarkText || undefined,
+            onProgress: (pct, stage) => {
+              const base = ((aiRushFiles.length + m) / (aiRushFiles.length + montageCount + 1)) * 100;
+              const range = (1 / (aiRushFiles.length + montageCount + 1)) * 100;
+              setAiProgress(Math.round(base + pct * range / 100));
+              setAiStage(`Montage ${m + 1} — ${stage}`);
+            },
+          });
+
+          // Update the post with the rendered video
+          if (renderedUrl && data.postId) {
+            await fetch('/api/posts', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                id: data.postId,
+                media_url: renderedUrl,
+                metadata: { ...spec, renderedVideoUrl: renderedUrl, videoUrl: renderedUrl },
+              }),
+            }).catch(() => {});
+          }
+        } catch (composeErr) {
+          console.error(`[AgentIA Montage] Compose error ${m + 1}:`, composeErr);
+        }
+
+        setAiProgress(Math.round(((aiRushFiles.length + m + 1) / (aiRushFiles.length + montageCount + 1)) * 100));
       }
+
+      // 5. Done — redirect to calendar
+      setAiStage(`Montage terminé ! Redirection...`);
+      setAiProgress(100);
+      await new Promise((r) => setTimeout(r, 1000));
+      if (onAfterGenerate) await onAfterGenerate();
+      onClose();
+      router.push('/dashboard/calendar');
+      return;
     } catch (err) {
       console.error('[AgentIA Montage] Error:', err);
       setAiStage('Erreur de génération');
+      await new Promise((r) => setTimeout(r, 2000));
     } finally {
       setAiGenerating(false);
       setAiProgress(0);
       setAiStage('');
-      onClose();
     }
   };
 
@@ -587,15 +609,27 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
           {/* Montage mode options */}
           {montageMode && (
             <div className="mb-4 space-y-3 rounded-lg border border-pink-500/20 bg-pink-500/5 p-3">
-              <div>
-                <label className="block text-xs text-gray-400 mb-1.5">Durée cible</label>
-                <div className="flex gap-1.5">
-                  {([15, 20, 30] as const).map((d) => (
-                    <button key={d} onClick={() => setMontageDuration(d)}
-                      className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${montageDuration === d ? 'bg-gradient-to-r from-pink-600 to-purple-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
-                      {d}s
-                    </button>
-                  ))}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1.5">Nombre de montages</label>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setMontageCount(Math.max(1, montageCount - 1))} disabled={montageCount <= 1}
+                      className="h-8 w-8 rounded-lg bg-gray-800 text-gray-400 hover:text-white disabled:opacity-30 font-bold">−</button>
+                    <span className="text-lg font-bold text-pink-400 w-8 text-center">{montageCount}</span>
+                    <button onClick={() => setMontageCount(Math.min(30, montageCount + 1))} disabled={montageCount >= 30}
+                      className="h-8 w-8 rounded-lg bg-gray-800 text-gray-400 hover:text-white disabled:opacity-30 font-bold">+</button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1.5">Durée par vidéo</label>
+                  <div className="flex gap-1">
+                    {([15, 20, 30] as const).map((d) => (
+                      <button key={d} onClick={() => setMontageDuration(d)}
+                        className={`flex-1 py-2 rounded-lg text-xs font-bold transition ${montageDuration === d ? 'bg-gradient-to-r from-pink-600 to-purple-500 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+                        {d}s
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
               <div>
@@ -740,7 +774,11 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
               className="flex-1 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 disabled:opacity-50 rounded-lg text-sm font-bold transition"
             >
               {aiGenerating ? <Loader2 size={16} className="animate-spin" /> : <Bot size={16} />}
-              {aiGenerating ? t('aiAgent.generating') : t('aiAgent.generateWithDays', { days: aiPlanDuration })}
+              {aiGenerating
+                ? t('aiAgent.generating')
+                : montageMode
+                  ? `Générer (${montageCount} vidéo${montageCount > 1 ? 's' : ''})`
+                  : t('aiAgent.generateWithDays', { days: aiPlanDuration })}
             </button>
           </div>
         </div>
