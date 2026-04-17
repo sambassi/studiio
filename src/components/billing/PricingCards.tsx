@@ -32,7 +32,7 @@ export function PricingCards({ onSelectPlan }: PricingCardsProps) {
   const currentPlan = ((session?.user as any)?.plan as string) || 'free';
 
   useEffect(() => {
-    fetch('/api/pricing').then(r => r.json()).then(d => {
+    fetch('/api/pricing', { cache: 'no-store' }).then(r => r.json()).then(d => {
       if (d.plans) setPlans(d.plans);
     }).catch(() => {});
   }, []);

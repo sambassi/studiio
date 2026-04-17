@@ -25,7 +25,7 @@ export function BuyCreditsModal({ isOpen, onClose }: BuyCreditsModalProps) {
 
   useEffect(() => {
     if (!isOpen) return;
-    fetch('/api/pricing').then(r => r.json()).then(d => {
+    fetch('/api/pricing', { cache: 'no-store' }).then(r => r.json()).then(d => {
       if (d.packs) setPacks(d.packs);
     }).catch(() => {});
   }, [isOpen]);
