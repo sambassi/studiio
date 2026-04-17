@@ -61,6 +61,7 @@ import { MediaLibrary } from "@/components/shared/MediaLibrary";
 import { ExportBar } from "@/components/shared/ExportBar";
 import { BrandingIndicator } from "@/components/shared/BrandingIndicator";
 import { useBranding } from "@/lib/hooks/useBranding";
+import { AudioStudioPanel } from "@/components/creer/AudioStudioPanel";
 import { getExpiresAt, formatRemaining, getRetentionColor } from "@/lib/storage/retention";
 
 // ── Unified icon badge style — filled Lucide icon + colored tint container ──
@@ -457,6 +458,14 @@ export default function InfographicPage() {
     };
   }, [seqGradients, gradientColor1, gradientColor2, gradientOpacity]);
 
+  // ── Audio ────────────────────────────────────────────────────
+  const [audioMusicUrl, setAudioMusicUrl] = useState<string | null>(null);
+  const [audioMusicName, setAudioMusicName] = useState('');
+  const [audioVoiceUrl, setAudioVoiceUrl] = useState<string | null>(null);
+  const [audioVoiceName, setAudioVoiceName] = useState('');
+  const [audioMusicVolume, setAudioMusicVolume] = useState(0.5);
+  const [audioVoiceVolume, setAudioVoiceVolume] = useState(1.0);
+
   // ── Video Upload ────────────────────────────────────────────
   // `rushList` is the source of truth for multi-rush (user can upload
   // several videos and reorder them). `rushUrl` / `rushFileName` are
@@ -587,6 +596,12 @@ export default function InfographicPage() {
         if (cfg.characterImage) setCharacterImage(cfg.characterImage);
         if (cfg.characterScale !== undefined) setCharacterScale(cfg.characterScale);
         if (cfg.characterPosition) setCharacterPosition(cfg.characterPosition);
+        if (cfg.audioMusicUrl) setAudioMusicUrl(cfg.audioMusicUrl);
+        if (cfg.audioMusicName) setAudioMusicName(cfg.audioMusicName);
+        if (cfg.audioVoiceUrl) setAudioVoiceUrl(cfg.audioVoiceUrl);
+        if (cfg.audioVoiceName) setAudioVoiceName(cfg.audioVoiceName);
+        if (cfg.audioMusicVolume !== undefined) setAudioMusicVolume(cfg.audioMusicVolume);
+        if (cfg.audioVoiceVolume !== undefined) setAudioVoiceVolume(cfg.audioVoiceVolume);
         // Typography
         if (cfg.titleLetterSpacing !== undefined)
           setTitleLetterSpacing(cfg.titleLetterSpacing);
@@ -889,6 +904,7 @@ export default function InfographicPage() {
           showCenterGuides,
           cardPositionMode,
           characterScale, characterPosition,
+          audioMusicUrl, audioMusicName, audioVoiceUrl, audioVoiceName, audioMusicVolume, audioVoiceVolume,
         }),
       );
     } catch { /* ignore */ }
@@ -912,6 +928,7 @@ export default function InfographicPage() {
     showCenterGuides,
     cardPositionMode,
     characterScale, characterPosition,
+    audioMusicUrl, audioMusicName, audioVoiceUrl, audioVoiceName, audioMusicVolume, audioVoiceVolume,
   ]);
 
   // (Typography states declared earlier for localStorage compatibility)
@@ -1841,8 +1858,8 @@ export default function InfographicPage() {
               videoUrl: exportedSequences.video ? (rushUrl || undefined) : undefined,
               rushTransform: rushList[0]?.transform,
               logoUrl: logoImage || null,
-              musicUrl: undefined, // Audio added later in Studio Son
-              voiceUrl: undefined,
+              musicUrl: audioMusicUrl || undefined,
+              voiceUrl: audioVoiceUrl || undefined,
               introDuration: exportedSequences.titre ? introDuration : 0,
               cardsDuration: bCards.length > 0 && exportedSequences.cartes ? cardsDuration : 0,
               videoDuration: rushUrl && exportedSequences.video ? videoDuration : 0,
@@ -1943,6 +1960,9 @@ export default function InfographicPage() {
                 logoUrl: logoImage || undefined,
                 videoUrl: rushUrl || undefined,
                 rushUrls: rushUrl ? [rushUrl] : undefined,
+                musicUrl: audioMusicUrl || undefined,
+                voiceUrl: audioVoiceUrl || undefined,
+                hasAudio: !!(audioMusicUrl || audioVoiceUrl),
                 sequences: {
                   intro: exportedSequences.titre ? introDuration : 0,
                   cards: cards.length > 0 && exportedSequences.cartes ? cardsDuration : 0,
@@ -2567,40 +2587,46 @@ export default function InfographicPage() {
 
             {activeRailTab === 'audio' && (
               <>
-                <p className="text-xs text-gray-400">
-                  Ajoutez musique et voix dans le Studio Son après l'export, ou configurez vos durées ici.
-                </p>
-                <a
-                  href="/dashboard/audio-studio"
-                  className="block w-full rounded bg-gradient-to-r from-purple-600 to-pink-600 px-3 py-2 text-center text-xs font-semibold text-white hover:opacity-90"
-                >
-                  Ouvrir le Studio Son
-                </a>
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
-                    Durée cartes (s)
+                <AudioStudioPanel
+                  musicUrl={audioMusicUrl}
+                  musicName={audioMusicName}
+                  voiceUrl={audioVoiceUrl}
+                  voiceName={audioVoiceName}
+                  musicVolume={audioMusicVolume}
+                  voiceVolume={audioVoiceVolume}
+                  onMusicChange={(url, name) => { setAudioMusicUrl(url); setAudioMusicName(name); }}
+                  onVoiceChange={(url, name) => { setAudioVoiceUrl(url); setAudioVoiceName(name); }}
+                  onMusicVolumeChange={setAudioMusicVolume}
+                  onVoiceVolumeChange={setAudioVoiceVolume}
+                />
+                <div className="border-t border-gray-700 pt-3 mt-1 space-y-2">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                    Durées des séquences
                   </div>
-                  <input
-                    type="number"
-                    min={1}
-                    max={60}
-                    value={cardsDuration}
-                    onChange={(e) => setCardsDuration(Number(e.target.value))}
-                    className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white"
-                  />
-                </div>
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
-                    Durée CTA (s)
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <label className="text-[9px] text-gray-500">Cartes (s)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={60}
+                        value={cardsDuration}
+                        onChange={(e) => setCardsDuration(Number(e.target.value))}
+                        className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-[9px] text-gray-500">CTA (s)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={60}
+                        value={ctaDuration}
+                        onChange={(e) => setCtaDuration(Number(e.target.value))}
+                        className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white"
+                      />
+                    </div>
                   </div>
-                  <input
-                    type="number"
-                    min={1}
-                    max={60}
-                    value={ctaDuration}
-                    onChange={(e) => setCtaDuration(Number(e.target.value))}
-                    className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white"
-                  />
                 </div>
               </>
             )}
