@@ -1011,36 +1011,42 @@ const COLOR_THEMES = [
     name: "Rose",
     bg: "from-pink-600 to-pink-400",
     accent: "#ec4899",
+    gradient: { start: "#EC4899", end: "#BE185D" },
   },
   {
     id: "purple",
     name: "Violet",
     bg: "from-purple-600 to-purple-400",
     accent: "#a855f7",
+    gradient: { start: "#A855F7", end: "#7C3AED" },
   },
   {
     id: "blue",
     name: "Bleu",
     bg: "from-blue-600 to-blue-400",
     accent: "#3b82f6",
+    gradient: { start: "#3B82F6", end: "#1D4ED8" },
   },
   {
     id: "green",
     name: "Vert",
     bg: "from-green-600 to-green-400",
     accent: "#10b981",
+    gradient: { start: "#10B981", end: "#047857" },
   },
   {
     id: "orange",
     name: "Orange",
     bg: "from-orange-500 to-yellow-400",
     accent: "#f59e0b",
+    gradient: { start: "#F59E0B", end: "#D97706" },
   },
   {
     id: "red",
     name: "Rouge",
     bg: "from-red-600 to-rose-400",
     accent: "#ef4444",
+    gradient: { start: "#EF4444", end: "#B91C1C" },
   },
 ];
 
@@ -3396,6 +3402,13 @@ export default function InfographicPage() {
                         onClick={() => {
                           setColorTheme(ct.id);
                           setNoColorBg(false);
+                          // Sync the global gradient + accent to the picked theme
+                          // so the editor preview AND the exported video use
+                          // exactly these colors, instead of a stale pair
+                          // left over from a previous theme or localStorage.
+                          setGradientColor1(ct.gradient.start);
+                          setGradientColor2(ct.gradient.end);
+                          setCustomAccent(ct.accent);
                         }}
                         className={`h-8 w-8 rounded-full bg-gradient-to-br ${ct.bg} transition-all ${
                           colorTheme === ct.id && !noColorBg
