@@ -25,3 +25,9 @@ _Fichier à relire à chaque démarrage de session. Appliquer toutes les leçons
 - **2026-04-13** | Le batch x10 génèrait 10 posts avec les mêmes cartes parce qu'on envoyait le même topic à Claude chaque fois (convergence vers la réponse canonique). | **Règle** : pour forcer de la variation LLM, ajouter un « angle » différent + un nonce aléatoire au prompt par itération. Le nonce aléatoire évite aussi les réponses mises en cache.
 
 - **2026-04-13** | `Math.round(w * (X / 320) * textScale)` inline était dispersé dans 20+ endroits de `video-composer.ts`. Impossible de changer le viewport ou le scale sans réécrire partout. | **Règle** : introduire des helpers (`fontPx`, `cssPx`, `fixedFontPx`, `paintSeqBackdrop`, `paintSeqGradient`) dès qu'on répète un pattern 3+ fois. Les helpers auto-centralisent les bugs.
+
+## 2026-04-18
+
+- **2026-04-18** | Calendrier HTML rebuild peignait des fonds divergents de l'éditeur/composer (intro : to-bottom black→gradient1, cards : to-bottom gradient1→gradient2→black, CTA : #000000 pur). Résultat : preview calendrier sombre alors que l'export est vibrant. | **Règle** : tout endroit qui re-peint le fond d'une séquence doit appeler le même helper que l'éditeur + composer.
+
+- **2026-04-18** | Éditeur custom theme peignait `linear-gradient(135deg, customAccent, customAccent99)` (fade single-color 60% muet) au lieu du `gradientColor1 → gradientColor2` vibrant du composer. | **Règle** : ne JAMAIS faire de branche spéciale custom — gradientColor1/2 sont toujours synchronisés avec customAccent.

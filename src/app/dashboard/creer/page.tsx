@@ -5340,11 +5340,6 @@ export default function InfographicPage() {
                 // parity. Previously the editor painted a Tailwind class
                 // derived from `colorTheme` while the composer painted the
                 // hex pair, which diverged on some themes.
-                if (colorTheme === "custom")
-                  return {
-                    ...FILTER_CSS_MAP[selectedFilter],
-                    background: `linear-gradient(135deg, ${customAccent}, ${customAccent}99)`,
-                  };
                 return {
                   ...FILTER_CSS_MAP[selectedFilter],
                   background: `linear-gradient(135deg, ${gradientColor1}, ${gradientColor2})`,
