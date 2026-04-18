@@ -97,3 +97,12 @@ body {
 *::-webkit-scrollbar-thumb:hover {
   background: rgba(217, 28, 210, 0.5);
 }
+
+/* Hide scrollbar for horizontal toolbars / chip rows on mobile. */
+.scrollbar-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}

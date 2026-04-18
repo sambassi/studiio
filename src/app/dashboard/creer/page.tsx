@@ -43,9 +43,44 @@ import {
   Layers,
   Palette,
   Share2,
+  // Card-icon library — explicit imports so the bundler keeps them all.
+  // `import * as LucideIcons` was tree-shaken in production, leaving dynamic
+  // lookups undefined and the raw icon name bleeding through as text.
+  ThumbsUp, Heart, Brain, Flame, Trophy, Target, Dumbbell, Activity,
+  Apple, Carrot, Salad, Coffee, Pizza, Utensils, Wheat,
+  Leaf, Sun, Moon, Star, Cloud, Flower, TreePine, Sprout,
+  Laptop, Smartphone, Cpu, Wifi, Battery, Code, Bot,
+  DollarSign, TrendingUp, Gem, Briefcase, Wallet, BarChart, PieChart, Receipt,
+  Camera, Mic, PenTool, Brush, Image as LucideImage,
+  Plane, Globe, Map, Mountain, Compass, MapPin, Hotel, Tent,
+  Smile, Award, Gift, Bell, PartyPopper,
+  Dog, Cat, Bird, Fish, Rabbit, Turtle,
+  Home, Building, Car, Bike, Train, Rocket, Ship, Bus,
+  ShoppingBag, ShoppingCart, Tag, Package, Truck, CreditCard,
+  Book, GraduationCap, Lightbulb, Library, Pencil, Ruler,
+  Stethoscope, Pill, Cross, HeartPulse,
 } from "lucide-react";
-import * as LucideIcons from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { PlatformIcon, type PlatformKey } from "@/components/ui/PlatformIcon";
+
+// Static map: lucide icon names → component. MUST contain every name listed
+// in ICON_LIBRARY below. The map is the single source of truth used by both
+// the picker grid and the preview render path (renderCardIcon).
+const ICON_MAP: Record<string, LucideIcon> = {
+  ThumbsUp, Heart, Brain, Flame, Zap, Sparkles, Trophy, Target, Dumbbell, Activity, Bike,
+  Apple, Carrot, Salad, Coffee, Pizza, Utensils, Wheat,
+  Leaf, Sun, Moon, Star, Cloud, Flower, TreePine, Sprout,
+  Laptop, Smartphone, Cpu, Wifi, Battery, Code, Bot,
+  DollarSign, TrendingUp, Gem, Briefcase, Wallet, BarChart, PieChart, Receipt,
+  Palette, Camera, Music, Mic, Video, PenTool, Brush, Image: LucideImage,
+  Plane, Globe, Map, Mountain, Compass, MapPin, Hotel, Tent,
+  Smile, Award, Gift, Bell, Megaphone, PartyPopper,
+  Dog, Cat, Bird, Fish, Rabbit, Turtle,
+  Home, Building, Car, Train, Rocket, Ship, Bus,
+  ShoppingBag, ShoppingCart, Tag, Package, Truck, CreditCard,
+  Book, GraduationCap, Lightbulb, Library, Pencil, Ruler,
+  Stethoscope, Pill, Cross, HeartPulse,
+};
 import { AgentIAModal } from "@/components/creer/AgentIAModal";
 import {
   DesignOption,
@@ -165,7 +200,7 @@ function renderBoldMarkdown(text: string | undefined): ReactNode {
 const QUICK_EMOJIS = ['📝', '✨', '⭐', '🎯', '💪', '🔥', '💡', '📊', '🚀', '❤️', '👀', '✅', '⚡', '🎨', '🎬', '📈', '🏆', '💎', '🧠', '🥗'];
 
 // Lucide icon library — names map to lucide-react exports. Looked up dynamically
-// at render time via (LucideIcons as any)[name] to keep this file lean.
+// at render time via ICON_MAP[name] to keep this file lean.
 const ICON_LIBRARY: Record<string, string[]> = {
   sport:       ['Dumbbell', 'Flame', 'Zap', 'Trophy', 'Target', 'Activity', 'Bike'],
   santé:       ['Heart', 'Brain', 'Stethoscope', 'Pill', 'Cross', 'HeartPulse', 'Smile'],
@@ -198,7 +233,7 @@ interface IconRenderOpts {
 }
 
 function renderLucideIcon(name: string, opts: IconRenderOpts = {}): ReactNode {
-  const Icon = (LucideIcons as any)[name];
+  const Icon = ICON_MAP[name];
   if (!Icon) return null;
   const size = opts.size ?? 32;
   const color = opts.color ?? '#a855f7';
@@ -297,7 +332,7 @@ function CardIconPicker({
           Emojis
         </button>
         <button
-          onClick={() => update({ iconType: 'svg', emoji: card.emoji && (LucideIcons as any)[card.emoji] ? card.emoji : 'Sparkles' })}
+          onClick={() => update({ iconType: 'svg', emoji: card.emoji && ICON_MAP[card.emoji] ? card.emoji : 'Sparkles' })}
           className={`flex-1 rounded px-2 py-1 text-[10px] font-semibold ${iconType === 'svg' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'}`}
         >
           Icônes SVG
@@ -360,7 +395,7 @@ function CardIconPicker({
                 <div className="text-[9px] uppercase tracking-wider text-gray-500 mb-1">{category}</div>
                 <div className="grid grid-cols-6 gap-1">
                   {names.map((name) => {
-                    const Icon = (LucideIcons as any)[name];
+                    const Icon = ICON_MAP[name];
                     if (!Icon) return null;
                     const selected = card.emoji === name;
                     return (
@@ -582,7 +617,7 @@ function CardsRailPanel({
       if (data.success) {
         if (card.iconType === 'svg' && data.iconName) {
           // Validate it's actually in our library
-          if ((LucideIcons as any)[data.iconName]) update(card.id, { emoji: data.iconName });
+          if (ICON_MAP[data.iconName]) update(card.id, { emoji: data.iconName });
         } else if (data.emoji) {
           update(card.id, { emoji: data.emoji });
         }
@@ -2962,7 +2997,7 @@ export default function InfographicPage() {
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* Top horizontal toolbar — replaces the former vertical rail   */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <div className="hidden lg:flex items-center justify-center gap-1 bg-gray-950 border-b border-gray-800 px-4 py-2 flex-shrink-0">
+      <div className="flex items-center lg:justify-center gap-1 bg-gray-950 border-b border-gray-800 px-2 lg:px-4 py-2 flex-shrink-0 overflow-x-auto scrollbar-hide whitespace-nowrap">
         <button
           onClick={() => { setActiveRailTab(null); setStep(0); }}
           className={`group flex items-center gap-2 rounded-lg px-3 py-2 transition-all ${
@@ -2971,7 +3006,7 @@ export default function InfographicPage() {
           title="Thème"
         >
           <IconBadge Icon={Palette} color="orange" active={!activeRailTab} size={28} />
-          <span className="text-xs font-medium text-gray-300">Thème</span>
+          <span className="hidden sm:inline text-xs font-medium text-gray-300">Thème</span>
         </button>
         <div className="mx-1 h-8 w-px bg-gray-800" />
         {railItems.map(({ id, label, Icon, color }) => (
@@ -2984,7 +3019,7 @@ export default function InfographicPage() {
             title={label}
           >
             <IconBadge Icon={Icon} color={color} active={activeRailTab === id} size={28} />
-            <span className="text-xs font-medium text-gray-300">{label}</span>
+            <span className="hidden sm:inline text-xs font-medium text-gray-300">{label}</span>
           </button>
         ))}
         <div className="relative" data-zones-menu>
@@ -3006,7 +3041,7 @@ export default function InfographicPage() {
             >
               <Share2 size={16} strokeWidth={2} />
             </span>
-            <span className="text-xs font-medium text-gray-300">Zone</span>
+            <span className="hidden sm:inline text-xs font-medium text-gray-300">Zone</span>
           </button>
           {zonesOpen && (
             <div className="absolute top-full right-0 mt-2 z-50 flex items-center gap-1.5 rounded-xl bg-gray-900/95 backdrop-blur border border-gray-700/50 px-3 py-2 shadow-2xl">
@@ -3035,13 +3070,13 @@ export default function InfographicPage() {
               title="Agent IA — Planificateur autonome"
             >
               <IconBadge Icon={Sparkles} color="amber" active={agentIAOpen} size={28} />
-              <span className="text-xs font-medium text-gray-300">Agent IA</span>
+              <span className="hidden sm:inline text-xs font-medium text-gray-300">Agent IA</span>
             </button>
           </>
         )}
       </div>
 
-      <div className="flex flex-col lg:flex-row flex-1 min-h-0">
+      <div className="flex flex-col lg:flex-row flex-1 min-h-0 pb-14 lg:pb-0">
 
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* Rail slide-in panel — opens below the top toolbar           */}
@@ -7066,6 +7101,42 @@ export default function InfographicPage() {
               className="h-5 w-5 rounded text-[10px] font-bold text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 transition">+</button>
           </div>
         </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* Mobile Horizontal Export Bar — bottom of viewport on <lg     */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <div className="flex lg:hidden fixed bottom-0 left-0 right-0 z-40 items-center justify-between gap-1.5 bg-gray-900/95 backdrop-blur-sm border-t border-gray-700/50 px-2 py-1.5 shadow-2xl overflow-x-auto scrollbar-hide">
+        {isExporting && (
+          <div className="absolute top-0 left-0 h-0.5 bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300" style={{ width: `${exportProgress}%` }} />
+        )}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {([
+            { key: 'draft' as Destination, Icon: Calendar, color: '#3B82F6' },
+            { key: 'export' as Destination, Icon: Download, color: '#10B981' },
+            { key: 'both' as Destination, Icon: Layers, color: '#A855F7' },
+            { key: 'audio-studio' as Destination, Icon: Music, color: '#EC4899' },
+          ] as const).map(({ key, Icon, color }) => (
+            <button key={key} onClick={() => setDestination(key)}
+              className={`h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 transition-all ${
+                destination === key ? 'ring-2 ring-white/40 scale-105' : 'opacity-60'
+              }`}
+              style={{ backgroundColor: `${color}20`, color }}
+            >
+              <Icon size={16} fill="currentColor" strokeWidth={1.5} />
+            </button>
+          ))}
+        </div>
+        <button onClick={handleExport} disabled={isExporting || cards.length === 0}
+          className="flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 h-10 px-4 text-white text-xs font-bold hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 shadow-lg shadow-purple-500/25 flex-shrink-0"
+        >
+          {isExporting
+            ? <><Loader2 size={14} className="animate-spin" />{exportProgress}%</>
+            : <><Zap size={14} fill="currentColor" />Export {batchCount > 1 ? `x${batchCount}` : ''}</>}
+        </button>
+        <span className="text-[10px] text-yellow-400 font-bold whitespace-nowrap flex-shrink-0">
+          {25 * batchCount}cr
+        </span>
       </div>
 
       <Modal
