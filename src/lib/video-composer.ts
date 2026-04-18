@@ -990,9 +990,14 @@ function drawCards(
     const paddingY = cssPx(6); // py-1.5 = 6px on 320px
     const paddingX = cssPx(6); // px-1.5
     const innerGap = cssPx(2); // gap-0.5 = 2px on 320px
-    // Editor uses fixed Tailwind text-sm / text-lg here — NOT scaled.
     const emojiSizeLocal = fixedFontPx(isReel ? 14 : 18);
-    const lineMul = 1.2; // line-height for wrapped lines
+    // Tailwind preflight sets line-height: 1.5 on html, inherited by
+    // all <p> children. text-sm/text-lg classes carry ~1.4× leading.
+    // Canvas 2D has no line-height built-in, so without these
+    // multipliers the composer renders cards ~22% shorter.
+    const lineMul = 1.5;
+    const emojiLineMul = 1.4;
+    const emojiLineH = emojiSizeLocal * emojiLineMul;
 
     // Pre-measure each card's wrapped lines. Cap EACH element to 2 lines
     // max (label / value / desc) so no single card stretches taller than
@@ -1033,7 +1038,7 @@ function drawCards(
     const valueH = (n: number) => n * valueSize * lineMul;
     const descH = (n: number) => n * descSize * lineMul;
     const contentHs = pre.map(p =>
-      emojiSizeLocal + innerGap +
+      emojiLineH + innerGap +
       labelH(p.labelLines.length) + innerGap +
       valueH(p.valueLines.length) +
       (p.descLines.length > 0 ? innerGap + descH(p.descLines.length) : 0)
@@ -1067,17 +1072,17 @@ function drawCards(
       // Icon or emoji (skipped when empty → re-center content vertically)
       const hasEmoji = !!card.emoji && card.emoji.trim() !== '';
       if (hasEmoji) {
+        const iconY = curY + (emojiLineH - emojiSizeLocal) / 2;
         if (card.iconImage) {
-          const iconDrawSize = emojiSizeLocal;
-          ctx.drawImage(card.iconImage, x + cardW / 2 - iconDrawSize / 2, curY, iconDrawSize, iconDrawSize);
+          ctx.drawImage(card.iconImage, x + cardW / 2 - emojiSizeLocal / 2, iconY, emojiSizeLocal, emojiSizeLocal);
         } else {
           ctx.font = `${emojiSizeLocal}px sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = 'white';
-          ctx.fillText(card.emoji, x + cardW / 2, curY);
+          ctx.fillText(card.emoji, x + cardW / 2, iconY);
         }
-        curY += emojiSizeLocal + innerGap;
+        curY += emojiLineH + innerGap;
       } else {
         // Re-center remaining content: skip one emoji slot worth of space
-        curY += (emojiSizeLocal + innerGap) / 2;
+        curY += (emojiLineH + innerGap) / 2;
       }
 
       // Label (multi-line)
