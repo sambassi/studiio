@@ -29,8 +29,8 @@ function getOAuthUrl(platform: string, state: string): string | null {
               const redirectUri = encodeURIComponent(`${APP_URL}/api/social/callback/tiktok`);
               const clientKey = process.env.TIKTOK_CLIENT_KEY;
               if (!clientKey) return null;
-              // Scopes auto-approuvés TikTok uniquement. video.publish/upload requièrent App Review.
-              return `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&response_type=code&scope=user.info.basic,video.list&redirect_uri=${redirectUri}&state=${state}`;
+              // Scopes doivent matcher exactement la config du TikTok Developer Portal.
+              return `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&response_type=code&scope=user.info.basic,video.upload&redirect_uri=${redirectUri}&state=${state}`;
       }
 
       case 'youtube': {
