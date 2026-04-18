@@ -81,8 +81,11 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
   const montageAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    fetch('/api/public/settings').then(r => r.json()).then(d => {
-      setMontageEnabled(!!d.agentMontageEnabled);
+    fetch('/api/public/settings', { cache: 'no-store' }).then(r => r.json()).then(d => {
+      const enabled = !!d.agentMontageEnabled;
+      console.log('[FeatureFlag] agentMontageEnabled =', enabled);
+      setMontageEnabled(enabled);
+      if (!enabled) setMontageMode(false);
     }).catch(() => {});
   }, []);
 
@@ -273,7 +276,7 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
 
   const handleAIGenerate = async () => {
     if (aiRushFiles.length === 0) return;
-    if (montageMode) { handleMontagGenerate(); return; }
+    if (montageMode && montageEnabled) { handleMontagGenerate(); return; }
     setAiGenerating(true);
     setAiProgress(0);
     setAiStage(t('aiAgent.stages.preparing'));
