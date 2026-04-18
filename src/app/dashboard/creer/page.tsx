@@ -12,6 +12,7 @@ import {
   Sparkles,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
   Image as ImageIcon,
   Edit3,
   Check,
@@ -977,6 +978,32 @@ const CONTENT_THEMES = [
   },
 ];
 
+// Synonym keywords for the theme search dropdown. Matched against a free-text
+// query in addition to the theme's own label/id.
+const THEME_KEYWORDS: Record<string, string[]> = {
+  'sommeil-sport': ['sommeil', 'dormir', 'nuit', 'repos', 'sleep', 'sport', 'fitness', 'workout', 'gym'],
+  'nutrition-danse': ['nutrition', 'alimentation', 'manger', 'food', 'diet', 'danse', 'dance'],
+  'energie-cardio': ['énergie', 'energie', 'cardio', 'running', 'course', 'endurance', 'energy'],
+  'stress-mental': ['stress', 'mental', 'anxiété', 'anxiete', 'meditation', 'méditation', 'calm', 'yoga', 'zen'],
+  'communaute': ['communauté', 'communaute', 'community', 'groupe', 'social', 'famille'],
+  'beauty': ['beauté', 'beaute', 'beauty', 'cosmétique', 'skincare', 'maquillage', 'makeup'],
+  'parenting': ['parent', 'enfant', 'bébé', 'bebe', 'famille', 'kids', 'baby', 'parentalité'],
+  'travel': ['voyage', 'travel', 'vacances', 'tourisme', 'aventure'],
+  'productivity': ['productivité', 'productivite', 'productivity', 'travail', 'work', 'efficacité'],
+  'finance': ['finance', 'argent', 'money', 'invest', 'épargne', 'epargne', 'budget'],
+  'coding': ['code', 'coding', 'développeur', 'developer', 'programmation', 'tech', 'dev'],
+  'crypto': ['crypto', 'bitcoin', 'eth', 'blockchain', 'web3', 'nft'],
+  'gaming': ['gaming', 'jeu', 'game', 'esport', 'gamer'],
+  'food': ['food', 'cuisine', 'recette', 'manger', 'gastronomie'],
+  'pets': ['animaux', 'pet', 'chien', 'chat', 'dog', 'cat', 'animal'],
+  'cars': ['auto', 'voiture', 'car', 'véhicule', 'moto'],
+  'realestate': ['immobilier', 'real estate', 'maison', 'appartement', 'investissement'],
+  'education': ['éducation', 'education', 'apprentissage', 'study', 'school', 'école', 'ecole'],
+  'astrology': ['astrologie', 'astrology', 'horoscope', 'zodiac', 'signe'],
+  'motivation': ['motivation', 'mindset', 'inspiration', 'success', 'goal'],
+  'personnalise': ['personnalisé', 'personnalise', 'custom', 'personnel', 'autre', 'sujet'],
+};
+
 // ── Color Themes ───────────────────────────────────────────────
 const COLOR_THEMES = [
   {
@@ -1156,6 +1183,21 @@ export default function InfographicPage() {
 
   // ── Step 0: Theme & Content ─────────────────────────────────
   const [contentTheme, setContentTheme] = useState("sommeil-sport");
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const [themeSearch, setThemeSearch] = useState('');
+  const themePickerRef = useRef<HTMLDivElement>(null);
+
+  // Close the theme dropdown on outside click.
+  useEffect(() => {
+    if (!themePickerOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (themePickerRef.current && !themePickerRef.current.contains(e.target as Node)) {
+        setThemePickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [themePickerOpen]);
   const [customTopic, setCustomTopic] = useState("");
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
@@ -3708,25 +3750,95 @@ export default function InfographicPage() {
         {/* ═══════════════════════════════════════════════════════ */}
         {step === 0 && (
           <div className="space-y-4">
-            {/* Content Theme Selector */}
+            {/* Content Theme Selector — compact dropdown with search */}
             <div>
               <label className="mb-2 block text-sm font-medium text-gray-300">
                 Thème du contenu
               </label>
-              <div className="grid grid-cols-3 gap-1.5">
-                {CONTENT_THEMES.map((theme) => (
-                  <button
-                    key={theme.id}
-                    onClick={() => setContentTheme(theme.id)}
-                    className={`flex items-center justify-center rounded-lg px-2 py-1.5 text-[11px] font-medium transition-all ${
-                      contentTheme === theme.id
-                        ? "ring-2 ring-purple-500 bg-gray-800"
-                        : "bg-gray-800/50 hover:bg-gray-800"
-                    }`}
+              <div ref={themePickerRef} className="relative">
+                {(() => {
+                  const active = CONTENT_THEMES.find((t) => t.id === contentTheme);
+                  return (
+                    <div className="flex items-stretch gap-1.5">
+                      <button
+                        onClick={() => { setThemePickerOpen((v) => !v); setThemeSearch(''); }}
+                        className="flex-1 flex items-center justify-between gap-2 rounded-lg bg-gray-800 hover:bg-gray-750 ring-1 ring-purple-500/40 px-3 py-2.5 text-sm font-medium text-white transition"
+                      >
+                        <span className="flex items-center gap-2 truncate">
+                          <span>{active?.emoji || '✨'}</span>
+                          <span className="truncate">{active?.label || 'Choisir un thème'}</span>
+                        </span>
+                        <ChevronDown size={14} className={`text-gray-400 flex-shrink-0 transition-transform ${themePickerOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                      <button
+                        onClick={() => { setThemePickerOpen(true); setThemeSearch(''); }}
+                        className="rounded-lg bg-gray-800 hover:bg-gray-750 px-3 py-2.5 text-xs text-gray-400 hover:text-white flex items-center gap-1.5 transition"
+                        title="Rechercher un thème"
+                      >
+                        <Search size={14} />
+                        <span className="hidden sm:inline">Changer</span>
+                      </button>
+                    </div>
+                  );
+                })()}
+
+                {themePickerOpen && (
+                  <div
+                    className="absolute left-0 right-0 top-full mt-2 z-30 rounded-xl bg-gray-900 border border-gray-700 p-3 shadow-2xl max-h-[400px] overflow-y-auto"
+                    style={{ animation: 'fadeInScale 150ms ease-out' }}
                   >
-                    <span className="leading-tight">{theme.label}</span>
-                  </button>
-                ))}
+                    <div className="relative mb-2">
+                      <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                      <input
+                        autoFocus
+                        type="text"
+                        value={themeSearch}
+                        onChange={(e) => setThemeSearch(e.target.value)}
+                        placeholder="Rechercher un thème..."
+                        className="w-full rounded-lg bg-gray-800 border border-gray-700 pl-7 pr-2 py-1.5 text-xs text-white placeholder:text-gray-500 focus:border-purple-500 focus:outline-none"
+                      />
+                    </div>
+                    {(() => {
+                      const q = themeSearch.trim().toLowerCase();
+                      const filtered = CONTENT_THEMES.filter((t) => {
+                        if (!q) return true;
+                        if (t.label.toLowerCase().includes(q)) return true;
+                        if (t.id.toLowerCase().includes(q)) return true;
+                        const kws = THEME_KEYWORDS[t.id] || [];
+                        return kws.some((k) => k.toLowerCase().includes(q));
+                      });
+                      if (filtered.length === 0) {
+                        return <p className="text-[11px] text-gray-500 text-center py-4">Aucun thème trouvé</p>;
+                      }
+                      return (
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {filtered.map((theme) => {
+                            const isActive = contentTheme === theme.id;
+                            return (
+                              <button
+                                key={theme.id}
+                                onClick={() => {
+                                  setContentTheme(theme.id);
+                                  setThemePickerOpen(false);
+                                  setThemeSearch('');
+                                  showToast(`Thème "${theme.label}" appliqué`, 'success');
+                                }}
+                                className={`flex items-center justify-center gap-1 rounded-lg px-2 py-2 text-[11px] font-medium transition-all ${
+                                  isActive
+                                    ? 'ring-2 ring-purple-500 bg-purple-600/20 text-white'
+                                    : 'bg-gray-800/50 hover:bg-gray-800 text-gray-300'
+                                }`}
+                              >
+                                <span>{theme.emoji}</span>
+                                <span className="leading-tight truncate">{theme.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
             </div>
 
