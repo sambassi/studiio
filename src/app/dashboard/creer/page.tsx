@@ -44,6 +44,7 @@ import {
   Palette,
   Share2,
 } from "lucide-react";
+import * as LucideIcons from "lucide-react";
 import { PlatformIcon, type PlatformKey } from "@/components/ui/PlatformIcon";
 import { AgentIAModal } from "@/components/creer/AgentIAModal";
 import {
@@ -126,6 +127,7 @@ function IconBadge({
 interface InfoCard {
   id: string;
   // Empty string ("" or whitespace) means "no icon" — the card renders without the icon slot.
+  // Holds an emoji string when iconType==='emoji', a lucide icon name when iconType==='svg'.
   emoji: string;
   label: string;
   value: string;
@@ -136,6 +138,13 @@ interface InfoCard {
    * container (card center). When absent, falls back to the grid layout.
    */
   position?: { x: number; y: number };
+  // Icon system. Cards saved before this feature have iconType undefined → treated as 'emoji'.
+  iconType?: 'emoji' | 'svg';
+  iconColor?: string;       // stroke color for outline / duotone, fill color for solid
+  iconFillColor?: string;   // inner fill (used in duotone mode)
+  iconSize?: number;        // 16–80 px
+  iconStyle?: 'outline' | 'duotone' | 'solid';
+  iconGradient?: { start: string; end: string; direction: 'h' | 'v' | 'd' };
 }
 
 /**
@@ -154,6 +163,367 @@ function renderBoldMarkdown(text: string | undefined): ReactNode {
 }
 
 const QUICK_EMOJIS = ['📝', '✨', '⭐', '🎯', '💪', '🔥', '💡', '📊', '🚀', '❤️', '👀', '✅', '⚡', '🎨', '🎬', '📈', '🏆', '💎', '🧠', '🥗'];
+
+// Lucide icon library — names map to lucide-react exports. Looked up dynamically
+// at render time via (LucideIcons as any)[name] to keep this file lean.
+const ICON_LIBRARY: Record<string, string[]> = {
+  sport:       ['Dumbbell', 'Flame', 'Zap', 'Trophy', 'Target', 'Activity', 'Bike'],
+  santé:       ['Heart', 'Brain', 'Stethoscope', 'Pill', 'Cross', 'HeartPulse', 'Smile'],
+  nutrition:   ['Apple', 'Carrot', 'Salad', 'Coffee', 'Pizza', 'Utensils', 'Wheat'],
+  nature:      ['Leaf', 'Sun', 'Moon', 'Star', 'Cloud', 'Flower', 'TreePine', 'Sprout'],
+  tech:        ['Laptop', 'Smartphone', 'Cpu', 'Wifi', 'Battery', 'Code', 'Bot', 'Cloud'],
+  business:    ['DollarSign', 'TrendingUp', 'Gem', 'Briefcase', 'Wallet', 'BarChart', 'PieChart', 'Receipt'],
+  créativité:  ['Palette', 'Camera', 'Music', 'Mic', 'Video', 'PenTool', 'Brush', 'Image'],
+  voyage:      ['Plane', 'Globe', 'Map', 'Mountain', 'Compass', 'MapPin', 'Hotel', 'Tent'],
+  emotions:    ['Smile', 'Award', 'ThumbsUp', 'Gift', 'Bell', 'Megaphone', 'PartyPopper', 'Sparkles'],
+  animaux:     ['Dog', 'Cat', 'Bird', 'Fish', 'Rabbit', 'Turtle'],
+  transport:   ['Home', 'Building', 'Car', 'Bike', 'Train', 'Rocket', 'Ship', 'Bus'],
+  shopping:    ['ShoppingBag', 'ShoppingCart', 'Tag', 'Package', 'Truck', 'CreditCard'],
+  education:   ['Book', 'GraduationCap', 'Lightbulb', 'Library', 'Pencil', 'Ruler'],
+};
+
+const ALL_LUCIDE_NAMES: string[] = Object.values(ICON_LIBRARY).flat();
+
+const COLOR_SWATCHES_VIVID = ['#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#EC4899'];
+const COLOR_SWATCHES_PASTEL = ['#FCA5A5', '#FCD34D', '#6EE7B7', '#93C5FD', '#C4B5FD', '#F9A8D4'];
+
+interface IconRenderOpts {
+  size?: number;
+  color?: string;
+  fillColor?: string;
+  style?: 'outline' | 'duotone' | 'solid';
+  gradient?: { start: string; end: string; direction: 'h' | 'v' | 'd' };
+  /** Unique id used as the SVG gradient defs id when gradient is enabled. */
+  gradientId?: string;
+}
+
+function renderLucideIcon(name: string, opts: IconRenderOpts = {}): ReactNode {
+  const Icon = (LucideIcons as any)[name];
+  if (!Icon) return null;
+  const size = opts.size ?? 32;
+  const color = opts.color ?? '#a855f7';
+  const fillColor = opts.fillColor ?? color;
+  const style = opts.style ?? 'outline';
+
+  // Gradient mode wraps the icon in a custom <svg> with a linearGradient defs and applies
+  // stroke="url(#id)" via a CSS variable trick. Simpler: render the icon, then overlay a
+  // styled wrapper. Lucide accepts `color` as the stroke; we set strokeWidth + fill manually.
+  if (opts.gradient && opts.gradientId) {
+    const { start, end, direction } = opts.gradient;
+    const x2 = direction === 'v' ? '0' : direction === 'd' ? '1' : '1';
+    const y2 = direction === 'v' ? '1' : direction === 'd' ? '1' : '0';
+    return (
+      <span style={{ display: 'inline-flex', width: size, height: size, position: 'relative' }}>
+        <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden>
+          <defs>
+            <linearGradient id={opts.gradientId} x1="0" y1="0" x2={x2} y2={y2}>
+              <stop offset="0%" stopColor={start} />
+              <stop offset="100%" stopColor={end} />
+            </linearGradient>
+          </defs>
+        </svg>
+        <Icon
+          size={size}
+          stroke={`url(#${opts.gradientId})`}
+          fill={style === 'solid' ? `url(#${opts.gradientId})` : 'none'}
+          strokeWidth={style === 'solid' ? 0 : 2}
+        />
+      </span>
+    );
+  }
+
+  if (style === 'solid') {
+    return <Icon size={size} color={color} fill={color} strokeWidth={0} />;
+  }
+  if (style === 'duotone') {
+    return <Icon size={size} color={color} fill={fillColor} strokeWidth={2} />;
+  }
+  // outline (default)
+  return <Icon size={size} color={color} fill="none" strokeWidth={2} />;
+}
+
+/**
+ * Render a card icon based on its iconType. Falls back to emoji rendering for
+ * cards saved before the SVG library feature.
+ */
+function renderCardIcon(card: InfoCard, fallbackSize?: number): ReactNode {
+  if (card.iconType === 'svg' && card.emoji) {
+    return renderLucideIcon(card.emoji, {
+      size: card.iconSize ?? fallbackSize ?? 32,
+      color: card.iconColor ?? card.color,
+      fillColor: card.iconFillColor ?? card.color,
+      style: card.iconStyle ?? 'outline',
+      gradient: card.iconGradient,
+      gradientId: card.iconGradient ? `card-grad-${card.id}` : undefined,
+    });
+  }
+  // Emoji fallback
+  return card.emoji;
+}
+
+function CardIconPicker({
+  card,
+  update,
+  accentColor,
+  aiBusy,
+  onSuggestAI,
+}: {
+  card: InfoCard;
+  update: (patch: Partial<InfoCard>) => void;
+  accentColor: string;
+  aiBusy: boolean;
+  onSuggestAI: () => void;
+}) {
+  const iconType = card.iconType ?? 'emoji';
+  const iconColor = card.iconColor ?? card.color ?? accentColor;
+  const iconFillColor = card.iconFillColor ?? iconColor;
+  const iconSize = card.iconSize ?? 32;
+  const iconStyle = card.iconStyle ?? 'outline';
+  const grad = card.iconGradient;
+
+  const setSwatch = (color: string) => {
+    if (grad) update({ iconGradient: { ...grad, start: color } });
+    else update({ iconColor: color });
+  };
+
+  return (
+    <div className="space-y-2">
+      {/* Mode tabs */}
+      <div className="flex gap-1 rounded bg-gray-900 p-0.5">
+        <button
+          onClick={() => update({ iconType: 'emoji' })}
+          className={`flex-1 rounded px-2 py-1 text-[10px] font-semibold ${iconType === 'emoji' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'}`}
+        >
+          Emojis
+        </button>
+        <button
+          onClick={() => update({ iconType: 'svg', emoji: card.emoji && (LucideIcons as any)[card.emoji] ? card.emoji : 'Sparkles' })}
+          className={`flex-1 rounded px-2 py-1 text-[10px] font-semibold ${iconType === 'svg' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'}`}
+        >
+          Icônes SVG
+        </button>
+      </div>
+
+      {/* Top row: current preview + AI suggest */}
+      <div className="flex gap-1.5 items-center">
+        <div className="h-10 w-12 rounded border border-gray-600 bg-gray-700 flex items-center justify-center text-base flex-shrink-0">
+          {iconType === 'svg'
+            ? renderLucideIcon(card.emoji || 'Sparkles', { size: 22, color: iconColor, fillColor: iconFillColor, style: iconStyle, gradient: grad, gradientId: `prev-${card.id}` })
+            : <span>{card.emoji || '📝'}</span>}
+        </div>
+        {iconType === 'emoji' && (
+          <input
+            type="text"
+            value={card.emoji}
+            onChange={(e) => update({ emoji: e.target.value })}
+            maxLength={4}
+            className="w-14 text-center rounded border border-gray-600 bg-gray-700 px-1 py-1 text-base"
+            placeholder="📝"
+          />
+        )}
+        <button
+          onClick={onSuggestAI}
+          disabled={aiBusy || (!card.label.trim() && !card.description.trim())}
+          className="flex-1 flex items-center justify-center gap-1 rounded bg-purple-600/20 px-2 py-1 text-[10px] font-semibold text-purple-300 hover:bg-purple-600/40 disabled:opacity-50"
+          title="Générer icône avec IA (requiert titre ou description)"
+        >
+          {aiBusy ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+          Générer icône IA
+        </button>
+      </div>
+
+      {/* EMOJI MODE — quick palette */}
+      {iconType === 'emoji' && (
+        <div className="flex flex-wrap gap-0.5">
+          {QUICK_EMOJIS.map((e) => (
+            <button
+              key={e}
+              onClick={() => update({ emoji: e })}
+              className={`h-6 w-6 rounded text-sm hover:bg-gray-700 ${card.emoji === e ? 'bg-purple-600/30' : ''}`}
+              title={e}
+            >
+              {e}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* SVG MODE — categorized library + customization */}
+      {iconType === 'svg' && (
+        <>
+          <div
+            className="max-h-[240px] overflow-y-auto rounded border border-gray-700 bg-gray-900/40 p-2 space-y-2"
+            style={{ scrollSnapType: 'y mandatory' }}
+          >
+            {Object.entries(ICON_LIBRARY).map(([category, names]) => (
+              <div key={category} style={{ scrollSnapAlign: 'start' }}>
+                <div className="text-[9px] uppercase tracking-wider text-gray-500 mb-1">{category}</div>
+                <div className="grid grid-cols-6 gap-1">
+                  {names.map((name) => {
+                    const Icon = (LucideIcons as any)[name];
+                    if (!Icon) return null;
+                    const selected = card.emoji === name;
+                    return (
+                      <button
+                        key={name}
+                        onClick={() => update({ emoji: name })}
+                        className={`h-10 w-10 rounded-lg bg-gray-800 hover:bg-gray-700 hover:scale-110 transition flex items-center justify-center ${selected ? 'ring-2 ring-purple-500' : ''}`}
+                        title={name}
+                      >
+                        <Icon size={20} color={iconColor} />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Style tabs: Outline / Duotone / Solid */}
+          <div className="flex gap-1 rounded bg-gray-900 p-0.5">
+            {(['outline', 'duotone', 'solid'] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => update({ iconStyle: s })}
+                className={`flex-1 rounded px-2 py-1 text-[9px] font-semibold uppercase ${iconStyle === s ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'}`}
+              >
+                {s === 'outline' ? 'Contour' : s === 'duotone' ? 'Duotone' : 'Rempli'}
+              </button>
+            ))}
+          </div>
+
+          {/* Color: stroke + (optionally) fill */}
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <label className="text-[9px] uppercase text-gray-500 w-14">Trait</label>
+              <input
+                type="color"
+                value={iconColor}
+                onChange={(e) => update({ iconColor: e.target.value })}
+                className="h-6 w-10 rounded border border-gray-600 bg-transparent cursor-pointer"
+              />
+              <input
+                type="text"
+                value={iconColor}
+                onChange={(e) => update({ iconColor: e.target.value })}
+                className="flex-1 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-[10px] font-mono text-white"
+              />
+            </div>
+            {iconStyle === 'duotone' && (
+              <div className="flex items-center gap-2">
+                <label className="text-[9px] uppercase text-gray-500 w-14">Fond</label>
+                <input
+                  type="color"
+                  value={iconFillColor}
+                  onChange={(e) => update({ iconFillColor: e.target.value })}
+                  className="h-6 w-10 rounded border border-gray-600 bg-transparent cursor-pointer"
+                />
+                <input
+                  type="text"
+                  value={iconFillColor}
+                  onChange={(e) => update({ iconFillColor: e.target.value })}
+                  className="flex-1 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-[10px] font-mono text-white"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Swatches */}
+          <div>
+            <div className="text-[9px] uppercase text-gray-500 mb-1">Vif</div>
+            <div className="flex gap-1">
+              {COLOR_SWATCHES_VIVID.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setSwatch(c)}
+                  className="h-5 flex-1 rounded border border-white/10 hover:scale-110 transition"
+                  style={{ backgroundColor: c }}
+                  title={c}
+                />
+              ))}
+            </div>
+            <div className="text-[9px] uppercase text-gray-500 mb-1 mt-1.5">Pastel</div>
+            <div className="flex gap-1">
+              {COLOR_SWATCHES_PASTEL.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setSwatch(c)}
+                  className="h-5 flex-1 rounded border border-white/10 hover:scale-110 transition"
+                  style={{ backgroundColor: c }}
+                  title={c}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Theme match */}
+          <button
+            onClick={() => update({ iconColor: accentColor, iconFillColor: accentColor, iconGradient: undefined })}
+            className="w-full flex items-center justify-center gap-1 rounded bg-amber-500/15 px-2 py-1 text-[10px] font-semibold text-amber-300 hover:bg-amber-500/25"
+          >
+            <Sparkles size={11} /> Assortir au thème
+          </button>
+
+          {/* Size */}
+          <div>
+            <div className="flex items-center justify-between text-[9px] uppercase text-gray-500">
+              <span>Taille</span>
+              <span className="text-gray-300">{iconSize}px</span>
+            </div>
+            <input
+              type="range"
+              min={16}
+              max={80}
+              value={iconSize}
+              onChange={(e) => update({ iconSize: Number(e.target.value) })}
+              className="w-full mt-1 accent-purple-500"
+            />
+          </div>
+
+          {/* Gradient */}
+          <div className="rounded border border-gray-700 bg-gray-900/40 p-2 space-y-1.5">
+            <label className="flex items-center gap-2 text-[10px] text-gray-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!grad}
+                onChange={(e) =>
+                  update({
+                    iconGradient: e.target.checked
+                      ? { start: iconColor, end: iconFillColor !== iconColor ? iconFillColor : '#EC4899', direction: 'd' }
+                      : undefined,
+                  })
+                }
+                className="accent-purple-500"
+              />
+              Dégradé
+            </label>
+            {grad && (
+              <>
+                <div className="flex items-center gap-2">
+                  <label className="text-[9px] uppercase text-gray-500 w-10">Début</label>
+                  <input type="color" value={grad.start} onChange={(e) => update({ iconGradient: { ...grad, start: e.target.value } })} className="h-6 w-10 rounded border border-gray-600 bg-transparent cursor-pointer" />
+                  <label className="text-[9px] uppercase text-gray-500 w-8">Fin</label>
+                  <input type="color" value={grad.end} onChange={(e) => update({ iconGradient: { ...grad, end: e.target.value } })} className="h-6 w-10 rounded border border-gray-600 bg-transparent cursor-pointer" />
+                </div>
+                <div className="flex gap-1">
+                  {(['h', 'v', 'd'] as const).map((d) => (
+                    <button
+                      key={d}
+                      onClick={() => update({ iconGradient: { ...grad, direction: d } })}
+                      className={`flex-1 rounded px-2 py-0.5 text-[9px] uppercase ${grad.direction === d ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+                    >
+                      {d === 'h' ? 'Horiz' : d === 'v' ? 'Vert' : 'Diag'}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 function CardsRailPanel({
   cards,
@@ -177,6 +547,7 @@ function CardsRailPanel({
         description: '',
         color: accentColor,
         position: { x: 50, y: 50 },
+        iconType: 'emoji',
       },
     ]);
   };
@@ -200,11 +571,24 @@ function CardsRailPanel({
       const r = await fetch('/api/content/icon-suggest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: card.label, description: card.description }),
+        body: JSON.stringify({
+          title: card.label,
+          description: card.description,
+          mode: card.iconType === 'svg' ? 'svg' : 'emoji',
+          allowed: card.iconType === 'svg' ? ALL_LUCIDE_NAMES : undefined,
+        }),
       });
       const data = await r.json();
-      if (data.success && data.emoji) update(card.id, { emoji: data.emoji });
-      else console.warn('[icon-suggest] failed:', data.error);
+      if (data.success) {
+        if (card.iconType === 'svg' && data.iconName) {
+          // Validate it's actually in our library
+          if ((LucideIcons as any)[data.iconName]) update(card.id, { emoji: data.iconName });
+        } else if (data.emoji) {
+          update(card.id, { emoji: data.emoji });
+        }
+      } else {
+        console.warn('[icon-suggest] failed:', data.error);
+      }
     } catch (err) {
       console.warn('[icon-suggest] error:', err);
     } finally {
@@ -251,41 +635,13 @@ function CardsRailPanel({
             </div>
           </div>
 
-          {/* Emoji picker + AI suggest */}
-          <div>
-            <label className="text-[9px] uppercase text-gray-500">Icône</label>
-            <div className="flex gap-1.5 mt-1">
-              <input
-                type="text"
-                value={card.emoji}
-                onChange={(e) => update(card.id, { emoji: e.target.value })}
-                maxLength={4}
-                className="w-12 text-center rounded border border-gray-600 bg-gray-700 px-1 py-1 text-base"
-                placeholder="📝"
-              />
-              <button
-                onClick={() => suggestIcon(card)}
-                disabled={aiBusyId === card.id || (!card.label.trim() && !card.description.trim())}
-                className="flex-1 flex items-center justify-center gap-1 rounded bg-purple-600/20 px-2 py-1 text-[10px] font-semibold text-purple-300 hover:bg-purple-600/40 disabled:opacity-50"
-                title="Générer icône avec IA (requiert titre ou description)"
-              >
-                {aiBusyId === card.id ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
-                Générer icône IA
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-0.5 mt-1.5">
-              {QUICK_EMOJIS.map((e) => (
-                <button
-                  key={e}
-                  onClick={() => update(card.id, { emoji: e })}
-                  className={`h-6 w-6 rounded text-sm hover:bg-gray-700 ${card.emoji === e ? 'bg-purple-600/30' : ''}`}
-                  title={e}
-                >
-                  {e}
-                </button>
-              ))}
-            </div>
-          </div>
+          <CardIconPicker
+            card={card}
+            update={(patch) => update(card.id, patch)}
+            accentColor={accentColor}
+            aiBusy={aiBusyId === card.id}
+            onSuggestAI={() => suggestIcon(card)}
+          />
 
           <div>
             <label className="text-[9px] uppercase text-gray-500">Titre</label>
@@ -322,7 +678,7 @@ function CardsRailPanel({
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="text-[9px] uppercase text-gray-500">Couleur</label>
+            <label className="text-[9px] uppercase text-gray-500">Couleur carte</label>
             <input
               type="color"
               value={card.color}
@@ -3100,13 +3456,12 @@ export default function InfographicPage() {
                   <button
                     key={theme.id}
                     onClick={() => setContentTheme(theme.id)}
-                    className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] font-medium transition-all ${
+                    className={`flex items-center justify-center rounded-lg px-2 py-1.5 text-[11px] font-medium transition-all ${
                       contentTheme === theme.id
                         ? "ring-2 ring-purple-500 bg-gray-800"
                         : "bg-gray-800/50 hover:bg-gray-800"
                     }`}
                   >
-                    <span className="text-sm">{theme.emoji}</span>
                     <span className="leading-tight">{theme.label}</span>
                   </button>
                 ))}
@@ -4985,7 +5340,7 @@ export default function InfographicPage() {
                               format === "16:9" ? "text-lg" : "text-sm"
                             }
                           >
-                            {card.emoji}
+                            {renderCardIcon(card)}
                           </span>
                         )}
                         <p
@@ -5020,7 +5375,7 @@ export default function InfographicPage() {
                       >
                         <div className="flex items-center gap-1.5 mb-1">
                           {card.emoji && card.emoji.trim() !== "" && (
-                            <span className="text-sm">{card.emoji}</span>
+                            <span className="text-sm inline-flex items-center">{renderCardIcon(card)}</span>
                           )}
                           <p
                             className="font-bold text-white"
@@ -5074,7 +5429,7 @@ export default function InfographicPage() {
                         style={{ borderBottom: `1px solid ${card.color}40` }}
                       >
                         {card.emoji && card.emoji.trim() !== "" && (
-                          <span className="text-xs">{card.emoji}</span>
+                          <span className="text-xs inline-flex items-center">{renderCardIcon(card)}</span>
                         )}
                         <p
                           className="text-white/80 flex-1"
@@ -5098,7 +5453,7 @@ export default function InfographicPage() {
                       style={{ borderLeft: `3px solid ${card.color}` }}
                     >
                       {card.emoji && card.emoji.trim() !== "" && (
-                        <span className="text-base">{card.emoji}</span>
+                        <span className="text-base inline-flex items-center">{renderCardIcon(card)}</span>
                       )}
                       <div className="flex-1 min-w-0">
                         <p
