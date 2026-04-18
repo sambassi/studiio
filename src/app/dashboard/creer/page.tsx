@@ -59,6 +59,25 @@ import {
   ShoppingBag, ShoppingCart, Tag, Package, Truck, CreditCard,
   Book, GraduationCap, Lightbulb, Library, Pencil, Ruler,
   Stethoscope, Pill, Cross, HeartPulse,
+  // Extended icon library
+  Clock, Timer, AlarmClock, Watch, Hourglass, CalendarDays, CalendarCheck, CalendarClock, Sunrise, Sunset,
+  Syringe, Thermometer, Bone,
+  Baby, Users, User, UserPlus, PersonStanding,
+  CloudRain, CloudSnow, Snowflake, Wind, Umbrella, Rainbow,
+  Database, Server, Terminal, Bug, FileCode,
+  TrendingDown, BarChart2, BarChart3, HandCoins, Landmark, PiggyBank, Coins,
+  Aperture, Clapperboard, Disc, Volume2, Headphones, Speaker, Radio, Podcast,
+  Gamepad2, Joystick, Puzzle,
+  Anchor, Sailboat, Footprints, Navigation,
+  Store, Warehouse, Factory, Church,
+  Clipboard, ClipboardList, FileText, File, Folder, FolderOpen, Archive, Inbox, Mail, MessageSquare, MessageCircle, Send as SendIcon,
+  Filter, Settings2, Wrench, Hammer, Paintbrush, Scissors,
+  Shield, ShieldCheck, ShieldAlert, Lock, Unlock, Key, Fingerprint,
+  Plug, Power, BatteryCharging, Signal,
+  MapPinned, Route, Flag,
+  Frown, Meh, Laugh, Cake,
+  Trees, TreeDeciduous, Waves,
+  Crown, Diamond, Medal,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { PlatformIcon, type PlatformKey } from "@/components/ui/PlatformIcon";
@@ -69,17 +88,25 @@ import { PlatformIcon, type PlatformKey } from "@/components/ui/PlatformIcon";
 const ICON_MAP: Record<string, LucideIcon> = {
   ThumbsUp, Heart, Brain, Flame, Zap, Sparkles, Trophy, Target, Dumbbell, Activity, Bike,
   Apple, Carrot, Salad, Coffee, Pizza, Utensils, Wheat,
-  Leaf, Sun, Moon, Star, Cloud, Flower, TreePine, Sprout,
-  Laptop, Smartphone, Cpu, Wifi, Battery, Code, Bot,
-  DollarSign, TrendingUp, Gem, Briefcase, Wallet, BarChart, PieChart, Receipt,
-  Palette, Camera, Music, Mic, Video, PenTool, Brush, Image: LucideImage,
-  Plane, Globe, Map, Mountain, Compass, MapPin, Hotel, Tent,
-  Smile, Award, Gift, Bell, Megaphone, PartyPopper,
+  Leaf, Sun, Moon, Star, Cloud, Flower, TreePine, Sprout, Trees, TreeDeciduous, Waves,
+  Laptop, Smartphone, Cpu, Wifi, Battery, Code, Bot, Database, Server, Terminal, Bug, FileCode,
+  DollarSign, TrendingUp, TrendingDown, Gem, Briefcase, Wallet, BarChart, BarChart2, BarChart3, PieChart, Receipt, HandCoins, Landmark, PiggyBank, Coins,
+  Palette, Camera, Music, Mic, Video, PenTool, Brush, Paintbrush, Image: LucideImage, Aperture, Clapperboard, Disc, Volume2, Headphones, Speaker, Radio, Podcast,
+  Plane, Globe, Map, Mountain, Compass, MapPin, MapPinned, Route, Hotel, Tent, Navigation, Flag, Anchor, Sailboat, Footprints,
+  Smile, Frown, Meh, Laugh, Award, Gift, Bell, Megaphone, PartyPopper, Cake, Crown, Diamond, Medal,
   Dog, Cat, Bird, Fish, Rabbit, Turtle,
-  Home, Building, Car, Train, Rocket, Ship, Bus,
+  Home, Building, Car, Train, Rocket, Ship, Bus, Store, Warehouse, Factory, Church,
   ShoppingBag, ShoppingCart, Tag, Package, Truck, CreditCard,
-  Book, GraduationCap, Lightbulb, Library, Pencil, Ruler,
-  Stethoscope, Pill, Cross, HeartPulse,
+  Book, GraduationCap, Lightbulb, Library, Pencil, Ruler, Scissors,
+  Stethoscope, Pill, Cross, HeartPulse, Syringe, Thermometer, Bone,
+  Clock, Timer, AlarmClock, Watch, Hourglass, Calendar, CalendarDays, CalendarCheck, CalendarClock, Sunrise, Sunset,
+  Baby, Users, User, UserPlus, PersonStanding,
+  CloudRain, CloudSnow, Snowflake, Wind, Umbrella, Rainbow,
+  Gamepad2, Joystick, Puzzle,
+  Clipboard, ClipboardList, FileText, File, Folder, FolderOpen, Archive, Inbox, Mail, MessageSquare, MessageCircle, Send: SendIcon,
+  Filter, Settings2, Wrench, Hammer,
+  Shield, ShieldCheck, ShieldAlert, Lock, Unlock, Key, Fingerprint,
+  Plug, Power, BatteryCharging, Signal,
 };
 import { AgentIAModal } from "@/components/creer/AgentIAModal";
 import {
@@ -202,19 +229,41 @@ const QUICK_EMOJIS = ['📝', '✨', '⭐', '🎯', '💪', '🔥', '💡', '�
 // Lucide icon library — names map to lucide-react exports. Looked up dynamically
 // at render time via ICON_MAP[name] to keep this file lean.
 const ICON_LIBRARY: Record<string, string[]> = {
-  sport:       ['Dumbbell', 'Flame', 'Zap', 'Trophy', 'Target', 'Activity', 'Bike'],
-  santé:       ['Heart', 'Brain', 'Stethoscope', 'Pill', 'Cross', 'HeartPulse', 'Smile'],
+  sport:       ['Dumbbell', 'Flame', 'Zap', 'Trophy', 'Target', 'Activity', 'Bike', 'Medal', 'Crown'],
+  santé:       ['Heart', 'Brain', 'Stethoscope', 'Pill', 'Cross', 'HeartPulse', 'Syringe', 'Thermometer', 'Bone'],
   nutrition:   ['Apple', 'Carrot', 'Salad', 'Coffee', 'Pizza', 'Utensils', 'Wheat'],
-  nature:      ['Leaf', 'Sun', 'Moon', 'Star', 'Cloud', 'Flower', 'TreePine', 'Sprout'],
-  tech:        ['Laptop', 'Smartphone', 'Cpu', 'Wifi', 'Battery', 'Code', 'Bot', 'Cloud'],
-  business:    ['DollarSign', 'TrendingUp', 'Gem', 'Briefcase', 'Wallet', 'BarChart', 'PieChart', 'Receipt'],
-  créativité:  ['Palette', 'Camera', 'Music', 'Mic', 'Video', 'PenTool', 'Brush', 'Image'],
-  voyage:      ['Plane', 'Globe', 'Map', 'Mountain', 'Compass', 'MapPin', 'Hotel', 'Tent'],
-  emotions:    ['Smile', 'Award', 'ThumbsUp', 'Gift', 'Bell', 'Megaphone', 'PartyPopper', 'Sparkles'],
+  temps:       ['Clock', 'Timer', 'AlarmClock', 'Watch', 'Hourglass', 'Calendar', 'CalendarDays', 'CalendarCheck', 'CalendarClock', 'Sunrise', 'Sunset'],
+  nature:      ['Leaf', 'Sun', 'Moon', 'Star', 'Cloud', 'Flower', 'TreePine', 'Sprout', 'Trees', 'TreeDeciduous', 'Waves', 'Mountain'],
+  météo:       ['CloudRain', 'CloudSnow', 'Snowflake', 'Wind', 'Umbrella', 'Rainbow'],
+  tech:        ['Laptop', 'Smartphone', 'Cpu', 'Wifi', 'Battery', 'Code', 'Bot', 'Database', 'Server', 'Terminal', 'Bug', 'FileCode'],
+  finance:     ['DollarSign', 'TrendingUp', 'TrendingDown', 'Gem', 'Briefcase', 'Wallet', 'BarChart', 'PieChart', 'Receipt', 'HandCoins', 'Landmark', 'PiggyBank', 'Coins'],
+  multimedia:  ['Palette', 'Camera', 'Music', 'Mic', 'Video', 'PenTool', 'Brush', 'Paintbrush', 'Image', 'Aperture', 'Clapperboard', 'Disc', 'Volume2', 'Headphones', 'Speaker', 'Radio', 'Podcast'],
+  loisirs:     ['Gamepad2', 'Joystick', 'Puzzle', 'Diamond'],
+  voyage:      ['Plane', 'Globe', 'Map', 'Compass', 'MapPin', 'MapPinned', 'Route', 'Hotel', 'Tent', 'Navigation', 'Flag', 'Anchor', 'Sailboat', 'Footprints'],
+  émotions:    ['Smile', 'Frown', 'Meh', 'Laugh', 'Award', 'ThumbsUp', 'Gift', 'Bell', 'Megaphone', 'PartyPopper', 'Sparkles', 'Cake', 'Crown'],
+  famille:     ['Baby', 'Users', 'User', 'UserPlus', 'PersonStanding'],
   animaux:     ['Dog', 'Cat', 'Bird', 'Fish', 'Rabbit', 'Turtle'],
-  transport:   ['Home', 'Building', 'Car', 'Bike', 'Train', 'Rocket', 'Ship', 'Bus'],
-  shopping:    ['ShoppingBag', 'ShoppingCart', 'Tag', 'Package', 'Truck', 'CreditCard'],
+  logement:    ['Home', 'Building', 'Store', 'Warehouse', 'Factory', 'Church'],
+  transport:   ['Car', 'Bike', 'Train', 'Rocket', 'Ship', 'Bus', 'Truck'],
+  communication: ['Mail', 'MessageSquare', 'MessageCircle', 'Send', 'Inbox', 'Archive'],
+  outils:      ['Clipboard', 'ClipboardList', 'FileText', 'File', 'Folder', 'FolderOpen', 'Filter', 'Settings2', 'Wrench', 'Hammer', 'Scissors'],
+  sécurité:    ['Shield', 'ShieldCheck', 'ShieldAlert', 'Lock', 'Unlock', 'Key', 'Fingerprint'],
+  énergie:     ['Plug', 'Power', 'BatteryCharging', 'Signal'],
+  shopping:    ['ShoppingBag', 'ShoppingCart', 'Tag', 'Package', 'CreditCard'],
   education:   ['Book', 'GraduationCap', 'Lightbulb', 'Library', 'Pencil', 'Ruler'],
+};
+
+const ICON_KEYWORDS: Record<string, string[]> = {
+  Clock: ['horaire', 'heure', 'temps', 'clock'], Timer: ['chrono', 'compteur'],
+  AlarmClock: ['alarme', 'réveil'], Watch: ['montre'], Hourglass: ['sablier', 'attente'],
+  Calendar: ['calendrier', 'date'], CalendarDays: ['semaine'], CalendarCheck: ['rdv', 'rendez-vous'],
+  CalendarClock: ['planning'], Sunrise: ['matin', 'lever'], Sunset: ['soir', 'coucher'],
+  Heart: ['coeur', 'amour'], Brain: ['cerveau', 'intelligence'], Dumbbell: ['haltère', 'musculation'],
+  Apple: ['pomme'], Coffee: ['café'], Music: ['musique'], Camera: ['photo', 'appareil'],
+  Home: ['maison'], Car: ['voiture', 'auto'], Plane: ['avion'], Globe: ['monde', 'terre'],
+  Mail: ['email', 'courrier'], Lock: ['verrou', 'cadenas'], Key: ['clé'],
+  Shield: ['bouclier', 'protection'], Star: ['étoile', 'favori'],
+  Headphones: ['casque', 'audio'], Mic: ['micro', 'enregistrement'],
 };
 
 const ALL_LUCIDE_NAMES: string[] = Object.values(ICON_LIBRARY).flat();
@@ -387,14 +436,31 @@ function CardIconPicker({
       {iconType === 'svg' && (
         <>
           <div
-            className="max-h-[240px] overflow-y-auto rounded border border-gray-700 bg-gray-900/40 p-2 space-y-2"
-            style={{ scrollSnapType: 'y mandatory' }}
+            className="space-y-2"
           >
-            {Object.entries(ICON_LIBRARY).map(([category, names]) => (
-              <div key={category} style={{ scrollSnapAlign: 'start' }}>
+            <input
+              type="text"
+              placeholder="Rechercher une icône..."
+              value={iconSearch}
+              onChange={(e) => setIconSearch(e.target.value)}
+              className="w-full rounded bg-gray-800 border border-gray-700 px-3 py-1.5 text-xs text-white placeholder-gray-500"
+            />
+            <div className="max-h-[300px] overflow-y-auto rounded border border-gray-700 bg-gray-900/40 p-2 space-y-2">
+            {Object.entries(ICON_LIBRARY).map(([category, names]) => {
+              const q = iconSearch.toLowerCase().trim();
+              const filteredNames = q ? names.filter((name) => {
+                if (name.toLowerCase().includes(q)) return true;
+                if (category.toLowerCase().includes(q)) return true;
+                const kw = ICON_KEYWORDS[name];
+                if (kw && kw.some(k => k.includes(q))) return true;
+                return false;
+              }) : names;
+              if (filteredNames.length === 0) return null;
+              return (
+              <div key={category}>
                 <div className="text-[9px] uppercase tracking-wider text-gray-500 mb-1">{category}</div>
-                <div className="grid grid-cols-6 gap-1">
-                  {names.map((name) => {
+                <div className="grid grid-cols-6 sm:grid-cols-6 gap-1">
+                  {filteredNames.map((name) => {
                     const Icon = ICON_MAP[name];
                     if (!Icon) return null;
                     const selected = card.emoji === name;
@@ -411,7 +477,9 @@ function CardIconPicker({
                   })}
                 </div>
               </div>
-            ))}
+              );
+            })}
+            </div>
           </div>
 
           {/* Style tabs: Outline / Duotone / Solid */}
@@ -1667,6 +1735,7 @@ export default function InfographicPage() {
     type: "success" | "error";
   } | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState<string | null>(null);
+  const [iconSearch, setIconSearch] = useState('');
   // Per-card AI icon generation state
   const [iconPrompts, setIconPrompts] = useState<Record<string, string>>({});
   const [iconLoadingId, setIconLoadingId] = useState<string | null>(null);
