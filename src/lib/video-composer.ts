@@ -436,6 +436,19 @@ function dropShadowBaseFilter(w: number): string {
   return `drop-shadow(0 ${y}px ${b}px rgba(0,0,0,0.1))`;
 }
 
+/** Truncate a string at a word boundary before `maxChars`, append an
+ *  ellipsis when cut. MUST mirror `truncateAtWord` in creer/page.tsx
+ *  and calendar/page.tsx so the composer, editor and calendar agree
+ *  on what a truncated description looks like. */
+function truncateAtWord(text: string | undefined, maxChars: number): string {
+  if (!text) return '';
+  if (text.length <= maxChars) return text;
+  const cut = text.slice(0, maxChars);
+  const lastSpace = cut.lastIndexOf(' ');
+  const trimmed = lastSpace > 0 ? cut.slice(0, lastSpace) : cut;
+  return trimmed.replace(/[\s,;:.!?-]+$/, '') + '…';
+}
+
 /** Truncate text with ellipsis so it fits within `maxWidth`. Preserves the
  *  CSS `truncate` behaviour used by Full Width card labels/descriptions. */
 function truncateToWidth(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
@@ -1007,9 +1020,7 @@ function drawCards(
       const valueLines = capLines(wrapText(ctx, card.value, innerW), 2);
       let descLines: string[] = [];
       if (card.description) {
-        const descText = card.description.length > 30
-          ? card.description.substring(0, 30) + '...'
-          : card.description;
+        const descText = truncateAtWord(card.description, 30);
         ctx.font = `400 ${descSize}px "${fontFamily}", sans-serif`;
         descLines = capLines(wrapText(ctx, descText, innerW), 2);
       }
@@ -1165,7 +1176,7 @@ function drawCards(
 
       // Row 2: description (text-white/70, max 60 chars, 2 lines)
       if (card.description) {
-        const descText = card.description.length > 60 ? card.description.substring(0, 60) : card.description;
+        const descText = truncateAtWord(card.description, 60);
         ctx.font = `400 ${descSize}px "${fontFamily}", sans-serif`;
         ctx.fillStyle = 'rgba(255,255,255,0.7)';
         const descLines = wrapText(ctx, descText, cardW - paddingX * 2);
@@ -1329,7 +1340,7 @@ function drawCards(
       ctx.fillText(truncatedLabel, middleX, middleTop);
       // Description (if present) — 40 chars max, truncated
       if (card.description) {
-        const descSrc = card.description.substring(0, 40);
+        const descSrc = truncateAtWord(card.description, 40);
         ctx.font = `400 ${descSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.5)';
         const truncatedDesc = truncateToWidth(ctx, descSrc, middleW);
         ctx.fillText(truncatedDesc, middleX, middleTop + labelSize + innerTextGap);

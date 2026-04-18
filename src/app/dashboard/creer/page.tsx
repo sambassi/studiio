@@ -226,6 +226,21 @@ function renderBoldMarkdown(text: string | undefined): ReactNode {
   });
 }
 
+/**
+ * Truncate a string at a word boundary and append an ellipsis when cut.
+ * Avoids mid-word cuts like "longtemp" → now produces "longtemps" or
+ * "On s'entraîne 3x plus…" depending on the limit. Returns the original
+ * string untouched if it's already within the limit.
+ */
+function truncateAtWord(text: string | undefined, maxChars: number): string {
+  if (!text) return '';
+  if (text.length <= maxChars) return text;
+  const cut = text.slice(0, maxChars);
+  const lastSpace = cut.lastIndexOf(' ');
+  const trimmed = lastSpace > 0 ? cut.slice(0, lastSpace) : cut;
+  return trimmed.replace(/[\s,;:.!?-]+$/, '') + '…';
+}
+
 const QUICK_EMOJIS = ['📝', '✨', '⭐', '🎯', '💪', '🔥', '💡', '📊', '🚀', '❤️', '👀', '✅', '⚡', '🎨', '🎬', '📈', '🏆', '💎', '🧠', '🥗'];
 
 // Lucide icon library — names map to lucide-react exports. Looked up dynamically
@@ -5793,7 +5808,7 @@ export default function InfographicPage() {
                             className="text-center text-white/60"
                             style={{ fontSize: scaledDesc }}
                           >
-                            {renderBoldMarkdown(card.description.substring(0, 30))}
+                            {renderBoldMarkdown(truncateAtWord(card.description, 30))}
                           </p>
                         )}
                       </div>
@@ -5821,7 +5836,7 @@ export default function InfographicPage() {
                           className="text-white/70 leading-relaxed mb-1"
                           style={{ fontSize: scaledDesc }}
                         >
-                          {renderBoldMarkdown(card.description?.substring(0, 60) || "")}
+                          {renderBoldMarkdown(truncateAtWord(card.description, 60))}
                         </p>
                         <p
                           className="font-black"
@@ -5900,7 +5915,7 @@ export default function InfographicPage() {
                             className="text-white/50 truncate"
                             style={{ fontSize: scaledDesc }}
                           >
-                            {renderBoldMarkdown(card.description.substring(0, 40))}
+                            {renderBoldMarkdown(truncateAtWord(card.description, 40))}
                           </p>
                         )}
                       </div>

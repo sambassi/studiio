@@ -2504,6 +2504,18 @@ export default function CalendarPage() {
         // Convertir les pixels du canvas 1080px en dvh : canvasPx / 1080 * 39.375 = canvasPx * 0.03646
         const canvasPxToDvh = (canvasPx: number) => `${(canvasPx * (isReelFormat ? 0.03646 : 0.02917)).toFixed(2)}dvh`;
 
+        // Tronque une chaîne sur la dernière frontière de mot avant la limite
+        // et ajoute une ellipse. MÊME implémentation que creer/page.tsx et
+        // video-composer.ts pour garder la parité.
+        const truncateAtWord = (text: string | undefined, maxChars: number): string => {
+          if (!text) return '';
+          if (text.length <= maxChars) return text;
+          const cut = text.slice(0, maxChars);
+          const lastSpace = cut.lastIndexOf(' ');
+          const trimmed = lastSpace > 0 ? cut.slice(0, lastSpace) : cut;
+          return trimmed.replace(/[\s,;:.!?-]+$/, '') + '…';
+        };
+
         // Utilitaire : convertir couleur hex en rgba avec opacité
         const hexToRgba = (hex: string, opacity: number) => {
           // If already rgba/rgb, just return
@@ -2758,7 +2770,7 @@ export default function CalendarPage() {
                                     {emojiEl}
                                     <p style={{ fontSize: scaledLabel, fontFamily: designFont, color: '#fff', fontWeight: 700, textAlign: 'center' }}>{card.label}</p>
                                     <p style={{ fontSize: scaledValue, fontFamily: designFont, color: card.color || accent, fontWeight: 900, textAlign: 'center' }}>{card.value}</p>
-                                    {card.description && <p style={{ fontSize: scaledDesc, color: 'rgba(255,255,255,0.6)', textAlign: 'center' }}>{(card.description as string).substring(0, 30)}</p>}
+                                    {card.description && <p style={{ fontSize: scaledDesc, color: 'rgba(255,255,255,0.6)', textAlign: 'center' }}>{truncateAtWord(card.description as string, 30)}</p>}
                                   </div>
                                 );
                               }
@@ -2774,7 +2786,7 @@ export default function CalendarPage() {
                                       {emojiEl}
                                       <p style={{ fontSize: scaledLabel, fontFamily: designFont, color: '#fff', fontWeight: 700 }}>{card.label}</p>
                                     </div>
-                                    {card.description && <p style={{ fontSize: scaledDesc, color: 'rgba(255,255,255,0.7)', lineHeight: 1.4, marginBottom: editorPxToDvh(4) }}>{(card.description as string).substring(0, 60)}</p>}
+                                    {card.description && <p style={{ fontSize: scaledDesc, color: 'rgba(255,255,255,0.7)', lineHeight: 1.4, marginBottom: editorPxToDvh(4) }}>{truncateAtWord(card.description as string, 60)}</p>}
                                     <p style={{ fontSize: scaledValue, fontFamily: designFont, color: card.color || accent, fontWeight: 900 }}>{card.value}</p>
                                   </div>
                                 );
@@ -2821,7 +2833,7 @@ export default function CalendarPage() {
                                   {emojiEl}
                                   <div style={{ flex: 1, minWidth: 0 }}>
                                     <p style={{ fontSize: scaledLabel, fontFamily: designFont, color: '#fff', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{card.label}</p>
-                                    {card.description && <p style={{ fontSize: scaledDesc, color: 'rgba(255,255,255,0.5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(card.description as string).substring(0, 40)}</p>}
+                                    {card.description && <p style={{ fontSize: scaledDesc, color: 'rgba(255,255,255,0.5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{truncateAtWord(card.description as string, 40)}</p>}
                                   </div>
                                   <p style={{ fontSize: scaledValue, fontFamily: designFont, color: card.color || accent, fontWeight: 900, flexShrink: 0 }}>{card.value}</p>
                                 </div>
