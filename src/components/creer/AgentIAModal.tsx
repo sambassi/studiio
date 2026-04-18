@@ -71,6 +71,7 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
   const [aiProgress, setAiProgress] = useState(0);
   const [aiStage, setAiStage] = useState('');
   const [montageMode, setMontageMode] = useState(false);
+  const [montageEnabled, setMontageEnabled] = useState(false);
   const [montageDuration, setMontageDuration] = useState<15 | 20 | 30>(20);
   const [montageCount, setMontageCount] = useState(1);
   const [customPrompt, setCustomPrompt] = useState('');
@@ -78,6 +79,12 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
   const rushInputRef = useRef<HTMLInputElement>(null);
   const musicInputRef = useRef<HTMLInputElement>(null);
   const montageAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    fetch('/api/public/settings').then(r => r.json()).then(d => {
+      setMontageEnabled(!!d.agentMontageEnabled);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!prefsLoaded || prefsAppliedRef.current) return;
@@ -614,20 +621,22 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
             </button>
           </div>
 
-          {/* Mode selector: Planning vs Montage */}
-          <div className="flex gap-2 mb-4">
-            <button onClick={() => setMontageMode(false)}
-              className={`flex-1 py-2 rounded-lg text-xs font-bold transition border ${!montageMode ? 'bg-purple-500/20 border-purple-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>
-              📅 Planning ({aiPlanDuration}j)
-            </button>
-            <button onClick={() => setMontageMode(true)}
-              className={`flex-1 py-2 rounded-lg text-xs font-bold transition border ${montageMode ? 'bg-pink-500/20 border-pink-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>
-              🎬 Montage IA
-            </button>
-          </div>
+          {/* Mode selector: Planning vs Montage (hidden if flag disabled) */}
+          {montageEnabled && (
+            <div className="flex gap-2 mb-4">
+              <button onClick={() => setMontageMode(false)}
+                className={`flex-1 py-2 rounded-lg text-xs font-bold transition border ${!montageMode ? 'bg-purple-500/20 border-purple-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>
+                📅 Planning ({aiPlanDuration}j)
+              </button>
+              <button onClick={() => setMontageMode(true)}
+                className={`flex-1 py-2 rounded-lg text-xs font-bold transition border ${montageMode ? 'bg-pink-500/20 border-pink-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>
+                🎬 Montage IA
+              </button>
+            </div>
+          )}
 
           {/* Montage mode options */}
-          {montageMode && (
+          {montageMode && montageEnabled && (
             <div className="mb-4 space-y-3 rounded-lg border border-pink-500/20 bg-pink-500/5 p-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>

@@ -28,6 +28,8 @@ export default function SettingsPage() {
   });
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [agentMontageEnabled, setAgentMontageEnabled] = useState(false);
+  const [flagSaving, setFlagSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // Credit user modal
@@ -57,6 +59,9 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetchSettings();
+    fetch('/api/public/settings').then(r => r.json()).then(d => {
+      setAgentMontageEnabled(!!d.agentMontageEnabled);
+    }).catch(() => {});
   }, []);
 
   const fetchSettings = async () => {
@@ -295,6 +300,47 @@ export default function SettingsPage() {
             <div>
               <p className="font-medium text-white text-sm">{t('settings.aiGeneration')}</p>
               <p className="text-xs text-gray-400">{t('settings.aiGenerationDesc')}</p>
+            </div>
+          </label>
+        </CardContent>
+      </Card>
+
+      {/* Feature Flags */}
+      <Card>
+        <CardContent className="pt-6">
+          <h3 className="text-lg font-bold text-white mb-4">Feature Flags</h3>
+          <label className="flex items-center gap-3 p-4 bg-gray-800/50 rounded-lg cursor-pointer hover:bg-gray-800 transition">
+            <input
+              type="checkbox"
+              checked={agentMontageEnabled}
+              disabled={flagSaving}
+              onChange={async (e) => {
+                const newVal = e.target.checked;
+                setFlagSaving(true);
+                try {
+                  const res = await fetch('/api/admin/settings/feature-flags', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: 'agent_montage_enabled', value: newVal }),
+                  });
+                  const d = await res.json();
+                  if (d.success) {
+                    setAgentMontageEnabled(newVal);
+                    setToast({ type: 'success', message: `Montage IA ${newVal ? 'activé' : 'désactivé'}` });
+                  } else {
+                    setToast({ type: 'error', message: d.error || 'Erreur' });
+                  }
+                } catch { setToast({ type: 'error', message: 'Erreur réseau' }); }
+                finally { setFlagSaving(false); }
+                setTimeout(() => setToast(null), 3000);
+              }}
+              className="w-4 h-4"
+            />
+            <div>
+              <p className="font-medium text-white text-sm">
+                Activer le mode Montage IA {flagSaving && <Loader2 size={12} className="inline animate-spin ml-1" />}
+              </p>
+              <p className="text-xs text-gray-400">Bêta — instable, désactivé par défaut. Le mode Planning reste disponible.</p>
             </div>
           </label>
         </CardContent>
