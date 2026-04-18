@@ -39,6 +39,7 @@ import { useBranding } from '@/lib/hooks/useBranding';
 import { composeAndUpload, downloadBlob, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
 import { useTranslations, useLocale } from '@/i18n/client';
 import { AgentIAModal } from '@/components/creer/AgentIAModal';
+import { CardIcon } from '@/components/ui/CardIcon';
 import { useAgentIAEnabled } from '@/lib/hooks/useAgentIAEnabled';
 
 interface PostBranding {
@@ -2727,7 +2728,9 @@ export default function CalendarPage() {
                               };
                               const emojiEl = cardIcon
                                 ? <img src={cardIcon} alt="" style={{ width: editorPxToDvh(14), height: editorPxToDvh(14), objectFit: 'contain' as const }} />
-                                : <span style={{ fontSize: editorPxToDvh(isReelFormat ? 10 : 14) }}>{card.emoji}</span>;
+                                : (card.iconType === 'svg' || (card.emoji && /^[A-Z]/.test(card.emoji)))
+                                  ? <CardIcon name={card.emoji} size={Math.round(editorPxToDvh(isReelFormat ? 10 : 14))} color="#FFFFFF" className="" />
+                                  : <span style={{ fontSize: editorPxToDvh(isReelFormat ? 10 : 14) }}>{card.emoji}</span>;
 
                               // ── Compact ──
                               if (designCardStyle === 'Compact') {
@@ -2785,7 +2788,9 @@ export default function CalendarPage() {
                                     padding: `${editorPxToDvh(4)} ${editorPxToDvh(4)}`,
                                     borderBottom: `1px solid ${(card.color || accent)}40`,
                                   }}>
-                                    <span style={{ fontSize: editorPxToDvh(8) }}>{card.emoji}</span>
+                                    {(card.iconType === 'svg' || (card.emoji && /^[A-Z]/.test(card.emoji)))
+                                      ? <CardIcon name={card.emoji} size={Math.round(editorPxToDvh(8))} color="#FFFFFF" className="" />
+                                      : <span style={{ fontSize: editorPxToDvh(8) }}>{card.emoji}</span>}
                                     <p style={{ fontSize: scaledLabel, fontFamily: designFont, color: 'rgba(255,255,255,0.8)', flex: 1 }}>{card.label}</p>
                                     <p style={{ fontSize: scaledValue, fontFamily: designFont, color: card.color || accent, fontWeight: 700 }}>{card.value}</p>
                                   </div>

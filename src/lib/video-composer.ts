@@ -856,7 +856,8 @@ function drawCards(
   // the card boundary (user's "MITOCHONDRIES" label was clipping into the
   // adjacent card).
   const editorViewportPx = isReel ? 320 : 512;
-  const fontPx = (cssPx: number) => Math.round(w * cssPx / editorViewportPx * textScale);
+  const cardsSizeScale = (design?.cardsSize || 92) / 92; // normalize: 92% = 1x (default)
+  const fontPx = (cssPx: number) => Math.round(w * cssPx / editorViewportPx * textScale * cardsSizeScale);
   // Same as fontPx but WITHOUT textScale — for elements the editor renders
   // at a fixed pixel size regardless of the global text scale (notably the
   // emoji on Compact/Educatif/etc cards, which uses Tailwind `text-sm`/
