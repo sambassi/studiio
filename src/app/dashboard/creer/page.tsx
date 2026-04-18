@@ -68,6 +68,7 @@ import { MediaLibrary } from "@/components/shared/MediaLibrary";
 // ExportBar removed — using inline export button that respects destination selection
 import { BrandingIndicator } from "@/components/shared/BrandingIndicator";
 import { useBranding } from "@/lib/hooks/useBranding";
+import { useAgentIAEnabled } from "@/lib/hooks/useAgentIAEnabled";
 import { AudioStudioPanel } from "@/components/creer/AudioStudioPanel";
 import { getExpiresAt, formatRemaining, getRetentionColor } from "@/lib/storage/retention";
 
@@ -1039,6 +1040,7 @@ export default function InfographicPage() {
   const userPlan = ((authSession?.user as any)?.plan as string) || 'free';
   const useWatermark = !userPlan || userPlan === 'free';
   const { branding } = useBranding();
+  const agentIAEnabled = useAgentIAEnabled();
 
   // ── Toast ───────────────────────────────────────────────────
   const [toast, setToast] = useState<{
@@ -2428,17 +2430,21 @@ export default function InfographicPage() {
             </div>
           )}
         </div>
-        <div className="mx-1 h-8 w-px bg-gray-800" />
-        <button
-          onClick={() => setAgentIAOpen(true)}
-          className={`group flex items-center gap-2 rounded-lg px-3 py-2 transition-all ${
-            agentIAOpen ? 'bg-gray-800 ring-1 ring-amber-500/40' : 'hover:bg-gray-900'
-          }`}
-          title="Agent IA — Planificateur autonome"
-        >
-          <IconBadge Icon={Sparkles} color="amber" active={agentIAOpen} size={28} />
-          <span className="text-xs font-medium text-gray-300">Agent IA</span>
-        </button>
+        {agentIAEnabled && (
+          <>
+            <div className="mx-1 h-8 w-px bg-gray-800" />
+            <button
+              onClick={() => setAgentIAOpen(true)}
+              className={`group flex items-center gap-2 rounded-lg px-3 py-2 transition-all ${
+                agentIAOpen ? 'bg-gray-800 ring-1 ring-amber-500/40' : 'hover:bg-gray-900'
+              }`}
+              title="Agent IA — Planificateur autonome"
+            >
+              <IconBadge Icon={Sparkles} color="amber" active={agentIAOpen} size={28} />
+              <span className="text-xs font-medium text-gray-300">Agent IA</span>
+            </button>
+          </>
+        )}
       </div>
 
       <div className="flex flex-col lg:flex-row flex-1 min-h-0">

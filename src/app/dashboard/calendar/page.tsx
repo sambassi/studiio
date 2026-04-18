@@ -39,6 +39,7 @@ import { useBranding } from '@/lib/hooks/useBranding';
 import { composeAndUpload, downloadBlob, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
 import { useTranslations, useLocale } from '@/i18n/client';
 import { AgentIAModal } from '@/components/creer/AgentIAModal';
+import { useAgentIAEnabled } from '@/lib/hooks/useAgentIAEnabled';
 
 interface PostBranding {
   watermarkText?: string;
@@ -259,6 +260,7 @@ export default function CalendarPage() {
   const localeMap: Record<string, string> = { fr: 'fr-FR', en: 'en-GB', de: 'de-DE' };
   const intlLocale = localeMap[locale] || 'fr-FR';
   const { branding } = useBranding();
+  const agentIAEnabled = useAgentIAEnabled();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1959,14 +1961,16 @@ export default function CalendarPage() {
             {/* Bottom Action Buttons */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-4 mt-6 pt-4 border-t border-gray-700/50">
               <div className="flex flex-col xs:flex-row gap-1.5 w-full sm:w-auto">
-                <button
-                  onClick={() => setShowAIAgent(true)}
-                  className="flex items-center justify-center sm:justify-start gap-1 px-2.5 sm:px-4 py-2 sm:py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-[10px] sm:text-sm font-medium transition"
-                >
-                  <Bot size={12} className="sm:w-4 sm:h-4" />
-                  <span className="hidden sm:inline">{t('agentIA')}</span>
-                  <span className="sm:hidden">{t('agentIA').substring(0, 3)}</span>
-                </button>
+                {agentIAEnabled && (
+                  <button
+                    onClick={() => setShowAIAgent(true)}
+                    className="flex items-center justify-center sm:justify-start gap-1 px-2.5 sm:px-4 py-2 sm:py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-[10px] sm:text-sm font-medium transition"
+                  >
+                    <Bot size={12} className="sm:w-4 sm:h-4" />
+                    <span className="hidden sm:inline">{t('agentIA')}</span>
+                    <span className="sm:hidden">{t('agentIA').substring(0, 3)}</span>
+                  </button>
+                )}
                 <button
                   onClick={handleImportClick}
                   className="flex items-center justify-center sm:justify-start gap-1 px-2.5 sm:px-4 py-2 sm:py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-[10px] sm:text-sm font-medium transition"
