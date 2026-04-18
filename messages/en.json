@@ -1586,6 +1586,8 @@
     "greeting": "Hi! I'm the Studiio assistant. How can I help you today?",
     "thinking": "The assistant is thinking...",
     "error": "Sorry, an error occurred. Please try again.",
-    "rate_limit": "Rate limit reached (20 messages/hour). Try again later."
+    "rate_limit": "Rate limit reached (20 messages/hour). Try again later.",
+    "close": "Close",
+    "unauthorized": "Sign in to use the assistant."
   }
 }

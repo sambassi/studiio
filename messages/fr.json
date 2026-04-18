@@ -1592,6 +1592,8 @@
     "greeting": "Salut ! Je suis l'assistant Studiio. Comment puis-je t'aider aujourd'hui ?",
     "thinking": "L'assistant réfléchit...",
     "error": "Désolé, une erreur est survenue. Réessaie.",
-    "rate_limit": "Limite atteinte (20 messages/heure). Réessaie plus tard."
+    "rate_limit": "Limite atteinte (20 messages/heure). Réessaie plus tard.",
+    "close": "Fermer",
+    "unauthorized": "Connecte-toi pour utiliser l'assistant."
   }
 }

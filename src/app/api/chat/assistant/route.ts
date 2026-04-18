@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
+import { supabaseAdmin } from '@/lib/db/supabase';
 import { getSystemPrompt } from '@/lib/chat/system-prompts';
 
 export const dynamic = 'force-dynamic';
@@ -19,7 +20,7 @@ export async function POST(req: NextRequest) {
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ error: 'AI not configured' }, { status: 500 });
+      return NextResponse.json({ error: 'Assistant non configuré, contacte l\'admin' }, { status: 503 });
     }
 
     const systemPrompt = getSystemPrompt(locale);
@@ -27,6 +28,8 @@ export async function POST(req: NextRequest) {
       role: m.role === 'user' ? 'user' : 'assistant',
       content: m.content,
     }));
+
+    const lastUserMsg = claudeMessages.filter((m: any) => m.role === 'user').pop()?.content || '';
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -37,7 +40,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
+        max_tokens: 800,
         system: systemPrompt,
         messages: claudeMessages,
       }),
@@ -51,6 +54,16 @@ export async function POST(req: NextRequest) {
 
     const data = await res.json();
     const reply = data.content?.find((c: any) => c.type === 'text')?.text || '';
+
+    // Log to chat_logs (best-effort, ignore errors)
+    try {
+      await supabaseAdmin.from('chat_logs').insert({
+        user_id: session.user.id,
+        locale,
+        user_message: lastUserMsg,
+        assistant_message: reply,
+      });
+    } catch {}
 
     return NextResponse.json({ reply });
   } catch (error: any) {

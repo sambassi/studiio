@@ -96,7 +96,7 @@ export function StudiioAssistant() {
       {!open && (
         <button
           onClick={handleOpen}
-          className="fixed bottom-4 right-4 z-40 h-14 w-14 rounded-full bg-gradient-to-br from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 transition-all hover:scale-105 flex items-center justify-center"
+          className="fixed bottom-4 right-4 z-40 h-14 w-14 rounded-full bg-gradient-to-br from-purple-600 to-pink-500 text-white shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 transition-all hover:scale-110 flex items-center justify-center"
           title={t('title')}
         >
           <MessageCircle size={24} />
@@ -108,7 +108,7 @@ export function StudiioAssistant() {
 
       {/* Chat window */}
       {open && (
-        <div className="fixed bottom-4 right-4 z-50 w-[380px] h-[550px] flex flex-col bg-gray-900/95 backdrop-blur-xl border border-purple-500/30 rounded-2xl shadow-2xl shadow-black/50 overflow-hidden">
+        <div className="fixed bottom-0 right-0 sm:bottom-4 sm:right-4 z-50 w-full h-full sm:w-[400px] sm:h-[600px] flex flex-col bg-gray-900/95 backdrop-blur-xl sm:border border-purple-500/30 sm:rounded-2xl shadow-2xl shadow-black/50 overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800 bg-gray-900">
             <div className="flex items-center gap-2">
