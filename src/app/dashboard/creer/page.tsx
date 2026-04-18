@@ -2870,7 +2870,7 @@ export default function InfographicPage() {
                 logoPositions, cardsSize,
                 logoScale, logoSequences,
                 overlayText: videoOverlayText || undefined,
-                overlayColor: undefined,
+                overlayColor: overlayColor || undefined,
                 titlePosition: titlePos, cardsPosition: cardsPos,
                 watermarkPosition: watermarkPos, overlayPosition: overlayPos,
                 titleSize, watermarkSize: watermarkSize,
@@ -3045,6 +3045,7 @@ export default function InfographicPage() {
                       italic: overlayItalic,
                     },
                   },
+                  overlayColor,
                   cardCustomIcons: customCardIcons,
                 },
               },
@@ -3152,6 +3153,10 @@ export default function InfographicPage() {
                 italic: overlayItalic,
               },
               overlayText: videoOverlayText || undefined,
+              overlayColor: overlayColor || undefined,
+              noColorBg, noColorSequences,
+              seqGradients,
+              filter: selectedFilter || undefined,
             },
             onProgress: (pct, stage) => {
               setExportProgress(50 + Math.round(pct * 0.35));
