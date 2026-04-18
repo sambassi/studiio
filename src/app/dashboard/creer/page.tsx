@@ -1278,13 +1278,16 @@ export default function InfographicPage() {
     const g = parseInt(hex.slice(3, 5), 16) / 255;
     const b = parseInt(hex.slice(5, 7), 16) / 255;
     const max = Math.max(r, g, b), min = Math.min(r, g, b);
-    let h = 0;
-    if (max !== min) {
-      const d = max - min;
-      h = max === r ? ((g - b) / d + (g < b ? 6 : 0)) / 6
-        : max === g ? ((b - r) / d + 2) / 6
-        : ((r - g) / d + 4) / 6;
+    if (max === min) {
+      const target = Math.max(0, Math.min(1, (max + 0.5) / 2));
+      const v = Math.round(target * 255).toString(16).padStart(2, '0');
+      return `#${v}${v}${v}`;
     }
+    let h = 0;
+    const d = max - min;
+    h = max === r ? ((g - b) / d + (g < b ? 6 : 0)) / 6
+      : max === g ? ((b - r) / d + 2) / 6
+      : ((r - g) / d + 4) / 6;
     h = (h + 0.5) % 1;
     const s = 0.7, l = 0.5;
     const hue2rgb = (p: number, q: number, t: number) => {
