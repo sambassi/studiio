@@ -4,7 +4,7 @@
  * Audio elements handle MP3/OGG/WAV decoding natively (no OfflineAudioContext).
  * Outputs MP4 if supported, otherwise WebM.
  */
-const COMPOSER_VERSION = 'v19-emoji-not-scaled-2026-04-13';
+const COMPOSER_VERSION = 'v20-icon-diagnostic-2026-04-18';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -1076,12 +1076,14 @@ function drawCards(
         if (card.iconImage) {
           ctx.drawImage(card.iconImage, x + cardW / 2 - emojiSizeLocal / 2, iconY, emojiSizeLocal, emojiSizeLocal);
         } else {
+          if (/^[A-Z]/.test(card.emoji)) {
+            console.warn('[Composer] Card has Lucide icon name but no iconImage — preRenderCardIcons may have failed:', card.emoji);
+          }
           ctx.font = `${emojiSizeLocal}px sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = 'white';
           ctx.fillText(card.emoji, x + cardW / 2, iconY);
         }
         curY += emojiLineH + innerGap;
       } else {
-        // Re-center remaining content: skip one emoji slot worth of space
         curY += (emojiLineH + innerGap) / 2;
       }
 
