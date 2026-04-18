@@ -2826,12 +2826,6 @@ export default function InfographicPage() {
           let renderedComposerVersion: string | null = null;
           try {
             console.log('[Export→Calendar] Starting montage composition...', { batchIdx: b, posterUrl, rushUrl, isReel, format, title: bTitle, cardsCount: bCards.length, musicUrl: audioMusicUrl?.substring(0, 60) || 'NONE', voiceUrl: audioVoiceUrl?.substring(0, 60) || 'NONE', musicVolume: audioMusicVolume, voiceVolume: audioVoiceVolume });
-            console.log('[EXPORT DEBUG] gradient values being passed to composer:', {
-              colorTheme, exportAccent,
-              gradientColor1, gradientColor2, gradientOpacity,
-              seqGradients,
-              noColorBg, noColorSequences,
-            });
             setExportProgress(Math.round(((b + 0.3) / total) * 100));
             const { url: composedUrl, thumbnailUrl: composedThumbUrl, composerVersion: composedVersion } = await composeAndUpload({
               width: isReel ? 1080 : 1920,
@@ -3080,12 +3074,6 @@ export default function InfographicPage() {
 
           // Composer le montage vidéo final puis télécharger en MP4
           setExportProgress(50);
-          console.log('[EXPORT DEBUG] (Bureau) gradient values:', {
-            colorTheme, exportAccent,
-            gradientColor1, gradientColor2, gradientOpacity,
-            seqGradients,
-            noColorBg, noColorSequences,
-          });
           const composedResult = await composeAndUpload({
             width: isReel ? 1080 : 1920,
             height: isReel ? 1920 : 1080,

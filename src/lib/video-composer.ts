@@ -558,10 +558,16 @@ function resolveSeqGradient(
   const override = design?.seqGradients?.[seq] ?? design?.seqGradients?.[frKey];
   // Editor default: video has gradient disabled, others enabled
   const defaultEnabled = seq === 'video' ? false : true;
+  // Colors ALWAYS come from the global gradientColor1/2 — never per-seq override.
+  // The per-seq override is allowed to toggle enabled/opacity/position only.
+  // Otherwise an old `seqGradients.titre.color1 = '#10b981'` (set via the
+  // Sequence Gradients editor panel) makes the title sequence paint a green
+  // overlay while the cards sequence (no override) keeps the violet — exactly
+  // the green/purple-vs-pure-purple divergence the user reported.
   return {
     enabled: override?.enabled ?? defaultEnabled,
-    color1: override?.color1 || design?.gradientColor1 || '#7C3AED',
-    color2: override?.color2 || design?.gradientColor2 || '#EC4899',
+    color1: design?.gradientColor1 || '#7C3AED',
+    color2: design?.gradientColor2 || '#EC4899',
     opacity: override?.opacity ?? design?.gradientOpacity ?? 0.3,
     position: override?.position || 'both',
   };
@@ -583,8 +589,6 @@ function paintSeqGradient(
   // which wiped out any existing poster in drawIntro when the intro was
   // listed in `noColorSequences`.
   const g = resolveSeqGradient(design, seq);
-  // eslint-disable-next-line no-console
-  console.log(`[COMPOSER DEBUG] paintSeqGradient seq=${seq}`, g);
   if (!g.enabled || g.opacity <= 0) return;
 
   const paintLayer = (alpha: number) => {
@@ -662,15 +666,6 @@ function paintSeqBackdrop(
   // somehow sent empty strings.
   const c1 = design?.gradientColor1 || '#7C3AED';
   const c2 = design?.gradientColor2 || '#EC4899';
-  // eslint-disable-next-line no-console
-  console.log(`[COMPOSER DEBUG] paintSeqBackdrop seq=${seq}`, {
-    received_gradientColor1: design?.gradientColor1,
-    received_gradientColor2: design?.gradientColor2,
-    received_accent: accent,
-    resolved_c1: c1,
-    resolved_c2: c2,
-    seqGradients: design?.seqGradients,
-  });
   const grad = ctx.createLinearGradient(0, 0, w, h);
   grad.addColorStop(0, c1);
   grad.addColorStop(1, c2);
