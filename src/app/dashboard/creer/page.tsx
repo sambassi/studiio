@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus,
@@ -136,6 +136,204 @@ interface InfoCard {
    * container (card center). When absent, falls back to the grid layout.
    */
   position?: { x: number; y: number };
+}
+
+/**
+ * Lightweight markdown bold parser: replaces **word** with <strong>word</strong>.
+ * Returns React nodes, safe for use inside <p>/<span>. Plain text stays plain.
+ */
+function renderBoldMarkdown(text: string | undefined): ReactNode {
+  if (!text) return text || '';
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) => {
+    if (/^\*\*[^*]+\*\*$/.test(part)) {
+      return <strong key={i}>{part.slice(2, -2)}</strong>;
+    }
+    return part;
+  });
+}
+
+const QUICK_EMOJIS = ['📝', '✨', '⭐', '🎯', '💪', '🔥', '💡', '📊', '🚀', '❤️', '👀', '✅', '⚡', '🎨', '🎬', '📈', '🏆', '💎', '🧠', '🥗'];
+
+function CardsRailPanel({
+  cards,
+  setCards,
+  accentColor,
+}: {
+  cards: InfoCard[];
+  setCards: React.Dispatch<React.SetStateAction<InfoCard[]>>;
+  accentColor: string;
+}) {
+  const [aiBusyId, setAiBusyId] = useState<string | null>(null);
+
+  const addEmptyCard = () => {
+    setCards((prev) => [
+      ...prev,
+      {
+        id: `card-${Date.now()}`,
+        emoji: '📝',
+        label: '',
+        value: '',
+        description: '',
+        color: accentColor,
+        position: { x: 50, y: 50 },
+      },
+    ]);
+  };
+
+  const update = (id: string, patch: Partial<InfoCard>) => {
+    setCards((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  };
+  const remove = (id: string) => setCards((prev) => prev.filter((c) => c.id !== id));
+  const duplicate = (id: string) => {
+    setCards((prev) => {
+      const src = prev.find((c) => c.id === id);
+      if (!src) return prev;
+      return [...prev, { ...src, id: `card-${Date.now()}`, position: src.position ? { x: src.position.x + 5, y: src.position.y + 5 } : undefined }];
+    });
+  };
+
+  const suggestIcon = async (card: InfoCard) => {
+    if (!card.label.trim() && !card.description.trim()) return;
+    setAiBusyId(card.id);
+    try {
+      const r = await fetch('/api/content/icon-suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: card.label, description: card.description }),
+      });
+      const data = await r.json();
+      if (data.success && data.emoji) update(card.id, { emoji: data.emoji });
+      else console.warn('[icon-suggest] failed:', data.error);
+    } catch (err) {
+      console.warn('[icon-suggest] error:', err);
+    } finally {
+      setAiBusyId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <button
+        onClick={addEmptyCard}
+        className="w-full rounded bg-purple-600 hover:bg-purple-500 px-3 py-2.5 text-xs font-semibold text-white flex items-center justify-center gap-1"
+      >
+        <Plus size={12} /> Ajouter une carte
+      </button>
+      <p className="text-[10px] text-gray-500 text-center leading-relaxed">
+        Carte vide ajoutée au centre de l'aperçu. Glissez pour la déplacer, double-cliquez pour styles avancés.<br />
+        Astuce : utilisez <code className="text-purple-300">**mot**</code> pour mettre en gras.
+      </p>
+
+      {cards.length === 0 && (
+        <p className="text-[10px] text-gray-600 italic text-center pt-2">Aucune carte. Cliquez "+ Ajouter une carte".</p>
+      )}
+
+      {cards.map((card) => (
+        <div key={card.id} className="rounded-lg border border-gray-700 bg-gray-800/50 p-2.5 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] uppercase tracking-wider text-gray-500">Carte</span>
+            <div className="flex gap-1">
+              <button
+                onClick={() => duplicate(card.id)}
+                className="h-6 w-6 rounded flex items-center justify-center text-gray-400 hover:bg-gray-700 hover:text-white"
+                title="Dupliquer"
+              >
+                <CopyIcon size={11} />
+              </button>
+              <button
+                onClick={() => remove(card.id)}
+                className="h-6 w-6 rounded flex items-center justify-center text-gray-400 hover:bg-red-600/20 hover:text-red-400"
+                title="Supprimer"
+              >
+                <Trash2 size={11} />
+              </button>
+            </div>
+          </div>
+
+          {/* Emoji picker + AI suggest */}
+          <div>
+            <label className="text-[9px] uppercase text-gray-500">Icône</label>
+            <div className="flex gap-1.5 mt-1">
+              <input
+                type="text"
+                value={card.emoji}
+                onChange={(e) => update(card.id, { emoji: e.target.value })}
+                maxLength={4}
+                className="w-12 text-center rounded border border-gray-600 bg-gray-700 px-1 py-1 text-base"
+                placeholder="📝"
+              />
+              <button
+                onClick={() => suggestIcon(card)}
+                disabled={aiBusyId === card.id || (!card.label.trim() && !card.description.trim())}
+                className="flex-1 flex items-center justify-center gap-1 rounded bg-purple-600/20 px-2 py-1 text-[10px] font-semibold text-purple-300 hover:bg-purple-600/40 disabled:opacity-50"
+                title="Générer icône avec IA (requiert titre ou description)"
+              >
+                {aiBusyId === card.id ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+                Générer icône IA
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-0.5 mt-1.5">
+              {QUICK_EMOJIS.map((e) => (
+                <button
+                  key={e}
+                  onClick={() => update(card.id, { emoji: e })}
+                  className={`h-6 w-6 rounded text-sm hover:bg-gray-700 ${card.emoji === e ? 'bg-purple-600/30' : ''}`}
+                  title={e}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[9px] uppercase text-gray-500">Titre</label>
+            <input
+              type="text"
+              value={card.label}
+              onChange={(e) => update(card.id, { label: e.target.value })}
+              className="w-full mt-1 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-white focus:border-purple-500 focus:outline-none"
+              placeholder="Titre de la carte"
+            />
+          </div>
+
+          <div>
+            <label className="text-[9px] uppercase text-gray-500">Description</label>
+            <textarea
+              value={card.description}
+              onChange={(e) => update(card.id, { description: e.target.value })}
+              rows={2}
+              className="w-full mt-1 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-300 focus:border-purple-500 focus:outline-none resize-none"
+              placeholder="Détail. Utilisez **mot** pour gras."
+            />
+          </div>
+
+          <div>
+            <label className="text-[9px] uppercase text-gray-500">Valeur</label>
+            <input
+              type="text"
+              value={card.value}
+              onChange={(e) => update(card.id, { value: e.target.value })}
+              maxLength={12}
+              className="w-full mt-1 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs font-bold text-white focus:border-purple-500 focus:outline-none"
+              placeholder="ex: +30%"
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label className="text-[9px] uppercase text-gray-500">Couleur</label>
+            <input
+              type="color"
+              value={card.color}
+              onChange={(e) => update(card.id, { color: e.target.value })}
+              className="h-6 w-10 rounded border border-gray-600 bg-transparent cursor-pointer"
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 interface PexelsPhoto {
@@ -2714,29 +2912,11 @@ export default function InfographicPage() {
             )}
 
             {activeRailTab === 'cards' && (
-              <>
-                <button
-                  onClick={() => {
-                    setCards((prev) => [
-                      ...prev,
-                      {
-                        id: `c_${Date.now()}`,
-                        emoji: '✨',
-                        label: 'Nouveau',
-                        value: '100%',
-                        description: 'Description',
-                        color: '#a855f7',
-                      },
-                    ]);
-                  }}
-                  className="w-full rounded bg-purple-600 hover:bg-purple-500 px-3 py-2.5 text-xs font-semibold text-white flex items-center justify-center gap-1"
-                >
-                  <Plus size={12} /> Ajouter une carte IA
-                </button>
-                <p className="text-[10px] text-gray-500 text-center">
-                  Cliquez sur une carte dans l'aperçu pour l'éditer
-                </p>
-              </>
+              <CardsRailPanel
+                cards={cards}
+                setCards={setCards}
+                accentColor={COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent || '#a855f7'}
+              />
             )}
 
             {activeRailTab === 'media' && (
@@ -4812,7 +4992,7 @@ export default function InfographicPage() {
                           className="text-center font-bold text-white drop-shadow"
                           style={{ fontSize: scaledLabel }}
                         >
-                          {card.label}
+                          {renderBoldMarkdown(card.label)}
                         </p>
                         <p
                           className="text-center font-black drop-shadow"
@@ -4825,7 +5005,7 @@ export default function InfographicPage() {
                             className="text-center text-white/60"
                             style={{ fontSize: scaledDesc }}
                           >
-                            {card.description.substring(0, 30)}
+                            {renderBoldMarkdown(card.description.substring(0, 30))}
                           </p>
                         )}
                       </div>
@@ -4846,14 +5026,14 @@ export default function InfographicPage() {
                             className="font-bold text-white"
                             style={{ fontSize: scaledLabel }}
                           >
-                            {card.label}
+                            {renderBoldMarkdown(card.label)}
                           </p>
                         </div>
                         <p
                           className="text-white/70 leading-relaxed mb-1"
                           style={{ fontSize: scaledDesc }}
                         >
-                          {card.description?.substring(0, 60) || ""}
+                          {renderBoldMarkdown(card.description?.substring(0, 60) || "")}
                         </p>
                         <p
                           className="font-black"
@@ -4881,7 +5061,7 @@ export default function InfographicPage() {
                           className="font-medium text-white/80 mt-0.5 text-center"
                           style={{ fontSize: scaledDesc }}
                         >
-                          {card.label}
+                          {renderBoldMarkdown(card.label)}
                         </p>
                       </div>
                     );
@@ -4900,7 +5080,7 @@ export default function InfographicPage() {
                           className="text-white/80 flex-1"
                           style={{ fontSize: scaledLabel }}
                         >
-                          {card.label}
+                          {renderBoldMarkdown(card.label)}
                         </p>
                         <p
                           className="font-bold"
@@ -4925,14 +5105,14 @@ export default function InfographicPage() {
                           className="font-bold text-white truncate"
                           style={{ fontSize: scaledLabel }}
                         >
-                          {card.label}
+                          {renderBoldMarkdown(card.label)}
                         </p>
                         {card.description && (
                           <p
                             className="text-white/50 truncate"
                             style={{ fontSize: scaledDesc }}
                           >
-                            {card.description.substring(0, 40)}
+                            {renderBoldMarkdown(card.description.substring(0, 40))}
                           </p>
                         )}
                       </div>
