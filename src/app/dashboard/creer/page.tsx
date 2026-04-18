@@ -391,18 +391,17 @@ function CardIconPicker({
 
       {/* Top row: current preview + AI suggest */}
       <div className="flex gap-1.5 items-center">
-        <div className="h-10 w-12 rounded border border-gray-600 bg-gray-700 flex items-center justify-center text-base flex-shrink-0">
-          {iconType === 'svg'
-            ? renderLucideIcon(card.emoji || 'Sparkles', { size: 22, color: iconColor, fillColor: iconFillColor, style: iconStyle, gradient: grad, gradientId: `prev-${card.id}` })
-            : <span>{card.emoji || '📝'}</span>}
-        </div>
-        {iconType === 'emoji' && (
+        {iconType === 'svg' ? (
+          <div className="h-10 w-12 rounded border border-gray-600 bg-gray-700 flex items-center justify-center text-base flex-shrink-0">
+            {renderLucideIcon(card.emoji || 'Sparkles', { size: 22, color: iconColor, fillColor: iconFillColor, style: iconStyle, gradient: grad, gradientId: `prev-${card.id}` })}
+          </div>
+        ) : (
           <input
             type="text"
             value={card.emoji}
             onChange={(e) => update({ emoji: e.target.value })}
             maxLength={4}
-            className="w-14 text-center rounded border border-gray-600 bg-gray-700 px-1 py-1 text-base"
+            className="h-10 w-12 text-center rounded border border-gray-600 bg-gray-700 px-1 py-1 text-xl flex-shrink-0"
             placeholder="📝"
           />
         )}
@@ -1736,6 +1735,7 @@ export default function InfographicPage() {
     type: "success" | "error";
   } | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState<string | null>(null);
+  const [showMobilePreview, setShowMobilePreview] = useState(false);
   // Per-card AI icon generation state
   const [iconPrompts, setIconPrompts] = useState<Record<string, string>>({});
   const [iconLoadingId, setIconLoadingId] = useState<string | null>(null);
@@ -3697,7 +3697,7 @@ export default function InfographicPage() {
                   {pexelsPhotos.map((photo, i) => (
                     <button
                       key={photo.id}
-                      onClick={() => setSelectedPhotoIndex(i)}
+                      onClick={() => setSelectedPhotoIndex(selectedPhotoIndex === i ? -1 : i)}
                       className={`relative overflow-hidden rounded-lg transition-all ${
                         selectedPhotoIndex === i
                           ? "ring-2 ring-purple-500"
@@ -3739,6 +3739,14 @@ export default function InfographicPage() {
                     reader.readAsDataURL(file);
                   }} />
                 </label>
+                {selectedPhotoIndex >= 0 && (
+                  <button
+                    onClick={() => setSelectedPhotoIndex(-1)}
+                    className="flex items-center justify-center gap-1.5 rounded-lg border border-gray-600 px-3 py-2 text-xs text-gray-400 hover:border-red-500 hover:text-red-400 transition mt-1"
+                  >
+                    <X size={12} /> Sans affiche
+                  </button>
+                )}
 
                 {/* Unsplash results (if configured) */}
                 {unsplashPhotos.length > 0 && (
@@ -4598,7 +4606,15 @@ export default function InfographicPage() {
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* Right Panel - Preview */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <div className="hidden lg:flex w-full lg:w-1/2 flex-col items-center border-l-0 lg:border-l border-gray-800 bg-gray-950 p-3 sm:p-6 mt-6 lg:mt-0 lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto">
+      {/* Mobile preview toggle button */}
+      <button
+        onClick={() => setShowMobilePreview(!showMobilePreview)}
+        className="lg:hidden fixed bottom-16 left-1/2 -translate-x-1/2 z-30 bg-purple-600 text-white px-4 py-2 rounded-full shadow-lg text-sm font-medium flex items-center gap-1.5"
+      >
+        <Eye size={16} /> {showMobilePreview ? 'Fermer' : 'Aperçu'}
+      </button>
+
+      <div className={`${showMobilePreview ? 'fixed inset-0 z-20 flex bg-gray-900/95 overflow-y-auto p-4' : 'hidden lg:flex'} w-full lg:w-1/2 flex-col items-center border-l-0 lg:border-l border-gray-800 bg-gray-950 sm:p-6 mt-6 lg:mt-0 lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto`}>
         <h2 className="mb-3 text-base sm:text-xl font-bold text-white">
           Aperçu Vidéo Finale
         </h2>
