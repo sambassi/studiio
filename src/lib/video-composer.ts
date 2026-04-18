@@ -77,6 +77,9 @@ export interface DesignOptions {
   textScale?: number;
   /** CTA text scale multiplier (default: 1.0) — matches editor ctaTextScale */
   ctaTextScale?: number;
+  /** Cards-only text scale in percent (default 100). Independent of textScale
+   *  so the card fonts can be grown/shrunk without touching title/CTA. */
+  cardsTextScale?: number;
   /** Card style: 'Compact' | 'Educatif' | 'Stats Bold' | 'Minimal Line' | 'Full Width' */
   cardStyle?: string;
   /** Title position {x: 0-100, y: 0-100} (default: {x:50, y:75}) */
@@ -857,7 +860,10 @@ function drawCards(
   // adjacent card).
   const editorViewportPx = isReel ? 320 : 512;
   const cardsSizeScale = (design?.cardsSize || 92) / 92; // normalize: 92% = 1x (default)
-  const fontPx = (cssPx: number) => Math.round(w * cssPx / editorViewportPx * textScale * cardsSizeScale);
+  // Editor's card-only text multiplier (100 = 1x). Lets card fonts grow/shrink
+  // independently of the global textScale — MUST match page.tsx `cardsTextScale`.
+  const cardsTextMul = (design?.cardsTextScale ?? 100) / 100;
+  const fontPx = (cssPx: number) => Math.round(w * cssPx / editorViewportPx * textScale * cardsSizeScale * cardsTextMul);
   // Same as fontPx but WITHOUT textScale — for elements the editor renders
   // at a fixed pixel size regardless of the global text scale (notably the
   // emoji on Compact/Educatif/etc cards, which uses Tailwind `text-sm`/

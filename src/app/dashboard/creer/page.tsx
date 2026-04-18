@@ -2861,7 +2861,7 @@ export default function InfographicPage() {
               } : undefined,
               design: {
                 font: selectedFont, filter: selectedFilter, cardStyle: selectedCardStyle,
-                textScale, ctaTextScale, titleColor, ctaColor, ctaSubColor,
+                textScale, ctaTextScale, cardsTextScale, titleColor, ctaColor, ctaSubColor,
                 ctaMainText: ctaMainText || "AFROBOOST",
                 ctaSubTextDesign: ctaSubText || "CHAT POUR PLUS D'INFOS",
                 noColorBg, noColorSequences,
@@ -4008,14 +4008,18 @@ export default function InfographicPage() {
                     reader.readAsDataURL(file);
                   }} />
                 </label>
-                {selectedPhotoIndex >= 0 && (
-                  <button
-                    onClick={() => setSelectedPhotoIndex(-1)}
-                    className="flex items-center justify-center gap-1.5 rounded-lg border border-gray-600 px-3 py-2 text-xs text-gray-400 hover:border-red-500 hover:text-red-400 transition mt-1"
-                  >
-                    <X size={12} /> Sans affiche
-                  </button>
-                )}
+                <button
+                  onClick={() => setSelectedPhotoIndex(-1)}
+                  className={`flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition mt-1 ${
+                    selectedPhotoIndex < 0
+                      ? 'border-2 border-purple-500 bg-purple-600/20 text-purple-300'
+                      : 'border border-gray-600 text-gray-400 hover:border-red-500 hover:text-red-400'
+                  }`}
+                  title="N'utiliser que le fond coloré (pas de photo d'affiche)"
+                >
+                  <X size={12} />
+                  {selectedPhotoIndex < 0 ? 'Sans photo (actif) — Fond seul' : 'Sans photo — Utiliser seulement le fond'}
+                </button>
 
                 {/* Unsplash results (if configured) */}
                 {unsplashPhotos.length > 0 && (
@@ -5280,18 +5284,7 @@ export default function InfographicPage() {
               }
             }}
             data-preview-bg
-            className={`${previewClasses.aspect} relative flex flex-col items-center justify-between rounded-lg ${
-              (() => {
-                const isVideoOnly = activeSequence === "video" && rushUrl;
-                const seqNoColor =
-                  activeSequence === "all"
-                    ? noColorSequences.length >= 4
-                    : noColorSequences.includes(activeSequence);
-                return !isVideoOnly && !seqNoColor && activeColorTheme.bg
-                  ? `bg-gradient-to-br ${activeColorTheme.bg}`
-                  : "";
-              })()
-            } p-4 shadow-2xl overflow-hidden transition-all duration-300`}
+            className={`${previewClasses.aspect} relative flex flex-col items-center justify-between rounded-lg p-4 shadow-2xl overflow-hidden transition-all duration-300`}
             style={{
               fontFamily: FONT_CSS_MAP[selectedFont] || "inherit",
               ...(() => {
@@ -5301,12 +5294,20 @@ export default function InfographicPage() {
                     ? noColorSequences.length >= 4
                     : noColorSequences.includes(activeSequence);
                 if (seqNoColor) return { background: "#0A0A0F" };
+                // Use the SAME gradientColor1/gradientColor2 hex values that
+                // are passed to the composer — guarantees editor↔export color
+                // parity. Previously the editor painted a Tailwind class
+                // derived from `colorTheme` while the composer painted the
+                // hex pair, which diverged on some themes.
                 if (colorTheme === "custom")
                   return {
                     ...FILTER_CSS_MAP[selectedFilter],
                     background: `linear-gradient(135deg, ${customAccent}, ${customAccent}99)`,
                   };
-                return FILTER_CSS_MAP[selectedFilter];
+                return {
+                  ...FILTER_CSS_MAP[selectedFilter],
+                  background: `linear-gradient(135deg, ${gradientColor1}, ${gradientColor2})`,
+                };
               })(),
             }}
             onMouseMove={(e) => {
