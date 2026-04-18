@@ -7252,6 +7252,20 @@ export default function InfographicPage() {
             </button>
           ))}
         </div>
+        {/* Batch pill — compact, inline */}
+        <div className="flex items-center gap-0.5 rounded-full bg-gray-800 px-1.5 py-0.5 flex-shrink-0" title="Nombre de variations à générer">
+          <button
+            onClick={() => setBatchCount(Math.max(1, batchCount - 1))}
+            disabled={batchCount <= 1}
+            className="h-6 w-6 rounded-full text-xs font-bold text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 transition flex items-center justify-center"
+          >−</button>
+          <span className="text-[11px] font-bold text-purple-400 w-7 text-center">x{batchCount}</span>
+          <button
+            onClick={() => setBatchCount(Math.min(10, batchCount + 1))}
+            disabled={batchCount >= 10}
+            className="h-6 w-6 rounded-full text-xs font-bold text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 transition flex items-center justify-center"
+          >+</button>
+        </div>
         <button onClick={handleExport} disabled={isExporting || cards.length === 0}
           className="flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 h-10 px-4 text-white text-xs font-bold hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 shadow-lg shadow-purple-500/25 flex-shrink-0"
         >
