@@ -2307,10 +2307,26 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
 // ═══════════════════════════════════════════════════════════
 
 export async function composeAndUpload(options: ComposerOptions): Promise<{ blob: Blob; url: string | null; thumbnailUrl: string | null; composerVersion: string }> {
-  const { video: blob, thumbnail: thumbnailBlob } = await composeVideo(options);
-  if (blob.size === 0) {
+  const { video: rawBlob, thumbnail: thumbnailBlob } = await composeVideo(options);
+  if (rawBlob.size === 0) {
     console.error('[Composer] ❌ composeVideo produced an EMPTY blob (0 bytes). MediaRecorder likely failed to capture frames.');
     throw new Error('Le rendu vidéo a produit un fichier vide (0 octets). Votre navigateur ne supporte peut-être pas le codec vidéo requis. Essayez avec Chrome ou Edge.');
+  }
+
+  // Convert WebM → MP4 (H.264 + AAC, faststart) before upload. The composer
+  // produces WebM (per the WebM-first mimeType policy to dodge Chrome's
+  // corrupted fast-mode MP4), but Meta Graph API (Instagram Reels, Facebook
+  // video posts) expects MP4. Without this conversion, cloud storage holds
+  // WebM → social publish routes pass a .webm URL to Meta → ingestion fails.
+  let blob = rawBlob;
+  if (rawBlob.type.includes('webm')) {
+    try {
+      options.onProgress?.(90, 'Conversion MP4 pour publication...');
+      blob = await convertWebmToMp4(rawBlob);
+    } catch (err) {
+      console.warn('[Composer] WebM→MP4 conversion failed, uploading WebM fallback:', err);
+      blob = rawBlob;
+    }
   }
 
   const isMP4 = blob.type.includes('mp4');
