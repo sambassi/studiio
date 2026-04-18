@@ -652,9 +652,14 @@ function paintSeqBackdrop(
     ctx.fillRect(0, 0, w, h);
     return;
   }
-  // Color-theme gradient backdrop (matches editor's bg-gradient-to-br).
-  const c1 = design?.gradientColor1 || accent || '#7C3AED';
-  const c2 = design?.gradientColor2 || accent || '#EC4899';
+  // Color-theme gradient backdrop. MUST mirror the editor's preview which uses
+  // `linear-gradient(135deg, ${gradientColor1}, ${gradientColor2})` directly —
+  // never the color-theme `accent` (which can be green when the user picks the
+  // green theme, producing a green/purple export bg even though the editor
+  // shows pure purple). Fall back ONLY to the violet defaults if the editor
+  // somehow sent empty strings.
+  const c1 = design?.gradientColor1 || '#7C3AED';
+  const c2 = design?.gradientColor2 || '#EC4899';
   const grad = ctx.createLinearGradient(0, 0, w, h);
   grad.addColorStop(0, c1);
   grad.addColorStop(1, c2);
