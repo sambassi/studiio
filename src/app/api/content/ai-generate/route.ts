@@ -194,7 +194,7 @@ JSON requis (${locale === 'fr' ? 'tout en français' : 'tout en anglais'}):
   "pexelsQuery": "requête Pexels EN ANGLAIS pour trouver des photos du vrai sujet ${topic} (pas fitness générique)"
 }
 
-Génère exactement ${count} cartes. IMPORTANT: chaque carte = un iconName lucide DIFFÉRENT et pertinent (choisi UNIQUEMENT dans la liste fournie).`;
+Retourne EXACTEMENT ${count} cartes, ni plus ni moins. IMPORTANT: chaque carte = un iconName lucide DIFFÉRENT et pertinent (choisi UNIQUEMENT dans la liste fournie). Le champ "emoji" n'est qu'un fallback — ne te repose pas dessus.`;
 
     console.log(`[AI-Generate] Calling Anthropic API for topic: "${topic}", cards: ${count}`);
 
@@ -297,6 +297,9 @@ function parseAndReturn(data: any, topic: string) {
     console.error('[AI-Generate] Invalid structure:', JSON.stringify(content).substring(0, 500));
     return NextResponse.json({ success: false, error: 'Invalid AI response structure' }, { status: 500 });
   }
+
+  // Hard-cap to the requested count — Claude occasionally returns more than asked.
+  content.cards = content.cards.slice(0, count);
 
   // Ensure each card has required fields. iconName is validated against the
   // allowed list — if Claude returned anything off-list, we fall back to a

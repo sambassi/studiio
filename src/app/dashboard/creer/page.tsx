@@ -1040,7 +1040,7 @@ const EMOJIS = [
   "🦴",
 ];
 
-// Map icon names from smart-content.ts to actual emoji characters
+// Map icon names from smart-content.ts to actual emoji characters (legacy fallback)
 const ICON_TO_EMOJI: Record<string, string> = {
   droplet: "💧",
   brain: "🧠",
@@ -1068,6 +1068,85 @@ const ICON_TO_EMOJI: Record<string, string> = {
   food: "🍽️",
   water: "💧",
 };
+
+// Map smart-content icon names → lucide icon name (must exist in ICON_MAP)
+const SMART_ICON_TO_LUCIDE: Record<string, string> = {
+  droplet: 'Sparkles', brain: 'Brain', fire: 'Flame', shield: 'Cross', energy: 'Zap',
+  thermometer: 'Activity', muscle: 'Dumbbell', apple: 'Apple', heart: 'Heart',
+  moon: 'Moon', sun: 'Sun', chart: 'BarChart', audio: 'Music', leaf: 'Leaf',
+  star: 'Star', clock: 'Activity', bone: 'Activity', eye: 'Sparkles',
+  running: 'Activity', target: 'Target', vitamin: 'Pill', dna: 'Brain',
+  scale: 'Activity', food: 'Utensils', water: 'Sparkles', sparkle: 'Sparkles',
+  trophy: 'Trophy', people: 'Smile', plane: 'Plane', map: 'Map', mountain: 'Mountain',
+  compass: 'Compass', camera: 'Camera', checklist: 'Award', calendar: 'Award',
+  rocket: 'Rocket', hourglass: 'Activity', money: 'DollarSign', bank: 'Building',
+  coin: 'DollarSign', piggy: 'DollarSign', bill: 'Receipt', code: 'Code',
+  bug: 'Bot', gear: 'Cpu', keyboard: 'Laptop', cloud: 'Cloud', crypto: 'DollarSign',
+  chain: 'Wallet', bitcoin: 'DollarSign', trend: 'TrendingUp', game: 'Smartphone',
+  joystick: 'Smartphone', controller: 'Smartphone', dice: 'Award',
+  pizza: 'Pizza', burger: 'Pizza', salad: 'Salad', chef: 'Utensils', knife: 'Utensils',
+  dog: 'Dog', cat: 'Cat', paw: 'Dog', fish: 'Fish', bird: 'Bird',
+  car: 'Car', fuel: 'Car', wheel: 'Car', key: 'Home', road: 'Map',
+  house: 'Home', door: 'Home', keys: 'Home', building: 'Building',
+  book: 'Book', pencil: 'Pencil', graduation: 'GraduationCap', lightbulb: 'Lightbulb',
+  teacher: 'GraduationCap', zodiac: 'Star', stars: 'Star', crystal: 'Gem',
+  planet: 'Globe', tarot: 'Sparkles', flex: 'Dumbbell', flame: 'Flame',
+  crown: 'Trophy', thunder: 'Zap', lipstick: 'Brush', perfume: 'Sparkles',
+  mirror: 'Sparkles', nailpolish: 'Brush', baby: 'Smile', family: 'Smile',
+  bottle: 'Apple', school: 'GraduationCap', suitcase: 'Briefcase', beach: 'Sun',
+  lungs: 'HeartPulse',
+};
+
+/** Convert any legacy emoji or smart-content key into a valid lucide name. */
+function toLucideName(input: string | undefined): string {
+  if (!input) return 'Sparkles';
+  // Already a lucide name?
+  if (ICON_MAP[input]) return input;
+  // smart-content key?
+  if (SMART_ICON_TO_LUCIDE[input]) return SMART_ICON_TO_LUCIDE[input];
+  // Common emoji → lucide
+  const EMOJI_MAP: Record<string, string> = {
+    '💧': 'Sparkles', '🧠': 'Brain', '🔥': 'Flame', '⚡': 'Zap', '💪': 'Dumbbell',
+    '🍎': 'Apple', '❤️': 'Heart', '🌙': 'Moon', '😴': 'Moon', '☀️': 'Sun',
+    '📈': 'TrendingUp', '🎵': 'Music', '🎧': 'Music', '🌿': 'Leaf', '⭐': 'Star',
+    '🏆': 'Trophy', '🎯': 'Target', '💊': 'Pill', '🧬': 'Brain', '🍽️': 'Utensils',
+    '🛡️': 'Cross', '🌡️': 'Activity', '🦴': 'Activity', '👁️': 'Sparkles',
+    '🏃': 'Activity', '⚖️': 'Activity', '✨': 'Sparkles', '🎬': 'Video',
+    '📊': 'BarChart', '🎨': 'Palette', '💎': 'Gem', '🥗': 'Salad',
+    '👶': 'Smile', '👨‍👩‍👧': 'Smile', '🍼': 'Apple', '🏫': 'GraduationCap',
+    '✈️': 'Plane', '🗺️': 'Map', '🧳': 'Briefcase', '🏖️': 'Sun', '⛰️': 'Mountain',
+    '🧭': 'Compass', '📸': 'Camera', '✅': 'Award', '📅': 'Award',
+    '🚀': 'Rocket', '⏳': 'Activity', '💰': 'DollarSign', '🏦': 'Building',
+    '🪙': 'DollarSign', '🐷': 'DollarSign', '💵': 'Receipt', '💻': 'Laptop',
+    '🐛': 'Bot', '⚙️': 'Cpu', '⌨️': 'Laptop', '☁️': 'Cloud',
+    '⛓️': 'Wallet', '🎮': 'Smartphone', '🕹️': 'Smartphone', '🎲': 'Award',
+    '🍕': 'Pizza', '🍔': 'Pizza', '👨‍🍳': 'Utensils', '🔪': 'Utensils',
+    '🐕': 'Dog', '🐈': 'Cat', '🐾': 'Dog', '🐟': 'Fish', '🐦': 'Bird',
+    '🚗': 'Car', '⛽': 'Car', '🛞': 'Car', '🔑': 'Home', '🛣️': 'Map',
+    '🏠': 'Home', '🚪': 'Home', '🗝️': 'Home', '🏢': 'Building',
+    '📚': 'Book', '✏️': 'Pencil', '🎓': 'GraduationCap', '💡': 'Lightbulb',
+    '👨‍🏫': 'GraduationCap', '🌟': 'Star', '🔮': 'Gem', '🪐': 'Globe', '🃏': 'Sparkles',
+    '👑': 'Trophy', '💄': 'Brush', '🧴': 'Sparkles', '🪞': 'Sparkles', '💅': 'Brush',
+    '👥': 'Smile', '🫁': 'HeartPulse', '📝': 'Pencil', '🎤': 'Mic',
+  };
+  if (EMOJI_MAP[input]) return EMOJI_MAP[input];
+  return 'Sparkles';
+}
+
+/** Migrate a legacy card (emoji-mode) to SVG-mode. Idempotent. */
+function migrateCardToSvg<T extends Partial<InfoCard> & { iconType?: string; emoji?: string; icon?: string }>(card: T): T {
+  if (card.iconType === 'svg') return card;
+  // Some legacy shapes used "icon" instead of "emoji"
+  const sourceName = card.emoji || (card as any).icon || '';
+  return {
+    ...card,
+    iconType: 'svg' as const,
+    emoji: toLucideName(sourceName),
+    iconColor: (card as any).iconColor || '#FFFFFF',
+    iconSize: (card as any).iconSize || 32,
+    iconStyle: (card as any).iconStyle || 'outline',
+  } as T;
+}
 
 export default function InfographicPage() {
   const router = useRouter();
@@ -1391,7 +1470,7 @@ export default function InfographicPage() {
         if (cfg.title) setTitle(cfg.title);
         if (cfg.subtitle) setSubtitle(cfg.subtitle);
         if (cfg.videoOverlayText) setVideoOverlayText(cfg.videoOverlayText);
-        if (cfg.cards && cfg.cards.length > 0) setCards(cfg.cards);
+        if (cfg.cards && cfg.cards.length > 0) setCards(cfg.cards.map((c: any) => migrateCardToSvg(c)));
         if (cfg.salesPhrases && cfg.salesPhrases.length > 0) setSalesPhrases(cfg.salesPhrases);
         if (cfg.contentTheme) setContentTheme(cfg.contentTheme);
         if (cfg.customTopic) setCustomTopic(cfg.customTopic);
@@ -1934,15 +2013,19 @@ export default function InfographicPage() {
             setTitle(c.tagLine || topicText.toUpperCase());
             setSubtitle(c.subtitle || "");
             setCards(
-              (c.cards || []).map((card: any, i: number) => ({
+              (c.cards || []).slice(0, 3).map((card: any, i: number) => ({
                 id: `card-${Date.now()}-${i}`,
-                emoji: ICON_TO_EMOJI[card.icon] || card.icon || "⭐",
+                emoji: toLucideName(card.icon),
                 label: card.title || "",
                 value: card.value || "",
                 description: card.description || "",
                 color:
                   COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent ||
                   "#a855f7",
+                iconType: 'svg' as const,
+                iconColor: '#FFFFFF',
+                iconSize: 32,
+                iconStyle: 'outline' as const,
               })),
             );
             setSalesPhrases([]);
@@ -2555,13 +2638,17 @@ export default function InfographicPage() {
               return {
                 title: d.content.tagLine || topicText.toUpperCase(),
                 subtitle: d.content.subtitle || "",
-                cards: (d.content.cards || []).map((c: any, i: number) => ({
+                cards: (d.content.cards || []).slice(0, 3).map((c: any, i: number) => ({
                   id: `batch-${Date.now()}-${i}`,
-                  emoji: ICON_TO_EMOJI[c.icon] || c.icon || "⭐",
+                  emoji: toLucideName(c.icon),
                   label: c.title || "",
                   value: c.value || "",
                   description: c.description || "",
                   color: accent,
+                  iconType: 'svg' as const,
+                  iconColor: '#FFFFFF',
+                  iconSize: 32,
+                  iconStyle: 'outline' as const,
                 })),
                 salesPhrases: [],
               };

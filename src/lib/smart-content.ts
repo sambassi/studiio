@@ -1,7 +1,8 @@
 /**
  * ══════════════════════════════════════════════════════════════
  *  AFROBOOST SMART CONTENT GENERATOR v3
- *  Génère automatiquement 5 cartes d'infographie ÉDUCATIVES
+ *  Génère un set de cartes d'infographie ÉDUCATIVES (les consommateurs
+ *  appliquent un slice(0, N) pour respecter la limite courante de 3).
  *  à partir d'un sujet. Contenu riche, chiffres réels, faits
  *  marquants — pensé pour informer les internautes.
  *  100% local, instantané, aucune API externe requise.

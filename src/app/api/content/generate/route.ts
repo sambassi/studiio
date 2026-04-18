@@ -30,6 +30,11 @@ export async function POST(req: NextRequest) {
     }
 
     const result = generateSmartContent(topic);
+    // Cap to 3 cards — the editor's default — so a fallback path can't sneak
+    // in 5 cards from the local knowledge-base templates.
+    if (result && Array.isArray(result.cards)) {
+      result.cards = result.cards.slice(0, 3);
+    }
 
     return NextResponse.json({
       success: true,
