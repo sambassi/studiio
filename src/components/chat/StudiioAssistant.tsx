@@ -13,6 +13,8 @@ interface ChatMessage {
 const STORAGE_KEY = 'studiio_chat_history';
 const OPENED_KEY = 'studiio_chat_opened';
 
+const POS_KEY = 'studiio_chat_button_pos';
+
 export function StudiioAssistant() {
   const pathname = usePathname();
   const t = useTranslations('assistant');
@@ -24,8 +26,52 @@ export function StudiioAssistant() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Only show on /dashboard/* routes
-  if (!pathname?.startsWith('/dashboard')) return null;
+  // Drag state (mobile only)
+  const [btnPos, setBtnPos] = useState<{ x: number; y: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStart = useRef<{ x: number; y: number } | null>(null);
+  const isMobileRef = useRef(false);
+
+  // Load drag position
+  useEffect(() => {
+    isMobileRef.current = window.innerWidth < 1024;
+    try {
+      const saved = localStorage.getItem(POS_KEY);
+      if (saved) setBtnPos(JSON.parse(saved));
+    } catch {}
+  }, []);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if (window.innerWidth >= 1024 || open) return;
+    dragStart.current = { x: e.clientX, y: e.clientY };
+    setIsDragging(false);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }, [open]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragStart.current || window.innerWidth >= 1024 || open) return;
+    const dx = Math.abs(e.clientX - dragStart.current.x);
+    const dy = Math.abs(e.clientY - dragStart.current.y);
+    if (dx > 5 || dy > 5) setIsDragging(true);
+    if (dx > 5 || dy > 5) setBtnPos({ x: e.clientX - 28, y: e.clientY - 28 });
+  }, [open]);
+
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    if (window.innerWidth >= 1024 || open) { dragStart.current = null; return; }
+    const wasDrag = isDragging;
+    if (wasDrag && btnPos) {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const snappedX = btnPos.x < w / 2 ? 16 : w - 72;
+      const clampedY = Math.max(80, Math.min(btnPos.y, h - 80));
+      const finalPos = { x: snappedX, y: clampedY };
+      setBtnPos(finalPos);
+      try { localStorage.setItem(POS_KEY, JSON.stringify(finalPos)); } catch {}
+    }
+    setIsDragging(false);
+    dragStart.current = null;
+    if (!wasDrag) handleOpen();
+  }, [isDragging, btnPos, open]);
 
   // Load history + opened flag + guided onboarding
   useEffect(() => {
@@ -100,13 +146,20 @@ export function StudiioAssistant() {
     }
   }, [input, messages, loading, pathname, t]);
 
+  // Only show on dashboard routes
+  if (!pathname?.startsWith('/dashboard')) return null;
+
   return (
     <>
-      {/* Floating button */}
+      {/* Floating button — draggable on mobile */}
       {!open && (
         <button
-          onClick={handleOpen}
-          className="fixed bottom-4 right-4 z-40 h-14 w-14 rounded-full bg-gradient-to-br from-purple-600 to-pink-500 text-white shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 transition-all hover:scale-110 flex items-center justify-center"
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onClick={() => { if (isDragging) return; if (!btnPos) handleOpen(); }}
+          className={`fixed z-40 h-14 w-14 rounded-full bg-gradient-to-br from-purple-600 to-pink-500 text-white shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 transition-all flex items-center justify-center ${isDragging ? 'ring-4 ring-purple-400/50 scale-105' : 'hover:scale-110'} ${!btnPos ? 'bottom-4 right-4' : 'lg:bottom-4 lg:right-4'}`}
+          style={btnPos ? { left: btnPos.x, top: btnPos.y, bottom: 'auto', right: 'auto', touchAction: 'none' } : { touchAction: 'none' }}
           title={t('title')}
         >
           <MessageCircle size={24} />
