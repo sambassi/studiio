@@ -226,6 +226,21 @@ function renderBoldMarkdown(text: string | undefined): ReactNode {
   });
 }
 
+/**
+ * Truncate a string at a word boundary and append an ellipsis when cut.
+ * Avoids mid-word cuts like "longtemp" → now produces "longtemps" or
+ * "On s'entraîne 3x plus…" depending on the limit. Returns the original
+ * string untouched if it's already within the limit.
+ */
+function truncateAtWord(text: string | undefined, maxChars: number): string {
+  if (!text) return '';
+  if (text.length <= maxChars) return text;
+  const cut = text.slice(0, maxChars);
+  const lastSpace = cut.lastIndexOf(' ');
+  const trimmed = lastSpace > 0 ? cut.slice(0, lastSpace) : cut;
+  return trimmed.replace(/[\s,;:.!?-]+$/, '') + '…';
+}
+
 const QUICK_EMOJIS = ['📝', '✨', '⭐', '🎯', '💪', '🔥', '💡', '📊', '🚀', '❤️', '👀', '✅', '⚡', '🎨', '🎬', '📈', '🏆', '💎', '🧠', '🥗'];
 
 // Lucide icon library — names map to lucide-react exports. Looked up dynamically
@@ -1263,13 +1278,16 @@ export default function InfographicPage() {
     const g = parseInt(hex.slice(3, 5), 16) / 255;
     const b = parseInt(hex.slice(5, 7), 16) / 255;
     const max = Math.max(r, g, b), min = Math.min(r, g, b);
-    let h = 0;
-    if (max !== min) {
-      const d = max - min;
-      h = max === r ? ((g - b) / d + (g < b ? 6 : 0)) / 6
-        : max === g ? ((b - r) / d + 2) / 6
-        : ((r - g) / d + 4) / 6;
+    if (max === min) {
+      const target = Math.max(0, Math.min(1, (max + 0.5) / 2));
+      const v = Math.round(target * 255).toString(16).padStart(2, '0');
+      return `#${v}${v}${v}`;
     }
+    let h = 0;
+    const d = max - min;
+    h = max === r ? ((g - b) / d + (g < b ? 6 : 0)) / 6
+      : max === g ? ((b - r) / d + 2) / 6
+      : ((r - g) / d + 4) / 6;
     h = (h + 0.5) % 1;
     const s = 0.7, l = 0.5;
     const hue2rgb = (p: number, q: number, t: number) => {
@@ -3439,11 +3457,15 @@ export default function InfographicPage() {
                       <ColorWheel
                         color={customAccent}
                         onChange={(c) => {
+                          // Custom color pick ALWAYS updates the gradient pair,
+                          // mirroring how preset themes work. Previously gated
+                          // behind `autoGradient`, which caused a stale
+                          // gradientColor1 (e.g. stuck at black) while
+                          // customAccent changed — editor showed new accent
+                          // but composer exported with the stale gradient.
                           setCustomAccent(c);
-                          if (autoGradient) {
-                            setGradientColor1(c);
-                            setGradientColor2(getComplementary(c));
-                          }
+                          setGradientColor1(c);
+                          setGradientColor2(getComplementary(c));
                         }}
                         label="Couleur personnalisée"
                       />
@@ -5340,11 +5362,6 @@ export default function InfographicPage() {
                 // parity. Previously the editor painted a Tailwind class
                 // derived from `colorTheme` while the composer painted the
                 // hex pair, which diverged on some themes.
-                if (colorTheme === "custom")
-                  return {
-                    ...FILTER_CSS_MAP[selectedFilter],
-                    background: `linear-gradient(135deg, ${customAccent}, ${customAccent}99)`,
-                  };
                 return {
                   ...FILTER_CSS_MAP[selectedFilter],
                   background: `linear-gradient(135deg, ${gradientColor1}, ${gradientColor2})`,
@@ -5798,7 +5815,7 @@ export default function InfographicPage() {
                             className="text-center text-white/60"
                             style={{ fontSize: scaledDesc }}
                           >
-                            {renderBoldMarkdown(card.description.substring(0, 30))}
+                            {renderBoldMarkdown(truncateAtWord(card.description, 30))}
                           </p>
                         )}
                       </div>
@@ -5826,7 +5843,7 @@ export default function InfographicPage() {
                           className="text-white/70 leading-relaxed mb-1"
                           style={{ fontSize: scaledDesc }}
                         >
-                          {renderBoldMarkdown(card.description?.substring(0, 60) || "")}
+                          {renderBoldMarkdown(truncateAtWord(card.description, 60))}
                         </p>
                         <p
                           className="font-black"
@@ -5905,7 +5922,7 @@ export default function InfographicPage() {
                             className="text-white/50 truncate"
                             style={{ fontSize: scaledDesc }}
                           >
-                            {renderBoldMarkdown(card.description.substring(0, 40))}
+                            {renderBoldMarkdown(truncateAtWord(card.description, 40))}
                           </p>
                         )}
                       </div>

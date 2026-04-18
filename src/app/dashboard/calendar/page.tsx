@@ -2457,6 +2457,7 @@ export default function CalendarPage() {
         const designGradient2 = design?.gradientColor2 || '#EC4899';
         const designGradientOpacity = design?.gradientOpacity ?? 0.3;
         const designSeqGradients = design?.seqGradients || {};
+        const designNoColorSequences: string[] = (design as any)?.noColorSequences || [];
         const designLogoScale = design?.logoScale || 1.0;
         const titleTypo = design?.typography?.title || {};
         const ctaTypo = design?.typography?.cta || {};
@@ -2503,6 +2504,18 @@ export default function CalendarPage() {
         // Convertir les pixels du canvas 1080px en dvh : canvasPx / 1080 * 39.375 = canvasPx * 0.03646
         const canvasPxToDvh = (canvasPx: number) => `${(canvasPx * (isReelFormat ? 0.03646 : 0.02917)).toFixed(2)}dvh`;
 
+        // Tronque une chaîne sur la dernière frontière de mot avant la limite
+        // et ajoute une ellipse. MÊME implémentation que creer/page.tsx et
+        // video-composer.ts pour garder la parité.
+        const truncateAtWord = (text: string | undefined, maxChars: number): string => {
+          if (!text) return '';
+          if (text.length <= maxChars) return text;
+          const cut = text.slice(0, maxChars);
+          const lastSpace = cut.lastIndexOf(' ');
+          const trimmed = lastSpace > 0 ? cut.slice(0, lastSpace) : cut;
+          return trimmed.replace(/[\s,;:.!?-]+$/, '') + '…';
+        };
+
         // Utilitaire : convertir couleur hex en rgba avec opacité
         const hexToRgba = (hex: string, opacity: number) => {
           // If already rgba/rgb, just return
@@ -2511,6 +2524,18 @@ export default function CalendarPage() {
           const g = parseInt(hex.slice(3, 5), 16) || 0;
           const b = parseInt(hex.slice(5, 7), 16) || 0;
           return `rgba(${r},${g},${b},${opacity})`;
+        };
+
+        // Backdrop CSS — mirrors the editor (creer/page.tsx:5332-5351) and the
+        // composer's `paintSeqBackdrop`: 135deg gradient of gradientColor1 →
+        // gradientColor2, OR solid dark `#0A0A0F` if the sequence is listed in
+        // `noColorSequences`.
+        const getBackdropCSS = (seq: string) => {
+          const editorKey = seq === 'intro' ? 'titre' : seq === 'cards' ? 'cartes' : seq;
+          if (designNoColorSequences.includes(editorKey) || designNoColorSequences.includes(seq)) {
+            return '#0A0A0F';
+          }
+          return `linear-gradient(135deg, ${designGradient1}, ${designGradient2})`;
         };
 
         // Helper function to get per-sequence gradient CSS
@@ -2638,8 +2663,8 @@ export default function CalendarPage() {
                   >
                     {/* === INTRO : Photo affiche + titre + sous-titre (mêmes valeurs que l'éditeur) === */}
                     <div className="absolute inset-0" style={{ opacity: currentSeq === 'intro' ? 1 : 0, transform: currentSeq === 'intro' ? 'scale(1)' : 'scale(1.08)', zIndex: currentSeq === 'intro' ? 10 : 1, transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
-                      {posterImgSrc ? <img src={posterImgSrc} alt="Affiche" className="absolute inset-0 w-full h-full object-cover" /> : <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, #000000, ${hexToRgba(designGradient1, 1)})` }} />}
-                      <div className="absolute inset-0" style={{ background: posterImgSrc ? getGradientCSS('intro') : 'transparent' }} />
+                      {posterImgSrc ? <img src={posterImgSrc} alt="Affiche" className="absolute inset-0 w-full h-full object-cover" /> : <div className="absolute inset-0" style={{ background: getBackdropCSS('intro') }} />}
+                      <div className="absolute inset-0" style={{ background: getGradientCSS('intro') }} />
                       <div className="absolute inset-0 z-10" style={{ pointerEvents: 'none' }}>
                         <div style={{
                           position: 'absolute',
@@ -2697,7 +2722,8 @@ export default function CalendarPage() {
 
                     {/* === CARTES : Cartes d'info avec les 5 styles de l'éditeur + animation === */}
                     <div className="absolute inset-0" style={{ opacity: currentSeq === 'cards' ? 1 : 0, zIndex: currentSeq === 'cards' ? 10 : 1, transition: 'opacity 800ms ease-in-out', willChange: 'opacity' }}>
-                      <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, ${hexToRgba(designGradient1, 0.9)}, ${hexToRgba(designGradient2, 0.7)}, #000000)` }} />
+                      <div className="absolute inset-0" style={{ background: getBackdropCSS('cards') }} />
+                      <div className="absolute inset-0" style={{ background: getGradientCSS('cards') }} />
                       <div className="absolute z-10 px-3" style={{
                         position: 'absolute',
                         left: `${positions.cards?.x ?? 50}%`,
@@ -2744,7 +2770,7 @@ export default function CalendarPage() {
                                     {emojiEl}
                                     <p style={{ fontSize: scaledLabel, fontFamily: designFont, color: '#fff', fontWeight: 700, textAlign: 'center' }}>{card.label}</p>
                                     <p style={{ fontSize: scaledValue, fontFamily: designFont, color: card.color || accent, fontWeight: 900, textAlign: 'center' }}>{card.value}</p>
-                                    {card.description && <p style={{ fontSize: scaledDesc, color: 'rgba(255,255,255,0.6)', textAlign: 'center' }}>{(card.description as string).substring(0, 30)}</p>}
+                                    {card.description && <p style={{ fontSize: scaledDesc, color: 'rgba(255,255,255,0.6)', textAlign: 'center' }}>{truncateAtWord(card.description as string, 30)}</p>}
                                   </div>
                                 );
                               }
@@ -2760,7 +2786,7 @@ export default function CalendarPage() {
                                       {emojiEl}
                                       <p style={{ fontSize: scaledLabel, fontFamily: designFont, color: '#fff', fontWeight: 700 }}>{card.label}</p>
                                     </div>
-                                    {card.description && <p style={{ fontSize: scaledDesc, color: 'rgba(255,255,255,0.7)', lineHeight: 1.4, marginBottom: editorPxToDvh(4) }}>{(card.description as string).substring(0, 60)}</p>}
+                                    {card.description && <p style={{ fontSize: scaledDesc, color: 'rgba(255,255,255,0.7)', lineHeight: 1.4, marginBottom: editorPxToDvh(4) }}>{truncateAtWord(card.description as string, 60)}</p>}
                                     <p style={{ fontSize: scaledValue, fontFamily: designFont, color: card.color || accent, fontWeight: 900 }}>{card.value}</p>
                                   </div>
                                 );
@@ -2807,7 +2833,7 @@ export default function CalendarPage() {
                                   {emojiEl}
                                   <div style={{ flex: 1, minWidth: 0 }}>
                                     <p style={{ fontSize: scaledLabel, fontFamily: designFont, color: '#fff', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{card.label}</p>
-                                    {card.description && <p style={{ fontSize: scaledDesc, color: 'rgba(255,255,255,0.5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(card.description as string).substring(0, 40)}</p>}
+                                    {card.description && <p style={{ fontSize: scaledDesc, color: 'rgba(255,255,255,0.5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{truncateAtWord(card.description as string, 40)}</p>}
                                   </div>
                                   <p style={{ fontSize: scaledValue, fontFamily: designFont, color: card.color || accent, fontWeight: 900, flexShrink: 0 }}>{card.value}</p>
                                 </div>
@@ -2893,8 +2919,10 @@ export default function CalendarPage() {
                       );
                     })()}
 
-                    {/* === CTA : Appel à l'action — fond noir, texte coloré, logo (mêmes positions que l'éditeur) === */}
-                    <div className="absolute inset-0" style={{ opacity: currentSeq === 'cta' ? 1 : 0, transform: currentSeq === 'cta' ? 'scale(1)' : 'scale(0.92)', zIndex: currentSeq === 'cta' ? 10 : 1, background: '#000000', transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
+                    {/* === CTA : Appel à l'action — même fond dégradé que l'éditeur/composer, texte coloré, logo === */}
+                    <div className="absolute inset-0" style={{ opacity: currentSeq === 'cta' ? 1 : 0, transform: currentSeq === 'cta' ? 'scale(1)' : 'scale(0.92)', zIndex: currentSeq === 'cta' ? 10 : 1, transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
+                      <div className="absolute inset-0" style={{ background: getBackdropCSS('cta') }} />
+                      <div className="absolute inset-0" style={{ background: getGradientCSS('cta') }} />
                       <div className="text-center" style={{
                         position: 'absolute',
                         left: `${positions.watermark?.x ?? 50}%`,
