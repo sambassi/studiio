@@ -81,13 +81,21 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
   const montageAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    fetch('/api/public/settings', { cache: 'no-store' }).then(r => r.json()).then(d => {
-      const enabled = !!d.agentMontageEnabled;
-      console.log('[FeatureFlag] agentMontageEnabled =', enabled);
-      setMontageEnabled(enabled);
-      if (!enabled) setMontageMode(false);
-    }).catch(() => {});
-  }, []);
+    if (!isOpen) return;
+    fetch('/api/public/settings', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => {
+        const enabled = !!d.agentMontageEnabled;
+        console.log('[FeatureFlag] agentMontageEnabled fetched:', enabled);
+        setMontageEnabled(enabled);
+        if (!enabled) setMontageMode(false);
+      })
+      .catch(() => {
+        console.log('[FeatureFlag] fetch failed, defaulting to false');
+        setMontageEnabled(false);
+        setMontageMode(false);
+      });
+  }, [isOpen]);
 
   useEffect(() => {
     if (!prefsLoaded || prefsAppliedRef.current) return;
@@ -813,7 +821,7 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
               {aiGenerating ? <Loader2 size={16} className="animate-spin" /> : <Bot size={16} />}
               {aiGenerating
                 ? t('aiAgent.generating')
-                : montageMode
+                : (montageMode && montageEnabled)
                   ? `Générer (${montageCount} vidéo${montageCount > 1 ? 's' : ''})`
                   : t('aiAgent.generateWithDays', { days: aiPlanDuration })}
             </button>
