@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 /**
- * Verify the TikTok OAuth URL emitted by /api/social/connect contains only
- * the auto-approved scopes (user.info.basic, video.list).
+ * Verify the TikTok OAuth URL emitted by /api/social/connect.
+ *
+ * Expected scope and redirect URI must EXACTLY match the TikTok Developer
+ * Portal config:
+ *   scope        = user.info.basic,video.upload
+ *   redirect_uri = https://studiio.pro/api/social/callback/tiktok
  *
  * Usage: node .claude/skills/playwright/scripts/test-tiktok-scope.js
  * Requires: dev server on :3000 with DEV_AUTH_BYPASS=1.
@@ -82,18 +86,25 @@ async function launch() {
     result.parsedPath = parsed.pathname;
     result.scope = scope;
 
-    const expectedScope = 'user.info.basic,video.list';
-    const exactMatch = scope === expectedScope;
+    const expectedScope = 'user.info.basic,video.upload';
+    const expectedRedirectUri = 'https://studiio.pro/api/social/callback/tiktok';
+    const scopeMatch = scope === expectedScope;
+    const redirectUri = parsed.searchParams.get('redirect_uri') || '';
+    const redirectMatch = redirectUri === expectedRedirectUri;
+    const hasClientKey = !!parsed.searchParams.get('client_key');
     const hasPublish = /video\.publish/.test(scope);
-    const hasUpload = /video\.upload/.test(scope);
 
+    result.expectedScope = expectedScope;
+    result.expectedRedirectUri = expectedRedirectUri;
+    result.redirectUri = redirectUri;
     result.checks = {
-      exact_user_info_basic_video_list: exactMatch,
+      scope_exact_user_info_basic_video_upload: scopeMatch,
+      redirect_uri_exact_studiio_pro: redirectMatch,
+      client_key_present: hasClientKey,
       no_video_publish: !hasPublish,
-      no_video_upload: !hasUpload,
     };
 
-    result.pass = exactMatch && !hasPublish && !hasUpload;
+    result.pass = scopeMatch && redirectMatch && hasClientKey && !hasPublish;
   } catch (err) {
     result.fatal = err.message;
     result.pass = false;
