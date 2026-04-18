@@ -6036,6 +6036,7 @@ export default function InfographicPage() {
                           ? "grid-cols-1"
                           : previewClasses.cols
                       }`}
+                      data-cards-grid
                     >
                       {visibleCards.map((card) => (
                         <div key={card.id}>{renderCardInner(card)}</div>
@@ -7520,6 +7521,41 @@ export default function InfographicPage() {
           {isExporting
             ? <Loader2 size={16} className="animate-spin" />
             : <Zap size={16} fill="currentColor" strokeWidth={1.5} />}
+        </button>
+        {/* TEMPORARY — html2canvas snapshot POC (remove after investigation) */}
+        <button
+          onClick={async () => {
+            const cardsEl = document.querySelector('[data-cards-grid]') as HTMLElement | null;
+            if (!cardsEl) {
+              alert('Cards element not found — ajoute data-cards-grid sur le grid des cartes');
+              return;
+            }
+            try {
+              const html2canvas = (await import('html2canvas')).default;
+              const canvas = await html2canvas(cardsEl, {
+                backgroundColor: null,
+                scale: 1080 / cardsEl.offsetWidth,
+              });
+              const dataUrl = canvas.toDataURL('image/png');
+              const w = window.open('');
+              if (w) {
+                const img = w.document.createElement('img');
+                img.src = dataUrl;
+                img.style.maxWidth = '100%';
+                w.document.body.appendChild(img);
+                w.document.title = 'Snapshot POC';
+              } else {
+                alert('Popup bloquée par le navigateur — autorise les popups sur studiio.pro');
+              }
+            } catch (err) {
+              console.error('[Snapshot POC] failed:', err);
+              alert('Snapshot failed — voir Console');
+            }
+          }}
+          className="rounded-lg bg-blue-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-blue-500"
+          title="POC html2canvas — snapshot les cartes dans une nouvelle fenêtre"
+        >
+          Test Snapshot
         </button>
         <span className="text-[9px] text-yellow-400 font-bold leading-none">
           {isExporting ? `${exportProgress}%` : `${25 * batchCount}cr`}
