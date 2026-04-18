@@ -57,6 +57,11 @@ export default function RootLayout({
       <body className={`${inter.variable} ${anton.variable} ${syne.variable} ${bebasNeue.variable} ${poppins.variable} ${spaceGrotesk.variable} ${montserrat.variable} ${oswald.variable} ${playfairDisplay.variable} ${raleway.variable} ${robotoCondensed.variable} ${lora.variable} ${dancingScript.variable} ${permanentMarker.variable} font-sans bg-studiio-dark text-gray-100 antialiased`}>
         <Providers>{children}</Providers>
         <PWAInstallPrompt />
+        <footer className="text-center text-xs text-gray-500 py-4 space-x-4">
+          <a href="/terms" className="hover:text-gray-300">Terms of Service</a>
+          <span>|</span>
+          <a href="/privacy" className="hover:text-gray-300">Privacy Policy</a>
+        </footer>
       </body>
     </html>
   )
