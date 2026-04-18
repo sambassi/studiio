@@ -91,6 +91,7 @@ export default function LandingPage() {
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
   const [cms, setCms] = useState<DynamicContent>({});
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [demoVideoVisible, setDemoVideoVisible] = useState(false);
   const [apiPlans, setApiPlans] = useState<Record<string, { price_cents: number; yearly_price_cents: number; credits: number; features: string[]; name: string }>>({});
   const [apiPacks, setApiPacks] = useState<Array<{ key: string; amount: number; price_cents: number }>>([]);
 
@@ -99,7 +100,11 @@ export default function LandingPage() {
     fetch('/api/admin/landing')
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data?.content) setCms(data.content); })
-      .catch(() => {}); // Silently fail — defaults will be used
+      .catch(() => {});
+    fetch('/api/public/settings', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => setDemoVideoVisible(!!d.demoVideoVisible))
+      .catch(() => {});
   }, []);
 
   // Fetch live pricing from DB — overrides hardcoded translation values
@@ -302,16 +307,26 @@ export default function LandingPage() {
               {hero.cta1 || t('hero.cta1')}
               <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
             </Link>
-            {hero.demoVideoUrl ? (
-              <a href={hero.demoVideoUrl} target="_blank" rel="noopener noreferrer" className="border border-gray-700 hover:border-gray-500 hover:bg-white/5 px-6 sm:px-8 py-3 sm:py-4 rounded-xl text-white font-bold text-base sm:text-lg flex items-center justify-center gap-3 transition">
-                <Play size={20} className="text-violet-400" />
-                {hero.cta2 || t('hero.cta2')}
-              </a>
+            {demoVideoVisible ? (
+              hero.demoVideoUrl ? (
+                <a href={hero.demoVideoUrl} target="_blank" rel="noopener noreferrer" className="border border-gray-700 hover:border-gray-500 hover:bg-white/5 px-6 sm:px-8 py-3 sm:py-4 rounded-xl text-white font-bold text-base sm:text-lg flex items-center justify-center gap-3 transition">
+                  <Play size={20} className="text-violet-400" />
+                  {hero.cta2 || t('hero.cta2')}
+                </a>
+              ) : (
+                <button className="border border-gray-700 hover:border-gray-500 hover:bg-white/5 px-6 sm:px-8 py-3 sm:py-4 rounded-xl text-white font-bold text-base sm:text-lg flex items-center justify-center gap-3 transition">
+                  <Play size={20} className="text-violet-400" />
+                  {hero.cta2 || t('hero.cta2')}
+                </button>
+              )
             ) : (
-              <button className="border border-gray-700 hover:border-gray-500 hover:bg-white/5 px-6 sm:px-8 py-3 sm:py-4 rounded-xl text-white font-bold text-base sm:text-lg flex items-center justify-center gap-3 transition">
-                <Play size={20} className="text-violet-400" />
-                {hero.cta2 || t('hero.cta2')}
-              </button>
+              <Link href="/auth/signup?guided=true" className="border border-gray-700 hover:border-violet-500/50 hover:bg-violet-500/5 px-6 sm:px-8 py-3 sm:py-4 rounded-xl text-white font-bold text-base sm:text-lg flex flex-col items-center justify-center gap-1 transition">
+                <span className="flex items-center gap-2">
+                  <Sparkles size={18} className="text-violet-400" />
+                  Faites le test gratuit
+                </span>
+                <span className="text-xs font-normal text-gray-400">Guidé par l'Assistant Studiio</span>
+              </Link>
             )}
           </div>
 

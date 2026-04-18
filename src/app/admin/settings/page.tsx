@@ -29,6 +29,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [agentMontageEnabled, setAgentMontageEnabled] = useState(false);
+  const [demoVideoVisible, setDemoVideoVisible] = useState(false);
   const [flagSaving, setFlagSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -61,6 +62,7 @@ export default function SettingsPage() {
     fetchSettings();
     fetch('/api/public/settings').then(r => r.json()).then(d => {
       setAgentMontageEnabled(!!d.agentMontageEnabled);
+      setDemoVideoVisible(!!d.demoVideoVisible);
     }).catch(() => {});
   }, []);
 
@@ -341,6 +343,40 @@ export default function SettingsPage() {
                 Activer le mode Montage IA {flagSaving && <Loader2 size={12} className="inline animate-spin ml-1" />}
               </p>
               <p className="text-xs text-gray-400">Bêta — instable, désactivé par défaut. Le mode Planning reste disponible.</p>
+            </div>
+          </label>
+          <label className="flex items-center gap-3 p-4 bg-gray-800/50 rounded-lg cursor-pointer hover:bg-gray-800 transition mt-3">
+            <input
+              type="checkbox"
+              checked={demoVideoVisible}
+              disabled={flagSaving}
+              onChange={async (e) => {
+                const newVal = e.target.checked;
+                setFlagSaving(true);
+                try {
+                  const res = await fetch('/api/admin/settings/feature-flags', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: 'demo_video_visible', value: newVal }),
+                  });
+                  const d = await res.json();
+                  if (d.success) {
+                    setDemoVideoVisible(newVal);
+                    setToast({ type: 'success', message: `Bouton démo ${newVal ? 'visible' : 'masqué'}` });
+                  } else {
+                    setToast({ type: 'error', message: d.error || 'Erreur' });
+                  }
+                } catch { setToast({ type: 'error', message: 'Erreur réseau' }); }
+                finally { setFlagSaving(false); }
+                setTimeout(() => setToast(null), 3000);
+              }}
+              className="w-4 h-4"
+            />
+            <div>
+              <p className="font-medium text-white text-sm">
+                Afficher le bouton "Voir la démo" sur la landing
+              </p>
+              <p className="text-xs text-gray-400">Quand désactivé, un CTA "Essai guidé par l'Assistant" est affiché à la place</p>
             </div>
           </label>
         </CardContent>

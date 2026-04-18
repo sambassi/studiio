@@ -11,6 +11,14 @@ function SignupContent() {
   const searchParams = useSearchParams();
   const planParam = searchParams.get('plan');
   const billingParam = searchParams.get('billing') || 'monthly';
+  const guidedParam = searchParams.get('guided');
+
+  // Set guided onboarding flag for the assistant chatbot
+  useEffect(() => {
+    if (guidedParam === 'true') {
+      try { localStorage.setItem('studiio_guided_onboarding', 'true'); } catch {}
+    }
+  }, [guidedParam]);
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [selectedPlan, setSelectedPlan] = useState<any>(null);

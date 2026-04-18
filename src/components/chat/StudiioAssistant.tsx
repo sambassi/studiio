@@ -27,12 +27,22 @@ export function StudiioAssistant() {
   // Only show on /dashboard/* routes
   if (!pathname?.startsWith('/dashboard')) return null;
 
-  // Load history + opened flag from localStorage
+  // Load history + opened flag + guided onboarding
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) setMessages(JSON.parse(saved));
       setHasOpened(localStorage.getItem(OPENED_KEY) === 'true');
+
+      // Auto-open for guided onboarding (?guided=true from signup)
+      const guided = localStorage.getItem('studiio_guided_onboarding');
+      if (guided === 'true') {
+        localStorage.removeItem('studiio_guided_onboarding');
+        setOpen(true);
+        setHasOpened(true);
+        localStorage.setItem(OPENED_KEY, 'true');
+        setMessages([{ role: 'assistant', content: 'Bienvenue sur Studiio ! 🎉 Je suis là pour te guider. Veux-tu que je t\'explique comment créer ta première vidéo ?' }]);
+      }
     } catch {}
   }, []);
 
