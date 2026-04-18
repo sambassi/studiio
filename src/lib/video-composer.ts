@@ -2322,9 +2322,12 @@ export async function composeAndUpload(options: ComposerOptions): Promise<{ blob
   if (rawBlob.type.includes('webm')) {
     try {
       options.onProgress?.(90, 'Conversion MP4 pour publication...');
-      blob = await convertWebmToMp4(rawBlob);
+      const conversionTimeout = new Promise<Blob>((_, reject) =>
+        setTimeout(() => reject(new Error('WebM→MP4 conversion timed out after 30s')), 30_000)
+      );
+      blob = await Promise.race([convertWebmToMp4(rawBlob), conversionTimeout]);
     } catch (err) {
-      console.warn('[Composer] WebM→MP4 conversion failed, uploading WebM fallback:', err);
+      console.warn('[Composer] WebM→MP4 conversion failed or timed out, uploading WebM fallback:', err);
       blob = rawBlob;
     }
   }
