@@ -2819,7 +2819,12 @@ export default function InfographicPage() {
 
           // ── Compose montage video NOW at export time (not deferred to calendar) ──
           // This ensures the exported post always has a ready-to-publish video
-          const exportAccent = COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent || customAccent || "#a855f7";
+          // Accent used by the composer for text / CTA / progress bar. We
+          // prefer `gradientColor1` (the actual dominant hex the editor paints
+          // on-screen) over `colorTheme` lookup, because a stale localStorage
+          // `colorTheme='green'` can silently inject '#10b981' green even
+          // after the user has changed the gradient picker to purple.
+          const exportAccent = customAccent || gradientColor1 || COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent || "#a855f7";
           const isReel = format === "9:16";
           let renderedVideoUrl: string | null = null;
           let renderedThumbnailUrl: string | null = null;
@@ -3066,8 +3071,10 @@ export default function InfographicPage() {
       // ── Export bureau : composition du montage vidéo final (MP4 uniquement) ──
       if (destination === 'export' || destination === 'both') {
         try {
+          // See comment on the sibling `exportAccent` above — we prefer the
+          // live gradient color over the (possibly stale) color-theme lookup.
           const exportAccent =
-            COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent || customAccent || "#a855f7";
+            customAccent || gradientColor1 || COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent || "#a855f7";
           const isReel = format === "9:16";
           const exportPhoto = pexelsPhotos.length > 0 ? pexelsPhotos[0] : null;
           const exportPosterUrl = exportPhoto?.url || null;
