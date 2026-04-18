@@ -551,6 +551,7 @@ export default function InfographicPage() {
 
   // ── Pexels Photos ───────────────────────────────────────────
   const [pexelsPhotos, setPexelsPhotos] = useState<PexelsPhoto[]>([]);
+  const [unsplashPhotos, setUnsplashPhotos] = useState<PexelsPhoto[]>([]);
   const [pexelsLoading, setPexelsLoading] = useState(false);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
   const [photoSearchQuery, setPhotoSearchQuery] = useState("");
@@ -1155,6 +1156,16 @@ export default function InfographicPage() {
       } finally {
         setPexelsLoading(false);
       }
+      // Also fetch from Unsplash (best-effort, silent fail)
+      try {
+        const uRes = await fetch(`/api/unsplash?query=${encodeURIComponent(query)}&count=6`);
+        const uData = await uRes.json();
+        if (uData.success && uData.configured && uData.photos?.length > 0) {
+          setUnsplashPhotos(uData.photos);
+        } else {
+          setUnsplashPhotos([]);
+        }
+      } catch { setUnsplashPhotos([]); }
     },
     [batchCount],
   );
@@ -3066,6 +3077,44 @@ export default function InfographicPage() {
                     </button>
                   ))}
                 </div>
+
+                {/* Upload custom photo button */}
+                <label className="flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-600 px-3 py-2 text-xs text-gray-400 cursor-pointer hover:border-purple-500 hover:text-white transition mt-2">
+                  <Upload size={12} /> Ma photo
+                  <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                      const dataUrl = ev.target?.result as string;
+                      const customPhoto = { id: `custom-${Date.now()}`, url: dataUrl, medium: dataUrl, small: dataUrl, photographer: 'Vous', alt: file.name };
+                      setPexelsPhotos(prev => [customPhoto, ...prev]);
+                      setSelectedPhotoIndex(0);
+                    };
+                    reader.readAsDataURL(file);
+                  }} />
+                </label>
+
+                {/* Unsplash results (if configured) */}
+                {unsplashPhotos.length > 0 && (
+                  <div className="mt-3">
+                    <div className="text-[9px] text-gray-500 uppercase tracking-wider mb-1.5">Photos Unsplash</div>
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {unsplashPhotos.map((photo, i) => (
+                        <button
+                          key={photo.id}
+                          onClick={() => {
+                            setPexelsPhotos(prev => [photo, ...prev]);
+                            setSelectedPhotoIndex(0);
+                          }}
+                          className="relative overflow-hidden rounded-lg opacity-70 hover:opacity-100 transition-all"
+                        >
+                          <img src={photo.small} alt={photo.alt} className="aspect-[3/4] w-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

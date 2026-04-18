@@ -68,14 +68,23 @@ export async function GET(req: NextRequest) {
       'cheveux': 'hair', 'maquillage': 'makeup', 'peau': 'skin',
       'sommeil': 'sleep rest', 'repos': 'rest relaxation',
       'stress': 'stress', 'méditation': 'meditation', 'cardio': 'cardio',
+      'cours': 'class', 'collectif': 'group', 'casque': 'headphones',
+      'audio': 'audio', 'sport': 'sport', 'voyage': 'travel',
+      'crypto': 'cryptocurrency bitcoin', 'gaming': 'gaming esports',
+      'immobilier': 'real estate house', 'voiture': 'car automobile',
+      'auto': 'car automobile', 'animal': 'animal pet', 'animaux': 'animals pets',
+      'éducation': 'education learning', 'productivité': 'productivity workspace',
+      'finance': 'finance money investment', 'code': 'coding programming laptop',
+      'avec': '', 'dans': '', 'les': '', 'des': '', 'un': '', 'une': '',
+      'et': '', 'le': '', 'la': '', 'du': '', 'au': '', 'pour': '',
     };
 
     // Translate French words to English for better Pexels results
     const translatedQuery = searchQuery.split(/\s+/).map((word: string) => {
       const lower = word.toLowerCase().replace(/[éèê]/g, 'e').replace(/[àâ]/g, 'a').replace(/[ùû]/g, 'u').replace(/[ôö]/g, 'o').replace(/[îï]/g, 'i');
       // Check exact match first, then normalized match
-      return FR_TO_EN[word.toLowerCase()] || FR_TO_EN[lower] || word;
-    }).join(' ');
+      return FR_TO_EN[word.toLowerCase()] ?? FR_TO_EN[lower] ?? word;
+    }).filter(Boolean).join(' ') || 'fitness';
 
     const orientation = searchParams.get('orientation') || 'portrait';
 
