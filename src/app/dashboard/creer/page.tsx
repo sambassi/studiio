@@ -2538,6 +2538,30 @@ export default function InfographicPage() {
     }
   };
 
+  // ── Pre-render SVG icons as images for canvas drawing ──────
+  const preRenderCardIcons = async (cardList: typeof cards) => {
+    const { renderToStaticMarkup } = await import('react-dom/server');
+    const React = await import('react');
+    return Promise.all(cardList.map(async (c) => {
+      if (c.iconType === 'svg' && c.emoji && ICON_MAP[c.emoji]) {
+        try {
+          const IconComp = ICON_MAP[c.emoji];
+          const svg = renderToStaticMarkup(React.createElement(IconComp, { size: 64, color: c.iconColor || '#FFFFFF', strokeWidth: 2 }));
+          const blob = new Blob([svg], { type: 'image/svg+xml' });
+          const url = URL.createObjectURL(blob);
+          const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+            const image = new Image();
+            image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
+            image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('icon load failed')); };
+            image.src = url;
+          });
+          return { ...c, iconImage: img };
+        } catch { return c; }
+      }
+      return c;
+    }));
+  };
+
   // ── Export ──────────────────────────────────────────────────
   const handleExport = async () => {
     if (cards.length === 0) {
@@ -2770,7 +2794,7 @@ export default function InfographicPage() {
               subtitle: bSubtitle || undefined,
               salesPhrase: salesPhrase || undefined,
               cards: bCards.length > 0 && exportedSequences.cartes
-                ? bCards.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color, position: c.position }))
+                ? await preRenderCardIcons(bCards).then(rendered => rendered.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color, position: c.position, iconImage: (c as any).iconImage })))
                 : undefined,
               posterUrl: posterUrl,
               videoUrl: exportedSequences.video ? (rushUrl || undefined) : undefined,
@@ -3016,7 +3040,7 @@ export default function InfographicPage() {
             subtitle: subtitle || undefined,
             salesPhrase: salesPhrases.length > 0 ? salesPhrases[0] : undefined,
             cards: cards.length > 0 && exportedSequences.cartes
-              ? cards.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color, position: c.position }))
+              ? await preRenderCardIcons(cards).then(rendered => rendered.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color, position: c.position, iconImage: (c as any).iconImage })))
               : undefined,
             posterUrl: exportPosterUrl,
             videoUrl: exportedSequences.video ? rushUrl : undefined,

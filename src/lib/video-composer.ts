@@ -22,6 +22,8 @@ export interface CardData {
   value: string;
   description?: string;
   color?: string;
+  /** Pre-rendered icon image for SVG icons. When present, drawn on canvas instead of emoji text. */
+  iconImage?: HTMLImageElement;
   /**
    * Free-positioning mode (per-card): x/y are percentages (0–100) of the
    * canvas dimensions (card center). When present, overrides the default
@@ -1033,11 +1035,16 @@ function drawCards(
       ctx.textBaseline = 'top';
       let curY = y + paddingY;
 
-      // Emoji (skipped when empty → re-center content vertically)
+      // Icon or emoji (skipped when empty → re-center content vertically)
       const hasEmoji = !!card.emoji && card.emoji.trim() !== '';
       if (hasEmoji) {
-        ctx.font = `${emojiSizeLocal}px sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = 'white';
-        ctx.fillText(card.emoji, x + cardW / 2, curY);
+        if (card.iconImage) {
+          const iconDrawSize = emojiSizeLocal;
+          ctx.drawImage(card.iconImage, x + cardW / 2 - iconDrawSize / 2, curY, iconDrawSize, iconDrawSize);
+        } else {
+          ctx.font = `${emojiSizeLocal}px sans-serif`; ctx.textAlign = 'center'; ctx.fillStyle = 'white';
+          ctx.fillText(card.emoji, x + cardW / 2, curY);
+        }
         curY += emojiSizeLocal + innerGap;
       } else {
         // Re-center remaining content: skip one emoji slot worth of space
@@ -1124,10 +1131,15 @@ function drawCards(
       const hasEmojiEdu = !!card.emoji && card.emoji.trim() !== '';
       let labelStartX = contentX;
       if (hasEmojiEdu) {
-        ctx.font = `${emojiSize}px sans-serif`; ctx.textAlign = 'left'; ctx.fillStyle = '#FFFFFF';
-        ctx.fillText(card.emoji, contentX, curY);
-        const emojiW = ctx.measureText(card.emoji).width;
-        labelStartX = contentX + emojiW + emojiGap;
+        if (card.iconImage) {
+          ctx.drawImage(card.iconImage, contentX, curY, emojiSize, emojiSize);
+          labelStartX = contentX + emojiSize + emojiGap;
+        } else {
+          ctx.font = `${emojiSize}px sans-serif`; ctx.textAlign = 'left'; ctx.fillStyle = '#FFFFFF';
+          ctx.fillText(card.emoji, contentX, curY);
+          const emojiW = ctx.measureText(card.emoji).width;
+          labelStartX = contentX + emojiW + emojiGap;
+        }
       }
       ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = '#FFFFFF';
       ctx.fillText(card.label, labelStartX, curY + (row1H - labelSize) / 2);
@@ -1199,11 +1211,16 @@ function drawCards(
       const hasEmojiMin = !!card.emoji && card.emoji.trim() !== '';
       let labelX = x + paddingX;
       if (hasEmojiMin) {
-        ctx.font = `${minEmojiSize}px sans-serif`;
-        ctx.textAlign = 'left'; ctx.fillStyle = '#FFFFFF';
-        ctx.fillText(card.emoji, x + paddingX, rowY + (rowH - minEmojiSize) / 2);
-        const emojiW = ctx.measureText(card.emoji).width;
-        labelX = x + paddingX + emojiW + contentGap;
+        if (card.iconImage) {
+          ctx.drawImage(card.iconImage, x + paddingX, rowY + (rowH - minEmojiSize) / 2, minEmojiSize, minEmojiSize);
+          labelX = x + paddingX + minEmojiSize + contentGap;
+        } else {
+          ctx.font = `${minEmojiSize}px sans-serif`;
+          ctx.textAlign = 'left'; ctx.fillStyle = '#FFFFFF';
+          ctx.fillText(card.emoji, x + paddingX, rowY + (rowH - minEmojiSize) / 2);
+          const emojiW = ctx.measureText(card.emoji).width;
+          labelX = x + paddingX + emojiW + contentGap;
+        }
       }
 
       // Label (middle, flex-1, text-white/80)
@@ -1268,10 +1285,15 @@ function drawCards(
       const hasEmojiFull = !!card.emoji && card.emoji.trim() !== '';
       let emojiW = 0;
       if (hasEmojiFull) {
-        ctx.font = `${fullEmojiSize}px sans-serif`;
-        ctx.textAlign = 'left'; ctx.fillStyle = '#FFFFFF';
-        ctx.fillText(card.emoji, x + paddingX + leftBw, rowY + (rowH - fullEmojiSize) / 2);
-        emojiW = ctx.measureText(card.emoji).width;
+        if (card.iconImage) {
+          ctx.drawImage(card.iconImage, x + paddingX + leftBw, rowY + (rowH - fullEmojiSize) / 2, fullEmojiSize, fullEmojiSize);
+          emojiW = fullEmojiSize;
+        } else {
+          ctx.font = `${fullEmojiSize}px sans-serif`;
+          ctx.textAlign = 'left'; ctx.fillStyle = '#FFFFFF';
+          ctx.fillText(card.emoji, x + paddingX + leftBw, rowY + (rowH - fullEmojiSize) / 2);
+          emojiW = ctx.measureText(card.emoji).width;
+        }
       }
 
       // Middle column (label + optional description, stacked, vertically centered)
