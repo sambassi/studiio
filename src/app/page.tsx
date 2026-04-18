@@ -103,8 +103,12 @@ export default function LandingPage() {
       .catch(() => {});
     fetch('/api/public/settings', { cache: 'no-store' })
       .then(r => r.json())
-      .then(d => setDemoVideoVisible(!!d.demoVideoVisible))
-      .catch(() => {});
+      .then(d => {
+        const visible = !!d.demoVideoVisible;
+        console.log('[HeroCTA] demoVideoVisible:', visible);
+        setDemoVideoVisible(visible);
+      })
+      .catch(() => { console.log('[HeroCTA] fetch failed, keeping false'); });
   }, []);
 
   // Fetch live pricing from DB — overrides hardcoded translation values
