@@ -358,6 +358,7 @@ function CardIconPicker({
   aiBusy: boolean;
   onSuggestAI: () => void;
 }) {
+  const [iconSearch, setIconSearch] = useState('');
   const iconType = card.iconType ?? 'emoji';
   const iconColor = card.iconColor ?? card.color ?? accentColor;
   const iconFillColor = card.iconFillColor ?? iconColor;
@@ -1735,7 +1736,6 @@ export default function InfographicPage() {
     type: "success" | "error";
   } | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState<string | null>(null);
-  const [iconSearch, setIconSearch] = useState('');
   // Per-card AI icon generation state
   const [iconPrompts, setIconPrompts] = useState<Record<string, string>>({});
   const [iconLoadingId, setIconLoadingId] = useState<string | null>(null);
