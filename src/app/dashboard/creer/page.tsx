@@ -433,6 +433,7 @@ export default function InfographicPage() {
   const [ctaSubText, setCtaSubText] = useState("CHAT POUR PLUS D'INFOS");
   const [isGeneratingCta, setIsGeneratingCta] = useState(false);
   // Gradient overlay
+  const [autoGradient, setAutoGradient] = useState(false);
   const [gradientColor1, setGradientColor1] = useState("#7C3AED");
   const [gradientColor2, setGradientColor2] = useState("#EC4899");
   const [gradientOpacity, setGradientOpacity] = useState(0.3);
@@ -454,6 +455,33 @@ export default function InfographicPage() {
   }>>({});
 
   // Helper function to get effective gradient for a sequence
+  const getComplementary = (hex: string): string => {
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0;
+    if (max !== min) {
+      const d = max - min;
+      h = max === r ? ((g - b) / d + (g < b ? 6 : 0)) / 6
+        : max === g ? ((b - r) / d + 2) / 6
+        : ((r - g) / d + 4) / 6;
+    }
+    h = (h + 0.5) % 1;
+    const s = 0.7, l = 0.5;
+    const hue2rgb = (p: number, q: number, t: number) => {
+      if (t < 0) t += 1; if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    return '#' + [hue2rgb(p, q, h + 1 / 3), hue2rgb(p, q, h), hue2rgb(p, q, h - 1 / 3)]
+      .map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join('');
+  };
+
   const getSeqGradient = useCallback((seq: string) => {
     const override = seqGradients[seq];
     // Video sequence: gradient disabled by default unless user explicitly enables it
@@ -656,6 +684,7 @@ export default function InfographicPage() {
         if (cfg.gradientColor2) setGradientColor2(cfg.gradientColor2);
         if (cfg.gradientOpacity !== undefined) setGradientOpacity(cfg.gradientOpacity);
         if (cfg.noColorBg !== undefined) setNoColorBg(cfg.noColorBg);
+        if (typeof cfg.autoGradient === 'boolean') setAutoGradient(cfg.autoGradient);
         if (cfg.noColorSequences) setNoColorSequences(cfg.noColorSequences);
         if (cfg.noColorUserOverride) setNoColorUserOverride(cfg.noColorUserOverride);
         if (typeof cfg.syncColorsGlobal === 'boolean') setSyncColorsGlobal(cfg.syncColorsGlobal);
@@ -929,7 +958,7 @@ export default function InfographicPage() {
           titleColor, ctaColor, ctaSubColor, ctaMainText, ctaSubText,
           titleTextGradient, titleGradColor1, titleGradColor2,
           titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
-          gradientColor1, gradientColor2, gradientOpacity, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, seqGradients,
+          gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, seqGradients,
           textScale, ctaTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
           titlePos, logoPositions, watermarkPos, cardsPos, overlayPos,
           titleSize, cardsSize, watermarkSize,
@@ -2495,6 +2524,54 @@ export default function InfographicPage() {
                         title={ct.name}
                       />
                     ))}
+                    {/* Custom color picker button */}
+                    <button
+                      onClick={() => { setColorTheme('custom'); setNoColorBg(false); }}
+                      className={`h-8 w-8 rounded-full transition-all flex items-center justify-center ${
+                        colorTheme === 'custom' && !noColorBg
+                          ? 'ring-2 ring-white scale-110'
+                          : 'opacity-60 hover:opacity-100'
+                      }`}
+                      style={{ backgroundColor: colorTheme === 'custom' ? customAccent : undefined, border: colorTheme !== 'custom' ? '2px dashed #6b7280' : undefined }}
+                      title="Couleur personnalisée"
+                    >
+                      {colorTheme !== 'custom' && <span className="text-gray-500 text-xs font-bold">+</span>}
+                    </button>
+                  </div>
+                  {/* Inline ColorWheel for custom color */}
+                  {colorTheme === 'custom' && !noColorBg && (
+                    <div className="mt-3">
+                      <ColorWheel
+                        color={customAccent}
+                        onChange={(c) => {
+                          setCustomAccent(c);
+                          if (autoGradient) {
+                            setGradientColor1(c);
+                            setGradientColor2(getComplementary(c));
+                          }
+                        }}
+                        label="Couleur personnalisée"
+                      />
+                    </div>
+                  )}
+                  {/* Auto gradient toggle */}
+                  <div className="mt-3 flex items-center justify-between">
+                    <span className="text-[10px] text-gray-300">Dégradé automatique</span>
+                    <button
+                      onClick={() => {
+                        const next = !autoGradient;
+                        setAutoGradient(next);
+                        if (next) {
+                          const base = COLOR_THEMES.find(ct => ct.id === colorTheme)?.accent || customAccent;
+                          setGradientColor1(base);
+                          setGradientColor2(getComplementary(base));
+                          setGradientOpacity(0.4);
+                        }
+                      }}
+                      className={`relative w-9 h-5 rounded-full transition-colors ${autoGradient ? 'bg-purple-600' : 'bg-gray-800'}`}
+                    >
+                      <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${autoGradient ? 'translate-x-4' : ''}`} />
+                    </button>
                   </div>
                 </div>
                 <div>
