@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { topic, locale = 'fr', cardCount = 5, existingCards = [], videoOverlayOnly = false, fieldType } = body;
+    const { topic, locale = 'fr', cardCount = 3, existingCards = [], videoOverlayOnly = false, fieldType } = body;
 
     if (!topic || typeof topic !== 'string') {
       return NextResponse.json({ success: false, error: 'Topic is required' }, { status: 400 });
@@ -111,6 +111,24 @@ Réponds UNIQUEMENT en JSON: {"videoOverlayText": "TON TEXTE ICI"}`;
 
     const count = Math.min(Math.max(cardCount, 1), 8);
 
+    // Curated lucide-react icon names — must be kept in sync with ICON_MAP in
+    // src/app/dashboard/creer/page.tsx. Claude must pick one of these for each card.
+    const ICON_NAMES = [
+      'Dumbbell','Flame','Zap','Trophy','Target','Activity','Bike',
+      'Heart','Brain','Stethoscope','Pill','Cross','HeartPulse','Smile',
+      'Apple','Carrot','Salad','Coffee','Pizza','Utensils','Wheat',
+      'Leaf','Sun','Moon','Star','Cloud','Flower','TreePine','Sprout',
+      'Laptop','Smartphone','Cpu','Wifi','Battery','Code','Bot',
+      'DollarSign','TrendingUp','Gem','Briefcase','Wallet','BarChart','PieChart','Receipt',
+      'Palette','Camera','Music','Mic','Video','PenTool','Brush',
+      'Plane','Globe','Map','Mountain','Compass','MapPin','Hotel','Tent',
+      'Award','ThumbsUp','Gift','Bell','Megaphone','PartyPopper','Sparkles',
+      'Dog','Cat','Bird','Fish','Rabbit','Turtle',
+      'Home','Building','Car','Train','Rocket','Ship','Bus',
+      'ShoppingBag','ShoppingCart','Tag','Package','Truck','CreditCard',
+      'Book','GraduationCap','Lightbulb','Library','Pencil','Ruler',
+    ];
+
     const systemPrompt = `Tu es un expert en nutrition, santé, bien-être et fitness. Tu crées du contenu éducatif RICHE et PRÉCIS pour des infographies destinées aux réseaux sociaux.
 
 CONTEXTE: L'utilisateur tape un sujet (ex: "moringa", "manioc", "collagène", "sommeil", etc.) et tu dois générer des VRAIES informations éducatives riches sur ce sujet. Le contenu est pour la marque Afroboost (fitness/danse/bien-être africain).
@@ -159,7 +177,8 @@ JSON requis (${locale === 'fr' ? 'tout en français' : 'tout en anglais'}):
   "subtitle": "Fait accrocheur et vrai sur ${topic} en lien avec la santé/performance (max 15 mots)",
   "cards": [
     {
-      "emoji": "emoji unique et pertinent au contenu de cette carte",
+      "iconName": "nom d'icône lucide-react pertinent — OBLIGATOIRE — choisi UNIQUEMENT parmi: [${ICON_NAMES.join(', ')}]",
+      "emoji": "emoji de fallback (utilisé seulement si iconName invalide)",
       "label": "ASPECT SPÉCIFIQUE DE ${topic.toUpperCase()} (2-4 mots)",
       "value": "CHIFFRE RÉEL (ex: 27g, +40%, 2L/j, 48h)",
       "description": "Explication éducative courte du fait (10-20 mots)"
@@ -175,7 +194,7 @@ JSON requis (${locale === 'fr' ? 'tout en français' : 'tout en anglais'}):
   "pexelsQuery": "requête Pexels EN ANGLAIS pour trouver des photos du vrai sujet ${topic} (pas fitness générique)"
 }
 
-Génère exactement ${count} cartes. IMPORTANT: chaque carte = un emoji DIFFÉRENT et pertinent.`;
+Génère exactement ${count} cartes. IMPORTANT: chaque carte = un iconName lucide DIFFÉRENT et pertinent (choisi UNIQUEMENT dans la liste fournie).`;
 
     console.log(`[AI-Generate] Calling Anthropic API for topic: "${topic}", cards: ${count}`);
 
@@ -279,13 +298,21 @@ function parseAndReturn(data: any, topic: string) {
     return NextResponse.json({ success: false, error: 'Invalid AI response structure' }, { status: 500 });
   }
 
-  // Ensure each card has required fields
-  content.cards = content.cards.map((card: any) => ({
-    emoji: card.emoji || '📊',
-    label: card.label || 'INFO',
-    value: card.value || '-',
-    description: card.description || '',
-  }));
+  // Ensure each card has required fields. iconName is validated against the
+  // allowed list — if Claude returned anything off-list, we fall back to a
+  // sensible default so the client doesn't render a broken icon.
+  const ALLOWED = new Set(ICON_NAMES);
+  content.cards = content.cards.map((card: any) => {
+    const rawName = typeof card.iconName === 'string' ? card.iconName.trim() : '';
+    const iconName = ALLOWED.has(rawName) ? rawName : 'Sparkles';
+    return {
+      iconName,
+      emoji: card.emoji || '📊',
+      label: card.label || 'INFO',
+      value: card.value || '-',
+      description: card.description || '',
+    };
+  });
 
   // Ensure salesPhrases exists
   if (!content.salesPhrases || !Array.isArray(content.salesPhrases) || content.salesPhrases.length === 0) {

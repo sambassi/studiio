@@ -268,6 +268,21 @@ const ICON_KEYWORDS: Record<string, string[]> = {
 
 const ALL_LUCIDE_NAMES: string[] = Object.values(ICON_LIBRARY).flat();
 
+/** Map a content theme key to a sensible default lucide icon for new empty cards. */
+function themeIconName(theme: string | undefined): string {
+  const t = (theme || '').toLowerCase();
+  if (t.includes('sport') || t.includes('fitness')) return 'Dumbbell';
+  if (t.includes('santé') || t.includes('sante') || t.includes('bien')) return 'Heart';
+  if (t.includes('nutrition') || t.includes('food')) return 'Apple';
+  if (t.includes('parent')) return 'Smile';
+  if (t.includes('nature')) return 'Leaf';
+  if (t.includes('tech') || t.includes('coding')) return 'Laptop';
+  if (t.includes('finance')) return 'DollarSign';
+  if (t.includes('education') || t.includes('école') || t.includes('ecole')) return 'Book';
+  if (t.includes('voyage') || t.includes('travel')) return 'Plane';
+  return 'Sparkles';
+}
+
 const COLOR_SWATCHES_VIVID = ['#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#EC4899'];
 const COLOR_SWATCHES_PASTEL = ['#FCA5A5', '#FCD34D', '#6EE7B7', '#93C5FD', '#C4B5FD', '#F9A8D4'];
 
@@ -644,13 +659,16 @@ function CardsRailPanel({
       ...prev,
       {
         id: `card-${Date.now()}`,
-        emoji: '📝',
+        emoji: 'Star',
         label: '',
         value: '',
         description: '',
         color: accentColor,
         position: { x: 50, y: 50 },
-        iconType: 'emoji',
+        iconType: 'svg',
+        iconColor: '#FFFFFF',
+        iconSize: 32,
+        iconStyle: 'outline',
       },
     ]);
   };
@@ -1857,7 +1875,7 @@ export default function InfographicPage() {
             body: JSON.stringify({
               topic: topicText,
               locale: "fr",
-              cardCount: 5,
+              cardCount: 3,
             }),
             signal: aiController.signal,
           });
@@ -1872,13 +1890,17 @@ export default function InfographicPage() {
               setCards(
                 (c.cards || []).map((card: any, i: number) => ({
                   id: `card-${Date.now()}-${i}`,
-                  emoji: card.emoji || "⭐",
+                  emoji: card.iconName || "Sparkles",
                   label: card.label || "",
                   value: card.value || "",
                   description: card.description || "",
                   color:
                     COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent ||
                     "#a855f7",
+                  iconType: 'svg' as const,
+                  iconColor: '#FFFFFF',
+                  iconSize: 32,
+                  iconStyle: 'outline' as const,
                 })),
               );
               setSalesPhrases(c.salesPhrases || []);
@@ -2028,11 +2050,15 @@ export default function InfographicPage() {
             ...cards,
             {
               id: `card-${Date.now()}`,
-              emoji: aiCard.emoji || "⭐",
+              emoji: aiCard.iconName || "Sparkles",
               label: aiCard.label || "Info",
               value: aiCard.value || "",
               description: aiCard.description || "",
               color: accent,
+              iconType: 'svg',
+              iconColor: '#FFFFFF',
+              iconSize: 32,
+              iconStyle: 'outline',
             },
           ]);
           setIsAddingCard(false);
@@ -2043,16 +2069,20 @@ export default function InfographicPage() {
       // AI failed, fallback to generic
     }
 
-    // Fallback: generic card
+    // Fallback: generic card (still SVG, themed)
     setCards([
       ...cards,
       {
         id: `card-${Date.now()}`,
-        emoji: "⭐",
+        emoji: themeIconName(contentTheme),
         label: "Nouveau",
         value: "Valeur",
         description: "",
         color: accent,
+        iconType: 'svg',
+        iconColor: '#FFFFFF',
+        iconSize: 32,
+        iconStyle: 'outline',
       },
     ]);
     setIsAddingCard(false);
@@ -2486,7 +2516,7 @@ export default function InfographicPage() {
           const r = await fetch("/api/content/ai-generate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ topic: variationTopic, locale: "fr", cardCount: 5 }),
+            body: JSON.stringify({ topic: variationTopic, locale: "fr", cardCount: 3 }),
           });
           if (r.ok) {
             const d = await r.json();
@@ -2496,11 +2526,15 @@ export default function InfographicPage() {
                 subtitle: d.content.subtitle || "",
                 cards: (d.content.cards || []).map((c: any, i: number) => ({
                   id: `batch-${Date.now()}-${i}`,
-                  emoji: c.emoji || "⭐",
+                  emoji: c.iconName || "Sparkles",
                   label: c.label || "",
                   value: c.value || "",
                   description: c.description || "",
                   color: accent,
+                  iconType: 'svg' as const,
+                  iconColor: '#FFFFFF',
+                  iconSize: 32,
+                  iconStyle: 'outline' as const,
                 })),
                 salesPhrases: d.content.salesPhrases || [],
               };
