@@ -3152,9 +3152,15 @@ export default function InfographicPage() {
       {/* ═══════════════════════════════════════════════════════════ */}
       {activeRailTab && (
         <div
-          className="hidden lg:flex flex-col w-[320px] flex-shrink-0 bg-gray-900 border-r border-gray-800 overflow-y-auto lg:max-h-[calc(100vh-4rem)]"
+          className="flex flex-col w-full lg:w-[320px] flex-shrink-0 bg-gray-900 border-r border-gray-800 overflow-y-auto max-h-[calc(100vh-4rem)]"
           style={{ backdropFilter: 'blur(20px)' }}
         >
+          <button
+            onClick={() => setActiveRailTab(null)}
+            className="lg:hidden flex items-center gap-1 text-xs text-gray-400 hover:text-white px-4 pt-3"
+          >
+            ← Retour
+          </button>
           <div className="flex items-center justify-between border-b border-gray-800 px-4 py-3">
             <h3 className="text-sm font-bold uppercase tracking-wider text-white">
               {railItems.find((r) => r.id === activeRailTab)?.label}
