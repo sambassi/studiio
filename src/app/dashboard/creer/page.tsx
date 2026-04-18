@@ -1445,6 +1445,7 @@ export default function InfographicPage() {
         if (typeof cfg.syncColorsGlobal === 'boolean') setSyncColorsGlobal(cfg.syncColorsGlobal);
         if (cfg.seqGradients) setSeqGradients(cfg.seqGradients);
         if (cfg.textScale !== undefined) setTextScale(cfg.textScale);
+        if (cfg.cardsTextScale !== undefined) setCardsTextScale(cfg.cardsTextScale);
         if (cfg.ctaTextScale !== undefined) setCtaTextScale(cfg.ctaTextScale);
         if (cfg.logoScale !== undefined) setLogoScale(cfg.logoScale);
         if (cfg.logoSequences) setLogoSequences(cfg.logoSequences);
@@ -1689,6 +1690,9 @@ export default function InfographicPage() {
 
   // Text size scale (0.5 to 3.0)
   const [textScale, setTextScale] = useState(1.0);
+  // Cards-only text scale (in %, 100 = neutral). Independent from `textScale`
+  // so the user can grow/shrink card text without touching title/CTA.
+  const [cardsTextScale, setCardsTextScale] = useState(100);
 
   // CTA text scale (separate from global textScale, for CTA-specific sizing)
   const [ctaTextScale, setCtaTextScale] = useState(1.0);
@@ -1714,7 +1718,7 @@ export default function InfographicPage() {
           titleTextGradient, titleGradColor1, titleGradColor2,
           titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
           gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, seqGradients,
-          textScale, ctaTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
+          textScale, ctaTextScale, cardsTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
           titlePos, logoPositions, watermarkPos, cardsPos, overlayPos,
           titleSize, cardsSize, watermarkSize,
           title, subtitle, videoOverlayText, cards, salesPhrases, contentTheme, customTopic,
@@ -1738,7 +1742,7 @@ export default function InfographicPage() {
     titleTextGradient, titleGradColor1, titleGradColor2,
     titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
     gradientColor1, gradientColor2, gradientOpacity, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, seqGradients,
-    textScale, ctaTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
+    textScale, ctaTextScale, cardsTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
     titlePos, logoPositions, watermarkPos, cardsPos, overlayPos,
     titleSize, cardsSize, watermarkSize,
     title, subtitle, videoOverlayText, cards, salesPhrases, contentTheme, customTopic,
@@ -3132,7 +3136,10 @@ export default function InfographicPage() {
     colorTheme === "custom"
       ? { id: "custom", name: "Custom", bg: "", accent: customAccent }
       : COLOR_THEMES.find((ct) => ct.id === colorTheme) || COLOR_THEMES[1];
-  const previewPhoto = pexelsPhotos[selectedPhotoIndex] || null;
+  // Explicit `< 0` guard — `pexelsPhotos[-1]` already yields `undefined` but
+  // we keep this defensive so the "Sans affiche" button (which sets the index
+  // to -1) can never accidentally render the previously-selected poster.
+  const previewPhoto = selectedPhotoIndex >= 0 ? (pexelsPhotos[selectedPhotoIndex] || null) : null;
 
   const getPreviewClasses = () => {
     if (format === "16:9")
@@ -3971,7 +3978,7 @@ export default function InfographicPage() {
                               className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-700 text-xl hover:bg-gray-600"
                               title={card.emoji ? "Changer l'icône" : "Aucune icône"}
                             >
-                              {card.emoji || "∅"}
+                              {card.emoji ? renderCardIcon(card, 22) : "∅"}
                             </button>
                             {showEmojiPicker === card.id && (
                               <div className="absolute top-full left-0 z-10 mt-1 grid grid-cols-4 sm:grid-cols-5 gap-1 rounded-lg border border-gray-600 bg-gray-800 p-2 shadow-xl">
@@ -5570,9 +5577,10 @@ export default function InfographicPage() {
             {/* ── CARDS (visible in all, cartes) — grid or free-positioning mode ── */}
             {(activeSequence === "all" || activeSequence === "cartes") &&
               cards.length > 0 && (() => {
-                const scaledLabel = `${Math.round(7 * textScale)}px`;
-                const scaledValue = `${Math.round(9 * textScale)}px`;
-                const scaledDesc = `${Math.round(6 * textScale)}px`;
+                const cardsK = (cardsTextScale || 100) / 100;
+                const scaledLabel = `${Math.round(7 * textScale * cardsK)}px`;
+                const scaledValue = `${Math.round(9 * textScale * cardsK)}px`;
+                const scaledDesc = `${Math.round(6 * textScale * cardsK)}px`;
                 const renderCardInner = (card: InfoCard) => {
                   // ── Compact ──
                   if (selectedCardStyle === "Compact") {
@@ -6342,11 +6350,25 @@ export default function InfographicPage() {
               </span>
               <input
                 type="range"
-                min="30"
-                max="100"
+                min="50"
+                max="200"
                 step="1"
                 value={cardsSize}
                 onChange={(e) => setCardsSize(parseInt(e.target.value))}
+                className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-pink-500 cursor-pointer mt-1"
+              />
+            </div>
+            <div>
+              <span className="text-[9px] text-gray-500 uppercase">
+                Taille texte {cardsTextScale}%
+              </span>
+              <input
+                type="range"
+                min="50"
+                max="200"
+                step="5"
+                value={cardsTextScale}
+                onChange={(e) => setCardsTextScale(parseInt(e.target.value))}
                 className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-pink-500 cursor-pointer mt-1"
               />
             </div>
