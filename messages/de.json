@@ -1598,5 +1598,14 @@
     "loadingTerms": "Nutzungsbedingungen werden geladen...",
     "unavailable": "Die Nutzungsbedingungen sind derzeit nicht verfügbar.",
     "loadError": "Die Nutzungsbedingungen konnten nicht geladen werden."
+  },
+  "assistant": {
+    "title": "Studiio Assistent",
+    "placeholder": "Stelle deine Frage...",
+    "send": "Senden",
+    "greeting": "Hallo! Ich bin der Studiio-Assistent. Wie kann ich dir heute helfen?",
+    "thinking": "Der Assistent denkt nach...",
+    "error": "Entschuldigung, ein Fehler ist aufgetreten. Versuche es erneut.",
+    "rate_limit": "Limit erreicht (20 Nachrichten/Stunde). Versuche es später erneut."
   }
 }

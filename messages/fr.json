@@ -1584,5 +1584,14 @@
     "loadingTerms": "Chargement des conditions d'utilisation...",
     "unavailable": "Les conditions d'utilisation ne sont pas disponibles pour le moment.",
     "loadError": "Impossible de charger les conditions d'utilisation."
+  },
+  "assistant": {
+    "title": "Assistant Studiio",
+    "placeholder": "Pose ta question...",
+    "send": "Envoyer",
+    "greeting": "Salut ! Je suis l'assistant Studiio. Comment puis-je t'aider aujourd'hui ?",
+    "thinking": "L'assistant réfléchit...",
+    "error": "Désolé, une erreur est survenue. Réessaie.",
+    "rate_limit": "Limite atteinte (20 messages/heure). Réessaie plus tard."
   }
 }

@@ -1578,5 +1578,14 @@
     "loadingTerms": "Loading terms of use...",
     "unavailable": "The terms of use are not currently available.",
     "loadError": "Unable to load the terms of use."
+  },
+  "assistant": {
+    "title": "Studiio Assistant",
+    "placeholder": "Ask your question...",
+    "send": "Send",
+    "greeting": "Hi! I'm the Studiio assistant. How can I help you today?",
+    "thinking": "The assistant is thinking...",
+    "error": "Sorry, an error occurred. Please try again.",
+    "rate_limit": "Rate limit reached (20 messages/hour). Try again later."
   }
 }
