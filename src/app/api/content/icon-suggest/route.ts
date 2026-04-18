@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 
-// POST /api/content/icon-suggest — suggest a single emoji for a card
-// Body: { title: string; description?: string }
-// Returns: { success: true, emoji: string } or { success: false, error: string }
+// POST /api/content/icon-suggest
+// Body:
+//   { title, description, mode: 'emoji' }                       → returns { emoji: string }
+//   { title, description, mode: 'svg', allowed: string[] }      → returns { iconName: string }
+// Defaults to emoji mode for backwards compatibility.
 export async function POST(req: NextRequest) {
   try {
     const session = await auth();
@@ -16,12 +18,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Anthropic API not configured' }, { status: 500 });
     }
 
-    const { title = '', description = '' } = await req.json();
+    const { title = '', description = '', mode = 'emoji', allowed = [] } = await req.json();
     if (!title.trim() && !description.trim()) {
       return NextResponse.json({ success: false, error: 'title or description required' }, { status: 400 });
     }
 
-    const prompt = `Suggère un emoji pertinent pour cette carte d'information. Titre: ${title}. Description: ${description}. Réponds UNIQUEMENT avec l'emoji, rien d'autre.`;
+    const isSvg = mode === 'svg' && Array.isArray(allowed) && allowed.length > 0;
+
+    const prompt = isSvg
+      ? `Suggère UN SEUL nom d'icône lucide-react pour cette carte. Titre: ${title}. Description: ${description}. Choisis UNIQUEMENT parmi cette liste: [${allowed.join(', ')}]. Réponds UNIQUEMENT avec le nom exact (ex: 'Dumbbell'), rien d'autre.`
+      : `Suggère un emoji pertinent pour cette carte d'information. Titre: ${title}. Description: ${description}. Réponds UNIQUEMENT avec l'emoji, rien d'autre.`;
 
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -32,7 +38,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 16,
+        max_tokens: 32,
         messages: [{ role: 'user', content: prompt }],
       }),
     });
@@ -42,11 +48,21 @@ export async function POST(req: NextRequest) {
     }
     const d = await r.json();
     const block = d.content?.find((c: any) => c.type === 'text');
-    const raw = (block?.text || '').trim();
-    // Take only the first emoji-like character (handles multi-codepoint ones via Array.from)
+    const raw = (block?.text || '').trim().replace(/^['"`]|['"`]$/g, '').trim();
+
+    if (isSvg) {
+      // Extract a candidate name (alphanumeric word) and snap to the allowed list
+      const match = raw.match(/[A-Za-z][A-Za-z0-9]*/);
+      const candidate = match ? match[0] : raw;
+      const exact = allowed.find((n: string) => n === candidate);
+      const ci = exact || allowed.find((n: string) => n.toLowerCase() === candidate.toLowerCase());
+      const iconName = ci || allowed[0] || 'Sparkles';
+      return NextResponse.json({ success: true, iconName });
+    }
+
+    // Emoji mode — take only the first emoji-like character
     const chars = Array.from(raw);
     const emoji = chars[0] || '✨';
-
     return NextResponse.json({ success: true, emoji });
   } catch (err: any) {
     console.error('[icon-suggest] error:', err?.message);
