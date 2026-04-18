@@ -3454,11 +3454,15 @@ export default function InfographicPage() {
                       <ColorWheel
                         color={customAccent}
                         onChange={(c) => {
+                          // Custom color pick ALWAYS updates the gradient pair,
+                          // mirroring how preset themes work. Previously gated
+                          // behind `autoGradient`, which caused a stale
+                          // gradientColor1 (e.g. stuck at black) while
+                          // customAccent changed — editor showed new accent
+                          // but composer exported with the stale gradient.
                           setCustomAccent(c);
-                          if (autoGradient) {
-                            setGradientColor1(c);
-                            setGradientColor2(getComplementary(c));
-                          }
+                          setGradientColor1(c);
+                          setGradientColor2(getComplementary(c));
                         }}
                         label="Couleur personnalisée"
                       />
