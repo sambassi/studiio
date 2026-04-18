@@ -44,6 +44,7 @@ import {
   Layers,
   Palette,
   Share2,
+  RotateCcw,
   // Card-icon library — explicit imports so the bundler keeps them all.
   // `import * as LucideIcons` was tree-shaken in production, leaving dynamic
   // lookups undefined and the raw icon name bleeding through as text.
@@ -3755,6 +3756,26 @@ export default function InfographicPage() {
                   className="w-full rounded bg-gray-800 hover:bg-gray-700 px-3 py-2 text-xs text-gray-300"
                 >
                   ↺ Réinitialiser les positions
+                </button>
+
+                {/* Full wipe: clear localStorage-persisted prefs + hard reload */}
+                <button
+                  onClick={() => {
+                    if (!confirm("Réinitialiser tous les paramètres ? Cette action supprime vos préférences locales (couleurs, polices, position, cartes sauvegardées).")) return;
+                    const keys = [
+                      'studiio_infographic_config',
+                      'studiio_branding',
+                      'studiio_publishing_settings',
+                      'studiio_chat_history',
+                      'studiio_chat_opened',
+                    ];
+                    keys.forEach((k) => localStorage.removeItem(k));
+                    window.location.reload();
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-red-900/30 hover:bg-red-900/50 border border-red-700/50 px-3 py-2 text-xs font-medium text-red-300 transition"
+                >
+                  <RotateCcw size={12} />
+                  Réinitialiser les préférences
                 </button>
               </>
             )}
