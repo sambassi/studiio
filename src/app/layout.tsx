@@ -4,9 +4,9 @@ import './globals.css'
 import Providers from './providers'
 import PWAInstallPrompt from '@/components/PWAInstallPrompt'
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
+const inter = Inter({ subsets: ['lati'], variable: '--font-inter' })
 const anton = Anton({ weight: '400', subsets: ['latin'], variable: '--font-anton' })
-const syne = Syne({ subsets: ['latin'], variable: '--font-syne' })
+const syne = Syne({ subsets: ['latin, variable: '--font-syne' })
 const bebasNeue = Bebas_Neue({ weight: '400', subsets: ['latin'], variable: '--font-bebas' })
 const poppins = Poppins({ weight: ['400', '600', '700', '800'], subsets: ['latin'], variable: '--font-poppins' })
 const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], variable: '--font-space' })
@@ -53,6 +53,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="Studiio" />
+                <meta name="google-site-verification" content="WWS9UuOsfGnzjnREf0RB1BXeH_b2B1mQIV1ehOod2to" />
       </head>
       <body className={`${inter.variable} ${anton.variable} ${syne.variable} ${bebasNeue.variable} ${poppins.variable} ${spaceGrotesk.variable} ${montserrat.variable} ${oswald.variable} ${playfairDisplay.variable} ${raleway.variable} ${robotoCondensed.variable} ${lora.variable} ${dancingScript.variable} ${permanentMarker.variable} font-sans bg-studiio-dark text-gray-100 antialiased`}>
         <Providers>{children}</Providers>
