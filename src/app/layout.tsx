@@ -4,7 +4,7 @@ import './globals.css'
 import Providers from './providers'
 import PWAInstallPrompt from '@/components/PWAInstallPrompt'
 
-const inter = Inter({ subsets: ['lati'], variable: '--font-inter' })
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 const anton = Anton({ weight: '400', subsets: ['latin'], variable: '--font-anton' })
 const syne = Syne({ subsets: ['latin'], variable: '--font-syne' })
 const bebasNeue = Bebas_Neue({ weight: '400', subsets: ['latin'], variable: '--font-bebas' })
@@ -21,8 +21,8 @@ const permanentMarker = Permanent_Marker({ weight: '400', subsets: ['latin'], va
 
 
 export const metadata: Metadata = {
-  title: 'Studiio - CrÃ©ez des vidÃ©os virales',
-  description: 'CrÃ©ez des vidÃ©os virales en quelques clics avec Studiio, la plateforme de crÃ©ation vidÃ©o IA.',
+  title: 'Studiio - Créez des vidéos virales',
+  description: 'Créez des vidéos virales en quelques clics avec Studiio, la plateforme de création vidéo IA.',
   manifest: '/manifest.json',
   themeColor: '#7C3AED',
   icons: {
@@ -34,8 +34,8 @@ export const metadata: Metadata = {
     apple: '/apple-icon.png',
   },
   openGraph: {
-    title: 'Studiio - CrÃ©ez des vidÃ©os virales',
-    description: 'Plateforme de crÃ©ation vidÃ©o IA',
+    title: 'Studiio - Créez des vidéos virales',
+    description: 'Plateforme de création vidéo IA',
     type: 'website',
   },
 }
@@ -53,7 +53,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="Studiio" />
-                <meta name="google-site-verification" content="WWS9UuOsfGnzjnREf0RB1BXeH_b2B1mQIV1ehOod2to" />
+        <meta name="google-site-verification" content="WWS9UuOsfGnzjnREf0RB1BXeH_b2B1mQIV1ehOod2to" />
       </head>
       <body className={`${inter.variable} ${anton.variable} ${syne.variable} ${bebasNeue.variable} ${poppins.variable} ${spaceGrotesk.variable} ${montserrat.variable} ${oswald.variable} ${playfairDisplay.variable} ${raleway.variable} ${robotoCondensed.variable} ${lora.variable} ${dancingScript.variable} ${permanentMarker.variable} font-sans bg-studiio-dark text-gray-100 antialiased`}>
         <Providers>{children}</Providers>
