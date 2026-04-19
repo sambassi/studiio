@@ -6,7 +6,7 @@ import PWAInstallPrompt from '@/components/PWAInstallPrompt'
 
 const inter = Inter({ subsets: ['lati'], variable: '--font-inter' })
 const anton = Anton({ weight: '400', subsets: ['latin'], variable: '--font-anton' })
-const syne = Syne({ subsets: ['latin, variable: '--font-syne' })
+const syne = Syne({ subsets: ['latin'], variable: '--font-syne' })
 const bebasNeue = Bebas_Neue({ weight: '400', subsets: ['latin'], variable: '--font-bebas' })
 const poppins = Poppins({ weight: ['400', '600', '700', '800'], subsets: ['latin'], variable: '--font-poppins' })
 const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], variable: '--font-space' })
@@ -21,8 +21,8 @@ const permanentMarker = Permanent_Marker({ weight: '400', subsets: ['latin'], va
 
 
 export const metadata: Metadata = {
-  title: 'Studiio - Créez des vidéos virales',
-  description: 'Créez des vidéos virales en quelques clics avec Studiio, la plateforme de création vidéo IA.',
+  title: 'Studiio - CrÃ©ez des vidÃ©os virales',
+  description: 'CrÃ©ez des vidÃ©os virales en quelques clics avec Studiio, la plateforme de crÃ©ation vidÃ©o IA.',
   manifest: '/manifest.json',
   themeColor: '#7C3AED',
   icons: {
@@ -34,8 +34,8 @@ export const metadata: Metadata = {
     apple: '/apple-icon.png',
   },
   openGraph: {
-    title: 'Studiio - Créez des vidéos virales',
-    description: 'Plateforme de création vidéo IA',
+    title: 'Studiio - CrÃ©ez des vidÃ©os virales',
+    description: 'Plateforme de crÃ©ation vidÃ©o IA',
     type: 'website',
   },
 }
