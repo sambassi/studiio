@@ -16,3 +16,37 @@ PROMPT_CLAUDE_CODE_OPTIMISATIONS.md
 PROMPT_REPRISE_VERSION_VALIDEE.md
 
 meta-app-review/
+
+# AI tools config folders (ignore personal dev environments)
+.adal/
+.agents/
+.codebuddy/
+.commandcode/
+.continue/
+.crush/
+.factory/
+.goose/
+.junie/
+.kilocode/
+.kiro/
+.kode/
+.mcpjam/
+.mux/
+.neovate/
+.openhands/
+.pi/
+.pochi/
+.qoder/
+.qwen/
+.roo/
+.trae/
+.windsurf/
+.zencoder/
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
+.claude/skills/stripe-best-practices/
+.claude/skills/stripe-projects/
+.claude/skills/upgrade-stripe/
+mockups/
+skills/
+skills-lock.json
