@@ -5986,7 +5986,11 @@ export default function InfographicPage() {
                   // (percentage of preview container).
                   const cardWidthPct = cardsSize / cols;
                   return (
-                    <>
+                    <div
+                      data-cards-grid
+                      className="absolute inset-0"
+                      style={{ pointerEvents: 'none' }}
+                    >
                       {visibleCards.map((card, i) => {
                         // Default position derived from grid index when unset
                         const defaultX = 25 + (i % cols) * 25;
@@ -6022,7 +6026,7 @@ export default function InfographicPage() {
                           </div>
                         );
                       })}
-                    </>
+                    </div>
                   );
                 }
 
