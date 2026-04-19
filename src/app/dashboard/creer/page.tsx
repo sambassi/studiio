@@ -6007,6 +6007,11 @@ export default function InfographicPage() {
                               transform: 'translate(-50%, -50%)',
                               width: `${cardWidthPct}%`,
                               touchAction: 'none',
+                              // Re-enable events on the card itself — the parent
+                              // wrapper sets pointerEvents:'none' so the preview
+                              // background stays double-clickable, but each card
+                              // must still receive drag/click events.
+                              pointerEvents: 'auto',
                             }}
                             onMouseDown={(e) => {
                               e.preventDefault();
