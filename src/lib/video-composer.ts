@@ -865,6 +865,8 @@ function drawCards(
   cards: CardData[], logoImg: HTMLImageElement | null, accent: string, _progress: number,
   design?: DesignOptions
 ) {
+  // eslint-disable-next-line no-console
+  console.log('[Composer] drawCards: snapshot in design?', !!design?.cardsSnapshot);
   const fontFamily = design?.font || 'sans-serif';
   const textScale = design?.textScale || 1.0;
   const cardStyle = design?.cardStyle || 'Full Width';
@@ -884,6 +886,8 @@ function drawCards(
     const snapH = snap.height * (snapW / snap.width);
     const snapX = ((design?.cardsPosition?.x ?? 50) / 100) * w - snapW / 2;
     const snapY = ((design?.cardsPosition?.y ?? 50) / 100) * h - snapH / 2;
+    // eslint-disable-next-line no-console
+    console.log('[Composer] Drawing cards from SNAPSHOT', snap.width, 'x', snap.height);
     ctx.drawImage(snap, snapX, snapY, snapW, snapH);
     return;  // short-circuit — don't draw manual cards
   }
@@ -1873,7 +1877,12 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     const drawSeq = (type: string, progress: number) => {
       switch (type) {
         case 'intro': drawIntro(ctx, width, height, posterImg, logoImg, title, subtitle, accentColor, progress, normalizedDesign); break;
-        case 'cards': drawCards(ctx, width, height, cards, logoImg, accentColor, progress, normalizedDesign); break;
+        case 'cards': {
+          // eslint-disable-next-line no-console
+          console.log('[Composer] About to call drawCards. Snapshot in design?', !!normalizedDesign?.cardsSnapshot, 'Snapshot in options?', !!(options as any)?.cardsSnapshot);
+          drawCards(ctx, width, height, cards, logoImg, accentColor, progress, normalizedDesign);
+          break;
+        }
         case 'video': drawVideoSeq(ctx, width, height, videoEl, logoImg, progress, normalizedDesign, rushTransform); break;
         case 'cta': drawCTA(ctx, width, height, accentColor, ctaText, ctaSubText, salesPhrase, watermarkText, logoImg, progress, normalizedDesign); break;
       }
