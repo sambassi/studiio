@@ -2874,6 +2874,8 @@ export default function InfographicPage() {
             } catch (err) {
               console.warn('[Export] Cards snapshot failed, composer will use canvas fallback:', err);
             }
+            // eslint-disable-next-line no-console
+            console.log('[Export PRE-COMPOSE site=Calendar] cardsSnapshot truthy?', !!cardsSnapshot, 'value:', cardsSnapshot);
             const { url: composedUrl, thumbnailUrl: composedThumbUrl, composerVersion: composedVersion } = await composeAndUpload({
               width: isReel ? 1080 : 1920,
               height: isReel ? 1920 : 1080,
@@ -3142,6 +3144,8 @@ export default function InfographicPage() {
 
           // Composer le montage vidéo final puis télécharger en MP4
           setExportProgress(50);
+          // eslint-disable-next-line no-console
+          console.log('[Export PRE-COMPOSE site=Bureau] cardsSnapshot truthy?', !!cardsSnapshot, 'value:', cardsSnapshot);
           const composedResult = await composeAndUpload({
             width: isReel ? 1080 : 1920,
             height: isReel ? 1920 : 1080,
