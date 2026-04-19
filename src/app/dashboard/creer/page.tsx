@@ -2865,11 +2865,17 @@ export default function InfographicPage() {
               const cardsEl = document.querySelector('[data-cards-grid]') as HTMLElement | null;
               if (cardsEl && exportedSequences.cartes && bCards.length > 0) {
                 const html2canvas = (await import('html2canvas')).default;
-                const canvas = await html2canvas(cardsEl, { backgroundColor: null, scale: 1080 / cardsEl.offsetWidth, logging: false });
+                // Scale the capture so 1 DOM px = 1 video-canvas px. The
+                // snapshot's intrinsic size then matches the cards' target
+                // render size, and the composer can blit it at natural size.
+                const videoW = isReel ? 1080 : 1920;
+                const previewW = previewRef.current?.offsetWidth || (isReel ? 320 : 512);
+                const scale = videoW / previewW;
+                const canvas = await html2canvas(cardsEl, { backgroundColor: null, scale, logging: false });
                 cardsSnapshot = new Image();
                 cardsSnapshot.src = canvas.toDataURL('image/png');
                 await new Promise<void>((r) => { cardsSnapshot!.onload = () => r(); });
-                console.log('[Export] Cards snapshot OK:', cardsSnapshot.width, 'x', cardsSnapshot.height);
+                console.log('[Export] Cards snapshot OK:', cardsSnapshot.width, 'x', cardsSnapshot.height, '(scale', scale.toFixed(3), 'previewW', previewW + ')');
               }
             } catch (err) {
               console.warn('[Export] Cards snapshot failed, composer will use canvas fallback:', err);
@@ -3132,11 +3138,17 @@ export default function InfographicPage() {
             const cardsEl = document.querySelector('[data-cards-grid]') as HTMLElement | null;
             if (cardsEl && exportedSequences.cartes && cards.length > 0) {
               const html2canvas = (await import('html2canvas')).default;
-              const canvas = await html2canvas(cardsEl, { backgroundColor: null, scale: 1080 / cardsEl.offsetWidth, logging: false });
+              // Scale the capture so 1 DOM px = 1 video-canvas px. The
+              // snapshot's intrinsic size then matches the cards' target
+              // render size, and the composer can blit it at natural size.
+              const videoW = isReel ? 1080 : 1920;
+              const previewW = previewRef.current?.offsetWidth || (isReel ? 320 : 512);
+              const scale = videoW / previewW;
+              const canvas = await html2canvas(cardsEl, { backgroundColor: null, scale, logging: false });
               cardsSnapshot = new Image();
               cardsSnapshot.src = canvas.toDataURL('image/png');
               await new Promise<void>((r) => { cardsSnapshot!.onload = () => r(); });
-              console.log('[Export] Cards snapshot OK:', cardsSnapshot.width, 'x', cardsSnapshot.height);
+              console.log('[Export] Cards snapshot OK:', cardsSnapshot.width, 'x', cardsSnapshot.height, '(scale', scale.toFixed(3), 'previewW', previewW + ')');
             }
           } catch (err) {
             console.warn('[Export] Cards snapshot failed, composer will use canvas fallback:', err);
