@@ -4,7 +4,7 @@
  * Audio elements handle MP3/OGG/WAV decoding natively (no OfflineAudioContext).
  * Outputs MP4 if supported, otherwise WebM.
  */
-const COMPOSER_VERSION = 'v20-icon-diagnostic-2026-04-18';
+const COMPOSER_VERSION = 'v22-cards-snapshot-2026-04-19';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -88,6 +88,11 @@ export interface DesignOptions {
   cardsPosition?: { x?: number; y?: number };
   /** Cards container width in % (default: 92) */
   cardsSize?: number;
+  /** Pre-rendered DOM snapshot of the cards grid (via html2canvas in the
+   *  editor). When present, drawCards short-circuits and blits this image
+   *  directly for pixel-perfect WYSIWYG parity. Falls back to the manual
+   *  canvas rendering pipeline when absent. */
+  cardsSnapshot?: HTMLImageElement;
   /** CTA main text override from design (e.g. 'AFROBOOST') */
   ctaMainText?: string;
   /** CTA sub text override from design (e.g. "CHAT POUR PLUS D'INFOS") */
@@ -869,6 +874,19 @@ function drawCards(
   // then the seqGradient overlay on top. Matches editor's bg-gradient-to-br.
   paintSeqBackdrop(ctx, w, h, 'cards', design, accent);
   paintSeqGradient(ctx, w, h, 'cards', design);
+
+  // Snapshot override : if a pre-rendered cards PNG is provided, draw
+  // it directly for pixel-perfect parity with the editor. Falls back
+  // to the manual canvas drawing below if the snapshot is missing.
+  if (design?.cardsSnapshot) {
+    const snap = design.cardsSnapshot;
+    const snapW = Math.round(w * ((design?.cardsSize || 92) / 100));
+    const snapH = snap.height * (snapW / snap.width);
+    const snapX = ((design?.cardsPosition?.x ?? 50) / 100) * w - snapW / 2;
+    const snapY = ((design?.cardsPosition?.y ?? 50) / 100) * h - snapH / 2;
+    ctx.drawImage(snap, snapX, snapY, snapW, snapH);
+    return;  // short-circuit — don't draw manual cards
+  }
 
   // Card sizes from design or defaults
   const containerW = Math.round(w * ((design?.cardsSize || 92) / 100));

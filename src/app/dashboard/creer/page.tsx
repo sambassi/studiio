@@ -2857,6 +2857,23 @@ export default function InfographicPage() {
           try {
             console.log('[Export→Calendar] Starting montage composition...', { batchIdx: b, posterUrl, rushUrl, isReel, format, title: bTitle, cardsCount: bCards.length, musicUrl: audioMusicUrl?.substring(0, 60) || 'NONE', voiceUrl: audioVoiceUrl?.substring(0, 60) || 'NONE', musicVolume: audioMusicVolume, voiceVolume: audioVoiceVolume });
             setExportProgress(Math.round(((b + 0.3) / total) * 100));
+            // Snapshot the live editor cards grid for WYSIWYG parity. Falls
+            // back silently — the composer's manual canvas pipeline still
+            // runs if cardsSnapshot is absent.
+            let cardsSnapshot: HTMLImageElement | undefined;
+            try {
+              const cardsEl = document.querySelector('[data-cards-grid]') as HTMLElement | null;
+              if (cardsEl && exportedSequences.cartes && bCards.length > 0) {
+                const html2canvas = (await import('html2canvas')).default;
+                const canvas = await html2canvas(cardsEl, { backgroundColor: null, scale: 1080 / cardsEl.offsetWidth, logging: false });
+                cardsSnapshot = new Image();
+                cardsSnapshot.src = canvas.toDataURL('image/png');
+                await new Promise<void>((r) => { cardsSnapshot!.onload = () => r(); });
+                console.log('[Export] Cards snapshot OK:', cardsSnapshot.width, 'x', cardsSnapshot.height);
+              }
+            } catch (err) {
+              console.warn('[Export] Cards snapshot failed, composer will use canvas fallback:', err);
+            }
             const { url: composedUrl, thumbnailUrl: composedThumbUrl, composerVersion: composedVersion } = await composeAndUpload({
               width: isReel ? 1080 : 1920,
               height: isReel ? 1920 : 1080,
@@ -2896,6 +2913,7 @@ export default function InfographicPage() {
                 ctaSubTextDesign: ctaSubText || "CHAT POUR PLUS D'INFOS",
                 noColorBg, noColorSequences,
                 gradientColor1, gradientColor2, gradientOpacity, seqGradients,
+                cardsSnapshot,
                 logoPosition: getActiveLogoPos(),
                 logoPositions, cardsSize,
                 logoScale, logoSequences,
@@ -3104,6 +3122,24 @@ export default function InfographicPage() {
           const exportPhoto = pexelsPhotos.length > 0 ? pexelsPhotos[0] : null;
           const exportPosterUrl = exportPhoto?.url || null;
 
+          // Snapshot the live editor cards grid for WYSIWYG parity. Falls
+          // back silently — the composer's manual canvas pipeline still
+          // runs if cardsSnapshot is absent.
+          let cardsSnapshot: HTMLImageElement | undefined;
+          try {
+            const cardsEl = document.querySelector('[data-cards-grid]') as HTMLElement | null;
+            if (cardsEl && exportedSequences.cartes && cards.length > 0) {
+              const html2canvas = (await import('html2canvas')).default;
+              const canvas = await html2canvas(cardsEl, { backgroundColor: null, scale: 1080 / cardsEl.offsetWidth, logging: false });
+              cardsSnapshot = new Image();
+              cardsSnapshot.src = canvas.toDataURL('image/png');
+              await new Promise<void>((r) => { cardsSnapshot!.onload = () => r(); });
+              console.log('[Export] Cards snapshot OK:', cardsSnapshot.width, 'x', cardsSnapshot.height);
+            }
+          } catch (err) {
+            console.warn('[Export] Cards snapshot failed, composer will use canvas fallback:', err);
+          }
+
           // Composer le montage vidéo final puis télécharger en MP4
           setExportProgress(50);
           const composedResult = await composeAndUpload({
@@ -3148,6 +3184,7 @@ export default function InfographicPage() {
               gradientColor1: gradientColor1 || undefined,
               gradientColor2: gradientColor2 || undefined,
               gradientOpacity: gradientOpacity ?? undefined,
+              cardsSnapshot,
               ctaSubColor: ctaSubColor || undefined,
               ctaColor: ctaColor || undefined,
               textScale: textScale || undefined,
