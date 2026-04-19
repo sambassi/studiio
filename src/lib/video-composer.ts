@@ -93,6 +93,12 @@ export interface DesignOptions {
    *  directly for pixel-perfect WYSIWYG parity. Falls back to the manual
    *  canvas rendering pipeline when absent. */
   cardsSnapshot?: HTMLImageElement;
+  /** Cards grid bounding rect relative to the editor preview, expressed
+   *  in percent (0-100) of the preview container. When present, the
+   *  composer uses this to position the snapshot WYSIWYG instead of
+   *  centering on cardsPosition (which assumes the grid is centered and
+   *  clips the top when the snapshot is tall). */
+  cardsSnapshotRect?: { x: number; y: number; width: number; height: number };
   /** CTA main text override from design (e.g. 'AFROBOOST') */
   ctaMainText?: string;
   /** CTA sub text override from design (e.g. "CHAT POUR PLUS D'INFOS") */
@@ -888,6 +894,21 @@ function drawCards(
   // We draw at natural bitmap size and just position via cardsPosition.
   if (design?.cardsSnapshot) {
     const snap = design.cardsSnapshot;
+    // WYSIWYG branch: when the editor measured the cards grid rect relative
+    // to the preview and forwarded it, use those exact bounds. This avoids
+    // the top-clipping bug where a tall snapshot centered on cardsPosition.y
+    // gives a negative snapY.
+    if (design.cardsSnapshotRect) {
+      const rect = design.cardsSnapshotRect;
+      const drawX = (rect.x / 100) * w;
+      const drawY = (rect.y / 100) * h;
+      const drawW = (rect.width / 100) * w;
+      const drawH = (rect.height / 100) * h;
+      // eslint-disable-next-line no-console
+      console.log('[Composer] Drawing cards from SNAPSHOT (rect)', snap.width, 'x', snap.height, '→', drawX, drawY, drawW, drawH);
+      ctx.drawImage(snap, drawX, drawY, drawW, drawH);
+      return;
+    }
     const snapW = snap.width;
     const snapH = snap.height;
     const snapX = ((design?.cardsPosition?.x ?? 50) / 100) * w - snapW / 2;

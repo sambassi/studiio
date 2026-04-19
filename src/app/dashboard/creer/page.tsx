@@ -2861,6 +2861,7 @@ export default function InfographicPage() {
             // back silently — the composer's manual canvas pipeline still
             // runs if cardsSnapshot is absent.
             let cardsSnapshot: HTMLImageElement | undefined;
+            let cardsSnapshotRect: { x: number; y: number; width: number; height: number } | undefined;
             try {
               const cardsEl = document.querySelector('[data-cards-grid]') as HTMLElement | null;
               if (cardsEl && exportedSequences.cartes && bCards.length > 0) {
@@ -2875,7 +2876,17 @@ export default function InfographicPage() {
                 cardsSnapshot = new Image();
                 cardsSnapshot.src = canvas.toDataURL('image/png');
                 await new Promise<void>((r) => { cardsSnapshot!.onload = () => r(); });
-                console.log('[Export] Cards snapshot OK:', cardsSnapshot.width, 'x', cardsSnapshot.height, '(scale', scale.toFixed(3), 'previewW', previewW + ')');
+                if (previewRef.current) {
+                  const pRect = previewRef.current.getBoundingClientRect();
+                  const cRect = cardsEl.getBoundingClientRect();
+                  cardsSnapshotRect = {
+                    x: ((cRect.left - pRect.left) / pRect.width) * 100,
+                    y: ((cRect.top - pRect.top) / pRect.height) * 100,
+                    width: (cRect.width / pRect.width) * 100,
+                    height: (cRect.height / pRect.height) * 100,
+                  };
+                }
+                console.log('[Export] Cards snapshot OK:', cardsSnapshot.width, 'x', cardsSnapshot.height, '(scale', scale.toFixed(3), 'previewW', previewW + ') rect:', cardsSnapshotRect);
               }
             } catch (err) {
               console.warn('[Export] Cards snapshot failed, composer will use canvas fallback:', err);
@@ -2922,6 +2933,7 @@ export default function InfographicPage() {
                 noColorBg, noColorSequences,
                 gradientColor1, gradientColor2, gradientOpacity, seqGradients,
                 cardsSnapshot,
+                cardsSnapshotRect,
                 logoPosition: getActiveLogoPos(),
                 logoPositions, cardsSize,
                 logoScale, logoSequences,
@@ -3134,6 +3146,7 @@ export default function InfographicPage() {
           // back silently — the composer's manual canvas pipeline still
           // runs if cardsSnapshot is absent.
           let cardsSnapshot: HTMLImageElement | undefined;
+          let cardsSnapshotRect: { x: number; y: number; width: number; height: number } | undefined;
           try {
             const cardsEl = document.querySelector('[data-cards-grid]') as HTMLElement | null;
             if (cardsEl && exportedSequences.cartes && cards.length > 0) {
@@ -3148,7 +3161,17 @@ export default function InfographicPage() {
               cardsSnapshot = new Image();
               cardsSnapshot.src = canvas.toDataURL('image/png');
               await new Promise<void>((r) => { cardsSnapshot!.onload = () => r(); });
-              console.log('[Export] Cards snapshot OK:', cardsSnapshot.width, 'x', cardsSnapshot.height, '(scale', scale.toFixed(3), 'previewW', previewW + ')');
+              if (previewRef.current) {
+                const pRect = previewRef.current.getBoundingClientRect();
+                const cRect = cardsEl.getBoundingClientRect();
+                cardsSnapshotRect = {
+                  x: ((cRect.left - pRect.left) / pRect.width) * 100,
+                  y: ((cRect.top - pRect.top) / pRect.height) * 100,
+                  width: (cRect.width / pRect.width) * 100,
+                  height: (cRect.height / pRect.height) * 100,
+                };
+              }
+              console.log('[Export] Cards snapshot OK:', cardsSnapshot.width, 'x', cardsSnapshot.height, '(scale', scale.toFixed(3), 'previewW', previewW + ') rect:', cardsSnapshotRect);
             }
           } catch (err) {
             console.warn('[Export] Cards snapshot failed, composer will use canvas fallback:', err);
@@ -3201,6 +3224,7 @@ export default function InfographicPage() {
               gradientColor2: gradientColor2 || undefined,
               gradientOpacity: gradientOpacity ?? undefined,
               cardsSnapshot,
+              cardsSnapshotRect,
               ctaSubColor: ctaSubColor || undefined,
               ctaColor: ctaColor || undefined,
               textScale: textScale || undefined,
