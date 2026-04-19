@@ -4,7 +4,7 @@ import { useSession } from 'next-auth/react';
 import { StatsCard } from '@/components/dashboard/StatsCard';
 import { CreditsDisplay } from '@/components/billing/CreditsDisplay';
 import { RecentVideos } from '@/components/dashboard/RecentVideos';
-import { Video, Film, Zap, Eye } from 'lucide-react';
+import { Video, Film, Zap, Eye, Sparkles, Calendar, Music, Library, Share2, Settings, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import Link from 'next/link';
 import { useTranslations } from '@/i18n/client';
@@ -51,6 +51,43 @@ export default function DashboardPage() {
           changePositive={true}
         />
       </div>
+
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-xl font-bold text-white">{t('directAccess.title')}</h2>
+          <p className="text-sm text-gray-400">{t('directAccess.subtitle')}</p>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          {[
+            { href: '/dashboard/creer', icon: Sparkles, color: '#F59E0B', label: t('directAccess.create'), desc: t('directAccess.createDesc') },
+            { href: '/dashboard/calendar', icon: Calendar, color: '#3B82F6', label: t('directAccess.calendar'), desc: t('directAccess.calendarDesc') },
+            { href: '/dashboard/audio-studio', icon: Music, color: '#EC4899', label: t('directAccess.audioStudio'), desc: t('directAccess.audioStudioDesc') },
+            { href: '/dashboard/library', icon: Library, color: '#8B5CF6', label: t('directAccess.library'), desc: t('directAccess.libraryDesc') },
+            { href: '/dashboard/social', icon: Share2, color: '#06B6D4', label: t('directAccess.social'), desc: t('directAccess.socialDesc') },
+            { href: '/dashboard/settings', icon: Settings, color: '#6B7280', label: t('directAccess.settings'), desc: t('directAccess.settingsDesc') },
+          ].map(({ href, icon: Icon, color, label, desc }) => (
+            <Link
+              key={href}
+              href={href}
+              className="group card-base p-4 hover:bg-white/5 transition-colors flex flex-col gap-3 min-h-[120px]"
+            >
+              <div className="flex items-center justify-between">
+                <div
+                  className="w-10 h-10 rounded-lg flex items-center justify-center"
+                  style={{ backgroundColor: `${color}20` }}
+                >
+                  <Icon className="w-5 h-5" style={{ color }} />
+                </div>
+                <ArrowRight className="w-4 h-4 text-gray-500 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+              </div>
+              <div>
+                <div className="font-semibold text-white text-sm">{label}</div>
+                <div className="text-xs text-gray-400 mt-0.5">{desc}</div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </section>
 
       <div className="grid md:grid-cols-3 gap-6">
         <div className="md:col-span-2">
