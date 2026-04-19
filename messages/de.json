@@ -419,7 +419,23 @@
     "quickActions": "Schnellaktionen",
     "createVideo": "Video erstellen",
     "connectSocial": "Soziale Netzwerke verbinden",
-    "subtitle": "Sie haben eine neue Support-Nachricht"
+    "subtitle": "Sie haben eine neue Support-Nachricht",
+    "directAccess": {
+      "title": "Direktzugriff",
+      "subtitle": "Schneller Zugang zu Ihren meistgenutzten Tools",
+      "create": "Erstellen",
+      "createDesc": "Neue Infografik oder Video",
+      "calendar": "Kalender",
+      "calendarDesc": "Beiträge planen",
+      "audioStudio": "Audio-Studio",
+      "audioStudioDesc": "Musik und Stimme hinzufügen",
+      "library": "Bibliothek",
+      "libraryDesc": "Ihre Medien und Rohmaterial",
+      "social": "Soziale Netzwerke",
+      "socialDesc": "Konten verbinden",
+      "settings": "Einstellungen",
+      "settingsDesc": "Konto und Präferenzen"
+    }
   },
   "creator": {
     "title": "Video erstellen",

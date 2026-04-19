@@ -419,7 +419,23 @@
     },
     "quickActions": "Quick actions",
     "createVideo": "Create a video",
-    "connectSocial": "Connect social networks"
+    "connectSocial": "Connect social networks",
+    "directAccess": {
+      "title": "Direct access",
+      "subtitle": "Quickly jump to your most-used tools",
+      "create": "Create",
+      "createDesc": "New infographic or video",
+      "calendar": "Calendar",
+      "calendarDesc": "Schedule your posts",
+      "audioStudio": "Audio Studio",
+      "audioStudioDesc": "Add music and voice",
+      "library": "Library",
+      "libraryDesc": "Your media and rushes",
+      "social": "Social networks",
+      "socialDesc": "Connect your accounts",
+      "settings": "Settings",
+      "settingsDesc": "Account and preferences"
+    }
   },
   "creator": {
     "title": "Create a video",

@@ -419,7 +419,23 @@
     },
     "quickActions": "Actions rapides",
     "createVideo": "Créer une vidéo",
-    "connectSocial": "Connecter réseaux sociaux"
+    "connectSocial": "Connecter réseaux sociaux",
+    "directAccess": {
+      "title": "Accès direct",
+      "subtitle": "Rejoignez rapidement les outils les plus utilisés",
+      "create": "Créer",
+      "createDesc": "Nouvelle infographie ou vidéo",
+      "calendar": "Calendrier",
+      "calendarDesc": "Planifiez vos publications",
+      "audioStudio": "Studio Son",
+      "audioStudioDesc": "Ajoutez musique et voix",
+      "library": "Bibliothèque",
+      "libraryDesc": "Vos médias et rushes",
+      "social": "Réseaux sociaux",
+      "socialDesc": "Connectez vos comptes",
+      "settings": "Paramètres",
+      "settingsDesc": "Compte et préférences"
+    }
   },
   "creator": {
     "title": "Créer une vidéo",
