@@ -4,7 +4,7 @@
  * Audio elements handle MP3/OGG/WAV decoding natively (no OfflineAudioContext).
  * Outputs MP4 if supported, otherwise WebM.
  */
-const COMPOSER_VERSION = 'v22-cards-snapshot-2026-04-19';
+const COMPOSER_VERSION = 'v23-snapshot-parity-2026-04-19';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -880,14 +880,20 @@ function drawCards(
   // Snapshot override : if a pre-rendered cards PNG is provided, draw
   // it directly for pixel-perfect parity with the editor. Falls back
   // to the manual canvas drawing below if the snapshot is missing.
+  //
+  // The editor captures html2canvas at scale `videoW / previewEl.offsetWidth`,
+  // so snap.width / snap.height already represent the exact pixel size the
+  // cards occupy on the video canvas (for GRID: cardsSize% × videoW; for
+  // FREE mode where the wrapper is `absolute inset-0`: full videoW/videoH).
+  // We draw at natural bitmap size and just position via cardsPosition.
   if (design?.cardsSnapshot) {
     const snap = design.cardsSnapshot;
-    const snapW = Math.round(w * ((design?.cardsSize || 92) / 100));
-    const snapH = snap.height * (snapW / snap.width);
+    const snapW = snap.width;
+    const snapH = snap.height;
     const snapX = ((design?.cardsPosition?.x ?? 50) / 100) * w - snapW / 2;
     const snapY = ((design?.cardsPosition?.y ?? 50) / 100) * h - snapH / 2;
     // eslint-disable-next-line no-console
-    console.log('[Composer] Drawing cards from SNAPSHOT', snap.width, 'x', snap.height);
+    console.log('[Composer] Drawing cards from SNAPSHOT', snapW, 'x', snapH, 'at', Math.round(snapX), Math.round(snapY));
     ctx.drawImage(snap, snapX, snapY, snapW, snapH);
     return;  // short-circuit — don't draw manual cards
   }
