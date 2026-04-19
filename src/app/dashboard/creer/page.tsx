@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   Plus,
@@ -1844,15 +1845,35 @@ export default function InfographicPage() {
   const [activeRailTab, setActiveRailTab] = useState<RailTab>(null);
   const [zonesOpen, setZonesOpen] = useState(false);
   const [agentIAOpen, setAgentIAOpen] = useState(false);
+  const zonesAnchorRef = useRef<HTMLDivElement>(null);
+  const [zonesMenuPos, setZonesMenuPos] = useState<{ top: number; right: number } | null>(null);
 
   useEffect(() => {
-    if (!zonesOpen) return;
+    if (!zonesOpen) {
+      setZonesMenuPos(null);
+      return;
+    }
+    // The toolbar has overflow-x-auto (which also clips Y), so we portal the
+    // menu to document.body and position it with fixed coords from the anchor.
+    const place = () => {
+      const el = zonesAnchorRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      setZonesMenuPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
+    };
+    place();
     const onDown = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
       if (!target?.closest('[data-zones-menu]')) setZonesOpen(false);
     };
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
     document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+      document.removeEventListener('mousedown', onDown);
+    };
   }, [zonesOpen]);
 
   // ── B3: Contextual toolbar — selected element in the preview ──
@@ -3399,7 +3420,7 @@ export default function InfographicPage() {
             <span className="hidden sm:inline text-xs font-medium text-gray-300">{label}</span>
           </button>
         ))}
-        <div className="relative" data-zones-menu>
+        <div className="relative" data-zones-menu ref={zonesAnchorRef}>
           <button
             onClick={() => setZonesOpen((v) => !v)}
             className={`group flex items-center gap-2 rounded-lg px-3 py-2 transition-all ${
@@ -3420,21 +3441,27 @@ export default function InfographicPage() {
             </span>
             <span className="hidden sm:inline text-xs font-medium text-gray-300">Zone</span>
           </button>
-          {zonesOpen && (
-            <div className="absolute top-full right-0 mt-2 z-50 flex items-center gap-1.5 rounded-xl bg-gray-900/95 backdrop-blur border border-gray-700/50 px-3 py-2 shadow-2xl">
-              {Object.entries(PLATFORM_SAFE_ZONES).map(([key, zone]) => (
-                <PlatformIcon
-                  key={key}
-                  platform={zone.platform}
-                  isActive={safeZonePlatform === key}
-                  size="sm"
-                  onClick={() =>
-                    setSafeZonePlatform(safeZonePlatform === key ? null : key)
-                  }
-                />
-              ))}
-            </div>
-          )}
+          {zonesOpen && zonesMenuPos && typeof document !== 'undefined' &&
+            createPortal(
+              <div
+                data-zones-menu
+                className="fixed z-[100] flex items-center gap-1.5 rounded-xl bg-gray-900/95 backdrop-blur border border-gray-700/50 px-3 py-2 shadow-2xl"
+                style={{ top: zonesMenuPos.top, right: zonesMenuPos.right }}
+              >
+                {Object.entries(PLATFORM_SAFE_ZONES).map(([key, zone]) => (
+                  <PlatformIcon
+                    key={key}
+                    platform={zone.platform}
+                    isActive={safeZonePlatform === key}
+                    size="sm"
+                    onClick={() =>
+                      setSafeZonePlatform(safeZonePlatform === key ? null : key)
+                    }
+                  />
+                ))}
+              </div>,
+              document.body,
+            )}
         </div>
         {agentIAEnabled && (
           <>
@@ -3711,11 +3738,23 @@ export default function InfographicPage() {
                 </p>
                 <div className="flex gap-2">
                   <label className="flex-1 flex items-center justify-center gap-2 rounded border border-dashed border-gray-600 px-3 py-4 text-xs text-gray-400 cursor-pointer hover:border-purple-500 hover:text-white transition">
-                    <Video size={14} /> Téléverser
+                    {isUploadingVideo ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin text-purple-400" />
+                        <span className="text-purple-300">
+                          Upload {videoUploadProgress > 0 ? `${videoUploadProgress}%` : 'en cours...'}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <Video size={14} /> Téléverser
+                      </>
+                    )}
                     <input
                       type="file"
                       accept="video/*"
                       multiple
+                      disabled={isUploadingVideo}
                       className="hidden"
                       onChange={handleVideoUpload}
                     />
@@ -3727,6 +3766,14 @@ export default function InfographicPage() {
                     <Film size={14} /> Médiathèque
                   </button>
                 </div>
+                {videoUploadProgress > 0 && videoUploadProgress < 100 && (
+                  <div className="w-full h-2 bg-gray-800 rounded overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-200"
+                      style={{ width: `${videoUploadProgress}%` }}
+                    />
+                  </div>
+                )}
                 {rushUrl && (
                   <div className="rounded border border-gray-700 bg-gray-800 p-2 text-xs text-gray-300">
                     {rushFileName || 'Rush chargé.'}
