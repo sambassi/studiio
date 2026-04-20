@@ -832,12 +832,13 @@ function CardsRailPanel({
 }
 
 interface PexelsPhoto {
-  id: number;
+  id: string | number;
   url: string;
   medium: string;
   small: string;
   photographer: string;
   alt: string;
+  source?: 'pexels' | 'unsplash';
 }
 
 type Format = "9:16" | "16:9";
@@ -1373,10 +1374,18 @@ export default function InfographicPage() {
 
   // ── Pexels Photos ───────────────────────────────────────────
   const [pexelsPhotos, setPexelsPhotos] = useState<PexelsPhoto[]>([]);
-  const [unsplashPhotos, setUnsplashPhotos] = useState<PexelsPhoto[]>([]);
   const [pexelsLoading, setPexelsLoading] = useState(false);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
   const [photoSearchQuery, setPhotoSearchQuery] = useState("");
+  const [imageSource, setImageSource] = useState<"pexels" | "unsplash">(() => {
+    if (typeof window === "undefined") return "pexels";
+    const saved = window.localStorage.getItem("imageSearchSource");
+    return saved === "unsplash" ? "unsplash" : "pexels";
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("imageSearchSource", imageSource);
+  }, [imageSource]);
 
   // ── Sequence Durations ──────────────────────────────────────
   const [introDuration, setIntroDuration] = useState(4);
@@ -1969,17 +1978,18 @@ export default function InfographicPage() {
 
   const pexelsPageRef = useRef(1);
   const fetchPexelsPhotos = useCallback(
-    async (query: string, newPage?: boolean) => {
+    async (query: string, newPage?: boolean, sourceOverride?: "pexels" | "unsplash") => {
       if (!query.trim()) return;
       setPexelsLoading(true);
       // Incrémente la page pour proposer de nouvelles photos à chaque clic
       const page = newPage ? pexelsPageRef.current + 1 : 1;
       pexelsPageRef.current = page;
       setPexelsPage(page);
+      const source = sourceOverride || imageSource;
       try {
         const count = Math.max(batchCount * 2, 6);
         const res = await fetch(
-          `/api/pexels?query=${encodeURIComponent(query)}&count=${count}&page=${page}`,
+          `/api/pexels?query=${encodeURIComponent(query)}&count=${count}&page=${page}&source=${source}`,
         );
         const data = await res.json();
         if (data.success && data.photos && data.photos.length > 0) {
@@ -1990,31 +2000,23 @@ export default function InfographicPage() {
           pexelsPageRef.current = 1;
           setPexelsPage(1);
           const res2 = await fetch(
-            `/api/pexels?query=${encodeURIComponent(query)}&count=${count}&page=1`,
+            `/api/pexels?query=${encodeURIComponent(query)}&count=${count}&page=1&source=${source}`,
           );
           const data2 = await res2.json();
           if (data2.success && data2.photos) {
             setPexelsPhotos(data2.photos);
             setSelectedPhotoIndex(0);
           }
+        } else {
+          setPexelsPhotos([]);
         }
       } catch {
-        console.error("Pexels fetch error");
+        console.error("Image search error");
       } finally {
         setPexelsLoading(false);
       }
-      // Also fetch from Unsplash (best-effort, silent fail)
-      try {
-        const uRes = await fetch(`/api/unsplash?query=${encodeURIComponent(query)}&count=6`);
-        const uData = await uRes.json();
-        if (uData.success && uData.configured && uData.photos?.length > 0) {
-          setUnsplashPhotos(uData.photos);
-        } else {
-          setUnsplashPhotos([]);
-        }
-      } catch { setUnsplashPhotos([]); }
     },
-    [batchCount],
+    [batchCount, imageSource],
   );
 
   // ── Generate content (AI or local) ──────────────────────────
@@ -4149,6 +4151,35 @@ export default function InfographicPage() {
                     )}
                   </button>
                 </div>
+                {/* Source toggle — Pexels | Unsplash */}
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-[10px] uppercase tracking-wider text-gray-500">Source</span>
+                  <div className="inline-flex rounded-full border border-white/10 bg-white/5 p-0.5 backdrop-blur">
+                    {(["pexels", "unsplash"] as const).map((src) => (
+                      <button
+                        key={src}
+                        onClick={() => {
+                          if (imageSource === src) return;
+                          setImageSource(src);
+                          const query =
+                            photoSearchQuery.trim() ||
+                            (contentTheme === "personnalise" ? customTopic : "") ||
+                            CONTENT_THEMES.find((t) => t.id === contentTheme)?.pexelsQuery ||
+                            "fitness";
+                          pexelsPageRef.current = 0;
+                          fetchPexelsPhotos(query, true, src);
+                        }}
+                        className={`rounded-full px-3 py-1 text-[11px] font-medium capitalize transition ${
+                          imageSource === src
+                            ? "bg-gradient-to-r from-purple-600 to-pink-500 text-white shadow"
+                            : "text-gray-400 hover:text-white"
+                        }`}
+                      >
+                        {src}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div className="grid grid-cols-5 gap-1.5">
                   {pexelsPhotos.map((photo, i) => (
                     <button
@@ -4208,26 +4239,6 @@ export default function InfographicPage() {
                   {selectedPhotoIndex < 0 ? 'Sans photo (actif) — Fond seul' : 'Sans photo — Utiliser seulement le fond'}
                 </button>
 
-                {/* Unsplash results (if configured) */}
-                {unsplashPhotos.length > 0 && (
-                  <div className="mt-3">
-                    <div className="text-[9px] text-gray-500 uppercase tracking-wider mb-1.5">Photos Unsplash</div>
-                    <div className="grid grid-cols-5 gap-1.5">
-                      {unsplashPhotos.map((photo, i) => (
-                        <button
-                          key={photo.id}
-                          onClick={() => {
-                            setPexelsPhotos(prev => [photo, ...prev]);
-                            setSelectedPhotoIndex(0);
-                          }}
-                          className="relative overflow-hidden rounded-lg opacity-70 hover:opacity-100 transition-all"
-                        >
-                          <img src={photo.small} alt={photo.alt} className="aspect-[3/4] w-full object-cover" />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             )}
 
@@ -4563,6 +4574,36 @@ export default function InfographicPage() {
                     <Search size={16} />
                   )}
                 </button>
+              </div>
+              {/* Source toggle — Pexels | Unsplash */}
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <span className="text-[10px] uppercase tracking-wider text-gray-500">Source</span>
+                <div className="inline-flex rounded-full border border-white/10 bg-white/5 p-0.5 backdrop-blur">
+                  {(["pexels", "unsplash"] as const).map((src) => (
+                    <button
+                      key={src}
+                      onClick={() => {
+                        if (imageSource === src) return;
+                        setImageSource(src);
+                        const query =
+                          photoSearchQuery.trim() ||
+                          (contentTheme === "personnalise" ? customTopic : "") ||
+                          CONTENT_THEMES.find((t) => t.id === contentTheme)?.pexelsQuery ||
+                          CONTENT_THEMES.find((t) => t.id === contentTheme)?.label ||
+                          "fitness";
+                        pexelsPageRef.current = 0;
+                        fetchPexelsPhotos(query, true, src);
+                      }}
+                      className={`rounded-full px-3 py-1 text-[11px] font-medium capitalize transition ${
+                        imageSource === src
+                          ? "bg-gradient-to-r from-purple-600 to-pink-500 text-white shadow"
+                          : "text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      {src}
+                    </button>
+                  ))}
+                </div>
               </div>
               {pexelsLoading ? (
                 <div className="flex items-center justify-center py-8">

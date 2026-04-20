@@ -181,8 +181,19 @@ function interleave(a: Photo[], b: Photo[]): Photo[] {
   return out;
 }
 
-async function searchBoth(query: string, count: number, page: number, orientation: string): Promise<Photo[]> {
+type Source = 'pexels' | 'unsplash' | 'both';
+
+async function searchSource(source: Source, query: string, count: number, page: number, orientation: string): Promise<Photo[]> {
   const perSource = Math.max(count, 5);
+  if (source === 'pexels') {
+    try { return await fetchPexels(query, perSource, page, orientation); }
+    catch (e) { console.error('Pexels fetch failed:', e); return []; }
+  }
+  if (source === 'unsplash') {
+    try { return await fetchUnsplash(query, perSource, page, orientation); }
+    catch (e) { console.error('Unsplash fetch failed:', e); return []; }
+  }
+  // both — parallel + interleave
   const [pexelsRes, unsplashRes] = await Promise.allSettled([
     fetchPexels(query, perSource, page, orientation),
     fetchUnsplash(query, perSource, page, orientation),
@@ -194,7 +205,7 @@ async function searchBoth(query: string, count: number, page: number, orientatio
   return interleave(pexels, unsplash);
 }
 
-// GET /api/pexels?query=fitness&count=5
+// GET /api/pexels?query=fitness&count=5&source=pexels|unsplash|both
 export async function GET(req: NextRequest) {
   try {
     const session = await auth();
@@ -213,6 +224,18 @@ export async function GET(req: NextRequest) {
     const objective = searchParams.get('objective');
     const theme = searchParams.get('theme');
     const orientation = searchParams.get('orientation') || 'portrait';
+    const sourceParam = (searchParams.get('source') || 'pexels').toLowerCase();
+    const source: Source = sourceParam === 'unsplash' ? 'unsplash'
+      : sourceParam === 'both' ? 'both'
+      : 'pexels';
+
+    // If a single source is requested but not configured, return empty gracefully.
+    if (source === 'unsplash' && !UNSPLASH_ACCESS_KEY) {
+      return NextResponse.json({ success: true, photos: [], configured: false, source });
+    }
+    if (source === 'pexels' && !PEXELS_API_KEY) {
+      return NextResponse.json({ success: true, photos: [], configured: false, source });
+    }
 
     const searchQuery = theme ? (THEME_QUERIES[theme] || THEME_QUERIES.default)
       : objective ? (THEME_QUERIES[objective] || THEME_QUERIES.default)
@@ -220,11 +243,11 @@ export async function GET(req: NextRequest) {
 
     const { query: translatedQuery } = translateQuery(searchQuery);
 
-    let photos = await searchBoth(translatedQuery, count, page, orientation);
+    let photos = await searchSource(source, translatedQuery, count, page, orientation);
 
     // Auto-retry with next page if too few results
     if (photos.length < 3) {
-      const extra = await searchBoth(translatedQuery, count, page + 1, orientation);
+      const extra = await searchSource(source, translatedQuery, count, page + 1, orientation);
       const seen = new Set(photos.map((p) => p.id));
       for (const p of extra) {
         if (!seen.has(p.id)) photos.push(p);
@@ -232,7 +255,7 @@ export async function GET(req: NextRequest) {
     }
 
     const limited = photos.slice(0, count);
-    return NextResponse.json({ success: true, photos: limited, query: translatedQuery });
+    return NextResponse.json({ success: true, photos: limited, query: translatedQuery, source });
   } catch (error) {
     console.error('Image search error:', error);
     return NextResponse.json({ success: false, error: 'Failed to fetch photos' }, { status: 500 });
