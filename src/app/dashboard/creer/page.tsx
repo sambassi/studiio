@@ -2883,15 +2883,22 @@ export default function InfographicPage() {
         if (!topicText.trim()) return null;
         const accent = COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent || customAccent || "#a855f7";
         const angle = ANGLES[(batchIndex - 1) % ANGLES.length];
-        // The topic itself stays clean; we add an explicit angle + variation
-        // nonce so the model produces genuinely different content each call.
-        const variationTopic = `${topicText} — ${angle} (variation #${batchIndex + 1}/${total}, ${Date.now().toString(36)})`;
+        // The topic itself stays clean; angle is injected as a prompt suffix
+        // and the variationNonce goes in its own field so the server can
+        // thread it into the prompt without polluting the topic string.
+        const aiTopic = `${topicText} (angle: ${angle})`;
+        const variationNonce = `${batchIndex}-${Date.now().toString(36)}`;
         // AI first
         try {
           const r = await fetch("/api/content/ai-generate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ topic: variationTopic, locale: "fr", cardCount: 3 }),
+            body: JSON.stringify({
+              topic: aiTopic,
+              locale: "fr",
+              cardCount: 3,
+              variationNonce,
+            }),
           });
           if (r.ok) {
             const d = await r.json();
@@ -2899,30 +2906,36 @@ export default function InfographicPage() {
               return {
                 title: d.content.title || topicText.toUpperCase(),
                 subtitle: d.content.subtitle || "",
-                cards: (d.content.cards || []).map((c: any, i: number) => ({
-                  id: `batch-${Date.now()}-${i}`,
-                  emoji: c.iconName || "Sparkles",
-                  label: c.label || "",
-                  value: c.value || "",
-                  description: c.description || "",
-                  color: accent,
-                  iconType: 'svg' as const,
-                  iconColor: '#FFFFFF',
-                  iconSize: 32,
-                  iconStyle: 'outline' as const,
-                })),
+                cards: (d.content.cards || []).map((c: any, i: number) => {
+                  const resolved = resolveCardIcon(c.label, c.description, c.iconName || "Sparkles");
+                  return {
+                    id: `batch-${Date.now()}-${i}`,
+                    emoji: resolved.emoji,
+                    label: c.label || "",
+                    value: c.value || "",
+                    description: c.description || "",
+                    color: accent,
+                    iconType: resolved.iconType,
+                    iconColor: '#FFFFFF',
+                    iconSize: 32,
+                    iconStyle: 'outline' as const,
+                  };
+                }),
                 salesPhrases: d.content.salesPhrases || [],
               };
             }
           }
-        } catch {}
-        // Local fallback (will be the same lookup-table result each time —
-        // better than nothing but not true variation).
+        } catch (err) {
+          console.warn(`[BatchVariation #${batchIndex}] AI call failed:`, err);
+        }
+        // Local fallback — now pool-aware: batchIndex rotates the variant pick
+        // and the card window, so consecutive calls yield genuinely different
+        // content even with the same topic string.
         try {
           const r = await fetch("/api/content/generate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ topic: variationTopic }),
+            body: JSON.stringify({ topic: topicText, batchIndex }),
           });
           if (r.ok) {
             const d = await r.json();
@@ -2930,23 +2943,28 @@ export default function InfographicPage() {
               return {
                 title: d.content.tagLine || topicText.toUpperCase(),
                 subtitle: d.content.subtitle || "",
-                cards: (d.content.cards || []).slice(0, 3).map((c: any, i: number) => ({
-                  id: `batch-${Date.now()}-${i}`,
-                  emoji: toLucideName(c.icon),
-                  label: c.title || "",
-                  value: c.value || "",
-                  description: c.description || "",
-                  color: accent,
-                  iconType: 'svg' as const,
-                  iconColor: '#FFFFFF',
-                  iconSize: 32,
-                  iconStyle: 'outline' as const,
-                })),
+                cards: (d.content.cards || []).slice(0, 3).map((c: any, i: number) => {
+                  const resolved = resolveCardIcon(c.title, c.description, toLucideName(c.icon));
+                  return {
+                    id: `batch-${Date.now()}-${i}`,
+                    emoji: resolved.emoji,
+                    label: c.title || "",
+                    value: c.value || "",
+                    description: c.description || "",
+                    color: accent,
+                    iconType: resolved.iconType,
+                    iconColor: '#FFFFFF',
+                    iconSize: 32,
+                    iconStyle: 'outline' as const,
+                  };
+                }),
                 salesPhrases: [],
               };
             }
           }
-        } catch {}
+        } catch (err) {
+          console.warn(`[BatchVariation #${batchIndex}] Local fallback failed:`, err);
+        }
         return null;
       };
 
@@ -2967,8 +2985,11 @@ export default function InfographicPage() {
             bSubtitle = variation.subtitle;
             bCards = variation.cards;
             if (variation.salesPhrases.length > 0) bSalesPhrases = variation.salesPhrases;
+          } else {
+            console.warn(`[BatchVariation #${b}] no variation returned — video will reuse the editor's current title/cards.`);
           }
         }
+        console.log(`[Batch #${b}/${total - 1}] bTitle="${bTitle}" bSubtitle="${bSubtitle}" cardLabels=${JSON.stringify(bCards.map((c) => c.label))}`);
 
         // Utiliser la photo sélectionnée par l'utilisateur (selectedPhotoIndex)
         // En mode batch, on peut aussi varier les photos après la première

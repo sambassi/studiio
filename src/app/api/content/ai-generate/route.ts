@@ -1,6 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 
+// Fast model for card generation. Haiku 4.5 is 5-10× faster than Sonnet on
+// short JSON responses, which prevents client-side 8s AbortError timeouts
+// during batch (batchCount=3..10) exports where we make N sequential calls.
+const PRIMARY_MODEL = 'claude-haiku-4-5-20251001';
+const FALLBACK_MODEL = 'claude-3-5-sonnet-20241022';
+// Server-side timeout — cap each Anthropic call. Must be short enough that
+// batch variations don't stall a whole export.
+const AI_TIMEOUT_MS = 20_000;
+
+async function callAnthropic(
+  apiKey: string,
+  body: Record<string, any>,
+  model: string,
+): Promise<Response> {
+  const ac = new AbortController();
+  const to = setTimeout(() => ac.abort(), AI_TIMEOUT_MS);
+  try {
+    return await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({ ...body, model }),
+      signal: ac.signal,
+    });
+  } finally {
+    clearTimeout(to);
+  }
+}
+
 // POST /api/content/ai-generate - Generate rich infographic content using Claude
 export async function POST(req: NextRequest) {
   try {
@@ -16,7 +48,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { topic, locale = 'fr', cardCount = 3, existingCards = [], videoOverlayOnly = false, fieldType } = body;
+    const { topic, locale = 'fr', cardCount = 3, existingCards = [], videoOverlayOnly = false, fieldType, variationNonce } = body;
 
     if (!topic || typeof topic !== 'string') {
       return NextResponse.json({ success: false, error: 'Topic is required' }, { status: 400 });
@@ -34,11 +66,10 @@ export async function POST(req: NextRequest) {
       };
       const prompt = fieldPrompts[fieldType] || fieldPrompts.title;
       try {
-        const r = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-          body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 256, messages: [{ role: 'user', content: prompt }] }),
-        });
+        const r = await callAnthropic(apiKey, {
+          max_tokens: 256,
+          messages: [{ role: 'user', content: prompt }],
+        }, PRIMARY_MODEL);
         if (r.ok) {
           const d = await r.json();
           const block = d.content?.find((c: any) => c.type === 'text');
@@ -66,11 +97,10 @@ Exemples: "LE SECRET DE L'ÉNERGIE", "BOOSTE TA PERFORMANCE", "DÉCOUVRE SES BIE
 
 Réponds UNIQUEMENT en JSON: {"videoOverlayText": "TON TEXTE ICI"}`;
 
-      const overlayRes = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 256, messages: [{ role: 'user', content: overlayPrompt }] }),
-      });
+      const overlayRes = await callAnthropic(apiKey, {
+        max_tokens: 256,
+        messages: [{ role: 'user', content: overlayPrompt }],
+      }, PRIMARY_MODEL);
 
       if (overlayRes.ok) {
         const overlayData = await overlayRes.json();
@@ -88,11 +118,10 @@ Réponds UNIQUEMENT en JSON: {"videoOverlayText": "TON TEXTE ICI"}`;
       }
       // Retry with fallback model
       try {
-        const retryRes = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-          body: JSON.stringify({ model: 'claude-3-5-sonnet-20241022', max_tokens: 256, messages: [{ role: 'user', content: overlayPrompt }] }),
-        });
+        const retryRes = await callAnthropic(apiKey, {
+          max_tokens: 256,
+          messages: [{ role: 'user', content: overlayPrompt }],
+        }, FALLBACK_MODEL);
         if (retryRes.ok) {
           const rd = await retryRes.json();
           const tb = rd.content?.find((c: any) => c.type === 'text');
@@ -165,7 +194,18 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, sans commenta
       ? `\n\nCARTES EXISTANTES (NE PAS DUPLIQUER ces sujets, propose des aspects DIFFÉRENTS): ${existingCards.join(', ')}`
       : '';
 
-    const userPrompt = `Génère du contenu d'infographie RICHE et ÉDUCATIF sur: "${topic}"
+    // Variation nonce forces genuinely different output on each batch call
+    // even when the caller reuses the same topic. The model sees it as a
+    // fingerprint and must treat the request as distinct.
+    const nonce = typeof variationNonce === 'string' && variationNonce.trim()
+      ? variationNonce.trim()
+      : Math.random().toString(36).slice(2, 10);
+    const variationPreamble = `\n\nIMPORTANT — VARIATION:
+- Chaque appel doit produire un contenu NOUVEAU. Même sujet, angle, chiffres et formulations DIFFÉRENTS.
+- Ne recopie pas tes sorties précédentes. Utilise des chiffres/études/exemples variés.
+- Nonce de variation (ne pas mentionner dans la sortie): ${nonce}`;
+
+    const userPrompt = `Génère du contenu d'infographie RICHE et ÉDUCATIF sur: "${topic}"${variationPreamble}
 
 Le contenu doit être 100% axé sur "${topic}" — pas de contenu générique fitness.
 Chaque carte = un vrai fait/chiffre sur "${topic}".
@@ -196,61 +236,54 @@ JSON requis (${locale === 'fr' ? 'tout en français' : 'tout en anglais'}):
 
 Retourne EXACTEMENT ${count} cartes, ni plus ni moins. IMPORTANT: chaque carte = un iconName lucide DIFFÉRENT et pertinent (choisi UNIQUEMENT dans la liste fournie). Le champ "emoji" n'est qu'un fallback — ne te repose pas dessus.`;
 
-    console.log(`[AI-Generate] Calling Anthropic API for topic: "${topic}", cards: ${count}`);
+    console.log(`[AI-Generate] Calling Anthropic (${PRIMARY_MODEL}) for topic: "${topic}", cards: ${count}, nonce: ${nonce}`);
 
-    // Call Anthropic API directly via fetch (no SDK dependency issues)
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2048,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userPrompt }],
-      }),
-    });
+    const requestBody = {
+      max_tokens: 2048,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+      // temperature>0 encourages per-call variation for batch exports.
+      temperature: 1,
+    };
+
+    let response: Response;
+    try {
+      response = await callAnthropic(apiKey, requestBody, PRIMARY_MODEL);
+    } catch (e: any) {
+      const reason = e?.name === 'AbortError' ? 'timeout' : (e?.message || 'fetch-error');
+      console.error(`[AI-Generate] Primary call failed (${reason}):`, e?.message || e);
+      return NextResponse.json({ success: false, error: `AI API ${reason}` }, { status: 500 });
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[AI-Generate] Anthropic API error ${response.status}:`, errorText);
 
-      // If model not found, try with claude-3-5-sonnet
+      // If primary model not found / bad request, retry with a known-good model.
       if (response.status === 404 || response.status === 400) {
-        console.log('[AI-Generate] Retrying with claude-3-5-sonnet-20241022...');
-        const retryResponse = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-          },
-          body: JSON.stringify({
-            model: 'claude-3-5-sonnet-20241022',
-            max_tokens: 2048,
-            system: systemPrompt,
-            messages: [{ role: 'user', content: userPrompt }],
-          }),
-        });
-
+        console.log(`[AI-Generate] Retrying with ${FALLBACK_MODEL}...`);
+        let retryResponse: Response;
+        try {
+          retryResponse = await callAnthropic(apiKey, requestBody, FALLBACK_MODEL);
+        } catch (e: any) {
+          const reason = e?.name === 'AbortError' ? 'timeout' : (e?.message || 'fetch-error');
+          console.error(`[AI-Generate] Retry call failed (${reason}):`, e?.message || e);
+          return NextResponse.json({ success: false, error: `AI API retry ${reason}` }, { status: 500 });
+        }
         if (!retryResponse.ok) {
           const retryError = await retryResponse.text();
           console.error(`[AI-Generate] Retry also failed ${retryResponse.status}:`, retryError);
           return NextResponse.json({ success: false, error: `AI API error: ${retryResponse.status}` }, { status: 500 });
         }
-
         const retryData = await retryResponse.json();
-        return parseAndReturn(retryData, topic);
+        return parseAndReturn(retryData, topic, count, ICON_NAMES);
       }
 
       return NextResponse.json({ success: false, error: `AI API error: ${response.status}` }, { status: 500 });
     }
 
     const data = await response.json();
-    return parseAndReturn(data, topic);
+    return parseAndReturn(data, topic, count, ICON_NAMES);
 
   } catch (error: any) {
     console.error('[AI-Generate] Error:', error?.message || error);
@@ -261,7 +294,7 @@ Retourne EXACTEMENT ${count} cartes, ni plus ni moins. IMPORTANT: chaque carte =
   }
 }
 
-function parseAndReturn(data: any, topic: string) {
+function parseAndReturn(data: any, topic: string, count: number, iconNames: string[]) {
   // Extract text content
   const textContent = data.content?.find((c: any) => c.type === 'text');
   if (!textContent?.text) {
@@ -304,7 +337,7 @@ function parseAndReturn(data: any, topic: string) {
   // Ensure each card has required fields. iconName is validated against the
   // allowed list — if Claude returned anything off-list, we fall back to a
   // sensible default so the client doesn't render a broken icon.
-  const ALLOWED = new Set(ICON_NAMES);
+  const ALLOWED = new Set(iconNames);
   content.cards = content.cards.map((card: any) => {
     const rawName = typeof card.iconName === 'string' ? card.iconName.trim() : '';
     const iconName = ALLOWED.has(rawName) ? rawName : 'Sparkles';

@@ -1334,8 +1334,14 @@ export type SmartContentResult = {
 /**
  * Génère automatiquement un sous-titre + 5 cartes d'infographie ÉDUCATIVES
  * à partir d'un titre/sujet donné par l'utilisateur.
+ *
+ * Pool mode: passing `seed` (batchIndex or any integer) makes the generator
+ * deterministic — batch iteration N gets a different slice of the pool than
+ * iteration N+1, so calling the same topic 10 times in a row yields 10
+ * distinct results (variant rotation × card window rotation).
  */
-export function generateSmartContent(title: string): SmartContentResult {
+export function generateSmartContent(title: string, seed?: number): SmartContentResult {
+  const s = typeof seed === 'number' && Number.isFinite(seed) ? Math.abs(Math.floor(seed)) : undefined;
   // Normaliser : minuscules, sans accents, sans ponctuation
   const normalized = title
     .toLowerCase()
@@ -1383,13 +1389,27 @@ export function generateSmartContent(title: string): SmartContentResult {
   let topicData: TopicData;
   if (matchedTopic && KNOWLEDGE_BASE[matchedTopic]) {
     const variants = KNOWLEDGE_BASE[matchedTopic];
-    topicData = variants[Math.floor(Math.random() * variants.length)];
+    const pickIdx = s !== undefined
+      ? s % variants.length
+      : Math.floor(Math.random() * variants.length);
+    topicData = variants[pickIdx];
   } else {
     topicData = generateDynamicFallback(title, normalized);
   }
 
-  // 4. Convertir les icônes
-  const cards: InfoCardData[] = topicData.cards.map((card) => ({
+  // 4. Convertir les icônes et éventuellement tourner les cartes pour varier
+  // d'un appel à l'autre. Le route /api/content/generate cappe à 3 cartes
+  // alors que chaque entry en fournit 5 ; en décalant la fenêtre (seed),
+  // deux appels successifs avec le même topic renvoient des cartes
+  // différentes au lieu des 3 premières à chaque fois.
+  const sourceCards = topicData.cards;
+  const offset = s !== undefined && sourceCards.length > 0
+    ? s % sourceCards.length
+    : 0;
+  const rotated = offset > 0
+    ? [...sourceCards.slice(offset), ...sourceCards.slice(0, offset)]
+    : sourceCards;
+  const cards: InfoCardData[] = rotated.map((card) => ({
     icon: ICONS[card.icon] || "⚡",
     title: card.title,
     description: card.description,
