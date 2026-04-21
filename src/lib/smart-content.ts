@@ -1332,6 +1332,36 @@ export type SmartContentResult = {
 };
 
 /**
+ * Trim a description to a complete sentence/phrase that fits a card slot.
+ * The preview and composer both truncate at 40-80 chars — so we normalize
+ * everything to ≤ maxChars at a word boundary and add a terminal period
+ * when the input had none. Pre-existing periods / punctuation are
+ * preserved. Returns the original string unchanged when it already fits.
+ */
+export function shortenForCard(text: string | undefined, maxChars: number = 80): string {
+  if (!text) return '';
+  const trimmed = text.trim();
+  if (trimmed.length <= maxChars) {
+    return /[.!?…]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+  }
+  // Prefer cutting at a sentence boundary within the budget.
+  const sentenceMatches = Array.from(trimmed.matchAll(/[.!?]+(?:\s|$)/g));
+  let bestEnd = -1;
+  for (const match of sentenceMatches) {
+    const idx = (match.index ?? 0) + match[0].trimEnd().length;
+    if (idx <= maxChars) bestEnd = idx;
+    else break;
+  }
+  if (bestEnd > 0) return trimmed.slice(0, bestEnd).trim();
+  // No sentence fits — cut at the last word boundary before maxChars.
+  const slice = trimmed.slice(0, maxChars);
+  const lastSpace = slice.lastIndexOf(' ');
+  const core = (lastSpace > 20 ? slice.slice(0, lastSpace) : slice)
+    .replace(/[\s,;:–—-]+$/, '');
+  return /[.!?…]$/.test(core) ? core : `${core}.`;
+}
+
+/**
  * Génère automatiquement un sous-titre + 5 cartes d'infographie ÉDUCATIVES
  * à partir d'un titre/sujet donné par l'utilisateur.
  *
@@ -1412,7 +1442,7 @@ export function generateSmartContent(title: string, seed?: number): SmartContent
   const cards: InfoCardData[] = rotated.map((card) => ({
     icon: ICONS[card.icon] || "⚡",
     title: card.title,
-    description: card.description,
+    description: shortenForCard(card.description, 80),
     value: card.value,
   }));
 

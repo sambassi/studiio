@@ -1076,7 +1076,7 @@ function drawCards(
       const valueLines = capLines(wrapText(ctx, card.value, innerW), 2);
       let descLines: string[] = [];
       if (card.description) {
-        const descText = truncateAtWord(card.description, 30);
+        const descText = truncateAtWord(card.description, 70);
         ctx.font = `400 ${descSize}px "${fontFamily}", sans-serif`;
         descLines = capLines(wrapText(ctx, descText, innerW), 2);
       }
@@ -1232,9 +1232,9 @@ function drawCards(
       ctx.fillText(card.label, labelStartX, curY + (row1H - labelSize) / 2);
       curY += row1H + rowGap;
 
-      // Row 2: description (text-white/70, max 60 chars, 2 lines)
+      // Row 2: description (text-white/70, max 90 chars, 2 lines)
       if (card.description) {
-        const descText = truncateAtWord(card.description, 60);
+        const descText = truncateAtWord(card.description, 90);
         ctx.font = `400 ${descSize}px "${fontFamily}", sans-serif`;
         ctx.fillStyle = 'rgba(255,255,255,0.7)';
         const descLines = wrapText(ctx, descText, cardW - paddingX * 2);
@@ -1396,9 +1396,11 @@ function drawCards(
       // Truncate label if too wide
       const truncatedLabel = truncateToWidth(ctx, card.label, middleW);
       ctx.fillText(truncatedLabel, middleX, middleTop);
-      // Description (if present) — 40 chars max, truncated
+      // Description (if present) — 80 chars max, single-line truncated to
+      // the middle column width. Source descriptions are now capped to 80
+      // chars at the generator level, so this matches the editor preview.
       if (card.description) {
-        const descSrc = truncateAtWord(card.description, 40);
+        const descSrc = truncateAtWord(card.description, 80);
         ctx.font = `400 ${descSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = 'rgba(255,255,255,0.5)';
         const truncatedDesc = truncateToWidth(ctx, descSrc, middleW);
         ctx.fillText(truncatedDesc, middleX, middleTop + labelSize + innerTextGap);
