@@ -9,6 +9,7 @@ const TOPICS = [
   'souplesse', 'confiance', 'echauffement', 'recuperation', 'cours',
   'motivation', 'danse', 'silent', 'respiration', 'magnesium', 'feculent',
   'vitamine', 'fer', 'zinc', 'omega', 'sucre',
+  'ananas', 'mangue', 'avocat', 'gingembre', 'citron', 'curcuma', 'banane',
 ];
 
 // POST /api/content/generate - Generate infographic content for a topic
