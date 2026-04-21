@@ -1184,6 +1184,141 @@ function toLucideName(input: string | undefined): string {
   return 'Sparkles';
 }
 
+/**
+ * Label → Unicode emoji dictionary for foods, fruits, and common objects that
+ * Lucide doesn't model well (Lucide has "Apple" but no "Ananas" / "Mangue" /
+ * etc., so every fruit used to fall back to Apple). Matched against the card
+ * label (and optionally description) with a substring check. Keys are normalized
+ * (lowercase, accent-stripped).
+ */
+const LABEL_TO_EMOJI: Record<string, string> = {
+  // Fruits
+  ananas: '🍍', 'pina': '🍍', pineapple: '🍍',
+  mangue: '🥭', mango: '🥭',
+  avocat: '🥑', avocado: '🥑',
+  banane: '🍌', banana: '🍌', plantain: '🍌',
+  pomme: '🍎', apple: '🍎',
+  citron: '🍋', lemon: '🍋', lime: '🍋',
+  orange: '🍊', clementine: '🍊', mandarine: '🍊',
+  fraise: '🍓', strawberry: '🍓',
+  raisin: '🍇', grape: '🍇',
+  pasteque: '🍉', watermelon: '🍉',
+  melon: '🍈',
+  cerise: '🍒', cherry: '🍒',
+  peche: '🍑', peach: '🍑',
+  poire: '🍐', pear: '🍐',
+  kiwi: '🥝',
+  coco: '🥥', noixcoco: '🥥', coconut: '🥥',
+  myrtille: '🫐', blueberry: '🫐',
+  framboise: '🍓', raspberry: '🍓',
+  grenade: '🍎', pomegranate: '🍎',
+  papaye: '🥭', papaya: '🥭',
+  baobab: '🌳',
+  // Vegetables / herbs
+  tomate: '🍅', tomato: '🍅',
+  carotte: '🥕', carrot: '🥕',
+  brocoli: '🥦', broccoli: '🥦',
+  piment: '🌶️', chili: '🌶️',
+  champignon: '🍄', mushroom: '🍄',
+  aubergine: '🍆', eggplant: '🍆',
+  mais: '🌽', corn: '🌽',
+  concombre: '🥒', cucumber: '🥒',
+  poivron: '🫑', pepper: '🫑',
+  patate: '🥔', potato: '🥔',
+  igname: '🍠', yam: '🍠', sweetpotato: '🍠',
+  oignon: '🧅', onion: '🧅',
+  ail: '🧄', garlic: '🧄',
+  gingembre: '🫚', ginger: '🫚',
+  curcuma: '🟡', turmeric: '🟡',
+  moringa: '🌿',
+  epinard: '🥬', spinach: '🥬',
+  salade: '🥗', lettuce: '🥗',
+  manioc: '🍠',
+  // Proteins / staples
+  pain: '🍞', bread: '🍞',
+  fromage: '🧀', cheese: '🧀',
+  oeuf: '🥚', egg: '🥚',
+  viande: '🥩', meat: '🥩', beef: '🥩',
+  poulet: '🍗', chicken: '🍗',
+  poisson: '🐟', fish: '🐟',
+  crevette: '🍤', shrimp: '🍤',
+  riz: '🍚', rice: '🍚',
+  pate: '🍝', pasta: '🍝',
+  quinoa: '🌾', avoine: '🌾', oats: '🌾', cereale: '🌾',
+  legumineuse: '🫘', haricot: '🫘', lentille: '🫘', pois: '🫘',
+  // Sweet / processed
+  chocolat: '🍫', chocolate: '🍫',
+  miel: '🍯', honey: '🍯',
+  gateau: '🍰', cake: '🍰',
+  beurre: '🧈',
+  // Drinks
+  the: '🍵', tea: '🍵', matcha: '🍵',
+  cafe: '☕', coffee: '☕',
+  lait: '🥛', milk: '🥛',
+  eau: '💧', water: '💧', hydration: '💧', hydratation: '💧',
+  jus: '🧃', juice: '🧃',
+  smoothie: '🥤',
+  vin: '🍷', wine: '🍷',
+  biere: '🍺', beer: '🍺',
+  // Nuts / seeds
+  noix: '🥜', nut: '🥜', amande: '🥜', almond: '🥜',
+  graine: '🌱', seed: '🌱', chia: '🌱', lin: '🌱',
+  olive: '🫒',
+  sesame: '🌱',
+  arachide: '🥜', peanut: '🥜',
+  // Wellness / body (prefer emoji over generic SVG when very specific)
+  sommeil: '😴', sleep: '😴',
+  meditation: '🧘', relaxation: '🧘',
+  cerveau: '🧠', brain: '🧠',
+  coeur: '❤️', heart: '❤️',
+  poumon: '🫁', lungs: '🫁',
+  os: '🦴', bone: '🦴',
+  muscle: '💪', biceps: '💪',
+  oeil: '👁️', eye: '👁️', vue: '👁️',
+  dent: '🦷', teeth: '🦷',
+  peau: '✨', skin: '✨',
+  // Science / nutrients
+  vitamine: '💊', vitamin: '💊',
+  calcium: '🦴', magnesium: '💊', fer: '🩸', zinc: '💊', iode: '💊',
+  omega: '🐟', potassium: '🍌', sodium: '🧂', sel: '🧂',
+  antioxydant: '🫐', antioxidant: '🫐',
+  proteine: '🥩', protein: '🥩',
+  glucide: '🍞', carb: '🍞',
+  lipide: '🧈', fat: '🧈',
+  fibre: '🌾', fiber: '🌾',
+};
+
+/**
+ * Resolve the best icon for a given card label/description. Returns an
+ * emoji-mode descriptor when the label matches a food/object we have a
+ * specific Unicode glyph for (ananas → 🍍), otherwise falls back to an
+ * SVG-mode descriptor using the provided Lucide name.
+ */
+function resolveCardIcon(
+  label: string | undefined,
+  description: string | undefined,
+  fallbackLucide: string,
+): { iconType: 'emoji' | 'svg'; emoji: string } {
+  const haystack = `${label || ''} ${description || ''}`.toLowerCase();
+  const normalized = haystack
+    .replace(/[éèêë]/g, 'e').replace(/[àâä]/g, 'a')
+    .replace(/[ùûü]/g, 'u').replace(/[ôö]/g, 'o')
+    .replace(/[îï]/g, 'i').replace(/[ç]/g, 'c')
+    .replace(/[^a-z0-9 ]/g, ' ');
+  const words = normalized.split(/\s+/).filter(Boolean);
+  // Exact word match first (avoids "pain" in "panning" false positives).
+  for (const w of words) {
+    if (LABEL_TO_EMOJI[w]) return { iconType: 'emoji', emoji: LABEL_TO_EMOJI[w] };
+  }
+  // Fallback: substring scan for composite keys and partial matches.
+  for (const key of Object.keys(LABEL_TO_EMOJI)) {
+    if (key.length >= 4 && normalized.includes(key)) {
+      return { iconType: 'emoji', emoji: LABEL_TO_EMOJI[key] };
+    }
+  }
+  return { iconType: 'svg', emoji: fallbackLucide };
+}
+
 /** Migrate a legacy card (emoji-mode) to SVG-mode. Idempotent. */
 function migrateCardToSvg<T extends Partial<InfoCard> & { iconType?: string; emoji?: string; icon?: string }>(card: T): T {
   if (card.iconType === 'svg') return card;
@@ -2021,7 +2156,10 @@ export default function InfographicPage() {
 
   // ── Generate content (AI or local) ──────────────────────────
   const generateContent = useCallback(
-    async (themeId?: string) => {
+    async (themeIdOrOpts?: string | { themeId?: string; cardsOnly?: boolean }) => {
+      const opts = typeof themeIdOrOpts === 'object' && themeIdOrOpts !== null ? themeIdOrOpts : {};
+      const themeId = typeof themeIdOrOpts === 'string' ? themeIdOrOpts : opts.themeId;
+      const cardsOnly = !!opts.cardsOnly;
       const theme = themeId || contentTheme;
       setIsGenerating(true);
       setGenerationError("");
@@ -2036,6 +2174,9 @@ export default function InfographicPage() {
           setIsGenerating(false);
           return;
         }
+
+        const accent =
+          COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent || "#a855f7";
 
         // Try AI generation first (with 8s timeout to avoid blocking UI)
         let aiSuccess = false;
@@ -2058,31 +2199,36 @@ export default function InfographicPage() {
             const aiData = await aiRes.json();
             if (aiData.success && aiData.content) {
               const c = aiData.content;
-              setTitle(c.title || topicText.toUpperCase());
-              setSubtitle(c.subtitle || "");
+              if (!cardsOnly) {
+                setTitle(c.title || topicText.toUpperCase());
+                setSubtitle(c.subtitle || "");
+                setSalesPhrases(c.salesPhrases || []);
+              }
               setCards(
-                (c.cards || []).map((card: any, i: number) => ({
-                  id: `card-${Date.now()}-${i}`,
-                  emoji: card.iconName || "Sparkles",
-                  label: card.label || "",
-                  value: card.value || "",
-                  description: card.description || "",
-                  color:
-                    COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent ||
-                    "#a855f7",
-                  iconType: 'svg' as const,
-                  iconColor: '#FFFFFF',
-                  iconSize: 32,
-                  iconStyle: 'outline' as const,
-                })),
+                (c.cards || []).map((card: any, i: number) => {
+                  const resolved = resolveCardIcon(card.label, card.description, card.iconName || "Sparkles");
+                  return {
+                    id: `card-${Date.now()}-${i}`,
+                    emoji: resolved.emoji,
+                    label: card.label || "",
+                    value: card.value || "",
+                    description: card.description || "",
+                    color: accent,
+                    iconType: resolved.iconType,
+                    iconColor: '#FFFFFF',
+                    iconSize: 32,
+                    iconStyle: 'outline' as const,
+                  };
+                }),
               );
-              setSalesPhrases(c.salesPhrases || []);
 
-              // Fetch photos matching the AI-suggested query or theme
-              const pQuery =
-                c.pexelsQuery || themeObj?.pexelsQuery || topicText;
-              setPhotoSearchQuery(pQuery);
-              fetchPexelsPhotos(pQuery);
+              // Fetch photos only on initial generation, not on cards-only refresh.
+              if (!cardsOnly) {
+                const pQuery =
+                  c.pexelsQuery || themeObj?.pexelsQuery || topicText;
+                setPhotoSearchQuery(pQuery);
+                fetchPexelsPhotos(pQuery);
+              }
               aiSuccess = true;
             }
           }
@@ -2104,28 +2250,33 @@ export default function InfographicPage() {
           const localData = await localRes.json();
           if (localData.success && localData.content) {
             const c = localData.content;
-            setTitle(c.tagLine || topicText.toUpperCase());
-            setSubtitle(c.subtitle || "");
+            if (!cardsOnly) {
+              setTitle(c.tagLine || topicText.toUpperCase());
+              setSubtitle(c.subtitle || "");
+              setSalesPhrases([]);
+            }
             setCards(
-              (c.cards || []).slice(0, 3).map((card: any, i: number) => ({
-                id: `card-${Date.now()}-${i}`,
-                emoji: toLucideName(card.icon),
-                label: card.title || "",
-                value: card.value || "",
-                description: card.description || "",
-                color:
-                  COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent ||
-                  "#a855f7",
-                iconType: 'svg' as const,
-                iconColor: '#FFFFFF',
-                iconSize: 32,
-                iconStyle: 'outline' as const,
-              })),
+              (c.cards || []).slice(0, 3).map((card: any, i: number) => {
+                const resolved = resolveCardIcon(card.title, card.description, toLucideName(card.icon));
+                return {
+                  id: `card-${Date.now()}-${i}`,
+                  emoji: resolved.emoji,
+                  label: card.title || "",
+                  value: card.value || "",
+                  description: card.description || "",
+                  color: accent,
+                  iconType: resolved.iconType,
+                  iconColor: '#FFFFFF',
+                  iconSize: 32,
+                  iconStyle: 'outline' as const,
+                };
+              }),
             );
-            setSalesPhrases([]);
-            const pQuery = themeObj?.pexelsQuery || topicText;
-            setPhotoSearchQuery(pQuery);
-            fetchPexelsPhotos(pQuery);
+            if (!cardsOnly) {
+              const pQuery = themeObj?.pexelsQuery || topicText;
+              setPhotoSearchQuery(pQuery);
+              fetchPexelsPhotos(pQuery);
+            }
             return;
           }
         }
@@ -2177,16 +2328,10 @@ export default function InfographicPage() {
       showToast("Entrez un sujet personnalisé");
       return;
     }
-    // Also fetch new photos (next page) in parallel
-    const themeObj = CONTENT_THEMES.find((t) => t.id === contentTheme);
-    const query =
-      photoSearchQuery.trim() ||
-      (contentTheme === "personnalise" ? customTopic : "") ||
-      themeObj?.pexelsQuery ||
-      themeObj?.label ||
-      "fitness";
-    fetchPexelsPhotos(query, true);
-    generateContent();
+    // Only regenerate the cards (label/value/description/icon). Do NOT touch
+    // the main title, subtitle, sales phrases, or the poster photo gallery —
+    // those have their own dedicated regenerate buttons.
+    generateContent({ cardsOnly: true });
   };
 
   // ── Card manipulation ───────────────────────────────────────
@@ -2223,16 +2368,17 @@ export default function InfographicPage() {
         const data = await res.json();
         if (data.success && data.content?.cards?.[0]) {
           const aiCard = data.content.cards[0];
+          const resolved = resolveCardIcon(aiCard.label, aiCard.description, aiCard.iconName || "Sparkles");
           setCards([
             ...cards,
             {
               id: `card-${Date.now()}`,
-              emoji: aiCard.iconName || "Sparkles",
+              emoji: resolved.emoji,
               label: aiCard.label || "Info",
               value: aiCard.value || "",
               description: aiCard.description || "",
               color: accent,
-              iconType: 'svg',
+              iconType: resolved.iconType,
               iconColor: '#FFFFFF',
               iconSize: 32,
               iconStyle: 'outline',
@@ -2286,26 +2432,54 @@ export default function InfographicPage() {
     } catch {} finally { setAiFieldLoading(null); }
   };
 
-  const suggestCardField = async (cardId: string, field: 'label' | 'description') => {
-    const loadingKey = `${cardId}-${field}`;
+  /**
+   * Regenerate a single card in-place (label + value + description + icon),
+   * leaving all other cards, the poster gallery, and the main title/subtitle
+   * untouched. Matches the user's expectation that the per-card ✨ button
+   * only refreshes the card it's attached to.
+   */
+  const suggestCardField = async (cardId: string, _field?: 'label' | 'description') => {
+    const loadingKey = `${cardId}-label`;
     setAiFieldLoading(loadingKey);
     try {
+      const themeObj = CONTENT_THEMES.find((t) => t.id === contentTheme);
+      const topicText =
+        contentTheme === 'personnalise'
+          ? customTopic
+          : themeObj?.label || contentTheme || 'fitness';
       const res = await fetch('/api/content/ai-generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          topic: contentTheme || 'fitness',
+          topic: topicText,
           locale: 'fr',
           cardCount: 1,
+          existingCards: cards.filter((c) => c.id !== cardId).map((c) => c.label),
         }),
       });
       const data = await res.json();
-      if (data.success && data.cards?.[0]) {
-        const suggestion = field === 'label' ? data.cards[0].label : data.cards[0].description;
-        if (suggestion) updateCard(cardId, field, suggestion);
+      const aiCard = data?.content?.cards?.[0];
+      if (data.success && aiCard) {
+        const resolved = resolveCardIcon(aiCard.label, aiCard.description, aiCard.iconName || 'Sparkles');
+        setCards((prev) =>
+          prev.map((c) =>
+            c.id === cardId
+              ? {
+                  ...c,
+                  label: aiCard.label || c.label,
+                  value: aiCard.value || c.value,
+                  description: aiCard.description || c.description,
+                  emoji: resolved.emoji,
+                  iconType: resolved.iconType,
+                }
+              : c,
+          ),
+        );
+      } else {
+        console.warn('[suggestCardField] AI did not return a card:', data);
       }
-    } catch {
-      // silently fail
+    } catch (err) {
+      console.warn('[suggestCardField] failed:', err);
     } finally {
       setAiFieldLoading(null);
     }

@@ -737,6 +737,81 @@ const KNOWLEDGE_BASE: Record<string, TopicData[]> = {
     },
   ],
 
+  // ─── ANANAS ────────────────────────────────────────────────
+  "ananas": [
+    {
+      subtitle: "L'ananas : enzyme anti-inflammatoire naturelle et ultra peu calorique",
+      tagLine: "SCIENCE DE L'ANANAS",
+      cards: [
+        { icon: "shield", title: "BROMÉLAÏNE", description: "Enzyme anti-inflammatoire naturelle qui accélère la récupération musculaire après l'effort", value: "ANTI-INF" },
+        { icon: "droplet", title: "86% D'EAU", description: "Seulement 50 kcal/100g. 86% d'eau : hydratation et volume pour rester rassasié sans excès", value: "50kcal" },
+        { icon: "vitamin", title: "VITAMINE C", description: "79mg de vitamine C pour 100g, soit 88% des AJR. Boost immunitaire et absorption du fer", value: "79mg" },
+        { icon: "leaf", title: "FIBRES + DIGESTION", description: "1.4g de fibres et la bromélaïne aident à digérer les protéines. Idéal après un repas lourd", value: "1.4g" },
+        { icon: "fire", title: "QUAND LE MANGER", description: "Frais, entre les repas : la bromélaïne est détruite par la cuisson. Jamais en conserve", value: "FRAIS" },
+      ],
+    },
+  ],
+
+  // ─── MANGUE ────────────────────────────────────────────────
+  "mangue": [
+    {
+      subtitle: "La mangue : concentré de bêta-carotène et d'antioxydants",
+      tagLine: "SUPER-FRUIT TROPICAL",
+      cards: [
+        { icon: "sun", title: "BÊTA-CAROTÈNE", description: "Précurseur de la vitamine A : protège ta peau du soleil et améliore la vision nocturne", value: "A+" },
+        { icon: "vitamin", title: "VITAMINE C", description: "60mg pour 100g, soit 67% des AJR. Stimule la production de collagène pour peau et tendons", value: "60mg" },
+        { icon: "leaf", title: "ENZYMES DIGESTIVES", description: "L'amylase aide à digérer les glucides. Consomme-la bien mûre pour maximiser l'effet", value: "AMYL." },
+        { icon: "shield", title: "POLYPHÉNOLS", description: "La mangiférine (dans la peau fine sous la pelure) est un puissant antioxydant anti-vieillissement", value: "ANTI-OX" },
+        { icon: "fire", title: "60 KCAL / 100g", description: "Sucres naturels rapides : idéale avant un cours cardio pour une énergie immédiate", value: "60kcal" },
+      ],
+    },
+  ],
+
+  // ─── AVOCAT ────────────────────────────────────────────────
+  "avocat": [
+    {
+      subtitle: "L'avocat : bonne graisse qui protège ton cœur et tes hormones",
+      tagLine: "LIPIDES INTELLIGENTS",
+      cards: [
+        { icon: "heart", title: "ACIDES GRAS MONO", description: "15g de graisses mono-insaturées par avocat (type oméga-9). Baisse le LDL, protège le cœur", value: "15g" },
+        { icon: "muscle", title: "TESTOSTÉRONE", description: "Les lipides de l'avocat sont précurseurs des hormones stéroïdiennes (testo, œstrogène)", value: "HORMONE" },
+        { icon: "leaf", title: "7g DE FIBRES", description: "L'avocat contient plus de fibres qu'un bol de flocons d'avoine. Satiété longue durée", value: "7g" },
+        { icon: "brain", title: "POTASSIUM", description: "975mg pour un avocat entier. Plus qu'une banane (422mg). Anti-crampes après l'entraînement", value: "975mg" },
+        { icon: "fire", title: "QUAND LE MANGER", description: "Avec des légumes verts : ses lipides multiplient par 4 l'absorption des caroténoïdes", value: "×4" },
+      ],
+    },
+  ],
+
+  // ─── GINGEMBRE ─────────────────────────────────────────────
+  "gingembre": [
+    {
+      subtitle: "Le gingembre : anti-nausée, anti-douleur et brûle-graisse naturel",
+      tagLine: "RACINE BRÛLE-GRAISSE",
+      cards: [
+        { icon: "shield", title: "GINGÉROL", description: "Le gingérol (principe actif) réduit les courbatures post-effort de 25% selon l'étude Black 2010", value: "-25%" },
+        { icon: "fire", title: "THERMOGENÈSE +10%", description: "Augmente la dépense énergétique au repos de 10% pendant 6h après consommation", value: "+10%" },
+        { icon: "droplet", title: "DIGESTION", description: "Stimule la sécrétion d'enzymes gastriques. 1g avant repas = nausée divisée par 4", value: "÷4" },
+        { icon: "brain", title: "DOULEUR -25%", description: "2g/jour (frais ou en poudre) aussi efficaces que l'ibuprofène pour les douleurs musculaires", value: "= IBUP." },
+        { icon: "apple", title: "COMMENT L'UTILISER", description: "Râpé frais dans une infusion le matin, ou 1g en poudre dans un smoothie post-training", value: "1-2g" },
+      ],
+    },
+  ],
+
+  // ─── CITRON ────────────────────────────────────────────────
+  "citron": [
+    {
+      subtitle: "Le citron : alcalinisant malgré son acidité, détoxifiant au réveil",
+      tagLine: "RÉVEIL VITAMINÉ",
+      cards: [
+        { icon: "vitamin", title: "VITAMINE C", description: "53mg pour 100g. Antioxydant, boost immunitaire, améliore l'absorption du fer végétal de 3x", value: "×3 FER" },
+        { icon: "droplet", title: "EAU TIÈDE AU RÉVEIL", description: "1/2 citron pressé dans 250ml d'eau tiède stimule le foie et relance le transit en 30 min", value: "30min" },
+        { icon: "shield", title: "ALCALINISANT", description: "Paradoxe : acide dans le fruit, alcalinisant une fois métabolisé. Réduit l'acidose de l'effort", value: "pH+" },
+        { icon: "fire", title: "BRÛLE-GRAISSE DOUX", description: "Les polyphénols du citron activent la lipolyse. Combiné à l'eau : effet coupe-faim naturel", value: "LIPOL." },
+        { icon: "heart", title: "ATTENTION ÉMAIL", description: "Toujours bois à la paille ou rince ta bouche après. L'acide citrique attaque l'émail dentaire", value: "PAILLE" },
+      ],
+    },
+  ],
+
   // ─── CAFÉ / CAFÉINE ────────────────────────────────────────
   "cafe": [
     {
@@ -1202,6 +1277,16 @@ const KEYWORD_MAP: Record<string, string> = {
   "curcuma": "curcuma", "curcumine": "curcuma", "anti-inflammatoire": "curcuma",
   // Banane
   "banane": "banane", "potassium": "banane",
+  // Ananas
+  "ananas": "ananas", "pineapple": "ananas", "bromelaine": "ananas",
+  // Mangue
+  "mangue": "mangue", "mango": "mangue", "mangues": "mangue",
+  // Avocat
+  "avocat": "avocat", "avocado": "avocat", "avocats": "avocat",
+  // Gingembre
+  "gingembre": "gingembre", "ginger": "gingembre", "gingerol": "gingembre",
+  // Citron
+  "citron": "citron", "citrons": "citron", "lemon": "citron", "lime": "citron",
   // Café
   "cafe": "cafe", "cafeine": "cafe", "expresso": "cafe", "espresso": "cafe",
   // Alcool
