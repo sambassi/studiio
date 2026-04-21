@@ -2880,14 +2880,26 @@ export default function InfographicPage() {
           try {
             console.log('[Export→Calendar] Starting montage composition...', { batchIdx: b, posterUrl, rushUrl, isReel, format, title: bTitle, cardsCount: bCards.length, musicUrl: audioMusicUrl?.substring(0, 60) || 'NONE', voiceUrl: audioVoiceUrl?.substring(0, 60) || 'NONE', musicVolume: audioMusicVolume, voiceVolume: audioVoiceVolume });
             setExportProgress(Math.round(((b + 0.3) / total) * 100));
-            // Snapshot the live editor cards grid for WYSIWYG parity. Falls
-            // back silently — the composer's manual canvas pipeline still
-            // runs if cardsSnapshot is absent.
+            // Snapshot the live editor cards grid for WYSIWYG parity. The
+            // [data-cards-grid] element only renders when activeSequence is
+            // "all" or "cartes" — if the user switched to another tab before
+            // clicking export, the node is absent and html2canvas captures
+            // nothing. Force the preview to the cards sequence around the
+            // capture, then restore whatever the user had selected.
             let cardsSnapshot: HTMLImageElement | undefined;
             let cardsSnapshotRect: { x: number; y: number; width: number; height: number } | undefined;
+            const prevSequenceCal = activeSequence;
+            let didForceSequenceCal = false;
+            if (exportedSequences.cartes && bCards.length > 0 && activeSequence !== 'cartes' && activeSequence !== 'all') {
+              setActiveSequence('cartes');
+              didForceSequenceCal = true;
+              // Wait two frames so React commits the DOM mount before capture.
+              await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+            }
             try {
               const cardsEl = document.querySelector('[data-cards-grid]') as HTMLElement | null;
-              if (cardsEl && exportedSequences.cartes && bCards.length > 0) {
+              console.log('[Export] cardsEl offsetWidth/Height:', cardsEl?.offsetWidth, cardsEl?.offsetHeight);
+              if (cardsEl && cardsEl.offsetWidth > 0 && exportedSequences.cartes && bCards.length > 0) {
                 const html2canvas = (await import('html2canvas')).default;
                 // Scale the capture so 1 DOM px = 1 video-canvas px. The
                 // snapshot's intrinsic size then matches the cards' target
@@ -2896,23 +2908,35 @@ export default function InfographicPage() {
                 const previewW = previewRef.current?.offsetWidth || (isReel ? 320 : 512);
                 const scale = videoW / previewW;
                 const canvas = await html2canvas(cardsEl, { backgroundColor: null, scale, logging: false });
-                cardsSnapshot = new Image();
-                cardsSnapshot.src = canvas.toDataURL('image/png');
-                await new Promise<void>((r) => { cardsSnapshot!.onload = () => r(); });
-                if (previewRef.current) {
-                  const pRect = previewRef.current.getBoundingClientRect();
-                  const cRect = cardsEl.getBoundingClientRect();
-                  cardsSnapshotRect = {
-                    x: ((cRect.left - pRect.left) / pRect.width) * 100,
-                    y: ((cRect.top - pRect.top) / pRect.height) * 100,
-                    width: (cRect.width / pRect.width) * 100,
-                    height: (cRect.height / pRect.height) * 100,
-                  };
+                const img = new Image();
+                img.src = canvas.toDataURL('image/png');
+                await new Promise<void>((r) => { img.onload = () => r(); });
+                console.log('[Export] snapshot natural size:', img.naturalWidth, img.naturalHeight);
+                if (img.naturalWidth === 0 || img.naturalHeight === 0) {
+                  console.warn('[Export] Snapshot has zero natural size — falling back to manual canvas render.');
+                } else {
+                  cardsSnapshot = img;
+                  if (previewRef.current) {
+                    const pRect = previewRef.current.getBoundingClientRect();
+                    const cRect = cardsEl.getBoundingClientRect();
+                    cardsSnapshotRect = {
+                      x: ((cRect.left - pRect.left) / pRect.width) * 100,
+                      y: ((cRect.top - pRect.top) / pRect.height) * 100,
+                      width: (cRect.width / pRect.width) * 100,
+                      height: (cRect.height / pRect.height) * 100,
+                    };
+                  }
+                  console.log('[Export] Cards snapshot OK:', cardsSnapshot.width, 'x', cardsSnapshot.height, '(scale', scale.toFixed(3), 'previewW', previewW + ') rect:', cardsSnapshotRect);
                 }
-                console.log('[Export] Cards snapshot OK:', cardsSnapshot.width, 'x', cardsSnapshot.height, '(scale', scale.toFixed(3), 'previewW', previewW + ') rect:', cardsSnapshotRect);
+              } else if (exportedSequences.cartes && bCards.length > 0) {
+                console.warn('[Export] Cards grid element missing or zero-sized after forced sequence switch — using manual canvas fallback.');
               }
             } catch (err) {
               console.warn('[Export] Cards snapshot failed, composer will use canvas fallback:', err);
+            } finally {
+              if (didForceSequenceCal) {
+                setActiveSequence(prevSequenceCal);
+              }
             }
             // eslint-disable-next-line no-console
             console.log('[Export PRE-COMPOSE site=Calendar] cardsSnapshot truthy?', !!cardsSnapshot, 'value:', cardsSnapshot);
@@ -3165,14 +3189,23 @@ export default function InfographicPage() {
           const exportPhoto = pexelsPhotos.length > 0 ? pexelsPhotos[0] : null;
           const exportPosterUrl = exportPhoto?.url || null;
 
-          // Snapshot the live editor cards grid for WYSIWYG parity. Falls
-          // back silently — the composer's manual canvas pipeline still
-          // runs if cardsSnapshot is absent.
+          // Snapshot the live editor cards grid for WYSIWYG parity. The
+          // [data-cards-grid] element only renders when activeSequence is
+          // "all" or "cartes" — force the preview to the cards sequence
+          // around the capture so the snapshot is never empty, then restore.
           let cardsSnapshot: HTMLImageElement | undefined;
           let cardsSnapshotRect: { x: number; y: number; width: number; height: number } | undefined;
+          const prevSequenceBur = activeSequence;
+          let didForceSequenceBur = false;
+          if (exportedSequences.cartes && cards.length > 0 && activeSequence !== 'cartes' && activeSequence !== 'all') {
+            setActiveSequence('cartes');
+            didForceSequenceBur = true;
+            await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+          }
           try {
             const cardsEl = document.querySelector('[data-cards-grid]') as HTMLElement | null;
-            if (cardsEl && exportedSequences.cartes && cards.length > 0) {
+            console.log('[Export] cardsEl offsetWidth/Height:', cardsEl?.offsetWidth, cardsEl?.offsetHeight);
+            if (cardsEl && cardsEl.offsetWidth > 0 && exportedSequences.cartes && cards.length > 0) {
               const html2canvas = (await import('html2canvas')).default;
               // Scale the capture so 1 DOM px = 1 video-canvas px. The
               // snapshot's intrinsic size then matches the cards' target
@@ -3181,23 +3214,35 @@ export default function InfographicPage() {
               const previewW = previewRef.current?.offsetWidth || (isReel ? 320 : 512);
               const scale = videoW / previewW;
               const canvas = await html2canvas(cardsEl, { backgroundColor: null, scale, logging: false });
-              cardsSnapshot = new Image();
-              cardsSnapshot.src = canvas.toDataURL('image/png');
-              await new Promise<void>((r) => { cardsSnapshot!.onload = () => r(); });
-              if (previewRef.current) {
-                const pRect = previewRef.current.getBoundingClientRect();
-                const cRect = cardsEl.getBoundingClientRect();
-                cardsSnapshotRect = {
-                  x: ((cRect.left - pRect.left) / pRect.width) * 100,
-                  y: ((cRect.top - pRect.top) / pRect.height) * 100,
-                  width: (cRect.width / pRect.width) * 100,
-                  height: (cRect.height / pRect.height) * 100,
-                };
+              const img = new Image();
+              img.src = canvas.toDataURL('image/png');
+              await new Promise<void>((r) => { img.onload = () => r(); });
+              console.log('[Export] snapshot natural size:', img.naturalWidth, img.naturalHeight);
+              if (img.naturalWidth === 0 || img.naturalHeight === 0) {
+                console.warn('[Export] Snapshot has zero natural size — falling back to manual canvas render.');
+              } else {
+                cardsSnapshot = img;
+                if (previewRef.current) {
+                  const pRect = previewRef.current.getBoundingClientRect();
+                  const cRect = cardsEl.getBoundingClientRect();
+                  cardsSnapshotRect = {
+                    x: ((cRect.left - pRect.left) / pRect.width) * 100,
+                    y: ((cRect.top - pRect.top) / pRect.height) * 100,
+                    width: (cRect.width / pRect.width) * 100,
+                    height: (cRect.height / pRect.height) * 100,
+                  };
+                }
+                console.log('[Export] Cards snapshot OK:', cardsSnapshot.width, 'x', cardsSnapshot.height, '(scale', scale.toFixed(3), 'previewW', previewW + ') rect:', cardsSnapshotRect);
               }
-              console.log('[Export] Cards snapshot OK:', cardsSnapshot.width, 'x', cardsSnapshot.height, '(scale', scale.toFixed(3), 'previewW', previewW + ') rect:', cardsSnapshotRect);
+            } else if (exportedSequences.cartes && cards.length > 0) {
+              console.warn('[Export] Cards grid element missing or zero-sized after forced sequence switch — using manual canvas fallback.');
             }
           } catch (err) {
             console.warn('[Export] Cards snapshot failed, composer will use canvas fallback:', err);
+          } finally {
+            if (didForceSequenceBur) {
+              setActiveSequence(prevSequenceBur);
+            }
           }
 
           // Composer le montage vidéo final puis télécharger en MP4
