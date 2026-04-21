@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { topic } = body;
+    const { topic, batchIndex, seed } = body;
 
     if (!topic || typeof topic !== 'string') {
       return NextResponse.json(
@@ -30,7 +30,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = generateSmartContent(topic);
+    // Prefer an explicit seed; otherwise fall back to batchIndex for pool
+    // rotation across the N iterations of a batch export. Un-seeded calls
+    // keep the legacy random behavior.
+    const effectiveSeed = typeof seed === 'number'
+      ? seed
+      : typeof batchIndex === 'number' ? batchIndex : undefined;
+
+    const result = generateSmartContent(topic, effectiveSeed);
     // Cap to 3 cards — the editor's default — so a fallback path can't sneak
     // in 5 cards from the local knowledge-base templates.
     if (result && Array.isArray(result.cards)) {
