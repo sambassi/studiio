@@ -2955,6 +2955,7 @@ export default function InfographicPage() {
           if (r.ok) {
             const d = await r.json();
             if (d.success && d.content) {
+              console.log('[Batch variation] batchIndex:', batchIndex, 'cards count:', (d.content.cards || []).length, 'card labels:', (d.content.cards || []).map((c: any) => c.label));
               return {
                 title: d.content.title || topicText.toUpperCase(),
                 subtitle: d.content.subtitle || "",
@@ -2992,6 +2993,7 @@ export default function InfographicPage() {
           if (r.ok) {
             const d = await r.json();
             if (d.success && d.content) {
+              console.log('[Batch variation local] batchIndex:', batchIndex, 'cards count:', (d.content.cards || []).length, 'card labels:', (d.content.cards || []).map((c: any) => c.title));
               return {
                 title: d.content.tagLine || topicText.toUpperCase(),
                 subtitle: d.content.subtitle || "",
@@ -3037,6 +3039,7 @@ export default function InfographicPage() {
             bSubtitle = variation.subtitle;
             bCards = variation.cards;
             if (variation.salesPhrases.length > 0) bSalesPhrases = variation.salesPhrases;
+            console.log('[Batch export] b:', b, 'bCards labels:', bCards.map((c) => c.label));
           } else {
             console.warn(`[BatchVariation #${b}] no variation returned — video will reuse the editor's current title/cards.`);
           }
@@ -3133,19 +3136,31 @@ export default function InfographicPage() {
             // clicking export, the node is absent and html2canvas captures
             // nothing. Force the preview to the cards sequence around the
             // capture, then restore whatever the user had selected.
+            //
+            // CRUCIAL for batch exports: only snapshot on iteration b === 0.
+            // The DOM element renders the React `cards` state, not `bCards`
+            // (the per-iteration variation), so capturing on b>0 would paste
+            // iteration 0's cards onto every subsequent video. Skipping the
+            // snapshot forces the composer's manual Canvas 2D renderer to
+            // draw `bCards` directly, giving each iteration its own cards.
             let cardsSnapshot: HTMLImageElement | undefined;
             let cardsSnapshotRect: { x: number; y: number; width: number; height: number } | undefined;
             const prevSequenceCal = activeSequence;
             let didForceSequenceCal = false;
-            if (exportedSequences.cartes && bCards.length > 0 && activeSequence !== 'cartes' && activeSequence !== 'all') {
+            const canSnapshotCards = b === 0;
+            if (canSnapshotCards && exportedSequences.cartes && bCards.length > 0 && activeSequence !== 'cartes' && activeSequence !== 'all') {
               setActiveSequence('cartes');
               didForceSequenceCal = true;
               // Wait two frames so React commits the DOM mount before capture.
               await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
             }
             try {
-              const cardsEl = document.querySelector('[data-cards-grid]') as HTMLElement | null;
-              console.log('[Export] cardsEl offsetWidth/Height:', cardsEl?.offsetWidth, cardsEl?.offsetHeight);
+              const cardsEl = canSnapshotCards ? document.querySelector('[data-cards-grid]') as HTMLElement | null : null;
+              if (!canSnapshotCards) {
+                console.log(`[Batch #${b}] Skipping cards snapshot — composer will render bCards directly.`);
+              } else {
+                console.log('[Export] cardsEl offsetWidth/Height:', cardsEl?.offsetWidth, cardsEl?.offsetHeight);
+              }
               if (cardsEl && cardsEl.offsetWidth > 0 && exportedSequences.cartes && bCards.length > 0) {
                 const html2canvas = (await import('html2canvas')).default;
                 // Scale the capture so 1 DOM px = 1 video-canvas px. The
@@ -3175,7 +3190,7 @@ export default function InfographicPage() {
                   }
                   console.log('[Export] Cards snapshot OK:', cardsSnapshot.width, 'x', cardsSnapshot.height, '(scale', scale.toFixed(3), 'previewW', previewW + ') rect:', cardsSnapshotRect);
                 }
-              } else if (exportedSequences.cartes && bCards.length > 0) {
+              } else if (canSnapshotCards && exportedSequences.cartes && bCards.length > 0) {
                 console.warn('[Export] Cards grid element missing or zero-sized after forced sequence switch — using manual canvas fallback.');
               }
             } catch (err) {
@@ -3187,6 +3202,7 @@ export default function InfographicPage() {
             }
             // eslint-disable-next-line no-console
             console.log('[Export PRE-COMPOSE site=Calendar] cardsSnapshot truthy?', !!cardsSnapshot, 'value:', cardsSnapshot);
+            console.log('[Batch compose] b:', b, 'cards passed to composer:', bCards.map((c) => c.label));
             const { url: composedUrl, thumbnailUrl: composedThumbUrl, composerVersion: composedVersion } = await composeAndUpload({
               width: isReel ? 1080 : 1920,
               height: isReel ? 1920 : 1080,
