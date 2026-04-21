@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
+import { shortenForCard } from '@/lib/smart-content';
 
 // Fast model for card generation. Haiku 4.5 is 5-10× faster than Sonnet on
 // short JSON responses, which prevents client-side 8s AbortError timeouts
@@ -221,7 +222,7 @@ JSON requis (${locale === 'fr' ? 'tout en français' : 'tout en anglais'}):
       "emoji": "emoji de fallback (utilisé seulement si iconName invalide)",
       "label": "ASPECT SPÉCIFIQUE DE ${topic.toUpperCase()} (2-4 mots)",
       "value": "CHIFFRE RÉEL (ex: 27g, +40%, 2L/j, 48h)",
-      "description": "Explication éducative courte du fait (10-20 mots)"
+      "description": "PHRASE COMPLÈTE de 8 à 15 mots MAXIMUM, finit par un point, jamais tronquée, ≤ 80 caractères"
     }
   ],
   "salesPhrases": [
@@ -341,12 +342,16 @@ function parseAndReturn(data: any, topic: string, count: number, iconNames: stri
   content.cards = content.cards.map((card: any) => {
     const rawName = typeof card.iconName === 'string' ? card.iconName.trim() : '';
     const iconName = ALLOWED.has(rawName) ? rawName : 'Sparkles';
+    // Normalize description to ≤ 80 chars, complete sentence. This is a
+    // safety net — the prompt already asks for 8-15 words, but the model
+    // sometimes overshoots. Truncating server-side prevents the preview's
+    // 40-char `truncate` CSS from cutting a word mid-phrase.
     return {
       iconName,
       emoji: card.emoji || '📊',
       label: card.label || 'INFO',
       value: card.value || '-',
-      description: card.description || '',
+      description: shortenForCard(card.description || '', 80),
     };
   });
 

@@ -2435,51 +2435,103 @@ export default function InfographicPage() {
   /**
    * Regenerate a single card in-place (label + value + description + icon),
    * leaving all other cards, the poster gallery, and the main title/subtitle
-   * untouched. Matches the user's expectation that the per-card ✨ button
-   * only refreshes the card it's attached to.
+   * untouched. Has a 15s client-side timeout on the AI call; on failure or
+   * timeout it falls back to the local smart-content generator with a fresh
+   * seed so the user still sees the card refresh to different content.
    */
   const suggestCardField = async (cardId: string, _field?: 'label' | 'description') => {
+    const cardIndex = cards.findIndex((c) => c.id === cardId);
     const loadingKey = `${cardId}-label`;
     setAiFieldLoading(loadingKey);
+    const themeObj = CONTENT_THEMES.find((t) => t.id === contentTheme);
+    const topicText =
+      contentTheme === 'personnalise'
+        ? customTopic
+        : themeObj?.label || contentTheme || 'fitness';
+    const existingCards = cards.filter((c) => c.id !== cardId).map((c) => c.label);
+    const accent = COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent || customAccent || '#a855f7';
+
+    const applyCard = (label: string, value: string, description: string, iconName: string) => {
+      const resolved = resolveCardIcon(label, description, iconName);
+      setCards((prev) =>
+        prev.map((c) =>
+          c.id === cardId
+            ? {
+                ...c,
+                label: label || c.label,
+                value: value || c.value,
+                description: description || c.description,
+                color: c.color || accent,
+                emoji: resolved.emoji,
+                iconType: resolved.iconType,
+              }
+            : c,
+        ),
+      );
+    };
+
     try {
-      const themeObj = CONTENT_THEMES.find((t) => t.id === contentTheme);
-      const topicText =
-        contentTheme === 'personnalise'
-          ? customTopic
-          : themeObj?.label || contentTheme || 'fitness';
-      const res = await fetch('/api/content/ai-generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          topic: topicText,
-          locale: 'fr',
-          cardCount: 1,
-          existingCards: cards.filter((c) => c.id !== cardId).map((c) => c.label),
-        }),
-      });
-      const data = await res.json();
-      const aiCard = data?.content?.cards?.[0];
-      if (data.success && aiCard) {
-        const resolved = resolveCardIcon(aiCard.label, aiCard.description, aiCard.iconName || 'Sparkles');
-        setCards((prev) =>
-          prev.map((c) =>
-            c.id === cardId
-              ? {
-                  ...c,
-                  label: aiCard.label || c.label,
-                  value: aiCard.value || c.value,
-                  description: aiCard.description || c.description,
-                  emoji: resolved.emoji,
-                  iconType: resolved.iconType,
-                }
-              : c,
-          ),
-        );
-      } else {
-        console.warn('[suggestCardField] AI did not return a card:', data);
+      // 1. AI attempt with a 15s client-side AbortController. Server has its
+      //    own 20s budget — 15s here keeps the UI feeling responsive while
+      //    still letting Haiku 4.5 finish a small 1-card request.
+      try {
+        const ac = new AbortController();
+        const timer = setTimeout(() => ac.abort(), 15_000);
+        const res = await fetch('/api/content/ai-generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            topic: topicText,
+            locale: 'fr',
+            cardCount: 1,
+            existingCards,
+            variationNonce: `single-${cardIndex}-${Date.now().toString(36)}`,
+          }),
+          signal: ac.signal,
+        });
+        clearTimeout(timer);
+        const data = await res.json();
+        const aiCard = data?.content?.cards?.[0];
+        console.log(`[Regenerate card ${cardIndex}] result:`, { success: data?.success, source: 'ai', card: aiCard });
+        if (data.success && aiCard) {
+          applyCard(aiCard.label, aiCard.value, aiCard.description, aiCard.iconName || 'Sparkles');
+          return;
+        }
+      } catch (err: any) {
+        const reason = err?.name === 'AbortError' ? 'timeout' : (err?.message || 'error');
+        console.warn(`[Regenerate card ${cardIndex}] AI failed (${reason}), falling back to local pool`);
       }
-    } catch (err) {
-      console.warn('[suggestCardField] failed:', err);
+
+      // 2. Local fallback. Seed with the card index + random offset so each
+      //    click produces a different pool entry.
+      try {
+        const res = await fetch('/api/content/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            topic: topicText,
+            seed: Math.floor(Math.random() * 1000) + cardIndex,
+          }),
+        });
+        const data = await res.json();
+        const localCards: any[] = data?.content?.cards || [];
+        const candidate = localCards.find((c) => !existingCards.includes(c.title)) || localCards[0];
+        console.log(`[Regenerate card ${cardIndex}] result:`, { success: data?.success, source: 'local', card: candidate });
+        if (data.success && candidate) {
+          applyCard(
+            candidate.title,
+            candidate.value,
+            candidate.description,
+            toLucideName(candidate.icon),
+          );
+          return;
+        }
+      } catch (err) {
+        console.warn(`[Regenerate card ${cardIndex}] local fallback failed:`, err);
+      }
+
+      // 3. Nothing worked — tell the user so the click isn't silently inert.
+      showToast('Impossible de régénérer cette carte pour le moment');
     } finally {
       setAiFieldLoading(null);
     }
@@ -6220,7 +6272,7 @@ export default function InfographicPage() {
                             className="text-center text-white/60"
                             style={{ fontSize: scaledDesc }}
                           >
-                            {renderBoldMarkdown(truncateAtWord(card.description, 30))}
+                            {renderBoldMarkdown(truncateAtWord(card.description, 70))}
                           </p>
                         )}
                       </div>
@@ -6248,7 +6300,7 @@ export default function InfographicPage() {
                           className="text-white/70 leading-relaxed mb-1"
                           style={{ fontSize: scaledDesc }}
                         >
-                          {renderBoldMarkdown(truncateAtWord(card.description, 60))}
+                          {renderBoldMarkdown(truncateAtWord(card.description, 90))}
                         </p>
                         <p
                           className="font-black"
@@ -6324,10 +6376,16 @@ export default function InfographicPage() {
                         </p>
                         {card.description && (
                           <p
-                            className="text-white/50 truncate"
-                            style={{ fontSize: scaledDesc }}
+                            className="text-white/50"
+                            style={{
+                              fontSize: scaledDesc,
+                              display: '-webkit-box',
+                              WebkitBoxOrient: 'vertical',
+                              WebkitLineClamp: 2,
+                              overflow: 'hidden',
+                            }}
                           >
-                            {renderBoldMarkdown(truncateAtWord(card.description, 40))}
+                            {renderBoldMarkdown(truncateAtWord(card.description, 90))}
                           </p>
                         )}
                       </div>
