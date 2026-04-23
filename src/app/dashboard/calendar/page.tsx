@@ -459,6 +459,12 @@ export default function CalendarPage() {
           logoScale: designMeta.logoScale || undefined,
           overlayText: meta.videoOverlayText || undefined,
           overlayColor: designMeta.overlayColor || undefined,
+          overlayTextScale: meta.overlayTextScale,
+          overlayStartTime: meta.overlayStartTime,
+          overlayEndTime: meta.overlayEndTime,
+          // Extra overlays saved per-post so each one keeps its own
+          // position/timing/style when the calendar re-composes.
+          overlays: Array.isArray(meta.overlays) ? meta.overlays : undefined,
           textScale: designMeta.textScale || undefined,
           ctaTextScale: designMeta.ctaTextScale || undefined,
           cardStyle: designMeta.cardStyle || undefined,
@@ -470,7 +476,7 @@ export default function CalendarPage() {
           titleTypography: designMeta.typography?.title || undefined,
           watermarkPosition: designMeta.positions?.watermark || undefined,
           watermarkSize: designMeta.sizes?.watermark || undefined,
-          overlayPosition: designMeta.positions?.overlay || undefined,
+          overlayPosition: meta.overlayPosition || designMeta.positions?.overlay || undefined,
           titleSize: designMeta.sizes?.title || undefined,
           ctaTypography: designMeta.typography?.cta || undefined,
           overlayTypography: designMeta.typography?.overlay || undefined,
@@ -843,6 +849,10 @@ export default function CalendarPage() {
             logoScale: designMeta.logoScale || undefined,
             overlayText: meta.videoOverlayText || undefined,
             overlayColor: designMeta.overlayColor || undefined,
+            overlayTextScale: (meta as any).overlayTextScale,
+            overlayStartTime: (meta as any).overlayStartTime,
+            overlayEndTime: (meta as any).overlayEndTime,
+            overlays: Array.isArray((meta as any).overlays) ? (meta as any).overlays : undefined,
             textScale: designMeta.textScale || undefined,
             ctaTextScale: designMeta.ctaTextScale || undefined,
             cardStyle: designMeta.cardStyle || undefined,
@@ -854,7 +864,7 @@ export default function CalendarPage() {
             titleTypography: designMeta.typography?.title || undefined,
             watermarkPosition: designMeta.positions?.watermark || undefined,
             watermarkSize: designMeta.sizes?.watermark || undefined,
-            overlayPosition: designMeta.positions?.overlay || undefined,
+            overlayPosition: (meta as any).overlayPosition || designMeta.positions?.overlay || undefined,
             titleSize: designMeta.sizes?.title || undefined,
             ctaTypography: designMeta.typography?.cta || undefined,
             overlayTypography: designMeta.typography?.overlay || undefined,
@@ -1409,6 +1419,10 @@ export default function CalendarPage() {
               logoScale: designMeta.logoScale || undefined,
               overlayText: meta.videoOverlayText || undefined,
               overlayColor: designMeta.overlayColor || undefined,
+              overlayTextScale: (meta as any).overlayTextScale,
+              overlayStartTime: (meta as any).overlayStartTime,
+              overlayEndTime: (meta as any).overlayEndTime,
+              overlays: Array.isArray((meta as any).overlays) ? (meta as any).overlays : undefined,
               textScale: designMeta.textScale || undefined,
               ctaTextScale: designMeta.ctaTextScale || undefined,
               cardStyle: designMeta.cardStyle || undefined,
@@ -1420,7 +1434,7 @@ export default function CalendarPage() {
               titleTypography: designMeta.typography?.title || undefined,
               watermarkPosition: designMeta.positions?.watermark || undefined,
               watermarkSize: designMeta.sizes?.watermark || undefined,
-              overlayPosition: designMeta.positions?.overlay || undefined,
+              overlayPosition: (meta as any).overlayPosition || designMeta.positions?.overlay || undefined,
               titleSize: designMeta.sizes?.title || undefined,
               ctaTypography: designMeta.typography?.cta || undefined,
               overlayTypography: designMeta.typography?.overlay || undefined,
@@ -1781,6 +1795,11 @@ export default function CalendarPage() {
           logoScale: calDesign?.logoScale || undefined,
           overlayText: meta?.videoOverlayText || undefined,
           overlayColor: calDesign?.overlayColor || undefined,
+          overlayTextScale: (meta as any)?.overlayTextScale,
+          overlayStartTime: (meta as any)?.overlayStartTime,
+          overlayEndTime: (meta as any)?.overlayEndTime,
+          overlays: Array.isArray((meta as any)?.overlays) ? (meta as any).overlays : undefined,
+          overlayPosition: (meta as any)?.overlayPosition || calDesign?.positions?.overlay || undefined,
           textScale: calDesign?.textScale || undefined,
           ctaTextScale: calDesign?.ctaTextScale || undefined,
           cardStyle: calDesign?.cardStyle || undefined,
@@ -3012,13 +3031,13 @@ export default function CalendarPage() {
                           background: getGradientCSS('video'),
                           pointerEvents: 'none',
                         }} />
-                        {/* Texte overlay vidéo — texte optionnel défini par l'utilisateur dans Infographie */}
+                        {/* Texte overlay vidéo — legacy single overlay + any extras saved in metadata.overlays[] */}
                         {meta?.videoOverlayText && (
                           <div className="absolute inset-0 z-10 pointer-events-none">
                             <p style={{
                               fontFamily: designFont,
                               color: design?.overlayColor || '#FFFFFF',
-                              fontSize: editorPxToDvh(16 * designTextScale),
+                              fontSize: editorPxToDvh(16 * designTextScale * ((meta as any)?.overlayTextScale ?? 1)),
                               letterSpacing: `${overlayTypo.letterSpacing || 0}px`,
                               lineHeight: overlayTypo.lineHeight || 1.2,
                               fontWeight: overlayTypo.bold ? 'bold' : 'normal',
@@ -3027,13 +3046,34 @@ export default function CalendarPage() {
                               textAlign: 'center',
                               textShadow: '0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5)',
                               position: 'absolute',
-                              left: `${positions.overlay?.x ?? 50}%`,
-                              top: `${positions.overlay?.y ?? 33}%`,
+                              left: `${(meta as any)?.overlayPosition?.x ?? positions.overlay?.x ?? 50}%`,
+                              top: `${(meta as any)?.overlayPosition?.y ?? positions.overlay?.y ?? 33}%`,
                               transform: 'translate(-50%, -50%)',
                               width: '85%',
                             }}>{meta.videoOverlayText}</p>
                           </div>
                         )}
+                        {Array.isArray((meta as any)?.overlays) && (meta as any).overlays.map((ov: any, idx: number) => ov?.text ? (
+                          <div key={`extra-ov-${idx}`} className="absolute inset-0 z-10 pointer-events-none">
+                            <p style={{
+                              fontFamily: designFont,
+                              color: ov.color || '#FFFFFF',
+                              fontSize: editorPxToDvh(16 * designTextScale * (ov.scale ?? 1)),
+                              letterSpacing: `${ov.letterSpacing || 0}px`,
+                              lineHeight: ov.lineHeight || 1.2,
+                              fontWeight: ov.bold ? 'bold' : 'normal',
+                              fontStyle: ov.italic ? 'italic' : 'normal',
+                              textTransform: 'uppercase',
+                              textAlign: 'center',
+                              textShadow: '0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5)',
+                              position: 'absolute',
+                              left: `${ov.position?.x ?? 50}%`,
+                              top: `${ov.position?.y ?? 55}%`,
+                              transform: 'translate(-50%, -50%)',
+                              width: '85%',
+                            }}>{ov.text}</p>
+                          </div>
+                        ) : null)}
                         {/* Logo sur vidéo si logoSequences inclut 'video' — per-sequence position */}
                         {designLogoUrl && designLogoSequences?.includes('video') && (
                           <img src={designLogoUrl} alt="Logo" style={{

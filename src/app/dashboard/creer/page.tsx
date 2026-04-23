@@ -3889,6 +3889,18 @@ function InfographicPageInner() {
                 type: "infographic",
                 subtitle: bSubtitle,
                 videoOverlayText: videoOverlayText || undefined,
+                // Extra video overlays (Overlay 2/3/4 in the editor) +
+                // their timing/scale on the legacy one. The composer
+                // (and calendar re-composition) needs these to place
+                // each overlay at its own position instead of stacking.
+                overlays: extraOverlays.length > 0
+                  ? extraOverlays.map(({ id: _id, ...rest }) => rest)
+                  : undefined,
+                overlayTextScale,
+                overlayStartTime,
+                overlayEndTime,
+                overlayPosition: overlayPos,
+                overlayColor,
                 theme: contentTheme,
                 colorTheme,
                 salesPhrase,
