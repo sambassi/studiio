@@ -6159,7 +6159,7 @@ function InfographicPageInner() {
 
             {/* Background Photo */}
             {previewPhoto &&
-              (activeSequence === "all" || activeSequence === "titre") && (
+              ((activeSequence === "all" && exportedSequences.titre) || activeSequence === "titre") && (
                 <img
                   src={previewPhoto.medium}
                   alt=""
@@ -6177,7 +6177,7 @@ function InfographicPageInner() {
 
             {/* Video background (uploaded video or still image) — visible during the video sequence */}
             {rushUrl &&
-              (activeSequence === "all" || activeSequence === "video") && (
+              ((activeSequence === "all" && exportedSequences.video) || activeSequence === "video") && (
                 rushList[0]?.kind === 'image' ? (
                   <img
                     src={rushUrl}
@@ -6292,7 +6292,7 @@ function InfographicPageInner() {
             })()}
 
             {/* ── TITLE SECTION (visible in all, titre) — drag + double-click for panel ── */}
-            {(activeSequence === "all" || activeSequence === "titre") && (
+            {((activeSequence === "all" && exportedSequences.titre) || activeSequence === "titre") && (
               <div
                 className={`absolute z-20 text-center cursor-grab active:cursor-grabbing group/title ${activePanel === "title" || (selectedEl?.type === 'title') ? "ring-1 ring-purple-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
                 style={{
@@ -6394,7 +6394,7 @@ function InfographicPageInner() {
 
             {/* ── VIDEO OVERLAY TEXT (visible in video sequence) — draggable, no bg ── */}
             {rushUrl &&
-              (activeSequence === "all" || activeSequence === "video") &&
+              ((activeSequence === "all" && exportedSequences.video) || activeSequence === "video") &&
               videoOverlayText && (
                 <div
                   className={`absolute z-20 text-center cursor-grab active:cursor-grabbing group/overlay ${activePanel === "overlay" || (selectedEl?.type === 'overlay') ? "ring-1 ring-cyan-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
@@ -6431,7 +6431,7 @@ function InfographicPageInner() {
               )}
 
             {/* ── CARDS (visible in all, cartes) — grid or free-positioning mode ── */}
-            {(activeSequence === "all" || activeSequence === "cartes") &&
+            {((activeSequence === "all" && exportedSequences.cartes) || activeSequence === "cartes") &&
               cards.length > 0 && (() => {
                 const cardsK = (cardsTextScale || 100) / 100;
                 const scaledLabel = `${Math.round(7 * textScale * cardsK)}px`;
@@ -6718,7 +6718,7 @@ function InfographicPageInner() {
               })()}
 
             {/* ── CTA / WATERMARK (visible in all, cta) — drag + double-click for panel ── */}
-            {(activeSequence === "all" || activeSequence === "cta") && (
+            {((activeSequence === "all" && exportedSequences.cta) || activeSequence === "cta") && (
               <div
                 className={`absolute z-20 text-center cursor-grab active:cursor-grabbing group/cta ${activePanel === "cta" || (selectedEl?.type === 'cta') ? "ring-1 ring-yellow-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
                 style={{
@@ -6870,7 +6870,7 @@ function InfographicPageInner() {
 
             {/* Character Image — draggable + resizable */}
             {characterImage &&
-              (activeSequence === "all" || activeSequence === "titre") && (
+              ((activeSequence === "all" && exportedSequences.titre) || activeSequence === "titre") && (
                 <div
                   className="absolute z-10 cursor-grab active:cursor-grabbing group/char"
                   style={{
@@ -6999,7 +6999,7 @@ function InfographicPageInner() {
             )}
 
             {/* Clickable zone to add overlay text when empty */}
-            {(activeSequence === "all" || activeSequence === "video") &&
+            {((activeSequence === "all" && exportedSequences.video) || activeSequence === "video") &&
               rushUrl &&
               !videoOverlayText && (
                 <div
