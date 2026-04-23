@@ -128,6 +128,14 @@ import { composeAndUpload, downloadBlob } from "@/lib/video-composer";
 import { Modal } from "@/components/ui/Modal";
 import { detectClips, extractClip, type DetectedClip } from "@/lib/clip-detector";
 import CropRushModal from "@/components/creer/CropRushModal";
+import SmartGuides from "@/components/creer/SmartGuides";
+import {
+  snapPosition,
+  computeDistanceBadges,
+  type ActiveGuide,
+  type DistanceBadge,
+  type ElementPos,
+} from "@/lib/creer/smartGuides";
 import { useSession } from "next-auth/react";
 import { BuyCreditsModal } from "@/components/billing/BuyCreditsModal";
 import { MediaLibrary } from "@/components/shared/MediaLibrary";
@@ -1677,6 +1685,8 @@ function InfographicPageInner() {
         if (cfg.siteTextSequences) setSiteTextSequences(cfg.siteTextSequences);
         if (cfg.siteTextEnabled !== undefined) setSiteTextEnabled(cfg.siteTextEnabled);
         if (typeof cfg.showCenterGuides === 'boolean') setShowCenterGuides(cfg.showCenterGuides);
+        if (typeof cfg.smartGuidesEnabled === 'boolean') setSmartGuidesEnabled(cfg.smartGuidesEnabled);
+        if (typeof cfg.showGridOverlay === 'boolean') setShowGridOverlay(cfg.showGridOverlay);
         if (cfg.cardPositionMode === 'grid' || cfg.cardPositionMode === 'free') setCardPositionMode(cfg.cardPositionMode);
       }
     } catch {
@@ -1790,6 +1800,11 @@ function InfographicPageInner() {
   // ── Center guides (horizontal + vertical dashed lines through preview center) ────
   const [showCenterGuides, setShowCenterGuides] = useState(false);
   const [showThirdsGuides, setShowThirdsGuides] = useState(false);
+  // ── Smart alignment guides + optional 8×8 grid overlay ────────────
+  const [smartGuidesEnabled, setSmartGuidesEnabled] = useState(true);
+  const [showGridOverlay, setShowGridOverlay] = useState(false);
+  const [activeGuides, setActiveGuides] = useState<ActiveGuide[]>([]);
+  const [activeDistanceBadges, setActiveDistanceBadges] = useState<DistanceBadge[]>([]);
 
   // ── Card position mode: 'grid' (default) uses the grid layout, 'free'
   // allows each card to be dragged independently using its `position` field.
@@ -1995,6 +2010,7 @@ function InfographicPageInner() {
             titleSize, cardsSize, watermarkSize,
             siteText, siteTextPositions, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
             showCenterGuides,
+            smartGuidesEnabled, showGridOverlay,
             cardPositionMode,
             // User-typed text copy — persisted even when empty so clearing a
             // field sticks across reloads. Cards / rushes / photos / audio
@@ -2026,6 +2042,7 @@ function InfographicPageInner() {
     titleSize, cardsSize, watermarkSize,
     siteText, siteTextPositions, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
     showCenterGuides,
+    smartGuidesEnabled, showGridOverlay,
     cardPositionMode,
     contentTheme, customTopic, title, subtitle,
   ]);
@@ -4294,6 +4311,17 @@ function InfographicPageInner() {
                   <label className="flex items-center gap-2 text-xs text-gray-300">
                     <input
                       type="checkbox"
+                      checked={smartGuidesEnabled}
+                      onChange={(e) => setSmartGuidesEnabled(e.target.checked)}
+                      className="accent-purple-500"
+                    />
+                    Guides d'alignement intelligents (snap + distances)
+                  </label>
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 text-xs text-gray-300">
+                    <input
+                      type="checkbox"
                       checked={syncColorsGlobal}
                       onChange={(e) => setSyncColorsGlobal(e.target.checked)}
                       className="accent-purple-500"
@@ -5662,6 +5690,20 @@ function InfographicPageInner() {
             Guides
           </button>
 
+          {/* Grid 8×8 overlay toggle */}
+          <button
+            onClick={() => setShowGridOverlay((v) => !v)}
+            title={showGridOverlay ? "Masquer la grille" : "Afficher la grille"}
+            className={`flex items-center gap-2 rounded-2xl pl-1 pr-3 py-1 text-xs font-medium transition-all ${
+              showGridOverlay
+                ? "bg-gray-800/80 text-white shadow-lg shadow-black/20"
+                : "bg-gray-900/60 text-gray-300 hover:bg-gray-800/80 hover:text-white"
+            }`}
+          >
+            <IconBadge Icon={Grid3x3} color="cyan" active={showGridOverlay} size={36} iconSize={18} />
+            Grille
+          </button>
+
           {/* Card position mode toggle */}
           <button
             onClick={() => setCardPositionMode((m) => (m === 'grid' ? 'free' : 'grid'))}
@@ -5984,18 +6026,30 @@ function InfographicPageInner() {
               const rect = previewRef.current.getBoundingClientRect();
               // Free-mode card dragging — each card moved independently
               if (dragCardIdx !== null) {
-                const x = Math.max(
+                let cx = Math.max(
                   0,
                   Math.min(100, ((e.clientX - rect.left) / rect.width) * 100),
                 );
-                const y = Math.max(
+                let cy = Math.max(
                   0,
                   Math.min(100, ((e.clientY - rect.top) / rect.height) * 100),
                 );
+                if (smartGuidesEnabled) {
+                  const otherCards: ElementPos[] = cards
+                    .map((c, i) => ({ i, p: c.position }))
+                    .filter((x) => x.i !== dragCardIdx && x.p)
+                    .map(({ i, p }) => ({ key: 'cards' as const, x: p!.x, y: p!.y, label: `Carte ${i + 1}` }));
+                  const snap = snapPosition(cx, cy, otherCards);
+                  cx = snap.x;
+                  cy = snap.y;
+                  setActiveGuides(snap.guides);
+                  const active: ElementPos = { key: 'cards', x: cx, y: cy, label: 'Carte' };
+                  setActiveDistanceBadges(computeDistanceBadges(active, otherCards, rect.width, rect.height));
+                }
                 setCards((prev) => {
                   if (dragCardIdx >= prev.length) return prev;
                   const next = prev.slice();
-                  next[dragCardIdx] = { ...next[dragCardIdx], position: { x, y } };
+                  next[dragCardIdx] = { ...next[dragCardIdx], position: { x: cx, y: cy } };
                   return next;
                 });
                 return;
@@ -6031,18 +6085,37 @@ function InfographicPageInner() {
               }
               // Handle drag
               if (!dragging) return;
-              const x = Math.round(
-                Math.max(
-                  5,
-                  Math.min(95, ((e.clientX - rect.left) / rect.width) * 100),
-                ),
+              let rawX = Math.max(
+                5,
+                Math.min(95, ((e.clientX - rect.left) / rect.width) * 100),
               );
-              const y = Math.round(
-                Math.max(
-                  3,
-                  Math.min(97, ((e.clientY - rect.top) / rect.height) * 100),
-                ),
+              let rawY = Math.max(
+                3,
+                Math.min(97, ((e.clientY - rect.top) / rect.height) * 100),
               );
+
+              // ── Smart guides: snap + alignment hints ───────────────
+              if (smartGuidesEnabled) {
+                const activeLogoPos = getActiveLogoPos();
+                const allPositions: ElementPos[] = [
+                  { key: 'title', x: titlePos.x, y: titlePos.y, label: 'Titre' },
+                  { key: 'cards', x: cardsPos.x, y: cardsPos.y, label: 'Cartes' },
+                  { key: 'watermark', x: watermarkPos.x, y: watermarkPos.y, label: 'CTA' },
+                  { key: 'overlay', x: overlayPos.x, y: overlayPos.y, label: 'Overlay' },
+                  { key: 'logo', x: activeLogoPos.x, y: activeLogoPos.y, label: 'Logo' },
+                  { key: 'sitetext', x: siteTextPos.x, y: siteTextPos.y, label: 'Site' },
+                ];
+                const others = allPositions.filter((p) => p.key !== dragging);
+                const snap = snapPosition(rawX, rawY, others);
+                rawX = snap.x;
+                rawY = snap.y;
+                setActiveGuides(snap.guides);
+                const active: ElementPos = { key: dragging as ElementPos['key'], x: rawX, y: rawY, label: 'Actif' };
+                setActiveDistanceBadges(computeDistanceBadges(active, others, rect.width, rect.height));
+              }
+
+              const x = Math.round(rawX);
+              const y = Math.round(rawY);
               if (dragging === "title") setTitlePos({ x, y });
               else if (dragging === "logo") {
                 // Update logo position ONLY for the active sequence
@@ -6079,12 +6152,16 @@ function InfographicPageInner() {
               setResizing(null);
               setDragCardIdx(null);
               resizeStart.current = null;
+              setActiveGuides([]);
+              setActiveDistanceBadges([]);
             }}
             onMouseLeave={() => {
               setDragging(null);
               setResizing(null);
               setDragCardIdx(null);
               resizeStart.current = null;
+              setActiveGuides([]);
+              setActiveDistanceBadges([]);
             }}
             onTouchMove={(e) => {
               if (dragCardIdx === null || !previewRef.current) return;
@@ -6188,6 +6265,13 @@ function InfographicPageInner() {
                   />
                 )
               )}
+
+            {/* Smart alignment guides + optional grid overlay (pointer-events:none) */}
+            <SmartGuides
+              guides={smartGuidesEnabled ? activeGuides : []}
+              distanceBadges={smartGuidesEnabled ? activeDistanceBadges : []}
+              showGrid={showGridOverlay}
+            />
 
             {/* Format Badge */}
             <div className="absolute top-2 right-2 rounded-full bg-black/40 px-2.5 py-0.5 text-[10px] font-bold text-white backdrop-blur z-10">
