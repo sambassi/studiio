@@ -3812,6 +3812,24 @@ function InfographicPageInner() {
             // eslint-disable-next-line no-console
             console.log('[Export PRE-COMPOSE site=Calendar] cardsSnapshot truthy?', !!cardsSnapshot, 'value:', cardsSnapshot);
             console.log('[Batch compose] b:', b, 'cards passed to composer:', bCards.map((c) => c.label));
+            console.log('[Export PRE-COMPOSE site=Calendar] legacy overlay:', JSON.stringify({
+              text: videoOverlayText,
+              x: overlayPos.x,
+              y: overlayPos.y,
+              startTime: overlayStartTime,
+              endTime: overlayEndTime,
+              scale: overlayTextScale,
+            }));
+            console.log('[Export PRE-COMPOSE site=Calendar] extraOverlays passed:', JSON.stringify(
+              extraOverlays.map((o) => ({
+                text: o.text,
+                x: o.position?.x,
+                y: o.position?.y,
+                startTime: o.startTime,
+                endTime: o.endTime,
+                scale: o.scale,
+              }))
+            ));
             const { url: composedUrl, thumbnailUrl: composedThumbUrl, composerVersion: composedVersion } = await composeAndUpload({
               width: isReel ? 1080 : 1920,
               height: isReel ? 1920 : 1080,
@@ -4155,6 +4173,24 @@ function InfographicPageInner() {
           setExportProgress(50);
           // eslint-disable-next-line no-console
           console.log('[Export PRE-COMPOSE site=Bureau] cardsSnapshot truthy?', !!cardsSnapshot, 'value:', cardsSnapshot);
+          console.log('[Export PRE-COMPOSE site=Bureau] legacy overlay:', JSON.stringify({
+            text: videoOverlayText,
+            x: overlayPos.x,
+            y: overlayPos.y,
+            startTime: overlayStartTime,
+            endTime: overlayEndTime,
+            scale: overlayTextScale,
+          }));
+          console.log('[Export PRE-COMPOSE site=Bureau] extraOverlays passed:', JSON.stringify(
+            extraOverlays.map((o) => ({
+              text: o.text,
+              x: o.position?.x,
+              y: o.position?.y,
+              startTime: o.startTime,
+              endTime: o.endTime,
+              scale: o.scale,
+            }))
+          ));
           const composedResult = await composeAndUpload({
             width: isReel ? 1080 : 1920,
             height: isReel ? 1920 : 1080,
