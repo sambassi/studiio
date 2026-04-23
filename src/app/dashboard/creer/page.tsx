@@ -2029,6 +2029,10 @@ function InfographicPageInner() {
   const [dragging, setDragging] = useState<string | null>(null);
   const [resizing, setResizing] = useState<string | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
+  // Ref to the rush <video> in the preview so we can track currentTime
+  // and gate overlay visibility on the user-configured start/end windows.
+  const rushVideoRef = useRef<HTMLVideoElement | null>(null);
+  const [videoCurrentTime, setVideoCurrentTime] = useState(0);
 
   // Element sizes (percentage-based widths, 20-100)
   const [titleSize, setTitleSize] = useState(90);
@@ -6876,6 +6880,7 @@ function InfographicPageInner() {
                   />
                 ) : (
                   <video
+                    ref={rushVideoRef}
                     src={rushUrl}
                     className="absolute inset-0 h-full w-full object-cover"
                     style={{
@@ -6889,6 +6894,7 @@ function InfographicPageInner() {
                     muted
                     loop
                     playsInline
+                    onTimeUpdate={(e) => setVideoCurrentTime((e.target as HTMLVideoElement).currentTime)}
                     onError={(e) => {
                       (e.target as HTMLVideoElement).style.display = "none";
                     }}
@@ -7096,7 +7102,12 @@ function InfographicPageInner() {
               </div>
             )}
 
-            {/* ── VIDEO OVERLAY TEXT (visible in video sequence) — draggable, no bg ── */}
+            {/* ── VIDEO OVERLAY TEXT (visible in video sequence) — draggable, no bg ──
+                Fade in/out on a 300ms CSS transition based on the overlay's
+                configured [startTime, endTime] window, tracked via a
+                timeupdate listener on the rush <video>. When the overlay's
+                panel tab is active we force-show it so the user can still
+                drag/position it while out-of-window. */}
             {rushUrl &&
               ((activeSequence === "all" && exportedSequences.video) || activeSequence === "video") &&
               videoOverlayText && (
@@ -7107,6 +7118,14 @@ function InfographicPageInner() {
                     top: `${overlayPos.y}%`,
                     transform: "translate(-50%, -50%)",
                     width: "85%",
+                    // Fade out when outside the configured time window
+                    // unless the user is actively editing this overlay.
+                    opacity: (activePanel === 'overlay' && activeOverlayIdx === 0)
+                      || (videoCurrentTime >= (overlayStartTime || 0)
+                        && (overlayEndTime === undefined || overlayEndTime < 0 || videoCurrentTime <= overlayEndTime))
+                      ? 1
+                      : 0,
+                    transition: 'opacity 300ms ease',
                   }}
                   onMouseDown={(e) => {
                     e.preventDefault();
@@ -7151,9 +7170,9 @@ function InfographicPageInner() {
                 </div>
               )}
 
-            {/* Extra overlays (rendered read-only in the preview — timing
-                windows aren't applied here; the user sees them all while
-                editing so they can position each one). */}
+            {/* Extra overlays — same timing window gating as the legacy
+                overlay above. The active tab forces its overlay visible
+                so drag handles stay reachable during editing. */}
             {rushUrl &&
               ((activeSequence === "all" && exportedSequences.video) || activeSequence === "video") &&
               extraOverlays.map((ov, i) => ov.text ? (
@@ -7165,6 +7184,12 @@ function InfographicPageInner() {
                     top: `${ov.position.y}%`,
                     transform: "translate(-50%, -50%)",
                     width: "85%",
+                    opacity: (activePanel === 'overlay' && activeOverlayIdx === i + 1)
+                      || (videoCurrentTime >= (ov.startTime || 0)
+                        && (ov.endTime === undefined || ov.endTime < 0 || videoCurrentTime <= ov.endTime))
+                      ? 1
+                      : 0,
+                    transition: 'opacity 300ms ease',
                   }}
                   onMouseDown={(e) => {
                     e.preventDefault();
