@@ -1653,9 +1653,16 @@ function InfographicPageInner() {
         if (cfg.titleSize) setTitleSize(cfg.titleSize);
         if (cfg.cardsSize) setCardsSize(cfg.cardsSize);
         if (cfg.watermarkSize) setWatermarkSize(cfg.watermarkSize);
-        // Content fields (title, subtitle, cards, sales phrases, theme,
-        // photo selection, overlay text) stay volatile — each visit starts
-        // fresh so the user doesn't re-edit a stale draft by accident.
+        // Text copy the user typed themselves (theme choice, custom topic,
+        // main title, subtitle) IS restored — even empty strings, so
+        // clearing a field sticks. Cards / rushes / photos / audio /
+        // character image / overlay text remain volatile so each visit
+        // starts a fresh creation flow (the AI regenerates cards; the
+        // user re-picks photos and uploads fresh media).
+        if (cfg.contentTheme) setContentTheme(cfg.contentTheme);
+        if (typeof cfg.customTopic === 'string') setCustomTopic(cfg.customTopic);
+        if (typeof cfg.title === 'string') setTitle(cfg.title);
+        if (typeof cfg.subtitle === 'string') setSubtitle(cfg.subtitle);
         // Site text (Afroboost.com)
         if (cfg.siteText !== undefined) setSiteText(cfg.siteText);
         if (cfg.siteTextPositions) {
@@ -1989,6 +1996,10 @@ function InfographicPageInner() {
             siteText, siteTextPositions, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
             showCenterGuides,
             cardPositionMode,
+            // User-typed text copy — persisted even when empty so clearing a
+            // field sticks across reloads. Cards / rushes / photos / audio
+            // remain volatile deliberately.
+            contentTheme, customTopic, title, subtitle,
           }),
         );
         // After the first design-only save, drop the legacy blob so we
@@ -2016,6 +2027,7 @@ function InfographicPageInner() {
     siteText, siteTextPositions, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
     showCenterGuides,
     cardPositionMode,
+    contentTheme, customTopic, title, subtitle,
   ]);
 
   // (Typography states declared earlier for localStorage compatibility)
