@@ -158,6 +158,17 @@ export interface DesignOptions {
   watermarkTextGradient?: boolean;
   watermarkGradColor1?: string;
   watermarkGradColor2?: string;
+
+  /**
+   * Rounded rectangle backdrop — clips the per-sequence background
+   * (and its gradient overlay) to a rounded rect inset from the canvas
+   * edges. When off, behavior is identical to the pre-feature rect fill.
+   */
+  backdropRounded?: boolean;
+  /** Corner radius in px at 1080-wide (scaled to actual video width). */
+  backdropRadius?: number;
+  /** Inner margin in percent (0..20). 0 = full-bleed, 5 = 5% margin. */
+  backdropMargin?: number;
   /** Sequence-level gradient overrides (keys: 'titre'|'intro' 'cartes'|'cards' 'video' 'cta') */
   seqGradients?: Record<string, { enabled?: boolean; color1?: string; color2?: string; opacity?: number; position?: 'top' | 'bottom' | 'left' | 'right' | 'both' }>;
   /** No-color background flag */
@@ -2100,6 +2111,44 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     const inTransition = seqIdx < sequences.length - 1 && seqElapsed > seq.duration - transitionDur;
     const transProgress = inTransition ? (seqElapsed - (seq.duration - transitionDur)) / transitionDur : 0;
     ctx.clearRect(0, 0, width, height);
+
+    // Optional rounded-rect backdrop: paint the matte black "outside" of
+    // the rounded card first, then clip the rest of the frame's drawing
+    // to the inner rounded rectangle so the sequence content stays inside
+    // the card edges. Restored at the very end of each frame.
+    const backdropRounded = !!normalizedDesign?.backdropRounded;
+    const backdropMarginPct = Math.max(0, Math.min(20, normalizedDesign?.backdropMargin ?? 0)) / 100;
+    const backdropRadiusPx = backdropRounded
+      ? Math.max(0, (normalizedDesign?.backdropRadius ?? 24) * (width / 1080))
+      : 0;
+    const needsBackdropClip = backdropRounded || backdropMarginPct > 0;
+    if (needsBackdropClip) {
+      ctx.save();
+      ctx.fillStyle = '#0A0A0F';
+      ctx.fillRect(0, 0, width, height);
+      const mx = width * backdropMarginPct;
+      const my = height * backdropMarginPct;
+      const rw = width - 2 * mx;
+      const rh = height - 2 * my;
+      const r = Math.min(backdropRadiusPx, rw / 2, rh / 2);
+      ctx.beginPath();
+      if (r > 0) {
+        ctx.moveTo(mx + r, my);
+        ctx.lineTo(mx + rw - r, my);
+        ctx.quadraticCurveTo(mx + rw, my, mx + rw, my + r);
+        ctx.lineTo(mx + rw, my + rh - r);
+        ctx.quadraticCurveTo(mx + rw, my + rh, mx + rw - r, my + rh);
+        ctx.lineTo(mx + r, my + rh);
+        ctx.quadraticCurveTo(mx, my + rh, mx, my + rh - r);
+        ctx.lineTo(mx, my + r);
+        ctx.quadraticCurveTo(mx, my, mx + r, my);
+      } else {
+        ctx.rect(mx, my, rw, rh);
+      }
+      ctx.closePath();
+      ctx.clip();
+    }
+
     const drawSeq = (type: string, progress: number) => {
       switch (type) {
         case 'intro': drawIntro(ctx, width, height, posterImg, logoImg, title, subtitle, accentColor, progress, normalizedDesign); break;
@@ -2125,6 +2174,8 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     if (inTransition && seqIdx < sequences.length - 1) {
       drawTransition(ctx, width, height, (p) => drawSeq(seq.type, p), (p) => drawSeq(sequences[seqIdx + 1].type, p), transProgress);
     } else { drawSeq(seq.type, seqProgress); }
+
+    if (needsBackdropClip) ctx.restore();
     // NOTE: No accent border/frame — editor doesn't have one
 
     // ── Site text overlay (e.g. Afroboost.com) — configurable per sequence ──

@@ -1401,6 +1401,14 @@ function InfographicPageInner() {
   const [gradientColor1, setGradientColor1] = useState("#7C3AED");
   const [gradientColor2, setGradientColor2] = useState("#EC4899");
   const [gradientOpacity, setGradientOpacity] = useState(0.3);
+
+  // Rounded-corner + inner margin on the sequence backdrop. Applies
+  // globally (every sequence) since per-sequence backgrounds are a single
+  // system for now. Keeps backward-compat: rounded=false means flat
+  // rectangle identical to the pre-feature behavior.
+  const [backdropRounded, setBackdropRounded] = useState(false);
+  const [backdropRadius, setBackdropRadius] = useState(24); // px, scaled to video resolution server-side
+  const [backdropMargin, setBackdropMargin] = useState(0); // percent (0..20)
   // Per-sequence no-color mode (user decides which sequences have color or just photo)
   const [noColorBg, setNoColorBg] = useState(false);
   const [noColorSequences, setNoColorSequences] = useState<string[]>(['video']);
@@ -1771,6 +1779,9 @@ function InfographicPageInner() {
         if (typeof cfg.watermarkFont === 'string') setWatermarkFont(cfg.watermarkFont);
         if (typeof cfg.cardsFont === 'string') setCardsFont(cfg.cardsFont);
         // Text gradients per element (title gradient was already handled above)
+        if (typeof cfg.backdropRounded === 'boolean') setBackdropRounded(cfg.backdropRounded);
+        if (typeof cfg.backdropRadius === 'number') setBackdropRadius(cfg.backdropRadius);
+        if (typeof cfg.backdropMargin === 'number') setBackdropMargin(cfg.backdropMargin);
         if (typeof cfg.ctaTextGradient === 'boolean') setCtaTextGradient(cfg.ctaTextGradient);
         if (cfg.ctaGradColor1) setCtaGradColor1(cfg.ctaGradColor1);
         if (cfg.ctaGradColor2) setCtaGradColor2(cfg.ctaGradColor2);
@@ -2219,6 +2230,9 @@ function InfographicPageInner() {
     if (c.overlayFont !== undefined) setOverlayFont(c.overlayFont);
     if (c.watermarkFont !== undefined) setWatermarkFont(c.watermarkFont);
     if (c.cardsFont !== undefined) setCardsFont(c.cardsFont);
+    if (typeof c.backdropRounded === 'boolean') setBackdropRounded(c.backdropRounded);
+    if (typeof c.backdropRadius === 'number') setBackdropRadius(c.backdropRadius);
+    if (typeof c.backdropMargin === 'number') setBackdropMargin(c.backdropMargin);
     if (typeof c.ctaTextGradient === 'boolean') setCtaTextGradient(c.ctaTextGradient);
     if (c.ctaGradColor1) setCtaGradColor1(c.ctaGradColor1);
     if (c.ctaGradColor2) setCtaGradColor2(c.ctaGradColor2);
@@ -2313,6 +2327,7 @@ function InfographicPageInner() {
         videoOverlayText,
         extraOverlays,
         titleFont, ctaFont, overlayFont, watermarkFont, cardsFont,
+        backdropRounded, backdropRadius, backdropMargin,
         ctaTextGradient, ctaGradColor1, ctaGradColor2,
         overlayTextGradient, overlayGradColor1, overlayGradColor2,
         watermarkTextGradient, watermarkGradColor1, watermarkGradColor2,
@@ -2353,6 +2368,7 @@ function InfographicPageInner() {
     videoOverlayText,
     extraOverlays,
     titleFont, ctaFont, overlayFont, watermarkFont, cardsFont,
+    backdropRounded, backdropRadius, backdropMargin,
     ctaTextGradient, ctaGradColor1, ctaGradColor2,
     overlayTextGradient, overlayGradColor1, overlayGradColor2,
     watermarkTextGradient, watermarkGradColor1, watermarkGradColor2,
@@ -3755,6 +3771,7 @@ function InfographicPageInner() {
                 ctaSubTextDesign: ctaSubText || "CHAT POUR PLUS D'INFOS",
                 noColorBg, noColorSequences,
                 gradientColor1, gradientColor2, gradientOpacity, seqGradients,
+                backdropRounded, backdropRadius, backdropMargin,
                 borderEnabled: branding.borderEnabled,
                 borderColor: branding.borderColor,
                 cardsSnapshot,
@@ -4142,6 +4159,7 @@ function InfographicPageInner() {
               watermarkTextGradient, watermarkGradColor1, watermarkGradColor2,
               noColorBg, noColorSequences,
               seqGradients,
+              backdropRounded, backdropRadius, backdropMargin,
               filter: selectedFilter || undefined,
               borderEnabled: branding.borderEnabled,
               borderColor: branding.borderColor,
@@ -6487,9 +6505,16 @@ function InfographicPageInner() {
               if (!e.shiftKey && !e.metaKey && !e.ctrlKey) clearCardSelection();
             }}
             data-preview-bg
-            className={`${previewClasses.aspect} relative flex flex-col items-center justify-between rounded-lg p-4 shadow-2xl overflow-hidden transition-all duration-300`}
+            className={`${previewClasses.aspect} relative flex flex-col items-center justify-between ${backdropRounded ? '' : 'rounded-lg'} p-4 shadow-2xl overflow-hidden transition-all duration-300`}
             style={{
               fontFamily: FONT_CSS_MAP[selectedFont] || "inherit",
+              // Approximate the rounded-corner card effect in the preview.
+              // The composer paints the full card with the exact radius +
+              // margin at export time; the preview scales the radius
+              // proportionally to the preview width.
+              ...(backdropRounded
+                ? { borderRadius: `${Math.round(backdropRadius * 0.3)}px` }
+                : {}),
               ...(branding.borderEnabled
                 ? { boxShadow: `inset 0 0 0 8px ${branding.borderColor || '#D91CD2'}, 0 25px 50px -12px rgb(0 0 0 / 0.25)` }
                 : {}),
@@ -8453,6 +8478,54 @@ function InfographicPageInner() {
                     )}
                   </>
                 )}
+
+                {/* Rounded-corner card + inner margin — global (every
+                    sequence gets the same card frame). Off by default so
+                    existing designs render identically. */}
+                <div className="pt-2 border-t border-gray-800 space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={backdropRounded}
+                      onChange={(e) => setBackdropRounded(e.target.checked)}
+                      className="w-4 h-4 accent-purple-500"
+                    />
+                    <span className="text-[10px] font-semibold text-gray-300 uppercase">
+                      Coins arrondis
+                    </span>
+                  </label>
+                  {backdropRounded && (
+                    <div>
+                      <span className="text-[9px] text-gray-500 uppercase">
+                        Rayon {backdropRadius}px
+                      </span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={backdropRadius}
+                        onChange={(e) => setBackdropRadius(parseInt(e.target.value, 10))}
+                        className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer mt-1"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-[9px] text-gray-500 uppercase">
+                      Marge intérieure {backdropMargin}%
+                    </span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={20}
+                      step={0.5}
+                      value={backdropMargin}
+                      onChange={(e) => setBackdropMargin(parseFloat(e.target.value))}
+                      className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer mt-1"
+                    />
+                    <p className="text-[9px] text-gray-500 mt-0.5">0 = plein écran · 5% = effet carte centrée</p>
+                  </div>
+                </div>
               </div>
             );
           })()}
