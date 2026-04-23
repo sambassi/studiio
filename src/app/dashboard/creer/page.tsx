@@ -3457,7 +3457,11 @@ function InfographicPageInner() {
       const generateBatchVariation = async (batchIndex: number): Promise<{ title: string; subtitle: string; cards: typeof cards; salesPhrases: string[] } | null> => {
         const themeObj = CONTENT_THEMES.find((t) => t.id === contentTheme);
         const topicText = contentTheme === "personnalise" ? customTopic : themeObj?.label || contentTheme;
-        if (!topicText.trim()) return null;
+        console.log(`[BatchVariation #${batchIndex}] topic="${topicText}" contentTheme="${contentTheme}"`);
+        if (!topicText.trim()) {
+          console.warn(`[BatchVariation #${batchIndex}] ABORT — empty topic`);
+          return null;
+        }
         const accent = COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent || customAccent || "#a855f7";
         const angle = ANGLES[(batchIndex - 1) % ANGLES.length];
         // The topic itself stays clean; angle is injected as a prompt suffix
@@ -3465,8 +3469,11 @@ function InfographicPageInner() {
         // thread it into the prompt without polluting the topic string.
         const aiTopic = `${topicText} (angle: ${angle})`;
         const variationNonce = `${batchIndex}-${Date.now().toString(36)}`;
-        // AI first
+        // AI first — 15s timeout so a slow model doesn't stall the whole batch.
         try {
+          console.log(`[BatchVariation #${batchIndex}] AI → /api/content/ai-generate angle="${angle.slice(0, 40)}..."`);
+          const aiController = new AbortController();
+          const aiTimeout = setTimeout(() => aiController.abort(), 15000);
           const r = await fetch("/api/content/ai-generate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -3476,9 +3483,13 @@ function InfographicPageInner() {
               cardCount: 3,
               variationNonce,
             }),
+            signal: aiController.signal,
           });
+          clearTimeout(aiTimeout);
+          console.log(`[BatchVariation #${batchIndex}] AI http status:`, r.status, r.ok);
           if (r.ok) {
             const d = await r.json();
+            console.log(`[BatchVariation #${batchIndex}] AI success?`, d?.success, 'has content?', !!d?.content);
             if (d.success && d.content) {
               console.log('[Batch variation] batchIndex:', batchIndex, 'cards count:', (d.content.cards || []).length, 'card labels:', (d.content.cards || []).map((c: any) => c.label));
               return {
@@ -3518,13 +3529,20 @@ function InfographicPageInner() {
         // and the card window, so consecutive calls yield genuinely different
         // content even with the same topic string.
         try {
+          console.log(`[BatchVariation #${batchIndex}] LOCAL → /api/content/generate`);
+          const localController = new AbortController();
+          const localTimeout = setTimeout(() => localController.abort(), 10000);
           const r = await fetch("/api/content/generate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ topic: topicText, batchIndex }),
+            signal: localController.signal,
           });
+          clearTimeout(localTimeout);
+          console.log(`[BatchVariation #${batchIndex}] LOCAL http status:`, r.status, r.ok);
           if (r.ok) {
             const d = await r.json();
+            console.log(`[BatchVariation #${batchIndex}] LOCAL success?`, d?.success, 'has content?', !!d?.content);
             if (d.success && d.content) {
               console.log('[Batch variation local] batchIndex:', batchIndex, 'cards count:', (d.content.cards || []).length, 'card labels:', (d.content.cards || []).map((c: any) => c.title));
               return {
@@ -3554,11 +3572,31 @@ function InfographicPageInner() {
         } catch (err) {
           console.warn(`[BatchVariation #${batchIndex}] Local fallback failed:`, err);
         }
-        return null;
+
+        // Last-resort stub: both endpoints failed. Return an angle-derived
+        // variation so the batch at least ships distinct titles/subtitles
+        // instead of N identical videos. Cards reuse the editor's templates
+        // with a short angle suffix appended to the description so the text
+        // is visibly different per iteration.
+        console.warn(`[BatchVariation #${batchIndex}] BOTH endpoints failed — falling back to angle-stub`);
+        const angleTitle = angle.split(':')[0].replace('axe ', '').trim();
+        const stubTitle = `${topicText.toUpperCase()} — ${angleTitle.toUpperCase()}`;
+        const stubSubtitle = angle.split(':').slice(1).join(':').trim() || angle;
+        return {
+          title: stubTitle,
+          subtitle: stubSubtitle,
+          cards: cards.map((template, i) => ({
+            ...template,
+            id: `batch-stub-${Date.now()}-${i}`,
+            description: `${template.description || ''} — ${angleTitle}`.trim(),
+          } as InfoCard)),
+          salesPhrases: [],
+        };
       };
 
       for (let b = 0; b < total; b++) {
         setExportProgress(Math.round((b / total) * 100));
+        console.log(`[Batch ${b}/${total - 1}] START`);
 
         // Per-batch content. b=0 keeps the editor's current values so the
         // user's manual edits ship with the first video. b>0 fetches a
@@ -3569,17 +3607,19 @@ function InfographicPageInner() {
         let bSalesPhrases = salesPhrases;
         if (b > 0) {
           const variation = await generateBatchVariation(b);
+          console.log(`[Batch ${b}] variation:`, variation ? 'SUCCESS' : 'NULL');
           if (variation) {
+            console.log(`[Batch ${b}] variation.title:`, variation.title);
+            console.log(`[Batch ${b}] variation.cards labels:`, variation.cards.map((c) => c.label));
             bTitle = variation.title;
             bSubtitle = variation.subtitle;
             bCards = variation.cards;
             if (variation.salesPhrases.length > 0) bSalesPhrases = variation.salesPhrases;
-            console.log('[Batch export] b:', b, 'bCards labels:', bCards.map((c) => c.label));
           } else {
-            console.warn(`[BatchVariation #${b}] no variation returned — video will reuse the editor's current title/cards.`);
+            console.warn(`[Batch ${b}] variation returned NULL — post will reuse editor's current values (identical to b=0)`);
           }
         }
-        console.log(`[Batch #${b}/${total - 1}] bTitle="${bTitle}" bSubtitle="${bSubtitle}" cardLabels=${JSON.stringify(bCards.map((c) => c.label))}`);
+        console.log(`[Batch ${b}] FINAL bTitle="${bTitle}" bSubtitle="${bSubtitle}" cardLabels=${JSON.stringify(bCards.map((c) => c.label))}`);
 
         // Utiliser la photo sélectionnée par l'utilisateur (selectedPhotoIndex)
         // En mode batch, on peut aussi varier les photos après la première
