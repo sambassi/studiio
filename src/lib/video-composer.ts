@@ -128,20 +128,36 @@ export interface DesignOptions {
   overlayPosition?: { x?: number; y?: number };
   /** Title container width % (default: 90) — matches editor titleSize */
   titleSize?: number;
-  /** CTA typography (letterSpacing, lineHeight) */
+  /** CTA typography (letterSpacing, lineHeight, optional gradient) */
   ctaTypography?: {
     letterSpacing?: number;
     lineHeight?: number;
     bold?: boolean;
     italic?: boolean;
+    textGradient?: boolean;
+    gradColor1?: string;
+    gradColor2?: string;
   };
-  /** Overlay typography */
+  /** Overlay typography (optional gradient) */
   overlayTypography?: {
     letterSpacing?: number;
     lineHeight?: number;
     bold?: boolean;
     italic?: boolean;
+    textGradient?: boolean;
+    gradColor1?: string;
+    gradColor2?: string;
   };
+  /** Per-element font overrides (undefined → inherit `font`). */
+  titleFont?: string;
+  ctaFont?: string;
+  overlayFont?: string;
+  watermarkFont?: string;
+  cardsFont?: string;
+  /** Watermark (large CTA banner) gradient. */
+  watermarkTextGradient?: boolean;
+  watermarkGradColor1?: string;
+  watermarkGradColor2?: string;
   /** Sequence-level gradient overrides (keys: 'titre'|'intro' 'cartes'|'cards' 'video' 'cta') */
   seqGradients?: Record<string, { enabled?: boolean; color1?: string; color2?: string; opacity?: number; position?: 'top' | 'bottom' | 'left' | 'right' | 'both' }>;
   /** No-color background flag */
@@ -770,7 +786,7 @@ function drawIntro(
   title: string, subtitle: string | undefined, _accent: string, _progress: number,
   design?: DesignOptions
 ) {
-  const fontFamily = design?.font || 'sans-serif';
+  const fontFamily = design?.titleFont || design?.font || 'sans-serif';
   const titleColor = design?.titleColor || '#FFFFFF';
 
   // Background: poster image (if any) covers the canvas. When no poster is
@@ -936,7 +952,7 @@ function drawCards(
 ) {
   // eslint-disable-next-line no-console
   console.log('[Composer] drawCards: snapshot in design?', !!design?.cardsSnapshot);
-  const fontFamily = design?.font || 'sans-serif';
+  const fontFamily = design?.cardsFont || design?.font || 'sans-serif';
   const textScale = design?.textScale || 1.0;
   const cardStyle = design?.cardStyle || 'Full Width';
   const isReel = h > w; // 9:16 = reel, 16:9 = landscape
@@ -1501,6 +1517,9 @@ function drawSingleOverlay(
     italic: boolean;
     letterSpacing: number;
     lineHeight: number;
+    textGradient?: boolean;
+    gradColor1?: string;
+    gradColor2?: string;
   },
 ): void {
   if (!overlay.text) return;
@@ -1514,13 +1533,25 @@ function drawSingleOverlay(
   ctx.textBaseline = 'top';
   ctx.font = `${italic}${weight} ${fontSize}px "${fontFamily}", sans-serif`;
   ctx.textAlign = 'center';
-  ctx.fillStyle = overlay.color;
-  ctx.shadowColor = 'rgba(0,0,0,0.8)';
-  ctx.shadowBlur = 12;
+  // Text fill: solid color by default, linear gradient (135°) when the
+  // caller requested textGradient.
   const lines = wrapText(ctx, overlay.text, w * 0.85);
   const lineH = fontSize * (overlay.lineHeight || 1.2);
   const blockH = lines.length * lineH;
   const topY = y - blockH / 2;
+  if (overlay.textGradient && overlay.gradColor1 && overlay.gradColor2) {
+    const grad = ctx.createLinearGradient(
+      x - (w * 0.85) / 2, topY,
+      x + (w * 0.85) / 2, topY + blockH,
+    );
+    grad.addColorStop(0, overlay.gradColor1);
+    grad.addColorStop(1, overlay.gradColor2);
+    ctx.fillStyle = grad;
+  } else {
+    ctx.fillStyle = overlay.color;
+  }
+  ctx.shadowColor = 'rgba(0,0,0,0.8)';
+  ctx.shadowBlur = 12;
   for (let i = 0; i < lines.length; i++) {
     const lineY = topY + i * lineH;
     if (letterSpacing) {
@@ -1585,9 +1616,10 @@ function drawVideoSeq(
     t >= (start || 0) && (end === undefined || end < 0 || t <= end);
 
   // Legacy overlay reuses overlayText / overlayPosition / overlayColor +
-  // overlayTypography (bold/italic/letterSpacing/lineHeight).
+  // overlayTypography (bold/italic/letterSpacing/lineHeight/gradient).
+  const overlayFontFamily = design?.overlayFont || fontFamily;
   if (design?.overlayText && inWindow(design.overlayStartTime || 0, design.overlayEndTime ?? -1)) {
-    drawSingleOverlay(ctx, w, h, fontFamily, {
+    drawSingleOverlay(ctx, w, h, overlayFontFamily, {
       text: design.overlayText,
       position: {
         x: design?.overlayPosition?.x ?? 50,
@@ -1601,6 +1633,9 @@ function drawVideoSeq(
       italic: !!design?.overlayTypography?.italic,
       letterSpacing: design?.overlayTypography?.letterSpacing || 0,
       lineHeight: design?.overlayTypography?.lineHeight || 1.2,
+      textGradient: design?.overlayTypography?.textGradient,
+      gradColor1: design?.overlayTypography?.gradColor1,
+      gradColor2: design?.overlayTypography?.gradColor2,
     });
   }
 
@@ -1608,7 +1643,7 @@ function drawVideoSeq(
     for (const ov of design!.overlays) {
       if (!ov?.text) continue;
       if (!inWindow(ov.startTime || 0, ov.endTime ?? -1)) continue;
-      drawSingleOverlay(ctx, w, h, fontFamily, {
+      drawSingleOverlay(ctx, w, h, overlayFontFamily, {
         text: ov.text,
         position: ov.position,
         color: ov.color || '#FFFFFF',
@@ -1617,6 +1652,10 @@ function drawVideoSeq(
         italic: !!ov.italic,
         letterSpacing: ov.letterSpacing || 0,
         lineHeight: ov.lineHeight || 1.2,
+        // Extras inherit the legacy overlay's gradient setting.
+        textGradient: design?.overlayTypography?.textGradient,
+        gradColor1: design?.overlayTypography?.gradColor1,
+        gradColor2: design?.overlayTypography?.gradColor2,
       });
     }
   }
@@ -1637,7 +1676,9 @@ function drawCTA(
 ) {
   // ctaSubTextParam kept for backward compat but design.ctaSubTextDesign takes priority
   void ctaSubTextParam;
-  const fontFamily = design?.font || 'sans-serif';
+  // BIG text (watermark) uses watermarkFont; sub-text uses ctaFont. Fall back to global font.
+  const watermarkFontFamily = design?.watermarkFont || design?.font || 'sans-serif';
+  const fontFamily = design?.ctaFont || design?.font || 'sans-serif';
   const ctaSubColor = design?.ctaSubColor || accent; // editor default is accent color (#D91CD2)
   const ctaColor = design?.ctaColor || '#FFFFFF'; // editor default is white, not accent
   const ctaTextScale = design?.ctaTextScale || 1.0;
@@ -1736,9 +1777,19 @@ function drawCTA(
     curY += salesBlockH + mt05;
   }
 
-  // Main CTA text (multi-line)
-  ctx.font = `900 ${ctaFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
-  ctx.fillStyle = ctaColor;
+  // Main CTA text (multi-line) — uses watermarkFont + optional gradient.
+  ctx.font = `900 ${ctaFontSize}px "${watermarkFontFamily}", sans-serif`; ctx.textAlign = 'center';
+  if (design?.watermarkTextGradient && design?.watermarkGradColor1 && design?.watermarkGradColor2) {
+    const grad = ctx.createLinearGradient(
+      ctaPosX - ctaContainerW / 2, curY,
+      ctaPosX + ctaContainerW / 2, curY + ctaBlockH,
+    );
+    grad.addColorStop(0, design.watermarkGradColor1);
+    grad.addColorStop(1, design.watermarkGradColor2);
+    ctx.fillStyle = grad;
+  } else {
+    ctx.fillStyle = ctaColor;
+  }
   ctx.shadowColor = hexToRgba(ctaColor, 0.4); ctx.shadowBlur = Math.round(w * 0.02);
   ctaLines.forEach((line, i) => {
     fillTextWithSpacing(ctx, line, ctaPosX, curY + i * ctaLineH, ctaLetterSpacing);
@@ -1746,9 +1797,19 @@ function drawCTA(
   ctx.shadowBlur = 0;
   curY += ctaBlockH + mt1;
 
-  // Sub-text (multi-line) — user-configured color, 900 weight, uppercase
+  // Sub-text (multi-line) — user-configured color, 900 weight, uppercase, optional gradient.
   ctx.font = `900 ${subFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
-  ctx.fillStyle = ctaSubColor;
+  if (design?.ctaTypography?.textGradient && design?.ctaTypography?.gradColor1 && design?.ctaTypography?.gradColor2) {
+    const grad = ctx.createLinearGradient(
+      ctaPosX - ctaContainerW / 2, curY,
+      ctaPosX + ctaContainerW / 2, curY + subBlockH,
+    );
+    grad.addColorStop(0, design.ctaTypography.gradColor1);
+    grad.addColorStop(1, design.ctaTypography.gradColor2);
+    ctx.fillStyle = grad;
+  } else {
+    ctx.fillStyle = ctaSubColor;
+  }
   subLines.forEach((line, i) => {
     fillTextWithSpacing(ctx, line, ctaPosX, curY + i * subLineH, ctaLetterSpacing);
   });
