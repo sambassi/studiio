@@ -1541,13 +1541,24 @@ function drawSingleOverlay(
   const italic = overlay.italic ? 'italic ' : '';
   const letterSpacing = (overlay.letterSpacing || 0) * (w / 320);
   ctx.save();
-  ctx.textBaseline = 'top';
+  // Anchor each line by its VISUAL MIDDLE to match the editor's
+  // CSS `transform: translate(-50%, -50%)`. The previous code used
+  // textBaseline:'top' with `topY = y - blockH/2`, but `textBaseline:
+  // top` places the TOP of the em-box at the given y — not the top of
+  // the visible glyph. Because line-height (default 1.2) inflates the
+  // em-box beyond the glyph, the block's VISUAL center landed roughly
+  // `0.1 * fontSize` ABOVE y, so every overlay rendered 5–10 % too
+  // high in the export relative to the CSS preview. Using 'middle'
+  // baseline with middle-based math collapses that offset.
+  ctx.textBaseline = 'middle';
   ctx.font = `${italic}${weight} ${fontSize}px "${fontFamily}", sans-serif`;
   ctx.textAlign = 'center';
-  // Text fill: solid color by default, linear gradient (135°) when the
-  // caller requested textGradient.
   const lines = wrapText(ctx, overlay.text, w * 0.85);
   const lineH = fontSize * (overlay.lineHeight || 1.2);
+  // The block spans from the first line's middle up by lineH/2 to the
+  // last line's middle down by lineH/2 → total visual block height is
+  // lines.length * lineH, centered on y.
+  const firstMiddleY = y - ((lines.length - 1) * lineH) / 2;
   const blockH = lines.length * lineH;
   const topY = y - blockH / 2;
   if (overlay.textGradient && overlay.gradColor1 && overlay.gradColor2) {
@@ -1564,7 +1575,7 @@ function drawSingleOverlay(
   ctx.shadowColor = 'rgba(0,0,0,0.8)';
   ctx.shadowBlur = 12;
   for (let i = 0; i < lines.length; i++) {
-    const lineY = topY + i * lineH;
+    const lineY = firstMiddleY + i * lineH;
     if (letterSpacing) {
       ctx.save();
       ctx.strokeStyle = 'rgba(0,0,0,0.7)';
