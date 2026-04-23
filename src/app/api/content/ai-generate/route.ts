@@ -9,7 +9,11 @@ const PRIMARY_MODEL = 'claude-haiku-4-5-20251001';
 const FALLBACK_MODEL = 'claude-3-5-sonnet-20241022';
 // Server-side timeout — cap each Anthropic call. Must be short enough that
 // batch variations don't stall a whole export.
-const AI_TIMEOUT_MS = 20_000;
+// 30s: Claude Haiku 4.5 usually answers in 3-12s, but spikes (cold start,
+// high traffic) can push it past 20s. We'd rather wait a bit longer than
+// punch through to the local fallback, which produces materially lower
+// quality content.
+const AI_TIMEOUT_MS = 30_000;
 
 async function callAnthropic(
   apiKey: string,
@@ -240,7 +244,9 @@ Retourne EXACTEMENT ${count} cartes, ni plus ni moins. IMPORTANT: chaque carte =
     console.log(`[AI-Generate] Calling Anthropic (${PRIMARY_MODEL}) for topic: "${topic}", cards: ${count}, nonce: ${nonce}`);
 
     const requestBody = {
-      max_tokens: 2048,
+      // 1024 is plenty for a 5-card payload with icon + 8-12 word description
+      // each and trims response latency meaningfully on Haiku.
+      max_tokens: 1024,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
       // temperature>0 encourages per-call variation for batch exports.

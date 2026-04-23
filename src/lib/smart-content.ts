@@ -1424,7 +1424,7 @@ export function generateSmartContent(title: string, seed?: number): SmartContent
       : Math.floor(Math.random() * variants.length);
     topicData = variants[pickIdx];
   } else {
-    topicData = generateDynamicFallback(title, normalized);
+    topicData = generateDynamicFallback(title, normalized, s);
   }
 
   // 4. Convertir les icônes et éventuellement tourner les cartes pour varier
@@ -1457,11 +1457,19 @@ export function generateSmartContent(title: string, seed?: number): SmartContent
  * Fallback DYNAMIQUE quand le sujet n'est pas dans la base.
  * Génère du contenu personnalisé basé sur le titre plutôt que du générique.
  */
-function generateDynamicFallback(title: string, _normalized: string): TopicData {
+/**
+ * Dynamic fallback for topics that don't match the curated KNOWLEDGE_BASE.
+ * Each category (nutri / sport / body / wellness / default) carries 5
+ * distinct pools — each pool is a full TopicData with its own angle
+ * (science, routine, pitfalls, transformation, energy, etc.). A seed
+ * (batchIndex from the caller) picks the whole pool, not an offset
+ * within one pool, so every batch iteration gets a materially different
+ * subtitle + tagLine + cards[] rather than the same 5 cards rotated.
+ */
+function generateDynamicFallback(title: string, _normalized: string, seed?: number): TopicData {
   const upper = title.toUpperCase().trim();
   const displayName = title.charAt(0).toUpperCase() + title.slice(1).toLowerCase();
 
-  // Essayer de catégoriser le sujet
   const nutriKeywords = ["fruit", "legume", "aliment", "nourriture", "plat", "recette", "ingredient", "graine", "noix", "huile", "lait", "yaourt", "fromage", "viande", "oeuf", "tomate", "avocat", "epinard", "brocoli", "quinoa", "lentille", "haricot", "amande", "chocolat", "miel", "gingembre", "ail", "citron", "orange", "mangue", "ananas", "coco", "the", "manioc", "moringa", "baobab", "igname", "plantain", "patate", "riz", "mais", "mil", "sorgho", "fonio", "taro", "gombo", "hibiscus", "bissap", "tamarin", "karite", "arachide", "sesame", "curcuma", "collagene", "spiruline", "acerola", "guarana", "matcha", "ashwagandha", "maca", "goji", "acai", "chia", "lin", "chanvre"];
   const sportKeywords = ["sport", "exercice", "jump", "hiit", "stretch", "yoga", "pilates", "boxe", "combat", "sprint", "marche", "velo", "natation", "nage", "course", "running"];
   const bodyKeywords = ["bras", "jambe", "epaule", "mollet", "cuisse", "poitrine", "taille", "pied", "main", "cou", "nuque", "hanche"];
@@ -1473,72 +1481,207 @@ function generateDynamicFallback(title: string, _normalized: string): TopicData 
   const isBody = bodyKeywords.some(k => norm.includes(k));
   const isWellness = wellnessKeywords.some(k => norm.includes(k));
 
-  if (isNutri) {
-    return {
-      subtitle: `${displayName} : ce que la science dit vraiment sur ses bienfaits`,
-      tagLine: "NUTRITION & SANTÉ",
-      cards: [
-        { icon: "apple", title: `${upper.slice(0, 20)}`, description: `${displayName} est un allié nutritionnel. Découvre ses nutriments clés et comment en profiter`, value: "INFO" },
-        { icon: "shield", title: "ANTIOXYDANTS", description: "Les aliments naturels contiennent des antioxydants qui protègent tes cellules du stress oxydatif", value: "PROTÈGE" },
-        { icon: "energy", title: "ÉNERGIE NATURELLE", description: "Les nutriments naturels fournissent une énergie stable sans le crash des aliments transformés", value: "STABLE" },
-        { icon: "fire", title: "QUAND LE MANGER", description: "Le timing nutritionnel compte : avant l'effort pour l'énergie, après pour la récupération", value: "TIMING" },
-        { icon: "heart", title: "SPORT + NUTRITION", description: "La combinaison alimentation saine + activité physique régulière multiplie les bénéfices par 3", value: "×3" },
-      ],
-    };
-  }
+  const nutriPools: TopicData[] = [
+    { subtitle: `${displayName} : la science derrière ses pouvoirs`, tagLine: "BIENFAITS NATURELS", cards: [
+      { icon: "apple", title: "RICHESSE NUTRITIVE", description: `${displayName} regorge de vitamines, minéraux et antioxydants clés`, value: "TOP" },
+      { icon: "shield", title: "ANTI-INFLAMMATOIRE", description: "Les composés actifs réduisent l'inflammation chronique du corps", value: "−40%" },
+      { icon: "energy", title: "ÉNERGIE DURABLE", description: "Les sucres naturels libèrent l'énergie progressivement, sans pic", value: "8H" },
+      { icon: "fire", title: "MÉTABOLISME ACCÉLÉRÉ", description: "Les enzymes naturelles boostent ton métabolisme de base", value: "+15%" },
+      { icon: "heart", title: "PROTECTION CARDIAQUE", description: "Études : 30% moins de risques cardiovasculaires sur le long terme", value: "×0.7" },
+    ]},
+    { subtitle: `${displayName} : routine, dosage et résultats`, tagLine: "GUIDE PRATIQUE", cards: [
+      { icon: "sun", title: "MATIN À JEUN", description: `Consomme ${displayName} le matin pour activer le métabolisme dès le réveil`, value: "7H" },
+      { icon: "scale", title: "DOSE OPTIMALE", description: `${displayName} : 100-200g par jour pour des bénéfices visibles en 4 semaines`, value: "150G" },
+      { icon: "clock", title: "PATIENCE 30J", description: "Les effets sont mesurables après 4 semaines de consommation régulière", value: "30J" },
+      { icon: "target", title: "ASSOCIATIONS", description: `Combine ${displayName} avec une autre source naturelle pour synergie maximale`, value: "MIX" },
+      { icon: "trophy", title: "RÉSULTATS PROUVÉS", description: "9 utilisateurs sur 10 rapportent des effets positifs après 60 jours", value: "9/10" },
+    ]},
+    { subtitle: `${displayName} vs industriel : le match`, tagLine: "NATUREL VS TRANSFORMÉ", cards: [
+      { icon: "leaf", title: "AVANT LA TRANSFORMATION", description: `${displayName} brut contient 5x plus de nutriments qu'en version transformée`, value: "×5" },
+      { icon: "shield", title: "SANS ADDITIFS", description: "Aucun conservateur, colorant ou sucre ajouté. Juste ce que la nature a prévu", value: "0 add." },
+      { icon: "heart", title: "MOINS DE SODIUM", description: "Les produits industriels contiennent 7x plus de sodium que l'original", value: "−86%" },
+      { icon: "energy", title: "INDEX GLYCÉMIQUE BAS", description: "Pas de pics d'insuline : énergie stable, moins de fringales", value: "GI 35" },
+      { icon: "brain", title: "MICROBIOTE NOURRI", description: "Les fibres naturelles nourrissent les bonnes bactéries intestinales", value: "+40%" },
+    ]},
+    { subtitle: `${displayName} : les erreurs que tout le monde fait`, tagLine: "PIÈGES À ÉVITER", cards: [
+      { icon: "alert", title: "TROP CUIT = PERDU", description: "Une cuisson >80°C détruit 60% des vitamines thermosensibles", value: "−60%" },
+      { icon: "clock", title: "MAUVAIS TIMING", description: "À jeun vs après repas change totalement l'assimilation des nutriments", value: "TIMING" },
+      { icon: "scale", title: "DOSE INADÉQUATE", description: "Trop peu = aucun effet, trop = digestion perturbée. Vise le juste milieu", value: "DOSAGE" },
+      { icon: "ban", title: "FAUX AMIS", description: "Certains compléments promettent pareil mais sans les synergies naturelles", value: "≠" },
+      { icon: "shield", title: "CONSERVATION", description: "Un stockage mal fait (lumière, chaleur) réduit les bienfaits de moitié", value: "−50%" },
+    ]},
+    { subtitle: `${displayName} en 30 jours : ton corps se transforme`, tagLine: "TRANSFORMATION 30J", cards: [
+      { icon: "calendar", title: "SEM 1 : ADAPTATION", description: `Le corps commence à assimiler ${displayName}. Tu peux ressentir une légère détox`, value: "J1-7" },
+      { icon: "energy", title: "SEM 2 : ÉNERGIE+", description: "L'énergie matinale grimpe. Tu te réveilles sans coup de fatigue à 15h", value: "J8-14" },
+      { icon: "brain", title: "SEM 3 : CLARTÉ", description: "Concentration et humeur s'améliorent. Brouillard cérébral en baisse", value: "J15-21" },
+      { icon: "heart", title: "SEM 4 : RÉSULTAT", description: "Digestion, sommeil, peau : tu vois les bénéfices sur plusieurs plans", value: "J22-30" },
+      { icon: "trophy", title: "APRÈS 30J", description: "Ton corps te remerciera : 85% des effets positifs se maintiennent", value: "85%" },
+    ]},
+  ];
 
-  if (isSport) {
-    return {
-      subtitle: `${displayName} + danse afro : le combo parfait pour ton corps`,
-      tagLine: "CROSS-TRAINING",
-      cards: [
-        { icon: "fire", title: `${upper.slice(0, 20)}`, description: `Combiner ${displayName.toLowerCase()} et danse afro travaille ton corps sous tous les angles`, value: "COMBO" },
-        { icon: "heart", title: "CARDIO VARIÉ", description: "Alterner les activités empêche ton corps de s'habituer. Résultats plus rapides", value: "+30%" },
-        { icon: "muscle", title: "MUSCLES COMPLETS", description: "Chaque sport cible des muscles différents. Le mix = un corps harmonieux et équilibré", value: "360°" },
-        { icon: "brain", title: "ZÉRO MONOTONIE", description: "La variété tue l'ennui. Tu restes motivé 3x plus longtemps qu'avec un seul sport", value: "×3" },
-        { icon: "shield", title: "BLESSURES RÉDUITES", description: "Varier les mouvements réduit le risque de blessures par surutilisation de 45%", value: "-45%" },
-      ],
-    };
-  }
+  const sportPools: TopicData[] = [
+    { subtitle: `${displayName} + danse afro : le combo qui transforme`, tagLine: "CROSS-TRAINING", cards: [
+      { icon: "fire", title: "CORPS EN 360°", description: `Combiner ${displayName.toLowerCase()} et danse afro travaille ton corps sous tous les angles`, value: "360°" },
+      { icon: "heart", title: "CARDIO VARIÉ", description: "Alterner les activités empêche ton corps de s'habituer. Progression continue", value: "+30%" },
+      { icon: "muscle", title: "MUSCLES COMPLETS", description: "Chaque sport cible des muscles différents. Le mix = silhouette équilibrée", value: "FULL" },
+      { icon: "brain", title: "ZÉRO ROUTINE", description: "La variété tue l'ennui. Tu restes motivé 3x plus longtemps qu'avec un seul sport", value: "×3" },
+      { icon: "shield", title: "MOINS DE BLESSURES", description: "Varier les mouvements réduit les blessures de surutilisation de 45%", value: "−45%" },
+    ]},
+    { subtitle: `${displayName} débutant vs avancé : le même geste, deux niveaux`, tagLine: "PROGRESSION ADAPTÉE", cards: [
+      { icon: "star", title: "SEMAINE 1-2", description: `Apprends les bases techniques de ${displayName.toLowerCase()}. Vitesse lente, forme parfaite`, value: "BASE" },
+      { icon: "energy", title: "SEMAINE 3-6", description: "Augmente intensité + durée. Ton corps s'adapte et réclame plus de volume", value: "BUILD" },
+      { icon: "fire", title: "MOIS 2-3", description: "Ajoute de la charge / vitesse / complexité. Les résultats s'accélèrent", value: "PUSH" },
+      { icon: "trophy", title: "MOIS 4+", description: "Tu enchaînes les séances avancées. Nouveau corps, nouvelle confiance", value: "LVL UP" },
+      { icon: "heart", title: "ÉCOUTE TON CORPS", description: "Progresser = respecter les signaux. Repos = partie du programme, pas échec", value: "⇌" },
+    ]},
+    { subtitle: `${displayName} en 15 min : la routine express`, tagLine: "ÉNERGIE RAPIDE", cards: [
+      { icon: "clock", title: "ÉCHAUFFEMENT 3 MIN", description: "Mobilité articulations + cardio léger. Prépare le corps à encaisser", value: "3 MIN" },
+      { icon: "fire", title: "BLOC PRINCIPAL 10 MIN", description: `10 minutes de ${displayName.toLowerCase()} intense. Alterne 40s effort / 20s repos`, value: "10 MIN" },
+      { icon: "moon", title: "ÉTIREMENT 2 MIN", description: "Retour au calme avec étirements doux. Évite les courbatures du lendemain", value: "2 MIN" },
+      { icon: "energy", title: "AVANT LE BOULOT", description: "15 min suffisent pour booster l'énergie et la concentration toute la journée", value: "+5H" },
+      { icon: "heart", title: "3x/SEMAINE", description: "Régularité > durée. 3 séances de 15 min valent mieux qu'une de 60 min", value: "3×" },
+    ]},
+    { subtitle: `${displayName} : les 5 erreurs qui bloquent tes progrès`, tagLine: "PIÈGES À ÉVITER", cards: [
+      { icon: "alert", title: "TROP TÔT TROP FORT", description: "Monter l'intensité sans base technique = blessure dans les 4 semaines", value: "⚠" },
+      { icon: "moon", title: "PAS DE RÉCUP", description: "Zéro jour off = progression stoppée + cortisol chronique + fatigue", value: "0 OFF" },
+      { icon: "ban", title: "FORME NÉGLIGÉE", description: "Un geste mal exécuté répété 1000 fois = compensation musculaire durable", value: "FORM" },
+      { icon: "scale", title: "NUTRITION OUBLIÉE", description: "L'entraînement sans nutrition adaptée = 40% des résultats perdus", value: "−40%" },
+      { icon: "brain", title: "PAS DE PROGRESSION", description: "Même charge pendant des mois = plateau. Le corps a besoin de surcharge", value: "↑" },
+    ]},
+    { subtitle: `${displayName} matin vs soir : quand s'entraîner ?`, tagLine: "ROUTINE MATIN/SOIR", cards: [
+      { icon: "sun", title: "MATIN : MÉTABOLISME", description: `Pratiquer ${displayName.toLowerCase()} à jeun booste l'oxydation des graisses`, value: "AM" },
+      { icon: "fire", title: "SOIR : PERFORMANCE", description: "La force musculaire est 8% plus élevée l'après-midi/soir. Records possibles", value: "PM" },
+      { icon: "moon", title: "SOMMEIL AFFECTÉ", description: "Sport intense <3h avant coucher = endormissement perturbé de 45 min", value: "−45m" },
+      { icon: "brain", title: "DÉCISION PERSO", description: "Le bon moment = celui où tu seras régulier. Consistance > optimisation", value: "RÉG." },
+      { icon: "heart", title: "ÉCOUTE TON CORPS", description: "Ton chronotype compte : lève-tôt ou couche-tard, adapte l'horaire", value: "⇌" },
+    ]},
+  ];
 
-  if (isBody) {
-    return {
-      subtitle: `Renforcer et tonifier : ce que la danse fait pour ton corps`,
-      tagLine: "CIBLAGE MUSCULAIRE",
-      cards: [
-        { icon: "muscle", title: `${upper.slice(0, 20)}`, description: `La danse afro sollicite cette zone de manière naturelle. Tonification progressive et durable`, value: "CIBLÉ" },
-        { icon: "dance", title: "MOUVEMENT COMPLET", description: "Contrairement à la muscu, la danse travaille les muscles en mouvement. Plus fonctionnel", value: "FUNC." },
-        { icon: "fire", title: "TONIFICATION", description: "La danse tonifie sans créer de masse. Silhouette dessinée et muscles allongés", value: "LEAN" },
-        { icon: "bone", title: "ARTICULATIONS", description: "Les mouvements de danse renforcent les articulations et les muscles stabilisateurs autour", value: "+25%" },
-        { icon: "chart", title: "RÉSULTATS 4 SEM", description: "Les premiers changements visibles apparaissent après 4 semaines à 2-3 cours/semaine", value: "4 sem" },
-      ],
-    };
-  }
+  const bodyPools: TopicData[] = [
+    { subtitle: `${displayName} : tonifier sans volume par la danse`, tagLine: "CIBLAGE MUSCULAIRE", cards: [
+      { icon: "muscle", title: "ZONE CIBLÉE", description: `La danse afro sollicite ${displayName.toLowerCase()} de façon naturelle et progressive`, value: "CIBLÉ" },
+      { icon: "dance", title: "MOUVEMENT COMPLET", description: "Contrairement à la muscu, la danse travaille les muscles en mouvement. Plus fonctionnel", value: "FUNC." },
+      { icon: "fire", title: "TONIFICATION", description: "Silhouette dessinée et muscles allongés, sans effet body-builder", value: "LEAN" },
+      { icon: "bone", title: "ARTICULATIONS", description: "Les mouvements dansés renforcent les stabilisateurs autour des articulations", value: "+25%" },
+      { icon: "chart", title: "RÉSULTATS 4 SEM", description: "Premiers changements visibles après 4 semaines à 2-3 cours/semaine", value: "4 SEM" },
+    ]},
+    { subtitle: `${displayName} : 5 exercices ciblés à la maison`, tagLine: "ROUTINE HOME", cards: [
+      { icon: "dance", title: "ÉCHAUFFEMENT DANSE", description: "5 min de mouvements afro pour activer la zone ciblée sans stress articulaire", value: "5 MIN" },
+      { icon: "muscle", title: "ISOMÉTRIQUE 30S", description: `Contracte ${displayName.toLowerCase()} pendant 30s, 3 séries. Active les fibres profondes`, value: "3×30S" },
+      { icon: "fire", title: "DYNAMIQUE 45S", description: "Mouvement contrôlé 45s, 4 séries. Combine force + endurance musculaire", value: "4×45S" },
+      { icon: "energy", title: "SUPERSÉRIE 60S", description: "Enchaîne sans repos 2 exercices. Stimulation maximale en peu de temps", value: "2×60S" },
+      { icon: "heart", title: "ÉTIREMENT FINAL", description: "3 min d'étirements pour récupération et mobilité long terme", value: "3 MIN" },
+    ]},
+    { subtitle: `${displayName} : avant / après 12 semaines`, tagLine: "TRANSFORMATION 12 SEM", cards: [
+      { icon: "calendar", title: "SEM 1-4 : BASE", description: "Le corps apprend le geste. Tonicité de fond. Peu de changement visible", value: "S1-4" },
+      { icon: "energy", title: "SEM 5-8 : FORME", description: "Silhouette commence à se dessiner. Vêtements tombent différemment", value: "S5-8" },
+      { icon: "fire", title: "SEM 9-12 : RÉSULTAT", description: "Changement visible dans le miroir et sur les photos comparatives", value: "S9-12" },
+      { icon: "muscle", title: "APRÈS 12 SEM", description: "Tonification durable : les gains tiennent sur 6 mois avec 1 séance/sem", value: "6 MOIS" },
+      { icon: "trophy", title: "CORPS DURABLE", description: "Contrairement aux régimes, la danse construit un corps qui tient", value: "STABLE" },
+    ]},
+    { subtitle: `${displayName} : le muscle qui change tout`, tagLine: "ANATOMIE", cards: [
+      { icon: "brain", title: "NEUROMUSCULAIRE", description: `Activer ${displayName.toLowerCase()} améliore aussi la coordination + l'équilibre général`, value: "+40%" },
+      { icon: "bone", title: "POSTURE", description: "Un muscle fort = moins de compensation = moins de mal de dos chronique", value: "RIGHT" },
+      { icon: "energy", title: "MÉTABOLISME", description: "Plus de masse musculaire = plus de calories brûlées au repos", value: "+8%" },
+      { icon: "shield", title: "PROTECTION", description: "Muscle entourant les articulations = risque de blessure divisé par 2", value: "×0.5" },
+      { icon: "fire", title: "CONFIANCE", description: "Un corps tonique change ta façon de bouger, de parler, de te présenter", value: "♡" },
+    ]},
+    { subtitle: `${displayName} : 3 erreurs qui sabotent les résultats`, tagLine: "ERREURS COURANTES", cards: [
+      { icon: "alert", title: "SURENTRAÎNEMENT", description: "Cibler la même zone tous les jours = récupération insuffisante, stagnation", value: "⚠" },
+      { icon: "ban", title: "MAUVAISE POSTURE", description: "Un geste incorrect répété renforce la compensation, pas le muscle visé", value: "FORM" },
+      { icon: "scale", title: "NUTRITION PAUVRE", description: "Sans protéines suffisantes (1.6g/kg), la tonification plafonne", value: "1.6G" },
+      { icon: "moon", title: "SOMMEIL COURT", description: "Moins de 7h = cortisol élevé = catabolisme musculaire. Dors mieux", value: "7H+" },
+      { icon: "clock", title: "PAS DE RÉGULARITÉ", description: "2 séances/mois = maintenance, pas de progression réelle", value: "3×/S" },
+    ]},
+  ];
 
-  if (isWellness) {
-    return {
-      subtitle: `${displayName} : le complément parfait à ta pratique sportive`,
-      tagLine: "BIEN-ÊTRE GLOBAL",
-      cards: [
-        { icon: "sparkle", title: `${upper.slice(0, 20)}`, description: `${displayName} complète l'activité physique pour un bien-être complet corps et esprit`, value: "HOLIST." },
-        { icon: "brain", title: "RÉCUPÉRATION MENTALE", description: "Le bien-être mental est aussi important que le physique. Les deux se renforcent mutuellement", value: "MENTAL" },
-        { icon: "moon", title: "SOMMEIL AMÉLIORÉ", description: "Les pratiques de bien-être améliorent la qualité du sommeil de 35% en moyenne", value: "+35%" },
-        { icon: "heart", title: "CORTISOL -40%", description: "Les techniques de relaxation réduisent le cortisol de 40%. Combinées à la danse : -55%", value: "-40%" },
-        { icon: "shield", title: "IMMUNITÉ BOOSTÉE", description: "Bien-être + sport = système immunitaire renforcé de 50%. La meilleure médecine préventive", value: "+50%" },
-      ],
-    };
-  }
+  const wellnessPools: TopicData[] = [
+    { subtitle: `${displayName} : l'allié bien-être de ton entraînement`, tagLine: "BIEN-ÊTRE GLOBAL", cards: [
+      { icon: "sparkle", title: "CORPS + ESPRIT", description: `${displayName} complète l'activité physique pour un bien-être total`, value: "HOLIST." },
+      { icon: "brain", title: "RÉCUPÉRATION MENTALE", description: "Le bien-être mental se travaille comme le physique. Les deux se renforcent", value: "MENTAL" },
+      { icon: "moon", title: "SOMMEIL AMÉLIORÉ", description: "Les pratiques de bien-être améliorent la qualité du sommeil de 35%", value: "+35%" },
+      { icon: "heart", title: "CORTISOL −40%", description: "Les techniques de relaxation réduisent le cortisol. Combinées à la danse : -55%", value: "−40%" },
+      { icon: "shield", title: "IMMUNITÉ +50%", description: "Bien-être + sport = système immunitaire renforcé. Médecine préventive réelle", value: "+50%" },
+    ]},
+    { subtitle: `${displayName} : 10 minutes qui changent ta journée`, tagLine: "ROUTINE EXPRESS", cards: [
+      { icon: "sun", title: "RÉVEIL CONSCIENT", description: "3 min de respiration profonde au lever. Active le parasympathique dès le matin", value: "3 MIN" },
+      { icon: "energy", title: "ANCRAGE CORPOREL", description: "2 min pour scanner ton corps. Identifie les tensions avant qu'elles durcissent", value: "2 MIN" },
+      { icon: "brain", title: "INTENTION", description: "1 min pour poser l'intention du jour. Pas une to-do — un état d'esprit", value: "1 MIN" },
+      { icon: "heart", title: "GRATITUDE", description: "2 min à nommer 3 choses positives. Rewire le cerveau sur le long terme", value: "2 MIN" },
+      { icon: "moon", title: "VISUALISATION", description: "2 min à visualiser ta journée idéale. Performance +15% prouvée", value: "+15%" },
+    ]},
+    { subtitle: `${displayName} : ce que disent les études`, tagLine: "SCIENCE DU BIEN-ÊTRE", cards: [
+      { icon: "chart", title: "20 MIN SUFFISENT", description: "20 min/jour de pratique = effets mesurables sur anxiété dès 8 semaines", value: "20 MIN" },
+      { icon: "brain", title: "CERVEAU PLASTIQUE", description: "Pratique régulière augmente la matière grise préfrontale mesurable à l'IRM", value: "IRM+" },
+      { icon: "heart", title: "TENSION ARTÉRIELLE", description: "Réduction moyenne de 5 mmHg systolique chez les pratiquants réguliers", value: "−5" },
+      { icon: "energy", title: "INFLAMMATION", description: "Marqueurs inflammatoires réduits de 23% après 8 semaines de pratique", value: "−23%" },
+      { icon: "shield", title: "LONGÉVITÉ", description: "Les pratiquants ont des télomères plus longs = biologiquement plus jeunes", value: "−3 ANS" },
+    ]},
+    { subtitle: `${displayName} : matin, midi ou soir ?`, tagLine: "ROUTINE OPTIMISÉE", cards: [
+      { icon: "sun", title: "MATIN : ACTIVATION", description: "Pratiquer au réveil réduit le cortisol de départ et cadre la journée", value: "AM" },
+      { icon: "clock", title: "MIDI : RECHARGE", description: "10 min de pause consciente évite le coup de barre de 15h", value: "PAUSE" },
+      { icon: "moon", title: "SOIR : DÉCROCHAGE", description: "Avant dormir : prépare le système nerveux au sommeil profond", value: "PM" },
+      { icon: "brain", title: "RÉGULARITÉ > TIMING", description: "Un moment fixe quotidien bat un moment optimal aléatoire", value: "RÉG." },
+      { icon: "heart", title: "MINI-DOSES", description: "Mieux 3x5min régulier que 1x30min sporadique. L'accumulation compte", value: "3×5" },
+    ]},
+    { subtitle: `${displayName} + danse : synergie ultime`, tagLine: "COMBO PUISSANT", cards: [
+      { icon: "sparkle", title: "CORPS MÉMOIRE", description: `La danse + ${displayName.toLowerCase()} ancre le bien-être dans le corps, pas juste la tête`, value: "BODY" },
+      { icon: "fire", title: "STRESS ÉVACUÉ", description: "Bouger + respirer = libération de tensions physiques ET émotionnelles", value: "FLUSH" },
+      { icon: "heart", title: "ENDORPHINES", description: "Double libération : par l'effort (danse) et le calme (pratique)", value: "+×2" },
+      { icon: "brain", title: "CONCENTRATION", description: "La danse demande de la présence. La pratique l'ancre. Combo = flow", value: "FLOW" },
+      { icon: "trophy", title: "RÉSULTATS DURABLES", description: "Double pratique = changements maintenus à 1 an chez 78% des gens", value: "78%" },
+    ]},
+  ];
 
-  // Fallback ultime : contenu centré sur le titre tapé
-  return {
-    subtitle: `${displayName} : les bienfaits prouvés pour ta santé et tes performances`,
-    tagLine: "LE SAVIEZ-VOUS ?",
-    cards: [
-      { icon: "brain", title: `${upper.slice(0, 20)} & CERVEAU`, description: `${displayName} a un impact direct sur ton cerveau. La science montre des effets mesurables sur la concentration`, value: "NEURO" },
-      { icon: "heart", title: "IMPACT CARDIOVASCULAIRE", description: "Ton système cardiovasculaire réagit positivement. Combiné à la danse, les bénéfices se multiplient", value: "+CŒUR" },
-      { icon: "energy", title: "TON ÉNERGIE AU QUOTIDIEN", description: "L'énergie vient d'un équilibre entre nutrition, mouvement et récupération. Chaque élément compte", value: "BALANCE" },
-      { icon: "muscle", title: "MUSCLES & RÉCUPÉRATION", description: "Tes muscles ont besoin de 48h pour se reconstruire après un effort intense. Optimise ce temps", value: "48h" },
-      { icon: "apple", title: "NUTRITION ASSOCIÉE", description: "Associé à une alimentation équilibrée et 2-3 cours/semaine, les résultats sont visibles en 1 mois", value: "1 mois" },
-    ],
+  const defaultPools: TopicData[] = [
+    { subtitle: `${displayName} : les bienfaits prouvés`, tagLine: "SAVIEZ-VOUS ?", cards: [
+      { icon: "brain", title: `${upper.slice(0, 20)} & CERVEAU`, description: `${displayName} a un impact direct sur ton cerveau. Concentration mesurablement améliorée`, value: "NEURO" },
+      { icon: "heart", title: "IMPACT CARDIO", description: "Système cardiovasculaire réagit positivement. Multiplié avec la danse", value: "+CŒUR" },
+      { icon: "energy", title: "ÉNERGIE QUOTIDIENNE", description: "Équilibre entre nutrition, mouvement et récupération. Chaque élément compte", value: "BALANCE" },
+      { icon: "muscle", title: "MUSCLES & RÉCUP", description: "48h pour reconstruire après effort intense. Optimise ce temps", value: "48H" },
+      { icon: "apple", title: "NUTRITION CLÉ", description: "Alimentation équilibrée + 2-3 cours/semaine = résultats visibles en 1 mois", value: "1 MOIS" },
+    ]},
+    { subtitle: `${displayName} : guide pas à pas`, tagLine: "GUIDE PAS À PAS", cards: [
+      { icon: "calendar", title: "ÉTAPE 1 : OBJECTIF", description: `Définis ce que tu veux tirer de ${displayName}. Sans cible, pas de progression`, value: "1/5" },
+      { icon: "clock", title: "ÉTAPE 2 : ROUTINE", description: "Pose un créneau fixe dans la semaine. La régularité > l'intensité", value: "2/5" },
+      { icon: "fire", title: "ÉTAPE 3 : ACTION", description: "Commence petit. 10 min par jour battent 2h par semaine", value: "3/5" },
+      { icon: "chart", title: "ÉTAPE 4 : MESURE", description: "Note 1 métrique simple (énergie, humeur). Data > impressions", value: "4/5" },
+      { icon: "trophy", title: "ÉTAPE 5 : AJUSTE", description: "À J30, ajuste ce qui ne marche pas. Itérer = clé de la durabilité", value: "5/5" },
+    ]},
+    { subtitle: `${displayName} : les erreurs courantes à éviter`, tagLine: "ERREURS COURANTES", cards: [
+      { icon: "alert", title: "ATTENTES IRRÉALISTES", description: "Chercher un changement en 7 jours = abandon assuré. Vise 30 jours minimum", value: "30J" },
+      { icon: "ban", title: "ZÉRO MESURE", description: "Sans baseline ni suivi, impossible de savoir si tu progresses", value: "TRACK" },
+      { icon: "scale", title: "TROP / PAS ASSEZ", description: "Dosage inadapté détruit la motivation. Commence modéré", value: "DOSE" },
+      { icon: "moon", title: "MANQUE DE REPOS", description: "La récupération est partie intégrante du protocole, pas une option", value: "REST" },
+      { icon: "brain", title: "ISOLATION", description: "Tout seul = 68% d'abandon. Un partenaire ou groupe change tout", value: "−68%" },
+    ]},
+    { subtitle: `${displayName} : transformation 30 jours`, tagLine: "TRANSFORMATION 30J", cards: [
+      { icon: "sun", title: "JOUR 1-7 : ADOPTION", description: `Ton cerveau intègre le rituel ${displayName}. Patience, c'est une phase`, value: "J1-7" },
+      { icon: "energy", title: "JOUR 8-14 : TRACTION", description: "Premiers effets concrets. L'envie remplace la contrainte", value: "J8-14" },
+      { icon: "brain", title: "JOUR 15-21 : CLARTÉ", description: "Tu vois ce qui fonctionne pour toi. Affine le protocole", value: "J15-21" },
+      { icon: "fire", title: "JOUR 22-30 : ANCRAGE", description: "L'habitude devient automatique. Le cerveau a câblé le rituel", value: "J22-30" },
+      { icon: "trophy", title: "APRÈS 30J", description: "85% de chances de maintenir la pratique 6 mois. Palier franchi", value: "85%" },
+    ]},
+    { subtitle: `${displayName} : combinaison gagnante`, tagLine: "SYNERGIE EFFICACE", cards: [
+      { icon: "dance", title: "AVEC LA DANSE", description: `${displayName} + danse afro = bien-être global. Résultats multipliés`, value: "×2" },
+      { icon: "apple", title: "AVEC LA NUTRITION", description: "Associer à une alimentation ciblée booste l'impact de 40%", value: "+40%" },
+      { icon: "moon", title: "AVEC LE SOMMEIL", description: "7-9h de sommeil consolide 85% des bénéfices de ta pratique", value: "7-9H" },
+      { icon: "brain", title: "AVEC LA RESPIRATION", description: "3 min de respiration avant ET après amplifie tous les effets", value: "×1.5" },
+      { icon: "heart", title: "AVEC LA COMMUNAUTÉ", description: "Pratiquer en groupe = +68% d'adhésion à long terme", value: "+68%" },
+    ]},
+  ];
+
+  const pickPool = <T,>(pools: T[]): T => {
+    if (pools.length === 0) throw new Error('pools empty');
+    const idx = typeof seed === 'number' && Number.isFinite(seed)
+      ? Math.abs(Math.floor(seed)) % pools.length
+      : Math.floor(Math.random() * pools.length);
+    return pools[idx];
   };
+
+  if (isNutri) return pickPool(nutriPools);
+  if (isSport) return pickPool(sportPools);
+  if (isBody) return pickPool(bodyPools);
+  if (isWellness) return pickPool(wellnessPools);
+  return pickPool(defaultPools);
 }

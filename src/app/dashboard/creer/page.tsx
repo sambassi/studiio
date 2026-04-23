@@ -3469,11 +3469,13 @@ function InfographicPageInner() {
         // thread it into the prompt without polluting the topic string.
         const aiTopic = `${topicText} (angle: ${angle})`;
         const variationNonce = `${batchIndex}-${Date.now().toString(36)}`;
-        // AI first — 15s timeout so a slow model doesn't stall the whole batch.
+        // AI first — 45s client timeout. Claude Haiku 4.5 usually answers
+        // in 3-12s; generous ceiling avoids punching to the lower-quality
+        // local fallback before the real variation arrives on slow runs.
         try {
           console.log(`[BatchVariation #${batchIndex}] AI → /api/content/ai-generate angle="${angle.slice(0, 40)}..."`);
           const aiController = new AbortController();
-          const aiTimeout = setTimeout(() => aiController.abort(), 15000);
+          const aiTimeout = setTimeout(() => aiController.abort(), 45000);
           const r = await fetch("/api/content/ai-generate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
