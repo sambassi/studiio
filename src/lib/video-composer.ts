@@ -1882,18 +1882,36 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     throw new Error(`Impossible de charger l'image de fond (poster). Vérifiez que l'URL est accessible: ${posterUrl.substring(0, 80)}`);
   }
 
-  // Build sequences
-  const sequences: Array<{ type: string; duration: number }> = [{ type: 'intro', duration: introDuration }];
-  if (cards.length > 0) sequences.push({ type: 'cards', duration: cardsDuration });
+  // Build sequences. Callers (editor, calendar regenerate) signal an
+  // invisible sequence by passing its duration as 0 — e.g. a user who
+  // toggled the CTA off sends ctaDuration: 0. We must NOT push those
+  // sequences into the list, because the transition logic crossfades
+  // INTO sequences[seqIdx + 1] even when that next sequence has
+  // duration 0 — which leaks the hidden sequence into the final frame.
   const hasVideoBackground = !!videoEl || !!videoImageEl;
-  if (hasVideoBackground) {
+  const sequences: Array<{ type: string; duration: number }> = [];
+  if (introDuration > 0) sequences.push({ type: 'intro', duration: introDuration });
+  if (cards.length > 0 && cardsDuration > 0) sequences.push({ type: 'cards', duration: cardsDuration });
+  if (hasVideoBackground && videoDuration > 0) {
     sequences.push({ type: 'video', duration: videoDuration });
-  } else if (videoUrl || effectiveVideoImageUrl) {
+  } else if ((videoUrl || effectiveVideoImageUrl) && videoDuration > 0) {
     // Video was requested but failed to load — redistribute its duration to intro/CTA
     console.warn('[Composer] ⚠️ Video requested but failed to load — extending intro/CTA to fill duration');
-    sequences[0].duration += Math.floor(videoDuration / 2);
+    if (sequences[0]) sequences[0].duration += Math.floor(videoDuration / 2);
   }
-  sequences.push({ type: 'cta', duration: ctaDuration + ((!hasVideoBackground && (videoUrl || effectiveVideoImageUrl)) ? Math.ceil(videoDuration / 2) : 0) });
+  const ctaExtraFromDeadVideo = (!hasVideoBackground && (videoUrl || effectiveVideoImageUrl) && videoDuration > 0)
+    ? Math.ceil(videoDuration / 2)
+    : 0;
+  if (ctaDuration + ctaExtraFromDeadVideo > 0) {
+    sequences.push({ type: 'cta', duration: ctaDuration + ctaExtraFromDeadVideo });
+  }
+
+  if (sequences.length === 0) {
+    // Every sequence was hidden — fall back to a 1-frame intro so the
+    // recorder produces a valid (if trivial) output rather than hanging.
+    console.warn('[Composer] ⚠️ All sequences hidden — falling back to 1s intro');
+    sequences.push({ type: 'intro', duration: 1 });
+  }
 
   const totalDuration = sequences.reduce((s, seq) => s + seq.duration, 0);
   const transitionDur = 0.8;
