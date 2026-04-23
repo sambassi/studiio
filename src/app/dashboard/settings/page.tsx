@@ -7,6 +7,7 @@ import { useSession, signOut } from 'next-auth/react';
 import { ObjectivesContent } from '@/components/settings/ObjectivesContent';
 import { BillingContent } from '@/components/settings/BillingContent';
 import BrandingPanel from '@/components/BrandingPanel';
+import BrandingPreview from '@/components/BrandingPreview';
 import { useBranding } from '@/lib/hooks/useBranding';
 
 const TABS = [
@@ -57,12 +58,19 @@ function SettingsContent() {
         {activeTab === 'contenu' && <ObjectivesContent />}
         {activeTab === 'abonnement' && <BillingContent />}
         {activeTab === 'branding' && (
-          <div className="max-w-lg space-y-4">
+          <div className="space-y-4">
             <div>
               <h2 className="text-xl font-bold text-white mb-1">Branding</h2>
               <p className="text-sm text-gray-400">Logo, couleurs, watermark et CTA par défaut. Ces réglages sont mémorisés automatiquement.</p>
             </div>
-            <BrandingPanel branding={branding} onChange={setBranding} />
+            <div className="flex flex-col-reverse md:flex-row md:items-start gap-8">
+              <div className="flex-1 max-w-lg">
+                <BrandingPanel branding={branding} onChange={setBranding} />
+              </div>
+              <div className="flex-shrink-0 md:sticky md:top-4">
+                <BrandingPreview branding={branding} />
+              </div>
+            </div>
           </div>
         )}
         {activeTab === 'compte' && (

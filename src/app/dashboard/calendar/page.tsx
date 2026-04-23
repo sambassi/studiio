@@ -2239,7 +2239,7 @@ export default function CalendarPage() {
                                 <button onClick={() => handleExportPost(post)} className="p-1 rounded bg-gray-700 hover:bg-blue-600 text-gray-300 hover:text-white transition" title={t('actions.export')}><Download className="w-3 h-3" /></button>
                               )}
                               {!post.metadata?.hasAudio && post.media_type === 'video' && (
-                                <button onClick={() => { window.location.href = `/dashboard/audio-studio?postId=${post.id}`; }} className="p-1 rounded bg-purple-600 hover:bg-purple-700 text-white transition" title={t('actions.addAudio')}><Volume2 className="w-3 h-3" /></button>
+                                <button onClick={() => { window.location.href = `/dashboard/creer?postId=${post.id}&tab=audio`; }} className="p-1 rounded bg-purple-600 hover:bg-purple-700 text-white transition" title={t('actions.addAudio')}><Volume2 className="w-3 h-3" /></button>
                               )}
                               {post.status === 'failed' && (
                                 <button onClick={() => handleRetryPost(post)} className="p-1 rounded bg-orange-600 hover:bg-orange-700 text-white transition" title="Réessayer la publication"><RefreshCw className="w-3 h-3" /></button>
@@ -3409,7 +3409,7 @@ export default function CalendarPage() {
                 )}
                 {!meta?.hasAudio && fullPreviewPost.media_type === 'video' && (
                   <button
-                    onClick={() => { window.location.href = `/dashboard/audio-studio?postId=${fullPreviewPost.id}`; }}
+                    onClick={() => { window.location.href = `/dashboard/creer?postId=${fullPreviewPost.id}&tab=audio`; }}
                     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 border border-purple-500 rounded-lg text-sm font-medium text-white transition"
                   >
                     <Volume2 size={14} /> {t('actions.addAudio')}

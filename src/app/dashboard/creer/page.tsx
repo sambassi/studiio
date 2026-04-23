@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Plus,
   Trash2,
@@ -1334,8 +1334,17 @@ function migrateCardToSvg<T extends Partial<InfoCard> & { iconType?: string; emo
   } as T;
 }
 
-export default function InfographicPage() {
+function InfographicPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // ── Deeplink edit state ─────────────────────────────────────
+  // When calendar's "Ajouter le son" button routes to
+  // /creer?postId=X&tab=audio, we fetch the post, prefill the
+  // editor, and open the Audio tab so the user lands where they
+  // were expecting to go.
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [editingPostTitle, setEditingPostTitle] = useState<string>('');
 
   // ── Step wizard ─────────────────────────────────────────────
   const [step, setStep] = useState(0); // 0: Theme & Content, 1: Personnalisation, 2: Export
@@ -1714,6 +1723,88 @@ export default function InfographicPage() {
     // Allow auto-generate to work again after initial restore (next tick)
     requestAnimationFrame(() => { restoringFromStorage.current = false; });
   }, []);
+
+  // ── Deeplink: /creer?postId=X&tab=audio ──────────────────────
+  // Fetch the post, prefill the editor, and switch to the requested tab.
+  useEffect(() => {
+    const postId = searchParams?.get('postId');
+    const tab = searchParams?.get('tab');
+    if (!postId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/posts/${postId}`);
+        const data = await res.json().catch(() => ({ success: false }));
+        if (cancelled || !data?.success || !data.data) {
+          console.warn('[Deeplink] Post fetch failed:', data?.error);
+          return;
+        }
+        const post = data.data;
+        const meta = post.metadata || {};
+        setEditingPostId(post.id);
+        setEditingPostTitle(post.title || meta.title || '');
+
+        if (post.title) setTitle(post.title);
+        if (meta.subtitle) setSubtitle(meta.subtitle);
+        if (Array.isArray(meta.cards) && meta.cards.length > 0) {
+          setCards(meta.cards.map((c: Partial<InfoCard> & { id?: string }, i: number) => ({
+            id: c.id || `card-${i}`,
+            emoji: c.emoji || '',
+            label: c.label || '',
+            value: c.value || '',
+            description: c.description || '',
+            color: c.color || '#a855f7',
+            position: c.position,
+            iconType: c.iconType,
+            iconColor: c.iconColor,
+            iconFillColor: c.iconFillColor,
+            iconSize: c.iconSize,
+            iconStyle: c.iconStyle,
+          })));
+        }
+
+        // Poster photo: inject a synthetic pexels-style entry so the
+        // existing photo picker + export flow see it as "the selected
+        // photo". This preserves the rest of the pipeline untouched.
+        const posterUrl: string | undefined = meta.posterUrl || meta.pexelsUrl;
+        if (posterUrl) {
+          setPexelsPhotos([{
+            id: `deeplink-${post.id}`,
+            url: posterUrl,
+            medium: posterUrl,
+            small: posterUrl,
+            photographer: '',
+            alt: post.title || '',
+          }]);
+          setSelectedPhotoIndex(0);
+        }
+
+        // Rush (video or image)
+        const rushUrl: string | undefined = meta.videoUrl || meta.videoImageUrl || meta.rushUrls?.[0];
+        if (rushUrl) {
+          const rushKind: 'video' | 'image' = meta.rushKind === 'image' || !!meta.videoImageUrl ? 'image' : 'video';
+          setRushList([{ url: rushUrl, name: rushUrl.split('/').pop() || 'rush', kind: rushKind }]);
+        }
+
+        // Audio — the whole point of the deeplink
+        if (meta.musicUrl) {
+          setAudioMusicUrl(meta.musicUrl);
+          setAudioMusicName(meta.musicName || 'Musique');
+        }
+        if (meta.voiceUrl) {
+          setAudioVoiceUrl(meta.voiceUrl);
+          setAudioVoiceName(meta.voiceName || 'Voix');
+        }
+        if (typeof meta.musicVolume === 'number') setAudioMusicVolume(meta.musicVolume);
+        if (typeof meta.voiceVolume === 'number') setAudioVoiceVolume(meta.voiceVolume);
+
+        if (tab === 'audio') setActiveRailTab('audio');
+      } catch (err) {
+        console.error('[Deeplink] Error fetching post:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [searchParams]);
 
   // ── Auto-rule: titre gets noColor when a poster photo is loaded ────
   const selectedPhotoUrl = (pexelsPhotos as any[])?.[selectedPhotoIndex]?.url;
@@ -3275,6 +3366,8 @@ export default function InfographicPage() {
                 ctaSubTextDesign: ctaSubText || "CHAT POUR PLUS D'INFOS",
                 noColorBg, noColorSequences,
                 gradientColor1, gradientColor2, gradientOpacity, seqGradients,
+                borderEnabled: branding.borderEnabled,
+                borderColor: branding.borderColor,
                 cardsSnapshot,
                 cardsSnapshotRect,
                 logoPosition: getActiveLogoPos(),
@@ -3386,7 +3479,8 @@ export default function InfographicPage() {
                   ctaText: ctaSubText || "CHAT POUR PLUS D'INFOS",
                   ctaSubText: "LIEN EN BIO",
                   watermarkText: ctaMainText || "AFROBOOST",
-                  borderColor: null,
+                  borderEnabled: branding.borderEnabled,
+                  borderColor: branding.borderEnabled ? branding.borderColor : null,
                 },
                 // ── Design settings (positions, sizes, colors, font, filter, typography, etc.) ──
                 design: {
@@ -3406,6 +3500,8 @@ export default function InfographicPage() {
                   gradientColor2,
                   gradientOpacity,
                   seqGradients,
+                  borderEnabled: branding.borderEnabled,
+                  borderColor: branding.borderColor,
                   positions: {
                     title: titlePos,
                     logo: getActiveLogoPos(), // Legacy single pos (fallback for old callers)
@@ -3633,6 +3729,8 @@ export default function InfographicPage() {
               noColorBg, noColorSequences,
               seqGradients,
               filter: selectedFilter || undefined,
+              borderEnabled: branding.borderEnabled,
+              borderColor: branding.borderColor,
             },
             onProgress: (pct, stage) => {
               setExportProgress(50 + Math.round(pct * 0.35));
@@ -3735,6 +3833,24 @@ export default function InfographicPage() {
           }`}
         >
           {toast.message}
+        </div>
+      )}
+
+      {/* Edit-mode banner — shown when we arrived via /creer?postId=X&tab=... */}
+      {editingPostId && (
+        <div className="flex items-center justify-between gap-3 bg-purple-600/15 border-b border-purple-500/30 px-4 py-2">
+          <div className="flex items-center gap-2 text-sm text-purple-100 min-w-0">
+            <Edit3 size={14} className="flex-shrink-0" />
+            <span className="truncate">
+              Édition du post : <span className="font-semibold">{editingPostTitle || 'Sans titre'}</span>
+            </span>
+          </div>
+          <button
+            onClick={() => router.push('/dashboard/calendar')}
+            className="text-xs font-medium rounded-lg px-3 py-1.5 bg-gray-800 text-gray-200 hover:bg-gray-700 transition flex-shrink-0"
+          >
+            Annuler
+          </button>
         </div>
       )}
 
@@ -5090,12 +5206,20 @@ export default function InfographicPage() {
                       } ${rushDragIdx === idx ? "opacity-40" : ""}`}
                       title={`${rush.name} — glisser pour réordonner`}
                     >
-                      <video
-                        src={rush.url}
-                        muted
-                        preload="metadata"
-                        className="h-full w-full object-cover"
-                      />
+                      {rush.kind === 'image' ? (
+                        <img
+                          src={rush.url}
+                          alt={rush.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <video
+                          src={rush.url}
+                          muted
+                          preload="metadata"
+                          className="h-full w-full object-cover"
+                        />
+                      )}
                       {idx === 0 && (
                         <div className="absolute left-1 top-1 rounded bg-green-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
                           1ᵉʳ
@@ -5111,24 +5235,26 @@ export default function InfographicPage() {
                       >
                         <Trash2 size={12} />
                       </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openClipAnalysis(idx);
-                        }}
-                        className="absolute right-1 bottom-5 rounded bg-purple-600/80 p-1 text-white opacity-0 transition hover:bg-purple-700 group-hover:opacity-100"
-                        title="Analyser les meilleurs cuts"
-                      >
-                        <Sparkles size={12} />
-                      </button>
-                      {rush.fromClip && (
+                      {rush.kind !== 'image' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openClipAnalysis(idx);
+                          }}
+                          className="absolute right-1 bottom-5 rounded bg-purple-600/80 p-1 text-white opacity-0 transition hover:bg-purple-700 group-hover:opacity-100"
+                          title="Analyser les meilleurs cuts"
+                        >
+                          <Sparkles size={12} />
+                        </button>
+                      )}
+                      {(rush.fromClip || rush.kind === 'image') && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             setCropRushIdx(idx);
                           }}
                           className="absolute left-1 bottom-5 rounded bg-blue-600/80 p-1 text-white opacity-0 transition hover:bg-blue-700 group-hover:opacity-100"
-                          title="Recadrer la vidéo"
+                          title={rush.kind === 'image' ? "Recadrer l'image" : 'Recadrer la vidéo'}
                         >
                           <Crop size={12} />
                         </button>
@@ -5859,6 +5985,9 @@ export default function InfographicPage() {
             className={`${previewClasses.aspect} relative flex flex-col items-center justify-between rounded-lg p-4 shadow-2xl overflow-hidden transition-all duration-300`}
             style={{
               fontFamily: FONT_CSS_MAP[selectedFont] || "inherit",
+              ...(branding.borderEnabled
+                ? { boxShadow: `inset 0 0 0 8px ${branding.borderColor || '#D91CD2'}, 0 25px 50px -12px rgb(0 0 0 / 0.25)` }
+                : {}),
               ...(() => {
                 if (activeSequence === "video" && rushUrl) return { background: "#0A0A0F" };
                 const seqNoColor =
@@ -8434,5 +8563,13 @@ export default function InfographicPage() {
       />
       </div>
     </div>
+  );
+}
+
+export default function InfographicPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-gray-400">Chargement...</div>}>
+      <InfographicPageInner />
+    </Suspense>
   );
 }
