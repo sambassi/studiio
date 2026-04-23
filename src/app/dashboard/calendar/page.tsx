@@ -1514,6 +1514,51 @@ export default function CalendarPage() {
     setShowEditModal(true);
   };
 
+  // Extract the first visible frame of a remote video as a data-URL thumbnail
+  // (~320px wide, JPEG quality 0.7). Tries t=0.5s like PostThumbnail's live
+  // extraction, with a 5s timeout + graceful fallback to the video URL itself
+  // (Chrome renders the video's first frame as a poster when loaded into <img>).
+  const extractVideoThumbnail = (url: string): Promise<string> =>
+    new Promise((resolve) => {
+      const video = document.createElement('video');
+      video.crossOrigin = 'anonymous';
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = 'auto';
+      let done = false;
+      const finish = (result: string) => {
+        if (done) return;
+        done = true;
+        video.src = '';
+        resolve(result);
+      };
+      const timer = setTimeout(() => finish(url), 5000);
+      video.onloadedmetadata = () => {
+        try { video.currentTime = 0.5; } catch { /* ignore */ }
+      };
+      video.onseeked = () => {
+        try {
+          const maxW = 640;
+          const scale = video.videoWidth > maxW ? maxW / video.videoWidth : 1;
+          const c = document.createElement('canvas');
+          c.width = Math.round(video.videoWidth * scale) || 320;
+          c.height = Math.round(video.videoHeight * scale) || 568;
+          const ctx = c.getContext('2d');
+          if (!ctx) { clearTimeout(timer); finish(url); return; }
+          ctx.drawImage(video, 0, 0, c.width, c.height);
+          const data = c.toDataURL('image/jpeg', 0.7);
+          clearTimeout(timer);
+          finish(data);
+        } catch {
+          // SecurityError (tainted canvas) or draw failure — fall back to the URL
+          clearTimeout(timer);
+          finish(url);
+        }
+      };
+      video.onerror = () => { clearTimeout(timer); finish(url); };
+      video.src = url;
+    });
+
   const handleImportClick = () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -1588,10 +1633,21 @@ export default function CalendarPage() {
         }
         console.log('[Import] mediaUrl:', mediaUrl);
 
+        // Derive a thumbnail so the post card isn't a black rectangle.
+        // - Images: the file itself is the thumbnail.
+        // - Videos: extract frame@0.5s client-side, fall back to the URL.
+        setImportStage('Génération de la miniature...');
+        const thumbnailUrl = isVideo ? await extractVideoThumbnail(mediaUrl) : mediaUrl;
+        console.log('[Import] thumbnail ready:', thumbnailUrl.slice(0, 80), thumbnailUrl.startsWith('data:') ? '(data URL)' : '(remote URL)');
+
         setEditFormData({
           platforms: [], status: 'draft', format: 'reel',
           scheduled_date: selectedDay ? formatDateForStorage(currentDate, selectedDay) : formatDateForStorage(new Date(), new Date().getDate()),
           scheduled_time: '12:00', title, caption: '', media_url: mediaUrl, media_type: isVideo ? 'video' : 'image',
+          metadata: {
+            thumbnailUrl,
+            posterUrl: isVideo ? undefined : mediaUrl,
+          },
         });
         setEditTab('draft');
         setShowEditModal(true);
