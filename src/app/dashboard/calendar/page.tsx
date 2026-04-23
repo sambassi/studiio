@@ -306,6 +306,11 @@ export default function CalendarPage() {
   const [montageMuted, setMontageMuted] = useState(true);
   const [videoPlayable, setVideoPlayable] = useState(false); // Track if video file is loadable — default false until proven
 
+  // Import-file state (shown while a user uploads a local video/image via "Importer")
+  const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [importStage, setImportStage] = useState('');
+
   // Regenerate-montage state (for posts missing renderedVideoUrl or thumbnailUrl)
   const [regenerating, setRegenerating] = useState(false);
   const [regenProgress, setRegenProgress] = useState(0);
@@ -1515,31 +1520,74 @@ export default function CalendarPage() {
     input.accept = 'video/mp4,video/quicktime,video/webm,image/jpeg,image/png,image/webp,image/gif';
     input.onchange = async (e: any) => {
       const file = e.target.files?.[0];
-      if (!file) return;
+      if (!file) {
+        console.log('[Import] no file selected');
+        return;
+      }
       const isVideo = file.type.startsWith('video/');
       const title = file.name.replace(/\.[^/.]+$/, '');
+      const useSignedUrl = file.size > 4 * 1024 * 1024;
+      console.log('[Import] file selected:', { name: file.name, size: file.size, type: file.type, isVideo, useSignedUrl });
+
+      setImporting(true);
+      setImportProgress(0);
+      setImportStage(`Préparation de "${file.name}"...`);
+
+      let mediaUrl: string | null = null;
       try {
-        let mediaUrl: string | null = null;
-        // Use signed URL for large files (> 4MB) to bypass Vercel's 4.5MB body limit
-        if (file.size > 4 * 1024 * 1024) {
+        if (useSignedUrl) {
+          // Large files: PUT directly to Supabase via a signed URL (bypasses Vercel's 4.5MB limit)
+          setImportStage('Obtention de l\'URL signée...');
           const signRes = await fetch('/api/upload/signed-url', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ filename: file.name, contentType: file.type, purpose: isVideo ? 'rush' : 'thumbnail' }),
           });
-          const signData = await signRes.json();
-          if (signData.success) {
-            const putRes = await fetch(signData.signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
-            if (putRes.ok) mediaUrl = signData.publicUrl;
+          const signData = await signRes.json().catch(() => ({ success: false, error: 'Réponse invalide' }));
+          console.log('[Import] sign response:', { httpStatus: signRes.status, success: signData?.success, error: signData?.error });
+          if (!signRes.ok || !signData?.success) {
+            const detail = signData?.error || `HTTP ${signRes.status}`;
+            throw new Error(`Impossible d'obtenir une URL d'upload (${detail}). ${signRes.status === 401 ? 'Votre session a peut-être expiré — reconnectez-vous.' : ''}`);
           }
+          setImportStage(`Envoi vers Supabase (${Math.round(file.size / 1024 / 1024)} Mo)...`);
+          const putOk = await new Promise<{ ok: boolean; status: number }>((resolve) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('PUT', signData.signedUrl);
+            xhr.setRequestHeader('Content-Type', file.type);
+            xhr.upload.onprogress = (ev) => {
+              if (ev.lengthComputable) setImportProgress(Math.round((ev.loaded / ev.total) * 100));
+            };
+            xhr.onload = () => resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status });
+            xhr.onerror = () => resolve({ ok: false, status: xhr.status || 0 });
+            xhr.send(file);
+          });
+          console.log('[Import] PUT status:', putOk);
+          if (!putOk.ok) {
+            throw new Error(`Upload Supabase échoué (HTTP ${putOk.status}). Vérifiez votre connexion et réessayez.`);
+          }
+          mediaUrl = signData.publicUrl;
         } else {
+          // Small files: go through the Next.js API route
+          setImportStage('Envoi du fichier...');
           const formData = new FormData();
           formData.append('file', file);
           formData.append('purpose', isVideo ? 'rush' : 'thumbnail');
           const uploadRes = await fetch('/api/upload/media', { method: 'POST', body: formData });
-          const uploadData = await uploadRes.json();
-          mediaUrl = uploadData.success ? uploadData.file.url : null;
+          const uploadData = await uploadRes.json().catch(() => ({ success: false, error: 'Réponse invalide' }));
+          console.log('[Import] /api/upload/media response:', { httpStatus: uploadRes.status, success: uploadData?.success, error: uploadData?.error });
+          if (!uploadRes.ok || !uploadData?.success) {
+            const detail = uploadData?.error || `HTTP ${uploadRes.status}`;
+            throw new Error(`Upload échoué (${detail}).`);
+          }
+          mediaUrl = uploadData.file?.url || null;
+          setImportProgress(100);
         }
+
+        if (!mediaUrl) {
+          throw new Error('Upload terminé mais aucune URL renvoyée.');
+        }
+        console.log('[Import] mediaUrl:', mediaUrl);
+
         setEditFormData({
           platforms: [], status: 'draft', format: 'reel',
           scheduled_date: selectedDay ? formatDateForStorage(currentDate, selectedDay) : formatDateForStorage(new Date(), new Date().getDate()),
@@ -1548,7 +1596,13 @@ export default function CalendarPage() {
         setEditTab('draft');
         setShowEditModal(true);
       } catch (error) {
-        console.error('Upload failed:', error);
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error('[Import] upload failed:', msg, error);
+        alert(`Upload échoué : ${msg}`);
+      } finally {
+        setImporting(false);
+        setImportProgress(0);
+        setImportStage('');
       }
     };
     input.click();
@@ -1846,6 +1900,25 @@ export default function CalendarPage() {
               />
             </div>
             <p className="text-xs text-purple-400 text-right mt-2 font-bold">{exportRenderProgress}%</p>
+          </div>
+        </div>
+      )}
+
+      {importing && (
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center">
+          <div className="bg-gray-900 rounded-2xl p-8 max-w-md w-full mx-4 border border-purple-500/30">
+            <div className="flex items-center gap-3 mb-4">
+              <Loader2 className="w-6 h-6 text-purple-400 animate-spin" />
+              <h3 className="text-lg font-bold text-white">Import en cours</h3>
+            </div>
+            <p className="text-sm text-gray-300 mb-4 truncate">{importStage}</p>
+            <div className="w-full h-3 bg-gray-700 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{ width: `${importProgress}%`, background: 'linear-gradient(90deg, #7C3AED, #EC4899)' }}
+              />
+            </div>
+            <p className="text-xs text-purple-400 text-right mt-2 font-bold">{importProgress}%</p>
           </div>
         </div>
       )}
