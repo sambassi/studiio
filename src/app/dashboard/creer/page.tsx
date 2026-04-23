@@ -1667,14 +1667,18 @@ function InfographicPageInner() {
         if (cfg.watermarkSize) setWatermarkSize(cfg.watermarkSize);
         // Text copy the user typed themselves (theme choice, custom topic,
         // main title, subtitle) IS restored — even empty strings, so
-        // clearing a field sticks. Cards / rushes / photos / audio /
-        // character image / overlay text remain volatile so each visit
-        // starts a fresh creation flow (the AI regenerates cards; the
-        // user re-picks photos and uploads fresh media).
+        // clearing a field sticks. Cards, sales phrases and the chosen
+        // poster photo are also restored so a manual edit survives a
+        // page refresh; rushes / audio / character image / overlay text
+        // remain volatile (fresh uploads per creation flow).
         if (cfg.contentTheme) setContentTheme(cfg.contentTheme);
         if (typeof cfg.customTopic === 'string') setCustomTopic(cfg.customTopic);
         if (typeof cfg.title === 'string') setTitle(cfg.title);
         if (typeof cfg.subtitle === 'string') setSubtitle(cfg.subtitle);
+        if (Array.isArray(cfg.cards)) setCards(cfg.cards as InfoCard[]);
+        if (Array.isArray(cfg.salesPhrases)) setSalesPhrases(cfg.salesPhrases as string[]);
+        if (Array.isArray(cfg.pexelsPhotos)) setPexelsPhotos(cfg.pexelsPhotos as PexelsPhoto[]);
+        if (typeof cfg.selectedPhotoIndex === 'number') setSelectedPhotoIndex(cfg.selectedPhotoIndex);
         // Site text (Afroboost.com)
         if (cfg.siteText !== undefined) setSiteText(cfg.siteText);
         if (cfg.siteTextPositions) {
@@ -2046,10 +2050,14 @@ function InfographicPageInner() {
             smartGuidesEnabled, showGridOverlay,
             cardGroups,
             cardPositionMode,
-            // User-typed text copy — persisted even when empty so clearing a
-            // field sticks across reloads. Cards / rushes / photos / audio
-            // remain volatile deliberately.
+            // User-typed text copy — persisted even when empty so clearing
+            // a field sticks across reloads. Cards and sales phrases are
+            // persisted too so a manual edit survives a refresh; the
+            // pexelsPhotos + selectedPhotoIndex pair travels together so
+            // the poster choice stays meaningful.
             contentTheme, customTopic, title, subtitle,
+            cards, salesPhrases,
+            pexelsPhotos, selectedPhotoIndex,
           }),
         );
         // After the first design-only save, drop the legacy blob so we
@@ -2080,6 +2088,8 @@ function InfographicPageInner() {
     cardGroups,
     cardPositionMode,
     contentTheme, customTopic, title, subtitle,
+    cards, salesPhrases,
+    pexelsPhotos, selectedPhotoIndex,
   ]);
 
   // (Typography states declared earlier for localStorage compatibility)
