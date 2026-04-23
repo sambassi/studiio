@@ -3681,12 +3681,33 @@ function InfographicPageInner() {
               setCards(bCards);
             }
             if (needsStateSync || didForceSequenceCal) {
-              // Two rAFs = one commit + one paint, enough for React +
-              // browser to settle before html2canvas reads the DOM.
+              // 1. Wait for any newly-requested fonts (per-element font
+              //    overrides applied to card text) to finish loading, so
+              //    html2canvas doesn't serialize fallback metrics.
+              try {
+                if (typeof document !== 'undefined' && (document as any).fonts?.ready) {
+                  await (document as any).fonts.ready;
+                }
+              } catch { /* ignore */ }
+              // 2. Flush React commits + force a layout reflow so offsetWidth
+              //    reflects the updated cards. document.body.offsetHeight is
+              //    a classic trick to synchronously force layout.
               await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+              // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+              document.body.offsetHeight;
+              // 3. A third rAF to give the paint one more chance after the
+              //    forced reflow.
+              await new Promise<void>((r) => requestAnimationFrame(() => r()));
             }
             try {
               const cardsEl = shouldSnapshot ? document.querySelector('[data-cards-grid]') as HTMLElement | null : null;
+              // Diagnostic: verify the DOM actually reflects bCards rather than
+              // the editor's original cards — catches cases where the React
+              // re-render got skipped or the element was stale.
+              if (cardsEl && needsStateSync) {
+                const firstLabelInDom = cardsEl.querySelector('p, h3, span')?.textContent?.slice(0, 40) || '(no text)';
+                console.log(`[Batch #${b}] DOM first card label:`, firstLabelInDom, '| expected bCards[0].label:', bCards[0]?.label);
+              }
               console.log(`[Batch #${b}] cardsEl offsetWidth/Height:`, cardsEl?.offsetWidth, cardsEl?.offsetHeight);
               if (cardsEl && cardsEl.offsetWidth > 0 && shouldSnapshot) {
                 const html2canvas = (await import('html2canvas')).default;
