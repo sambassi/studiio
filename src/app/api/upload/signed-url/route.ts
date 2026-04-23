@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
+import { sanitizeStorageFilename } from '@/lib/storage/sanitize-filename';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,8 @@ export async function POST(req: NextRequest) {
 
     const bucket = contentType.startsWith('audio/') ? 'audio' : 'media';
     const timestamp = Date.now();
-    const storagePath = `${session.user.id}/${purpose || 'rush'}/${timestamp}-${filename}`;
+    const safeFilename = sanitizeStorageFilename(filename);
+    const storagePath = `${session.user.id}/${purpose || 'rush'}/${timestamp}-${safeFilename}`;
 
     // Create a signed upload URL (valid for 2 minutes)
     const { data, error } = await supabaseAdmin.storage

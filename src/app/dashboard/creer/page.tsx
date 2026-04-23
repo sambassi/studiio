@@ -2560,14 +2560,6 @@ export default function InfographicPage() {
   };
 
   // ── Media upload (video or image) ──────────────────────────
-  // Supabase object keys should stay ASCII-safe — spaces and accents in the
-  // signed-URL path can cause PUTs to fail silently on some edge regions.
-  const sanitizeFilename = (name: string): string => {
-    // NFKD decomposes accents ("é" → "e" + U+0301); strip the combining marks.
-    const normalized = name.normalize('NFKD').replace(/[̀-ͯ]/g, '');
-    return normalized.replace(/[^\w.\-]+/g, '_').replace(/_+/g, '_').slice(0, 120);
-  };
-
   const uploadSingleMedia = async (
     file: File,
   ): Promise<{ url: string; name: string; kind: 'video' | 'image' } | null> => {
@@ -2587,16 +2579,17 @@ export default function InfographicPage() {
     }
 
     const kind: 'video' | 'image' = isVideo ? 'video' : 'image';
-    const safeFilename = sanitizeFilename(file.name);
     const purpose = isImage ? 'infographic-image' : 'infographic-video';
 
     try {
-      // Signed URL for files > 4 Mo (bypasses Vercel's 4.5MB body limit)
+      // Signed URL for files > 4 Mo (bypasses Vercel's 4.5MB body limit).
+      // The server sanitizes the filename into the storage key, so sending
+      // the raw file.name here is safe.
       if (file.size > 4 * 1024 * 1024) {
         const signRes = await fetch('/api/upload/signed-url', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filename: safeFilename, contentType: file.type, purpose }),
+          body: JSON.stringify({ filename: file.name, contentType: file.type, purpose }),
         });
         const signData = await signRes.json().catch(() => ({ success: false, error: 'Réponse invalide' }));
         console.log('[Upload] sign response:', { httpStatus: signRes.status, success: signData?.success, error: signData?.error, bucket: signData?.bucket });
@@ -8411,12 +8404,13 @@ export default function InfographicPage() {
       <MediaLibrary
         isOpen={mediaLibOpen}
         onClose={() => setMediaLibOpen(false)}
-        mediaType={mediaLibTarget === 'rush' ? 'video' : 'image'}
-        onSelect={(url, name) => {
+        mediaType={mediaLibTarget === 'rush' ? 'all' : 'image'}
+        onSelect={(url, name, type) => {
           if (mediaLibTarget === 'logo') {
             setLogoImage(url);
           } else {
-            setRushList((prev) => [...prev, { file: null as any, url, name, duration: 0, clips: [], transform: undefined }]);
+            const kind: 'video' | 'image' = type === 'image' ? 'image' : 'video';
+            setRushList((prev) => [...prev, { url, name, kind, transform: undefined }]);
             setRushUrl(url);
             setRushFileName(name);
           }
