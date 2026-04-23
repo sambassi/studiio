@@ -162,6 +162,13 @@ export interface ComposerOptions {
   cards?: CardData[];
   posterUrl?: string | null;
   videoUrl?: string | null;
+  /**
+   * Alternative to `videoUrl`: a still image to display during the "video"
+   * sequence (e.g. user uploaded a JPG/PNG in the Médias tab). Loaded as
+   * HTMLImageElement and drawn in drawVideoSeq. If both videoUrl and
+   * videoImageUrl are set, videoUrl (the real video) wins.
+   */
+  videoImageUrl?: string | null;
   /** Optional crop transform for the rush/background video (scale + fractional offsets). */
   rushTransform?: { scale?: number; offsetX?: number; offsetY?: number };
   logoUrl?: string | null;
@@ -1427,25 +1434,25 @@ function drawVideoSeq(
   ctx: CanvasRenderingContext2D, w: number, h: number,
   videoEl: HTMLVideoElement | null, logoImg: HTMLImageElement | null, _progress: number,
   design?: DesignOptions,
-  rushTransform?: { scale?: number; offsetX?: number; offsetY?: number }
+  rushTransform?: { scale?: number; offsetX?: number; offsetY?: number },
+  videoImageEl?: HTMLImageElement | null
 ) {
   const fontFamily = design?.font || 'sans-serif';
-  if (videoEl) {
-    const srcW = videoEl.videoWidth;
-    const srcH = videoEl.videoHeight;
-    if (srcW && srcH) {
-      const t = rushTransform || {};
-      const userScale = t.scale || 1;
-      const offX = t.offsetX || 0;
-      const offY = t.offsetY || 0;
-      const baseScale = Math.max(w / srcW, h / srcH);
-      const drawScale = baseScale * userScale;
-      const drawW = srcW * drawScale;
-      const drawH = srcH * drawScale;
-      const cx = w / 2 + offX * w;
-      const cy = h / 2 + offY * h;
-      ctx.drawImage(videoEl, cx - drawW / 2, cy - drawH / 2, drawW, drawH);
-    }
+  const backgroundSource: HTMLVideoElement | HTMLImageElement | null = videoEl || videoImageEl || null;
+  const srcW = videoEl ? videoEl.videoWidth : (videoImageEl?.naturalWidth || 0);
+  const srcH = videoEl ? videoEl.videoHeight : (videoImageEl?.naturalHeight || 0);
+  if (backgroundSource && srcW && srcH) {
+    const t = rushTransform || {};
+    const userScale = t.scale || 1;
+    const offX = t.offsetX || 0;
+    const offY = t.offsetY || 0;
+    const baseScale = Math.max(w / srcW, h / srcH);
+    const drawScale = baseScale * userScale;
+    const drawW = srcW * drawScale;
+    const drawH = srcH * drawScale;
+    const cx = w / 2 + offX * w;
+    const cy = h / 2 + offY * h;
+    ctx.drawImage(backgroundSource, cx - drawW / 2, cy - drawH / 2, drawW, drawH);
   } else {
     ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0, 0, w, h);
     ctx.font = `400 ${Math.round(w * 0.04)}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
@@ -1668,7 +1675,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   const {
     width, height, fps = 30,
     title, subtitle, salesPhrase, cards = [],
-    posterUrl, videoUrl, rushTransform, logoUrl, musicUrl, voiceUrl,
+    posterUrl, videoUrl, videoImageUrl, rushTransform, logoUrl, musicUrl, voiceUrl,
     introDuration = 4, cardsDuration = 6, videoDuration = 10, ctaDuration = 4,
     accentColor = '#D91CD2',
     ctaText = 'CHAT POUR PLUS D\'INFOS', ctaSubText = 'LIEN EN BIO',
@@ -1807,14 +1814,17 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   }
 
   // Load visual media (with individual error logging)
-  console.log('[Composer] Loading media:', { poster: posterUrl?.substring(0, 60) || 'NONE', logo: logoUrl?.substring(0, 30) || 'NONE', video: videoUrl?.substring(0, 60) || 'NONE' });
+  // videoUrl (real video) wins over videoImageUrl (still image fallback) if both are set.
+  const effectiveVideoImageUrl = !videoUrl && videoImageUrl ? videoImageUrl : null;
+  console.log('[Composer] Loading media:', { poster: posterUrl?.substring(0, 60) || 'NONE', logo: logoUrl?.substring(0, 30) || 'NONE', video: videoUrl?.substring(0, 60) || 'NONE', videoImage: effectiveVideoImageUrl?.substring(0, 60) || 'NONE' });
   const mediaLoadStart = performance.now();
-  const [posterImg, logoImg, videoEl] = await Promise.all([
+  const [posterImg, logoImg, videoEl, videoImageEl] = await Promise.all([
     posterUrl ? loadImage(posterUrl).catch((err) => { console.error('[Composer] ❌ Poster load FAILED:', err.message); return null; }) : null,
     logoUrl ? loadImage(logoUrl).catch((err) => { console.error('[Composer] ❌ Logo load FAILED:', err.message); return null; }) : null,
     videoUrl ? loadVideo(videoUrl).catch((err) => { console.error('[Composer] ❌ Video load FAILED:', err.message); return null; }) : null,
+    effectiveVideoImageUrl ? loadImage(effectiveVideoImageUrl).catch((err) => { console.error('[Composer] ❌ Video still image load FAILED:', err.message); return null; }) : null,
   ]);
-  console.log(`[Composer] Media loaded in ${((performance.now() - mediaLoadStart) / 1000).toFixed(1)}s — poster:${!!posterImg} logo:${!!logoImg} video:${!!videoEl}`);
+  console.log(`[Composer] Media loaded in ${((performance.now() - mediaLoadStart) / 1000).toFixed(1)}s — poster:${!!posterImg} logo:${!!logoImg} video:${!!videoEl} videoImage:${!!videoImageEl}`);
 
   // Load audio — prefer pre-decoded AudioBuffers (batch mode), fallback to <audio> elements
   // ALWAYS load voice as <audio> element too (WebM recordings may decode to empty buffers)
@@ -1848,14 +1858,15 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // Build sequences
   const sequences: Array<{ type: string; duration: number }> = [{ type: 'intro', duration: introDuration }];
   if (cards.length > 0) sequences.push({ type: 'cards', duration: cardsDuration });
-  if (videoEl) {
+  const hasVideoBackground = !!videoEl || !!videoImageEl;
+  if (hasVideoBackground) {
     sequences.push({ type: 'video', duration: videoDuration });
-  } else if (videoUrl) {
+  } else if (videoUrl || effectiveVideoImageUrl) {
     // Video was requested but failed to load — redistribute its duration to intro/CTA
     console.warn('[Composer] ⚠️ Video requested but failed to load — extending intro/CTA to fill duration');
     sequences[0].duration += Math.floor(videoDuration / 2);
   }
-  sequences.push({ type: 'cta', duration: ctaDuration + ((!videoEl && videoUrl) ? Math.ceil(videoDuration / 2) : 0) });
+  sequences.push({ type: 'cta', duration: ctaDuration + ((!hasVideoBackground && (videoUrl || effectiveVideoImageUrl)) ? Math.ceil(videoDuration / 2) : 0) });
 
   const totalDuration = sequences.reduce((s, seq) => s + seq.duration, 0);
   const transitionDur = 0.8;
@@ -1914,7 +1925,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
           drawCards(ctx, width, height, cards, logoImg, accentColor, progress, normalizedDesign);
           break;
         }
-        case 'video': drawVideoSeq(ctx, width, height, videoEl, logoImg, progress, normalizedDesign, rushTransform); break;
+        case 'video': drawVideoSeq(ctx, width, height, videoEl, logoImg, progress, normalizedDesign, rushTransform, videoImageEl); break;
         case 'cta': drawCTA(ctx, width, height, accentColor, ctaText, ctaSubText, salesPhrase, watermarkText, logoImg, progress, normalizedDesign); break;
       }
     };

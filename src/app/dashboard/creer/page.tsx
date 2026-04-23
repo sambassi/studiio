@@ -1467,7 +1467,7 @@ export default function InfographicPage() {
   // kept as derived convenience values = first item of rushList, so
   // that all existing composer/export code paths continue to work
   // unchanged (they read rushUrl).
-  const [rushList, setRushList] = useState<{ url: string; name: string; transform?: { scale: number; offsetX: number; offsetY: number }; fromClip?: boolean }[]>([]);
+  const [rushList, setRushList] = useState<{ url: string; name: string; kind?: 'video' | 'image'; transform?: { scale: number; offsetX: number; offsetY: number }; fromClip?: boolean }[]>([]);
   const [cropRushIdx, setCropRushIdx] = useState<number | null>(null);
   const [rushUrl, setRushUrl] = useState<string | null>(null);
   const [rushFileName, setRushFileName] = useState<string | null>(null);
@@ -1586,9 +1586,10 @@ export default function InfographicPage() {
               .filter((r: unknown): r is { url: string; name: string } =>
                 !!r && typeof (r as { url?: unknown }).url === "string",
               )
-              .map((r: { url: string; name?: string; transform?: { scale: number; offsetX: number; offsetY: number }; fromClip?: boolean }) => ({
+              .map((r: { url: string; name?: string; kind?: 'video' | 'image'; transform?: { scale: number; offsetX: number; offsetY: number }; fromClip?: boolean }) => ({
                 url: r.url,
                 name: r.name || "video.mp4",
+                kind: r.kind,
                 transform: r.transform,
                 fromClip: r.fromClip,
               })),
@@ -2558,72 +2559,103 @@ export default function InfographicPage() {
     }
   };
 
-  // ── Video upload ───────────────────────────────────────────
-  const uploadSingleVideo = async (
+  // ── Media upload (video or image) ──────────────────────────
+  // Supabase object keys should stay ASCII-safe — spaces and accents in the
+  // signed-URL path can cause PUTs to fail silently on some edge regions.
+  const sanitizeFilename = (name: string): string => {
+    // NFKD decomposes accents ("é" → "e" + U+0301); strip the combining marks.
+    const normalized = name.normalize('NFKD').replace(/[̀-ͯ]/g, '');
+    return normalized.replace(/[^\w.\-]+/g, '_').replace(/_+/g, '_').slice(0, 120);
+  };
+
+  const uploadSingleMedia = async (
     file: File,
-  ): Promise<{ url: string; name: string } | null> => {
-    if (!file.type.startsWith("video/")) {
-      showToast(`"${file.name}" n'est pas une vidéo`);
+  ): Promise<{ url: string; name: string; kind: 'video' | 'image' } | null> => {
+    const isVideo = file.type.startsWith('video/');
+    const isImage = file.type.startsWith('image/');
+    console.log('[Upload] file:', { name: file.name, size: file.size, type: file.type, isVideo, isImage });
+
+    if (!isVideo && !isImage) {
+      showToast(`"${file.name}" : format non supporté (vidéo ou image attendue)`);
       return null;
     }
-    if (file.size > 100 * 1024 * 1024) {
-      showToast(`"${file.name}" dépasse 100 Mo`);
+    const maxBytes = isVideo ? 100 * 1024 * 1024 : 10 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      const maxMB = Math.round(maxBytes / 1024 / 1024);
+      showToast(`"${file.name}" dépasse ${maxMB} Mo`);
       return null;
     }
+
+    const kind: 'video' | 'image' = isVideo ? 'video' : 'image';
+    const safeFilename = sanitizeFilename(file.name);
+    const purpose = isImage ? 'infographic-image' : 'infographic-video';
+
     try {
-      // Use signed URL for large files (videos > 4MB) to bypass Vercel's 4.5MB body limit
+      // Signed URL for files > 4 Mo (bypasses Vercel's 4.5MB body limit)
       if (file.size > 4 * 1024 * 1024) {
-        const signRes = await fetch("/api/upload/signed-url", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            filename: file.name,
-            contentType: file.type,
-            purpose: "infographic-video",
-          }),
+        const signRes = await fetch('/api/upload/signed-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: safeFilename, contentType: file.type, purpose }),
         });
-        const signData = await signRes.json();
-        if (!signData.success) {
-          showToast(`Échec upload "${file.name}"`);
+        const signData = await signRes.json().catch(() => ({ success: false, error: 'Réponse invalide' }));
+        console.log('[Upload] sign response:', { httpStatus: signRes.status, success: signData?.success, error: signData?.error, bucket: signData?.bucket });
+        if (!signRes.ok || !signData?.success) {
+          const detail = signData?.error || `HTTP ${signRes.status}`;
+          showToast(`Upload échoué "${file.name}" : ${detail}`);
           return null;
         }
-        const putOk = await new Promise<boolean>((resolve) => {
+        const putResult = await new Promise<{ ok: boolean; status: number; responseText: string }>((resolve) => {
           const xhr = new XMLHttpRequest();
           xhr.open('PUT', signData.signedUrl);
           xhr.setRequestHeader('Content-Type', file.type);
           xhr.upload.onprogress = (e) => {
             if (e.lengthComputable) setVideoUploadProgress(Math.round((e.loaded / e.total) * 100));
           };
-          xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300);
-          xhr.onerror = () => resolve(false);
+          xhr.onload = () => resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, responseText: xhr.responseText?.slice(0, 200) || '' });
+          xhr.onerror = () => resolve({ ok: false, status: xhr.status || 0, responseText: 'network error' });
           xhr.send(file);
         });
         setVideoUploadProgress(0);
-        if (!putOk) {
-          showToast(`Échec upload "${file.name}"`);
+        console.log('[Upload] PUT result:', putResult);
+        if (!putResult.ok) {
+          showToast(`Upload échoué "${file.name}" : Supabase HTTP ${putResult.status}${putResult.responseText ? ' — ' + putResult.responseText : ''}`);
           return null;
         }
-        console.log("[Upload] Signed URL upload OK:", signData.publicUrl);
-        return { url: signData.publicUrl, name: file.name };
+        console.log('[Upload] Signed URL upload OK:', signData.publicUrl);
+        return { url: signData.publicUrl, name: file.name, kind };
       }
+
+      // Small files: go through the Next.js API route
       const formData = new FormData();
-      formData.append("file", file);
-      formData.append("purpose", "infographic-video");
-      const res = await fetch("/api/upload/media", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-      if (data.success && data.file?.url) {
-        return { url: data.file.url, name: file.name };
+      formData.append('file', file);
+      formData.append('purpose', purpose);
+      const res = await fetch('/api/upload/media', { method: 'POST', body: formData });
+      const data = await res.json().catch(() => ({ success: false, error: 'Réponse invalide' }));
+      console.log('[Upload] /api/upload/media response:', { httpStatus: res.status, success: data?.success, error: data?.error });
+      if (!res.ok || !data?.success || !data.file?.url) {
+        const detail = data?.error || `HTTP ${res.status}`;
+        showToast(`Upload échoué "${file.name}" : ${detail}`);
+        return null;
       }
-      showToast(`Échec upload "${file.name}"`);
-      return null;
+      return { url: data.file.url, name: file.name, kind };
     } catch (err) {
-      console.error("Video upload error:", err);
-      showToast(`Échec upload "${file.name}"`);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[Upload] media upload error:', msg, err);
+      showToast(`Upload échoué "${file.name}" : ${msg}`);
       return null;
     }
+  };
+
+  // Legacy name kept for callers that specifically want a video-only upload.
+  const uploadSingleVideo = async (file: File) => {
+    const result = await uploadSingleMedia(file);
+    if (!result) return null;
+    if (result.kind !== 'video') {
+      showToast(`"${file.name}" n'est pas une vidéo`);
+      return null;
+    }
+    return { url: result.url, name: result.name };
   };
 
   const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2631,20 +2663,27 @@ export default function InfographicPage() {
     if (files.length === 0) return;
 
     setIsUploadingVideo(true);
-    const uploaded: { url: string; name: string }[] = [];
+    const uploaded: { url: string; name: string; kind: 'video' | 'image' }[] = [];
     try {
       for (const file of files) {
-        const result = await uploadSingleVideo(file);
+        const result = await uploadSingleMedia(file);
         if (result) uploaded.push(result);
       }
       if (uploaded.length > 0) {
         setRushList((prev) => [...prev, ...uploaded]);
-        showToast(
-          uploaded.length === 1
-            ? "Vidéo uploadée avec succès"
-            : `${uploaded.length} vidéos uploadées`,
-          "success",
-        );
+        const videoCount = uploaded.filter((r) => r.kind === 'video').length;
+        const imageCount = uploaded.filter((r) => r.kind === 'image').length;
+        let msg: string;
+        if (uploaded.length === 1) {
+          msg = uploaded[0].kind === 'image' ? 'Image uploadée avec succès' : 'Vidéo uploadée avec succès';
+        } else if (videoCount > 0 && imageCount === 0) {
+          msg = `${videoCount} vidéos uploadées`;
+        } else if (imageCount > 0 && videoCount === 0) {
+          msg = `${imageCount} images uploadées`;
+        } else {
+          msg = `${uploaded.length} médias uploadés (${videoCount} vidéo${videoCount > 1 ? 's' : ''}, ${imageCount} image${imageCount > 1 ? 's' : ''})`;
+        }
+        showToast(msg, 'success');
       }
     } finally {
       setIsUploadingVideo(false);
@@ -3215,7 +3254,8 @@ export default function InfographicPage() {
                 ? await preRenderCardIcons(bCards).then(rendered => rendered.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color, position: c.position, iconImage: (c as any).iconImage })))
                 : undefined,
               posterUrl: posterUrl,
-              videoUrl: exportedSequences.video ? (rushUrl || undefined) : undefined,
+              videoUrl: exportedSequences.video && rushList[0]?.kind !== 'image' ? (rushUrl || undefined) : undefined,
+              videoImageUrl: exportedSequences.video && rushList[0]?.kind === 'image' ? (rushUrl || undefined) : undefined,
               rushTransform: rushList[0]?.transform,
               logoUrl: logoImage || null,
               musicUrl: audioMusicUrl || undefined,
@@ -3322,7 +3362,9 @@ export default function InfographicPage() {
                 thumbnailUrl: renderedThumbnailUrl || undefined,
                 composerVersion: renderedComposerVersion || undefined,
                 logoUrl: logoImage || undefined,
-                videoUrl: rushUrl || undefined,
+                videoUrl: rushUrl && rushList[0]?.kind !== 'image' ? rushUrl : undefined,
+                videoImageUrl: rushUrl && rushList[0]?.kind === 'image' ? rushUrl : undefined,
+                rushKind: rushList[0]?.kind || (rushUrl ? 'video' : undefined),
                 rushUrls: rushUrl ? [rushUrl] : undefined,
                 musicUrl: audioMusicUrl || undefined,
                 voiceUrl: audioVoiceUrl || undefined,
@@ -3524,7 +3566,8 @@ export default function InfographicPage() {
               ? await preRenderCardIcons(cards).then(rendered => rendered.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color, position: c.position, iconImage: (c as any).iconImage })))
               : undefined,
             posterUrl: exportPosterUrl,
-            videoUrl: exportedSequences.video ? rushUrl : undefined,
+            videoUrl: exportedSequences.video && rushList[0]?.kind !== 'image' ? rushUrl : undefined,
+            videoImageUrl: exportedSequences.video && rushList[0]?.kind === 'image' ? rushUrl : undefined,
             rushTransform: rushList[0]?.transform,
             logoUrl: logoImage || null,
             musicUrl: audioMusicUrl || undefined,
@@ -4057,12 +4100,12 @@ export default function InfographicPage() {
                       </>
                     ) : (
                       <>
-                        <Video size={14} /> Téléverser
+                        <Video size={14} /> Téléverser vidéo ou image
                       </>
                     )}
                     <input
                       type="file"
-                      accept="video/*"
+                      accept="video/*,image/*"
                       multiple
                       disabled={isUploadingVideo}
                       className="hidden"
@@ -5142,14 +5185,14 @@ export default function InfographicPage() {
                     <Video size={18} />
                     <span className="text-sm text-gray-300">
                       {rushList.length === 0
-                        ? "Ajouter une ou plusieurs vidéos"
-                        : "Ajouter d'autres vidéos"}
+                        ? "Ajouter une ou plusieurs vidéos ou images"
+                        : "Ajouter d'autres médias"}
                     </span>
                   </>
                 )}
                 <input
                   type="file"
-                  accept="video/*"
+                  accept="video/*,image/*"
                   multiple
                   onChange={handleVideoUpload}
                   disabled={isUploadingVideo}
@@ -5158,8 +5201,8 @@ export default function InfographicPage() {
               </label>
               <p className="mt-1 text-xs text-gray-500">
                 {rushList.length > 1
-                  ? "La 1ʳᵉ vidéo est utilisée dans le montage principal. Glisse pour réordonner."
-                  : "La vidéo sera utilisée comme fond dans le montage final (max 100 Mo)."}
+                  ? "Le 1er média est utilisé dans le montage principal. Glisse pour réordonner."
+                  : "La vidéo (max 100 Mo) ou l'image (max 10 Mo) sera utilisée comme fond dans le montage final."}
               </p>
             </div>
 
@@ -6010,27 +6053,45 @@ export default function InfographicPage() {
                 />
               )}
 
-            {/* Video Background (when in video sequence or uploaded video exists) */}
+            {/* Video background (uploaded video or still image) — visible during the video sequence */}
             {rushUrl &&
               (activeSequence === "all" || activeSequence === "video") && (
-                <video
-                  src={rushUrl}
-                  className="absolute inset-0 h-full w-full object-cover"
-                  style={{
-                    opacity: activeSequence === "video" ? 1 : 0.6,
-                    transform: rushList[0]?.transform
-                      ? `translate(${(rushList[0].transform.offsetX || 0) * 100}%, ${(rushList[0].transform.offsetY || 0) * 100}%) scale(${rushList[0].transform.scale || 1})`
-                      : undefined,
-                    transformOrigin: "center center",
-                  }}
-                  autoPlay
-                  muted
-                  loop
-                  playsInline
-                  onError={(e) => {
-                    (e.target as HTMLVideoElement).style.display = "none";
-                  }}
-                />
+                rushList[0]?.kind === 'image' ? (
+                  <img
+                    src={rushUrl}
+                    alt=""
+                    className="absolute inset-0 h-full w-full object-cover"
+                    style={{
+                      opacity: activeSequence === "video" ? 1 : 0.6,
+                      transform: rushList[0]?.transform
+                        ? `translate(${(rushList[0].transform.offsetX || 0) * 100}%, ${(rushList[0].transform.offsetY || 0) * 100}%) scale(${rushList[0].transform.scale || 1})`
+                        : undefined,
+                      transformOrigin: "center center",
+                    }}
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = "none";
+                    }}
+                  />
+                ) : (
+                  <video
+                    src={rushUrl}
+                    className="absolute inset-0 h-full w-full object-cover"
+                    style={{
+                      opacity: activeSequence === "video" ? 1 : 0.6,
+                      transform: rushList[0]?.transform
+                        ? `translate(${(rushList[0].transform.offsetX || 0) * 100}%, ${(rushList[0].transform.offsetY || 0) * 100}%) scale(${rushList[0].transform.scale || 1})`
+                        : undefined,
+                      transformOrigin: "center center",
+                    }}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    onError={(e) => {
+                      (e.target as HTMLVideoElement).style.display = "none";
+                    }}
+                  />
+                )
               )}
 
             {/* Format Badge */}
