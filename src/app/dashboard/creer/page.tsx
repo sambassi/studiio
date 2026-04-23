@@ -6993,7 +6993,7 @@ function InfographicPageInner() {
                   </h3>
                 )}
                 <h3
-                  className="font-black drop-shadow-lg"
+                  className={`font-black ${titleTextGradient ? '' : 'drop-shadow-lg'}`}
                   style={{
                     fontSize: `${(format === "16:9" ? 18 : 14) * textScale}px`,
                     letterSpacing: `${titleLetterSpacing}px`,
@@ -7007,6 +7007,7 @@ function InfographicPageInner() {
                       WebkitTextFillColor: "transparent",
                       backgroundClip: "text",
                       color: "transparent",
+                      display: 'inline-block',
                     } : {
                       color: titleColor,
                     }),
@@ -7054,11 +7055,15 @@ function InfographicPageInner() {
                 >
                   <div className="absolute inset-0 border border-dashed border-cyan-500/0 group-hover/overlay:border-cyan-500/40 rounded pointer-events-none transition-colors" />
                   <p
-                    className="font-black drop-shadow-lg"
+                    // Strip `drop-shadow-lg` when the text gradient is on —
+                    // Tailwind's `filter: drop-shadow(...)` creates a
+                    // compositing layer that pre-paints the background
+                    // rectangle and stops `background-clip: text` from
+                    // resolving to glyph shape. We also drop textShadow in
+                    // that mode so a dark silhouette doesn't leak through.
+                    className={`font-black ${overlayTextGradient ? '' : 'drop-shadow-lg'}`}
                     style={{
                       fontSize: `${16 * textScale * overlayTextScale}px`,
-                      textShadow:
-                        "0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5)",
                       letterSpacing: `${overlayLetterSpacing}px`,
                       lineHeight: overlayLineHeight,
                       fontWeight: overlayBold ? "bold" : "normal",
@@ -7070,7 +7075,11 @@ function InfographicPageInner() {
                         backgroundClip: 'text',
                         WebkitTextFillColor: 'transparent',
                         color: 'transparent',
-                      } : { color: overlayColor }),
+                        display: 'inline-block',
+                      } : {
+                        color: overlayColor,
+                        textShadow: "0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5)",
+                      }),
                     }}
                   >
                     {videoOverlayText}
@@ -7102,10 +7111,9 @@ function InfographicPageInner() {
                   onDoubleClick={(e) => { setActiveOverlayIdx(i + 1); openPanel("overlay", e); }}
                 >
                   <p
-                    className="font-black drop-shadow-lg"
+                    className={`font-black ${overlayTextGradient ? '' : 'drop-shadow-lg'}`}
                     style={{
                       fontSize: `${16 * textScale * (ov.scale || 1)}px`,
-                      textShadow: "0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5)",
                       letterSpacing: `${ov.letterSpacing}px`,
                       lineHeight: ov.lineHeight,
                       fontWeight: ov.bold ? "bold" : "normal",
@@ -7119,7 +7127,11 @@ function InfographicPageInner() {
                         backgroundClip: 'text',
                         WebkitTextFillColor: 'transparent',
                         color: 'transparent',
-                      } : { color: ov.color }),
+                        display: 'inline-block',
+                      } : {
+                        color: ov.color,
+                        textShadow: "0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5)",
+                      }),
                     }}
                   >
                     {ov.text}
@@ -7488,7 +7500,7 @@ function InfographicPageInner() {
                 <div className="absolute inset-0 border border-dashed border-yellow-500/0 group-hover/cta:border-yellow-500/40 rounded pointer-events-none transition-colors" />
                 {salesPhrases.length > 0 && (
                   <p
-                    className="font-medium drop-shadow"
+                    className={`font-medium ${ctaTextGradient ? '' : 'drop-shadow'}`}
                     style={{
                       fontSize: `${(format === "16:9" ? 10 : 8) * ctaTextScale}px`,
                       letterSpacing: `${ctaLetterSpacing}px`,
@@ -7502,6 +7514,7 @@ function InfographicPageInner() {
                         backgroundClip: 'text',
                         WebkitTextFillColor: 'transparent',
                         color: 'transparent',
+                        display: 'inline-block',
                       } : { color: `${ctaColor}ee` }),
                     }}
                   >
@@ -7509,7 +7522,7 @@ function InfographicPageInner() {
                   </p>
                 )}
                 <p
-                  className="mt-0.5 font-black drop-shadow-lg uppercase"
+                  className={`mt-0.5 font-black uppercase ${watermarkTextGradient ? '' : 'drop-shadow-lg'}`}
                   style={{
                     fontSize: `${(format === "16:9" ? 16 : 12) * ctaTextScale}px`,
                     letterSpacing: `${ctaLetterSpacing}px`,
@@ -7523,13 +7536,14 @@ function InfographicPageInner() {
                       backgroundClip: 'text',
                       WebkitTextFillColor: 'transparent',
                       color: 'transparent',
+                      display: 'inline-block',
                     } : { color: ctaColor }),
                   }}
                 >
                   {ctaMainText || "AFROBOOST"}
                 </p>
                 <p
-                  className="font-bold drop-shadow mt-1 uppercase"
+                  className={`font-bold mt-1 uppercase ${ctaTextGradient ? '' : 'drop-shadow'}`}
                   style={{
                     fontSize: `${(format === "16:9" ? 12 : 9) * ctaTextScale}px`,
                     letterSpacing: `${ctaLetterSpacing}px`,
@@ -7543,6 +7557,7 @@ function InfographicPageInner() {
                       backgroundClip: 'text',
                       WebkitTextFillColor: 'transparent',
                       color: 'transparent',
+                      display: 'inline-block',
                     } : { color: ctaSubColor }),
                   }}
                 >
