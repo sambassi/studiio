@@ -28,6 +28,8 @@ import {
   Ungroup,
   CopyPlus,
   Group,
+  Undo2,
+  Redo2,
   LayoutTemplate,
   Type,
   LayoutGrid,
@@ -140,6 +142,7 @@ import {
   type DistanceBadge,
   type ElementPos,
 } from "@/lib/creer/smartGuides";
+import { useDesignHistory } from "@/lib/creer/useDesignHistory";
 import { useSession } from "next-auth/react";
 import { BuyCreditsModal } from "@/components/billing/BuyCreditsModal";
 import { MediaLibrary } from "@/components/shared/MediaLibrary";
@@ -1843,11 +1846,16 @@ function InfographicPageInner() {
         if (typeof meta.voiceVolume === 'number') setAudioVoiceVolume(meta.voiceVolume);
 
         if (tab === 'audio') setActiveRailTab('audio');
+
+        // Wipe the undo history so Cmd+Z doesn't roll back before the
+        // deeplink load. The save effect will commit a fresh baseline.
+        history.reset();
       } catch (err) {
         console.error('[Deeplink] Error fetching post:', err);
       }
     })();
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   // ── Auto-rule: titre gets noColor when a poster photo is loaded ────
@@ -2074,58 +2082,199 @@ function InfographicPageInner() {
   // CTA sub-text color (separate from main ctaColor)
   const [ctaSubColor, setCtaSubColor] = useState("#D91CD2");
 
+  // ── Undo / Redo history ─────────────────────────────────────
+  // A single snapshot captures the whole design surface; the history
+  // hook debounces commits so slider drags don't spam 50 entries. The
+  // save effect below is also the "commit" moment — we centralize the
+  // snapshot shape in one place.
+  const history = useDesignHistory<Record<string, unknown>>(null, { debounceMs: 500, maxSize: 50 });
+  const [undoToast, setUndoToast] = useState<string | null>(null);
+
+  /** Apply a previously captured snapshot by calling every relevant setter. */
+  const applyDesignSnapshot = (cfg: Record<string, unknown>) => {
+    const c = cfg as Record<string, any>;
+    if (c.colorTheme) setColorTheme(c.colorTheme);
+    if (c.format) setFormat(c.format);
+    if (typeof c.introDuration === 'number') setIntroDuration(c.introDuration);
+    if (typeof c.cardsDuration === 'number') setCardsDuration(c.cardsDuration);
+    if (typeof c.videoDuration === 'number') setVideoDuration(c.videoDuration);
+    if (typeof c.ctaDuration === 'number') setCtaDuration(c.ctaDuration);
+    if (c.exportedSequences && typeof c.exportedSequences === 'object') {
+      setExportedSequences((prev) => ({ ...prev, ...c.exportedSequences }));
+    }
+    if (c.titleLetterSpacing !== undefined) setTitleLetterSpacing(c.titleLetterSpacing);
+    if (c.titleLineHeight !== undefined) setTitleLineHeight(c.titleLineHeight);
+    if (c.titleBold !== undefined) setTitleBold(c.titleBold);
+    if (c.titleItalic !== undefined) setTitleItalic(c.titleItalic);
+    if (c.ctaLetterSpacing !== undefined) setCtaLetterSpacing(c.ctaLetterSpacing);
+    if (c.ctaLineHeight !== undefined) setCtaLineHeight(c.ctaLineHeight);
+    if (c.ctaBold !== undefined) setCtaBold(c.ctaBold);
+    if (c.ctaItalic !== undefined) setCtaItalic(c.ctaItalic);
+    if (c.overlayLetterSpacing !== undefined) setOverlayLetterSpacing(c.overlayLetterSpacing);
+    if (c.overlayLineHeight !== undefined) setOverlayLineHeight(c.overlayLineHeight);
+    if (c.overlayBold !== undefined) setOverlayBold(c.overlayBold);
+    if (c.overlayItalic !== undefined) setOverlayItalic(c.overlayItalic);
+    if (c.overlayColor) setOverlayColor(c.overlayColor);
+    if (c.cardsLetterSpacing !== undefined) setCardsLetterSpacing(c.cardsLetterSpacing);
+    if (c.titleTextGradient !== undefined) setTitleTextGradient(c.titleTextGradient);
+    if (c.titleGradColor1) setTitleGradColor1(c.titleGradColor1);
+    if (c.titleGradColor2) setTitleGradColor2(c.titleGradColor2);
+    if (c.titleDuplicate !== undefined) setTitleDuplicate(c.titleDuplicate);
+    if (c.titleDuplicateOffset !== undefined) setTitleDuplicateOffset(c.titleDuplicateOffset);
+    if (c.titleDuplicateOpacity !== undefined) setTitleDuplicateOpacity(c.titleDuplicateOpacity);
+    if (c.selectedFont) setSelectedFont(c.selectedFont);
+    if (c.selectedFilter) setSelectedFilter(c.selectedFilter);
+    if (c.selectedCardStyle) setSelectedCardStyle(c.selectedCardStyle);
+    if (c.titleColor) setTitleColor(c.titleColor);
+    if (c.ctaColor) setCtaColor(c.ctaColor);
+    if (c.ctaSubColor) setCtaSubColor(c.ctaSubColor);
+    if (c.ctaMainText !== undefined) setCtaMainText(c.ctaMainText);
+    if (c.ctaSubText !== undefined) setCtaSubText(c.ctaSubText);
+    if (c.gradientColor1) setGradientColor1(c.gradientColor1);
+    if (c.gradientColor2) setGradientColor2(c.gradientColor2);
+    if (c.gradientOpacity !== undefined) setGradientOpacity(c.gradientOpacity);
+    if (c.noColorBg !== undefined) setNoColorBg(c.noColorBg);
+    if (typeof c.autoGradient === 'boolean') setAutoGradient(c.autoGradient);
+    if (c.noColorSequences) setNoColorSequences(c.noColorSequences);
+    if (c.noColorUserOverride) setNoColorUserOverride(c.noColorUserOverride);
+    if (typeof c.syncColorsGlobal === 'boolean') setSyncColorsGlobal(c.syncColorsGlobal);
+    if (c.seqGradients) setSeqGradients(c.seqGradients);
+    if (c.textScale !== undefined) setTextScale(c.textScale);
+    if (c.cardsTextScale !== undefined) setCardsTextScale(c.cardsTextScale);
+    if (c.ctaTextScale !== undefined) setCtaTextScale(c.ctaTextScale);
+    if (c.logoScale !== undefined) setLogoScale(c.logoScale);
+    if (c.logoSequences) setLogoSequences(c.logoSequences);
+    if (c.logoImage !== undefined) setLogoImage(c.logoImage);
+    if (c.customAccent !== undefined) setCustomAccent(c.customAccent);
+    if (c.customCardIcons) setCustomCardIcons(c.customCardIcons);
+    if (c.titlePos) setTitlePos(c.titlePos);
+    if (c.logoPositions) setLogoPositions(c.logoPositions);
+    if (c.watermarkPos) setWatermarkPos(c.watermarkPos);
+    if (c.cardsPos) setCardsPos(c.cardsPos);
+    if (c.overlayPos) setOverlayPos(c.overlayPos);
+    if (typeof c.titleSize === 'number') setTitleSize(c.titleSize);
+    if (typeof c.cardsSize === 'number') setCardsSize(c.cardsSize);
+    if (typeof c.watermarkSize === 'number') setWatermarkSize(c.watermarkSize);
+    if (typeof c.contentTheme === 'string') setContentTheme(c.contentTheme);
+    if (typeof c.customTopic === 'string') setCustomTopic(c.customTopic);
+    if (typeof c.title === 'string') setTitle(c.title);
+    if (typeof c.subtitle === 'string') setSubtitle(c.subtitle);
+    if (Array.isArray(c.cards)) setCards(c.cards);
+    if (Array.isArray(c.salesPhrases)) setSalesPhrases(c.salesPhrases);
+    if (Array.isArray(c.pexelsPhotos)) setPexelsPhotos(c.pexelsPhotos);
+    if (typeof c.selectedPhotoIndex === 'number') setSelectedPhotoIndex(c.selectedPhotoIndex);
+    if (Array.isArray(c.rushList)) setRushList(c.rushList);
+    if (c.siteText !== undefined) setSiteText(c.siteText);
+    if (c.siteTextPositions) setSiteTextPositions(c.siteTextPositions);
+    if (c.siteTextSize !== undefined) setSiteTextSize(c.siteTextSize);
+    if (c.siteTextColor) setSiteTextColor(c.siteTextColor);
+    if (c.siteTextOpacity !== undefined) setSiteTextOpacity(c.siteTextOpacity);
+    if (c.siteTextSequences) setSiteTextSequences(c.siteTextSequences);
+    if (c.siteTextEnabled !== undefined) setSiteTextEnabled(c.siteTextEnabled);
+    if (typeof c.showCenterGuides === 'boolean') setShowCenterGuides(c.showCenterGuides);
+    if (typeof c.smartGuidesEnabled === 'boolean') setSmartGuidesEnabled(c.smartGuidesEnabled);
+    if (typeof c.showGridOverlay === 'boolean') setShowGridOverlay(c.showGridOverlay);
+    if (typeof c.overlayTextScale === 'number') setOverlayTextScale(c.overlayTextScale);
+    if (typeof c.overlayStartTime === 'number') setOverlayStartTime(c.overlayStartTime);
+    if (typeof c.overlayEndTime === 'number') setOverlayEndTime(c.overlayEndTime);
+    if (Array.isArray(c.extraOverlays)) setExtraOverlays(c.extraOverlays);
+    if (Array.isArray(c.cardGroups)) setCardGroups(c.cardGroups);
+    if (c.cardPositionMode === 'grid' || c.cardPositionMode === 'free') setCardPositionMode(c.cardPositionMode);
+  };
+
+  const handleUndo = () => {
+    const prev = history.undo();
+    if (!prev) return;
+    history.suspend();
+    applyDesignSnapshot(prev);
+    window.setTimeout(() => history.resume(), 700);
+    setUndoToast('↶ Action annulée');
+    window.setTimeout(() => setUndoToast(null), 1000);
+  };
+
+  const handleRedo = () => {
+    const next = history.redo();
+    if (!next) return;
+    history.suspend();
+    applyDesignSnapshot(next);
+    window.setTimeout(() => history.resume(), 700);
+    setUndoToast('↷ Action refaite');
+    window.setTimeout(() => setUndoToast(null), 1000);
+  };
+
+  // Keyboard shortcuts — Cmd/Ctrl+Z undo, Cmd/Ctrl+Shift+Z or Cmd/Ctrl+Y redo.
+  // Ignored when the focus is on an editable field so the browser's native
+  // text-undo keeps working inside inputs + textareas.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isEditable = !!target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable
+      );
+      if (isEditable) return;
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history]);
+
   // ── Save DESIGN prefs on change (debounced, after initial restore) ──
   // Content (title, subtitle, cards, photo selection, rush, audio,
   // character image) is intentionally NOT serialized — each visit should
   // start with an empty canvas for content, only the visual design carries
   // over. The previous pre-split config key is wiped on first save so
-  // migrated content doesn't linger.
+  // migrated content doesn't linger. This effect also pushes the snapshot
+  // into the undo history stack so Ctrl+Z returns to an earlier version.
   useEffect(() => {
     if (!configLoaded) return;
     const handle = window.setTimeout(() => {
+      const snapshot = {
+        colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration, exportedSequences,
+        titleLetterSpacing, titleLineHeight, titleBold, titleItalic,
+        ctaLetterSpacing, ctaLineHeight, ctaBold, ctaItalic,
+        overlayLetterSpacing, overlayLineHeight, overlayBold, overlayItalic, overlayColor, cardsLetterSpacing,
+        selectedFont, selectedFilter, selectedCardStyle,
+        titleColor, ctaColor, ctaSubColor, ctaMainText, ctaSubText,
+        titleTextGradient, titleGradColor1, titleGradColor2,
+        titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
+        gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, seqGradients,
+        textScale, ctaTextScale, cardsTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
+        titlePos, logoPositions, watermarkPos, cardsPos, overlayPos,
+        titleSize, cardsSize, watermarkSize,
+        siteText, siteTextPositions, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
+        showCenterGuides,
+        smartGuidesEnabled, showGridOverlay,
+        cardGroups,
+        cardPositionMode,
+        overlayTextScale, overlayStartTime, overlayEndTime,
+        extraOverlays,
+        contentTheme, customTopic, title, subtitle,
+        cards, salesPhrases,
+        pexelsPhotos, selectedPhotoIndex,
+        rushList,
+      };
       try {
-        localStorage.setItem(
-          DESIGN_PREFS_KEY,
-          JSON.stringify({
-            colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration, exportedSequences,
-            titleLetterSpacing, titleLineHeight, titleBold, titleItalic,
-            ctaLetterSpacing, ctaLineHeight, ctaBold, ctaItalic,
-            overlayLetterSpacing, overlayLineHeight, overlayBold, overlayItalic, overlayColor, cardsLetterSpacing,
-            selectedFont, selectedFilter, selectedCardStyle,
-            titleColor, ctaColor, ctaSubColor, ctaMainText, ctaSubText,
-            titleTextGradient, titleGradColor1, titleGradColor2,
-            titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
-            gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, seqGradients,
-            textScale, ctaTextScale, cardsTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
-            titlePos, logoPositions, watermarkPos, cardsPos, overlayPos,
-            titleSize, cardsSize, watermarkSize,
-            siteText, siteTextPositions, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
-            showCenterGuides,
-            smartGuidesEnabled, showGridOverlay,
-            cardGroups,
-            cardPositionMode,
-            overlayTextScale, overlayStartTime, overlayEndTime,
-            extraOverlays,
-            // User-typed text copy — persisted even when empty so clearing
-            // a field sticks across reloads. Cards and sales phrases are
-            // persisted too so a manual edit survives a refresh; the
-            // pexelsPhotos + selectedPhotoIndex pair travels together so
-            // the poster choice stays meaningful.
-            contentTheme, customTopic, title, subtitle,
-            cards, salesPhrases,
-            pexelsPhotos, selectedPhotoIndex,
-            rushList,
-          }),
-        );
-        // After the first design-only save, drop the legacy blob so we
-        // don't fall back to it again (and so content fields it contained
-        // don't resurrect on a future migration attempt).
+        localStorage.setItem(DESIGN_PREFS_KEY, JSON.stringify(snapshot));
         if (localStorage.getItem(LEGACY_CONFIG_KEY)) {
           localStorage.removeItem(LEGACY_CONFIG_KEY);
         }
       } catch { /* ignore */ }
+      history.commit(snapshot);
     }, 500);
     return () => window.clearTimeout(handle);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     configLoaded, colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration, exportedSequences,
     titleLetterSpacing, titleLineHeight, titleBold, titleItalic,
@@ -4006,6 +4155,13 @@ function InfographicPageInner() {
         </div>
       )}
 
+      {/* Undo/redo toast — bottom-center, 1s auto-dismiss */}
+      {undoToast && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full bg-black/80 backdrop-blur-sm text-white text-xs font-medium shadow-xl border border-white/10">
+          {undoToast}
+        </div>
+      )}
+
       {/* Edit-mode banner — shown when we arrived via /creer?postId=X&tab=... */}
       {editingPostId && (
         <div className="flex items-center justify-between gap-3 bg-purple-600/15 border-b border-purple-500/30 px-4 py-2">
@@ -5852,6 +6008,24 @@ function InfographicPageInner() {
               </div>
             );
           })}
+
+          {/* Undo / Redo */}
+          <button
+            onClick={handleUndo}
+            disabled={!history.canUndo}
+            title="Annuler (Cmd/Ctrl+Z)"
+            className="flex items-center justify-center w-9 h-9 rounded-2xl bg-gray-900/60 text-gray-300 hover:bg-gray-800/80 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+          >
+            <Undo2 size={16} strokeWidth={2} />
+          </button>
+          <button
+            onClick={handleRedo}
+            disabled={!history.canRedo}
+            title="Refaire (Cmd/Ctrl+Shift+Z)"
+            className="flex items-center justify-center w-9 h-9 rounded-2xl bg-gray-900/60 text-gray-300 hover:bg-gray-800/80 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+          >
+            <Redo2 size={16} strokeWidth={2} />
+          </button>
 
           {/* Guides toggle — center lines + rule of thirds */}
           <button
