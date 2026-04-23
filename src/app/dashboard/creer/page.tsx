@@ -3454,6 +3454,11 @@ function InfographicPageInner() {
       // DIFFERENT angle each iteration, so each batch video carries its own
       // title / subtitle / cards. Falls back to the local generator if AI
       // fails. Returns null if both fail (caller keeps the editor's values).
+      // `priorTitles` accumulates the titles already used earlier in the
+      // batch so each AI call can be told to avoid them explicitly. We seed
+      // it with the editor title (shipped as b=0) so b=1+ steer clear of it.
+      const priorTitles: string[] = [];
+      if (title?.trim()) priorTitles.push(title.trim());
       const generateBatchVariation = async (batchIndex: number): Promise<{ title: string; subtitle: string; cards: typeof cards; salesPhrases: string[] } | null> => {
         const themeObj = CONTENT_THEMES.find((t) => t.id === contentTheme);
         const topicText = contentTheme === "personnalise" ? customTopic : themeObj?.label || contentTheme;
@@ -3484,6 +3489,9 @@ function InfographicPageInner() {
               locale: "fr",
               cardCount: 3,
               variationNonce,
+              // Tell the model which titles this batch has already shipped
+              // so it avoids repeating them on the current iteration.
+              existingTitles: priorTitles,
             }),
             signal: aiController.signal,
           });
@@ -3617,6 +3625,9 @@ function InfographicPageInner() {
             bSubtitle = variation.subtitle;
             bCards = variation.cards;
             if (variation.salesPhrases.length > 0) bSalesPhrases = variation.salesPhrases;
+            // Record the title we just shipped so the next iteration's AI
+            // call is told not to repeat it.
+            if (bTitle?.trim()) priorTitles.push(bTitle.trim());
           } else {
             console.warn(`[Batch ${b}] variation returned NULL — post will reuse editor's current values (identical to b=0)`);
           }

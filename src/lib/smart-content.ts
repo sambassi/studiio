@@ -1184,6 +1184,512 @@ KNOWLEDGE_BASE["motivation"].push({
 });
 
 // ══════════════════════════════════════════════════════════════
+// ══  EXTRA VARIANTS — seed-driven batch variation             ══
+// ══════════════════════════════════════════════════════════════
+// When a batch export calls generateSmartContent with a distinct seed
+// per iteration, the topic's variant array is indexed by `seed %
+// variants.length`. If a topic only has 1 variant, every batch post
+// collapses to the same title + subtitle + cards — the root cause
+// surfaced by the user's batch-x10 on "energie".
+//
+// Each .push() below adds a fresh angle (title + subtitle + 5 cards)
+// so popular topics ship 4 distinct variants that cycle across a
+// batch instead of repeating.
+
+KNOWLEDGE_BASE["energie"].push(
+  {
+    subtitle: "L'énergie vraie ne vient pas du café, mais du mouvement",
+    tagLine: "ÉNERGIE RÉELLE",
+    cards: [
+      { icon: "fire", title: "CORTISOL RÉDUIT", description: "Le sport régule le cortisol et te donne une énergie stable toute la journée", value: "-30%" },
+      { icon: "dna", title: "ATP BOOSTÉ", description: "L'exercice augmente la production d'ATP cellulaire de 40% en 4 semaines", value: "+40%" },
+      { icon: "moon", title: "SOMMEIL PROFOND", description: "Les phases N3 de récupération profonde augmentent de 50% avec l'activité", value: "+50%" },
+      { icon: "sun", title: "HORLOGE BIOLOGIQUE", description: "Bouger le matin synchronise ton cycle circadien pour une journée alerte", value: "SYNC" },
+      { icon: "brain", title: "NEUROTRANSMETTEURS", description: "Dopamine, endorphines et sérotonine libérés à chaque séance", value: "3×" },
+    ],
+  },
+  {
+    subtitle: "3 minutes, c'est assez pour reset ton énergie",
+    tagLine: "RESET EN 3 MIN",
+    cards: [
+      { icon: "clock", title: "3 MIN CHRONO", description: "3 minutes de mouvement dynamique = recharge énergétique immédiate", value: "3 MIN" },
+      { icon: "fire", title: "JUMPING JACKS", description: "30s × 3 sets de jumping jacks réveille tout le système nerveux", value: "3×30s" },
+      { icon: "energy", title: "ENTRE 2 TÂCHES", description: "Les micro-pauses actives évitent le coup de barre post-repas de 15h", value: "PAUSE" },
+      { icon: "heart", title: "COEUR À 120", description: "Monter le cardio à 120 bpm 2 min suffit pour déclencher les endorphines", value: "120" },
+      { icon: "brain", title: "FOCUS X2", description: "15 min après la session : concentration doublée pendant les 2 heures suivantes", value: "+100%" },
+    ],
+  },
+  {
+    subtitle: "L'énergie est une ressource qu'on recharge, pas qu'on consomme",
+    tagLine: "GESTION D'ÉNERGIE",
+    cards: [
+      { icon: "battery", title: "PAUSES STRATÉGIQUES", description: "5 min toutes les 90 min préserve 40% d'énergie sur la journée entière", value: "90/5" },
+      { icon: "apple", title: "NUTRITION CLEAN", description: "Sucres raffinés = crash 2h après. Fibres + protéines = énergie stable", value: "CLEAN" },
+      { icon: "sun", title: "LUMIÈRE DU JOUR", description: "15 min de lumière naturelle le matin boostent la vigilance toute la journée", value: "+1H" },
+      { icon: "moon", title: "7 À 9H DE SOMMEIL", description: "Moins de 7h = dette cognitive. Plus de 9h = baisse d'énergie paradoxale", value: "7-9H" },
+      { icon: "water", title: "HYDRATATION", description: "2% de déshydratation entraîne 20% de baisse de performance mentale", value: "-20%" },
+    ],
+  },
+);
+
+KNOWLEDGE_BASE["cardio"].push(
+  {
+    subtitle: "Le cardio ne se mesure pas qu'en kilomètres — l'intensité compte plus",
+    tagLine: "INTENSITÉ > DURÉE",
+    cards: [
+      { icon: "fire", title: "HIIT 15 MIN", description: "15 min de HIIT brûlent autant que 45 min de cardio modéré", value: "3×" },
+      { icon: "heart", title: "FC MAX 85%", description: "Atteindre 85% de ta FC max 2 min active le brûlage de graisse post-effort", value: "85%" },
+      { icon: "energy", title: "EPOC 48H", description: "Le corps continue de brûler jusqu'à 48h après une séance intense", value: "48H" },
+      { icon: "clock", title: "TABATA", description: "4 min de Tabata = 30 min de cardio classique en capacité cardiaque", value: "4/30" },
+      { icon: "brain", title: "CONCENTRATION", description: "Le cardio intense améliore la concentration pendant 3h après effort", value: "+3H" },
+    ],
+  },
+  {
+    subtitle: "Cardio débutant : commencer sans se dégoûter en 4 semaines",
+    tagLine: "DÉBUTANT 4 SEM",
+    cards: [
+      { icon: "clock", title: "SEMAINE 1", description: "3 × 10 min de marche rapide. Habituer le cœur sans brûler la motivation", value: "S1" },
+      { icon: "heart", title: "SEMAINE 2", description: "3 × 15 min, alterne 1 min de course lente et 2 min de marche", value: "S2" },
+      { icon: "fire", title: "SEMAINE 3", description: "3 × 20 min en continu à allure conversation possible", value: "S3" },
+      { icon: "trophy", title: "SEMAINE 4", description: "3 × 25 min avec 5 min de rythme soutenu au milieu. Premier vrai gain", value: "S4" },
+      { icon: "shield", title: "APRÈS 4 SEM", description: "Le cœur gagne en efficacité. Tu peux pousser vers des cycles 30-40 min", value: "30-40" },
+    ],
+  },
+  {
+    subtitle: "Matin ou soir : quand faire du cardio selon ton objectif",
+    tagLine: "MATIN VS SOIR",
+    cards: [
+      { icon: "sun", title: "MATIN À JEUN", description: "Oxydation des graisses +20% le matin à jeun. Idéal pour perte de poids", value: "+20%" },
+      { icon: "moon", title: "SOIR PERFORMANCE", description: "Force et endurance 8% plus élevées en fin de journée. Records probables", value: "+8%" },
+      { icon: "brain", title: "MIDI STRESS", description: "Session de 20 min à midi réduit le stress de 45% pour l'après-midi", value: "-45%" },
+      { icon: "heart", title: "3H AVANT DORMIR", description: "Éviter le cardio intense moins de 3h avant le coucher : sommeil perturbé", value: "3H" },
+      { icon: "target", title: "RÉGULARITÉ CLÉ", description: "Le meilleur horaire = celui où tu es régulier. Consistance > optimisation", value: "RÉG" },
+    ],
+  },
+);
+
+KNOWLEDGE_BASE["nutrition"].push(
+  {
+    subtitle: "Manger pour la performance : les règles du sportif",
+    tagLine: "NUTRITION PERFORMANCE",
+    cards: [
+      { icon: "apple", title: "1.6G/KG PROTÉINES", description: "Un sportif a besoin de 1.6 à 2g de protéines par kg de poids corporel par jour", value: "1.6G" },
+      { icon: "energy", title: "GLUCIDES AVANT", description: "Manger des glucides 90 min avant effort = réserves de glycogène pleines", value: "90MIN" },
+      { icon: "water", title: "HYDRATATION 30 MIN", description: "500 ml d'eau 30 min avant l'effort maintient la performance sur 1h", value: "500ML" },
+      { icon: "moon", title: "CASÉINE AVANT DODO", description: "Caséine lente avant le sommeil soutient la récupération musculaire 6h", value: "6H" },
+      { icon: "shield", title: "RÉCUPÉRATION", description: "Glucides + protéines dans les 30 min post-effort = récup x2", value: "×2" },
+    ],
+  },
+  {
+    subtitle: "La nutrition qui bat le régime : habitudes durables",
+    tagLine: "HABITUDES DURABLES",
+    cards: [
+      { icon: "scale", title: "ASSIETTE 50/25/25", description: "50% légumes, 25% protéines, 25% glucides complexes. Règle visuelle simple", value: "50/25/25" },
+      { icon: "clock", title: "ARRÊT À 80%", description: "Hara hachi bu : arrêter de manger à 80% de satiété. Longévité prouvée", value: "80%" },
+      { icon: "brain", title: "MASTIQUER 20 FOIS", description: "20 mastications par bouchée = satiété 30% plus rapide, moins de calories", value: "20×" },
+      { icon: "sun", title: "PETIT-DÉJ ROI", description: "Protéines + gras au petit-déj = pas de fringale avant 12h30", value: "0 CRASH" },
+      { icon: "heart", title: "PAS DE DIABOLISATION", description: "Pas d'aliment interdit. L'équilibre 80/20 tient toute la vie", value: "80/20" },
+    ],
+  },
+  {
+    subtitle: "Nutrition et microbiote : ton second cerveau influence tout",
+    tagLine: "MICROBIOTE & SANTÉ",
+    cards: [
+      { icon: "dna", title: "100 TRILLIONS", description: "Tu héberges 100 trillions de bactéries intestinales qui pilotent ton humeur", value: "100T" },
+      { icon: "apple", title: "FIBRES VARIÉES", description: "30 plantes différentes par semaine = microbiote riche et résilient", value: "30/S" },
+      { icon: "shield", title: "FERMENTS", description: "Kéfir, choucroute, kimchi 3 fois par semaine renforcent l'immunité", value: "3×/S" },
+      { icon: "brain", title: "AXE INTESTIN-CERVEAU", description: "90% de la sérotonine est produite dans l'intestin, pas le cerveau", value: "90%" },
+      { icon: "fire", title: "INFLAMMATION", description: "Aliments ultra-transformés : inflammation chronique garantie en 4 semaines", value: "4 SEM" },
+    ],
+  },
+);
+
+KNOWLEDGE_BASE["sommeil"].push(
+  {
+    subtitle: "Sommeil réparateur : le vrai secret des performeurs",
+    tagLine: "RÉCUPÉRATION NUIT",
+    cards: [
+      { icon: "moon", title: "N3 PROFOND", description: "Les phases N3 de sommeil profond concentrent 90% de la récupération", value: "N3" },
+      { icon: "dna", title: "HORMONE CROISSANCE", description: "80% de la GH est sécrétée la nuit pendant le sommeil profond", value: "80%" },
+      { icon: "brain", title: "MÉMOIRE CONSOLIDÉE", description: "Le sommeil REM fixe les apprentissages de la journée dans la mémoire", value: "REM" },
+      { icon: "heart", title: "CORTISOL BAS", description: "Un sommeil de qualité ramène le cortisol à son niveau optimal au réveil", value: "-50%" },
+      { icon: "shield", title: "IMMUNITÉ 3×", description: "Moins de 6h/nuit triple le risque d'attraper un virus respiratoire", value: "×3" },
+    ],
+  },
+  {
+    subtitle: "Rituel du soir : 90 min pour un sommeil 10/10",
+    tagLine: "RITUEL 90 MIN",
+    cards: [
+      { icon: "sun", title: "90 MIN AVANT", description: "Baisse la lumière 90 min avant coucher : mélatonine se déclenche naturellement", value: "90 MIN" },
+      { icon: "moon", title: "TEMPÉRATURE 18°C", description: "Chambre à 18°C = sommeil profond optimisé. Plus chaud perturbe le cycle", value: "18°C" },
+      { icon: "brain", title: "ZÉRO ÉCRAN", description: "60 min sans écran avant dormir : mélatonine +58% vs scroll jusqu'au coucher", value: "+58%" },
+      { icon: "heart", title: "RESPIRATION 4-7-8", description: "Inspire 4s, tiens 7s, expire 8s : endormissement en 2 minutes", value: "4-7-8" },
+      { icon: "water", title: "DERNIÈRE EAU 2H", description: "Stopper hydratation 2h avant dormir : moins de réveils nocturnes", value: "2H" },
+    ],
+  },
+  {
+    subtitle: "Sommeil court : comment gérer quand la vie impose 6h",
+    tagLine: "GÉRER LES COURTS",
+    cards: [
+      { icon: "clock", title: "CYCLES DE 90 MIN", description: "Dormir par cycles complets de 90 min : 6h = 4 cycles, mieux que 6h30", value: "90 MIN" },
+      { icon: "sun", title: "SIESTE 20 MIN", description: "20 min max en début d'aprèm compensent 1h de sommeil nocturne", value: "20 MIN" },
+      { icon: "moon", title: "CAFFEINE NAP", description: "Café + sieste 20 min = réveil boosté. Caféine agit pile à la sortie", value: "+×2" },
+      { icon: "brain", title: "DETTE SUR 7J", description: "La dette se paye sur 7 jours. Surdormir le weekend récupère en partie", value: "7J" },
+      { icon: "fire", title: "LUMIÈRE MATIN", description: "10 min de soleil au réveil recalent le rythme circadien rapidement", value: "10 MIN" },
+    ],
+  },
+);
+
+KNOWLEDGE_BASE["stress"].push(
+  {
+    subtitle: "Stress chronique : ce que la science révèle vraiment",
+    tagLine: "SCIENCE DU STRESS",
+    cards: [
+      { icon: "brain", title: "CORTISOL TOXIQUE", description: "Cortisol élevé >6 mois : hippocampe qui rétrécit, mémoire en baisse", value: "-15%" },
+      { icon: "heart", title: "RISQUE CARDIAQUE", description: "Stress chronique double le risque d'infarctus avant 60 ans", value: "×2" },
+      { icon: "shield", title: "IMMUNITÉ BAISSE", description: "Lymphocytes réduits de 30% chez les gens en stress chronique", value: "-30%" },
+      { icon: "moon", title: "SOMMEIL SABOTÉ", description: "Stress = insomnies + réveils 3h du mat. Cercle vicieux à casser", value: "3H" },
+      { icon: "fire", title: "INFLAMMATION", description: "Marqueurs inflammatoires +45% en stress chronique. Terrain maladie", value: "+45%" },
+    ],
+  },
+  {
+    subtitle: "Désactiver le stress : outils express validés",
+    tagLine: "OUTILS EXPRESS",
+    cards: [
+      { icon: "clock", title: "COHÉRENCE 3-6-5", description: "3 fois/jour, 6 respirations/min pendant 5 min : cortisol -30% en 1 semaine", value: "3-6-5" },
+      { icon: "water", title: "DOUCHE FROIDE", description: "30s d'eau froide active le nerf vague. Stress évacué immédiatement", value: "30S" },
+      { icon: "dance", title: "BOUGER 10 MIN", description: "10 min de mouvement suffisent à brûler les hormones de stress circulantes", value: "10 MIN" },
+      { icon: "brain", title: "5-4-3-2-1", description: "Nomme 5 sons, 4 touchers, 3 odeurs, 2 goûts, 1 vue : ancrage immédiat", value: "5-4-3-2-1" },
+      { icon: "heart", title: "LONGUE EXPIRATION", description: "Expirer 2× plus long que l'inspiration active le parasympathique en 30s", value: "2×" },
+    ],
+  },
+  {
+    subtitle: "Le stress utile : transformer la panique en performance",
+    tagLine: "STRESS UTILE",
+    cards: [
+      { icon: "energy", title: "EUSTRESS", description: "Bon stress : cortisol spike court = focus et motivation doublés", value: "EU+" },
+      { icon: "brain", title: "RECADRER", description: "Voir le stress comme une ressource plutôt qu'un ennemi réduit ses effets", value: "MINDSET" },
+      { icon: "target", title: "DEADLINES", description: "Les deadlines créent un eustress productif : 23% de performance en plus", value: "+23%" },
+      { icon: "shield", title: "ZONE OPTIMALE", description: "Loi de Yerkes-Dodson : stress modéré = performance maximale", value: "OPT" },
+      { icon: "trophy", title: "PRÉPARATION", description: "Préparer physiquement le corps à gérer le stress : sport + respiration = anti-fragile", value: "+FRAG" },
+    ],
+  },
+);
+
+KNOWLEDGE_BASE["protein"].push(
+  {
+    subtitle: "Protéines : la plupart des gens en mangent mal",
+    tagLine: "VÉRITÉS PROTÉINES",
+    cards: [
+      { icon: "scale", title: "1.6G/KG MINIMUM", description: "Sportif : 1.6 à 2g/kg/jour. Sédentaire : 1g/kg pour maintenir la masse", value: "1.6G" },
+      { icon: "clock", title: "TOUTES LES 4H", description: "Distribuer les protéines toutes les 4h maximise la synthèse musculaire", value: "4H" },
+      { icon: "apple", title: "0.4G/KG PAR REPAS", description: "Au-delà de 0.4g/kg par repas, l'absorption plafonne. Répartir plutôt qu'empiler", value: "0.4G" },
+      { icon: "brain", title: "LEUCINE CLÉ", description: "3g de leucine active mTOR et la synthèse. Viande, œufs, whey = riches", value: "3G" },
+      { icon: "moon", title: "AVANT DORMIR", description: "Caséine lente avant le coucher soutient la récupération sur 6-8h", value: "6-8H" },
+    ],
+  },
+  {
+    subtitle: "Protéines végétales vs animales : le match",
+    tagLine: "VÉGÉ VS ANIMAL",
+    cards: [
+      { icon: "apple", title: "PROFIL COMPLET", description: "Protéines animales contiennent les 9 AA essentiels. Végétal : combiner sources", value: "9 AA" },
+      { icon: "dna", title: "BIODISPONIBILITÉ", description: "Viande/œuf absorbés à 95%. Végétal : 60-80% selon la source", value: "95%" },
+      { icon: "leaf", title: "LÉGUMINEUSES", description: "Lentilles + riz = profil complet. Combinaison millénaire éprouvée", value: "2EN1" },
+      { icon: "shield", title: "IMPACT ENVIRO", description: "Protéines végétales 10× moins d'eau, 50× moins de CO2 que le bœuf", value: "÷10" },
+      { icon: "fire", title: "ÉQUIVALENCE", description: "100g de poulet = 150g de lentilles cuites en protéines effectives", value: "100/150" },
+    ],
+  },
+  {
+    subtitle: "Protéines et perte de poids : le duo gagnant",
+    tagLine: "PERTE DE POIDS",
+    cards: [
+      { icon: "fire", title: "SATIÉTÉ +60%", description: "Protéines = satiété 60% plus longue que glucides à calories égales", value: "+60%" },
+      { icon: "energy", title: "THERMOGENÈSE", description: "Digérer des protéines brûle 30% de leurs calories. Glucides : 10%", value: "30%" },
+      { icon: "shield", title: "PRÉSERVE MUSCLE", description: "En déficit calorique, les protéines hautes préservent la masse musculaire", value: "+MASSE" },
+      { icon: "brain", title: "STABILITÉ GLYCÉMIE", description: "Ajouter protéines aux repas stabilise la glycémie, zéro fringale", value: "STAB" },
+      { icon: "trophy", title: "RÉSULTAT DURABLE", description: "Perte de poids avec protéines hautes : 40% moins de reprise après 1 an", value: "-40%" },
+    ],
+  },
+);
+
+KNOWLEDGE_BASE["recuperation"].push(
+  {
+    subtitle: "La récup est où se construit la performance, pas à l'entraînement",
+    tagLine: "OÙ ON CONSTRUIT",
+    cards: [
+      { icon: "moon", title: "48H MINIMUM", description: "Un groupe musculaire a besoin de 48h pour se reconstruire pleinement", value: "48H" },
+      { icon: "dna", title: "ADAPTATION NUIT", description: "Le corps s'adapte à l'effort la nuit : GH libérée pendant le sommeil profond", value: "NUIT" },
+      { icon: "fire", title: "SURENTRAÎNEMENT", description: "Sans récup, cortisol chronique = catabolisme musculaire + fatigue", value: "CATA" },
+      { icon: "heart", title: "FRÉQUENCE CARDIAQUE", description: "HRV (variabilité cardiaque) haute = bien récupéré, basse = repos nécessaire", value: "HRV" },
+      { icon: "shield", title: "JOURS OFF", description: "Planifier 2 jours off/semaine n'est pas un luxe : c'est la progression", value: "2J" },
+    ],
+  },
+  {
+    subtitle: "Techniques de récup express : les 10 minutes qui changent tout",
+    tagLine: "RÉCUP EXPRESS",
+    cards: [
+      { icon: "water", title: "DOUCHE CONTRASTÉE", description: "30s chaud / 30s froid × 5 cycles : récupération accélérée de 40%", value: "+40%" },
+      { icon: "brain", title: "RESPIRATION BOX", description: "4s inspire, 4s tiens, 4s expire, 4s tiens : parasympathique en 3 min", value: "3 MIN" },
+      { icon: "dance", title: "MOBILITÉ 5 MIN", description: "5 min de mobilité active = circulation relancée, courbatures réduites", value: "5 MIN" },
+      { icon: "moon", title: "YOGA NIDRA 10", description: "10 min de Yoga Nidra = équivalent 1h de sommeil en récupération", value: "1H" },
+      { icon: "apple", title: "COLLATION 3:1", description: "3g glucides / 1g protéines post-effort : synthèse protéique maximale", value: "3:1" },
+    ],
+  },
+  {
+    subtitle: "Récup active : continuer à bouger pour récupérer plus vite",
+    tagLine: "ACTIVE > PASSIVE",
+    cards: [
+      { icon: "fire", title: "40% MIEUX", description: "Récupération active 40% plus efficace que repos passif selon études", value: "+40%" },
+      { icon: "heart", title: "20 MIN FAIBLE", description: "20 min de marche ou vélo à 50% max élimine le lactate plus vite", value: "50% MAX" },
+      { icon: "bone", title: "ÉTIREMENTS DYNAMIQUES", description: "Étirements dynamiques post-effort > statiques : circulation maintenue", value: "DYN" },
+      { icon: "dance", title: "NATATION 15 MIN", description: "Hydrostatique soulage articulations, accélère la récup de 25%", value: "+25%" },
+      { icon: "brain", title: "FOAM ROLLER", description: "10 min de rouleau = myofascial libéré, courbatures -50%", value: "-50%" },
+    ],
+  },
+);
+
+KNOWLEDGE_BASE["motivation"].push(
+  {
+    subtitle: "Motivation scientifique : les leviers qui marchent vraiment",
+    tagLine: "LEVIERS EFFICACES",
+    cards: [
+      { icon: "brain", title: "DOPAMINE ANTICIP.", description: "La dopamine vient de l'anticipation, pas de la récompense. Planifie pour motiver", value: "DOPA" },
+      { icon: "target", title: "OBJECTIFS SMART", description: "Spécifique, Mesurable, Atteignable, Réaliste, Temporel : +42% de succès", value: "+42%" },
+      { icon: "flex", title: "HABIT STACKING", description: "Relier nouvelle habitude à une ancienne : adoption 3× plus durable", value: "×3" },
+      { icon: "shield", title: "BOUCLE HABITUDE", description: "Indice → routine → récompense. Les 3 doivent être définis pour ancrer", value: "3 STEPS" },
+      { icon: "heart", title: "PROCESS > GOAL", description: "Focus sur le processus quotidien, pas le but. Régularité > intensité", value: "PROC" },
+    ],
+  },
+  {
+    subtitle: "Motivation en panne : 5 tactiques pour relancer la machine",
+    tagLine: "RELANCE",
+    cards: [
+      { icon: "rocket", title: "RÈGLE DES 2 MIN", description: "Nouvelle habitude : fais-la pendant 2 min max. Facile à démarrer", value: "2 MIN" },
+      { icon: "fire", title: "START STUPIDE", description: "1 pompe, 1 page, 1 minute. Minuscule pour vaincre la résistance mentale", value: "1×" },
+      { icon: "clock", title: "SI-ALORS", description: "Planifier : « Si X, alors Y ». +47% de chances d'action selon études", value: "+47%" },
+      { icon: "target", title: "ENVIRONNEMENT", description: "Rend l'action facile, le mauvais comportement difficile. Design beats will", value: "ENV" },
+      { icon: "trophy", title: "PUBLIC COMMITMENT", description: "Annoncer à 3 personnes multiplie les chances de tenir l'engagement par 3", value: "×3" },
+    ],
+  },
+);
+
+KNOWLEDGE_BASE["respiration"].push(
+  {
+    subtitle: "La respiration est le contrôle caché du système nerveux",
+    tagLine: "CONTRÔLE NERVEUX",
+    cards: [
+      { icon: "brain", title: "NERF VAGUE", description: "Respirer lent active le nerf vague = parasympathique = calme immédiat", value: "VAGUE" },
+      { icon: "heart", title: "COHÉRENCE CARDIAQUE", description: "6 respirations/min synchronise cœur et cerveau : stress -30% en 5 min", value: "6/MIN" },
+      { icon: "moon", title: "SOMMEIL 4-7-8", description: "Inspire 4s, tiens 7s, expire 8s : endormissement en 2 minutes", value: "4-7-8" },
+      { icon: "fire", title: "WIM HOF", description: "30 respirations rapides + apnée : libération d'adrénaline naturelle", value: "WH" },
+      { icon: "energy", title: "KAPALABHATI", description: "Respiration du feu : 60 expirations rapides = réveil et focus immédiat", value: "60×" },
+    ],
+  },
+  {
+    subtitle: "Respirer juste : 90% des gens ne savent plus le faire",
+    tagLine: "RÉAPPRENDRE",
+    cards: [
+      { icon: "heart", title: "DIAPHRAGME", description: "Respiration diaphragmatique = main sur ventre qui monte. Pas l'épaule", value: "VENTRE" },
+      { icon: "water", title: "NEZ OBLIGATOIRE", description: "Respiration nasale filtre, humidifie, optimise l'oxygène. Bouche = urgence", value: "NEZ" },
+      { icon: "shield", title: "EXPIRE LONGUE", description: "Expirer 2× plus long que l'inspiration calme le système en 30s", value: "2×" },
+      { icon: "brain", title: "HYPERVENTILATION", description: "Respirer vite en stress aggrave le stress. Vicious loop à casser", value: "LOOP" },
+      { icon: "sun", title: "APNÉE POSITIVE", description: "Retenir 10s après l'expire augmente le CO2 tolérable, stress géré", value: "10S" },
+    ],
+  },
+  {
+    subtitle: "Box breathing : la technique des forces spéciales",
+    tagLine: "BOX BREATHING",
+    cards: [
+      { icon: "shield", title: "TECHNIQUE NAVY", description: "Utilisée par les Navy SEALs avant opérations : calme sous pression", value: "SEAL" },
+      { icon: "clock", title: "CYCLE 4-4-4-4", description: "Inspire 4s, tiens 4s, expire 4s, tiens 4s. Répéter 4 fois minimum", value: "4×4" },
+      { icon: "brain", title: "AVANT EXAMEN", description: "4 cycles avant examen/présentation = cortisol baissé de 25% immédiat", value: "-25%" },
+      { icon: "heart", title: "RÉGULATION", description: "Régule tension artérielle, pulsations, anxiété en 2 minutes", value: "2 MIN" },
+      { icon: "fire", title: "PLURIQUOTIDIEN", description: "3 fois/jour pendant 1 mois = nouveau baseline de calme permanent", value: "3/J" },
+    ],
+  },
+);
+
+KNOWLEDGE_BASE["souplesse"].push(
+  {
+    subtitle: "Souplesse dynamique : la vraie mesure, pas juste toucher ses pieds",
+    tagLine: "DYNAMIQUE > STATIQUE",
+    cards: [
+      { icon: "dance", title: "MOBILITÉ FONCTIONNELLE", description: "La mobilité active vaut plus que la souplesse passive. Utile au quotidien", value: "FONC" },
+      { icon: "bone", title: "SQUAT PROFOND", description: "Squat profond = test universel. Difficile ? Ta mobilité a besoin de travail", value: "TEST" },
+      { icon: "fire", title: "YOGA FLOW", description: "20 min de Flow 3×/sem : mobilité +40% en 8 semaines", value: "+40%" },
+      { icon: "heart", title: "HIPS = VIE", description: "Hanches raides = dos, genoux, posture. Libérer les hanches change tout", value: "HIPS" },
+      { icon: "shield", title: "NERFS GLISSANT", description: "Mobilisation neurale : faire glisser les nerfs réduit douleurs sciatique", value: "NERFS" },
+    ],
+  },
+  {
+    subtitle: "Assouplissement express : 5 mouvements contre le corps rigide",
+    tagLine: "5 MOUVEMENTS",
+    cards: [
+      { icon: "dance", title: "CAT-COW", description: "Cat-Cow 10 répétitions : mobilise la colonne entière en 1 minute", value: "10×" },
+      { icon: "bone", title: "WORLD'S GREATEST", description: "Lunge + rotation : 5 par côté = hanches, thorax, épaules débloqués", value: "5+5" },
+      { icon: "fire", title: "90/90", description: "90/90 position : hanches externes et internes débloquées en 2 minutes", value: "2 MIN" },
+      { icon: "heart", title: "BRIDGE + MARCH", description: "Pont fessier + marche : active glutes + stretch fléchisseurs hanches", value: "POST" },
+      { icon: "shield", title: "DOWN DOG", description: "Chien tête en bas : ischios, mollets, épaules. Pose universelle 45s", value: "45S" },
+    ],
+  },
+  {
+    subtitle: "Souplesse vs mobilité : les confondre te bloque",
+    tagLine: "DIFFÉRENCE CLÉ",
+    cards: [
+      { icon: "brain", title: "SOUPLESSE PASSIVE", description: "Amplitude maximum atteinte sans effort. Yoga classique, stretch post-sport", value: "PASSIVE" },
+      { icon: "fire", title: "MOBILITÉ ACTIVE", description: "Amplitude contrôlée par tes muscles. Ce qui compte vraiment au sport", value: "ACTIVE" },
+      { icon: "target", title: "ANIMAL FLOW", description: "Mouvements animaux combine force + mobilité active. Très complet", value: "FLOW" },
+      { icon: "shield", title: "PRÉVENTION", description: "Mobilité > souplesse pour prévenir blessures en sport dynamique", value: "PRÉV" },
+      { icon: "dance", title: "BOUGER CHAQUE JOUR", description: "10 min de mobilité quotidienne > 1h hebdomadaire de stretch", value: "10/J" },
+    ],
+  },
+);
+
+KNOWLEDGE_BASE["confiance"].push(
+  {
+    subtitle: "La confiance en soi se construit dans l'action, pas la réflexion",
+    tagLine: "PAR L'ACTION",
+    cards: [
+      { icon: "rocket", title: "AGIR D'ABORD", description: "La confiance suit l'action, pas l'inverse. Commence, la confiance suivra", value: "ACT" },
+      { icon: "fire", title: "PREUVES PERSO", description: "Collectionner les petites victoires construit une banque de preuves à soi", value: "PROOFS" },
+      { icon: "trophy", title: "POSTURE POWER", description: "Adopter posture de pouvoir 2 min : testostérone +20%, cortisol -25%", value: "+20%" },
+      { icon: "brain", title: "VOIX INTÉRIEURE", description: "Parler à soi à la 3e personne réduit anxiété de 30% en situations stressantes", value: "-30%" },
+      { icon: "heart", title: "ÉCHEC = DATA", description: "Reframe : chaque échec est un point de données, pas un jugement sur toi", value: "DATA" },
+    ],
+  },
+  {
+    subtitle: "Syndrome de l'imposteur : le piège de 70% des performeurs",
+    tagLine: "IMPOSTEUR",
+    cards: [
+      { icon: "brain", title: "70% DES GENS", description: "70% des humains ont vécu le syndrome de l'imposteur au moins une fois", value: "70%" },
+      { icon: "shield", title: "SIGNE D'INTELLIGENCE", description: "Effet Dunning-Kruger : ceux qui doutent en savent plus. Rassurant", value: "+IQ" },
+      { icon: "target", title: "NORMALISER", description: "Tout le monde improvise. Personne n'a la notice. Action malgré le doute", value: "NORM" },
+      { icon: "trophy", title: "MENTOR PARLE", description: "Parler du doute à un pair/mentor : dédramatise instantanément", value: "TALK" },
+      { icon: "fire", title: "CÉLÉBRER PETIT", description: "Célébrer les micro-victoires reprogramme le cerveau à se reconnaître", value: "CÉLÉB" },
+    ],
+  },
+  {
+    subtitle: "Confiance physique : ton corps parle avant tes mots",
+    tagLine: "CORPS QUI PARLE",
+    cards: [
+      { icon: "energy", title: "REGARD DROIT", description: "Regarder dans les yeux 60% du temps = perçu comme confiant", value: "60%" },
+      { icon: "heart", title: "VOIX GRAVE", description: "Baisser la voix d'une tierce = autorité perçue +35%", value: "+35%" },
+      { icon: "shield", title: "OCCUPER ESPACE", description: "Poitrine ouverte, épaules en arrière : projette la puissance naturelle", value: "POWER" },
+      { icon: "dance", title: "DANSE CONFIANCE", description: "Danser 10 min = confiance corporelle qui se transfère aux autres contextes", value: "10 MIN" },
+      { icon: "trophy", title: "SPORT RÉGULIER", description: "3 mois de sport régulier = confiance en soi +42% (études universitaires)", value: "+42%" },
+    ],
+  },
+);
+
+KNOWLEDGE_BASE["echauffement"].push(
+  {
+    subtitle: "L'échauffement qu'il te faut dépend de ta séance",
+    tagLine: "ADAPTÉ À LA SÉANCE",
+    cards: [
+      { icon: "fire", title: "5 MIN CARDIO", description: "Monter la FC à 120 bpm avec mouvements globaux : cœur prêt à l'effort", value: "120 BPM" },
+      { icon: "dance", title: "MOBILITÉ DYNAMIQUE", description: "10 cercles d'articulations clés : hanches, épaules, chevilles, colonne", value: "10×" },
+      { icon: "target", title: "SPÉCIFIQUE", description: "3 min de mouvements ressemblant à la séance : activation neuromusculaire", value: "3 MIN" },
+      { icon: "energy", title: "ACTIVATION", description: "Bandes élastiques : activer glutes et dos avant compound lifts", value: "ACT" },
+      { icon: "shield", title: "NO STATIC", description: "Éviter les étirements statiques à froid : performance -10% démontrée", value: "-10%" },
+    ],
+  },
+  {
+    subtitle: "Échauffement 5 min : le minimum qui change tout",
+    tagLine: "5 MIN MINIMUM",
+    cards: [
+      { icon: "clock", title: "RAMP UP", description: "Monter progressivement l'intensité sur 5 min prépare le corps en douceur", value: "5 MIN" },
+      { icon: "heart", title: "CŒUR +20 BPM", description: "Objectif : +20 bpm par rapport au repos pour oxygénation optimale", value: "+20" },
+      { icon: "dance", title: "MOBILITÉ GÉNÉRALE", description: "Balancements, rotations de hanches, cercles de bras : tout le corps", value: "TOUT" },
+      { icon: "shield", title: "BLESSURES -60%", description: "Échauffement adéquat réduit le risque de blessure de 60% selon études", value: "-60%" },
+      { icon: "fire", title: "AMORCER MUSCLES", description: "Exercice léger active les fibres, prépare les ligaments à la charge", value: "PREP" },
+    ],
+  },
+  {
+    subtitle: "Échauffement mental : le sportif ne prépare pas que le corps",
+    tagLine: "MENTAL AUSSI",
+    cards: [
+      { icon: "brain", title: "VISUALISATION", description: "2 min à visualiser la séance parfaite active les circuits moteurs", value: "2 MIN" },
+      { icon: "target", title: "INTENTION", description: "Poser une intention claire : 'aujourd'hui je travaille la force'", value: "FOCUS" },
+      { icon: "heart", title: "RESPIRATION CALME", description: "4 respirations profondes avant démarrer recalent le système nerveux", value: "4×" },
+      { icon: "fire", title: "MUSIQUE MOTIVANTE", description: "Musique 120+ bpm 5 min avant séance booste la performance de 12%", value: "+12%" },
+      { icon: "trophy", title: "ANCRE POSITIVE", description: "Rituel reproduit = entrée en mode performance automatique", value: "ANCHOR" },
+    ],
+  },
+);
+
+KNOWLEDGE_BASE["musique"].push(
+  {
+    subtitle: "La musique transforme l'effort : preuve scientifique",
+    tagLine: "SCIENCE DU BEAT",
+    cards: [
+      { icon: "energy", title: "ENDURANCE +15%", description: "Musique adaptée prolonge l'endurance de 15% sur une même séance", value: "+15%" },
+      { icon: "heart", title: "BPM = EFFORT", description: "Matcher BPM musique à intensité : 120-140 cardio modéré, 140+ intense", value: "120-140" },
+      { icon: "brain", title: "DOPAMINE SPIKE", description: "Musique préférée libère dopamine : douleur réduite de 10% sur effort", value: "-10%" },
+      { icon: "fire", title: "SYNCHRONISATION", description: "Bouger en rythme avec musique rend l'effort perçu plus facile", value: "SYNC" },
+      { icon: "dance", title: "AFROBEATS BOOSTE", description: "Rythmes afro syncopés activent davantage les muscles que beats linéaires", value: "AFRO" },
+    ],
+  },
+  {
+    subtitle: "Playlists idéales : construire pour ta séance",
+    tagLine: "PLAYLIST GUIDE",
+    cards: [
+      { icon: "clock", title: "DURÉE EXACTE", description: "Playlist = durée séance. Évite de changer de track et tue la zone", value: "=SÉANCE" },
+      { icon: "energy", title: "PROGRESSION BPM", description: "Monter BPM progressif échauffement → pic intensité → récup", value: "↑↓" },
+      { icon: "fire", title: "TRACK HYPE", description: "1 track hype placée au 2/3 redonne un boost énergétique vital", value: "2/3" },
+      { icon: "brain", title: "FAMILIER > NEW", description: "Musique connue demande moins d'attention, focus sur l'effort", value: "KNOWN" },
+      { icon: "heart", title: "VOCALS ATTENTION", description: "Vocaux fort = attention détournée. Préférer instrumental si besoin focus", value: "INSTR" },
+    ],
+  },
+  {
+    subtitle: "Musique afro et entraînement : le combo sous-estimé",
+    tagLine: "AFRO + ENTRAÎN.",
+    cards: [
+      { icon: "dance", title: "POLYRYTHMIE", description: "Afrobeats polyrythmiques sollicitent plus de muscles simultanément", value: "POLY" },
+      { icon: "heart", title: "CORPS EN MOUV.", description: "Impossible de rester statique sur un afrobeat : le corps bouge naturellement", value: "MOUV" },
+      { icon: "fire", title: "GROOVE > COMPTE", description: "Groove continu > rythme linéaire : meilleur pour endurance longue", value: "GROOVE" },
+      { icon: "brain", title: "MENTAL UPLIFTING", description: "Lyrics positifs et énergie afro boostent mentalement l'effort", value: "+ÉNERGIE" },
+      { icon: "trophy", title: "IDENTITÉ CULTURELLE", description: "Se mouvoir sur sa culture = performance et fierté en même temps", value: "IDENT" },
+    ],
+  },
+);
+
+KNOWLEDGE_BASE["communaut"].push(
+  {
+    subtitle: "Pratiquer en communauté : le facteur qui triple ton assiduité",
+    tagLine: "POUVOIR DU GROUPE",
+    cards: [
+      { icon: "heart", title: "ADHÉSION ×3", description: "Sport en groupe : 3× plus d'assiduité que seul sur 12 mois", value: "×3" },
+      { icon: "fire", title: "ACCOUNTABILITY", description: "Savoir qu'on t'attend = excuse impossible. Le groupe fait lever", value: "ACCOUNT" },
+      { icon: "brain", title: "MOTIVATION CONTAG.", description: "L'énergie collective déclenche des neurones miroirs = envie naturelle", value: "MIRROR" },
+      { icon: "shield", title: "MOINS DE DOUTES", description: "Avancer ensemble réduit le syndrome d'imposteur de 45%", value: "-45%" },
+      { icon: "trophy", title: "RÉSULTATS +40%", description: "Objectifs partagés = résultats 40% supérieurs à objectifs solo", value: "+40%" },
+    ],
+  },
+  {
+    subtitle: "Communauté Afroboost : la famille qui pousse vers le haut",
+    tagLine: "AFROBOOST FAMILY",
+    cards: [
+      { icon: "dance", title: "CULTURE PARTAGÉE", description: "Danser sur sa musique avec sa communauté = transcender l'effort", value: "CULTURE" },
+      { icon: "heart", title: "JUGEMENT 0", description: "Espace bienveillant sans jugement : progression réelle possible", value: "SAFE" },
+      { icon: "fire", title: "FEMININE POWER", description: "Communauté de femmes noires : force, joie, transformation au quotidien", value: "SŒURS" },
+      { icon: "brain", title: "INSPIRATION MUTUELLE", description: "Voir les autres progresser te donne confiance en tes propres capacités", value: "INSPIRE" },
+      { icon: "trophy", title: "LIENS DURABLES", description: "Au-delà du sport : amitiés, soutien, network professionnel naissent", value: "BEYOND" },
+    ],
+  },
+  {
+    subtitle: "Isolement = ennemi silencieux de la santé",
+    tagLine: "ANTIDOTE ISOL.",
+    cards: [
+      { icon: "shield", title: "SANTÉ -30%", description: "Isolement social augmente mortalité de 30% selon études longitudinales", value: "-30%" },
+      { icon: "brain", title: "CERVEAU ACTIF", description: "Interactions sociales régulières préservent 20% plus de fonctions cognitives", value: "+20%" },
+      { icon: "heart", title: "CORTISOL BAISSE", description: "Interaction positive réduit cortisol plus efficacement que seul", value: "-40%" },
+      { icon: "dance", title: "SPORT SOCIAL", description: "Cours en groupe cumule bénéfices physiques et relationnels", value: "×2" },
+      { icon: "trophy", title: "APPARTENANCE", description: "Besoin humain fondamental : faire partie d'un groupe = bien-être profond", value: "HUMAN" },
+    ],
+  },
+);
+
+// ══════════════════════════════════════════════════════════════
 // ══  KEYWORD MAP — Mots-clés → Topic                        ══
 // ══════════════════════════════════════════════════════════════
 
