@@ -1622,6 +1622,30 @@ function drawVideoSeq(
   // Video overlay text — legacy single overlay + any extras in design.overlays.
   // Each overlay is gated by its own [startTime, endTime] window so the same
   // video can show a CTA-style headline at t=0 and a smaller caption at t=4s.
+  // Diagnostic log at first paint of the video sequence so the user can
+  // verify which overlays + positions the composer actually received.
+  if ((secondsIntoSequence ?? 0) < 0.1) {
+    // eslint-disable-next-line no-console
+    console.log('[Composer.drawVideoSeq] legacy overlay:', JSON.stringify({
+      text: design?.overlayText,
+      x: design?.overlayPosition?.x,
+      y: design?.overlayPosition?.y,
+      startTime: design?.overlayStartTime,
+      endTime: design?.overlayEndTime,
+      scale: design?.overlayTextScale,
+    }));
+    // eslint-disable-next-line no-console
+    console.log('[Composer.drawVideoSeq] design.overlays:', JSON.stringify(
+      (design?.overlays ?? []).map((o) => ({
+        text: o.text,
+        x: o.position?.x,
+        y: o.position?.y,
+        startTime: o.startTime,
+        endTime: o.endTime,
+        scale: o.scale,
+      }))
+    ));
+  }
   const t = secondsIntoSequence ?? 0;
   const inWindow = (start: number, end: number) =>
     t >= (start || 0) && (end === undefined || end < 0 || t <= end);
