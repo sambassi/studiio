@@ -21,7 +21,7 @@ interface MediaLibraryProps {
   isOpen: boolean;
   onClose: () => void;
   mediaType: MediaType;
-  onSelect: (url: string, name: string) => void;
+  onSelect: (url: string, name: string, type?: 'image' | 'video' | 'audio') => void;
 }
 
 const TYPE_FILTERS: Array<{ key: MediaType; label: string }> = [
@@ -141,16 +141,25 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibr
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
 
-      await fetch(data.signedUrl, {
+      const putRes = await fetch(data.signedUrl, {
         method: 'PUT',
         headers: { 'Content-Type': file.type },
         body: file,
       });
+      if (!putRes.ok) throw new Error(`Supabase PUT ${putRes.status}`);
 
-      onSelect(data.publicUrl, file.name);
+      const uploadType: 'image' | 'video' | 'audio' | undefined = file.type.startsWith('image/')
+        ? 'image'
+        : file.type.startsWith('video/')
+          ? 'video'
+          : file.type.startsWith('audio/')
+            ? 'audio'
+            : undefined;
+      onSelect(data.publicUrl, file.name, uploadType);
       onClose();
     } catch (err) {
       console.error('[MediaLibrary] Upload error:', err);
+      alert(`Upload échoué : ${err instanceof Error ? err.message : 'erreur inconnue'}`);
     } finally {
       setUploading(false);
       e.target.value = '';
@@ -258,7 +267,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibr
                   }`}
                   onClick={(e) => {
                     if (selected.size > 0) { e.stopPropagation(); toggleSelect(file.url); return; }
-                    onSelect(file.url, file.name); onClose();
+                    onSelect(file.url, file.name, file.type); onClose();
                   }}
                   onContextMenu={(e) => { e.preventDefault(); toggleSelect(file.url); }}
                 >

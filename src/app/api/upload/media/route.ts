@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
+import { sanitizeStorageFilename } from '@/lib/storage/sanitize-filename';
 
 // Increase Vercel serverless function limits for video uploads
 export const maxDuration = 60; // seconds
@@ -56,7 +57,8 @@ export async function POST(req: NextRequest) {
     const bucket = getBucket(mimeType);
     const ext = file.name.split('.').pop() || 'bin';
     const timestamp = Date.now();
-    const storagePath = `${session.user.id}/${purpose}/${timestamp}-${file.name}`;
+    const safeFilename = sanitizeStorageFilename(file.name);
+    const storagePath = `${session.user.id}/${purpose}/${timestamp}-${safeFilename}`;
 
     // Upload to Supabase Storage
     const arrayBuffer = await file.arrayBuffer();
