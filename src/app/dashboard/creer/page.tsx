@@ -1554,6 +1554,31 @@ function InfographicPageInner() {
   const [overlayBold, setOverlayBold] = useState(true);
   const [overlayItalic, setOverlayItalic] = useState(false);
   const [overlayColor, setOverlayColor] = useState('#FFFFFF');
+  // Scale + timing on the legacy (primary) overlay. 1.0 = 100 %.
+  // endTime < 0 means "until the video sequence ends".
+  const [overlayTextScale, setOverlayTextScale] = useState(1.0);
+  const [overlayStartTime, setOverlayStartTime] = useState(0);
+  const [overlayEndTime, setOverlayEndTime] = useState(-1);
+
+  // Up to 3 extra overlays (tabs "Overlay 2/3/4" in the panel). Each
+  // carries its own text / position / color / typography / timing so
+  // the user can combine a CTA-style title with a smaller caption that
+  // appears later, or any similar multi-text composition.
+  type ExtraOverlay = {
+    id: string;
+    text: string;
+    position: { x: number; y: number };
+    color: string;
+    scale: number;
+    startTime: number;
+    endTime: number; // -1 = until sequence end
+    bold: boolean;
+    italic: boolean;
+    letterSpacing: number;
+    lineHeight: number;
+  };
+  const [extraOverlays, setExtraOverlays] = useState<ExtraOverlay[]>([]);
+  const [activeOverlayIdx, setActiveOverlayIdx] = useState(0); // 0 = legacy, 1+ = extraOverlays[idx-1]
   const [cardsLetterSpacing, setCardsLetterSpacing] = useState(0);
   const [customCardIcons, setCustomCardIcons] = useState<Record<string, string>>({});
 
@@ -1679,6 +1704,24 @@ function InfographicPageInner() {
         if (Array.isArray(cfg.salesPhrases)) setSalesPhrases(cfg.salesPhrases as string[]);
         if (Array.isArray(cfg.pexelsPhotos)) setPexelsPhotos(cfg.pexelsPhotos as PexelsPhoto[]);
         if (typeof cfg.selectedPhotoIndex === 'number') setSelectedPhotoIndex(cfg.selectedPhotoIndex);
+        // Rush video/image: the file already sits on Supabase, so the URL
+        // is stable and cheap to persist. Survives a refresh without a
+        // re-upload.
+        if (Array.isArray(cfg.rushList) && cfg.rushList.length > 0) {
+          setRushList(
+            cfg.rushList
+              .filter((r: unknown): r is { url: string; name: string } =>
+                !!r && typeof (r as { url?: unknown }).url === 'string',
+              )
+              .map((r: { url: string; name?: string; kind?: 'video' | 'image'; transform?: { scale: number; offsetX: number; offsetY: number }; fromClip?: boolean }) => ({
+                url: r.url,
+                name: r.name || 'video.mp4',
+                kind: r.kind,
+                transform: r.transform,
+                fromClip: r.fromClip,
+              })),
+          );
+        }
         // Site text (Afroboost.com)
         if (cfg.siteText !== undefined) setSiteText(cfg.siteText);
         if (cfg.siteTextPositions) {
@@ -1695,6 +1738,17 @@ function InfographicPageInner() {
         if (typeof cfg.showCenterGuides === 'boolean') setShowCenterGuides(cfg.showCenterGuides);
         if (typeof cfg.smartGuidesEnabled === 'boolean') setSmartGuidesEnabled(cfg.smartGuidesEnabled);
         if (typeof cfg.showGridOverlay === 'boolean') setShowGridOverlay(cfg.showGridOverlay);
+        if (typeof cfg.overlayTextScale === 'number') setOverlayTextScale(cfg.overlayTextScale);
+        if (typeof cfg.overlayStartTime === 'number') setOverlayStartTime(cfg.overlayStartTime);
+        if (typeof cfg.overlayEndTime === 'number') setOverlayEndTime(cfg.overlayEndTime);
+        if (Array.isArray(cfg.extraOverlays)) {
+          setExtraOverlays(
+            cfg.extraOverlays.filter(
+              (o: unknown): o is ExtraOverlay =>
+                !!o && typeof (o as ExtraOverlay).text === 'string',
+            ).slice(0, 3),
+          );
+        }
         if (Array.isArray(cfg.cardGroups)) {
           setCardGroups(
             cfg.cardGroups.filter(
@@ -2050,6 +2104,8 @@ function InfographicPageInner() {
             smartGuidesEnabled, showGridOverlay,
             cardGroups,
             cardPositionMode,
+            overlayTextScale, overlayStartTime, overlayEndTime,
+            extraOverlays,
             // User-typed text copy — persisted even when empty so clearing
             // a field sticks across reloads. Cards and sales phrases are
             // persisted too so a manual edit survives a refresh; the
@@ -2058,6 +2114,7 @@ function InfographicPageInner() {
             contentTheme, customTopic, title, subtitle,
             cards, salesPhrases,
             pexelsPhotos, selectedPhotoIndex,
+            rushList,
           }),
         );
         // After the first design-only save, drop the legacy blob so we
@@ -2087,9 +2144,12 @@ function InfographicPageInner() {
     smartGuidesEnabled, showGridOverlay,
     cardGroups,
     cardPositionMode,
+    overlayTextScale, overlayStartTime, overlayEndTime,
+    extraOverlays,
     contentTheme, customTopic, title, subtitle,
     cards, salesPhrases,
     pexelsPhotos, selectedPhotoIndex,
+    rushList,
   ]);
 
   // (Typography states declared earlier for localStorage compatibility)
@@ -3476,6 +3536,10 @@ function InfographicPageInner() {
                 logoScale, logoSequences,
                 overlayText: videoOverlayText || undefined,
                 overlayColor: overlayColor || undefined,
+                overlayTextScale,
+                overlayStartTime,
+                overlayEndTime,
+                overlays: extraOverlays.length > 0 ? extraOverlays.map(({ id: _id, ...rest }) => rest) : undefined,
                 titlePosition: titlePos, cardsPosition: cardsPos,
                 watermarkPosition: watermarkPos, overlayPosition: overlayPos,
                 titleSize, watermarkSize: watermarkSize,
@@ -3828,6 +3892,10 @@ function InfographicPageInner() {
               },
               overlayText: videoOverlayText || undefined,
               overlayColor: overlayColor || undefined,
+              overlayTextScale,
+              overlayStartTime,
+              overlayEndTime,
+              overlays: extraOverlays.length > 0 ? extraOverlays.map(({ id: _id, ...rest }) => rest) : undefined,
               noColorBg, noColorSequences,
               seqGradients,
               filter: selectedFilter || undefined,
@@ -6306,6 +6374,14 @@ function InfographicPageInner() {
               else if (dragging === "watermark") setWatermarkPos({ x, y });
               else if (dragging === "cards") setCardsPos({ x, y });
               else if (dragging === "overlay") setOverlayPos({ x, y });
+              else if (dragging?.startsWith('overlay:')) {
+                const extraIdx = parseInt(dragging.slice('overlay:'.length), 10);
+                if (!Number.isNaN(extraIdx)) {
+                  setExtraOverlays((prev) =>
+                    prev.map((o, i) => (i === extraIdx ? { ...o, position: { x, y } } : o)),
+                  );
+                }
+              }
               else if (dragging === "sitetext") {
                 // Update siteText position ONLY for the active sequence (same as logo)
                 if (activeSequence !== 'all') {
@@ -6665,7 +6741,7 @@ function InfographicPageInner() {
               ((activeSequence === "all" && exportedSequences.video) || activeSequence === "video") &&
               videoOverlayText && (
                 <div
-                  className={`absolute z-20 text-center cursor-grab active:cursor-grabbing group/overlay ${activePanel === "overlay" || (selectedEl?.type === 'overlay') ? "ring-1 ring-cyan-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
+                  className={`absolute z-20 text-center cursor-grab active:cursor-grabbing group/overlay ${activePanel === "overlay" && activeOverlayIdx === 0 ? "ring-1 ring-cyan-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
                   style={{
                     left: `${overlayPos.x}%`,
                     top: `${overlayPos.y}%`,
@@ -6675,15 +6751,16 @@ function InfographicPageInner() {
                   onMouseDown={(e) => {
                     e.preventDefault();
                     setDragging("overlay");
+                    setActiveOverlayIdx(0);
                   }}
-                  onClick={(e) => { e.stopPropagation(); selectEl({ type: 'overlay' }); }}
-                  onDoubleClick={(e) => openPanel("overlay", e)}
+                  onClick={(e) => { e.stopPropagation(); selectEl({ type: 'overlay' }); setActiveOverlayIdx(0); }}
+                  onDoubleClick={(e) => { setActiveOverlayIdx(0); openPanel("overlay", e); }}
                 >
                   <div className="absolute inset-0 border border-dashed border-cyan-500/0 group-hover/overlay:border-cyan-500/40 rounded pointer-events-none transition-colors" />
                   <p
                     className="font-black drop-shadow-lg"
                     style={{
-                      fontSize: `${16 * textScale}px`,
+                      fontSize: `${16 * textScale * overlayTextScale}px`,
                       color: overlayColor,
                       textShadow:
                         "0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5)",
@@ -6697,6 +6774,46 @@ function InfographicPageInner() {
                   </p>
                 </div>
               )}
+
+            {/* Extra overlays (rendered read-only in the preview — timing
+                windows aren't applied here; the user sees them all while
+                editing so they can position each one). */}
+            {rushUrl &&
+              ((activeSequence === "all" && exportedSequences.video) || activeSequence === "video") &&
+              extraOverlays.map((ov, i) => ov.text ? (
+                <div
+                  key={ov.id}
+                  className={`absolute z-20 text-center cursor-grab active:cursor-grabbing ${activePanel === "overlay" && activeOverlayIdx === i + 1 ? "ring-1 ring-cyan-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
+                  style={{
+                    left: `${ov.position.x}%`,
+                    top: `${ov.position.y}%`,
+                    transform: "translate(-50%, -50%)",
+                    width: "85%",
+                  }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setActiveOverlayIdx(i + 1);
+                    setDragging(`overlay:${i}`);
+                  }}
+                  onClick={(e) => { e.stopPropagation(); setActiveOverlayIdx(i + 1); }}
+                  onDoubleClick={(e) => { setActiveOverlayIdx(i + 1); openPanel("overlay", e); }}
+                >
+                  <p
+                    className="font-black drop-shadow-lg"
+                    style={{
+                      fontSize: `${16 * textScale * (ov.scale || 1)}px`,
+                      color: ov.color,
+                      textShadow: "0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5)",
+                      letterSpacing: `${ov.letterSpacing}px`,
+                      lineHeight: ov.lineHeight,
+                      fontWeight: ov.bold ? "bold" : "normal",
+                      fontStyle: ov.italic ? "italic" : "normal",
+                    }}
+                  >
+                    {ov.text}
+                  </p>
+                </div>
+              ) : null)}
 
             {/* ── CARDS (visible in all, cartes) — grid or free-positioning mode ── */}
             {((activeSequence === "all" && exportedSequences.cartes) || activeSequence === "cartes") &&
@@ -8095,7 +8212,7 @@ function InfographicPageInner() {
           </div>
         </FloatingPanel>
 
-        {/* ── Video Overlay Panel ── */}
+        {/* ── Video Overlay Panel — tabs for up to 4 overlays ── */}
         <FloatingPanel
           title="Texte Vidéo"
           icon="🎥"
@@ -8105,104 +8222,313 @@ function InfographicPageInner() {
           initialY={panelPos.y}
           accentColor="#06B6D4"
         >
-          <div className="space-y-2">
-            <input
-              type="text"
-              value={videoOverlayText}
-              onChange={(e) => setVideoOverlayText(e.target.value)}
-              className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white focus:border-purple-500 focus:outline-none"
-              placeholder="Texte affiché sur la vidéo"
-            />
-            <ColorWheel color={overlayColor} onChange={setOverlayColor} label="Couleur" />
-            <button
-              onClick={async () => {
-                setIsGeneratingOverlay(true);
-                try {
-                  const themeObj = CONTENT_THEMES.find(
-                    (t) => t.id === contentTheme,
-                  );
-                  const topicText =
-                    contentTheme === "personnalise"
-                      ? customTopic
-                      : themeObj?.label || contentTheme;
-                  const res = await fetch("/api/content/ai-generate", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      topic: topicText,
-                      locale: "fr",
-                      cardCount: 1,
-                    }),
-                  });
-                  if (res.ok) {
-                    const data = await res.json();
-                    if (data.success && data.content?.subtitle)
-                      setVideoOverlayText(data.content.subtitle);
+          {(() => {
+            // activeOverlayIdx === 0 edits the legacy overlay (existing
+            // state). idx >= 1 edits extraOverlays[idx - 1].
+            const isLegacy = activeOverlayIdx === 0;
+            const extraIdx = activeOverlayIdx - 1;
+            const extra = !isLegacy ? extraOverlays[extraIdx] : null;
+
+            const updateExtra = (patch: Partial<ExtraOverlay>) => {
+              setExtraOverlays((prev) =>
+                prev.map((o, i) => (i === extraIdx ? { ...o, ...patch } : o)),
+              );
+            };
+
+            const handleDuplicate = () => {
+              if (extraOverlays.length >= 3) return; // cap at 4 total (1 legacy + 3 extras)
+              const newOverlay: ExtraOverlay = isLegacy
+                ? {
+                    id: `ov-${Date.now()}`,
+                    text: videoOverlayText || 'Nouveau texte',
+                    position: { x: overlayPos.x + 5, y: overlayPos.y + 8 },
+                    color: overlayColor,
+                    scale: overlayTextScale,
+                    startTime: overlayStartTime,
+                    endTime: overlayEndTime,
+                    bold: overlayBold,
+                    italic: overlayItalic,
+                    letterSpacing: overlayLetterSpacing,
+                    lineHeight: overlayLineHeight,
                   }
-                } catch {
-                  /* ignore */
-                } finally {
-                  setIsGeneratingOverlay(false);
-                }
-              }}
-              disabled={isGeneratingOverlay}
-              className="w-full flex items-center justify-center gap-1.5 rounded bg-cyan-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-cyan-600 disabled:opacity-50"
-            >
-              {isGeneratingOverlay ? (
-                <Loader2 size={12} className="animate-spin" />
-              ) : (
-                <Sparkles size={12} />
-              )}
-              Générer par IA
-            </button>
-            {/* Typography */}
-            <div className="flex gap-1 mt-1">
-              <button
-                onClick={() => setOverlayBold(!overlayBold)}
-                className={`px-2 py-1 rounded text-[10px] font-bold transition-all ${overlayBold ? "bg-cyan-600 text-white" : "bg-gray-800 text-gray-400"}`}
-              >
-                B
-              </button>
-              <button
-                onClick={() => setOverlayItalic(!overlayItalic)}
-                className={`px-2 py-1 rounded text-[10px] italic transition-all ${overlayItalic ? "bg-cyan-600 text-white" : "bg-gray-800 text-gray-400"}`}
-              >
-                I
-              </button>
-            </div>
-            <div>
-              <span className="text-[9px] text-gray-500 uppercase">
-                Espacement {overlayLetterSpacing}px
-              </span>
-              <input
-                type="range"
-                min="-2"
-                max="15"
-                step="0.5"
-                value={overlayLetterSpacing}
-                onChange={(e) =>
-                  setOverlayLetterSpacing(parseFloat(e.target.value))
-                }
-                className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-cyan-500 cursor-pointer mt-1"
-              />
-            </div>
-            <div>
-              <span className="text-[9px] text-gray-500 uppercase">
-                Interligne {overlayLineHeight.toFixed(1)}
-              </span>
-              <input
-                type="range"
-                min="0.8"
-                max="2.5"
-                step="0.1"
-                value={overlayLineHeight}
-                onChange={(e) =>
-                  setOverlayLineHeight(parseFloat(e.target.value))
-                }
-                className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-cyan-500 cursor-pointer mt-1"
-              />
-            </div>
-          </div>
+                : {
+                    id: `ov-${Date.now()}`,
+                    text: extra?.text || 'Nouveau texte',
+                    position: { x: (extra?.position.x ?? 50) + 5, y: (extra?.position.y ?? 33) + 8 },
+                    color: extra?.color || '#FFFFFF',
+                    scale: extra?.scale ?? 1,
+                    startTime: extra?.startTime ?? 0,
+                    endTime: extra?.endTime ?? -1,
+                    bold: extra?.bold ?? true,
+                    italic: extra?.italic ?? false,
+                    letterSpacing: extra?.letterSpacing ?? 0,
+                    lineHeight: extra?.lineHeight ?? 1.2,
+                  };
+              setExtraOverlays((prev) => [...prev, newOverlay]);
+              setActiveOverlayIdx(extraOverlays.length + 1);
+            };
+
+            const handleAddBlank = () => {
+              if (extraOverlays.length >= 3) return;
+              const newOverlay: ExtraOverlay = {
+                id: `ov-${Date.now()}`,
+                text: '',
+                position: { x: 50, y: 55 },
+                color: '#FFFFFF',
+                scale: 1,
+                startTime: 0,
+                endTime: -1,
+                bold: true,
+                italic: false,
+                letterSpacing: 0,
+                lineHeight: 1.2,
+              };
+              setExtraOverlays((prev) => [...prev, newOverlay]);
+              setActiveOverlayIdx(extraOverlays.length + 1);
+            };
+
+            const handleDelete = () => {
+              if (isLegacy) {
+                setVideoOverlayText('');
+                return;
+              }
+              setExtraOverlays((prev) => prev.filter((_, i) => i !== extraIdx));
+              setActiveOverlayIdx(0);
+            };
+
+            const totalOverlays = 1 + extraOverlays.length;
+
+            return (
+              <div className="space-y-2">
+                {/* Tabs */}
+                <div className="flex items-center gap-1 pb-1.5 border-b border-gray-700 overflow-x-auto">
+                  {Array.from({ length: totalOverlays }, (_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setActiveOverlayIdx(i)}
+                      className={`flex-shrink-0 px-2 py-1 rounded text-[10px] font-semibold transition ${
+                        activeOverlayIdx === i
+                          ? 'bg-cyan-600 text-white'
+                          : 'bg-gray-800 text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      Overlay {i + 1}
+                    </button>
+                  ))}
+                  {totalOverlays < 4 && (
+                    <button
+                      onClick={handleAddBlank}
+                      className="flex-shrink-0 flex items-center gap-0.5 px-2 py-1 rounded text-[10px] font-semibold bg-gray-800 text-cyan-300 hover:text-cyan-200"
+                      title="Ajouter un overlay"
+                    >
+                      <Plus size={10} /> Ajouter
+                    </button>
+                  )}
+                </div>
+
+                {/* Text */}
+                <input
+                  type="text"
+                  value={isLegacy ? videoOverlayText : (extra?.text || '')}
+                  onChange={(e) => {
+                    if (isLegacy) setVideoOverlayText(e.target.value);
+                    else updateExtra({ text: e.target.value });
+                  }}
+                  className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white focus:border-purple-500 focus:outline-none"
+                  placeholder="Texte affiché sur la vidéo"
+                />
+
+                {/* Color */}
+                <ColorWheel
+                  color={isLegacy ? overlayColor : (extra?.color || '#FFFFFF')}
+                  onChange={(c) => {
+                    if (isLegacy) setOverlayColor(c);
+                    else updateExtra({ color: c });
+                  }}
+                  label="Couleur"
+                />
+
+                {isLegacy && (
+                  <button
+                    onClick={async () => {
+                      setIsGeneratingOverlay(true);
+                      try {
+                        const themeObj = CONTENT_THEMES.find(
+                          (t) => t.id === contentTheme,
+                        );
+                        const topicText =
+                          contentTheme === "personnalise"
+                            ? customTopic
+                            : themeObj?.label || contentTheme;
+                        const res = await fetch("/api/content/ai-generate", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            topic: topicText,
+                            locale: "fr",
+                            cardCount: 1,
+                          }),
+                        });
+                        if (res.ok) {
+                          const data = await res.json();
+                          if (data.success && data.content?.subtitle)
+                            setVideoOverlayText(data.content.subtitle);
+                        }
+                      } catch {
+                        /* ignore */
+                      } finally {
+                        setIsGeneratingOverlay(false);
+                      }
+                    }}
+                    disabled={isGeneratingOverlay}
+                    className="w-full flex items-center justify-center gap-1.5 rounded bg-cyan-700 px-2 py-1.5 text-[10px] font-medium text-white hover:bg-cyan-600 disabled:opacity-50"
+                  >
+                    {isGeneratingOverlay ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                    Générer par IA
+                  </button>
+                )}
+
+                {/* Typography B / I */}
+                <div className="flex gap-1 mt-1">
+                  <button
+                    onClick={() => {
+                      if (isLegacy) setOverlayBold(!overlayBold);
+                      else updateExtra({ bold: !(extra?.bold ?? true) });
+                    }}
+                    className={`px-2 py-1 rounded text-[10px] font-bold transition-all ${(isLegacy ? overlayBold : extra?.bold ?? true) ? "bg-cyan-600 text-white" : "bg-gray-800 text-gray-400"}`}
+                  >
+                    B
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (isLegacy) setOverlayItalic(!overlayItalic);
+                      else updateExtra({ italic: !(extra?.italic ?? false) });
+                    }}
+                    className={`px-2 py-1 rounded text-[10px] italic transition-all ${(isLegacy ? overlayItalic : extra?.italic ?? false) ? "bg-cyan-600 text-white" : "bg-gray-800 text-gray-400"}`}
+                  >
+                    I
+                  </button>
+                </div>
+
+                {/* Letter spacing */}
+                <div>
+                  <span className="text-[9px] text-gray-500 uppercase">
+                    Espacement {(isLegacy ? overlayLetterSpacing : extra?.letterSpacing ?? 0)}px
+                  </span>
+                  <input
+                    type="range"
+                    min="-2"
+                    max="15"
+                    step="0.5"
+                    value={isLegacy ? overlayLetterSpacing : extra?.letterSpacing ?? 0}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      if (isLegacy) setOverlayLetterSpacing(v);
+                      else updateExtra({ letterSpacing: v });
+                    }}
+                    className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-cyan-500 cursor-pointer mt-1"
+                  />
+                </div>
+
+                {/* Line height */}
+                <div>
+                  <span className="text-[9px] text-gray-500 uppercase">
+                    Interligne {(isLegacy ? overlayLineHeight : extra?.lineHeight ?? 1.2).toFixed(1)}
+                  </span>
+                  <input
+                    type="range"
+                    min="0.8"
+                    max="2.5"
+                    step="0.1"
+                    value={isLegacy ? overlayLineHeight : extra?.lineHeight ?? 1.2}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      if (isLegacy) setOverlayLineHeight(v);
+                      else updateExtra({ lineHeight: v });
+                    }}
+                    className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-cyan-500 cursor-pointer mt-1"
+                  />
+                </div>
+
+                {/* Text scale */}
+                <div>
+                  <span className="text-[9px] text-gray-500 uppercase">
+                    Taille {Math.round((isLegacy ? overlayTextScale : extra?.scale ?? 1) * 100)}%
+                  </span>
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="2"
+                    step="0.05"
+                    value={isLegacy ? overlayTextScale : extra?.scale ?? 1}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      if (isLegacy) setOverlayTextScale(v);
+                      else updateExtra({ scale: v });
+                    }}
+                    className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-cyan-500 cursor-pointer mt-1"
+                  />
+                </div>
+
+                {/* Timing */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-[9px] text-gray-500 uppercase">Apparaît à (s)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={videoDuration}
+                      step={0.5}
+                      value={isLegacy ? overlayStartTime : extra?.startTime ?? 0}
+                      onChange={(e) => {
+                        const v = Math.max(0, parseFloat(e.target.value) || 0);
+                        if (isLegacy) setOverlayStartTime(v);
+                        else updateExtra({ startTime: v });
+                      }}
+                      className="w-full mt-1 rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white focus:border-cyan-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-gray-500 uppercase">Disparaît à (s)</span>
+                    <input
+                      type="number"
+                      min={-1}
+                      max={videoDuration}
+                      step={0.5}
+                      value={isLegacy ? overlayEndTime : extra?.endTime ?? -1}
+                      onChange={(e) => {
+                        const raw = parseFloat(e.target.value);
+                        const v = isNaN(raw) ? -1 : raw;
+                        if (isLegacy) setOverlayEndTime(v);
+                        else updateExtra({ endTime: v });
+                      }}
+                      className="w-full mt-1 rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white focus:border-cyan-500 focus:outline-none"
+                      title="-1 = jusqu'à la fin de la séquence vidéo"
+                    />
+                  </div>
+                </div>
+
+                {/* Duplicate + Delete */}
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    onClick={handleDuplicate}
+                    disabled={extraOverlays.length >= 3}
+                    className="flex items-center justify-center gap-1 rounded bg-gray-800 hover:bg-gray-700 px-2 py-1.5 text-[10px] font-medium text-gray-200 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="Dupliquer l'overlay actif"
+                  >
+                    <CopyIcon size={14} strokeWidth={2} /> Dupliquer
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    className="flex items-center justify-center gap-1 rounded bg-red-900/40 hover:bg-red-900/60 px-2 py-1.5 text-[10px] font-medium text-red-200 transition"
+                    title={isLegacy ? "Effacer le texte" : "Supprimer cet overlay"}
+                  >
+                    <Trash2 size={14} strokeWidth={2} /> Supprimer
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
         </FloatingPanel>
 
         {/* ── Add Element Panel (opens on background double-click) ── */}
