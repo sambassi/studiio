@@ -3637,40 +3637,43 @@ function InfographicPageInner() {
             setExportProgress(Math.round(((b + 0.3) / total) * 100));
             // Snapshot the live editor cards grid for WYSIWYG parity. The
             // [data-cards-grid] element only renders when activeSequence is
-            // "all" or "cartes" — if the user switched to another tab before
-            // clicking export, the node is absent and html2canvas captures
-            // nothing. Force the preview to the cards sequence around the
-            // capture, then restore whatever the user had selected.
-            //
-            // CRUCIAL for batch exports: only snapshot on iteration b === 0.
-            // The DOM element renders the React `cards` state, not `bCards`
-            // (the per-iteration variation), so capturing on b>0 would paste
-            // iteration 0's cards onto every subsequent video. Skipping the
-            // snapshot forces the composer's manual Canvas 2D renderer to
-            // draw `bCards` directly, giving each iteration its own cards.
+            // Every iteration (including b > 0) captures a FRESH html2canvas
+            // snapshot of the cards grid rendered with the iteration's
+            // variation content. Before PR #26's workaround we only
+            // captured at b === 0 and every subsequent video inherited that
+            // layout; skipping to the manual Canvas 2D fallback produced
+            // noticeably different layouts (clipped / overlapping cards).
+            // The fix: temporarily sync React `cards` state with `bCards`,
+            // wait for the repaint, snapshot, then restore the editor's
+            // original cards once the compose call returns.
             let cardsSnapshot: HTMLImageElement | undefined;
             let cardsSnapshotRect: { x: number; y: number; width: number; height: number } | undefined;
             const prevSequenceCal = activeSequence;
             let didForceSequenceCal = false;
-            const canSnapshotCards = b === 0;
-            if (canSnapshotCards && exportedSequences.cartes && bCards.length > 0 && activeSequence !== 'cartes' && activeSequence !== 'all') {
+            const shouldSnapshot = exportedSequences.cartes && bCards.length > 0;
+            const originalCardsForBatch = cards; // captured once per iteration
+            const needsStateSync = b > 0 && shouldSnapshot;
+            if (shouldSnapshot && activeSequence !== 'cartes' && activeSequence !== 'all') {
               setActiveSequence('cartes');
               didForceSequenceCal = true;
-              // Wait two frames so React commits the DOM mount before capture.
+            }
+            if (needsStateSync) {
+              // Push the iteration's cards into the editor state so the
+              // DOM reflects what this video should display. The finally
+              // block below restores `originalCardsForBatch` so the user's
+              // editor view isn't permanently mutated.
+              setCards(bCards);
+            }
+            if (needsStateSync || didForceSequenceCal) {
+              // Two rAFs = one commit + one paint, enough for React +
+              // browser to settle before html2canvas reads the DOM.
               await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
             }
             try {
-              const cardsEl = canSnapshotCards ? document.querySelector('[data-cards-grid]') as HTMLElement | null : null;
-              if (!canSnapshotCards) {
-                console.log(`[Batch #${b}] Skipping cards snapshot — composer will render bCards directly.`);
-              } else {
-                console.log('[Export] cardsEl offsetWidth/Height:', cardsEl?.offsetWidth, cardsEl?.offsetHeight);
-              }
-              if (cardsEl && cardsEl.offsetWidth > 0 && exportedSequences.cartes && bCards.length > 0) {
+              const cardsEl = shouldSnapshot ? document.querySelector('[data-cards-grid]') as HTMLElement | null : null;
+              console.log(`[Batch #${b}] cardsEl offsetWidth/Height:`, cardsEl?.offsetWidth, cardsEl?.offsetHeight);
+              if (cardsEl && cardsEl.offsetWidth > 0 && shouldSnapshot) {
                 const html2canvas = (await import('html2canvas')).default;
-                // Scale the capture so 1 DOM px = 1 video-canvas px. The
-                // snapshot's intrinsic size then matches the cards' target
-                // render size, and the composer can blit it at natural size.
                 const videoW = isReel ? 1080 : 1920;
                 const previewW = previewRef.current?.offsetWidth || (isReel ? 320 : 512);
                 const scale = videoW / previewW;
@@ -3678,9 +3681,9 @@ function InfographicPageInner() {
                 const img = new Image();
                 img.src = canvas.toDataURL('image/png');
                 await new Promise<void>((r) => { img.onload = () => r(); });
-                console.log('[Export] snapshot natural size:', img.naturalWidth, img.naturalHeight);
+                console.log(`[Batch #${b}] snapshot natural size:`, img.naturalWidth, img.naturalHeight);
                 if (img.naturalWidth === 0 || img.naturalHeight === 0) {
-                  console.warn('[Export] Snapshot has zero natural size — falling back to manual canvas render.');
+                  console.warn(`[Batch #${b}] Snapshot has zero natural size — falling back to manual canvas render.`);
                 } else {
                   cardsSnapshot = img;
                   if (previewRef.current) {
@@ -3693,16 +3696,20 @@ function InfographicPageInner() {
                       height: (cRect.height / pRect.height) * 100,
                     };
                   }
-                  console.log('[Export] Cards snapshot OK:', cardsSnapshot.width, 'x', cardsSnapshot.height, '(scale', scale.toFixed(3), 'previewW', previewW + ') rect:', cardsSnapshotRect);
+                  console.log(`[Batch #${b}] Cards snapshot OK:`, cardsSnapshot.width, 'x', cardsSnapshot.height, 'rect:', cardsSnapshotRect);
                 }
-              } else if (canSnapshotCards && exportedSequences.cartes && bCards.length > 0) {
-                console.warn('[Export] Cards grid element missing or zero-sized after forced sequence switch — using manual canvas fallback.');
+              } else if (shouldSnapshot) {
+                console.warn(`[Batch #${b}] Cards grid element missing or zero-sized — using manual canvas fallback.`);
               }
             } catch (err) {
-              console.warn('[Export] Cards snapshot failed, composer will use canvas fallback:', err);
+              console.warn(`[Batch #${b}] Cards snapshot failed, composer will use canvas fallback:`, err);
             } finally {
               if (didForceSequenceCal) {
                 setActiveSequence(prevSequenceCal);
+              }
+              if (needsStateSync) {
+                // Restore the editor's own cards so the user's UI is intact.
+                setCards(originalCardsForBatch);
               }
             }
             // eslint-disable-next-line no-console
