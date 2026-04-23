@@ -7000,11 +7000,13 @@ function InfographicPageInner() {
                     lineHeight: titleLineHeight,
                     fontWeight: titleBold ? 900 : 400,
                     fontStyle: titleItalic ? "italic" : "normal",
+                    fontFamily: titleFont ? (FONT_CSS_MAP[titleFont] || titleFont) : undefined,
                     ...(titleTextGradient ? {
                       background: `linear-gradient(135deg, ${titleGradColor1}, ${titleGradColor2})`,
                       WebkitBackgroundClip: "text",
                       WebkitTextFillColor: "transparent",
                       backgroundClip: "text",
+                      color: "transparent",
                     } : {
                       color: titleColor,
                     }),
@@ -7055,13 +7057,20 @@ function InfographicPageInner() {
                     className="font-black drop-shadow-lg"
                     style={{
                       fontSize: `${16 * textScale * overlayTextScale}px`,
-                      color: overlayColor,
                       textShadow:
                         "0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5)",
                       letterSpacing: `${overlayLetterSpacing}px`,
                       lineHeight: overlayLineHeight,
                       fontWeight: overlayBold ? "bold" : "normal",
                       fontStyle: overlayItalic ? "italic" : "normal",
+                      fontFamily: overlayFont ? (FONT_CSS_MAP[overlayFont] || overlayFont) : undefined,
+                      ...(overlayTextGradient ? {
+                        background: `linear-gradient(135deg, ${overlayGradColor1}, ${overlayGradColor2})`,
+                        WebkitBackgroundClip: 'text',
+                        backgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        color: 'transparent',
+                      } : { color: overlayColor }),
                     }}
                   >
                     {videoOverlayText}
@@ -7096,12 +7105,21 @@ function InfographicPageInner() {
                     className="font-black drop-shadow-lg"
                     style={{
                       fontSize: `${16 * textScale * (ov.scale || 1)}px`,
-                      color: ov.color,
                       textShadow: "0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5)",
                       letterSpacing: `${ov.letterSpacing}px`,
                       lineHeight: ov.lineHeight,
                       fontWeight: ov.bold ? "bold" : "normal",
                       fontStyle: ov.italic ? "italic" : "normal",
+                      fontFamily: overlayFont ? (FONT_CSS_MAP[overlayFont] || overlayFont) : undefined,
+                      // Extras inherit the legacy overlay's gradient flag so
+                      // the whole stack is styled consistently.
+                      ...(overlayTextGradient ? {
+                        background: `linear-gradient(135deg, ${overlayGradColor1}, ${overlayGradColor2})`,
+                        WebkitBackgroundClip: 'text',
+                        backgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        color: 'transparent',
+                      } : { color: ov.color }),
                     }}
                   >
                     {ov.text}
@@ -7473,11 +7491,18 @@ function InfographicPageInner() {
                     className="font-medium drop-shadow"
                     style={{
                       fontSize: `${(format === "16:9" ? 10 : 8) * ctaTextScale}px`,
-                      color: `${ctaColor}ee`,
                       letterSpacing: `${ctaLetterSpacing}px`,
                       lineHeight: ctaLineHeight,
                       fontWeight: ctaBold ? 900 : 400,
                       fontStyle: ctaItalic ? "italic" : "normal",
+                      fontFamily: ctaFont ? (FONT_CSS_MAP[ctaFont] || ctaFont) : undefined,
+                      ...(ctaTextGradient ? {
+                        background: `linear-gradient(135deg, ${ctaGradColor1}, ${ctaGradColor2})`,
+                        WebkitBackgroundClip: 'text',
+                        backgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        color: 'transparent',
+                      } : { color: `${ctaColor}ee` }),
                     }}
                   >
                     {salesPhrases[0]}
@@ -7487,11 +7512,18 @@ function InfographicPageInner() {
                   className="mt-0.5 font-black drop-shadow-lg uppercase"
                   style={{
                     fontSize: `${(format === "16:9" ? 16 : 12) * ctaTextScale}px`,
-                    color: ctaColor,
                     letterSpacing: `${ctaLetterSpacing}px`,
                     lineHeight: ctaLineHeight,
                     fontWeight: ctaBold ? 900 : 400,
                     fontStyle: ctaItalic ? "italic" : "normal",
+                    fontFamily: watermarkFont ? (FONT_CSS_MAP[watermarkFont] || watermarkFont) : undefined,
+                    ...(watermarkTextGradient ? {
+                      background: `linear-gradient(135deg, ${watermarkGradColor1}, ${watermarkGradColor2})`,
+                      WebkitBackgroundClip: 'text',
+                      backgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      color: 'transparent',
+                    } : { color: ctaColor }),
                   }}
                 >
                   {ctaMainText || "AFROBOOST"}
@@ -7500,11 +7532,18 @@ function InfographicPageInner() {
                   className="font-bold drop-shadow mt-1 uppercase"
                   style={{
                     fontSize: `${(format === "16:9" ? 12 : 9) * ctaTextScale}px`,
-                    color: ctaSubColor,
                     letterSpacing: `${ctaLetterSpacing}px`,
                     lineHeight: ctaLineHeight,
                     fontWeight: ctaBold ? 900 : 400,
                     fontStyle: ctaItalic ? "italic" : "normal",
+                    fontFamily: ctaFont ? (FONT_CSS_MAP[ctaFont] || ctaFont) : undefined,
+                    ...(ctaTextGradient ? {
+                      background: `linear-gradient(135deg, ${ctaGradColor1}, ${ctaGradColor2})`,
+                      WebkitBackgroundClip: 'text',
+                      backgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      color: 'transparent',
+                    } : { color: ctaSubColor }),
                   }}
                 >
                   {ctaSubText || "CHAT POUR PLUS D'INFOS"}
