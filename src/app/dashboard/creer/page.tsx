@@ -1557,6 +1557,25 @@ function InfographicPageInner() {
   const [overlayBold, setOverlayBold] = useState(true);
   const [overlayItalic, setOverlayItalic] = useState(false);
   const [overlayColor, setOverlayColor] = useState('#FFFFFF');
+
+  // Per-element font overrides. undefined = inherit selectedFont.
+  const [titleFont, setTitleFont] = useState<string | undefined>(undefined);
+  const [ctaFont, setCtaFont] = useState<string | undefined>(undefined);
+  const [overlayFont, setOverlayFont] = useState<string | undefined>(undefined);
+  const [watermarkFont, setWatermarkFont] = useState<string | undefined>(undefined);
+  const [cardsFont, setCardsFont] = useState<string | undefined>(undefined);
+
+  // Gradient on text (toggle + two colors) per element. Title already has
+  // titleTextGradient/titleGradColor1/titleGradColor2 below.
+  const [ctaTextGradient, setCtaTextGradient] = useState(false);
+  const [ctaGradColor1, setCtaGradColor1] = useState('#FFD700');
+  const [ctaGradColor2, setCtaGradColor2] = useState('#FF6B6B');
+  const [overlayTextGradient, setOverlayTextGradient] = useState(false);
+  const [overlayGradColor1, setOverlayGradColor1] = useState('#FFD700');
+  const [overlayGradColor2, setOverlayGradColor2] = useState('#FF6B6B');
+  const [watermarkTextGradient, setWatermarkTextGradient] = useState(false);
+  const [watermarkGradColor1, setWatermarkGradColor1] = useState('#FFD700');
+  const [watermarkGradColor2, setWatermarkGradColor2] = useState('#FF6B6B');
   // Scale + timing on the legacy (primary) overlay. 1.0 = 100 %.
   // endTime < 0 means "until the video sequence ends".
   const [overlayTextScale, setOverlayTextScale] = useState(1.0);
@@ -1744,6 +1763,23 @@ function InfographicPageInner() {
         if (typeof cfg.overlayTextScale === 'number') setOverlayTextScale(cfg.overlayTextScale);
         if (typeof cfg.overlayStartTime === 'number') setOverlayStartTime(cfg.overlayStartTime);
         if (typeof cfg.overlayEndTime === 'number') setOverlayEndTime(cfg.overlayEndTime);
+        if (typeof cfg.videoOverlayText === 'string') setVideoOverlayText(cfg.videoOverlayText);
+        // Per-element font overrides
+        if (typeof cfg.titleFont === 'string') setTitleFont(cfg.titleFont);
+        if (typeof cfg.ctaFont === 'string') setCtaFont(cfg.ctaFont);
+        if (typeof cfg.overlayFont === 'string') setOverlayFont(cfg.overlayFont);
+        if (typeof cfg.watermarkFont === 'string') setWatermarkFont(cfg.watermarkFont);
+        if (typeof cfg.cardsFont === 'string') setCardsFont(cfg.cardsFont);
+        // Text gradients per element (title gradient was already handled above)
+        if (typeof cfg.ctaTextGradient === 'boolean') setCtaTextGradient(cfg.ctaTextGradient);
+        if (cfg.ctaGradColor1) setCtaGradColor1(cfg.ctaGradColor1);
+        if (cfg.ctaGradColor2) setCtaGradColor2(cfg.ctaGradColor2);
+        if (typeof cfg.overlayTextGradient === 'boolean') setOverlayTextGradient(cfg.overlayTextGradient);
+        if (cfg.overlayGradColor1) setOverlayGradColor1(cfg.overlayGradColor1);
+        if (cfg.overlayGradColor2) setOverlayGradColor2(cfg.overlayGradColor2);
+        if (typeof cfg.watermarkTextGradient === 'boolean') setWatermarkTextGradient(cfg.watermarkTextGradient);
+        if (cfg.watermarkGradColor1) setWatermarkGradColor1(cfg.watermarkGradColor1);
+        if (cfg.watermarkGradColor2) setWatermarkGradColor2(cfg.watermarkGradColor2);
         if (Array.isArray(cfg.extraOverlays)) {
           setExtraOverlays(
             cfg.extraOverlays.filter(
@@ -2177,6 +2213,21 @@ function InfographicPageInner() {
     if (typeof c.overlayTextScale === 'number') setOverlayTextScale(c.overlayTextScale);
     if (typeof c.overlayStartTime === 'number') setOverlayStartTime(c.overlayStartTime);
     if (typeof c.overlayEndTime === 'number') setOverlayEndTime(c.overlayEndTime);
+    if (typeof c.videoOverlayText === 'string') setVideoOverlayText(c.videoOverlayText);
+    if (c.titleFont !== undefined) setTitleFont(c.titleFont);
+    if (c.ctaFont !== undefined) setCtaFont(c.ctaFont);
+    if (c.overlayFont !== undefined) setOverlayFont(c.overlayFont);
+    if (c.watermarkFont !== undefined) setWatermarkFont(c.watermarkFont);
+    if (c.cardsFont !== undefined) setCardsFont(c.cardsFont);
+    if (typeof c.ctaTextGradient === 'boolean') setCtaTextGradient(c.ctaTextGradient);
+    if (c.ctaGradColor1) setCtaGradColor1(c.ctaGradColor1);
+    if (c.ctaGradColor2) setCtaGradColor2(c.ctaGradColor2);
+    if (typeof c.overlayTextGradient === 'boolean') setOverlayTextGradient(c.overlayTextGradient);
+    if (c.overlayGradColor1) setOverlayGradColor1(c.overlayGradColor1);
+    if (c.overlayGradColor2) setOverlayGradColor2(c.overlayGradColor2);
+    if (typeof c.watermarkTextGradient === 'boolean') setWatermarkTextGradient(c.watermarkTextGradient);
+    if (c.watermarkGradColor1) setWatermarkGradColor1(c.watermarkGradColor1);
+    if (c.watermarkGradColor2) setWatermarkGradColor2(c.watermarkGradColor2);
     if (Array.isArray(c.extraOverlays)) setExtraOverlays(c.extraOverlays);
     if (Array.isArray(c.cardGroups)) setCardGroups(c.cardGroups);
     if (c.cardPositionMode === 'grid' || c.cardPositionMode === 'free') setCardPositionMode(c.cardPositionMode);
@@ -2259,7 +2310,12 @@ function InfographicPageInner() {
         cardGroups,
         cardPositionMode,
         overlayTextScale, overlayStartTime, overlayEndTime,
+        videoOverlayText,
         extraOverlays,
+        titleFont, ctaFont, overlayFont, watermarkFont, cardsFont,
+        ctaTextGradient, ctaGradColor1, ctaGradColor2,
+        overlayTextGradient, overlayGradColor1, overlayGradColor2,
+        watermarkTextGradient, watermarkGradColor1, watermarkGradColor2,
         contentTheme, customTopic, title, subtitle,
         cards, salesPhrases,
         pexelsPhotos, selectedPhotoIndex,
@@ -2294,7 +2350,12 @@ function InfographicPageInner() {
     cardGroups,
     cardPositionMode,
     overlayTextScale, overlayStartTime, overlayEndTime,
+    videoOverlayText,
     extraOverlays,
+    titleFont, ctaFont, overlayFont, watermarkFont, cardsFont,
+    ctaTextGradient, ctaGradColor1, ctaGradColor2,
+    overlayTextGradient, overlayGradColor1, overlayGradColor2,
+    watermarkTextGradient, watermarkGradColor1, watermarkGradColor2,
     contentTheme, customTopic, title, subtitle,
     cards, salesPhrases,
     pexelsPhotos, selectedPhotoIndex,
@@ -3357,6 +3418,17 @@ function InfographicPageInner() {
         "axe alimentation : nutriments, timing des repas",
         "axe matériel / équipement : ce qu'il faut vraiment",
         "axe mythes et vérités : idées reçues vs réalité",
+        "axe transformation 30 jours : plan structuré avec jalons",
+        "axe pièges à éviter : erreurs communes et comment y échapper",
+        "axe routine matin/soir : rituels pour encadrer la journée",
+        "axe combinaison : synergies entre plusieurs pratiques",
+        "axe récupération : repos actif, sommeil, techniques",
+        "axe énergie rapide : gains sous 5-10 minutes",
+        "axe longue durée : progression sur 3-6-12 mois",
+        "axe débutant vs avancé : le même geste adapté à chaque niveau",
+        "axe erreurs courantes : ce que presque tout le monde rate",
+        "axe guide pas à pas : séquence numérotée de A à Z",
+        "axe naturel vs industriel : choix bruts vs produits transformés",
       ];
       // Helper: fetch fresh AI-generated content for the SAME theme but a
       // DIFFERENT angle each iteration, so each batch video carries its own
@@ -3698,8 +3770,16 @@ function InfographicPageInner() {
                   textGradient: titleTextGradient, gradColor1: titleGradColor1, gradColor2: titleGradColor2,
                   duplicate: titleDuplicate, duplicateOffset: titleDuplicateOffset, duplicateOpacity: titleDuplicateOpacity,
                 },
-                ctaTypography: { letterSpacing: ctaLetterSpacing, lineHeight: ctaLineHeight, bold: ctaBold, italic: ctaItalic },
-                overlayTypography: { letterSpacing: overlayLetterSpacing, lineHeight: overlayLineHeight, bold: overlayBold, italic: overlayItalic },
+                ctaTypography: {
+                  letterSpacing: ctaLetterSpacing, lineHeight: ctaLineHeight, bold: ctaBold, italic: ctaItalic,
+                  textGradient: ctaTextGradient, gradColor1: ctaGradColor1, gradColor2: ctaGradColor2,
+                },
+                overlayTypography: {
+                  letterSpacing: overlayLetterSpacing, lineHeight: overlayLineHeight, bold: overlayBold, italic: overlayItalic,
+                  textGradient: overlayTextGradient, gradColor1: overlayGradColor1, gradColor2: overlayGradColor2,
+                },
+                titleFont, ctaFont, overlayFont, watermarkFont, cardsFont,
+                watermarkTextGradient, watermarkGradColor1, watermarkGradColor2,
               },
               onProgress: (pct) => {
                 setExportProgress(Math.round(((b + 0.3 + pct / 100 * 0.6) / total) * 100));
@@ -4032,12 +4112,18 @@ function InfographicPageInner() {
                 lineHeight: ctaLineHeight || undefined,
                 bold: ctaBold,
                 italic: ctaItalic,
+                textGradient: ctaTextGradient,
+                gradColor1: ctaGradColor1,
+                gradColor2: ctaGradColor2,
               },
               overlayTypography: {
                 letterSpacing: overlayLetterSpacing || undefined,
                 lineHeight: overlayLineHeight || undefined,
                 bold: overlayBold,
                 italic: overlayItalic,
+                textGradient: overlayTextGradient,
+                gradColor1: overlayGradColor1,
+                gradColor2: overlayGradColor2,
               },
               overlayText: videoOverlayText || undefined,
               overlayColor: overlayColor || undefined,
@@ -4045,6 +4131,8 @@ function InfographicPageInner() {
               overlayStartTime,
               overlayEndTime,
               overlays: extraOverlays.length > 0 ? extraOverlays.map(({ id: _id, ...rest }) => rest) : undefined,
+              titleFont, ctaFont, overlayFont, watermarkFont, cardsFont,
+              watermarkTextGradient, watermarkGradColor1, watermarkGradColor2,
               noColorBg, noColorSequences,
               seqGradients,
               filter: selectedFilter || undefined,
@@ -5279,12 +5367,12 @@ function InfographicPageInner() {
         {/* ═══════════════════════════════════════════════════════ */}
         {step === 2 && (
           <div className="space-y-4">
-            {/* Batch Count — arrow counter */}
+            {/* Batch Count — arrow counter + presets */}
             <div>
               <label className="mb-2 block text-sm font-medium text-gray-300">
                 Nombre d'infographies
               </label>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <button
                   onClick={() => setBatchCount(Math.max(1, batchCount - 1))}
                   disabled={batchCount <= 1}
@@ -5298,13 +5386,38 @@ function InfographicPageInner() {
                   </span>
                 </div>
                 <button
-                  onClick={() => setBatchCount(Math.min(10, batchCount + 1))}
-                  disabled={batchCount >= 10}
+                  onClick={() => setBatchCount(Math.min(20, batchCount + 1))}
+                  disabled={batchCount >= 20}
                   className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-800 border border-gray-700 text-lg font-bold text-white hover:bg-gray-700 disabled:opacity-30 transition-all"
                 >
                   +
                 </button>
-                <span className="text-[10px] text-gray-500 ml-1">1 à 10</span>
+                <span className="text-[10px] text-gray-500 ml-1">1 à 20</span>
+                <div className="flex items-center gap-1 ml-1">
+                  {[1, 3, 5, 10, 20].map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => setBatchCount(n)}
+                      className={`h-7 min-w-[36px] px-2 rounded-md text-[11px] font-semibold transition ${
+                        batchCount === n
+                          ? 'bg-purple-600 text-white ring-1 ring-purple-400'
+                          : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                      }`}
+                    >
+                      x{n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-1.5 flex items-center gap-2">
+                <span className="text-[10px] text-gray-400">
+                  {batchCount * 25} crédits
+                </span>
+                {batchCount > 10 && (
+                  <span className="inline-flex items-center gap-1 text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded px-1.5 py-0.5">
+                    <AlertTriangle size={10} /> durée ≈ {batchCount * 15}s
+                  </span>
+                )}
               </div>
             </div>
 
@@ -7723,6 +7836,21 @@ function InfographicPageInner() {
               />
             </div>
 
+            {/* Title font override */}
+            <div className="mt-2 pt-2 border-t border-gray-800">
+              <span className="text-[9px] text-gray-500 uppercase">Police</span>
+              <select
+                value={titleFont || ''}
+                onChange={(e) => setTitleFont(e.target.value || undefined)}
+                className="w-full mt-1 rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white focus:border-purple-500 focus:outline-none"
+              >
+                <option value="">Héritée ({selectedFont})</option>
+                {Object.keys(FONT_CSS_MAP).map((f) => (
+                  <option key={f} value={f} style={{ fontFamily: FONT_CSS_MAP[f] }}>{f}</option>
+                ))}
+              </select>
+            </div>
+
             {/* Text gradient effect */}
             <div className="mt-2 pt-2 border-t border-gray-800">
               <label className="flex items-center gap-2 cursor-pointer mb-2">
@@ -7891,6 +8019,19 @@ function InfographicPageInner() {
                 ))}
               </div>
             </div>
+            <div className="mt-1 pt-2 border-t border-gray-800">
+              <span className="text-[9px] text-gray-500 uppercase">Police cartes</span>
+              <select
+                value={cardsFont || ''}
+                onChange={(e) => setCardsFont(e.target.value || undefined)}
+                className="w-full mt-1 rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white focus:border-pink-500 focus:outline-none"
+              >
+                <option value="">Héritée ({selectedFont})</option>
+                {Object.keys(FONT_CSS_MAP).map((f) => (
+                  <option key={f} value={f} style={{ fontFamily: FONT_CSS_MAP[f] }}>{f}</option>
+                ))}
+              </select>
+            </div>
           </div>
         </FloatingPanel>
 
@@ -8048,6 +8189,72 @@ function InfographicPageInner() {
                 onChange={(e) => setCtaLineHeight(parseFloat(e.target.value))}
                 className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-yellow-500 cursor-pointer mt-1"
               />
+            </div>
+
+            {/* CTA font override (affects the small "CHAT POUR PLUS D'INFOS" sub-text) */}
+            <div className="mt-2 pt-2 border-t border-gray-800">
+              <span className="text-[9px] text-gray-500 uppercase">Police CTA</span>
+              <select
+                value={ctaFont || ''}
+                onChange={(e) => setCtaFont(e.target.value || undefined)}
+                className="w-full mt-1 rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white focus:border-yellow-500 focus:outline-none"
+              >
+                <option value="">Héritée ({selectedFont})</option>
+                {Object.keys(FONT_CSS_MAP).map((f) => (
+                  <option key={f} value={f} style={{ fontFamily: FONT_CSS_MAP[f] }}>{f}</option>
+                ))}
+              </select>
+              <span className="text-[9px] text-gray-500 uppercase block mt-2">Police Watermark</span>
+              <select
+                value={watermarkFont || ''}
+                onChange={(e) => setWatermarkFont(e.target.value || undefined)}
+                className="w-full mt-1 rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white focus:border-yellow-500 focus:outline-none"
+              >
+                <option value="">Héritée ({selectedFont})</option>
+                {Object.keys(FONT_CSS_MAP).map((f) => (
+                  <option key={f} value={f} style={{ fontFamily: FONT_CSS_MAP[f] }}>{f}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* CTA sub-text gradient */}
+            <div className="mt-2 pt-2 border-t border-gray-800">
+              <label className="flex items-center gap-2 cursor-pointer mb-1.5">
+                <input type="checkbox" checked={ctaTextGradient} onChange={(e) => setCtaTextGradient(e.target.checked)} className="accent-yellow-500" />
+                <span className="text-[9px] text-gray-400 uppercase">Dégradé sur CTA</span>
+              </label>
+              {ctaTextGradient && (
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <span className="text-[8px] text-gray-500">Couleur 1</span>
+                    <input type="color" value={ctaGradColor1} onChange={(e) => setCtaGradColor1(e.target.value)} className="w-full h-6 rounded cursor-pointer bg-transparent" />
+                  </div>
+                  <div className="flex-1">
+                    <span className="text-[8px] text-gray-500">Couleur 2</span>
+                    <input type="color" value={ctaGradColor2} onChange={(e) => setCtaGradColor2(e.target.value)} className="w-full h-6 rounded cursor-pointer bg-transparent" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Watermark gradient (big CTA text) */}
+            <div className="mt-2 pt-2 border-t border-gray-800">
+              <label className="flex items-center gap-2 cursor-pointer mb-1.5">
+                <input type="checkbox" checked={watermarkTextGradient} onChange={(e) => setWatermarkTextGradient(e.target.checked)} className="accent-yellow-500" />
+                <span className="text-[9px] text-gray-400 uppercase">Dégradé sur Watermark</span>
+              </label>
+              {watermarkTextGradient && (
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <span className="text-[8px] text-gray-500">Couleur 1</span>
+                    <input type="color" value={watermarkGradColor1} onChange={(e) => setWatermarkGradColor1(e.target.value)} className="w-full h-6 rounded cursor-pointer bg-transparent" />
+                  </div>
+                  <div className="flex-1">
+                    <span className="text-[8px] text-gray-500">Couleur 2</span>
+                    <input type="color" value={watermarkGradColor2} onChange={(e) => setWatermarkGradColor2(e.target.value)} className="w-full h-6 rounded cursor-pointer bg-transparent" />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </FloatingPanel>
@@ -8521,6 +8728,48 @@ function InfographicPageInner() {
                   }}
                   label="Couleur"
                 />
+
+                {/* Font override — applies to both legacy + extras (single setting per-panel). */}
+                <div>
+                  <span className="text-[9px] text-gray-500 uppercase">Police</span>
+                  <select
+                    value={overlayFont || ''}
+                    onChange={(e) => setOverlayFont(e.target.value || undefined)}
+                    className="w-full mt-1 rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white focus:border-cyan-500 focus:outline-none"
+                  >
+                    <option value="">Héritée ({selectedFont})</option>
+                    {Object.keys(FONT_CSS_MAP).map((f) => (
+                      <option key={f} value={f} style={{ fontFamily: FONT_CSS_MAP[f] }}>{f}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Text gradient toggle (legacy overlay only — extras inherit) */}
+                {isLegacy && (
+                  <div className="pt-1 border-t border-gray-800">
+                    <label className="flex items-center gap-2 cursor-pointer mb-1.5">
+                      <input
+                        type="checkbox"
+                        checked={overlayTextGradient}
+                        onChange={(e) => setOverlayTextGradient(e.target.checked)}
+                        className="accent-cyan-500"
+                      />
+                      <span className="text-[9px] text-gray-400 uppercase">Texte en dégradé</span>
+                    </label>
+                    {overlayTextGradient && (
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <span className="text-[8px] text-gray-500">Couleur 1</span>
+                          <input type="color" value={overlayGradColor1} onChange={(e) => setOverlayGradColor1(e.target.value)} className="w-full h-6 rounded cursor-pointer bg-transparent" />
+                        </div>
+                        <div className="flex-1">
+                          <span className="text-[8px] text-gray-500">Couleur 2</span>
+                          <input type="color" value={overlayGradColor2} onChange={(e) => setOverlayGradColor2(e.target.value)} className="w-full h-6 rounded cursor-pointer bg-transparent" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {isLegacy && (
                   <button
@@ -9041,7 +9290,7 @@ function InfographicPageInner() {
             <button onClick={() => setBatchCount(Math.max(1, batchCount - 1))} disabled={batchCount <= 1}
               className="h-5 w-5 rounded text-[10px] font-bold text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 transition">−</button>
             <span className="text-[10px] font-bold text-purple-400 w-5 text-center">x{batchCount}</span>
-            <button onClick={() => setBatchCount(Math.min(10, batchCount + 1))} disabled={batchCount >= 10}
+            <button onClick={() => setBatchCount(Math.min(20, batchCount + 1))} disabled={batchCount >= 20}
               className="h-5 w-5 rounded text-[10px] font-bold text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 transition">+</button>
           </div>
         </div>
