@@ -958,6 +958,7 @@ export default function CalendarPage() {
             scheduled_date: editFormData.scheduled_date || formatDateForStorage(new Date(), new Date().getDate()),
             scheduled_time: editFormData.scheduled_time || '12:00',
             status: editTab,
+            metadata: editFormData.metadata || {},
           }),
         });
         const data = await res.json();
@@ -2205,8 +2206,11 @@ export default function CalendarPage() {
                   const fp = fullPreviewPost || selectedDayPosts[0];
                   const fpMeta = fp.metadata;
                   const thumbnailUrl = fpMeta?.thumbnailUrl || null;
-                  const fpPosterImg = fpMeta?.pexelsUrl || fpMeta?.posterUrl || fpMeta?.characterUrl || null;
-                  const videoUrl = (fpMeta?.renderedVideoUrl || fp.media_url || null) as string | null;
+                  // For image posts the file itself IS the poster — route it to
+                  // posterUrl so PostThumbnail renders <img>, not <video>.
+                  const mediaIsImage = fp.media_type === 'image';
+                  const fpPosterImg = fpMeta?.pexelsUrl || fpMeta?.posterUrl || fpMeta?.characterUrl || (mediaIsImage ? fp.media_url : null) || null;
+                  const videoUrl = (fpMeta?.renderedVideoUrl || (mediaIsImage ? null : fp.media_url) || null) as string | null;
                   return (
                     <div className="flex justify-center mb-3">
                       {/* `key={fp.id}` forces React to remount PostThumbnail when
