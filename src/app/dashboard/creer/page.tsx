@@ -1319,21 +1319,6 @@ function resolveCardIcon(
   return { iconType: 'svg', emoji: fallbackLucide };
 }
 
-/** Migrate a legacy card (emoji-mode) to SVG-mode. Idempotent. */
-function migrateCardToSvg<T extends Partial<InfoCard> & { iconType?: string; emoji?: string; icon?: string }>(card: T): T {
-  if (card.iconType === 'svg') return card;
-  // Some legacy shapes used "icon" instead of "emoji"
-  const sourceName = card.emoji || (card as any).icon || '';
-  return {
-    ...card,
-    iconType: 'svg' as const,
-    emoji: toLucideName(sourceName),
-    iconColor: (card as any).iconColor || '#FFFFFF',
-    iconSize: (card as any).iconSize || 32,
-    iconStyle: (card as any).iconStyle || 'outline',
-  } as T;
-}
-
 function InfographicPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -1568,17 +1553,25 @@ function InfographicPageInner() {
   const [titleDuplicateOffset, setTitleDuplicateOffset] = useState(5);
   const [titleDuplicateOpacity, setTitleDuplicateOpacity] = useState(0.3);
 
-  // ── Persist configurations across sessions ──────────────────
-  const INFOGRAPHIC_CONFIG_KEY = "studiio_infographic_config";
+  // ── Persist design preferences across sessions ─────────────
+  // Only DESIGN is persisted (colors, typography, positions, sizes, format,
+  // branding overrides, sequence visibility, filter, site text, etc).
+  // CONTENT (title, subtitle, cards, selected photo, rush, music, voice,
+  // character image) is NOT persisted — each visit starts a fresh creation.
+  const DESIGN_PREFS_KEY = "studiio-creer-design-prefs";
+  const LEGACY_CONFIG_KEY = "studiio_infographic_config"; // pre-split storage key, migrated on first load
   const [configLoaded, setConfigLoaded] = useState(false);
   const restoringFromStorage = useRef(true); // Skip auto-generate during initial localStorage restore
 
-  // Load saved config on mount
+  // Load saved design prefs on mount. Prefer the new key; migrate from the
+  // legacy key (which also stored content fields) when only the old key is
+  // present — we read the design subset and drop the rest.
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(INFOGRAPHIC_CONFIG_KEY);
-      if (saved) {
-        const cfg = JSON.parse(saved);
+      let raw = localStorage.getItem(DESIGN_PREFS_KEY);
+      if (!raw) raw = localStorage.getItem(LEGACY_CONFIG_KEY);
+      if (raw) {
+        const cfg = JSON.parse(raw);
         if (cfg.colorTheme) setColorTheme(cfg.colorTheme);
         if (cfg.format) setFormat(cfg.format);
         if (cfg.introDuration) setIntroDuration(cfg.introDuration);
@@ -1588,36 +1581,7 @@ function InfographicPageInner() {
         if (cfg.exportedSequences && typeof cfg.exportedSequences === "object") {
           setExportedSequences((prev) => ({ ...prev, ...cfg.exportedSequences }));
         }
-        if (Array.isArray(cfg.rushList) && cfg.rushList.length > 0) {
-          // New multi-rush format
-          setRushList(
-            cfg.rushList
-              .filter((r: unknown): r is { url: string; name: string } =>
-                !!r && typeof (r as { url?: unknown }).url === "string",
-              )
-              .map((r: { url: string; name?: string; kind?: 'video' | 'image'; transform?: { scale: number; offsetX: number; offsetY: number }; fromClip?: boolean }) => ({
-                url: r.url,
-                name: r.name || "video.mp4",
-                kind: r.kind,
-                transform: r.transform,
-                fromClip: r.fromClip,
-              })),
-          );
-        } else if (cfg.rushUrl) {
-          // Legacy single-rush format — upgrade to list
-          setRushList([
-            { url: cfg.rushUrl, name: cfg.rushFileName || "video.mp4" },
-          ]);
-        }
-        if (cfg.characterImage) setCharacterImage(cfg.characterImage);
-        if (cfg.characterScale !== undefined) setCharacterScale(cfg.characterScale);
-        if (cfg.characterPosition) setCharacterPosition(cfg.characterPosition);
-        if (cfg.audioMusicUrl) setAudioMusicUrl(cfg.audioMusicUrl);
-        if (cfg.audioMusicName) setAudioMusicName(cfg.audioMusicName);
-        if (cfg.audioVoiceUrl) setAudioVoiceUrl(cfg.audioVoiceUrl);
-        if (cfg.audioVoiceName) setAudioVoiceName(cfg.audioVoiceName);
-        if (cfg.audioMusicVolume !== undefined) setAudioMusicVolume(cfg.audioMusicVolume);
-        if (cfg.audioVoiceVolume !== undefined) setAudioVoiceVolume(cfg.audioVoiceVolume);
+        // Rushes, character, and audio are CONTENT — not restored.
         // Typography
         if (cfg.titleLetterSpacing !== undefined)
           setTitleLetterSpacing(cfg.titleLetterSpacing);
@@ -1689,16 +1653,9 @@ function InfographicPageInner() {
         if (cfg.titleSize) setTitleSize(cfg.titleSize);
         if (cfg.cardsSize) setCardsSize(cfg.cardsSize);
         if (cfg.watermarkSize) setWatermarkSize(cfg.watermarkSize);
-        // Contenu (pour que la réédition préserve les textes)
-        if (cfg.title) setTitle(cfg.title);
-        if (cfg.subtitle) setSubtitle(cfg.subtitle);
-        if (cfg.videoOverlayText) setVideoOverlayText(cfg.videoOverlayText);
-        if (cfg.cards && cfg.cards.length > 0) setCards(cfg.cards.map((c: any) => migrateCardToSvg(c)));
-        if (cfg.salesPhrases && cfg.salesPhrases.length > 0) setSalesPhrases(cfg.salesPhrases);
-        if (cfg.contentTheme) setContentTheme(cfg.contentTheme);
-        if (cfg.customTopic) setCustomTopic(cfg.customTopic);
-        if (cfg.photoSearchQuery) setPhotoSearchQuery(cfg.photoSearchQuery);
-        if (cfg.selectedPhotoIndex !== undefined) setSelectedPhotoIndex(cfg.selectedPhotoIndex);
+        // Content fields (title, subtitle, cards, sales phrases, theme,
+        // photo selection, overlay text) stay volatile — each visit starts
+        // fresh so the user doesn't re-edit a stale draft by accident.
         // Site text (Afroboost.com)
         if (cfg.siteText !== undefined) setSiteText(cfg.siteText);
         if (cfg.siteTextPositions) {
@@ -2004,58 +1961,61 @@ function InfographicPageInner() {
   // CTA sub-text color (separate from main ctaColor)
   const [ctaSubColor, setCtaSubColor] = useState("#D91CD2");
 
-  // ── Sauvegarde config à chaque changement — seulement APRÈS le chargement initial ──
-  // (Placé après TOUTES les déclarations useState pour éviter les erreurs de zone morte temporelle)
+  // ── Save DESIGN prefs on change (debounced, after initial restore) ──
+  // Content (title, subtitle, cards, photo selection, rush, audio,
+  // character image) is intentionally NOT serialized — each visit should
+  // start with an empty canvas for content, only the visual design carries
+  // over. The previous pre-split config key is wiped on first save so
+  // migrated content doesn't linger.
   useEffect(() => {
     if (!configLoaded) return;
-    try {
-      localStorage.setItem(
-        INFOGRAPHIC_CONFIG_KEY,
-        JSON.stringify({
-          colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration, exportedSequences,
-          rushUrl, rushFileName, rushList, characterImage,
-          titleLetterSpacing, titleLineHeight, titleBold, titleItalic,
-          ctaLetterSpacing, ctaLineHeight, ctaBold, ctaItalic,
-          overlayLetterSpacing, overlayLineHeight, overlayBold, overlayItalic, overlayColor, cardsLetterSpacing,
-          selectedFont, selectedFilter, selectedCardStyle,
-          titleColor, ctaColor, ctaSubColor, ctaMainText, ctaSubText,
-          titleTextGradient, titleGradColor1, titleGradColor2,
-          titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
-          gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, seqGradients,
-          textScale, ctaTextScale, cardsTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
-          titlePos, logoPositions, watermarkPos, cardsPos, overlayPos,
-          titleSize, cardsSize, watermarkSize,
-          title, subtitle, videoOverlayText, cards, salesPhrases, contentTheme, customTopic,
-          photoSearchQuery, selectedPhotoIndex,
-          siteText, siteTextPositions, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
-          showCenterGuides,
-          cardPositionMode,
-          characterScale, characterPosition,
-          audioMusicUrl, audioMusicName, audioVoiceUrl, audioVoiceName, audioMusicVolume, audioVoiceVolume,
-        }),
-      );
-    } catch { /* ignore */ }
+    const handle = window.setTimeout(() => {
+      try {
+        localStorage.setItem(
+          DESIGN_PREFS_KEY,
+          JSON.stringify({
+            colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration, exportedSequences,
+            titleLetterSpacing, titleLineHeight, titleBold, titleItalic,
+            ctaLetterSpacing, ctaLineHeight, ctaBold, ctaItalic,
+            overlayLetterSpacing, overlayLineHeight, overlayBold, overlayItalic, overlayColor, cardsLetterSpacing,
+            selectedFont, selectedFilter, selectedCardStyle,
+            titleColor, ctaColor, ctaSubColor, ctaMainText, ctaSubText,
+            titleTextGradient, titleGradColor1, titleGradColor2,
+            titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
+            gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, seqGradients,
+            textScale, ctaTextScale, cardsTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
+            titlePos, logoPositions, watermarkPos, cardsPos, overlayPos,
+            titleSize, cardsSize, watermarkSize,
+            siteText, siteTextPositions, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
+            showCenterGuides,
+            cardPositionMode,
+          }),
+        );
+        // After the first design-only save, drop the legacy blob so we
+        // don't fall back to it again (and so content fields it contained
+        // don't resurrect on a future migration attempt).
+        if (localStorage.getItem(LEGACY_CONFIG_KEY)) {
+          localStorage.removeItem(LEGACY_CONFIG_KEY);
+        }
+      } catch { /* ignore */ }
+    }, 500);
+    return () => window.clearTimeout(handle);
   }, [
     configLoaded, colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration, exportedSequences,
-    rushUrl, rushFileName, rushList, characterImage, characterScale, characterPosition,
     titleLetterSpacing, titleLineHeight, titleBold, titleItalic,
     ctaLetterSpacing, ctaLineHeight, ctaBold, ctaItalic,
-    overlayLetterSpacing, overlayLineHeight, overlayBold, overlayItalic, cardsLetterSpacing,
+    overlayLetterSpacing, overlayLineHeight, overlayBold, overlayItalic, overlayColor, cardsLetterSpacing,
     selectedFont, selectedFilter, selectedCardStyle,
     titleColor, ctaColor, ctaSubColor, ctaMainText, ctaSubText,
     titleTextGradient, titleGradColor1, titleGradColor2,
     titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
-    gradientColor1, gradientColor2, gradientOpacity, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, seqGradients,
+    gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, seqGradients,
     textScale, ctaTextScale, cardsTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
     titlePos, logoPositions, watermarkPos, cardsPos, overlayPos,
     titleSize, cardsSize, watermarkSize,
-    title, subtitle, videoOverlayText, cards, salesPhrases, contentTheme, customTopic,
-    photoSearchQuery, selectedPhotoIndex,
     siteText, siteTextPositions, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
     showCenterGuides,
     cardPositionMode,
-    characterScale, characterPosition,
-    audioMusicUrl, audioMusicName, audioVoiceUrl, audioVoiceName, audioMusicVolume, audioVoiceVolume,
   ]);
 
   // (Typography states declared earlier for localStorage compatibility)
@@ -4371,7 +4331,8 @@ function InfographicPageInner() {
                   onClick={() => {
                     if (!confirm("Réinitialiser tous les paramètres ? Cette action supprime vos préférences locales (couleurs, polices, position, cartes sauvegardées).")) return;
                     const keys = [
-                      'studiio_infographic_config',
+                      'studiio-creer-design-prefs',
+                      'studiio_infographic_config', // legacy (pre-split)
                       'studiio_branding',
                       'studiio_publishing_settings',
                       'studiio_chat_history',
