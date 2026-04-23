@@ -150,6 +150,10 @@ export interface DesignOptions {
   noColorSequences?: string[];
   /** Selected filter name */
   filter?: string;
+  /** Inner-edge colored border applied on top of every sequence. */
+  borderEnabled?: boolean;
+  /** Hex color for the border (defaults to accentColor when enabled). */
+  borderColor?: string;
 }
 
 export interface ComposerOptions {
@@ -614,6 +618,29 @@ function resolveSeqGradient(
  *   - `position`: 'top' | 'bottom' | 'left' | 'right' | 'both'
  *   - `opacity > 1` → second layer for >100% intensity
  */
+/**
+ * Paint an inner-edge colored border on top of the current frame. Kept
+ * inset (via a stroke centered on the inner edge) so it doesn't bleed
+ * past the canvas on the outside. Matches the CSS border the editor
+ * preview uses when branding.borderEnabled is on.
+ */
+function paintBorder(
+  ctx: CanvasRenderingContext2D, w: number, h: number, design?: DesignOptions,
+  fallbackAccent: string = '#D91CD2'
+): void {
+  if (!design?.borderEnabled) return;
+  const color = design.borderColor || fallbackAccent;
+  // ~8-12px at 1080w; scale with canvas width so exports at different
+  // resolutions match the preview thickness.
+  const lineWidth = Math.max(6, Math.round(w * 0.01));
+  const half = lineWidth / 2;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
+  ctx.strokeRect(half, half, w - lineWidth, h - lineWidth);
+  ctx.restore();
+}
+
 function paintSeqGradient(
   ctx: CanvasRenderingContext2D, w: number, h: number, seq: string, design?: DesignOptions
 ): void {
@@ -1979,6 +2006,9 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       ctx.fillText('studiio.pro', width - wmSize, height - wmSize - barH);
       ctx.restore();
     }
+
+    // ── Branding border (applied on top of everything) ──
+    paintBorder(ctx, width, height, normalizedDesign, accentColor);
   };
 
   // ═══ AUDIO SETUP ═══

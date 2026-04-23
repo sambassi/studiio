@@ -8,7 +8,7 @@ type Transform = { scale: number; offsetX: number; offsetY: number };
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  rush: { url: string; name: string; transform?: Transform } | null;
+  rush: { url: string; name: string; kind?: 'video' | 'image'; transform?: Transform } | null;
   format: 'reel' | 'tv' | '9:16' | '16:9' | string;
   onApply: (transform: Transform) => void;
 }
@@ -55,8 +55,21 @@ export default function CropRushModal({ isOpen, onClose, rush, format, onApply }
 
   const reset = () => setT({ ...DEFAULT_T });
 
+  const isImage = rush.kind === 'image';
+  const mediaStyle: React.CSSProperties = {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    minWidth: '100%',
+    minHeight: '100%',
+    objectFit: 'cover',
+    transformOrigin: 'center center',
+    transform: `translate(-50%, -50%) translate(${t.offsetX * 100}%, ${t.offsetY * 100}%) scale(${t.scale})`,
+    pointerEvents: 'none',
+  };
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={`Recadrer la vidéo — cadre ${displayFormat}`} size="lg">
+    <Modal isOpen={isOpen} onClose={onClose} title={`Recadrer ${isImage ? "l'image" : 'la vidéo'} — cadre ${displayFormat}`} size="lg">
       <div className="space-y-4">
         <div
           ref={containerRef}
@@ -67,24 +80,18 @@ export default function CropRushModal({ isOpen, onClose, rush, format, onApply }
           className="relative mx-auto w-full bg-black overflow-hidden rounded-lg select-none cursor-move"
           style={{ aspectRatio, maxHeight: '60vh', maxWidth: isLandscape ? '100%' : '360px' }}
         >
-          <video
-            src={rush.url}
-            muted
-            loop
-            autoPlay
-            playsInline
-            style={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              minWidth: '100%',
-              minHeight: '100%',
-              objectFit: 'cover',
-              transformOrigin: 'center center',
-              transform: `translate(-50%, -50%) translate(${t.offsetX * 100}%, ${t.offsetY * 100}%) scale(${t.scale})`,
-              pointerEvents: 'none',
-            }}
-          />
+          {isImage ? (
+            <img src={rush.url} alt={rush.name} style={mediaStyle} />
+          ) : (
+            <video
+              src={rush.url}
+              muted
+              loop
+              autoPlay
+              playsInline
+              style={mediaStyle}
+            />
+          )}
           <div className="absolute inset-0 border-2 border-white/20 pointer-events-none" />
         </div>
 
@@ -104,7 +111,7 @@ export default function CropRushModal({ isOpen, onClose, rush, format, onApply }
         </div>
 
         <p className="text-xs text-gray-500">
-          Glisse la vidéo pour repositionner. Le cadre blanc représente la zone visible dans le montage final.
+          Glisse {isImage ? "l'image" : 'la vidéo'} pour repositionner. Le cadre blanc représente la zone visible dans le montage final.
         </p>
 
         <div className="flex items-center justify-between gap-2 pt-2 border-t border-gray-800">
