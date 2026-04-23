@@ -7064,7 +7064,8 @@ function InfographicPageInner() {
                     fontStyle: titleItalic ? "italic" : "normal",
                     fontFamily: titleFont ? (FONT_CSS_MAP[titleFont] || titleFont) : undefined,
                     ...(titleTextGradient ? {
-                      background: `linear-gradient(135deg, ${titleGradColor1}, ${titleGradColor2})`,
+                      backgroundImage: `linear-gradient(135deg, ${titleGradColor1}, ${titleGradColor2})`,
+                      backgroundColor: 'transparent',
                       WebkitBackgroundClip: "text",
                       WebkitTextFillColor: "transparent",
                       backgroundClip: "text",
@@ -7132,7 +7133,8 @@ function InfographicPageInner() {
                       fontStyle: overlayItalic ? "italic" : "normal",
                       fontFamily: overlayFont ? (FONT_CSS_MAP[overlayFont] || overlayFont) : undefined,
                       ...(overlayTextGradient ? {
-                        background: `linear-gradient(135deg, ${overlayGradColor1}, ${overlayGradColor2})`,
+                        backgroundImage: `linear-gradient(135deg, ${overlayGradColor1}, ${overlayGradColor2})`,
+                        backgroundColor: 'transparent',
                         WebkitBackgroundClip: 'text',
                         backgroundClip: 'text',
                         WebkitTextFillColor: 'transparent',
@@ -7184,7 +7186,8 @@ function InfographicPageInner() {
                       // Extras inherit the legacy overlay's gradient flag so
                       // the whole stack is styled consistently.
                       ...(overlayTextGradient ? {
-                        background: `linear-gradient(135deg, ${overlayGradColor1}, ${overlayGradColor2})`,
+                        backgroundImage: `linear-gradient(135deg, ${overlayGradColor1}, ${overlayGradColor2})`,
+                        backgroundColor: 'transparent',
                         WebkitBackgroundClip: 'text',
                         backgroundClip: 'text',
                         WebkitTextFillColor: 'transparent',
@@ -7571,7 +7574,8 @@ function InfographicPageInner() {
                       fontStyle: ctaItalic ? "italic" : "normal",
                       fontFamily: ctaFont ? (FONT_CSS_MAP[ctaFont] || ctaFont) : undefined,
                       ...(ctaTextGradient ? {
-                        background: `linear-gradient(135deg, ${ctaGradColor1}, ${ctaGradColor2})`,
+                        backgroundImage: `linear-gradient(135deg, ${ctaGradColor1}, ${ctaGradColor2})`,
+                        backgroundColor: 'transparent',
                         WebkitBackgroundClip: 'text',
                         backgroundClip: 'text',
                         WebkitTextFillColor: 'transparent',
@@ -7593,7 +7597,8 @@ function InfographicPageInner() {
                     fontStyle: ctaItalic ? "italic" : "normal",
                     fontFamily: watermarkFont ? (FONT_CSS_MAP[watermarkFont] || watermarkFont) : undefined,
                     ...(watermarkTextGradient ? {
-                      background: `linear-gradient(135deg, ${watermarkGradColor1}, ${watermarkGradColor2})`,
+                      backgroundImage: `linear-gradient(135deg, ${watermarkGradColor1}, ${watermarkGradColor2})`,
+                      backgroundColor: 'transparent',
                       WebkitBackgroundClip: 'text',
                       backgroundClip: 'text',
                       WebkitTextFillColor: 'transparent',
@@ -7614,7 +7619,8 @@ function InfographicPageInner() {
                     fontStyle: ctaItalic ? "italic" : "normal",
                     fontFamily: ctaFont ? (FONT_CSS_MAP[ctaFont] || ctaFont) : undefined,
                     ...(ctaTextGradient ? {
-                      background: `linear-gradient(135deg, ${ctaGradColor1}, ${ctaGradColor2})`,
+                      backgroundImage: `linear-gradient(135deg, ${ctaGradColor1}, ${ctaGradColor2})`,
+                      backgroundColor: 'transparent',
                       WebkitBackgroundClip: 'text',
                       backgroundClip: 'text',
                       WebkitTextFillColor: 'transparent',
