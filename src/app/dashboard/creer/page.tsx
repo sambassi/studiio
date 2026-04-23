@@ -24,6 +24,10 @@ import {
   Grid3x3,
   Grid2x2,
   Move,
+  Combine,
+  Ungroup,
+  CopyPlus,
+  Group,
   LayoutTemplate,
   Type,
   LayoutGrid,
@@ -1687,6 +1691,14 @@ function InfographicPageInner() {
         if (typeof cfg.showCenterGuides === 'boolean') setShowCenterGuides(cfg.showCenterGuides);
         if (typeof cfg.smartGuidesEnabled === 'boolean') setSmartGuidesEnabled(cfg.smartGuidesEnabled);
         if (typeof cfg.showGridOverlay === 'boolean') setShowGridOverlay(cfg.showGridOverlay);
+        if (Array.isArray(cfg.cardGroups)) {
+          setCardGroups(
+            cfg.cardGroups.filter(
+              (g: unknown): g is CardGroup =>
+                !!g && typeof (g as CardGroup).id === 'string' && Array.isArray((g as CardGroup).cardIds),
+            ),
+          );
+        }
         if (cfg.cardPositionMode === 'grid' || cfg.cardPositionMode === 'free') setCardPositionMode(cfg.cardPositionMode);
       }
     } catch {
@@ -1811,6 +1823,27 @@ function InfographicPageInner() {
   const [cardPositionMode, setCardPositionMode] = useState<'grid' | 'free'>('grid');
   // Index of the card being dragged in free mode (null when not dragging).
   const [dragCardIdx, setDragCardIdx] = useState<number | null>(null);
+
+  // ── Multi-select + groups (free-position mode only) ───────────
+  // selectedCardIds is session-only. cardGroups persists in design prefs so
+  // a user's logical groupings survive reloads.
+  const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
+  type CardGroup = { id: string; cardIds: string[]; color: string };
+  const [cardGroups, setCardGroups] = useState<CardGroup[]>([]);
+  // Drag-select rectangle on the preview background (free-mode only).
+  const [dragSelectRect, setDragSelectRect] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  const dragSelectStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  // ESC clears the card multi-selection.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && selectedCardIds.size > 0) {
+        setSelectedCardIds(new Set());
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedCardIds.size]);
 
   // ── Design Step (additive — new step 1, shifts old steps) ────
   const [selectedFont, setSelectedFont] = useState("Anton");
@@ -2011,6 +2044,7 @@ function InfographicPageInner() {
             siteText, siteTextPositions, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
             showCenterGuides,
             smartGuidesEnabled, showGridOverlay,
+            cardGroups,
             cardPositionMode,
             // User-typed text copy — persisted even when empty so clearing a
             // field sticks across reloads. Cards / rushes / photos / audio
@@ -2043,6 +2077,7 @@ function InfographicPageInner() {
     siteText, siteTextPositions, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
     showCenterGuides,
     smartGuidesEnabled, showGridOverlay,
+    cardGroups,
     cardPositionMode,
     contentTheme, customTopic, title, subtitle,
   ]);
@@ -2496,6 +2531,73 @@ function InfographicPageInner() {
 
   const updateCard = (id: string, field: keyof InfoCard, value: string) => {
     setCards(cards.map((c) => (c.id === id ? { ...c, [field]: value } : c)));
+  };
+
+  // ── Multi-select + group helpers ─────────────────────────────
+  const GROUP_COLORS = [
+    '#60A5FA', // blue
+    '#34D399', // green
+    '#FB923C', // orange
+    '#F472B6', // pink
+    '#A78BFA', // violet
+    '#22D3EE', // cyan
+    '#FBBF24', // amber
+  ];
+
+  const toggleCardSelection = (cardId: string, additive: boolean) => {
+    setSelectedCardIds((prev) => {
+      const next = new Set(prev);
+      if (additive) {
+        if (next.has(cardId)) next.delete(cardId);
+        else next.add(cardId);
+      } else {
+        next.clear();
+        next.add(cardId);
+      }
+      return next;
+    });
+  };
+
+  const clearCardSelection = () => setSelectedCardIds(new Set());
+
+  const getCardGroupFor = (cardId: string): CardGroup | undefined =>
+    cardGroups.find((g) => g.cardIds.includes(cardId));
+
+  const groupSelectedCards = () => {
+    const ids = Array.from(selectedCardIds);
+    if (ids.length < 2) return;
+    // Remove any membership of the selected cards in existing groups first
+    // (a card belongs to at most one group at a time).
+    const cleanedGroups = cardGroups
+      .map((g) => ({ ...g, cardIds: g.cardIds.filter((cid) => !ids.includes(cid)) }))
+      .filter((g) => g.cardIds.length >= 2);
+    const color = GROUP_COLORS[cleanedGroups.length % GROUP_COLORS.length];
+    setCardGroups([
+      ...cleanedGroups,
+      { id: `g-${Date.now()}`, cardIds: ids, color },
+    ]);
+  };
+
+  const ungroupSelectedCards = () => {
+    if (selectedCardIds.size === 0) return;
+    setCardGroups((prev) =>
+      prev
+        .map((g) => ({ ...g, cardIds: g.cardIds.filter((cid) => !selectedCardIds.has(cid)) }))
+        .filter((g) => g.cardIds.length >= 2),
+    );
+  };
+
+  const duplicateSelectedCards = () => {
+    if (selectedCardIds.size === 0) return;
+    const idsToDup = cards.filter((c) => selectedCardIds.has(c.id));
+    const copies: InfoCard[] = idsToDup.map((c) => ({
+      ...c,
+      id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      position: c.position ? { x: Math.min(100, c.position.x + 4), y: Math.min(100, c.position.y + 4) } : undefined,
+    }));
+    setCards((prev) => [...prev, ...copies]);
+    // Leave the new copies selected so the user can immediately move/group them.
+    setSelectedCardIds(new Set(copies.map((c) => c.id)));
   };
 
   const [aiFieldLoading, setAiFieldLoading] = useState<string | null>(null);
@@ -3441,6 +3543,7 @@ function InfographicPageInner() {
                 videoImageUrl: rushUrl && rushList[0]?.kind === 'image' ? rushUrl : undefined,
                 rushKind: rushList[0]?.kind || (rushUrl ? 'video' : undefined),
                 rushUrls: rushUrl ? [rushUrl] : undefined,
+                cardGroups: cardGroups.length > 0 ? cardGroups : undefined,
                 musicUrl: audioMusicUrl || undefined,
                 voiceUrl: audioVoiceUrl || undefined,
                 hasAudio: !!(audioMusicUrl || audioVoiceUrl),
@@ -5996,6 +6099,21 @@ function InfographicPageInner() {
                 openPanel('background', e);
               }
             }}
+            onMouseDown={(e) => {
+              // Drag-select rectangle — only when clicking the raw background
+              // (not bubbled from a card/title/etc.) in free-position mode.
+              if (cardPositionMode !== 'free') return;
+              if (e.target !== previewRef.current) return;
+              if (!previewRef.current) return;
+              const rect = previewRef.current.getBoundingClientRect();
+              const x = ((e.clientX - rect.left) / rect.width) * 100;
+              const y = ((e.clientY - rect.top) / rect.height) * 100;
+              dragSelectStartRef.current = { x, y };
+              setDragSelectRect({ x1: x, y1: y, x2: x, y2: y });
+              // Background click without shift clears current selection so
+              // the drag-rectangle starts from a clean slate.
+              if (!e.shiftKey && !e.metaKey && !e.ctrlKey) clearCardSelection();
+            }}
             data-preview-bg
             className={`${previewClasses.aspect} relative flex flex-col items-center justify-between rounded-lg p-4 shadow-2xl overflow-hidden transition-all duration-300`}
             style={{
@@ -6024,7 +6142,24 @@ function InfographicPageInner() {
             onMouseMove={(e) => {
               if (!previewRef.current) return;
               const rect = previewRef.current.getBoundingClientRect();
-              // Free-mode card dragging — each card moved independently
+              // Drag-select rectangle grows while the user holds the mouse
+              // on the preview background in free-position mode.
+              if (dragSelectStartRef.current) {
+                const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+                const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+                setDragSelectRect({
+                  x1: dragSelectStartRef.current.x,
+                  y1: dragSelectStartRef.current.y,
+                  x2: x,
+                  y2: y,
+                });
+                return;
+              }
+              // Free-mode card dragging — each card moved independently,
+              // OR together when the card belongs to a group (or is part of
+              // the current multi-selection). Delta from the dragged card's
+              // old position is applied to every companion, clamped to the
+              // preview bounds.
               if (dragCardIdx !== null) {
                 let cx = Math.max(
                   0,
@@ -6048,9 +6183,36 @@ function InfographicPageInner() {
                 }
                 setCards((prev) => {
                   if (dragCardIdx >= prev.length) return prev;
-                  const next = prev.slice();
-                  next[dragCardIdx] = { ...next[dragCardIdx], position: { x: cx, y: cy } };
-                  return next;
+                  const dragged = prev[dragCardIdx];
+                  const oldX = dragged.position?.x ?? cx;
+                  const oldY = dragged.position?.y ?? cy;
+                  const dx = cx - oldX;
+                  const dy = cy - oldY;
+                  // Companions = group members of the dragged card, unioned
+                  // with the current multi-selection (if the dragged card
+                  // itself is selected). Guarantees at minimum the dragged
+                  // card itself gets moved.
+                  const companionIds = new Set<string>([dragged.id]);
+                  const grp = cardGroups.find((g) => g.cardIds.includes(dragged.id));
+                  if (grp) grp.cardIds.forEach((id) => companionIds.add(id));
+                  if (selectedCardIds.has(dragged.id)) {
+                    selectedCardIds.forEach((id) => companionIds.add(id));
+                  }
+                  return prev.map((c) => {
+                    if (c.id === dragged.id) {
+                      return { ...c, position: { x: cx, y: cy } };
+                    }
+                    if (companionIds.has(c.id) && c.position) {
+                      return {
+                        ...c,
+                        position: {
+                          x: Math.max(0, Math.min(100, c.position.x + dx)),
+                          y: Math.max(0, Math.min(100, c.position.y + dy)),
+                        },
+                      };
+                    }
+                    return c;
+                  });
                 });
                 return;
               }
@@ -6148,6 +6310,30 @@ function InfographicPageInner() {
               }
             }}
             onMouseUp={() => {
+              // Finalize drag-select rectangle: every card whose center
+              // lies inside the rectangle (in % space) joins the selection.
+              if (dragSelectRect) {
+                const minX = Math.min(dragSelectRect.x1, dragSelectRect.x2);
+                const maxX = Math.max(dragSelectRect.x1, dragSelectRect.x2);
+                const minY = Math.min(dragSelectRect.y1, dragSelectRect.y2);
+                const maxY = Math.max(dragSelectRect.y1, dragSelectRect.y2);
+                // Only count a real rectangle (≥1% on each axis) so a tiny
+                // click-without-drag doesn't accidentally pick one card.
+                if (maxX - minX >= 1 && maxY - minY >= 1) {
+                  const hit = new Set<string>();
+                  cards.forEach((c, i) => {
+                    const cols = format === '16:9' ? 3 : 2;
+                    const defaultX = 25 + (i % cols) * 25;
+                    const defaultY = 40 + Math.floor(i / cols) * 18;
+                    const cx = c.position?.x ?? defaultX;
+                    const cy = c.position?.y ?? defaultY;
+                    if (cx >= minX && cx <= maxX && cy >= minY && cy <= maxY) hit.add(c.id);
+                  });
+                  setSelectedCardIds(hit);
+                }
+                dragSelectStartRef.current = null;
+                setDragSelectRect(null);
+              }
               setDragging(null);
               setResizing(null);
               setDragCardIdx(null);
@@ -6156,6 +6342,8 @@ function InfographicPageInner() {
               setActiveDistanceBadges([]);
             }}
             onMouseLeave={() => {
+              dragSelectStartRef.current = null;
+              setDragSelectRect(null);
               setDragging(null);
               setResizing(null);
               setDragCardIdx(null);
@@ -6272,6 +6460,19 @@ function InfographicPageInner() {
               distanceBadges={smartGuidesEnabled ? activeDistanceBadges : []}
               showGrid={showGridOverlay}
             />
+
+            {/* Drag-select rectangle (free-mode cards only) */}
+            {dragSelectRect && (
+              <div
+                className="pointer-events-none absolute z-30 border-2 border-dashed border-cyan-400 bg-cyan-400/10"
+                style={{
+                  left: `${Math.min(dragSelectRect.x1, dragSelectRect.x2)}%`,
+                  top: `${Math.min(dragSelectRect.y1, dragSelectRect.y2)}%`,
+                  width: `${Math.abs(dragSelectRect.x2 - dragSelectRect.x1)}%`,
+                  height: `${Math.abs(dragSelectRect.y2 - dragSelectRect.y1)}%`,
+                }}
+              />
+            )}
 
             {/* Format Badge */}
             <div className="absolute top-2 right-2 rounded-full bg-black/40 px-2.5 py-0.5 text-[10px] font-bold text-white backdrop-blur z-10">
@@ -6675,6 +6876,9 @@ function InfographicPageInner() {
                         const defaultY = 40 + Math.floor(i / cols) * 18;
                         const pos = card.position || { x: defaultX, y: defaultY };
                         const isDragging = dragCardIdx === i;
+                        const isSelected = selectedCardIds.has(card.id);
+                        const cardGroup = getCardGroupFor(card.id);
+                        const accentHex = customAccent || COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent || '#A855F7';
                         return (
                           <div
                             key={card.id}
@@ -6685,15 +6889,30 @@ function InfographicPageInner() {
                               transform: 'translate(-50%, -50%)',
                               width: `${cardWidthPct}%`,
                               touchAction: 'none',
-                              // Re-enable events on the card itself — the parent
-                              // wrapper sets pointerEvents:'none' so the preview
-                              // background stays double-clickable, but each card
-                              // must still receive drag/click events.
                               pointerEvents: 'auto',
+                              ...(isSelected ? { outline: `2px solid ${accentHex}`, outlineOffset: '2px', borderRadius: '6px' } : {}),
                             }}
                             onMouseDown={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
+                              // Shift/Cmd+click toggles selection without starting a drag.
+                              if (e.shiftKey || e.metaKey || e.ctrlKey) {
+                                toggleCardSelection(card.id, true);
+                                return;
+                              }
+                              // Regular click on an unselected card: clear selection + single-select it.
+                              // If the card is ALREADY in the selection (possibly via a group), keep
+                              // the selection so grouped drag moves every member.
+                              if (!selectedCardIds.has(card.id)) {
+                                const grp = getCardGroupFor(card.id);
+                                if (grp) {
+                                  // Selecting a grouped card picks up every sibling so group
+                                  // drag snaps to feel like a single multi-card move.
+                                  setSelectedCardIds(new Set(grp.cardIds));
+                                } else {
+                                  setSelectedCardIds(new Set([card.id]));
+                                }
+                              }
                               setDragCardIdx(i);
                             }}
                             onTouchStart={(e) => {
@@ -6702,10 +6921,19 @@ function InfographicPageInner() {
                             }}
                             onClick={(e) => { e.stopPropagation(); selectEl({ type: 'card', index: i }); }}
                             onDoubleClick={(e) => openPanel('cards', e)}
-                            title={`Carte ${i + 1} — glisser pour déplacer`}
+                            title={`Carte ${i + 1} — glisser pour déplacer, Maj+clic pour sélection multiple`}
                           >
                             <div className="pointer-events-none absolute inset-0 border border-dashed border-pink-500/30 hover:border-pink-500/60 rounded transition-colors" />
                             {renderCardInner(card)}
+                            {cardGroup && (
+                              <div
+                                className="pointer-events-none absolute -top-2 -right-2 w-4 h-4 rounded-full flex items-center justify-center shadow-md border border-white/30"
+                                style={{ backgroundColor: cardGroup.color }}
+                                title={`Groupe (${cardGroup.cardIds.length} cartes)`}
+                              >
+                                <Group size={10} strokeWidth={2.5} className="text-white" />
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -7255,6 +7483,49 @@ function InfographicPageInner() {
           accentColor="#EC4899"
         >
           <div className="space-y-2">
+            {/* Multi-select actions (free-position mode) */}
+            {cardPositionMode === 'free' && (
+              <div className="rounded-lg bg-gray-900/40 backdrop-blur-xl p-2 space-y-1.5 border border-gray-700/60">
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] text-gray-400 uppercase">Sélection</span>
+                  <span className="text-[10px] font-semibold text-pink-300">
+                    {selectedCardIds.size} carte{selectedCardIds.size > 1 ? 's' : ''}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-1">
+                  <button
+                    onClick={groupSelectedCards}
+                    disabled={selectedCardIds.size < 2}
+                    className="flex flex-col items-center gap-0.5 rounded-md bg-gray-800 hover:bg-gray-700 px-2 py-1.5 text-[10px] text-gray-200 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="Grouper la sélection (min. 2 cartes)"
+                  >
+                    <Combine size={14} strokeWidth={2} className="text-blue-400" />
+                    <span>Grouper</span>
+                  </button>
+                  <button
+                    onClick={ungroupSelectedCards}
+                    disabled={!Array.from(selectedCardIds).some((id) => !!getCardGroupFor(id))}
+                    className="flex flex-col items-center gap-0.5 rounded-md bg-gray-800 hover:bg-gray-700 px-2 py-1.5 text-[10px] text-gray-200 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="Dissocier"
+                  >
+                    <Ungroup size={14} strokeWidth={2} className="text-gray-300" />
+                    <span>Dissocier</span>
+                  </button>
+                  <button
+                    onClick={duplicateSelectedCards}
+                    disabled={selectedCardIds.size === 0}
+                    className="flex flex-col items-center gap-0.5 rounded-md bg-gray-800 hover:bg-gray-700 px-2 py-1.5 text-[10px] text-gray-200 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="Dupliquer la sélection"
+                  >
+                    <CopyPlus size={14} strokeWidth={2} className="text-green-400" />
+                    <span>Dupliquer</span>
+                  </button>
+                </div>
+                <p className="text-[9px] text-gray-500 leading-snug">
+                  Maj+clic sur une carte pour la sélection multiple. Glisser sur le fond pour un rectangle. ESC pour désélectionner.
+                </p>
+              </div>
+            )}
             <div>
               <span className="text-[9px] text-gray-500 uppercase">Style</span>
               <div className="flex flex-wrap gap-1 mt-1">
