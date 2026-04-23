@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, Suspense, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Plus,
@@ -3480,20 +3480,28 @@ function InfographicPageInner() {
               return {
                 title: d.content.title || topicText.toUpperCase(),
                 subtitle: d.content.subtitle || "",
+                // Inherit every DESIGN-level field (position for free-mode
+                // layout, per-card color, iconType/Color/Size/Style/Gradient)
+                // from the editor's current cards[i] template so each batch
+                // iteration keeps the user's configured layout; only the
+                // CONTENT (label/value/description/icon emoji) is replaced
+                // with the AI variation.
                 cards: (d.content.cards || []).map((c: any, i: number) => {
-                  const resolved = resolveCardIcon(c.label, c.description, c.iconName || "Sparkles");
+                  const template = cards[i] || cards[0];
+                  const resolved = resolveCardIcon(c.label, c.description, c.iconName || template?.emoji || "Sparkles");
                   return {
+                    ...(template || {}),
                     id: `batch-${Date.now()}-${i}`,
-                    emoji: resolved.emoji,
                     label: c.label || "",
                     value: c.value || "",
                     description: c.description || "",
-                    color: accent,
-                    iconType: resolved.iconType,
-                    iconColor: '#FFFFFF',
-                    iconSize: 32,
-                    iconStyle: 'outline' as const,
-                  };
+                    // When the template had an emoji icon, keep its glyph;
+                    // otherwise use the lucide icon resolved from the
+                    // new label text.
+                    emoji: resolved.emoji,
+                    iconType: template?.iconType || resolved.iconType,
+                    color: template?.color || accent,
+                  } as InfoCard;
                 }),
                 salesPhrases: d.content.salesPhrases || [],
               };
@@ -3519,19 +3527,21 @@ function InfographicPageInner() {
                 title: d.content.tagLine || topicText.toUpperCase(),
                 subtitle: d.content.subtitle || "",
                 cards: (d.content.cards || []).slice(0, 3).map((c: any, i: number) => {
+                  // Same design-inheritance strategy as the AI branch — keep
+                  // the user's position/color/iconStyle, replace only the
+                  // textual content.
+                  const template = cards[i] || cards[0];
                   const resolved = resolveCardIcon(c.title, c.description, toLucideName(c.icon));
                   return {
+                    ...(template || {}),
                     id: `batch-${Date.now()}-${i}`,
-                    emoji: resolved.emoji,
                     label: c.title || "",
                     value: c.value || "",
                     description: c.description || "",
-                    color: accent,
-                    iconType: resolved.iconType,
-                    iconColor: '#FFFFFF',
-                    iconSize: 32,
-                    iconStyle: 'outline' as const,
-                  };
+                    emoji: resolved.emoji,
+                    iconType: template?.iconType || resolved.iconType,
+                    color: template?.color || accent,
+                  } as InfoCard;
                 }),
                 salesPhrases: [],
               };
@@ -3675,10 +3685,14 @@ function InfographicPageInner() {
             }
             if (needsStateSync) {
               // Push the iteration's cards into the editor state so the
-              // DOM reflects what this video should display. The finally
-              // block below restores `originalCardsForBatch` so the user's
-              // editor view isn't permanently mutated.
-              setCards(bCards);
+              // DOM reflects what this video should display. flushSync
+              // forces React to commit synchronously so the subsequent
+              // rAFs actually observe the new DOM. The finally block
+              // restores `originalCardsForBatch` so the editor view isn't
+              // permanently mutated.
+              flushSync(() => {
+                setCards(bCards);
+              });
             }
             if (needsStateSync || didForceSequenceCal) {
               // 1. Wait for any newly-requested fonts (per-element font
@@ -3746,7 +3760,9 @@ function InfographicPageInner() {
               }
               if (needsStateSync) {
                 // Restore the editor's own cards so the user's UI is intact.
-                setCards(originalCardsForBatch);
+                flushSync(() => {
+                  setCards(originalCardsForBatch);
+                });
               }
             }
             // eslint-disable-next-line no-console
