@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { topic, locale = 'fr', cardCount = 3, existingCards = [], videoOverlayOnly = false, fieldType, variationNonce } = body;
+    const { topic, locale = 'fr', cardCount = 3, existingCards = [], existingTitles = [], videoOverlayOnly = false, fieldType, variationNonce } = body;
 
     if (!topic || typeof topic !== 'string') {
       return NextResponse.json({ success: false, error: 'Topic is required' }, { status: 400 });
@@ -198,6 +198,9 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, sans commenta
     const existingCardsContext = existingCards.length > 0
       ? `\n\nCARTES EXISTANTES (NE PAS DUPLIQUER ces sujets, propose des aspects DIFFÉRENTS): ${existingCards.join(', ')}`
       : '';
+    const existingTitlesContext = Array.isArray(existingTitles) && existingTitles.length > 0
+      ? `\n\nTITRES DÉJÀ UTILISÉS (INTERDITS — trouve un titre CLAIREMENT DIFFÉRENT): ${existingTitles.map((t: string) => `"${t}"`).join(', ')}`
+      : '';
 
     // Variation nonce forces genuinely different output on each batch call
     // even when the caller reuses the same topic. The model sees it as a
@@ -205,21 +208,34 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, sans commenta
     const nonce = typeof variationNonce === 'string' && variationNonce.trim()
       ? variationNonce.trim()
       : Math.random().toString(36).slice(2, 10);
-    const variationPreamble = `\n\nIMPORTANT — VARIATION:
-- Chaque appel doit produire un contenu NOUVEAU. Même sujet, angle, chiffres et formulations DIFFÉRENTS.
-- Ne recopie pas tes sorties précédentes. Utilise des chiffres/études/exemples variés.
+
+    // The batch loop in /creer sends aiTopic as "${topic} (angle: ${angle})"
+    // Pull the angle out so we can cite it explicitly in the title rule.
+    // Without this, Claude keeps defaulting to the same natural title
+    // phrasing regardless of which angle the nonce supposedly selects.
+    const angleRegex = /\(angle:\s*([^)]+)\)/i;
+    const angleMatch = angleRegex.exec(topic);
+    const extractedAngle = angleMatch ? angleMatch[1].trim() : null;
+    const angleDirective = extractedAngle
+      ? `\n- L'angle de CE post est : « ${extractedAngle} ». Le "title" ET le "subtitle" DOIVENT refléter CET angle précis — pas un titre générique.`
+      : '';
+    const variationPreamble = `\n\nIMPORTANT — VARIATION OBLIGATOIRE:
+- Chaque appel DOIT produire un "title" et un "subtitle" ENTIÈREMENT DIFFÉRENTS des sorties précédentes. Ne répète JAMAIS le même titre deux fois pour un batch.
+- Titres génériques INTERDITS : "BOOST NATUREL", "BIENFAITS NATURELS", "LE GUIDE". Trouve un angle plus spécifique.
+- Le titre doit être un HOOK frappant et SPÉCIFIQUE à l'angle (ex: "30 JOURS CHRONO", "CE QUE TU IGNORES", "MATIN VS SOIR", "L'ERREUR #1").${angleDirective}
+- Même sujet, angle, chiffres et formulations DIFFÉRENTS pour chaque appel.
 - Nonce de variation (ne pas mentionner dans la sortie): ${nonce}`;
 
     const userPrompt = `Génère du contenu d'infographie RICHE et ÉDUCATIF sur: "${topic}"${variationPreamble}
 
 Le contenu doit être 100% axé sur "${topic}" — pas de contenu générique fitness.
 Chaque carte = un vrai fait/chiffre sur "${topic}".
-Les phrases de vente doivent promouvoir "${topic}" avec Afroboost.${existingCardsContext}
+Les phrases de vente doivent promouvoir "${topic}" avec Afroboost.${existingCardsContext}${existingTitlesContext}
 
 JSON requis (${locale === 'fr' ? 'tout en français' : 'tout en anglais'}):
 {
-  "title": "TITRE EN MAJUSCULES (2-4 mots, contenant ${topic})",
-  "subtitle": "Fait accrocheur et vrai sur ${topic} en lien avec la santé/performance (max 15 mots)",
+  "title": "TITRE UNIQUE EN MAJUSCULES (2-4 mots). Doit évoquer l'ANGLE SPÉCIFIQUE du post, pas juste ${topic}. Évite les titres génériques type BOOST/BIENFAITS/GUIDE. Préfère un hook percutant (ex: ÉNERGIE EXPRESS, 30 JOURS CHRONO, CE QUE TU IGNORES, MATIN VS SOIR, L'ERREUR #1).",
+  "subtitle": "Fait accrocheur DIFFÉRENT du title et vrai sur ${topic} — relié à l'angle et à la santé/performance (max 15 mots).",
   "cards": [
     {
       "iconName": "nom d'icône lucide-react pertinent — OBLIGATOIRE — choisi UNIQUEMENT parmi: [${ICON_NAMES.join(', ')}]",
