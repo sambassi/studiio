@@ -154,6 +154,33 @@ export interface DesignOptions {
   borderEnabled?: boolean;
   /** Hex color for the border (defaults to accentColor when enabled). */
   borderColor?: string;
+
+  /**
+   * Per-overlay scale multiplier applied to the legacy overlayText
+   * (1.0 = 100 %). Extras carry their own `scale` inside `overlays`.
+   */
+  overlayTextScale?: number;
+  /** Legacy overlay appears at this second (0 = whole video sequence). */
+  overlayStartTime?: number;
+  /** Legacy overlay disappears at this second (< 0 → plays until end). */
+  overlayEndTime?: number;
+  /**
+   * Extra overlays beyond the legacy one. Each carries its own
+   * text / position / color / typography / timing so drawVideoSeq can
+   * stack multiple pieces of text on the video background.
+   */
+  overlays?: Array<{
+    text: string;
+    position: { x: number; y: number };
+    color: string;
+    scale: number;
+    startTime: number;
+    endTime: number; // < 0 → no end
+    bold: boolean;
+    italic: boolean;
+    letterSpacing: number;
+    lineHeight: number;
+  }>;
 }
 
 export interface ComposerOptions {
@@ -1457,12 +1484,74 @@ function drawCards(
   }
 }
 
+/**
+ * Draw a single overlay (text block) positioned at {x%, y%} of the
+ * canvas with the given typography. Used for both the legacy single
+ * overlay (design.overlayText) and every entry in design.overlays.
+ */
+function drawSingleOverlay(
+  ctx: CanvasRenderingContext2D, w: number, h: number,
+  fontFamily: string,
+  overlay: {
+    text: string;
+    position: { x: number; y: number };
+    color: string;
+    scale: number;
+    bold: boolean;
+    italic: boolean;
+    letterSpacing: number;
+    lineHeight: number;
+  },
+): void {
+  if (!overlay.text) return;
+  const fontSize = Math.round(w * 0.05 * (overlay.scale || 1));
+  const x = (overlay.position.x / 100) * w;
+  const y = (overlay.position.y / 100) * h;
+  const weight = overlay.bold ? 700 : 400;
+  const italic = overlay.italic ? 'italic ' : '';
+  const letterSpacing = (overlay.letterSpacing || 0) * (w / 320);
+  ctx.save();
+  ctx.textBaseline = 'top';
+  ctx.font = `${italic}${weight} ${fontSize}px "${fontFamily}", sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = overlay.color;
+  ctx.shadowColor = 'rgba(0,0,0,0.8)';
+  ctx.shadowBlur = 12;
+  const lines = wrapText(ctx, overlay.text, w * 0.85);
+  const lineH = fontSize * (overlay.lineHeight || 1.2);
+  const blockH = lines.length * lineH;
+  const topY = y - blockH / 2;
+  for (let i = 0; i < lines.length; i++) {
+    const lineY = topY + i * lineH;
+    if (letterSpacing) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+      ctx.lineWidth = 3;
+      ctx.lineJoin = 'round';
+      const chars = Array.from(lines[i]);
+      const totalW = chars.reduce((a, c) => a + ctx.measureText(c).width, 0) + (chars.length - 1) * letterSpacing;
+      let cursor = x - totalW / 2;
+      ctx.textAlign = 'left';
+      for (const ch of chars) {
+        ctx.strokeText(ch, cursor, lineY);
+        ctx.fillText(ch, cursor, lineY);
+        cursor += ctx.measureText(ch).width + letterSpacing;
+      }
+      ctx.restore();
+    } else {
+      fillTextWithOutline(ctx, lines[i], x, lineY, 3, 'rgba(0,0,0,0.7)');
+    }
+  }
+  ctx.restore();
+}
+
 function drawVideoSeq(
   ctx: CanvasRenderingContext2D, w: number, h: number,
-  videoEl: HTMLVideoElement | null, logoImg: HTMLImageElement | null, _progress: number,
+  videoEl: HTMLVideoElement | null, logoImg: HTMLImageElement | null, seqProgress: number,
   design?: DesignOptions,
   rushTransform?: { scale?: number; offsetX?: number; offsetY?: number },
-  videoImageEl?: HTMLImageElement | null
+  videoImageEl?: HTMLImageElement | null,
+  secondsIntoSequence?: number,
 ) {
   const fontFamily = design?.font || 'sans-serif';
   const backgroundSource: HTMLVideoElement | HTMLImageElement | null = videoEl || videoImageEl || null;
@@ -1488,59 +1577,48 @@ function drawVideoSeq(
   // Per-sequence gradient overlay (default: disabled for 'video', but the user
   // can opt-in via seqGradients). Paints on top of the video frame.
   paintSeqGradient(ctx, w, h, 'video', design);
-  // Video overlay text if configured
-  // Editor: fontSize = 16 * textScale px on 320px → ratio = 16/320 = 0.05
-  // Editor: position from overlayPos (default: x=50%, y=33%), width 85%
-  // Editor does NOT force uppercase — preserves original case
-  if (design?.overlayText) {
-    const textScale = design?.textScale || 1.0;
-    const overlayFontSize = Math.round(w * 0.05 * textScale);
-    const overlayX = ((design?.overlayPosition?.x ?? 50) / 100) * w;
-    const overlayY = ((design?.overlayPosition?.y ?? 33) / 100) * h;
-    const overlayBold = design?.overlayTypography?.bold !== false;
-    const overlayItalic = design?.overlayTypography?.italic ? 'italic ' : '';
-    const overlayWeight = overlayBold ? 700 : 400;
-    const overlayLetterSpacing = (design?.overlayTypography?.letterSpacing || 0) * (w / 320);
-    ctx.save();
-    // Editor uses translate(-50%, -50%) on the overlay → the CENTER of the
-    // text block must sit at (overlayX, overlayY). Use textBaseline='top' and
-    // position the block's TOP at (overlayY - blockHeight/2) so the geometry
-    // matches the editor exactly (no alphabetic-baseline offset drift).
-    ctx.textBaseline = 'top';
-    ctx.font = `${overlayItalic}${overlayWeight} ${overlayFontSize}px "${fontFamily}", sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.fillStyle = design.overlayColor || '#FFFFFF';
-    ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 12;
-    // Word-wrap overlay text within 85% width (matches editor width: 85%)
-    const overlayLines = wrapText(ctx, design.overlayText, w * 0.85);
-    const overlayLineH = overlayFontSize * (design?.overlayTypography?.lineHeight || 1.2);
-    const overlayBlockH = overlayLines.length * overlayLineH;
-    const overlayTopY = overlayY - overlayBlockH / 2;
-    for (let i = 0; i < overlayLines.length; i++) {
-      const lineY = overlayTopY + i * overlayLineH;
-      if (overlayLetterSpacing) {
-        // Outline pass: stroke each character with spacing, then fill with spacing.
-        ctx.save();
-        ctx.strokeStyle = 'rgba(0,0,0,0.7)';
-        ctx.lineWidth = 3;
-        ctx.lineJoin = 'round';
-        const chars = Array.from(overlayLines[i]);
-        const totalW = chars.reduce((a, c) => a + ctx.measureText(c).width, 0) + (chars.length - 1) * overlayLetterSpacing;
-        let cursor = overlayX - totalW / 2;
-        const prevAlign: CanvasTextAlign = ctx.textAlign;
-        ctx.textAlign = 'left';
-        for (const ch of chars) {
-          ctx.strokeText(ch, cursor, lineY);
-          ctx.fillText(ch, cursor, lineY);
-          cursor += ctx.measureText(ch).width + overlayLetterSpacing;
-        }
-        ctx.textAlign = prevAlign;
-        ctx.restore();
-      } else {
-        fillTextWithOutline(ctx, overlayLines[i], overlayX, lineY, 3, 'rgba(0,0,0,0.7)');
-      }
+  // Video overlay text — legacy single overlay + any extras in design.overlays.
+  // Each overlay is gated by its own [startTime, endTime] window so the same
+  // video can show a CTA-style headline at t=0 and a smaller caption at t=4s.
+  const t = secondsIntoSequence ?? 0;
+  const inWindow = (start: number, end: number) =>
+    t >= (start || 0) && (end === undefined || end < 0 || t <= end);
+
+  // Legacy overlay reuses overlayText / overlayPosition / overlayColor +
+  // overlayTypography (bold/italic/letterSpacing/lineHeight).
+  if (design?.overlayText && inWindow(design.overlayStartTime || 0, design.overlayEndTime ?? -1)) {
+    drawSingleOverlay(ctx, w, h, fontFamily, {
+      text: design.overlayText,
+      position: {
+        x: design?.overlayPosition?.x ?? 50,
+        y: design?.overlayPosition?.y ?? 33,
+      },
+      color: design.overlayColor || '#FFFFFF',
+      // overlayTextScale layers on top of the global textScale so the user can
+      // scale the overlay independently.
+      scale: (design?.textScale || 1.0) * (design?.overlayTextScale ?? 1.0),
+      bold: design?.overlayTypography?.bold !== false,
+      italic: !!design?.overlayTypography?.italic,
+      letterSpacing: design?.overlayTypography?.letterSpacing || 0,
+      lineHeight: design?.overlayTypography?.lineHeight || 1.2,
+    });
+  }
+
+  if (Array.isArray(design?.overlays)) {
+    for (const ov of design!.overlays) {
+      if (!ov?.text) continue;
+      if (!inWindow(ov.startTime || 0, ov.endTime ?? -1)) continue;
+      drawSingleOverlay(ctx, w, h, fontFamily, {
+        text: ov.text,
+        position: ov.position,
+        color: ov.color || '#FFFFFF',
+        scale: (design?.textScale || 1.0) * (ov.scale ?? 1.0),
+        bold: ov.bold !== false,
+        italic: !!ov.italic,
+        letterSpacing: ov.letterSpacing || 0,
+        lineHeight: ov.lineHeight || 1.2,
+      });
     }
-    ctx.restore();
   }
   // Logo on video if configured — uses per-sequence position
   if (logoImg && design?.logoSequences?.includes('video')) {
@@ -1970,7 +2048,16 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
           drawCards(ctx, width, height, cards, logoImg, accentColor, progress, normalizedDesign);
           break;
         }
-        case 'video': drawVideoSeq(ctx, width, height, videoEl, logoImg, progress, normalizedDesign, rushTransform, videoImageEl); break;
+        case 'video': {
+          // During a transition, `seq` is the departing sequence, not the
+          // one we're actually drawing — so use the video sequence's own
+          // duration to compute accurate seconds-into-sequence for overlay
+          // timing windows.
+          const videoSeq = sequences.find((s) => s.type === 'video');
+          const secondsIn = videoSeq ? progress * videoSeq.duration : 0;
+          drawVideoSeq(ctx, width, height, videoEl, logoImg, progress, normalizedDesign, rushTransform, videoImageEl, secondsIn);
+          break;
+        }
         case 'cta': drawCTA(ctx, width, height, accentColor, ctaText, ctaSubText, salesPhrase, watermarkText, logoImg, progress, normalizedDesign); break;
       }
     };
