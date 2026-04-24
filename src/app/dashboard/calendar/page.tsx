@@ -594,6 +594,11 @@ export default function CalendarPage() {
       setEditTab(target.status as 'draft' | 'scheduled' | 'published');
       setShowEditModal(true);
       setShowPreviewModal(false);
+      // Also close the full-preview modal; otherwise the edit modal opens
+      // behind it and looks like the button did nothing. (Clicking empty
+      // space next to the button closed full-preview via the backdrop,
+      // revealing the already-open edit modal — the "redirect" symptom.)
+      setShowFullPreview(false);
     }
   };
 
