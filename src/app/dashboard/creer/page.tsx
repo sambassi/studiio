@@ -152,6 +152,7 @@ import { useBranding } from "@/lib/hooks/useBranding";
 import { useAgentIAEnabled } from "@/lib/hooks/useAgentIAEnabled";
 import { AudioStudioPanel } from "@/components/creer/AudioStudioPanel";
 import AudioDuckingTimeline from "@/components/creer/AudioDuckingTimeline";
+import AudioMixPreview from "@/components/creer/AudioMixPreview";
 import { analyseRushForDucking, type AudioKeyframe } from "@/lib/creer/audioDucking";
 import { getExpiresAt, formatRemaining, getRetentionColor } from "@/lib/storage/retention";
 
@@ -1488,6 +1489,8 @@ function InfographicPageInner() {
     { id: 'kf-init', time: 0, musicVolume: 1, rushVolume: 0.5 },
   ]);
   const [autoDuckRunning, setAutoDuckRunning] = useState(false);
+  // Playhead from AudioMixPreview — null while stopped, seconds while playing.
+  const [mixPlayheadTime, setMixPlayheadTime] = useState<number | null>(null);
 
   // ── Video Upload ────────────────────────────────────────────
   // `rushList` is the source of truth for multi-rush (user can upload
@@ -4878,6 +4881,29 @@ function InfographicPageInner() {
                   contentTheme={contentTheme}
                 />
 
+                {/* Live mix preview — lets the user hear the whole montage
+                    (rush audio + music + voice + ducking keyframes) before
+                    committing to an export. */}
+                <AudioMixPreview
+                  audioKeyframes={audioKeyframes}
+                  musicUrl={audioMusicUrl}
+                  voiceUrl={audioVoiceUrl}
+                  rushUrl={rushUrl}
+                  totalDuration={
+                    (exportedSequences.titre ? introDuration : 0)
+                    + (cards.length > 0 && exportedSequences.cartes ? cardsDuration : 0)
+                    + (rushUrl && exportedSequences.video ? videoDuration : 0)
+                    + (exportedSequences.cta ? ctaDuration : 0)
+                  }
+                  videoSeqStart={
+                    (exportedSequences.titre ? introDuration : 0)
+                    + (cards.length > 0 && exportedSequences.cartes ? cardsDuration : 0)
+                  }
+                  videoSeqDuration={rushUrl && exportedSequences.video ? videoDuration : 0}
+                  onTimeUpdate={setMixPlayheadTime}
+                  onPlayStateChange={(p) => { if (!p) setMixPlayheadTime(null); }}
+                />
+
                 {/* Audio ducking keyframes — user mixes music vs rush
                     audio along the video sequence timeline. */}
                 <AudioDuckingTimeline
@@ -4891,6 +4917,7 @@ function InfographicPageInner() {
                   }
                   rushUrl={rushUrl}
                   autoDuckRunning={autoDuckRunning}
+                  playheadTime={mixPlayheadTime}
                   onAutoDuck={async () => {
                     if (!rushUrl) return;
                     setAutoDuckRunning(true);
