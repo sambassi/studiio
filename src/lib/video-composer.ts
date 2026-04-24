@@ -33,6 +33,12 @@ export interface CardData {
    * at its natural index.
    */
   position?: { x: number; y: number };
+  /**
+   * Per-card override: render this slot as plain centered text (label +
+   * optional description only), regardless of the global card style.
+   * Lets users mix styled cards + plain text in the same sequence.
+   */
+  textOnly?: boolean;
 }
 
 export interface SiteTextConfig {
@@ -1070,6 +1076,52 @@ function drawCards(
   // Editor: rounded-lg = 8px in the editor viewport.
   const radius = Math.max(2, cssPx(8));
 
+  // ── Shared "Text Only" renderer ──
+  // Used by both the global Text Only cardStyle and the per-card `textOnly`
+  // override. Draws label + optional description centered in the slot with
+  // no frame, no border, no icon, no value. Mirrors the editor preview.
+  const drawTextOnly = (card: CardData, x: number, y: number, cardW: number, cardH: number) => {
+    ctx.save();
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    const lines = card.description ? 2 : 1;
+    const gap = cssPx(2);
+    const blockH = labelSize + (lines === 2 ? gap + descSize : 0);
+    const topY = y + (cardH - blockH) / 2;
+    ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`;
+    ctx.fillStyle = card.color || '#FFFFFF';
+    ctx.fillText(truncateToWidth(ctx, card.label, cardW - cssPx(16)), x + cardW / 2, topY + labelSize / 2);
+    if (card.description) {
+      ctx.font = `400 ${descSize}px "${fontFamily}", sans-serif`;
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.fillText(
+        truncateToWidth(ctx, truncateAtWord(card.description, 120), cardW - cssPx(16)),
+        x + cardW / 2,
+        topY + labelSize + gap + descSize / 2,
+      );
+    }
+    ctx.restore();
+  };
+
+  // ── Card style: Text Only (plain text, no frames, no icons, no values) ──
+  // Single-column vertical list. Each card slot draws label + optional
+  // description centered, color of label = card.color.
+  if (cardStyle === 'Text Only') {
+    const cardW = containerW;
+    const gap = cssPx(8);
+    const cardH = Math.round(labelSize * 2.4 + descSize * 1.6);
+    const totalH = maxCards * cardH + (maxCards - 1) * gap;
+    const cardsY = ((design?.cardsPosition?.y ?? 50) / 100) * h - totalH / 2;
+    const cardsX = ((design?.cardsPosition?.x ?? 50) / 100) * w - cardW / 2;
+
+    cards.slice(0, maxCards).forEach((card, i) => {
+      const gridY = cardsY + i * (cardH + gap);
+      const { x, y } = applyCardPos(card, cardsX, gridY, cardW, cardH);
+      drawTextOnly(card, x, y, cardW, cardH);
+    });
+    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'left';
+  }
   // ── Card style: Stats Bold ──
   // Editor (infographie/page.tsx:3429-3452):
   //   grid per `previewClasses.cols` (grid-cols-2 for 9:16, grid-cols-3 for 16:9)
@@ -1077,7 +1129,7 @@ function drawCards(
   //   border border-white/10
   //   Row 1: value (13 * textScale px, font-black, card.color, drop-shadow)
   //   Row 2: label (6 * textScale px, font-medium 500, text-white/80, mt-0.5)
-  if (cardStyle === 'Stats Bold') {
+  else if (cardStyle === 'Stats Bold') {
     const cols = isReel ? 2 : 3;
     const gap = cssPx(6); // gap-1.5
     const cardW = Math.round((containerW - (cols - 1) * gap) / cols);
@@ -1098,6 +1150,8 @@ function drawCards(
       const gridX = cardsX + col * (cardW + gap);
       const gridY = cardsY + row * (cardH + gap);
       const { x, y } = applyCardPos(card, gridX, gridY, cardW, cardH);
+
+      if (card.textOnly) { drawTextOnly(card, x, y, cardW, cardH); return; }
 
       // bg-black/50 rounded-lg
       ctx.fillStyle = 'rgba(0,0,0,0.5)';
@@ -1208,6 +1262,8 @@ function drawCards(
       const { x, y } = applyCardPos(card, gridX, gridY, cardW, cardH);
       const { labelLines, valueLines, descLines } = pre[i];
 
+      if (card.textOnly) { drawTextOnly(card, x, y, cardW, cardH); return; }
+
       // Background: bg-black/30 rounded-lg
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
       drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.fill();
@@ -1301,6 +1357,8 @@ function drawCards(
       const gridY = cardsY + row * (cardH + gridGap);
       const { x, y } = applyCardPos(card, gridX, gridY, cardW, cardH);
 
+      if (card.textOnly) { drawTextOnly(card, x, y, cardW, cardH); return; }
+
       // Background bg-black/40 rounded-lg
       ctx.fillStyle = 'rgba(0,0,0,0.4)';
       drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.fill();
@@ -1382,6 +1440,8 @@ function drawCards(
       const gridY = cardsY + row * (cardH + gridGap);
       const { x, y } = applyCardPos(card, gridX, gridY, cardW, cardH);
 
+      if (card.textOnly) { drawTextOnly(card, x, y, cardW, cardH); return; }
+
       // borderBottom: 1px solid card.color @ 25% alpha
       ctx.strokeStyle = hexToRgba(card.color || accent, 0.25);
       ctx.lineWidth = Math.max(1, cssPx(1));
@@ -1455,6 +1515,8 @@ function drawCards(
       const gridY = cardsY + i * (cardH + gap);
       const gridX = cardsX;
       const { x, y } = applyCardPos(card, gridX, gridY, cardW, cardH);
+
+      if (card.textOnly) { drawTextOnly(card, x, y, cardW, cardH); return; }
 
       // bg-black/30 rounded-lg
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
@@ -2466,6 +2528,45 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
 
   onProgress?.(15, useFastMode ? 'Rendu rapide...' : 'Rendu en cours...');
 
+  // ═══ BACKGROUND-RENDER RESILIENCE ═══
+  // Chrome applies "intensive throttling" to backgrounded tabs — rAF and
+  // setTimeout drop to ~1 Hz after 5 min invisible, which freezes the
+  // canvas draw loop mid-export. Two defenses:
+  //  1) Screen Wake Lock: requests the browser keep this tab active.
+  //  2) A setInterval tick source that runs alongside rAF: if rAF is
+  //     paused by the browser, the interval still fires (often at a
+  //     reduced rate but enough to keep frames flowing to captureStream).
+  // Both are best-effort — we log failures and continue.
+  type WakeLockSentinelCompat = { released: boolean; release: () => Promise<void>; addEventListener: (ev: string, cb: () => void) => void };
+  let wakeLock: WakeLockSentinelCompat | null = null;
+  const acquireWakeLock = async () => {
+    try {
+      const nav = navigator as unknown as { wakeLock?: { request: (type: 'screen') => Promise<WakeLockSentinelCompat> } };
+      if (!nav.wakeLock?.request) return;
+      wakeLock = await nav.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => {
+        console.log('[Composer] Wake lock auto-released');
+      });
+      console.log('[Composer] 🔒 Screen wake lock acquired');
+    } catch (err) {
+      console.warn('[Composer] Wake lock request failed (continuing):', err);
+    }
+  };
+  const releaseWakeLock = () => {
+    if (wakeLock && !wakeLock.released) {
+      wakeLock.release().catch(() => { /* noop */ });
+    }
+    wakeLock = null;
+  };
+  // Re-request the wake lock when the user comes back to the tab; Chrome
+  // auto-releases screen locks when visibility hides.
+  const onVisibilityChange = () => {
+    if (document.visibilityState === 'visible' && !wakeLock) {
+      void acquireWakeLock();
+    }
+  };
+  document.addEventListener('visibilitychange', onVisibilityChange);
+
   // ═══════════════════════════════════════════════════════════
   // UNIFIED MODE: Both with and without audio use the same render loop.
   // captureStream(fps) handles frame timing — we just draw each frame
@@ -2475,17 +2576,28 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // ═══════════════════════════════════════════════════════════
   if (useFastMode) {
     return new Promise<{ video: Blob; thumbnail: Blob | null }>((resolve, reject) => {
+      let fallbackTimer: ReturnType<typeof setInterval> | null = null;
       recorder.onstop = () => {
         const outputType = isMP4 ? 'video/mp4' : 'video/webm';
         const blob = new Blob(chunks, { type: outputType });
         console.log('[Composer] ✅ DONE — blob:', (blob.size / 1024 / 1024).toFixed(1), 'MB, type:', outputType, ', chunks:', chunks.length);
         if (videoEl) videoEl.pause();
+        if (fallbackTimer) clearInterval(fallbackTimer);
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+        releaseWakeLock();
         try { document.body.removeChild(canvas); } catch {}
         onProgress?.(100, 'Terminé !');
         resolve({ video: blob, thumbnail: thumbnailBlob });
       };
-      recorder.onerror = (e) => { console.error('[Composer] MediaRecorder error:', e); reject(new Error('Recording failed')); };
+      recorder.onerror = (e) => {
+        console.error('[Composer] MediaRecorder error:', e);
+        if (fallbackTimer) clearInterval(fallbackTimer);
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+        releaseWakeLock();
+        reject(new Error('Recording failed'));
+      };
 
+      void acquireWakeLock();
       recorder.start(200);
       console.log('[Composer] Recording started for', totalDuration.toFixed(1), 's at', fps, 'fps');
 
@@ -2494,9 +2606,11 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
 
       const startTime = performance.now();
       let animStopped = false;
+      let lastDrawAt = performance.now();
 
       const doFrame = () => {
         if (animStopped) return;
+        lastDrawAt = performance.now();
         const elapsed = (performance.now() - startTime) / 1000;
 
         if (elapsed >= totalDuration + 0.3) {
@@ -2531,6 +2645,15 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         requestAnimationFrame(doFrame);
       };
 
+      // Background-safe tick: if rAF stalls (backgrounded tab), this
+      // timer keeps drawFrame firing. setInterval is also throttled in
+      // background but the Wake Lock above should keep it near full rate,
+      // and even a few Hz is enough for captureStream to keep recording.
+      fallbackTimer = setInterval(() => {
+        if (animStopped) { if (fallbackTimer) clearInterval(fallbackTimer); return; }
+        if (performance.now() - lastDrawAt > 500) doFrame();
+      }, 250);
+
       // Kick off rendering
       drawFrame(0);
       requestAnimationFrame(doFrame);
@@ -2551,6 +2674,8 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       try { musicBufferSource?.stop(); } catch {}
       try { voiceBufferSource?.stop(); } catch {}
       if (videoEl) videoEl.pause();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      releaseWakeLock();
       try { document.body.removeChild(canvas); } catch {}
       onProgress?.(100, 'Terminé !');
       resolve({ video: blob, thumbnail: thumbnailBlob });
@@ -2560,8 +2685,14 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
 
     recorder.onerror = (e) => {
       console.error('[Composer] MediaRecorder error:', e);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      releaseWakeLock();
       reject(new Error('Recording failed'));
     };
+
+    // Acquire screen wake lock before recorder.start() so the browser
+    // knows this tab should stay active during the render.
+    await acquireWakeLock();
 
     // Ensure AudioContext is still running right before starting audio
     if (audioCtx && audioCtx.state !== 'running') {

@@ -87,6 +87,7 @@ import {
   Frown, Meh, Laugh, Cake,
   Trees, TreeDeciduous, Waves,
   Crown, Diamond, Medal,
+  Rows3, Columns3,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { PlatformIcon, type PlatformKey } from "@/components/ui/PlatformIcon";
@@ -228,6 +229,12 @@ interface InfoCard {
   iconSize?: number;        // 16–80 px
   iconStyle?: 'outline' | 'duotone' | 'solid';
   iconGradient?: { start: string; end: string; direction: 'h' | 'v' | 'd' };
+  /**
+   * When true, this individual card renders as plain text (label +
+   * description only, no frame, no icon, no value), overriding the
+   * global `selectedCardStyle`. Lets users mix styled and text cards.
+   */
+  textOnly?: boolean;
 }
 
 /**
@@ -2888,6 +2895,60 @@ function InfographicPageInner() {
 
   const clearCardSelection = () => setSelectedCardIds(new Set());
 
+  /**
+   * Evenly redistributes cards' free-mode positions along one axis. Uses
+   * the current min/max of the axis so the user's framing is preserved
+   * (cards get even spacing between their existing bounds). Falls back to
+   * a sensible default band (10-90%) when every card shares the same
+   * coord or has no position yet.
+   */
+  const distributeCards = (axis: 'vertical' | 'horizontal') => {
+    if (cards.length < 2) return;
+    const key: 'x' | 'y' = axis === 'vertical' ? 'y' : 'x';
+    // Seed missing positions with the default grid fallback (same logic
+    // as the free-mode renderer) so even cards the user never dragged
+    // get repositioned to something reasonable.
+    const cols = format === '16:9' ? 3 : 2;
+    const withPos = cards.map((c, i) => {
+      const defaultX = 25 + (i % cols) * 25;
+      const defaultY = 40 + Math.floor(i / cols) * 18;
+      return {
+        id: c.id,
+        pos: c.position || { x: defaultX, y: defaultY },
+      };
+    });
+    const coords = withPos.map((p) => p.pos[key]);
+    const minC = Math.min(...coords);
+    const maxC = Math.max(...coords);
+    const span = maxC - minC;
+    // If every card is on the same line, expand to 10-90% band so the
+    // distribute action still has a visible effect.
+    const lo = span < 5 ? 10 : minC;
+    const hi = span < 5 ? 90 : maxC;
+    // Sort by the axis so the distribution respects the user's visual
+    // order (top-to-bottom for vertical, left-to-right for horizontal).
+    const sorted = [...withPos].sort((a, b) => a.pos[key] - b.pos[key]);
+    const step = sorted.length > 1 ? (hi - lo) / (sorted.length - 1) : 0;
+    const byId = new Map<string, number>();
+    sorted.forEach((entry, rank) => byId.set(entry.id, lo + rank * step));
+
+    setCards((prev) =>
+      prev.map((c) => {
+        const newCoord = byId.get(c.id);
+        if (newCoord === undefined) return c;
+        const defaultX = 25 + (prev.indexOf(c) % cols) * 25;
+        const defaultY = 40 + Math.floor(prev.indexOf(c) / cols) * 18;
+        const base = c.position || { x: defaultX, y: defaultY };
+        return {
+          ...c,
+          position: axis === 'vertical'
+            ? { x: base.x, y: newCoord }
+            : { x: newCoord, y: base.y },
+        };
+      }),
+    );
+  };
+
   const getCardGroupFor = (cardId: string): CardGroup | undefined =>
     cardGroups.find((g) => g.cardIds.includes(cardId));
 
@@ -3880,7 +3941,7 @@ function InfographicPageInner() {
               subtitle: bSubtitle || undefined,
               salesPhrase: salesPhrase || undefined,
               cards: bCards.length > 0 && exportedSequences.cartes
-                ? await preRenderCardIcons(bCards).then(rendered => rendered.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color, position: c.position, iconImage: (c as any).iconImage })))
+                ? await preRenderCardIcons(bCards).then(rendered => rendered.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color, position: c.position, textOnly: c.textOnly, iconImage: (c as any).iconImage })))
                 : undefined,
               posterUrl: posterUrl,
               videoUrl: exportedSequences.video && rushList[0]?.kind !== 'image' ? (rushUrl || undefined) : undefined,
@@ -4011,6 +4072,7 @@ function InfographicPageInner() {
                   description: c.description,
                   color: c.color,
                   position: c.position,
+                  textOnly: c.textOnly,
                 })),
                 characterUrl: characterImage ? mediaUrl : null,
                 posterUrl,
@@ -4243,7 +4305,7 @@ function InfographicPageInner() {
             subtitle: subtitle || undefined,
             salesPhrase: salesPhrases.length > 0 ? salesPhrases[0] : undefined,
             cards: cards.length > 0 && exportedSequences.cartes
-              ? await preRenderCardIcons(cards).then(rendered => rendered.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color, position: c.position, iconImage: (c as any).iconImage })))
+              ? await preRenderCardIcons(cards).then(rendered => rendered.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color, position: c.position, textOnly: c.textOnly, iconImage: (c as any).iconImage })))
               : undefined,
             posterUrl: exportPosterUrl,
             videoUrl: exportedSequences.video && rushList[0]?.kind !== 'image' ? rushUrl : undefined,
@@ -4972,6 +5034,30 @@ function InfographicPageInner() {
                     {cardPositionMode === 'grid' ? 'Grille' : 'Libre'}
                   </button>
                 </div>
+
+                {cardPositionMode === 'free' && cards.length >= 2 && (
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
+                      Distribuer cartes
+                    </div>
+                    <div className="grid grid-cols-2 gap-1">
+                      <button
+                        onClick={() => distributeCards('vertical')}
+                        className="rounded bg-gray-800 hover:bg-purple-700 px-2 py-1.5 text-[11px] text-white flex items-center justify-center gap-1 transition"
+                        title="Répartir les cartes avec un écart vertical égal entre min et max Y existants"
+                      >
+                        <Rows3 size={12} /> Vertical
+                      </button>
+                      <button
+                        onClick={() => distributeCards('horizontal')}
+                        className="rounded bg-gray-800 hover:bg-purple-700 px-2 py-1.5 text-[11px] text-white flex items-center justify-center gap-1 transition"
+                        title="Répartir les cartes avec un écart horizontal égal entre min et max X existants"
+                      >
+                        <Columns3 size={12} /> Horizontal
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div>
                   <label className="flex items-center gap-2 text-xs text-gray-300">
                     <input
@@ -6599,6 +6685,21 @@ function InfographicPageInner() {
                       className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent p-0"
                     />
                   </label>
+                  <label className="flex items-center gap-1 text-[10px] text-gray-300 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={!!cards[selectedEl.index].textOnly}
+                      onChange={(e) => {
+                        const idx = selectedEl.index;
+                        const next = e.target.checked;
+                        setCards((prev) =>
+                          prev.map((c, i) => (i === idx ? { ...c, textOnly: next } : c)),
+                        );
+                      }}
+                      className="accent-pink-500"
+                    />
+                    Texte seul
+                  </label>
                   <button
                     onClick={() => {
                       const idx = selectedEl.index;
@@ -7421,6 +7522,9 @@ function InfographicPageInner() {
                 const scaledLabel = `${Math.round(7 * textScale * cardsK)}px`;
                 const scaledValue = `${Math.round(9 * textScale * cardsK)}px`;
                 const scaledDesc = `${Math.round(6 * textScale * cardsK)}px`;
+                // Cards-specific font overrides the page-wide selectedFont.
+                // Falls back to `undefined` (inherit selectedFont) when unset.
+                const cardsFontFamily = cardsFont ? (FONT_CSS_MAP[cardsFont] || cardsFont) : undefined;
                 const renderCardInner = (card: InfoCard) => {
                   // ── Compact ──
                   if (selectedCardStyle === "Compact") {
@@ -7541,6 +7645,31 @@ function InfographicPageInner() {
                       </div>
                     );
                   }
+                  // ── Text Only (no frame, no icon, no value) ──
+                  // Also used when the individual card has textOnly=true,
+                  // which lets users mix styled cards + plain text in the
+                  // same sequence for more visual variety.
+                  if (selectedCardStyle === "Text Only" || card.textOnly) {
+                    return (
+                      <div className="flex flex-col items-center justify-center w-full px-2 py-1 text-center">
+                        <p
+                          className="font-bold text-white drop-shadow"
+                          style={{ fontSize: scaledLabel, color: card.color }}
+                        >
+                          {renderBoldMarkdown(card.label)}
+                        </p>
+                        {card.description && (
+                          <p
+                            className="text-white/70 leading-snug"
+                            style={{ fontSize: scaledDesc }}
+                          >
+                            {renderBoldMarkdown(truncateAtWord(card.description, 120))}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  }
+
                   // ── Full Width ──
                   return (
                     <div
@@ -7616,6 +7745,7 @@ function InfographicPageInner() {
                               width: `${cardWidthPct}%`,
                               touchAction: 'none',
                               pointerEvents: 'auto',
+                              fontFamily: cardsFontFamily,
                               ...(isSelected ? { outline: `2px solid ${accentHex}`, outlineOffset: '2px', borderRadius: '6px' } : {}),
                             }}
                             onMouseDown={(e) => {
@@ -7719,6 +7849,7 @@ function InfographicPageInner() {
                           : previewClasses.cols
                       }`}
                       data-cards-grid
+                      style={{ fontFamily: cardsFontFamily }}
                     >
                       {visibleCards.map((card) => (
                         <div key={card.id}>{renderCardInner(card)}</div>
