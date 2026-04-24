@@ -151,6 +151,8 @@ import { BrandingIndicator } from "@/components/shared/BrandingIndicator";
 import { useBranding } from "@/lib/hooks/useBranding";
 import { useAgentIAEnabled } from "@/lib/hooks/useAgentIAEnabled";
 import { AudioStudioPanel } from "@/components/creer/AudioStudioPanel";
+import AudioDuckingTimeline from "@/components/creer/AudioDuckingTimeline";
+import { analyseRushForDucking, type AudioKeyframe } from "@/lib/creer/audioDucking";
 import { getExpiresAt, formatRemaining, getRetentionColor } from "@/lib/storage/retention";
 
 // ── Unified icon badge style — filled Lucide icon + colored tint container ──
@@ -1478,6 +1480,15 @@ function InfographicPageInner() {
   const [audioMusicVolume, setAudioMusicVolume] = useState(0.5);
   const [audioVoiceVolume, setAudioVoiceVolume] = useState(1.0);
 
+  // Audio ducking keyframes. Each entry sets the absolute music + rush
+  // volumes (0-1) at a specific time (seconds from the start of the final
+  // montage). Composer applies a stepped gain curve during the video
+  // sequence. Default: one keyframe at t=0 with music full + rush half.
+  const [audioKeyframes, setAudioKeyframes] = useState<AudioKeyframe[]>([
+    { id: 'kf-init', time: 0, musicVolume: 1, rushVolume: 0.5 },
+  ]);
+  const [autoDuckRunning, setAutoDuckRunning] = useState(false);
+
   // ── Video Upload ────────────────────────────────────────────
   // `rushList` is the source of truth for multi-rush (user can upload
   // several videos and reorder them). `rushUrl` / `rushFileName` are
@@ -1797,6 +1808,17 @@ function InfographicPageInner() {
               (o: unknown): o is ExtraOverlay =>
                 !!o && typeof (o as ExtraOverlay).text === 'string',
             ).slice(0, 3),
+          );
+        }
+        if (Array.isArray(cfg.audioKeyframes) && cfg.audioKeyframes.length > 0) {
+          setAudioKeyframes(
+            cfg.audioKeyframes.filter(
+              (k: unknown): k is AudioKeyframe =>
+                !!k
+                && typeof (k as AudioKeyframe).time === 'number'
+                && typeof (k as AudioKeyframe).musicVolume === 'number'
+                && typeof (k as AudioKeyframe).rushVolume === 'number',
+            ),
           );
         }
         if (Array.isArray(cfg.cardGroups)) {
@@ -2247,6 +2269,7 @@ function InfographicPageInner() {
     if (c.watermarkGradColor1) setWatermarkGradColor1(c.watermarkGradColor1);
     if (c.watermarkGradColor2) setWatermarkGradColor2(c.watermarkGradColor2);
     if (Array.isArray(c.extraOverlays)) setExtraOverlays(c.extraOverlays);
+    if (Array.isArray(c.audioKeyframes) && c.audioKeyframes.length > 0) setAudioKeyframes(c.audioKeyframes);
     if (Array.isArray(c.cardGroups)) setCardGroups(c.cardGroups);
     if (c.cardPositionMode === 'grid' || c.cardPositionMode === 'free') setCardPositionMode(c.cardPositionMode);
   };
@@ -2330,6 +2353,7 @@ function InfographicPageInner() {
         overlayTextScale, overlayStartTime, overlayEndTime,
         videoOverlayText,
         extraOverlays,
+        audioKeyframes,
         titleFont, ctaFont, overlayFont, watermarkFont, cardsFont,
         backdropRounded, backdropRadius, backdropMargin,
         ctaTextGradient, ctaGradColor1, ctaGradColor2,
@@ -2371,6 +2395,7 @@ function InfographicPageInner() {
     overlayTextScale, overlayStartTime, overlayEndTime,
     videoOverlayText,
     extraOverlays,
+    audioKeyframes,
     titleFont, ctaFont, overlayFont, watermarkFont, cardsFont,
     backdropRounded, backdropRadius, backdropMargin,
     ctaTextGradient, ctaGradColor1, ctaGradColor2,
@@ -3863,6 +3888,7 @@ function InfographicPageInner() {
               voiceUrl: audioVoiceUrl || undefined,
               musicVolume: audioMusicVolume,
               voiceVolume: audioVoiceVolume,
+              audioKeyframes,
               introDuration: exportedSequences.titre ? introDuration : 0,
               cardsDuration: bCards.length > 0 && exportedSequences.cartes ? cardsDuration : 0,
               videoDuration: rushUrl && exportedSequences.video ? videoDuration : 0,
@@ -3998,6 +4024,7 @@ function InfographicPageInner() {
                 musicUrl: audioMusicUrl || undefined,
                 voiceUrl: audioVoiceUrl || undefined,
                 hasAudio: !!(audioMusicUrl || audioVoiceUrl),
+                audioKeyframes: audioKeyframes.length > 0 ? audioKeyframes : undefined,
                 sequences: {
                   intro: exportedSequences.titre ? introDuration : 0,
                   cards: cards.length > 0 && exportedSequences.cartes ? cardsDuration : 0,
@@ -4224,6 +4251,7 @@ function InfographicPageInner() {
             voiceUrl: audioVoiceUrl || undefined,
             musicVolume: audioMusicVolume,
             voiceVolume: audioVoiceVolume,
+            audioKeyframes,
             introDuration: exportedSequences.titre ? introDuration : 0,
             cardsDuration: cards.length > 0 && exportedSequences.cartes ? cardsDuration : 0,
             videoDuration: rushUrl && exportedSequences.video ? videoDuration : 0,
@@ -4848,6 +4876,35 @@ function InfographicPageInner() {
                   onCtaDurationChange={setCtaDuration}
                   hasRush={rushList.length > 0}
                   contentTheme={contentTheme}
+                />
+
+                {/* Audio ducking keyframes — user mixes music vs rush
+                    audio along the video sequence timeline. */}
+                <AudioDuckingTimeline
+                  keyframes={audioKeyframes}
+                  onChange={setAudioKeyframes}
+                  totalDuration={
+                    (exportedSequences.titre ? introDuration : 0)
+                    + (cards.length > 0 && exportedSequences.cartes ? cardsDuration : 0)
+                    + (rushUrl && exportedSequences.video ? videoDuration : 0)
+                    + (exportedSequences.cta ? ctaDuration : 0)
+                  }
+                  rushUrl={rushUrl}
+                  autoDuckRunning={autoDuckRunning}
+                  onAutoDuck={async () => {
+                    if (!rushUrl) return;
+                    setAutoDuckRunning(true);
+                    try {
+                      const ducked = await analyseRushForDucking(rushUrl);
+                      if (ducked.length > 0) setAudioKeyframes(ducked);
+                      else showToast("Auto-duck: aucun son détecté dans le rush");
+                    } catch (err) {
+                      console.error('[AutoDuck] failed:', err);
+                      showToast(`Auto-duck échoué: ${err instanceof Error ? err.message : 'erreur'}`);
+                    } finally {
+                      setAutoDuckRunning(false);
+                    }
+                  }}
                 />
               </>
             )}

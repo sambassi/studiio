@@ -4,6 +4,8 @@
  * Audio elements handle MP3/OGG/WAV decoding natively (no OfflineAudioContext).
  * Outputs MP4 if supported, otherwise WebM.
  */
+import type { AudioKeyframe } from './creer/audioDucking';
+
 const COMPOSER_VERSION = 'v23-snapshot-parity-2026-04-19';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
@@ -254,6 +256,15 @@ export interface ComposerOptions {
   /** Pre-decoded audio buffers for batch mode — more reliable than <audio> elements */
   musicBuffer?: AudioBuffer;
   voiceBuffer?: AudioBuffer;
+  /**
+   * Audio ducking keyframes along the montage timeline. Each sets the
+   * absolute music + rush volumes (0-1) at a given time. Applied via
+   * AudioParam.setValueAtTime on the music/rush gain nodes, so the
+   * curve is stepped (no interpolation). When present AND the rush has
+   * an audio track, the rush video is routed through the AudioContext
+   * so its audio is embedded in the recording.
+   */
+  audioKeyframes?: AudioKeyframe[];
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2275,6 +2286,9 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   let voiceBufferSource: AudioBufferSourceNode | null = null;
   let musicElConnected = false;
   let voiceElConnected = false;
+  // Hoisted so the keyframe scheduler at recorder-start can tweak gains.
+  let musicGainNode: GainNode | null = null;
+  let rushGainNode: GainNode | null = null;
 
   if (hasAudio) {
     // For batch mode with shared context: if it's closed or broken, create a fresh one
@@ -2316,6 +2330,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         musicGain.gain.value = options.musicVolume ?? ((validVoiceBuffer || voiceEl) ? 0.5 : 0.8);
         musicBufferSource.connect(musicGain);
         musicGain.connect(audioDest);
+        musicGainNode = musicGain;
         console.log('[Composer] ✅ Music: AudioBuffer connected | duration:', options.musicBuffer.duration.toFixed(1), 's | channels:', options.musicBuffer.numberOfChannels, '| gain:', musicGain.gain.value);
       } catch (err) {
         console.error('[Composer] ❌ Music AudioBuffer setup failed:', err);
@@ -2335,6 +2350,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         musicGain.gain.value = options.musicVolume ?? (voiceEl ? 0.5 : 0.8);
         musicSource.connect(musicGain);
         musicGain.connect(audioDest);
+        musicGainNode = musicGain;
         musicEl.loop = true;
         musicElConnected = true;
         console.log('[Composer] ✅ Music: <audio> element connected | gain:', musicGain.gain.value);
@@ -2374,9 +2390,33 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       }
     }
 
+    // ── RUSH VIDEO AUDIO: route through AudioContext so the rush's own
+    // sound track gets embedded in the recorded file (and can be ducked
+    // via the keyframe graph below). createMediaElementSource disconnects
+    // the element's audio from the default speaker output, which is
+    // exactly what MediaRecorder needs.
+    if (videoEl && audioCtx && audioDest) {
+      try {
+        const rushSource = audioCtx.createMediaElementSource(videoEl);
+        const rushGain = audioCtx.createGain();
+        // Default rush gain = first keyframe's rushVolume if provided, else 0.5
+        // so the rush is audible-but-quieter than a shouting track.
+        rushGain.gain.value = options.audioKeyframes?.[0]?.rushVolume ?? 0.5;
+        rushSource.connect(rushGain);
+        rushGain.connect(audioDest);
+        rushGainNode = rushGain;
+        console.log('[Composer] ✅ Rush audio: routed via AudioContext | initial gain:', rushGain.gain.value);
+      } catch (err) {
+        // InvalidStateError is typical if the element was already tied to
+        // another AudioContext (batch reuse). Log and move on — the rush
+        // just won't be audible in the output, same as pre-ducking era.
+        console.warn('[Composer] ⚠️ Rush audio routing failed — rush will be silent in recording:', err);
+      }
+    }
+
     // Final audio status
     const audioReady = !!musicBufferSource || musicElConnected || !!voiceBufferSource || voiceElConnected;
-    console.log('[Composer] Audio setup complete — ready:', audioReady, '| musicBuffer:', !!musicBufferSource, '| musicEl:', musicElConnected, '| voiceBuffer:', !!voiceBufferSource, '| voiceEl:', voiceElConnected);
+    console.log('[Composer] Audio setup complete — ready:', audioReady, '| musicBuffer:', !!musicBufferSource, '| musicEl:', musicElConnected, '| voiceBuffer:', !!voiceBufferSource, '| voiceEl:', voiceElConnected, '| rush:', !!rushGainNode);
   }
 
   // ═══ MEDIARECORDER SETUP ═══
@@ -2549,6 +2589,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
             mg.gain.value = (validVoiceBuffer || voiceEl) ? 0.5 : 0.8;
             musicBufferSource.connect(mg);
             mg.connect(audioDest);
+            musicGainNode = mg;
             musicBufferSource.start(audioCtx.currentTime + 0.05);
             console.log('[Composer] ✅ Music AudioBuffer RECREATED and STARTED');
           } catch (e2) {
@@ -2570,6 +2611,31 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     } else if (voiceElConnected && voiceEl) {
       voiceEl.currentTime = 0;
       voiceEl.play().then(() => console.log('[Composer] ✅ Voice <audio> PLAYING')).catch(err => console.error('[Composer] ❌ Voice play failed:', err));
+    }
+
+    // ── AUDIO DUCKING: schedule gain automation on music + rush nodes ──
+    // Keyframes are in montage-timeline seconds. Each keyframe maps to
+    // audioStartTime + kf.time on the AudioContext clock. setValueAtTime
+    // produces a stepped curve (no interpolation) which matches the UI
+    // promise ("curve étagée, pas d'interpolation linéaire en v1").
+    if (audioCtx && options.audioKeyframes && options.audioKeyframes.length > 0) {
+      const sortedKf = [...options.audioKeyframes].sort((a, b) => a.time - b.time);
+      if (musicGainNode) {
+        musicGainNode.gain.cancelScheduledValues(audioCtx.currentTime);
+        for (const kf of sortedKf) {
+          const at = audioStartTime + Math.max(0, kf.time);
+          musicGainNode.gain.setValueAtTime(kf.musicVolume, at);
+        }
+        console.log('[Composer] 🎚️ Music gain automation scheduled —', sortedKf.length, 'keyframes');
+      }
+      if (rushGainNode) {
+        rushGainNode.gain.cancelScheduledValues(audioCtx.currentTime);
+        for (const kf of sortedKf) {
+          const at = audioStartTime + Math.max(0, kf.time);
+          rushGainNode.gain.setValueAtTime(kf.rushVolume, at);
+        }
+        console.log('[Composer] 🎚️ Rush gain automation scheduled —', sortedKf.length, 'keyframes');
+      }
     }
 
     // Wait a moment for audio pipeline to fill before starting recording
