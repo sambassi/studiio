@@ -91,11 +91,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Anthropic API not configured' }, { status: 500 });
     }
 
-    const body = await req.json();
-    const { topic, locale = 'fr', cardCount = 3, existingCards = [], existingTitles = [], videoOverlayOnly = false, fieldType, variationNonce } = body;
+    const body = await req.json().catch(() => ({}));
+    console.log('[AI-Generate] body received:', JSON.stringify(body).slice(0, 400));
+    let topic: string = typeof body?.topic === 'string' ? body.topic.trim() : '';
+    const { locale = 'fr', cardCount = 3, existingCards = [], existingTitles = [], videoOverlayOnly = false, fieldType, variationNonce } = body;
 
-    if (!topic || typeof topic !== 'string') {
-      return NextResponse.json({ success: false, error: 'Topic is required' }, { status: 400 });
+    // Coerce missing/invalid topic to a usable default for single-field
+    // calls (title/subtitle/cta/etc.) so the user who just clicked a
+    // button gets something back rather than a silent 400. Non-field
+    // calls still validate strictly.
+    if (!topic) {
+      if (fieldType) {
+        console.warn('[AI-Generate] topic missing for fieldType', fieldType, '— defaulting to "fitness"');
+        topic = 'fitness';
+      } else {
+        console.warn('[AI-Generate] 400: topic missing. body keys:', Object.keys(body));
+        return NextResponse.json({ success: false, error: 'Topic is required' }, { status: 400 });
+      }
     }
 
     // Mode "single field" — generate one text for a specific field
