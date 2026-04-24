@@ -15,6 +15,45 @@ const FALLBACK_MODEL = 'claude-3-5-sonnet-20241022';
 // quality content.
 const AI_TIMEOUT_MS = 30_000;
 
+/**
+ * Extracts the `text` value from a Claude response targeted at the
+ * single-field prompt ({"text":"..."}). Tries in order:
+ *   1. Strip markdown fences (```json ... ```) and JSON.parse
+ *   2. Locate the first {...} JSON object and parse it
+ *   3. Fall back to a permissive regex that tolerates escaped quotes
+ * Returns null if every strategy fails so the caller can surface a clear
+ * error instead of silently returning the wrong value.
+ */
+function extractFieldText(raw: string): string | null {
+  let s = raw.trim();
+  // Strip markdown code fences: ```json ... ``` or ``` ... ```
+  if (s.startsWith('```')) {
+    s = s.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?\s*```$/, '');
+  }
+  // Direct JSON.parse
+  try {
+    const parsed = JSON.parse(s);
+    if (parsed && typeof parsed.text === 'string') return parsed.text.trim();
+  } catch { /* fall through */ }
+  // Extract the first balanced JSON object by scanning braces
+  const first = s.indexOf('{');
+  const last = s.lastIndexOf('}');
+  if (first !== -1 && last > first) {
+    try {
+      const parsed = JSON.parse(s.substring(first, last + 1));
+      if (parsed && typeof parsed.text === 'string') return parsed.text.trim();
+    } catch { /* fall through */ }
+  }
+  // Permissive regex — tolerates escaped quotes inside the value
+  const m = s.match(/"text"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (m) return m[1].replace(/\\"/g, '"').trim();
+  // Last resort: if the raw response is just plain text (no JSON at all),
+  // take the whole thing. Strips surrounding quotes if present.
+  const stripped = s.replace(/^['"]|['"]$/g, '').trim();
+  if (stripped && !stripped.includes('{') && stripped.length < 200) return stripped;
+  return null;
+}
+
 async function callAnthropic(
   apiKey: string,
   body: Record<string, any>,
@@ -75,16 +114,30 @@ export async function POST(req: NextRequest) {
           max_tokens: 256,
           messages: [{ role: 'user', content: prompt }],
         }, PRIMARY_MODEL);
-        if (r.ok) {
-          const d = await r.json();
-          const block = d.content?.find((c: any) => c.type === 'text');
-          if (block?.text) {
-            const match = block.text.match(/\{[^}]*"text"\s*:\s*"([^"]+)"/);
-            if (match) return NextResponse.json({ success: true, text: match[1] });
-          }
+        if (!r.ok) {
+          const errText = await r.text().catch(() => '');
+          console.error('[AI-Generate] field call not ok:', fieldType, r.status, errText.slice(0, 200));
+          return NextResponse.json({ success: false, error: `AI status ${r.status}` }, { status: 502 });
         }
-      } catch {}
-      return NextResponse.json({ success: false, error: 'AI generation failed' }, { status: 500 });
+        const d = await r.json();
+        const block = d.content?.find((c: any) => c.type === 'text');
+        const raw = block?.text as string | undefined;
+        if (!raw) {
+          console.error('[AI-Generate] no text block in response for', fieldType);
+          return NextResponse.json({ success: false, error: 'Empty AI response' }, { status: 502 });
+        }
+        // Robust extraction: try JSON.parse first (handles markdown fences,
+        // nested objects, escaped quotes) before falling back to a loose regex.
+        const extracted = extractFieldText(raw);
+        if (extracted) {
+          return NextResponse.json({ success: true, text: extracted });
+        }
+        console.error('[AI-Generate] could not extract "text" from:', raw.slice(0, 200));
+        return NextResponse.json({ success: false, error: 'Could not parse AI response' }, { status: 502 });
+      } catch (err) {
+        console.error('[AI-Generate] field call threw:', fieldType, err);
+        return NextResponse.json({ success: false, error: (err as Error).message || 'AI generation failed' }, { status: 500 });
+      }
     }
 
     // Mode "video overlay only" — generate just a short overlay text for the video
