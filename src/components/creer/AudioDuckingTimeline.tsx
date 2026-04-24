@@ -17,6 +17,9 @@ interface Props {
   rushUrl: string | null;
   autoDuckRunning: boolean;
   onAutoDuck: () => void | Promise<void>;
+  /** When set, render a vertical playhead line at this time (seconds)
+   *  on the timeline bar. Driven by AudioMixPreview rAF tick. */
+  playheadTime?: number | null;
 }
 
 /**
@@ -33,6 +36,7 @@ export default function AudioDuckingTimeline({
   rushUrl,
   autoDuckRunning,
   onAutoDuck,
+  playheadTime,
 }: Props) {
   const duration = Math.max(1, totalDuration); // never divide by zero
   const sorted = [...keyframes].sort((a, b) => a.time - b.time);
@@ -100,6 +104,13 @@ export default function AudioDuckingTimeline({
             />
           );
         })}
+        {typeof playheadTime === 'number' && playheadTime >= 0 && (
+          <div
+            className="absolute top-0 bottom-0 w-[2px] bg-purple-400 shadow-[0_0_6px_rgba(168,85,247,0.8)] pointer-events-none"
+            style={{ left: `${Math.max(0, Math.min(100, (playheadTime / duration) * 100))}%` }}
+            title={`Lecture t=${playheadTime.toFixed(1)}s`}
+          />
+        )}
         <div className="absolute bottom-0 left-0 right-0 flex justify-between text-[8px] text-gray-500 px-1 pb-0.5 pointer-events-none">
           <span>0s</span>
           <span>{duration.toFixed(1)}s</span>
