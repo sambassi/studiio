@@ -2993,23 +2993,36 @@ function InfographicPageInner() {
 
   const suggestField = async (fieldType: string, setter: (v: string) => void) => {
     setAiFieldLoading(fieldType);
+    // Resolve a human-readable topic for the AI prompt — the theme
+    // slug alone ("sommeil-sport") lands as garbage input; the label
+    // ("Sommeil & Sport") or the user's custom topic works better.
+    const themeObj = CONTENT_THEMES.find((t) => t.id === contentTheme);
+    const topicText =
+      contentTheme === 'personnalise'
+        ? (customTopic || 'fitness')
+        : (themeObj?.label || contentTheme || 'fitness');
+    console.log('[AI-Field]', fieldType, 'topic:', topicText);
     try {
-      // Resolve a human-readable topic for the AI prompt — the theme
-      // slug alone ("sommeil-sport") lands as garbage input; the label
-      // ("Sommeil & Sport") or the user's custom topic works better.
-      const themeObj = CONTENT_THEMES.find((t) => t.id === contentTheme);
-      const topicText =
-        contentTheme === 'personnalise'
-          ? (customTopic || 'fitness')
-          : (themeObj?.label || contentTheme || 'fitness');
       const res = await fetch('/api/content/ai-generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic: topicText, fieldType }),
+        body: JSON.stringify({ topic: topicText, fieldType, locale: 'fr' }),
       });
-      const data = await res.json();
-      if (data.success && data.text) setter(data.text);
-    } catch {} finally { setAiFieldLoading(null); }
+      console.log('[AI-Field]', fieldType, 'status:', res.status);
+      const data = await res.json().catch(() => null);
+      console.log('[AI-Field]', fieldType, 'body:', data);
+      if (data?.success && typeof data.text === 'string' && data.text.trim().length > 0) {
+        setter(data.text.trim());
+        return;
+      }
+      console.warn('[AI-Field]', fieldType, 'generation failed:', data?.error);
+      showToast?.(`IA ${fieldType}: ${data?.error || 'réponse invalide'} — réessayez`);
+    } catch (err) {
+      console.error('[AI-Field]', fieldType, 'threw:', err);
+      showToast?.(`IA ${fieldType}: ${(err as Error)?.message || 'erreur réseau'} — réessayez`);
+    } finally {
+      setAiFieldLoading(null);
+    }
   };
 
   // Convenience: run title + subtitle generation sequentially. Used by
