@@ -38,6 +38,47 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// Uploads prefix a timestamp like `1776962255956-<original>`. Strip it so
+// users see their actual filename. The fallback is the raw name, which is
+// better than a blank label if the pattern ever changes.
+function displayFilename(raw: string): string {
+  const m = /^\d{10,}-(.+)$/.exec(raw);
+  return m ? m[1] : raw;
+}
+
+// Format seconds as M:SS (or H:MM:SS for hour-long files). Pads seconds
+// so 3:06 renders correctly instead of the raw "3:6".
+function formatDuration(sec: number | null): string {
+  if (!sec || !Number.isFinite(sec) || sec <= 0) return '';
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+// Probes audio metadata client-side to extract duration. Uses a detached
+// <audio> element with preload=metadata so the browser only fetches the
+// header bytes, not the full file. Fails silently on CORS / decode errors.
+function AudioDuration({ url }: { url: string }) {
+  const [duration, setDuration] = useState<number | null>(null);
+  useEffect(() => {
+    const audio = document.createElement('audio');
+    audio.preload = 'metadata';
+    audio.crossOrigin = 'anonymous';
+    const onLoaded = () => setDuration(audio.duration);
+    audio.addEventListener('loadedmetadata', onLoaded, { once: true });
+    audio.src = url;
+    return () => {
+      audio.removeEventListener('loadedmetadata', onLoaded);
+      audio.src = '';
+    };
+  }, [url]);
+  const formatted = formatDuration(duration);
+  if (!formatted) return null;
+  return <span className="tabular-nums">{formatted}</span>;
+}
+
 function ExpiryBadge({ file }: { file: MediaFile }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -320,9 +361,15 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibr
                       {isSelected && '✓'}
                     </button>
                   )}
-                  <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/80 to-transparent p-2 pl-7">
-                    <p className="text-[10px] text-white truncate">{file.name}</p>
-                    {file.size > 0 && <p className="text-[9px] text-gray-400">{formatSize(file.size)}</p>}
+                  <div
+                    className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/80 to-transparent p-2 pl-7"
+                    title={displayFilename(file.name)}
+                  >
+                    <p className="text-[10px] text-white truncate">{displayFilename(file.name)}</p>
+                    <p className="flex items-center gap-1.5 text-[9px] text-gray-400">
+                      {file.type === 'audio' && <AudioDuration url={file.url} />}
+                      {file.size > 0 && <span>{formatSize(file.size)}</span>}
+                    </p>
                   </div>
                 </div>
                 );

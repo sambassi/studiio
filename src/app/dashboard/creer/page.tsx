@@ -2994,14 +2994,30 @@ function InfographicPageInner() {
   const suggestField = async (fieldType: string, setter: (v: string) => void) => {
     setAiFieldLoading(fieldType);
     try {
+      // Resolve a human-readable topic for the AI prompt — the theme
+      // slug alone ("sommeil-sport") lands as garbage input; the label
+      // ("Sommeil & Sport") or the user's custom topic works better.
+      const themeObj = CONTENT_THEMES.find((t) => t.id === contentTheme);
+      const topicText =
+        contentTheme === 'personnalise'
+          ? (customTopic || 'fitness')
+          : (themeObj?.label || contentTheme || 'fitness');
       const res = await fetch('/api/content/ai-generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic: contentTheme || 'fitness', fieldType }),
+        body: JSON.stringify({ topic: topicText, fieldType }),
       });
       const data = await res.json();
       if (data.success && data.text) setter(data.text);
     } catch {} finally { setAiFieldLoading(null); }
+  };
+
+  // Convenience: run title + subtitle generation sequentially. Used by
+  // the "✨ Générer par IA" shortcut in the Thème tab so one click fills
+  // both fields at once.
+  const suggestTitleAndSubtitle = async () => {
+    await suggestField('title', setTitle);
+    await suggestField('subtitle', setSubtitle);
   };
 
   /**
@@ -5470,27 +5486,63 @@ function InfographicPageInner() {
               <>
                 {/* Title & Subtitle */}
                 <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-gray-400">
+                      Titre &amp; Sous-titre
+                    </span>
+                    <button
+                      onClick={suggestTitleAndSubtitle}
+                      disabled={aiFieldLoading === 'title' || aiFieldLoading === 'subtitle'}
+                      className="flex items-center gap-1 rounded bg-purple-600/20 hover:bg-purple-600/40 disabled:opacity-50 px-2 py-1 text-[11px] text-purple-300 transition"
+                      title="Générer titre + sous-titre par IA selon le thème actuel"
+                    >
+                      {aiFieldLoading === 'title' || aiFieldLoading === 'subtitle'
+                        ? <Loader2 size={11} className="animate-spin" />
+                        : <Sparkles size={11} />}
+                      Générer par IA
+                    </button>
+                  </div>
                   <div>
                     <label className="mb-1 block text-xs font-medium text-gray-400">
                       Titre
                     </label>
-                    <input
-                      type="text"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-white focus:border-purple-500 focus:outline-none"
-                    />
+                    <div className="flex gap-1">
+                      <input
+                        type="text"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        className="flex-1 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-white focus:border-purple-500 focus:outline-none"
+                      />
+                      <button
+                        onClick={() => suggestField('title', setTitle)}
+                        disabled={aiFieldLoading === 'title'}
+                        className="rounded-lg bg-purple-600/20 px-2 text-purple-300 hover:bg-purple-600/40 disabled:opacity-50 transition flex-shrink-0"
+                        title="Regénérer le titre par IA"
+                      >
+                        {aiFieldLoading === 'title' ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                      </button>
+                    </div>
                   </div>
                   <div>
                     <label className="mb-1 block text-xs font-medium text-gray-400">
                       Sous-titre
                     </label>
-                    <input
-                      type="text"
-                      value={subtitle}
-                      onChange={(e) => setSubtitle(e.target.value)}
-                      className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-white focus:border-purple-500 focus:outline-none"
-                    />
+                    <div className="flex gap-1">
+                      <input
+                        type="text"
+                        value={subtitle}
+                        onChange={(e) => setSubtitle(e.target.value)}
+                        className="flex-1 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-white focus:border-purple-500 focus:outline-none"
+                      />
+                      <button
+                        onClick={() => suggestField('subtitle', setSubtitle)}
+                        disabled={aiFieldLoading === 'subtitle'}
+                        className="rounded-lg bg-purple-600/20 px-2 text-purple-300 hover:bg-purple-600/40 disabled:opacity-50 transition flex-shrink-0"
+                        title="Regénérer le sous-titre par IA"
+                      >
+                        {aiFieldLoading === 'subtitle' ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                      </button>
+                    </div>
                   </div>
                 </div>
 
