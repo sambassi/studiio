@@ -121,30 +121,42 @@ export async function POST(req: NextRequest) {
         tts: `Génère un script voix-off court (2-3 phrases, ~30 mots) pour une vidéo sur "${topic}". Ton engageant et motivant. En ${locale === 'fr' ? 'français' : 'anglais'}. Réponse JSON: {"text":"..."}`,
       };
       const prompt = fieldPrompts[fieldType] || fieldPrompts.title;
-      try {
+      // Try primary model first; if it returns a non-200 (commonly a
+      // transient 400/529 on Haiku under load) retry once on Sonnet.
+      const callModel = async (model: string) => {
         const r = await callAnthropic(apiKey, {
           max_tokens: 256,
           messages: [{ role: 'user', content: prompt }],
-        }, PRIMARY_MODEL);
+        }, model);
         if (!r.ok) {
           const errText = await r.text().catch(() => '');
-          console.error('[AI-Generate] field call not ok:', fieldType, r.status, errText.slice(0, 200));
-          return NextResponse.json({ success: false, error: `AI status ${r.status}` }, { status: 502 });
+          console.error('[AI-Generate] field call not ok:', fieldType, 'model:', model, 'status:', r.status, 'body:', errText.slice(0, 500));
+          return { ok: false as const, status: r.status, errText };
         }
         const d = await r.json();
         const block = d.content?.find((c: any) => c.type === 'text');
         const raw = block?.text as string | undefined;
-        if (!raw) {
+        console.log('[AI-Generate] raw response for', fieldType, 'model:', model, '—', raw?.slice(0, 300));
+        return { ok: true as const, raw };
+      };
+      try {
+        let result = await callModel(PRIMARY_MODEL);
+        if (!result.ok) {
+          console.warn('[AI-Generate] primary model failed, retrying on fallback:', FALLBACK_MODEL);
+          result = await callModel(FALLBACK_MODEL);
+        }
+        if (!result.ok) {
+          return NextResponse.json({ success: false, error: `AI status ${result.status}` }, { status: 502 });
+        }
+        if (!result.raw) {
           console.error('[AI-Generate] no text block in response for', fieldType);
           return NextResponse.json({ success: false, error: 'Empty AI response' }, { status: 502 });
         }
-        // Robust extraction: try JSON.parse first (handles markdown fences,
-        // nested objects, escaped quotes) before falling back to a loose regex.
-        const extracted = extractFieldText(raw);
+        const extracted = extractFieldText(result.raw);
         if (extracted) {
           return NextResponse.json({ success: true, text: extracted });
         }
-        console.error('[AI-Generate] could not extract "text" from:', raw.slice(0, 200));
+        console.error('[AI-Generate] could not extract "text" from:', result.raw.slice(0, 300));
         return NextResponse.json({ success: false, error: 'Could not parse AI response' }, { status: 502 });
       } catch (err) {
         console.error('[AI-Generate] field call threw:', fieldType, err);
