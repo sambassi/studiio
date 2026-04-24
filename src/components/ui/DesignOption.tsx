@@ -176,6 +176,7 @@ export const CARD_STYLE_OPTIONS = [
   { icon: 'card_stats', label: 'Stats Bold', sublabel: 'Chiffres' },
   { icon: 'card_minimal', label: 'Minimal Line', sublabel: 'Epure' },
   { icon: 'card_fullwidth', label: 'Full Width', sublabel: 'Large' },
+  { icon: 'card_minimal', label: 'Text Only', sublabel: 'Sans cadre' },
 ];
 
 export default DesignOption;
