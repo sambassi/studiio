@@ -2929,12 +2929,14 @@ function InfographicPageInner() {
     // order (top-to-bottom for vertical, left-to-right for horizontal).
     const sorted = [...withPos].sort((a, b) => a.pos[key] - b.pos[key]);
     const step = sorted.length > 1 ? (hi - lo) / (sorted.length - 1) : 0;
-    const byId = new Map<string, number>();
-    sorted.forEach((entry, rank) => byId.set(entry.id, lo + rank * step));
+    // Plain object keyed by id — the global `Map` identifier is shadowed
+    // in this file by the Lucide `Map` icon import, so `new Map()` fails.
+    const byId: Record<string, number> = {};
+    sorted.forEach((entry, rank) => { byId[entry.id] = lo + rank * step; });
 
     setCards((prev) =>
       prev.map((c) => {
-        const newCoord = byId.get(c.id);
+        const newCoord = byId[c.id];
         if (newCoord === undefined) return c;
         const defaultX = 25 + (prev.indexOf(c) % cols) * 25;
         const defaultY = 40 + Math.floor(prev.indexOf(c) / cols) * 18;
@@ -2991,16 +2993,39 @@ function InfographicPageInner() {
 
   const [aiFieldLoading, setAiFieldLoading] = useState<string | null>(null);
 
+  // Resolve a human-readable topic for the AI prompt — the theme slug
+  // alone ("sommeil-sport") lands as garbage input; the label ("Sommeil
+  // & Sport") or the user's custom topic works better.
+  const resolveTopicText = (): string => {
+    const themeObj = CONTENT_THEMES.find((t) => t.id === contentTheme);
+    return contentTheme === 'personnalise'
+      ? (customTopic || 'fitness')
+      : (themeObj?.label || contentTheme || 'fitness');
+  };
+
+  // Local fallback when Anthropic signals a billing error (or any
+  // useLocalFallback flag). Calls the non-AI /api/content/generate which
+  // uses the local knowledge base, then maps tagLine→title / subtitle.
+  const fetchLocalTitleSubtitle = async (): Promise<{ title?: string; subtitle?: string }> => {
+    try {
+      const res = await fetch('/api/content/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: resolveTopicText(), seed: Date.now() }),
+      });
+      const data = await res.json().catch(() => null);
+      if (data?.success && data.content) {
+        return { title: data.content.tagLine, subtitle: data.content.subtitle };
+      }
+    } catch (err) {
+      console.warn('[AI-Field] local fallback also failed:', err);
+    }
+    return {};
+  };
+
   const suggestField = async (fieldType: string, setter: (v: string) => void) => {
     setAiFieldLoading(fieldType);
-    // Resolve a human-readable topic for the AI prompt — the theme
-    // slug alone ("sommeil-sport") lands as garbage input; the label
-    // ("Sommeil & Sport") or the user's custom topic works better.
-    const themeObj = CONTENT_THEMES.find((t) => t.id === contentTheme);
-    const topicText =
-      contentTheme === 'personnalise'
-        ? (customTopic || 'fitness')
-        : (themeObj?.label || contentTheme || 'fitness');
+    const topicText = resolveTopicText();
     console.log('[AI-Field]', fieldType, 'topic:', topicText);
     try {
       const res = await fetch('/api/content/ai-generate', {
@@ -3015,6 +3040,16 @@ function InfographicPageInner() {
         setter(data.text.trim());
         return;
       }
+      // Billing / service-down signal → pull from local knowledge base.
+      if (data?.useLocalFallback) {
+        const local = await fetchLocalTitleSubtitle();
+        const value = fieldType === 'title' ? local.title : fieldType === 'subtitle' ? local.subtitle : undefined;
+        if (value) {
+          setter(value);
+          showToast?.('Mode local: IA temporairement indisponible');
+          return;
+        }
+      }
       console.warn('[AI-Field]', fieldType, 'generation failed:', data?.error);
       showToast?.(`IA ${fieldType}: ${data?.error || 'réponse invalide'} — réessayez`);
     } catch (err) {
@@ -3025,12 +3060,40 @@ function InfographicPageInner() {
     }
   };
 
-  // Convenience: run title + subtitle generation sequentially. Used by
-  // the "✨ Générer par IA" shortcut in the Thème tab so one click fills
-  // both fields at once.
+  // Convenience: run title + subtitle generation. On billing-error the
+  // first call already flips to local fallback; we skip the second AI
+  // call in that case and pull the local subtitle from the same knowledge
+  // base result to avoid two separate local-fallback round-trips.
   const suggestTitleAndSubtitle = async () => {
-    await suggestField('title', setTitle);
-    await suggestField('subtitle', setSubtitle);
+    setAiFieldLoading('title');
+    const topicText = resolveTopicText();
+    try {
+      const res = await fetch('/api/content/ai-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: topicText, fieldType: 'title', locale: 'fr' }),
+      });
+      const data = await res.json().catch(() => null);
+      if (data?.success && typeof data.text === 'string' && data.text.trim()) {
+        setTitle(data.text.trim());
+        // Title succeeded via AI — do subtitle via AI too.
+        setAiFieldLoading(null);
+        await suggestField('subtitle', setSubtitle);
+        return;
+      }
+      if (data?.useLocalFallback) {
+        const local = await fetchLocalTitleSubtitle();
+        if (local.title) setTitle(local.title);
+        if (local.subtitle) setSubtitle(local.subtitle);
+        showToast?.('Mode local: IA temporairement indisponible');
+        return;
+      }
+      showToast?.(`IA title: ${data?.error || 'réponse invalide'} — réessayez`);
+    } catch (err) {
+      showToast?.(`IA title: ${(err as Error)?.message || 'erreur réseau'} — réessayez`);
+    } finally {
+      setAiFieldLoading(null);
+    }
   };
 
   /**
