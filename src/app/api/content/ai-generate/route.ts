@@ -139,11 +139,34 @@ export async function POST(req: NextRequest) {
         console.log('[AI-Generate] raw response for', fieldType, 'model:', model, '—', raw?.slice(0, 300));
         return { ok: true as const, raw };
       };
+      // Billing/credit-balance errors from Anthropic are permanent until the
+      // org tops up — retrying a second model yields the same 400. Treat
+      // them as a soft 503 and let the client fall back to local generation.
+      const isBillingError = (errText: string): boolean =>
+        errText.toLowerCase().includes('credit balance is too low')
+        || errText.toLowerCase().includes('plans & billing')
+        || errText.toLowerCase().includes('billing');
       try {
         let result = await callModel(PRIMARY_MODEL);
+        if (!result.ok && isBillingError(result.errText)) {
+          console.warn('[AI-Generate] Anthropic billing error — skipping fallback model, signaling local fallback');
+          return NextResponse.json({
+            success: false,
+            error: 'Service IA temporairement indisponible, utilisation du mode local',
+            useLocalFallback: true,
+          }, { status: 503 });
+        }
         if (!result.ok) {
           console.warn('[AI-Generate] primary model failed, retrying on fallback:', FALLBACK_MODEL);
           result = await callModel(FALLBACK_MODEL);
+          if (!result.ok && isBillingError(result.errText)) {
+            console.warn('[AI-Generate] Anthropic billing error on fallback model — signaling local fallback');
+            return NextResponse.json({
+              success: false,
+              error: 'Service IA temporairement indisponible, utilisation du mode local',
+              useLocalFallback: true,
+            }, { status: 503 });
+          }
         }
         if (!result.ok) {
           return NextResponse.json({ success: false, error: `AI status ${result.status}` }, { status: 502 });
