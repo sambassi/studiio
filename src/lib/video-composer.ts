@@ -2141,6 +2141,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // Load visual media (with individual error logging)
   // videoUrl (real video) wins over videoImageUrl (still image fallback) if both are set.
   const effectiveVideoImageUrl = !videoUrl && videoImageUrl ? videoImageUrl : null;
+  console.log('[Composer] posterUrl received:', posterUrl || 'NONE', '| will be drawn during intro sequence (no fallback to rush)');
   console.log('[Composer] Loading media:', { poster: posterUrl?.substring(0, 60) || 'NONE', logo: logoUrl?.substring(0, 30) || 'NONE', video: videoUrl?.substring(0, 60) || 'NONE', videoImage: effectiveVideoImageUrl?.substring(0, 60) || 'NONE' });
   const mediaLoadStart = performance.now();
   const [posterImg, logoImg, videoEl, videoImageEl] = await Promise.all([
