@@ -119,6 +119,7 @@ export async function POST(req: NextRequest) {
         ctaSub: `Génère UN sous-texte CTA (2-4 mots) pour "${topic}". Exemples: "LIEN EN BIO", "CHAT POUR PLUS D'INFOS". Réponse JSON: {"text":"..."}`,
         overlay: `Génère UN texte overlay vidéo court et accrocheur (3-8 mots, MAJUSCULES) pour "${topic}". Réponse JSON: {"text":"..."}`,
         tts: `Génère un script voix-off court (2-3 phrases, ~30 mots) pour une vidéo sur "${topic}". Ton engageant et motivant. En ${locale === 'fr' ? 'français' : 'anglais'}. Réponse JSON: {"text":"..."}`,
+        salesPhraseRewrite: `Reformule cette phrase de vente pour la rendre plus accrocheuse et concise (max 120 caractères). Garde l'idée principale mais améliore le punch : "${topic}". Réponds UNIQUEMENT en JSON: {"text":"..."}`,
       };
       const prompt = fieldPrompts[fieldType] || fieldPrompts.title;
       // Try primary model first; if it returns a non-200 (commonly a

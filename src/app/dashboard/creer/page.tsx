@@ -1386,6 +1386,9 @@ function InfographicPageInner() {
   const [customTopic, setCustomTopic] = useState("");
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
+  const [extraTitle, setExtraTitle] = useState("");
+  const [extraSubtitle, setExtraSubtitle] = useState("");
+  const [showExtraTitleBlock, setShowExtraTitleBlock] = useState(false);
   const [cards, setCards] = useState<InfoCard[]>([]);
   const [salesPhrases, setSalesPhrases] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -1764,6 +1767,14 @@ function InfographicPageInner() {
         if (typeof cfg.customTopic === 'string') setCustomTopic(cfg.customTopic);
         if (typeof cfg.title === 'string') setTitle(cfg.title);
         if (typeof cfg.subtitle === 'string') setSubtitle(cfg.subtitle);
+        if (typeof cfg.extraTitle === 'string') {
+          setExtraTitle(cfg.extraTitle);
+          if (cfg.extraTitle) setShowExtraTitleBlock(true);
+        }
+        if (typeof cfg.extraSubtitle === 'string') {
+          setExtraSubtitle(cfg.extraSubtitle);
+          if (cfg.extraSubtitle) setShowExtraTitleBlock(true);
+        }
         if (Array.isArray(cfg.cards)) setCards(cfg.cards as InfoCard[]);
         if (Array.isArray(cfg.salesPhrases)) setSalesPhrases(cfg.salesPhrases as string[]);
         if (Array.isArray(cfg.pexelsPhotos)) setPexelsPhotos(cfg.pexelsPhotos as PexelsPhoto[]);
@@ -3010,6 +3021,31 @@ function InfographicPageInner() {
   };
 
   const [aiFieldLoading, setAiFieldLoading] = useState<string | null>(null);
+  const [rewritingPhraseIdx, setRewritingPhraseIdx] = useState<number | null>(null);
+
+  const rewriteSalesPhrase = async (i: number) => {
+    const current = salesPhrases[i];
+    if (!current?.trim()) { showToast('Phrase vide'); return; }
+    setRewritingPhraseIdx(i);
+    try {
+      const res = await fetch('/api/content/ai-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fieldType: 'salesPhraseRewrite', topic: current, locale: 'fr' }),
+      });
+      const data = await res.json().catch(() => null);
+      if (data?.success && typeof data.text === 'string' && data.text.trim()) {
+        const next = data.text.trim();
+        setSalesPhrases((prev) => prev.map((p, idx) => (idx === i ? next : p)));
+      } else {
+        showToast(`IA indisponible: ${data?.error || 'reponse invalide'} - phrase conservee`);
+      }
+    } catch (err) {
+      showToast(`IA: ${(err as Error)?.message || 'erreur reseau'} - phrase conservee`);
+    } finally {
+      setRewritingPhraseIdx(null);
+    }
+  };
 
   // Resolve a human-readable topic for the AI prompt — the theme slug
   // alone ("sommeil-sport") lands as garbage input; the label ("Sommeil
@@ -5840,6 +5876,17 @@ function InfographicPageInner() {
                             }}
                             className="flex-1 bg-transparent text-xs text-gray-300 focus:outline-none"
                           />
+                          <button
+                            type="button"
+                            onClick={() => rewriteSalesPhrase(i)}
+                            disabled={rewritingPhraseIdx === i || !phrase?.trim()}
+                            title="Ameliorer cette phrase avec l'IA"
+                            className="flex h-6 w-6 items-center justify-center rounded text-purple-300 hover:bg-purple-500/20 hover:text-purple-200 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                          >
+                            {rewritingPhraseIdx === i
+                              ? <Loader2 size={12} className="animate-spin" />
+                              : <Sparkles size={12} />}
+                          </button>
                         </div>
                       ))}
                     </div>
