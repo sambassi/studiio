@@ -2499,15 +2499,19 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     // exactly what MediaRecorder needs.
     if (videoEl && audioCtx && audioDest) {
       try {
+        // Chromium routes 0 audio samples through createMediaElementSource if
+        // the element was muted at routing time (loadVideo defaults to muted
+        // to avoid speaker bleed during loading). Unmute right before routing
+        // — the speaker output gets bypassed automatically once the source is
+        // connected to the WebAudio graph, so no double playback.
+        videoEl.muted = false;
         const rushSource = audioCtx.createMediaElementSource(videoEl);
         const rushGain = audioCtx.createGain();
-        // Default rush gain = first keyframe's rushVolume if provided, else 0.5
-        // so the rush is audible-but-quieter than a shouting track.
         rushGain.gain.value = options.audioKeyframes?.[0]?.rushVolume ?? 0.5;
         rushSource.connect(rushGain);
         rushGain.connect(audioDest);
         rushGainNode = rushGain;
-        console.log('[Composer] ✅ Rush audio: routed via AudioContext | initial gain:', rushGain.gain.value);
+        console.log('[Composer] ✅ Rush audio routed at gain', rushGain.gain.value, '| chain: source→gain→dest | el.muted:', videoEl.muted);
       } catch (err) {
         // InvalidStateError is typical if the element was already tied to
         // another AudioContext (batch reuse). Log and move on — the rush

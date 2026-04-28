@@ -4327,7 +4327,7 @@ function InfographicPageInner() {
           const exportAccent =
             customAccent || gradientColor1 || COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent || "#a855f7";
           const isReel = format === "9:16";
-          const exportPhoto = pexelsPhotos.length > 0 ? pexelsPhotos[0] : null;
+          const exportPhoto = pexelsPhotos.length > 0 && selectedPhotoIndex >= 0 ? pexelsPhotos[selectedPhotoIndex] : (pexelsPhotos[0] || null);
           const exportPosterUrl = exportPhoto?.url || null;
 
           // Snapshot the live editor cards grid for WYSIWYG parity. The
