@@ -136,6 +136,12 @@ export interface DesignOptions {
   overlayPosition?: { x?: number; y?: number };
   /** Title container width % (default: 90) — matches editor titleSize */
   titleSize?: number;
+  /** Optional extra title displayed below the main title/subtitle in the
+   *  intro sequence at a smaller size. Empty/undefined → not rendered. */
+  extraTitle?: string;
+  /** Optional extra subtitle displayed below extraTitle at an even smaller
+   *  size. Empty/undefined → not rendered. */
+  extraSubtitle?: string;
   /** CTA typography (letterSpacing, lineHeight, optional gradient) */
   ctaTypography?: {
     letterSpacing?: number;
@@ -945,6 +951,7 @@ function drawIntro(
   // Wraps to fit within the same `titleWidth` as the title (CSS .mt-1 div is
   // a child of the same width-constrained title container). Without wrapping,
   // long subtitles overflow the right edge of the canvas.
+  let lastTextBottom = titleBlockBottom;
   if (subtitle) {
     ctx.font = `${fontStyle}${fontWeight} ${subFontSize}px "${fontFamily}", sans-serif`;
     ctx.fillStyle = hexToRgba(titleColor, 0.8);
@@ -955,7 +962,52 @@ function drawIntro(
     for (let i = 0; i < subLines.length; i++) {
       ctx.fillText(subLines[i], titlePosX, titleBlockBottom + mt1 + i * subLineSpacing);
     }
+    lastTextBottom = titleBlockBottom + mt1 + (subLines.length - 1) * subLineSpacing + subFontSize;
     ctx.filter = 'none';
+  }
+
+  // Optional extra title / subtitle below the main pair. Half the size of
+  // the main title so they read as secondary copy. Each is independently
+  // optional — empty strings are skipped.
+  const extraTitleText = (design?.extraTitle || '').trim();
+  const extraSubtitleText = (design?.extraSubtitle || '').trim();
+  if (extraTitleText || extraSubtitleText) {
+    const extraGap = Math.round(w * (24 / 320));
+    const extraTitleSize = Math.max(10, Math.round(fontSize * 0.5));
+    const extraSubtitleSize = Math.max(9, Math.round(extraTitleSize * 0.75));
+    const extraLineHeightMul = design?.titleTypography?.lineHeight || 1.1;
+    let cursorY = lastTextBottom + extraGap;
+
+    if (extraTitleText) {
+      ctx.font = `${fontStyle}${fontWeight} ${extraTitleSize}px "${fontFamily}", sans-serif`;
+      ctx.fillStyle = hexToRgba(titleColor, titleAlpha);
+      ctx.filter = dropShadowBaseFilter(w);
+      const exLines = wrapText(ctx, extraTitleText, titleWidth);
+      const exLineSpacing = extraTitleSize * extraLineHeightMul;
+      for (let i = 0; i < exLines.length; i++) {
+        if (titleLetterSpacing) {
+          fillTextWithSpacing(ctx, exLines[i], titlePosX, cursorY + i * exLineSpacing, titleLetterSpacing);
+        } else {
+          ctx.fillText(exLines[i], titlePosX, cursorY + i * exLineSpacing);
+        }
+      }
+      cursorY = cursorY + (exLines.length - 1) * exLineSpacing + extraTitleSize;
+      ctx.filter = 'none';
+    }
+
+    if (extraSubtitleText) {
+      ctx.font = `${fontStyle}${fontWeight} ${extraSubtitleSize}px "${fontFamily}", sans-serif`;
+      ctx.fillStyle = hexToRgba(titleColor, 0.8);
+      ctx.filter = dropShadowBaseFilter(w);
+      const mt1Extra = Math.round(w * (4 / 320));
+      const exSubLines = wrapText(ctx, extraSubtitleText, titleWidth);
+      const exSubLineSpacing = extraSubtitleSize * extraLineHeightMul;
+      const baseY = extraTitleText ? cursorY + mt1Extra : cursorY;
+      for (let i = 0; i < exSubLines.length; i++) {
+        ctx.fillText(exSubLines[i], titlePosX, baseY + i * exSubLineSpacing);
+      }
+      ctx.filter = 'none';
+    }
   }
 
   // Accent line removed — not present in editor, video must match exactly
