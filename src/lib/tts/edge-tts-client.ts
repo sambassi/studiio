@@ -9,6 +9,8 @@ export interface TtsVoice {
   lang: string;
   gender: 'Female' | 'Male';
   flag: string;
+  /** Optional. Absent = legacy Edge TTS (default). 'openai' routes to /api/tts/openai. */
+  provider?: 'edge' | 'openai';
 }
 
 export const TTS_VOICES: TtsVoice[] = [
@@ -31,6 +33,13 @@ export const TTS_VOICES: TtsVoice[] = [
   // Allemand
   { id: 'de-DE-KatjaNeural', name: 'Katja', lang: 'DE', gender: 'Female', flag: '\u{1F1E9}\u{1F1EA}' },
   { id: 'de-DE-ConradNeural', name: 'Conrad', lang: 'DE', gender: 'Male', flag: '\u{1F1E9}\u{1F1EA}' },
+  // OpenAI TTS — natural voices (English-only for now). Routed via /api/tts/openai.
+  { id: 'openai-alloy', name: 'Alloy (OpenAI)', lang: 'EN', gender: 'Female', flag: '\u{1F916}', provider: 'openai' },
+  { id: 'openai-echo', name: 'Echo (OpenAI)', lang: 'EN', gender: 'Male', flag: '\u{1F916}', provider: 'openai' },
+  { id: 'openai-fable', name: 'Fable (OpenAI)', lang: 'EN', gender: 'Male', flag: '\u{1F916}', provider: 'openai' },
+  { id: 'openai-onyx', name: 'Onyx (OpenAI)', lang: 'EN', gender: 'Male', flag: '\u{1F916}', provider: 'openai' },
+  { id: 'openai-nova', name: 'Nova (OpenAI)', lang: 'EN', gender: 'Female', flag: '\u{1F916}', provider: 'openai' },
+  { id: 'openai-shimmer', name: 'Shimmer (OpenAI)', lang: 'EN', gender: 'Female', flag: '\u{1F916}', provider: 'openai' },
 ];
 
 // Map voice IDs to BCP47 language codes for browser fallback
@@ -51,6 +60,43 @@ async function tryServerSynthesize(
   voiceId: string,
   options?: { rate?: string; pitch?: string },
 ): Promise<Blob | null> {
+  // ── OpenAI provider branch ─────────────────────────────────────────────
+  // Routes openai-* voice IDs to /api/tts/openai. On any failure, falls
+  // through to the existing Edge code below (Edge will return 4xx for an
+  // openai-* ID, then synthesize() falls back to browser SpeechSynthesis).
+  // This branch is purely additive — the Edge code path below is unchanged.
+  const voice = TTS_VOICES.find((v) => v.id === voiceId);
+  if (voice?.provider === 'openai') {
+    try {
+      const openaiVoice = voiceId.replace(/^openai-/, '');
+      const openaiCtl = new AbortController();
+      const openaiTimer = setTimeout(() => openaiCtl.abort(), 30_000);
+      try {
+        const res = await fetch('/api/tts/openai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, voice: openaiVoice }),
+          signal: openaiCtl.signal,
+        });
+        if (res.ok) {
+          const blob = await res.blob();
+          if (blob.size > 0) {
+            console.log('[TTS] OpenAI success:', (blob.size / 1024).toFixed(1), 'KB');
+            return blob;
+          }
+          console.warn('[TTS] OpenAI returned empty audio, falling through to Edge');
+        } else {
+          console.warn('[TTS] OpenAI failed (status', res.status, '), falling through to Edge');
+        }
+      } finally {
+        clearTimeout(openaiTimer);
+      }
+    } catch (err) {
+      console.warn('[TTS] OpenAI exception, falling through to Edge:', err instanceof Error ? err.message : err);
+    }
+    // Intentional fall-through to Edge code below.
+  }
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15_000); // 15s timeout (server times out at 25s)
 
