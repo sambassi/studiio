@@ -5819,8 +5819,8 @@ function InfographicPageInner() {
                               <input type="text" value={card.value} onChange={(e) => updateCard(card.id, "value", e.target.value)}
                                 className="w-14 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs font-bold text-purple-400 focus:border-purple-500 focus:outline-none" placeholder="Val" />
                             </div>
-                            <input type="text" value={card.description} onChange={(e) => updateCard(card.id, "description", e.target.value)}
-                              className="w-full rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-300 focus:border-purple-500 focus:outline-none" placeholder="Description courte" />
+                            <textarea value={card.description} onChange={(e) => updateCard(card.id, "description", e.target.value)} rows={2} maxLength={200}
+                              className="w-full rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-gray-300 focus:border-purple-500 focus:outline-none resize-none" placeholder="Description (Entrée pour saut de ligne)" />
                           </div>
                           <div className="flex flex-col gap-1 flex-shrink-0">
                             <button onClick={() => suggestCardField(card.id, 'label')} disabled={aiFieldLoading === `${card.id}-label`}
