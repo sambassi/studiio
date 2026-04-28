@@ -1646,8 +1646,7 @@ function InfographicPageInner() {
   };
   const [extraOverlays, setExtraOverlays] = useState<ExtraOverlay[]>([]);
   const [activeOverlayIdx, setActiveOverlayIdx] = useState(0); // 0 = legacy, 1+ = extraOverlays[idx-1]
-  const [cardsLetterSpacing,
-                cardsTypography: cardsTextGradient ? { textGradient: true, gradColor1: cardsTextGradColor1, gradColor2: cardsTextGradColor2 } : undefined, setCardsLetterSpacing] = useState(0);
+  const [cardsLetterSpacing, setCardsLetterSpacing] = useState(0);
   const [customCardIcons, setCustomCardIcons] = useState<Record<string, string>>({});
 
   // Advanced text effects
@@ -2385,12 +2384,10 @@ function InfographicPageInner() {
         titleLetterSpacing, titleLineHeight, titleBold, titleItalic,
         ctaLetterSpacing, ctaLineHeight, ctaBold, ctaItalic,
         overlayLetterSpacing, overlayLineHeight, overlayBold, overlayItalic, overlayColor, cardsLetterSpacing,
-                cardsTypography: cardsTextGradient ? { textGradient: true, gradColor1: cardsTextGradColor1, gradColor2: cardsTextGradColor2 } : undefined,
         selectedFont, selectedFilter, selectedCardStyle,
         titleColor, ctaColor, ctaSubColor, ctaMainText, ctaSubText,
         titleTextGradient, titleGradColor1, titleGradColor2,
         cardsTextGradient, cardsTextGradColor1, cardsTextGradColor2,
-    cardsTextGradient, cardsTextGradColor1, cardsTextGradColor2,
         titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
         gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, seqGradients,
         textScale, ctaTextScale, cardsTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
@@ -2431,7 +2428,6 @@ function InfographicPageInner() {
     titleLetterSpacing, titleLineHeight, titleBold, titleItalic,
     ctaLetterSpacing, ctaLineHeight, ctaBold, ctaItalic,
     overlayLetterSpacing, overlayLineHeight, overlayBold, overlayItalic, overlayColor, cardsLetterSpacing,
-                cardsTypography: cardsTextGradient ? { textGradient: true, gradColor1: cardsTextGradColor1, gradColor2: cardsTextGradColor2 } : undefined,
     selectedFont, selectedFilter, selectedCardStyle,
     titleColor, ctaColor, ctaSubColor, ctaMainText, ctaSubText,
     titleTextGradient, titleGradColor1, titleGradColor2,
