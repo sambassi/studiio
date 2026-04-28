@@ -181,15 +181,27 @@ async function browserSynthesize(
       utterance.pitch = 1.0;
       utterance.volume = 1.0;
 
-      // Try to find a matching voice
-      const matchingVoice = voices.find(
-        (v) => v.lang.startsWith(langCode.split('-')[0]) &&
-          (gender === 'Female' ? !v.name.toLowerCase().includes('male') : v.name.toLowerCase().includes('male'))
-      ) || voices.find((v) => v.lang.startsWith(langCode.split('-')[0])) || voices[0];
+      // Pick a browser voice matching BOTH language AND gender. The previous
+      // filter `!name.includes('male')` was buggy — `'female'.includes('male')`
+      // is true, so female-named voices were rejected; and Thomas/Henri/Nicolas
+      // contain neither 'male' nor 'female' so both genders ended up on the
+      // system default (often Thomas on macOS). Heuristic: known voice names
+      // by gender (best-effort across macOS / Chromium / Edge).
+      const langPrefix = langCode.split('-')[0].toLowerCase();
+      const matching = voices.filter((v) => v.lang.toLowerCase().startsWith(langPrefix));
+      const FEMALE_RX = /(female|femme|amelie|am[ée]lie|aurelie|aur[ée]lie|audrey|chantal|coralie|denise|julie|marie|virginie|vivienne|samantha|victoria|karen|moira|tessa|fiona|veena|alice|carmit|hortense|elvira|francisca|katja|jenny|aria|nova|shimmer)/i;
+      const MALE_RX = /(\bmale\b|homme|thomas|nicolas|paul|henri|pascal|alex|fred|daniel|tom|bruce|aaron|albert|ralph|jorge|antonio|alvaro|conrad|davis|guy|onyx|echo|fable)/i;
+      const wantFemale = gender === 'Female';
+      const genderMatch = matching.find((v) => {
+        const n = v.name;
+        if (wantFemale) return FEMALE_RX.test(n) && !MALE_RX.test(n);
+        return MALE_RX.test(n) && !FEMALE_RX.test(n);
+      });
+      const matchingVoice = genderMatch || matching[0] || voices[0];
 
       if (matchingVoice) {
         utterance.voice = matchingVoice;
-        console.log('[TTS] Using browser voice:', matchingVoice.name, matchingVoice.lang);
+        console.log('[TTS] Browser fallback voice:', matchingVoice.name, matchingVoice.lang, '| wanted', gender, '| matched-by-gender:', !!genderMatch);
       }
 
       // Use AudioContext + MediaRecorder to capture the audio
