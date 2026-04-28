@@ -1659,6 +1659,7 @@ function InfographicPageInner() {
   const [cardsTextGradColor1, setCardsTextGradColor1] = useState("#a855f7");
   const [cardsTextGradColor2, setCardsTextGradColor2] = useState("#ec4899");
   const [ctaIconName, setCtaIconName] = useState<string | null>(null);
+  const [ctaIconSearch, setCtaIconSearch] = useState('');
   const [ctaIconColor, setCtaIconColor] = useState("#ffffff");
   const [ctaIconGradient, setCtaIconGradient] = useState(false);
   const [ctaIconGradColor1, setCtaIconGradColor1] = useState("#a855f7");
@@ -4060,7 +4061,7 @@ function InfographicPageInner() {
             let cardsSnapshotRect: { x: number; y: number; width: number; height: number } | undefined;
             const prevSequenceCal = activeSequence;
             let didForceSequenceCal = false;
-            const shouldSnapshot = exportedSequences.cartes && bCards.length > 0;
+            const shouldSnapshot = exportedSequences.cartes && bCards.length > 0 && !(cardsLabelGradient || cardsValueGradient || cardsDescriptionGradient);
             const originalCardsForBatch = cards; // captured once per iteration
             const needsStateSync = b > 0 && shouldSnapshot;
             if (shouldSnapshot && activeSequence !== 'cartes' && activeSequence !== 'all') {
@@ -4295,7 +4296,7 @@ function InfographicPageInner() {
               platforms: selectedPublishPlatforms.map(p => PLATFORM_DISPLAY_NAMES[p]),
               scheduled_date: scheduledDate,
               scheduled_time: "12:00",
-              status: "draft",
+              status: (selectedPublishPlatforms.length > 0 && (renderedVideoUrl || (hasVideo ? null : (mediaUrl || posterUrl || null)))) ? "scheduled" : "draft",
               metadata: {
                 type: "infographic",
                 subtitle: bSubtitle,
@@ -4467,8 +4468,14 @@ function InfographicPageInner() {
             const postData = await postRes.json();
             if (postData.success && postData.post?.id) {
               createdPostIds.push(postData.post.id);
+            } else if (!postData.success) {
+              showToast(`Erreur lors de la programmation : ${postData.error || 'réponse inattendue du serveur'}`);
+              console.error('[Export→Calendar] POST /api/posts non-success:', postData);
             }
-          } catch { /* ignore parse errors */ }
+          } catch (err) {
+            showToast(`Erreur réseau lors de la programmation : ${err instanceof Error ? err.message : 'inconnue'}`);
+            console.error('[Export→Calendar] POST /api/posts network/parse error:', err);
+          }
         }
       }
 
@@ -4503,7 +4510,7 @@ function InfographicPageInner() {
           try {
             const cardsEl = document.querySelector('[data-cards-grid]') as HTMLElement | null;
             console.log('[Export] cardsEl offsetWidth/Height:', cardsEl?.offsetWidth, cardsEl?.offsetHeight);
-            if (cardsEl && cardsEl.offsetWidth > 0 && exportedSequences.cartes && cards.length > 0) {
+            if (cardsEl && cardsEl.offsetWidth > 0 && exportedSequences.cartes && cards.length > 0 && !(cardsLabelGradient || cardsValueGradient || cardsDescriptionGradient)) {
               const html2canvas = (await import('html2canvas')).default;
               // Scale the capture so 1 DOM px = 1 video-canvas px. The
               // snapshot's intrinsic size then matches the cards' target
@@ -7955,6 +7962,18 @@ function InfographicPageInner() {
                 // Cards-specific font overrides the page-wide selectedFont.
                 // Falls back to `undefined` (inherit selectedFont) when unset.
                 const cardsFontFamily = cardsFont ? (FONT_CSS_MAP[cardsFont] || cardsFont) : undefined;
+                const _cardsGradStyle = {
+                  backgroundImage: `linear-gradient(135deg, ${cardsTextGradColor1}, ${cardsTextGradColor2})`,
+                  backgroundColor: 'transparent',
+                  WebkitBackgroundClip: 'text',
+                  backgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  color: 'transparent',
+                  display: 'inline-block',
+                } as const;
+                const labelGradStyle = cardsLabelGradient ? _cardsGradStyle : null;
+                const valueGradStyle = cardsValueGradient ? _cardsGradStyle : null;
+                const descGradStyle = cardsDescriptionGradient ? _cardsGradStyle : null;
                 const renderCardInner = (card: InfoCard) => {
                   // ── Compact ──
                   if (selectedCardStyle === "Compact") {
@@ -7973,21 +7992,23 @@ function InfographicPageInner() {
                           </span>
                         )}
                         <p
-                          className="text-center font-bold text-white drop-shadow"
-                          style={{ fontSize: scaledLabel }}
+                          className={`text-center font-bold ${labelGradStyle ? '' : 'text-white drop-shadow'}`}
+                          style={{ fontSize: scaledLabel, ...(labelGradStyle ?? {}) }}
                         >
                           {renderBoldMarkdown(card.label)}
                         </p>
                         <p
-                          className="text-center font-black drop-shadow"
-                          style={{ fontSize: scaledValue, color: card.color }}
+                          className={`text-center font-black ${valueGradStyle ? '' : 'drop-shadow'}`}
+                          style={valueGradStyle
+                            ? { fontSize: scaledValue, ...valueGradStyle }
+                            : { fontSize: scaledValue, color: card.color }}
                         >
                           {card.value}
                         </p>
                         {card.description && (
                           <p
-                            className="text-center text-white/60"
-                            style={{ fontSize: scaledDesc }}
+                            className={`text-center ${descGradStyle ? '' : 'text-white/60'}`}
+                            style={{ fontSize: scaledDesc, ...(descGradStyle ?? {}) }}
                           >
                             {renderBoldMarkdown(truncateAtWord(card.description, 70))}
                           </p>
@@ -8007,21 +8028,23 @@ function InfographicPageInner() {
                             <span className="text-sm inline-flex items-center">{renderCardIcon(card)}</span>
                           )}
                           <p
-                            className="font-bold text-white"
-                            style={{ fontSize: scaledLabel }}
+                            className={`font-bold ${labelGradStyle ? '' : 'text-white'}`}
+                            style={{ fontSize: scaledLabel, ...(labelGradStyle ?? {}) }}
                           >
                             {renderBoldMarkdown(card.label)}
                           </p>
                         </div>
                         <p
-                          className="text-white/70 leading-relaxed mb-1"
-                          style={{ fontSize: scaledDesc }}
+                          className={`leading-relaxed mb-1 ${descGradStyle ? '' : 'text-white/70'}`}
+                          style={{ fontSize: scaledDesc, ...(descGradStyle ?? {}) }}
                         >
                           {renderBoldMarkdown(truncateAtWord(card.description, 90))}
                         </p>
                         <p
                           className="font-black"
-                          style={{ fontSize: scaledValue, color: card.color }}
+                          style={valueGradStyle
+                            ? { fontSize: scaledValue, ...valueGradStyle }
+                            : { fontSize: scaledValue, color: card.color }}
                         >
                           {card.value}
                         </p>
@@ -8033,17 +8056,16 @@ function InfographicPageInner() {
                     return (
                       <div className="flex flex-col items-center justify-center rounded-lg bg-black/50 px-2 py-2 backdrop-blur-sm border border-white/10 w-full">
                         <p
-                          className="font-black drop-shadow"
-                          style={{
-                            fontSize: `${Math.round(13 * textScale)}px`,
-                            color: card.color,
-                          }}
+                          className={`font-black ${valueGradStyle ? '' : 'drop-shadow'}`}
+                          style={valueGradStyle
+                            ? { fontSize: `${Math.round(13 * textScale)}px`, ...valueGradStyle }
+                            : { fontSize: `${Math.round(13 * textScale)}px`, color: card.color }}
                         >
                           {card.value}
                         </p>
                         <p
-                          className="font-medium text-white/80 mt-0.5 text-center"
-                          style={{ fontSize: scaledDesc }}
+                          className={`font-medium mt-0.5 text-center ${labelGradStyle ? '' : 'text-white/80'}`}
+                          style={{ fontSize: scaledDesc, ...(labelGradStyle ?? {}) }}
                         >
                           {renderBoldMarkdown(card.label)}
                         </p>
@@ -8061,14 +8083,16 @@ function InfographicPageInner() {
                           <span className="text-xs inline-flex items-center">{renderCardIcon(card)}</span>
                         )}
                         <p
-                          className="text-white/80 flex-1"
-                          style={{ fontSize: scaledLabel }}
+                          className={`flex-1 ${labelGradStyle ? '' : 'text-white/80'}`}
+                          style={{ fontSize: scaledLabel, ...(labelGradStyle ?? {}) }}
                         >
                           {renderBoldMarkdown(card.label)}
                         </p>
                         <p
                           className="font-bold"
-                          style={{ fontSize: scaledValue, color: card.color }}
+                          style={valueGradStyle
+                            ? { fontSize: scaledValue, ...valueGradStyle }
+                            : { fontSize: scaledValue, color: card.color }}
                         >
                           {card.value}
                         </p>
@@ -8085,15 +8109,17 @@ function InfographicPageInner() {
                     return (
                       <div className="flex flex-col items-center justify-center w-full px-2 py-1 text-center">
                         <p
-                          className="font-bold text-white drop-shadow"
-                          style={{ fontSize: scaledLabel, color: card.color }}
+                          className={`font-bold ${labelGradStyle ? '' : 'text-white drop-shadow'}`}
+                          style={labelGradStyle
+                            ? { fontSize: scaledLabel, ...labelGradStyle }
+                            : { fontSize: scaledLabel, color: card.color }}
                         >
                           {renderBoldMarkdown(card.label)}
                         </p>
                         {card.description && (
                           <p
-                            className="text-white/70 leading-snug"
-                            style={{ fontSize: scaledDesc }}
+                            className={`leading-snug ${descGradStyle ? '' : 'text-white/70'}`}
+                            style={{ fontSize: scaledDesc, ...(descGradStyle ?? {}) }}
                           >
                             {renderBoldMarkdown(truncateAtWord(card.description, 120))}
                           </p>
@@ -8101,7 +8127,9 @@ function InfographicPageInner() {
                         {card.value && (
                           <p
                             className="font-black mt-0.5"
-                            style={{ fontSize: scaledValue, color: card.color }}
+                            style={valueGradStyle
+                              ? { fontSize: scaledValue, ...valueGradStyle }
+                              : { fontSize: scaledValue, color: card.color }}
                           >
                             {card.value}
                           </p>
@@ -8121,16 +8149,17 @@ function InfographicPageInner() {
                       )}
                       <div className="flex-1 min-w-0">
                         <p
-                          className="font-bold text-white truncate"
-                          style={{ fontSize: scaledLabel }}
+                          className={`font-bold truncate ${labelGradStyle ? '' : 'text-white'}`}
+                          style={{ fontSize: scaledLabel, ...(labelGradStyle ?? {}) }}
                         >
                           {renderBoldMarkdown(card.label)}
                         </p>
                         {card.description && (
                           <p
-                            className="text-white/50"
+                            className={descGradStyle ? '' : 'text-white/50'}
                             style={{
                               fontSize: scaledDesc,
+                              ...(descGradStyle ?? {}),
                               display: '-webkit-box',
                               WebkitBoxOrient: 'vertical',
                               WebkitLineClamp: 2,
@@ -8143,7 +8172,9 @@ function InfographicPageInner() {
                       </div>
                       <p
                         className="font-black flex-shrink-0"
-                        style={{ fontSize: scaledValue, color: card.color }}
+                        style={valueGradStyle
+                          ? { fontSize: scaledValue, ...valueGradStyle }
+                          : { fontSize: scaledValue, color: card.color }}
                       >
                         {card.value}
                       </p>
@@ -9006,25 +9037,64 @@ function InfographicPageInner() {
                 <span className="text-[9px] text-gray-400 uppercase">Icone SVG</span>
                 {ctaIconName && (<button type="button" onClick={() => setCtaIconName(null)} className="text-[9px] text-red-400 hover:text-red-300">Retirer</button>)}
               </div>
-              <select value={ctaIconName || ''} onChange={(e) => setCtaIconName(e.target.value || null)} className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white">
-                <option value="">Aucune</option>
-                <option value="Sparkles">Sparkles</option>
-                <option value="Heart">Heart</option>
-                <option value="Star">Star</option>
-                <option value="Zap">Zap</option>
-                <option value="Flame">Flame</option>
-                <option value="Trophy">Trophy</option>
-                <option value="Target">Target</option>
-                <option value="Crown">Crown</option>
-                <option value="Award">Award</option>
-                <option value="Gem">Gem</option>
-                <option value="Rocket">Rocket</option>
-                <option value="Lightbulb">Lightbulb</option>
-                <option value="Diamond">Diamond</option>
-                <option value="HeartPulse">HeartPulse</option>
-                <option value="Bell">Bell</option>
-                <option value="Megaphone">Megaphone</option>
-              </select>
+              {ctaIconName && (
+                <div className="flex items-center gap-2">
+                  <div className="h-10 w-10 rounded border border-gray-600 bg-gray-700 flex items-center justify-center flex-shrink-0">
+                    {renderLucideIcon(ctaIconName, {
+                      size: 24,
+                      color: ctaIconColor || '#FFFFFF',
+                      gradient: ctaIconGradient ? { start: ctaIconGradColor1, end: ctaIconGradColor2, direction: 'd' } : undefined,
+                      gradientId: `cta-prev-${ctaIconName}`,
+                    })}
+                  </div>
+                  <span className="text-[10px] text-gray-300 font-mono">{ctaIconName}</span>
+                </div>
+              )}
+              <input
+                type="text"
+                placeholder="Rechercher une icône..."
+                value={ctaIconSearch}
+                onChange={(e) => setCtaIconSearch(e.target.value)}
+                className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-[10px] text-white placeholder-gray-500"
+              />
+              <div className="max-h-[200px] overflow-y-auto rounded border border-gray-700 bg-gray-900/40 p-2 space-y-2">
+                {Object.entries(ICON_LIBRARY).map(([category, names]) => {
+                  const q = ctaIconSearch.toLowerCase().trim();
+                  const filteredNames = q
+                    ? names.filter((nm) => {
+                        if (nm.toLowerCase().includes(q)) return true;
+                        if (category.toLowerCase().includes(q)) return true;
+                        const kw = ICON_KEYWORDS[nm];
+                        if (kw && kw.some((k: string) => k.includes(q))) return true;
+                        return false;
+                      })
+                    : names;
+                  if (filteredNames.length === 0) return null;
+                  return (
+                    <div key={category}>
+                      <div className="text-[9px] uppercase tracking-wider text-gray-500 mb-1">{category}</div>
+                      <div className="grid grid-cols-6 gap-1">
+                        {filteredNames.map((nm) => {
+                          const Icon = ICON_MAP[nm];
+                          if (!Icon) return null;
+                          const selected = ctaIconName === nm;
+                          return (
+                            <button
+                              key={nm}
+                              type="button"
+                              onClick={() => setCtaIconName(nm)}
+                              className={`h-8 w-8 rounded-lg bg-gray-800 hover:bg-gray-700 hover:scale-110 transition flex items-center justify-center ${selected ? 'ring-2 ring-yellow-500' : ''}`}
+                              title={nm}
+                            >
+                              <Icon size={16} color={ctaIconColor || '#FFFFFF'} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
               {ctaIconName && (<>
                 <div>
                   <span className="text-[8px] text-gray-500">Taille ({ctaIconSize}px)</span>

@@ -6,7 +6,7 @@
  */
 import type { AudioKeyframe } from './creer/audioDucking';
 
-const COMPOSER_VERSION = 'v27-extra-title-positions-2026-04-28';
+const COMPOSER_VERSION = 'v28-cards-gradient-per-card-2026-04-28';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -1086,15 +1086,18 @@ function drawCards(
   const _ct = design?.cardsTypography;
   const _hasColors = !!(_ct?.gradColor1 && _ct?.gradColor2);
   const _legacyAll = !!_ct?.textGradient;
-  const _mkGrad = () => {
-    const g = ctx.createLinearGradient(0, 0, w, h);
+  const wantLabelGrad = _hasColors && (_legacyAll || !!_ct?.labelGradient);
+  const wantValueGrad = _hasColors && (_legacyAll || !!_ct?.valueGradient);
+  const wantDescGrad  = _hasColors && (_legacyAll || !!_ct?.descriptionGradient);
+  const mkLocalGrad = (gx: number, gy: number, gw: number, gh: number): CanvasGradient => {
+    const g = ctx.createLinearGradient(gx, gy, gx + gw, gy + gh);
     g.addColorStop(0, _ct!.gradColor1!);
     g.addColorStop(1, _ct!.gradColor2!);
     return g;
   };
-  const labelGrad: CanvasGradient | null = (_hasColors && (_legacyAll || _ct?.labelGradient)) ? _mkGrad() : null;
-  const valueGrad: CanvasGradient | null = (_hasColors && (_legacyAll || _ct?.valueGradient)) ? _mkGrad() : null;
-  const descGrad: CanvasGradient | null = (_hasColors && (_legacyAll || _ct?.descriptionGradient)) ? _mkGrad() : null;
+  const labelGradAt = (gx: number, gy: number, gw: number, gh: number) => wantLabelGrad ? mkLocalGrad(gx, gy, gw, gh) : null;
+  const valueGradAt = (gx: number, gy: number, gw: number, gh: number) => wantValueGrad ? mkLocalGrad(gx, gy, gw, gh) : null;
+  const descGradAt  = (gx: number, gy: number, gw: number, gh: number) => wantDescGrad  ? mkLocalGrad(gx, gy, gw, gh) : null;
 
   // eslint-disable-next-line no-console
   console.log('[Composer] drawCards: snapshot in design?', !!design?.cardsSnapshot);
@@ -1199,6 +1202,9 @@ function drawCards(
   // override. Draws label + optional description + optional value centered
   // in the slot with no frame, no border, no icon, no background.
   const drawTextOnly = (card: CardData, x: number, y: number, cardW: number, cardH: number) => {
+    const labelGrad = labelGradAt(x, y, cardW, cardH);
+    const valueGrad = valueGradAt(x, y, cardW, cardH);
+    const descGrad = descGradAt(x, y, cardW, cardH);
     ctx.save();
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'center';
@@ -1250,6 +1256,9 @@ function drawCards(
     cards.slice(0, maxCards).forEach((card, i) => {
       const gridY = cardsY + i * (cardH + gap);
       const { x, y } = applyCardPos(card, cardsX, gridY, cardW, cardH);
+      const labelGrad = labelGradAt(x, y, cardW, cardH);
+      const valueGrad = valueGradAt(x, y, cardW, cardH);
+      const descGrad = descGradAt(x, y, cardW, cardH);
       drawTextOnly(card, x, y, cardW, cardH);
     });
     ctx.textBaseline = 'alphabetic';
@@ -1283,6 +1292,9 @@ function drawCards(
       const gridX = cardsX + col * (cardW + gap);
       const gridY = cardsY + row * (cardH + gap);
       const { x, y } = applyCardPos(card, gridX, gridY, cardW, cardH);
+      const labelGrad = labelGradAt(x, y, cardW, cardH);
+      const valueGrad = valueGradAt(x, y, cardW, cardH);
+      const descGrad = descGradAt(x, y, cardW, cardH);
 
       if (card.textOnly) { drawTextOnly(card, x, y, cardW, cardH); return; }
 
@@ -1393,6 +1405,9 @@ function drawCards(
       const gridX = cardsX + col * (cardW + gap);
       const gridY = cardsY + row * (cardH + gap);
       const { x, y } = applyCardPos(card, gridX, gridY, cardW, cardH);
+      const labelGrad = labelGradAt(x, y, cardW, cardH);
+      const valueGrad = valueGradAt(x, y, cardW, cardH);
+      const descGrad = descGradAt(x, y, cardW, cardH);
       const { labelLines, valueLines, descLines } = pre[i];
 
       if (card.textOnly) { drawTextOnly(card, x, y, cardW, cardH); return; }
@@ -1489,6 +1504,9 @@ function drawCards(
       const gridX = cardsX + col * (cardW + gridGap);
       const gridY = cardsY + row * (cardH + gridGap);
       const { x, y } = applyCardPos(card, gridX, gridY, cardW, cardH);
+      const labelGrad = labelGradAt(x, y, cardW, cardH);
+      const valueGrad = valueGradAt(x, y, cardW, cardH);
+      const descGrad = descGradAt(x, y, cardW, cardH);
 
       if (card.textOnly) { drawTextOnly(card, x, y, cardW, cardH); return; }
 
@@ -1572,6 +1590,9 @@ function drawCards(
       const gridX = cardsX + col * (cardW + gridGap);
       const gridY = cardsY + row * (cardH + gridGap);
       const { x, y } = applyCardPos(card, gridX, gridY, cardW, cardH);
+      const labelGrad = labelGradAt(x, y, cardW, cardH);
+      const valueGrad = valueGradAt(x, y, cardW, cardH);
+      const descGrad = descGradAt(x, y, cardW, cardH);
 
       if (card.textOnly) { drawTextOnly(card, x, y, cardW, cardH); return; }
 
@@ -1648,6 +1669,9 @@ function drawCards(
       const gridY = cardsY + i * (cardH + gap);
       const gridX = cardsX;
       const { x, y } = applyCardPos(card, gridX, gridY, cardW, cardH);
+      const labelGrad = labelGradAt(x, y, cardW, cardH);
+      const valueGrad = valueGradAt(x, y, cardW, cardH);
+      const descGrad = descGradAt(x, y, cardW, cardH);
 
       if (card.textOnly) { drawTextOnly(card, x, y, cardW, cardH); return; }
 
