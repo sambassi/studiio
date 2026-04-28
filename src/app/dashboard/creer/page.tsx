@@ -1774,6 +1774,8 @@ function InfographicPageInner() {
         if (cfg.customCardIcons) setCustomCardIcons(cfg.customCardIcons);
         // Positions des éléments
         if (cfg.titlePos) setTitlePos(cfg.titlePos);
+        if (cfg.extraTitlePosition && typeof cfg.extraTitlePosition.x === 'number') setExtraTitlePosition(cfg.extraTitlePosition);
+        if (cfg.extraSubtitlePosition && typeof cfg.extraSubtitlePosition.x === 'number') setExtraSubtitlePosition(cfg.extraSubtitlePosition);
         if (cfg.logoPositions) {
           setLogoPositions(cfg.logoPositions);
         } else if (cfg.logoPos) {
@@ -2105,6 +2107,8 @@ function InfographicPageInner() {
 
   // Drag positions (percentage-based offsets from default)
   const [titlePos, setTitlePos] = useState({ x: 50, y: 10 });
+  const [extraTitlePosition, setExtraTitlePosition] = useState<{ x: number; y: number }>({ x: 50, y: 50 });
+  const [extraSubtitlePosition, setExtraSubtitlePosition] = useState<{ x: number; y: number }>({ x: 50, y: 58 });
   // Per-sequence logo positions: each sequence can have its own logo placement
   const defaultLogoPos = { x: 50, y: 85 };
   const [logoPositions, setLogoPositions] = useState<Record<string, { x: number; y: number }>>({
@@ -2312,6 +2316,8 @@ function InfographicPageInner() {
     if (c.customAccent !== undefined) setCustomAccent(c.customAccent);
     if (c.customCardIcons) setCustomCardIcons(c.customCardIcons);
     if (c.titlePos) setTitlePos(c.titlePos);
+    if (c.extraTitlePosition && typeof c.extraTitlePosition.x === 'number') setExtraTitlePosition(c.extraTitlePosition);
+    if (c.extraSubtitlePosition && typeof c.extraSubtitlePosition.x === 'number') setExtraSubtitlePosition(c.extraSubtitlePosition);
     if (c.logoPositions) setLogoPositions(c.logoPositions);
     if (c.watermarkPos) setWatermarkPos(c.watermarkPos);
     if (c.cardsPos) setCardsPos(c.cardsPos);
@@ -2439,7 +2445,7 @@ function InfographicPageInner() {
         titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
         gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, seqGradients,
         textScale, ctaTextScale, cardsTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
-        titlePos, logoPositions, watermarkPos, cardsPos, overlayPos,
+        titlePos, extraTitlePosition, extraSubtitlePosition, logoPositions, watermarkPos, cardsPos, overlayPos,
         titleSize, cardsSize, watermarkSize,
         siteText, siteTextPositions, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
         showCenterGuides,
@@ -2484,7 +2490,7 @@ function InfographicPageInner() {
     titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
     gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, seqGradients,
     textScale, ctaTextScale, cardsTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
-    titlePos, logoPositions, watermarkPos, cardsPos, overlayPos,
+    titlePos, extraTitlePosition, extraSubtitlePosition, logoPositions, watermarkPos, cardsPos, overlayPos,
     titleSize, cardsSize, watermarkSize,
     siteText, siteTextPositions, siteTextSize, siteTextColor, siteTextOpacity, siteTextSequences, siteTextEnabled,
     showCenterGuides,
@@ -4248,6 +4254,8 @@ function InfographicPageInner() {
                 ctaIconSize,
                 extraTitle: extraTitle || undefined,
                 extraSubtitle: extraSubtitle || undefined,
+                extraTitlePosition,
+                extraSubtitlePosition,
               },
               onProgress: (pct) => {
                 setExportProgress(Math.round(((b + 0.3 + pct / 100 * 0.6) / total) * 100));
@@ -4448,6 +4456,8 @@ function InfographicPageInner() {
                   ctaIconSize: ctaIconSize,
                   extraTitle: extraTitle || undefined,
                   extraSubtitle: extraSubtitle || undefined,
+                  extraTitlePosition,
+                  extraSubtitlePosition,
                 },
               },
             }),
@@ -4667,6 +4677,8 @@ function InfographicPageInner() {
               borderColor: branding.borderColor,
               extraTitle: extraTitle || undefined,
               extraSubtitle: extraSubtitle || undefined,
+              extraTitlePosition,
+              extraSubtitlePosition,
             },
             onProgress: (pct, stage) => {
               setExportProgress(50 + Math.round(pct * 0.35));
@@ -7383,6 +7395,8 @@ function InfographicPageInner() {
               const x = Math.round(rawX);
               const y = Math.round(rawY);
               if (dragging === "title") setTitlePos({ x, y });
+              else if (dragging === "extraTitle") setExtraTitlePosition({ x, y });
+              else if (dragging === "extraSubtitle") setExtraSubtitlePosition({ x, y });
               else if (dragging === "logo") {
                 // Update logo position ONLY for the active sequence
                 // In 'all' view, update only the first enabled logo sequence (not all)
@@ -7665,6 +7679,7 @@ function InfographicPageInner() {
 
             {/* ── TITLE SECTION (visible in all, titre) — drag + double-click for panel ── */}
             {((activeSequence === "all" && exportedSequences.titre) || activeSequence === "titre") && (
+              <>
               <div
                 className={`absolute z-20 text-center cursor-grab active:cursor-grabbing group/title ${activePanel === "title" || (selectedEl?.type === 'title') ? "ring-1 ring-purple-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
                 style={{
@@ -7765,17 +7780,42 @@ function InfographicPageInner() {
                     {subtitle}
                   </p>
                 )}
-                {extraTitle && (
-                  <div className="mt-4" style={{ fontSize: '50%', fontWeight: titleBold ? 900 : 400, color: titleColor, lineHeight: titleLineHeight }}>
-                    {extraTitle}
-                  </div>
-                )}
-                {extraSubtitle && (
-                  <div className="mt-1" style={{ fontSize: '37.5%', opacity: 0.8, color: titleColor }}>
-                    {extraSubtitle}
-                  </div>
-                )}
               </div>
+              {extraTitle && (
+                <div
+                  className="absolute z-20 select-none cursor-grab active:cursor-grabbing"
+                  style={{
+                    left: `${extraTitlePosition.x}%`,
+                    top: `${extraTitlePosition.y}%`,
+                    transform: 'translate(-50%, -50%)',
+                    fontSize: `${(format === "16:9" ? 9 : 7) * textScale}px`,
+                    fontWeight: titleBold ? 900 : 400,
+                    color: titleColor,
+                    whiteSpace: 'nowrap',
+                  }}
+                  onMouseDown={(e) => { e.preventDefault(); setDragging("extraTitle"); }}
+                >
+                  {extraTitle}
+                </div>
+              )}
+              {extraSubtitle && (
+                <div
+                  className="absolute z-20 select-none cursor-grab active:cursor-grabbing"
+                  style={{
+                    left: `${extraSubtitlePosition.x}%`,
+                    top: `${extraSubtitlePosition.y}%`,
+                    transform: 'translate(-50%, -50%)',
+                    fontSize: `${(format === "16:9" ? 6.75 : 5.25) * textScale}px`,
+                    opacity: 0.8,
+                    color: titleColor,
+                    whiteSpace: 'nowrap',
+                  }}
+                  onMouseDown={(e) => { e.preventDefault(); setDragging("extraSubtitle"); }}
+                >
+                  {extraSubtitle}
+                </div>
+              )}
+              </>
             )}
 
             {/* ── VIDEO OVERLAY TEXT (visible in video sequence) — draggable, no bg ──
