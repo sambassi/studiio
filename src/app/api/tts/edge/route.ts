@@ -55,9 +55,14 @@ export async function POST(req: NextRequest) {
     ]);
 
     if (!audioBuffer || audioBuffer.length === 0) {
+      // Edge upstream sometimes "succeeds" with zero bytes when a voice has
+      // been removed from the catalog (observed 2026-04-28 with Coralie).
+      // Surface this clearly so the client doesn't cascade into a silent
+      // browser-fallback masquerading as Edge TTS.
+      console.warn('[TTS/Edge] upstream returned 0 bytes for voice:', voice, '— voice may be removed from MS catalog');
       return NextResponse.json(
-        { success: false, error: 'TTS synthesis produced no audio' },
-        { status: 500 }
+        { success: false, error: `TTS synthesis returned empty audio for voice "${voice}". The voice may have been removed from the upstream catalog.` },
+        { status: 502 }
       );
     }
 
@@ -141,7 +146,7 @@ export async function GET() {
     voices: [
       { id: 'fr-FR-DeniseNeural', name: 'Denise', language: 'Francais', gender: 'Female', flag: '\u{1F1EB}\u{1F1F7}' },
       { id: 'fr-FR-HenriNeural', name: 'Henri', language: 'Francais', gender: 'Male', flag: '\u{1F1EB}\u{1F1F7}' },
-      { id: 'fr-FR-CoralieMultilingualNeural', name: 'Coralie', language: 'Francais', gender: 'Female', flag: '\u{1F1EB}\u{1F1F7}' },
+      // fr-FR-CoralieMultilingualNeural removed 2026-04-28: returns 0 bytes upstream
       { id: 'fr-FR-VivienneMultilingualNeural', name: 'Vivienne', language: 'Francais', gender: 'Female', flag: '\u{1F1EB}\u{1F1F7}' },
       { id: 'en-US-AriaNeural', name: 'Aria', language: 'English', gender: 'Female', flag: '\u{1F1FA}\u{1F1F8}' },
       { id: 'en-US-GuyNeural', name: 'Guy', language: 'English', gender: 'Male', flag: '\u{1F1FA}\u{1F1F8}' },
