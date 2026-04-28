@@ -1646,11 +1646,15 @@ function InfographicPageInner() {
   };
   const [extraOverlays, setExtraOverlays] = useState<ExtraOverlay[]>([]);
   const [activeOverlayIdx, setActiveOverlayIdx] = useState(0); // 0 = legacy, 1+ = extraOverlays[idx-1]
-  const [cardsLetterSpacing, setCardsLetterSpacing] = useState(0);
+  const [cardsLetterSpacing,
+                cardsTypography: cardsTextGradient ? { textGradient: true, gradColor1: cardsTextGradColor1, gradColor2: cardsTextGradColor2 } : undefined, setCardsLetterSpacing] = useState(0);
   const [customCardIcons, setCustomCardIcons] = useState<Record<string, string>>({});
 
   // Advanced text effects
   const [titleTextGradient, setTitleTextGradient] = useState(false);
+  const [cardsTextGradient, setCardsTextGradient] = useState(false);
+  const [cardsTextGradColor1, setCardsTextGradColor1] = useState("#a855f7");
+  const [cardsTextGradColor2, setCardsTextGradColor2] = useState("#ec4899");
   const [titleGradColor1, setTitleGradColor1] = useState("#FFD700");
   const [titleGradColor2, setTitleGradColor2] = useState("#FF6B6B");
   const [titleDuplicate, setTitleDuplicate] = useState(false);
@@ -1711,6 +1715,9 @@ function InfographicPageInner() {
           setCardsLetterSpacing(cfg.cardsLetterSpacing);
         // Advanced text effects
         if (cfg.titleTextGradient !== undefined) setTitleTextGradient(cfg.titleTextGradient);
+        if (cfg.cardsTextGradient !== undefined) setCardsTextGradient(cfg.cardsTextGradient);
+        if (cfg.cardsTextGradColor1) setCardsTextGradColor1(cfg.cardsTextGradColor1);
+        if (cfg.cardsTextGradColor2) setCardsTextGradColor2(cfg.cardsTextGradColor2);
         if (cfg.titleGradColor1) setTitleGradColor1(cfg.titleGradColor1);
         if (cfg.titleGradColor2) setTitleGradColor2(cfg.titleGradColor2);
         if (cfg.titleDuplicate !== undefined) setTitleDuplicate(cfg.titleDuplicate);
@@ -2225,6 +2232,9 @@ function InfographicPageInner() {
     if (c.overlayColor) setOverlayColor(c.overlayColor);
     if (c.cardsLetterSpacing !== undefined) setCardsLetterSpacing(c.cardsLetterSpacing);
     if (c.titleTextGradient !== undefined) setTitleTextGradient(c.titleTextGradient);
+    if (c.cardsTextGradient !== undefined) setCardsTextGradient(c.cardsTextGradient);
+    if (c.cardsTextGradColor1) setCardsTextGradColor1(c.cardsTextGradColor1);
+    if (c.cardsTextGradColor2) setCardsTextGradColor2(c.cardsTextGradColor2);
     if (c.titleGradColor1) setTitleGradColor1(c.titleGradColor1);
     if (c.titleGradColor2) setTitleGradColor2(c.titleGradColor2);
     if (c.titleDuplicate !== undefined) setTitleDuplicate(c.titleDuplicate);
@@ -2375,9 +2385,12 @@ function InfographicPageInner() {
         titleLetterSpacing, titleLineHeight, titleBold, titleItalic,
         ctaLetterSpacing, ctaLineHeight, ctaBold, ctaItalic,
         overlayLetterSpacing, overlayLineHeight, overlayBold, overlayItalic, overlayColor, cardsLetterSpacing,
+                cardsTypography: cardsTextGradient ? { textGradient: true, gradColor1: cardsTextGradColor1, gradColor2: cardsTextGradColor2 } : undefined,
         selectedFont, selectedFilter, selectedCardStyle,
         titleColor, ctaColor, ctaSubColor, ctaMainText, ctaSubText,
         titleTextGradient, titleGradColor1, titleGradColor2,
+        cardsTextGradient, cardsTextGradColor1, cardsTextGradColor2,
+    cardsTextGradient, cardsTextGradColor1, cardsTextGradColor2,
         titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
         gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, seqGradients,
         textScale, ctaTextScale, cardsTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
@@ -2418,9 +2431,11 @@ function InfographicPageInner() {
     titleLetterSpacing, titleLineHeight, titleBold, titleItalic,
     ctaLetterSpacing, ctaLineHeight, ctaBold, ctaItalic,
     overlayLetterSpacing, overlayLineHeight, overlayBold, overlayItalic, overlayColor, cardsLetterSpacing,
+                cardsTypography: cardsTextGradient ? { textGradient: true, gradColor1: cardsTextGradColor1, gradColor2: cardsTextGradColor2 } : undefined,
     selectedFont, selectedFilter, selectedCardStyle,
     titleColor, ctaColor, ctaSubColor, ctaMainText, ctaSubText,
     titleTextGradient, titleGradColor1, titleGradColor2,
+    cardsTextGradient, cardsTextGradColor1, cardsTextGradColor2,
     titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
     gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, seqGradients,
     textScale, ctaTextScale, cardsTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
@@ -8668,6 +8683,30 @@ function InfographicPageInner() {
           accentColor="#EC4899"
         >
           <div className="space-y-2">
+            {/* Text gradient effect on cards */}
+            <div className="rounded-lg bg-gray-900/40 backdrop-blur-xl p-2 space-y-1.5 border border-gray-700/60">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={cardsTextGradient}
+                  onChange={(e) => setCardsTextGradient(e.target.checked)}
+                  className="accent-pink-500"
+                />
+                <span className="text-[9px] text-gray-400 uppercase">Dégradé sur texte</span>
+              </label>
+              {cardsTextGradient && (
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <span className="text-[8px] text-gray-500">Couleur 1</span>
+                    <input type="color" value={cardsTextGradColor1} onChange={(e) => setCardsTextGradColor1(e.target.value)} className="w-full h-6 rounded cursor-pointer bg-transparent" />
+                  </div>
+                  <div className="flex-1">
+                    <span className="text-[8px] text-gray-500">Couleur 2</span>
+                    <input type="color" value={cardsTextGradColor2} onChange={(e) => setCardsTextGradColor2(e.target.value)} className="w-full h-6 rounded cursor-pointer bg-transparent" />
+                  </div>
+                </div>
+              )}
+            </div>
             {/* Multi-select actions (free-position mode) */}
             {cardPositionMode === 'free' && (
               <div className="rounded-lg bg-gray-900/40 backdrop-blur-xl p-2 space-y-1.5 border border-gray-700/60">
