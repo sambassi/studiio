@@ -1344,6 +1344,13 @@ function resolveCardIcon(
   return { iconType: 'svg', emoji: fallbackLucide };
 }
 
+const PLATFORM_DISPLAY_NAMES: Record<PlatformKey, string> = {
+  instagram: 'Instagram',
+  facebook: 'Facebook',
+  tiktok: 'TikTok',
+  youtube: 'YouTube',
+};
+
 function InfographicPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -4137,10 +4144,10 @@ function InfographicPageInner() {
               media_url: renderedVideoUrl || (hasVideo ? null : (mediaUrl || posterUrl || null)),
               media_type: 'video',
               format: format === "16:9" ? "tv" : "reel",
-              platforms: selectedPublishPlatforms,
+              platforms: selectedPublishPlatforms.map(p => PLATFORM_DISPLAY_NAMES[p]),
               scheduled_date: scheduledDate,
               scheduled_time: "12:00",
-              status: selectedPublishPlatforms.length > 0 ? "scheduled" : "draft",
+              status: "draft",
               metadata: {
                 type: "infographic",
                 subtitle: bSubtitle,
