@@ -484,6 +484,8 @@ export default function CalendarPage() {
           noColorBg: designMeta.noColorBg || undefined,
           noColorSequences: designMeta.noColorSequences || undefined,
           filter: designMeta.filter || undefined,
+          extraTitle: (designMeta as any).extraTitle || undefined,
+          extraSubtitle: (designMeta as any).extraSubtitle || undefined,
         },
         onProgress: (pct, stage) => { setRegenProgress(pct); setRegenStage(stage); },
       });
@@ -877,6 +879,8 @@ export default function CalendarPage() {
             noColorBg: (designMeta as any).noColorBg || undefined,
             noColorSequences: (designMeta as any).noColorSequences || undefined,
             filter: designMeta.filter || undefined,
+            extraTitle: (designMeta as any).extraTitle || undefined,
+            extraSubtitle: (designMeta as any).extraSubtitle || undefined,
           },
           onProgress: (pct, stage) => {
             setExportRenderProgress(pct);
@@ -1463,6 +1467,8 @@ export default function CalendarPage() {
               noColorBg: (designMeta as any).noColorBg || undefined,
               noColorSequences: (designMeta as any).noColorSequences || undefined,
               filter: designMeta.filter || undefined,
+              extraTitle: (designMeta as any).extraTitle || undefined,
+              extraSubtitle: (designMeta as any).extraSubtitle || undefined,
             },
             onProgress: (pct, stage) => {
               setExportRenderProgress(pct);
@@ -1830,6 +1836,8 @@ export default function CalendarPage() {
           ctaMainText: calDesign?.ctaMainText || undefined,
           ctaSubTextDesign: calDesign?.ctaSubText || undefined,
           titleTypography: calDesign?.typography?.title || undefined,
+          extraTitle: (calDesign as any)?.extraTitle || undefined,
+          extraSubtitle: (calDesign as any)?.extraSubtitle || undefined,
         },
         onProgress: (pct, stage) => {
           setExportRenderProgress(pct);

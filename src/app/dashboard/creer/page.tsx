@@ -2267,6 +2267,8 @@ function InfographicPageInner() {
     if (typeof c.customTopic === 'string') setCustomTopic(c.customTopic);
     if (typeof c.title === 'string') setTitle(c.title);
     if (typeof c.subtitle === 'string') setSubtitle(c.subtitle);
+    if (typeof c.extraTitle === 'string') setExtraTitle(c.extraTitle);
+    if (typeof c.extraSubtitle === 'string') setExtraSubtitle(c.extraSubtitle);
     if (Array.isArray(c.cards)) setCards(c.cards);
     if (Array.isArray(c.salesPhrases)) setSalesPhrases(c.salesPhrases);
     if (Array.isArray(c.pexelsPhotos)) setPexelsPhotos(c.pexelsPhotos);
@@ -2396,6 +2398,7 @@ function InfographicPageInner() {
         overlayTextGradient, overlayGradColor1, overlayGradColor2,
         watermarkTextGradient, watermarkGradColor1, watermarkGradColor2,
         contentTheme, customTopic, title, subtitle,
+        extraTitle, extraSubtitle,
         cards, salesPhrases,
         pexelsPhotos, selectedPhotoIndex, batchPhotoIndices,
         rushList,
@@ -2438,6 +2441,7 @@ function InfographicPageInner() {
     overlayTextGradient, overlayGradColor1, overlayGradColor2,
     watermarkTextGradient, watermarkGradColor1, watermarkGradColor2,
     contentTheme, customTopic, title, subtitle,
+    extraTitle, extraSubtitle,
     cards, salesPhrases,
     pexelsPhotos, selectedPhotoIndex, batchPhotoIndices,
     rushList,
@@ -4153,6 +4157,8 @@ function InfographicPageInner() {
                 },
                 titleFont, ctaFont, overlayFont, watermarkFont, cardsFont,
                 watermarkTextGradient, watermarkGradColor1, watermarkGradColor2,
+                extraTitle: extraTitle || undefined,
+                extraSubtitle: extraSubtitle || undefined,
               },
               onProgress: (pct) => {
                 setExportProgress(Math.round(((b + 0.3 + pct / 100 * 0.6) / total) * 100));
@@ -4338,6 +4344,8 @@ function InfographicPageInner() {
                   },
                   overlayColor,
                   cardCustomIcons: customCardIcons,
+                  extraTitle: extraTitle || undefined,
+                  extraSubtitle: extraSubtitle || undefined,
                 },
               },
             }),
@@ -4547,6 +4555,8 @@ function InfographicPageInner() {
               filter: selectedFilter || undefined,
               borderEnabled: branding.borderEnabled,
               borderColor: branding.borderColor,
+              extraTitle: extraTitle || undefined,
+              extraSubtitle: extraSubtitle || undefined,
             },
             onProgress: (pct, stage) => {
               setExportProgress(50 + Math.round(pct * 0.35));
@@ -5699,6 +5709,47 @@ function InfographicPageInner() {
                         {aiFieldLoading === 'subtitle' ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                       </button>
                     </div>
+                  </div>
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowExtraTitleBlock((v) => !v)}
+                      className="flex w-full items-center justify-between rounded-lg border border-dashed border-gray-700 bg-gray-800/50 px-3 py-2 text-xs text-gray-400 hover:border-purple-500/50 hover:text-purple-300 transition"
+                    >
+                      <span>+ Ajouter un titre/sous-titre supplémentaire</span>
+                      <span className="text-[10px]">{showExtraTitleBlock ? '▲' : '▼'}</span>
+                    </button>
+                    {showExtraTitleBlock && (
+                      <div className="mt-2 space-y-2 rounded-lg border border-gray-800 bg-gray-900/40 p-3">
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-gray-400">
+                            Titre supplémentaire
+                          </label>
+                          <input
+                            type="text"
+                            value={extraTitle}
+                            onChange={(e) => setExtraTitle(e.target.value)}
+                            placeholder="Optionnel"
+                            className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-white focus:border-purple-500 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-gray-400">
+                            Sous-titre supplémentaire
+                          </label>
+                          <input
+                            type="text"
+                            value={extraSubtitle}
+                            onChange={(e) => setExtraSubtitle(e.target.value)}
+                            placeholder="Optionnel"
+                            className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-white focus:border-purple-500 focus:outline-none"
+                          />
+                        </div>
+                        <p className="text-[10px] text-gray-500">
+                          Affichés sous le titre principal dans la séquence titre, en plus petit. Vide = ignoré.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
 
