@@ -7734,6 +7734,16 @@ function InfographicPageInner() {
                     {subtitle}
                   </p>
                 )}
+                {extraTitle && (
+                  <div className="mt-4" style={{ fontSize: '50%', fontWeight: titleBold ? 900 : 400, color: titleColor, lineHeight: titleLineHeight }}>
+                    {extraTitle}
+                  </div>
+                )}
+                {extraSubtitle && (
+                  <div className="mt-1" style={{ fontSize: '37.5%', opacity: 0.8, color: titleColor }}>
+                    {extraSubtitle}
+                  </div>
+                )}
               </div>
             )}
 
