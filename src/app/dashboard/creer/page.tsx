@@ -7773,10 +7773,12 @@ function InfographicPageInner() {
                       </div>
                     );
                   }
-                  // ── Text Only (no frame, no icon, no value) ──
-                  // Also used when the individual card has textOnly=true,
-                  // which lets users mix styled cards + plain text in the
-                  // same sequence for more visual variety.
+                  // ── Text Only (no frame, no icon, no background) ──
+                  // Used when the global cardStyle is "Text Only" OR the
+                  // individual card has `textOnly=true` (mix-and-match).
+                  // Pure typography — label + optional description + optional
+                  // value. Editor chrome (dashed click-target border, group
+                  // badge) is suppressed by the wrapper logic below.
                   if (selectedCardStyle === "Text Only" || card.textOnly) {
                     return (
                       <div className="flex flex-col items-center justify-center w-full px-2 py-1 text-center">
@@ -7792,6 +7794,14 @@ function InfographicPageInner() {
                             style={{ fontSize: scaledDesc }}
                           >
                             {renderBoldMarkdown(truncateAtWord(card.description, 120))}
+                          </p>
+                        )}
+                        {card.value && (
+                          <p
+                            className="font-black mt-0.5"
+                            style={{ fontSize: scaledValue, color: card.color }}
+                          >
+                            {card.value}
                           </p>
                         )}
                       </div>
@@ -7907,7 +7917,11 @@ function InfographicPageInner() {
                             onDoubleClick={(e) => openPanel('cards', e)}
                             title={`Carte ${i + 1} — glisser pour déplacer, Maj+clic pour sélection multiple`}
                           >
-                            <div className="pointer-events-none absolute inset-0 border border-dashed border-pink-500/30 hover:border-pink-500/60 rounded transition-colors" />
+                            {/* Editor click-target hint — hidden for Text Only
+                                cards so they look purely typographic. */}
+                            {!(selectedCardStyle === "Text Only" || card.textOnly) && (
+                              <div className="pointer-events-none absolute inset-0 border border-dashed border-pink-500/30 hover:border-pink-500/60 rounded transition-colors" />
+                            )}
                             {renderCardInner(card)}
                             {cardGroup && (
                               <div
@@ -7969,7 +7983,9 @@ function InfographicPageInner() {
                         };
                       }}
                     />
-                    <div className="absolute inset-0 border border-dashed border-pink-500/30 group-hover/cards:border-pink-500/60 rounded pointer-events-none transition-colors" />
+                    {selectedCardStyle !== "Text Only" && (
+                      <div className="absolute inset-0 border border-dashed border-pink-500/30 group-hover/cards:border-pink-500/60 rounded pointer-events-none transition-colors" />
+                    )}
                     <div
                       className={`grid gap-1.5 w-full ${
                         selectedCardStyle === "Full Width"

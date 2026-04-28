@@ -1078,38 +1078,53 @@ function drawCards(
 
   // ── Shared "Text Only" renderer ──
   // Used by both the global Text Only cardStyle and the per-card `textOnly`
-  // override. Draws label + optional description centered in the slot with
-  // no frame, no border, no icon, no value. Mirrors the editor preview.
+  // override. Draws label + optional description + optional value centered
+  // in the slot with no frame, no border, no icon, no background.
   const drawTextOnly = (card: CardData, x: number, y: number, cardW: number, cardH: number) => {
     ctx.save();
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'center';
-    const lines = card.description ? 2 : 1;
     const gap = cssPx(2);
-    const blockH = labelSize + (lines === 2 ? gap + descSize : 0);
-    const topY = y + (cardH - blockH) / 2;
+    const hasDesc = !!card.description;
+    const hasValue = !!card.value;
+    // Compute the total block height so the stack can be centered vertically
+    // in the card slot regardless of how many optional lines are present.
+    const blockH =
+      labelSize
+      + (hasDesc ? gap + descSize : 0)
+      + (hasValue ? gap + valueSize : 0);
+    let curY = y + (cardH - blockH) / 2 + labelSize / 2;
     ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`;
     ctx.fillStyle = card.color || '#FFFFFF';
-    ctx.fillText(truncateToWidth(ctx, card.label, cardW - cssPx(16)), x + cardW / 2, topY + labelSize / 2);
-    if (card.description) {
+    ctx.fillText(truncateToWidth(ctx, card.label, cardW - cssPx(16)), x + cardW / 2, curY);
+    if (hasDesc) {
+      curY += labelSize / 2 + gap + descSize / 2;
       ctx.font = `400 ${descSize}px "${fontFamily}", sans-serif`;
       ctx.fillStyle = 'rgba(255,255,255,0.7)';
       ctx.fillText(
-        truncateToWidth(ctx, truncateAtWord(card.description, 120), cardW - cssPx(16)),
+        truncateToWidth(ctx, truncateAtWord(card.description!, 120), cardW - cssPx(16)),
         x + cardW / 2,
-        topY + labelSize + gap + descSize / 2,
+        curY,
       );
+    }
+    if (hasValue) {
+      curY += (hasDesc ? descSize / 2 : labelSize / 2) + gap + valueSize / 2;
+      ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`;
+      ctx.fillStyle = card.color || '#FFFFFF';
+      ctx.fillText(card.value!, x + cardW / 2, curY);
     }
     ctx.restore();
   };
 
-  // ── Card style: Text Only (plain text, no frames, no icons, no values) ──
+  // ── Card style: Text Only (plain text, no frames, no icons) ──
   // Single-column vertical list. Each card slot draws label + optional
-  // description centered, color of label = card.color.
+  // description + optional value centered, color = card.color.
   if (cardStyle === 'Text Only') {
     const cardW = containerW;
     const gap = cssPx(8);
-    const cardH = Math.round(labelSize * 2.4 + descSize * 1.6);
+    // Reserve enough vertical space for the maximally-decorated card
+    // (label + description + value) so values aren't clipped when present.
+    const cardH = Math.round(labelSize * 1.4 + descSize * 1.6 + valueSize * 1.6);
     const totalH = maxCards * cardH + (maxCards - 1) * gap;
     const cardsY = ((design?.cardsPosition?.y ?? 50) / 100) * h - totalH / 2;
     const cardsX = ((design?.cardsPosition?.x ?? 50) / 100) * w - cardW / 2;
