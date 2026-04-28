@@ -174,11 +174,26 @@ export async function GET(req: NextRequest) {
     for (const post of duePosts) {
       console.log(`[CRON] Processing post: id=${post.id}, title="${post.title}", platforms=${JSON.stringify(post.platforms)}, video_id=${post.video_id}, media_url=${post.media_url ? 'SET' : 'NULL'}`);
 
-      // Mark as "publishing" to prevent double-processing
-      await supabase
+      // Atomic claim: flip status scheduled/draft → publishing only if no
+      // other cron invocation got there first. The `.in('status', …)`
+      // guard turns this into a single conditional UPDATE — Supabase /
+      // Postgres serialise it, so if two instances race only one row gets
+      // updated. The other reads `data.length === 0` and skips.
+      const { data: claimed, error: claimErr } = await supabase
         .from('scheduled_posts')
         .update({ status: 'publishing' })
-        .eq('id', post.id);
+        .eq('id', post.id)
+        .in('status', ['scheduled', 'draft'])
+        .select('id');
+
+      if (claimErr) {
+        console.error(`[CRON] Claim error for post ${post.id}:`, claimErr.message);
+        continue;
+      }
+      if (!claimed || claimed.length === 0) {
+        console.log(`[CRON] Post ${post.id} already claimed by another invocation (status moved to publishing/published/failed) — skip`);
+        continue;
+      }
 
       try {
         // Get the user's social accounts
