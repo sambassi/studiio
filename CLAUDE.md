@@ -690,5 +690,8 @@ Retourne un objet `{ title, text, links }` après avoir retiré nav/footer/banni
 4. Expliquer → résumé de haut niveau à chaque étape
 5. Apprendre → tasks/lessons.md après corrections
 
+## AUTO-MERGE DES PRs
+Quand l'utilisateur demande un fix, un changement de code ou une correction de bug, le workflow par défaut est : (1) faire les modifications, (2) commit, (3) push sur une branche dédiée, (4) créer une PR draft, (5) merger directement la PR en squash sans attendre confirmation supplémentaire. L'utilisateur n'a pas à dire "merge la PR" à chaque fois — c'est l'étape par défaut. Exception : si la modification touche à des fichiers sensibles (auth, paiements Stripe, base de données structure, secrets) ou si elle dépasse 300 lignes de diff, demander confirmation avant de merger.
+
 ## APPRENTISSAGES
 (Claude remplit cette section au fil du temps)
