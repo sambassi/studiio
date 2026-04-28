@@ -3836,10 +3836,10 @@ function InfographicPageInner() {
         // Photo affiche = OPTIONNELLE. Si l'utilisateur a explicitement
         // désélectionné (selectedPhotoIndex = -1) ou n'a jamais cherché
         // de photos, posterUrl reste null et le composer peint le gradient.
-        // batchPhotoIndices[b] permet de pré-sélectionner la photo par
-        // itération ; sinon on retombe sur selectedPhotoIndex (pas de
-        // cycling automatique vers une photo non-choisie).
-        const photoIdx = batchPhotoIndices[b] ?? selectedPhotoIndex;
+        // batchPhotoIndices[b] n'est consulté QU'EN MODE BATCH (batchCount > 1)
+        // — sinon des indices hérités d'une session batch précédente
+        // écraseraient silencieusement le selectedPhotoIndex du mode single.
+        const photoIdx = batchCount > 1 ? (batchPhotoIndices[b] ?? selectedPhotoIndex) : selectedPhotoIndex;
         const photo = (pexelsPhotos.length > 0 && photoIdx >= 0) ? pexelsPhotos[photoIdx] : null;
         const posterUrl = photo?.url || null;
 
