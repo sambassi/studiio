@@ -1654,6 +1654,12 @@ function InfographicPageInner() {
   const [cardsTextGradient, setCardsTextGradient] = useState(false);
   const [cardsTextGradColor1, setCardsTextGradColor1] = useState("#a855f7");
   const [cardsTextGradColor2, setCardsTextGradColor2] = useState("#ec4899");
+  const [ctaIconName, setCtaIconName] = useState<string | null>(null);
+  const [ctaIconColor, setCtaIconColor] = useState("#ffffff");
+  const [ctaIconGradient, setCtaIconGradient] = useState(false);
+  const [ctaIconGradColor1, setCtaIconGradColor1] = useState("#a855f7");
+  const [ctaIconGradColor2, setCtaIconGradColor2] = useState("#ec4899");
+  const [ctaIconSize, setCtaIconSize] = useState(60);
   const [titleGradColor1, setTitleGradColor1] = useState("#FFD700");
   const [titleGradColor2, setTitleGradColor2] = useState("#FF6B6B");
   const [titleDuplicate, setTitleDuplicate] = useState(false);
@@ -1717,6 +1723,12 @@ function InfographicPageInner() {
         if (cfg.cardsTextGradient !== undefined) setCardsTextGradient(cfg.cardsTextGradient);
         if (cfg.cardsTextGradColor1) setCardsTextGradColor1(cfg.cardsTextGradColor1);
         if (cfg.cardsTextGradColor2) setCardsTextGradColor2(cfg.cardsTextGradColor2);
+        if (typeof cfg.ctaIconName === 'string' || cfg.ctaIconName === null) setCtaIconName(cfg.ctaIconName);
+        if (cfg.ctaIconColor) setCtaIconColor(cfg.ctaIconColor);
+        if (cfg.ctaIconGradient !== undefined) setCtaIconGradient(cfg.ctaIconGradient);
+        if (cfg.ctaIconGradColor1) setCtaIconGradColor1(cfg.ctaIconGradColor1);
+        if (cfg.ctaIconGradColor2) setCtaIconGradColor2(cfg.ctaIconGradColor2);
+        if (typeof cfg.ctaIconSize === 'number') setCtaIconSize(cfg.ctaIconSize);
         if (cfg.titleGradColor1) setTitleGradColor1(cfg.titleGradColor1);
         if (cfg.titleGradColor2) setTitleGradColor2(cfg.titleGradColor2);
         if (cfg.titleDuplicate !== undefined) setTitleDuplicate(cfg.titleDuplicate);
@@ -2234,6 +2246,12 @@ function InfographicPageInner() {
     if (c.cardsTextGradient !== undefined) setCardsTextGradient(c.cardsTextGradient);
     if (c.cardsTextGradColor1) setCardsTextGradColor1(c.cardsTextGradColor1);
     if (c.cardsTextGradColor2) setCardsTextGradColor2(c.cardsTextGradColor2);
+    if (typeof c.ctaIconName === 'string' || c.ctaIconName === null) setCtaIconName(c.ctaIconName);
+    if (c.ctaIconColor) setCtaIconColor(c.ctaIconColor);
+    if (c.ctaIconGradient !== undefined) setCtaIconGradient(c.ctaIconGradient);
+    if (c.ctaIconGradColor1) setCtaIconGradColor1(c.ctaIconGradColor1);
+    if (c.ctaIconGradColor2) setCtaIconGradColor2(c.ctaIconGradColor2);
+    if (typeof c.ctaIconSize === 'number') setCtaIconSize(c.ctaIconSize);
     if (c.titleGradColor1) setTitleGradColor1(c.titleGradColor1);
     if (c.titleGradColor2) setTitleGradColor2(c.titleGradColor2);
     if (c.titleDuplicate !== undefined) setTitleDuplicate(c.titleDuplicate);
@@ -2388,6 +2406,7 @@ function InfographicPageInner() {
         titleColor, ctaColor, ctaSubColor, ctaMainText, ctaSubText,
         titleTextGradient, titleGradColor1, titleGradColor2,
         cardsTextGradient, cardsTextGradColor1, cardsTextGradColor2,
+        ctaIconName, ctaIconColor, ctaIconGradient, ctaIconGradColor1, ctaIconGradColor2, ctaIconSize,
         titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
         gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, seqGradients,
         textScale, ctaTextScale, cardsTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
@@ -2432,6 +2451,7 @@ function InfographicPageInner() {
     titleColor, ctaColor, ctaSubColor, ctaMainText, ctaSubText,
     titleTextGradient, titleGradColor1, titleGradColor2,
     cardsTextGradient, cardsTextGradColor1, cardsTextGradColor2,
+    ctaIconName, ctaIconColor, ctaIconGradient, ctaIconGradColor1, ctaIconGradColor2, ctaIconSize,
     titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
     gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, seqGradients,
     textScale, ctaTextScale, cardsTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
@@ -3619,6 +3639,27 @@ function InfographicPageInner() {
   };
 
   // ── Pre-render SVG icons as images for canvas drawing ──────
+  const preRenderCtaIcon = async (): Promise<HTMLImageElement | null> => {
+    if (!ctaIconName || !ICON_MAP[ctaIconName]) return null;
+    try {
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const React = await import('react');
+      const IconComp = ICON_MAP[ctaIconName];
+      const renderColor = ctaIconGradient ? '#FFFFFF' : (ctaIconColor || '#FFFFFF');
+      const svg = renderToStaticMarkup(React.createElement(IconComp, { size: 256, color: renderColor, strokeWidth: 2 }));
+      const blob = new Blob([svg], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      return await new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
+        image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('cta icon load failed')); };
+        image.src = url;
+      });
+    } catch {
+      return null;
+    }
+  };
+
   const preRenderCardIcons = async (cardList: typeof cards) => {
     const { renderToStaticMarkup } = await import('react-dom/server');
     const React = await import('react');
@@ -4094,6 +4135,7 @@ function InfographicPageInner() {
                 scale: o.scale,
               }))
             ));
+            const ctaIconImage = await preRenderCtaIcon();
             const { url: composedUrl, thumbnailUrl: composedThumbUrl, composerVersion: composedVersion } = await composeAndUpload({
               width: isReel ? 1080 : 1920,
               height: isReel ? 1920 : 1080,
@@ -4169,6 +4211,12 @@ function InfographicPageInner() {
                 titleFont, ctaFont, overlayFont, watermarkFont, cardsFont,
                 watermarkTextGradient, watermarkGradColor1, watermarkGradColor2,
                 cardsTypography: cardsTextGradient ? { textGradient: true, gradColor1: cardsTextGradColor1, gradColor2: cardsTextGradColor2 } : undefined,
+                ctaIconImage,
+                ctaIconColor,
+                ctaIconGradient,
+                ctaIconGradColor1,
+                ctaIconGradColor2,
+                ctaIconSize,
                 extraTitle: extraTitle || undefined,
                 extraSubtitle: extraSubtitle || undefined,
               },
@@ -4361,6 +4409,12 @@ function InfographicPageInner() {
                   },
                   overlayColor,
                   cardCustomIcons: customCardIcons,
+                  ctaIconName: ctaIconName || undefined,
+                  ctaIconColor: ctaIconColor || undefined,
+                  ctaIconGradient: ctaIconGradient,
+                  ctaIconGradColor1: ctaIconGradColor1 || undefined,
+                  ctaIconGradColor2: ctaIconGradColor2 || undefined,
+                  ctaIconSize: ctaIconSize,
                   extraTitle: extraTitle || undefined,
                   extraSubtitle: extraSubtitle || undefined,
                 },
@@ -4470,6 +4524,7 @@ function InfographicPageInner() {
               scale: o.scale,
             }))
           ));
+          const ctaIconImage = await preRenderCtaIcon();
           const composedResult = await composeAndUpload({
             width: isReel ? 1080 : 1920,
             height: isReel ? 1920 : 1080,
@@ -4567,6 +4622,12 @@ function InfographicPageInner() {
               titleFont, ctaFont, overlayFont, watermarkFont, cardsFont,
               watermarkTextGradient, watermarkGradColor1, watermarkGradColor2,
               cardsTypography: cardsTextGradient ? { textGradient: true, gradColor1: cardsTextGradColor1, gradColor2: cardsTextGradColor2 } : undefined,
+              ctaIconImage,
+              ctaIconColor,
+              ctaIconGradient,
+              ctaIconGradColor1,
+              ctaIconGradColor2,
+              ctaIconSize,
               noColorBg, noColorSequences,
               seqGradients,
               backdropRounded, backdropRadius, backdropMargin,
@@ -8844,6 +8905,49 @@ function InfographicPageInner() {
           accentColor="#EAB308"
         >
           <div className="space-y-2">
+            <div className="rounded-lg bg-gray-900/40 backdrop-blur-xl p-2 space-y-1.5 border border-gray-700/60">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] text-gray-400 uppercase">Icone SVG</span>
+                {ctaIconName && (<button type="button" onClick={() => setCtaIconName(null)} className="text-[9px] text-red-400 hover:text-red-300">Retirer</button>)}
+              </div>
+              <select value={ctaIconName || ''} onChange={(e) => setCtaIconName(e.target.value || null)} className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white">
+                <option value="">Aucune</option>
+                <option value="Sparkles">Sparkles</option>
+                <option value="Heart">Heart</option>
+                <option value="Star">Star</option>
+                <option value="Zap">Zap</option>
+                <option value="Flame">Flame</option>
+                <option value="Trophy">Trophy</option>
+                <option value="Target">Target</option>
+                <option value="Crown">Crown</option>
+                <option value="Award">Award</option>
+                <option value="Gem">Gem</option>
+                <option value="Rocket">Rocket</option>
+                <option value="Lightbulb">Lightbulb</option>
+                <option value="Diamond">Diamond</option>
+                <option value="HeartPulse">HeartPulse</option>
+                <option value="Bell">Bell</option>
+                <option value="Megaphone">Megaphone</option>
+              </select>
+              {ctaIconName && (<>
+                <div>
+                  <span className="text-[8px] text-gray-500">Taille ({ctaIconSize}px)</span>
+                  <input type="range" min={30} max={120} value={ctaIconSize} onChange={(e) => setCtaIconSize(Number(e.target.value))} className="w-full accent-yellow-500" />
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={ctaIconGradient} onChange={(e) => setCtaIconGradient(e.target.checked)} className="accent-yellow-500" />
+                  <span className="text-[9px] text-gray-400 uppercase">Degrade sur icone</span>
+                </label>
+                {ctaIconGradient ? (
+                  <div className="flex gap-2">
+                    <div className="flex-1"><span className="text-[8px] text-gray-500">Couleur 1</span><input type="color" value={ctaIconGradColor1} onChange={(e) => setCtaIconGradColor1(e.target.value)} className="w-full h-6 rounded cursor-pointer bg-transparent" /></div>
+                    <div className="flex-1"><span className="text-[8px] text-gray-500">Couleur 2</span><input type="color" value={ctaIconGradColor2} onChange={(e) => setCtaIconGradColor2(e.target.value)} className="w-full h-6 rounded cursor-pointer bg-transparent" /></div>
+                  </div>
+                ) : (
+                  <div><span className="text-[8px] text-gray-500">Couleur</span><input type="color" value={ctaIconColor} onChange={(e) => setCtaIconColor(e.target.value)} className="w-full h-6 rounded cursor-pointer bg-transparent" /></div>
+                )}
+              </>)}
+            </div>
             <input
               type="text"
               value={ctaMainText}

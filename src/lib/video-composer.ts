@@ -6,7 +6,7 @@
  */
 import type { AudioKeyframe } from './creer/audioDucking';
 
-const COMPOSER_VERSION = 'v24-cards-gradient-2026-04-28';
+const COMPOSER_VERSION = 'v25-cta-icon-2026-04-28';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -168,6 +168,19 @@ export interface DesignOptions {
     gradColor1?: string;
     gradColor2?: string;
   };
+  /** Optional SVG icon rendered ABOVE the CTA text block. Pre-rendered by
+   *  the caller (so the composer doesn't need react-dom/server). null/undefined
+   *  → no icon, CTA layout identical to before. */
+  ctaIconImage?: HTMLImageElement | null;
+  /** Solid color of the CTA icon (when no gradient). Default '#FFFFFF'. */
+  ctaIconColor?: string;
+  /** When true, mask a linear gradient onto the icon's pixels. */
+  ctaIconGradient?: boolean;
+  ctaIconGradColor1?: string;
+  ctaIconGradColor2?: string;
+  /** Icon size in px at 1080-px canvas width. Scaled for other widths.
+   *  Default 60. */
+  ctaIconSize?: number;
   /** Per-element font overrides (undefined → inherit `font`). */
   titleFont?: string;
   ctaFont?: string;
@@ -1981,6 +1994,40 @@ function drawCTA(
 
   // Editor uses translate(-50%, -100%) → the BOTTOM of the block sits at ctaPosY.
   let curY = ctaPosY - blockH;
+
+  // Optional CTA icon — drawn ABOVE the CTA block so the existing layout
+  // (sales/main/sub) is untouched when no icon is configured. The icon is
+  // pre-rendered as a white-on-transparent <img> by the caller; the gradient
+  // (when enabled) is masked onto the icon pixels via an offscreen canvas
+  // + globalCompositeOperation 'source-in'. That isolates the masking so it
+  // doesn't affect the main canvas content.
+  if (design?.ctaIconImage) {
+    const iconSizeBase = design.ctaIconSize || 60;
+    const iconSize = iconSizeBase * (w / 1080);
+    const iconGap = Math.round(w * 0.02);
+    const iconX = ctaPosX - iconSize / 2;
+    const iconY = curY - iconSize - iconGap;
+    if (design.ctaIconGradient && design.ctaIconGradColor1 && design.ctaIconGradColor2) {
+      const off = document.createElement('canvas');
+      off.width = Math.max(1, Math.round(iconSize));
+      off.height = Math.max(1, Math.round(iconSize));
+      const offCtx = off.getContext('2d');
+      if (offCtx) {
+        offCtx.drawImage(design.ctaIconImage, 0, 0, off.width, off.height);
+        offCtx.globalCompositeOperation = 'source-in';
+        const grad = offCtx.createLinearGradient(0, 0, off.width, off.height);
+        grad.addColorStop(0, design.ctaIconGradColor1);
+        grad.addColorStop(1, design.ctaIconGradColor2);
+        offCtx.fillStyle = grad;
+        offCtx.fillRect(0, 0, off.width, off.height);
+        ctx.drawImage(off, iconX, iconY);
+      } else {
+        ctx.drawImage(design.ctaIconImage, iconX, iconY, iconSize, iconSize);
+      }
+    } else {
+      ctx.drawImage(design.ctaIconImage, iconX, iconY, iconSize, iconSize);
+    }
+  }
 
   // Sales phrase (multi-line)
   if (salesLines.length > 0) {
