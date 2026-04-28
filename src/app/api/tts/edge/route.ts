@@ -22,6 +22,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { text, voice = 'fr-FR-DeniseNeural', rate, pitch } = body;
 
+    console.log('[TTS/Edge] request | voice:', voice, '| text.length:', text?.length || 0);
+
     if (!text || typeof text !== 'string') {
       return NextResponse.json(
         { success: false, error: 'Text is required' },
@@ -37,6 +39,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!VALID_VOICE_PATTERN.test(voice)) {
+      console.warn('[TTS/Edge] invalid voice ID rejected:', voice);
       return NextResponse.json(
         { success: false, error: 'Invalid voice ID format' },
         { status: 400 }
