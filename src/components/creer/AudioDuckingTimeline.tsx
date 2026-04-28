@@ -64,6 +64,20 @@ export default function AudioDuckingTimeline({
     onChange(sorted.filter((k) => k.id !== id));
   };
 
+  // Global sliders: applied to every keyframe at once. Display reflects the
+  // first keyframe — a stable proxy when all keyframes share the same value
+  // (the common case once the user has touched a global slider).
+  const globalMusicValue = Math.round(((sorted[0]?.musicVolume ?? 1)) * 100);
+  const globalRushValue = Math.round(((sorted[0]?.rushVolume ?? 1)) * 100);
+  const setGlobalMusic = (pct: number) => {
+    const v = pct / 100;
+    onChange(sorted.map((k) => ({ ...k, musicVolume: v })));
+  };
+  const setGlobalRush = (pct: number) => {
+    const v = pct / 100;
+    onChange(sorted.map((k) => ({ ...k, rushVolume: v })));
+  };
+
   return (
     <div className="mt-3 rounded-lg border border-gray-800 bg-gray-900/60 p-3 space-y-2">
       <div className="flex items-center justify-between">
@@ -81,6 +95,34 @@ export default function AudioDuckingTimeline({
             : <Wand2 size={11} />}
           Auto-duck
         </button>
+      </div>
+
+      {/* Global volume sliders — bulk-apply to every keyframe at once */}
+      <div className="rounded bg-gray-900/60 p-1.5 space-y-1">
+        <label className="flex items-center gap-1.5 text-[9px] text-gray-300">
+          <span className="w-24 text-gray-400">Volume musique global</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={globalMusicValue}
+            onChange={(e) => setGlobalMusic(parseInt(e.target.value, 10))}
+            className="flex-1 accent-cyan-500"
+          />
+          <span className="w-9 text-right text-cyan-300 font-mono">{globalMusicValue}%</span>
+        </label>
+        <label className="flex items-center gap-1.5 text-[9px] text-gray-300">
+          <span className="w-24 text-gray-400">Volume rush global</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={globalRushValue}
+            onChange={(e) => setGlobalRush(parseInt(e.target.value, 10))}
+            className="flex-1 accent-orange-500"
+          />
+          <span className="w-9 text-right text-orange-300 font-mono">{globalRushValue}%</span>
+        </label>
       </div>
 
       {/* Timeline bar — click to add a keyframe */}
@@ -181,7 +223,7 @@ export default function AudioDuckingTimeline({
       </div>
 
       <p className="text-[9px] text-gray-500 leading-snug">
-        Click sur la barre pour ajouter un keyframe. La musique et le son du rush utilisent la valeur du keyframe actif (curve étagée, pas d'interpolation linéaire en v1).
+        Les sliders globaux ajustent tous les keyframes d'un coup. Pour un mix avancé, ajoute des keyframes en cliquant sur la barre.
       </p>
     </div>
   );
