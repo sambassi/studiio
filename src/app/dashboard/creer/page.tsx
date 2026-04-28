@@ -1498,9 +1498,10 @@ function InfographicPageInner() {
   // Audio ducking keyframes. Each entry sets the absolute music + rush
   // volumes (0-1) at a specific time (seconds from the start of the final
   // montage). Composer applies a stepped gain curve during the video
-  // sequence. Default: one keyframe at t=0 with music full + rush half.
+  // sequence. Default: one keyframe at t=0 with both music and rush at 100%
+  // so the user hears the rush by default — they can duck it via keyframes.
   const [audioKeyframes, setAudioKeyframes] = useState<AudioKeyframe[]>([
-    { id: 'kf-init', time: 0, musicVolume: 1, rushVolume: 0.5 },
+    { id: 'kf-init', time: 0, musicVolume: 1, rushVolume: 1 },
   ]);
   const [autoDuckRunning, setAutoDuckRunning] = useState(false);
   // Playhead from AudioMixPreview — null while stopped, seconds while playing.

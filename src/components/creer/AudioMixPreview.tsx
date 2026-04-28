@@ -249,7 +249,7 @@ export default function AudioMixPreview({
         }
       } else {
         musicGain.gain.setValueAtTime(1, startAt);
-        rushGain.gain.setValueAtTime(0.5, startAt);
+        rushGain.gain.setValueAtTime(1, startAt);
       }
       voiceGain.gain.setValueAtTime(1, startAt);
 
