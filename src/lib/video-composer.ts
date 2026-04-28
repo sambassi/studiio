@@ -566,20 +566,28 @@ function truncateToWidth(ctx: CanvasRenderingContext2D, text: string, maxWidth: 
 
 /** Word-wrap text to fit within maxWidth, splitting at word boundaries */
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
-  const words = text.split(' ');
-  const lines: string[] = [];
-  let currentLine = '';
-  for (const word of words) {
-    const testLine = currentLine ? `${currentLine} ${word}` : word;
-    if (ctx.measureText(testLine).width > maxWidth && currentLine) {
-      lines.push(currentLine);
-      currentLine = word;
-    } else {
-      currentLine = testLine;
+  // Split on explicit line breaks first, then word-wrap each segment.
+  // This way users typing "Bonjour\ntout le monde" in a description get two
+  // explicit lines, not one wrapped paragraph. Backward-compatible: text
+  // without \n behaves exactly as before.
+  const segments = text.split(/\r?\n/);
+  const out: string[] = [];
+  for (const segment of segments) {
+    if (segment.length === 0) { out.push(''); continue; }
+    const words = segment.split(' ');
+    let currentLine = '';
+    for (const word of words) {
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      if (ctx.measureText(testLine).width > maxWidth && currentLine) {
+        out.push(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = testLine;
+      }
     }
+    if (currentLine) out.push(currentLine);
   }
-  if (currentLine) lines.push(currentLine);
-  return lines.length > 0 ? lines : [text];
+  return out.length > 0 ? out : [text];
 }
 
 /** Draw text with a dark outline for better readability on any background */
