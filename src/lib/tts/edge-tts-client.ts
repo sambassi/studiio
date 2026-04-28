@@ -14,10 +14,12 @@ export interface TtsVoice {
 }
 
 export const TTS_VOICES: TtsVoice[] = [
-  // Francais
+  // Francais — Coralie removed: Microsoft Edge TTS upstream returns 0 bytes
+  // for fr-FR-CoralieMultilingualNeural as of 2026-04-28 (verified via direct
+  // msedge-tts test, 3 consecutive attempts). Other Multilingual voices like
+  // Vivienne still work, so this is voice-specific, not a Multilingual rule.
   { id: 'fr-FR-DeniseNeural', name: 'Denise', lang: 'FR', gender: 'Female', flag: '\u{1F1EB}\u{1F1F7}' },
   { id: 'fr-FR-HenriNeural', name: 'Henri', lang: 'FR', gender: 'Male', flag: '\u{1F1EB}\u{1F1F7}' },
-  { id: 'fr-FR-CoralieMultilingualNeural', name: 'Coralie', lang: 'FR', gender: 'Female', flag: '\u{1F1EB}\u{1F1F7}' },
   { id: 'fr-FR-VivienneMultilingualNeural', name: 'Vivienne', lang: 'FR', gender: 'Female', flag: '\u{1F1EB}\u{1F1F7}' },
   // English
   { id: 'en-US-AriaNeural', name: 'Aria', lang: 'EN', gender: 'Female', flag: '\u{1F1FA}\u{1F1F8}' },
