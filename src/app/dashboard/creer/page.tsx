@@ -526,8 +526,10 @@ function CardIconPicker({
                       <button
                         key={name}
                         onClick={() => update({ emoji: name })}
-                        className={`h-10 w-10 rounded-lg bg-gray-800 hover:bg-gray-700 hover:scale-110 transition flex items-center justify-center ${selected ? 'ring-2 ring-purple-500' : ''}`}
-                        title={name}
+                        draggable
+                        onDragStart={(e) => { e.dataTransfer.setData('text/plain', name); e.dataTransfer.effectAllowed = 'copy'; }}
+                        className={`h-10 w-10 rounded-lg bg-gray-800 hover:bg-gray-700 hover:scale-110 transition flex items-center justify-center cursor-grab active:cursor-grabbing ${selected ? 'ring-2 ring-purple-500' : ''}`}
+                        title={`${name} (glisser sur une carte)`}
                       >
                         <Icon size={20} color={iconColor} />
                       </button>
@@ -2021,6 +2023,16 @@ function InfographicPageInner() {
   const [cardPositionMode, setCardPositionMode] = useState<'grid' | 'free'>('grid');
   // Index of the card being dragged in free mode (null when not dragging).
   const [dragCardIdx, setDragCardIdx] = useState<number | null>(null);
+  // Drag-and-drop SVG icon from picker → specific card. Highlights the
+  // hovered card in the preview during drag.
+  const [dragOverIconCardIdx, setDragOverIconCardIdx] = useState<number | null>(null);
+  const handleIconDrop = (idx: number) => (e: React.DragEvent) => {
+    e.preventDefault();
+    const iconName = e.dataTransfer.getData('text/plain');
+    if (!iconName || !ICON_MAP[iconName]) { setDragOverIconCardIdx(null); return; }
+    setCards((prev) => prev.map((c, i) => i === idx ? { ...c, emoji: iconName, iconType: 'svg' } : c));
+    setDragOverIconCardIdx(null);
+  };
 
   // ── Multi-select + groups (free-position mode only) ───────────
   // selectedCardIds is session-only. cardGroups persists in design prefs so
@@ -8125,7 +8137,10 @@ function InfographicPageInner() {
                         return (
                           <div
                             key={card.id}
-                            className={`absolute z-20 select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} ${activePanel === 'cards' || (selectedEl?.type === 'card' && selectedEl.index === i) ? 'ring-1 ring-pink-400 ring-offset-1 ring-offset-transparent rounded' : ''}`}
+                            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setDragOverIconCardIdx(i); }}
+                            onDragLeave={() => setDragOverIconCardIdx((cur) => cur === i ? null : cur)}
+                            onDrop={handleIconDrop(i)}
+                            className={`absolute z-20 select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} ${activePanel === 'cards' || (selectedEl?.type === 'card' && selectedEl.index === i) ? 'ring-1 ring-pink-400 ring-offset-1 ring-offset-transparent rounded' : ''} ${dragOverIconCardIdx === i ? 'ring-2 ring-pink-500' : ''}`}
                             style={{
                               left: `${pos.x}%`,
                               top: `${pos.y}%`,
@@ -8245,8 +8260,14 @@ function InfographicPageInner() {
                       data-cards-grid
                       style={{ fontFamily: cardsFontFamily }}
                     >
-                      {visibleCards.map((card) => (
-                        <div key={card.id}>{renderCardInner(card)}</div>
+                      {visibleCards.map((card, gi) => (
+                        <div
+                          key={card.id}
+                          onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setDragOverIconCardIdx(gi); }}
+                          onDragLeave={() => setDragOverIconCardIdx((cur) => cur === gi ? null : cur)}
+                          onDrop={handleIconDrop(gi)}
+                          className={dragOverIconCardIdx === gi ? 'ring-2 ring-pink-500 rounded' : ''}
+                        >{renderCardInner(card)}</div>
                       ))}
                     </div>
                   </div>
