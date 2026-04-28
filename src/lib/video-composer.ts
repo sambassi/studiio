@@ -6,7 +6,7 @@
  */
 import type { AudioKeyframe } from './creer/audioDucking';
 
-const COMPOSER_VERSION = 'v25-cta-icon-2026-04-28';
+const COMPOSER_VERSION = 'v26-per-element-gradient-2026-04-28';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -162,9 +162,16 @@ export interface DesignOptions {
     gradColor1?: string;
     gradColor2?: string;
   };
-  /** Cards typography (optional gradient applied to label/value/description) */
+  /** Cards typography — per-element gradient.
+   *  Backward compat: if `textGradient: true` is present (old shape from v25),
+   *  it's treated as labelGradient = valueGradient = descriptionGradient = true. */
   cardsTypography?: {
+    /** v25 legacy — when true, applies to all 3 elements. */
     textGradient?: boolean;
+    /** v26 per-element flags. */
+    labelGradient?: boolean;
+    valueGradient?: boolean;
+    descriptionGradient?: boolean;
     gradColor1?: string;
     gradColor2?: string;
   };
@@ -1057,20 +1064,21 @@ function drawCards(
   cards: CardData[], logoImg: HTMLImageElement | null, accent: string, _progress: number,
   design?: DesignOptions
 ) {
-  // Optional: a single linear gradient covering the whole canvas, used as
-  // fillStyle for label/value/description so all card text shares the same
-  // gradient sweep when `cardsTypography.textGradient` is on. null ⇒ keep
-  // each text element's historical solid color (no regression).
-  const cardsGrad: CanvasGradient | null = (design?.cardsTypography?.textGradient
-    && design?.cardsTypography?.gradColor1
-    && design?.cardsTypography?.gradColor2)
-    ? (() => {
-        const g = ctx.createLinearGradient(0, 0, w, h);
-        g.addColorStop(0, design!.cardsTypography!.gradColor1!);
-        g.addColorStop(1, design!.cardsTypography!.gradColor2!);
-        return g;
-      })()
-    : null;
+  // Per-element gradient: separate label/value/description flags. Null →
+  // keep each element's historical solid color (no regression). Backward
+  // compat: legacy `textGradient: true` (v25 shape) maps to all 3 flags.
+  const _ct = design?.cardsTypography;
+  const _hasColors = !!(_ct?.gradColor1 && _ct?.gradColor2);
+  const _legacyAll = !!_ct?.textGradient;
+  const _mkGrad = () => {
+    const g = ctx.createLinearGradient(0, 0, w, h);
+    g.addColorStop(0, _ct!.gradColor1!);
+    g.addColorStop(1, _ct!.gradColor2!);
+    return g;
+  };
+  const labelGrad: CanvasGradient | null = (_hasColors && (_legacyAll || _ct?.labelGradient)) ? _mkGrad() : null;
+  const valueGrad: CanvasGradient | null = (_hasColors && (_legacyAll || _ct?.valueGradient)) ? _mkGrad() : null;
+  const descGrad: CanvasGradient | null = (_hasColors && (_legacyAll || _ct?.descriptionGradient)) ? _mkGrad() : null;
 
   // eslint-disable-next-line no-console
   console.log('[Composer] drawCards: snapshot in design?', !!design?.cardsSnapshot);
@@ -1194,7 +1202,7 @@ function drawCards(
     if (hasDesc) {
       curY += labelSize / 2 + gap + descSize / 2;
       ctx.font = `400 ${descSize}px "${fontFamily}", sans-serif`;
-      ctx.fillStyle = cardsGrad || 'rgba(255,255,255,0.7)';
+      ctx.fillStyle = descGrad || 'rgba(255,255,255,0.7)';
       ctx.fillText(
         truncateToWidth(ctx, truncateAtWord(card.description!, 120), cardW - cssPx(16)),
         x + cardW / 2,
@@ -1204,7 +1212,7 @@ function drawCards(
     if (hasValue) {
       curY += (hasDesc ? descSize / 2 : labelSize / 2) + gap + valueSize / 2;
       ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`;
-      ctx.fillStyle = cardsGrad || card.color || '#FFFFFF';
+      ctx.fillStyle = valueGrad || card.color || '#FFFFFF';
       ctx.fillText(card.value!, x + cardW / 2, curY);
     }
     ctx.restore();
@@ -1275,7 +1283,7 @@ function drawCards(
 
       // Row 1: value (big, font-black, card.color, drop-shadow)
       ctx.font = `900 ${bigValueSize}px "${fontFamily}", sans-serif`;
-      ctx.textAlign = 'center'; ctx.fillStyle = cardsGrad || card.color || accent;
+      ctx.textAlign = 'center'; ctx.fillStyle = valueGrad || card.color || accent;
       ctx.shadowColor = 'rgba(0,0,0,0.2)'; ctx.shadowBlur = 2; ctx.shadowOffsetY = 1;
       ctx.fillText(card.value, x + cardW / 2, curY);
       ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
@@ -1283,7 +1291,7 @@ function drawCards(
 
       // Row 2: label (small, font-medium, text-white/80)
       ctx.font = `500 ${descSize}px "${fontFamily}", sans-serif`;
-      ctx.fillStyle = cardsGrad || 'rgba(255,255,255,0.8)';
+      ctx.fillStyle = descGrad || 'rgba(255,255,255,0.8)';
       ctx.fillText(card.label, x + cardW / 2, curY);
 
       // Keep paddingX referenced (lint-safe for unused var in some paths).
@@ -1377,7 +1385,7 @@ function drawCards(
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
       drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.fill();
       // Left accent border: 2px solid card.color — painted FULL height.
-      ctx.fillStyle = cardsGrad || card.color || accent;
+      ctx.fillStyle = valueGrad || card.color || accent;
       const bw = cssPx(2);
       ctx.fillRect(x, y, bw, cardH);
 
@@ -1403,7 +1411,7 @@ function drawCards(
       }
 
       // Label (multi-line)
-      ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = cardsGrad || '#FFFFFF';
+      ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = labelGrad || '#FFFFFF';
       ctx.shadowColor = 'rgba(0,0,0,0.2)'; ctx.shadowBlur = 2; ctx.shadowOffsetY = 1;
       labelLines.forEach((line, li) => {
         ctx.fillText(line, x + cardW / 2, curY + li * labelSize * lineMul);
@@ -1412,7 +1420,7 @@ function drawCards(
       curY += labelH(labelLines.length) + innerGap;
 
       // Value (multi-line)
-      ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = cardsGrad || card.color || accent;
+      ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = valueGrad || card.color || accent;
       ctx.shadowColor = 'rgba(0,0,0,0.2)'; ctx.shadowBlur = 2; ctx.shadowOffsetY = 1;
       valueLines.forEach((line, li) => {
         ctx.fillText(line, x + cardW / 2, curY + li * valueSize * lineMul);
@@ -1423,7 +1431,7 @@ function drawCards(
       // Description (multi-line, max 2)
       if (descLines.length > 0) {
         curY += innerGap;
-        ctx.font = `400 ${descSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = cardsGrad || 'rgba(255,255,255,0.6)';
+        ctx.font = `400 ${descSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = descGrad || 'rgba(255,255,255,0.6)';
         descLines.forEach((line, li) => {
           ctx.fillText(line, x + cardW / 2, curY + li * descSize * lineMul);
         });
@@ -1473,7 +1481,7 @@ function drawCards(
       drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.fill();
       // borderTop: 2px solid card.color — full width, top edge
       const topBw = cssPx(2);
-      ctx.fillStyle = cardsGrad || card.color || accent;
+      ctx.fillStyle = valueGrad || card.color || accent;
       ctx.fillRect(x, y, cardW, topBw);
 
       ctx.textBaseline = 'top';
@@ -1494,7 +1502,7 @@ function drawCards(
           labelStartX = contentX + emojiW + emojiGap;
         }
       }
-      ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = cardsGrad || '#FFFFFF';
+      ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = labelGrad || '#FFFFFF';
       ctx.fillText(card.label, labelStartX, curY + (row1H - labelSize) / 2);
       curY += row1H + rowGap;
 
@@ -1502,7 +1510,7 @@ function drawCards(
       if (card.description) {
         const descText = truncateAtWord(card.description, 90);
         ctx.font = `400 ${descSize}px "${fontFamily}", sans-serif`;
-        ctx.fillStyle = cardsGrad || 'rgba(255,255,255,0.7)';
+        ctx.fillStyle = descGrad || 'rgba(255,255,255,0.7)';
         const descLines = wrapText(ctx, descText, cardW - paddingX * 2);
         descLines.slice(0, 2).forEach((line, li) => {
           ctx.fillText(line, contentX, curY + li * descLineH);
@@ -1512,7 +1520,7 @@ function drawCards(
 
       // Row 3: value (font-black, color: card.color)
       ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`;
-      ctx.fillStyle = cardsGrad || card.color || accent;
+      ctx.fillStyle = valueGrad || card.color || accent;
       ctx.fillText(card.value, contentX, curY);
 
       ctx.textBaseline = 'alphabetic';
@@ -1580,13 +1588,13 @@ function drawCards(
 
       // Label (middle, flex-1, text-white/80)
       ctx.font = `400 ${labelSize}px "${fontFamily}", sans-serif`;
-      ctx.fillStyle = cardsGrad || 'rgba(255,255,255,0.8)';
+      ctx.fillStyle = labelGrad || 'rgba(255,255,255,0.8)';
       ctx.fillText(card.label, labelX, rowY + (rowH - labelSize) / 2);
 
       // Value (right, font-bold, card.color)
       ctx.font = `700 ${valueSize}px "${fontFamily}", sans-serif`;
       ctx.textAlign = 'right';
-      ctx.fillStyle = cardsGrad || card.color || accent;
+      ctx.fillStyle = valueGrad || card.color || accent;
       ctx.fillText(card.value, x + cardW - paddingX, rowY + (rowH - valueSize) / 2);
 
       ctx.textBaseline = 'alphabetic';
@@ -1632,7 +1640,7 @@ function drawCards(
       drawRoundRect(ctx, x, y, cardW, cardH, radius); ctx.fill();
       // borderLeft: 3px solid card.color, FULL height (matches CSS border-left)
       const leftBw = cssPx(3); // 3px (not 2)
-      ctx.fillStyle = cardsGrad || card.color || accent;
+      ctx.fillStyle = valueGrad || card.color || accent;
       ctx.fillRect(x, y, leftBw, cardH);
 
       ctx.textBaseline = 'top';
@@ -1662,7 +1670,7 @@ function drawCards(
       const middleW = cardW - (middleX - x) - paddingX - contentGap - valueW;
       const middleTop = rowY + (rowH - middleH) / 2;
       // Label
-      ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = cardsGrad || '#FFFFFF';
+      ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = labelGrad || '#FFFFFF';
       // Truncate label if too wide
       const truncatedLabel = truncateToWidth(ctx, card.label, middleW);
       ctx.fillText(truncatedLabel, middleX, middleTop);
@@ -1678,7 +1686,7 @@ function drawCards(
 
       // Value (right-aligned)
       ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'right';
-      ctx.fillStyle = cardsGrad || card.color || accent;
+      ctx.fillStyle = valueGrad || card.color || accent;
       ctx.fillText(valueText, x + cardW - paddingX, rowY + (rowH - valueSize) / 2);
 
       ctx.textBaseline = 'alphabetic';
