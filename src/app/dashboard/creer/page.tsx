@@ -1651,7 +1651,9 @@ function InfographicPageInner() {
 
   // Advanced text effects
   const [titleTextGradient, setTitleTextGradient] = useState(false);
-  const [cardsTextGradient, setCardsTextGradient] = useState(false);
+  const [cardsLabelGradient, setCardsLabelGradient] = useState(false);
+  const [cardsValueGradient, setCardsValueGradient] = useState(false);
+  const [cardsDescriptionGradient, setCardsDescriptionGradient] = useState(false);
   const [cardsTextGradColor1, setCardsTextGradColor1] = useState("#a855f7");
   const [cardsTextGradColor2, setCardsTextGradColor2] = useState("#ec4899");
   const [ctaIconName, setCtaIconName] = useState<string | null>(null);
@@ -1720,7 +1722,15 @@ function InfographicPageInner() {
           setCardsLetterSpacing(cfg.cardsLetterSpacing);
         // Advanced text effects
         if (cfg.titleTextGradient !== undefined) setTitleTextGradient(cfg.titleTextGradient);
-        if (cfg.cardsTextGradient !== undefined) setCardsTextGradient(cfg.cardsTextGradient);
+        if (typeof cfg.cardsTextGradient === 'boolean') {
+          // Legacy v25 single-flag → migrate to all 3
+          setCardsLabelGradient(cfg.cardsTextGradient);
+          setCardsValueGradient(cfg.cardsTextGradient);
+          setCardsDescriptionGradient(cfg.cardsTextGradient);
+        }
+        if (cfg.cardsLabelGradient !== undefined) setCardsLabelGradient(cfg.cardsLabelGradient);
+        if (cfg.cardsValueGradient !== undefined) setCardsValueGradient(cfg.cardsValueGradient);
+        if (cfg.cardsDescriptionGradient !== undefined) setCardsDescriptionGradient(cfg.cardsDescriptionGradient);
         if (cfg.cardsTextGradColor1) setCardsTextGradColor1(cfg.cardsTextGradColor1);
         if (cfg.cardsTextGradColor2) setCardsTextGradColor2(cfg.cardsTextGradColor2);
         if (typeof cfg.ctaIconName === 'string' || cfg.ctaIconName === null) setCtaIconName(cfg.ctaIconName);
@@ -2243,7 +2253,14 @@ function InfographicPageInner() {
     if (c.overlayColor) setOverlayColor(c.overlayColor);
     if (c.cardsLetterSpacing !== undefined) setCardsLetterSpacing(c.cardsLetterSpacing);
     if (c.titleTextGradient !== undefined) setTitleTextGradient(c.titleTextGradient);
-    if (c.cardsTextGradient !== undefined) setCardsTextGradient(c.cardsTextGradient);
+    if (typeof c.cardsTextGradient === 'boolean') {
+      setCardsLabelGradient(c.cardsTextGradient);
+      setCardsValueGradient(c.cardsTextGradient);
+      setCardsDescriptionGradient(c.cardsTextGradient);
+    }
+    if (c.cardsLabelGradient !== undefined) setCardsLabelGradient(c.cardsLabelGradient);
+    if (c.cardsValueGradient !== undefined) setCardsValueGradient(c.cardsValueGradient);
+    if (c.cardsDescriptionGradient !== undefined) setCardsDescriptionGradient(c.cardsDescriptionGradient);
     if (c.cardsTextGradColor1) setCardsTextGradColor1(c.cardsTextGradColor1);
     if (c.cardsTextGradColor2) setCardsTextGradColor2(c.cardsTextGradColor2);
     if (typeof c.ctaIconName === 'string' || c.ctaIconName === null) setCtaIconName(c.ctaIconName);
@@ -2405,7 +2422,7 @@ function InfographicPageInner() {
         selectedFont, selectedFilter, selectedCardStyle,
         titleColor, ctaColor, ctaSubColor, ctaMainText, ctaSubText,
         titleTextGradient, titleGradColor1, titleGradColor2,
-        cardsTextGradient, cardsTextGradColor1, cardsTextGradColor2,
+        cardsLabelGradient, cardsValueGradient, cardsDescriptionGradient, cardsTextGradColor1, cardsTextGradColor2,
         ctaIconName, ctaIconColor, ctaIconGradient, ctaIconGradColor1, ctaIconGradColor2, ctaIconSize,
         titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
         gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, seqGradients,
@@ -2450,7 +2467,7 @@ function InfographicPageInner() {
     selectedFont, selectedFilter, selectedCardStyle,
     titleColor, ctaColor, ctaSubColor, ctaMainText, ctaSubText,
     titleTextGradient, titleGradColor1, titleGradColor2,
-    cardsTextGradient, cardsTextGradColor1, cardsTextGradColor2,
+    cardsLabelGradient, cardsValueGradient, cardsDescriptionGradient, cardsTextGradColor1, cardsTextGradColor2,
     ctaIconName, ctaIconColor, ctaIconGradient, ctaIconGradColor1, ctaIconGradColor2, ctaIconSize,
     titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
     gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, seqGradients,
@@ -4210,7 +4227,7 @@ function InfographicPageInner() {
                 },
                 titleFont, ctaFont, overlayFont, watermarkFont, cardsFont,
                 watermarkTextGradient, watermarkGradColor1, watermarkGradColor2,
-                cardsTypography: cardsTextGradient ? { textGradient: true, gradColor1: cardsTextGradColor1, gradColor2: cardsTextGradColor2 } : undefined,
+                cardsTypography: (cardsLabelGradient || cardsValueGradient || cardsDescriptionGradient) ? { labelGradient: cardsLabelGradient, valueGradient: cardsValueGradient, descriptionGradient: cardsDescriptionGradient, gradColor1: cardsTextGradColor1, gradColor2: cardsTextGradColor2 } : undefined,
                 ctaIconImage,
                 ctaIconColor,
                 ctaIconGradient,
@@ -4402,7 +4419,9 @@ function InfographicPageInner() {
                       italic: overlayItalic,
                     },
                     cards: {
-                      textGradient: cardsTextGradient,
+                      labelGradient: cardsLabelGradient,
+                      valueGradient: cardsValueGradient,
+                      descriptionGradient: cardsDescriptionGradient,
                       gradColor1: cardsTextGradColor1,
                       gradColor2: cardsTextGradColor2,
                     },
@@ -4621,7 +4640,7 @@ function InfographicPageInner() {
               overlays: extraOverlays.length > 0 ? extraOverlays.map(({ id: _id, ...rest }) => rest) : undefined,
               titleFont, ctaFont, overlayFont, watermarkFont, cardsFont,
               watermarkTextGradient, watermarkGradColor1, watermarkGradColor2,
-              cardsTypography: cardsTextGradient ? { textGradient: true, gradColor1: cardsTextGradColor1, gradColor2: cardsTextGradColor2 } : undefined,
+              cardsTypography: (cardsLabelGradient || cardsValueGradient || cardsDescriptionGradient) ? { labelGradient: cardsLabelGradient, valueGradient: cardsValueGradient, descriptionGradient: cardsDescriptionGradient, gradColor1: cardsTextGradColor1, gradColor2: cardsTextGradColor2 } : undefined,
               ctaIconImage,
               ctaIconColor,
               ctaIconGradient,
@@ -8757,18 +8776,24 @@ function InfographicPageInner() {
           accentColor="#EC4899"
         >
           <div className="space-y-2">
-            {/* Text gradient effect on cards */}
+            {/* Per-element text gradient on cards */}
             <div className="rounded-lg bg-gray-900/40 backdrop-blur-xl p-2 space-y-1.5 border border-gray-700/60">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={cardsTextGradient}
-                  onChange={(e) => setCardsTextGradient(e.target.checked)}
-                  className="accent-pink-500"
-                />
-                <span className="text-[9px] text-gray-400 uppercase">Dégradé sur texte</span>
-              </label>
-              {cardsTextGradient && (
+              <span className="text-[9px] text-gray-400 uppercase block">Dégradé sur texte</span>
+              <div className="flex gap-3">
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" checked={cardsLabelGradient} onChange={(e) => setCardsLabelGradient(e.target.checked)} className="accent-pink-500" />
+                  <span className="text-[9px] text-gray-300">Label</span>
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" checked={cardsValueGradient} onChange={(e) => setCardsValueGradient(e.target.checked)} className="accent-pink-500" />
+                  <span className="text-[9px] text-gray-300">Valeur</span>
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" checked={cardsDescriptionGradient} onChange={(e) => setCardsDescriptionGradient(e.target.checked)} className="accent-pink-500" />
+                  <span className="text-[9px] text-gray-300">Description</span>
+                </label>
+              </div>
+              {(cardsLabelGradient || cardsValueGradient || cardsDescriptionGradient) && (
                 <div className="flex gap-2">
                   <div className="flex-1">
                     <span className="text-[8px] text-gray-500">Couleur 1</span>
