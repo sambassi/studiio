@@ -1556,6 +1556,7 @@ function InfographicPageInner() {
   const [pexelsPhotos, setPexelsPhotos] = useState<PexelsPhoto[]>([]);
   const [pexelsLoading, setPexelsLoading] = useState(false);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
+  const [batchPhotoIndices, setBatchPhotoIndices] = useState<number[]>([]);
   const [photoSearchQuery, setPhotoSearchQuery] = useState("");
   const [imageSource, setImageSource] = useState<"pexels" | "unsplash">(() => {
     if (typeof window === "undefined") return "pexels";
@@ -1566,6 +1567,10 @@ function InfographicPageInner() {
     if (typeof window === "undefined") return;
     window.localStorage.setItem("imageSearchSource", imageSource);
   }, [imageSource]);
+
+  useEffect(() => {
+    setBatchPhotoIndices((prev) => prev.length > batchCount ? prev.slice(0, batchCount) : prev);
+  }, [batchCount]);
 
   // ── Sequence Durations ──────────────────────────────────────
   const [introDuration, setIntroDuration] = useState(4);
@@ -1762,6 +1767,7 @@ function InfographicPageInner() {
         if (Array.isArray(cfg.salesPhrases)) setSalesPhrases(cfg.salesPhrases as string[]);
         if (Array.isArray(cfg.pexelsPhotos)) setPexelsPhotos(cfg.pexelsPhotos as PexelsPhoto[]);
         if (typeof cfg.selectedPhotoIndex === 'number') setSelectedPhotoIndex(cfg.selectedPhotoIndex);
+        if (Array.isArray(cfg.batchPhotoIndices)) setBatchPhotoIndices(cfg.batchPhotoIndices as number[]);
         // Rush video/image: the file already sits on Supabase, so the URL
         // is stable and cheap to persist. Survives a refresh without a
         // re-upload.
@@ -2253,6 +2259,7 @@ function InfographicPageInner() {
     if (Array.isArray(c.salesPhrases)) setSalesPhrases(c.salesPhrases);
     if (Array.isArray(c.pexelsPhotos)) setPexelsPhotos(c.pexelsPhotos);
     if (typeof c.selectedPhotoIndex === 'number') setSelectedPhotoIndex(c.selectedPhotoIndex);
+    if (Array.isArray(c.batchPhotoIndices)) setBatchPhotoIndices(c.batchPhotoIndices);
     if (Array.isArray(c.rushList)) setRushList(c.rushList);
     if (c.siteText !== undefined) setSiteText(c.siteText);
     if (c.siteTextPositions) setSiteTextPositions(c.siteTextPositions);
@@ -2378,7 +2385,7 @@ function InfographicPageInner() {
         watermarkTextGradient, watermarkGradColor1, watermarkGradColor2,
         contentTheme, customTopic, title, subtitle,
         cards, salesPhrases,
-        pexelsPhotos, selectedPhotoIndex,
+        pexelsPhotos, selectedPhotoIndex, batchPhotoIndices,
         rushList,
       };
       try {
@@ -2420,7 +2427,7 @@ function InfographicPageInner() {
     watermarkTextGradient, watermarkGradColor1, watermarkGradColor2,
     contentTheme, customTopic, title, subtitle,
     cards, salesPhrases,
-    pexelsPhotos, selectedPhotoIndex,
+    pexelsPhotos, selectedPhotoIndex, batchPhotoIndices,
     rushList,
   ]);
 
@@ -3826,8 +3833,10 @@ function InfographicPageInner() {
         console.log(`[Batch ${b}] FINAL bTitle="${bTitle}" bSubtitle="${bSubtitle}" cardLabels=${JSON.stringify(bCards.map((c) => c.label))}`);
 
         // Utiliser la photo sélectionnée par l'utilisateur (selectedPhotoIndex)
-        // En mode batch, on peut aussi varier les photos après la première
-        const photoIdx = b === 0 ? selectedPhotoIndex : (selectedPhotoIndex + b) % (pexelsPhotos.length || 1);
+        // En mode batch, on peut aussi varier les photos après la première.
+        // batchPhotoIndices[b] permet à l'utilisateur de pré-sélectionner
+        // manuellement la photo de chaque itération ; sinon on cycle.
+        const photoIdx = batchPhotoIndices[b] ?? (b === 0 ? selectedPhotoIndex : (selectedPhotoIndex + b) % (pexelsPhotos.length || 1));
         const photo =
           pexelsPhotos.length > 0
             ? pexelsPhotos[photoIdx]
@@ -5506,34 +5515,57 @@ function InfographicPageInner() {
                   </div>
                 </div>
                 <div className="grid grid-cols-5 gap-1.5">
-                  {pexelsPhotos.map((photo, i) => (
-                    <button
-                      key={photo.id}
-                      onClick={() => setSelectedPhotoIndex(selectedPhotoIndex === i ? -1 : i)}
-                      className={`relative overflow-hidden rounded-lg transition-all ${
-                        selectedPhotoIndex === i
-                          ? "ring-2 ring-purple-500"
-                          : "opacity-70 hover:opacity-100"
-                      }`}
-                    >
-                      <img
-                        src={photo.small}
-                        alt={photo.alt}
-                        className="aspect-[3/4] w-full object-cover"
-                      />
-                      {selectedPhotoIndex === i && (
-                        <div className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-purple-500">
-                          <Check size={10} />
-                        </div>
-                      )}
-                      {batchCount > 1 && i < batchCount && (
-                        <div className="absolute bottom-0 left-0 rounded-tr bg-black/70 px-1 py-0.5 text-[8px] font-bold text-white">
-                          #{i + 1}
-                        </div>
-                      )}
-                    </button>
-                  ))}
+                  {pexelsPhotos.map((photo, i) => {
+                    const batchPos = batchCount > 1 ? batchPhotoIndices.indexOf(i) : -1;
+                    const isBatchSelected = batchPos >= 0;
+                    const isSingleSelected = batchCount === 1 && selectedPhotoIndex === i;
+                    return (
+                      <button
+                        key={photo.id}
+                        onClick={() => {
+                          if (batchCount > 1) {
+                            setBatchPhotoIndices((prev) => {
+                              const idx = prev.indexOf(i);
+                              if (idx >= 0) return prev.filter((x) => x !== i);
+                              if (prev.length >= batchCount) return prev;
+                              return [...prev, i];
+                            });
+                          } else {
+                            setSelectedPhotoIndex(selectedPhotoIndex === i ? -1 : i);
+                          }
+                        }}
+                        className={`relative overflow-hidden rounded-lg transition-all ${
+                          isSingleSelected || isBatchSelected
+                            ? "ring-2 ring-purple-500"
+                            : "opacity-70 hover:opacity-100"
+                        }`}
+                      >
+                        <img
+                          src={photo.small}
+                          alt={photo.alt}
+                          className="aspect-[3/4] w-full object-cover"
+                        />
+                        {isSingleSelected && (
+                          <div className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-purple-500">
+                            <Check size={10} />
+                          </div>
+                        )}
+                        {isBatchSelected && (
+                          <div className="absolute bottom-0 left-0 rounded-tr bg-purple-600 px-1 py-0.5 text-[8px] font-bold text-white">
+                            #{batchPos + 1}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
+                {batchCount > 1 && pexelsPhotos.length > 0 && (
+                  <p className="mt-1 text-[10px] text-gray-500">
+                    {batchPhotoIndices.length > 0
+                      ? `Sélectionnées : ${batchPhotoIndices.length} / ${batchCount}`
+                      : "Cliquez les photos dans l'ordre souhaité — si rien n'est sélectionné, choix automatique"}
+                  </p>
+                )}
 
                 {/* Upload custom photo button */}
                 <label className="flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-600 px-3 py-2 text-xs text-gray-400 cursor-pointer hover:border-purple-500 hover:text-white transition mt-2">
