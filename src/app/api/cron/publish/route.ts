@@ -109,6 +109,28 @@ export async function GET(req: NextRequest) {
 
     console.log(`[CRON] Checking scheduled posts. Server UTC: ${now.toISOString()}, Latest TZ date: ${latestDate} ${latestTime}`);
 
+    // ── Recover posts stuck at 'publishing' ──
+    // PR #64's atomic claim flips status to 'publishing' before the
+    // platform publish call. If the function times out or crashes
+    // mid-publish (Vercel 5min timeout, Anthropic 5xx, etc.), the row
+    // is stranded at 'publishing' forever and the candidate query
+    // (status='scheduled') never picks it up again — visible symptom:
+    // "scheduled posts stop publishing entirely". Reset any post that
+    // has been stuck at 'publishing' for more than 10 min so the next
+    // candidate fetch can re-claim it.
+    const stuckThreshold = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
+    const { data: stuckPosts, error: stuckErr } = await supabase
+      .from('scheduled_posts')
+      .update({ status: 'scheduled' })
+      .eq('status', 'publishing')
+      .lt('updated_at', stuckThreshold)
+      .select('id, title, updated_at');
+    if (stuckErr) {
+      console.error('[CRON] stuck-reset query failed:', stuckErr.message);
+    } else if (stuckPosts && stuckPosts.length > 0) {
+      console.warn(`[CRON] Recovered ${stuckPosts.length} stuck publishing post(s):`, stuckPosts.map((p: any) => `${p.id} ("${p.title}") last updated ${p.updated_at}`));
+    }
+
     // Find all posts that are scheduled and whose date/time has potentially passed
     // We use the latest timezone (UTC+14) for the query to cast a wide net,
     // then filter precisely per-post timezone in code
@@ -122,6 +144,12 @@ export async function GET(req: NextRequest) {
           .order('scheduled_date', { ascending: true })
           .order('scheduled_time', { ascending: true })
           .limit(20);
+
+    // Diagnostic — explicit count of candidates returned by the DB query.
+    // Lets us tell apart "DB returned nothing" vs "all filtered out by
+    // per-post timezone check below".
+    console.log(`[CRON] Candidate posts from DB: ${candidatePosts?.length ?? 0}`,
+      candidatePosts ? candidatePosts.map((p: any) => ({ id: p.id, status: p.status, scheduled_date: p.scheduled_date, scheduled_time: p.scheduled_time, platforms: p.platforms })) : 'none');
 
     // Filter posts by their actual timezone (skipped when force=true)
     const duePosts = forcedPosts ?? (candidatePosts || []).filter((post) => {
@@ -157,8 +185,17 @@ export async function GET(req: NextRequest) {
     }
 
     if (!duePosts || duePosts.length === 0) {
-      console.log('[CRON] No posts due for publishing');
-      return NextResponse.json({ success: true, published: 0, message: 'No posts due' });
+      // No publishable posts — surface a status snapshot so we can spot
+      // stranded 'publishing' rows the next time logs are checked.
+      const { data: snapshot } = await supabase
+        .from('scheduled_posts')
+        .select('id, status')
+        .in('status', ['scheduled', 'publishing', 'draft'])
+        .limit(50);
+      const counts: Record<string, number> = {};
+      (snapshot || []).forEach((p: any) => { counts[p.status] = (counts[p.status] || 0) + 1; });
+      console.log('[CRON] No posts due for publishing. Recent-pipeline snapshot:', counts);
+      return NextResponse.json({ success: true, published: 0, message: 'No posts due', pipeline: counts });
     }
 
     console.log(`[CRON] Found ${duePosts.length} posts to publish`);
