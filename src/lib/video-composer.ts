@@ -6,7 +6,7 @@
  */
 import type { AudioKeyframe } from './creer/audioDucking';
 
-const COMPOSER_VERSION = 'v26-per-element-gradient-2026-04-28';
+const COMPOSER_VERSION = 'v27-extra-title-positions-2026-04-28';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -142,6 +142,12 @@ export interface DesignOptions {
   /** Optional extra subtitle displayed below extraTitle at an even smaller
    *  size. Empty/undefined → not rendered. */
   extraSubtitle?: string;
+  /** Absolute position of extraTitle in the intro sequence (percent of canvas).
+   *  Default {x:50, y:50}. Allows the user to drag the extra title independently
+   *  in the editor. */
+  extraTitlePosition?: { x?: number; y?: number };
+  /** Absolute position of extraSubtitle. Default {x:50, y:58}. */
+  extraSubtitlePosition?: { x?: number; y?: number };
   /** CTA typography (letterSpacing, lineHeight, optional gradient) */
   ctaTypography?: {
     letterSpacing?: number;
@@ -1000,48 +1006,58 @@ function drawIntro(
     ctx.filter = 'none';
   }
 
-  // Optional extra title / subtitle below the main pair. Half the size of
-  // the main title so they read as secondary copy. Each is independently
-  // optional — empty strings are skipped.
+  // Optional extra title / subtitle — drawn at INDEPENDENT absolute positions
+  // (default {50%, 50%} and {50%, 58%}) so the user can drag each one freely
+  // in the editor. v26 and earlier rendered them stacked below the main title;
+  // v27+ uses absolute positions from design.extraTitlePosition / extraSubtitlePosition.
   const extraTitleText = (design?.extraTitle || '').trim();
   const extraSubtitleText = (design?.extraSubtitle || '').trim();
   if (extraTitleText || extraSubtitleText) {
-    const extraGap = Math.round(w * (24 / 320));
     const extraTitleSize = Math.max(10, Math.round(fontSize * 0.5));
     const extraSubtitleSize = Math.max(9, Math.round(extraTitleSize * 0.75));
     const extraLineHeightMul = design?.titleTypography?.lineHeight || 1.1;
-    let cursorY = lastTextBottom + extraGap;
 
     if (extraTitleText) {
+      const exX = ((design?.extraTitlePosition?.x ?? 50) / 100) * w;
+      const exY = ((design?.extraTitlePosition?.y ?? 50) / 100) * h;
       ctx.font = `${fontStyle}${fontWeight} ${extraTitleSize}px "${fontFamily}", sans-serif`;
       ctx.fillStyle = hexToRgba(titleColor, titleAlpha);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
       ctx.filter = dropShadowBaseFilter(w);
       const exLines = wrapText(ctx, extraTitleText, titleWidth);
       const exLineSpacing = extraTitleSize * extraLineHeightMul;
+      const totalH = (exLines.length - 1) * exLineSpacing;
+      const startY = exY - totalH / 2;
       for (let i = 0; i < exLines.length; i++) {
         if (titleLetterSpacing) {
-          fillTextWithSpacing(ctx, exLines[i], titlePosX, cursorY + i * exLineSpacing, titleLetterSpacing);
+          fillTextWithSpacing(ctx, exLines[i], exX, startY + i * exLineSpacing, titleLetterSpacing);
         } else {
-          ctx.fillText(exLines[i], titlePosX, cursorY + i * exLineSpacing);
+          ctx.fillText(exLines[i], exX, startY + i * exLineSpacing);
         }
       }
-      cursorY = cursorY + (exLines.length - 1) * exLineSpacing + extraTitleSize;
       ctx.filter = 'none';
     }
 
     if (extraSubtitleText) {
+      const exSX = ((design?.extraSubtitlePosition?.x ?? 50) / 100) * w;
+      const exSY = ((design?.extraSubtitlePosition?.y ?? 58) / 100) * h;
       ctx.font = `${fontStyle}${fontWeight} ${extraSubtitleSize}px "${fontFamily}", sans-serif`;
       ctx.fillStyle = hexToRgba(titleColor, 0.8);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
       ctx.filter = dropShadowBaseFilter(w);
-      const mt1Extra = Math.round(w * (4 / 320));
       const exSubLines = wrapText(ctx, extraSubtitleText, titleWidth);
       const exSubLineSpacing = extraSubtitleSize * extraLineHeightMul;
-      const baseY = extraTitleText ? cursorY + mt1Extra : cursorY;
+      const totalSubH = (exSubLines.length - 1) * exSubLineSpacing;
+      const startSubY = exSY - totalSubH / 2;
       for (let i = 0; i < exSubLines.length; i++) {
-        ctx.fillText(exSubLines[i], titlePosX, baseY + i * exSubLineSpacing);
+        ctx.fillText(exSubLines[i], exSX, startSubY + i * exSubLineSpacing);
       }
       ctx.filter = 'none';
     }
+    // Restore baseline default
+    ctx.textBaseline = 'alphabetic';
   }
 
   // Accent line removed — not present in editor, video must match exactly
