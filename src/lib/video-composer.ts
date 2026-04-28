@@ -2046,56 +2046,81 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
 
   onProgress?.(2, 'Chargement des médias...');
 
-  // Ensure the design font is loaded before rendering (Canvas needs fonts in document.fonts)
-  // Must load ALL weight variants used by draw functions (400, 500, 700, 900)
-  if (design?.font && design.font !== 'sans-serif') {
-    try {
-      // Google Fonts URL for common fonts used in the app — include ALL weights needed
-      const FONT_URLS: Record<string, string> = {
-        'Anton': 'https://fonts.googleapis.com/css2?family=Anton&display=swap',
-        'Syne': 'https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800;900&display=swap',
-        'Bebas Neue': 'https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap',
-        'Poppins': 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap',
-        'Space Grotesk': 'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap',
-        'Montserrat': 'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap',
-        'Inter': 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap',
-        'Oswald': 'https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap',
-        'Playfair Display': 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&display=swap',
-        'Raleway': 'https://fonts.googleapis.com/css2?family=Raleway:wght@400;500;600;700;800;900&display=swap',
-      };
-      const fontUrl = FONT_URLS[design.font] ||
-        `https://fonts.googleapis.com/css2?family=${encodeURIComponent(design.font)}:wght@400;500;600;700;800;900&display=swap`;
+  // Ensure EVERY design font is loaded before rendering. Previously we
+  // only awaited `design.font`, so per-element overrides (titleFont,
+  // ctaFont, overlayFont, watermarkFont, cardsFont) raced the recorder:
+  // the first ~2 s of frames rendered in sans-serif fallback before
+  // Google Fonts arrived, producing visibly inconsistent thumbnails on
+  // Instagram and stale-looking previews in the calendar.
+  try {
+    const FONT_URLS: Record<string, string> = {
+      'Anton': 'https://fonts.googleapis.com/css2?family=Anton&display=swap',
+      'Syne': 'https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800;900&display=swap',
+      'Bebas Neue': 'https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap',
+      'Poppins': 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap',
+      'Space Grotesk': 'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap',
+      'Montserrat': 'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap',
+      'Inter': 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap',
+      'Oswald': 'https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap',
+      'Playfair Display': 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&display=swap',
+      'Raleway': 'https://fonts.googleapis.com/css2?family=Raleway:wght@400;500;600;700;800;900&display=swap',
+    };
 
-      // Inject CSS link if not present
-      if (!document.querySelector(`link[href*="${encodeURIComponent(design.font)}"]`)) {
-        console.log(`[Composer] Injecting font stylesheet: ${design.font}`);
-        const link = document.createElement('link');
-        link.rel = 'stylesheet'; link.href = fontUrl;
-        document.head.appendChild(link);
+    // Collect every font referenced anywhere in `design`. Skip empty /
+    // sans-serif sentinels — there's nothing to load for those.
+    const fontsToLoad = new Set<string>();
+    const candidates = [
+      design?.font,
+      design?.titleFont, design?.ctaFont, design?.overlayFont,
+      design?.watermarkFont, design?.cardsFont,
+    ];
+    for (const f of candidates) {
+      if (typeof f === 'string' && f && f !== 'sans-serif') fontsToLoad.add(f);
+    }
+
+    if (fontsToLoad.size > 0) {
+      console.log('[Composer] Loading fonts:', Array.from(fontsToLoad));
+      // Inject CSS links for any fonts not already present.
+      for (const font of fontsToLoad) {
+        const fontUrl = FONT_URLS[font]
+          || `https://fonts.googleapis.com/css2?family=${encodeURIComponent(font)}:wght@400;500;600;700;800;900&display=swap`;
+        if (!document.querySelector(`link[href*="${encodeURIComponent(font)}"]`)) {
+          const link = document.createElement('link');
+          link.rel = 'stylesheet';
+          link.href = fontUrl;
+          document.head.appendChild(link);
+        }
       }
 
-      // Wait for ALL weight variants used by draw functions
+      // Wait for every weight × every font with an 8s ceiling so a flaky
+      // CDN can't stall the export. document.fonts.ready as a final
+      // safety net flushes any remaining font activations.
       const weightsNeeded = [400, 500, 700, 900];
-      const fontLoaders = weightsNeeded.map(w =>
-        document.fonts.load(`${w} 48px "${design!.font}"`)
-      );
-      console.log(`[Composer] Loading font "${design.font}" weights: ${weightsNeeded.join(', ')}...`);
+      const loadPromises: Promise<unknown>[] = [];
+      for (const font of fontsToLoad) {
+        for (const w of weightsNeeded) {
+          loadPromises.push(document.fonts.load(`${w} 48px "${font}"`));
+        }
+      }
       await Promise.race([
-        Promise.all(fontLoaders),
-        new Promise(r => setTimeout(r, 8000)), // 8s timeout — multiple weights can be slow
+        Promise.all(loadPromises).then(() => document.fonts.ready),
+        new Promise(r => setTimeout(r, 8000)),
       ]);
 
-      // Verify all weights loaded
-      const loadedWeights = weightsNeeded.filter(w =>
-        document.fonts.check(`${w} 48px "${design!.font}"`)
-      );
-      console.log(`[Composer] Font "${design.font}" loaded weights: ${loadedWeights.join(', ')} / ${weightsNeeded.join(', ')}`);
-      if (loadedWeights.length === 0) {
-        console.warn(`[Composer] ⚠️ Font "${design.font}" failed to load ANY weight — falling back to sans-serif`);
+      // Verification pass — log which font/weight combinations actually
+      // landed so we can spot problematic fonts in production logs.
+      for (const font of fontsToLoad) {
+        const loadedWeights = weightsNeeded.filter(w =>
+          document.fonts.check(`${w} 48px "${font}"`),
+        );
+        console.log(`[Composer] Font "${font}" loaded weights: ${loadedWeights.join(', ')} / ${weightsNeeded.join(', ')}`);
+        if (loadedWeights.length === 0) {
+          console.warn(`[Composer] ⚠️ Font "${font}" failed to load ANY weight — falling back to sans-serif`);
+        }
       }
-    } catch (err) {
-      console.warn('[Composer] Font loading failed, using fallback:', err);
     }
+  } catch (err) {
+    console.warn('[Composer] Font loading failed, using fallback:', err);
   }
 
   // Load visual media (with individual error logging)
