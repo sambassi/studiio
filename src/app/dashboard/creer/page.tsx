@@ -2502,6 +2502,9 @@ function InfographicPageInner() {
 
   // ── Step 2: Export ──────────────────────────────────────────
   const [destination, setDestination] = useState<Destination>("draft");
+  const [selectedPublishPlatforms, setSelectedPublishPlatforms] = useState<PlatformKey[]>([]);
+  const togglePublishPlatform = (p: PlatformKey) =>
+    setSelectedPublishPlatforms((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [showBuyCreditsModal, setShowBuyCreditsModal] = useState(false);
@@ -4134,10 +4137,10 @@ function InfographicPageInner() {
               media_url: renderedVideoUrl || (hasVideo ? null : (mediaUrl || posterUrl || null)),
               media_type: 'video',
               format: format === "16:9" ? "tv" : "reel",
-              platforms: [],
+              platforms: selectedPublishPlatforms,
               scheduled_date: scheduledDate,
               scheduled_time: "12:00",
-              status: "draft",
+              status: selectedPublishPlatforms.length > 0 ? "scheduled" : "draft",
               metadata: {
                 type: "infographic",
                 subtitle: bSubtitle,
@@ -9933,6 +9936,21 @@ function InfographicPageInner() {
             <Icon size={16} fill="currentColor" strokeWidth={1.5} />
           </button>
         ))}
+        {(destination === 'draft' || destination === 'both') && (
+          <>
+            <div className="h-px w-7 bg-gray-700/50" />
+            <span className="text-[8px] font-bold uppercase tracking-wider text-gray-500 leading-none">Publier</span>
+            {(['instagram', 'facebook', 'tiktok', 'youtube'] as const).map((p) => (
+              <PlatformIcon
+                key={p}
+                platform={p}
+                size="sm"
+                isActive={selectedPublishPlatforms.includes(p)}
+                onClick={() => togglePublishPlatform(p)}
+              />
+            ))}
+          </>
+        )}
         <div className="h-px w-7 bg-gray-700/50" />
         <button onClick={handleExport} disabled={isExporting || cards.length === 0}
           className="flex items-center justify-center rounded-lg bg-gradient-to-b from-purple-600 to-pink-600 h-10 w-10 text-white hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-500/25 transition-all"
@@ -9981,6 +9999,19 @@ function InfographicPageInner() {
               <Icon size={16} fill="currentColor" strokeWidth={1.5} />
             </button>
           ))}
+          {(destination === 'draft' || destination === 'both') && (
+            <div className="flex items-center gap-1 pl-1 ml-1 border-l border-gray-700/50">
+              {(['instagram', 'facebook', 'tiktok', 'youtube'] as const).map((p) => (
+                <PlatformIcon
+                  key={p}
+                  platform={p}
+                  size="sm"
+                  isActive={selectedPublishPlatforms.includes(p)}
+                  onClick={() => togglePublishPlatform(p)}
+                />
+              ))}
+            </div>
+          )}
         </div>
         {/* Batch pill — compact, inline */}
         <div className="flex items-center gap-0.5 rounded-full bg-gray-800 px-1.5 py-0.5 flex-shrink-0" title="Nombre de variations à générer">

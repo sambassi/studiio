@@ -925,8 +925,14 @@ export default function CalendarPage() {
         body: JSON.stringify({ ...post, status: 'scheduled' }),
       });
       const data = await res.json();
-      if (data.success) await fetchPosts();
-    } catch (error) { console.error('Error scheduling:', error); }
+      if (data.success) {
+        await fetchPosts();
+      } else {
+        alert(`Erreur lors de la programmation : ${data.error || 'réponse inattendue du serveur'}`);
+      }
+    } catch (error) {
+      alert(`Erreur réseau : ${error instanceof Error ? error.message : 'inconnue'}`);
+    }
     finally { setSaving(false); }
   };
 
@@ -958,7 +964,11 @@ export default function CalendarPage() {
           body: JSON.stringify({ ...editFormData, status: editTab }),
         });
         const data = await res.json();
-        if (data.success) await fetchPosts();
+        if (data.success) {
+          await fetchPosts();
+        } else {
+          alert(`Erreur lors de la programmation : ${data.error || 'réponse inattendue du serveur'}`);
+        }
       } else {
         const res = await fetch('/api/posts', {
           method: 'POST',
@@ -977,9 +987,15 @@ export default function CalendarPage() {
           }),
         });
         const data = await res.json();
-        if (data.success) await fetchPosts();
+        if (data.success) {
+          await fetchPosts();
+        } else {
+          alert(`Erreur lors de la programmation : ${data.error || 'réponse inattendue du serveur'}`);
+        }
       }
-    } catch (error) { console.error('Error saving:', error); }
+    } catch (error) {
+      alert(`Erreur réseau : ${error instanceof Error ? error.message : 'inconnue'}`);
+    }
     finally { setSaving(false); setShowEditModal(false); setEditFormData({}); }
   };
 
