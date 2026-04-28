@@ -3833,15 +3833,14 @@ function InfographicPageInner() {
         }
         console.log(`[Batch ${b}] FINAL bTitle="${bTitle}" bSubtitle="${bSubtitle}" cardLabels=${JSON.stringify(bCards.map((c) => c.label))}`);
 
-        // Utiliser la photo sélectionnée par l'utilisateur (selectedPhotoIndex)
-        // En mode batch, on peut aussi varier les photos après la première.
-        // batchPhotoIndices[b] permet à l'utilisateur de pré-sélectionner
-        // manuellement la photo de chaque itération ; sinon on cycle.
-        const photoIdx = batchPhotoIndices[b] ?? (b === 0 ? selectedPhotoIndex : (selectedPhotoIndex + b) % (pexelsPhotos.length || 1));
-        const photo =
-          pexelsPhotos.length > 0
-            ? pexelsPhotos[photoIdx]
-            : null;
+        // Photo affiche = OPTIONNELLE. Si l'utilisateur a explicitement
+        // désélectionné (selectedPhotoIndex = -1) ou n'a jamais cherché
+        // de photos, posterUrl reste null et le composer peint le gradient.
+        // batchPhotoIndices[b] permet de pré-sélectionner la photo par
+        // itération ; sinon on retombe sur selectedPhotoIndex (pas de
+        // cycling automatique vers une photo non-choisie).
+        const photoIdx = batchPhotoIndices[b] ?? selectedPhotoIndex;
+        const photo = (pexelsPhotos.length > 0 && photoIdx >= 0) ? pexelsPhotos[photoIdx] : null;
         const posterUrl = photo?.url || null;
 
         // Pick a different sales phrase per batch item
@@ -4327,7 +4326,9 @@ function InfographicPageInner() {
           const exportAccent =
             customAccent || gradientColor1 || COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent || "#a855f7";
           const isReel = format === "9:16";
-          const exportPhoto = pexelsPhotos.length > 0 && selectedPhotoIndex >= 0 ? pexelsPhotos[selectedPhotoIndex] : (pexelsPhotos[0] || null);
+          // Pas de fallback automatique vers pexelsPhotos[0] : si l'utilisateur
+          // a désélectionné (-1), il veut le gradient — respecter ce signal.
+          const exportPhoto = (pexelsPhotos.length > 0 && selectedPhotoIndex >= 0) ? pexelsPhotos[selectedPhotoIndex] : null;
           const exportPosterUrl = exportPhoto?.url || null;
 
           // Snapshot the live editor cards grid for WYSIWYG parity. The
