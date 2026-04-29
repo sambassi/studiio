@@ -1732,57 +1732,87 @@ export default function CalendarPage() {
     if (meta?.renderedVideoUrl && !meta.renderedVideoUrl.endsWith('.mp4')) {
       setExportRendering(true);
       setExportRenderProgress(30);
-      setExportRenderStage('Conversion MP4...');
+      setExportRenderStage('Conversion MP4 en cours (peut prendre 1-3 min)...');
       const safeName = (post.title || 'video').replace(/[^a-zA-Z0-9-_]+/g, '_');
+      // Simulated progress 30→75 over ~67s while the server converts. The
+      // real `/api/convert/to-mp4` doesn't stream progress, so without this
+      // the bar appeared frozen at 30% for minutes — users assumed the
+      // export was broken and gave up.
+      let conversionProgress = 30;
+      const progressInterval = setInterval(() => {
+        conversionProgress = Math.min(conversionProgress + 1, 75);
+        setExportRenderProgress(conversionProgress);
+      }, 1500);
+      // Client-side timeout — abort if the server takes too long. Vercel's
+      // function maxDuration is 300s; we cut at 240s so the user gets a
+      // proper "timeout, propose WebM fallback" prompt rather than a hang.
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4 * 60 * 1000);
+      // Helper: trigger a direct WebM download from the original Supabase URL
+      // — used as the user-confirmed fallback when MP4 conversion fails or
+      // times out. Direct URL avoids re-fetching a 20+ MB blob into memory.
+      const downloadWebmDirect = () => {
+        const a = document.createElement('a');
+        a.href = meta.renderedVideoUrl as string;
+        a.download = `${safeName}.webm`;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      };
       try {
         // Use server-side FFmpeg conversion (reliable H.264 output)
         const convertRes = await fetch('/api/convert/to-mp4', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ videoUrl: meta.renderedVideoUrl }),
+          signal: controller.signal,
         });
+        clearInterval(progressInterval);
+        clearTimeout(timeoutId);
         const convertData = await convertRes.json();
         if (convertData.success && convertData.mp4Url) {
-          setExportRenderProgress(80);
+          // Direct URL download (no fetch + blob) — faster, no CORS issues,
+          // no browser freeze on large files. Supabase serves the public URL
+          // with `Content-Disposition: attachment` when the `download`
+          // attribute is set on the anchor.
+          setExportRenderProgress(100);
           setExportRenderStage('Téléchargement...');
-          const mp4Res = await fetch(convertData.mp4Url);
-          if (!mp4Res.ok) throw new Error(`Téléchargement MP4 échoué : HTTP ${mp4Res.status}`);
-          const mp4Blob = await mp4Res.blob();
-          const url = URL.createObjectURL(mp4Blob);
           const a = document.createElement('a');
-          a.href = url;
+          a.href = convertData.mp4Url;
           a.download = `${safeName}.mp4`;
+          a.target = '_blank';
+          a.rel = 'noopener';
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
-          setTimeout(() => URL.revokeObjectURL(url), 5000);
-          setExportRenderProgress(100);
           setExportRenderStage('MP4 prêt !');
         } else {
-          // Server conversion failed — download the original WebM with an
-          // explicit message so the user understands they got a .webm and
-          // why. Previously this fallback was silent → user thought "ne
-          // fonctionne pas".
+          // Server conversion failed — let the user choose to download the
+          // raw WebM (or just dismiss). Replaces the previous silent fallback
+          // that downloaded a .webm without telling them why.
           const errMsg = convertData.error || 'erreur serveur';
           console.warn('[Export] Server conversion failed:', errMsg);
-          const res = await fetch(meta.renderedVideoUrl);
-          if (!res.ok) throw new Error(`Téléchargement WebM échoué : HTTP ${res.status}`);
-          const blob = await res.blob();
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `${safeName}.webm`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          setTimeout(() => URL.revokeObjectURL(url), 5000);
-          alert(`Conversion MP4 indisponible (${errMsg}). Le fichier a été téléchargé en .webm — ouvrez-le avec VLC, QuickTime ou convertissez-le ensuite.`);
+          if (confirm(`La conversion MP4 a échoué : ${errMsg}.\nTélécharger le fichier WebM brut à la place ? (lisible avec VLC ou QuickTime)`)) {
+            downloadWebmDirect();
+          }
         }
       } catch (err) {
-        const msg = (err as Error)?.message || 'erreur réseau';
-        console.error('[Export] Server conversion error:', err);
-        setExportRenderStage('Erreur de conversion');
-        alert(`Export bureau échoué : ${msg}. Vérifiez votre connexion et réessayez.`);
+        clearInterval(progressInterval);
+        clearTimeout(timeoutId);
+        if ((err as any)?.name === 'AbortError') {
+          // 4-min client timeout — likely a very long video or server overloaded
+          console.warn('[Export] Server conversion timed out after 4 min');
+          if (confirm('La conversion MP4 prend trop de temps (>4 min). Télécharger le fichier WebM brut à la place ? (lisible avec VLC ou QuickTime)')) {
+            downloadWebmDirect();
+          }
+        } else {
+          const msg = (err as Error)?.message || 'erreur réseau';
+          console.error('[Export] Server conversion error:', err);
+          setExportRenderStage('Erreur de conversion');
+          alert(`Export bureau échoué : ${msg}. Vérifiez votre connexion et réessayez.`);
+        }
       } finally {
         setTimeout(() => { setExportRendering(false); setExportRenderProgress(0); setExportRenderStage(''); }, 3000);
       }
@@ -1896,33 +1926,63 @@ export default function CalendarPage() {
         };
 
         if (renderedUrl && renderedUrl.includes('webm')) {
-          // Server-side conversion for reliable MP4 output
-          setExportRenderStage('Conversion MP4...');
+          // Server-side conversion for reliable MP4 output. Mirrors the
+          // first convert site above — simulated progress 30→75 + 4 min
+          // timeout + direct URL download on success.
+          setExportRenderProgress(30);
+          setExportRenderStage('Conversion MP4 en cours (peut prendre 1-3 min)...');
+          let conv2 = 30;
+          const conv2Interval = setInterval(() => {
+            conv2 = Math.min(conv2 + 1, 75);
+            setExportRenderProgress(conv2);
+          }, 1500);
+          const conv2Controller = new AbortController();
+          const conv2TimeoutId = setTimeout(() => conv2Controller.abort(), 4 * 60 * 1000);
           try {
             const convertRes = await fetch('/api/convert/to-mp4', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ videoUrl: renderedUrl }),
+              signal: conv2Controller.signal,
             });
+            clearInterval(conv2Interval);
+            clearTimeout(conv2TimeoutId);
             const convertData = await convertRes.json();
             if (convertData.success && convertData.mp4Url) {
+              // Direct URL download (no fetch + blob)
+              setExportRenderProgress(100);
               setExportRenderStage('Téléchargement...');
-              const mp4Res = await fetch(convertData.mp4Url);
-              if (!mp4Res.ok) throw new Error(`MP4 fetch HTTP ${mp4Res.status}`);
-              const mp4Blob = await mp4Res.blob();
-              directDownload(mp4Blob, 'mp4');
+              const a = document.createElement('a');
+              a.href = convertData.mp4Url;
+              a.download = `${safeName}.mp4`;
+              a.target = '_blank';
+              a.rel = 'noopener';
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
             } else {
               const errMsg = convertData.error || 'erreur serveur';
               console.warn('[Export] Server conversion failed:', errMsg);
-              const isWebm = blob.type.includes('webm');
-              directDownload(blob, isWebm ? 'webm' : 'mp4');
-              alert(`Conversion MP4 indisponible (${errMsg}). Le fichier a été téléchargé tel quel — ouvrez-le avec VLC ou QuickTime.`);
+              if (confirm(`La conversion MP4 a échoué : ${errMsg}.\nTélécharger le fichier brut à la place ? (lisible avec VLC ou QuickTime)`)) {
+                const isWebm = blob.type.includes('webm');
+                directDownload(blob, isWebm ? 'webm' : 'mp4');
+              }
             }
           } catch (convErr) {
-            console.error('[Export] Server conversion error:', convErr);
-            const isWebm = blob.type.includes('webm');
-            directDownload(blob, isWebm ? 'webm' : 'mp4');
-            alert(`Conversion MP4 indisponible (${(convErr as Error)?.message || 'erreur réseau'}). Le fichier a été téléchargé tel quel — ouvrez-le avec VLC ou QuickTime.`);
+            clearInterval(conv2Interval);
+            clearTimeout(conv2TimeoutId);
+            if ((convErr as any)?.name === 'AbortError') {
+              console.warn('[Export] Server conversion timed out after 4 min');
+              if (confirm('La conversion MP4 prend trop de temps (>4 min). Télécharger le fichier brut à la place ? (lisible avec VLC ou QuickTime)')) {
+                const isWebm = blob.type.includes('webm');
+                directDownload(blob, isWebm ? 'webm' : 'mp4');
+              }
+            } else {
+              console.error('[Export] Server conversion error:', convErr);
+              const isWebm = blob.type.includes('webm');
+              directDownload(blob, isWebm ? 'webm' : 'mp4');
+              alert(`Conversion MP4 indisponible (${(convErr as Error)?.message || 'erreur réseau'}). Le fichier a été téléchargé tel quel — ouvrez-le avec VLC ou QuickTime.`);
+            }
           }
         } else {
           // No server-convertible URL — download the local blob with the
