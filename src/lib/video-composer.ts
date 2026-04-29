@@ -6,7 +6,7 @@
  */
 import type { AudioKeyframe } from './creer/audioDucking';
 
-const COMPOSER_VERSION = 'v29-extra-title-typography-newlines-2026-04-29';
+const COMPOSER_VERSION = 'v30-textonly-icons-2026-04-29';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -1289,17 +1289,34 @@ function drawCards(
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'center';
     const gap = cssPx(2);
+    const hasIcon = !!(card.emoji && card.emoji.trim() !== '');
     const hasDesc = !!card.description;
     const hasValue = !!card.value;
     // Compute the total block height so the stack can be centered vertically
     // in the card slot regardless of how many optional lines are present.
     const blockH =
-      labelSize
+      (hasIcon ? emojiSize + gap : 0)
+      + labelSize
       + (hasDesc ? gap + descSize : 0)
       + (hasValue ? gap + valueSize : 0);
-    let curY = y + (cardH - blockH) / 2 + labelSize / 2;
+    let curY = y + (cardH - blockH) / 2;
+    // Icon (centered, drawn above the label) — uses pre-rendered iconImage
+    // when the card has an SVG icon, falls back to the emoji glyph otherwise.
+    if (hasIcon) {
+      if (card.iconImage) {
+        ctx.drawImage(card.iconImage, x + cardW / 2 - emojiSize / 2, curY, emojiSize, emojiSize);
+      } else {
+        ctx.font = `${emojiSize}px sans-serif`;
+        ctx.fillStyle = card.color || '#FFFFFF';
+        ctx.textBaseline = 'top';
+        ctx.fillText(card.emoji, x + cardW / 2, curY);
+        ctx.textBaseline = 'middle';
+      }
+      curY += emojiSize + gap;
+    }
+    curY += labelSize / 2;
     ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`;
-    ctx.fillStyle = card.color || '#FFFFFF';
+    ctx.fillStyle = labelGrad || card.color || '#FFFFFF';
     ctx.fillText(truncateToWidth(ctx, card.label, cardW - cssPx(16)), x + cardW / 2, curY);
     if (hasDesc) {
       curY += labelSize / 2 + gap + descSize / 2;
