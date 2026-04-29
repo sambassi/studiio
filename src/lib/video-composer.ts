@@ -6,7 +6,7 @@
  */
 import type { AudioKeyframe } from './creer/audioDucking';
 
-const COMPOSER_VERSION = 'v32-modern-screenshot-cards-gradient-text-2026-04-29';
+const COMPOSER_VERSION = 'v34-revert-client-mp4-back-to-webm-upload-2026-04-29';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"

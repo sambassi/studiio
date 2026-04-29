@@ -493,7 +493,7 @@ async function convertToMp4IfNeeded(videoUrl: string): Promise<string> {
       '-movflags', '+faststart',  // Move moov atom to start for streaming
       '-y',                       // Overwrite output
       outputPath,
-    ], { timeout: 180000 }); // 3 min timeout for conversion
+    ], { timeout: 270000 }); // 4 min 30, sous Vercel maxDuration 300s
     const conversionTime = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`[CONVERT] Conversion done in ${conversionTime}s`);
 
@@ -630,7 +630,7 @@ async function muxAudioIntoVideo(
 
     console.log(`[MUX] Exécution FFmpeg...`);
     const startTime = Date.now();
-    await execFileAsync(ffmpegPath, ffmpegArgs, { timeout: 180000 });
+    await execFileAsync(ffmpegPath, ffmpegArgs, { timeout: 270000 }); // 4 min 30, sous Vercel maxDuration 300s
     console.log(`[MUX] Conversion terminée en ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
 
     // Étape 4 : Upload du MP4 final
