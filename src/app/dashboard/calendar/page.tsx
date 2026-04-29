@@ -2866,44 +2866,133 @@ export default function CalendarPage() {
                     <div className="absolute inset-0" style={{ opacity: currentSeq === 'intro' ? 1 : 0, transform: currentSeq === 'intro' ? 'scale(1)' : 'scale(1.08)', zIndex: currentSeq === 'intro' ? 10 : 1, transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
                       {posterImgSrc ? <img src={posterImgSrc} alt="Affiche" className="absolute inset-0 w-full h-full object-cover" /> : <div className="absolute inset-0" style={{ background: getBackdropCSS('intro') }} />}
                       <div className="absolute inset-0" style={{ background: getGradientCSS('intro') }} />
-                      <div className="absolute inset-0 z-10" style={{ pointerEvents: 'none' }}>
-                        <div style={{
-                          position: 'absolute',
-                          left: `${positions.title?.x ?? 50}%`,
-                          top: `${positions.title?.y ?? 10}%`,
-                          transform: 'translate(-50%, 0)',
-                          display: 'flex',
-                          flexDirection: 'column' as const,
-                          alignItems: 'center',
-                          gap: editorPxToDvh(4),
-                          maxWidth: '90%',
-                          textAlign: 'center' as const,
-                        }}>
-                          <h3 style={{
-                            fontFamily: designFont,
-                            color: designTitleColor,
-                            fontSize: editorPxToDvh((isReelFormat ? 14 : 18) * designTextScale),
-                            letterSpacing: `${titleTypo.letterSpacing || 0}px`,
-                            lineHeight: titleTypo.lineHeight || 1.1,
-                            fontWeight: titleTypo.bold !== false ? 900 : 400,
-                            fontStyle: titleTypo.italic ? 'italic' : 'normal',
-                            textTransform: 'uppercase' as const,
-                            textShadow: '0 4px 6px rgba(0,0,0,0.15)',
-                            margin: 0,
-                          }}>{displayTitle || 'TITRE'}</h3>
-                          {meta?.subtitle && <p style={{
-                            fontFamily: designFont,
-                            color: `${designTitleColor}CC`,
-                            fontSize: editorPxToDvh((isReelFormat ? 9 : 11) * designTextScale),
-                            letterSpacing: `${titleTypo.letterSpacing || 0}px`,
-                            lineHeight: titleTypo.lineHeight || 1.1,
-                            fontWeight: titleTypo.bold !== false ? 900 : 400,
-                            fontStyle: titleTypo.italic ? 'italic' : 'normal',
-                            textShadow: '0 2px 4px rgba(0,0,0,0.15)',
-                            margin: 0,
-                          }}>{meta.subtitle}</p>}
-                        </div>
-                      </div>
+                      {(() => {
+                        // Title gradient (parité éditeur). Applies background-clip:text
+                        // when titleTypography.textGradient is set so the HTML rebuild
+                        // matches the video output instead of falling back to a flat
+                        // designTitleColor (this was the source of the T=0 flash:
+                        // HTML rebuild flat → 1s later video plays with gradient).
+                        const titleHasGrad = !!(titleTypo.textGradient && titleTypo.gradColor1 && titleTypo.gradColor2);
+                        const titleGradStyle = titleHasGrad ? {
+                          backgroundImage: `linear-gradient(135deg, ${titleTypo.gradColor1}, ${titleTypo.gradColor2})`,
+                          backgroundColor: 'transparent',
+                          WebkitBackgroundClip: 'text' as const,
+                          backgroundClip: 'text' as const,
+                          WebkitTextFillColor: 'transparent',
+                          color: 'transparent',
+                          display: 'inline-block' as const,
+                        } : null;
+                        const exTT: any = (design as any)?.extraTitleTypography || {};
+                        const exST: any = (design as any)?.extraSubtitleTypography || {};
+                        const exTTHasGrad = !!(exTT.textGradient && exTT.gradColor1 && exTT.gradColor2);
+                        const exSTHasGrad = !!(exST.textGradient && exST.gradColor1 && exST.gradColor2);
+                        const exTitleGradStyle = exTTHasGrad ? {
+                          backgroundImage: `linear-gradient(135deg, ${exTT.gradColor1}, ${exTT.gradColor2})`,
+                          backgroundColor: 'transparent',
+                          WebkitBackgroundClip: 'text' as const,
+                          backgroundClip: 'text' as const,
+                          WebkitTextFillColor: 'transparent',
+                          color: 'transparent',
+                          display: 'inline-block' as const,
+                        } : null;
+                        const exSubGradStyle = exSTHasGrad ? {
+                          backgroundImage: `linear-gradient(135deg, ${exST.gradColor1}, ${exST.gradColor2})`,
+                          backgroundColor: 'transparent',
+                          WebkitBackgroundClip: 'text' as const,
+                          backgroundClip: 'text' as const,
+                          WebkitTextFillColor: 'transparent',
+                          color: 'transparent',
+                          display: 'inline-block' as const,
+                        } : null;
+                        const extraTitleText = (design as any)?.extraTitle as string | undefined;
+                        const extraSubtitleText = (design as any)?.extraSubtitle as string | undefined;
+                        const extraTitlePos = (design as any)?.extraTitlePosition || { x: 50, y: 50 };
+                        const extraSubtitlePos = (design as any)?.extraSubtitlePosition || { x: 50, y: 58 };
+                        return (
+                          <>
+                            <div className="absolute inset-0 z-10" style={{ pointerEvents: 'none' }}>
+                              <div style={{
+                                position: 'absolute',
+                                left: `${positions.title?.x ?? 50}%`,
+                                top: `${positions.title?.y ?? 10}%`,
+                                transform: 'translate(-50%, 0)',
+                                display: 'flex',
+                                flexDirection: 'column' as const,
+                                alignItems: 'center',
+                                gap: editorPxToDvh(4),
+                                maxWidth: '90%',
+                                textAlign: 'center' as const,
+                              }}>
+                                <h3 style={{
+                                  fontFamily: designFont,
+                                  fontSize: editorPxToDvh((isReelFormat ? 14 : 18) * designTextScale),
+                                  letterSpacing: `${titleTypo.letterSpacing || 0}px`,
+                                  lineHeight: titleTypo.lineHeight || 1.1,
+                                  fontWeight: titleTypo.bold !== false ? 900 : 400,
+                                  fontStyle: titleTypo.italic ? 'italic' : 'normal',
+                                  textTransform: 'uppercase' as const,
+                                  textShadow: titleHasGrad ? 'none' : '0 4px 6px rgba(0,0,0,0.15)',
+                                  margin: 0,
+                                  whiteSpace: 'pre-wrap' as const,
+                                  ...(titleGradStyle ?? { color: designTitleColor }),
+                                }}>{displayTitle || 'TITRE'}</h3>
+                                {meta?.subtitle && <p style={{
+                                  fontFamily: designFont,
+                                  fontSize: editorPxToDvh((isReelFormat ? 9 : 11) * designTextScale),
+                                  letterSpacing: `${titleTypo.letterSpacing || 0}px`,
+                                  lineHeight: titleTypo.lineHeight || 1.1,
+                                  fontWeight: titleTypo.bold !== false ? 900 : 400,
+                                  fontStyle: titleTypo.italic ? 'italic' : 'normal',
+                                  textShadow: titleHasGrad ? 'none' : '0 2px 4px rgba(0,0,0,0.15)',
+                                  margin: 0,
+                                  whiteSpace: 'pre-wrap' as const,
+                                  ...(titleGradStyle ?? { color: `${designTitleColor}CC` }),
+                                }}>{meta.subtitle}</p>}
+                              </div>
+                            </div>
+                            {/* Extra title / subtitle — independent absolute positions, parité éditeur */}
+                            {extraTitleText && (
+                              <div style={{
+                                position: 'absolute',
+                                left: `${extraTitlePos.x ?? 50}%`,
+                                top: `${extraTitlePos.y ?? 50}%`,
+                                transform: 'translate(-50%, -50%)',
+                                zIndex: 10,
+                                pointerEvents: 'none',
+                                textAlign: 'center' as const,
+                                fontFamily: designFont,
+                                fontSize: editorPxToDvh((isReelFormat ? 9 : 11) * designTextScale * (exTT.scale ?? 1)),
+                                letterSpacing: `${exTT.letterSpacing || 0}px`,
+                                lineHeight: exTT.lineHeight || 1.1,
+                                fontWeight: exTT.bold ? 900 : 400,
+                                fontStyle: exTT.italic ? 'italic' : 'normal',
+                                whiteSpace: 'pre-wrap' as const,
+                                ...(exTitleGradStyle ?? { color: designTitleColor }),
+                              }}>{extraTitleText}</div>
+                            )}
+                            {extraSubtitleText && (
+                              <div style={{
+                                position: 'absolute',
+                                left: `${extraSubtitlePos.x ?? 50}%`,
+                                top: `${extraSubtitlePos.y ?? 58}%`,
+                                transform: 'translate(-50%, -50%)',
+                                zIndex: 10,
+                                pointerEvents: 'none',
+                                textAlign: 'center' as const,
+                                fontFamily: designFont,
+                                fontSize: editorPxToDvh((isReelFormat ? 6.75 : 8.25) * designTextScale * (exST.scale ?? 1)),
+                                letterSpacing: `${exST.letterSpacing || 0}px`,
+                                lineHeight: exST.lineHeight || 1.2,
+                                fontWeight: exST.bold ? 900 : 400,
+                                fontStyle: exST.italic ? 'italic' : 'normal',
+                                opacity: exSTHasGrad ? 1 : 0.8,
+                                whiteSpace: 'pre-wrap' as const,
+                                ...(exSubGradStyle ?? { color: designTitleColor }),
+                              }}>{extraSubtitleText}</div>
+                            )}
+                          </>
+                        );
+                      })()}
                       {/* Logo sur intro si logoSequences inclut 'intro' — per-sequence position */}
                       {/* Height-based sizing matching editor's h-8 w-auto max-w-[60px] scale(logoScale) */}
                       {designLogoUrl && designLogoSequences?.includes('intro') && (
@@ -2925,12 +3014,13 @@ export default function CalendarPage() {
                     <div className="absolute inset-0" style={{ opacity: currentSeq === 'cards' ? 1 : 0, zIndex: currentSeq === 'cards' ? 10 : 1, transition: 'opacity 800ms ease-in-out', willChange: 'opacity' }}>
                       <div className="absolute inset-0" style={{ background: getBackdropCSS('cards') }} />
                       <div className="absolute inset-0" style={{ background: getGradientCSS('cards') }} />
-                      <div className="absolute z-10 px-3" style={{
+                      <div className="absolute z-10" style={{
                         position: 'absolute',
                         left: `${positions.cards?.x ?? 50}%`,
                         top: `${positions.cards?.y ?? 50}%`,
                         transform: 'translate(-50%, -50%)',
                         width: `${sizes.cards || 92}%`,
+                        boxSizing: 'border-box',
                       }}>
                         <div style={{
                           display: 'grid',
@@ -2945,6 +3035,32 @@ export default function CalendarPage() {
                             const scaledLabel = editorPxToDvh(7 * designTextScale);
                             const scaledValue = editorPxToDvh(9 * designTextScale);
                             const scaledDesc = editorPxToDvh(6 * designTextScale);
+                            // Per-element gradient (parité éditeur). Read from typography.cards
+                            // (new shape) OR cardsTypography (alias). Backward-compat: legacy
+                            // textGradient flag means all 3 elements get the gradient.
+                            const cardsTypo: any = (design as any)?.typography?.cards || (design as any)?.cardsTypography || {};
+                            const cardsHasColors = !!(cardsTypo.gradColor1 && cardsTypo.gradColor2);
+                            const cardsLegacyAll = !!cardsTypo.textGradient;
+                            const wantLabelGrad = cardsHasColors && (cardsLegacyAll || !!cardsTypo.labelGradient);
+                            const wantValueGrad = cardsHasColors && (cardsLegacyAll || !!cardsTypo.valueGradient);
+                            const wantDescGrad = cardsHasColors && (cardsLegacyAll || !!cardsTypo.descriptionGradient);
+                            const _cardsGradStyle = cardsHasColors ? {
+                              backgroundImage: `linear-gradient(135deg, ${cardsTypo.gradColor1}, ${cardsTypo.gradColor2})`,
+                              backgroundColor: 'transparent',
+                              WebkitBackgroundClip: 'text' as const,
+                              backgroundClip: 'text' as const,
+                              WebkitTextFillColor: 'transparent',
+                              color: 'transparent',
+                              display: 'inline-block' as const,
+                            } : null;
+                            const labelGradStyle = wantLabelGrad ? _cardsGradStyle : null;
+                            const valueGradStyle = wantValueGrad ? _cardsGradStyle : null;
+                            const descGradStyle = wantDescGrad ? _cardsGradStyle : null;
+                            // Common text-flow base for every card text node — preserves \n,
+                            // wraps long words instead of overflowing the slot (the previous
+                            // whiteSpace: 'nowrap' on Full Width clipped both sides on long
+                            // descriptions).
+                            const textFlow = { whiteSpace: 'pre-wrap' as const, overflowWrap: 'break-word' as const, wordBreak: 'break-word' as const };
                             return displayCards.slice(0, isReelFormat ? 5 : 6).map((card: { emoji: string; label: string; value: string; description?: string; color?: string }, i: number) => {
                               const cardIcon = designCardCustomIcons?.[String(i)] || undefined;
                               const animStyle = {
@@ -2967,11 +3083,12 @@ export default function CalendarPage() {
                                     display: 'flex', flexDirection: 'column', alignItems: 'center', gap: editorPxToDvh(2),
                                     borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.3)', padding: `${editorPxToDvh(6)} ${editorPxToDvh(6)}`,
                                     backdropFilter: 'blur(4px)', borderLeft: `2px solid ${card.color || accent}`,
+                                    minWidth: 0,
                                   }}>
                                     {emojiEl}
-                                    <p style={{ fontSize: scaledLabel, fontFamily: designFont, color: '#fff', fontWeight: 700, textAlign: 'center' }}>{card.label}</p>
-                                    <p style={{ fontSize: scaledValue, fontFamily: designFont, color: card.color || accent, fontWeight: 900, textAlign: 'center' }}>{card.value}</p>
-                                    {card.description && <p style={{ fontSize: scaledDesc, color: 'rgba(255,255,255,0.6)', textAlign: 'center' }}>{truncateAtWord(card.description as string, 30)}</p>}
+                                    <p style={{ fontSize: scaledLabel, fontFamily: designFont, fontWeight: 700, textAlign: 'center', ...textFlow, ...(labelGradStyle ?? { color: '#fff' }) }}>{card.label}</p>
+                                    <p style={{ fontSize: scaledValue, fontFamily: designFont, fontWeight: 900, textAlign: 'center', ...textFlow, ...(valueGradStyle ?? { color: card.color || accent }) }}>{card.value}</p>
+                                    {card.description && <p style={{ fontSize: scaledDesc, textAlign: 'center', ...textFlow, ...(descGradStyle ?? { color: 'rgba(255,255,255,0.6)' }) }}>{truncateAtWord(card.description as string, 30)}</p>}
                                   </div>
                                 );
                               }
@@ -2982,13 +3099,14 @@ export default function CalendarPage() {
                                     ...animStyle,
                                     borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.4)', padding: `${editorPxToDvh(8)} ${editorPxToDvh(8)}`,
                                     backdropFilter: 'blur(4px)', borderTop: `2px solid ${card.color || accent}`,
+                                    minWidth: 0,
                                   }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: editorPxToDvh(4), marginBottom: editorPxToDvh(4) }}>
                                       {emojiEl}
-                                      <p style={{ fontSize: scaledLabel, fontFamily: designFont, color: '#fff', fontWeight: 700 }}>{card.label}</p>
+                                      <p style={{ fontSize: scaledLabel, fontFamily: designFont, fontWeight: 700, ...textFlow, ...(labelGradStyle ?? { color: '#fff' }) }}>{card.label}</p>
                                     </div>
-                                    {card.description && <p style={{ fontSize: scaledDesc, color: 'rgba(255,255,255,0.7)', lineHeight: 1.4, marginBottom: editorPxToDvh(4) }}>{truncateAtWord(card.description as string, 60)}</p>}
-                                    <p style={{ fontSize: scaledValue, fontFamily: designFont, color: card.color || accent, fontWeight: 900 }}>{card.value}</p>
+                                    {card.description && <p style={{ fontSize: scaledDesc, lineHeight: 1.4, marginBottom: editorPxToDvh(4), ...textFlow, ...(descGradStyle ?? { color: 'rgba(255,255,255,0.7)' }) }}>{truncateAtWord(card.description as string, 60)}</p>}
+                                    <p style={{ fontSize: scaledValue, fontFamily: designFont, fontWeight: 900, ...textFlow, ...(valueGradStyle ?? { color: card.color || accent }) }}>{card.value}</p>
                                   </div>
                                 );
                               }
@@ -3000,9 +3118,10 @@ export default function CalendarPage() {
                                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                                     borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.5)', padding: `${editorPxToDvh(8)} ${editorPxToDvh(8)}`,
                                     backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.1)',
+                                    minWidth: 0,
                                   }}>
-                                    <p style={{ fontSize: editorPxToDvh(13 * designTextScale), fontFamily: designFont, color: card.color || accent, fontWeight: 900 }}>{card.value}</p>
-                                    <p style={{ fontSize: scaledDesc, fontFamily: designFont, color: 'rgba(255,255,255,0.8)', fontWeight: 500, marginTop: editorPxToDvh(2), textAlign: 'center' }}>{card.label}</p>
+                                    <p style={{ fontSize: editorPxToDvh(13 * designTextScale), fontFamily: designFont, fontWeight: 900, ...textFlow, ...(valueGradStyle ?? { color: card.color || accent }) }}>{card.value}</p>
+                                    <p style={{ fontSize: scaledDesc, fontFamily: designFont, fontWeight: 500, marginTop: editorPxToDvh(2), textAlign: 'center', ...textFlow, ...(labelGradStyle ?? { color: 'rgba(255,255,255,0.8)' }) }}>{card.label}</p>
                                   </div>
                                 );
                               }
@@ -3014,12 +3133,13 @@ export default function CalendarPage() {
                                     display: 'flex', alignItems: 'center', gap: editorPxToDvh(4),
                                     padding: `${editorPxToDvh(4)} ${editorPxToDvh(4)}`,
                                     borderBottom: `1px solid ${(card.color || accent)}40`,
+                                    minWidth: 0,
                                   }}>
                                     {(card.iconType === 'svg' || (card.emoji && /^[A-Z]/.test(card.emoji)))
                                       ? <CardIcon name={card.emoji} size={Math.round(editorPxToDvh(8))} color="#FFFFFF" className="" />
                                       : <span style={{ fontSize: editorPxToDvh(8) }}>{card.emoji}</span>}
-                                    <p style={{ fontSize: scaledLabel, fontFamily: designFont, color: 'rgba(255,255,255,0.8)', flex: 1 }}>{card.label}</p>
-                                    <p style={{ fontSize: scaledValue, fontFamily: designFont, color: card.color || accent, fontWeight: 700 }}>{card.value}</p>
+                                    <p style={{ fontSize: scaledLabel, fontFamily: designFont, flex: 1, minWidth: 0, ...textFlow, ...(labelGradStyle ?? { color: 'rgba(255,255,255,0.8)' }) }}>{card.label}</p>
+                                    <p style={{ fontSize: scaledValue, fontFamily: designFont, fontWeight: 700, flexShrink: 0, ...textFlow, ...(valueGradStyle ?? { color: card.color || accent }) }}>{card.value}</p>
                                   </div>
                                 );
                               }
@@ -3030,13 +3150,14 @@ export default function CalendarPage() {
                                   display: 'flex', alignItems: 'center', gap: editorPxToDvh(6),
                                   borderRadius: '8px', backgroundColor: 'rgba(0,0,0,0.3)', padding: `${editorPxToDvh(6)} ${editorPxToDvh(10)}`,
                                   backdropFilter: 'blur(4px)', borderLeft: `3px solid ${card.color || accent}`,
+                                  minWidth: 0,
                                 }}>
                                   {emojiEl}
                                   <div style={{ flex: 1, minWidth: 0 }}>
-                                    <p style={{ fontSize: scaledLabel, fontFamily: designFont, color: '#fff', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{card.label}</p>
-                                    {card.description && <p style={{ fontSize: scaledDesc, color: 'rgba(255,255,255,0.5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{truncateAtWord(card.description as string, 40)}</p>}
+                                    <p style={{ fontSize: scaledLabel, fontFamily: designFont, fontWeight: 700, ...textFlow, ...(labelGradStyle ?? { color: '#fff' }) }}>{card.label}</p>
+                                    {card.description && <p style={{ fontSize: scaledDesc, ...textFlow, ...(descGradStyle ?? { color: 'rgba(255,255,255,0.5)' }) }}>{truncateAtWord(card.description as string, 40)}</p>}
                                   </div>
-                                  <p style={{ fontSize: scaledValue, fontFamily: designFont, color: card.color || accent, fontWeight: 900, flexShrink: 0 }}>{card.value}</p>
+                                  <p style={{ fontSize: scaledValue, fontFamily: designFont, fontWeight: 900, flexShrink: 0, ...textFlow, ...(valueGradStyle ?? { color: card.color || accent }) }}>{card.value}</p>
                                 </div>
                               );
                             });
