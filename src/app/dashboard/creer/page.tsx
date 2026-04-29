@@ -1718,7 +1718,8 @@ function InfographicPageInner() {
         if (cfg.exportedSequences && typeof cfg.exportedSequences === "object") {
           setExportedSequences((prev) => ({ ...prev, ...cfg.exportedSequences }));
         }
-        // Rushes, character, and audio are CONTENT — not restored.
+        // Rushes, character image are NOT restored (volatile uploads).
+        // Audio (musique/voix) IS restored below — see the audioMusic*/audioVoice* block.
         // Typography
         if (cfg.titleLetterSpacing !== undefined)
           setTitleLetterSpacing(cfg.titleLetterSpacing);
@@ -1848,6 +1849,12 @@ function InfographicPageInner() {
         if (Array.isArray(cfg.pexelsPhotos)) setPexelsPhotos(cfg.pexelsPhotos as PexelsPhoto[]);
         if (typeof cfg.selectedPhotoIndex === 'number') setSelectedPhotoIndex(cfg.selectedPhotoIndex);
         if (Array.isArray(cfg.batchPhotoIndices)) setBatchPhotoIndices(cfg.batchPhotoIndices as number[]);
+        // Audio (musique + voix) — URL Supabase stable, restaurée au refresh
+        // pour que l'utilisateur ne perde pas son upload. Volumes idem.
+        if (typeof cfg.audioMusicUrl === 'string') setAudioMusicUrl(cfg.audioMusicUrl);
+        if (typeof cfg.audioVoiceUrl === 'string') setAudioVoiceUrl(cfg.audioVoiceUrl);
+        if (typeof cfg.audioMusicVolume === 'number') setAudioMusicVolume(cfg.audioMusicVolume);
+        if (typeof cfg.audioVoiceVolume === 'number') setAudioVoiceVolume(cfg.audioVoiceVolume);
         // Rush video/image: the file already sits on Supabase, so the URL
         // is stable and cheap to persist. Survives a refresh without a
         // re-upload.
@@ -2522,6 +2529,8 @@ function InfographicPageInner() {
         cards, salesPhrases,
         pexelsPhotos, selectedPhotoIndex, batchPhotoIndices,
         rushList,
+        // Audio (URLs Supabase persistantes — survit au refresh sans ré-upload)
+        audioMusicUrl, audioVoiceUrl, audioMusicVolume, audioVoiceVolume,
       };
       try {
         localStorage.setItem(DESIGN_PREFS_KEY, JSON.stringify(snapshot));
@@ -2564,9 +2573,14 @@ function InfographicPageInner() {
     watermarkTextGradient, watermarkGradColor1, watermarkGradColor2,
     contentTheme, customTopic, title, subtitle,
     extraTitle, extraSubtitle,
+    extraTitleScale, extraTitleGradient, extraTitleGradColor1, extraTitleGradColor2,
+    extraTitleLetterSpacing, extraTitleLineHeight, extraTitleBold, extraTitleItalic,
+    extraSubtitleScale, extraSubtitleGradient, extraSubtitleGradColor1, extraSubtitleGradColor2,
+    extraSubtitleLetterSpacing, extraSubtitleLineHeight, extraSubtitleBold, extraSubtitleItalic,
     cards, salesPhrases,
     pexelsPhotos, selectedPhotoIndex, batchPhotoIndices,
     rushList,
+    audioMusicUrl, audioVoiceUrl, audioMusicVolume, audioVoiceVolume,
   ]);
 
   // (Typography states declared earlier for localStorage compatibility)
