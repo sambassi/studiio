@@ -1541,6 +1541,13 @@ function InfographicPageInner() {
   const [cropRushIdx, setCropRushIdx] = useState<number | null>(null);
   const [rushUrl, setRushUrl] = useState<string | null>(null);
   const [rushFileName, setRushFileName] = useState<string | null>(null);
+  // Track media-load failures via React state so a transient error
+  // (e.g. Supabase 404 during quota issues) doesn't permanently hide the
+  // <video>/<img> via direct `style.display = 'none'` mutation. The
+  // previous handler kept the element invisible across re-renders even
+  // after rushUrl became valid again.
+  const [rushVideoError, setRushVideoError] = useState(false);
+  const [rushImageError, setRushImageError] = useState(false);
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
   const [videoUploadProgress, setVideoUploadProgress] = useState(0);
   const [rushDragIdx, setRushDragIdx] = useState<number | null>(null);
@@ -1569,9 +1576,18 @@ function InfographicPageInner() {
     const first = rushList[0];
     const nextUrl = first?.url ?? null;
     const nextName = first?.name ?? null;
+    console.log('[RushSync] rushList[0] →', { url: nextUrl, kind: first?.kind, name: nextName });
     setRushUrl((p) => (p === nextUrl ? p : nextUrl));
     setRushFileName((p) => (p === nextName ? p : nextName));
   }, [rushList]);
+
+  // Reset error flags whenever the rush URL changes — a fresh upload
+  // gets a clean rendering attempt instead of inheriting the previous
+  // failure state.
+  useEffect(() => {
+    setRushVideoError(false);
+    setRushImageError(false);
+  }, [rushUrl]);
 
   // ── Video Overlay Text ─────────────────────────────────────
   const [videoOverlayText, setVideoOverlayText] = useState("");
@@ -1716,7 +1732,19 @@ function InfographicPageInner() {
         if (cfg.videoDuration) setVideoDuration(cfg.videoDuration);
         if (cfg.ctaDuration) setCtaDuration(cfg.ctaDuration);
         if (cfg.exportedSequences && typeof cfg.exportedSequences === "object") {
-          setExportedSequences((prev) => ({ ...prev, ...cfg.exportedSequences }));
+          // Garde-fou : si l'utilisateur a accidentellement désactivé
+          // TOUTES les séquences (ou si la persistance a sauvé un état
+          // corrompu), on revient aux défauts plutôt que d'exporter une
+          // vidéo vide. Sans ce check, l'utilisateur voit l'export
+          // "réussir" mais le MP4 ne contient rien d'utile.
+          const r = cfg.exportedSequences as { titre?: boolean; cartes?: boolean; video?: boolean; cta?: boolean };
+          const anyEnabled = !!(r.titre || r.cartes || r.video || r.cta);
+          if (!anyEnabled) {
+            console.warn('[Restore] exportedSequences all false, reverting to defaults');
+            setExportedSequences({ titre: true, cartes: true, video: true, cta: true });
+          } else {
+            setExportedSequences((prev) => ({ ...prev, ...cfg.exportedSequences }));
+          }
         }
         // Rushes, character image are NOT restored (volatile uploads).
         // Audio (musique/voix) IS restored below — see the audioMusic*/audioVoice* block.
@@ -3520,7 +3548,16 @@ function InfographicPageInner() {
         if (result) uploaded.push(result);
       }
       if (uploaded.length > 0) {
-        setRushList((prev) => [...prev, ...uploaded]);
+        setRushList((prev) => {
+          const next = [...prev, ...uploaded];
+          console.log('[Upload] rushList update :', {
+            previous: prev.length,
+            added: uploaded.length,
+            firstUrl: next[0]?.url,
+            firstKind: next[0]?.kind,
+          });
+          return next;
+        });
         const videoCount = uploaded.filter((r) => r.kind === 'video').length;
         const imageCount = uploaded.filter((r) => r.kind === 'image').length;
         let msg: string;
@@ -3801,6 +3838,25 @@ function InfographicPageInner() {
         "La vidéo n'a pas été uploadée correctement. Veuillez re-sélectionner le média.",
       );
       return;
+    }
+
+    // Coherence check: a rush is uploaded but the "video" sequence toggle
+    // is off → the export will silently exclude the rush and the user
+    // wonders why it's missing. Prompt before continuing so they can
+    // either include it or knowingly skip it.
+    if (rushUrl && !exportedSequences.video) {
+      const userConfirms = confirm(
+        "Vous avez uploadé une vidéo rush mais la séquence \"Vidéo\" est désactivée. " +
+        "L'export ne l'inclura PAS.\n\n" +
+        "Voulez-vous activer la séquence Vidéo avant l'export ?"
+      );
+      if (userConfirms) {
+        setExportedSequences((prev) => ({ ...prev, video: true }));
+        // Wait two animation frames so React commits the new state before
+        // we read `exportedSequences.video` again below in the payload.
+        await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+      }
+      // else: user wants to exclude the rush — continue with current toggles
     }
 
     setIsExporting(true);
@@ -7879,42 +7935,54 @@ function InfographicPageInner() {
             {rushUrl &&
               ((activeSequence === "all" && exportedSequences.video) || activeSequence === "video") && (
                 rushList[0]?.kind === 'image' ? (
-                  <img
-                    src={rushUrl}
-                    alt=""
-                    className="absolute inset-0 h-full w-full object-cover"
-                    style={{
-                      opacity: activeSequence === "video" ? 1 : 0.6,
-                      transform: rushList[0]?.transform
-                        ? `translate(${(rushList[0].transform.offsetX || 0) * 100}%, ${(rushList[0].transform.offsetY || 0) * 100}%) scale(${rushList[0].transform.scale || 1})`
-                        : undefined,
-                      transformOrigin: "center center",
-                    }}
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = "none";
-                    }}
-                  />
+                  !rushImageError && (
+                    <img
+                      src={rushUrl}
+                      alt=""
+                      className="absolute inset-0 h-full w-full object-cover"
+                      style={{
+                        opacity: activeSequence === "video" ? 1 : 0.6,
+                        transform: rushList[0]?.transform
+                          ? `translate(${(rushList[0].transform.offsetX || 0) * 100}%, ${(rushList[0].transform.offsetY || 0) * 100}%) scale(${rushList[0].transform.scale || 1})`
+                          : undefined,
+                        transformOrigin: "center center",
+                      }}
+                      onError={(e) => {
+                        const img = e.target as HTMLImageElement;
+                        console.error('[RushImage] Failed to load:', img.src);
+                        showToast(`Image rush non lisible. Vérifier l'upload.`);
+                        setRushImageError(true);
+                      }}
+                    />
+                  )
                 ) : (
-                  <video
-                    ref={rushVideoRef}
-                    src={rushUrl}
-                    className="absolute inset-0 h-full w-full object-cover"
-                    style={{
-                      opacity: activeSequence === "video" ? 1 : 0.6,
-                      transform: rushList[0]?.transform
-                        ? `translate(${(rushList[0].transform.offsetX || 0) * 100}%, ${(rushList[0].transform.offsetY || 0) * 100}%) scale(${rushList[0].transform.scale || 1})`
-                        : undefined,
-                      transformOrigin: "center center",
-                    }}
-                    autoPlay
-                    muted
-                    loop
-                    playsInline
-                    onTimeUpdate={(e) => setVideoCurrentTime((e.target as HTMLVideoElement).currentTime)}
-                    onError={(e) => {
-                      (e.target as HTMLVideoElement).style.display = "none";
-                    }}
-                  />
+                  !rushVideoError && (
+                    <video
+                      ref={rushVideoRef}
+                      src={rushUrl}
+                      className="absolute inset-0 h-full w-full object-cover"
+                      style={{
+                        opacity: activeSequence === "video" ? 1 : 0.6,
+                        transform: rushList[0]?.transform
+                          ? `translate(${(rushList[0].transform.offsetX || 0) * 100}%, ${(rushList[0].transform.offsetY || 0) * 100}%) scale(${rushList[0].transform.scale || 1})`
+                          : undefined,
+                        transformOrigin: "center center",
+                      }}
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      onTimeUpdate={(e) => setVideoCurrentTime((e.target as HTMLVideoElement).currentTime)}
+                      onError={(e) => {
+                        const video = e.target as HTMLVideoElement;
+                        const code = video.error?.code;
+                        const msg = video.error?.message || 'unknown';
+                        console.error('[RushVideo] Failed to load:', video.src, 'code=' + code, 'msg=' + msg);
+                        showToast(`Vidéo rush non lisible (code ${code}). Vérifier que l'upload est complet.`);
+                        setRushVideoError(true);
+                      }}
+                    />
+                  )
                 )
               )}
 
