@@ -6,7 +6,7 @@
  */
 import type { AudioKeyframe } from './creer/audioDucking';
 
-const COMPOSER_VERSION = 'v30-textonly-icons-2026-04-29';
+const COMPOSER_VERSION = 'v31-cards-fontpx-no-cardssize-scale-2026-04-29';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -1240,11 +1240,19 @@ function drawCards(
   // the card boundary (user's "MITOCHONDRIES" label was clipping into the
   // adjacent card).
   const editorViewportPx = isReel ? 320 : 512;
-  const cardsSizeScale = (design?.cardsSize || 92) / 92; // normalize: 92% = 1x (default)
   // Editor's card-only text multiplier (100 = 1x). Lets card fonts grow/shrink
   // independently of the global textScale — MUST match page.tsx `cardsTextScale`.
   const cardsTextMul = (design?.cardsTextScale ?? 100) / 100;
-  const fontPx = (cssPx: number) => Math.round(w * cssPx / editorViewportPx * textScale * cardsSizeScale * cardsTextMul);
+  // NOTE: do NOT multiply by `cardsSize/92`. The editor renders card text at a
+  // FIXED Tailwind pixel size (7px label / 9px value / 6px desc on 320px viewport)
+  // regardless of cardsSize — the container shrinks/grows but the font stays
+  // constant. Composer must mirror that: `w × cssPx / viewportPx × textScale ×
+  // cardsTextMul` produces the same font/cardW ratio at every cardsSize value.
+  // Adding a `cardsSize/92` multiplier (commit 1666eb3, Apr 18) made composer
+  // fonts grow with the container while editor fonts stayed flat → cards
+  // looked 1.1×–1.5× too big in the exported MP4 vs the editor preview when
+  // the user touched the cardsSize slider above 92.
+  const fontPx = (cssPx: number) => Math.round(w * cssPx / editorViewportPx * textScale * cardsTextMul);
   // Same as fontPx but WITHOUT textScale — for elements the editor renders
   // at a fixed pixel size regardless of the global text scale (notably the
   // emoji on Compact/Educatif/etc cards, which uses Tailwind `text-sm`/
