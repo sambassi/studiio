@@ -3032,9 +3032,21 @@ export default function CalendarPage() {
                             const displayCards = meta?.cards?.length > 0
                               ? meta.cards.map((c: { emoji: string; label: string; value: string; description?: string; color?: string }) => c)
                               : (meta?.textCards || []).map((tCard: { text: string; color?: string }) => ({ emoji: '📝', label: tCard.text, value: tCard.text, color: tCard.color }));
-                            const scaledLabel = editorPxToDvh(7 * designTextScale);
-                            const scaledValue = editorPxToDvh(9 * designTextScale);
-                            const scaledDesc = editorPxToDvh(6 * designTextScale);
+                            // ── Cards-specific scale multiplier (parité /creer) ──
+                            // /creer's editor multiplies card fonts by BOTH textScale AND
+                            // (cardsTextScale / 100). Calendar previously only used
+                            // textScale → cards rendered at the wrong absolute size when
+                            // the user customised cardsTextScale (e.g. 50% → calendar 2×
+                            // too big, 200% → calendar 2× too small).
+                            const designCardsTextScale = (design as any)?.cardsTextScale ?? 100;
+                            const cardsK = designCardsTextScale / 100;
+                            const scaledLabel = editorPxToDvh(7 * designTextScale * cardsK);
+                            const scaledValue = editorPxToDvh(9 * designTextScale * cardsK);
+                            const scaledDesc = editorPxToDvh(6 * designTextScale * cardsK);
+                            // Cards-specific font override (parité /creer line 8235)
+                            const cardsFontFamily = (design as any)?.cardsFont
+                              ? (FONT_CSS_MAP[(design as any).cardsFont] || (design as any).cardsFont)
+                              : designFont;
                             // Per-element gradient (parité éditeur). Read from typography.cards
                             // (new shape) OR cardsTypography (alias). Backward-compat: legacy
                             // textGradient flag means all 3 elements get the gradient.
@@ -3072,7 +3084,7 @@ export default function CalendarPage() {
                               const emojiEl = cardIcon
                                 ? <img src={cardIcon} alt="" style={{ width: editorPxToDvh(14), height: editorPxToDvh(14), objectFit: 'contain' as const }} />
                                 : (card.iconType === 'svg' || (card.emoji && /^[A-Z]/.test(card.emoji)))
-                                  ? <CardIcon name={card.emoji} size={Math.round(editorPxToDvh(isReelFormat ? 10 : 14))} color="#FFFFFF" className="" />
+                                  ? <CardIcon name={card.emoji} size={editorPxToDvh((isReelFormat ? 10 : 14) * cardsK)} color="#FFFFFF" className="" />
                                   : <span style={{ fontSize: editorPxToDvh(isReelFormat ? 10 : 14) }}>{card.emoji}</span>;
 
                               // ── Compact ──
@@ -3086,8 +3098,8 @@ export default function CalendarPage() {
                                     minWidth: 0,
                                   }}>
                                     {emojiEl}
-                                    <p style={{ fontSize: scaledLabel, fontFamily: designFont, fontWeight: 700, textAlign: 'center', ...textFlow, ...(labelGradStyle ?? { color: '#fff' }) }}>{card.label}</p>
-                                    <p style={{ fontSize: scaledValue, fontFamily: designFont, fontWeight: 900, textAlign: 'center', ...textFlow, ...(valueGradStyle ?? { color: card.color || accent }) }}>{card.value}</p>
+                                    <p style={{ fontSize: scaledLabel, fontFamily: cardsFontFamily, fontWeight: 700, textAlign: 'center', ...textFlow, ...(labelGradStyle ?? { color: '#fff' }) }}>{card.label}</p>
+                                    <p style={{ fontSize: scaledValue, fontFamily: cardsFontFamily, fontWeight: 900, textAlign: 'center', ...textFlow, ...(valueGradStyle ?? { color: card.color || accent }) }}>{card.value}</p>
                                     {card.description && <p style={{ fontSize: scaledDesc, textAlign: 'center', ...textFlow, ...(descGradStyle ?? { color: 'rgba(255,255,255,0.6)' }) }}>{truncateAtWord(card.description as string, 30)}</p>}
                                   </div>
                                 );
@@ -3103,10 +3115,10 @@ export default function CalendarPage() {
                                   }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: editorPxToDvh(4), marginBottom: editorPxToDvh(4) }}>
                                       {emojiEl}
-                                      <p style={{ fontSize: scaledLabel, fontFamily: designFont, fontWeight: 700, ...textFlow, ...(labelGradStyle ?? { color: '#fff' }) }}>{card.label}</p>
+                                      <p style={{ fontSize: scaledLabel, fontFamily: cardsFontFamily, fontWeight: 700, ...textFlow, ...(labelGradStyle ?? { color: '#fff' }) }}>{card.label}</p>
                                     </div>
                                     {card.description && <p style={{ fontSize: scaledDesc, lineHeight: 1.4, marginBottom: editorPxToDvh(4), ...textFlow, ...(descGradStyle ?? { color: 'rgba(255,255,255,0.7)' }) }}>{truncateAtWord(card.description as string, 60)}</p>}
-                                    <p style={{ fontSize: scaledValue, fontFamily: designFont, fontWeight: 900, ...textFlow, ...(valueGradStyle ?? { color: card.color || accent }) }}>{card.value}</p>
+                                    <p style={{ fontSize: scaledValue, fontFamily: cardsFontFamily, fontWeight: 900, ...textFlow, ...(valueGradStyle ?? { color: card.color || accent }) }}>{card.value}</p>
                                   </div>
                                 );
                               }
@@ -3120,8 +3132,8 @@ export default function CalendarPage() {
                                     backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.1)',
                                     minWidth: 0,
                                   }}>
-                                    <p style={{ fontSize: editorPxToDvh(13 * designTextScale), fontFamily: designFont, fontWeight: 900, ...textFlow, ...(valueGradStyle ?? { color: card.color || accent }) }}>{card.value}</p>
-                                    <p style={{ fontSize: scaledDesc, fontFamily: designFont, fontWeight: 500, marginTop: editorPxToDvh(2), textAlign: 'center', ...textFlow, ...(labelGradStyle ?? { color: 'rgba(255,255,255,0.8)' }) }}>{card.label}</p>
+                                    <p style={{ fontSize: editorPxToDvh(13 * designTextScale * cardsK), fontFamily: cardsFontFamily, fontWeight: 900, ...textFlow, ...(valueGradStyle ?? { color: card.color || accent }) }}>{card.value}</p>
+                                    <p style={{ fontSize: scaledDesc, fontFamily: cardsFontFamily, fontWeight: 500, marginTop: editorPxToDvh(2), textAlign: 'center', ...textFlow, ...(labelGradStyle ?? { color: 'rgba(255,255,255,0.8)' }) }}>{card.label}</p>
                                   </div>
                                 );
                               }
@@ -3136,10 +3148,10 @@ export default function CalendarPage() {
                                     minWidth: 0,
                                   }}>
                                     {(card.iconType === 'svg' || (card.emoji && /^[A-Z]/.test(card.emoji)))
-                                      ? <CardIcon name={card.emoji} size={Math.round(editorPxToDvh(8))} color="#FFFFFF" className="" />
+                                      ? <CardIcon name={card.emoji} size={editorPxToDvh(8 * cardsK)} color="#FFFFFF" className="" />
                                       : <span style={{ fontSize: editorPxToDvh(8) }}>{card.emoji}</span>}
-                                    <p style={{ fontSize: scaledLabel, fontFamily: designFont, flex: 1, minWidth: 0, ...textFlow, ...(labelGradStyle ?? { color: 'rgba(255,255,255,0.8)' }) }}>{card.label}</p>
-                                    <p style={{ fontSize: scaledValue, fontFamily: designFont, fontWeight: 700, flexShrink: 0, ...textFlow, ...(valueGradStyle ?? { color: card.color || accent }) }}>{card.value}</p>
+                                    <p style={{ fontSize: scaledLabel, fontFamily: cardsFontFamily, flex: 1, minWidth: 0, ...textFlow, ...(labelGradStyle ?? { color: 'rgba(255,255,255,0.8)' }) }}>{card.label}</p>
+                                    <p style={{ fontSize: scaledValue, fontFamily: cardsFontFamily, fontWeight: 700, flexShrink: 0, ...textFlow, ...(valueGradStyle ?? { color: card.color || accent }) }}>{card.value}</p>
                                   </div>
                                 );
                               }
@@ -3154,10 +3166,10 @@ export default function CalendarPage() {
                                 }}>
                                   {emojiEl}
                                   <div style={{ flex: 1, minWidth: 0 }}>
-                                    <p style={{ fontSize: scaledLabel, fontFamily: designFont, fontWeight: 700, ...textFlow, ...(labelGradStyle ?? { color: '#fff' }) }}>{card.label}</p>
+                                    <p style={{ fontSize: scaledLabel, fontFamily: cardsFontFamily, fontWeight: 700, ...textFlow, ...(labelGradStyle ?? { color: '#fff' }) }}>{card.label}</p>
                                     {card.description && <p style={{ fontSize: scaledDesc, ...textFlow, ...(descGradStyle ?? { color: 'rgba(255,255,255,0.5)' }) }}>{truncateAtWord(card.description as string, 40)}</p>}
                                   </div>
-                                  <p style={{ fontSize: scaledValue, fontFamily: designFont, fontWeight: 900, flexShrink: 0, ...textFlow, ...(valueGradStyle ?? { color: card.color || accent }) }}>{card.value}</p>
+                                  <p style={{ fontSize: scaledValue, fontFamily: cardsFontFamily, fontWeight: 900, flexShrink: 0, ...textFlow, ...(valueGradStyle ?? { color: card.color || accent }) }}>{card.value}</p>
                                 </div>
                               );
                             });
