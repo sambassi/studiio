@@ -68,27 +68,68 @@ export async function POST(req: NextRequest) {
       }
       const buffer = Buffer.from(await response.arrayBuffer());
       await writeFile(inputPath, buffer);
-      console.log(`[CONVERT-API] Downloaded ${(buffer.length / 1024 / 1024).toFixed(1)}MB`);
+      console.log(`[CONVERT-API] Downloaded ${(buffer.length / 1024 / 1024).toFixed(1)}MB (${buffer.length} bytes)`);
 
-      // Convert with FFmpeg
+      // Guard: refuse to feed FFmpeg a suspiciously small file. FFmpeg will
+      // emit cryptic "Invalid data" errors instead of erroring out cleanly,
+      // and waste 1-3 min before failing — surface this to the client right
+      // away with the actual byte count for debugging.
+      if (buffer.length < 1024) {
+        console.warn(`[CONVERT-API] Source file too small (${buffer.length} bytes) — skipping FFmpeg`);
+        return NextResponse.json({
+          success: false,
+          error: `Source file too small (${buffer.length} bytes) — likely corrupted or empty. Re-render the post in /creer or click Régénérer in /calendar.`,
+          sourceSize: buffer.length,
+        }, { status: 422 });
+      }
+
+      // Convert with FFmpeg — capture stderr/stdout so a failure surfaces
+      // the actual reason (codec issue, corrupted moov atom, missing audio
+      // stream, etc.) rather than the opaque "Conversion failed" string.
       const startTime = Date.now();
-      await execFileAsync(ffmpegPath, [
-        '-i', inputPath,
-        '-c:v', 'libx264',
-        '-preset', 'ultrafast',
-        '-crf', '23',
-        '-pix_fmt', 'yuv420p',
-        '-c:a', 'aac',
-        '-b:a', '128k',
-        '-movflags', '+faststart',
-        '-y',
-        outputPath,
-      ], { timeout: 180000 });
-      console.log(`[CONVERT-API] Conversion done in ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
+      let stderrCaptured = '';
+      try {
+        const result = await execFileAsync(ffmpegPath, [
+          '-i', inputPath,
+          '-c:v', 'libx264',
+          '-preset', 'ultrafast',
+          '-crf', '23',
+          '-pix_fmt', 'yuv420p',
+          '-c:a', 'aac',
+          '-b:a', '128k',
+          '-movflags', '+faststart',
+          '-y',
+          outputPath,
+        ], { timeout: 180000, maxBuffer: 10 * 1024 * 1024 });
+        stderrCaptured = result.stderr || '';
+        console.log(`[CONVERT-API] Conversion done in ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
+      } catch (ffmpegErr: unknown) {
+        const errObj = ffmpegErr as { stderr?: string; stdout?: string; message?: string; code?: number };
+        stderrCaptured = errObj.stderr || '';
+        console.error(`[CONVERT-API] FFmpeg failed (exit code ${errObj.code ?? 'unknown'}):`, errObj.message);
+        console.error(`[CONVERT-API] FFmpeg stderr (last 2KB):`, stderrCaptured.slice(-2000));
+        // Re-throw with the most useful detail available so the outer catch
+        // forwards it to the client.
+        const detail = stderrCaptured.slice(-500) || errObj.message || 'unknown FFmpeg failure';
+        throw new Error(`FFmpeg conversion failed: ${detail}`);
+      }
 
-      // Read and upload
+      // Read and validate output
       const mp4Buffer = await readFile(outputPath);
-      console.log(`[CONVERT-API] MP4 size: ${(mp4Buffer.length / 1024 / 1024).toFixed(1)}MB`);
+      console.log(`[CONVERT-API] MP4 size: ${(mp4Buffer.length / 1024 / 1024).toFixed(1)}MB (${mp4Buffer.length} bytes)`);
+
+      // Output validation — FFmpeg may exit 0 yet produce a near-empty file
+      // when the input has issues that didn't trigger an outright error
+      // (corrupted timestamps, etc.).
+      if (mp4Buffer.length < 1024) {
+        console.error(`[CONVERT-API] Output MP4 too small (${mp4Buffer.length} bytes) — conversion produced empty file`);
+        return NextResponse.json({
+          success: false,
+          error: `Output MP4 too small (${mp4Buffer.length} bytes) — conversion produced an unusable file`,
+          outputSize: mp4Buffer.length,
+          stderr: stderrCaptured.slice(-500),
+        }, { status: 500 });
+      }
 
       const fileName = `converted_${timestamp}.mp4`;
       const storagePath = `converted/${fileName}`;

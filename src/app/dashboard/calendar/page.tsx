@@ -1818,7 +1818,7 @@ export default function CalendarPage() {
             setExportRenderStage('MP4 prêt !');
           } else {
             const errMsg = convertData.error || 'erreur serveur';
-            console.warn('[Export] Server conversion failed:', errMsg);
+            console.warn('[Export] Server conversion failed:', convertData);
             // If the server hits 404/not_found AFTER the HEAD passed (race
             // condition or signed-URL expiry between the two calls), fall
             // through to recompose instead of asking the user to download
@@ -1826,8 +1826,27 @@ export default function CalendarPage() {
             if (errMsg.includes('404') || errMsg.includes('not_found') || errMsg.includes('Object not found')) {
               console.warn('[Export] Conversion echec 404 — recomposition');
               shouldRecompose = true;
-            } else if (confirm(`La conversion MP4 a échoué : ${errMsg}.\nTélécharger le fichier WebM brut à la place ? (lisible avec VLC ou QuickTime)`)) {
-              downloadWebmDirect();
+            } else if (typeof convertData.sourceSize === 'number' && convertData.sourceSize < 1024) {
+              // Source file uploaded to Supabase is corrupt/empty (< 1 KB).
+              // Recomposition is the right answer — the WebM blob can't be
+              // recovered, but we can re-render from metadata.
+              console.warn(`[Export] Source file too small (${convertData.sourceSize} bytes) — recomposition`);
+              shouldRecompose = true;
+            } else {
+              // Show the full server error (FFmpeg stderr included if
+              // present) so the user can decide whether to download the
+              // raw WebM or report the problem with details.
+              const sizeInfo = typeof convertData.sourceSize === 'number'
+                ? ` (source: ${convertData.sourceSize} octets)`
+                : typeof convertData.outputSize === 'number'
+                  ? ` (sortie: ${convertData.outputSize} octets)`
+                  : '';
+              const stderrInfo = typeof convertData.stderr === 'string' && convertData.stderr
+                ? `\n\nDétail FFmpeg :\n${convertData.stderr.slice(-300)}`
+                : '';
+              if (confirm(`La conversion MP4 a échoué : ${errMsg}${sizeInfo}.${stderrInfo}\n\nTélécharger le fichier WebM brut à la place ? (lisible avec VLC ou QuickTime)`)) {
+                downloadWebmDirect();
+              }
             }
           }
         } catch (err) {
@@ -2016,8 +2035,16 @@ export default function CalendarPage() {
               document.body.removeChild(a);
             } else {
               const errMsg = convertData.error || 'erreur serveur';
-              console.warn('[Export] Server conversion failed:', errMsg);
-              if (confirm(`La conversion MP4 a échoué : ${errMsg}.\nTélécharger le fichier brut à la place ? (lisible avec VLC ou QuickTime)`)) {
+              console.warn('[Export] Server conversion failed:', convertData);
+              const sizeInfo = typeof convertData.sourceSize === 'number'
+                ? ` (source: ${convertData.sourceSize} octets)`
+                : typeof convertData.outputSize === 'number'
+                  ? ` (sortie: ${convertData.outputSize} octets)`
+                  : '';
+              const stderrInfo = typeof convertData.stderr === 'string' && convertData.stderr
+                ? `\n\nDétail FFmpeg :\n${convertData.stderr.slice(-300)}`
+                : '';
+              if (confirm(`La conversion MP4 a échoué : ${errMsg}${sizeInfo}.${stderrInfo}\n\nTélécharger le fichier brut à la place ? (lisible avec VLC ou QuickTime)`)) {
                 const isWebm = blob.type.includes('webm');
                 directDownload(blob, isWebm ? 'webm' : 'mp4');
               }
