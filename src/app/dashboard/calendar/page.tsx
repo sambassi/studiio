@@ -1731,92 +1731,132 @@ export default function CalendarPage() {
     // NEVER reuse old .mp4 montages — Chrome MediaRecorder produces corrupted MP4 in fast mode
     if (meta?.renderedVideoUrl && !meta.renderedVideoUrl.endsWith('.mp4')) {
       setExportRendering(true);
-      setExportRenderProgress(30);
-      setExportRenderStage('Conversion MP4 en cours (peut prendre 1-3 min)...');
+      setExportRenderProgress(10);
+      setExportRenderStage('Vérification de la vidéo source...');
       const safeName = (post.title || 'video').replace(/[^a-zA-Z0-9-_]+/g, '_');
-      // Simulated progress 30→75 over ~67s while the server converts. The
-      // real `/api/convert/to-mp4` doesn't stream progress, so without this
-      // the bar appeared frozen at 30% for minutes — users assumed the
-      // export was broken and gave up.
-      let conversionProgress = 30;
-      const progressInterval = setInterval(() => {
-        conversionProgress = Math.min(conversionProgress + 1, 75);
-        setExportRenderProgress(conversionProgress);
-      }, 1500);
-      // Client-side timeout — abort if the server takes too long. Vercel's
-      // function maxDuration is 300s; we cut at 240s so the user gets a
-      // proper "timeout, propose WebM fallback" prompt rather than a hang.
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4 * 60 * 1000);
-      // Helper: trigger a direct WebM download from the original Supabase URL
-      // — used as the user-confirmed fallback when MP4 conversion fails or
-      // times out. Direct URL avoids re-fetching a 20+ MB blob into memory.
-      const downloadWebmDirect = () => {
-        const a = document.createElement('a');
-        a.href = meta.renderedVideoUrl as string;
-        a.download = `${safeName}.webm`;
-        a.target = '_blank';
-        a.rel = 'noopener';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      };
+
+      // ── Pre-flight HEAD ──
+      // Confirm the source actually exists in Supabase Storage before we
+      // hand the URL to the FFmpeg pipeline. Files get cleaned up by the
+      // periodic cleanup cron, never uploaded successfully, or expire from
+      // signed URLs. Calling /api/convert/to-mp4 with a 404 source returns
+      // an opaque server error and wastes 1-3 min of FFmpeg cold start.
+      let sourceExists = false;
       try {
-        // Use server-side FFmpeg conversion (reliable H.264 output)
-        const convertRes = await fetch('/api/convert/to-mp4', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ videoUrl: meta.renderedVideoUrl }),
-          signal: controller.signal,
-        });
-        clearInterval(progressInterval);
-        clearTimeout(timeoutId);
-        const convertData = await convertRes.json();
-        if (convertData.success && convertData.mp4Url) {
-          // Direct URL download (no fetch + blob) — faster, no CORS issues,
-          // no browser freeze on large files. Supabase serves the public URL
-          // with `Content-Disposition: attachment` when the `download`
-          // attribute is set on the anchor.
-          setExportRenderProgress(100);
-          setExportRenderStage('Téléchargement...');
+        const headRes = await fetch(meta.renderedVideoUrl, { method: 'HEAD' });
+        sourceExists = headRes.ok;
+        console.log('[Export] HEAD check post', post.id, 'status', headRes.status, 'ok', headRes.ok, 'url', meta.renderedVideoUrl.substring(0, 80));
+      } catch (headErr) {
+        console.warn('[Export] HEAD check failed:', headErr);
+        sourceExists = false;
+      }
+
+      // Flag set when we want to abandon the conversion path and fall
+      // through to compose-on-the-fly below (re-render from metadata).
+      let shouldRecompose = !sourceExists;
+
+      if (!sourceExists) {
+        console.warn('[Export] Source vidéo introuvable (404), recomposition à la volée');
+        setExportRenderStage('Vidéo source manquante — recomposition en cours...');
+        // (Don't return here — the compose-on-the-fly path below picks up.)
+      } else {
+        setExportRenderProgress(30);
+        setExportRenderStage('Conversion MP4 en cours (peut prendre 1-3 min)...');
+        // Simulated progress 30→75 over ~67s while the server converts. The
+        // real `/api/convert/to-mp4` doesn't stream progress, so without this
+        // the bar appeared frozen at 30% for minutes — users assumed the
+        // export was broken and gave up.
+        let conversionProgress = 30;
+        const progressInterval = setInterval(() => {
+          conversionProgress = Math.min(conversionProgress + 1, 75);
+          setExportRenderProgress(conversionProgress);
+        }, 1500);
+        // Client-side timeout — abort if the server takes too long. Vercel's
+        // function maxDuration is 300s; we cut at 240s so the user gets a
+        // proper "timeout, propose WebM fallback" prompt rather than a hang.
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4 * 60 * 1000);
+        // Helper: trigger a direct WebM download from the original Supabase URL
+        // — used as the user-confirmed fallback when MP4 conversion fails or
+        // times out. Direct URL avoids re-fetching a 20+ MB blob into memory.
+        const downloadWebmDirect = () => {
           const a = document.createElement('a');
-          a.href = convertData.mp4Url;
-          a.download = `${safeName}.mp4`;
+          a.href = meta.renderedVideoUrl as string;
+          a.download = `${safeName}.webm`;
           a.target = '_blank';
           a.rel = 'noopener';
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
-          setExportRenderStage('MP4 prêt !');
-        } else {
-          // Server conversion failed — let the user choose to download the
-          // raw WebM (or just dismiss). Replaces the previous silent fallback
-          // that downloaded a .webm without telling them why.
-          const errMsg = convertData.error || 'erreur serveur';
-          console.warn('[Export] Server conversion failed:', errMsg);
-          if (confirm(`La conversion MP4 a échoué : ${errMsg}.\nTélécharger le fichier WebM brut à la place ? (lisible avec VLC ou QuickTime)`)) {
-            downloadWebmDirect();
+        };
+        try {
+          // Use server-side FFmpeg conversion (reliable H.264 output)
+          const convertRes = await fetch('/api/convert/to-mp4', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ videoUrl: meta.renderedVideoUrl }),
+            signal: controller.signal,
+          });
+          clearInterval(progressInterval);
+          clearTimeout(timeoutId);
+          const convertData = await convertRes.json();
+          if (convertData.success && convertData.mp4Url) {
+            // Direct URL download (no fetch + blob) — faster, no CORS issues,
+            // no browser freeze on large files. Supabase serves the public URL
+            // with `Content-Disposition: attachment` when the `download`
+            // attribute is set on the anchor.
+            setExportRenderProgress(100);
+            setExportRenderStage('Téléchargement...');
+            const a = document.createElement('a');
+            a.href = convertData.mp4Url;
+            a.download = `${safeName}.mp4`;
+            a.target = '_blank';
+            a.rel = 'noopener';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setExportRenderStage('MP4 prêt !');
+          } else {
+            const errMsg = convertData.error || 'erreur serveur';
+            console.warn('[Export] Server conversion failed:', errMsg);
+            // If the server hits 404/not_found AFTER the HEAD passed (race
+            // condition or signed-URL expiry between the two calls), fall
+            // through to recompose instead of asking the user to download
+            // a WebM that no longer exists.
+            if (errMsg.includes('404') || errMsg.includes('not_found') || errMsg.includes('Object not found')) {
+              console.warn('[Export] Conversion echec 404 — recomposition');
+              shouldRecompose = true;
+            } else if (confirm(`La conversion MP4 a échoué : ${errMsg}.\nTélécharger le fichier WebM brut à la place ? (lisible avec VLC ou QuickTime)`)) {
+              downloadWebmDirect();
+            }
+          }
+        } catch (err) {
+          clearInterval(progressInterval);
+          clearTimeout(timeoutId);
+          if ((err as any)?.name === 'AbortError') {
+            // 4-min client timeout — likely a very long video or server overloaded
+            console.warn('[Export] Server conversion timed out after 4 min');
+            if (confirm('La conversion MP4 prend trop de temps (>4 min). Télécharger le fichier WebM brut à la place ? (lisible avec VLC ou QuickTime)')) {
+              downloadWebmDirect();
+            }
+          } else {
+            const msg = (err as Error)?.message || 'erreur réseau';
+            console.error('[Export] Server conversion error:', err);
+            setExportRenderStage('Erreur de conversion');
+            alert(`Export bureau échoué : ${msg}. Vérifiez votre connexion et réessayez.`);
           }
         }
-      } catch (err) {
-        clearInterval(progressInterval);
-        clearTimeout(timeoutId);
-        if ((err as any)?.name === 'AbortError') {
-          // 4-min client timeout — likely a very long video or server overloaded
-          console.warn('[Export] Server conversion timed out after 4 min');
-          if (confirm('La conversion MP4 prend trop de temps (>4 min). Télécharger le fichier WebM brut à la place ? (lisible avec VLC ou QuickTime)')) {
-            downloadWebmDirect();
-          }
-        } else {
-          const msg = (err as Error)?.message || 'erreur réseau';
-          console.error('[Export] Server conversion error:', err);
-          setExportRenderStage('Erreur de conversion');
-          alert(`Export bureau échoué : ${msg}. Vérifiez votre connexion et réessayez.`);
-        }
-      } finally {
-        setTimeout(() => { setExportRendering(false); setExportRenderProgress(0); setExportRenderStage(''); }, 3000);
       }
-      return;
+
+      if (!shouldRecompose) {
+        // Conversion path completed (success, user-confirmed WebM fallback, or
+        // dismissed prompt). Reset progress UI and exit.
+        setTimeout(() => { setExportRendering(false); setExportRenderProgress(0); setExportRenderStage(''); }, 3000);
+        return;
+      }
+      // shouldRecompose === true → fall through to compose-on-the-fly below.
+      // Don't reset exportRendering here — the compose path runs immediately
+      // and will manage the same overlay.
     }
 
     // No rendered video — compose montage on-the-fly using stored metadata
@@ -1834,6 +1874,20 @@ export default function CalendarPage() {
       const seq = meta?.sequences;
       const brand = meta?.branding;
       const isReel = post.format === 'reel';
+
+      // If no media at all, the recompose has nothing to draw with — bail
+      // out cleanly instead of letting composeAndUpload throw on a useless
+      // empty montage. Cards/title-only posts are still OK (cards array
+      // covers that case).
+      const hasCards = (meta?.cards?.length || 0) > 0 || (meta?.textCards?.length || 0) > 0;
+      if (!posterUrl && !videoUrl && !musicUrl && !voiceUrl && !hasCards && !post.title) {
+        console.warn('[Export] No media or content available for recompose');
+        alert("Impossible de recomposer cette vidéo : tous les médias source sont introuvables. Recréez le post depuis l'éditeur.");
+        setExportRendering(false);
+        setExportRenderProgress(0);
+        setExportRenderStage('');
+        return;
+      }
 
       // Read site text config from design metadata
       const calDesign = meta?.design;
