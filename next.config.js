@@ -28,14 +28,19 @@ const nextConfig = {
     ],
   },
   async headers() {
+    // COOP/COEP enable SharedArrayBuffer, required by FFmpeg WASM in
+    // composeAndUpload's client-side MP4 transcode. Apply to every page
+    // that imports composeAndUpload (creer + calendar + infographic) so
+    // the WASM transcode runs in multi-threaded mode instead of falling
+    // back to single-threaded or failing entirely on cross-origin assets.
+    const coopHeaders = [
+      { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+      { key: 'Cross-Origin-Embedder-Policy', value: 'credentialless' },
+    ];
     return [
-      {
-        source: '/dashboard/creer',
-        headers: [
-          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
-          { key: 'Cross-Origin-Embedder-Policy', value: 'credentialless' },
-        ],
-      },
+      { source: '/dashboard/creer', headers: coopHeaders },
+      { source: '/dashboard/calendar', headers: coopHeaders },
+      { source: '/dashboard/infographic', headers: coopHeaders },
       {
         source: '/ffmpeg/:path*',
         headers: [
