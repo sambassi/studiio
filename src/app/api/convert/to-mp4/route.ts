@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
-import { execFile } from 'child_process';
 import { writeFile, readFile, unlink, access } from 'fs/promises';
 import { join } from 'path';
-import { promisify } from 'util';
-
-const execFileAsync = promisify(execFile);
+import { transcodeWebmToMp4WithLadder } from '@/lib/ffmpeg/transcode-to-mp4';
 
 // Allow up to 300s for video conversion (Vercel Pro plan)
 export const maxDuration = 300;
@@ -83,34 +80,20 @@ export async function POST(req: NextRequest) {
         }, { status: 422 });
       }
 
-      // Convert with FFmpeg — capture stderr/stdout so a failure surfaces
-      // the actual reason (codec issue, corrupted moov atom, missing audio
-      // stream, etc.) rather than the opaque "Conversion failed" string.
-      const startTime = Date.now();
+      // Convert with FFmpeg via the shared helper — uses a quality ladder
+      // (1080p → 720p → 540p) with per-attempt timeouts so longer videos
+      // stay under Vercel's 300s function maxDuration. Each attempt uses
+      // ultrafast + zerolatency + threads 0 + crf 28 for ~2× the throughput
+      // of the previous "preset ultrafast crf 23" baseline.
       let stderrCaptured = '';
+      let attemptUsed = '';
       try {
-        const result = await execFileAsync(ffmpegPath, [
-          '-i', inputPath,
-          '-c:v', 'libx264',
-          '-preset', 'ultrafast',
-          '-crf', '23',
-          '-pix_fmt', 'yuv420p',
-          '-c:a', 'aac',
-          '-b:a', '128k',
-          '-movflags', '+faststart',
-          '-y',
-          outputPath,
-        ], { timeout: 270000, maxBuffer: 10 * 1024 * 1024 }); // 4 min 30, sous Vercel maxDuration 300s
-        stderrCaptured = result.stderr || '';
-        console.log(`[CONVERT-API] Conversion done in ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
+        const result = await transcodeWebmToMp4WithLadder(ffmpegPath, inputPath, outputPath, '[CONVERT-API]');
+        stderrCaptured = result.stderr;
+        attemptUsed = result.attempt;
       } catch (ffmpegErr: unknown) {
-        const errObj = ffmpegErr as { stderr?: string; stdout?: string; message?: string; code?: number };
-        stderrCaptured = errObj.stderr || '';
-        console.error(`[CONVERT-API] FFmpeg failed (exit code ${errObj.code ?? 'unknown'}):`, errObj.message);
-        console.error(`[CONVERT-API] FFmpeg stderr (last 2KB):`, stderrCaptured.slice(-2000));
-        // Re-throw with the most useful detail available so the outer catch
-        // forwards it to the client.
-        const detail = stderrCaptured.slice(-500) || errObj.message || 'unknown FFmpeg failure';
+        const errObj = ffmpegErr as { message?: string };
+        const detail = errObj.message || 'unknown FFmpeg failure';
         throw new Error(`FFmpeg conversion failed: ${detail}`);
       }
 
@@ -148,8 +131,8 @@ export async function POST(req: NextRequest) {
         .from('media')
         .getPublicUrl(storagePath);
 
-      console.log(`[CONVERT-API] MP4 uploaded: ${publicUrl.substring(0, 80)}...`);
-      return NextResponse.json({ success: true, mp4Url: publicUrl });
+      console.log(`[CONVERT-API] MP4 uploaded: ${publicUrl.substring(0, 80)}... (attempt: ${attemptUsed})`);
+      return NextResponse.json({ success: true, mp4Url: publicUrl, attempt: attemptUsed });
     } finally {
       try { await unlink(inputPath); } catch {}
       try { await unlink(outputPath); } catch {}

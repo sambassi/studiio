@@ -4,6 +4,7 @@ import { execFile } from 'child_process';
 import { writeFile, readFile, unlink, access } from 'fs/promises';
 import { join } from 'path';
 import { promisify } from 'util';
+import { transcodeWebmToMp4WithLadder } from '@/lib/ffmpeg/transcode-to-mp4';
 
 const execFileAsync = promisify(execFile);
 
@@ -479,23 +480,12 @@ async function convertToMp4IfNeeded(videoUrl: string): Promise<string> {
     const sizeMB = (buffer.length / 1024 / 1024).toFixed(1);
     console.log(`[CONVERT] Downloaded ${sizeMB}MB to ${inputPath}`);
 
-    // Step 2: Convert with FFmpeg (H.264 + AAC, fast preset, Instagram-compatible)
-    console.log(`[CONVERT] Running FFmpeg conversion...`);
-    const startTime = Date.now();
-    await execFileAsync(ffmpegPath, [
-      '-i', inputPath,
-      '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-crf', '23',
-      '-pix_fmt', 'yuv420p',     // Required for Instagram compatibility
-      '-c:a', 'aac',
-      '-b:a', '128k',
-      '-movflags', '+faststart',  // Move moov atom to start for streaming
-      '-y',                       // Overwrite output
-      outputPath,
-    ], { timeout: 270000 }); // 4 min 30, sous Vercel maxDuration 300s
-    const conversionTime = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`[CONVERT] Conversion done in ${conversionTime}s`);
+    // Step 2: Convert via the shared ladder helper (1080p → 720p → 540p
+    // progressive fallback, ultrafast + zerolatency + threads 0 + crf 28).
+    // Each attempt has its own timeout so the total stays below Vercel's
+    // 300s maxDuration even when the first attempt times out.
+    const ladderResult = await transcodeWebmToMp4WithLadder(ffmpegPath, inputPath, outputPath, '[CONVERT]');
+    console.log(`[CONVERT] Conversion done in ${(ladderResult.elapsedMs / 1000).toFixed(1)}s using ${ladderResult.attempt}`);
 
     // Step 3: Read the converted MP4
     const mp4Buffer = await readFile(outputPath);
