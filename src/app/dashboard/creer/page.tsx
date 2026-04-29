@@ -155,6 +155,15 @@ import { AudioStudioPanel } from "@/components/creer/AudioStudioPanel";
 import AudioDuckingTimeline from "@/components/creer/AudioDuckingTimeline";
 import AudioMixPreview from "@/components/creer/AudioMixPreview";
 import { analyseRushForDucking, type AudioKeyframe } from "@/lib/creer/audioDucking";
+import {
+  buildAutoFillText,
+  emptySequenceVoices,
+  emptySequenceVoicesUserEdited,
+  SEQUENCE_KEYS,
+  type SequenceKey,
+  type SequenceVoices,
+  type SequenceVoicesUserEdited,
+} from "@/lib/types/voice";
 import { getExpiresAt, formatRemaining, getRetentionColor } from "@/lib/storage/retention";
 
 // ── Unified icon badge style — filled Lucide icon + colored tint container ──
@@ -1512,6 +1521,16 @@ function InfographicPageInner() {
   }, [seqGradients, gradientColor1, gradientColor2, gradientOpacity]);
 
   // ── Audio ────────────────────────────────────────────────────
+  // ── Per-sequence voice-overs (PR A — state only, no UI yet) ─────────
+  // Replaces the single `audioVoiceUrl` global voice-over with 4 independent
+  // voices, one per sequence. Auto-filled from editor content (title for
+  // titre, cards for cartes, etc.) but the user can edit each text freely;
+  // `userEdited` flags prevent auto-fill from clobbering manual edits.
+  // Legacy `audioVoiceUrl` stays supported below — the composer will pick
+  // sequenceVoices when present, otherwise fall back to the global voice.
+  const [sequenceVoices, setSequenceVoices] = useState<SequenceVoices>(() => emptySequenceVoices());
+  const [sequenceVoicesUserEdited, setSequenceVoicesUserEdited] = useState<SequenceVoicesUserEdited>(() => emptySequenceVoicesUserEdited());
+
   const [audioMusicUrl, setAudioMusicUrl] = useState<string | null>(null);
   const [audioMusicName, setAudioMusicName] = useState('');
   const [audioVoiceUrl, setAudioVoiceUrl] = useState<string | null>(null);
@@ -1592,6 +1611,35 @@ function InfographicPageInner() {
   // ── Video Overlay Text ─────────────────────────────────────
   const [videoOverlayText, setVideoOverlayText] = useState("");
   const [isGeneratingOverlay, setIsGeneratingOverlay] = useState(false);
+
+  // ── Auto-fill sequenceVoices.text from editor content ──────
+  // For each sequence, regenerate the suggested voice-over text whenever
+  // the underlying editor content changes. The `userEdited` flag (set by
+  // the future PR B textarea onChange) blocks the auto-fill so manual
+  // edits stick. Texts are pure strings — generation/upload happens in
+  // PR B; this PR is just the data shape.
+  useEffect(() => {
+    const auto = buildAutoFillText({
+      title,
+      subtitle,
+      cards: cards.map((c) => ({ label: c.label, value: c.value, description: c.description })),
+      videoOverlayText,
+      ctaMainText,
+      ctaSubText,
+    });
+    setSequenceVoices((prev) => {
+      let changed = false;
+      const next: SequenceVoices = { ...prev };
+      for (const key of SEQUENCE_KEYS) {
+        if (sequenceVoicesUserEdited[key]) continue;
+        if (prev[key].text !== auto[key]) {
+          next[key] = { ...prev[key], text: auto[key] };
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [title, subtitle, cards, videoOverlayText, ctaMainText, ctaSubText, sequenceVoicesUserEdited]);
 
   // ── Pexels Photos ───────────────────────────────────────────
   const [pexelsPhotos, setPexelsPhotos] = useState<PexelsPhoto[]>([]);
@@ -1883,6 +1931,34 @@ function InfographicPageInner() {
         if (typeof cfg.audioVoiceUrl === 'string') setAudioVoiceUrl(cfg.audioVoiceUrl);
         if (typeof cfg.audioMusicVolume === 'number') setAudioMusicVolume(cfg.audioMusicVolume);
         if (typeof cfg.audioVoiceVolume === 'number') setAudioVoiceVolume(cfg.audioVoiceVolume);
+        // Per-sequence voice-overs — restore the shape if it was persisted.
+        // We validate keys + shape so a corrupt entry doesn't crash the
+        // editor; missing keys fall back to empty defaults.
+        if (cfg.sequenceVoices && typeof cfg.sequenceVoices === 'object') {
+          const restored = emptySequenceVoices();
+          for (const key of SEQUENCE_KEYS) {
+            const v = (cfg.sequenceVoices as Record<string, unknown>)[key];
+            if (v && typeof v === 'object') {
+              const sv = v as { text?: unknown; audioUrl?: unknown; source?: unknown; ttsVoice?: unknown; duration?: unknown };
+              restored[key] = {
+                text: typeof sv.text === 'string' ? sv.text : '',
+                audioUrl: typeof sv.audioUrl === 'string' ? sv.audioUrl : null,
+                source: sv.source === 'tts' || sv.source === 'record' ? sv.source : null,
+                ttsVoice: typeof sv.ttsVoice === 'string' ? sv.ttsVoice : undefined,
+                duration: typeof sv.duration === 'number' ? sv.duration : undefined,
+              };
+            }
+          }
+          setSequenceVoices(restored);
+        }
+        if (cfg.sequenceVoicesUserEdited && typeof cfg.sequenceVoicesUserEdited === 'object') {
+          const ue = emptySequenceVoicesUserEdited();
+          for (const key of SEQUENCE_KEYS) {
+            const v = (cfg.sequenceVoicesUserEdited as Record<string, unknown>)[key];
+            if (typeof v === 'boolean') ue[key] = v;
+          }
+          setSequenceVoicesUserEdited(ue);
+        }
         // Rush video/image: the file already sits on Supabase, so the URL
         // is stable and cheap to persist. Survives a refresh without a
         // re-upload.
@@ -2559,6 +2635,10 @@ function InfographicPageInner() {
         rushList,
         // Audio (URLs Supabase persistantes — survit au refresh sans ré-upload)
         audioMusicUrl, audioVoiceUrl, audioMusicVolume, audioVoiceVolume,
+        // Per-sequence voice-overs (PR A — texts auto-filled, audioUrls
+        // populated by the future UI in PR B).
+        sequenceVoices,
+        sequenceVoicesUserEdited,
       };
       try {
         localStorage.setItem(DESIGN_PREFS_KEY, JSON.stringify(snapshot));
@@ -2609,6 +2689,7 @@ function InfographicPageInner() {
     pexelsPhotos, selectedPhotoIndex, batchPhotoIndices,
     rushList,
     audioMusicUrl, audioVoiceUrl, audioMusicVolume, audioVoiceVolume,
+    sequenceVoices, sequenceVoicesUserEdited,
   ]);
 
   // (Typography states declared earlier for localStorage compatibility)
