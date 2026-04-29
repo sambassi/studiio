@@ -8648,6 +8648,16 @@ function InfographicPageInner() {
                   }}
                 />
                 <div className="absolute inset-0 border border-dashed border-yellow-500/0 group-hover/cta:border-yellow-500/40 rounded pointer-events-none transition-colors" />
+                {ctaIconName && ICON_MAP[ctaIconName] && (
+                  <div className="flex justify-center" style={{ marginBottom: '4px' }}>
+                    {renderLucideIcon(ctaIconName, {
+                      size: format === "16:9" ? Math.round(ctaIconSize / 2.5) : Math.round(ctaIconSize / 4),
+                      color: ctaIconColor || '#FFFFFF',
+                      gradient: ctaIconGradient ? { start: ctaIconGradColor1, end: ctaIconGradColor2, direction: 'd' } : undefined,
+                      gradientId: `cta-live-${ctaIconName}`,
+                    })}
+                  </div>
+                )}
                 {salesPhrases.length > 0 && (
                   <p
                     className={`font-medium whitespace-pre-wrap ${ctaTextGradient ? '' : 'drop-shadow'}`}
