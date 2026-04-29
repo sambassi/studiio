@@ -6,7 +6,7 @@
  */
 import type { AudioKeyframe } from './creer/audioDucking';
 
-const COMPOSER_VERSION = 'v31-cards-fontpx-no-cardssize-scale-2026-04-29';
+const COMPOSER_VERSION = 'v32-modern-screenshot-cards-gradient-text-2026-04-29';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -96,10 +96,12 @@ export interface DesignOptions {
   cardsPosition?: { x?: number; y?: number };
   /** Cards container width in % (default: 92) */
   cardsSize?: number;
-  /** Pre-rendered DOM snapshot of the cards grid (via html2canvas in the
-   *  editor). When present, drawCards short-circuits and blits this image
-   *  directly for pixel-perfect WYSIWYG parity. Falls back to the manual
-   *  canvas rendering pipeline when absent. */
+  /** Pre-rendered DOM snapshot of the cards grid (via modern-screenshot in
+   *  the editor — supports background-clip:text for gradient text natively).
+   *  When present, drawCards short-circuits and blits this image directly
+   *  for pixel-perfect WYSIWYG parity. Falls back to the manual canvas
+   *  rendering pipeline (a safety net only — kept for backward compat with
+   *  pre-snapshot posts) when absent. */
   cardsSnapshot?: HTMLImageElement;
   /** Cards grid bounding rect relative to the editor preview, expressed
    *  in percent (0-100) of the preview container. When present, the
@@ -1195,11 +1197,20 @@ function drawCards(
   // it directly for pixel-perfect parity with the editor. Falls back
   // to the manual canvas drawing below if the snapshot is missing.
   //
-  // The editor captures html2canvas at scale `videoW / previewEl.offsetWidth`,
+  // The editor captures via modern-screenshot at scale `videoW / previewEl.offsetWidth`,
   // so snap.width / snap.height already represent the exact pixel size the
   // cards occupy on the video canvas (for GRID: cardsSize% × videoW; for
   // FREE mode where the wrapper is `absolute inset-0`: full videoW/videoH).
   // We draw at natural bitmap size and just position via cardsPosition.
+  //
+  // The manual draw path below this branch is now a SAFETY NET only — it
+  // runs when the snapshot fails (cardsEl absent or zero-sized). In normal
+  // export conditions, the snapshot is always tried and modern-screenshot
+  // handles `background-clip: text` (gradient text on label/value/desc),
+  // newlines, and per-element fonts natively. Don't expect manual draw to
+  // reproduce the editor pixel-for-pixel — keep it functional but treat
+  // discrepancies vs editor as low-priority unless the snapshot path itself
+  // breaks.
   if (design?.cardsSnapshot) {
     const snap = design.cardsSnapshot;
     // WYSIWYG branch: when the editor measured the cards grid rect relative

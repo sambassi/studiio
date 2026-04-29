@@ -4117,8 +4117,8 @@ function InfographicPageInner() {
             setExportProgress(Math.round(((b + 0.3) / total) * 100));
             // Snapshot the live editor cards grid for WYSIWYG parity. The
             // [data-cards-grid] element only renders when activeSequence is
-            // Every iteration (including b > 0) captures a FRESH html2canvas
-            // snapshot of the cards grid rendered with the iteration's
+            // Every iteration (including b > 0) captures a FRESH DOM
+            // snapshot (modern-screenshot) of the cards grid rendered with the iteration's
             // variation content. Before PR #26's workaround we only
             // captured at b === 0 and every subsequent video inherited that
             // layout; skipping to the manual Canvas 2D fallback produced
@@ -4130,7 +4130,12 @@ function InfographicPageInner() {
             let cardsSnapshotRect: { x: number; y: number; width: number; height: number } | undefined;
             const prevSequenceCal = activeSequence;
             let didForceSequenceCal = false;
-            const shouldSnapshot = exportedSequences.cartes && bCards.length > 0 && !(cardsLabelGradient || cardsValueGradient || cardsDescriptionGradient);
+            // modern-screenshot supports `background-clip: text` natively, so
+            // the gradient gate that previously skipped the snapshot is gone.
+            // Snapshot is now the single source of truth for cards rendering;
+            // manual canvas draw in video-composer.ts only kicks in when the
+            // snapshot itself fails (cardsEl absent or zero-sized).
+            const shouldSnapshot = exportedSequences.cartes && bCards.length > 0;
             const originalCardsForBatch = cards; // captured once per iteration
             const needsStateSync = b > 0 && shouldSnapshot;
             if (shouldSnapshot && activeSequence !== 'cartes' && activeSequence !== 'all') {
@@ -4151,7 +4156,7 @@ function InfographicPageInner() {
             if (needsStateSync || didForceSequenceCal) {
               // 1. Wait for any newly-requested fonts (per-element font
               //    overrides applied to card text) to finish loading, so
-              //    html2canvas doesn't serialize fallback metrics.
+              //    modern-screenshot doesn't serialize fallback metrics.
               try {
                 if (typeof document !== 'undefined' && (document as any).fonts?.ready) {
                   await (document as any).fonts.ready;
@@ -4178,11 +4183,14 @@ function InfographicPageInner() {
               }
               console.log(`[Batch #${b}] cardsEl offsetWidth/Height:`, cardsEl?.offsetWidth, cardsEl?.offsetHeight);
               if (cardsEl && cardsEl.offsetWidth > 0 && shouldSnapshot) {
-                const html2canvas = (await import('html2canvas')).default;
+                const { domToCanvas } = await import('modern-screenshot');
                 const videoW = isReel ? 1080 : 1920;
                 const previewW = previewRef.current?.offsetWidth || (isReel ? 320 : 512);
                 const scale = videoW / previewW;
-                const canvas = await html2canvas(cardsEl, { backgroundColor: null, scale, logging: false });
+                // Wait for any web fonts to finish loading before snapshotting,
+                // otherwise modern-screenshot may serialize a fallback font.
+                try { await (document as any).fonts?.ready; } catch { /* ignore */ }
+                const canvas = await domToCanvas(cardsEl, { backgroundColor: undefined, scale });
                 const img = new Image();
                 img.src = canvas.toDataURL('image/png');
                 await new Promise<void>((r) => { img.onload = () => r(); });
@@ -4626,15 +4634,18 @@ function InfographicPageInner() {
           try {
             const cardsEl = document.querySelector('[data-cards-grid]') as HTMLElement | null;
             console.log('[Export] cardsEl offsetWidth/Height:', cardsEl?.offsetWidth, cardsEl?.offsetHeight);
-            if (cardsEl && cardsEl.offsetWidth > 0 && exportedSequences.cartes && cards.length > 0 && !(cardsLabelGradient || cardsValueGradient || cardsDescriptionGradient)) {
-              const html2canvas = (await import('html2canvas')).default;
+            if (cardsEl && cardsEl.offsetWidth > 0 && exportedSequences.cartes && cards.length > 0) {
+              const { domToCanvas } = await import('modern-screenshot');
               // Scale the capture so 1 DOM px = 1 video-canvas px. The
               // snapshot's intrinsic size then matches the cards' target
               // render size, and the composer can blit it at natural size.
+              // modern-screenshot supports background-clip: text natively, so
+              // gradient toggles no longer need to skip the snapshot.
               const videoW = isReel ? 1080 : 1920;
               const previewW = previewRef.current?.offsetWidth || (isReel ? 320 : 512);
               const scale = videoW / previewW;
-              const canvas = await html2canvas(cardsEl, { backgroundColor: null, scale, logging: false });
+              try { await (document as any).fonts?.ready; } catch { /* ignore */ }
+              const canvas = await domToCanvas(cardsEl, { backgroundColor: undefined, scale });
               const img = new Image();
               img.src = canvas.toDataURL('image/png');
               await new Promise<void>((r) => { img.onload = () => r(); });
