@@ -152,6 +152,7 @@ import { BrandingIndicator } from "@/components/shared/BrandingIndicator";
 import { useBranding } from "@/lib/hooks/useBranding";
 import { useAgentIAEnabled } from "@/lib/hooks/useAgentIAEnabled";
 import { AudioStudioPanel } from "@/components/creer/AudioStudioPanel";
+import { SequenceVoicesPanel } from "@/components/creer/SequenceVoicesPanel";
 import AudioDuckingTimeline from "@/components/creer/AudioDuckingTimeline";
 import AudioMixPreview from "@/components/creer/AudioMixPreview";
 import { analyseRushForDucking, type AudioKeyframe } from "@/lib/creer/audioDucking";
@@ -5577,6 +5578,36 @@ function InfographicPageInner() {
                   onCtaDurationChange={setCtaDuration}
                   hasRush={rushList.length > 0}
                   contentTheme={contentTheme}
+                />
+
+                {/* Per-sequence voice-overs (PR B) — sits next to the
+                    legacy AudioStudioPanel above. Both run in parallel:
+                    the legacy `audioVoiceUrl` keeps playing in background
+                    on existing posts, while new posts get fine-grained
+                    per-sequence voices. PR C wires the composer to play
+                    each sequenceVoices clip on its own offset. */}
+                <SequenceVoicesPanel
+                  sequenceVoices={sequenceVoices}
+                  userEdited={sequenceVoicesUserEdited}
+                  onChange={(key, patch) => {
+                    setSequenceVoices((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
+                  }}
+                  onUserEditedChange={(key, edited) => {
+                    setSequenceVoicesUserEdited((prev) => ({ ...prev, [key]: edited }));
+                  }}
+                  onResetText={(key) => {
+                    // Drop the userEdited flag → the existing auto-fill
+                    // useEffect re-runs and rewrites the text from the
+                    // current editor content (title/cards/etc.).
+                    setSequenceVoicesUserEdited((prev) => ({ ...prev, [key]: false }));
+                  }}
+                  introDuration={introDuration}
+                  cardsDuration={cardsDuration}
+                  videoDuration={videoDuration}
+                  ctaDuration={ctaDuration}
+                  hasCardsContent={cards.length > 0}
+                  hasVideoOverlay={!!videoOverlayText.trim() || rushList.length > 0}
+                  batchCount={batchCount}
                 />
 
                 {/* Live mix preview — lets the user hear the whole montage
