@@ -814,10 +814,10 @@ function CardsRailPanel({
             <textarea
               value={card.label}
               onChange={(e) => update(card.id, { label: e.target.value })}
-              rows={2}
+              rows={1}
               style={{ resize: 'vertical' }}
               className="w-full mt-1 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-white focus:border-purple-500 focus:outline-none"
-              placeholder="Titre de la carte (Entrée pour saut de ligne)"
+              placeholder="Titre — Entrée pour saut de ligne"
             />
           </div>
 
@@ -838,10 +838,10 @@ function CardsRailPanel({
               value={card.value}
               onChange={(e) => update(card.id, { value: e.target.value })}
               maxLength={24}
-              rows={2}
+              rows={1}
               style={{ resize: 'vertical' }}
               className="w-full mt-1 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs font-bold text-white focus:border-purple-500 focus:outline-none"
-              placeholder="ex: +30% (Entrée pour saut de ligne)"
+              placeholder="ex: +30% — Entrée pour saut de ligne"
             />
           </div>
 
@@ -8380,6 +8380,11 @@ function InfographicPageInner() {
                   if (selectedCardStyle === "Text Only" || card.textOnly) {
                     return (
                       <div className="flex flex-col items-center justify-center w-full px-2 py-1 text-center">
+                        {card.emoji && card.emoji.trim() !== "" && (
+                          <span className={`mb-1 inline-flex items-center justify-center ${format === "16:9" ? "text-lg" : "text-base"}`}>
+                            {renderCardIcon(card)}
+                          </span>
+                        )}
                         <p
                           className={`font-bold whitespace-pre-wrap ${labelGradStyle ? '' : 'text-white drop-shadow'}`}
                           style={labelGradStyle
@@ -8421,7 +8426,7 @@ function InfographicPageInner() {
                       )}
                       <div className="flex-1 min-w-0">
                         <p
-                          className={`font-bold whitespace-pre-wrap ${labelGradStyle ? '' : 'text-white'}`}
+                          className={labelGradStyle ? 'font-bold whitespace-pre-wrap' : 'font-bold text-white truncate'}
                           style={{ fontSize: scaledLabel, ...(labelGradStyle ?? {}) }}
                         >
                           {renderBoldMarkdown(card.label)}
