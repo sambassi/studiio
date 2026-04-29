@@ -131,7 +131,7 @@ import {
 } from "@/lib/constants/platforms";
 import FloatingPanel from "@/components/ui/FloatingPanel";
 import ColorWheel from "@/components/ui/ColorWheel";
-import { composeAndUpload, downloadBlob } from "@/lib/video-composer";
+import { composeAndUpload } from "@/lib/video-composer";
 import { Modal } from "@/components/ui/Modal";
 import { detectClips, extractClip, type DetectedClip } from "@/lib/clip-detector";
 import CropRushModal from "@/components/creer/CropRushModal";
@@ -4846,21 +4846,78 @@ function InfographicPageInner() {
             },
           });
           setExportProgress(85);
-          // Télécharger uniquement le fichier MP4
+          // ── Téléchargement MP4 ──
+          // Use the same server-side conversion path that Calendar's
+          // handleExportPost uses (proven reliable). The Bureau export used
+          // to call client-side `convertWebmToMp4` (FFmpeg.wasm via CDN) which
+          // failed silently when the CDN was blocked / slow / blocked by ad
+          // blockers, leaving the user with a .webm file or nothing at all.
+          // composeAndUpload already uploaded the WebM to Supabase, so we
+          // have a stable URL to feed to /api/convert/to-mp4.
           if (composedResult.blob && composedResult.blob.size > 0) {
-            await downloadBlob(
-              composedResult.blob,
-              `infographie-${title || 'afroboost'}.mp4`,
-              (pct, stage) => setExportProgress(85 + Math.round(pct * 0.15))
-            );
+            const downloadName = `infographie-${(title || 'afroboost').replace(/[^a-zA-Z0-9-_]+/g, '_')}.mp4`;
+            let downloaded = false;
+            if (composedResult.url && composedResult.url.toLowerCase().includes('webm')) {
+              try {
+                setExportProgress(88);
+                const convertRes = await fetch('/api/convert/to-mp4', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ videoUrl: composedResult.url }),
+                });
+                const convertData = await convertRes.json();
+                if (convertData.success && convertData.mp4Url) {
+                  setExportProgress(95);
+                  const mp4Res = await fetch(convertData.mp4Url);
+                  if (!mp4Res.ok) throw new Error(`MP4 fetch failed: HTTP ${mp4Res.status}`);
+                  const mp4Blob = await mp4Res.blob();
+                  const a = document.createElement('a');
+                  a.href = URL.createObjectURL(mp4Blob);
+                  a.download = downloadName;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+                  downloaded = true;
+                } else {
+                  console.warn('[Export Bureau] Server conversion failed:', convertData.error);
+                  showToast(`Conversion MP4 échouée : ${convertData.error || 'erreur serveur'} — téléchargement WebM en fallback`);
+                }
+              } catch (convErr) {
+                console.error('[Export Bureau] Server conversion error:', convErr);
+                showToast(`Conversion MP4 indisponible : ${(convErr as Error).message || 'erreur réseau'} — téléchargement WebM en fallback`);
+              }
+            }
+            // Fallback: if server conversion failed OR the upload returned no URL,
+            // download the original blob directly. Browser saves as .webm — user
+            // can convert manually or via QuickTime/VLC. Prevents "nothing happens"
+            // when /api/convert/to-mp4 is unreachable.
+            if (!downloaded) {
+              const url = URL.createObjectURL(composedResult.blob);
+              const isMp4 = composedResult.blob.type.includes('mp4');
+              const fallbackName = isMp4
+                ? downloadName
+                : downloadName.replace(/\.mp4$/i, '.webm');
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = fallbackName;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              setTimeout(() => URL.revokeObjectURL(url), 5000);
+              setExportProgress(100);
+            }
             await fetch('/api/credits/deduct', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ cost, reason: 'render', format: renderFormat }),
             }).catch(() => {});
+          } else {
+            showToast('Export bureau échoué : le rendu vidéo est vide. Réessayez ou utilisez un autre navigateur.');
           }
         } catch (e) {
-          console.warn('[Export Bureau] Erreur:', e);
+          console.error('[Export Bureau] Erreur:', e);
+          showToast(`Export bureau échoué : ${(e as Error)?.message || 'erreur inconnue'}`);
         }
       }
 
