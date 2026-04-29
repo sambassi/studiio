@@ -36,7 +36,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { useBranding } from '@/lib/hooks/useBranding';
-import { composeAndUpload, downloadBlob, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
+import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
 import { useTranslations, useLocale } from '@/i18n/client';
 import { AgentIAModal } from '@/components/creer/AgentIAModal';
 import { CardIcon } from '@/components/ui/CardIcon';
@@ -1733,6 +1733,7 @@ export default function CalendarPage() {
       setExportRendering(true);
       setExportRenderProgress(30);
       setExportRenderStage('Conversion MP4...');
+      const safeName = (post.title || 'video').replace(/[^a-zA-Z0-9-_]+/g, '_');
       try {
         // Use server-side FFmpeg conversion (reliable H.264 output)
         const convertRes = await fetch('/api/convert/to-mp4', {
@@ -1745,11 +1746,12 @@ export default function CalendarPage() {
           setExportRenderProgress(80);
           setExportRenderStage('Téléchargement...');
           const mp4Res = await fetch(convertData.mp4Url);
+          if (!mp4Res.ok) throw new Error(`Téléchargement MP4 échoué : HTTP ${mp4Res.status}`);
           const mp4Blob = await mp4Res.blob();
           const url = URL.createObjectURL(mp4Blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = `${(post.title || 'video').replace(/\s+/g, '_')}.mp4`;
+          a.download = `${safeName}.mp4`;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
@@ -1757,22 +1759,30 @@ export default function CalendarPage() {
           setExportRenderProgress(100);
           setExportRenderStage('MP4 prêt !');
         } else {
-          // Fallback: download WebM with correct extension
-          console.warn('[Export] Server conversion failed:', convertData.error);
+          // Server conversion failed — download the original WebM with an
+          // explicit message so the user understands they got a .webm and
+          // why. Previously this fallback was silent → user thought "ne
+          // fonctionne pas".
+          const errMsg = convertData.error || 'erreur serveur';
+          console.warn('[Export] Server conversion failed:', errMsg);
           const res = await fetch(meta.renderedVideoUrl);
+          if (!res.ok) throw new Error(`Téléchargement WebM échoué : HTTP ${res.status}`);
           const blob = await res.blob();
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = `${(post.title || 'video').replace(/\s+/g, '_')}.webm`;
+          a.download = `${safeName}.webm`;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
           setTimeout(() => URL.revokeObjectURL(url), 5000);
+          alert(`Conversion MP4 indisponible (${errMsg}). Le fichier a été téléchargé en .webm — ouvrez-le avec VLC, QuickTime ou convertissez-le ensuite.`);
         }
       } catch (err) {
+        const msg = (err as Error)?.message || 'erreur réseau';
         console.error('[Export] Server conversion error:', err);
         setExportRenderStage('Erreur de conversion');
+        alert(`Export bureau échoué : ${msg}. Vérifiez votre connexion et réessayez.`);
       } finally {
         setTimeout(() => { setExportRendering(false); setExportRenderProgress(0); setExportRenderStage(''); }, 3000);
       }
@@ -1867,6 +1877,24 @@ export default function CalendarPage() {
 
       // Download the composed video — use server-side conversion for proper MP4
       if (blob && blob.size > 0) {
+        const safeName = (post.title || 'montage').replace(/[^a-zA-Z0-9-_]+/g, '_');
+        // Trigger a direct download of the composed blob with the right
+        // extension. Used as the last-resort fallback when /api/convert/to-mp4
+        // is unreachable. The previous `downloadBlob()` helper went through
+        // client-side FFmpeg.wasm (CDN-loaded) which fails silently in many
+        // browsers — replaced with explicit blob download to mirror the
+        // /creer Bureau export fix (PR #100).
+        const directDownload = (b: Blob, ext: 'mp4' | 'webm') => {
+          const url = URL.createObjectURL(b);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${safeName}.${ext}`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 5000);
+        };
+
         if (renderedUrl && renderedUrl.includes('webm')) {
           // Server-side conversion for reliable MP4 output
           setExportRenderStage('Conversion MP4...');
@@ -1880,24 +1908,28 @@ export default function CalendarPage() {
             if (convertData.success && convertData.mp4Url) {
               setExportRenderStage('Téléchargement...');
               const mp4Res = await fetch(convertData.mp4Url);
+              if (!mp4Res.ok) throw new Error(`MP4 fetch HTTP ${mp4Res.status}`);
               const mp4Blob = await mp4Res.blob();
-              const url = URL.createObjectURL(mp4Blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `${(post.title || 'montage').replace(/\s+/g, '_')}.mp4`;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              setTimeout(() => URL.revokeObjectURL(url), 5000);
+              directDownload(mp4Blob, 'mp4');
             } else {
-              // Fallback to client-side (may produce WebM)
-              downloadBlob(blob, `${(post.title || 'montage').replace(/\s+/g, '_')}.mp4`);
+              const errMsg = convertData.error || 'erreur serveur';
+              console.warn('[Export] Server conversion failed:', errMsg);
+              const isWebm = blob.type.includes('webm');
+              directDownload(blob, isWebm ? 'webm' : 'mp4');
+              alert(`Conversion MP4 indisponible (${errMsg}). Le fichier a été téléchargé tel quel — ouvrez-le avec VLC ou QuickTime.`);
             }
-          } catch {
-            downloadBlob(blob, `${(post.title || 'montage').replace(/\s+/g, '_')}.mp4`);
+          } catch (convErr) {
+            console.error('[Export] Server conversion error:', convErr);
+            const isWebm = blob.type.includes('webm');
+            directDownload(blob, isWebm ? 'webm' : 'mp4');
+            alert(`Conversion MP4 indisponible (${(convErr as Error)?.message || 'erreur réseau'}). Le fichier a été téléchargé tel quel — ouvrez-le avec VLC ou QuickTime.`);
           }
         } else {
-          downloadBlob(blob, `${(post.title || 'montage').replace(/\s+/g, '_')}.mp4`);
+          // No server-convertible URL — download the local blob with the
+          // extension matching its actual MIME type so the user gets a file
+          // they can open immediately.
+          const isWebm = blob.type.includes('webm');
+          directDownload(blob, isWebm ? 'webm' : 'mp4');
         }
       }
 
@@ -1925,8 +1957,10 @@ export default function CalendarPage() {
         }
       }
     } catch (err) {
+      const msg = (err as Error)?.message || 'erreur inconnue';
       console.error('[Export] Montage composition failed:', err);
       setExportRenderStage(t('exportOverlay.errorMontage'));
+      alert(`Export bureau échoué : ${msg}. Si le post est incomplet (pas de cartes / pas de visuel), modifiez-le d'abord depuis /creer puis ré-exportez.`);
     } finally {
       setTimeout(() => {
         setExportRendering(false);
