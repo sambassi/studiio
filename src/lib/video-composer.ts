@@ -6,7 +6,7 @@
  */
 import type { AudioKeyframe } from './creer/audioDucking';
 
-const COMPOSER_VERSION = 'v33-client-side-mp4-transcode-2026-04-29';
+const COMPOSER_VERSION = 'v34-revert-client-mp4-back-to-webm-upload-2026-04-29';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -3198,38 +3198,10 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
 // ═══════════════════════════════════════════════════════════
 
 export async function composeAndUpload(options: ComposerOptions): Promise<{ blob: Blob; url: string | null; thumbnailUrl: string | null; composerVersion: string }> {
-  const { video: webmBlob, thumbnail: thumbnailBlob } = await composeVideo(options);
-  if (webmBlob.size === 0) {
+  const { video: blob, thumbnail: thumbnailBlob } = await composeVideo(options);
+  if (blob.size === 0) {
     console.error('[Composer] ❌ composeVideo produced an EMPTY blob (0 bytes). MediaRecorder likely failed to capture frames.');
     throw new Error('Le rendu vidéo a produit un fichier vide (0 octets). Votre navigateur ne supporte peut-être pas le codec vidéo requis. Essayez avec Chrome ou Edge.');
-  }
-
-  // ── Client-side WebM → MP4 transcode BEFORE upload ──
-  // Vercel serverless functions hit their 300s `maxDuration` limit when
-  // converting longer videos via /api/convert/to-mp4. Producing the MP4
-  // directly in the browser (FFmpeg WASM) eliminates that round-trip:
-  // the file lands in Supabase already as a proper H.264/AAC MP4 ready
-  // for IG/FB publish + desktop download. Falls back to uploading the
-  // original WebM if the transcode fails (CDN unreachable, SharedArrayBuffer
-  // missing on old Safari, etc.) — the existing server-side fallback in
-  // /api/convert/to-mp4 still kicks in for those legacy paths.
-  let blob: Blob = webmBlob;
-  if (webmBlob.type.includes('webm') || !webmBlob.type.includes('mp4')) {
-    options.onProgress?.(75, 'Conversion MP4 (dans votre navigateur)...');
-    try {
-      const transcoded = await convertWebmToMp4(webmBlob, (pct, stage) => {
-        // Map the transcode 0→100 onto the 75→90 slice of the global progress
-        options.onProgress?.(75 + Math.round(pct * 0.15), stage);
-      });
-      if (transcoded.type.includes('mp4') && transcoded.size > 0) {
-        blob = transcoded;
-        console.log('[Composer] Client-side transcode OK:', (blob.size / 1024 / 1024).toFixed(2), 'MB MP4');
-      } else {
-        console.warn('[Composer] Client transcode returned non-MP4 blob — falling back to WebM upload');
-      }
-    } catch (transcodeErr) {
-      console.error('[Composer] Client transcode error — falling back to WebM upload:', transcodeErr);
-    }
   }
 
   const isMP4 = blob.type.includes('mp4');

@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
           '-movflags', '+faststart',
           '-y',
           outputPath,
-        ], { timeout: 180000, maxBuffer: 10 * 1024 * 1024 });
+        ], { timeout: 270000, maxBuffer: 10 * 1024 * 1024 }); // 4 min 30, sous Vercel maxDuration 300s
         stderrCaptured = result.stderr || '';
         console.log(`[CONVERT-API] Conversion done in ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
       } catch (ffmpegErr: unknown) {
