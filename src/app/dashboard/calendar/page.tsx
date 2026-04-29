@@ -489,6 +489,8 @@ export default function CalendarPage() {
           extraSubtitle: (designMeta as any).extraSubtitle || undefined,
           extraTitlePosition: (designMeta as any).extraTitlePosition || undefined,
           extraSubtitlePosition: (designMeta as any).extraSubtitlePosition || undefined,
+          extraTitleTypography: (designMeta as any).extraTitleTypography || undefined,
+          extraSubtitleTypography: (designMeta as any).extraSubtitleTypography || undefined,
         },
         onProgress: (pct, stage) => { setRegenProgress(pct); setRegenStage(stage); },
       });
@@ -887,6 +889,8 @@ export default function CalendarPage() {
             extraSubtitle: (designMeta as any).extraSubtitle || undefined,
             extraTitlePosition: (designMeta as any).extraTitlePosition || undefined,
             extraSubtitlePosition: (designMeta as any).extraSubtitlePosition || undefined,
+            extraTitleTypography: (designMeta as any).extraTitleTypography || undefined,
+            extraSubtitleTypography: (designMeta as any).extraSubtitleTypography || undefined,
           },
           onProgress: (pct, stage) => {
             setExportRenderProgress(pct);
@@ -1478,6 +1482,8 @@ export default function CalendarPage() {
               extraSubtitle: (designMeta as any).extraSubtitle || undefined,
               extraTitlePosition: (designMeta as any).extraTitlePosition || undefined,
               extraSubtitlePosition: (designMeta as any).extraSubtitlePosition || undefined,
+              extraTitleTypography: (designMeta as any).extraTitleTypography || undefined,
+              extraSubtitleTypography: (designMeta as any).extraSubtitleTypography || undefined,
             },
             onProgress: (pct, stage) => {
               setExportRenderProgress(pct);
@@ -1850,6 +1856,8 @@ export default function CalendarPage() {
           extraSubtitle: (calDesign as any)?.extraSubtitle || undefined,
           extraTitlePosition: (calDesign as any)?.extraTitlePosition || undefined,
           extraSubtitlePosition: (calDesign as any)?.extraSubtitlePosition || undefined,
+          extraTitleTypography: (calDesign as any)?.extraTitleTypography || undefined,
+          extraSubtitleTypography: (calDesign as any)?.extraSubtitleTypography || undefined,
         },
         onProgress: (pct, stage) => {
           setExportRenderProgress(pct);

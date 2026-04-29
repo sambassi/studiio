@@ -811,12 +811,13 @@ function CardsRailPanel({
 
           <div>
             <label className="text-[9px] uppercase text-gray-500">Titre</label>
-            <input
-              type="text"
+            <textarea
               value={card.label}
               onChange={(e) => update(card.id, { label: e.target.value })}
+              rows={2}
+              style={{ resize: 'vertical' }}
               className="w-full mt-1 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs text-white focus:border-purple-500 focus:outline-none"
-              placeholder="Titre de la carte"
+              placeholder="Titre de la carte (Entrée pour saut de ligne)"
             />
           </div>
 
@@ -833,13 +834,14 @@ function CardsRailPanel({
 
           <div>
             <label className="text-[9px] uppercase text-gray-500">Valeur</label>
-            <input
-              type="text"
+            <textarea
               value={card.value}
               onChange={(e) => update(card.id, { value: e.target.value })}
-              maxLength={12}
+              maxLength={24}
+              rows={2}
+              style={{ resize: 'vertical' }}
               className="w-full mt-1 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs font-bold text-white focus:border-purple-500 focus:outline-none"
-              placeholder="ex: +30%"
+              placeholder="ex: +30% (Entrée pour saut de ligne)"
             />
           </div>
 
@@ -1391,6 +1393,23 @@ function InfographicPageInner() {
   const [extraTitle, setExtraTitle] = useState("");
   const [extraSubtitle, setExtraSubtitle] = useState("");
   const [showExtraTitleBlock, setShowExtraTitleBlock] = useState(false);
+  // ── Extra title typography (parité avec le titre principal) ────────────
+  const [extraTitleScale, setExtraTitleScale] = useState(1);
+  const [extraTitleGradient, setExtraTitleGradient] = useState(false);
+  const [extraTitleGradColor1, setExtraTitleGradColor1] = useState("#FFD700");
+  const [extraTitleGradColor2, setExtraTitleGradColor2] = useState("#FF6B6B");
+  const [extraTitleLetterSpacing, setExtraTitleLetterSpacing] = useState(0);
+  const [extraTitleLineHeight, setExtraTitleLineHeight] = useState(1.1);
+  const [extraTitleBold, setExtraTitleBold] = useState(true);
+  const [extraTitleItalic, setExtraTitleItalic] = useState(false);
+  const [extraSubtitleScale, setExtraSubtitleScale] = useState(1);
+  const [extraSubtitleGradient, setExtraSubtitleGradient] = useState(false);
+  const [extraSubtitleGradColor1, setExtraSubtitleGradColor1] = useState("#FFD700");
+  const [extraSubtitleGradColor2, setExtraSubtitleGradColor2] = useState("#FF6B6B");
+  const [extraSubtitleLetterSpacing, setExtraSubtitleLetterSpacing] = useState(0);
+  const [extraSubtitleLineHeight, setExtraSubtitleLineHeight] = useState(1.2);
+  const [extraSubtitleBold, setExtraSubtitleBold] = useState(false);
+  const [extraSubtitleItalic, setExtraSubtitleItalic] = useState(false);
   const [cards, setCards] = useState<InfoCard[]>([]);
   const [salesPhrases, setSalesPhrases] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -1659,6 +1678,7 @@ function InfographicPageInner() {
   const [cardsTextGradColor1, setCardsTextGradColor1] = useState("#a855f7");
   const [cardsTextGradColor2, setCardsTextGradColor2] = useState("#ec4899");
   const [ctaIconName, setCtaIconName] = useState<string | null>(null);
+  const [ctaIconSearch, setCtaIconSearch] = useState('');
   const [ctaIconColor, setCtaIconColor] = useState("#ffffff");
   const [ctaIconGradient, setCtaIconGradient] = useState(false);
   const [ctaIconGradColor1, setCtaIconGradColor1] = useState("#a855f7");
@@ -1807,6 +1827,22 @@ function InfographicPageInner() {
           setExtraSubtitle(cfg.extraSubtitle);
           if (cfg.extraSubtitle) setShowExtraTitleBlock(true);
         }
+        if (typeof cfg.extraTitleScale === 'number') setExtraTitleScale(cfg.extraTitleScale);
+        if (typeof cfg.extraTitleGradient === 'boolean') setExtraTitleGradient(cfg.extraTitleGradient);
+        if (typeof cfg.extraTitleGradColor1 === 'string') setExtraTitleGradColor1(cfg.extraTitleGradColor1);
+        if (typeof cfg.extraTitleGradColor2 === 'string') setExtraTitleGradColor2(cfg.extraTitleGradColor2);
+        if (typeof cfg.extraTitleLetterSpacing === 'number') setExtraTitleLetterSpacing(cfg.extraTitleLetterSpacing);
+        if (typeof cfg.extraTitleLineHeight === 'number') setExtraTitleLineHeight(cfg.extraTitleLineHeight);
+        if (typeof cfg.extraTitleBold === 'boolean') setExtraTitleBold(cfg.extraTitleBold);
+        if (typeof cfg.extraTitleItalic === 'boolean') setExtraTitleItalic(cfg.extraTitleItalic);
+        if (typeof cfg.extraSubtitleScale === 'number') setExtraSubtitleScale(cfg.extraSubtitleScale);
+        if (typeof cfg.extraSubtitleGradient === 'boolean') setExtraSubtitleGradient(cfg.extraSubtitleGradient);
+        if (typeof cfg.extraSubtitleGradColor1 === 'string') setExtraSubtitleGradColor1(cfg.extraSubtitleGradColor1);
+        if (typeof cfg.extraSubtitleGradColor2 === 'string') setExtraSubtitleGradColor2(cfg.extraSubtitleGradColor2);
+        if (typeof cfg.extraSubtitleLetterSpacing === 'number') setExtraSubtitleLetterSpacing(cfg.extraSubtitleLetterSpacing);
+        if (typeof cfg.extraSubtitleLineHeight === 'number') setExtraSubtitleLineHeight(cfg.extraSubtitleLineHeight);
+        if (typeof cfg.extraSubtitleBold === 'boolean') setExtraSubtitleBold(cfg.extraSubtitleBold);
+        if (typeof cfg.extraSubtitleItalic === 'boolean') setExtraSubtitleItalic(cfg.extraSubtitleItalic);
         if (Array.isArray(cfg.cards)) setCards(cfg.cards as InfoCard[]);
         if (Array.isArray(cfg.salesPhrases)) setSalesPhrases(cfg.salesPhrases as string[]);
         if (Array.isArray(cfg.pexelsPhotos)) setPexelsPhotos(cfg.pexelsPhotos as PexelsPhoto[]);
@@ -2331,6 +2367,22 @@ function InfographicPageInner() {
     if (typeof c.subtitle === 'string') setSubtitle(c.subtitle);
     if (typeof c.extraTitle === 'string') setExtraTitle(c.extraTitle);
     if (typeof c.extraSubtitle === 'string') setExtraSubtitle(c.extraSubtitle);
+    if (typeof c.extraTitleScale === 'number') setExtraTitleScale(c.extraTitleScale);
+    if (typeof c.extraTitleGradient === 'boolean') setExtraTitleGradient(c.extraTitleGradient);
+    if (typeof c.extraTitleGradColor1 === 'string') setExtraTitleGradColor1(c.extraTitleGradColor1);
+    if (typeof c.extraTitleGradColor2 === 'string') setExtraTitleGradColor2(c.extraTitleGradColor2);
+    if (typeof c.extraTitleLetterSpacing === 'number') setExtraTitleLetterSpacing(c.extraTitleLetterSpacing);
+    if (typeof c.extraTitleLineHeight === 'number') setExtraTitleLineHeight(c.extraTitleLineHeight);
+    if (typeof c.extraTitleBold === 'boolean') setExtraTitleBold(c.extraTitleBold);
+    if (typeof c.extraTitleItalic === 'boolean') setExtraTitleItalic(c.extraTitleItalic);
+    if (typeof c.extraSubtitleScale === 'number') setExtraSubtitleScale(c.extraSubtitleScale);
+    if (typeof c.extraSubtitleGradient === 'boolean') setExtraSubtitleGradient(c.extraSubtitleGradient);
+    if (typeof c.extraSubtitleGradColor1 === 'string') setExtraSubtitleGradColor1(c.extraSubtitleGradColor1);
+    if (typeof c.extraSubtitleGradColor2 === 'string') setExtraSubtitleGradColor2(c.extraSubtitleGradColor2);
+    if (typeof c.extraSubtitleLetterSpacing === 'number') setExtraSubtitleLetterSpacing(c.extraSubtitleLetterSpacing);
+    if (typeof c.extraSubtitleLineHeight === 'number') setExtraSubtitleLineHeight(c.extraSubtitleLineHeight);
+    if (typeof c.extraSubtitleBold === 'boolean') setExtraSubtitleBold(c.extraSubtitleBold);
+    if (typeof c.extraSubtitleItalic === 'boolean') setExtraSubtitleItalic(c.extraSubtitleItalic);
     if (Array.isArray(c.cards)) setCards(c.cards);
     if (Array.isArray(c.salesPhrases)) setSalesPhrases(c.salesPhrases);
     if (Array.isArray(c.pexelsPhotos)) setPexelsPhotos(c.pexelsPhotos);
@@ -2463,6 +2515,10 @@ function InfographicPageInner() {
         watermarkTextGradient, watermarkGradColor1, watermarkGradColor2,
         contentTheme, customTopic, title, subtitle,
         extraTitle, extraSubtitle,
+        extraTitleScale, extraTitleGradient, extraTitleGradColor1, extraTitleGradColor2,
+        extraTitleLetterSpacing, extraTitleLineHeight, extraTitleBold, extraTitleItalic,
+        extraSubtitleScale, extraSubtitleGradient, extraSubtitleGradColor1, extraSubtitleGradColor2,
+        extraSubtitleLetterSpacing, extraSubtitleLineHeight, extraSubtitleBold, extraSubtitleItalic,
         cards, salesPhrases,
         pexelsPhotos, selectedPhotoIndex, batchPhotoIndices,
         rushList,
@@ -4060,7 +4116,7 @@ function InfographicPageInner() {
             let cardsSnapshotRect: { x: number; y: number; width: number; height: number } | undefined;
             const prevSequenceCal = activeSequence;
             let didForceSequenceCal = false;
-            const shouldSnapshot = exportedSequences.cartes && bCards.length > 0;
+            const shouldSnapshot = exportedSequences.cartes && bCards.length > 0 && !(cardsLabelGradient || cardsValueGradient || cardsDescriptionGradient);
             const originalCardsForBatch = cards; // captured once per iteration
             const needsStateSync = b > 0 && shouldSnapshot;
             if (shouldSnapshot && activeSequence !== 'cartes' && activeSequence !== 'all') {
@@ -4256,6 +4312,26 @@ function InfographicPageInner() {
                 extraSubtitle: extraSubtitle || undefined,
                 extraTitlePosition,
                 extraSubtitlePosition,
+                extraTitleTypography: {
+                  scale: extraTitleScale,
+                  letterSpacing: extraTitleLetterSpacing,
+                  lineHeight: extraTitleLineHeight,
+                  bold: extraTitleBold,
+                  italic: extraTitleItalic,
+                  textGradient: extraTitleGradient,
+                  gradColor1: extraTitleGradColor1,
+                  gradColor2: extraTitleGradColor2,
+                },
+                extraSubtitleTypography: {
+                  scale: extraSubtitleScale,
+                  letterSpacing: extraSubtitleLetterSpacing,
+                  lineHeight: extraSubtitleLineHeight,
+                  bold: extraSubtitleBold,
+                  italic: extraSubtitleItalic,
+                  textGradient: extraSubtitleGradient,
+                  gradColor1: extraSubtitleGradColor1,
+                  gradColor2: extraSubtitleGradColor2,
+                },
               },
               onProgress: (pct) => {
                 setExportProgress(Math.round(((b + 0.3 + pct / 100 * 0.6) / total) * 100));
@@ -4295,7 +4371,7 @@ function InfographicPageInner() {
               platforms: selectedPublishPlatforms.map(p => PLATFORM_DISPLAY_NAMES[p]),
               scheduled_date: scheduledDate,
               scheduled_time: "12:00",
-              status: "draft",
+              status: (selectedPublishPlatforms.length > 0 && (renderedVideoUrl || (hasVideo ? null : (mediaUrl || posterUrl || null)))) ? "scheduled" : "draft",
               metadata: {
                 type: "infographic",
                 subtitle: bSubtitle,
@@ -4458,6 +4534,26 @@ function InfographicPageInner() {
                   extraSubtitle: extraSubtitle || undefined,
                   extraTitlePosition,
                   extraSubtitlePosition,
+                  extraTitleTypography: {
+                    scale: extraTitleScale,
+                    letterSpacing: extraTitleLetterSpacing,
+                    lineHeight: extraTitleLineHeight,
+                    bold: extraTitleBold,
+                    italic: extraTitleItalic,
+                    textGradient: extraTitleGradient,
+                    gradColor1: extraTitleGradColor1,
+                    gradColor2: extraTitleGradColor2,
+                  },
+                  extraSubtitleTypography: {
+                    scale: extraSubtitleScale,
+                    letterSpacing: extraSubtitleLetterSpacing,
+                    lineHeight: extraSubtitleLineHeight,
+                    bold: extraSubtitleBold,
+                    italic: extraSubtitleItalic,
+                    textGradient: extraSubtitleGradient,
+                    gradColor1: extraSubtitleGradColor1,
+                    gradColor2: extraSubtitleGradColor2,
+                  },
                 },
               },
             }),
@@ -4467,8 +4563,14 @@ function InfographicPageInner() {
             const postData = await postRes.json();
             if (postData.success && postData.post?.id) {
               createdPostIds.push(postData.post.id);
+            } else if (!postData.success) {
+              showToast(`Erreur lors de la programmation : ${postData.error || 'réponse inattendue du serveur'}`);
+              console.error('[Export→Calendar] POST /api/posts non-success:', postData);
             }
-          } catch { /* ignore parse errors */ }
+          } catch (err) {
+            showToast(`Erreur réseau lors de la programmation : ${err instanceof Error ? err.message : 'inconnue'}`);
+            console.error('[Export→Calendar] POST /api/posts network/parse error:', err);
+          }
         }
       }
 
@@ -4503,7 +4605,7 @@ function InfographicPageInner() {
           try {
             const cardsEl = document.querySelector('[data-cards-grid]') as HTMLElement | null;
             console.log('[Export] cardsEl offsetWidth/Height:', cardsEl?.offsetWidth, cardsEl?.offsetHeight);
-            if (cardsEl && cardsEl.offsetWidth > 0 && exportedSequences.cartes && cards.length > 0) {
+            if (cardsEl && cardsEl.offsetWidth > 0 && exportedSequences.cartes && cards.length > 0 && !(cardsLabelGradient || cardsValueGradient || cardsDescriptionGradient)) {
               const html2canvas = (await import('html2canvas')).default;
               // Scale the capture so 1 DOM px = 1 video-canvas px. The
               // snapshot's intrinsic size then matches the cards' target
@@ -4679,6 +4781,26 @@ function InfographicPageInner() {
               extraSubtitle: extraSubtitle || undefined,
               extraTitlePosition,
               extraSubtitlePosition,
+              extraTitleTypography: {
+                scale: extraTitleScale,
+                letterSpacing: extraTitleLetterSpacing,
+                lineHeight: extraTitleLineHeight,
+                bold: extraTitleBold,
+                italic: extraTitleItalic,
+                textGradient: extraTitleGradient,
+                gradColor1: extraTitleGradColor1,
+                gradColor2: extraTitleGradColor2,
+              },
+              extraSubtitleTypography: {
+                scale: extraSubtitleScale,
+                letterSpacing: extraSubtitleLetterSpacing,
+                lineHeight: extraSubtitleLineHeight,
+                bold: extraSubtitleBold,
+                italic: extraSubtitleItalic,
+                textGradient: extraSubtitleGradient,
+                gradColor1: extraSubtitleGradColor1,
+                gradColor2: extraSubtitleGradColor2,
+              },
             },
             onProgress: (pct, stage) => {
               setExportProgress(50 + Math.round(pct * 0.35));
@@ -5842,33 +5964,149 @@ function InfographicPageInner() {
                       <span className="text-[10px]">{showExtraTitleBlock ? '▲' : '▼'}</span>
                     </button>
                     {showExtraTitleBlock && (
-                      <div className="mt-2 space-y-2 rounded-lg border border-gray-800 bg-gray-900/40 p-3">
-                        <div>
-                          <label className="mb-1 block text-xs font-medium text-gray-400">
+                      <div className="mt-2 space-y-3 rounded-lg border border-gray-800 bg-gray-900/40 p-3">
+                        {/* ── Titre supplémentaire ── */}
+                        <div className="space-y-2 rounded-md border border-gray-800/60 bg-gray-900/40 p-2">
+                          <label className="block text-[11px] font-semibold uppercase tracking-wider text-purple-300">
                             Titre supplémentaire
                           </label>
-                          <input
-                            type="text"
+                          <textarea
                             value={extraTitle}
                             onChange={(e) => setExtraTitle(e.target.value)}
-                            placeholder="Optionnel"
+                            placeholder="Optionnel — Entrée pour saut de ligne"
+                            rows={2}
+                            style={{ resize: 'vertical' }}
                             className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-white focus:border-purple-500 focus:outline-none"
                           />
+                          <div className="grid grid-cols-2 gap-2 text-[10px] text-gray-300">
+                            <label className="flex flex-col gap-1">
+                              <span className="text-gray-400">Taille ({extraTitleScale.toFixed(2)}x)</span>
+                              <input
+                                type="range" min={0.5} max={3} step={0.05}
+                                value={extraTitleScale}
+                                onChange={(e) => setExtraTitleScale(parseFloat(e.target.value))}
+                                className="accent-purple-500"
+                              />
+                            </label>
+                            <label className="flex flex-col gap-1">
+                              <span className="text-gray-400">Espacement ({extraTitleLetterSpacing}px)</span>
+                              <input
+                                type="range" min={-2} max={20} step={0.5}
+                                value={extraTitleLetterSpacing}
+                                onChange={(e) => setExtraTitleLetterSpacing(parseFloat(e.target.value))}
+                                className="accent-purple-500"
+                              />
+                            </label>
+                            <label className="flex flex-col gap-1">
+                              <span className="text-gray-400">Hauteur de ligne ({extraTitleLineHeight.toFixed(2)})</span>
+                              <input
+                                type="range" min={0.8} max={2} step={0.05}
+                                value={extraTitleLineHeight}
+                                onChange={(e) => setExtraTitleLineHeight(parseFloat(e.target.value))}
+                                className="accent-purple-500"
+                              />
+                            </label>
+                            <div className="flex items-end gap-3">
+                              <label className="flex items-center gap-1 cursor-pointer">
+                                <input type="checkbox" checked={extraTitleBold} onChange={(e) => setExtraTitleBold(e.target.checked)} className="accent-purple-500" />
+                                <span className="font-bold">Gras</span>
+                              </label>
+                              <label className="flex items-center gap-1 cursor-pointer">
+                                <input type="checkbox" checked={extraTitleItalic} onChange={(e) => setExtraTitleItalic(e.target.checked)} className="accent-purple-500" />
+                                <span className="italic">Italique</span>
+                              </label>
+                            </div>
+                          </div>
+                          <label className="flex items-center gap-2 text-[10px] text-gray-300 cursor-pointer">
+                            <input type="checkbox" checked={extraTitleGradient} onChange={(e) => setExtraTitleGradient(e.target.checked)} className="accent-pink-500" />
+                            <span>Dégradé sur le texte</span>
+                          </label>
+                          {extraTitleGradient && (
+                            <div className="flex items-center gap-2">
+                              <label className="flex items-center gap-1 text-[10px] text-gray-400">
+                                <span>Couleur 1</span>
+                                <input type="color" value={extraTitleGradColor1} onChange={(e) => setExtraTitleGradColor1(e.target.value)} className="h-6 w-8 cursor-pointer rounded border border-gray-700 bg-transparent" />
+                              </label>
+                              <label className="flex items-center gap-1 text-[10px] text-gray-400">
+                                <span>Couleur 2</span>
+                                <input type="color" value={extraTitleGradColor2} onChange={(e) => setExtraTitleGradColor2(e.target.value)} className="h-6 w-8 cursor-pointer rounded border border-gray-700 bg-transparent" />
+                              </label>
+                            </div>
+                          )}
                         </div>
-                        <div>
-                          <label className="mb-1 block text-xs font-medium text-gray-400">
+
+                        {/* ── Sous-titre supplémentaire ── */}
+                        <div className="space-y-2 rounded-md border border-gray-800/60 bg-gray-900/40 p-2">
+                          <label className="block text-[11px] font-semibold uppercase tracking-wider text-pink-300">
                             Sous-titre supplémentaire
                           </label>
-                          <input
-                            type="text"
+                          <textarea
                             value={extraSubtitle}
                             onChange={(e) => setExtraSubtitle(e.target.value)}
-                            placeholder="Optionnel"
+                            placeholder="Optionnel — Entrée pour saut de ligne"
+                            rows={2}
+                            style={{ resize: 'vertical' }}
                             className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-white focus:border-purple-500 focus:outline-none"
                           />
+                          <div className="grid grid-cols-2 gap-2 text-[10px] text-gray-300">
+                            <label className="flex flex-col gap-1">
+                              <span className="text-gray-400">Taille ({extraSubtitleScale.toFixed(2)}x)</span>
+                              <input
+                                type="range" min={0.5} max={3} step={0.05}
+                                value={extraSubtitleScale}
+                                onChange={(e) => setExtraSubtitleScale(parseFloat(e.target.value))}
+                                className="accent-pink-500"
+                              />
+                            </label>
+                            <label className="flex flex-col gap-1">
+                              <span className="text-gray-400">Espacement ({extraSubtitleLetterSpacing}px)</span>
+                              <input
+                                type="range" min={-2} max={20} step={0.5}
+                                value={extraSubtitleLetterSpacing}
+                                onChange={(e) => setExtraSubtitleLetterSpacing(parseFloat(e.target.value))}
+                                className="accent-pink-500"
+                              />
+                            </label>
+                            <label className="flex flex-col gap-1">
+                              <span className="text-gray-400">Hauteur de ligne ({extraSubtitleLineHeight.toFixed(2)})</span>
+                              <input
+                                type="range" min={0.8} max={2} step={0.05}
+                                value={extraSubtitleLineHeight}
+                                onChange={(e) => setExtraSubtitleLineHeight(parseFloat(e.target.value))}
+                                className="accent-pink-500"
+                              />
+                            </label>
+                            <div className="flex items-end gap-3">
+                              <label className="flex items-center gap-1 cursor-pointer">
+                                <input type="checkbox" checked={extraSubtitleBold} onChange={(e) => setExtraSubtitleBold(e.target.checked)} className="accent-pink-500" />
+                                <span className="font-bold">Gras</span>
+                              </label>
+                              <label className="flex items-center gap-1 cursor-pointer">
+                                <input type="checkbox" checked={extraSubtitleItalic} onChange={(e) => setExtraSubtitleItalic(e.target.checked)} className="accent-pink-500" />
+                                <span className="italic">Italique</span>
+                              </label>
+                            </div>
+                          </div>
+                          <label className="flex items-center gap-2 text-[10px] text-gray-300 cursor-pointer">
+                            <input type="checkbox" checked={extraSubtitleGradient} onChange={(e) => setExtraSubtitleGradient(e.target.checked)} className="accent-pink-500" />
+                            <span>Dégradé sur le texte</span>
+                          </label>
+                          {extraSubtitleGradient && (
+                            <div className="flex items-center gap-2">
+                              <label className="flex items-center gap-1 text-[10px] text-gray-400">
+                                <span>Couleur 1</span>
+                                <input type="color" value={extraSubtitleGradColor1} onChange={(e) => setExtraSubtitleGradColor1(e.target.value)} className="h-6 w-8 cursor-pointer rounded border border-gray-700 bg-transparent" />
+                              </label>
+                              <label className="flex items-center gap-1 text-[10px] text-gray-400">
+                                <span>Couleur 2</span>
+                                <input type="color" value={extraSubtitleGradColor2} onChange={(e) => setExtraSubtitleGradColor2(e.target.value)} className="h-6 w-8 cursor-pointer rounded border border-gray-700 bg-transparent" />
+                              </label>
+                            </div>
+                          )}
                         </div>
+
                         <p className="text-[10px] text-gray-500">
-                          Affichés sous le titre principal dans la séquence titre, en plus petit. Vide = ignoré.
+                          Affichés dans la séquence titre. Drag pour repositionner. Vide = ignoré.
                         </p>
                       </div>
                     )}
@@ -5987,9 +6225,11 @@ function InfographicPageInner() {
                           {/* Content */}
                           <div className="flex-1 space-y-1.5 min-w-0">
                             <div className="flex gap-1">
-                              <input type="text" value={card.label} onChange={(e) => updateCard(card.id, "label", e.target.value)}
-                                className="flex-1 min-w-0 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs font-bold text-white focus:border-purple-500 focus:outline-none" placeholder="Label" />
-                              <input type="text" value={card.value} onChange={(e) => updateCard(card.id, "value", e.target.value)}
+                              <textarea value={card.label} onChange={(e) => updateCard(card.id, "label", e.target.value)} rows={1}
+                                style={{ resize: 'vertical' }}
+                                className="flex-1 min-w-0 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs font-bold text-white focus:border-purple-500 focus:outline-none" placeholder="Label (Entrée = saut de ligne)" />
+                              <textarea value={card.value} onChange={(e) => updateCard(card.id, "value", e.target.value)} rows={1}
+                                style={{ resize: 'vertical' }}
                                 className="w-14 rounded border border-gray-600 bg-gray-700 px-2 py-1 text-xs font-bold text-purple-400 focus:border-purple-500 focus:outline-none" placeholder="Val" />
                             </div>
                             <textarea value={card.description} onChange={(e) => updateCard(card.id, "description", e.target.value)} rows={2} maxLength={200}
@@ -7783,15 +8023,27 @@ function InfographicPageInner() {
               </div>
               {extraTitle && (
                 <div
-                  className="absolute z-20 select-none cursor-grab active:cursor-grabbing"
+                  className="absolute z-20 select-none cursor-grab active:cursor-grabbing text-center"
                   style={{
                     left: `${extraTitlePosition.x}%`,
                     top: `${extraTitlePosition.y}%`,
                     transform: 'translate(-50%, -50%)',
-                    fontSize: `${(format === "16:9" ? 9 : 7) * textScale}px`,
-                    fontWeight: titleBold ? 900 : 400,
-                    color: titleColor,
-                    whiteSpace: 'nowrap',
+                    fontSize: `${(format === "16:9" ? 9 : 7) * textScale * extraTitleScale}px`,
+                    letterSpacing: `${extraTitleLetterSpacing}px`,
+                    lineHeight: extraTitleLineHeight,
+                    fontWeight: extraTitleBold ? 900 : 400,
+                    fontStyle: extraTitleItalic ? 'italic' : 'normal',
+                    fontFamily: titleFont ? (FONT_CSS_MAP[titleFont] || titleFont) : undefined,
+                    whiteSpace: 'pre-wrap',
+                    ...(extraTitleGradient ? {
+                      backgroundImage: `linear-gradient(135deg, ${extraTitleGradColor1}, ${extraTitleGradColor2})`,
+                      backgroundColor: 'transparent',
+                      WebkitBackgroundClip: 'text',
+                      backgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      color: 'transparent',
+                      display: 'inline-block',
+                    } : { color: titleColor }),
                   }}
                   onMouseDown={(e) => { e.preventDefault(); setDragging("extraTitle"); }}
                 >
@@ -7800,15 +8052,27 @@ function InfographicPageInner() {
               )}
               {extraSubtitle && (
                 <div
-                  className="absolute z-20 select-none cursor-grab active:cursor-grabbing"
+                  className="absolute z-20 select-none cursor-grab active:cursor-grabbing text-center"
                   style={{
                     left: `${extraSubtitlePosition.x}%`,
                     top: `${extraSubtitlePosition.y}%`,
                     transform: 'translate(-50%, -50%)',
-                    fontSize: `${(format === "16:9" ? 6.75 : 5.25) * textScale}px`,
-                    opacity: 0.8,
-                    color: titleColor,
-                    whiteSpace: 'nowrap',
+                    fontSize: `${(format === "16:9" ? 6.75 : 5.25) * textScale * extraSubtitleScale}px`,
+                    letterSpacing: `${extraSubtitleLetterSpacing}px`,
+                    lineHeight: extraSubtitleLineHeight,
+                    fontWeight: extraSubtitleBold ? 900 : 400,
+                    fontStyle: extraSubtitleItalic ? 'italic' : 'normal',
+                    fontFamily: titleFont ? (FONT_CSS_MAP[titleFont] || titleFont) : undefined,
+                    whiteSpace: 'pre-wrap',
+                    ...(extraSubtitleGradient ? {
+                      backgroundImage: `linear-gradient(135deg, ${extraSubtitleGradColor1}, ${extraSubtitleGradColor2})`,
+                      backgroundColor: 'transparent',
+                      WebkitBackgroundClip: 'text',
+                      backgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      color: 'transparent',
+                      display: 'inline-block',
+                    } : { color: titleColor, opacity: 0.8 }),
                   }}
                   onMouseDown={(e) => { e.preventDefault(); setDragging("extraSubtitle"); }}
                 >
@@ -7955,6 +8219,19 @@ function InfographicPageInner() {
                 // Cards-specific font overrides the page-wide selectedFont.
                 // Falls back to `undefined` (inherit selectedFont) when unset.
                 const cardsFontFamily = cardsFont ? (FONT_CSS_MAP[cardsFont] || cardsFont) : undefined;
+                const _cardsGradStyle = {
+                  backgroundImage: `linear-gradient(135deg, ${cardsTextGradColor1}, ${cardsTextGradColor2})`,
+                  backgroundColor: 'transparent',
+                  WebkitBackgroundClip: 'text',
+                  backgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  color: 'transparent',
+                  display: 'inline-block',
+                  whiteSpace: 'pre-wrap' as const,
+                } as const;
+                const labelGradStyle = cardsLabelGradient ? _cardsGradStyle : null;
+                const valueGradStyle = cardsValueGradient ? _cardsGradStyle : null;
+                const descGradStyle = cardsDescriptionGradient ? _cardsGradStyle : null;
                 const renderCardInner = (card: InfoCard) => {
                   // ── Compact ──
                   if (selectedCardStyle === "Compact") {
@@ -7973,21 +8250,23 @@ function InfographicPageInner() {
                           </span>
                         )}
                         <p
-                          className="text-center font-bold text-white drop-shadow"
-                          style={{ fontSize: scaledLabel }}
+                          className={`text-center font-bold whitespace-pre-wrap ${labelGradStyle ? '' : 'text-white drop-shadow'}`}
+                          style={{ fontSize: scaledLabel, ...(labelGradStyle ?? {}) }}
                         >
                           {renderBoldMarkdown(card.label)}
                         </p>
                         <p
-                          className="text-center font-black drop-shadow"
-                          style={{ fontSize: scaledValue, color: card.color }}
+                          className={`text-center font-black whitespace-pre-wrap ${valueGradStyle ? '' : 'drop-shadow'}`}
+                          style={valueGradStyle
+                            ? { fontSize: scaledValue, ...valueGradStyle }
+                            : { fontSize: scaledValue, color: card.color }}
                         >
                           {card.value}
                         </p>
                         {card.description && (
                           <p
-                            className="text-center text-white/60"
-                            style={{ fontSize: scaledDesc }}
+                            className={`text-center whitespace-pre-wrap ${descGradStyle ? '' : 'text-white/60'}`}
+                            style={{ fontSize: scaledDesc, ...(descGradStyle ?? {}) }}
                           >
                             {renderBoldMarkdown(truncateAtWord(card.description, 70))}
                           </p>
@@ -8007,21 +8286,23 @@ function InfographicPageInner() {
                             <span className="text-sm inline-flex items-center">{renderCardIcon(card)}</span>
                           )}
                           <p
-                            className="font-bold text-white"
-                            style={{ fontSize: scaledLabel }}
+                            className={`font-bold whitespace-pre-wrap ${labelGradStyle ? '' : 'text-white'}`}
+                            style={{ fontSize: scaledLabel, ...(labelGradStyle ?? {}) }}
                           >
                             {renderBoldMarkdown(card.label)}
                           </p>
                         </div>
                         <p
-                          className="text-white/70 leading-relaxed mb-1"
-                          style={{ fontSize: scaledDesc }}
+                          className={`leading-relaxed mb-1 whitespace-pre-wrap ${descGradStyle ? '' : 'text-white/70'}`}
+                          style={{ fontSize: scaledDesc, ...(descGradStyle ?? {}) }}
                         >
                           {renderBoldMarkdown(truncateAtWord(card.description, 90))}
                         </p>
                         <p
-                          className="font-black"
-                          style={{ fontSize: scaledValue, color: card.color }}
+                          className="font-black whitespace-pre-wrap"
+                          style={valueGradStyle
+                            ? { fontSize: scaledValue, ...valueGradStyle }
+                            : { fontSize: scaledValue, color: card.color }}
                         >
                           {card.value}
                         </p>
@@ -8033,17 +8314,16 @@ function InfographicPageInner() {
                     return (
                       <div className="flex flex-col items-center justify-center rounded-lg bg-black/50 px-2 py-2 backdrop-blur-sm border border-white/10 w-full">
                         <p
-                          className="font-black drop-shadow"
-                          style={{
-                            fontSize: `${Math.round(13 * textScale)}px`,
-                            color: card.color,
-                          }}
+                          className={`font-black whitespace-pre-wrap ${valueGradStyle ? '' : 'drop-shadow'}`}
+                          style={valueGradStyle
+                            ? { fontSize: `${Math.round(13 * textScale)}px`, ...valueGradStyle }
+                            : { fontSize: `${Math.round(13 * textScale)}px`, color: card.color }}
                         >
                           {card.value}
                         </p>
                         <p
-                          className="font-medium text-white/80 mt-0.5 text-center"
-                          style={{ fontSize: scaledDesc }}
+                          className={`font-medium mt-0.5 text-center whitespace-pre-wrap ${labelGradStyle ? '' : 'text-white/80'}`}
+                          style={{ fontSize: scaledDesc, ...(labelGradStyle ?? {}) }}
                         >
                           {renderBoldMarkdown(card.label)}
                         </p>
@@ -8061,14 +8341,16 @@ function InfographicPageInner() {
                           <span className="text-xs inline-flex items-center">{renderCardIcon(card)}</span>
                         )}
                         <p
-                          className="text-white/80 flex-1"
-                          style={{ fontSize: scaledLabel }}
+                          className={`flex-1 whitespace-pre-wrap ${labelGradStyle ? '' : 'text-white/80'}`}
+                          style={{ fontSize: scaledLabel, ...(labelGradStyle ?? {}) }}
                         >
                           {renderBoldMarkdown(card.label)}
                         </p>
                         <p
-                          className="font-bold"
-                          style={{ fontSize: scaledValue, color: card.color }}
+                          className="font-bold whitespace-pre-wrap"
+                          style={valueGradStyle
+                            ? { fontSize: scaledValue, ...valueGradStyle }
+                            : { fontSize: scaledValue, color: card.color }}
                         >
                           {card.value}
                         </p>
@@ -8085,23 +8367,27 @@ function InfographicPageInner() {
                     return (
                       <div className="flex flex-col items-center justify-center w-full px-2 py-1 text-center">
                         <p
-                          className="font-bold text-white drop-shadow"
-                          style={{ fontSize: scaledLabel, color: card.color }}
+                          className={`font-bold whitespace-pre-wrap ${labelGradStyle ? '' : 'text-white drop-shadow'}`}
+                          style={labelGradStyle
+                            ? { fontSize: scaledLabel, ...labelGradStyle }
+                            : { fontSize: scaledLabel, color: card.color }}
                         >
                           {renderBoldMarkdown(card.label)}
                         </p>
                         {card.description && (
                           <p
-                            className="text-white/70 leading-snug"
-                            style={{ fontSize: scaledDesc }}
+                            className={`leading-snug whitespace-pre-wrap ${descGradStyle ? '' : 'text-white/70'}`}
+                            style={{ fontSize: scaledDesc, ...(descGradStyle ?? {}) }}
                           >
                             {renderBoldMarkdown(truncateAtWord(card.description, 120))}
                           </p>
                         )}
                         {card.value && (
                           <p
-                            className="font-black mt-0.5"
-                            style={{ fontSize: scaledValue, color: card.color }}
+                            className="font-black mt-0.5 whitespace-pre-wrap"
+                            style={valueGradStyle
+                              ? { fontSize: scaledValue, ...valueGradStyle }
+                              : { fontSize: scaledValue, color: card.color }}
                           >
                             {card.value}
                           </p>
@@ -8121,16 +8407,17 @@ function InfographicPageInner() {
                       )}
                       <div className="flex-1 min-w-0">
                         <p
-                          className="font-bold text-white truncate"
-                          style={{ fontSize: scaledLabel }}
+                          className={`font-bold whitespace-pre-wrap ${labelGradStyle ? '' : 'text-white'}`}
+                          style={{ fontSize: scaledLabel, ...(labelGradStyle ?? {}) }}
                         >
                           {renderBoldMarkdown(card.label)}
                         </p>
                         {card.description && (
                           <p
-                            className="text-white/50"
+                            className={descGradStyle ? '' : 'text-white/50'}
                             style={{
                               fontSize: scaledDesc,
+                              ...(descGradStyle ?? {}),
                               display: '-webkit-box',
                               WebkitBoxOrient: 'vertical',
                               WebkitLineClamp: 2,
@@ -8142,8 +8429,10 @@ function InfographicPageInner() {
                         )}
                       </div>
                       <p
-                        className="font-black flex-shrink-0"
-                        style={{ fontSize: scaledValue, color: card.color }}
+                        className="font-black flex-shrink-0 whitespace-pre-wrap"
+                        style={valueGradStyle
+                          ? { fontSize: scaledValue, ...valueGradStyle }
+                          : { fontSize: scaledValue, color: card.color }}
                       >
                         {card.value}
                       </p>
@@ -8361,7 +8650,7 @@ function InfographicPageInner() {
                 <div className="absolute inset-0 border border-dashed border-yellow-500/0 group-hover/cta:border-yellow-500/40 rounded pointer-events-none transition-colors" />
                 {salesPhrases.length > 0 && (
                   <p
-                    className={`font-medium ${ctaTextGradient ? '' : 'drop-shadow'}`}
+                    className={`font-medium whitespace-pre-wrap ${ctaTextGradient ? '' : 'drop-shadow'}`}
                     style={{
                       fontSize: `${(format === "16:9" ? 10 : 8) * ctaTextScale}px`,
                       letterSpacing: `${ctaLetterSpacing}px`,
@@ -8384,7 +8673,7 @@ function InfographicPageInner() {
                   </p>
                 )}
                 <p
-                  className={`mt-0.5 font-black uppercase ${watermarkTextGradient ? '' : 'drop-shadow-lg'}`}
+                  className={`mt-0.5 font-black uppercase whitespace-pre-wrap ${watermarkTextGradient ? '' : 'drop-shadow-lg'}`}
                   style={{
                     fontSize: `${(format === "16:9" ? 16 : 12) * ctaTextScale}px`,
                     letterSpacing: `${ctaLetterSpacing}px`,
@@ -8406,7 +8695,7 @@ function InfographicPageInner() {
                   {ctaMainText || "AFROBOOST"}
                 </p>
                 <p
-                  className={`font-bold mt-1 uppercase ${ctaTextGradient ? '' : 'drop-shadow'}`}
+                  className={`font-bold mt-1 uppercase whitespace-pre-wrap ${ctaTextGradient ? '' : 'drop-shadow'}`}
                   style={{
                     fontSize: `${(format === "16:9" ? 12 : 9) * ctaTextScale}px`,
                     letterSpacing: `${ctaLetterSpacing}px`,
@@ -9006,25 +9295,64 @@ function InfographicPageInner() {
                 <span className="text-[9px] text-gray-400 uppercase">Icone SVG</span>
                 {ctaIconName && (<button type="button" onClick={() => setCtaIconName(null)} className="text-[9px] text-red-400 hover:text-red-300">Retirer</button>)}
               </div>
-              <select value={ctaIconName || ''} onChange={(e) => setCtaIconName(e.target.value || null)} className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white">
-                <option value="">Aucune</option>
-                <option value="Sparkles">Sparkles</option>
-                <option value="Heart">Heart</option>
-                <option value="Star">Star</option>
-                <option value="Zap">Zap</option>
-                <option value="Flame">Flame</option>
-                <option value="Trophy">Trophy</option>
-                <option value="Target">Target</option>
-                <option value="Crown">Crown</option>
-                <option value="Award">Award</option>
-                <option value="Gem">Gem</option>
-                <option value="Rocket">Rocket</option>
-                <option value="Lightbulb">Lightbulb</option>
-                <option value="Diamond">Diamond</option>
-                <option value="HeartPulse">HeartPulse</option>
-                <option value="Bell">Bell</option>
-                <option value="Megaphone">Megaphone</option>
-              </select>
+              {ctaIconName && (
+                <div className="flex items-center gap-2">
+                  <div className="h-10 w-10 rounded border border-gray-600 bg-gray-700 flex items-center justify-center flex-shrink-0">
+                    {renderLucideIcon(ctaIconName, {
+                      size: 24,
+                      color: ctaIconColor || '#FFFFFF',
+                      gradient: ctaIconGradient ? { start: ctaIconGradColor1, end: ctaIconGradColor2, direction: 'd' } : undefined,
+                      gradientId: `cta-prev-${ctaIconName}`,
+                    })}
+                  </div>
+                  <span className="text-[10px] text-gray-300 font-mono">{ctaIconName}</span>
+                </div>
+              )}
+              <input
+                type="text"
+                placeholder="Rechercher une icône..."
+                value={ctaIconSearch}
+                onChange={(e) => setCtaIconSearch(e.target.value)}
+                className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-[10px] text-white placeholder-gray-500"
+              />
+              <div className="max-h-[200px] overflow-y-auto rounded border border-gray-700 bg-gray-900/40 p-2 space-y-2">
+                {Object.entries(ICON_LIBRARY).map(([category, names]) => {
+                  const q = ctaIconSearch.toLowerCase().trim();
+                  const filteredNames = q
+                    ? names.filter((nm) => {
+                        if (nm.toLowerCase().includes(q)) return true;
+                        if (category.toLowerCase().includes(q)) return true;
+                        const kw = ICON_KEYWORDS[nm];
+                        if (kw && kw.some((k: string) => k.includes(q))) return true;
+                        return false;
+                      })
+                    : names;
+                  if (filteredNames.length === 0) return null;
+                  return (
+                    <div key={category}>
+                      <div className="text-[9px] uppercase tracking-wider text-gray-500 mb-1">{category}</div>
+                      <div className="grid grid-cols-6 gap-1">
+                        {filteredNames.map((nm) => {
+                          const Icon = ICON_MAP[nm];
+                          if (!Icon) return null;
+                          const selected = ctaIconName === nm;
+                          return (
+                            <button
+                              key={nm}
+                              type="button"
+                              onClick={() => setCtaIconName(nm)}
+                              className={`h-8 w-8 rounded-lg bg-gray-800 hover:bg-gray-700 hover:scale-110 transition flex items-center justify-center ${selected ? 'ring-2 ring-yellow-500' : ''}`}
+                              title={nm}
+                            >
+                              <Icon size={16} color={ctaIconColor || '#FFFFFF'} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
               {ctaIconName && (<>
                 <div>
                   <span className="text-[8px] text-gray-500">Taille ({ctaIconSize}px)</span>
@@ -9044,20 +9372,22 @@ function InfographicPageInner() {
                 )}
               </>)}
             </div>
-            <input
-              type="text"
+            <textarea
               value={ctaMainText}
               onChange={(e) => setCtaMainText(e.target.value)}
+              rows={2}
+              style={{ resize: 'vertical' }}
               className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white focus:border-purple-500 focus:outline-none"
-              placeholder="Nom de marque"
+              placeholder="Nom de marque (Entrée pour saut de ligne)"
             />
             <div className="flex gap-1">
-              <input
-                type="text"
+              <textarea
                 value={ctaSubText}
                 onChange={(e) => setCtaSubText(e.target.value)}
+                rows={2}
+                style={{ resize: 'vertical' }}
                 className="flex-1 rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white focus:border-purple-500 focus:outline-none"
-                placeholder="Call-to-action"
+                placeholder="Call-to-action (Entrée pour saut de ligne)"
               />
               <button
                 onClick={async () => {

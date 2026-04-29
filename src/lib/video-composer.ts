@@ -6,7 +6,7 @@
  */
 import type { AudioKeyframe } from './creer/audioDucking';
 
-const COMPOSER_VERSION = 'v27-extra-title-positions-2026-04-28';
+const COMPOSER_VERSION = 'v29-extra-title-typography-newlines-2026-04-29';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -148,6 +148,28 @@ export interface DesignOptions {
   extraTitlePosition?: { x?: number; y?: number };
   /** Absolute position of extraSubtitle. Default {x:50, y:58}. */
   extraSubtitlePosition?: { x?: number; y?: number };
+  /** Extra title typography (parité avec titleTypography) — scale, gradient, weight... */
+  extraTitleTypography?: {
+    scale?: number;
+    letterSpacing?: number;
+    lineHeight?: number;
+    bold?: boolean;
+    italic?: boolean;
+    textGradient?: boolean;
+    gradColor1?: string;
+    gradColor2?: string;
+  };
+  /** Extra subtitle typography. */
+  extraSubtitleTypography?: {
+    scale?: number;
+    letterSpacing?: number;
+    lineHeight?: number;
+    bold?: boolean;
+    italic?: boolean;
+    textGradient?: boolean;
+    gradColor1?: string;
+    gradColor2?: string;
+  };
   /** CTA typography (letterSpacing, lineHeight, optional gradient) */
   ctaTypography?: {
     letterSpacing?: number;
@@ -622,6 +644,33 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
   return out.length > 0 ? out : [text];
 }
 
+/**
+ * Render a (potentially multi-line) string with `ctx.fillText`. Splits on
+ * `\r?\n` and stacks each line with the given vertical step. The supplied
+ * (x, y) is the position of the FIRST line; subsequent lines are drawn
+ * `lineStep` pixels below. Single-line text behaves identically to
+ * `ctx.fillText(text, x, y)`. Use this anywhere a user-editable string
+ * (card.label, card.value, ctaMainText, etc.) is written without going
+ * through `wrapText`.
+ */
+function fillMultilineText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  lineStep: number,
+) {
+  if (!text) return;
+  const lines = text.split(/\r?\n/);
+  if (lines.length === 1) {
+    ctx.fillText(lines[0], x, y);
+    return;
+  }
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], x, y + i * lineStep);
+  }
+}
+
 /** Draw text with a dark outline for better readability on any background */
 function fillTextWithOutline(
   ctx: CanvasRenderingContext2D, text: string, x: number, y: number,
@@ -1008,53 +1057,84 @@ function drawIntro(
 
   // Optional extra title / subtitle — drawn at INDEPENDENT absolute positions
   // (default {50%, 50%} and {50%, 58%}) so the user can drag each one freely
-  // in the editor. v26 and earlier rendered them stacked below the main title;
-  // v27+ uses absolute positions from design.extraTitlePosition / extraSubtitlePosition.
+  // in the editor. Honours extraTitleTypography / extraSubtitleTypography for
+  // scale, weight, italic, letter-spacing, line-height and text gradient
+  // (parité avec le titre principal).
   const extraTitleText = (design?.extraTitle || '').trim();
   const extraSubtitleText = (design?.extraSubtitle || '').trim();
   if (extraTitleText || extraSubtitleText) {
-    const extraTitleSize = Math.max(10, Math.round(fontSize * 0.5));
-    const extraSubtitleSize = Math.max(9, Math.round(extraTitleSize * 0.75));
-    const extraLineHeightMul = design?.titleTypography?.lineHeight || 1.1;
+    const exTT = design?.extraTitleTypography;
+    const exST = design?.extraSubtitleTypography;
+    const baseExtraTitleSize = Math.max(10, Math.round(fontSize * 0.5));
+    const baseExtraSubtitleSize = Math.max(9, Math.round(baseExtraTitleSize * 0.75));
+    const extraTitleSize = Math.max(8, Math.round(baseExtraTitleSize * (exTT?.scale ?? 1)));
+    const extraSubtitleSize = Math.max(8, Math.round(baseExtraSubtitleSize * (exST?.scale ?? 1)));
+
+    const drawExtra = (
+      text: string,
+      x: number,
+      y: number,
+      size: number,
+      typo: NonNullable<DesignOptions['extraTitleTypography']> | undefined,
+      defaultAlpha: number,
+      defaultBold: boolean,
+    ) => {
+      const isBold = typo?.bold ?? defaultBold;
+      const isItalic = typo?.italic ?? false;
+      const fw = isBold ? '900 ' : '400 ';
+      const fs = isItalic ? 'italic ' : '';
+      const lhMul = typo?.lineHeight ?? (design?.titleTypography?.lineHeight || 1.1);
+      const ls = typo?.letterSpacing ?? 0;
+      ctx.font = `${fs}${fw}${size}px "${fontFamily}", sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.filter = dropShadowBaseFilter(w);
+      const lines = wrapText(ctx, text, titleWidth);
+      const lineSpacing = size * lhMul;
+      const totalH = (lines.length - 1) * lineSpacing;
+      const startY = y - totalH / 2;
+      // Compute paint style: gradient bounded to the text bbox so the
+      // hue spans across the visible characters (a canvas-wide gradient
+      // would give a near-uniform color on small text).
+      const wantGrad = !!(typo?.textGradient && typo?.gradColor1 && typo?.gradColor2);
+      let widestLine = 0;
+      for (const ln of lines) {
+        const m = ctx.measureText(ln).width;
+        if (m > widestLine) widestLine = m;
+      }
+      const totalTextH = lines.length * size + (lines.length - 1) * (lineSpacing - size);
+      let paint: string | CanvasGradient;
+      if (wantGrad) {
+        const gx0 = x - widestLine / 2;
+        const gy0 = y - totalTextH / 2;
+        const g = ctx.createLinearGradient(gx0, gy0, gx0 + widestLine, gy0 + totalTextH);
+        g.addColorStop(0, typo!.gradColor1!);
+        g.addColorStop(1, typo!.gradColor2!);
+        paint = g;
+      } else {
+        paint = hexToRgba(titleColor, defaultAlpha);
+      }
+      ctx.fillStyle = paint;
+      for (let i = 0; i < lines.length; i++) {
+        if (ls) {
+          fillTextWithSpacing(ctx, lines[i], x, startY + i * lineSpacing, ls);
+        } else {
+          ctx.fillText(lines[i], x, startY + i * lineSpacing);
+        }
+      }
+      ctx.filter = 'none';
+    };
 
     if (extraTitleText) {
       const exX = ((design?.extraTitlePosition?.x ?? 50) / 100) * w;
       const exY = ((design?.extraTitlePosition?.y ?? 50) / 100) * h;
-      ctx.font = `${fontStyle}${fontWeight} ${extraTitleSize}px "${fontFamily}", sans-serif`;
-      ctx.fillStyle = hexToRgba(titleColor, titleAlpha);
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.filter = dropShadowBaseFilter(w);
-      const exLines = wrapText(ctx, extraTitleText, titleWidth);
-      const exLineSpacing = extraTitleSize * extraLineHeightMul;
-      const totalH = (exLines.length - 1) * exLineSpacing;
-      const startY = exY - totalH / 2;
-      for (let i = 0; i < exLines.length; i++) {
-        if (titleLetterSpacing) {
-          fillTextWithSpacing(ctx, exLines[i], exX, startY + i * exLineSpacing, titleLetterSpacing);
-        } else {
-          ctx.fillText(exLines[i], exX, startY + i * exLineSpacing);
-        }
-      }
-      ctx.filter = 'none';
+      drawExtra(extraTitleText, exX, exY, extraTitleSize, exTT, titleAlpha, true);
     }
 
     if (extraSubtitleText) {
       const exSX = ((design?.extraSubtitlePosition?.x ?? 50) / 100) * w;
       const exSY = ((design?.extraSubtitlePosition?.y ?? 58) / 100) * h;
-      ctx.font = `${fontStyle}${fontWeight} ${extraSubtitleSize}px "${fontFamily}", sans-serif`;
-      ctx.fillStyle = hexToRgba(titleColor, 0.8);
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.filter = dropShadowBaseFilter(w);
-      const exSubLines = wrapText(ctx, extraSubtitleText, titleWidth);
-      const exSubLineSpacing = extraSubtitleSize * extraLineHeightMul;
-      const totalSubH = (exSubLines.length - 1) * exSubLineSpacing;
-      const startSubY = exSY - totalSubH / 2;
-      for (let i = 0; i < exSubLines.length; i++) {
-        ctx.fillText(exSubLines[i], exSX, startSubY + i * exSubLineSpacing);
-      }
-      ctx.filter = 'none';
+      drawExtra(extraSubtitleText, exSX, exSY, extraSubtitleSize, exST, 0.8, false);
     }
     // Restore baseline default
     ctx.textBaseline = 'alphabetic';
@@ -1086,15 +1166,18 @@ function drawCards(
   const _ct = design?.cardsTypography;
   const _hasColors = !!(_ct?.gradColor1 && _ct?.gradColor2);
   const _legacyAll = !!_ct?.textGradient;
-  const _mkGrad = () => {
-    const g = ctx.createLinearGradient(0, 0, w, h);
+  const wantLabelGrad = _hasColors && (_legacyAll || !!_ct?.labelGradient);
+  const wantValueGrad = _hasColors && (_legacyAll || !!_ct?.valueGradient);
+  const wantDescGrad  = _hasColors && (_legacyAll || !!_ct?.descriptionGradient);
+  const mkLocalGrad = (gx: number, gy: number, gw: number, gh: number): CanvasGradient => {
+    const g = ctx.createLinearGradient(gx, gy, gx + gw, gy + gh);
     g.addColorStop(0, _ct!.gradColor1!);
     g.addColorStop(1, _ct!.gradColor2!);
     return g;
   };
-  const labelGrad: CanvasGradient | null = (_hasColors && (_legacyAll || _ct?.labelGradient)) ? _mkGrad() : null;
-  const valueGrad: CanvasGradient | null = (_hasColors && (_legacyAll || _ct?.valueGradient)) ? _mkGrad() : null;
-  const descGrad: CanvasGradient | null = (_hasColors && (_legacyAll || _ct?.descriptionGradient)) ? _mkGrad() : null;
+  const labelGradAt = (gx: number, gy: number, gw: number, gh: number) => wantLabelGrad ? mkLocalGrad(gx, gy, gw, gh) : null;
+  const valueGradAt = (gx: number, gy: number, gw: number, gh: number) => wantValueGrad ? mkLocalGrad(gx, gy, gw, gh) : null;
+  const descGradAt  = (gx: number, gy: number, gw: number, gh: number) => wantDescGrad  ? mkLocalGrad(gx, gy, gw, gh) : null;
 
   // eslint-disable-next-line no-console
   console.log('[Composer] drawCards: snapshot in design?', !!design?.cardsSnapshot);
@@ -1199,6 +1282,9 @@ function drawCards(
   // override. Draws label + optional description + optional value centered
   // in the slot with no frame, no border, no icon, no background.
   const drawTextOnly = (card: CardData, x: number, y: number, cardW: number, cardH: number) => {
+    const labelGrad = labelGradAt(x, y, cardW, cardH);
+    const valueGrad = valueGradAt(x, y, cardW, cardH);
+    const descGrad = descGradAt(x, y, cardW, cardH);
     ctx.save();
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'center';
@@ -1229,7 +1315,7 @@ function drawCards(
       curY += (hasDesc ? descSize / 2 : labelSize / 2) + gap + valueSize / 2;
       ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`;
       ctx.fillStyle = valueGrad || card.color || '#FFFFFF';
-      ctx.fillText(card.value!, x + cardW / 2, curY);
+      fillMultilineText(ctx, card.value!, x + cardW / 2, curY, valueSize);
     }
     ctx.restore();
   };
@@ -1250,6 +1336,9 @@ function drawCards(
     cards.slice(0, maxCards).forEach((card, i) => {
       const gridY = cardsY + i * (cardH + gap);
       const { x, y } = applyCardPos(card, cardsX, gridY, cardW, cardH);
+      const labelGrad = labelGradAt(x, y, cardW, cardH);
+      const valueGrad = valueGradAt(x, y, cardW, cardH);
+      const descGrad = descGradAt(x, y, cardW, cardH);
       drawTextOnly(card, x, y, cardW, cardH);
     });
     ctx.textBaseline = 'alphabetic';
@@ -1283,6 +1372,9 @@ function drawCards(
       const gridX = cardsX + col * (cardW + gap);
       const gridY = cardsY + row * (cardH + gap);
       const { x, y } = applyCardPos(card, gridX, gridY, cardW, cardH);
+      const labelGrad = labelGradAt(x, y, cardW, cardH);
+      const valueGrad = valueGradAt(x, y, cardW, cardH);
+      const descGrad = descGradAt(x, y, cardW, cardH);
 
       if (card.textOnly) { drawTextOnly(card, x, y, cardW, cardH); return; }
 
@@ -1301,14 +1393,14 @@ function drawCards(
       ctx.font = `900 ${bigValueSize}px "${fontFamily}", sans-serif`;
       ctx.textAlign = 'center'; ctx.fillStyle = valueGrad || card.color || accent;
       ctx.shadowColor = 'rgba(0,0,0,0.2)'; ctx.shadowBlur = 2; ctx.shadowOffsetY = 1;
-      ctx.fillText(card.value, x + cardW / 2, curY);
+      fillMultilineText(ctx, card.value, x + cardW / 2, curY, bigValueSize);
       ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
       curY += bigValueSize + innerGap;
 
       // Row 2: label (small, font-medium, text-white/80)
       ctx.font = `500 ${descSize}px "${fontFamily}", sans-serif`;
       ctx.fillStyle = descGrad || 'rgba(255,255,255,0.8)';
-      ctx.fillText(card.label, x + cardW / 2, curY);
+      fillMultilineText(ctx, card.label, x + cardW / 2, curY, descSize);
 
       // Keep paddingX referenced (lint-safe for unused var in some paths).
       void paddingX;
@@ -1393,6 +1485,9 @@ function drawCards(
       const gridX = cardsX + col * (cardW + gap);
       const gridY = cardsY + row * (cardH + gap);
       const { x, y } = applyCardPos(card, gridX, gridY, cardW, cardH);
+      const labelGrad = labelGradAt(x, y, cardW, cardH);
+      const valueGrad = valueGradAt(x, y, cardW, cardH);
+      const descGrad = descGradAt(x, y, cardW, cardH);
       const { labelLines, valueLines, descLines } = pre[i];
 
       if (card.textOnly) { drawTextOnly(card, x, y, cardW, cardH); return; }
@@ -1489,6 +1584,9 @@ function drawCards(
       const gridX = cardsX + col * (cardW + gridGap);
       const gridY = cardsY + row * (cardH + gridGap);
       const { x, y } = applyCardPos(card, gridX, gridY, cardW, cardH);
+      const labelGrad = labelGradAt(x, y, cardW, cardH);
+      const valueGrad = valueGradAt(x, y, cardW, cardH);
+      const descGrad = descGradAt(x, y, cardW, cardH);
 
       if (card.textOnly) { drawTextOnly(card, x, y, cardW, cardH); return; }
 
@@ -1519,7 +1617,7 @@ function drawCards(
         }
       }
       ctx.font = `700 ${labelSize}px "${fontFamily}", sans-serif`; ctx.fillStyle = labelGrad || '#FFFFFF';
-      ctx.fillText(card.label, labelStartX, curY + (row1H - labelSize) / 2);
+      fillMultilineText(ctx, card.label, labelStartX, curY + (row1H - labelSize) / 2, labelSize);
       curY += row1H + rowGap;
 
       // Row 2: description (text-white/70, max 90 chars, 2 lines)
@@ -1537,7 +1635,7 @@ function drawCards(
       // Row 3: value (font-black, color: card.color)
       ctx.font = `900 ${valueSize}px "${fontFamily}", sans-serif`;
       ctx.fillStyle = valueGrad || card.color || accent;
-      ctx.fillText(card.value, contentX, curY);
+      fillMultilineText(ctx, card.value, contentX, curY, valueSize);
 
       ctx.textBaseline = 'alphabetic';
     });
@@ -1572,6 +1670,9 @@ function drawCards(
       const gridX = cardsX + col * (cardW + gridGap);
       const gridY = cardsY + row * (cardH + gridGap);
       const { x, y } = applyCardPos(card, gridX, gridY, cardW, cardH);
+      const labelGrad = labelGradAt(x, y, cardW, cardH);
+      const valueGrad = valueGradAt(x, y, cardW, cardH);
+      const descGrad = descGradAt(x, y, cardW, cardH);
 
       if (card.textOnly) { drawTextOnly(card, x, y, cardW, cardH); return; }
 
@@ -1605,13 +1706,13 @@ function drawCards(
       // Label (middle, flex-1, text-white/80)
       ctx.font = `400 ${labelSize}px "${fontFamily}", sans-serif`;
       ctx.fillStyle = labelGrad || 'rgba(255,255,255,0.8)';
-      ctx.fillText(card.label, labelX, rowY + (rowH - labelSize) / 2);
+      fillMultilineText(ctx, card.label, labelX, rowY + (rowH - labelSize) / 2, labelSize);
 
       // Value (right, font-bold, card.color)
       ctx.font = `700 ${valueSize}px "${fontFamily}", sans-serif`;
       ctx.textAlign = 'right';
       ctx.fillStyle = valueGrad || card.color || accent;
-      ctx.fillText(card.value, x + cardW - paddingX, rowY + (rowH - valueSize) / 2);
+      fillMultilineText(ctx, card.value, x + cardW - paddingX, rowY + (rowH - valueSize) / 2, valueSize);
 
       ctx.textBaseline = 'alphabetic';
     });
@@ -1648,6 +1749,9 @@ function drawCards(
       const gridY = cardsY + i * (cardH + gap);
       const gridX = cardsX;
       const { x, y } = applyCardPos(card, gridX, gridY, cardW, cardH);
+      const labelGrad = labelGradAt(x, y, cardW, cardH);
+      const valueGrad = valueGradAt(x, y, cardW, cardH);
+      const descGrad = descGradAt(x, y, cardW, cardH);
 
       if (card.textOnly) { drawTextOnly(card, x, y, cardW, cardH); return; }
 
