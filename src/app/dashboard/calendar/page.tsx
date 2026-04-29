@@ -434,6 +434,7 @@ export default function CalendarPage() {
         logoUrl: meta.logoUrl || designMeta.logoUrl || null,
         musicUrl: meta.musicUrl || null,
         voiceUrl: meta.voiceUrl || null,
+        sequenceVoiceUrls: (meta as any).sequenceVoiceUrls || undefined,
         introDuration: safeDuration(meta.sequences?.intro, 5),
         cardsDuration: (meta.cards?.length > 0 || meta.textCards?.length > 0)
           ? safeDuration(meta.sequences?.cards, 6)
@@ -838,6 +839,7 @@ export default function CalendarPage() {
           logoUrl,
           musicUrl,
           voiceUrl,
+          sequenceVoiceUrls: (meta as any).sequenceVoiceUrls || undefined,
           introDuration: seq?.intro ?? 5,
           cardsDuration: seq?.cards ?? ((meta.cards?.length > 0 || meta.textCards?.length > 0) ? 6 : 0),
           videoDuration: seq?.video ?? 12,
@@ -1431,6 +1433,7 @@ export default function CalendarPage() {
             logoUrl,
             musicUrl,
             voiceUrl,
+            sequenceVoiceUrls: (meta as any).sequenceVoiceUrls || undefined,
             introDuration: seq?.intro ?? 5,
             cardsDuration: seq?.cards ?? ((meta.cards?.length > 0 || meta.textCards?.length > 0) ? 6 : 0),
             videoDuration: seq?.video ?? 12,
@@ -1927,6 +1930,7 @@ export default function CalendarPage() {
         logoUrl,
         musicUrl,
         voiceUrl,
+        sequenceVoiceUrls: (meta as any)?.sequenceVoiceUrls || undefined,
         introDuration: seq?.intro ?? 5,
         cardsDuration: seq?.cards ?? ((meta?.cards?.length > 0 || meta?.textCards?.length > 0) ? 6 : 0),
         videoDuration: seq?.video ?? 12,
