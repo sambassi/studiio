@@ -4407,6 +4407,15 @@ function InfographicPageInner() {
               voiceUrl: audioVoiceUrl || undefined,
               musicVolume: audioMusicVolume,
               voiceVolume: audioVoiceVolume,
+              // Per-sequence voice-overs (PR C) — composer plays each at
+              // its sequence offset. Falls back to legacy voiceUrl when
+              // these are all undefined.
+              sequenceVoiceUrls: {
+                titre: sequenceVoices.titre.audioUrl || undefined,
+                cartes: sequenceVoices.cartes.audioUrl || undefined,
+                video: sequenceVoices.video.audioUrl || undefined,
+                cta: sequenceVoices.cta.audioUrl || undefined,
+              },
               audioKeyframes,
               introDuration: exportedSequences.titre ? introDuration : 0,
               cardsDuration: bCards.length > 0 && exportedSequences.cartes ? cardsDuration : 0,
@@ -4574,7 +4583,17 @@ function InfographicPageInner() {
                 cardGroups: cardGroups.length > 0 ? cardGroups : undefined,
                 musicUrl: audioMusicUrl || undefined,
                 voiceUrl: audioVoiceUrl || undefined,
-                hasAudio: !!(audioMusicUrl || audioVoiceUrl),
+                hasAudio: !!(audioMusicUrl || audioVoiceUrl || sequenceVoices.titre.audioUrl || sequenceVoices.cartes.audioUrl || sequenceVoices.video.audioUrl || sequenceVoices.cta.audioUrl),
+                // Per-sequence voice-overs persisted in metadata so the
+                // calendar regenerate path can replay them. Stored as a
+                // simple URL map (not the full SequenceVoice with text/
+                // userEdited — that's editor-only state).
+                sequenceVoiceUrls: {
+                  titre: sequenceVoices.titre.audioUrl || undefined,
+                  cartes: sequenceVoices.cartes.audioUrl || undefined,
+                  video: sequenceVoices.video.audioUrl || undefined,
+                  cta: sequenceVoices.cta.audioUrl || undefined,
+                },
                 audioKeyframes: audioKeyframes.length > 0 ? audioKeyframes : undefined,
                 sequences: {
                   intro: exportedSequences.titre ? introDuration : 0,
@@ -4858,6 +4877,12 @@ function InfographicPageInner() {
             voiceUrl: audioVoiceUrl || undefined,
             musicVolume: audioMusicVolume,
             voiceVolume: audioVoiceVolume,
+            sequenceVoiceUrls: {
+              titre: sequenceVoices.titre.audioUrl || undefined,
+              cartes: sequenceVoices.cartes.audioUrl || undefined,
+              video: sequenceVoices.video.audioUrl || undefined,
+              cta: sequenceVoices.cta.audioUrl || undefined,
+            },
             audioKeyframes,
             introDuration: exportedSequences.titre ? introDuration : 0,
             cardsDuration: cards.length > 0 && exportedSequences.cartes ? cardsDuration : 0,

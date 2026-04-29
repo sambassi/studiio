@@ -6,7 +6,7 @@
  */
 import type { AudioKeyframe } from './creer/audioDucking';
 
-const COMPOSER_VERSION = 'v34-revert-client-mp4-back-to-webm-upload-2026-04-29';
+const COMPOSER_VERSION = 'v35-per-sequence-voice-overs-2026-04-29';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -304,6 +304,22 @@ export interface ComposerOptions {
   voiceUrl?: string | null;
   musicVolume?: number;
   voiceVolume?: number;
+  /**
+   * Per-sequence voice-overs (PR C of voice-per-sequence series).
+   * One audio URL per sequence. When present, each clip plays at its
+   * sequence's cumulative offset (sum of preceding sequence durations)
+   * and is clipped at the sequence end. The legacy `voiceUrl` keeps
+   * acting as a global background voice when these are all undefined —
+   * preserves backward compat for posts created before this feature.
+   * Sequences with no audio for the user simply skip — silence in that
+   * window plus the music plays at its baseline volume.
+   */
+  sequenceVoiceUrls?: {
+    titre?: string | null;
+    cartes?: string | null;
+    video?: string | null;
+    cta?: string | null;
+  };
   introDuration?: number;
   cardsDuration?: number;
   videoDuration?: number;
@@ -2454,6 +2470,29 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   if (voiceUrl) {
     voiceEl = await loadAudioElement(voiceUrl);
   }
+  // ── Per-sequence voice-overs (PR C of voice-per-sequence series) ──
+  // Load each sequence's voice <audio> element (if any). They're played
+  // at their cumulative-offset start time inside each respective sequence
+  // window, alongside the legacy global music + voice. `voiceEl` keeps
+  // working for posts that haven't migrated yet — sequence voices simply
+  // overlap if both are configured.
+  const SEQ_VOICE_KEYS = ['titre', 'cartes', 'video', 'cta'] as const;
+  type SeqVoiceKey = typeof SEQ_VOICE_KEYS[number];
+  const seqVoiceEls: Record<SeqVoiceKey, HTMLAudioElement | null> = {
+    titre: null, cartes: null, video: null, cta: null,
+  };
+  if (options.sequenceVoiceUrls) {
+    await Promise.all(SEQ_VOICE_KEYS.map(async (k) => {
+      const u = options.sequenceVoiceUrls?.[k];
+      if (u) seqVoiceEls[k] = await loadAudioElement(u);
+    }));
+    const loadedCount = SEQ_VOICE_KEYS.filter((k) => seqVoiceEls[k]).length;
+    if (loadedCount > 0) {
+      console.log('[Composer] Per-sequence voice-overs loaded:', loadedCount, '/4 —', SEQ_VOICE_KEYS.filter((k) => seqVoiceEls[k]).join(', '));
+    }
+  }
+  const hasAnySeqVoice = SEQ_VOICE_KEYS.some((k) => seqVoiceEls[k]);
+
   // Validate voice buffer — if duration is too short, discard it so we use the <audio> element instead
   let validVoiceBuffer = options.voiceBuffer;
   if (validVoiceBuffer) {
@@ -2464,8 +2503,8 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     }
   }
 
-  const hasAudio = !!options.musicBuffer || !!validVoiceBuffer || musicEl !== null || voiceEl !== null;
-  console.log('[Composer] Audio — musicBuffer:', !!options.musicBuffer, 'voiceBuffer:', !!validVoiceBuffer, 'musicEl:', !!musicEl, 'voiceEl:', !!voiceEl, 'hasAudio:', hasAudio);
+  const hasAudio = !!options.musicBuffer || !!validVoiceBuffer || musicEl !== null || voiceEl !== null || hasAnySeqVoice;
+  console.log('[Composer] Audio — musicBuffer:', !!options.musicBuffer, 'voiceBuffer:', !!validVoiceBuffer, 'musicEl:', !!musicEl, 'voiceEl:', !!voiceEl, 'seqVoices:', hasAnySeqVoice, 'hasAudio:', hasAudio);
 
   // Critical check: if poster is needed but failed to load, abort early with clear error
   if (posterUrl && !posterImg) {
@@ -2784,6 +2823,25 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       }
     }
 
+    // ── Per-sequence voice-overs: route each <audio> element through the
+    // AudioContext like the legacy voice. `seqVoiceConnected[key]` flags
+    // are used at audio-start to play() each at its sequence offset.
+    for (const k of SEQ_VOICE_KEYS) {
+      const el = seqVoiceEls[k];
+      if (!el) continue;
+      try {
+        const src = audioCtx.createMediaElementSource(el);
+        const gain = audioCtx.createGain();
+        gain.gain.value = options.voiceVolume ?? 1.0;
+        src.connect(gain);
+        gain.connect(audioDest);
+        console.log('[Composer] ✅ Seq voice', k, '<audio> connected');
+      } catch (err) {
+        console.warn('[Composer] ⚠️ Seq voice', k, 'routing failed (may already be tied to another ctx):', err);
+        seqVoiceEls[k] = null; // give up on this one
+      }
+    }
+
     // ── RUSH VIDEO AUDIO: route through AudioContext so the rush's own
     // sound track gets embedded in the recorded file (and can be ducked
     // via the keyframe graph below). createMediaElementSource disconnects
@@ -3078,6 +3136,49 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     } else if (voiceElConnected && voiceEl) {
       voiceEl.currentTime = 0;
       voiceEl.play().then(() => console.log('[Composer] ✅ Voice <audio> PLAYING')).catch(err => console.error('[Composer] ❌ Voice play failed:', err));
+    }
+
+    // ── Per-sequence voice-overs: schedule play() at each sequence's
+    // cumulative offset, and a corresponding pause() at the sequence end.
+    // Offsets are calculated from the durations passed in options. If a
+    // voice's intrinsic length exceeds the sequence window, it gets
+    // clipped — the user was warned in the editor (overrun badge).
+    if (hasAnySeqVoice) {
+      const introS = introDuration || 0;
+      const cardsS = cardsDuration || 0;
+      const videoS = videoDuration || 0;
+      const ctaS = ctaDuration || 0;
+      const offsets: Record<SeqVoiceKey, { start: number; end: number }> = {
+        titre:  { start: 0,                              end: introS },
+        cartes: { start: introS,                         end: introS + cardsS },
+        video:  { start: introS + cardsS,                end: introS + cardsS + videoS },
+        cta:    { start: introS + cardsS + videoS,       end: introS + cardsS + videoS + ctaS },
+      };
+      for (const k of SEQ_VOICE_KEYS) {
+        const el = seqVoiceEls[k];
+        if (!el) continue;
+        const { start, end } = offsets[k];
+        // setTimeout vs the wall clock — same pattern as the legacy voiceEl
+        // play() which fires at audio-start. The recorder is also started
+        // around audioStartTime so the wall-clock Δ matches the video Δ.
+        const startMs = Math.max(0, start * 1000);
+        const stopMs = Math.max(startMs + 100, end * 1000);
+        setTimeout(() => {
+          try {
+            el.currentTime = 0;
+            el.play().then(() => {
+              console.log('[Composer] ✅ Seq voice', k, 'PLAYING at offset', start.toFixed(2), 's');
+            }).catch((err) => {
+              console.warn('[Composer] ⚠️ Seq voice', k, 'play() failed:', err);
+            });
+          } catch (err) {
+            console.warn('[Composer] ⚠️ Seq voice', k, 'unexpected play error:', err);
+          }
+        }, startMs);
+        setTimeout(() => {
+          try { el.pause(); } catch { /* ignore */ }
+        }, stopMs);
+      }
     }
 
     // ── AUDIO DUCKING: schedule gain automation on music + rush nodes ──
