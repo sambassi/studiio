@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
+import { collectStorageUrlsFromPost, deleteStorageFiles } from '@/lib/storage/cleanup';
 
 // GET /api/posts?month=2026-03
 export async function GET(req: NextRequest) {
@@ -122,6 +123,17 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Post ID required' }, { status: 400 });
     }
 
+    // Fetch the post first to collect every Supabase Storage URL stored in
+    // its metadata (rush, montage, audio, thumbnail, poster, character,
+    // ...). The row delete cascades to the helper below — fire-and-forget,
+    // so a slow / failing storage call doesn't block the user's UI.
+    const { data: postRow } = await supabase
+      .from('scheduled_posts')
+      .select('metadata')
+      .eq('id', id)
+      .eq('user_id', session.user.id)
+      .single();
+
     const { error } = await supabase
       .from('scheduled_posts')
       .delete()
@@ -129,6 +141,22 @@ export async function DELETE(req: NextRequest) {
       .eq('user_id', session.user.id);
 
     if (error) throw error;
+
+    // Cascade delete the post's storage files. Wrapped in setImmediate so
+    // the response goes back to the client without waiting on the storage
+    // round-trips. Errors land in the server logs.
+    if (postRow?.metadata) {
+      const urls = collectStorageUrlsFromPost(postRow.metadata as Record<string, unknown>);
+      if (urls.length > 0) {
+        deleteStorageFiles(urls, `[POST DELETE id=${id}]`)
+          .then(({ removed, failed }) => {
+            console.log(`[POST DELETE id=${id}] storage cleanup: removed=${removed} failed=${failed.length}`);
+          })
+          .catch((err) => {
+            console.error(`[POST DELETE id=${id}] storage cleanup unexpected error:`, err);
+          });
+      }
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
