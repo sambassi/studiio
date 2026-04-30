@@ -681,7 +681,15 @@ export default function InfographiePage() {
             });
             exportBlob = result.blob;
           }
-          downloadBlob(exportBlob, `${(title || 'infographie').replace(/\s+/g, '_')}.mp4`);
+          try {
+            await downloadBlob(exportBlob, `${(title || 'infographie').replace(/\s+/g, '_')}.mp4`, (pct, stage) => {
+              setExportProgress(pct);
+              setExportToast({ message: stage, type: 'success' });
+            });
+          } catch (dlErr) {
+            console.error('[Infographic] downloadBlob cascade failed:', dlErr);
+            setExportToast({ message: `Export MP4 échoué : ${(dlErr as Error)?.message || 'conversion impossible'}`, type: 'error' });
+          }
         } catch (err) { console.error('Export render error:', err); }
       }
 

@@ -3402,7 +3402,9 @@ export async function composeAndUpload(options: ComposerOptions): Promise<{ blob
 
 /**
  * Convert a WebM blob to MP4 using FFmpeg.wasm (client-side).
- * Falls back to original blob if conversion fails.
+ * THROWS on failure — caller is responsible for fallback (e.g. server-side conversion).
+ * Never silently returns the WebM blob: a failed conversion must surface so the
+ * cascade in `downloadBlob` can try the server path.
  */
 export async function convertWebmToMp4(
   webmBlob: Blob,
@@ -3410,88 +3412,167 @@ export async function convertWebmToMp4(
 ): Promise<Blob> {
   if (webmBlob.type.includes('mp4')) return webmBlob; // Already MP4
 
-  onProgress?.(0, 'Conversion MP4...');
-  try {
-    const { FFmpeg } = await import('@ffmpeg/ffmpeg');
-    const { fetchFile, toBlobURL } = await import('@ffmpeg/util');
+  onProgress?.(0, 'Conversion MP4 (client)...');
 
-    const ffmpeg = new FFmpeg();
+  const { FFmpeg } = await import('@ffmpeg/ffmpeg');
+  const { fetchFile, toBlobURL } = await import('@ffmpeg/util');
 
-    // Load FFmpeg WASM from CDN — try jsdelivr first (more reliable), fallback to unpkg
-    let loaded = false;
-    const cdnBases = [
-      'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm',
-      'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm',
-    ];
-    for (const baseURL of cdnBases) {
-      try {
-        await ffmpeg.load({
-          coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-          wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-        });
-        loaded = true;
-        console.log('[Composer] FFmpeg loaded from:', baseURL);
-        break;
-      } catch (cdnErr) {
-        console.warn('[Composer] FFmpeg CDN failed:', baseURL, cdnErr);
-      }
+  const ffmpeg = new FFmpeg();
+
+  // Load FFmpeg WASM from CDN — try jsdelivr first (more reliable), fallback to unpkg
+  let loaded = false;
+  const cdnBases = [
+    'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm',
+    'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm',
+  ];
+  for (const baseURL of cdnBases) {
+    try {
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+      });
+      loaded = true;
+      console.log('[Composer] FFmpeg loaded from:', baseURL);
+      break;
+    } catch (cdnErr) {
+      console.warn('[Composer] FFmpeg CDN failed:', baseURL, cdnErr);
     }
-    if (!loaded) throw new Error('FFmpeg WASM failed to load from all CDNs');
-
-    onProgress?.(20, 'Conversion MP4...');
-
-    // Write input WebM
-    const inputData = await fetchFile(webmBlob);
-    await ffmpeg.writeFile('input.webm', inputData);
-
-    onProgress?.(40, 'Encodage H.264...');
-
-    // Convert WebM → MP4 (H.264 Baseline + AAC) — QuickTime compatible.
-    // -fflags +genpts régénère les PTS cassés produits par Chrome captureStream(0)
-    // + MediaRecorder. Sans ça, le MP4 hérite d'une durée erronée (ex: 1:21 au
-    // lieu de 14s). -r 30 -vsync cfr force CFR pour cohérence durée. -async 1
-    // resync l'audio si la source est VFR.
-    await ffmpeg.exec([
-      '-fflags', '+genpts',
-      '-i', 'input.webm',
-      '-c:v', 'libx264',
-      '-profile:v', 'baseline',
-      '-level', '3.1',
-      '-pix_fmt', 'yuv420p',
-      '-preset', 'fast',
-      '-crf', '23',
-      '-r', '30',
-      '-vsync', 'cfr',
-      '-c:a', 'aac',
-      '-b:a', '128k',
-      '-async', '1',
-      '-movflags', '+faststart',
-      '-y', 'output.mp4',
-    ]);
-
-    onProgress?.(85, 'Finalisation MP4...');
-
-    // Read output MP4
-    const outputData = await ffmpeg.readFile('output.mp4');
-    // FFmpeg readFile returns Uint8Array or string; use slice for BlobPart compat
-    const uint8 = outputData as Uint8Array;
-    const mp4Blob = new Blob([new Uint8Array(uint8)], { type: 'video/mp4' });
-
-    // Cleanup
-    ffmpeg.terminate();
-
-    onProgress?.(100, 'MP4 prêt !');
-    console.log('[Composer] WebM→MP4 conversion OK:', (mp4Blob.size / 1024 / 1024).toFixed(1), 'MB');
-    return mp4Blob;
-  } catch (err) {
-    console.error('[Composer] WebM→MP4 conversion failed, using original WebM:', err);
-    onProgress?.(100, 'Export WebM (conversion MP4 échouée)');
-    return webmBlob; // Fallback: return original WebM
   }
+  if (!loaded) throw new Error('FFmpeg WASM failed to load from all CDNs');
+
+  onProgress?.(20, 'Conversion MP4 (client)...');
+
+  // Write input WebM
+  const inputData = await fetchFile(webmBlob);
+  await ffmpeg.writeFile('input.webm', inputData);
+
+  onProgress?.(40, 'Encodage H.264...');
+
+  // Convert WebM → MP4 (H.264 Baseline + AAC) — QuickTime compatible.
+  // -fflags +genpts régénère les PTS cassés produits par Chrome captureStream(0)
+  // + MediaRecorder. Sans ça, le MP4 hérite d'une durée erronée (ex: 1:21 au
+  // lieu de 14s). -r 30 -vsync cfr force CFR pour cohérence durée. -async 1
+  // resync l'audio si la source est VFR. (See PR #118/#125.)
+  await ffmpeg.exec([
+    '-fflags', '+genpts',
+    '-i', 'input.webm',
+    '-c:v', 'libx264',
+    '-profile:v', 'baseline',
+    '-level', '3.1',
+    '-pix_fmt', 'yuv420p',
+    '-preset', 'fast',
+    '-crf', '23',
+    '-r', '30',
+    '-vsync', 'cfr',
+    '-c:a', 'aac',
+    '-b:a', '128k',
+    '-async', '1',
+    '-movflags', '+faststart',
+    '-y', 'output.mp4',
+  ]);
+
+  onProgress?.(85, 'Finalisation MP4...');
+
+  // Read output MP4
+  const outputData = await ffmpeg.readFile('output.mp4');
+  const uint8 = outputData as Uint8Array;
+  const mp4Blob = new Blob([new Uint8Array(uint8)], { type: 'video/mp4' });
+
+  // Validate output — FFmpeg WASM can exit cleanly with an empty/tiny file
+  if (mp4Blob.size < 1024) {
+    try { ffmpeg.terminate(); } catch {}
+    throw new Error(`Client MP4 conversion produced an unusable file (${mp4Blob.size} bytes)`);
+  }
+
+  ffmpeg.terminate();
+
+  onProgress?.(100, 'MP4 prêt !');
+  console.log('[Composer] WebM→MP4 conversion OK (client):', (mp4Blob.size / 1024 / 1024).toFixed(1), 'MB');
+  return mp4Blob;
 }
 
 /**
- * Download a blob as a file. Converts WebM to MP4 automatically for desktop export.
+ * Server-side WebM→MP4 fallback. Uploads the WebM blob to Supabase Storage via
+ * a signed URL, calls /api/convert/to-mp4 to transcode it server-side with the
+ * native FFmpeg quality ladder, then downloads the resulting MP4 back as a Blob.
+ * THROWS on any failure — caller decides what to surface to the user.
+ */
+export async function convertWebmToMp4ServerSide(
+  webmBlob: Blob,
+  onProgress?: (percent: number, stage: string) => void
+): Promise<Blob> {
+  if (webmBlob.type.includes('mp4')) return webmBlob;
+
+  onProgress?.(5, 'Upload pour conversion serveur...');
+
+  // 1. Get a signed upload URL
+  const stamp = Date.now();
+  const sourceFilename = `desktop-export-${stamp}.webm`;
+  const signedRes = await fetch('/api/upload/signed-url', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      filename: sourceFilename,
+      contentType: 'video/webm',
+      purpose: 'convert',
+    }),
+  });
+  const signedData = await signedRes.json();
+  if (!signedRes.ok || !signedData.success || !signedData.signedUrl || !signedData.publicUrl) {
+    throw new Error(`Server fallback: signed URL request failed (${signedData.error || signedRes.status})`);
+  }
+
+  onProgress?.(15, 'Upload pour conversion serveur...');
+
+  // 2. PUT the WebM directly to Supabase
+  const putRes = await fetch(signedData.signedUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'video/webm' },
+    body: webmBlob,
+  });
+  if (!putRes.ok) {
+    throw new Error(`Server fallback: upload to storage failed (HTTP ${putRes.status})`);
+  }
+
+  onProgress?.(35, 'Conversion serveur (FFmpeg natif)...');
+
+  // 3. Trigger server-side conversion
+  const convRes = await fetch('/api/convert/to-mp4', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ videoUrl: signedData.publicUrl }),
+  });
+  const convData = await convRes.json();
+  if (!convRes.ok || !convData.success || !convData.mp4Url) {
+    throw new Error(`Server fallback: conversion failed (${convData.error || convRes.status})`);
+  }
+
+  onProgress?.(80, 'Téléchargement MP4 serveur...');
+
+  // 4. Fetch the converted MP4 back as a Blob
+  const mp4Res = await fetch(convData.mp4Url);
+  if (!mp4Res.ok) {
+    throw new Error(`Server fallback: download converted MP4 failed (HTTP ${mp4Res.status})`);
+  }
+  const rawBlob = await mp4Res.blob();
+  const mp4Blob = rawBlob.type.includes('mp4') ? rawBlob : new Blob([rawBlob], { type: 'video/mp4' });
+
+  if (mp4Blob.size < 1024) {
+    throw new Error(`Server fallback produced an unusable MP4 (${mp4Blob.size} bytes)`);
+  }
+
+  onProgress?.(100, 'MP4 prêt (serveur) !');
+  console.log('[Composer] WebM→MP4 conversion OK (server):', (mp4Blob.size / 1024 / 1024).toFixed(1), 'MB', 'attempt:', convData.attempt || 'unknown');
+  return mp4Blob;
+}
+
+/**
+ * Download a blob as a file. For WebM input, GUARANTEES an MP4 output by
+ * cascading: client-side FFmpeg WASM → server-side FFmpeg native → throw.
+ *
+ * Never silently returns a WebM blob disguised as `.mp4`: if both conversion
+ * paths fail, the function throws so the caller can show a clear error to the
+ * user instead of saving a file that won't play in QuickTime / Photos / IG.
  */
 export async function downloadBlob(
   blob: Blob,
@@ -3501,12 +3582,41 @@ export async function downloadBlob(
   let finalBlob = blob;
   let finalFilename = filename;
 
-  // Auto-convert WebM to MP4 for desktop download
-  if (blob.type.includes('webm') || filename.endsWith('.webm')) {
-    finalBlob = await convertWebmToMp4(blob, onProgress);
-    if (finalBlob.type.includes('mp4')) {
-      finalFilename = filename.replace(/\.webm$/i, '.mp4');
+  const isWebm = blob.type.includes('webm') || filename.toLowerCase().endsWith('.webm');
+
+  if (isWebm) {
+    let mp4Blob: Blob | null = null;
+    let clientErr: unknown = null;
+
+    // Step 1: try client-side FFmpeg WASM
+    try {
+      mp4Blob = await convertWebmToMp4(blob, onProgress);
+    } catch (err) {
+      clientErr = err;
+      console.warn('[Composer] Client WebM→MP4 failed, trying server fallback:', err);
     }
+
+    // Step 2: if client failed, try server-side
+    if (!mp4Blob || !mp4Blob.type.includes('mp4')) {
+      try {
+        mp4Blob = await convertWebmToMp4ServerSide(blob, onProgress);
+      } catch (serverErr) {
+        console.error('[Composer] Server WebM→MP4 fallback also failed:', serverErr);
+        const clientMsg = clientErr instanceof Error ? clientErr.message : String(clientErr || 'unknown client error');
+        const serverMsg = serverErr instanceof Error ? serverErr.message : String(serverErr || 'unknown server error');
+        throw new Error(
+          `Conversion MP4 impossible — client: ${clientMsg} | serveur: ${serverMsg}`
+        );
+      }
+    }
+
+    if (!mp4Blob.type.includes('mp4')) {
+      throw new Error('Conversion MP4 impossible — sortie non MP4');
+    }
+
+    finalBlob = mp4Blob;
+    finalFilename = filename.replace(/\.webm$/i, '.mp4');
+    if (!finalFilename.toLowerCase().endsWith('.mp4')) finalFilename += '.mp4';
   }
 
   const url = URL.createObjectURL(finalBlob);
