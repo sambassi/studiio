@@ -270,21 +270,83 @@ export function SequenceVoicesPanel({
     });
   };
 
+  /**
+   * Generate a TTS clip for one sequence and persist it to Supabase Storage.
+   *
+   * Uses `synthesize()` from edge-tts-client which now (post-PR #132)
+   * cascades: Edge TTS → OpenAI TTS → throw. The previous broken
+   * `browserSynthesize` fallback was removed from `synthesize()` (it
+   * produced silent ~1-5KB WebM that crashed playback with DEMUXER_ERROR).
+   *
+   * The chain here:
+   *   1. synthesize() — Edge → OpenAI auto-fallback (50s timeout each)
+   *   2. Validate size >= 8KB (defensive — synthesize already enforces it)
+   *   3. POST /api/upload/signed-url + PUT blob → Supabase
+   *   4. HEAD the publicUrl to verify the uploaded file is actually
+   *      reachable before we store the URL in state. This catches bucket
+   *      misconfiguration (private, MIME mismatch, quota) early.
+   *   5. probeDuration to populate the overrun warning UI
+   *   6. onChange — state is updated ONLY if every step above succeeded
+   *
+   * No silent fallback: any failure surfaces via onAudioError → red toast.
+   * The output is always MP3 (Edge or OpenAI both return MP3).
+   */
   const generateTts = async (key: SequenceKey) => {
     const text = sequenceVoices[key].text.trim();
     if (!text) return;
     setBusy((b) => ({ ...b, [key]: true }));
     try {
-      const blob = await synthesize(text, selectedTtsVoiceId);
-      if (!blob || blob.size < 50) {
-        console.warn('[SequenceVoices] TTS returned empty blob for', key);
-        return;
+      // Step 1: TTS via synthesize() (Edge → OpenAI fallback chain)
+      const audioBlob = await synthesize(text, selectedTtsVoiceId);
+      console.log(`[SequenceVoices] TTS ${key} | size: ${audioBlob.size} bytes | type: ${audioBlob.type}`);
+      // 8KB ≈ 0.7s of MP3 @96kbps — defensive (synthesize enforces this internally)
+      if (audioBlob.size < 8000) {
+        throw new Error(`Audio TTS trop petit (${audioBlob.size} octets, minimum 8000) — réessaie ou choisis une autre voix`);
       }
-      const { url } = await uploadAudioBlob(blob);
-      const duration = await probeDuration(url);
-      onChange(key, { audioUrl: url, source: 'tts', ttsVoice: selectedTtsVoiceId, duration });
+
+      // Step 2: Upload to Supabase via signed URL
+      const filename = `tts-seq-${key}-${Date.now()}.mp3`;
+      const signRes = await fetch('/api/upload/signed-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, contentType: 'audio/mpeg', purpose: 'voice' }),
+      });
+      const signData = await signRes.json();
+      if (!signRes.ok || !signData.success || !signData.signedUrl || !signData.publicUrl) {
+        throw new Error(`Signed URL : ${signData.error || signRes.status}`);
+      }
+      const putRes = await fetch(signData.signedUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'audio/mpeg' },
+        body: audioBlob,
+      });
+      if (!putRes.ok) {
+        throw new Error(`Upload Supabase : HTTP ${putRes.status}`);
+      }
+
+      // Step 3: HEAD verify before storing the URL
+      const headRes = await fetch(signData.publicUrl, { method: 'HEAD' });
+      if (!headRes.ok) {
+        throw new Error(`Fichier uploadé inaccessible : HEAD HTTP ${headRes.status} (bucket privé ou non configuré ?)`);
+      }
+      const cl = headRes.headers.get('content-length');
+      if (cl && Number(cl) < 8000) {
+        throw new Error(`Fichier uploadé trop petit (${cl} octets) — Supabase a peut-être tronqué l'upload`);
+      }
+
+      // Step 4: probe duration + persist
+      const duration = await probeDuration(signData.publicUrl);
+      console.log(`[SequenceVoices] TTS ${key} ready: ${signData.publicUrl} (${duration.toFixed(2)}s)`);
+      onChange(key, {
+        audioUrl: signData.publicUrl,
+        source: 'tts',
+        ttsVoice: selectedTtsVoiceId,
+        duration,
+      });
     } catch (err) {
       console.error('[SequenceVoices] TTS error for', key, err);
+      const msg = err instanceof Error ? err.message : 'erreur inconnue';
+      onAudioError?.(`Synthèse vocale ${SEQUENCE_LABELS[key]} : ${msg}`);
     } finally {
       setBusy((b) => ({ ...b, [key]: false }));
     }
