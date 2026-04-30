@@ -18,16 +18,16 @@ const AI_CREDITS: Record<string, number> = {
   'style-transfer': 5,
 };
 
-// ── Replicate model IDs ──
-const MODELS = {
-  'remove-bg': 'cjwbw/rembg:fb8af171cfa1616ddcf1242c093f9c46bcada5ad4cf6f2fbe8b81b330ec5c003' as const,
-  'upscale': 'nightmareai/real-esrgan:f121d640bd286e1fdc67f9799164c1d5be36ff74576ee11c803ae5b665dd46aa' as const,
-  'magic-edit': 'timothybrooks/instruct-pix2pix:30b3f1f8c62f1bd4f0f7c01f7a60c1d09a56f1a2da3e6a55ae55f1fe3c4d8245' as const,
-  'generate-bg': 'black-forest-labs/flux-schnell' as const,
-  'magic-eraser': 'andreasjansson/stable-diffusion-inpainting:e490d072a34a94a11e9711ed5a6ba621c3fab884eda1665d9d3a282d65a21571' as const,
-  'style-transfer': 'tencentarc/photomaker:ddfc2b08d209f9fa8c1uj0jlbas0afe424a4412b4f4c146e77428ca02be55e2' as const,
-  'image-to-video': 'stability-ai/stable-video-diffusion:3f0457e4619daac51203dedb472816fd4af51f3149fa7a9e0b5ffcf1b8172438' as const,
-  'magic-layers': 'cjwbw/rembg:fb8af171cfa1616ddcf1242c093f9c46bcada5ad4cf6f2fbe8b81b330ec5c003' as const,
+// ── Replicate model IDs (use latest version — no pinned hash) ──
+const MODELS: Record<string, `${string}/${string}`> = {
+  'remove-bg': 'cjwbw/rembg',
+  'upscale': 'nightmareai/real-esrgan',
+  'magic-edit': 'timothybrooks/instruct-pix2pix',
+  'generate-bg': 'black-forest-labs/flux-schnell',
+  'magic-eraser': 'stability-ai/stable-diffusion-inpainting',
+  'style-transfer': 'timothybrooks/instruct-pix2pix', // reuses instruct-pix2pix with style prompt
+  'image-to-video': 'stability-ai/stable-video-diffusion',
+  'magic-layers': 'cjwbw/rembg',
 };
 
 export async function POST(req: NextRequest) {
@@ -216,6 +216,21 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('[AI Image] Error:', error);
     const msg = error instanceof Error ? error.message : 'Erreur inconnue';
+
+    // Parse Replicate-specific errors for better UX
+    if (msg.includes('402') || msg.includes('Insufficient credit')) {
+      return NextResponse.json({
+        success: false,
+        error: 'Le service IA nécessite une configuration billing. Contactez l\'admin.',
+      }, { status: 503 });
+    }
+    if (msg.includes('422') || msg.includes('Invalid version')) {
+      return NextResponse.json({
+        success: false,
+        error: 'Modèle IA temporairement indisponible. Réessayez plus tard.',
+      }, { status: 503 });
+    }
+
     return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }
