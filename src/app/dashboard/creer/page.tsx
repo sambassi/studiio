@@ -4542,13 +4542,8 @@ function InfographicPageInner() {
         const mediaType = hasVideo ? "video" : "image";
 
         if (destination === "draft" || destination === "both" || destination === "audio-studio") {
-          // Tous les posts du batch sur AUJOURD'HUI (pas de spread sur N jours).
-          // Le spread précédent (today + b) faisait que pour batch=N, l'utilisateur
-          // ne voyait qu'1 post à l'écran (les autres sur les jours suivants),
-          // créant une fausse impression que batch ne marche pas. Avec tous
-          // sur today, l'utilisateur voit ses N posts immédiatement et peut les
-          // déplacer manuellement par drag s'il veut planifier sur plusieurs jours.
           const today = new Date();
+          today.setDate(today.getDate() + b); // Spread across days
           const scheduledDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
           const caption = [
             bSubtitle,
@@ -4861,11 +4856,7 @@ function InfographicPageInner() {
               format: format === "16:9" ? "tv" : "reel",
               platforms: selectedPublishPlatforms.map(p => PLATFORM_DISPLAY_NAMES[p]),
               scheduled_date: scheduledDate,
-              // Heure échelonnée par batch (12:00, 13:00, 14:00, ...) pour éviter
-              // que le cron n'essaie de publier les N posts à la même minute si
-              // l'utilisateur a coché des plateformes. Modulo 24 pour batch >= 12.
-              // L'utilisateur peut tout changer manuellement depuis le calendrier.
-              scheduled_time: `${String((12 + b) % 24).padStart(2, '0')}:00`,
+              scheduled_time: "12:00",
               status: (selectedPublishPlatforms.length > 0 && (renderedVideoUrl || (hasVideo ? null : (mediaUrl || posterUrl || null)))) ? "scheduled" : "draft",
               metadata: {
                 type: "infographic",
