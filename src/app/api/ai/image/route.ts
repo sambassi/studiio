@@ -25,7 +25,7 @@ const MODELS: Record<string, `${string}/${string}`> = {
   'upscale': 'nightmareai/real-esrgan',
   'magic-edit': 'timothybrooks/instruct-pix2pix',
   'generate-bg': 'black-forest-labs/flux-schnell',
-  'magic-eraser': 'stability-ai/stable-diffusion-inpainting',
+  'magic-eraser': 'andreasjansson/stable-diffusion-inpainting',
   'style-transfer': 'timothybrooks/instruct-pix2pix', // reuses instruct-pix2pix with style prompt
   'image-to-video': 'stability-ai/stable-video-diffusion',
   'magic-layers': 'cjwbw/rembg',
