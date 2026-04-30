@@ -7658,84 +7658,74 @@ function InfographicPageInner() {
             <Redo2 size={16} strokeWidth={2} />
           </button>
 
-          {/* Guides toggle — center lines + rule of thirds */}
-          <button
-            onClick={() => {
-              const anyOn = showCenterGuides || showThirdsGuides;
-              setShowCenterGuides(!anyOn);
-              setShowThirdsGuides(!anyOn);
-            }}
-            title={showCenterGuides ? "Masquer les guides" : "Afficher les guides"}
-            className={`flex items-center gap-2 rounded-2xl pl-1 pr-3 py-1 text-xs font-medium transition-all ${
-              showCenterGuides || showThirdsGuides
-                ? "bg-gray-800/80 text-white shadow-lg shadow-black/20"
-                : "bg-gray-900/60 text-gray-300 hover:bg-gray-800/80 hover:text-white"
-            }`}
-          >
-            <IconBadge Icon={Crosshair} color="purple" active={showCenterGuides || showThirdsGuides} size={36} iconSize={18} />
-            Guides
-          </button>
+          {/* ── Compact utility toggles (icon-only, separated by a border) ── */}
+          <div className="flex items-center gap-1 ml-1 pl-1 border-l border-gray-700/40">
+            {/* Guides toggle */}
+            <button
+              onClick={() => {
+                const anyOn = showCenterGuides || showThirdsGuides;
+                setShowCenterGuides(!anyOn);
+                setShowThirdsGuides(!anyOn);
+              }}
+              title={showCenterGuides ? "Masquer les guides" : "Afficher les guides"}
+              className={`flex items-center justify-center w-9 h-9 rounded-xl transition-all ${
+                showCenterGuides || showThirdsGuides
+                  ? "bg-purple-600/30 text-purple-300 ring-1 ring-purple-500/40"
+                  : "bg-gray-900/60 text-gray-400 hover:bg-gray-800/80 hover:text-white"
+              }`}
+            >
+              <Crosshair size={16} strokeWidth={2} />
+            </button>
 
-          {/* Grid 8×8 overlay toggle */}
-          <button
-            onClick={() => setShowGridOverlay((v) => !v)}
-            title={showGridOverlay ? "Masquer la grille" : "Afficher la grille"}
-            className={`flex items-center gap-2 rounded-2xl pl-1 pr-3 py-1 text-xs font-medium transition-all ${
-              showGridOverlay
-                ? "bg-gray-800/80 text-white shadow-lg shadow-black/20"
-                : "bg-gray-900/60 text-gray-300 hover:bg-gray-800/80 hover:text-white"
-            }`}
-          >
-            <IconBadge Icon={Grid3x3} color="cyan" active={showGridOverlay} size={36} iconSize={18} />
-            Grille
-          </button>
+            {/* Grid overlay toggle */}
+            <button
+              onClick={() => setShowGridOverlay((v) => !v)}
+              title={showGridOverlay ? "Masquer la grille" : "Afficher la grille"}
+              className={`flex items-center justify-center w-9 h-9 rounded-xl transition-all ${
+                showGridOverlay
+                  ? "bg-cyan-600/30 text-cyan-300 ring-1 ring-cyan-500/40"
+                  : "bg-gray-900/60 text-gray-400 hover:bg-gray-800/80 hover:text-white"
+              }`}
+            >
+              <Grid3x3 size={16} strokeWidth={2} />
+            </button>
 
-          {/* Card position mode toggle */}
-          <button
-            onClick={() => setCardPositionMode((m) => (m === 'grid' ? 'free' : 'grid'))}
-            title={cardPositionMode === 'grid' ? "Mode libre" : "Mode grille"}
-            className={`flex items-center gap-2 rounded-2xl pl-1 pr-3 py-1 text-xs font-medium transition-all ${
-              cardPositionMode === 'free'
-                ? "bg-gray-800/80 text-white shadow-lg shadow-black/20"
-                : "bg-gray-900/60 text-gray-300 hover:bg-gray-800/80 hover:text-white"
-            }`}
-          >
-            <IconBadge
-              Icon={cardPositionMode === 'grid' ? Grid3x3 : Move}
-              color={cardPositionMode === 'grid' ? 'slate' : 'orange'}
-              active={cardPositionMode === 'free'}
-              size={36}
-              iconSize={18}
-            />
-            {cardPositionMode === 'grid' ? 'Grille' : 'Libre'}
-          </button>
+            {/* Card position mode toggle */}
+            <button
+              onClick={() => setCardPositionMode((m) => (m === 'grid' ? 'free' : 'grid'))}
+              title={cardPositionMode === 'grid' ? "Mode libre" : "Mode grille"}
+              className={`flex items-center justify-center w-9 h-9 rounded-xl transition-all ${
+                cardPositionMode === 'free'
+                  ? "bg-orange-600/30 text-orange-300 ring-1 ring-orange-500/40"
+                  : "bg-gray-900/60 text-gray-400 hover:bg-gray-800/80 hover:text-white"
+              }`}
+            >
+              {cardPositionMode === 'grid' ? <Grid3x3 size={16} strokeWidth={2} /> : <Move size={16} strokeWidth={2} />}
+            </button>
 
-          {/* ── Fond (Phase 1) — opens the per-sequence background panel ──
-               More discoverable than the previous "double-click on empty
-               preview area" entry point: a visible toolbar button that
-               always works regardless of where the user clicks. */}
-          <button
-            type="button"
-            onClick={(e) => {
-              const seqKey = (activeSequence === 'titre' || activeSequence === 'cartes' || activeSequence === 'video' || activeSequence === 'cta')
-                ? activeSequence
-                : 'titre';
-              const target = `background-${seqKey}` as 'background-titre' | 'background-cartes' | 'background-video' | 'background-cta';
-              const x = Math.min(e.clientX - 130, window.innerWidth - 320);
-              const y = Math.max(20, Math.min(e.clientY - 40, window.innerHeight - 400));
-              setPanelPos({ x, y });
-              setActivePanel((prev) => (prev === target ? null : target));
-            }}
-            title={`Configurer le fond de la séquence ${activeSequence === 'all' ? 'Titre' : activeSequence}`}
-            className={`flex items-center gap-2 rounded-2xl pl-1 pr-3 py-1 text-xs font-medium transition-all ${
-              (typeof activePanel === 'string' && activePanel.startsWith('background-'))
-                ? "bg-gray-800/80 text-white shadow-lg shadow-black/20"
-                : "bg-gray-900/60 text-gray-300 hover:bg-gray-800/80 hover:text-white"
-            }`}
-          >
-            <IconBadge Icon={ImageIcon} color="purple" active={typeof activePanel === 'string' && activePanel.startsWith('background-')} size={36} iconSize={18} />
-            Fond
-          </button>
+            {/* Fond — background panel */}
+            <button
+              type="button"
+              onClick={(e) => {
+                const seqKey = (activeSequence === 'titre' || activeSequence === 'cartes' || activeSequence === 'video' || activeSequence === 'cta')
+                  ? activeSequence
+                  : 'titre';
+                const target = `background-${seqKey}` as 'background-titre' | 'background-cartes' | 'background-video' | 'background-cta';
+                const x = Math.min(e.clientX - 130, window.innerWidth - 320);
+                const y = Math.max(20, Math.min(e.clientY - 40, window.innerHeight - 400));
+                setPanelPos({ x, y });
+                setActivePanel((prev) => (prev === target ? null : target));
+              }}
+              title={`Configurer le fond de la séquence ${activeSequence === 'all' ? 'Titre' : activeSequence}`}
+              className={`flex items-center justify-center w-9 h-9 rounded-xl transition-all ${
+                (typeof activePanel === 'string' && activePanel.startsWith('background-'))
+                  ? "bg-purple-600/30 text-purple-300 ring-1 ring-purple-500/40"
+                  : "bg-gray-900/60 text-gray-400 hover:bg-gray-800/80 hover:text-white"
+              }`}
+            >
+              <ImageIcon size={16} strokeWidth={2} />
+            </button>
+          </div>
         </div>
 
         {/* Hint when nothing is selected */}
