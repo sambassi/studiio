@@ -5065,7 +5065,31 @@ function InfographicPageInner() {
       setExportProgress(100);
 
       // ── Export bureau : composition du montage vidéo final (MP4 uniquement) ──
+      // Loop runs once per batch iteration (b=0..total-1) so batch x N produces
+      // N distinct downloads. b=0 keeps the editor's current values to match
+      // what the user sees on screen; b>0 fetches a fresh AI variation so each
+      // download has its own title/subtitle/cards (matches the calendar batch
+      // path above).
       if (destination === 'export' || destination === 'both') {
+        for (let b = 0; b < total; b++) {
+          // Per-iteration variation. b=0 ships exactly what the user has on
+          // screen; b>0 gets a fresh AI angle from the same generator the
+          // calendar loop uses (priorTitles is already populated by the
+          // calendar pass so AI avoids repeating those titles).
+          let bTitle = title;
+          let bSubtitle = subtitle;
+          let bCards = cards;
+          let bSalesPhrases = salesPhrases;
+          if (b > 0) {
+            const variation = await generateBatchVariation(b);
+            if (variation) {
+              bTitle = variation.title;
+              bSubtitle = variation.subtitle;
+              bCards = variation.cards;
+              if (variation.salesPhrases.length > 0) bSalesPhrases = variation.salesPhrases;
+              if (bTitle?.trim()) priorTitles.push(bTitle.trim());
+            }
+          }
         try {
           // See comment on the sibling `exportAccent` above — we prefer the
           // live gradient color over the (possibly stale) color-theme lookup.
@@ -5074,7 +5098,9 @@ function InfographicPageInner() {
           const isReel = format === "9:16";
           // Pas de fallback automatique vers pexelsPhotos[0] : si l'utilisateur
           // a désélectionné (-1), il veut le gradient — respecter ce signal.
-          const exportPhoto = (pexelsPhotos.length > 0 && selectedPhotoIndex >= 0) ? pexelsPhotos[selectedPhotoIndex] : null;
+          // En mode batch, on cycle aussi sur batchPhotoIndices comme le calendrier.
+          const photoIdx = total > 1 ? (batchPhotoIndices[b] ?? selectedPhotoIndex) : selectedPhotoIndex;
+          const exportPhoto = (pexelsPhotos.length > 0 && photoIdx >= 0) ? pexelsPhotos[photoIdx] : null;
           const exportPosterUrl = exportPhoto?.url || null;
 
           // Snapshot the live editor cards grid for WYSIWYG parity. The
@@ -5085,15 +5111,37 @@ function InfographicPageInner() {
           let cardsSnapshotRect: { x: number; y: number; width: number; height: number } | undefined;
           const prevSequenceBur = activeSequence;
           let didForceSequenceBur = false;
-          if (exportedSequences.cartes && cards.length > 0 && activeSequence !== 'cartes' && activeSequence !== 'all') {
+          if (exportedSequences.cartes && bCards.length > 0 && activeSequence !== 'cartes' && activeSequence !== 'all') {
             setActiveSequence('cartes');
             didForceSequenceBur = true;
             await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
           }
+          // Per-iteration React state sync: when b > 0, the variation has fresh
+          // bCards that DO NOT match the editor state. Push them into React
+          // state with flushSync + double rAF so [data-cards-grid] DOM reflects
+          // bCards before the snapshot, then restore the editor's cards after.
+          // Mirrors what the calendar loop already does so the bureau MP4 shows
+          // the same content as the corresponding calendar post.
+          const originalCardsForBureau = cards;
+          const needsBureauStateSync = b > 0 && exportedSequences.cartes && bCards.length > 0;
+          if (needsBureauStateSync) {
+            flushSync(() => {
+              setCards(bCards);
+            });
+            try {
+              if (typeof document !== 'undefined' && (document as any).fonts?.ready) {
+                await (document as any).fonts.ready;
+              }
+            } catch { /* ignore */ }
+            await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+            // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+            document.body.offsetHeight;
+            await new Promise<void>((r) => requestAnimationFrame(() => r()));
+          }
           try {
             const cardsEl = document.querySelector('[data-cards-grid]') as HTMLElement | null;
-            console.log('[Export] cardsEl offsetWidth/Height:', cardsEl?.offsetWidth, cardsEl?.offsetHeight);
-            if (cardsEl && cardsEl.offsetWidth > 0 && exportedSequences.cartes && cards.length > 0) {
+            console.log('[Export Bureau Batch #' + b + '] cardsEl offsetWidth/Height:', cardsEl?.offsetWidth, cardsEl?.offsetHeight);
+            if (cardsEl && cardsEl.offsetWidth > 0 && exportedSequences.cartes && bCards.length > 0) {
               const { domToCanvas } = await import('modern-screenshot');
               // Scale the capture so 1 DOM px = 1 video-canvas px. The
               // snapshot's intrinsic size then matches the cards' target
@@ -5125,14 +5173,21 @@ function InfographicPageInner() {
                 }
                 console.log('[Export] Cards snapshot OK:', cardsSnapshot.width, 'x', cardsSnapshot.height, '(scale', scale.toFixed(3), 'previewW', previewW + ') rect:', cardsSnapshotRect);
               }
-            } else if (exportedSequences.cartes && cards.length > 0) {
-              console.warn('[Export] Cards grid element missing or zero-sized after forced sequence switch — using manual canvas fallback.');
+            } else if (exportedSequences.cartes && bCards.length > 0) {
+              console.warn('[Export Bureau Batch #' + b + '] Cards grid element missing or zero-sized — using manual canvas fallback.');
             }
           } catch (err) {
-            console.warn('[Export] Cards snapshot failed, composer will use canvas fallback:', err);
+            console.warn('[Export Bureau Batch #' + b + '] Cards snapshot failed, composer will use canvas fallback:', err);
           } finally {
             if (didForceSequenceBur) {
               setActiveSequence(prevSequenceBur);
+            }
+            // Restore the editor's own cards so the user's UI is intact
+            // between iterations and after the export completes.
+            if (needsBureauStateSync) {
+              flushSync(() => {
+                setCards(originalCardsForBureau);
+              });
             }
           }
 
@@ -5159,16 +5214,18 @@ function InfographicPageInner() {
             }))
           ));
           const ctaIconImage = await preRenderCtaIcon();
+          // Per-iteration sales phrase: cycle through bSalesPhrases like the calendar loop.
+          const bureauSalesPhrase = bSalesPhrases.length > 0 ? bSalesPhrases[b % bSalesPhrases.length] : "";
           const composedResult = await composeAndUpload({
             width: isReel ? 1080 : 1920,
             height: isReel ? 1920 : 1080,
             fps: 30,
             watermark: useWatermark,
-            title: title || "Infographie",
-            subtitle: subtitle || undefined,
-            salesPhrase: salesPhrases.length > 0 ? salesPhrases[0] : undefined,
-            cards: cards.length > 0 && exportedSequences.cartes
-              ? await preRenderCardIcons(cards).then(rendered => rendered.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color, position: c.position, textOnly: c.textOnly, iconImage: (c as any).iconImage })))
+            title: bTitle || "Infographie",
+            subtitle: bSubtitle || undefined,
+            salesPhrase: bureauSalesPhrase || undefined,
+            cards: bCards.length > 0 && exportedSequences.cartes
+              ? await preRenderCardIcons(bCards).then(rendered => rendered.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color, position: c.position, textOnly: c.textOnly, iconImage: (c as any).iconImage })))
               : undefined,
             posterUrl: exportPosterUrl,
             sequenceBackgrounds,
@@ -5188,7 +5245,7 @@ function InfographicPageInner() {
             },
             audioKeyframes,
             introDuration: exportedSequences.titre ? introDuration : 0,
-            cardsDuration: cards.length > 0 && exportedSequences.cartes ? cardsDuration : 0,
+            cardsDuration: bCards.length > 0 && exportedSequences.cartes ? cardsDuration : 0,
             videoDuration: rushUrl && exportedSequences.video ? videoDuration : 0,
             ctaDuration: exportedSequences.cta ? ctaDuration : 0,
             accentColor: exportAccent,
@@ -5318,7 +5375,11 @@ function InfographicPageInner() {
           // file disguised as .mp4: a thrown error means the user sees a
           // clear toast instead of saving an unplayable file.
           if (composedResult.blob && composedResult.blob.size > 0) {
-            const downloadName = `infographie-${(title || 'afroboost').replace(/[^a-zA-Z0-9-_]+/g, '_')}.mp4`;
+            // En mode batch (total > 1), suffixe -1, -2, ... pour différencier
+            // les téléchargements (sinon le navigateur écrase chaque MP4 par
+            // le suivant et l'utilisateur ne reçoit qu'un seul fichier).
+            const baseName = `infographie-${(bTitle || 'afroboost').replace(/[^a-zA-Z0-9-_]+/g, '_')}`;
+            const downloadName = total > 1 ? `${baseName}-${b + 1}.mp4` : `${baseName}.mp4`;
             try {
               await downloadBlob(composedResult.blob, downloadName, (pct) => {
                 setExportProgress(85 + Math.round(pct * 0.14));
@@ -5338,9 +5399,10 @@ function InfographicPageInner() {
             showToast('Export bureau échoué : le rendu vidéo est vide. Réessayez ou utilisez un autre navigateur.');
           }
         } catch (e) {
-          console.error('[Export Bureau] Erreur:', e);
-          showToast(`Export bureau échoué : ${(e as Error)?.message || 'erreur inconnue'}`);
+          console.error('[Export Bureau Batch #' + b + '] Erreur:', e);
+          showToast(`Export bureau échoué (vidéo ${b + 1}/${total}) : ${(e as Error)?.message || 'erreur inconnue'}`);
         }
+        } // end for loop bureau batch
       }
 
       // Success is conveyed by the progress bar reaching 100%; no extra toast.
