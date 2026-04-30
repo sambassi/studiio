@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
             input_image: imageUrl,
             prompt: `Remove ${prompt} from the image. Fill the area with clean natural background that matches the surroundings seamlessly.`,
             aspect_ratio: 'match_input_image',
-            output_format: 'webp',
+            output_format: 'png',
             safety_tolerance: 2,
           },
         });
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
             input_image: imageUrl,
             prompt,
             aspect_ratio: 'match_input_image',
-            output_format: 'webp',
+            output_format: 'png',
             safety_tolerance: 2,
           },
         });
@@ -164,7 +164,7 @@ export async function POST(req: NextRequest) {
             input_image: imageUrl,
             prompt: `Transform this image into ${style} style. Make it artistic and professional while keeping the same composition and subject.`,
             aspect_ratio: 'match_input_image',
-            output_format: 'webp',
+            output_format: 'png',
             safety_tolerance: 2,
           },
         });
