@@ -3587,21 +3587,41 @@ export async function downloadBlob(
   if (isWebm) {
     let mp4Blob: Blob | null = null;
     let clientErr: unknown = null;
+    const t0 = Date.now();
 
-    // Step 1: try client-side FFmpeg WASM
+    // Step 1: try client-side FFmpeg WASM with a 60s timeout.
+    // Why a timeout? FFmpeg WASM loads its core from a CDN (jsdelivr / unpkg).
+    // If the CDN is slow / throttled / partially blocked but still returns
+    // *some* bytes, `await ffmpeg.load(...)` can hang indefinitely without
+    // throwing — the user is stuck at 85% on the export bar with no signal.
+    // Promise.race fires the timeout if the WASM load doesn't finish in 60s,
+    // which then triggers the server fallback below.
+    const CLIENT_TIMEOUT_MS = 60_000;
     try {
-      mp4Blob = await convertWebmToMp4(blob, onProgress);
+      console.log('[downloadBlob] Step 1: client FFmpeg WASM (timeout 60s)');
+      mp4Blob = await Promise.race<Blob>([
+        convertWebmToMp4(blob, onProgress),
+        new Promise<Blob>((_, reject) => {
+          setTimeout(() => {
+            reject(new Error(`Client FFmpeg WASM timeout after ${CLIENT_TIMEOUT_MS / 1000}s (CDN slow / blocked)`));
+          }, CLIENT_TIMEOUT_MS);
+        }),
+      ]);
+      console.log(`[downloadBlob] Step 1 OK in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     } catch (err) {
       clientErr = err;
-      console.warn('[Composer] Client WebM→MP4 failed, trying server fallback:', err);
+      console.warn(`[downloadBlob] Step 1 failed in ${((Date.now() - t0) / 1000).toFixed(1)}s, trying server fallback:`, err);
     }
 
-    // Step 2: if client failed, try server-side
+    // Step 2: if client failed (including timeout), try server-side
     if (!mp4Blob || !mp4Blob.type.includes('mp4')) {
+      const t1 = Date.now();
       try {
+        console.log('[downloadBlob] Step 2: server /api/convert/to-mp4');
         mp4Blob = await convertWebmToMp4ServerSide(blob, onProgress);
+        console.log(`[downloadBlob] Step 2 OK in ${((Date.now() - t1) / 1000).toFixed(1)}s`);
       } catch (serverErr) {
-        console.error('[Composer] Server WebM→MP4 fallback also failed:', serverErr);
+        console.error(`[downloadBlob] Step 2 failed in ${((Date.now() - t1) / 1000).toFixed(1)}s:`, serverErr);
         const clientMsg = clientErr instanceof Error ? clientErr.message : String(clientErr || 'unknown client error');
         const serverMsg = serverErr instanceof Error ? serverErr.message : String(serverErr || 'unknown server error');
         throw new Error(
