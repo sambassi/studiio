@@ -11331,13 +11331,13 @@ function InfographicPageInner() {
         {/* Collapsed: just the export button + credits */}
         {!showExportPanel && (
           <div className="flex flex-col items-center gap-1 bg-gray-900/80 backdrop-blur-sm border border-gray-700/50 rounded-xl p-1.5 shadow-2xl">
+            <span className="text-[8px] font-bold uppercase leading-none tracking-wide text-gray-300">Export</span>
             <button
               onClick={() => setShowExportPanel(true)}
-              className="flex flex-col items-center justify-center gap-0.5 rounded-lg bg-gradient-to-b from-purple-600 to-pink-600 h-14 w-12 text-white hover:from-purple-700 hover:to-pink-700 shadow-lg shadow-purple-500/25 transition-all"
+              className="flex items-center justify-center rounded-lg bg-gradient-to-b from-purple-600 to-pink-600 h-11 w-11 text-white hover:from-purple-700 hover:to-pink-700 shadow-lg shadow-purple-500/25 transition-all"
               title="Ouvrir les options d'export"
             >
-              <Download size={16} strokeWidth={2} />
-              <span className="text-[8px] font-bold uppercase leading-none tracking-wide">Export</span>
+              <Download size={18} strokeWidth={2} />
             </button>
             <span className="text-[9px] text-yellow-400 font-bold leading-none">
               {(exportFormat === 'video' ? 25 : 5) * batchCount}cr
