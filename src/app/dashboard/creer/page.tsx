@@ -136,6 +136,7 @@ import { Modal } from "@/components/ui/Modal";
 import { detectClips, extractClip, type DetectedClip } from "@/lib/clip-detector";
 import CropRushModal from "@/components/creer/CropRushModal";
 import SmartGuides from "@/components/creer/SmartGuides";
+import ImageEditorPanel, { buildCssFilter } from "@/components/creer/ImageEditorPanel";
 import {
   snapPosition,
   computeDistanceBadges,
@@ -2051,16 +2052,28 @@ function InfographicPageInner() {
         if (cfg.exportFormat === 'video' || cfg.exportFormat === 'jpeg' || cfg.exportFormat === 'png') {
           setExportFormat(cfg.exportFormat);
         }
-        // Per-sequence backgrounds (Phase 1) — shape validation per key.
+        // Per-sequence backgrounds (Phase 1+2) — shape validation per key.
         if (cfg.sequenceBackgrounds && typeof cfg.sequenceBackgrounds === 'object') {
-          const restored: { titre: { url: string | null; opacity: number } | null; cartes: { url: string | null; opacity: number } | null; video: { url: string | null; opacity: number } | null; cta: { url: string | null; opacity: number } | null } = { titre: null, cartes: null, video: null, cta: null };
+          const restored: SequenceBackgrounds = { titre: null, cartes: null, video: null, cta: null };
           for (const key of ['titre', 'cartes', 'video', 'cta'] as const) {
             const raw = (cfg.sequenceBackgrounds as Record<string, unknown>)[key];
             if (raw && typeof raw === 'object') {
-              const cfg2 = raw as { url?: unknown; opacity?: unknown };
+              const cfg2 = raw as { url?: unknown; opacity?: unknown; filters?: unknown };
               const url = typeof cfg2.url === 'string' ? cfg2.url : null;
               const opacity = typeof cfg2.opacity === 'number' && cfg2.opacity >= 0 && cfg2.opacity <= 1 ? cfg2.opacity : 1;
-              if (url || opacity !== 1) restored[key] = { url, opacity };
+              let filters: ImageFilters | undefined;
+              if (cfg2.filters && typeof cfg2.filters === 'object') {
+                const f = cfg2.filters as Record<string, unknown>;
+                filters = {
+                  brightness: typeof f.brightness === 'number' ? f.brightness : 1,
+                  contrast: typeof f.contrast === 'number' ? f.contrast : 1,
+                  saturation: typeof f.saturation === 'number' ? f.saturation : 1,
+                  temperature: typeof f.temperature === 'number' ? f.temperature : 0,
+                  blur: typeof f.blur === 'number' ? f.blur : 0,
+                  vignette: typeof f.vignette === 'number' ? f.vignette : 0,
+                };
+              }
+              if (url || opacity !== 1 || filters) restored[key] = { url, opacity, ...(filters ? { filters } : {}) };
             }
           }
           setSequenceBackgrounds(restored);
@@ -2708,11 +2721,22 @@ function InfographicPageInner() {
   // global. Phase 2 will add CSS filter adjustments to this same shape.
   // ⚠️ Declared HERE (before the snapshot save useEffect) to avoid TDZ in
   // production minification — same constraint as `exportFormat` above.
+  /** CSS-filter adjustments for a per-sequence background image (Phase 2). */
+  type ImageFilters = {
+    brightness: number; // 0–2, default 1
+    contrast: number;   // 0–2, default 1
+    saturation: number; // 0–3, default 1
+    temperature: number; // -100–100, default 0 (mapped to hue-rotate)
+    blur: number;       // 0–20px, default 0
+    vignette: number;   // 0–1, default 0
+  };
   type SequenceBackgroundConfig = {
     /** Supabase public URL or null for inheriting the global posterUrl. */
     url: string | null;
     /** 0–1. Default 1 (opaque). Applied on top of the chosen image. */
     opacity: number;
+    /** CSS filter adjustments (Phase 2). Absent = all defaults. */
+    filters?: ImageFilters;
   };
   type SequenceBackgrounds = {
     titre: SequenceBackgroundConfig | null;
@@ -8318,9 +8342,10 @@ function InfographicPageInner() {
               </>
             )}
 
-            {/* Background Photo */}
+            {/* Background Photo — global Pexels/poster (hidden when a per-sequence bg overrides it) */}
             {previewPhoto &&
-              ((activeSequence === "all" && exportedSequences.titre) || activeSequence === "titre") && (
+              ((activeSequence === "all" && exportedSequences.titre) || activeSequence === "titre") &&
+              !(activeSequence !== 'all' && sequenceBackgrounds[activeSequence as 'titre' | 'cartes' | 'video' | 'cta']?.url) && (
                 <img
                   src={previewPhoto.medium}
                   alt=""
@@ -8335,6 +8360,34 @@ function InfographicPageInner() {
                   }}
                 />
               )}
+
+            {/* Per-sequence background image with CSS filters (Phase 2) */}
+            {activeSequence !== 'all' && (() => {
+              const seqBgCfg = sequenceBackgrounds[activeSequence as 'titre' | 'cartes' | 'video' | 'cta'];
+              if (!seqBgCfg?.url) return null;
+              return (
+                <>
+                  <img
+                    src={seqBgCfg.url}
+                    alt=""
+                    className="absolute inset-0 h-full w-full object-cover"
+                    style={{
+                      opacity: seqBgCfg.opacity ?? 1,
+                      filter: buildCssFilter(seqBgCfg.filters),
+                    }}
+                  />
+                  {/* Vignette overlay */}
+                  {(seqBgCfg.filters?.vignette ?? 0) > 0 && (
+                    <div
+                      className="absolute inset-0 pointer-events-none"
+                      style={{
+                        background: `radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,${seqBgCfg.filters!.vignette}) 100%)`,
+                      }}
+                    />
+                  )}
+                </>
+              );
+            })()}
 
             {/* Video background (uploaded video or still image) — visible during the video sequence */}
             {rushUrl &&
@@ -11139,24 +11192,23 @@ function InfographicPageInner() {
           })()}
         </FloatingPanel>
 
-        {/* ── Per-sequence background panels (Phase 1) ──
+        {/* ── Per-sequence background panels (Phase 1+2) ──
              Double-clicking the preview while a sequence is active opens
-             one of these. Each can override the global posterUrl with its
-             own image + opacity. Phase 2 will add CSS filter adjustments. */}
+             one of these. Image + opacity + CSS filter adjustments + AI tools. */}
         {(['titre', 'cartes', 'video', 'cta'] as const).map((seqKey) => {
-          const SEQ_LABELS: Record<typeof seqKey, string> = { titre: 'Titre', cartes: 'Cartes', video: 'Vidéo', cta: 'CTA' };
-          const SEQ_ICONS: Record<typeof seqKey, string> = { titre: '📝', cartes: '🃏', video: '🎬', cta: '🎯' };
+          const SEQ_LABELS_MAP: Record<typeof seqKey, string> = { titre: 'Titre', cartes: 'Cartes', video: 'Vidéo', cta: 'CTA' };
+          const SEQ_ICONS_MAP: Record<typeof seqKey, string> = { titre: '📝', cartes: '🃏', video: '🎬', cta: '🎯' };
           const cfg = sequenceBackgrounds[seqKey];
-          const updateCfg = (patch: Partial<{ url: string | null; opacity: number }>) => {
+          const updateCfg = (patch: Partial<SequenceBackgroundConfig>) => {
             setSequenceBackgrounds((prev) => {
               const current = prev[seqKey] ?? { url: null, opacity: 1 };
               const next = { ...current, ...patch };
               // Treat the all-defaults state as "null" for cleaner persistence
-              const isDefault = next.url === null && next.opacity === 1;
+              const isDefault = next.url === null && next.opacity === 1 && !next.filters;
               return { ...prev, [seqKey]: isDefault ? null : next };
             });
           };
-          const handleFile = async (file: File) => {
+          const handleUploadFile = async (file: File) => {
             try {
               const res = await fetch('/api/upload/signed-url', {
                 method: 'POST',
@@ -11172,116 +11224,31 @@ function InfographicPageInner() {
               const headRes = await fetch(data.publicUrl, { method: 'HEAD' });
               if (!headRes.ok) throw new Error(`Vérification HEAD: HTTP ${headRes.status}`);
               updateCfg({ url: data.publicUrl });
-              showToast(`✓ Image fond ${SEQ_LABELS[seqKey]} uploadée`, 'success');
+              showToast(`✓ Image fond ${SEQ_LABELS_MAP[seqKey]} uploadée`, 'success');
             } catch (err) {
               const msg = err instanceof Error ? err.message : 'erreur inconnue';
               console.error('[BgPanel] upload failed:', err);
-              showToast(`Échec upload fond ${SEQ_LABELS[seqKey]} : ${msg}`, 'error');
+              showToast(`Échec upload fond ${SEQ_LABELS_MAP[seqKey]} : ${msg}`, 'error');
             }
           };
           return (
             <FloatingPanel
               key={seqKey}
-              title={`Fond ${SEQ_LABELS[seqKey]}`}
-              icon={SEQ_ICONS[seqKey]}
+              title={`Fond ${SEQ_LABELS_MAP[seqKey]}`}
+              icon={SEQ_ICONS_MAP[seqKey]}
               isOpen={activePanel === `background-${seqKey}`}
               onClose={() => setActivePanel(null)}
               initialX={panelPos.x}
               initialY={panelPos.y}
               accentColor="#7C3AED"
             >
-              <div className="space-y-3">
-                <div className="text-[10px] text-gray-400">
-                  Image de fond pour la séquence <span className="text-white font-medium">{SEQ_LABELS[seqKey]}</span>.
-                  Si aucune image, l'éditeur utilise l'image globale (Pexels / poster).
-                </div>
-
-                {/* Current image preview + detach */}
-                {cfg?.url ? (
-                  <div className="space-y-2">
-                    <div className="relative rounded overflow-hidden bg-gray-800 border border-gray-700">
-                      <img src={cfg.url} alt={`bg ${seqKey}`} className="w-full h-24 object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => updateCfg({ url: null })}
-                        className="absolute top-1 right-1 rounded bg-red-600/80 px-2 py-0.5 text-[10px] text-white hover:bg-red-600"
-                        title="Détacher l'image (revient à l'image globale)"
-                      >
-                        Détacher
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="rounded border border-dashed border-gray-700 bg-gray-800/40 px-3 py-4 text-center text-[10px] text-gray-500">
-                    Aucune image personnalisée — utilise le fond global
-                  </div>
-                )}
-
-                {/* Upload button */}
-                <div>
-                  <label className="block text-[9px] uppercase tracking-wider text-gray-500 mb-1">Upload image</label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) handleFile(f);
-                      e.target.value = '';
-                    }}
-                    className="block w-full text-[10px] text-gray-300 file:mr-2 file:rounded file:border-0 file:bg-purple-600 file:px-2 file:py-1 file:text-[10px] file:text-white hover:file:bg-purple-700"
-                  />
-                </div>
-
-                {/* URL field */}
-                <div>
-                  <label className="block text-[9px] uppercase tracking-wider text-gray-500 mb-1">Ou URL directe</label>
-                  <input
-                    type="url"
-                    placeholder="https://..."
-                    defaultValue={cfg?.url ?? ''}
-                    onBlur={(e) => {
-                      const val = e.target.value.trim();
-                      if (val && val !== cfg?.url) updateCfg({ url: val });
-                    }}
-                    className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-[10px] text-white focus:border-purple-500 focus:outline-none"
-                  />
-                </div>
-
-                {/* Opacity slider */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-[9px] uppercase tracking-wider text-gray-500">Opacité</label>
-                    <span className="text-[10px] text-purple-300 font-mono">{Math.round((cfg?.opacity ?? 1) * 100)}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={cfg?.opacity ?? 1}
-                    onChange={(e) => updateCfg({ opacity: parseFloat(e.target.value) })}
-                    className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
-                  />
-                </div>
-
-                {/* Phase 4 placeholder — AI tools UI */}
-                <div className="pt-2 border-t border-gray-800">
-                  <div className="text-[9px] uppercase tracking-wider text-gray-500 mb-1.5">Outils IA — bientôt disponibles</div>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {(['Effacer arrière-plan', 'Gomme magique', 'Édition magique', 'Augmenter résolution', 'D\'image à vidéo', 'Générer arrière-plan', 'Calques magiques', 'Transfert de style'] as const).map((label) => (
-                      <button
-                        key={label}
-                        type="button"
-                        disabled
-                        title="Bientôt disponible"
-                        className="rounded bg-gray-800/60 px-2 py-1.5 text-[10px] text-gray-500 cursor-not-allowed opacity-50"
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              <ImageEditorPanel
+                seqKey={seqKey}
+                config={cfg}
+                onUpdate={updateCfg}
+                onUploadFile={handleUploadFile}
+                showToast={showToast}
+              />
             </FloatingPanel>
           );
         })}

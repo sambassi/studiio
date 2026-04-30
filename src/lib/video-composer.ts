@@ -287,9 +287,19 @@ export interface DesignOptions {
  * blend a custom background with the gradient backdrop. Phase 2 will add
  * filter adjustments (brightness / contrast / blur / etc.) to this shape.
  */
+export interface ImageFilters {
+  brightness: number; // 0–2, default 1
+  contrast: number;   // 0–2, default 1
+  saturation: number; // 0–3, default 1
+  temperature: number; // -100–100, default 0 (mapped to hue-rotate)
+  blur: number;       // 0–20px, default 0
+  vignette: number;   // 0–1, default 0
+}
+
 export interface SequenceBackgroundConfig {
   url: string | null;
   opacity: number;
+  filters?: ImageFilters;
 }
 
 export type SequenceBackgrounds = {
@@ -2577,15 +2587,30 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     if (type === 'cta') return 'cta';
     return null;
   };
-  const pickSeqBg = (type: string): { img: HTMLImageElement | null; opacity: number } => {
+  const buildCanvasFilterStr = (f: ImageFilters | undefined): string => {
+    if (!f) return 'none';
+    const parts: string[] = [];
+    if (f.brightness !== 1) parts.push(`brightness(${f.brightness})`);
+    if (f.contrast !== 1) parts.push(`contrast(${f.contrast})`);
+    if (f.saturation !== 1) parts.push(`saturate(${f.saturation})`);
+    if (f.temperature !== 0) parts.push(`hue-rotate(${f.temperature * 0.5}deg)`);
+    if (f.blur > 0) parts.push(`blur(${f.blur}px)`);
+    return parts.length > 0 ? parts.join(' ') : 'none';
+  };
+  const pickSeqBg = (type: string): { img: HTMLImageElement | null; opacity: number; canvasFilter: string; vignette: number } => {
     const k = seqKeyForType(type);
     if (k) {
       const cfg = sequenceBackgrounds?.[k];
       if (cfg?.url && seqBgImages[k]) {
-        return { img: seqBgImages[k], opacity: cfg.opacity ?? 1 };
+        return {
+          img: seqBgImages[k],
+          opacity: cfg.opacity ?? 1,
+          canvasFilter: buildCanvasFilterStr(cfg.filters),
+          vignette: cfg.filters?.vignette ?? 0,
+        };
       }
     }
-    return { img: posterImg, opacity: 1 };
+    return { img: posterImg, opacity: 1, canvasFilter: 'none', vignette: 0 };
   };
 
   // Load audio — prefer pre-decoded AudioBuffers (batch mode), fallback to <audio> elements
@@ -2757,30 +2782,63 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       ctx.clip();
     }
 
+    // Pre-filter cache: when a per-sequence bg has CSS filters, draw the
+    // filtered image once onto an offscreen canvas so the draw functions
+    // receive a plain HTMLCanvasElement they can ctx.drawImage() without
+    // re-applying filters each frame.
+    const filteredBgCache = new Map<string, HTMLCanvasElement>();
+    const getFilteredBg = (img: HTMLImageElement, filterStr: string): HTMLCanvasElement => {
+      const cacheKey = `${img.src}__${filterStr}`;
+      if (filteredBgCache.has(cacheKey)) return filteredBgCache.get(cacheKey)!;
+      const off = document.createElement('canvas');
+      off.width = img.width;
+      off.height = img.height;
+      const offCtx = off.getContext('2d')!;
+      offCtx.filter = filterStr;
+      offCtx.drawImage(img, 0, 0);
+      filteredBgCache.set(cacheKey, off);
+      return off;
+    };
+
     const drawSeq = (type: string, progress: number) => {
       // Resolve per-sequence background override (or fall back to posterImg).
       // Opacity is applied to the BG image only — text/cards/etc. drawn on
-      // top stay fully opaque.
+      // top stay fully opaque. Canvas filters (Phase 2) are pre-applied to
+      // an offscreen canvas so draw functions stay unmodified.
       const seqBg = pickSeqBg(type);
+
+      // If the bg has filters, swap the img for a pre-filtered canvas.
+      // The draw functions accept HTMLImageElement | null but Canvas2D's
+      // drawImage also accepts HTMLCanvasElement, so this works via the
+      // CanvasImageSource union — cast via `as any` for TS compatibility.
+      let bgImg = seqBg.img;
+      if (bgImg && seqBg.canvasFilter !== 'none') {
+        bgImg = getFilteredBg(bgImg, seqBg.canvasFilter) as any;
+      }
+
       switch (type) {
-        case 'intro': drawIntro(ctx, width, height, seqBg.img, logoImg, title, subtitle, accentColor, progress, normalizedDesign, seqBg.opacity); break;
+        case 'intro': drawIntro(ctx, width, height, bgImg, logoImg, title, subtitle, accentColor, progress, normalizedDesign, seqBg.opacity); break;
         case 'cards': {
           // eslint-disable-next-line no-console
           console.log('[Composer] About to call drawCards. Snapshot in design?', !!normalizedDesign?.cardsSnapshot, 'Snapshot in options?', !!(options as any)?.cardsSnapshot);
-          drawCards(ctx, width, height, cards, logoImg, accentColor, progress, normalizedDesign, seqBg.img, seqBg.opacity);
+          drawCards(ctx, width, height, cards, logoImg, accentColor, progress, normalizedDesign, bgImg, seqBg.opacity);
           break;
         }
         case 'video': {
-          // During a transition, `seq` is the departing sequence, not the
-          // one we're actually drawing — so use the video sequence's own
-          // duration to compute accurate seconds-into-sequence for overlay
-          // timing windows.
           const videoSeq = sequences.find((s) => s.type === 'video');
           const secondsIn = videoSeq ? progress * videoSeq.duration : 0;
-          drawVideoSeq(ctx, width, height, videoEl, logoImg, progress, normalizedDesign, rushTransform, videoImageEl, secondsIn, seqBg.img, seqBg.opacity);
+          drawVideoSeq(ctx, width, height, videoEl, logoImg, progress, normalizedDesign, rushTransform, videoImageEl, secondsIn, bgImg, seqBg.opacity);
           break;
         }
-        case 'cta': drawCTA(ctx, width, height, accentColor, ctaText, ctaSubText, salesPhrase, watermarkText, logoImg, progress, normalizedDesign, seqBg.img, seqBg.opacity); break;
+        case 'cta': drawCTA(ctx, width, height, accentColor, ctaText, ctaSubText, salesPhrase, watermarkText, logoImg, progress, normalizedDesign, bgImg, seqBg.opacity); break;
+      }
+      // Vignette overlay (radial gradient from transparent center to dark edges)
+      if (seqBg.vignette > 0) {
+        const grad = ctx.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.3, width / 2, height / 2, Math.max(width, height) * 0.7);
+        grad.addColorStop(0, 'rgba(0,0,0,0)');
+        grad.addColorStop(1, `rgba(0,0,0,${seqBg.vignette})`);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, width, height);
       }
     };
     if (inTransition && seqIdx < sequences.length - 1) {
