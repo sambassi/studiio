@@ -6,7 +6,7 @@
  */
 import type { AudioKeyframe } from './creer/audioDucking';
 
-const COMPOSER_VERSION = 'v36-mp4-genpts-cfr-correct-duration-2026-04-30';
+const COMPOSER_VERSION = 'v37-per-sequence-backgrounds-phase1-2026-04-30';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -280,6 +280,25 @@ export interface DesignOptions {
   }>;
 }
 
+/**
+ * Per-sequence background override (Phase 1, 2026-04-30).
+ * When `url` is set, it replaces the global `posterUrl` for that sequence
+ * only. `opacity` (0-1) is applied to the image when drawn — useful to
+ * blend a custom background with the gradient backdrop. Phase 2 will add
+ * filter adjustments (brightness / contrast / blur / etc.) to this shape.
+ */
+export interface SequenceBackgroundConfig {
+  url: string | null;
+  opacity: number;
+}
+
+export type SequenceBackgrounds = {
+  titre: SequenceBackgroundConfig | null;
+  cartes: SequenceBackgroundConfig | null;
+  video: SequenceBackgroundConfig | null;
+  cta: SequenceBackgroundConfig | null;
+};
+
 export interface ComposerOptions {
   width: number;
   height: number;
@@ -289,6 +308,12 @@ export interface ComposerOptions {
   salesPhrase?: string;
   cards?: CardData[];
   posterUrl?: string | null;
+  /**
+   * Per-sequence background overrides. When present and the sequence's
+   * config has a non-null url, that image replaces the global posterUrl
+   * for that sequence (with the configured opacity applied).
+   */
+  sequenceBackgrounds?: SequenceBackgrounds;
   videoUrl?: string | null;
   /**
    * Alternative to `videoUrl`: a still image to display during the "video"
@@ -925,7 +950,9 @@ function drawIntro(
   ctx: CanvasRenderingContext2D, w: number, h: number,
   posterImg: HTMLImageElement | null, logoImg: HTMLImageElement | null,
   title: string, subtitle: string | undefined, _accent: string, _progress: number,
-  design?: DesignOptions
+  design?: DesignOptions,
+  /** Per-sequence background opacity (Phase 1). Applied to posterImg only. */
+  bgOpacity: number = 1,
 ) {
   const fontFamily = design?.titleFont || design?.font || 'sans-serif';
   const titleColor = design?.titleColor || '#FFFFFF';
@@ -937,7 +964,14 @@ function drawIntro(
   if (posterImg) {
     const scale = Math.max(w / posterImg.width, h / posterImg.height);
     const sw = posterImg.width * scale, sh = posterImg.height * scale;
-    ctx.drawImage(posterImg, (w - sw) / 2, (h - sh) / 2, sw, sh);
+    if (bgOpacity < 1) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, bgOpacity));
+      ctx.drawImage(posterImg, (w - sw) / 2, (h - sh) / 2, sw, sh);
+      ctx.restore();
+    } else {
+      ctx.drawImage(posterImg, (w - sw) / 2, (h - sh) / 2, sw, sh);
+    }
   } else {
     paintSeqBackdrop(ctx, w, h, 'intro', design, _accent);
   }
@@ -1176,7 +1210,11 @@ function drawIntro(
 function drawCards(
   ctx: CanvasRenderingContext2D, w: number, h: number,
   cards: CardData[], logoImg: HTMLImageElement | null, accent: string, _progress: number,
-  design?: DesignOptions
+  design?: DesignOptions,
+  /** Per-sequence background image override (Phase 1). Null = no override. */
+  seqBgImg: HTMLImageElement | null = null,
+  /** Per-sequence background opacity (0-1). */
+  seqBgOpacity: number = 1,
 ) {
   // Per-element gradient: separate label/value/description flags. Null →
   // keep each element's historical solid color (no regression). Backward
@@ -1206,7 +1244,22 @@ function drawCards(
 
   // Backdrop from the color theme (or dark if the sequence is marked noColor),
   // then the seqGradient overlay on top. Matches editor's bg-gradient-to-br.
-  paintSeqBackdrop(ctx, w, h, 'cards', design, accent);
+  // Per-sequence background image override (Phase 1) — drawn underneath the
+  // gradient so the gradient still sits on top, matching the editor.
+  if (seqBgImg) {
+    const scale = Math.max(w / seqBgImg.width, h / seqBgImg.height);
+    const sw = seqBgImg.width * scale, sh = seqBgImg.height * scale;
+    if (seqBgOpacity < 1) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, seqBgOpacity));
+      ctx.drawImage(seqBgImg, (w - sw) / 2, (h - sh) / 2, sw, sh);
+      ctx.restore();
+    } else {
+      ctx.drawImage(seqBgImg, (w - sw) / 2, (h - sh) / 2, sw, sh);
+    }
+  } else {
+    paintSeqBackdrop(ctx, w, h, 'cards', design, accent);
+  }
   paintSeqGradient(ctx, w, h, 'cards', design);
 
   // Snapshot override : if a pre-rendered cards PNG is provided, draw
@@ -1967,6 +2020,11 @@ function drawVideoSeq(
   rushTransform?: { scale?: number; offsetX?: number; offsetY?: number },
   videoImageEl?: HTMLImageElement | null,
   secondsIntoSequence?: number,
+  /** Per-sequence background image override (Phase 1). Drawn as the
+   *  fallback when no rush video/image is configured. */
+  seqBgImg: HTMLImageElement | null = null,
+  /** Per-sequence background opacity (0-1). */
+  seqBgOpacity: number = 1,
 ) {
   const fontFamily = design?.font || 'sans-serif';
   const backgroundSource: HTMLVideoElement | HTMLImageElement | null = videoEl || videoImageEl || null;
@@ -1984,6 +2042,19 @@ function drawVideoSeq(
     const cx = w / 2 + offX * w;
     const cy = h / 2 + offY * h;
     ctx.drawImage(backgroundSource, cx - drawW / 2, cy - drawH / 2, drawW, drawH);
+  } else if (seqBgImg) {
+    // Per-sequence background image override (Phase 1) — used when no rush
+    // video/image is set. Cover-fits the canvas like the poster.
+    const scale = Math.max(w / seqBgImg.width, h / seqBgImg.height);
+    const sw = seqBgImg.width * scale, sh = seqBgImg.height * scale;
+    if (seqBgOpacity < 1) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, seqBgOpacity));
+      ctx.drawImage(seqBgImg, (w - sw) / 2, (h - sh) / 2, sw, sh);
+      ctx.restore();
+    } else {
+      ctx.drawImage(seqBgImg, (w - sw) / 2, (h - sh) / 2, sw, sh);
+    }
   } else {
     ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0, 0, w, h);
     ctx.font = `400 ${Math.round(w * 0.04)}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
@@ -2080,7 +2151,11 @@ function drawCTA(
   accent: string, ctaText: string, ctaSubTextParam: string,
   salesPhrase: string | undefined, watermark: string | undefined,
   logoImg: HTMLImageElement | null, _progress: number,
-  design?: DesignOptions
+  design?: DesignOptions,
+  /** Per-sequence background image override (Phase 1). */
+  seqBgImg: HTMLImageElement | null = null,
+  /** Per-sequence background opacity (0-1). */
+  seqBgOpacity: number = 1,
 ) {
   // ctaSubTextParam kept for backward compat but design.ctaSubTextDesign takes priority
   void ctaSubTextParam;
@@ -2101,7 +2176,22 @@ function drawCTA(
   // CTA background: color-theme gradient backdrop (matches editor's
   // bg-gradient-to-br) + seqGradient overlay. Dark-hardcoded previously made
   // black CTA text invisible on top of it.
-  paintSeqBackdrop(ctx, w, h, 'cta', design, accent);
+  // Per-sequence background image override (Phase 1) — drawn under the
+  // gradient so the gradient still sits on top.
+  if (seqBgImg) {
+    const scale = Math.max(w / seqBgImg.width, h / seqBgImg.height);
+    const sw = seqBgImg.width * scale, sh = seqBgImg.height * scale;
+    if (seqBgOpacity < 1) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, seqBgOpacity));
+      ctx.drawImage(seqBgImg, (w - sw) / 2, (h - sh) / 2, sw, sh);
+      ctx.restore();
+    } else {
+      ctx.drawImage(seqBgImg, (w - sw) / 2, (h - sh) / 2, sw, sh);
+    }
+  } else {
+    paintSeqBackdrop(ctx, w, h, 'cta', design, accent);
+  }
   paintSeqGradient(ctx, w, h, 'cta', design);
   // NO animation — editor is static, no scale bounce
   ctx.save();
@@ -2284,6 +2374,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     width, height, fps = 30,
     title, subtitle, salesPhrase, cards = [],
     posterUrl, videoUrl, videoImageUrl, rushTransform, logoUrl, musicUrl, voiceUrl,
+    sequenceBackgrounds,
     introDuration = 4, cardsDuration = 6, videoDuration = 10, ctaDuration = 4,
     accentColor = '#D91CD2',
     ctaText = 'CHAT POUR PLUS D\'INFOS', ctaSubText = 'LIEN EN BIO',
@@ -2459,6 +2550,44 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   ]);
   console.log(`[Composer] Media loaded in ${((performance.now() - mediaLoadStart) / 1000).toFixed(1)}s — poster:${!!posterImg} logo:${!!logoImg} video:${!!videoEl} videoImage:${!!videoImageEl}`);
 
+  // Per-sequence background overrides (Phase 1). Loaded in parallel; on
+  // failure, the slot stays null and the draw call falls back to posterImg.
+  const seqBgImages: Record<'titre' | 'cartes' | 'video' | 'cta', HTMLImageElement | null> = {
+    titre: null, cartes: null, video: null, cta: null,
+  };
+  if (sequenceBackgrounds) {
+    const seqKeys = ['titre', 'cartes', 'video', 'cta'] as const;
+    await Promise.all(
+      seqKeys.map(async (k) => {
+        const url = sequenceBackgrounds[k]?.url;
+        if (url) {
+          seqBgImages[k] = await loadImage(url).catch((err) => {
+            console.warn(`[Composer] seq bg ${k} load failed:`, err.message);
+            return null;
+          });
+        }
+      }),
+    );
+  }
+  // Helpers to resolve the right image + opacity per sequence type.
+  const seqKeyForType = (type: string): 'titre' | 'cartes' | 'video' | 'cta' | null => {
+    if (type === 'intro') return 'titre';
+    if (type === 'cards') return 'cartes';
+    if (type === 'video') return 'video';
+    if (type === 'cta') return 'cta';
+    return null;
+  };
+  const pickSeqBg = (type: string): { img: HTMLImageElement | null; opacity: number } => {
+    const k = seqKeyForType(type);
+    if (k) {
+      const cfg = sequenceBackgrounds?.[k];
+      if (cfg?.url && seqBgImages[k]) {
+        return { img: seqBgImages[k], opacity: cfg.opacity ?? 1 };
+      }
+    }
+    return { img: posterImg, opacity: 1 };
+  };
+
   // Load audio — prefer pre-decoded AudioBuffers (batch mode), fallback to <audio> elements
   // ALWAYS load voice as <audio> element too (WebM recordings may decode to empty buffers)
   let musicEl: HTMLAudioElement | null = null;
@@ -2629,12 +2758,16 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     }
 
     const drawSeq = (type: string, progress: number) => {
+      // Resolve per-sequence background override (or fall back to posterImg).
+      // Opacity is applied to the BG image only — text/cards/etc. drawn on
+      // top stay fully opaque.
+      const seqBg = pickSeqBg(type);
       switch (type) {
-        case 'intro': drawIntro(ctx, width, height, posterImg, logoImg, title, subtitle, accentColor, progress, normalizedDesign); break;
+        case 'intro': drawIntro(ctx, width, height, seqBg.img, logoImg, title, subtitle, accentColor, progress, normalizedDesign, seqBg.opacity); break;
         case 'cards': {
           // eslint-disable-next-line no-console
           console.log('[Composer] About to call drawCards. Snapshot in design?', !!normalizedDesign?.cardsSnapshot, 'Snapshot in options?', !!(options as any)?.cardsSnapshot);
-          drawCards(ctx, width, height, cards, logoImg, accentColor, progress, normalizedDesign);
+          drawCards(ctx, width, height, cards, logoImg, accentColor, progress, normalizedDesign, seqBg.img, seqBg.opacity);
           break;
         }
         case 'video': {
@@ -2644,10 +2777,10 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
           // timing windows.
           const videoSeq = sequences.find((s) => s.type === 'video');
           const secondsIn = videoSeq ? progress * videoSeq.duration : 0;
-          drawVideoSeq(ctx, width, height, videoEl, logoImg, progress, normalizedDesign, rushTransform, videoImageEl, secondsIn);
+          drawVideoSeq(ctx, width, height, videoEl, logoImg, progress, normalizedDesign, rushTransform, videoImageEl, secondsIn, seqBg.img, seqBg.opacity);
           break;
         }
-        case 'cta': drawCTA(ctx, width, height, accentColor, ctaText, ctaSubText, salesPhrase, watermarkText, logoImg, progress, normalizedDesign); break;
+        case 'cta': drawCTA(ctx, width, height, accentColor, ctaText, ctaSubText, salesPhrase, watermarkText, logoImg, progress, normalizedDesign, seqBg.img, seqBg.opacity); break;
       }
     };
     if (inTransition && seqIdx < sequences.length - 1) {
