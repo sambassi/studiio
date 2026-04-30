@@ -35,42 +35,42 @@ function formatTime(s: number): string {
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
-/** Inline mini audio player — local to this panel so we don't have to
- *  refactor AudioStudioPanel's MiniPlayer. */
-function PreviewPlayer({ src, onDelete }: { src: string; onDelete: () => void }) {
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const [playing, setPlaying] = useState(false);
-
-  const toggle = () => {
-    const el = audioRef.current;
-    if (!el) return;
-    if (playing) {
-      el.pause();
-      setPlaying(false);
-    } else {
-      el.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
-    }
-  };
-
-  useEffect(() => {
-    const el = audioRef.current;
-    if (!el) return;
-    const onEnd = () => setPlaying(false);
-    el.addEventListener('ended', onEnd);
-    return () => el.removeEventListener('ended', onEnd);
-  }, [src]);
-
+/** Mini button-only player — receives all play state from the panel
+ *  (single shared programmatic Audio object). Element-based <audio> with
+ *  silent .catch() was the original bug source — see history below.
+ *
+ *  Bug history:
+ *    v1: <audio> + el.play().catch(() => setPlaying(false))
+ *        → silent rejection on CORS / 404 / format / autoplay; button
+ *          appeared dead.
+ *    v2 (this): programmatic new Audio() at panel level + try/catch +
+ *        error event + onError bubble to parent showToast. Logs every
+ *        click in console for diagnostic.
+ */
+function PreviewButton({
+  isPlaying,
+  errored,
+  onClick,
+  onDelete,
+}: {
+  isPlaying: boolean;
+  errored: boolean;
+  onClick: () => void;
+  onDelete: () => void;
+}) {
   return (
     <div className="flex items-center gap-2 rounded bg-gray-800/60 px-2 py-1.5">
       <button
         type="button"
-        onClick={toggle}
+        onClick={onClick}
         className="rounded bg-purple-500/20 p-1.5 text-purple-300 hover:bg-purple-500/30"
-        aria-label={playing ? 'Pause' : 'Play'}
+        aria-label={isPlaying ? 'Pause' : 'Play'}
       >
-        {playing ? <Pause size={12} /> : <Play size={12} />}
+        {isPlaying ? <Pause size={12} /> : <Play size={12} />}
       </button>
-      <span className="flex-1 truncate text-[10px] text-gray-400">Audio prêt</span>
+      <span className={`flex-1 truncate text-[10px] ${errored ? 'text-red-400' : 'text-gray-400'}`}>
+        {errored ? 'Audio indisponible' : isPlaying ? 'Lecture…' : 'Audio prêt'}
+      </span>
       <button
         type="button"
         onClick={onDelete}
@@ -79,7 +79,6 @@ function PreviewPlayer({ src, onDelete }: { src: string; onDelete: () => void })
       >
         <Trash2 size={12} />
       </button>
-      <audio ref={audioRef} src={src} preload="metadata" />
     </div>
   );
 }
@@ -99,6 +98,10 @@ interface Props {
   /** Batch count from the editor — when > 1, a banner explains how voices
    *  will be regenerated per iteration. */
   batchCount: number;
+  /** Optional toast bridge so audio playback errors surface to the user
+   *  instead of dying silently in the console. Wired by creer/page.tsx
+   *  to its showToast(msg, 'error'). */
+  onAudioError?: (message: string) => void;
 }
 
 export function SequenceVoicesPanel({
@@ -114,6 +117,7 @@ export function SequenceVoicesPanel({
   hasCardsContent,
   hasVideoOverlay,
   batchCount,
+  onAudioError,
 }: Props) {
   // Shared TTS voice picker (one voice for all sequences in this panel —
   // simpler UX than per-sequence voice selectors). Persists in localStorage
@@ -138,6 +142,106 @@ export function SequenceVoicesPanel({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordTimerRef = useRef<number | null>(null);
   const recordChunksRef = useRef<Blob[]>([]);
+
+  // ── Audio preview (single shared player) ──
+  // Programmatic `new Audio()` (NOT a <audio> element) — gives direct
+  // control + reliable error surfacing. One player for all sequences:
+  // clicking ▶ on another sequence stops the current one. Errors bubble
+  // to the parent via onAudioError so they appear as red toasts instead
+  // of silently dying in the console.
+  const [previewingSeq, setPreviewingSeq] = useState<SequenceKey | null>(null);
+  const [erroredSeqs, setErroredSeqs] = useState<Record<SequenceKey, boolean>>({ titre: false, cartes: false, video: false, cta: false });
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Cleanup on unmount — pause + nullify so the audio doesn't keep
+  // playing after the user navigates away.
+  useEffect(() => {
+    return () => {
+      if (previewAudioRef.current) {
+        try { previewAudioRef.current.pause(); } catch { /* ignore */ }
+        previewAudioRef.current = null;
+      }
+    };
+  }, []);
+
+  // Reset errored state for a sequence when its audioUrl changes (regen).
+  useEffect(() => {
+    setErroredSeqs({ titre: false, cartes: false, video: false, cta: false });
+  }, [
+    sequenceVoices.titre.audioUrl,
+    sequenceVoices.cartes.audioUrl,
+    sequenceVoices.video.audioUrl,
+    sequenceVoices.cta.audioUrl,
+  ]);
+
+  const togglePreviewSequenceVoice = async (seqKey: SequenceKey) => {
+    const url = sequenceVoices?.[seqKey]?.audioUrl;
+    console.log('[VoicePreview] click', seqKey, 'url:', url ? url.substring(0, 80) + '...' : '(null)');
+
+    if (!url) {
+      onAudioError?.(`Aucun audio généré pour ${SEQUENCE_LABELS[seqKey]}`);
+      return;
+    }
+
+    // Toggle pause if already playing this sequence
+    if (previewingSeq === seqKey && previewAudioRef.current) {
+      console.log('[VoicePreview] pause', seqKey);
+      try { previewAudioRef.current.pause(); } catch { /* ignore */ }
+      previewAudioRef.current = null;
+      setPreviewingSeq(null);
+      return;
+    }
+
+    // Stop any other sequence currently playing
+    if (previewAudioRef.current) {
+      try { previewAudioRef.current.pause(); } catch { /* ignore */ }
+      previewAudioRef.current = null;
+    }
+
+    // Create a fresh programmatic Audio object. NOTE: we deliberately do
+    // NOT set `crossOrigin = 'anonymous'` — for plain <audio> playback
+    // (no AudioContext processing, no canvas reading), it is unnecessary
+    // and can WORSEN things if the Supabase bucket lacks Access-Control-
+    // Allow-Origin headers (browser refuses the request entirely).
+    const audio = new Audio();
+    audio.preload = 'auto';
+    audio.volume = 1.0;
+
+    audio.addEventListener('ended', () => {
+      console.log('[VoicePreview] ended', seqKey);
+      setPreviewingSeq((prev) => (prev === seqKey ? null : prev));
+      if (previewAudioRef.current === audio) previewAudioRef.current = null;
+    });
+
+    audio.addEventListener('error', () => {
+      const code = audio.error?.code;
+      const msg = audio.error?.message || `code ${code ?? '?'}`;
+      console.error('[VoicePreview] media error:', seqKey, url, code, msg);
+      setErroredSeqs((prev) => ({ ...prev, [seqKey]: true }));
+      onAudioError?.(`Erreur audio ${SEQUENCE_LABELS[seqKey]} (code ${code ?? '?'}) : ${msg}`);
+      setPreviewingSeq((prev) => (prev === seqKey ? null : prev));
+      if (previewAudioRef.current === audio) previewAudioRef.current = null;
+    });
+
+    // Set src AFTER attaching listeners so we don't miss an early error
+    audio.src = url;
+
+    previewAudioRef.current = audio;
+    setPreviewingSeq(seqKey);
+    setErroredSeqs((prev) => ({ ...prev, [seqKey]: false }));
+
+    try {
+      await audio.play();
+      console.log('[VoicePreview] play OK:', seqKey);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'lecture bloquée';
+      console.error('[VoicePreview] play() rejected:', seqKey, errMsg, err);
+      setErroredSeqs((prev) => ({ ...prev, [seqKey]: true }));
+      onAudioError?.(`Lecture impossible (${SEQUENCE_LABELS[seqKey]}) : ${errMsg}`);
+      setPreviewingSeq((prev) => (prev === seqKey ? null : prev));
+      if (previewAudioRef.current === audio) previewAudioRef.current = null;
+    }
+  };
 
   const sequenceDuration = useCallback((key: SequenceKey): number => {
     switch (key) {
@@ -428,7 +532,21 @@ export function SequenceVoicesPanel({
 
               {sv.audioUrl && (
                 <div className="mt-1.5">
-                  <PreviewPlayer src={sv.audioUrl} onDelete={() => removeAudio(key)} />
+                  <PreviewButton
+                    isPlaying={previewingSeq === key}
+                    errored={erroredSeqs[key]}
+                    onClick={() => togglePreviewSequenceVoice(key)}
+                    onDelete={() => {
+                      // Stop playback if the deleted audio is the one playing
+                      if (previewingSeq === key && previewAudioRef.current) {
+                        try { previewAudioRef.current.pause(); } catch { /* ignore */ }
+                        previewAudioRef.current = null;
+                        setPreviewingSeq(null);
+                      }
+                      setErroredSeqs((prev) => ({ ...prev, [key]: false }));
+                      removeAudio(key);
+                    }}
+                  />
                 </div>
               )}
             </div>
