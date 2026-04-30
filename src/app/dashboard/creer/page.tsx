@@ -7682,6 +7682,33 @@ function InfographicPageInner() {
             />
             {cardPositionMode === 'grid' ? 'Grille' : 'Libre'}
           </button>
+
+          {/* ── Fond (Phase 1) — opens the per-sequence background panel ──
+               More discoverable than the previous "double-click on empty
+               preview area" entry point: a visible toolbar button that
+               always works regardless of where the user clicks. */}
+          <button
+            type="button"
+            onClick={(e) => {
+              const seqKey = (activeSequence === 'titre' || activeSequence === 'cartes' || activeSequence === 'video' || activeSequence === 'cta')
+                ? activeSequence
+                : 'titre';
+              const target = `background-${seqKey}` as 'background-titre' | 'background-cartes' | 'background-video' | 'background-cta';
+              const x = Math.min(e.clientX - 130, window.innerWidth - 320);
+              const y = Math.max(20, Math.min(e.clientY - 40, window.innerHeight - 400));
+              setPanelPos({ x, y });
+              setActivePanel((prev) => (prev === target ? null : target));
+            }}
+            title={`Configurer le fond de la séquence ${activeSequence === 'all' ? 'Titre' : activeSequence}`}
+            className={`flex items-center gap-2 rounded-2xl pl-1 pr-3 py-1 text-xs font-medium transition-all ${
+              (typeof activePanel === 'string' && activePanel.startsWith('background-'))
+                ? "bg-gray-800/80 text-white shadow-lg shadow-black/20"
+                : "bg-gray-900/60 text-gray-300 hover:bg-gray-800/80 hover:text-white"
+            }`}
+          >
+            <IconBadge Icon={ImageIcon} color="purple" active={typeof activePanel === 'string' && activePanel.startsWith('background-')} size={36} iconSize={18} />
+            Fond
+          </button>
         </div>
 
         {/* Hint when nothing is selected */}
