@@ -2073,7 +2073,8 @@ function InfographicPageInner() {
                   vignette: typeof f.vignette === 'number' ? f.vignette : 0,
                 };
               }
-              if (url || opacity !== 1 || filters) restored[key] = { url, opacity, ...(filters ? { filters } : {}) };
+              const objectPosition = typeof (cfg2 as Record<string, unknown>).objectPosition === 'string' ? (cfg2 as Record<string, unknown>).objectPosition as string : undefined;
+              if (url || opacity !== 1 || filters || objectPosition) restored[key] = { url, opacity, ...(filters ? { filters } : {}), ...(objectPosition ? { objectPosition } : {}) };
             }
           }
           setSequenceBackgrounds(restored);
@@ -2737,6 +2738,8 @@ function InfographicPageInner() {
     opacity: number;
     /** CSS filter adjustments (Phase 2). Absent = all defaults. */
     filters?: ImageFilters;
+    /** CSS object-position for cropping/repositioning, e.g. "50% 30%" */
+    objectPosition?: string;
   };
   type SequenceBackgrounds = {
     titre: SequenceBackgroundConfig | null;
@@ -8374,6 +8377,7 @@ function InfographicPageInner() {
                     style={{
                       opacity: seqBgCfg.opacity ?? 1,
                       filter: buildCssFilter(seqBgCfg.filters),
+                      objectPosition: seqBgCfg.objectPosition ?? '50% 50%',
                     }}
                   />
                   {/* Vignette overlay */}
@@ -11204,7 +11208,7 @@ function InfographicPageInner() {
               const current = prev[seqKey] ?? { url: null, opacity: 1 };
               const next = { ...current, ...patch };
               // Treat the all-defaults state as "null" for cleaner persistence
-              const isDefault = next.url === null && next.opacity === 1 && !next.filters;
+              const isDefault = next.url === null && next.opacity === 1 && !next.filters && !next.objectPosition;
               return { ...prev, [seqKey]: isDefault ? null : next };
             });
           };

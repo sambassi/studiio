@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   Sun, Contrast, Palette, Thermometer, Sparkles, CircleOff,
   Upload, Link2, Trash2, Image as ImageIcon, Wand2, Eraser,
-  Maximize, Video, Paintbrush, Layers, ArrowUpCircle,
+  Maximize, Video, Paintbrush, Layers, ArrowUpCircle, Move,
 } from 'lucide-react';
 
 // ── Types (mirrored from page.tsx to avoid circular imports) ──
@@ -31,6 +31,8 @@ export type SequenceBackgroundConfig = {
   url: string | null;
   opacity: number;
   filters?: ImageFilters;
+  /** CSS object-position for cropping/repositioning, e.g. "50% 30%" */
+  objectPosition?: string;
 };
 
 type SequenceKey = 'titre' | 'cartes' | 'video' | 'cta';
@@ -180,10 +182,19 @@ export default function ImageEditorPanel({
   onUploadFile,
   showToast: _showToast,
 }: ImageEditorPanelProps) {
-  // _showToast reserved for future AI tools feedback
-  void _showToast;
+  void _showToast; // Reserved for future AI tools feedback
   const fileRef = useRef<HTMLInputElement>(null);
+  const [urlDraft, setUrlDraft] = useState(config?.url ?? '');
+  const [uploading, setUploading] = useState(false);
   const filters = config?.filters ?? DEFAULT_FILTERS;
+  const objPos = config?.objectPosition ?? '50% 50%';
+
+  // Sync urlDraft when config.url changes externally (upload / detach)
+  const lastUrlRef = useRef(config?.url ?? '');
+  if ((config?.url ?? '') !== lastUrlRef.current) {
+    lastUrlRef.current = config?.url ?? '';
+    setUrlDraft(config?.url ?? '');
+  }
 
   const updateFilter = useCallback(
     (key: keyof ImageFilters, value: number) => {
@@ -205,6 +216,29 @@ export default function ImageEditorPanel({
     filters.blur !== 0 ||
     filters.vignette !== 0;
 
+  // Wrapped upload handler with loading state
+  const handleUpload = useCallback(async (file: File) => {
+    setUploading(true);
+    try {
+      await onUploadFile(file);
+    } finally {
+      setUploading(false);
+    }
+  }, [onUploadFile]);
+
+  // ── Focal-point position presets ──
+  const POSITIONS = [
+    { label: 'Haut-G', value: '0% 0%' },
+    { label: 'Haut', value: '50% 0%' },
+    { label: 'Haut-D', value: '100% 0%' },
+    { label: 'Gauche', value: '0% 50%' },
+    { label: 'Centre', value: '50% 50%' },
+    { label: 'Droite', value: '100% 50%' },
+    { label: 'Bas-G', value: '0% 100%' },
+    { label: 'Bas', value: '50% 100%' },
+    { label: 'Bas-D', value: '100% 100%' },
+  ];
+
   return (
     <div className="space-y-3">
       {/* Header info */}
@@ -225,12 +259,17 @@ export default function ImageEditorPanel({
               style={{
                 opacity: config.opacity ?? 1,
                 filter: buildCssFilter(config.filters),
+                objectPosition: objPos,
               }}
             />
             <button
               type="button"
-              onClick={() => onUpdate({ url: null, filters: undefined })}
-              className="absolute top-1 right-1 rounded bg-red-600/80 px-2 py-0.5 text-[10px] text-white hover:bg-red-600 flex items-center gap-1"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onUpdate({ url: null, filters: undefined, objectPosition: undefined });
+              }}
+              className="absolute top-1 right-1 rounded bg-red-600/80 px-2 py-0.5 text-[10px] text-white hover:bg-red-600 flex items-center gap-1 z-10"
               title="Détacher l'image (revient à l'image globale)"
             >
               <Trash2 size={10} /> Détacher
@@ -254,21 +293,26 @@ export default function ImageEditorPanel({
           accept="image/*"
           onChange={(e) => {
             const f = e.target.files?.[0];
-            if (f) onUploadFile(f);
+            if (f) handleUpload(f);
             e.target.value = '';
           }}
           className="hidden"
         />
         <button
           type="button"
-          onClick={() => fileRef.current?.click()}
-          className="w-full rounded bg-purple-600 hover:bg-purple-700 px-3 py-1.5 text-[10px] text-white flex items-center justify-center gap-1.5 transition-colors"
+          disabled={uploading}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            fileRef.current?.click();
+          }}
+          className="w-full rounded bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 disabled:opacity-60 px-3 py-1.5 text-[10px] text-white flex items-center justify-center gap-1.5 transition-colors"
         >
-          <Upload size={12} /> Choisir une image
+          <Upload size={12} /> {uploading ? 'Upload en cours…' : 'Choisir une image'}
         </button>
       </div>
 
-      {/* URL field */}
+      {/* URL field — controlled */}
       <div>
         <label className="block text-[9px] uppercase tracking-wider text-gray-500 mb-1">
           <Link2 size={10} className="inline mr-1" />
@@ -277,14 +321,15 @@ export default function ImageEditorPanel({
         <input
           type="url"
           placeholder="https://..."
-          defaultValue={config?.url ?? ''}
-          onBlur={(e) => {
-            const val = e.target.value.trim();
+          value={urlDraft}
+          onChange={(e) => setUrlDraft(e.target.value)}
+          onBlur={() => {
+            const val = urlDraft.trim();
             if (val && val !== config?.url) onUpdate({ url: val });
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
-              const val = (e.target as HTMLInputElement).value.trim();
+              const val = urlDraft.trim();
               if (val && val !== config?.url) onUpdate({ url: val });
             }
           }}
@@ -312,6 +357,42 @@ export default function ImageEditorPanel({
           className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
         />
       </div>
+
+      {/* ── Recadrage (object-position) ── */}
+      {config?.url && (
+        <div className="pt-2 border-t border-gray-800">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[9px] uppercase tracking-wider text-gray-500 flex items-center gap-1">
+              <Move size={10} /> Recadrage
+            </span>
+            {objPos !== '50% 50%' && (
+              <button
+                type="button"
+                onClick={() => onUpdate({ objectPosition: '50% 50%' })}
+                className="text-[9px] text-purple-400 hover:text-purple-300"
+              >
+                Centrer
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-3 gap-1">
+            {POSITIONS.map((p) => (
+              <button
+                key={p.value}
+                type="button"
+                onClick={() => onUpdate({ objectPosition: p.value })}
+                className={`rounded px-1 py-1 text-[9px] transition-colors ${
+                  objPos === p.value
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Adjustments (Phase 2) ── */}
       <div className="pt-2 border-t border-gray-800">

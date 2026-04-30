@@ -300,6 +300,8 @@ export interface SequenceBackgroundConfig {
   url: string | null;
   opacity: number;
   filters?: ImageFilters;
+  /** CSS object-position for cropping, e.g. "50% 30%" */
+  objectPosition?: string;
 }
 
 export type SequenceBackgrounds = {
@@ -2597,7 +2599,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     if (f.blur > 0) parts.push(`blur(${f.blur}px)`);
     return parts.length > 0 ? parts.join(' ') : 'none';
   };
-  const pickSeqBg = (type: string): { img: HTMLImageElement | null; opacity: number; canvasFilter: string; vignette: number } => {
+  const pickSeqBg = (type: string): { img: HTMLImageElement | null; opacity: number; canvasFilter: string; vignette: number; objectPosition: string } => {
     const k = seqKeyForType(type);
     if (k) {
       const cfg = sequenceBackgrounds?.[k];
@@ -2607,10 +2609,11 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
           opacity: cfg.opacity ?? 1,
           canvasFilter: buildCanvasFilterStr(cfg.filters),
           vignette: cfg.filters?.vignette ?? 0,
+          objectPosition: cfg.objectPosition ?? '50% 50%',
         };
       }
     }
-    return { img: posterImg, opacity: 1, canvasFilter: 'none', vignette: 0 };
+    return { img: posterImg, opacity: 1, canvasFilter: 'none', vignette: 0, objectPosition: '50% 50%' };
   };
 
   // Load audio — prefer pre-decoded AudioBuffers (batch mode), fallback to <audio> elements
@@ -2800,6 +2803,36 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       return off;
     };
 
+    // Pre-crop cache: when objectPosition !== '50% 50%', pre-draw the bg
+    // with the correct focal-point crop so draw functions see a canvas
+    // whose aspect matches the output exactly (no further cropping needed).
+    const croppedBgCache = new Map<string, HTMLCanvasElement>();
+    const getCroppedBg = (
+      img: HTMLImageElement | HTMLCanvasElement,
+      objPos: string,
+    ): HTMLCanvasElement => {
+      const src = (img as HTMLImageElement).src ?? 'canvas';
+      const cacheKey = `${src}__crop__${objPos}__${width}x${height}`;
+      if (croppedBgCache.has(cacheKey)) return croppedBgCache.get(cacheKey)!;
+      const off = document.createElement('canvas');
+      off.width = width;
+      off.height = height;
+      const offCtx = off.getContext('2d')!;
+      // Parse "X% Y%" — default to 50 50
+      const parts = objPos.split(/[\s%]+/).filter(Boolean).map(Number);
+      const posX = (parts[0] ?? 50) / 100;
+      const posY = (parts[1] ?? 50) / 100;
+      const scale = Math.max(width / img.width, height / img.height);
+      const sw = img.width * scale;
+      const sh = img.height * scale;
+      // At posX=0 → dx=0 (left-aligned), posX=0.5 → centered, posX=1 → right-aligned
+      const dx = (width - sw) * posX;
+      const dy = (height - sh) * posY;
+      offCtx.drawImage(img, dx, dy, sw, sh);
+      croppedBgCache.set(cacheKey, off);
+      return off;
+    };
+
     const drawSeq = (type: string, progress: number) => {
       // Resolve per-sequence background override (or fall back to posterImg).
       // Opacity is applied to the BG image only — text/cards/etc. drawn on
@@ -2814,6 +2847,10 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       let bgImg = seqBg.img;
       if (bgImg && seqBg.canvasFilter !== 'none') {
         bgImg = getFilteredBg(bgImg, seqBg.canvasFilter) as any;
+      }
+      // Apply objectPosition crop (non-centered focal point)
+      if (bgImg && seqBg.objectPosition !== '50% 50%') {
+        bgImg = getCroppedBg(bgImg, seqBg.objectPosition) as any;
       }
 
       switch (type) {

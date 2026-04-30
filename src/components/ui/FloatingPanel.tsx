@@ -132,7 +132,7 @@ export default function FloatingPanel({
         </div>
 
         {/* Body */}
-        <div data-panel-body className="px-3 py-2.5 space-y-2.5 max-h-[60vh] overflow-y-auto custom-scrollbar" onClick={(e) => e.stopPropagation()}>
+        <div data-panel-body className="px-3 py-2.5 space-y-2.5 max-h-[60vh] overflow-y-auto custom-scrollbar" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
           {children}
         </div>
       </div>
