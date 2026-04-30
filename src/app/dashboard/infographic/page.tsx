@@ -529,7 +529,7 @@ export default function InfographiePage() {
       let firstCreatedPostId: string | null = null;
       const allCreatedPostIds: string[] = [];
 
-      if (destination === 'calendar' || destination === 'both' || destination === 'studio') {
+      if (destination === 'calendar' || destination === 'both') {
         const today = new Date();
 
         for (let b = 0; b < batchTotal; b++) {
@@ -686,18 +686,8 @@ export default function InfographiePage() {
       }
 
       setExportProgress(100);
-      if (destination === 'studio') {
-        console.log('[Export] Studio redirect — allCreatedPostIds:', allCreatedPostIds);
-        setExportToast({ message: t('export.redirectingStudio'), type: 'success' });
-        await new Promise((r) => setTimeout(r, 1000));
-        const studioUrl = allCreatedPostIds.length > 1
-          ? `/dashboard/audio-studio?postIds=${allCreatedPostIds.join(',')}`
-          : allCreatedPostIds.length === 1
-            ? `/dashboard/audio-studio?postId=${allCreatedPostIds[0]}`
-            : '/dashboard/audio-studio';
-        console.log('[Export] Redirecting to:', studioUrl);
-        router.push(studioUrl);
-      } else if (destination === 'calendar' || destination === 'both') {
+      // Studio Son redirect removed — audio editing now integrated into /creer's audio panel
+      if (destination === 'calendar' || destination === 'both') {
         if (successCount > 0) {
           setExportToast({ message: t('export.successCalendar', { count: String(successCount) }), type: 'success' });
           await new Promise((r) => setTimeout(r, 1500)); router.push('/dashboard/calendar');

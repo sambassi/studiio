@@ -1765,23 +1765,27 @@ export default function CalendarPage() {
       } else {
         setExportRenderProgress(30);
         setExportRenderStage('Conversion MP4 en cours (peut prendre 1-3 min)...');
-        // Simulated progress 30→75 over ~67s while the server converts. The
-        // real `/api/convert/to-mp4` doesn't stream progress, so without this
-        // the bar appeared frozen at 30% for minutes — users assumed the
-        // export was broken and gave up.
+        // Simulated progress 30→75 over ~67s while the server converts.
+        // Kept centralized so the cleanup() helper below can clear it from
+        // every exit path (try success, try error-branch, catch, finally)
+        // — defensive against any future refactor that adds new branches.
         let conversionProgress = 30;
         const progressInterval = setInterval(() => {
           conversionProgress = Math.min(conversionProgress + 1, 75);
           setExportRenderProgress(conversionProgress);
         }, 1500);
-        // Client-side timeout — abort if the server takes too long. Vercel's
-        // function maxDuration is 300s; we cut at 240s so the user gets a
-        // proper "timeout, propose WebM fallback" prompt rather than a hang.
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 4 * 60 * 1000);
-        // Helper: trigger a direct WebM download from the original Supabase URL
-        // — used as the user-confirmed fallback when MP4 conversion fails or
-        // times out. Direct URL avoids re-fetching a 20+ MB blob into memory.
+        // Belt-and-suspenders cleanup. Idempotent — safe to call from any
+        // path. Clears both the simulated progress interval and the abort
+        // timeout so neither lingers after the user-facing flow ends.
+        let cleanedUp = false;
+        const cleanup = () => {
+          if (cleanedUp) return;
+          cleanedUp = true;
+          clearInterval(progressInterval);
+          clearTimeout(timeoutId);
+        };
         const downloadWebmDirect = () => {
           const a = document.createElement('a');
           a.href = meta.renderedVideoUrl as string;
@@ -1793,21 +1797,15 @@ export default function CalendarPage() {
           document.body.removeChild(a);
         };
         try {
-          // Use server-side FFmpeg conversion (reliable H.264 output)
           const convertRes = await fetch('/api/convert/to-mp4', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ videoUrl: meta.renderedVideoUrl }),
             signal: controller.signal,
           });
-          clearInterval(progressInterval);
-          clearTimeout(timeoutId);
+          cleanup();
           const convertData = await convertRes.json();
           if (convertData.success && convertData.mp4Url) {
-            // Direct URL download (no fetch + blob) — faster, no CORS issues,
-            // no browser freeze on large files. Supabase serves the public URL
-            // with `Content-Disposition: attachment` when the `download`
-            // attribute is set on the anchor.
             setExportRenderProgress(100);
             setExportRenderStage('Téléchargement...');
             const a = document.createElement('a');
@@ -1822,23 +1820,13 @@ export default function CalendarPage() {
           } else {
             const errMsg = convertData.error || 'erreur serveur';
             console.warn('[Export] Server conversion failed:', convertData);
-            // If the server hits 404/not_found AFTER the HEAD passed (race
-            // condition or signed-URL expiry between the two calls), fall
-            // through to recompose instead of asking the user to download
-            // a WebM that no longer exists.
             if (errMsg.includes('404') || errMsg.includes('not_found') || errMsg.includes('Object not found')) {
               console.warn('[Export] Conversion echec 404 — recomposition');
               shouldRecompose = true;
             } else if (typeof convertData.sourceSize === 'number' && convertData.sourceSize < 1024) {
-              // Source file uploaded to Supabase is corrupt/empty (< 1 KB).
-              // Recomposition is the right answer — the WebM blob can't be
-              // recovered, but we can re-render from metadata.
               console.warn(`[Export] Source file too small (${convertData.sourceSize} bytes) — recomposition`);
               shouldRecompose = true;
             } else {
-              // Show the full server error (FFmpeg stderr included if
-              // present) so the user can decide whether to download the
-              // raw WebM or report the problem with details.
               const sizeInfo = typeof convertData.sourceSize === 'number'
                 ? ` (source: ${convertData.sourceSize} octets)`
                 : typeof convertData.outputSize === 'number'
@@ -1853,10 +1841,8 @@ export default function CalendarPage() {
             }
           }
         } catch (err) {
-          clearInterval(progressInterval);
-          clearTimeout(timeoutId);
+          cleanup();
           if ((err as any)?.name === 'AbortError') {
-            // 4-min client timeout — likely a very long video or server overloaded
             console.warn('[Export] Server conversion timed out after 4 min');
             if (confirm('La conversion MP4 prend trop de temps (>4 min). Télécharger le fichier WebM brut à la place ? (lisible avec VLC ou QuickTime)')) {
               downloadWebmDirect();
@@ -1867,6 +1853,12 @@ export default function CalendarPage() {
             setExportRenderStage('Erreur de conversion');
             alert(`Export bureau échoué : ${msg}. Vérifiez votre connexion et réessayez.`);
           }
+        } finally {
+          // Last line of defense — in the unlikely event a path between
+          // the try/catch boundaries throws synchronously without
+          // reaching either, the interval still gets cleared and the
+          // bar doesn't stay frozen at 75 %.
+          cleanup();
         }
       }
 
@@ -2015,6 +2007,17 @@ export default function CalendarPage() {
           }, 1500);
           const conv2Controller = new AbortController();
           const conv2TimeoutId = setTimeout(() => conv2Controller.abort(), 4 * 60 * 1000);
+          // Same defensive cleanup pattern as the renderedVideoUrl path
+          // above — idempotent helper called from try-success, try-fail,
+          // catch and finally so the simulated progress interval never
+          // leaks past the export flow.
+          let cleaned2 = false;
+          const cleanup2 = () => {
+            if (cleaned2) return;
+            cleaned2 = true;
+            clearInterval(conv2Interval);
+            clearTimeout(conv2TimeoutId);
+          };
           try {
             const convertRes = await fetch('/api/convert/to-mp4', {
               method: 'POST',
@@ -2022,11 +2025,9 @@ export default function CalendarPage() {
               body: JSON.stringify({ videoUrl: renderedUrl }),
               signal: conv2Controller.signal,
             });
-            clearInterval(conv2Interval);
-            clearTimeout(conv2TimeoutId);
+            cleanup2();
             const convertData = await convertRes.json();
             if (convertData.success && convertData.mp4Url) {
-              // Direct URL download (no fetch + blob)
               setExportRenderProgress(100);
               setExportRenderStage('Téléchargement...');
               const a = document.createElement('a');
@@ -2054,8 +2055,7 @@ export default function CalendarPage() {
               }
             }
           } catch (convErr) {
-            clearInterval(conv2Interval);
-            clearTimeout(conv2TimeoutId);
+            cleanup2();
             if ((convErr as any)?.name === 'AbortError') {
               console.warn('[Export] Server conversion timed out after 4 min');
               if (confirm('La conversion MP4 prend trop de temps (>4 min). Télécharger le fichier brut à la place ? (lisible avec VLC ou QuickTime)')) {
@@ -2068,6 +2068,8 @@ export default function CalendarPage() {
               directDownload(blob, isWebm ? 'webm' : 'mp4');
               alert(`Conversion MP4 indisponible (${(convErr as Error)?.message || 'erreur réseau'}). Le fichier a été téléchargé tel quel — ouvrez-le avec VLC ou QuickTime.`);
             }
+          } finally {
+            cleanup2();
           }
         } else {
           // No server-convertible URL — download the local blob with the
