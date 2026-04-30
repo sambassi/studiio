@@ -6,7 +6,7 @@
  */
 import type { AudioKeyframe } from './creer/audioDucking';
 
-const COMPOSER_VERSION = 'v37-per-sequence-backgrounds-phase1-2026-04-30';
+const COMPOSER_VERSION = 'v38-fix-first-frame-blank-2026-04-30';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -3220,11 +3220,18 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       };
 
       void acquireWakeLock();
-      recorder.start(200);
-      console.log('[Composer] Recording started for', totalDuration.toFixed(1), 's at', fps, 'fps');
 
       // Start video element paused — we'll control seeking
       if (videoEl) { videoEl.currentTime = 0; videoEl.pause(); }
+
+      // ── CRITICAL: draw frame 0 BEFORE starting the recorder ──
+      // The canvas must already contain the intro (title, poster, etc.)
+      // when the MediaRecorder starts, otherwise the first captured frame
+      // is blank/black and the title only appears ~1s into the video.
+      drawFrame(0);
+
+      recorder.start(200);
+      console.log('[Composer] Recording started for', totalDuration.toFixed(1), 's at', fps, 'fps');
 
       const startTime = performance.now();
       let animStopped = false;
@@ -3276,8 +3283,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         if (performance.now() - lastDrawAt > 500) doFrame();
       }, 250);
 
-      // Kick off rendering
-      drawFrame(0);
+      // Kick off animation loop (frame 0 already drawn above)
       requestAnimationFrame(doFrame);
     });
   }
@@ -3434,14 +3440,20 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       }
     }
 
+    // START video element
+    if (videoEl) { videoEl.currentTime = 0; videoEl.pause(); }
+
+    // ── CRITICAL: draw frame 0 BEFORE starting the recorder ──
+    // Same fix as fast mode: the canvas must already show the intro
+    // (title, poster, etc.) when the MediaRecorder starts so the first
+    // captured frame is correct — not blank/black.
+    drawFrame(0);
+
     // Wait a moment for audio pipeline to fill before starting recording
     await new Promise(r => setTimeout(r, 150));
 
     // START recording AFTER audio — ensures audio tracks have data flowing
     recorder.start(200);
-
-    // START video element
-    if (videoEl) { videoEl.currentTime = 0; videoEl.pause(); }
 
     console.log('[Composer] 🔊 Real-time recording started for', totalDuration.toFixed(1), 's');
 
@@ -3515,10 +3527,8 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       }
     }, 2000);
 
-    const animate = doFrame;
-
-    drawFrame(0);
-    requestAnimationFrame(animate);
+    // Frame 0 already drawn above (before recorder.start) — just kick off the loop
+    requestAnimationFrame(doFrame);
   });
 }
 
