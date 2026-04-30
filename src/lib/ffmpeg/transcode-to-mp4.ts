@@ -60,6 +60,10 @@ const LADDER: LadderAttempt[] = [
 function buildFFmpegArgs(inputPath: string, outputPath: string, attempt: LadderAttempt): string[] {
   const scale = `scale='min(${attempt.maxW},iw)':'min(${attempt.maxH},ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2`;
   return [
+    // Régénérer les PTS (timestamps) cassés du WebM source : Chrome's
+    // captureStream(0) + MediaRecorder produit des timestamps incohérents,
+    // qui font hériter le MP4 d'une durée erronée (ex: 1:21 au lieu de 14s).
+    '-fflags', '+genpts',
     '-i', inputPath,
     '-threads', '0',
     '-c:v', 'libx264',
@@ -70,9 +74,14 @@ function buildFFmpegArgs(inputPath: string, outputPath: string, attempt: LadderA
     '-level', '3.1',
     '-pix_fmt', 'yuv420p',
     '-vf', scale,
+    // Force CFR 30fps en sortie pour durée correcte (sinon VFR hérite des PTS cassés)
+    '-r', '30',
+    '-vsync', 'cfr',
     '-c:a', 'aac',
     '-b:a', '128k',
     '-ar', '48000',
+    // Resync audio en cas de décalage (audio drift sur sources VFR)
+    '-async', '1',
     '-movflags', '+faststart',
     '-y',
     outputPath,

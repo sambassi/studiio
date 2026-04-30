@@ -6,7 +6,7 @@
  */
 import type { AudioKeyframe } from './creer/audioDucking';
 
-const COMPOSER_VERSION = 'v35-per-sequence-voice-overs-2026-04-29';
+const COMPOSER_VERSION = 'v36-mp4-genpts-cfr-correct-duration-2026-04-30';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -3446,8 +3446,13 @@ export async function convertWebmToMp4(
 
     onProgress?.(40, 'Encodage H.264...');
 
-    // Convert WebM → MP4 (H.264 Baseline + AAC) — QuickTime compatible
+    // Convert WebM → MP4 (H.264 Baseline + AAC) — QuickTime compatible.
+    // -fflags +genpts régénère les PTS cassés produits par Chrome captureStream(0)
+    // + MediaRecorder. Sans ça, le MP4 hérite d'une durée erronée (ex: 1:21 au
+    // lieu de 14s). -r 30 -vsync cfr force CFR pour cohérence durée. -async 1
+    // resync l'audio si la source est VFR.
     await ffmpeg.exec([
+      '-fflags', '+genpts',
       '-i', 'input.webm',
       '-c:v', 'libx264',
       '-profile:v', 'baseline',
@@ -3455,8 +3460,11 @@ export async function convertWebmToMp4(
       '-pix_fmt', 'yuv420p',
       '-preset', 'fast',
       '-crf', '23',
+      '-r', '30',
+      '-vsync', 'cfr',
       '-c:a', 'aac',
       '-b:a', '128k',
+      '-async', '1',
       '-movflags', '+faststart',
       '-y', 'output.mp4',
     ]);
