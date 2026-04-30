@@ -186,6 +186,9 @@ export default function ImageEditorPanel({
   const fileRef = useRef<HTMLInputElement>(null);
   const [urlDraft, setUrlDraft] = useState(config?.url ?? '');
   const [uploading, setUploading] = useState(false);
+  const [isDraggingCrop, setIsDraggingCrop] = useState(false);
+  const cropStartRef = useRef<{ x: number; y: number; startPosX: number; startPosY: number } | null>(null);
+  const cropContainerRef = useRef<HTMLDivElement>(null);
   const filters = config?.filters ?? DEFAULT_FILTERS;
   const objPos = config?.objectPosition ?? '50% 50%';
 
@@ -226,18 +229,56 @@ export default function ImageEditorPanel({
     }
   }, [onUploadFile]);
 
-  // ── Focal-point position presets ──
-  const POSITIONS = [
-    { label: 'Haut-G', value: '0% 0%' },
-    { label: 'Haut', value: '50% 0%' },
-    { label: 'Haut-D', value: '100% 0%' },
-    { label: 'Gauche', value: '0% 50%' },
-    { label: 'Centre', value: '50% 50%' },
-    { label: 'Droite', value: '100% 50%' },
-    { label: 'Bas-G', value: '0% 100%' },
-    { label: 'Bas', value: '50% 100%' },
-    { label: 'Bas-D', value: '100% 100%' },
-  ];
+  // ── Parse current object-position into x/y percentages ──
+  const parseObjPos = (pos: string): { x: number; y: number } => {
+    const parts = pos.split(/[\s%]+/).filter(Boolean).map(Number);
+    return { x: parts[0] ?? 50, y: parts[1] ?? 50 };
+  };
+
+  // ── Drag-to-crop handlers (mouse + touch) ──
+  const handleCropPointerDown = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    const cur = parseObjPos(objPos);
+    cropStartRef.current = { x: clientX, y: clientY, startPosX: cur.x, startPosY: cur.y };
+    setIsDraggingCrop(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [objPos]);
+
+  React.useEffect(() => {
+    if (!isDraggingCrop) return;
+    const handleMove = (e: MouseEvent | TouchEvent) => {
+      if (!cropStartRef.current || !cropContainerRef.current) return;
+      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+      const rect = cropContainerRef.current.getBoundingClientRect();
+      // Invert direction: dragging right moves the crop window right → objectPosition X decreases
+      const dx = clientX - cropStartRef.current.x;
+      const dy = clientY - cropStartRef.current.y;
+      // Scale delta relative to container size → percentage shift
+      const pctX = (dx / rect.width) * -100;
+      const pctY = (dy / rect.height) * -100;
+      const newX = Math.max(0, Math.min(100, cropStartRef.current.startPosX + pctX));
+      const newY = Math.max(0, Math.min(100, cropStartRef.current.startPosY + pctY));
+      onUpdate({ objectPosition: `${Math.round(newX)}% ${Math.round(newY)}%` });
+    };
+    const handleUp = () => {
+      setIsDraggingCrop(false);
+      cropStartRef.current = null;
+    };
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+    window.addEventListener('touchmove', handleMove, { passive: false });
+    window.addEventListener('touchend', handleUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+      window.removeEventListener('touchmove', handleMove);
+      window.removeEventListener('touchend', handleUp);
+    };
+  }, [isDraggingCrop, onUpdate]);
 
   return (
     <div className="space-y-3">
@@ -248,20 +289,44 @@ export default function ImageEditorPanel({
         Si aucune image, l&apos;éditeur utilise l&apos;image globale (Pexels / poster).
       </div>
 
-      {/* ── Image preview + detach ── */}
+      {/* ── Image preview + drag-to-crop + detach ── */}
       {config?.url ? (
         <div className="space-y-2">
-          <div className="relative rounded overflow-hidden bg-gray-800 border border-gray-700">
+          <div
+            ref={cropContainerRef}
+            className={`relative rounded overflow-hidden bg-gray-800 border ${isDraggingCrop ? 'border-purple-500' : 'border-gray-700'} select-none`}
+            style={{ cursor: isDraggingCrop ? 'grabbing' : 'grab', touchAction: 'none' }}
+            onMouseDown={handleCropPointerDown}
+            onTouchStart={handleCropPointerDown}
+          >
             <img
               src={config.url}
               alt={`bg ${seqKey}`}
-              className="w-full h-24 object-cover"
+              className="w-full h-28 object-cover pointer-events-none"
+              draggable={false}
               style={{
                 opacity: config.opacity ?? 1,
                 filter: buildCssFilter(config.filters),
                 objectPosition: objPos,
               }}
             />
+            {/* Crosshair overlay showing focal point */}
+            <div className="absolute inset-0 pointer-events-none" style={{ opacity: isDraggingCrop ? 0.8 : 0.3 }}>
+              {(() => {
+                const { x, y } = parseObjPos(objPos);
+                return (
+                  <>
+                    <div className="absolute bg-purple-400" style={{ left: `${x}%`, top: 0, width: '1px', height: '100%' }} />
+                    <div className="absolute bg-purple-400" style={{ top: `${y}%`, left: 0, width: '100%', height: '1px' }} />
+                    <div className="absolute w-2.5 h-2.5 rounded-full border-2 border-purple-400 bg-purple-500/50" style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -50%)' }} />
+                  </>
+                );
+              })()}
+            </div>
+            {/* Drag hint */}
+            <div className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[8px] text-gray-300 flex items-center gap-1 pointer-events-none">
+              <Move size={8} /> Glisser pour recadrer
+            </div>
             <button
               type="button"
               onClick={(e) => {
@@ -358,39 +423,17 @@ export default function ImageEditorPanel({
         />
       </div>
 
-      {/* ── Recadrage (object-position) ── */}
-      {config?.url && (
-        <div className="pt-2 border-t border-gray-800">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[9px] uppercase tracking-wider text-gray-500 flex items-center gap-1">
-              <Move size={10} /> Recadrage
-            </span>
-            {objPos !== '50% 50%' && (
-              <button
-                type="button"
-                onClick={() => onUpdate({ objectPosition: '50% 50%' })}
-                className="text-[9px] text-purple-400 hover:text-purple-300"
-              >
-                Centrer
-              </button>
-            )}
-          </div>
-          <div className="grid grid-cols-3 gap-1">
-            {POSITIONS.map((p) => (
-              <button
-                key={p.value}
-                type="button"
-                onClick={() => onUpdate({ objectPosition: p.value })}
-                className={`rounded px-1 py-1 text-[9px] transition-colors ${
-                  objPos === p.value
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
+      {/* ── Quick crop presets ── */}
+      {config?.url && objPos !== '50% 50%' && (
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onUpdate({ objectPosition: '50% 50%' })}
+            className="text-[9px] text-purple-400 hover:text-purple-300 flex items-center gap-1"
+          >
+            <Move size={9} /> Recentrer
+          </button>
+          <span className="text-[8px] text-gray-600 font-mono">{objPos}</span>
         </div>
       )}
 

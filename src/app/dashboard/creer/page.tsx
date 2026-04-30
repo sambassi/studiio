@@ -8510,7 +8510,16 @@ function InfographicPageInner() {
                 <>
                   <div
                     className="absolute inset-0 z-[1] cursor-pointer"
-                    onDoubleClick={(e) => openPanel("gradient", e)}
+                    onDoubleClick={(e) => {
+                      // Double-click on gradient overlay opens the per-sequence
+                      // background panel (primary action). Gradient settings are
+                      // accessible via the toolbar "Fond" button → gradient section.
+                      if (activeSequence === 'titre' || activeSequence === 'cartes' || activeSequence === 'video' || activeSequence === 'cta') {
+                        openPanel(`background-${activeSequence}` as 'background-titre' | 'background-cartes' | 'background-video' | 'background-cta', e);
+                      } else {
+                        openPanel('gradient', e);
+                      }
+                    }}
                     style={{
                       background: getGradientCSS(),
                     }}
