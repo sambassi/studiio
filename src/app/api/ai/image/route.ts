@@ -20,9 +20,9 @@ const AI_CREDITS: Record<string, number> = {
 };
 
 // ── Replicate model IDs ──
-// All models verified WARM + WORKING via Replicate API as of 2026-04-30
+// Community models need version hash (owner/model:hash), Official models don't
 const MODELS: Record<string, `${string}/${string}`> = {
-  'remove-bg': 'cjwbw/rembg',                                // ✅ Warm, 11M runs
+  'remove-bg': 'cjwbw/rembg:fb8af171cfa1616ddcf1242c093f9c46bcada5ad4cf6f2fbe8b81b330ec5c003', // ✅ Warm, 11M runs (community — needs version hash)
   'upscale': 'nightmareai/real-esrgan',                       // ✅ Warm, Official, 89M runs
   'image-edit': 'black-forest-labs/flux-kontext-pro',         // ✅ Warm, Official, 49.7M runs, $0.04/img
   'generate-bg': 'black-forest-labs/flux-schnell',             // ✅ Warm, Official, 655M runs
