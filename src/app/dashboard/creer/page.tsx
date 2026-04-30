@@ -5635,6 +5635,7 @@ function InfographicPageInner() {
                   hasCardsContent={cards.length > 0}
                   hasVideoOverlay={!!videoOverlayText.trim() || rushList.length > 0}
                   batchCount={batchCount}
+                  onAudioError={(msg) => showToast(msg, 'error')}
                 />
 
                 {/* Live mix preview — lets the user hear the whole montage
