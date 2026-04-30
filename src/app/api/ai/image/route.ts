@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { deductCredits, getUserCredits } from '@/lib/credits/system';
+import { detectAndReportServiceError } from '@/lib/service-alerts';
 import Replicate from 'replicate';
 
 export const dynamic = 'force-dynamic';
@@ -217,11 +218,14 @@ export async function POST(req: NextRequest) {
     console.error('[AI Image] Error:', error);
     const msg = error instanceof Error ? error.message : 'Erreur inconnue';
 
-    // Parse Replicate-specific errors for better UX
+    // Report to admin alert system
+    detectAndReportServiceError('replicate', error);
+
+    // User-friendly error messages
     if (msg.includes('402') || msg.includes('Insufficient credit')) {
       return NextResponse.json({
         success: false,
-        error: 'Le service IA nécessite une configuration billing. Contactez l\'admin.',
+        error: 'Service IA temporairement indisponible. L\'administrateur a été notifié.',
       }, { status: 503 });
     }
     if (msg.includes('422') || msg.includes('Invalid version')) {

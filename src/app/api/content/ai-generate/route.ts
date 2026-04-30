@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { shortenForCard } from '@/lib/smart-content';
+import { detectAndReportServiceError } from '@/lib/service-alerts';
 
 // Fast model for card generation. Haiku 4.5 is 5-10× faster than Sonnet on
 // short JSON responses, which prevents client-side 8s AbortError timeouts
@@ -411,6 +412,7 @@ Retourne EXACTEMENT ${count} cartes, ni plus ni moins. IMPORTANT: chaque carte =
 
   } catch (error: any) {
     console.error('[AI-Generate] Error:', error?.message || error);
+    detectAndReportServiceError('anthropic', error);
     return NextResponse.json(
       { success: false, error: 'AI content generation failed: ' + (error?.message || 'unknown') },
       { status: 500 }

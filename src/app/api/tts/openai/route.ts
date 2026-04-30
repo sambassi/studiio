@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
+import { detectAndReportServiceError } from '@/lib/service-alerts';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -62,6 +63,8 @@ export async function POST(req: NextRequest) {
     if (!openaiRes.ok) {
       const errText = await openaiRes.text().catch(() => '');
       console.error('[TTS/OpenAI] upstream error', openaiRes.status, errText.substring(0, 200));
+      // Report to admin alert system
+      detectAndReportServiceError('openai', new Error(`OpenAI TTS ${openaiRes.status}: ${errText.substring(0, 200)}`));
       return NextResponse.json(
         { error: `OpenAI TTS upstream error (${openaiRes.status})` },
         { status: 500 }
@@ -87,6 +90,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'OpenAI TTS timed out' }, { status: 504 });
     }
     console.error('[TTS/OpenAI] error:', msg);
+    detectAndReportServiceError('openai', err);
     return NextResponse.json({ error: `OpenAI TTS failed: ${msg}` }, { status: 500 });
   }
 }
