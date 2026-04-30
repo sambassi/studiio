@@ -19,19 +19,14 @@ const AI_CREDITS: Record<string, number> = {
   'style-transfer': 5,
 };
 
-// ── Replicate model IDs (use latest version — no pinned hash) ──
-// All models verified active on Replicate as of 2026-04-30
-// Only 4 unique models needed — several tools reuse the same model with different prompts
+// ── Replicate model IDs ──
+// All models verified WARM + WORKING via Replicate API as of 2026-04-30
 const MODELS: Record<string, `${string}/${string}`> = {
-  'remove-bg': 'cjwbw/rembg',                              // ✅ 11M+ runs — background removal
-  'upscale': 'nightmareai/real-esrgan',                     // ✅ 89M+ runs — image upscaling
-  'magic-edit': 'timothybrooks/instruct-pix2pix',           // ✅ 939K runs — prompt-based editing
-  'generate-bg': 'black-forest-labs/flux-schnell',           // ✅ Official FLUX — text-to-image
-  'image-to-video': 'wan-video/wan-2.2-i2v-fast',           // ✅ Fast Wan 2.2 — image animation
-  // Reused models (no separate model needed):
-  // magic-eraser → uses instruct-pix2pix with erasing prompt
-  // style-transfer → uses instruct-pix2pix with style prompt
-  // magic-layers → uses rembg (same as remove-bg)
+  'remove-bg': 'cjwbw/rembg',                                // ✅ Warm, 11M runs
+  'upscale': 'nightmareai/real-esrgan',                       // ✅ Warm, Official, 89M runs
+  'image-edit': 'black-forest-labs/flux-kontext-pro',         // ✅ Warm, Official, 49.7M runs, $0.04/img
+  'generate-bg': 'black-forest-labs/flux-schnell',             // ✅ Warm, Official, 655M runs
+  'image-to-video': 'wan-video/wan-2.2-i2v-fast',             // ✅ Warm, Official, 10.6M runs
 };
 
 export async function POST(req: NextRequest) {
@@ -79,32 +74,32 @@ export async function POST(req: NextRequest) {
         break;
       }
 
-      // ── 2. Magic Eraser (uses instruct-pix2pix with erasing prompt) ──
+      // ── 2. Magic Eraser (FLUX Kontext Pro — remove elements) ──
       case 'magic-eraser': {
         if (!imageUrl || !prompt) return NextResponse.json({ success: false, error: 'imageUrl et prompt requis' }, { status: 400 });
-        output = await replicate.run(MODELS['magic-edit'], {
+        output = await replicate.run(MODELS['image-edit'], {
           input: {
-            image: imageUrl,
-            prompt: `remove ${prompt}, replace with clean empty background, seamless`,
-            num_outputs: 1,
-            guidance_scale: 9,
-            image_guidance_scale: 1.2,
+            input_image: imageUrl,
+            prompt: `Remove ${prompt} from the image. Fill the area with clean natural background that matches the surroundings seamlessly.`,
+            aspect_ratio: 'match_input_image',
+            output_format: 'webp',
+            safety_tolerance: 2,
           },
         });
         if (Array.isArray(output)) output = output[0];
         break;
       }
 
-      // ── 3. Magic Edit (InstructPix2Pix) ──
+      // ── 3. Magic Edit (FLUX Kontext Pro — text-based editing) ──
       case 'magic-edit': {
         if (!imageUrl || !prompt) return NextResponse.json({ success: false, error: 'imageUrl et prompt requis' }, { status: 400 });
-        output = await replicate.run(MODELS['magic-edit'], {
+        output = await replicate.run(MODELS['image-edit'], {
           input: {
-            image: imageUrl,
+            input_image: imageUrl,
             prompt,
-            num_outputs: 1,
-            guidance_scale: 7.5,
-            image_guidance_scale: 1.5,
+            aspect_ratio: 'match_input_image',
+            output_format: 'webp',
+            safety_tolerance: 2,
           },
         });
         if (Array.isArray(output)) output = output[0];
@@ -152,27 +147,25 @@ export async function POST(req: NextRequest) {
         break;
       }
 
-      // ── 7. Magic Layers (Segment + Remove BG) ──
+      // ── 7. Magic Layers (Segment + Remove BG — rembg) ──
       case 'magic-layers': {
         if (!imageUrl) return NextResponse.json({ success: false, error: 'imageUrl requis' }, { status: 400 });
-        // Uses rembg to extract the subject — returns the subject on transparent bg
-        output = await replicate.run(MODELS['magic-layers'], {
+        output = await replicate.run(MODELS['remove-bg'], {
           input: { image: imageUrl },
         });
         break;
       }
 
-      // ── 8. Style Transfer ──
+      // ── 8. Style Transfer (FLUX Kontext Pro) ──
       case 'style-transfer': {
         if (!imageUrl || !style) return NextResponse.json({ success: false, error: 'imageUrl et style requis' }, { status: 400 });
-        // Use instruct-pix2pix for style transfer with a style prompt
-        output = await replicate.run(MODELS['magic-edit'], {
+        output = await replicate.run(MODELS['image-edit'], {
           input: {
-            image: imageUrl,
-            prompt: `transform this image into ${style} style, artistic, professional`,
-            num_outputs: 1,
-            guidance_scale: 10,
-            image_guidance_scale: 1.2,
+            input_image: imageUrl,
+            prompt: `Transform this image into ${style} style. Make it artistic and professional while keeping the same composition and subject.`,
+            aspect_ratio: 'match_input_image',
+            output_format: 'webp',
+            safety_tolerance: 2,
           },
         });
         if (Array.isArray(output)) output = output[0];
