@@ -20,15 +20,16 @@ const AI_CREDITS: Record<string, number> = {
 };
 
 // ── Replicate model IDs (use latest version — no pinned hash) ──
+// All models verified active on Replicate as of 2026-04-30
 const MODELS: Record<string, `${string}/${string}`> = {
-  'remove-bg': 'cjwbw/rembg',
-  'upscale': 'nightmareai/real-esrgan',
-  'magic-edit': 'timothybrooks/instruct-pix2pix',
-  'generate-bg': 'black-forest-labs/flux-schnell',
-  'magic-eraser': 'andreasjansson/stable-diffusion-inpainting',
-  'style-transfer': 'timothybrooks/instruct-pix2pix', // reuses instruct-pix2pix with style prompt
-  'image-to-video': 'stability-ai/stable-video-diffusion',
-  'magic-layers': 'cjwbw/rembg',
+  'remove-bg': 'cjwbw/rembg',                              // ✅ 11M+ runs
+  'upscale': 'nightmareai/real-esrgan',                     // ✅ 89M+ runs
+  'magic-edit': 'timothybrooks/instruct-pix2pix',           // ✅ 939K runs
+  'generate-bg': 'black-forest-labs/flux-schnell',           // ✅ Official FLUX model
+  'magic-eraser': 'stability-ai/stable-diffusion-inpainting', // ✅ 20.8M runs — replaced broken andreasjansson model
+  'style-transfer': 'timothybrooks/instruct-pix2pix',       // ✅ reuses instruct-pix2pix with style prompt
+  'image-to-video': 'wan-video/wan-2.2-i2v-fast',           // ✅ Fast Wan 2.2 — replaced broken stability-ai/stable-video-diffusion
+  'magic-layers': 'cjwbw/rembg',                            // ✅ 11M+ runs
 };
 
 export async function POST(req: NextRequest) {
@@ -76,18 +77,19 @@ export async function POST(req: NextRequest) {
         break;
       }
 
-      // ── 2. Magic Eraser (Inpainting) ──
+      // ── 2. Magic Eraser (Inpainting — stability-ai) ──
       case 'magic-eraser': {
         if (!imageUrl || !prompt) return NextResponse.json({ success: false, error: 'imageUrl et prompt requis' }, { status: 400 });
         output = await replicate.run(MODELS['magic-eraser'], {
           input: {
             image: imageUrl,
-            mask: imageUrl, // Auto-mask — the model generates mask from prompt
-            prompt: 'clean background, empty space',
+            mask: imageUrl,
+            prompt: 'clean background, empty space, seamless fill',
             negative_prompt: prompt, // What to remove
             num_outputs: 1,
             guidance_scale: 7.5,
             num_inference_steps: 25,
+            prompt_strength: 0.65,
           },
         });
         // Inpainting returns array
@@ -124,15 +126,13 @@ export async function POST(req: NextRequest) {
         break;
       }
 
-      // ── 5. Image to Video (Stable Video Diffusion) ──
+      // ── 5. Image to Video (Wan 2.2 Fast) ──
       case 'image-to-video': {
         if (!imageUrl) return NextResponse.json({ success: false, error: 'imageUrl requis' }, { status: 400 });
         output = await replicate.run(MODELS['image-to-video'], {
           input: {
-            input_image: imageUrl,
-            motion_bucket_id: 127,
-            fps: 6,
-            cond_aug: 0.02,
+            image: imageUrl,
+            prompt: prompt || 'smooth gentle motion, professional video',
           },
         });
         break;
