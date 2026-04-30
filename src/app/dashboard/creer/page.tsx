@@ -2997,6 +2997,7 @@ function InfographicPageInner() {
   } | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState<string | null>(null);
   const [showMobilePreview, setShowMobilePreview] = useState(false);
+  const [showExportPanel, setShowExportPanel] = useState(false);
   // Per-card AI icon generation state
   const [iconPrompts, setIconPrompts] = useState<Record<string, string>>({});
   const [iconLoadingId, setIconLoadingId] = useState<string | null>(null);
@@ -11324,90 +11325,119 @@ function InfographicPageInner() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/* Compact Vertical Export Bar — right edge of preview area    */}
+      {/* Collapsible Export Bar — right edge, collapsed by default   */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <div className="hidden lg:flex fixed right-2 top-1/2 -translate-y-1/2 z-40 flex-col items-center gap-1.5 bg-gray-900/80 backdrop-blur-sm border border-gray-700/50 rounded-xl p-1.5 shadow-2xl">
-        <span className="text-[8px] font-bold uppercase tracking-wider text-gray-500 leading-none">Export</span>
-        {isExporting && (
-          <div className="h-10 w-0.5 bg-gray-800 rounded-full overflow-hidden">
-            <div className="w-full bg-gradient-to-b from-purple-500 to-pink-500 transition-all duration-300" style={{ height: `${exportProgress}%` }} />
+      <div className="hidden lg:flex fixed right-2 top-1/2 -translate-y-1/2 z-40 flex-col items-center gap-1.5">
+        {/* Collapsed: just the export button + credits */}
+        {!showExportPanel && (
+          <div className="flex flex-col items-center gap-1.5 bg-gray-900/80 backdrop-blur-sm border border-gray-700/50 rounded-xl p-1.5 shadow-2xl">
+            <button
+              onClick={() => setShowExportPanel(true)}
+              className="flex items-center justify-center rounded-lg bg-gradient-to-b from-purple-600 to-pink-600 h-11 w-11 text-white hover:from-purple-700 hover:to-pink-700 shadow-lg shadow-purple-500/25 transition-all"
+              title="Ouvrir les options d'export"
+            >
+              <Zap size={18} fill="currentColor" strokeWidth={1.5} />
+            </button>
+            <span className="text-[9px] text-yellow-400 font-bold leading-none">
+              {(exportFormat === 'video' ? 25 : 5) * batchCount}cr
+            </span>
           </div>
         )}
-        {/* Format selector — MP4 / JPG / PNG */}
-        {([
-          { key: 'video' as const, Icon: Video, label: 'MP4', tip: 'Vidéo MP4' },
-          { key: 'jpeg' as const, Icon: ImageIcon, label: 'JPG', tip: 'Image JPG (compressée)' },
-          { key: 'png' as const, Icon: ImageIcon, label: 'PNG', tip: 'Image PNG (sans perte)' },
-        ]).map(({ key, Icon, label, tip }) => (
-          <button key={key} onClick={() => setExportFormat(key)} title={tip}
-            className={`h-7 w-9 rounded-md flex items-center justify-center gap-0.5 transition-all flex-shrink-0 ${
-              exportFormat === key ? 'bg-purple-600 text-white ring-1 ring-purple-300' : 'bg-gray-800 text-gray-400 hover:text-white'
-            }`}
-          >
-            <Icon size={9} />
-            <span className="text-[8px] font-bold leading-none">{label}</span>
-          </button>
-        ))}
-        <div className="h-px w-7 bg-gray-700/50" />
-        {(exportFormat === 'video'
-          ? [
-              { key: 'draft' as Destination, Icon: Calendar, color: '#3B82F6', tip: 'Calendrier' },
-              { key: 'export' as Destination, Icon: Download, color: '#10B981', tip: 'Fichier' },
-              { key: 'both' as Destination, Icon: Layers, color: '#A855F7', tip: 'Les deux' },
-              { key: 'audio-studio' as Destination, Icon: Music, color: '#EC4899', tip: 'Studio Son' },
-            ]
-          : [
-              { key: 'export' as Destination, Icon: Download, color: '#10B981', tip: 'Fichier (Bureau)' },
-            ]).map(({ key, Icon, color, tip }) => (
-          <button key={key} onClick={() => setDestination(key)} title={tip}
-            className={`h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 transition-all ${
-              destination === key ? 'ring-2 ring-white/40 scale-105' : 'opacity-60 hover:opacity-100'
-            }`}
-            style={{ backgroundColor: `${color}20`, color }}
-          >
-            <Icon size={16} fill="currentColor" strokeWidth={1.5} />
-          </button>
-        ))}
-        {(destination === 'draft' || destination === 'both') && (
-          <>
-            <div className="h-px w-7 bg-gray-700/50" />
-            <span className="text-[8px] font-bold uppercase tracking-wider text-gray-500 leading-none">Publier</span>
-            {(['instagram', 'facebook', 'tiktok', 'youtube'] as const).map((p) => (
-              <PlatformIcon
-                key={p}
-                platform={p}
-                size="sm"
-                isActive={selectedPublishPlatforms.includes(p)}
-                onClick={() => togglePublishPlatform(p)}
-              />
+
+        {/* Expanded: full export panel */}
+        {showExportPanel && (
+          <div className="flex flex-col items-center gap-1.5 bg-gray-900/80 backdrop-blur-sm border border-gray-700/50 rounded-xl p-1.5 shadow-2xl animate-in slide-in-from-right-2 duration-200">
+            {/* Close button */}
+            <button
+              onClick={() => setShowExportPanel(false)}
+              className="text-gray-500 hover:text-white transition-colors self-end -mr-0.5 -mt-0.5"
+              title="Fermer"
+            >
+              <X size={12} />
+            </button>
+            <span className="text-[8px] font-bold uppercase tracking-wider text-gray-500 leading-none">Format</span>
+            {isExporting && (
+              <div className="h-10 w-0.5 bg-gray-800 rounded-full overflow-hidden">
+                <div className="w-full bg-gradient-to-b from-purple-500 to-pink-500 transition-all duration-300" style={{ height: `${exportProgress}%` }} />
+              </div>
+            )}
+            {/* Format selector — MP4 / JPG / PNG */}
+            {([
+              { key: 'video' as const, Icon: Video, label: 'MP4', tip: 'Vidéo MP4' },
+              { key: 'jpeg' as const, Icon: ImageIcon, label: 'JPG', tip: 'Image JPG (compressée)' },
+              { key: 'png' as const, Icon: ImageIcon, label: 'PNG', tip: 'Image PNG (sans perte)' },
+            ]).map(({ key, Icon, label, tip }) => (
+              <button key={key} onClick={() => setExportFormat(key)} title={tip}
+                className={`h-7 w-9 rounded-md flex items-center justify-center gap-0.5 transition-all flex-shrink-0 ${
+                  exportFormat === key ? 'bg-purple-600 text-white ring-1 ring-purple-300' : 'bg-gray-800 text-gray-400 hover:text-white'
+                }`}
+              >
+                <Icon size={9} />
+                <span className="text-[8px] font-bold leading-none">{label}</span>
+              </button>
             ))}
-          </>
-        )}
-        <div className="h-px w-7 bg-gray-700/50" />
-        <button onClick={handleExport} disabled={isExporting || cards.length === 0}
-          className="flex items-center justify-center rounded-lg bg-gradient-to-b from-purple-600 to-pink-600 h-10 w-10 text-white hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-500/25 transition-all"
-          title={isExporting ? `${exportProgress}%` : batchCount > 1 ? `Export x${batchCount}` : 'Export Création'}
-        >
-          {isExporting
-            ? <Loader2 size={16} className="animate-spin" />
-            : <Zap size={16} fill="currentColor" strokeWidth={1.5} />}
-        </button>
-        <span className="text-[9px] text-yellow-400 font-bold leading-none">
-          {isExporting
-            ? `${exportProgress}%`
-            : `${(exportFormat === 'video' ? 25 : 5) * batchCount}cr`}
-        </span>
-        <div className="h-px w-7 bg-gray-700/50" />
-        <div className="flex flex-col items-center gap-0.5">
-          <span className="text-[7px] uppercase tracking-wider text-gray-500">Batch</span>
-          <div className="flex items-center gap-px">
-            <button onClick={() => setBatchCount(Math.max(1, batchCount - 1))} disabled={batchCount <= 1}
-              className="h-5 w-5 rounded text-[10px] font-bold text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 transition">−</button>
-            <span className="text-[10px] font-bold text-purple-400 w-5 text-center">x{batchCount}</span>
-            <button onClick={() => setBatchCount(Math.min(20, batchCount + 1))} disabled={batchCount >= 20}
-              className="h-5 w-5 rounded text-[10px] font-bold text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 transition">+</button>
+            <div className="h-px w-7 bg-gray-700/50" />
+            {(exportFormat === 'video'
+              ? [
+                  { key: 'draft' as Destination, Icon: Calendar, color: '#3B82F6', tip: 'Calendrier' },
+                  { key: 'export' as Destination, Icon: Download, color: '#10B981', tip: 'Fichier' },
+                  { key: 'both' as Destination, Icon: Layers, color: '#A855F7', tip: 'Les deux' },
+                  { key: 'audio-studio' as Destination, Icon: Music, color: '#EC4899', tip: 'Studio Son' },
+                ]
+              : [
+                  { key: 'export' as Destination, Icon: Download, color: '#10B981', tip: 'Fichier (Bureau)' },
+                ]).map(({ key, Icon, color, tip }) => (
+              <button key={key} onClick={() => setDestination(key)} title={tip}
+                className={`h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 transition-all ${
+                  destination === key ? 'ring-2 ring-white/40 scale-105' : 'opacity-60 hover:opacity-100'
+                }`}
+                style={{ backgroundColor: `${color}20`, color }}
+              >
+                <Icon size={16} fill="currentColor" strokeWidth={1.5} />
+              </button>
+            ))}
+            {(destination === 'draft' || destination === 'both') && (
+              <>
+                <div className="h-px w-7 bg-gray-700/50" />
+                <span className="text-[8px] font-bold uppercase tracking-wider text-gray-500 leading-none">Publier</span>
+                {(['instagram', 'facebook', 'tiktok', 'youtube'] as const).map((p) => (
+                  <PlatformIcon
+                    key={p}
+                    platform={p}
+                    size="sm"
+                    isActive={selectedPublishPlatforms.includes(p)}
+                    onClick={() => togglePublishPlatform(p)}
+                  />
+                ))}
+              </>
+            )}
+            <div className="h-px w-7 bg-gray-700/50" />
+            <button onClick={handleExport} disabled={isExporting || cards.length === 0}
+              className="flex items-center justify-center rounded-lg bg-gradient-to-b from-purple-600 to-pink-600 h-10 w-10 text-white hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-500/25 transition-all"
+              title={isExporting ? `${exportProgress}%` : batchCount > 1 ? `Export x${batchCount}` : 'Export Création'}
+            >
+              {isExporting
+                ? <Loader2 size={16} className="animate-spin" />
+                : <Zap size={16} fill="currentColor" strokeWidth={1.5} />}
+            </button>
+            <span className="text-[9px] text-yellow-400 font-bold leading-none">
+              {isExporting
+                ? `${exportProgress}%`
+                : `${(exportFormat === 'video' ? 25 : 5) * batchCount}cr`}
+            </span>
+            <div className="h-px w-7 bg-gray-700/50" />
+            <div className="flex flex-col items-center gap-0.5">
+              <span className="text-[7px] uppercase tracking-wider text-gray-500">Batch</span>
+              <div className="flex items-center gap-px">
+                <button onClick={() => setBatchCount(Math.max(1, batchCount - 1))} disabled={batchCount <= 1}
+                  className="h-5 w-5 rounded text-[10px] font-bold text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 transition">−</button>
+                <span className="text-[10px] font-bold text-purple-400 w-5 text-center">x{batchCount}</span>
+                <button onClick={() => setBatchCount(Math.min(20, batchCount + 1))} disabled={batchCount >= 20}
+                  className="h-5 w-5 rounded text-[10px] font-bold text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 transition">+</button>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* ═══════════════════════════════════════════════════════════ */}
