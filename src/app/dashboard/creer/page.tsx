@@ -4250,16 +4250,27 @@ function InfographicPageInner() {
     setExportProgress(0);
 
     // Credit check before export (cost × batchCount)
+    // Non-blocking: if the credits system isn't set up yet (endpoint fails,
+    // user has no credits column, etc.) we log a warning but let the export
+    // proceed so existing workflows aren't broken.
     const renderFormat: 'reel' | 'tv' = format === '16:9' ? 'tv' : 'reel';
     const cost = renderFormat === 'tv' ? 15 : 10;
     const totalCost = cost * (batchCount || 1);
-    const check = await fetch('/api/credits/balance').then(r => r.json()).catch(() => ({ ok: false, balance: 0 }));
-    if (!check.ok || (check.balance ?? 0) < totalCost) {
-      showToast(`Crédits insuffisants (${check.balance ?? 0} / ${totalCost}). Achetez un pack ou passez au plan Pro.`);
-      setShowBuyCreditsModal(true);
-      setIsExporting(false);
-      return;
+    let creditCheckPassed = true;
+    try {
+      const check = await fetch('/api/credits/balance').then(r => r.json());
+      if (check.ok && typeof check.balance === 'number' && check.balance < totalCost) {
+        // User has a working credits system but insufficient balance
+        showToast(`Crédits insuffisants (${check.balance} / ${totalCost}). Achetez un pack ou passez au plan Pro.`);
+        setShowBuyCreditsModal(true);
+        setIsExporting(false);
+        creditCheckPassed = false;
+      }
+    } catch {
+      // Credits endpoint unavailable — skip check, don't block export
+      console.warn('[Export] Credit balance check failed — skipping (credits system may not be configured)');
     }
+    if (!creditCheckPassed) return;
 
     try {
       const total = batchCount;
