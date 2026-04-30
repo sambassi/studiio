@@ -1466,6 +1466,7 @@ function InfographicPageInner() {
   const [noColorSequences, setNoColorSequences] = useState<string[]>(['video']);
   const [noColorUserOverride, setNoColorUserOverride] = useState<Record<string, boolean>>({});
   const [syncColorsGlobal, setSyncColorsGlobal] = useState(false);
+  const [posterOnAllSequences, setPosterOnAllSequences] = useState(false);
 
   // Per-sequence gradient settings: each sequence can override the global gradient
   // Keys: "titre" | "cartes" | "video" | "cta"
@@ -1862,6 +1863,7 @@ function InfographicPageInner() {
         if (cfg.noColorSequences) setNoColorSequences(cfg.noColorSequences);
         if (cfg.noColorUserOverride) setNoColorUserOverride(cfg.noColorUserOverride);
         if (typeof cfg.syncColorsGlobal === 'boolean') setSyncColorsGlobal(cfg.syncColorsGlobal);
+        if (typeof cfg.posterOnAllSequences === 'boolean') setPosterOnAllSequences(cfg.posterOnAllSequences);
         if (cfg.seqGradients) setSeqGradients(cfg.seqGradients);
         if (cfg.textScale !== undefined) setTextScale(cfg.textScale);
         if (cfg.cardsTextScale !== undefined) setCardsTextScale(cfg.cardsTextScale);
@@ -2569,6 +2571,7 @@ function InfographicPageInner() {
     if (c.noColorSequences) setNoColorSequences(c.noColorSequences);
     if (c.noColorUserOverride) setNoColorUserOverride(c.noColorUserOverride);
     if (typeof c.syncColorsGlobal === 'boolean') setSyncColorsGlobal(c.syncColorsGlobal);
+    if (typeof c.posterOnAllSequences === 'boolean') setPosterOnAllSequences(c.posterOnAllSequences);
     if (c.seqGradients) setSeqGradients(c.seqGradients);
     if (c.textScale !== undefined) setTextScale(c.textScale);
     if (c.cardsTextScale !== undefined) setCardsTextScale(c.cardsTextScale);
@@ -2769,7 +2772,7 @@ function InfographicPageInner() {
         cardsLabelGradient, cardsValueGradient, cardsDescriptionGradient, cardsTextGradColor1, cardsTextGradColor2,
         ctaIconName, ctaIconColor, ctaIconGradient, ctaIconGradColor1, ctaIconGradColor2, ctaIconSize,
         titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
-        gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, seqGradients,
+        gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, posterOnAllSequences, seqGradients,
         textScale, ctaTextScale, cardsTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
         titlePos, extraTitlePosition, extraSubtitlePosition, logoPositions, watermarkPos, cardsPos, overlayPos,
         titleSize, cardsSize, watermarkSize,
@@ -2845,7 +2848,7 @@ function InfographicPageInner() {
     cardsLabelGradient, cardsValueGradient, cardsDescriptionGradient, cardsTextGradColor1, cardsTextGradColor2,
     ctaIconName, ctaIconColor, ctaIconGradient, ctaIconGradColor1, ctaIconGradColor2, ctaIconSize,
     titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
-    gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, seqGradients,
+    gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, posterOnAllSequences, seqGradients,
     textScale, ctaTextScale, cardsTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
     titlePos, extraTitlePosition, extraSubtitlePosition, logoPositions, watermarkPos, cardsPos, overlayPos,
     titleSize, cardsSize, watermarkSize,
@@ -4738,7 +4741,7 @@ function InfographicPageInner() {
                 textScale, ctaTextScale, cardsTextScale, titleColor, ctaColor, ctaSubColor,
                 ctaMainText: ctaMainText || "AFROBOOST",
                 ctaSubTextDesign: ctaSubText || "CHAT POUR PLUS D'INFOS",
-                noColorBg, noColorSequences,
+                noColorBg, noColorSequences, posterOnAllSequences,
                 gradientColor1, gradientColor2, gradientOpacity, seqGradients,
                 backdropRounded, backdropRadius, backdropMargin,
                 borderEnabled: branding.borderEnabled,
@@ -4946,6 +4949,7 @@ function InfographicPageInner() {
                   ctaSubText: ctaSubText || "CHAT POUR PLUS D'INFOS",
                   noColorBg,
                   noColorSequences,
+                  posterOnAllSequences,
                   gradientColor1,
                   gradientColor2,
                   gradientOpacity,
@@ -5277,7 +5281,7 @@ function InfographicPageInner() {
               ctaIconGradColor1,
               ctaIconGradColor2,
               ctaIconSize,
-              noColorBg, noColorSequences,
+              noColorBg, noColorSequences, posterOnAllSequences,
               seqGradients,
               backdropRounded, backdropRadius, backdropMargin,
               filter: selectedFilter || undefined,
@@ -6043,6 +6047,20 @@ function InfographicPageInner() {
                     />
                     Synchroniser les couleurs entre séquences
                   </label>
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 text-xs text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={posterOnAllSequences}
+                      onChange={(e) => setPosterOnAllSequences(e.target.checked)}
+                      className="accent-purple-500"
+                    />
+                    Photo d'affiche sur toutes les séquences
+                  </label>
+                  <p className="text-[9px] text-gray-500 mt-0.5 ml-5">
+                    Désactivé : CTA et Cartes ont un fond noir. Activé : photo d'affiche partout.
+                  </p>
                 </div>
                 <div>
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">
@@ -8337,8 +8355,9 @@ function InfographicPageInner() {
             )}
 
             {/* Background Photo — global Pexels/poster (hidden when a per-sequence bg overrides it) */}
+            {/* Shown on titre always. On cartes/cta only when posterOnAllSequences is ON. */}
             {previewPhoto &&
-              ((activeSequence === "all" && exportedSequences.titre) || activeSequence === "titre") &&
+              ((activeSequence === "all" && exportedSequences.titre) || activeSequence === "titre" || (posterOnAllSequences && activeSequence !== "video")) &&
               !(activeSequence !== 'all' && sequenceBackgrounds[activeSequence as 'titre' | 'cartes' | 'video' | 'cta']?.url) && (
                 <img
                   src={previewPhoto.medium}

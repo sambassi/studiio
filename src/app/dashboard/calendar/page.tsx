@@ -2838,6 +2838,7 @@ export default function CalendarPage() {
         const designGradientOpacity = design?.gradientOpacity ?? 0.3;
         const designSeqGradients = design?.seqGradients || {};
         const designNoColorSequences: string[] = (design as any)?.noColorSequences || [];
+        const designPosterOnAll: boolean = !!(design as any)?.posterOnAllSequences;
         const designLogoScale = design?.logoScale || 1.0;
         const titleTypo = design?.typography?.title || {};
         const ctaTypo = design?.typography?.cta || {};
@@ -3191,7 +3192,7 @@ export default function CalendarPage() {
 
                     {/* === CARTES : Cartes d'info avec les 5 styles de l'éditeur + animation === */}
                     <div className="absolute inset-0" style={{ opacity: currentSeq === 'cards' ? 1 : 0, zIndex: currentSeq === 'cards' ? 10 : 1, transition: 'opacity 800ms ease-in-out', willChange: 'opacity' }}>
-                      <div className="absolute inset-0" style={{ background: getBackdropCSS('cards') }} />
+                      {designPosterOnAll && posterImgSrc ? <img src={posterImgSrc} alt="" className="absolute inset-0 w-full h-full object-cover" /> : <div className="absolute inset-0" style={{ background: getBackdropCSS('cards') }} />}
                       <div className="absolute inset-0" style={{ background: getGradientCSS('cards') }} />
                       <div className="absolute z-10" style={{
                         position: 'absolute',
@@ -3455,7 +3456,7 @@ export default function CalendarPage() {
 
                     {/* === CTA : Appel à l'action — même fond dégradé que l'éditeur/composer, texte coloré, logo === */}
                     <div className="absolute inset-0" style={{ opacity: currentSeq === 'cta' ? 1 : 0, transform: currentSeq === 'cta' ? 'scale(1)' : 'scale(0.92)', zIndex: currentSeq === 'cta' ? 10 : 1, transition: 'opacity 800ms ease-in-out, transform 800ms ease-in-out', willChange: 'opacity, transform' }}>
-                      <div className="absolute inset-0" style={{ background: getBackdropCSS('cta') }} />
+                      {designPosterOnAll && posterImgSrc ? <img src={posterImgSrc} alt="" className="absolute inset-0 w-full h-full object-cover" /> : <div className="absolute inset-0" style={{ background: getBackdropCSS('cta') }} />}
                       <div className="absolute inset-0" style={{ background: getGradientCSS('cta') }} />
                       <div className="text-center" style={{
                         position: 'absolute',

@@ -245,6 +245,10 @@ export interface DesignOptions {
   noColorBg?: boolean;
   /** Sequences with no color overlay */
   noColorSequences?: string[];
+  /** When true, the poster image is used as background on ALL sequences
+   *  (cards, CTA, video). When false (default), only the intro gets the
+   *  poster — other sequences get a black/gradient background. */
+  posterOnAllSequences?: boolean;
   /** Selected filter name */
   filter?: string;
   /** Inner-edge colored border applied on top of every sequence. */
@@ -2613,7 +2617,10 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         };
       }
     }
-    return { img: posterImg, opacity: 1, canvasFilter: 'none', vignette: 0, objectPosition: '50% 50%' };
+    // posterOnAllSequences: when false (default), only the intro sequence
+    // gets the poster image — cards/CTA/video get null (black + gradient).
+    const usePoster = normalizedDesign?.posterOnAllSequences !== false || type === 'intro';
+    return { img: usePoster ? posterImg : null, opacity: 1, canvasFilter: 'none', vignette: 0, objectPosition: '50% 50%' };
   };
 
   // Load audio — prefer pre-decoded AudioBuffers (batch mode), fallback to <audio> elements
