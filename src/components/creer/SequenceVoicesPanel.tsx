@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Mic, Square, Sparkles, Loader2, Trash2, Play, Pause, AlertTriangle, Info } from 'lucide-react';
-import { TTS_VOICES, synthesize } from '@/lib/tts/edge-tts-client';
+import { TTS_VOICES } from '@/lib/tts/edge-tts-client';
 import {
   SEQUENCE_KEYS,
   type SequenceKey,
@@ -270,21 +270,102 @@ export function SequenceVoicesPanel({
     });
   };
 
+  /**
+   * Generate a TTS clip for one sequence and persist it to Supabase Storage.
+   *
+   * Why this bypasses `synthesize()` (the wrapper) entirely and calls
+   * /api/tts/edge directly: the wrapper falls back to `browserSynthesize`
+   * when the server times out, which silently returns a ~1-5KB WebM blob
+   * containing only an oscillator blip (Web Speech API output isn't routed
+   * through AudioContext, so MediaRecorder captures nothing useful). That
+   * silent blob passed the wrapper's >50 byte check, was uploaded to
+   * Supabase, and crashed playback with MEDIA_ERR_DECODE / DEMUXER_ERROR.
+   *
+   * The chain here:
+   *   1. POST /api/tts/edge (50s timeout — matches server's 45s + buffer)
+   *   2. Validate ok + size >= 8KB (≈0.7s of MP3 @96kbps)
+   *   3. POST /api/upload/signed-url + PUT blob → Supabase
+   *   4. HEAD the publicUrl to verify the uploaded file is actually
+   *      reachable before we store the URL in state. This catches bucket
+   *      misconfiguration (private, MIME mismatch, quota) early.
+   *   5. probeDuration to populate the overrun warning UI
+   *   6. onChange — state is updated ONLY if every step above succeeded
+   *
+   * No silent fallback: any failure surfaces via onAudioError → red toast.
+   */
   const generateTts = async (key: SequenceKey) => {
     const text = sequenceVoices[key].text.trim();
     if (!text) return;
     setBusy((b) => ({ ...b, [key]: true }));
     try {
-      const blob = await synthesize(text, selectedTtsVoiceId);
-      if (!blob || blob.size < 50) {
-        console.warn('[SequenceVoices] TTS returned empty blob for', key);
-        return;
+      // Step 1: TTS — direct fetch, no wrapper
+      const ttsCtl = new AbortController();
+      const ttsTimer = setTimeout(() => ttsCtl.abort(), 50_000);
+      let audioRes: Response;
+      try {
+        audioRes = await fetch('/api/tts/edge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, voice: selectedTtsVoiceId, rate: '+0%', pitch: '+0Hz' }),
+          signal: ttsCtl.signal,
+        });
+      } finally {
+        clearTimeout(ttsTimer);
       }
-      const { url } = await uploadAudioBlob(blob);
-      const duration = await probeDuration(url);
-      onChange(key, { audioUrl: url, source: 'tts', ttsVoice: selectedTtsVoiceId, duration });
+      if (!audioRes.ok) {
+        const errBody = await audioRes.json().catch(() => ({}));
+        throw new Error(`/api/tts/edge HTTP ${audioRes.status} : ${errBody.error || 'no body'}`);
+      }
+      const audioBlob = await audioRes.blob();
+      console.log(`[SequenceVoices] TTS ${key} | size: ${audioBlob.size} bytes | type: ${audioBlob.type}`);
+      // 8KB ≈ 0.7s of MP3 @96kbps — well above any silent fallback artifact
+      if (audioBlob.size < 8000) {
+        throw new Error(`Audio TTS trop petit (${audioBlob.size} octets, minimum 8000) — réessaie ou choisis une autre voix`);
+      }
+
+      // Step 2: Upload to Supabase via signed URL
+      const filename = `tts-seq-${key}-${Date.now()}.mp3`;
+      const signRes = await fetch('/api/upload/signed-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, contentType: 'audio/mpeg', purpose: 'voice' }),
+      });
+      const signData = await signRes.json();
+      if (!signRes.ok || !signData.success || !signData.signedUrl || !signData.publicUrl) {
+        throw new Error(`Signed URL : ${signData.error || signRes.status}`);
+      }
+      const putRes = await fetch(signData.signedUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'audio/mpeg' },
+        body: audioBlob,
+      });
+      if (!putRes.ok) {
+        throw new Error(`Upload Supabase : HTTP ${putRes.status}`);
+      }
+
+      // Step 3: HEAD verify before storing the URL
+      const headRes = await fetch(signData.publicUrl, { method: 'HEAD' });
+      if (!headRes.ok) {
+        throw new Error(`Fichier uploadé inaccessible : HEAD HTTP ${headRes.status} (bucket privé ou non configuré ?)`);
+      }
+      const cl = headRes.headers.get('content-length');
+      if (cl && Number(cl) < 8000) {
+        throw new Error(`Fichier uploadé trop petit (${cl} octets) — Supabase a peut-être tronqué l'upload`);
+      }
+
+      // Step 4: probe duration + persist
+      const duration = await probeDuration(signData.publicUrl);
+      console.log(`[SequenceVoices] TTS ${key} ready: ${signData.publicUrl} (${duration.toFixed(2)}s)`);
+      onChange(key, {
+        audioUrl: signData.publicUrl,
+        source: 'tts',
+        ttsVoice: selectedTtsVoiceId,
+        duration,
+      });
     } catch (err) {
       console.error('[SequenceVoices] TTS error for', key, err);
+      const msg = err instanceof Error ? err.message : 'erreur inconnue';
+      onAudioError?.(`Synthèse vocale ${SEQUENCE_LABELS[key]} : ${msg}`);
     } finally {
       setBusy((b) => ({ ...b, [key]: false }));
     }
