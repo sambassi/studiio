@@ -2051,6 +2051,20 @@ function InfographicPageInner() {
         if (cfg.exportFormat === 'video' || cfg.exportFormat === 'jpeg' || cfg.exportFormat === 'png') {
           setExportFormat(cfg.exportFormat);
         }
+        // Per-sequence backgrounds (Phase 1) — shape validation per key.
+        if (cfg.sequenceBackgrounds && typeof cfg.sequenceBackgrounds === 'object') {
+          const restored: { titre: { url: string | null; opacity: number } | null; cartes: { url: string | null; opacity: number } | null; video: { url: string | null; opacity: number } | null; cta: { url: string | null; opacity: number } | null } = { titre: null, cartes: null, video: null, cta: null };
+          for (const key of ['titre', 'cartes', 'video', 'cta'] as const) {
+            const raw = (cfg.sequenceBackgrounds as Record<string, unknown>)[key];
+            if (raw && typeof raw === 'object') {
+              const cfg2 = raw as { url?: unknown; opacity?: unknown };
+              const url = typeof cfg2.url === 'string' ? cfg2.url : null;
+              const opacity = typeof cfg2.opacity === 'number' && cfg2.opacity >= 0 && cfg2.opacity <= 1 ? cfg2.opacity : 1;
+              if (url || opacity !== 1) restored[key] = { url, opacity };
+            }
+          }
+          setSequenceBackgrounds(restored);
+        }
 
         // ── Phase 4: HEAD validation des URLs Supabase restaurées ──
         // Les URLs sont set IMMÉDIATEMENT (UI ne flash pas), puis un fetch
@@ -2688,6 +2702,30 @@ function InfographicPageInner() {
   // Original PR #121 declared it at "Step 2: Export" (~2900) — that
   // placement crashed /creer in prod. Keep this here.
   const [exportFormat, setExportFormat] = useState<'video' | 'jpeg' | 'png'>('video');
+  // ── Per-sequence backgrounds (Phase 1) ──
+  // Each sequence (titre / cartes / video / cta) can override the global
+  // posterUrl with its own background image + opacity. `null` = inherit
+  // global. Phase 2 will add CSS filter adjustments to this same shape.
+  // ⚠️ Declared HERE (before the snapshot save useEffect) to avoid TDZ in
+  // production minification — same constraint as `exportFormat` above.
+  type SequenceBackgroundConfig = {
+    /** Supabase public URL or null for inheriting the global posterUrl. */
+    url: string | null;
+    /** 0–1. Default 1 (opaque). Applied on top of the chosen image. */
+    opacity: number;
+  };
+  type SequenceBackgrounds = {
+    titre: SequenceBackgroundConfig | null;
+    cartes: SequenceBackgroundConfig | null;
+    video: SequenceBackgroundConfig | null;
+    cta: SequenceBackgroundConfig | null;
+  };
+  const emptySequenceBackgrounds = (): SequenceBackgrounds => ({
+    titre: null, cartes: null, video: null, cta: null,
+  });
+  const [sequenceBackgrounds, setSequenceBackgrounds] = useState<SequenceBackgrounds>(
+    () => emptySequenceBackgrounds(),
+  );
   useEffect(() => {
     if (!configLoaded) return;
     // Closure-builder partagé entre le save debounced (500ms) et le save
@@ -2739,6 +2777,8 @@ function InfographicPageInner() {
         sequenceVoicesUserEdited,
         // Export format choice (video MP4 / image JPG / image PNG).
         exportFormat,
+        // Per-sequence background overrides (Phase 1).
+        sequenceBackgrounds,
     });
     const persistSnapshot = (snap: ReturnType<typeof buildSnapshot>) => {
       try {
@@ -2808,6 +2848,7 @@ function InfographicPageInner() {
     audioMusicUrl, audioVoiceUrl, audioMusicVolume, audioVoiceVolume,
     sequenceVoices, sequenceVoicesUserEdited,
     exportFormat,
+    sequenceBackgrounds,
   ]);
 
   // (Typography states declared earlier for localStorage compatibility)
@@ -2816,7 +2857,10 @@ function InfographicPageInner() {
 
   // Floating panels — which element panel is open
   const [activePanel, setActivePanel] = useState<
-    "title" | "cards" | "cta" | "overlay" | "gradient" | "logo" | "sitetext" | "add" | "character" | "background" | null
+    | "title" | "cards" | "cta" | "overlay" | "gradient" | "logo" | "sitetext"
+    | "add" | "character" | "background"
+    | "background-titre" | "background-cartes" | "background-video" | "background-cta"
+    | null
   >(null);
   const [panelPos, setPanelPos] = useState({ x: 0, y: 0 });
 
@@ -4629,6 +4673,7 @@ function InfographicPageInner() {
                 ? await preRenderCardIcons(bCards).then(rendered => rendered.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color, position: c.position, textOnly: c.textOnly, iconImage: (c as any).iconImage })))
                 : undefined,
               posterUrl: posterUrl,
+              sequenceBackgrounds,
               videoUrl: exportedSequences.video && rushList[0]?.kind !== 'image' ? (rushUrl || undefined) : undefined,
               videoImageUrl: exportedSequences.video && rushList[0]?.kind === 'image' ? (rushUrl || undefined) : undefined,
               rushTransform: rushList[0]?.transform,
@@ -5099,6 +5144,7 @@ function InfographicPageInner() {
               ? await preRenderCardIcons(cards).then(rendered => rendered.map((c) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color, position: c.position, textOnly: c.textOnly, iconImage: (c as any).iconImage })))
               : undefined,
             posterUrl: exportPosterUrl,
+            sequenceBackgrounds,
             videoUrl: exportedSequences.video && rushList[0]?.kind !== 'image' ? rushUrl : undefined,
             videoImageUrl: exportedSequences.video && rushList[0]?.kind === 'image' ? rushUrl : undefined,
             rushTransform: rushList[0]?.transform,
@@ -7921,7 +7967,15 @@ function InfographicPageInner() {
             ref={previewRef}
             onDoubleClick={(e) => {
               if (e.target === previewRef.current || (e.target as HTMLElement).closest('[data-preview-bg]')) {
-                openPanel('background', e);
+                // Per-sequence background panel (Phase 1) — opens the panel
+                // for the currently active sequence. If activeSequence is
+                // 'all' (cycle playing), fall back to the legacy global
+                // background panel.
+                if (activeSequence === 'titre' || activeSequence === 'cartes' || activeSequence === 'video' || activeSequence === 'cta') {
+                  openPanel(`background-${activeSequence}` as 'background-titre' | 'background-cartes' | 'background-video' | 'background-cta', e);
+                } else {
+                  openPanel('background', e);
+                }
               }
             }}
             onMouseDown={(e) => {
@@ -11057,6 +11111,153 @@ function InfographicPageInner() {
             );
           })()}
         </FloatingPanel>
+
+        {/* ── Per-sequence background panels (Phase 1) ──
+             Double-clicking the preview while a sequence is active opens
+             one of these. Each can override the global posterUrl with its
+             own image + opacity. Phase 2 will add CSS filter adjustments. */}
+        {(['titre', 'cartes', 'video', 'cta'] as const).map((seqKey) => {
+          const SEQ_LABELS: Record<typeof seqKey, string> = { titre: 'Titre', cartes: 'Cartes', video: 'Vidéo', cta: 'CTA' };
+          const SEQ_ICONS: Record<typeof seqKey, string> = { titre: '📝', cartes: '🃏', video: '🎬', cta: '🎯' };
+          const cfg = sequenceBackgrounds[seqKey];
+          const updateCfg = (patch: Partial<{ url: string | null; opacity: number }>) => {
+            setSequenceBackgrounds((prev) => {
+              const current = prev[seqKey] ?? { url: null, opacity: 1 };
+              const next = { ...current, ...patch };
+              // Treat the all-defaults state as "null" for cleaner persistence
+              const isDefault = next.url === null && next.opacity === 1;
+              return { ...prev, [seqKey]: isDefault ? null : next };
+            });
+          };
+          const handleFile = async (file: File) => {
+            try {
+              const res = await fetch('/api/upload/signed-url', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: `bg-${seqKey}-${Date.now()}-${file.name}`, contentType: file.type, purpose: 'bg' }),
+              });
+              const data = await res.json();
+              if (!res.ok || !data.success || !data.signedUrl || !data.publicUrl) {
+                throw new Error(data.error || `Signed URL: HTTP ${res.status}`);
+              }
+              const putRes = await fetch(data.signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+              if (!putRes.ok) throw new Error(`Upload: HTTP ${putRes.status}`);
+              const headRes = await fetch(data.publicUrl, { method: 'HEAD' });
+              if (!headRes.ok) throw new Error(`Vérification HEAD: HTTP ${headRes.status}`);
+              updateCfg({ url: data.publicUrl });
+              showToast(`✓ Image fond ${SEQ_LABELS[seqKey]} uploadée`, 'success');
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : 'erreur inconnue';
+              console.error('[BgPanel] upload failed:', err);
+              showToast(`Échec upload fond ${SEQ_LABELS[seqKey]} : ${msg}`, 'error');
+            }
+          };
+          return (
+            <FloatingPanel
+              key={seqKey}
+              title={`Fond ${SEQ_LABELS[seqKey]}`}
+              icon={SEQ_ICONS[seqKey]}
+              isOpen={activePanel === `background-${seqKey}`}
+              onClose={() => setActivePanel(null)}
+              initialX={panelPos.x}
+              initialY={panelPos.y}
+              accentColor="#7C3AED"
+            >
+              <div className="space-y-3">
+                <div className="text-[10px] text-gray-400">
+                  Image de fond pour la séquence <span className="text-white font-medium">{SEQ_LABELS[seqKey]}</span>.
+                  Si aucune image, l'éditeur utilise l'image globale (Pexels / poster).
+                </div>
+
+                {/* Current image preview + detach */}
+                {cfg?.url ? (
+                  <div className="space-y-2">
+                    <div className="relative rounded overflow-hidden bg-gray-800 border border-gray-700">
+                      <img src={cfg.url} alt={`bg ${seqKey}`} className="w-full h-24 object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => updateCfg({ url: null })}
+                        className="absolute top-1 right-1 rounded bg-red-600/80 px-2 py-0.5 text-[10px] text-white hover:bg-red-600"
+                        title="Détacher l'image (revient à l'image globale)"
+                      >
+                        Détacher
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded border border-dashed border-gray-700 bg-gray-800/40 px-3 py-4 text-center text-[10px] text-gray-500">
+                    Aucune image personnalisée — utilise le fond global
+                  </div>
+                )}
+
+                {/* Upload button */}
+                <div>
+                  <label className="block text-[9px] uppercase tracking-wider text-gray-500 mb-1">Upload image</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleFile(f);
+                      e.target.value = '';
+                    }}
+                    className="block w-full text-[10px] text-gray-300 file:mr-2 file:rounded file:border-0 file:bg-purple-600 file:px-2 file:py-1 file:text-[10px] file:text-white hover:file:bg-purple-700"
+                  />
+                </div>
+
+                {/* URL field */}
+                <div>
+                  <label className="block text-[9px] uppercase tracking-wider text-gray-500 mb-1">Ou URL directe</label>
+                  <input
+                    type="url"
+                    placeholder="https://..."
+                    defaultValue={cfg?.url ?? ''}
+                    onBlur={(e) => {
+                      const val = e.target.value.trim();
+                      if (val && val !== cfg?.url) updateCfg({ url: val });
+                    }}
+                    className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-[10px] text-white focus:border-purple-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* Opacity slider */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[9px] uppercase tracking-wider text-gray-500">Opacité</label>
+                    <span className="text-[10px] text-purple-300 font-mono">{Math.round((cfg?.opacity ?? 1) * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={cfg?.opacity ?? 1}
+                    onChange={(e) => updateCfg({ opacity: parseFloat(e.target.value) })}
+                    className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
+                  />
+                </div>
+
+                {/* Phase 4 placeholder — AI tools UI */}
+                <div className="pt-2 border-t border-gray-800">
+                  <div className="text-[9px] uppercase tracking-wider text-gray-500 mb-1.5">Outils IA — bientôt disponibles</div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {(['Effacer arrière-plan', 'Gomme magique', 'Édition magique', 'Augmenter résolution', 'D\'image à vidéo', 'Générer arrière-plan', 'Calques magiques', 'Transfert de style'] as const).map((label) => (
+                      <button
+                        key={label}
+                        type="button"
+                        disabled
+                        title="Bientôt disponible"
+                        className="rounded bg-gray-800/60 px-2 py-1.5 text-[10px] text-gray-500 cursor-not-allowed opacity-50"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </FloatingPanel>
+          );
+        })}
 
         {/* Batch Preview Dots */}
         {batchCount > 1 && (
