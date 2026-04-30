@@ -211,6 +211,32 @@ export function AudioStudioPanel({
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
   }, []);
 
+  /**
+   * Generate a TTS clip and persist it to Supabase Storage.
+   *
+   * Bug history: previous version had two failure modes that produced
+   * unplayable audio (DEMUXER_ERROR_COULD_NOT_OPEN at play):
+   *
+   *   1. `blob.size < 50` was too low. When `synthesize()` falls through
+   *      to its `browserSynthesize` fallback (server times out, Web Speech
+   *      API recording), the result is a ~1-5KB silent WebM blob (Speech-
+   *      SynthesisUtterance doesn't route through AudioContext, so
+   *      MediaRecorder captures only an oscillator blip). 50 bytes < 1KB,
+   *      so the silent blob passed.
+   *
+   *   2. The Supabase upload had a `try { ... } catch { fall through to
+   *      localUrl }` block. Any upload failure (network, signed URL
+   *      error, bucket misconfig) silently returned a `URL.createObject-
+   *      URL(blob)` blob: URL — temporary, doesn't survive refresh,
+   *      breaks export.
+   *
+   * Fix:
+   *   - Validate blob.size >= 8000 (≈0.7s of MP3 @96kbps, well above
+   *     any silent-fallback artifact).
+   *   - No blob: URL fallback. Upload failure throws → caller sees
+   *     ttsError, no bogus URL stored.
+   *   - HEAD verify the publicUrl before notifying the parent.
+   */
   const generateTTS = async () => {
     if (!ttsText.trim()) return;
     setTtsLoading(true);
@@ -219,35 +245,54 @@ export function AudioStudioPanel({
       const voice = TTS_VOICES.find((v) => v.id === selectedVoiceId);
       const voiceLabel = voice?.name || 'Voix';
 
-      // synthesize() handles the full chain: OpenAI (if openai-* id) →
-      // Edge → browser SpeechSynthesis. Returns a Blob (mp3 or webm).
+      // synthesize() chain: OpenAI (if openai-* id) → Edge → browser TTS
       const blob = await synthesize(ttsText, selectedVoiceId);
 
-      if (!blob || blob.size < 50) {
-        setTtsError('Synthèse vocale indisponible — réessaie ou choisis une autre voix');
-        return;
+      // 8KB threshold catches silent browser-fallback artifacts
+      if (!blob || blob.size < 8000) {
+        const sz = blob?.size ?? 0;
+        console.warn('[AudioPanel] TTS returned suspiciously small blob:', sz, 'bytes');
+        throw new Error(`Synthèse vocale indisponible (audio vide : ${sz} octets) — réessaie ou choisis une autre voix`);
       }
 
       const isWebm = blob.type.includes('webm');
       const ext = isWebm ? 'webm' : 'mp3';
       const contentType = isWebm ? 'audio/webm' : 'audio/mpeg';
-      const localUrl = URL.createObjectURL(blob);
-      const file = new File([blob], `tts-${Date.now()}.${ext}`, { type: contentType });
+      const filename = `tts-${Date.now()}.${ext}`;
+      const file = new File([blob], filename, { type: contentType });
 
-      try {
-        const uploadRes = await fetch('/api/upload/signed-url', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filename: file.name, contentType, purpose: 'voice' }),
-        });
-        const uploadData = await uploadRes.json();
-        if (uploadData.success) {
-          await fetch(uploadData.signedUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
-          onVoiceChange(uploadData.publicUrl, `TTS — ${voiceLabel}`);
-          return;
-        }
-      } catch { /* fall through to local URL */ }
-      onVoiceChange(localUrl, `TTS — ${voiceLabel}`);
+      // Upload — no silent fallback to blob: URL. Each step throws on failure.
+      const uploadRes = await fetch('/api/upload/signed-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, contentType, purpose: 'voice' }),
+      });
+      const uploadData = await uploadRes.json();
+      if (!uploadRes.ok || !uploadData?.success || !uploadData.signedUrl || !uploadData.publicUrl) {
+        throw new Error(`Signed URL : ${uploadData?.error || uploadRes.status}`);
+      }
+      const putRes = await fetch(uploadData.signedUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': contentType },
+        body: file,
+      });
+      if (!putRes.ok) {
+        throw new Error(`Upload Supabase : HTTP ${putRes.status}`);
+      }
+
+      // HEAD verify before notifying the parent — catches bucket misconfig
+      // (private, MIME mismatch, quota) BEFORE the user clicks play.
+      const headRes = await fetch(uploadData.publicUrl, { method: 'HEAD' });
+      if (!headRes.ok) {
+        throw new Error(`Audio inaccessible après upload : HEAD HTTP ${headRes.status}`);
+      }
+      const cl = headRes.headers.get('content-length');
+      if (cl && Number(cl) < 8000) {
+        throw new Error(`Fichier uploadé trop petit (${cl} octets) — Supabase a tronqué`);
+      }
+
+      console.log(`[AudioPanel] TTS ready: ${uploadData.publicUrl} (${blob.size} bytes)`);
+      onVoiceChange(uploadData.publicUrl, `TTS — ${voiceLabel}`);
     } catch (err: any) {
       console.error('[AudioPanel] TTS error:', err);
       setTtsError(err.message || 'Erreur de synthèse vocale');
