@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Mic, Square, Sparkles, Loader2, Trash2, Play, Pause, AlertTriangle, Info } from 'lucide-react';
-import { TTS_VOICES } from '@/lib/tts/edge-tts-client';
+import { TTS_VOICES, synthesize } from '@/lib/tts/edge-tts-client';
 import {
   SEQUENCE_KEYS,
   type SequenceKey,
@@ -273,17 +273,14 @@ export function SequenceVoicesPanel({
   /**
    * Generate a TTS clip for one sequence and persist it to Supabase Storage.
    *
-   * Why this bypasses `synthesize()` (the wrapper) entirely and calls
-   * /api/tts/edge directly: the wrapper falls back to `browserSynthesize`
-   * when the server times out, which silently returns a ~1-5KB WebM blob
-   * containing only an oscillator blip (Web Speech API output isn't routed
-   * through AudioContext, so MediaRecorder captures nothing useful). That
-   * silent blob passed the wrapper's >50 byte check, was uploaded to
-   * Supabase, and crashed playback with MEDIA_ERR_DECODE / DEMUXER_ERROR.
+   * Uses `synthesize()` from edge-tts-client which now (post-PR #132)
+   * cascades: Edge TTS → OpenAI TTS → throw. The previous broken
+   * `browserSynthesize` fallback was removed from `synthesize()` (it
+   * produced silent ~1-5KB WebM that crashed playback with DEMUXER_ERROR).
    *
    * The chain here:
-   *   1. POST /api/tts/edge (50s timeout — matches server's 45s + buffer)
-   *   2. Validate ok + size >= 8KB (≈0.7s of MP3 @96kbps)
+   *   1. synthesize() — Edge → OpenAI auto-fallback (50s timeout each)
+   *   2. Validate size >= 8KB (defensive — synthesize already enforces it)
    *   3. POST /api/upload/signed-url + PUT blob → Supabase
    *   4. HEAD the publicUrl to verify the uploaded file is actually
    *      reachable before we store the URL in state. This catches bucket
@@ -292,33 +289,17 @@ export function SequenceVoicesPanel({
    *   6. onChange — state is updated ONLY if every step above succeeded
    *
    * No silent fallback: any failure surfaces via onAudioError → red toast.
+   * The output is always MP3 (Edge or OpenAI both return MP3).
    */
   const generateTts = async (key: SequenceKey) => {
     const text = sequenceVoices[key].text.trim();
     if (!text) return;
     setBusy((b) => ({ ...b, [key]: true }));
     try {
-      // Step 1: TTS — direct fetch, no wrapper
-      const ttsCtl = new AbortController();
-      const ttsTimer = setTimeout(() => ttsCtl.abort(), 50_000);
-      let audioRes: Response;
-      try {
-        audioRes = await fetch('/api/tts/edge', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, voice: selectedTtsVoiceId, rate: '+0%', pitch: '+0Hz' }),
-          signal: ttsCtl.signal,
-        });
-      } finally {
-        clearTimeout(ttsTimer);
-      }
-      if (!audioRes.ok) {
-        const errBody = await audioRes.json().catch(() => ({}));
-        throw new Error(`/api/tts/edge HTTP ${audioRes.status} : ${errBody.error || 'no body'}`);
-      }
-      const audioBlob = await audioRes.blob();
+      // Step 1: TTS via synthesize() (Edge → OpenAI fallback chain)
+      const audioBlob = await synthesize(text, selectedTtsVoiceId);
       console.log(`[SequenceVoices] TTS ${key} | size: ${audioBlob.size} bytes | type: ${audioBlob.type}`);
-      // 8KB ≈ 0.7s of MP3 @96kbps — well above any silent fallback artifact
+      // 8KB ≈ 0.7s of MP3 @96kbps — defensive (synthesize enforces this internally)
       if (audioBlob.size < 8000) {
         throw new Error(`Audio TTS trop petit (${audioBlob.size} octets, minimum 8000) — réessaie ou choisis une autre voix`);
       }

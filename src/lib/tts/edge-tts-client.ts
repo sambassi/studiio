@@ -278,22 +278,103 @@ async function browserSynthesize(
 }
 
 /**
+ * Map an Edge voice ID to an OpenAI TTS voice ID for automatic fallback.
+ * Edge TTS upstream is unstable from Vercel (msedge-tts WebSocket frequently
+ * blocked / timing out), so we keep OpenAI as a transparent fallback. OpenAI
+ * `tts-1-hd` auto-detects the input language so the same model works for
+ * FR / EN / ES / PT / DE — we just pick a voice with the matching gender.
+ */
+function pickOpenAiFallbackVoice(edgeVoiceId: string): 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer' {
+  const edgeVoice = TTS_VOICES.find((v) => v.id === edgeVoiceId);
+  // Female voices: nova (warm), shimmer (clear). Male: echo, onyx, fable.
+  // Default mapping prioritizes a single, recognizable voice per gender so
+  // batch-generated content sounds consistent across sequences.
+  if (edgeVoice?.gender === 'Male') return 'echo';
+  return 'nova';
+}
+
+/**
+ * Try OpenAI TTS as a server-side fallback when Edge TTS fails.
+ * Returns null on any failure (caller decides what to do next).
+ */
+async function tryOpenAiFallback(text: string, edgeVoiceId: string): Promise<Blob | null> {
+  const openaiVoice = pickOpenAiFallbackVoice(edgeVoiceId);
+  console.log('[TTS] Trying OpenAI fallback voice:', openaiVoice, '(original:', edgeVoiceId, ')');
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 50_000);
+  try {
+    const res = await fetch('/api/tts/openai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, voice: openaiVoice }),
+      signal: ctl.signal,
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      console.warn('[TTS] OpenAI fallback failed:', data.error || res.status);
+      return null;
+    }
+    const blob = await res.blob();
+    if (blob.size === 0) {
+      console.warn('[TTS] OpenAI fallback returned empty audio');
+      return null;
+    }
+    console.log('[TTS] OpenAI fallback success:', (blob.size / 1024).toFixed(1), 'KB');
+    return blob;
+  } catch (err) {
+    console.warn('[TTS] OpenAI fallback exception:', err instanceof Error ? err.message : err);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Synthesize text to speech.
- * Tries server-side Edge TTS first, falls back to browser SpeechSynthesis.
- * Returns an audio Blob.
+ *
+ * Order:
+ *   1. Server Edge TTS (free, unofficial msedge-tts WebSocket)
+ *   2. **OpenAI TTS** (requires OPENAI_API_KEY, but reliable on Vercel)
+ *
+ * The previous browser-fallback path (`browserSynthesize`) is intentionally
+ * NOT reached here. It records `AudioContext.createMediaStreamDestination()`
+ * but `SpeechSynthesisUtterance.speak()` outputs to the system audio device
+ * and never touches the AudioContext graph — `MediaRecorder` captures only
+ * the oscillator blip, producing a ~1-5KB silent WebM that crashes Chrome
+ * with `DEMUXER_ERROR_COULD_NOT_OPEN` at playback. We keep the function
+ * exported for legacy callers (live preview button) but `synthesize()` —
+ * the path used for files that get uploaded and embedded in MP4 exports —
+ * MUST NOT use it.
+ *
+ * Throws if both server paths fail. The caller (SequenceVoicesPanel /
+ * AudioStudioPanel) catches and surfaces the error via showToast.
  */
 export async function synthesize(
   text: string,
   voiceId: string,
   options?: { rate?: string; pitch?: string },
 ): Promise<Blob> {
-  // Try server first
+  // 1. Try server first (Edge or OpenAI based on voice ID)
   const serverBlob = await tryServerSynthesize(text, voiceId, options);
-  if (serverBlob) return serverBlob;
+  if (serverBlob && serverBlob.size >= 8000) return serverBlob;
+  if (serverBlob) {
+    console.warn('[TTS] Server returned suspiciously small blob:', serverBlob.size, 'bytes — trying fallback');
+  }
 
-  // Fallback to browser TTS
-  console.log('[TTS] Server failed, falling back to browser SpeechSynthesis');
-  return browserSynthesize(text, voiceId);
+  // 2. If the original was an Edge voice, try OpenAI as automatic fallback.
+  //    (If the original was already an openai-* voice, no point retrying it.)
+  const voice = TTS_VOICES.find((v) => v.id === voiceId);
+  if (voice?.provider !== 'openai') {
+    const openaiBlob = await tryOpenAiFallback(text, voiceId);
+    if (openaiBlob && openaiBlob.size >= 8000) return openaiBlob;
+  }
+
+  // Both paths failed — throw so the caller surfaces a clear error.
+  // We deliberately do NOT call `browserSynthesize` here; it produces a
+  // silent blob that crashes playback (see docstring above).
+  throw new Error(
+    'Synthèse vocale indisponible — Edge TTS upstream a échoué et le fallback OpenAI n\'a pas réussi (vérifie que OPENAI_API_KEY est configuré côté serveur).'
+  );
 }
 
 /**
