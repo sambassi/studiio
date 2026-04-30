@@ -881,7 +881,7 @@ interface PexelsPhoto {
 }
 
 type Format = "9:16" | "16:9";
-type Destination = "draft" | "export" | "both" | "audio-studio";
+type Destination = "draft" | "export" | "both";
 
 // ── Content Themes ─────────────────────────────────────────────
 const CONTENT_THEMES = [
@@ -4225,7 +4225,7 @@ function InfographicPageInner() {
         const hasVideo = !!rushUrl;
         const mediaType = hasVideo ? "video" : "image";
 
-        if (destination === "draft" || destination === "both" || destination === "audio-studio") {
+        if (destination === "draft" || destination === "both") {
           const today = new Date();
           today.setDate(today.getDate() + b); // Spread across days
           const scheduledDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
@@ -5087,14 +5087,7 @@ function InfographicPageInner() {
       // Success is conveyed by the progress bar reaching 100%; no extra toast.
       // (User explicitly asked: ne pas en afficher ailleurs.)
 
-      if (destination === 'audio-studio') {
-        const audioStudioUrl = createdPostIds.length === 1
-          ? `/dashboard/audio-studio?postId=${createdPostIds[0]}`
-          : createdPostIds.length > 1
-            ? `/dashboard/audio-studio?postIds=${createdPostIds.join(',')}`
-            : '/dashboard/audio-studio';
-        setTimeout(() => router.push(audioStudioUrl), 1500);
-      } else if (destination === "draft" || destination === "both") {
+      if (destination === "draft" || destination === "both") {
         setTimeout(() => router.push("/dashboard/calendar"), 2000);
       }
     } catch (error) {
@@ -10950,17 +10943,17 @@ function InfographicPageInner() {
         )}
         {([
           { key: 'draft' as Destination, Icon: Calendar, color: '#3B82F6', tip: 'Calendrier' },
-          { key: 'export' as Destination, Icon: Download, color: '#10B981', tip: 'Fichier' },
+          { key: 'export' as Destination, Icon: Download, color: '#10B981', tip: 'Bureau' },
           { key: 'both' as Destination, Icon: Layers, color: '#A855F7', tip: 'Les deux' },
-          { key: 'audio-studio' as Destination, Icon: Music, color: '#EC4899', tip: 'Studio Son' },
         ] as const).map(({ key, Icon, color, tip }) => (
           <button key={key} onClick={() => setDestination(key)} title={tip}
-            className={`h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 transition-all ${
+            className={`flex flex-col items-center justify-center gap-0.5 rounded-lg flex-shrink-0 transition-all px-1 py-1 ${
               destination === key ? 'ring-2 ring-white/40 scale-105' : 'opacity-60 hover:opacity-100'
             }`}
-            style={{ backgroundColor: `${color}20`, color }}
+            style={{ backgroundColor: `${color}20`, color, minWidth: '52px' }}
           >
             <Icon size={16} fill="currentColor" strokeWidth={1.5} />
+            <span className="text-[8px] font-bold uppercase tracking-tight leading-none">{tip}</span>
           </button>
         ))}
         {(destination === 'draft' || destination === 'both') && (
@@ -11012,18 +11005,18 @@ function InfographicPageInner() {
         )}
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {([
-            { key: 'draft' as Destination, Icon: Calendar, color: '#3B82F6' },
-            { key: 'export' as Destination, Icon: Download, color: '#10B981' },
-            { key: 'both' as Destination, Icon: Layers, color: '#A855F7' },
-            { key: 'audio-studio' as Destination, Icon: Music, color: '#EC4899' },
-          ] as const).map(({ key, Icon, color }) => (
-            <button key={key} onClick={() => setDestination(key)}
-              className={`h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 transition-all ${
+            { key: 'draft' as Destination, Icon: Calendar, color: '#3B82F6', tip: 'Calendrier' },
+            { key: 'export' as Destination, Icon: Download, color: '#10B981', tip: 'Bureau' },
+            { key: 'both' as Destination, Icon: Layers, color: '#A855F7', tip: 'Les deux' },
+          ] as const).map(({ key, Icon, color, tip }) => (
+            <button key={key} onClick={() => setDestination(key)} title={tip}
+              className={`flex flex-col items-center justify-center gap-0.5 rounded-lg flex-shrink-0 transition-all px-1 py-1 ${
                 destination === key ? 'ring-2 ring-white/40 scale-105' : 'opacity-60'
               }`}
-              style={{ backgroundColor: `${color}20`, color }}
+              style={{ backgroundColor: `${color}20`, color, minWidth: '52px' }}
             >
               <Icon size={16} fill="currentColor" strokeWidth={1.5} />
+              <span className="text-[8px] font-bold uppercase tracking-tight leading-none">{tip}</span>
             </button>
           ))}
           {(destination === 'draft' || destination === 'both') && (
