@@ -2857,10 +2857,7 @@ function InfographicPageInner() {
 
   // Floating panels — which element panel is open
   const [activePanel, setActivePanel] = useState<
-    | "title" | "cards" | "cta" | "overlay" | "gradient" | "logo" | "sitetext"
-    | "add" | "character" | "background"
-    | "background-titre" | "background-cartes" | "background-video" | "background-cta"
-    | null
+    "title" | "cards" | "cta" | "overlay" | "gradient" | "logo" | "sitetext" | "add" | "character" | "background" | null
   >(null);
   const [panelPos, setPanelPos] = useState({ x: 0, y: 0 });
 
@@ -5382,6 +5379,109 @@ function InfographicPageInner() {
     setActiveRailTab(id);
   };
 
+  /**
+   * Reusable background section for the existing Title / Cards / Video / CTA
+   * panels (Phase 1 refactor). Each existing panel calls this at the bottom
+   * of its content with its own seqKey, so the user manages a sequence's
+   * background INSIDE the same panel they already use to edit that sequence.
+   * No new toolbar button, no new floating panel.
+   */
+  const renderBgSection = (seqKey: 'titre' | 'cartes' | 'video' | 'cta') => {
+    const SEQ_LABELS: Record<typeof seqKey, string> = { titre: 'Titre', cartes: 'Cartes', video: 'Vidéo', cta: 'CTA' };
+    const cfg = sequenceBackgrounds[seqKey];
+    const updateCfg = (patch: Partial<{ url: string | null; opacity: number }>) => {
+      setSequenceBackgrounds((prev) => {
+        const current = prev[seqKey] ?? { url: null, opacity: 1 };
+        const next = { ...current, ...patch };
+        const isDefault = next.url === null && next.opacity === 1;
+        return { ...prev, [seqKey]: isDefault ? null : next };
+      });
+    };
+    const handleFile = async (file: File) => {
+      try {
+        const res = await fetch('/api/upload/signed-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: `bg-${seqKey}-${Date.now()}-${file.name}`, contentType: file.type, purpose: 'bg' }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success || !data.signedUrl || !data.publicUrl) {
+          throw new Error(data.error || `Signed URL: HTTP ${res.status}`);
+        }
+        const putRes = await fetch(data.signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+        if (!putRes.ok) throw new Error(`Upload: HTTP ${putRes.status}`);
+        const headRes = await fetch(data.publicUrl, { method: 'HEAD' });
+        if (!headRes.ok) throw new Error(`Vérification HEAD: HTTP ${headRes.status}`);
+        updateCfg({ url: data.publicUrl });
+        showToast(`✓ Image fond ${SEQ_LABELS[seqKey]} uploadée`, 'success');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'erreur inconnue';
+        console.error('[BgSection] upload failed:', err);
+        showToast(`Échec upload fond ${SEQ_LABELS[seqKey]} : ${msg}`, 'error');
+      }
+    };
+    return (
+      <div className="pt-3 mt-3 border-t border-gray-800 space-y-2">
+        <div className="text-[9px] uppercase tracking-wider text-gray-500">
+          Fond {SEQ_LABELS[seqKey]}
+        </div>
+        <div className="text-[10px] text-gray-400">
+          Image de fond pour cette séquence. Sans personnalisation, l'éditeur utilise l'image globale.
+        </div>
+        {cfg?.url ? (
+          <div className="relative rounded overflow-hidden bg-gray-800 border border-gray-700">
+            <img src={cfg.url} alt={`bg ${seqKey}`} className="w-full h-20 object-cover" />
+            <button
+              type="button"
+              onClick={() => updateCfg({ url: null })}
+              className="absolute top-1 right-1 rounded bg-red-600/80 px-2 py-0.5 text-[10px] text-white hover:bg-red-600"
+              title="Détacher l'image (revient à l'image globale)"
+            >
+              Détacher
+            </button>
+          </div>
+        ) : null}
+        <div className="flex items-center gap-2">
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleFile(f);
+              e.target.value = '';
+            }}
+            className="block flex-1 text-[10px] text-gray-300 file:mr-2 file:rounded file:border-0 file:bg-purple-600 file:px-2 file:py-1 file:text-[10px] file:text-white hover:file:bg-purple-700"
+          />
+        </div>
+        <input
+          type="url"
+          placeholder="ou URL https://..."
+          defaultValue={cfg?.url ?? ''}
+          onBlur={(e) => {
+            const val = e.target.value.trim();
+            if (val && val !== cfg?.url) updateCfg({ url: val });
+          }}
+          className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-[10px] text-white focus:border-purple-500 focus:outline-none"
+        />
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[9px] uppercase tracking-wider text-gray-500">Opacité</span>
+            <span className="text-[10px] text-purple-300 font-mono">{Math.round((cfg?.opacity ?? 1) * 100)}%</span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={cfg?.opacity ?? 1}
+            onChange={(e) => updateCfg({ opacity: parseFloat(e.target.value) })}
+            className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
+          />
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex min-h-[calc(100vh-4rem)] flex-col bg-gray-900 text-white overflow-x-hidden">
       {/* Toast */}
@@ -7682,33 +7782,6 @@ function InfographicPageInner() {
             />
             {cardPositionMode === 'grid' ? 'Grille' : 'Libre'}
           </button>
-
-          {/* ── Fond (Phase 1) — opens the per-sequence background panel ──
-               More discoverable than the previous "double-click on empty
-               preview area" entry point: a visible toolbar button that
-               always works regardless of where the user clicks. */}
-          <button
-            type="button"
-            onClick={(e) => {
-              const seqKey = (activeSequence === 'titre' || activeSequence === 'cartes' || activeSequence === 'video' || activeSequence === 'cta')
-                ? activeSequence
-                : 'titre';
-              const target = `background-${seqKey}` as 'background-titre' | 'background-cartes' | 'background-video' | 'background-cta';
-              const x = Math.min(e.clientX - 130, window.innerWidth - 320);
-              const y = Math.max(20, Math.min(e.clientY - 40, window.innerHeight - 400));
-              setPanelPos({ x, y });
-              setActivePanel((prev) => (prev === target ? null : target));
-            }}
-            title={`Configurer le fond de la séquence ${activeSequence === 'all' ? 'Titre' : activeSequence}`}
-            className={`flex items-center gap-2 rounded-2xl pl-1 pr-3 py-1 text-xs font-medium transition-all ${
-              (typeof activePanel === 'string' && activePanel.startsWith('background-'))
-                ? "bg-gray-800/80 text-white shadow-lg shadow-black/20"
-                : "bg-gray-900/60 text-gray-300 hover:bg-gray-800/80 hover:text-white"
-            }`}
-          >
-            <IconBadge Icon={ImageIcon} color="purple" active={typeof activePanel === 'string' && activePanel.startsWith('background-')} size={36} iconSize={18} />
-            Fond
-          </button>
         </div>
 
         {/* Hint when nothing is selected */}
@@ -7994,15 +8067,7 @@ function InfographicPageInner() {
             ref={previewRef}
             onDoubleClick={(e) => {
               if (e.target === previewRef.current || (e.target as HTMLElement).closest('[data-preview-bg]')) {
-                // Per-sequence background panel (Phase 1) — opens the panel
-                // for the currently active sequence. If activeSequence is
-                // 'all' (cycle playing), fall back to the legacy global
-                // background panel.
-                if (activeSequence === 'titre' || activeSequence === 'cartes' || activeSequence === 'video' || activeSequence === 'cta') {
-                  openPanel(`background-${activeSequence}` as 'background-titre' | 'background-cartes' | 'background-video' | 'background-cta', e);
-                } else {
-                  openPanel('background', e);
-                }
+                openPanel('background', e);
               }
             }}
             onMouseDown={(e) => {
@@ -9696,6 +9761,7 @@ function InfographicPageInner() {
                 </div>
               )}
             </div>
+            {renderBgSection('titre')}
           </div>
         </FloatingPanel>
 
@@ -9860,6 +9926,7 @@ function InfographicPageInner() {
                 ))}
               </select>
             </div>
+            {renderBgSection('cartes')}
           </div>
         </FloatingPanel>
 
@@ -10168,6 +10235,7 @@ function InfographicPageInner() {
                 </div>
               )}
             </div>
+            {renderBgSection('cta')}
           </div>
         </FloatingPanel>
 
@@ -10912,6 +10980,7 @@ function InfographicPageInner() {
               </div>
             );
           })()}
+          {renderBgSection('video')}
         </FloatingPanel>
 
         {/* ── Add Element Panel (opens on background double-click) ── */}
@@ -11139,152 +11208,10 @@ function InfographicPageInner() {
           })()}
         </FloatingPanel>
 
-        {/* ── Per-sequence background panels (Phase 1) ──
-             Double-clicking the preview while a sequence is active opens
-             one of these. Each can override the global posterUrl with its
-             own image + opacity. Phase 2 will add CSS filter adjustments. */}
-        {(['titre', 'cartes', 'video', 'cta'] as const).map((seqKey) => {
-          const SEQ_LABELS: Record<typeof seqKey, string> = { titre: 'Titre', cartes: 'Cartes', video: 'Vidéo', cta: 'CTA' };
-          const SEQ_ICONS: Record<typeof seqKey, string> = { titre: '📝', cartes: '🃏', video: '🎬', cta: '🎯' };
-          const cfg = sequenceBackgrounds[seqKey];
-          const updateCfg = (patch: Partial<{ url: string | null; opacity: number }>) => {
-            setSequenceBackgrounds((prev) => {
-              const current = prev[seqKey] ?? { url: null, opacity: 1 };
-              const next = { ...current, ...patch };
-              // Treat the all-defaults state as "null" for cleaner persistence
-              const isDefault = next.url === null && next.opacity === 1;
-              return { ...prev, [seqKey]: isDefault ? null : next };
-            });
-          };
-          const handleFile = async (file: File) => {
-            try {
-              const res = await fetch('/api/upload/signed-url', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ filename: `bg-${seqKey}-${Date.now()}-${file.name}`, contentType: file.type, purpose: 'bg' }),
-              });
-              const data = await res.json();
-              if (!res.ok || !data.success || !data.signedUrl || !data.publicUrl) {
-                throw new Error(data.error || `Signed URL: HTTP ${res.status}`);
-              }
-              const putRes = await fetch(data.signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
-              if (!putRes.ok) throw new Error(`Upload: HTTP ${putRes.status}`);
-              const headRes = await fetch(data.publicUrl, { method: 'HEAD' });
-              if (!headRes.ok) throw new Error(`Vérification HEAD: HTTP ${headRes.status}`);
-              updateCfg({ url: data.publicUrl });
-              showToast(`✓ Image fond ${SEQ_LABELS[seqKey]} uploadée`, 'success');
-            } catch (err) {
-              const msg = err instanceof Error ? err.message : 'erreur inconnue';
-              console.error('[BgPanel] upload failed:', err);
-              showToast(`Échec upload fond ${SEQ_LABELS[seqKey]} : ${msg}`, 'error');
-            }
-          };
-          return (
-            <FloatingPanel
-              key={seqKey}
-              title={`Fond ${SEQ_LABELS[seqKey]}`}
-              icon={SEQ_ICONS[seqKey]}
-              isOpen={activePanel === `background-${seqKey}`}
-              onClose={() => setActivePanel(null)}
-              initialX={panelPos.x}
-              initialY={panelPos.y}
-              accentColor="#7C3AED"
-            >
-              <div className="space-y-3">
-                <div className="text-[10px] text-gray-400">
-                  Image de fond pour la séquence <span className="text-white font-medium">{SEQ_LABELS[seqKey]}</span>.
-                  Si aucune image, l'éditeur utilise l'image globale (Pexels / poster).
-                </div>
-
-                {/* Current image preview + detach */}
-                {cfg?.url ? (
-                  <div className="space-y-2">
-                    <div className="relative rounded overflow-hidden bg-gray-800 border border-gray-700">
-                      <img src={cfg.url} alt={`bg ${seqKey}`} className="w-full h-24 object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => updateCfg({ url: null })}
-                        className="absolute top-1 right-1 rounded bg-red-600/80 px-2 py-0.5 text-[10px] text-white hover:bg-red-600"
-                        title="Détacher l'image (revient à l'image globale)"
-                      >
-                        Détacher
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="rounded border border-dashed border-gray-700 bg-gray-800/40 px-3 py-4 text-center text-[10px] text-gray-500">
-                    Aucune image personnalisée — utilise le fond global
-                  </div>
-                )}
-
-                {/* Upload button */}
-                <div>
-                  <label className="block text-[9px] uppercase tracking-wider text-gray-500 mb-1">Upload image</label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) handleFile(f);
-                      e.target.value = '';
-                    }}
-                    className="block w-full text-[10px] text-gray-300 file:mr-2 file:rounded file:border-0 file:bg-purple-600 file:px-2 file:py-1 file:text-[10px] file:text-white hover:file:bg-purple-700"
-                  />
-                </div>
-
-                {/* URL field */}
-                <div>
-                  <label className="block text-[9px] uppercase tracking-wider text-gray-500 mb-1">Ou URL directe</label>
-                  <input
-                    type="url"
-                    placeholder="https://..."
-                    defaultValue={cfg?.url ?? ''}
-                    onBlur={(e) => {
-                      const val = e.target.value.trim();
-                      if (val && val !== cfg?.url) updateCfg({ url: val });
-                    }}
-                    className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-[10px] text-white focus:border-purple-500 focus:outline-none"
-                  />
-                </div>
-
-                {/* Opacity slider */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-[9px] uppercase tracking-wider text-gray-500">Opacité</label>
-                    <span className="text-[10px] text-purple-300 font-mono">{Math.round((cfg?.opacity ?? 1) * 100)}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={cfg?.opacity ?? 1}
-                    onChange={(e) => updateCfg({ opacity: parseFloat(e.target.value) })}
-                    className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
-                  />
-                </div>
-
-                {/* Phase 4 placeholder — AI tools UI */}
-                <div className="pt-2 border-t border-gray-800">
-                  <div className="text-[9px] uppercase tracking-wider text-gray-500 mb-1.5">Outils IA — bientôt disponibles</div>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {(['Effacer arrière-plan', 'Gomme magique', 'Édition magique', 'Augmenter résolution', 'D\'image à vidéo', 'Générer arrière-plan', 'Calques magiques', 'Transfert de style'] as const).map((label) => (
-                      <button
-                        key={label}
-                        type="button"
-                        disabled
-                        title="Bientôt disponible"
-                        className="rounded bg-gray-800/60 px-2 py-1.5 text-[10px] text-gray-500 cursor-not-allowed opacity-50"
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </FloatingPanel>
-          );
-        })}
+        {/* Per-sequence background editing is now integrated as a section
+             at the bottom of the existing Title / Cards / Video (overlay)
+             / CTA panels via `renderBgSection(seqKey)`. No separate panels
+             — see refactor PR. */}
 
         {/* Batch Preview Dots */}
         {batchCount > 1 && (
