@@ -1928,6 +1928,9 @@ function InfographicPageInner() {
         if (Array.isArray(cfg.batchPhotoIndices)) setBatchPhotoIndices(cfg.batchPhotoIndices as number[]);
         // Audio (musique + voix) — URL Supabase stable, restaurée au refresh
         // pour que l'utilisateur ne perde pas son upload. Volumes idem.
+        // Le set est immédiat (UI ne flash pas) ; un HEAD asynchrone valide
+        // ensuite que le fichier existe encore (cleanup, quota, suppression
+        // manuelle Supabase) et clear l'URL si elle est morte.
         if (typeof cfg.audioMusicUrl === 'string') setAudioMusicUrl(cfg.audioMusicUrl);
         if (typeof cfg.audioVoiceUrl === 'string') setAudioVoiceUrl(cfg.audioVoiceUrl);
         if (typeof cfg.audioMusicVolume === 'number') setAudioMusicVolume(cfg.audioMusicVolume);
@@ -2045,6 +2048,85 @@ function InfographicPageInner() {
           );
         }
         if (cfg.cardPositionMode === 'grid' || cfg.cardPositionMode === 'free') setCardPositionMode(cfg.cardPositionMode);
+
+        // ── Phase 4: HEAD validation des URLs Supabase restaurées ──
+        // Les URLs sont set IMMÉDIATEMENT (UI ne flash pas), puis un fetch
+        // HEAD en background détecte les URLs mortes (cleanup, quota dépassé,
+        // fichier supprimé manuellement) et clear le state. Le user voit donc
+        // son audio "tenté de charger" et disparaître proprement plutôt
+        // qu'une URL qui plante au premier <audio src>.
+        const validateAndClearUrl = async (
+          url: string | null | undefined,
+          clear: () => void,
+          label: string,
+        ) => {
+          if (!url || typeof url !== 'string') return;
+          try {
+            const res = await fetch(url, { method: 'HEAD' });
+            if (!res.ok) {
+              console.warn(`[Restore] ${label} URL invalide (HTTP ${res.status}), clearing :`, url.substring(0, 80));
+              clear();
+            }
+          } catch (err) {
+            console.warn(`[Restore] ${label} HEAD échoué, clearing :`, err);
+            clear();
+          }
+        };
+        // Fire-and-forget — ne bloque pas le mount
+        if (typeof cfg.audioMusicUrl === 'string') {
+          validateAndClearUrl(cfg.audioMusicUrl, () => setAudioMusicUrl(null), 'audioMusicUrl');
+        }
+        if (typeof cfg.audioVoiceUrl === 'string') {
+          validateAndClearUrl(cfg.audioVoiceUrl, () => setAudioVoiceUrl(null), 'audioVoiceUrl');
+        }
+        if (cfg.sequenceVoices && typeof cfg.sequenceVoices === 'object') {
+          for (const key of SEQUENCE_KEYS) {
+            const sv = (cfg.sequenceVoices as Record<string, { audioUrl?: unknown }>)[key];
+            if (sv && typeof sv.audioUrl === 'string') {
+              validateAndClearUrl(sv.audioUrl, () => {
+                setSequenceVoices((prev) => ({
+                  ...prev,
+                  [key]: { ...prev[key], audioUrl: null, source: null, duration: undefined },
+                }));
+              }, `sequenceVoices.${key}.audioUrl`);
+            }
+          }
+        }
+        if (Array.isArray(cfg.rushList)) {
+          for (const r of cfg.rushList as Array<{ url?: string }>) {
+            if (r && typeof r.url === 'string') {
+              const deadUrl = r.url;
+              validateAndClearUrl(deadUrl, () => {
+                setRushList((prev) => prev.filter((x) => x.url !== deadUrl));
+              }, 'rushList');
+            }
+          }
+        }
+
+        // ── Phase 6: Toast de restauration ──
+        // Liste des items restaurés (texte FR pour l'utilisateur). On ne
+        // montre rien si le snapshot est vide (premier visit).
+        const restoredItems: string[] = [];
+        if (cfg.title) restoredItems.push('titre');
+        if (Array.isArray(cfg.cards) && cfg.cards.length > 0) {
+          restoredItems.push(`${cfg.cards.length} carte${cfg.cards.length > 1 ? 's' : ''}`);
+        }
+        if (Array.isArray(cfg.rushList) && cfg.rushList.length > 0) restoredItems.push('vidéo rush');
+        if (cfg.audioMusicUrl) restoredItems.push('musique');
+        const hasAnyVoice = !!cfg.audioVoiceUrl || (
+          cfg.sequenceVoices && typeof cfg.sequenceVoices === 'object'
+            && Object.values(cfg.sequenceVoices as Record<string, { audioUrl?: unknown }>).some(
+              (v) => v && typeof v.audioUrl === 'string'
+            )
+        );
+        if (hasAnyVoice) restoredItems.push('voix-off');
+        if (Array.isArray(cfg.cardGroups) && cfg.cardGroups.length > 0) restoredItems.push('groupes');
+        if (restoredItems.length > 0) {
+          // Defer to let the UI render first (toast over hydrated DOM)
+          setTimeout(() => {
+            showToast(`✓ Configuration restaurée (${restoredItems.join(', ')})`, 'success');
+          }, 300);
+        }
       }
     } catch {
       /* ignore */
@@ -2597,8 +2679,10 @@ function InfographicPageInner() {
   // into the undo history stack so Ctrl+Z returns to an earlier version.
   useEffect(() => {
     if (!configLoaded) return;
-    const handle = window.setTimeout(() => {
-      const snapshot = {
+    // Closure-builder partagé entre le save debounced (500ms) et le save
+    // synchrone au beforeunload. Garantit que les deux paths persistent
+    // EXACTEMENT les mêmes champs.
+    const buildSnapshot = () => ({
         colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration, exportedSequences,
         titleLetterSpacing, titleLineHeight, titleBold, titleItalic,
         ctaLetterSpacing, ctaLineHeight, ctaBold, ctaItalic,
@@ -2642,16 +2726,33 @@ function InfographicPageInner() {
         // populated by the future UI in PR B).
         sequenceVoices,
         sequenceVoicesUserEdited,
-      };
+    });
+    const persistSnapshot = (snap: ReturnType<typeof buildSnapshot>) => {
       try {
-        localStorage.setItem(DESIGN_PREFS_KEY, JSON.stringify(snapshot));
+        localStorage.setItem(DESIGN_PREFS_KEY, JSON.stringify(snap));
         if (localStorage.getItem(LEGACY_CONFIG_KEY)) {
           localStorage.removeItem(LEGACY_CONFIG_KEY);
         }
-      } catch { /* ignore */ }
+      } catch { /* ignore (quota, private mode) */ }
+    };
+    const handle = window.setTimeout(() => {
+      const snapshot = buildSnapshot();
+      persistSnapshot(snapshot);
       history.commit(snapshot);
     }, 500);
-    return () => window.clearTimeout(handle);
+    // Synchronous save on tab close / refresh / external navigation —
+    // covers the window where the user edits something and quits before
+    // the 500ms debounce fires. Latest closure is captured because this
+    // useEffect re-runs on every state change (and removes the previous
+    // handler in cleanup).
+    const onBeforeUnload = () => {
+      persistSnapshot(buildSnapshot());
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => {
+      window.clearTimeout(handle);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     configLoaded, colorTheme, format, introDuration, cardsDuration, videoDuration, ctaDuration, exportedSequences,
