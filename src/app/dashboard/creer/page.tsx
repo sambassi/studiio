@@ -2048,6 +2048,9 @@ function InfographicPageInner() {
           );
         }
         if (cfg.cardPositionMode === 'grid' || cfg.cardPositionMode === 'free') setCardPositionMode(cfg.cardPositionMode);
+        if (cfg.exportFormat === 'video' || cfg.exportFormat === 'jpeg' || cfg.exportFormat === 'png') {
+          setExportFormat(cfg.exportFormat);
+        }
 
         // ── Phase 4: HEAD validation des URLs Supabase restaurées ──
         // Les URLs sont set IMMÉDIATEMENT (UI ne flash pas), puis un fetch
@@ -2726,6 +2729,8 @@ function InfographicPageInner() {
         // populated by the future UI in PR B).
         sequenceVoices,
         sequenceVoicesUserEdited,
+        // Export format choice (video MP4 / image JPG / image PNG).
+        exportFormat,
     });
     const persistSnapshot = (snap: ReturnType<typeof buildSnapshot>) => {
       try {
@@ -2794,6 +2799,7 @@ function InfographicPageInner() {
     rushList,
     audioMusicUrl, audioVoiceUrl, audioMusicVolume, audioVoiceVolume,
     sequenceVoices, sequenceVoicesUserEdited,
+    exportFormat,
   ]);
 
   // (Typography states declared earlier for localStorage compatibility)
@@ -2881,6 +2887,19 @@ function InfographicPageInner() {
 
   // ── Step 2: Export ──────────────────────────────────────────
   const [destination, setDestination] = useState<Destination>("draft");
+  // Export format: vidéo MP4 (default), ou image JPG/PNG. En mode image,
+  // chaque séquence visible (œil ouvert) produit une image ; >=2 séquences
+  // → ZIP. Image export uses modern-screenshot on the preview DOM (déjà
+  // utilisé pour les snapshots cartes), pas de refactor du composer.
+  const [exportFormat, setExportFormat] = useState<'video' | 'jpeg' | 'png'>('video');
+  // Image export only goes to "Bureau" (download). Force destination back
+  // to 'export' if the user switches to JPG/PNG while another destination
+  // (calendrier / both / audio-studio) is selected.
+  useEffect(() => {
+    if (exportFormat !== 'video' && destination !== 'export') {
+      setDestination('export');
+    }
+  }, [exportFormat, destination]);
   const [selectedPublishPlatforms, setSelectedPublishPlatforms] = useState<PlatformKey[]>([]);
   const togglePublishPlatform = (p: PlatformKey) =>
     setSelectedPublishPlatforms((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
@@ -4011,9 +4030,112 @@ function InfographicPageInner() {
   };
 
   // ── Export ──────────────────────────────────────────────────
+  /** Image export — for each visible sequence, switch the preview to that
+   *  sequence, wait for re-render, take a modern-screenshot, then either
+   *  download (single image) or zip (multiple). DOM-based: no composer
+   *  refactor risk, output matches exactly what the user sees. */
+  const handleImageExport = async (fmt: 'jpeg' | 'png') => {
+    const visibleSequences: ('titre' | 'cartes' | 'video' | 'cta')[] = [];
+    if (exportedSequences.titre) visibleSequences.push('titre');
+    if (exportedSequences.cartes && cards.length > 0) visibleSequences.push('cartes');
+    if (exportedSequences.video && rushUrl) visibleSequences.push('video');
+    if (exportedSequences.cta) visibleSequences.push('cta');
+    if (visibleSequences.length === 0) {
+      showToast('Aucune séquence visible à exporter (active au moins un œil ouvert)');
+      return;
+    }
+    if (!previewRef.current) {
+      showToast('Aperçu introuvable — impossible de capturer une image');
+      return;
+    }
+
+    setIsExporting(true);
+    setExportProgress(0);
+
+    const previousActive = activeSequence;
+    const isReel = format === '9:16';
+    // Target output resolution; previewRef is ~320-600px wide depending
+    // on viewport. Compute scale so the screenshot lands at ~1080px wide
+    // for reel, ~1920px wide for 16:9.
+    const targetW = isReel ? 1080 : 1920;
+    const scale = Math.max(1, targetW / (previewRef.current.offsetWidth || 320));
+
+    try {
+      const { domToCanvas } = await import('modern-screenshot');
+      const blobs: { name: string; blob: Blob }[] = [];
+      const baseTitle = (title || 'studiio').replace(/[^a-zA-Z0-9-_]+/g, '_');
+      const ext = fmt === 'png' ? 'png' : 'jpg';
+      const mime = fmt === 'png' ? 'image/png' : 'image/jpeg';
+
+      for (let i = 0; i < visibleSequences.length; i++) {
+        const seq = visibleSequences[i];
+        setActiveSequence(seq);
+        setExportProgress(Math.round((i / visibleSequences.length) * 85));
+        // Double RAF + 50ms safety so React commits + browser paints the
+        // newly active sequence before we screenshot it.
+        await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+        await new Promise<void>((r) => setTimeout(r, 50));
+
+        const canvas = await domToCanvas(previewRef.current!, { backgroundColor: undefined, scale });
+        const blob = await new Promise<Blob | null>((resolve) =>
+          canvas.toBlob(resolve, mime, fmt === 'jpeg' ? 0.92 : undefined),
+        );
+        if (!blob) throw new Error(`canvas.toBlob returned null for ${seq}`);
+        blobs.push({ name: `${baseTitle}-${seq}-${i + 1}.${ext}`, blob });
+      }
+
+      setExportProgress(95);
+
+      if (blobs.length === 1) {
+        const url = URL.createObjectURL(blobs[0].blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = blobs[0].name;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      } else {
+        const JSZip = (await import('jszip')).default;
+        const zip = new JSZip();
+        for (const { name, blob } of blobs) zip.file(name, blob);
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(zipBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${baseTitle}-images.zip`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      }
+
+      setExportProgress(100);
+      showToast(
+        `✓ ${blobs.length} image${blobs.length > 1 ? 's' : ''} téléchargée${blobs.length > 1 ? 's (ZIP)' : ''}`,
+        'success',
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'erreur inconnue';
+      console.error('[ImageExport] failed:', err);
+      showToast(`Échec export image : ${msg}`);
+    } finally {
+      // Restore the sequence the user was viewing before export
+      setActiveSequence(previousActive);
+      setTimeout(() => {
+        setIsExporting(false);
+        setExportProgress(0);
+      }, 1500);
+    }
+  };
+
   const handleExport = async () => {
     if (cards.length === 0) {
       showToast("Ajoutez au moins une carte avant d'exporter");
+      return;
+    }
+
+    // Image export branch — captures the live preview DOM via
+    // modern-screenshot for each visible sequence. Bypasses the entire
+    // video pipeline (composer, audio mix, MediaRecorder, MP4 transcode).
+    if (exportFormat === 'jpeg' || exportFormat === 'png') {
+      await handleImageExport(exportFormat);
       return;
     }
 
@@ -11051,12 +11173,32 @@ function InfographicPageInner() {
             <div className="w-full bg-gradient-to-b from-purple-500 to-pink-500 transition-all duration-300" style={{ height: `${exportProgress}%` }} />
           </div>
         )}
+        {/* Format selector — MP4 / JPG / PNG */}
         {([
-          { key: 'draft' as Destination, Icon: Calendar, color: '#3B82F6', tip: 'Calendrier' },
-          { key: 'export' as Destination, Icon: Download, color: '#10B981', tip: 'Fichier' },
-          { key: 'both' as Destination, Icon: Layers, color: '#A855F7', tip: 'Les deux' },
-          { key: 'audio-studio' as Destination, Icon: Music, color: '#EC4899', tip: 'Studio Son' },
-        ] as const).map(({ key, Icon, color, tip }) => (
+          { key: 'video' as const, Icon: Video, label: 'MP4', tip: 'Vidéo MP4' },
+          { key: 'jpeg' as const, Icon: ImageIcon, label: 'JPG', tip: 'Image JPG (compressée)' },
+          { key: 'png' as const, Icon: ImageIcon, label: 'PNG', tip: 'Image PNG (sans perte)' },
+        ]).map(({ key, Icon, label, tip }) => (
+          <button key={key} onClick={() => setExportFormat(key)} title={tip}
+            className={`h-7 w-9 rounded-md flex items-center justify-center gap-0.5 transition-all flex-shrink-0 ${
+              exportFormat === key ? 'bg-purple-600 text-white ring-1 ring-purple-300' : 'bg-gray-800 text-gray-400 hover:text-white'
+            }`}
+          >
+            <Icon size={9} />
+            <span className="text-[8px] font-bold leading-none">{label}</span>
+          </button>
+        ))}
+        <div className="h-px w-7 bg-gray-700/50" />
+        {(exportFormat === 'video'
+          ? [
+              { key: 'draft' as Destination, Icon: Calendar, color: '#3B82F6', tip: 'Calendrier' },
+              { key: 'export' as Destination, Icon: Download, color: '#10B981', tip: 'Fichier' },
+              { key: 'both' as Destination, Icon: Layers, color: '#A855F7', tip: 'Les deux' },
+              { key: 'audio-studio' as Destination, Icon: Music, color: '#EC4899', tip: 'Studio Son' },
+            ]
+          : [
+              { key: 'export' as Destination, Icon: Download, color: '#10B981', tip: 'Fichier (Bureau)' },
+            ]).map(({ key, Icon, color, tip }) => (
           <button key={key} onClick={() => setDestination(key)} title={tip}
             className={`h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 transition-all ${
               destination === key ? 'ring-2 ring-white/40 scale-105' : 'opacity-60 hover:opacity-100'
@@ -11091,7 +11233,9 @@ function InfographicPageInner() {
             : <Zap size={16} fill="currentColor" strokeWidth={1.5} />}
         </button>
         <span className="text-[9px] text-yellow-400 font-bold leading-none">
-          {isExporting ? `${exportProgress}%` : `${25 * batchCount}cr`}
+          {isExporting
+            ? `${exportProgress}%`
+            : `${(exportFormat === 'video' ? 25 : 5) * batchCount}cr`}
         </span>
         <div className="h-px w-7 bg-gray-700/50" />
         <div className="flex flex-col items-center gap-0.5">
@@ -11114,12 +11258,30 @@ function InfographicPageInner() {
           <div className="absolute top-0 left-0 h-0.5 bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300" style={{ width: `${exportProgress}%` }} />
         )}
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          {([
-            { key: 'draft' as Destination, Icon: Calendar, color: '#3B82F6' },
-            { key: 'export' as Destination, Icon: Download, color: '#10B981' },
-            { key: 'both' as Destination, Icon: Layers, color: '#A855F7' },
-            { key: 'audio-studio' as Destination, Icon: Music, color: '#EC4899' },
-          ] as const).map(({ key, Icon, color }) => (
+          {/* Format pill — MP4 / JPG / PNG */}
+          <div className="flex items-center gap-px rounded-md bg-gray-800/80 p-0.5 mr-1">
+            {([
+              { key: 'video' as const, label: 'MP4' },
+              { key: 'jpeg' as const, label: 'JPG' },
+              { key: 'png' as const, label: 'PNG' },
+            ]).map(({ key, label }) => (
+              <button key={key} onClick={() => setExportFormat(key)}
+                className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition ${
+                  exportFormat === key ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'
+                }`}
+              >{label}</button>
+            ))}
+          </div>
+          {(exportFormat === 'video'
+            ? [
+                { key: 'draft' as Destination, Icon: Calendar, color: '#3B82F6' },
+                { key: 'export' as Destination, Icon: Download, color: '#10B981' },
+                { key: 'both' as Destination, Icon: Layers, color: '#A855F7' },
+                { key: 'audio-studio' as Destination, Icon: Music, color: '#EC4899' },
+              ]
+            : [
+                { key: 'export' as Destination, Icon: Download, color: '#10B981' },
+              ]).map(({ key, Icon, color }) => (
             <button key={key} onClick={() => setDestination(key)}
               className={`h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 transition-all ${
                 destination === key ? 'ring-2 ring-white/40 scale-105' : 'opacity-60'
@@ -11165,7 +11327,7 @@ function InfographicPageInner() {
             : <><Zap size={14} fill="currentColor" />Export {batchCount > 1 ? `x${batchCount}` : ''}</>}
         </button>
         <span className="text-[10px] text-yellow-400 font-bold whitespace-nowrap flex-shrink-0">
-          {25 * batchCount}cr
+          {(exportFormat === 'video' ? 25 : 5) * batchCount}cr
         </span>
       </div>
 
