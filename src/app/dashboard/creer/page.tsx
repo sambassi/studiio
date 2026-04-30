@@ -2248,10 +2248,16 @@ function InfographicPageInner() {
     },
   };
 
-  // Sequence view: show individual "pages" in preview
+  // Sequence view: show individual "pages" in preview.
+  // Default to "titre" (single sequence) instead of "all" — when "all" is
+  // active and every sequence is enabled, the conditional renders stack
+  // ALL the sequences on top of each other (intended for the "Lire ▶"
+  // playback mode that cycles through them, NOT for the static editor
+  // view on mount). Users hitting F5 expect to see the title sequence
+  // first, not a pile-up of titre+cartes+video+cta content.
   const [activeSequence, setActiveSequence] = useState<
     "all" | "titre" | "cartes" | "video" | "cta"
-  >("all");
+  >("titre");
 
   // Drag positions (percentage-based offsets from default)
   const [titlePos, setTitlePos] = useState({ x: 50, y: 10 });

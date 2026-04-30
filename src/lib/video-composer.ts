@@ -6,7 +6,7 @@
  */
 import type { AudioKeyframe } from './creer/audioDucking';
 
-const COMPOSER_VERSION = 'v35-per-sequence-voice-overs-2026-04-29';
+const COMPOSER_VERSION = 'v36-seq-voice-titre-race-fix-2026-04-30';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
 
 // Exported so the calendar UI can detect stale videos and show a "Régénérer"
@@ -3154,30 +3154,38 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         video:  { start: introS + cardsS,                end: introS + cardsS + videoS },
         cta:    { start: introS + cardsS + videoS,       end: introS + cardsS + videoS + ctaS },
       };
+      console.log('[Composer] Per-sequence voice scheduling:', JSON.stringify(offsets));
       for (const k of SEQ_VOICE_KEYS) {
         const el = seqVoiceEls[k];
         if (!el) continue;
         const { start, end } = offsets[k];
-        // setTimeout vs the wall clock — same pattern as the legacy voiceEl
-        // play() which fires at audio-start. The recorder is also started
-        // around audioStartTime so the wall-clock Δ matches the video Δ.
-        const startMs = Math.max(0, start * 1000);
-        const stopMs = Math.max(startMs + 100, end * 1000);
-        setTimeout(() => {
+        // For offset === 0 (titre), call play() synchronously so it lands
+        // in the same microtask as the legacy voiceEl.play() above. Using
+        // setTimeout(fn, 0) was racing against recorder.start() and could
+        // miss the first ~50 ms of the titre voice in the recording.
+        const startNow = () => {
           try {
             el.currentTime = 0;
             el.play().then(() => {
-              console.log('[Composer] ✅ Seq voice', k, 'PLAYING at offset', start.toFixed(2), 's');
+              console.log('[Composer] ✅ Seq voice', k, 'PLAYING at offset', start.toFixed(2), 's | duration:', el.duration.toFixed(1), 's');
             }).catch((err) => {
-              console.warn('[Composer] ⚠️ Seq voice', k, 'play() failed:', err);
+              console.warn('[Composer] ⚠️ Seq voice', k, 'play() failed:', err?.message || err);
             });
           } catch (err) {
             console.warn('[Composer] ⚠️ Seq voice', k, 'unexpected play error:', err);
           }
-        }, startMs);
+        };
+        if (start <= 0) {
+          startNow();
+        } else {
+          setTimeout(startNow, Math.round(start * 1000));
+        }
+        // Hard pause at sequence end so a long voice doesn't bleed into
+        // the next sequence. Audio elements that finished naturally
+        // before this fires are unaffected.
         setTimeout(() => {
           try { el.pause(); } catch { /* ignore */ }
-        }, stopMs);
+        }, Math.round(end * 1000));
       }
     }
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Mic, Square, Sparkles, Loader2, Trash2, Play, Pause, AlertTriangle, Info } from 'lucide-react';
+import { Mic, Square, Sparkles, Loader2, Trash2, AlertTriangle, Info } from 'lucide-react';
 import { TTS_VOICES, synthesize } from '@/lib/tts/edge-tts-client';
 import {
   SEQUENCE_KEYS,
@@ -35,51 +35,53 @@ function formatTime(s: number): string {
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
-/** Inline mini audio player — local to this panel so we don't have to
- *  refactor AudioStudioPanel's MiniPlayer. */
+/** Native browser audio player — using `<audio controls>` directly is
+ *  simpler and more reliable than a custom play/pause button (the
+ *  custom version had `play().catch(() => setPlaying(false))` which
+ *  swallowed errors silently and left the user wondering why nothing
+ *  happened on click). The native player handles all the edge cases
+ *  (loading state, errors, scrubbing) and the user gets the full
+ *  audio scrubber for free. */
 function PreviewPlayer({ src, onDelete }: { src: string; onDelete: () => void }) {
   const audioRef = useRef<HTMLAudioElement>(null);
-  const [playing, setPlaying] = useState(false);
-
-  const toggle = () => {
-    const el = audioRef.current;
-    if (!el) return;
-    if (playing) {
-      el.pause();
-      setPlaying(false);
-    } else {
-      el.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
-    }
-  };
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const el = audioRef.current;
     if (!el) return;
-    const onEnd = () => setPlaying(false);
-    el.addEventListener('ended', onEnd);
-    return () => el.removeEventListener('ended', onEnd);
+    setError(null);
+    const onErr = () => {
+      const code = el.error?.code;
+      const msg = el.error?.message || `code ${code}`;
+      console.error('[SequenceVoices PreviewPlayer] audio error:', msg, '— src:', src.slice(0, 80));
+      setError(msg);
+    };
+    el.addEventListener('error', onErr);
+    return () => el.removeEventListener('error', onErr);
   }, [src]);
 
   return (
     <div className="flex items-center gap-2 rounded bg-gray-800/60 px-2 py-1.5">
-      <button
-        type="button"
-        onClick={toggle}
-        className="rounded bg-purple-500/20 p-1.5 text-purple-300 hover:bg-purple-500/30"
-        aria-label={playing ? 'Pause' : 'Play'}
-      >
-        {playing ? <Pause size={12} /> : <Play size={12} />}
-      </button>
-      <span className="flex-1 truncate text-[10px] text-gray-400">Audio prêt</span>
+      <audio
+        ref={audioRef}
+        src={src}
+        controls
+        preload="metadata"
+        className="h-7 flex-1"
+        style={{ filter: 'invert(0.85) hue-rotate(180deg)' }}
+      />
       <button
         type="button"
         onClick={onDelete}
-        className="rounded bg-red-500/10 p-1.5 text-red-400 hover:bg-red-500/20"
+        className="rounded bg-red-500/10 p-1.5 text-red-400 hover:bg-red-500/20 flex-shrink-0"
         aria-label="Supprimer l'audio"
+        title="Supprimer cet audio"
       >
         <Trash2 size={12} />
       </button>
-      <audio ref={audioRef} src={src} preload="metadata" />
+      {error && (
+        <span className="text-[9px] text-red-400" title={error}>⚠</span>
+      )}
     </div>
   );
 }
