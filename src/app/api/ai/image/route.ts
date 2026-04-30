@@ -21,15 +21,17 @@ const AI_CREDITS: Record<string, number> = {
 
 // ── Replicate model IDs (use latest version — no pinned hash) ──
 // All models verified active on Replicate as of 2026-04-30
+// Only 4 unique models needed — several tools reuse the same model with different prompts
 const MODELS: Record<string, `${string}/${string}`> = {
-  'remove-bg': 'cjwbw/rembg',                              // ✅ 11M+ runs
-  'upscale': 'nightmareai/real-esrgan',                     // ✅ 89M+ runs
-  'magic-edit': 'timothybrooks/instruct-pix2pix',           // ✅ 939K runs
-  'generate-bg': 'black-forest-labs/flux-schnell',           // ✅ Official FLUX model
-  'magic-eraser': 'stability-ai/stable-diffusion-inpainting', // ✅ 20.8M runs — replaced broken andreasjansson model
-  'style-transfer': 'timothybrooks/instruct-pix2pix',       // ✅ reuses instruct-pix2pix with style prompt
-  'image-to-video': 'wan-video/wan-2.2-i2v-fast',           // ✅ Fast Wan 2.2 — replaced broken stability-ai/stable-video-diffusion
-  'magic-layers': 'cjwbw/rembg',                            // ✅ 11M+ runs
+  'remove-bg': 'cjwbw/rembg',                              // ✅ 11M+ runs — background removal
+  'upscale': 'nightmareai/real-esrgan',                     // ✅ 89M+ runs — image upscaling
+  'magic-edit': 'timothybrooks/instruct-pix2pix',           // ✅ 939K runs — prompt-based editing
+  'generate-bg': 'black-forest-labs/flux-schnell',           // ✅ Official FLUX — text-to-image
+  'image-to-video': 'wan-video/wan-2.2-i2v-fast',           // ✅ Fast Wan 2.2 — image animation
+  // Reused models (no separate model needed):
+  // magic-eraser → uses instruct-pix2pix with erasing prompt
+  // style-transfer → uses instruct-pix2pix with style prompt
+  // magic-layers → uses rembg (same as remove-bg)
 };
 
 export async function POST(req: NextRequest) {
@@ -77,22 +79,18 @@ export async function POST(req: NextRequest) {
         break;
       }
 
-      // ── 2. Magic Eraser (Inpainting — stability-ai) ──
+      // ── 2. Magic Eraser (uses instruct-pix2pix with erasing prompt) ──
       case 'magic-eraser': {
         if (!imageUrl || !prompt) return NextResponse.json({ success: false, error: 'imageUrl et prompt requis' }, { status: 400 });
-        output = await replicate.run(MODELS['magic-eraser'], {
+        output = await replicate.run(MODELS['magic-edit'], {
           input: {
             image: imageUrl,
-            mask: imageUrl,
-            prompt: 'clean background, empty space, seamless fill',
-            negative_prompt: prompt, // What to remove
+            prompt: `remove ${prompt}, replace with clean empty background, seamless`,
             num_outputs: 1,
-            guidance_scale: 7.5,
-            num_inference_steps: 25,
-            prompt_strength: 0.65,
+            guidance_scale: 9,
+            image_guidance_scale: 1.2,
           },
         });
-        // Inpainting returns array
         if (Array.isArray(output)) output = output[0];
         break;
       }
@@ -222,10 +220,22 @@ export async function POST(req: NextRequest) {
     detectAndReportServiceError('replicate', error);
 
     // User-friendly error messages
-    if (msg.includes('402') || msg.includes('Insufficient credit')) {
+    if (msg.includes('402') || msg.includes('Insufficient credit') || msg.includes('less than')) {
       return NextResponse.json({
         success: false,
-        error: 'Service IA temporairement indisponible. L\'administrateur a été notifié.',
+        error: 'Service IA temporairement indisponible (crédits API épuisés). L\'administrateur a été notifié.',
+      }, { status: 503 });
+    }
+    if (msg.includes('429') || msg.includes('Too Many Requests') || msg.includes('throttled') || msg.includes('rate limit')) {
+      return NextResponse.json({
+        success: false,
+        error: 'Trop de requêtes IA simultanées. Veuillez patienter quelques secondes et réessayer.',
+      }, { status: 429 });
+    }
+    if (msg.includes('404') || msg.includes('Not Found') || msg.includes('not be found')) {
+      return NextResponse.json({
+        success: false,
+        error: 'Modèle IA temporairement indisponible. L\'administrateur a été notifié.',
       }, { status: 503 });
     }
     if (msg.includes('422') || msg.includes('Invalid version')) {
@@ -235,6 +245,6 @@ export async function POST(req: NextRequest) {
       }, { status: 503 });
     }
 
-    return NextResponse.json({ success: false, error: msg }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Une erreur est survenue avec le service IA. Réessayez plus tard.' }, { status: 500 });
   }
 }
