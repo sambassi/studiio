@@ -4602,7 +4602,17 @@ function InfographicPageInner() {
             const originalCardsForBatch = cards; // captured once per iteration
             const needsStateSync = b > 0 && shouldSnapshot;
             if (shouldSnapshot && activeSequence !== 'cartes' && activeSequence !== 'all') {
-              setActiveSequence('cartes');
+              // CRITICAL: flushSync() force React à commit IMMÉDIATEMENT.
+              // Sans ça, setActiveSequence est asynchrone — le data-cards-grid
+              // reste à display:none (offsetWidth/Height = 0) au moment de la
+              // snapshot pour b >= 2, et le snapshot capture du vide.
+              // Symptôme : "[Batch #2] cardsEl offsetWidth/Height: 0 0" puis
+              // "Cards grid element missing — using manual canvas fallback"
+              // → la vidéo b=2 est rendue par fallback manuel et le post peut
+              // crasher en aval, créant N-1 posts au lieu de N.
+              flushSync(() => {
+                setActiveSequence('cartes');
+              });
               didForceSequenceCal = true;
             }
             if (needsStateSync) {
@@ -5146,7 +5156,10 @@ function InfographicPageInner() {
           const prevSequenceBur = activeSequence;
           let didForceSequenceBur = false;
           if (exportedSequences.cartes && bCards.length > 0 && activeSequence !== 'cartes' && activeSequence !== 'all') {
-            setActiveSequence('cartes');
+            // flushSync — voir commentaire identique dans la boucle calendrier.
+            flushSync(() => {
+              setActiveSequence('cartes');
+            });
             didForceSequenceBur = true;
             await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
           }
