@@ -120,17 +120,46 @@ const FILTER_SLIDERS: FilterSliderDef[] = [
   },
 ];
 
-// ── AI tool placeholders ──
+// ── AI tools config ──
 
-const AI_TOOLS = [
-  { label: 'Effacer arrière-plan', icon: <Eraser size={11} /> },
-  { label: 'Gomme magique', icon: <Wand2 size={11} /> },
-  { label: 'Édition magique', icon: <Paintbrush size={11} /> },
-  { label: 'Augmenter résolution', icon: <ArrowUpCircle size={11} /> },
-  { label: "D'image à vidéo", icon: <Video size={11} /> },
-  { label: 'Générer arrière-plan', icon: <ImageIcon size={11} /> },
-  { label: 'Calques magiques', icon: <Layers size={11} /> },
-  { label: 'Transfert de style', icon: <Maximize size={11} /> },
+type AiAction = 'remove-bg' | 'magic-eraser' | 'magic-edit' | 'upscale' | 'image-to-video' | 'generate-bg' | 'magic-layers' | 'style-transfer';
+
+interface AiToolDef {
+  action: AiAction;
+  label: string;
+  icon: React.ReactNode;
+  /** Does this tool need the current image URL? */
+  needsImage: boolean;
+  /** Does this tool need a text prompt? */
+  needsPrompt: boolean;
+  /** Placeholder for prompt input */
+  promptPlaceholder?: string;
+  /** Does this tool need a style selection? */
+  needsStyle?: boolean;
+  /** Credit cost */
+  credits: number;
+}
+
+const AI_TOOLS: AiToolDef[] = [
+  { action: 'remove-bg', label: 'Effacer arrière-plan', icon: <Eraser size={11} />, needsImage: true, needsPrompt: false, credits: 2 },
+  { action: 'magic-eraser', label: 'Gomme magique', icon: <Wand2 size={11} />, needsImage: true, needsPrompt: true, promptPlaceholder: 'Que voulez-vous effacer ? (ex: la personne, le texte…)', credits: 3 },
+  { action: 'magic-edit', label: 'Édition magique', icon: <Paintbrush size={11} />, needsImage: true, needsPrompt: true, promptPlaceholder: 'Décrivez la modification (ex: changer le ciel en coucher de soleil)', credits: 5 },
+  { action: 'upscale', label: 'Augmenter résolution', icon: <ArrowUpCircle size={11} />, needsImage: true, needsPrompt: false, credits: 3 },
+  { action: 'image-to-video', label: "D'image à vidéo", icon: <Video size={11} />, needsImage: true, needsPrompt: false, credits: 15 },
+  { action: 'generate-bg', label: 'Générer arrière-plan', icon: <ImageIcon size={11} />, needsImage: false, needsPrompt: true, promptPlaceholder: 'Décrivez le fond (ex: gym moderne sombre avec néons violets)', credits: 5 },
+  { action: 'magic-layers', label: 'Calques magiques', icon: <Layers size={11} />, needsImage: true, needsPrompt: false, credits: 3 },
+  { action: 'style-transfer', label: 'Transfert de style', icon: <Maximize size={11} />, needsImage: true, needsPrompt: false, needsStyle: true, credits: 5 },
+];
+
+const STYLE_PRESETS = [
+  { value: 'anime', label: 'Anime' },
+  { value: 'oil painting', label: 'Peinture' },
+  { value: 'watercolor', label: 'Aquarelle' },
+  { value: 'neon cyberpunk', label: 'Cyberpunk' },
+  { value: 'pencil sketch', label: 'Croquis' },
+  { value: 'pop art', label: 'Pop Art' },
+  { value: 'vintage retro film', label: 'Vintage' },
+  { value: 'minimalist flat design', label: 'Minimaliste' },
 ];
 
 // ── Helper: build CSS filter string from ImageFilters ──
@@ -180,13 +209,17 @@ export default function ImageEditorPanel({
   config,
   onUpdate,
   onUploadFile,
-  showToast: _showToast,
+  showToast,
 }: ImageEditorPanelProps) {
-  void _showToast; // Reserved for future AI tools feedback
   const fileRef = useRef<HTMLInputElement>(null);
   const [urlDraft, setUrlDraft] = useState(config?.url ?? '');
   const [uploading, setUploading] = useState(false);
   const [isDraggingCrop, setIsDraggingCrop] = useState(false);
+  // AI tools state
+  const [aiLoading, setAiLoading] = useState<AiAction | null>(null);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiPromptFor, setAiPromptFor] = useState<AiAction | null>(null);
+  const [aiStyle, setAiStyle] = useState<string | null>(null);
   const cropStartRef = useRef<{ x: number; y: number; startPosX: number; startPosY: number } | null>(null);
   const cropContainerRef = useRef<HTMLDivElement>(null);
   const filters = config?.filters ?? DEFAULT_FILTERS;
@@ -228,6 +261,59 @@ export default function ImageEditorPanel({
       setUploading(false);
     }
   }, [onUploadFile]);
+
+  // ── AI tool execution ──
+  const runAiTool = useCallback(async (tool: AiToolDef, prompt?: string, style?: string) => {
+    if (tool.needsImage && !config?.url) {
+      showToast('Uploadez d\'abord une image', 'error');
+      return;
+    }
+    if (tool.needsPrompt && !prompt?.trim()) {
+      // Open prompt input
+      setAiPromptFor(tool.action);
+      setAiPrompt('');
+      return;
+    }
+    if (tool.needsStyle && !style) {
+      setAiPromptFor(tool.action);
+      return;
+    }
+    setAiLoading(tool.action);
+    setAiPromptFor(null);
+    try {
+      const res = await fetch('/api/ai/image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: tool.action,
+          imageUrl: config?.url || undefined,
+          prompt: prompt?.trim() || undefined,
+          style: style || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `Erreur ${res.status}`);
+      }
+      if (data.resultUrl) {
+        // For image-to-video, the result is a video URL — store differently
+        if (tool.action === 'image-to-video') {
+          showToast(`Vidéo générée ! (${data.creditsUsed} cr. utilisés)`, 'success');
+          // Could set as rushUrl or download — for now just show toast with URL
+          // TODO: integrate with rush/video sequence
+        } else {
+          onUpdate({ url: data.resultUrl });
+          showToast(`${tool.label} terminé ! (${data.creditsUsed} cr.)`, 'success');
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur IA';
+      showToast(msg, 'error');
+    } finally {
+      setAiLoading(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config?.url, onUpdate, showToast]);
 
   // ── Parse current object-position into x/y percentages ──
   const parseObjPos = (pos: string): { x: number; y: number } => {
@@ -478,23 +564,134 @@ export default function ImageEditorPanel({
         </div>
       </div>
 
-      {/* ── AI Tools (placeholder) ── */}
+      {/* ── AI Tools ── */}
       <div className="pt-2 border-t border-gray-800">
         <div className="text-[9px] uppercase tracking-wider text-gray-500 mb-1.5">
-          Outils IA — bientôt disponibles
+          Outils IA
         </div>
-        <div className="grid grid-cols-2 gap-1.5">
-          {AI_TOOLS.map(({ label, icon }) => (
+
+        {/* AI loading indicator */}
+        {aiLoading && (
+          <div className="mb-2 rounded bg-purple-900/30 border border-purple-700/50 px-2 py-2 text-[10px] text-purple-300 flex items-center gap-2">
+            <div className="w-3 h-3 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+            {AI_TOOLS.find(t => t.action === aiLoading)?.label} en cours…
+          </div>
+        )}
+
+        {/* Prompt input (shown when a tool needs text input) */}
+        {aiPromptFor && !AI_TOOLS.find(t => t.action === aiPromptFor)?.needsStyle && (
+          <div className="mb-2 space-y-1.5">
+            <input
+              type="text"
+              autoFocus
+              placeholder={AI_TOOLS.find(t => t.action === aiPromptFor)?.promptPlaceholder || 'Décrivez…'}
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && aiPrompt.trim()) {
+                  const tool = AI_TOOLS.find(t => t.action === aiPromptFor);
+                  if (tool) runAiTool(tool, aiPrompt);
+                }
+                if (e.key === 'Escape') setAiPromptFor(null);
+              }}
+              className="w-full rounded bg-gray-800 border border-purple-600 px-2 py-1.5 text-[10px] text-white focus:outline-none focus:border-purple-400"
+            />
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  const tool = AI_TOOLS.find(t => t.action === aiPromptFor);
+                  if (tool && aiPrompt.trim()) runAiTool(tool, aiPrompt);
+                }}
+                disabled={!aiPrompt.trim()}
+                className="flex-1 rounded bg-purple-600 hover:bg-purple-700 disabled:opacity-40 px-2 py-1 text-[10px] text-white transition-colors"
+              >
+                Lancer ({AI_TOOLS.find(t => t.action === aiPromptFor)?.credits} cr.)
+              </button>
+              <button
+                type="button"
+                onClick={() => setAiPromptFor(null)}
+                className="rounded bg-gray-700 hover:bg-gray-600 px-2 py-1 text-[10px] text-gray-300 transition-colors"
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Style selector (shown for style-transfer) */}
+        {aiPromptFor === 'style-transfer' && (
+          <div className="mb-2 space-y-1.5">
+            <div className="text-[9px] text-gray-400 mb-1">Choisir un style :</div>
+            <div className="grid grid-cols-2 gap-1">
+              {STYLE_PRESETS.map((s) => (
+                <button
+                  key={s.value}
+                  type="button"
+                  onClick={() => {
+                    setAiStyle(s.value);
+                    const tool = AI_TOOLS.find(t => t.action === 'style-transfer');
+                    if (tool) runAiTool(tool, undefined, s.value);
+                  }}
+                  className={`rounded px-2 py-1.5 text-[9px] transition-colors ${
+                    aiStyle === s.value
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
             <button
-              key={label}
               type="button"
-              disabled
-              title="Bientôt disponible"
-              className="rounded bg-gray-800/60 px-2 py-1.5 text-[10px] text-gray-500 cursor-not-allowed opacity-50 flex items-center gap-1"
+              onClick={() => { setAiPromptFor(null); setAiStyle(null); }}
+              className="w-full rounded bg-gray-700 hover:bg-gray-600 px-2 py-1 text-[10px] text-gray-300 transition-colors"
             >
-              {icon} {label}
+              Annuler
             </button>
-          ))}
+          </div>
+        )}
+
+        {/* Tool buttons */}
+        <div className="grid grid-cols-2 gap-1.5">
+          {AI_TOOLS.map((tool) => {
+            const isLoading = aiLoading === tool.action;
+            const needsImage = tool.needsImage && !config?.url;
+            const isDisabled = isLoading || !!aiLoading || (needsImage && tool.action !== 'generate-bg');
+            return (
+              <button
+                key={tool.action}
+                type="button"
+                disabled={isDisabled}
+                onClick={() => {
+                  if (tool.needsPrompt) {
+                    setAiPromptFor(tool.action);
+                    setAiPrompt('');
+                  } else if (tool.needsStyle) {
+                    setAiPromptFor(tool.action);
+                    setAiStyle(null);
+                  } else {
+                    runAiTool(tool);
+                  }
+                }}
+                title={needsImage ? 'Uploadez d\'abord une image' : `${tool.label} (${tool.credits} cr.)`}
+                className={`rounded px-2 py-1.5 text-[10px] flex items-center gap-1 transition-colors ${
+                  isDisabled
+                    ? 'bg-gray-800/60 text-gray-600 cursor-not-allowed opacity-50'
+                    : 'bg-gray-800/80 text-gray-300 hover:bg-purple-700/50 hover:text-white cursor-pointer'
+                }`}
+              >
+                {isLoading ? (
+                  <div className="w-3 h-3 border border-purple-400 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  tool.icon
+                )}
+                <span className="flex-1 text-left">{tool.label}</span>
+                <span className="text-[8px] text-gray-500">{tool.credits}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
