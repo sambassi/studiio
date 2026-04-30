@@ -36,19 +36,59 @@ function formatTime(s: number): string {
 }
 
 /** Inline mini audio player — local to this panel so we don't have to
- *  refactor AudioStudioPanel's MiniPlayer. */
-function PreviewPlayer({ src, onDelete }: { src: string; onDelete: () => void }) {
+ *  refactor AudioStudioPanel's MiniPlayer.
+ *
+ *  Bug history: prior version silently swallowed every play() rejection
+ *  (`.catch(() => setPlaying(false))`), so CORS / 404 / format errors
+ *  produced a button that "did nothing" with no signal. Now we log the
+ *  error and surface it via the optional onError callback so the parent
+ *  can showToast() the user.
+ */
+function PreviewPlayer({
+  src,
+  onDelete,
+  onError,
+  label,
+}: {
+  src: string;
+  onDelete: () => void;
+  onError?: (msg: string) => void;
+  label: string;
+}) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
+  const [errored, setErrored] = useState(false);
 
-  const toggle = () => {
+  const reportError = (where: string, detail: string) => {
+    setErrored(true);
+    setPlaying(false);
+    const msg = `Voix ${label} : ${detail}`;
+    console.error(`[VoicePreview:${where}]`, label, src, detail);
+    onError?.(msg);
+  };
+
+  const toggle = async () => {
     const el = audioRef.current;
     if (!el) return;
     if (playing) {
       el.pause();
       setPlaying(false);
-    } else {
-      el.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+      return;
+    }
+    setErrored(false);
+    try {
+      // Some browsers reject play() if the audio isn't loaded yet. load()
+      // forces a fetch + decode pass before we attempt playback.
+      if (el.readyState < 2) {
+        try { el.load(); } catch { /* ignore */ }
+      }
+      console.log('[VoicePreview] play attempt:', label, src.substring(0, 80));
+      await el.play();
+      setPlaying(true);
+      console.log('[VoicePreview] play OK:', label);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'lecture bloquée';
+      reportError('play', errMsg);
     }
   };
 
@@ -56,21 +96,37 @@ function PreviewPlayer({ src, onDelete }: { src: string; onDelete: () => void })
     const el = audioRef.current;
     if (!el) return;
     const onEnd = () => setPlaying(false);
+    const onErr = () => {
+      const code = el.error?.code;
+      const detail = el.error?.message || `code ${code ?? '?'}`;
+      reportError('media', detail);
+    };
     el.addEventListener('ended', onEnd);
-    return () => el.removeEventListener('ended', onEnd);
+    el.addEventListener('error', onErr);
+    return () => {
+      el.removeEventListener('ended', onEnd);
+      el.removeEventListener('error', onErr);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src]);
+
+  // Reset errored state when src changes (user generated a new voice)
+  useEffect(() => { setErrored(false); }, [src]);
 
   return (
     <div className="flex items-center gap-2 rounded bg-gray-800/60 px-2 py-1.5">
       <button
         type="button"
         onClick={toggle}
-        className="rounded bg-purple-500/20 p-1.5 text-purple-300 hover:bg-purple-500/30"
+        disabled={errored}
+        className="rounded bg-purple-500/20 p-1.5 text-purple-300 hover:bg-purple-500/30 disabled:cursor-not-allowed disabled:opacity-50"
         aria-label={playing ? 'Pause' : 'Play'}
       >
         {playing ? <Pause size={12} /> : <Play size={12} />}
       </button>
-      <span className="flex-1 truncate text-[10px] text-gray-400">Audio prêt</span>
+      <span className={`flex-1 truncate text-[10px] ${errored ? 'text-red-400' : 'text-gray-400'}`}>
+        {errored ? 'Audio indisponible' : 'Audio prêt'}
+      </span>
       <button
         type="button"
         onClick={onDelete}
@@ -79,7 +135,10 @@ function PreviewPlayer({ src, onDelete }: { src: string; onDelete: () => void })
       >
         <Trash2 size={12} />
       </button>
-      <audio ref={audioRef} src={src} preload="metadata" />
+      {/* preload="auto" + crossOrigin help with Supabase Storage URLs;
+          without crossOrigin some Chromium configs fail the CORS preflight
+          even for plain playback. */}
+      <audio ref={audioRef} src={src} preload="auto" crossOrigin="anonymous" />
     </div>
   );
 }
@@ -99,6 +158,9 @@ interface Props {
   /** Batch count from the editor — when > 1, a banner explains how voices
    *  will be regenerated per iteration. */
   batchCount: number;
+  /** Optional toast bridge so audio playback errors surface to the user
+   *  instead of dying silently in the console. */
+  onAudioError?: (message: string) => void;
 }
 
 export function SequenceVoicesPanel({
@@ -114,6 +176,7 @@ export function SequenceVoicesPanel({
   hasCardsContent,
   hasVideoOverlay,
   batchCount,
+  onAudioError,
 }: Props) {
   // Shared TTS voice picker (one voice for all sequences in this panel —
   // simpler UX than per-sequence voice selectors). Persists in localStorage
@@ -428,7 +491,12 @@ export function SequenceVoicesPanel({
 
               {sv.audioUrl && (
                 <div className="mt-1.5">
-                  <PreviewPlayer src={sv.audioUrl} onDelete={() => removeAudio(key)} />
+                  <PreviewPlayer
+                    src={sv.audioUrl}
+                    label={SEQUENCE_LABELS[key]}
+                    onDelete={() => removeAudio(key)}
+                    onError={onAudioError}
+                  />
                 </div>
               )}
             </div>
