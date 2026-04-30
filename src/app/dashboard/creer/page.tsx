@@ -2248,10 +2248,12 @@ function InfographicPageInner() {
     },
   };
 
-  // Sequence view: show individual "pages" in preview
+  // Sequence view: show individual "pages" in preview.
+  // Default "titre" — "all" is transitoire (cycle Lire ▶ uniquement) et
+  // empilerait toutes les séquences au mount si utilisé comme état initial.
   const [activeSequence, setActiveSequence] = useState<
     "all" | "titre" | "cartes" | "video" | "cta"
-  >("all");
+  >("titre");
 
   // Drag positions (percentage-based offsets from default)
   const [titlePos, setTitlePos] = useState({ x: 50, y: 10 });
@@ -7304,7 +7306,7 @@ function InfographicPageInner() {
           {/* Play/Stop button — reads the montage */}
           <button
             onClick={() => {
-              if (isPlaying) { stopPlayback(); setActiveSequence('all'); }
+              if (isPlaying) { stopPlayback(); setActiveSequence('titre'); }
               else startPlayback();
             }}
             className={`flex items-center gap-2 rounded-2xl pl-1 pr-3 py-1 text-xs font-bold transition-all ${
