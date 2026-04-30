@@ -223,8 +223,11 @@ export function AudioStudioPanel({
       // Edge → browser SpeechSynthesis. Returns a Blob (mp3 or webm).
       const blob = await synthesize(ttsText, selectedVoiceId);
 
-      if (!blob || blob.size < 50) {
-        setTtsError('Synthèse vocale indisponible — réessaie ou choisis une autre voix');
+      // synthesize() throws on silent browser-fallback artifacts; the size
+      // check below catches any other suspiciously small result. 8KB ≈ 0.7s
+      // of MP3 @96kbps, well below any real TTS output.
+      if (!blob || blob.size < 8000) {
+        setTtsError(`Synthèse vocale indisponible (audio vide : ${blob?.size || 0} octets) — réessaie ou choisis une autre voix`);
         return;
       }
 

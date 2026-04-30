@@ -100,7 +100,16 @@ async function tryServerSynthesize(
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15_000); // 15s timeout (server times out at 25s)
+  // Match the server's TTS_TIMEOUT_MS (45s) plus a small buffer for network
+  // overhead. Previously 15s, which was shorter than the server's own
+  // synthesis timeout — when Vivienne / Multilingual voices took >15s on
+  // a cold serverless start, the client aborted and fell through to
+  // `browserSynthesize`, which silently produces a blob with no real audio
+  // (SpeechSynthesisUtterance doesn't route through AudioContext, so
+  // MediaRecorder captures only the oscillator blip). The bogus blob
+  // passed all the >50 byte checks and was uploaded to Supabase, where
+  // it failed playback with MEDIA_ERR_DECODE / DEMUXER_ERROR.
+  const timeoutId = setTimeout(() => controller.abort(), 50_000);
 
   try {
     console.log('[TTS] Trying server synthesis:', text.substring(0, 40), '...');
@@ -278,9 +287,20 @@ async function browserSynthesize(
 }
 
 /**
+ * Minimum blob size to consider a TTS result "real" audio. The browser
+ * fallback path (SpeechSynthesis + MediaRecorder) produces ~1-5KB blobs
+ * that contain only an oscillator blip — they pass the trivial >50-byte
+ * checks but are unplayable (MEDIA_ERR_DECODE in Chrome). 8KB is just
+ * over 0.5s of MP3 @96kbps and well above any silent-fallback artifact.
+ */
+const MIN_REAL_AUDIO_BYTES = 8_000;
+
+/**
  * Synthesize text to speech.
  * Tries server-side Edge TTS first, falls back to browser SpeechSynthesis.
- * Returns an audio Blob.
+ * Returns an audio Blob. THROWS if the result is suspiciously small (the
+ * browser fallback's silent-blob masquerade), so the caller can show a
+ * clear error to the user instead of uploading an unplayable file.
  */
 export async function synthesize(
   text: string,
@@ -289,11 +309,25 @@ export async function synthesize(
 ): Promise<Blob> {
   // Try server first
   const serverBlob = await tryServerSynthesize(text, voiceId, options);
-  if (serverBlob) return serverBlob;
+  if (serverBlob && serverBlob.size >= MIN_REAL_AUDIO_BYTES) {
+    return serverBlob;
+  }
+  if (serverBlob) {
+    console.warn('[TTS] Server returned suspiciously small blob:', serverBlob.size, 'bytes — falling through to browser');
+  }
 
-  // Fallback to browser TTS
+  // Fallback to browser TTS — known to produce silent blobs in Chrome
+  // (SpeechSynthesis output is not routed through AudioContext). We try it
+  // anyway as a last resort, but validate the result and throw if it's
+  // clearly the silent-oscillator artifact.
   console.log('[TTS] Server failed, falling back to browser SpeechSynthesis');
-  return browserSynthesize(text, voiceId);
+  const browserBlob = await browserSynthesize(text, voiceId);
+  if (browserBlob.size < MIN_REAL_AUDIO_BYTES) {
+    throw new Error(
+      `Synthèse vocale impossible — le serveur n'a pas répondu et le fallback navigateur ne capture pas l'audio (${browserBlob.size} octets reçus, minimum ${MIN_REAL_AUDIO_BYTES}). Réessaie ou choisis une autre voix.`
+    );
+  }
+  return browserBlob;
 }
 
 /**

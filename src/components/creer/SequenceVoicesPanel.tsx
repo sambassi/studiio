@@ -276,8 +276,12 @@ export function SequenceVoicesPanel({
     setBusy((b) => ({ ...b, [key]: true }));
     try {
       const blob = await synthesize(text, selectedTtsVoiceId);
-      if (!blob || blob.size < 50) {
-        console.warn('[SequenceVoices] TTS returned empty blob for', key);
+      // synthesize() now throws if the result is too small to be real audio
+      // (silent browser-fallback artifact). The check below catches any
+      // remaining edge case where it returns a blob still under threshold.
+      if (!blob || blob.size < 8000) {
+        console.warn('[SequenceVoices] TTS returned suspiciously small blob for', key, blob?.size);
+        onAudioError?.(`Synthèse vocale ${key} : audio vide ou corrompu (${blob?.size || 0} octets). Réessaie ou choisis une autre voix.`);
         return;
       }
       const { url } = await uploadAudioBlob(blob);
@@ -285,6 +289,8 @@ export function SequenceVoicesPanel({
       onChange(key, { audioUrl: url, source: 'tts', ttsVoice: selectedTtsVoiceId, duration });
     } catch (err) {
       console.error('[SequenceVoices] TTS error for', key, err);
+      const msg = err instanceof Error ? err.message : 'erreur inconnue';
+      onAudioError?.(`Synthèse vocale ${key} : ${msg}`);
     } finally {
       setBusy((b) => ({ ...b, [key]: false }));
     }
