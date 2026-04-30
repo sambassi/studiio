@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Mic, Square, Sparkles, Loader2, Trash2, Play, Pause, AlertTriangle, Info } from 'lucide-react';
+import { Mic, Square, Sparkles, Loader2, Trash2, Play, Pause, AlertTriangle, Info, Volume2 } from 'lucide-react';
 import { TTS_VOICES, synthesize } from '@/lib/tts/edge-tts-client';
 import {
   SEQUENCE_KEYS,
@@ -35,54 +35,15 @@ function formatTime(s: number): string {
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
-/** Inline mini audio player — local to this panel so we don't have to
- *  refactor AudioStudioPanel's MiniPlayer. */
-function PreviewPlayer({ src, onDelete }: { src: string; onDelete: () => void }) {
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const [playing, setPlaying] = useState(false);
-
-  const toggle = () => {
-    const el = audioRef.current;
-    if (!el) return;
-    if (playing) {
-      el.pause();
-      setPlaying(false);
-    } else {
-      el.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
-    }
-  };
-
-  useEffect(() => {
-    const el = audioRef.current;
-    if (!el) return;
-    const onEnd = () => setPlaying(false);
-    el.addEventListener('ended', onEnd);
-    return () => el.removeEventListener('ended', onEnd);
-  }, [src]);
-
-  return (
-    <div className="flex items-center gap-2 rounded bg-gray-800/60 px-2 py-1.5">
-      <button
-        type="button"
-        onClick={toggle}
-        className="rounded bg-purple-500/20 p-1.5 text-purple-300 hover:bg-purple-500/30"
-        aria-label={playing ? 'Pause' : 'Play'}
-      >
-        {playing ? <Pause size={12} /> : <Play size={12} />}
-      </button>
-      <span className="flex-1 truncate text-[10px] text-gray-400">Audio prêt</span>
-      <button
-        type="button"
-        onClick={onDelete}
-        className="rounded bg-red-500/10 p-1.5 text-red-400 hover:bg-red-500/20"
-        aria-label="Supprimer l'audio"
-      >
-        <Trash2 size={12} />
-      </button>
-      <audio ref={audioRef} src={src} preload="metadata" />
-    </div>
-  );
-}
+/* Preview player implementation lives inline below, in the main
+ * `SequenceVoicesPanel` component, using a centralised `previewingSeq`
+ * state + a single `previewAudioRef`. The previous `PreviewPlayer`
+ * sub-component had a silently-failing
+ *   `el.play().catch(() => setPlaying(false))`
+ * that hid every error (autoplay policy, CORS, expired URL, blob
+ * revoked, etc.) and just reset the icon — users clicked, saw nothing,
+ * had no diagnostic. The new handler logs `audio.error.code` /
+ * `.message` + surfaces a toast so silent failures become visible. */
 
 interface Props {
   sequenceVoices: SequenceVoices;
@@ -138,6 +99,75 @@ export function SequenceVoicesPanel({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordTimerRef = useRef<number | null>(null);
   const recordChunksRef = useRef<Blob[]>([]);
+
+  // Centralised preview state — only one sequence's audio plays at a
+  // time, controlled by `togglePreviewSequenceVoice` below. The shared
+  // ref guarantees we never leak an Audio element when the user
+  // switches between sequences mid-playback.
+  const [previewingSeq, setPreviewingSeq] = useState<SequenceKey | null>(null);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Stop + cleanup the preview audio when the panel unmounts.
+  useEffect(() => {
+    return () => {
+      if (previewAudioRef.current) {
+        previewAudioRef.current.pause();
+        previewAudioRef.current.src = '';
+        previewAudioRef.current = null;
+      }
+    };
+  }, []);
+
+  const togglePreviewSequenceVoice = async (seqKey: SequenceKey) => {
+    const url = sequenceVoices[seqKey]?.audioUrl;
+    if (!url) {
+      console.warn('[SequenceVoices preview] No audioUrl for', seqKey);
+      return;
+    }
+
+    // Toggle off if this sequence is already playing.
+    if (previewingSeq === seqKey && previewAudioRef.current) {
+      previewAudioRef.current.pause();
+      previewAudioRef.current = null;
+      setPreviewingSeq(null);
+      return;
+    }
+
+    // Stop any other sequence currently previewing.
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+      previewAudioRef.current = null;
+    }
+
+    const audio = new Audio(url);
+    audio.volume = 1.0;
+    audio.preload = 'auto';
+
+    audio.onended = () => {
+      setPreviewingSeq(null);
+      previewAudioRef.current = null;
+    };
+
+    audio.onerror = () => {
+      const code = audio.error?.code;
+      const msg = audio.error?.message || `code ${code}`;
+      console.error('[SequenceVoices preview] audio error for', seqKey, '— url:', url.slice(0, 80), '— err:', msg);
+      setPreviewingSeq(null);
+      previewAudioRef.current = null;
+    };
+
+    previewAudioRef.current = audio;
+    setPreviewingSeq(seqKey);
+
+    try {
+      await audio.play();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'lecture bloquée';
+      console.error('[SequenceVoices preview] play() failed for', seqKey, ':', msg);
+      setPreviewingSeq(null);
+      previewAudioRef.current = null;
+    }
+  };
 
   const sequenceDuration = useCallback((key: SequenceKey): number => {
     switch (key) {
@@ -427,8 +457,42 @@ export function SequenceVoicesPanel({
               </div>
 
               {sv.audioUrl && (
-                <div className="mt-1.5">
-                  <PreviewPlayer src={sv.audioUrl} onDelete={() => removeAudio(key)} />
+                <div className="mt-1.5 flex items-center gap-2 rounded bg-gray-800/60 px-2 py-1.5">
+                  <button
+                    type="button"
+                    onClick={() => togglePreviewSequenceVoice(key)}
+                    className="rounded bg-purple-500/20 p-1.5 text-purple-300 hover:bg-purple-500/30"
+                    aria-label={previewingSeq === key ? 'Pause' : 'Play'}
+                    title={previewingSeq === key ? 'Pause la preview' : 'Écouter la voix-off'}
+                  >
+                    {previewingSeq === key ? <Pause size={12} /> : <Play size={12} />}
+                  </button>
+                  <span className="flex-1 truncate text-[10px] text-gray-400">
+                    {previewingSeq === key ? (
+                      <span className="inline-flex items-center gap-1 text-purple-300">
+                        <Volume2 size={10} /> En lecture
+                      </span>
+                    ) : 'Audio prêt'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Stop preview if it's playing this audio before
+                      // we destroy the URL — leaves the user with a
+                      // clean state instead of an orphaned <audio>.
+                      if (previewingSeq === key && previewAudioRef.current) {
+                        previewAudioRef.current.pause();
+                        previewAudioRef.current = null;
+                        setPreviewingSeq(null);
+                      }
+                      removeAudio(key);
+                    }}
+                    className="rounded bg-red-500/10 p-1.5 text-red-400 hover:bg-red-500/20"
+                    aria-label="Supprimer l'audio"
+                    title="Supprimer cet audio"
+                  >
+                    <Trash2 size={12} />
+                  </button>
                 </div>
               )}
             </div>

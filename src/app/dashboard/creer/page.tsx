@@ -2248,10 +2248,15 @@ function InfographicPageInner() {
     },
   };
 
-  // Sequence view: show individual "pages" in preview
+  // Sequence view: show individual "pages" in preview.
+  // Default to "titre" (single sequence) instead of "all" — the "all"
+  // mode is intended for the "Lire ▶" cycle playback only. With "all"
+  // active and every sequence enabled, the conditional renders pile up
+  // titre + cartes + video + cta overlays on the same canvas. On a fresh
+  // mount (F5) users expect the title sequence first, not a stack.
   const [activeSequence, setActiveSequence] = useState<
     "all" | "titre" | "cartes" | "video" | "cta"
-  >("all");
+  >("titre");
 
   // Drag positions (percentage-based offsets from default)
   const [titlePos, setTitlePos] = useState({ x: 50, y: 10 });
