@@ -4458,6 +4458,14 @@ function InfographicPageInner() {
         setExportProgress(Math.round((b / total) * 100));
         console.log(`[Batch ${b}/${total - 1}] START`);
 
+        // SURFACE ERRORS WITHOUT BREAKING THE LOOP — sans ce wrapper, une
+        // exception silencieuse dans une itération sort à l'OUTER catch de
+        // handleExport et termine TOUT l'export (raison pour laquelle batch
+        // x3 produit 2 posts : b=2 throw → boucle terminée). Avec ce try
+        // par itération : l'erreur est loguée + toast affiché, et la boucle
+        // continue avec l'itération suivante.
+        try {
+
         // Per-batch content. b=0 keeps the editor's current values so the
         // user's manual edits ship with the first video. b>0 fetches a
         // fresh variation on the same theme — different cards/title/sub.
@@ -5075,6 +5083,13 @@ function InfographicPageInner() {
             showToast(`Erreur réseau lors de la programmation : ${err instanceof Error ? err.message : 'inconnue'}`);
             console.error('[Export→Calendar] POST /api/posts network/parse error:', err);
           }
+        }
+        } catch (iterErr) {
+          // Per-iteration safety net — surface l'erreur ET continue le batch.
+          const errMsg = iterErr instanceof Error ? iterErr.message : String(iterErr);
+          console.error(`[Batch ${b}/${total - 1}] FATAL ITERATION ERROR — skipping to next:`, iterErr);
+          showToast(`Vidéo ${b + 1}/${total} échouée : ${errMsg}`, 'error');
+          // continue to next iteration
         }
       }
 
