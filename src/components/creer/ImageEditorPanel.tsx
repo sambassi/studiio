@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Sun, Contrast, Palette, Thermometer, Sparkles, CircleOff,
   Upload, Link2, Trash2, Image as ImageIcon, Wand2, Eraser,
@@ -322,6 +322,16 @@ export default function ImageEditorPanel({
   };
 
   // ── Drag-to-crop handlers (mouse + touch) ──
+  // ROBUSTNESS: store onUpdate in a ref so the listeners' useEffect only
+  // depends on `isDraggingCrop`. Otherwise, every parent re-render (which
+  // happens on EVERY drag tick because onUpdate triggers setSequenceBackgrounds)
+  // would tear down + re-attach the window listeners → race condition where
+  // a fast `mousemove` can fire DURING the gap, causing a "drag dead zone"
+  // where the cursor moves but objectPosition doesn't update. This was the
+  // root cause of "le recadrage ne fonctionne plus" (regression mai 2026).
+  const onUpdateRef = useRef(onUpdate);
+  useEffect(() => { onUpdateRef.current = onUpdate; }, [onUpdate]);
+
   const handleCropPointerDown = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -330,8 +340,14 @@ export default function ImageEditorPanel({
     const cur = parseObjPos(objPos);
     cropStartRef.current = { x: clientX, y: clientY, startPosX: cur.x, startPosY: cur.y };
     setIsDraggingCrop(true);
+    // Diagnostic log — si le user dit "le recadrage ne marche pas" et
+    // qu'il n'y a PAS ce log, c'est que le mousedown n'atteint même pas
+    // la cropContainer (panneau qui swallow l'event ou pointer-events
+    // qui pète). Si le log apparaît mais que le drag ne suit pas, c'est
+    // que les listeners window mousemove ne sont pas attachés.
+    console.log('[ImageEditorPanel] crop drag start', { seqKey, startPos: cur, client: { x: clientX, y: clientY } });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [objPos]);
+  }, [objPos, seqKey]);
 
   React.useEffect(() => {
     if (!isDraggingCrop) return;
@@ -348,7 +364,9 @@ export default function ImageEditorPanel({
       const pctY = (dy / rect.height) * -100;
       const newX = Math.max(0, Math.min(100, cropStartRef.current.startPosX + pctX));
       const newY = Math.max(0, Math.min(100, cropStartRef.current.startPosY + pctY));
-      onUpdate({ objectPosition: `${Math.round(newX)}% ${Math.round(newY)}%` });
+      // Use the ref-snapshotted onUpdate so this listener stays attached
+      // for the entire drag, even when the parent re-renders.
+      onUpdateRef.current({ objectPosition: `${Math.round(newX)}% ${Math.round(newY)}%` });
     };
     const handleUp = () => {
       setIsDraggingCrop(false);
@@ -364,7 +382,8 @@ export default function ImageEditorPanel({
       window.removeEventListener('touchmove', handleMove);
       window.removeEventListener('touchend', handleUp);
     };
-  }, [isDraggingCrop, onUpdate]);
+    // ONLY depends on isDraggingCrop now — no more re-attach storm.
+  }, [isDraggingCrop]);
 
   return (
     <div className="space-y-3">
