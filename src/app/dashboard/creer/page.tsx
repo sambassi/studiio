@@ -8733,6 +8733,12 @@ function InfographicPageInner() {
                     ? sequenceBackgrounds[activePanel.slice('background-'.length) as 'titre' | 'cartes' | 'video' | 'cta']
                     : sequenceBackgrounds.titre || sequenceBackgrounds.cartes || sequenceBackgrounds.video || sequenceBackgrounds.cta);
               if (!seqBgCfg?.url) return null;
+              // Debug : confirmer que le rendu pick up le nouveau objectPosition
+              // à chaque re-render. Si ce log fire avec le BON % mais l'image
+              // ne bouge pas, c'est un bug navigateur sur object-position.
+              if (typeof activePanel === 'string' && activePanel.startsWith('background-')) {
+                console.log('[Editor BG render]', { url: seqBgCfg.url?.slice(-30), objectPosition: seqBgCfg.objectPosition, activeSequence, activePanel });
+              }
               return (
                 <>
                   <img
