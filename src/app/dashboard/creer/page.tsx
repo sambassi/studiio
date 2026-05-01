@@ -8675,9 +8675,13 @@ function InfographicPageInner() {
 
             {/* Background Photo — global Pexels/poster (hidden when a per-sequence bg overrides it) */}
             {/* Shown on titre always. On cartes/cta only when posterOnAllSequences is ON. */}
+            {/* Hide quand un per-seq bg s'affiche : (a) en vue spécifique avec bg
+                configuré OU (b) en vue 'all' avec n'importe quel bg configuré
+                (qui sera affiché par le bloc per-seq ci-dessous). */}
             {previewPhoto &&
               ((activeSequence === "all" && exportedSequences.titre) || activeSequence === "titre" || (posterOnAllSequences && activeSequence !== "video")) &&
-              !(activeSequence !== 'all' && sequenceBackgrounds[activeSequence as 'titre' | 'cartes' | 'video' | 'cta']?.url) && (
+              !(activeSequence !== 'all' && sequenceBackgrounds[activeSequence as 'titre' | 'cartes' | 'video' | 'cta']?.url) &&
+              !(activeSequence === 'all' && (sequenceBackgrounds.titre?.url || sequenceBackgrounds.cartes?.url || sequenceBackgrounds.video?.url || sequenceBackgrounds.cta?.url)) && (
                 <img
                   src={previewPhoto.medium}
                   alt=""
@@ -8693,9 +8697,41 @@ function InfographicPageInner() {
                 />
               )}
 
-            {/* Per-sequence background image with CSS filters (Phase 2) */}
-            {activeSequence !== 'all' && (() => {
-              const seqBgCfg = sequenceBackgrounds[activeSequence as 'titre' | 'cartes' | 'video' | 'cta'];
+            {/* Per-sequence background image with CSS filters (Phase 2)
+                AVANT : `activeSequence !== 'all'` ne rendait pas le bg per-seq
+                en vue 'all' → user qui drag dans FOND TITRE voyait le panneau
+                bouger mais l'éditeur restait sur le global poster.
+
+                MAINTENANT : si une séquence a un bg configuré, on l'affiche
+                aussi en vue 'all' — priorité du panneau ouvert (le user a
+                explicitement choisi cette séquence) > priorité titre. */}
+            {(() => {
+              // En vue spécifique (titre/cartes/video/cta) → bg de cette séquence
+              if (activeSequence !== 'all') {
+                return sequenceBackgrounds[activeSequence as 'titre' | 'cartes' | 'video' | 'cta'];
+              }
+              // En vue 'all' → choisir le bg du panneau ouvert s'il y en a
+              // un (le user a un panneau bg ouvert = il regarde cette séquence).
+              if (typeof activePanel === 'string' && activePanel.startsWith('background-')) {
+                const seqFromPanel = activePanel.slice('background-'.length) as 'titre' | 'cartes' | 'video' | 'cta';
+                const cfg = sequenceBackgrounds[seqFromPanel];
+                if (cfg?.url) return cfg;
+              }
+              // Sinon, premier bg configuré (titre prioritaire car c'est la
+              // séquence par défaut au mount).
+              return (
+                sequenceBackgrounds.titre ||
+                sequenceBackgrounds.cartes ||
+                sequenceBackgrounds.video ||
+                sequenceBackgrounds.cta ||
+                null
+              );
+            })() && (() => {
+              const seqBgCfg = activeSequence !== 'all'
+                ? sequenceBackgrounds[activeSequence as 'titre' | 'cartes' | 'video' | 'cta']
+                : (typeof activePanel === 'string' && activePanel.startsWith('background-')
+                    ? sequenceBackgrounds[activePanel.slice('background-'.length) as 'titre' | 'cartes' | 'video' | 'cta']
+                    : sequenceBackgrounds.titre || sequenceBackgrounds.cartes || sequenceBackgrounds.video || sequenceBackgrounds.cta);
               if (!seqBgCfg?.url) return null;
               return (
                 <>
