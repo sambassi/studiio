@@ -2102,7 +2102,9 @@ function InfographicPageInner() {
                 };
               }
               const objectPosition = typeof (cfg2 as Record<string, unknown>).objectPosition === 'string' ? (cfg2 as Record<string, unknown>).objectPosition as string : undefined;
-              if (url || opacity !== 1 || filters || objectPosition) restored[key] = { url, opacity, ...(filters ? { filters } : {}), ...(objectPosition ? { objectPosition } : {}) };
+              const zoomRaw = (cfg2 as Record<string, unknown>).zoom;
+              const zoom = typeof zoomRaw === 'number' && zoomRaw >= 1 && zoomRaw <= 5 ? zoomRaw : undefined;
+              if (url || opacity !== 1 || filters || objectPosition || zoom) restored[key] = { url, opacity, ...(filters ? { filters } : {}), ...(objectPosition ? { objectPosition } : {}), ...(zoom ? { zoom } : {}) };
             }
           }
           setSequenceBackgrounds(restored);
@@ -2769,6 +2771,12 @@ function InfographicPageInner() {
     filters?: ImageFilters;
     /** CSS object-position for cropping/repositioning, e.g. "50% 30%" */
     objectPosition?: string;
+    /** Zoom factor pour le recadrage. 1.0 = aucun zoom (objectPosition
+     *  n'a d'effet que si l'image overflow naturellement). > 1.0 force
+     *  un overflow → permet de recadrer même quand l'image a le MÊME
+     *  ratio que le container (ex : 9:16 dans 9:16). Default 1.0 = pas
+     *  de changement pour les configs existantes. */
+    zoom?: number;
   };
   type SequenceBackgrounds = {
     titre: SequenceBackgroundConfig | null;
@@ -8749,20 +8757,34 @@ function InfographicPageInner() {
               // à chaque re-render. Si ce log fire avec le BON % mais l'image
               // ne bouge pas, c'est un bug navigateur sur object-position.
               if (typeof activePanel === 'string' && activePanel.startsWith('background-')) {
-                console.log('[Editor BG render]', { url: seqBgCfg.url?.slice(-30), objectPosition: seqBgCfg.objectPosition, activeSequence, activePanel });
+                console.log('[Editor BG render]', { url: seqBgCfg.url?.slice(-30), objectPosition: seqBgCfg.objectPosition, zoom: seqBgCfg.zoom, activeSequence, activePanel });
               }
+              const bgZoom = Math.max(1, Math.min(5, seqBgCfg.zoom ?? 1));
+              const bgObjPos = seqBgCfg.objectPosition ?? '50% 50%';
               return (
                 <>
-                  <img
-                    src={seqBgCfg.url}
-                    alt=""
-                    className="absolute inset-0 h-full w-full object-cover"
-                    style={{
-                      opacity: seqBgCfg.opacity ?? 1,
-                      filter: buildCssFilter(seqBgCfg.filters),
-                      objectPosition: seqBgCfg.objectPosition ?? '50% 50%',
-                    }}
-                  />
+                  {/* Wrapper avec overflow:hidden pour clipper l'image scalée
+                      au-delà du container. Sinon transform: scale(1.5)
+                      ferait déborder l'image visuellement. */}
+                  <div className="absolute inset-0 overflow-hidden">
+                    <img
+                      src={seqBgCfg.url}
+                      alt=""
+                      className="absolute inset-0 h-full w-full object-cover"
+                      style={{
+                        opacity: seqBgCfg.opacity ?? 1,
+                        filter: buildCssFilter(seqBgCfg.filters),
+                        objectPosition: bgObjPos,
+                        // transform: scale(zoom) avec transformOrigin = objectPosition
+                        // crée un overflow artificiel quand image et container ont
+                        // le même ratio. Le user peut alors « recadrer » en draggant
+                        // (ce qui change objectPosition ET transformOrigin → la vue
+                        // pivote autour du nouveau focal point).
+                        transform: bgZoom > 1 ? `scale(${bgZoom})` : undefined,
+                        transformOrigin: bgZoom > 1 ? bgObjPos : undefined,
+                      }}
+                    />
+                  </div>
                   {/* Vignette overlay */}
                   {(seqBgCfg.filters?.vignette ?? 0) > 0 && (
                     <div
@@ -11725,7 +11747,7 @@ function InfographicPageInner() {
               const current = prev[seqKey] ?? { url: null, opacity: 1 };
               const next = { ...current, ...patch };
               // Treat the all-defaults state as "null" for cleaner persistence
-              const isDefault = next.url === null && next.opacity === 1 && !next.filters && !next.objectPosition;
+              const isDefault = next.url === null && next.opacity === 1 && !next.filters && !next.objectPosition && (!next.zoom || next.zoom === 1);
               return { ...prev, [seqKey]: isDefault ? null : next };
             });
           };

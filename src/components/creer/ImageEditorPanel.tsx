@@ -33,6 +33,9 @@ export type SequenceBackgroundConfig = {
   filters?: ImageFilters;
   /** CSS object-position for cropping/repositioning, e.g. "50% 30%" */
   objectPosition?: string;
+  /** Zoom factor (1.0 – 5.0). > 1.0 force un overflow → permet de
+   *  recadrer même quand l'image a le même ratio que le container. */
+  zoom?: number;
 };
 
 type SequenceKey = 'titre' | 'cartes' | 'video' | 'cta';
@@ -233,6 +236,7 @@ export default function ImageEditorPanel({
   const cropContainerRef = useRef<HTMLDivElement>(null);
   const filters = config?.filters ?? DEFAULT_FILTERS;
   const objPos = config?.objectPosition ?? '50% 50%';
+  const zoom = Math.max(1, Math.min(5, config?.zoom ?? 1));
 
   // Sync urlDraft when config.url changes externally (upload / detach)
   const lastUrlRef = useRef(config?.url ?? '');
@@ -484,6 +488,8 @@ export default function ImageEditorPanel({
                 opacity: config.opacity ?? 1,
                 filter: buildCssFilter(config.filters),
                 objectPosition: objPos,
+                transform: zoom > 1 ? `scale(${zoom})` : undefined,
+                transformOrigin: zoom > 1 ? objPos : undefined,
               }}
             />
             {/* Crosshair overlay showing focal point */}
@@ -508,7 +514,7 @@ export default function ImageEditorPanel({
               onClick={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
-                onUpdate({ url: null, filters: undefined, objectPosition: undefined });
+                onUpdate({ url: null, filters: undefined, objectPosition: undefined, zoom: undefined });
               }}
               className="absolute top-1 right-1 rounded bg-red-600/80 px-2 py-0.5 text-[10px] text-white hover:bg-red-600 flex items-center gap-1 z-10"
               title="Détacher l'image (revient à l'image globale)"
@@ -598,6 +604,41 @@ export default function ImageEditorPanel({
           className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
         />
       </div>
+
+      {/* ── Zoom slider — permet de recadrer même quand l'image a le même
+           ratio que le container (ex : 9:16 dans un éditeur 9:16). Sans
+           zoom, object-position n'a aucun effet visuel car cover ne crée
+           pas d'overflow. zoom > 1 → transform: scale → overflow → drag
+           devient visible. ── */}
+      {config?.url && (
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-[9px] uppercase tracking-wider text-gray-500">
+              Zoom (recadrage)
+            </label>
+            <span className="text-[10px] text-purple-300 font-mono">
+              {zoom.toFixed(2)}x
+            </span>
+          </div>
+          <input
+            type="range"
+            min={1}
+            max={3}
+            step={0.05}
+            value={zoom}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value);
+              onUpdate({ zoom: v <= 1 ? undefined : v });
+            }}
+            className="w-full h-1.5 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
+          />
+          <div className="text-[8px] text-gray-500 mt-0.5">
+            {zoom > 1
+              ? 'Glisser sur l\'image pour recadrer'
+              : 'Augmente le zoom pour pouvoir recadrer'}
+          </div>
+        </div>
+      )}
 
       {/* ── Quick crop presets ── */}
       {config?.url && objPos !== '50% 50%' && (

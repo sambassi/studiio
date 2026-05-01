@@ -321,6 +321,10 @@ export interface SequenceBackgroundConfig {
   filters?: ImageFilters;
   /** CSS object-position for cropping, e.g. "50% 30%" */
   objectPosition?: string;
+  /** Zoom factor (1.0 – 5.0). > 1.0 force un overflow virtuel pour
+   *  permettre le recadrage même quand l'image et le container ont le
+   *  même ratio. Défaut 1.0. */
+  zoom?: number;
 }
 
 export type SequenceBackgrounds = {
@@ -2673,7 +2677,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     if (f.blur > 0) parts.push(`blur(${f.blur}px)`);
     return parts.length > 0 ? parts.join(' ') : 'none';
   };
-  const pickSeqBg = (type: string): { img: HTMLImageElement | null; opacity: number; canvasFilter: string; vignette: number; objectPosition: string } => {
+  const pickSeqBg = (type: string): { img: HTMLImageElement | null; opacity: number; canvasFilter: string; vignette: number; objectPosition: string; zoom: number } => {
     const k = seqKeyForType(type);
     if (k) {
       const cfg = sequenceBackgrounds?.[k];
@@ -2684,13 +2688,14 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
           canvasFilter: buildCanvasFilterStr(cfg.filters),
           vignette: cfg.filters?.vignette ?? 0,
           objectPosition: cfg.objectPosition ?? '50% 50%',
+          zoom: Math.max(1, Math.min(5, cfg.zoom ?? 1)),
         };
       }
     }
     // posterOnAllSequences: when false (default), only the intro sequence
     // gets the poster image — cards/CTA/video get null (black + gradient).
     const usePoster = normalizedDesign?.posterOnAllSequences !== false || type === 'intro';
-    return { img: usePoster ? posterImg : null, opacity: 1, canvasFilter: 'none', vignette: 0, objectPosition: '50% 50%' };
+    return { img: usePoster ? posterImg : null, opacity: 1, canvasFilter: 'none', vignette: 0, objectPosition: '50% 50%', zoom: 1 };
   };
 
   // Load audio — prefer pre-decoded AudioBuffers (batch mode), fallback to <audio> elements
@@ -2880,16 +2885,21 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       return off;
     };
 
-    // Pre-crop cache: when objectPosition !== '50% 50%', pre-draw the bg
-    // with the correct focal-point crop so draw functions see a canvas
-    // whose aspect matches the output exactly (no further cropping needed).
+    // Pre-crop cache: when objectPosition !== '50% 50%' OU zoom > 1, pré-dessine
+    // le bg avec le bon focal-point + zoom pour que les draw functions voient un
+    // canvas à l'aspect ratio exact de l'output (aucun crop supplémentaire).
+    //
+    // Zoom > 1 multiplie le scale cover-classique → l'image overflow virtuellement
+    // → posX/posY peut alors déplacer la vue (équivalent CSS transform: scale +
+    // transformOrigin = objectPosition).
     const croppedBgCache = new Map<string, HTMLCanvasElement>();
     const getCroppedBg = (
       img: HTMLImageElement | HTMLCanvasElement,
       objPos: string,
+      zoom: number,
     ): HTMLCanvasElement => {
       const src = (img as HTMLImageElement).src ?? 'canvas';
-      const cacheKey = `${src}__crop__${objPos}__${width}x${height}`;
+      const cacheKey = `${src}__crop__${objPos}__zoom${zoom.toFixed(2)}__${width}x${height}`;
       if (croppedBgCache.has(cacheKey)) return croppedBgCache.get(cacheKey)!;
       const off = document.createElement('canvas');
       off.width = width;
@@ -2899,7 +2909,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       const parts = objPos.split(/[\s%]+/).filter(Boolean).map(Number);
       const posX = (parts[0] ?? 50) / 100;
       const posY = (parts[1] ?? 50) / 100;
-      const scale = Math.max(width / img.width, height / img.height);
+      const scale = Math.max(width / img.width, height / img.height) * zoom;
       const sw = img.width * scale;
       const sh = img.height * scale;
       // At posX=0 → dx=0 (left-aligned), posX=0.5 → centered, posX=1 → right-aligned
@@ -2925,9 +2935,10 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       if (bgImg && seqBg.canvasFilter !== 'none') {
         bgImg = getFilteredBg(bgImg, seqBg.canvasFilter) as any;
       }
-      // Apply objectPosition crop (non-centered focal point)
-      if (bgImg && seqBg.objectPosition !== '50% 50%') {
-        bgImg = getCroppedBg(bgImg, seqBg.objectPosition) as any;
+      // Apply objectPosition crop (non-centered focal point) OU zoom > 1
+      // (recadrage actif même quand l'image a le même ratio que le container).
+      if (bgImg && (seqBg.objectPosition !== '50% 50%' || seqBg.zoom > 1)) {
+        bgImg = getCroppedBg(bgImg, seqBg.objectPosition, seqBg.zoom) as any;
       }
 
       switch (type) {
