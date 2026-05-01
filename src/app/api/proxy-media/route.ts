@@ -19,11 +19,20 @@ export async function GET(req: NextRequest) {
     }
 
     // Security: only allow trusted media URLs (Supabase storage + Pexels CDN)
+    // Security: only allow trusted media URLs (Supabase + Pexels + Unsplash).
+    // Unsplash was missing, so every Unsplash poster picked in the editor
+    // returned 403 here. The composer's loadImage fallback then tried a
+    // direct load which tainted the canvas (Unsplash lacks permissive CORS
+    // for cross-origin canvas) — captureStream() emits empty frames on a
+    // tainted canvas, so several batch iterations rendered the gradient
+    // instead of the picked photo, looking "identical" on the calendar.
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
     const allowedDomains = [
       '.supabase.co/storage/',
       'images.pexels.com',
       'www.pexels.com',
+      'images.unsplash.com',
+      'plus.unsplash.com',
     ];
     const isAllowed = url.startsWith(supabaseUrl) || allowedDomains.some(d => url.includes(d));
     if (!isAllowed) {
