@@ -4492,15 +4492,38 @@ function InfographicPageInner() {
         }
         console.log(`[Batch ${b}] FINAL bTitle="${bTitle}" bSubtitle="${bSubtitle}" cardLabels=${JSON.stringify(bCards.map((c) => c.label))}`);
 
-        // Photo affiche = OPTIONNELLE. Si l'utilisateur a explicitement
-        // désélectionné (selectedPhotoIndex = -1) ou n'a jamais cherché
-        // de photos, posterUrl reste null et le composer peint le gradient.
-        // batchPhotoIndices[b] n'est consulté QU'EN MODE BATCH (batchCount > 1)
-        // — sinon des indices hérités d'une session batch précédente
-        // écraseraient silencieusement le selectedPhotoIndex du mode single.
-        const photoIdx = batchCount > 1 ? (batchPhotoIndices[b] ?? selectedPhotoIndex) : selectedPhotoIndex;
+        // Photo affiche par itération.
+        // En mode batch (batchCount > 1) :
+        //   1. Si l'utilisateur a explicitement choisi des photos pour ce
+        //      batch (batchPhotoIndices[b] défini) → on utilise cet index
+        //      (peut être -1 pour "sans photo" sur cette itération).
+        //   2. Si l'utilisateur a opté-out globalement (selectedPhotoIndex < 0)
+        //      → pas de photo, gradient seul.
+        //   3. Si des photos sont dispo mais aucun index batch fourni → on
+        //      cycle automatiquement (b % pexelsPhotos.length) pour que
+        //      chaque vidéo ait une affiche différente. C'est le mode "IA
+        //      choisit pour toi" promis par l'UI ("si rien n'est sélectionné,
+        //      choix automatique").
+        // En mode single, on utilise selectedPhotoIndex tel quel.
+        let photoIdx: number;
+        if (batchCount > 1) {
+          const explicit = batchPhotoIndices[b];
+          if (typeof explicit === 'number') {
+            photoIdx = explicit;
+          } else if (selectedPhotoIndex < 0) {
+            photoIdx = -1;
+          } else if (pexelsPhotos.length > 0) {
+            // Auto-cycle through available photos for variation
+            photoIdx = b % pexelsPhotos.length;
+          } else {
+            photoIdx = selectedPhotoIndex;
+          }
+        } else {
+          photoIdx = selectedPhotoIndex;
+        }
         const photo = (pexelsPhotos.length > 0 && photoIdx >= 0) ? pexelsPhotos[photoIdx] : null;
         const posterUrl = photo?.url || null;
+        console.log(`[Batch ${b + 1}/${total}] photoIdx=${photoIdx} posterUrl=${posterUrl ? posterUrl.slice(0, 60) + '…' : 'NONE'} (pexelsPhotos.length=${pexelsPhotos.length}, batchPhotoIndices=${JSON.stringify(batchPhotoIndices)})`);
 
         // Pick a different sales phrase per batch item
         const salesPhrase =
@@ -5156,12 +5179,31 @@ function InfographicPageInner() {
           const exportAccent =
             customAccent || gradientColor1 || COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent || "#a855f7";
           const isReel = format === "9:16";
-          // Pas de fallback automatique vers pexelsPhotos[0] : si l'utilisateur
-          // a désélectionné (-1), il veut le gradient — respecter ce signal.
-          // En mode batch, on cycle aussi sur batchPhotoIndices comme le calendrier.
-          const photoIdx = total > 1 ? (batchPhotoIndices[b] ?? selectedPhotoIndex) : selectedPhotoIndex;
+          // Photo affiche par itération — même logique que le calendrier :
+          //   1. batchPhotoIndices[b] explicite → utiliser cet index
+          //   2. selectedPhotoIndex < 0 → opt-out global, pas de photo
+          //   3. Sinon, des photos dispo → cycle auto (b % length) pour
+          //      varier l'affiche entre les vidéos du batch (mode "IA choisit
+          //      pour toi" promis par l'UI).
+          //   4. Mode single → selectedPhotoIndex tel quel.
+          let photoIdx: number;
+          if (total > 1) {
+            const explicit = batchPhotoIndices[b];
+            if (typeof explicit === 'number') {
+              photoIdx = explicit;
+            } else if (selectedPhotoIndex < 0) {
+              photoIdx = -1;
+            } else if (pexelsPhotos.length > 0) {
+              photoIdx = b % pexelsPhotos.length;
+            } else {
+              photoIdx = selectedPhotoIndex;
+            }
+          } else {
+            photoIdx = selectedPhotoIndex;
+          }
           const exportPhoto = (pexelsPhotos.length > 0 && photoIdx >= 0) ? pexelsPhotos[photoIdx] : null;
           const exportPosterUrl = exportPhoto?.url || null;
+          console.log(`[Bureau Batch ${b + 1}/${total}] photoIdx=${photoIdx} posterUrl=${exportPosterUrl ? exportPosterUrl.slice(0, 60) + '…' : 'NONE'}`);
 
           // Snapshot the live editor cards grid for WYSIWYG parity. The
           // [data-cards-grid] element only renders when activeSequence is
