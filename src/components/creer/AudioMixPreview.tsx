@@ -9,6 +9,22 @@ interface Props {
   musicUrl: string | null;
   voiceUrl: string | null;
   rushUrl: string | null;
+  /**
+   * Per-sequence voice-overs (TTS or recorded). Each plays at its
+   * sequence offset (computed from intro/cards/video/cta durations) and
+   * is mixed into the same voice gain bus as the legacy `voiceUrl`.
+   * The composer does the same so this preview stays faithful.
+   */
+  sequenceVoiceUrls?: {
+    titre?: string | null;
+    cartes?: string | null;
+    video?: string | null;
+    cta?: string | null;
+  };
+  /** Per-sequence durations in seconds — used to compute play offsets. */
+  introDuration?: number;
+  cardsDuration?: number;
+  ctaDuration?: number;
   totalDuration: number;
   /** Seconds from montage start where the video sequence begins (intro + cards). */
   videoSeqStart: number;
@@ -35,6 +51,10 @@ export default function AudioMixPreview({
   musicUrl,
   voiceUrl,
   rushUrl,
+  sequenceVoiceUrls,
+  introDuration = 0,
+  cardsDuration = 0,
+  ctaDuration = 0,
   totalDuration,
   videoSeqStart,
   videoSeqDuration,
@@ -46,6 +66,7 @@ export default function AudioMixPreview({
   const [loop, setLoop] = useState(false);
   const [musicLevel, setMusicLevel] = useState(0);
   const [rushLevel, setRushLevel] = useState(0);
+  const [voiceLevel, setVoiceLevel] = useState(0);
   const [busy, setBusy] = useState(false);
 
   // ── Persistent across start()s ────────────────────────────────
@@ -55,6 +76,7 @@ export default function AudioMixPreview({
   const rushGainRef = useRef<GainNode | null>(null);
   const musicAnalyserRef = useRef<AnalyserNode | null>(null);
   const rushAnalyserRef = useRef<AnalyserNode | null>(null);
+  const voiceAnalyserRef = useRef<AnalyserNode | null>(null);
   const rushVideoRef = useRef<HTMLVideoElement | null>(null);
   const rushSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const rushElUrlRef = useRef<string | null>(null);
@@ -62,6 +84,9 @@ export default function AudioMixPreview({
   // Per-start refs (recreated each playback)
   const musicSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const voiceSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  // Per-sequence voice sources (titre/cartes/video/cta) — fresh each
+  // start() call so the AudioBufferSourceNode lifecycle stays sane.
+  const seqVoiceSourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const startAtRef = useRef(0);
   const rafRef = useRef<number | null>(null);
 
@@ -75,7 +100,8 @@ export default function AudioMixPreview({
   const isPlayingRef = useRef(isPlaying);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
 
-  const canPlay = !!(musicUrl || voiceUrl || rushUrl) && totalDuration > 0;
+  const hasSeqVoice = !!(sequenceVoiceUrls && (sequenceVoiceUrls.titre || sequenceVoiceUrls.cartes || sequenceVoiceUrls.video || sequenceVoiceUrls.cta));
+  const canPlay = !!(musicUrl || voiceUrl || rushUrl || hasSeqVoice) && totalDuration > 0;
 
   // ── helpers ───────────────────────────────────────────────────
   const decodeUrl = async (
@@ -141,11 +167,19 @@ export default function AudioMixPreview({
     try { voiceSourceRef.current?.disconnect(); } catch { /* noop */ }
     musicSourceRef.current = null;
     voiceSourceRef.current = null;
+    // Stop and disconnect any per-sequence voice sources from the
+    // previous start(). They're one-shot, so we always tear them down.
+    for (const src of seqVoiceSourcesRef.current) {
+      try { src.stop(); } catch { /* noop */ }
+      try { src.disconnect(); } catch { /* noop */ }
+    }
+    seqVoiceSourcesRef.current = [];
     const rv = rushVideoRef.current;
     if (rv) { try { rv.pause(); rv.currentTime = 0; } catch { /* noop */ } }
     setCurrentTime(0);
     setMusicLevel(0);
     setRushLevel(0);
+    setVoiceLevel(0);
   }, []);
 
   const stop = useCallback(() => {
@@ -182,8 +216,12 @@ export default function AudioMixPreview({
       }
       if (!voiceGainRef.current) {
         const g = ctx.createGain();
-        g.connect(ctx.destination);
+        const a = ctx.createAnalyser();
+        a.fftSize = 512;
+        g.connect(a);
+        a.connect(ctx.destination);
         voiceGainRef.current = g;
+        voiceAnalyserRef.current = a;
       }
       if (!rushGainRef.current) {
         const g = ctx.createGain();
@@ -204,6 +242,24 @@ export default function AudioMixPreview({
         musicUrl ? decodeUrl(ctx, musicUrl, musicCacheRef.current).catch((e) => { console.warn('[AudioMixPreview] music decode failed:', e); return null; }) : Promise.resolve(null),
         voiceUrl ? decodeUrl(ctx, voiceUrl, voiceCacheRef.current).catch((e) => { console.warn('[AudioMixPreview] voice decode failed:', e); return null; }) : Promise.resolve(null),
       ]);
+
+      // ── Decode per-sequence voice-overs (titre/cartes/video/cta) ──
+      // Each plays at its own offset on the same voiceGain bus.
+      const seqVoiceKeys = ['titre', 'cartes', 'video', 'cta'] as const;
+      const seqVoiceBufs: Record<typeof seqVoiceKeys[number], AudioBuffer | null> = {
+        titre: null, cartes: null, video: null, cta: null,
+      };
+      if (sequenceVoiceUrls) {
+        await Promise.all(seqVoiceKeys.map(async (k) => {
+          const url = sequenceVoiceUrls?.[k];
+          if (!url) return;
+          try {
+            seqVoiceBufs[k] = await decodeUrl(ctx, url, voiceCacheRef.current);
+          } catch (e) {
+            console.warn(`[AudioMixPreview] seq voice ${k} decode failed:`, e);
+          }
+        }));
+      }
 
       // ── Rush video element + source (one source per element lifetime) ──
       let rushEl: HTMLVideoElement | null = null;
@@ -253,6 +309,31 @@ export default function AudioMixPreview({
         musicGain.gain.setValueAtTime(1, startAt);
         rushGain.gain.setValueAtTime(1, startAt);
         voiceGain.gain.setValueAtTime(1, startAt);
+      }
+
+      // ── Schedule per-sequence voices to start at their cumulative offset ──
+      // Mirrors the composer's setTimeout pattern but uses precise
+      // AudioBufferSourceNode.start(when) so the preview is sample-accurate.
+      const seqOffsets: Record<typeof seqVoiceKeys[number], number> = {
+        titre: 0,
+        cartes: introDuration,
+        video: introDuration + cardsDuration,
+        cta: introDuration + cardsDuration + videoSeqDuration,
+      };
+      for (const k of seqVoiceKeys) {
+        const buf = seqVoiceBufs[k];
+        if (!buf) continue;
+        try {
+          const src = ctx.createBufferSource();
+          src.buffer = buf;
+          src.loop = false;
+          src.connect(voiceGain);
+          src.start(startAt + seqOffsets[k]);
+          seqVoiceSourcesRef.current.push(src);
+          console.log(`[AudioMixPreview] ✅ seq voice ${k} scheduled at offset ${seqOffsets[k].toFixed(2)}s`);
+        } catch (err) {
+          console.warn(`[AudioMixPreview] seq voice ${k} schedule failed:`, err);
+        }
       }
 
       // ── Kick off sources ──
@@ -305,6 +386,7 @@ export default function AudioMixPreview({
         };
         setMusicLevel(measure(musicAnalyserRef.current));
         setRushLevel(measure(rushAnalyserRef.current));
+        setVoiceLevel(measure(voiceAnalyserRef.current));
 
         setCurrentTime(t);
         onTimeUpdate?.(t);
@@ -321,6 +403,7 @@ export default function AudioMixPreview({
     }
   }, [
     audioKeyframes, musicUrl, voiceUrl, rushUrl,
+    sequenceVoiceUrls, introDuration, cardsDuration, ctaDuration,
     totalDuration, videoSeqStart, videoSeqDuration,
     busy, cleanup, stop, onPlayStateChange, onTimeUpdate,
   ]);
@@ -400,15 +483,15 @@ export default function AudioMixPreview({
       </div>
 
       {/* VU meters — RMS from AnalyserNodes, scaled 2× for visual punch */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         <div className="space-y-0.5">
           <div className="flex justify-between text-[9px] text-gray-400">
             <span>Musique</span>
-            <span className="font-mono text-purple-300 tabular-nums">{Math.round(Math.min(100, musicLevel * 200))}%</span>
+            <span className="font-mono text-cyan-300 tabular-nums">{Math.round(Math.min(100, musicLevel * 200))}%</span>
           </div>
           <div className="h-1 rounded bg-gray-800 overflow-hidden">
             <div
-              className="h-full bg-purple-500"
+              className="h-full bg-cyan-500"
               style={{ width: `${Math.min(100, musicLevel * 200)}%`, transition: 'width 40ms linear' }}
             />
           </div>
@@ -422,6 +505,18 @@ export default function AudioMixPreview({
             <div
               className="h-full bg-orange-500"
               style={{ width: `${Math.min(100, rushLevel * 200)}%`, transition: 'width 40ms linear' }}
+            />
+          </div>
+        </div>
+        <div className="space-y-0.5">
+          <div className="flex justify-between text-[9px] text-gray-400">
+            <span>Voix off</span>
+            <span className="font-mono text-purple-300 tabular-nums">{Math.round(Math.min(100, voiceLevel * 200))}%</span>
+          </div>
+          <div className="h-1 rounded bg-gray-800 overflow-hidden">
+            <div
+              className="h-full bg-purple-500"
+              style={{ width: `${Math.min(100, voiceLevel * 200)}%`, transition: 'width 40ms linear' }}
             />
           </div>
         </div>
