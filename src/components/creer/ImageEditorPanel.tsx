@@ -349,6 +349,15 @@ export default function ImageEditorPanel({
   }, []);
 
   const handleCropPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    // Si l'utilisateur clique sur un bouton (Détacher) ou autre élément
+    // interactif DANS le cropContainer, ne PAS démarrer le drag — sinon
+    // setPointerCapture détourne le pointerup vers le cropContainer et
+    // le click sur le bouton ne fire jamais.
+    const target = e.target as HTMLElement;
+    if (target.closest('button')) {
+      console.log('[ImageEditorPanel] pointerdown on interactive child — skip drag');
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
     const cur = parseObjPos(objPos);
