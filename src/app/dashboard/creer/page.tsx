@@ -1761,6 +1761,11 @@ function InfographicPageInner() {
   const [titleIconGradColor1, setTitleIconGradColor1] = useState("#a855f7");
   const [titleIconGradColor2, setTitleIconGradColor2] = useState("#ec4899");
   const [titleIconSize, setTitleIconSize] = useState(60);
+  // Position of the title icon as % of preview (Option A — drag within
+  // the preview, default = centered just above the title block).
+  // null/undefined → composer uses the default (50, 4) → no regression
+  // for posts saved before this drag feature.
+  const [titleIconPos, setTitleIconPos] = useState<{ x: number; y: number }>({ x: 50, y: 4 });
   const [titleGradColor1, setTitleGradColor1] = useState("#FFD700");
   const [titleGradColor2, setTitleGradColor2] = useState("#FF6B6B");
   const [titleDuplicate, setTitleDuplicate] = useState(false);
@@ -1859,6 +1864,9 @@ function InfographicPageInner() {
         if (cfg.titleIconGradColor1) setTitleIconGradColor1(cfg.titleIconGradColor1);
         if (cfg.titleIconGradColor2) setTitleIconGradColor2(cfg.titleIconGradColor2);
         if (typeof cfg.titleIconSize === 'number') setTitleIconSize(cfg.titleIconSize);
+        if (cfg.titleIconPos && typeof cfg.titleIconPos.x === 'number' && typeof cfg.titleIconPos.y === 'number') {
+          setTitleIconPos(cfg.titleIconPos);
+        }
         if (cfg.titleGradColor1) setTitleGradColor1(cfg.titleGradColor1);
         if (cfg.titleGradColor2) setTitleGradColor2(cfg.titleGradColor2);
         if (cfg.titleDuplicate !== undefined) setTitleDuplicate(cfg.titleDuplicate);
@@ -2789,7 +2797,7 @@ function InfographicPageInner() {
         titleTextGradient, titleGradColor1, titleGradColor2,
         cardsLabelGradient, cardsValueGradient, cardsDescriptionGradient, cardsTextGradColor1, cardsTextGradColor2,
         ctaIconName, ctaIconColor, ctaIconGradient, ctaIconGradColor1, ctaIconGradColor2, ctaIconSize,
-        titleIconName, titleIconColor, titleIconGradient, titleIconGradColor1, titleIconGradColor2, titleIconSize,
+        titleIconName, titleIconColor, titleIconGradient, titleIconGradColor1, titleIconGradColor2, titleIconSize, titleIconPos,
         titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
         gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, posterOnAllSequences, seqGradients,
         textScale, ctaTextScale, cardsTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
@@ -2890,7 +2898,7 @@ function InfographicPageInner() {
     titleTextGradient, titleGradColor1, titleGradColor2,
     cardsLabelGradient, cardsValueGradient, cardsDescriptionGradient, cardsTextGradColor1, cardsTextGradColor2,
     ctaIconName, ctaIconColor, ctaIconGradient, ctaIconGradColor1, ctaIconGradColor2, ctaIconSize,
-    titleIconName, titleIconColor, titleIconGradient, titleIconGradColor1, titleIconGradColor2, titleIconSize,
+    titleIconName, titleIconColor, titleIconGradient, titleIconGradColor1, titleIconGradColor2, titleIconSize, titleIconPos,
     titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
     gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, posterOnAllSequences, seqGradients,
     textScale, ctaTextScale, cardsTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
@@ -4937,6 +4945,7 @@ function InfographicPageInner() {
                 titleIconGradColor1,
                 titleIconGradColor2,
                 titleIconSize,
+                titleIconPosition: titleIconPos,
                 extraTitle: extraTitle || undefined,
                 extraSubtitle: extraSubtitle || undefined,
                 extraTitlePosition,
@@ -5546,6 +5555,7 @@ function InfographicPageInner() {
               titleIconGradColor1,
               titleIconGradColor2,
               titleIconSize,
+              titleIconPosition: titleIconPos,
               noColorBg, noColorSequences, posterOnAllSequences,
               seqGradients,
               backdropRounded, backdropRadius, backdropMargin,
@@ -8536,6 +8546,7 @@ function InfographicPageInner() {
               const x = Math.round(rawX);
               const y = Math.round(rawY);
               if (dragging === "title") setTitlePos({ x, y });
+              else if (dragging === "titleIcon") setTitleIconPos({ x, y });
               else if (dragging === "extraTitle") setExtraTitlePosition({ x, y });
               else if (dragging === "extraSubtitle") setExtraSubtitlePosition({ x, y });
               else if (dragging === "logo") {
@@ -8916,18 +8927,10 @@ function InfographicPageInner() {
                   }}
                 />
                 <div className="absolute inset-0 border border-dashed border-purple-500/0 group-hover/title:border-purple-500/40 rounded pointer-events-none transition-colors" />
-                {/* Optional title-sequence SVG icon (mirror of CTA icon).
-                    Rendered above the title text. Hidden when titleIconName is null. */}
-                {titleIconName && ICON_MAP[titleIconName] && (
-                  <div className="flex justify-center" style={{ marginBottom: '4px' }}>
-                    {renderLucideIcon(titleIconName, {
-                      size: format === "16:9" ? Math.round(titleIconSize / 2.5) : Math.round(titleIconSize / 4),
-                      color: titleIconColor || '#FFFFFF',
-                      gradient: titleIconGradient ? { start: titleIconGradColor1, end: titleIconGradColor2, direction: 'd' } : undefined,
-                      gradientId: `title-live-${titleIconName}`,
-                    })}
-                  </div>
-                )}
+                {/* The optional title-sequence SVG icon was previously rendered
+                    here as a flex sibling. Moved OUT of the title block to its
+                    own top-level draggable element (see below) so the user can
+                    position it anywhere relative to the preview. */}
                 {titleDuplicate && (
                   <h3
                     style={{
@@ -8986,6 +8989,39 @@ function InfographicPageInner() {
                   </p>
                 )}
               </div>
+              {/* Draggable title icon — top-level absolute positioned
+                  element, independent from the title text block. Default
+                  position is centered just above the title. Same drag
+                  pattern as title/cta/logo. */}
+              {titleIconName && ICON_MAP[titleIconName] && (
+                <div
+                  className={`absolute z-20 cursor-grab active:cursor-grabbing select-none ${
+                    !isCapturingSnapshot && (selectedEl?.type === 'title' || activePanel === 'title')
+                      ? 'ring-1 ring-purple-400 ring-offset-1 ring-offset-transparent rounded'
+                      : ''
+                  }`}
+                  style={{
+                    left: `${titleIconPos.x}%`,
+                    top: `${titleIconPos.y}%`,
+                    transform: 'translate(-50%, -50%)',
+                  }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDragging('titleIcon');
+                  }}
+                  onClick={(e) => { e.stopPropagation(); selectEl({ type: 'title' }); }}
+                  onDoubleClick={(e) => openPanel('title', e)}
+                  title="Glisser pour déplacer l'icône du titre"
+                >
+                  {renderLucideIcon(titleIconName, {
+                    size: format === '16:9' ? Math.round(titleIconSize / 2.5) : Math.round(titleIconSize / 4),
+                    color: titleIconColor || '#FFFFFF',
+                    gradient: titleIconGradient ? { start: titleIconGradColor1, end: titleIconGradColor2, direction: 'd' } : undefined,
+                    gradientId: `title-live-${titleIconName}`,
+                  })}
+                </div>
+              )}
               {extraTitle && (
                 <div
                   className="absolute z-20 select-none cursor-grab active:cursor-grabbing text-center"

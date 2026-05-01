@@ -227,6 +227,12 @@ export interface DesignOptions {
   titleIconGradColor1?: string;
   titleIconGradColor2?: string;
   titleIconSize?: number;
+  /** Position of the title icon as % of canvas. When provided, the icon
+   *  is drawn at this absolute position INDEPENDENTLY of the title block
+   *  (the title is no longer pushed down). When undefined, the icon is
+   *  rendered above the title with auto-pushdown (legacy behavior, kept
+   *  for posts saved before the drag feature shipped). */
+  titleIconPosition?: { x: number; y: number };
   /** Per-element font overrides (undefined → inherit `font`). */
   titleFont?: string;
   ctaFont?: string;
@@ -1027,17 +1033,32 @@ function drawIntro(
   // Editor uses width constraint (titleSize%, default 90%) for wrapping
   const titleWidth = w * ((design?.titleSize ?? 90) / 100);
 
-  // ── Optional title icon — drawn ABOVE the title block, centered on
-  //    titlePosX. Mirrors how the CTA icon is drawn. The icon is pushed
-  //    DOWN by its full size + a small gap, so titlePosY moves to leave
-  //    room. titlePosY is conserved if no icon (compat avec posts existants).
+  // ── Optional title icon — two layout modes:
+  //    A) `titleIconPosition` undefined (legacy posts) → icon rendered
+  //       above the title in flex layout, title pushed down. Same as PR #147.
+  //    B) `titleIconPosition` defined (drag feature) → icon at absolute
+  //       % of canvas, title position UNCHANGED (no pushdown). The user
+  //       chose where to put the icon, we honor it.
   let iconBottom = 0; // Y where the icon ends (= where title can start)
   if (design?.titleIconImage) {
     const iconSizeBase = design.titleIconSize || 60;
     const iconSize = iconSizeBase * (w / 1080);
     const iconGap = Math.round(w * 0.015);
-    const iconX = titlePosX - iconSize / 2;
-    const iconY = titlePosY;
+    const useAbsolute = !!design.titleIconPosition;
+    let iconX: number;
+    let iconY: number;
+    if (useAbsolute) {
+      // Mode B — absolute position. (x, y) is the icon CENTER (matches
+      // the editor's `transform: translate(-50%, -50%)`).
+      const px = (design.titleIconPosition!.x / 100) * w;
+      const py = (design.titleIconPosition!.y / 100) * h;
+      iconX = px - iconSize / 2;
+      iconY = py - iconSize / 2;
+    } else {
+      // Mode A — legacy: above title, push title down.
+      iconX = titlePosX - iconSize / 2;
+      iconY = titlePosY;
+    }
     if (design.titleIconGradient && design.titleIconGradColor1 && design.titleIconGradColor2) {
       const off = document.createElement('canvas');
       off.width = Math.max(1, Math.round(iconSize));
@@ -1058,7 +1079,10 @@ function drawIntro(
     } else {
       ctx.drawImage(design.titleIconImage, iconX, iconY, iconSize, iconSize);
     }
-    iconBottom = iconY + iconSize + iconGap;
+    // Pushdown only in mode A (legacy). Mode B keeps title at titlePosY.
+    if (!useAbsolute) {
+      iconBottom = iconY + iconSize + iconGap;
+    }
   }
 
   ctx.save();
