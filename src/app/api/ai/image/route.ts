@@ -29,6 +29,46 @@ const MODELS: Record<string, `${string}/${string}`> = {
   'image-to-video': 'wan-video/wan-2.2-i2v-fast',             // ✅ Warm, Official, 10.6M runs
 };
 
+// ── French → English translation pour les prompts IA ──
+// FLUX Kontext est principalement entraîné sur l'anglais. Si le user
+// type "le titre" en français, l'interpréter comme "title text" évite
+// que le modèle confonde avec une instruction générique ("remove le titre"
+// matched as "remove background-like-element").
+//
+// Map des termes les plus courants tapés par l'utilisateur français.
+// L'ordre compte : les expressions multi-mots passent AVANT les single mots.
+const FR_TO_EN_PROMPTS: Array<[RegExp, string]> = [
+  // Multi-mots d'abord
+  [/\b(le |la |les |l')?\s*titre principal\b/gi, 'main title text'],
+  [/\b(le |la |les |l')?\s*sous-titres?\b/gi, 'subtitle text'],
+  [/\b(le |la |les |l')?\s*arrière-plans?\b/gi, 'background'],
+  [/\b(le |la |les |l')?\s*arrière plans?\b/gi, 'background'],
+  [/\b(le |la |les |l')?\s*plan derrière\b/gi, 'background'],
+  // Puis single mots
+  [/\b(le |la |les |l')?\s*titres?\b/gi, 'title text'],
+  [/\b(le |la |les |l')?\s*textes?\b/gi, 'text'],
+  [/\b(le |la |les |l')?\s*logos?\b/gi, 'logo'],
+  [/\b(le |la |les |l')?\s*fonds?\b/gi, 'background'],
+  [/\b(le |la |les |l')?\s*personnes?\b/gi, 'person'],
+  [/\b(le |la |les |l')?\s*personnages?\b/gi, 'character'],
+  [/\b(le |la |les |l')?\s*visages?\b/gi, 'face'],
+  [/\b(le |la |les |l')?\s*ciels?\b/gi, 'sky'],
+  [/\b(le |la |les |l')?\s*objet[s]?\b/gi, 'object'],
+  [/\bsupprimer?\b/gi, 'remove'],
+  [/\beffacer?\b/gi, 'erase'],
+  [/\bremplacer?\b/gi, 'replace'],
+  [/\bchanger?\b/gi, 'change'],
+  [/\bajouter?\b/gi, 'add'],
+];
+
+function translateFrPromptToEn(prompt: string): string {
+  let result = prompt;
+  for (const [pattern, replacement] of FR_TO_EN_PROMPTS) {
+    result = result.replace(pattern, replacement);
+  }
+  return result.trim();
+}
+
 export async function POST(req: NextRequest) {
   try {
     // Auth check
@@ -77,10 +117,20 @@ export async function POST(req: NextRequest) {
       // ── 2. Magic Eraser (FLUX Kontext Pro — remove elements) ──
       case 'magic-eraser': {
         if (!imageUrl || !prompt) return NextResponse.json({ success: false, error: 'imageUrl et prompt requis' }, { status: 400 });
+        // FLUX Kontext est principalement entraîné sur l'anglais. Traduire
+        // les termes français courants évite que "le titre" → "Remove le
+        // titre" soit mal interprété et déclenche un background removal
+        // global au lieu de l'effacement ciblé du titre.
+        const target = translateFrPromptToEn(prompt);
+        // Prompt structuré pour le modèle :
+        //  1. ACTION explicite (Erase, pas Remove qui est ambigu vs bg-removal)
+        //  2. CIBLE précise
+        //  3. PRÉSERVATION du reste (anti-régression sur la composition)
+        //  4. INPAINT pixel-level (anti-flat-fill)
         output = await replicate.run(MODELS['image-edit'], {
           input: {
             input_image: imageUrl,
-            prompt: `Remove ${prompt} from the image. Fill the area with clean natural background that matches the surroundings seamlessly.`,
+            prompt: `Erase only the ${target} from this image. Keep the subject, background, lighting, and overall composition exactly identical. Inpaint the erased area to seamlessly continue the surrounding pixels — do NOT replace the background.`,
             aspect_ratio: 'match_input_image',
             output_format: 'png',
             safety_tolerance: 2,
@@ -93,10 +143,12 @@ export async function POST(req: NextRequest) {
       // ── 3. Magic Edit (FLUX Kontext Pro — text-based editing) ──
       case 'magic-edit': {
         if (!imageUrl || !prompt) return NextResponse.json({ success: false, error: 'imageUrl et prompt requis' }, { status: 400 });
+        // Same translation pour les prompts français
+        const editPrompt = translateFrPromptToEn(prompt);
         output = await replicate.run(MODELS['image-edit'], {
           input: {
             input_image: imageUrl,
-            prompt,
+            prompt: editPrompt,
             aspect_ratio: 'match_input_image',
             output_format: 'png',
             safety_tolerance: 2,
