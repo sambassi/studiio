@@ -4550,9 +4550,26 @@ function InfographicPageInner() {
         const mediaType = hasVideo ? "video" : "image";
 
         if (destination === "draft" || destination === "both" || destination === "audio-studio") {
-          const today = new Date();
-          today.setDate(today.getDate() + b); // Spread across days
-          const scheduledDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+          // Spread within the current month so all batch posts stay visible on
+          // the same calendar view. The calendar fetches one month at a time,
+          // so a naive `today + b` pushes b=1, b=2 into the next month and the
+          // user concludes "batch x N = 1 post visible" — they can't see the
+          // others without navigating.
+          //
+          // Strategy: try forward-spread (today, today+1, ...). If that crosses
+          // the current month, switch to backward-spread for that iteration
+          // (today, today-1, today-2, ...) so it stays within the same month.
+          const baseDate = new Date();
+          const target = new Date(baseDate);
+          target.setDate(baseDate.getDate() + b);
+          if (target.getMonth() !== baseDate.getMonth()) {
+            // Forward-spread crossed the month boundary — fall back to
+            // backward-spread for the iterations that overflow.
+            target.setTime(baseDate.getTime());
+            target.setDate(baseDate.getDate() - b);
+          }
+          const scheduledDate = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}-${String(target.getDate()).padStart(2, "0")}`;
+          console.log(`[Batch ${b + 1}/${total}] scheduledDate=${scheduledDate} (today=${baseDate.toISOString().slice(0, 10)})`);
           const caption = [
             bSubtitle,
             bCards.map((c) => `${c.emoji} ${c.label}: ${c.value}`).join(" | "),
@@ -4847,9 +4864,14 @@ function InfographicPageInner() {
               showToast('Attention : la vidéo a été composée mais l\'upload a échoué');
             }
           } catch (err) {
-            console.error('[Export→Calendar] Montage composition failed:', err);
-            showToast(`Erreur composition: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
-            // Continue — post will be saved without video, calendar can retry
+            console.error(`[Batch ${b + 1}/${total}] Montage composition FAILED — skipping post creation:`, err);
+            const errMsg = err instanceof Error ? err.message : 'Erreur inconnue';
+            showToast(`Vidéo ${b + 1}/${total} échouée : ${errMsg}`, 'error');
+            // Re-throw so the per-iteration try/catch wrapper at the loop
+            // level skips the rest of this iteration (no orphan post creation
+            // with media_url=null when compose has crashed). The wrapper logs
+            // FATAL ITERATION ERROR and continues to the next b.
+            throw err;
           }
 
           const postRes = await fetch("/api/posts", {
@@ -5071,10 +5093,12 @@ function InfographicPageInner() {
             }),
           });
           // Capture created post ID for Studio Son redirect
+          let createdPostId: string | null = null;
           try {
             const postData = await postRes.json();
             if (postData.success && postData.post?.id) {
               createdPostIds.push(postData.post.id);
+              createdPostId = postData.post.id;
             } else if (!postData.success) {
               showToast(`Erreur lors de la programmation : ${postData.error || 'réponse inattendue du serveur'}`);
               console.error('[Export→Calendar] POST /api/posts non-success:', postData);
@@ -5083,6 +5107,7 @@ function InfographicPageInner() {
             showToast(`Erreur réseau lors de la programmation : ${err instanceof Error ? err.message : 'inconnue'}`);
             console.error('[Export→Calendar] POST /api/posts network/parse error:', err);
           }
+          console.log(`[Batch ${b + 1}/${total}] DONE — postId:${createdPostId || 'NONE'} videoUrl:${!!renderedVideoUrl} scheduledDate:${scheduledDate}`);
         }
         } catch (iterErr) {
           // Per-iteration safety net — surface l'erreur ET continue le batch.
@@ -5103,6 +5128,7 @@ function InfographicPageInner() {
       // path above).
       if (destination === 'export' || destination === 'both') {
         for (let b = 0; b < total; b++) {
+          console.log(`[Bureau Batch ${b + 1}/${total}] START`);
           // Per-iteration variation. b=0 ships exactly what the user has on
           // screen; b>0 gets a fresh AI angle from the same generator the
           // calendar loop uses (priorTitles is already populated by the
@@ -5119,6 +5145,9 @@ function InfographicPageInner() {
               bCards = variation.cards;
               if (variation.salesPhrases.length > 0) bSalesPhrases = variation.salesPhrases;
               if (bTitle?.trim()) priorTitles.push(bTitle.trim());
+              console.log(`[Bureau Batch ${b + 1}/${total}] variation OK title="${bTitle}" cardLabels=${JSON.stringify(bCards.map((c) => c.label))}`);
+            } else {
+              console.warn(`[Bureau Batch ${b + 1}/${total}] variation NULL — falling back to editor's current content`);
             }
           }
         try {
@@ -5416,6 +5445,7 @@ function InfographicPageInner() {
                 setExportProgress(85 + Math.round(pct * 0.14));
               });
               setExportProgress(100);
+              console.log(`[Bureau Batch ${b + 1}/${total}] DONE — file:${downloadName} blobSize:${composedResult.blob.size}`);
             } catch (dlErr) {
               console.error('[Export Bureau] downloadBlob cascade failed:', dlErr);
               showToast(`Export bureau échoué : ${(dlErr as Error)?.message || 'conversion MP4 impossible'}`);
@@ -5426,12 +5456,18 @@ function InfographicPageInner() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ cost, reason: 'render', format: renderFormat }),
             }).catch(() => {});
+            // Chrome/Firefox bloquent les téléchargements multiples rapides
+            // depuis une même page — un délai de 600ms entre downloads laisse
+            // au navigateur le temps de présenter (et accepter) chaque fichier.
+            if (b < total - 1) {
+              await new Promise((r) => setTimeout(r, 600));
+            }
           } else {
             showToast('Export bureau échoué : le rendu vidéo est vide. Réessayez ou utilisez un autre navigateur.');
           }
         } catch (e) {
-          console.error('[Export Bureau Batch #' + b + '] Erreur:', e);
-          showToast(`Export bureau échoué (vidéo ${b + 1}/${total}) : ${(e as Error)?.message || 'erreur inconnue'}`);
+          console.error(`[Bureau Batch ${b + 1}/${total}] FATAL — skipping to next:`, e);
+          showToast(`Vidéo bureau ${b + 1}/${total} échouée : ${(e as Error)?.message || 'erreur inconnue'}`, 'error');
         }
         } // end for loop bureau batch
       }
