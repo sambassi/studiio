@@ -2831,10 +2831,34 @@ function InfographicPageInner() {
     const onBeforeUnload = () => {
       persistSnapshot(buildSnapshot());
     };
+    // Save when tab becomes hidden (covers mobile app-switch + iOS
+    // safari that doesn't always fire beforeunload). Pagehide is the
+    // modern recommended event for "the tab is going away".
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        persistSnapshot(buildSnapshot());
+      }
+    };
+    const onPageHide = () => {
+      persistSnapshot(buildSnapshot());
+    };
     window.addEventListener('beforeunload', onBeforeUnload);
+    window.addEventListener('pagehide', onPageHide);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
+      // CRITICAL: save synchronously before clearing the debounced timer.
+      // Without this, internal Next.js navigation (e.g. clicking
+      // "Calendrier" in the sidebar) unmounts the component, the cleanup
+      // clears the pending 500 ms save, and the user's last edit is
+      // permanently lost. beforeunload doesn't fire on client-side
+      // navigation, only on tab close / hard refresh.
+      try {
+        persistSnapshot(buildSnapshot());
+      } catch { /* ignore (quota, private mode) */ }
       window.clearTimeout(handle);
       window.removeEventListener('beforeunload', onBeforeUnload);
+      window.removeEventListener('pagehide', onPageHide);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
