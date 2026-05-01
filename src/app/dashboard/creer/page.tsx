@@ -8851,19 +8851,15 @@ function InfographicPageInner() {
               </div>
             )}
 
-            {/* ── Gradient Overlay (per-sequence, up to 200%) — double-click for panel ──
-                Quand un panneau "background-X" est ouvert, l'utilisateur recadre
-                son image de fond. Le gradient overlay (qui couvre le bg) cache
-                visuellement le déplacement → on le HIDE le temps que le panneau
-                est ouvert, pour que le recadrage soit visible en live. Le gradient
-                revient dès que le panneau se ferme.
-            */}
+            {/* ── Gradient Overlay (per-sequence, up to 200%) — double-click for panel ── */}
             {(() => {
               const seqKey = activeSequence === "all" ? "titre" : activeSequence;
               const gradient = getSeqGradient(seqKey);
               if (!gradient.enabled || gradient.opacity <= 0) return null;
-              // Hide gradient pendant l'édition du fond pour rendre le drag visible
-              if (typeof activePanel === 'string' && activePanel.startsWith('background-')) return null;
+              // NOTE : précédemment on hidait le gradient pendant l'édition du
+              // fond pour rendre le recadrage visible. Reverted — le gradient
+              // fait partie de la config visuelle de l'utilisateur, on ne doit
+              // pas le toucher en interne.
 
               // Generate gradient CSS based on position
               const getGradientCSS = () => {
