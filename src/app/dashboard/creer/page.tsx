@@ -3959,8 +3959,12 @@ function InfographicPageInner() {
   };
 
   const openClipAnalysis = async (idx: number) => {
+    console.log('[openClipAnalysis] CALLED idx=', idx, 'rush=', rushList[idx]?.name);
     const rush = rushList[idx];
-    if (!rush) return;
+    if (!rush) {
+      console.warn('[openClipAnalysis] rush at idx', idx, 'is undefined');
+      return;
+    }
     setClipSourceIdx(idx);
     setClipModalOpen(true);
     setClipAnalyzing(true);
@@ -7557,9 +7561,10 @@ function InfographicPageInner() {
                         onPointerDown={(e) => e.stopPropagation()}
                         onClick={(e) => {
                           e.stopPropagation();
+                          console.log('[RushTile] click Trash idx=', idx);
                           removeRushAt(idx);
                         }}
-                        className="absolute right-1 top-1 rounded bg-red-600/80 p-1 text-white opacity-0 transition hover:bg-red-700 group-hover:opacity-100"
+                        className="absolute right-1 top-1 z-20 rounded bg-red-600/80 p-1 text-white opacity-0 transition hover:bg-red-700 group-hover:opacity-100"
                         title="Supprimer"
                       >
                         <Trash2 size={12} />
@@ -7571,9 +7576,10 @@ function InfographicPageInner() {
                           onPointerDown={(e) => e.stopPropagation()}
                           onClick={(e) => {
                             e.stopPropagation();
+                            console.log('[RushTile] click Cut IA idx=', idx);
                             openClipAnalysis(idx);
                           }}
-                          className="absolute right-1 bottom-5 flex items-center gap-1 rounded bg-purple-600/90 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-md ring-1 ring-purple-400/40 transition hover:bg-purple-500"
+                          className="absolute right-1 bottom-5 z-20 flex items-center gap-1 rounded bg-purple-600/90 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-md ring-1 ring-purple-400/40 transition hover:bg-purple-500"
                           title="Analyser la vidéo et choisir les meilleures séquences via IA"
                         >
                           <Sparkles size={12} /> Cut IA
@@ -7586,15 +7592,16 @@ function InfographicPageInner() {
                           onPointerDown={(e) => e.stopPropagation()}
                           onClick={(e) => {
                             e.stopPropagation();
+                            console.log('[RushTile] click Crop idx=', idx);
                             setCropRushIdx(idx);
                           }}
-                          className="absolute left-1 bottom-5 rounded bg-blue-600/80 p-1 text-white opacity-0 transition hover:bg-blue-700 group-hover:opacity-100"
+                          className="absolute left-1 bottom-5 z-20 rounded bg-blue-600/80 p-1 text-white opacity-0 transition hover:bg-blue-700 group-hover:opacity-100"
                           title={rush.kind === 'image' ? "Recadrer l'image" : 'Recadrer la vidéo'}
                         >
                           <Crop size={12} />
                         </button>
                       )}
-                      <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-1 py-0.5">
+                      <div className="pointer-events-none absolute bottom-0 left-0 right-0 bg-black/70 px-1 py-0.5">
                         <div className="truncate text-[10px] text-white">{rush.name}</div>
                         {rush.url && (() => {
                           const expires = getExpiresAt(new Date(), 'video');
