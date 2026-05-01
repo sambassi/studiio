@@ -345,7 +345,14 @@ export default function ImageEditorPanel({
     const pctY = (dy / rect.height) * -100;
     const newX = Math.max(0, Math.min(100, cropStartRef.current.startPosX + pctX));
     const newY = Math.max(0, Math.min(100, cropStartRef.current.startPosY + pctY));
-    onUpdateRef.current({ objectPosition: `${Math.round(newX)}% ${Math.round(newY)}%` });
+    const newPos = `${Math.round(newX)}% ${Math.round(newY)}%`;
+    if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+      // Log sur le premier vrai mouvement détecté
+      if (Math.abs(dx) < 5 && Math.abs(dy) < 5) {
+        console.log('[ImageEditorPanel] FIRST MOVE detected', { dx, dy, newPos });
+      }
+    }
+    onUpdateRef.current({ objectPosition: newPos });
   }, []);
 
   const handleCropPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -365,14 +372,36 @@ export default function ImageEditorPanel({
     setIsDraggingCrop(true);
     // Capture le pointer : tous les events suivants (move/up) seront
     // dirigés vers ce même élément, même si le curseur sort de sa zone.
-    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
-    console.log('[ImageEditorPanel] pointerdown START', { seqKey, startPos: cur, client: { x: e.clientX, y: e.clientY }, pointerId: e.pointerId });
+    let captureOk = false;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+      captureOk = true;
+    } catch (err) {
+      console.warn('[ImageEditorPanel] setPointerCapture FAILED', err);
+    }
+    console.log('[ImageEditorPanel] pointerdown START', { seqKey, startPos: cur, client: { x: e.clientX, y: e.clientY }, pointerId: e.pointerId, captureOk });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [objPos, seqKey]);
 
+  // Throttle les logs de move : trop verbeux à 60fps. On log juste 1
+  // sur 10 ticks pour confirmer que le handler fire.
+  const moveLogCounterRef = useRef(0);
   const handleCropPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!cropStartRef.current) return;
+    if (!cropStartRef.current) {
+      // Log si pointermove fire SANS qu'on soit en drag — ça veut
+      // dire que le pointerdown n'a pas attaché cropStartRef
+      // correctement (ou qu'on a déjà release).
+      moveLogCounterRef.current = (moveLogCounterRef.current + 1) % 30;
+      if (moveLogCounterRef.current === 0) {
+        console.warn('[ImageEditorPanel] pointermove FIRED but cropStartRef is null (no active drag)');
+      }
+      return;
+    }
     e.preventDefault();
+    moveLogCounterRef.current = (moveLogCounterRef.current + 1) % 10;
+    if (moveLogCounterRef.current === 0) {
+      console.log('[ImageEditorPanel] pointermove tick', { client: { x: e.clientX, y: e.clientY } });
+    }
     updateCropFromClient(e.clientX, e.clientY);
   }, [updateCropFromClient]);
 
