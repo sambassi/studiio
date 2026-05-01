@@ -7234,33 +7234,53 @@ function InfographicPageInner() {
                 </div>
               ) : pexelsPhotos.length > 0 ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {pexelsPhotos.map((photo, i) => (
-                    <button
-                      key={photo.id}
-                      onClick={() => setSelectedPhotoIndex(i)}
-                      className={`relative overflow-hidden rounded-lg transition-all ${
-                        selectedPhotoIndex === i
-                          ? "ring-2 ring-purple-500"
-                          : "opacity-70 hover:opacity-100"
-                      }`}
-                    >
-                      <img
-                        src={photo.small}
-                        alt={photo.alt}
-                        className="aspect-[3/4] w-full object-cover"
-                      />
-                      {selectedPhotoIndex === i && (
-                        <div className="absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-purple-500">
-                          <Check size={12} />
-                        </div>
-                      )}
-                      {batchCount > 1 && i < batchCount && (
-                        <div className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                          #{i + 1}
-                        </div>
-                      )}
-                    </button>
-                  ))}
+                  {pexelsPhotos.map((photo, i) => {
+                    // Same picker logic as the step 0 grid: batch mode lets
+                    // the user toggle photos in click-order (1st pick = #1,
+                    // 2nd = #2, etc.). Single mode keeps the legacy
+                    // selectedPhotoIndex toggle.
+                    const batchPos = batchCount > 1 ? batchPhotoIndices.indexOf(i) : -1;
+                    const isBatchSelected = batchPos >= 0;
+                    const isSingleSelected = batchCount === 1 && selectedPhotoIndex === i;
+                    return (
+                      <button
+                        key={photo.id}
+                        onClick={() => {
+                          if (batchCount > 1) {
+                            setBatchPhotoIndices((prev) => {
+                              const idx = prev.indexOf(i);
+                              if (idx >= 0) return prev.filter((x) => x !== i);
+                              if (prev.length >= batchCount) return prev;
+                              return [...prev, i];
+                            });
+                          } else {
+                            setSelectedPhotoIndex(selectedPhotoIndex === i ? -1 : i);
+                          }
+                        }}
+                        className={`relative overflow-hidden rounded-lg transition-all ${
+                          isSingleSelected || isBatchSelected
+                            ? "ring-2 ring-purple-500"
+                            : "opacity-70 hover:opacity-100"
+                        }`}
+                      >
+                        <img
+                          src={photo.small}
+                          alt={photo.alt}
+                          className="aspect-[3/4] w-full object-cover"
+                        />
+                        {isSingleSelected && (
+                          <div className="absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-purple-500">
+                            <Check size={12} />
+                          </div>
+                        )}
+                        {isBatchSelected && (
+                          <div className="absolute bottom-1 left-1 rounded bg-purple-600 px-1.5 py-0.5 text-[10px] font-bold text-white shadow">
+                            #{batchPos + 1}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="flex items-center justify-center rounded-lg border border-dashed border-gray-700 py-8 text-sm text-gray-500">
@@ -7270,7 +7290,9 @@ function InfographicPageInner() {
               )}
               {batchCount > 1 && pexelsPhotos.length > 0 && (
                 <p className="mt-2 text-xs text-gray-500">
-                  Chaque infographie du batch utilisera une photo différente
+                  {batchPhotoIndices.length > 0
+                    ? `Sélectionnées : ${batchPhotoIndices.length} / ${batchCount}`
+                    : "Cliquez les photos dans l'ordre souhaité — si rien n'est sélectionné, choix automatique"}
                 </p>
               )}
             </div>
