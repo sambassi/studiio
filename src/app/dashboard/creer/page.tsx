@@ -3029,6 +3029,11 @@ function InfographicPageInner() {
   // short by default and let the user open Format / Publier on demand.
   const [formatExpanded, setFormatExpanded] = useState(false);
   const [publishExpanded, setPublishExpanded] = useState(false);
+  // True while the WYSIWYG snapshot (modern-screenshot) is reading the
+  // cards DOM. Used to suppress editor-only chrome (selection rings,
+  // hover highlights, drag-over outlines) so they don't end up baked
+  // into the exported video / image.
+  const [isCapturingSnapshot, setIsCapturingSnapshot] = useState(false);
   // Per-card AI icon generation state
   const [iconPrompts, setIconPrompts] = useState<Record<string, string>>({});
   const [iconLoadingId, setIconLoadingId] = useState<string | null>(null);
@@ -4720,7 +4725,20 @@ function InfographicPageInner() {
                 // Wait for any web fonts to finish loading before snapshotting,
                 // otherwise modern-screenshot may serialize a fallback font.
                 try { await (document as any).fonts?.ready; } catch { /* ignore */ }
-                const canvas = await domToCanvas(cardsEl, { backgroundColor: undefined, scale });
+                // Suppress editor-only chrome (selection rings, hover
+                // outlines) so they don't end up baked into the export.
+                // flushSync + double rAF guarantees the DOM has applied
+                // the className change before modern-screenshot reads it.
+                flushSync(() => setIsCapturingSnapshot(true));
+                await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+                let canvas: HTMLCanvasElement;
+                try {
+                  canvas = await domToCanvas(cardsEl, { backgroundColor: undefined, scale });
+                } finally {
+                  // Restore rings even if domToCanvas throws — never leave
+                  // the editor in a "rings hidden" state for the user.
+                  flushSync(() => setIsCapturingSnapshot(false));
+                }
                 const img = new Image();
                 img.src = canvas.toDataURL('image/png');
                 await new Promise<void>((r) => { img.onload = () => r(); });
@@ -5282,7 +5300,16 @@ function InfographicPageInner() {
               const previewW = previewRef.current?.offsetWidth || (isReel ? 320 : 512);
               const scale = videoW / previewW;
               try { await (document as any).fonts?.ready; } catch { /* ignore */ }
-              const canvas = await domToCanvas(cardsEl, { backgroundColor: undefined, scale });
+              // Suppress selection rings during snapshot — see calendar
+              // path above for details.
+              flushSync(() => setIsCapturingSnapshot(true));
+              await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+              let canvas: HTMLCanvasElement;
+              try {
+                canvas = await domToCanvas(cardsEl, { backgroundColor: undefined, scale });
+              } finally {
+                flushSync(() => setIsCapturingSnapshot(false));
+              }
               const img = new Image();
               img.src = canvas.toDataURL('image/png');
               await new Promise<void>((r) => { img.onload = () => r(); });
@@ -9344,7 +9371,7 @@ function InfographicPageInner() {
                             onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setDragOverIconCardIdx(i); }}
                             onDragLeave={() => setDragOverIconCardIdx((cur) => cur === i ? null : cur)}
                             onDrop={handleIconDrop(i)}
-                            className={`absolute z-20 select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} ${activePanel === 'cards' || (selectedEl?.type === 'card' && selectedEl.index === i) ? 'ring-1 ring-pink-400 ring-offset-1 ring-offset-transparent rounded' : ''} ${dragOverIconCardIdx === i ? 'ring-2 ring-pink-500' : ''}`}
+                            className={`absolute z-20 select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} ${!isCapturingSnapshot && (activePanel === 'cards' || (selectedEl?.type === 'card' && selectedEl.index === i)) ? 'ring-1 ring-pink-400 ring-offset-1 ring-offset-transparent rounded' : ''} ${!isCapturingSnapshot && dragOverIconCardIdx === i ? 'ring-2 ring-pink-500' : ''}`}
                             style={{
                               left: `${pos.x}%`,
                               top: `${pos.y}%`,
@@ -9353,7 +9380,7 @@ function InfographicPageInner() {
                               touchAction: 'none',
                               pointerEvents: 'auto',
                               fontFamily: cardsFontFamily,
-                              ...(isSelected ? { outline: `2px solid ${accentHex}`, outlineOffset: '2px', borderRadius: '6px' } : {}),
+                              ...(isSelected && !isCapturingSnapshot ? { outline: `2px solid ${accentHex}`, outlineOffset: '2px', borderRadius: '6px' } : {}),
                             }}
                             onMouseDown={(e) => {
                               e.preventDefault();
@@ -9411,7 +9438,7 @@ function InfographicPageInner() {
                 // ── GRID mode (default, existing behaviour) ──
                 return (
                   <div
-                    className={`absolute z-20 cursor-grab active:cursor-grabbing group/cards ${activePanel === "cards" || (selectedEl?.type === 'card') ? "ring-1 ring-pink-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
+                    className={`absolute z-20 cursor-grab active:cursor-grabbing group/cards ${!isCapturingSnapshot && (activePanel === "cards" || (selectedEl?.type === 'card')) ? "ring-1 ring-pink-400 ring-offset-1 ring-offset-transparent rounded" : ""}`}
                     style={{
                       left: `${cardsPos.x}%`,
                       top: `${cardsPos.y}%`,
