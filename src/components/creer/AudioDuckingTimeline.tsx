@@ -1,7 +1,7 @@
 'use client';
 
-import React from 'react';
-import { Plus, Trash2, Wand2, Loader2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Plus, Trash2, Wand2, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
 
 export interface AudioKeyframe {
   id: string;
@@ -42,6 +42,10 @@ export default function AudioDuckingTimeline({
 }: Props) {
   const duration = Math.max(1, totalDuration); // never divide by zero
   const sorted = [...keyframes].sort((a, b) => a.time - b.time);
+  // Mode avancé: timeline + keyframes individuels. Caché par défaut pour
+  // que le panneau reste lisible — l'utilisateur lambda n'a besoin que
+  // des 3 sliders globaux. Auto-duck reste accessible directement.
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const addKeyframeAt = (time: number) => {
     const clampedTime = Math.max(0, Math.min(duration, time));
@@ -90,18 +94,18 @@ export default function AudioDuckingTimeline({
     <div className="mt-3 rounded-lg border border-gray-800 bg-gray-900/60 p-3 space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-          Ducking audio
+          Mixage audio
         </span>
         <button
           onClick={onAutoDuck}
           disabled={!rushUrl || autoDuckRunning}
           className="flex items-center gap-1 rounded bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 disabled:cursor-not-allowed px-2 py-1 text-[10px] font-medium text-white transition"
-          title={rushUrl ? "Détecter les voix dans le rush et ducker la musique automatiquement" : "Upload un rush vidéo pour auto-duck"}
+          title={rushUrl ? "Baisse automatiquement la musique quand le rush parle" : "Upload un rush vidéo pour auto-duck"}
         >
           {autoDuckRunning
             ? <Loader2 size={11} className="animate-spin" />
             : <Wand2 size={11} />}
-          Auto-duck
+          Auto-mix
         </button>
       </div>
 
@@ -145,6 +149,26 @@ export default function AudioDuckingTimeline({
         </label>
       </div>
 
+      {/* ─── ADVANCED TOGGLE ──────────────────────────────────────────
+          Les sliders globaux ci-dessus suffisent à 99% des utilisateurs.
+          Le mode avancé (timeline + keyframes individuels) reste accessible
+          mais caché par défaut pour ne pas effrayer l'utilisateur lambda.
+      */}
+      <button
+        onClick={() => setAdvancedOpen((v) => !v)}
+        className="flex items-center justify-between w-full mt-1 px-2 py-1.5 text-[10px] font-medium text-gray-400 hover:text-white bg-gray-900/40 hover:bg-gray-900/60 rounded transition"
+      >
+        <span className="flex items-center gap-1.5">
+          {advancedOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+          Avancé · keyframes par moment précis ({sorted.length})
+        </span>
+        <span className="text-[9px] text-gray-500">
+          {advancedOpen ? 'Masquer' : 'Afficher'}
+        </span>
+      </button>
+
+      {advancedOpen && (
+      <>
       {/* Timeline bar — click to add a keyframe */}
       <div
         className="relative h-7 rounded bg-gray-800 cursor-crosshair overflow-hidden"
@@ -255,8 +279,10 @@ export default function AudioDuckingTimeline({
       </div>
 
       <p className="text-[9px] text-gray-500 leading-snug">
-        Les sliders globaux ajustent tous les keyframes d'un coup. Pour un mix avancé, ajoute des keyframes en cliquant sur la barre.
+        Clique sur la barre pour ajouter un keyframe à un moment précis (utile pour ducker la musique pendant que la voix parle).
       </p>
+      </>
+      )}
     </div>
   );
 }
