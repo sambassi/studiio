@@ -7552,6 +7552,9 @@ function InfographicPageInner() {
                         </div>
                       )}
                       <button
+                        draggable={false}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
                         onClick={(e) => {
                           e.stopPropagation();
                           removeRushAt(idx);
@@ -7563,6 +7566,9 @@ function InfographicPageInner() {
                       </button>
                       {rush.kind !== 'image' && (
                         <button
+                          draggable={false}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onPointerDown={(e) => e.stopPropagation()}
                           onClick={(e) => {
                             e.stopPropagation();
                             openClipAnalysis(idx);
@@ -7575,6 +7581,9 @@ function InfographicPageInner() {
                       )}
                       {(rush.fromClip || rush.kind === 'image') && (
                         <button
+                          draggable={false}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onPointerDown={(e) => e.stopPropagation()}
                           onClick={(e) => {
                             e.stopPropagation();
                             setCropRushIdx(idx);
