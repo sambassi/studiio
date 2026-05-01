@@ -400,8 +400,31 @@ export default function ImageEditorPanel({
           <div
             ref={cropContainerRef}
             className={`relative rounded overflow-hidden bg-gray-800 border ${isDraggingCrop ? 'border-purple-500' : 'border-gray-700'} select-none`}
-            style={{ cursor: isDraggingCrop ? 'grabbing' : 'grab', touchAction: 'none' }}
-            onMouseDown={handleCropPointerDown}
+            style={{
+              cursor: isDraggingCrop ? 'grabbing' : 'grab',
+              touchAction: 'none',
+              // Defensive : pointer-events forced to auto en cas de hérité
+              // pointer-events:none d'un parent (FloatingPanel a pu hériter
+              // un style cassé pendant un état transitoire).
+              pointerEvents: 'auto',
+              // userSelect none aussi pour éviter que la sélection texte
+              // capture le drag sur certains navigateurs.
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
+            }}
+            onMouseDown={(e) => {
+              console.log('[ImageEditorPanel] mousedown on cropContainer', { seqKey });
+              handleCropPointerDown(e);
+            }}
+            onPointerDown={(e) => {
+              // Fallback : certains navigateurs/devices firent pointer events
+              // mais pas mouse events. Si mousedown ne fire pas, pointerdown
+              // prendra le relais.
+              if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
+                console.log('[ImageEditorPanel] pointerdown on cropContainer', { seqKey, pointerType: e.pointerType });
+                handleCropPointerDown(e as unknown as React.MouseEvent);
+              }
+            }}
             onTouchStart={handleCropPointerDown}
           >
             <img
