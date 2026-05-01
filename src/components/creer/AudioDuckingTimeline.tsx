@@ -8,6 +8,8 @@ export interface AudioKeyframe {
   time: number;
   musicVolume: number;
   rushVolume: number;
+  /** Voice-off volume 0-1 (legacy + per-sequence voices share this). */
+  voiceVolume?: number;
 }
 
 interface Props {
@@ -51,6 +53,7 @@ export default function AudioDuckingTimeline({
       time: clampedTime,
       musicVolume: prior?.musicVolume ?? 1,
       rushVolume: prior?.rushVolume ?? 0.5,
+      voiceVolume: prior?.voiceVolume ?? 1,
     };
     onChange([...sorted, next].sort((a, b) => a.time - b.time));
   };
@@ -69,6 +72,7 @@ export default function AudioDuckingTimeline({
   // (the common case once the user has touched a global slider).
   const globalMusicValue = Math.round(((sorted[0]?.musicVolume ?? 1)) * 100);
   const globalRushValue = Math.round(((sorted[0]?.rushVolume ?? 1)) * 100);
+  const globalVoiceValue = Math.round(((sorted[0]?.voiceVolume ?? 1)) * 100);
   const setGlobalMusic = (pct: number) => {
     const v = pct / 100;
     onChange(sorted.map((k) => ({ ...k, musicVolume: v })));
@@ -76,6 +80,10 @@ export default function AudioDuckingTimeline({
   const setGlobalRush = (pct: number) => {
     const v = pct / 100;
     onChange(sorted.map((k) => ({ ...k, rushVolume: v })));
+  };
+  const setGlobalVoice = (pct: number) => {
+    const v = pct / 100;
+    onChange(sorted.map((k) => ({ ...k, voiceVolume: v })));
   };
 
   return (
@@ -123,6 +131,18 @@ export default function AudioDuckingTimeline({
           />
           <span className="w-9 text-right text-orange-300 font-mono">{globalRushValue}%</span>
         </label>
+        <label className="flex items-center gap-1.5 text-[9px] text-gray-300">
+          <span className="w-24 text-gray-400">Volume voix off</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={globalVoiceValue}
+            onChange={(e) => setGlobalVoice(parseInt(e.target.value, 10))}
+            className="flex-1 accent-purple-500"
+          />
+          <span className="w-9 text-right text-purple-300 font-mono">{globalVoiceValue}%</span>
+        </label>
       </div>
 
       {/* Timeline bar — click to add a keyframe */}
@@ -142,7 +162,7 @@ export default function AudioDuckingTimeline({
               key={kf.id}
               className="absolute top-0 bottom-0 w-0.5 bg-cyan-400"
               style={{ left: `${leftPct}%` }}
-              title={`t=${kf.time.toFixed(1)}s · musique ${Math.round(kf.musicVolume * 100)}% · rush ${Math.round(kf.rushVolume * 100)}%`}
+              title={`t=${kf.time.toFixed(1)}s · musique ${Math.round(kf.musicVolume * 100)}% · rush ${Math.round(kf.rushVolume * 100)}% · voix ${Math.round((kf.voiceVolume ?? 1) * 100)}%`}
             />
           );
         })}
@@ -208,6 +228,18 @@ export default function AudioDuckingTimeline({
                   className="flex-1 accent-orange-500"
                 />
                 <span className="w-9 text-right text-orange-300 font-mono">{Math.round(kf.rushVolume * 100)}%</span>
+              </label>
+              <label className="flex items-center gap-1.5 text-[9px] text-gray-300">
+                <span className="w-14 text-gray-400">Voix off</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={Math.round((kf.voiceVolume ?? 1) * 100)}
+                  onChange={(e) => updateKeyframe(kf.id, { voiceVolume: parseInt(e.target.value, 10) / 100 })}
+                  className="flex-1 accent-purple-500"
+                />
+                <span className="w-9 text-right text-purple-300 font-mono">{Math.round((kf.voiceVolume ?? 1) * 100)}%</span>
               </label>
             </div>
           </div>
