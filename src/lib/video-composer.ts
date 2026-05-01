@@ -218,6 +218,15 @@ export interface DesignOptions {
   /** Icon size in px at 1080-px canvas width. Scaled for other widths.
    *  Default 60. */
   ctaIconSize?: number;
+  /** Optional SVG icon rendered ABOVE the title block on the intro
+   *  sequence. Same contract as ctaIconImage (pre-rendered by caller).
+   *  null/undefined → no icon, title rendering identical to before. */
+  titleIconImage?: HTMLImageElement | null;
+  titleIconColor?: string;
+  titleIconGradient?: boolean;
+  titleIconGradColor1?: string;
+  titleIconGradColor2?: string;
+  titleIconSize?: number;
   /** Per-element font overrides (undefined → inherit `font`). */
   titleFont?: string;
   ctaFont?: string;
@@ -1017,6 +1026,41 @@ function drawIntro(
   // Title text — editor does NOT force uppercase, preserves original case
   // Editor uses width constraint (titleSize%, default 90%) for wrapping
   const titleWidth = w * ((design?.titleSize ?? 90) / 100);
+
+  // ── Optional title icon — drawn ABOVE the title block, centered on
+  //    titlePosX. Mirrors how the CTA icon is drawn. The icon is pushed
+  //    DOWN by its full size + a small gap, so titlePosY moves to leave
+  //    room. titlePosY is conserved if no icon (compat avec posts existants).
+  let iconBottom = 0; // Y where the icon ends (= where title can start)
+  if (design?.titleIconImage) {
+    const iconSizeBase = design.titleIconSize || 60;
+    const iconSize = iconSizeBase * (w / 1080);
+    const iconGap = Math.round(w * 0.015);
+    const iconX = titlePosX - iconSize / 2;
+    const iconY = titlePosY;
+    if (design.titleIconGradient && design.titleIconGradColor1 && design.titleIconGradColor2) {
+      const off = document.createElement('canvas');
+      off.width = Math.max(1, Math.round(iconSize));
+      off.height = Math.max(1, Math.round(iconSize));
+      const offCtx = off.getContext('2d');
+      if (offCtx) {
+        offCtx.drawImage(design.titleIconImage, 0, 0, off.width, off.height);
+        offCtx.globalCompositeOperation = 'source-in';
+        const grad = offCtx.createLinearGradient(0, 0, off.width, off.height);
+        grad.addColorStop(0, design.titleIconGradColor1);
+        grad.addColorStop(1, design.titleIconGradColor2);
+        offCtx.fillStyle = grad;
+        offCtx.fillRect(0, 0, off.width, off.height);
+        ctx.drawImage(off, iconX, iconY);
+      } else {
+        ctx.drawImage(design.titleIconImage, iconX, iconY, iconSize, iconSize);
+      }
+    } else {
+      ctx.drawImage(design.titleIconImage, iconX, iconY, iconSize, iconSize);
+    }
+    iconBottom = iconY + iconSize + iconGap;
+  }
+
   ctx.save();
   // Use 'top' baseline so Y coordinate = top edge of text (matches CSS top: Y%)
   ctx.textBaseline = 'top';
@@ -1032,7 +1076,9 @@ function drawIntro(
   const titleLines = wrapText(ctx, title, titleWidth);
   const lineSpacing = fontSize * (design?.titleTypography?.lineHeight || 1.1);
   // With textBaseline='top', Y = top of text — matches CSS top: Y% with translate(-50%, 0)
-  let titleDrawY = titlePosY;
+  // When a title icon is configured, the title is pushed below the icon.
+  // Otherwise iconBottom is 0 and titleDrawY stays at titlePosY (compat).
+  let titleDrawY = iconBottom > 0 ? iconBottom : titlePosY;
 
   // Title duplicate/shadow layer (editor feature: duplicated text offset behind main text)
   const hasDuplicate = design?.titleTypography && (design.titleTypography as any).duplicate;

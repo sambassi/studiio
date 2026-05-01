@@ -1751,6 +1751,16 @@ function InfographicPageInner() {
   const [ctaIconGradColor1, setCtaIconGradColor1] = useState("#a855f7");
   const [ctaIconGradColor2, setCtaIconGradColor2] = useState("#ec4899");
   const [ctaIconSize, setCtaIconSize] = useState(60);
+  // Title sequence SVG icon — mirrors the CTA icon system. Optional
+  // (null = no icon, default behavior unchanged for existing posts).
+  // Mêmes contrôles : couleur unie ou gradient, taille, picker lucide.
+  const [titleIconName, setTitleIconName] = useState<string | null>(null);
+  const [titleIconSearch, setTitleIconSearch] = useState('');
+  const [titleIconColor, setTitleIconColor] = useState("#ffffff");
+  const [titleIconGradient, setTitleIconGradient] = useState(false);
+  const [titleIconGradColor1, setTitleIconGradColor1] = useState("#a855f7");
+  const [titleIconGradColor2, setTitleIconGradColor2] = useState("#ec4899");
+  const [titleIconSize, setTitleIconSize] = useState(60);
   const [titleGradColor1, setTitleGradColor1] = useState("#FFD700");
   const [titleGradColor2, setTitleGradColor2] = useState("#FF6B6B");
   const [titleDuplicate, setTitleDuplicate] = useState(false);
@@ -1841,6 +1851,14 @@ function InfographicPageInner() {
         if (cfg.ctaIconGradColor1) setCtaIconGradColor1(cfg.ctaIconGradColor1);
         if (cfg.ctaIconGradColor2) setCtaIconGradColor2(cfg.ctaIconGradColor2);
         if (typeof cfg.ctaIconSize === 'number') setCtaIconSize(cfg.ctaIconSize);
+        // Title icon (mirror of CTA icon — optional fields, falls back
+        // gracefully on configs saved before this feature shipped).
+        if (typeof cfg.titleIconName === 'string' || cfg.titleIconName === null) setTitleIconName(cfg.titleIconName);
+        if (cfg.titleIconColor) setTitleIconColor(cfg.titleIconColor);
+        if (cfg.titleIconGradient !== undefined) setTitleIconGradient(cfg.titleIconGradient);
+        if (cfg.titleIconGradColor1) setTitleIconGradColor1(cfg.titleIconGradColor1);
+        if (cfg.titleIconGradColor2) setTitleIconGradColor2(cfg.titleIconGradColor2);
+        if (typeof cfg.titleIconSize === 'number') setTitleIconSize(cfg.titleIconSize);
         if (cfg.titleGradColor1) setTitleGradColor1(cfg.titleGradColor1);
         if (cfg.titleGradColor2) setTitleGradColor2(cfg.titleGradColor2);
         if (cfg.titleDuplicate !== undefined) setTitleDuplicate(cfg.titleDuplicate);
@@ -2771,6 +2789,7 @@ function InfographicPageInner() {
         titleTextGradient, titleGradColor1, titleGradColor2,
         cardsLabelGradient, cardsValueGradient, cardsDescriptionGradient, cardsTextGradColor1, cardsTextGradColor2,
         ctaIconName, ctaIconColor, ctaIconGradient, ctaIconGradColor1, ctaIconGradColor2, ctaIconSize,
+        titleIconName, titleIconColor, titleIconGradient, titleIconGradColor1, titleIconGradColor2, titleIconSize,
         titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
         gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, posterOnAllSequences, seqGradients,
         textScale, ctaTextScale, cardsTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
@@ -2871,6 +2890,7 @@ function InfographicPageInner() {
     titleTextGradient, titleGradColor1, titleGradColor2,
     cardsLabelGradient, cardsValueGradient, cardsDescriptionGradient, cardsTextGradColor1, cardsTextGradColor2,
     ctaIconName, ctaIconColor, ctaIconGradient, ctaIconGradColor1, ctaIconGradColor2, ctaIconSize,
+    titleIconName, titleIconColor, titleIconGradient, titleIconGradColor1, titleIconGradColor2, titleIconSize,
     titleDuplicate, titleDuplicateOffset, titleDuplicateOpacity,
     gradientColor1, gradientColor2, gradientOpacity, autoGradient, noColorBg, noColorSequences, noColorUserOverride, syncColorsGlobal, posterOnAllSequences, seqGradients,
     textScale, ctaTextScale, cardsTextScale, logoScale, logoSequences, logoImage, customAccent, customCardIcons,
@@ -4118,6 +4138,28 @@ function InfographicPageInner() {
       return null;
     }
   };
+  // Same pre-rendering pour l'icône optionnelle de la sequence Titre.
+  // Returns null si aucune icône configurée (pas d'overhead).
+  const preRenderTitleIcon = async (): Promise<HTMLImageElement | null> => {
+    if (!titleIconName || !ICON_MAP[titleIconName]) return null;
+    try {
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const React = await import('react');
+      const IconComp = ICON_MAP[titleIconName];
+      const renderColor = titleIconGradient ? '#FFFFFF' : (titleIconColor || '#FFFFFF');
+      const svg = renderToStaticMarkup(React.createElement(IconComp, { size: 256, color: renderColor, strokeWidth: 2 }));
+      const blob = new Blob([svg], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      return await new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
+        image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('title icon load failed')); };
+        image.src = url;
+      });
+    } catch {
+      return null;
+    }
+  };
 
   const preRenderCardIcons = async (cardList: typeof cards) => {
     const { renderToStaticMarkup } = await import('react-dom/server');
@@ -4797,6 +4839,7 @@ function InfographicPageInner() {
               }))
             ));
             const ctaIconImage = await preRenderCtaIcon();
+            const titleIconImage = await preRenderTitleIcon();
             const { url: composedUrl, thumbnailUrl: composedThumbUrl, composerVersion: composedVersion } = await composeAndUpload({
               width: isReel ? 1080 : 1920,
               height: isReel ? 1920 : 1080,
@@ -4888,6 +4931,12 @@ function InfographicPageInner() {
                 ctaIconGradColor1,
                 ctaIconGradColor2,
                 ctaIconSize,
+                titleIconImage,
+                titleIconColor,
+                titleIconGradient,
+                titleIconGradColor1,
+                titleIconGradColor2,
+                titleIconSize,
                 extraTitle: extraTitle || undefined,
                 extraSubtitle: extraSubtitle || undefined,
                 extraTitlePosition,
@@ -5371,6 +5420,7 @@ function InfographicPageInner() {
             }))
           ));
           const ctaIconImage = await preRenderCtaIcon();
+          const titleIconImage = await preRenderTitleIcon();
           // Per-iteration sales phrase: cycle through bSalesPhrases like the calendar loop.
           const bureauSalesPhrase = bSalesPhrases.length > 0 ? bSalesPhrases[b % bSalesPhrases.length] : "";
           const composedResult = await composeAndUpload({
@@ -5490,6 +5540,12 @@ function InfographicPageInner() {
               ctaIconGradColor1,
               ctaIconGradColor2,
               ctaIconSize,
+              titleIconImage,
+              titleIconColor,
+              titleIconGradient,
+              titleIconGradColor1,
+              titleIconGradColor2,
+              titleIconSize,
               noColorBg, noColorSequences, posterOnAllSequences,
               seqGradients,
               backdropRounded, backdropRadius, backdropMargin,
@@ -8860,6 +8916,18 @@ function InfographicPageInner() {
                   }}
                 />
                 <div className="absolute inset-0 border border-dashed border-purple-500/0 group-hover/title:border-purple-500/40 rounded pointer-events-none transition-colors" />
+                {/* Optional title-sequence SVG icon (mirror of CTA icon).
+                    Rendered above the title text. Hidden when titleIconName is null. */}
+                {titleIconName && ICON_MAP[titleIconName] && (
+                  <div className="flex justify-center" style={{ marginBottom: '4px' }}>
+                    {renderLucideIcon(titleIconName, {
+                      size: format === "16:9" ? Math.round(titleIconSize / 2.5) : Math.round(titleIconSize / 4),
+                      color: titleIconColor || '#FFFFFF',
+                      gradient: titleIconGradient ? { start: titleIconGradColor1, end: titleIconGradColor2, direction: 'd' } : undefined,
+                      gradientId: `title-live-${titleIconName}`,
+                    })}
+                  </div>
+                )}
                 {titleDuplicate && (
                   <h3
                     style={{
@@ -9879,6 +9947,89 @@ function InfographicPageInner() {
               className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white focus:border-purple-500 focus:outline-none"
               placeholder="Sous-titre"
             />
+            {/* ── SVG Icon (mirror du picker CTA) ── */}
+            <div className="rounded-lg bg-gray-900/40 backdrop-blur-xl p-2 space-y-1.5 border border-gray-700/60">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] text-gray-400 uppercase">Icône SVG (optionnelle)</span>
+                {titleIconName && (<button type="button" onClick={() => setTitleIconName(null)} className="text-[9px] text-red-400 hover:text-red-300">Retirer</button>)}
+              </div>
+              {titleIconName && (
+                <div className="flex items-center gap-2">
+                  <div className="h-10 w-10 rounded border border-gray-600 bg-gray-700 flex items-center justify-center flex-shrink-0">
+                    {renderLucideIcon(titleIconName, {
+                      size: 24,
+                      color: titleIconColor || '#FFFFFF',
+                      gradient: titleIconGradient ? { start: titleIconGradColor1, end: titleIconGradColor2, direction: 'd' } : undefined,
+                      gradientId: `title-prev-${titleIconName}`,
+                    })}
+                  </div>
+                  <span className="text-[10px] text-gray-300 font-mono">{titleIconName}</span>
+                </div>
+              )}
+              <input
+                type="text"
+                placeholder="Rechercher une icône..."
+                value={titleIconSearch}
+                onChange={(e) => setTitleIconSearch(e.target.value)}
+                className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-[10px] text-white placeholder-gray-500"
+              />
+              <div className="max-h-[200px] overflow-y-auto rounded border border-gray-700 bg-gray-900/40 p-2 space-y-2">
+                {Object.entries(ICON_LIBRARY).map(([category, names]) => {
+                  const q = titleIconSearch.toLowerCase().trim();
+                  const filteredNames = q
+                    ? names.filter((nm) => {
+                        if (nm.toLowerCase().includes(q)) return true;
+                        if (category.toLowerCase().includes(q)) return true;
+                        const kw = ICON_KEYWORDS[nm];
+                        if (kw && kw.some((k: string) => k.includes(q))) return true;
+                        return false;
+                      })
+                    : names;
+                  if (filteredNames.length === 0) return null;
+                  return (
+                    <div key={category}>
+                      <div className="text-[9px] uppercase tracking-wider text-gray-500 mb-1">{category}</div>
+                      <div className="grid grid-cols-6 gap-1">
+                        {filteredNames.map((nm) => {
+                          const Icon = ICON_MAP[nm];
+                          if (!Icon) return null;
+                          const selected = titleIconName === nm;
+                          return (
+                            <button
+                              key={nm}
+                              type="button"
+                              onClick={() => setTitleIconName(nm)}
+                              className={`h-8 w-8 rounded-lg bg-gray-800 hover:bg-gray-700 hover:scale-110 transition flex items-center justify-center ${selected ? 'ring-2 ring-purple-500' : ''}`}
+                              title={nm}
+                            >
+                              <Icon size={16} color={titleIconColor || '#FFFFFF'} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {titleIconName && (<>
+                <div>
+                  <span className="text-[8px] text-gray-500">Taille ({titleIconSize}px)</span>
+                  <input type="range" min={30} max={120} value={titleIconSize} onChange={(e) => setTitleIconSize(Number(e.target.value))} className="w-full accent-purple-500" />
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={titleIconGradient} onChange={(e) => setTitleIconGradient(e.target.checked)} className="accent-purple-500" />
+                  <span className="text-[9px] text-gray-400 uppercase">Dégradé sur icône</span>
+                </label>
+                {titleIconGradient ? (
+                  <div className="flex gap-2">
+                    <div className="flex-1"><span className="text-[8px] text-gray-500">Couleur 1</span><input type="color" value={titleIconGradColor1} onChange={(e) => setTitleIconGradColor1(e.target.value)} className="w-full h-6 rounded cursor-pointer bg-transparent" /></div>
+                    <div className="flex-1"><span className="text-[8px] text-gray-500">Couleur 2</span><input type="color" value={titleIconGradColor2} onChange={(e) => setTitleIconGradColor2(e.target.value)} className="w-full h-6 rounded cursor-pointer bg-transparent" /></div>
+                  </div>
+                ) : (
+                  <div><span className="text-[8px] text-gray-500">Couleur</span><input type="color" value={titleIconColor} onChange={(e) => setTitleIconColor(e.target.value)} className="w-full h-6 rounded cursor-pointer bg-transparent" /></div>
+                )}
+              </>)}
+            </div>
             <div>
               <span className="text-[9px] text-gray-500 uppercase">Police</span>
               <div className="flex flex-wrap gap-1 mt-1">
