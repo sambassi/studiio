@@ -176,27 +176,61 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: 'Action inconnue' }, { status: 400 });
     }
 
-    // Deduct credits
-    await deductCredits(session.user.id, cost, `ai-${action}`);
+    // Extract URL from output BEFORE deducting credits — si l'extraction
+    // échoue, on ne facture pas le user pour rien.
+    //
+    // ⚠️ Replicate JS SDK 1.x retourne des `FileOutput` objects qui :
+    //   - extends ReadableStream
+    //   - ont une MÉTHODE `.url()` (pas une propriété) qui retourne URL
+    //   - ont `.toString()` qui retourne la string URL
+    //
+    // L'ancien code faisait `output.url` (récupère la FONCTION, pas l'URL)
+    // ET `output instanceof ReadableStream` matchait FileOutput → resultUrl
+    // était soit garbage soit null. C'est pourquoi tous les outils IA
+    // semblaient "ne pas fonctionner" alors que Replicate répondait OK.
+    const extractUrl = (item: unknown): string | null => {
+      if (item == null) return null;
+      if (typeof item === 'string') return item;
+      if (typeof item === 'object') {
+        const obj = item as { url?: unknown; toString?: () => string };
+        // Cas FileOutput SDK 1.x : url est une METHODE
+        if (typeof obj.url === 'function') {
+          try {
+            const u = (obj.url as () => unknown)();
+            if (u instanceof URL) return u.toString();
+            if (typeof u === 'string') return u;
+          } catch { /* fallthrough */ }
+        }
+        // Cas où url est directement une string ou URL property
+        if (typeof obj.url === 'string') return obj.url;
+        if (obj.url instanceof URL) return obj.url.toString();
+        // Dernier recours : toString() de FileOutput retourne la URL
+        if (typeof obj.toString === 'function') {
+          const str = obj.toString();
+          if (str.startsWith('http://') || str.startsWith('https://')) return str;
+        }
+      }
+      return null;
+    };
 
-    // Extract URL from output
     let resultUrl: string | null = null;
-    if (typeof output === 'string') {
-      resultUrl = output;
-    } else if (output && typeof output === 'object' && 'url' in (output as Record<string, unknown>)) {
-      resultUrl = (output as Record<string, unknown>).url as string;
-    } else if (output instanceof ReadableStream) {
-      // Some models return a stream — convert to data URL would be complex,
-      // return info that the result is a stream
-      resultUrl = null;
+    if (Array.isArray(output)) {
+      // Certains modèles retournent un tableau (ex: flux-schnell num_outputs > 1)
+      resultUrl = extractUrl(output[0]);
+    } else {
+      resultUrl = extractUrl(output);
     }
 
     if (!resultUrl) {
+      console.error('[AI Image] Unable to extract URL from output. Type:', typeof output, 'Constructor:', output?.constructor?.name);
       return NextResponse.json({
         success: false,
-        error: 'Le modèle IA n\'a pas retourné de résultat exploitable',
+        error: 'Le modèle IA a répondu mais le résultat n\'a pas pu être extrait. Réessayez ou contactez le support.',
       }, { status: 500 });
     }
+
+    // Deduct credits AFTER successful extraction
+    await deductCredits(session.user.id, cost, `ai-${action}`);
 
     return NextResponse.json({
       success: true,
