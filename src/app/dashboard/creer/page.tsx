@@ -7567,10 +7567,10 @@ function InfographicPageInner() {
                             e.stopPropagation();
                             openClipAnalysis(idx);
                           }}
-                          className="absolute right-1 bottom-5 rounded bg-purple-600/80 p-1 text-white opacity-0 transition hover:bg-purple-700 group-hover:opacity-100"
-                          title="Analyser les meilleurs cuts"
+                          className="absolute right-1 bottom-5 flex items-center gap-1 rounded bg-purple-600/90 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-md ring-1 ring-purple-400/40 transition hover:bg-purple-500"
+                          title="Analyser la vidéo et choisir les meilleures séquences via IA"
                         >
-                          <Sparkles size={12} />
+                          <Sparkles size={12} /> Cut IA
                         </button>
                       )}
                       {(rush.fromClip || rush.kind === 'image') && (
