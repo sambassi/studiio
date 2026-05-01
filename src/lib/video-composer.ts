@@ -2957,6 +2957,10 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // Hoisted so the keyframe scheduler at recorder-start can tweak gains.
   let musicGainNode: GainNode | null = null;
   let rushGainNode: GainNode | null = null;
+  // Voice gain bus — legacy single voiceUrl + per-sequence voices ALL feed
+  // into the same node so a single keyframe `voiceVolume` automates them
+  // together. Created lazily when the first voice source connects.
+  let voiceGainNode: GainNode | null = null;
 
   if (hasAudio) {
     // For batch mode with shared context: if it's closed or broken, create a fresh one
@@ -3027,6 +3031,15 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       }
     }
 
+    // ── VOICE BUS: shared GainNode that all voice sources route through.
+    // Lets a single keyframe `voiceVolume` automate them together so the
+    // mixer's "Voix off" slider in the editor maps to one place. Per-source
+    // gains still apply (options.voiceVolume scales each individually).
+    const voiceBus = audioCtx.createGain();
+    voiceBus.gain.value = 1.0; // keyframes drive this; individual sources scaled by options.voiceVolume below
+    voiceBus.connect(audioDest);
+    voiceGainNode = voiceBus;
+
     // ── VOICE: try AudioBuffer first, then <audio> element ──
     if (validVoiceBuffer) {
       try {
@@ -3036,7 +3049,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         const voiceGain = audioCtx.createGain();
         voiceGain.gain.value = options.voiceVolume ?? 1.0;
         voiceBufferSource.connect(voiceGain);
-        voiceGain.connect(audioDest);
+        voiceGain.connect(voiceBus);
         console.log('[Composer] ✅ Voice: AudioBuffer connected | duration:', validVoiceBuffer.duration.toFixed(1), 's');
       } catch (err) {
         console.error('[Composer] ❌ Voice AudioBuffer setup failed:', err);
@@ -3050,7 +3063,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         const voiceGain = audioCtx.createGain();
         voiceGain.gain.value = options.voiceVolume ?? 1.0;
         voiceSource.connect(voiceGain);
-        voiceGain.connect(audioDest);
+        voiceGain.connect(voiceBus);
         voiceElConnected = true;
         console.log('[Composer] ✅ Voice: <audio> element connected');
       } catch (err) {
@@ -3059,8 +3072,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     }
 
     // ── Per-sequence voice-overs: route each <audio> element through the
-    // AudioContext like the legacy voice. `seqVoiceConnected[key]` flags
-    // are used at audio-start to play() each at its sequence offset.
+    // shared voice bus so the keyframe automation affects them too.
     for (const k of SEQ_VOICE_KEYS) {
       const el = seqVoiceEls[k];
       if (!el) continue;
@@ -3069,8 +3081,8 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         const gain = audioCtx.createGain();
         gain.gain.value = options.voiceVolume ?? 1.0;
         src.connect(gain);
-        gain.connect(audioDest);
-        console.log('[Composer] ✅ Seq voice', k, '<audio> connected');
+        gain.connect(voiceBus);
+        console.log('[Composer] ✅ Seq voice', k, '<audio> connected → voice bus');
       } catch (err) {
         console.warn('[Composer] ⚠️ Seq voice', k, 'routing failed (may already be tied to another ctx):', err);
         seqVoiceEls[k] = null; // give up on this one
@@ -3444,6 +3456,15 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
           rushGainNode.gain.setValueAtTime(kf.rushVolume, at);
         }
         console.log('[Composer] 🎚️ Rush gain automation scheduled —', sortedKf.length, 'keyframes');
+      }
+      if (voiceGainNode) {
+        voiceGainNode.gain.cancelScheduledValues(audioCtx.currentTime);
+        for (const kf of sortedKf) {
+          const at = audioStartTime + Math.max(0, kf.time);
+          // voiceVolume optional for backwards-compat: undefined → full volume
+          voiceGainNode.gain.setValueAtTime(kf.voiceVolume ?? 1, at);
+        }
+        console.log('[Composer] 🎚️ Voice gain automation scheduled —', sortedKf.length, 'keyframes');
       }
     }
 

@@ -14,6 +14,13 @@ export interface AudioKeyframe {
   time: number;         // seconds from the start of the final montage
   musicVolume: number;  // 0-1
   rushVolume: number;   // 0-1
+  /**
+   * Voice-off volume 0-1 (legacy `voiceUrl` + per-sequence voices share
+   * this gain bus). Optional for backwards-compat with old saved keyframes
+   * — when undefined, the composer treats it as 1.0 (full volume) so old
+   * posts keep their voice intact.
+   */
+  voiceVolume?: number; // 0-1
 }
 
 /** dBFS threshold that marks a chunk as "speech/audio present". */
@@ -83,6 +90,7 @@ export async function analyseRushForDucking(rushUrl: string): Promise<AudioKeyfr
       time: Math.max(0, time),
       musicVolume: curr ? DUCKED_MUSIC : UNDUCKED_MUSIC,
       rushVolume: curr ? SPEECH_RUSH : SILENCE_RUSH,
+      voiceVolume: 1.0, // voice-off stays full by default — user can duck manually
     });
     prevSpeech = curr;
   }
@@ -95,6 +103,7 @@ export async function analyseRushForDucking(rushUrl: string): Promise<AudioKeyfr
       time: 0,
       musicVolume: speech[0] ? DUCKED_MUSIC : UNDUCKED_MUSIC,
       rushVolume: speech[0] ? SPEECH_RUSH : SILENCE_RUSH,
+      voiceVolume: 1.0,
     });
   }
 
@@ -109,12 +118,16 @@ export async function analyseRushForDucking(rushUrl: string): Promise<AudioKeyfr
 export function sampleKeyframes(
   keyframes: AudioKeyframe[],
   t: number,
-): { musicVolume: number; rushVolume: number } {
-  if (keyframes.length === 0) return { musicVolume: 1, rushVolume: 0.5 };
+): { musicVolume: number; rushVolume: number; voiceVolume: number } {
+  if (keyframes.length === 0) return { musicVolume: 1, rushVolume: 0.5, voiceVolume: 1 };
   let picked = keyframes[0];
   for (const kf of keyframes) {
     if (kf.time <= t) picked = kf;
     else break;
   }
-  return { musicVolume: picked.musicVolume, rushVolume: picked.rushVolume };
+  return {
+    musicVolume: picked.musicVolume,
+    rushVolume: picked.rushVolume,
+    voiceVolume: picked.voiceVolume ?? 1,
+  };
 }

@@ -241,17 +241,19 @@ export default function AudioMixPreview({
       const sorted = [...audioKeyframes].sort((a, b) => a.time - b.time);
       musicGain.gain.cancelScheduledValues(ctx.currentTime);
       rushGain.gain.cancelScheduledValues(ctx.currentTime);
+      voiceGain.gain.cancelScheduledValues(ctx.currentTime);
       if (sorted.length > 0) {
         for (const kf of sorted) {
           const at = startAt + Math.max(0, kf.time);
           musicGain.gain.setValueAtTime(kf.musicVolume, at);
           rushGain.gain.setValueAtTime(kf.rushVolume, at);
+          voiceGain.gain.setValueAtTime(kf.voiceVolume ?? 1, at);
         }
       } else {
         musicGain.gain.setValueAtTime(1, startAt);
         rushGain.gain.setValueAtTime(1, startAt);
+        voiceGain.gain.setValueAtTime(1, startAt);
       }
-      voiceGain.gain.setValueAtTime(1, startAt);
 
       // ── Kick off sources ──
       try { musicSourceRef.current?.start(startAt); } catch (err) { console.warn('[AudioMixPreview] music start failed:', err); }
