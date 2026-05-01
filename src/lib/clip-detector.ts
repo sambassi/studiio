@@ -65,7 +65,16 @@ export async function detectClips(
   });
 
   const totalDuration = video.duration;
-  if (!totalDuration || totalDuration < 1) {
+  console.log('[clip-detector] video loaded', {
+    duration: totalDuration,
+    durationIsFinite: Number.isFinite(totalDuration),
+    videoWidth: video.videoWidth,
+    videoHeight: video.videoHeight,
+    fileSize: file.size,
+    fileType: file.type,
+  });
+  if (!totalDuration || !Number.isFinite(totalDuration) || totalDuration < 1) {
+    console.warn('[clip-detector] invalid duration — aborting analysis', { totalDuration });
     URL.revokeObjectURL(videoUrl);
     return { clips: [], totalDuration: 0, framesAnalyzed: 0 };
   }
@@ -93,11 +102,28 @@ export async function detectClips(
   let framesAnalyzed = 0;
 
   for (let t = 0; t < totalDuration; t += sampleInterval) {
-    // Seek to time
+    // Seek to time. Certains MP4 (H264 mal indexés) ne fire jamais
+    // `seeked` — on ajoute un timeout de 1.5s pour ne pas bloquer
+    // l'analyse indéfiniment. Si le timeout déclenche, on continue
+    // avec le frame courant (qui peut être stale, mais c'est mieux
+    // qu'un blocage total).
     video.currentTime = t;
     await new Promise<void>((resolve) => {
-      const onSeeked = () => { video.removeEventListener('seeked', onSeeked); resolve(); };
+      let done = false;
+      const onSeeked = () => {
+        if (done) return;
+        done = true;
+        video.removeEventListener('seeked', onSeeked);
+        resolve();
+      };
       video.addEventListener('seeked', onSeeked);
+      setTimeout(() => {
+        if (done) return;
+        done = true;
+        video.removeEventListener('seeked', onSeeked);
+        console.warn(`[clip-detector] seek timeout @ t=${t.toFixed(2)}s — frame may be stale`);
+        resolve();
+      }, 1500);
     });
 
     // Draw frame to analysis canvas
@@ -141,6 +167,13 @@ export async function detectClips(
   // Find scene boundaries (high diff = scene change)
   const avgDiff = frameDiffs.reduce((s, f) => s + f.diff, 0) / frameDiffs.length;
   const sceneThreshold = avgDiff * 2.5; // Scene change if diff is 2.5x average
+  console.log('[clip-detector] frames analyzed', {
+    framesAnalyzed,
+    totalDuration,
+    avgDiff: avgDiff.toFixed(2),
+    sceneThreshold: sceneThreshold.toFixed(2),
+    maxDiff: Math.max(...frameDiffs.map((f) => f.diff)).toFixed(2),
+  });
 
   // Find scene change points
   const sceneChanges: number[] = [0]; // Always start at 0
@@ -221,6 +254,11 @@ export async function detectClips(
       segFrames.reduce((s, f) => s + f.diff, 0) / (segFrames.length || 1);
     rawClips.push({ start: 0, end: totalDuration, score: motionScore });
   }
+
+  console.log('[clip-detector] rawClips before scoring', {
+    count: rawClips.length,
+    clips: rawClips.map((c) => ({ start: c.start.toFixed(1), end: c.end.toFixed(1) })),
+  });
 
   // Sort by score (best first) and take top N
   rawClips.sort((a, b) => b.score - a.score);
