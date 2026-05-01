@@ -321,69 +321,62 @@ export default function ImageEditorPanel({
     return { x: parts[0] ?? 50, y: parts[1] ?? 50 };
   };
 
-  // ── Drag-to-crop handlers (mouse + touch) ──
-  // ROBUSTNESS: store onUpdate in a ref so the listeners' useEffect only
-  // depends on `isDraggingCrop`. Otherwise, every parent re-render (which
-  // happens on EVERY drag tick because onUpdate triggers setSequenceBackgrounds)
-  // would tear down + re-attach the window listeners → race condition where
-  // a fast `mousemove` can fire DURING the gap, causing a "drag dead zone"
-  // where the cursor moves but objectPosition doesn't update. This was the
-  // root cause of "le recadrage ne fonctionne plus" (regression mai 2026).
+  // ── Drag-to-crop : POINTER EVENTS UNIFIÉS ──
+  //
+  // Bug logs PR #151 → user a `pointerdown` mais JAMAIS `mousedown`.
+  // Conclusion : le navigateur préfère pointer events. Comme on écoutait
+  // `mouseup` sur window, le drag DÉMARRAIT (via fallback pointerdown
+  // qu'on appelait via handleCropPointerDown) mais NE S'ARRÊTAIT PAS
+  // (pas de pointerup listener). Symptôme : "impossible de s'arrêter,
+  // ça glisse sans fin, l'editeur ne s'update pas".
+  //
+  // Fix : pipeline 100% pointer events avec setPointerCapture pour
+  // que les events suivent le curseur même hors du cropContainer.
+  // Aucun listener window — tout est sur l'élément, capturé.
   const onUpdateRef = useRef(onUpdate);
   useEffect(() => { onUpdateRef.current = onUpdate; }, [onUpdate]);
 
-  const handleCropPointerDown = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+  const updateCropFromClient = useCallback((clientX: number, clientY: number) => {
+    if (!cropStartRef.current || !cropContainerRef.current) return;
+    const rect = cropContainerRef.current.getBoundingClientRect();
+    const dx = clientX - cropStartRef.current.x;
+    const dy = clientY - cropStartRef.current.y;
+    const pctX = (dx / rect.width) * -100;
+    const pctY = (dy / rect.height) * -100;
+    const newX = Math.max(0, Math.min(100, cropStartRef.current.startPosX + pctX));
+    const newY = Math.max(0, Math.min(100, cropStartRef.current.startPosY + pctY));
+    onUpdateRef.current({ objectPosition: `${Math.round(newX)}% ${Math.round(newY)}%` });
+  }, []);
+
+  const handleCropPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
     const cur = parseObjPos(objPos);
-    cropStartRef.current = { x: clientX, y: clientY, startPosX: cur.x, startPosY: cur.y };
+    cropStartRef.current = { x: e.clientX, y: e.clientY, startPosX: cur.x, startPosY: cur.y };
     setIsDraggingCrop(true);
-    // Diagnostic log — si le user dit "le recadrage ne marche pas" et
-    // qu'il n'y a PAS ce log, c'est que le mousedown n'atteint même pas
-    // la cropContainer (panneau qui swallow l'event ou pointer-events
-    // qui pète). Si le log apparaît mais que le drag ne suit pas, c'est
-    // que les listeners window mousemove ne sont pas attachés.
-    console.log('[ImageEditorPanel] crop drag start', { seqKey, startPos: cur, client: { x: clientX, y: clientY } });
+    // Capture le pointer : tous les events suivants (move/up) seront
+    // dirigés vers ce même élément, même si le curseur sort de sa zone.
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    console.log('[ImageEditorPanel] pointerdown START', { seqKey, startPos: cur, client: { x: e.clientX, y: e.clientY }, pointerId: e.pointerId });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [objPos, seqKey]);
 
-  React.useEffect(() => {
-    if (!isDraggingCrop) return;
-    const handleMove = (e: MouseEvent | TouchEvent) => {
-      if (!cropStartRef.current || !cropContainerRef.current) return;
-      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-      const rect = cropContainerRef.current.getBoundingClientRect();
-      // Invert direction: dragging right moves the crop window right → objectPosition X decreases
-      const dx = clientX - cropStartRef.current.x;
-      const dy = clientY - cropStartRef.current.y;
-      // Scale delta relative to container size → percentage shift
-      const pctX = (dx / rect.width) * -100;
-      const pctY = (dy / rect.height) * -100;
-      const newX = Math.max(0, Math.min(100, cropStartRef.current.startPosX + pctX));
-      const newY = Math.max(0, Math.min(100, cropStartRef.current.startPosY + pctY));
-      // Use the ref-snapshotted onUpdate so this listener stays attached
-      // for the entire drag, even when the parent re-renders.
-      onUpdateRef.current({ objectPosition: `${Math.round(newX)}% ${Math.round(newY)}%` });
-    };
-    const handleUp = () => {
-      setIsDraggingCrop(false);
-      cropStartRef.current = null;
-    };
-    window.addEventListener('mousemove', handleMove);
-    window.addEventListener('mouseup', handleUp);
-    window.addEventListener('touchmove', handleMove, { passive: false });
-    window.addEventListener('touchend', handleUp);
-    return () => {
-      window.removeEventListener('mousemove', handleMove);
-      window.removeEventListener('mouseup', handleUp);
-      window.removeEventListener('touchmove', handleMove);
-      window.removeEventListener('touchend', handleUp);
-    };
-    // ONLY depends on isDraggingCrop now — no more re-attach storm.
-  }, [isDraggingCrop]);
+  const handleCropPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!cropStartRef.current) return;
+    e.preventDefault();
+    updateCropFromClient(e.clientX, e.clientY);
+  }, [updateCropFromClient]);
+
+  const handleCropPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!cropStartRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+    setIsDraggingCrop(false);
+    cropStartRef.current = null;
+    console.log('[ImageEditorPanel] pointerup END', { seqKey, pointerId: e.pointerId });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seqKey]);
 
   return (
     <div className="space-y-3">
@@ -403,29 +396,19 @@ export default function ImageEditorPanel({
             style={{
               cursor: isDraggingCrop ? 'grabbing' : 'grab',
               touchAction: 'none',
-              // Defensive : pointer-events forced to auto en cas de hérité
-              // pointer-events:none d'un parent (FloatingPanel a pu hériter
-              // un style cassé pendant un état transitoire).
               pointerEvents: 'auto',
-              // userSelect none aussi pour éviter que la sélection texte
-              // capture le drag sur certains navigateurs.
               userSelect: 'none',
               WebkitUserSelect: 'none',
             }}
-            onMouseDown={(e) => {
-              console.log('[ImageEditorPanel] mousedown on cropContainer', { seqKey });
-              handleCropPointerDown(e);
-            }}
-            onPointerDown={(e) => {
-              // Fallback : certains navigateurs/devices firent pointer events
-              // mais pas mouse events. Si mousedown ne fire pas, pointerdown
-              // prendra le relais.
-              if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
-                console.log('[ImageEditorPanel] pointerdown on cropContainer', { seqKey, pointerType: e.pointerType });
-                handleCropPointerDown(e as unknown as React.MouseEvent);
-              }
-            }}
-            onTouchStart={handleCropPointerDown}
+            // Pipeline UNIQUEMENT pointer events. setPointerCapture (dans
+            // handleCropPointerDown) garantit que pointermove + pointerup
+            // arrivent sur ce même élément même si le curseur sort de la
+            // zone. Aucun listener window → impossible d'avoir un drag qui
+            // se "perd" ou ne s'arrête pas.
+            onPointerDown={handleCropPointerDown}
+            onPointerMove={handleCropPointerMove}
+            onPointerUp={handleCropPointerUp}
+            onPointerCancel={handleCropPointerUp}
           >
             <img
               src={config.url}
