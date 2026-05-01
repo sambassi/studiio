@@ -6074,6 +6074,15 @@ function InfographicPageInner() {
                   musicUrl={audioMusicUrl}
                   voiceUrl={audioVoiceUrl}
                   rushUrl={rushUrl}
+                  sequenceVoiceUrls={{
+                    titre: sequenceVoices.titre.audioUrl || null,
+                    cartes: sequenceVoices.cartes.audioUrl || null,
+                    video: sequenceVoices.video.audioUrl || null,
+                    cta: sequenceVoices.cta.audioUrl || null,
+                  }}
+                  introDuration={exportedSequences.titre ? introDuration : 0}
+                  cardsDuration={cards.length > 0 && exportedSequences.cartes ? cardsDuration : 0}
+                  ctaDuration={exportedSequences.cta ? ctaDuration : 0}
                   totalDuration={
                     (exportedSequences.titre ? introDuration : 0)
                     + (cards.length > 0 && exportedSequences.cartes ? cardsDuration : 0)
