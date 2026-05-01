@@ -3057,6 +3057,18 @@ function InfographicPageInner() {
   // short by default and let the user open Format / Publier on demand.
   const [formatExpanded, setFormatExpanded] = useState(false);
   const [publishExpanded, setPublishExpanded] = useState(false);
+  // Toggle utilisateur : quand un panneau bg est ouvert, le user peut
+  // décider de cacher temporairement le gradient overlay du preview pour
+  // voir clairement le recadrage. La config user (gradient.opacity etc.)
+  // n'est PAS modifiée — on n'affiche juste pas l'overlay le temps de
+  // l'édition. Reset à false dès que le panneau bg se ferme.
+  const [previewGradientHidden, setPreviewGradientHidden] = useState(false);
+  // Reset du toggle dès que le user ferme le panneau bg ou navigue ailleurs
+  useEffect(() => {
+    if (typeof activePanel !== 'string' || !activePanel.startsWith('background-')) {
+      setPreviewGradientHidden(false);
+    }
+  }, [activePanel]);
   // True while the WYSIWYG snapshot (modern-screenshot) is reading the
   // cards DOM. Used to suppress editor-only chrome (selection rings,
   // hover highlights, drag-over outlines) so they don't end up baked
@@ -8856,10 +8868,11 @@ function InfographicPageInner() {
               const seqKey = activeSequence === "all" ? "titre" : activeSequence;
               const gradient = getSeqGradient(seqKey);
               if (!gradient.enabled || gradient.opacity <= 0) return null;
-              // NOTE : précédemment on hidait le gradient pendant l'édition du
-              // fond pour rendre le recadrage visible. Reverted — le gradient
-              // fait partie de la config visuelle de l'utilisateur, on ne doit
-              // pas le toucher en interne.
+              // Le user peut TEMPORAIREMENT cacher le gradient via le bouton
+              // dans le panneau bg pour voir clairement son recadrage. La
+              // config gradient n'est PAS modifiée — c'est juste le rendu
+              // preview qui skip cette couche le temps de l'édition.
+              if (previewGradientHidden) return null;
 
               // Generate gradient CSS based on position
               const getGradientCSS = () => {
@@ -11756,6 +11769,8 @@ function InfographicPageInner() {
                 onUpdate={updateCfg}
                 onUploadFile={handleUploadFile}
                 showToast={showToast}
+                previewGradientHidden={previewGradientHidden}
+                onTogglePreviewGradient={() => setPreviewGradientHidden((v) => !v)}
               />
             </FloatingPanel>
           );

@@ -200,6 +200,13 @@ interface ImageEditorPanelProps {
   /** Upload a file to Supabase and return the public URL. */
   onUploadFile: (file: File) => Promise<void>;
   showToast: (msg: string, type?: 'success' | 'error') => void;
+  /** Quand true, le gradient overlay du preview est temporairement
+   *  masqué pour rendre le recadrage visible. La config user n'est PAS
+   *  modifiée — c'est juste un toggle d'aperçu. */
+  previewGradientHidden?: boolean;
+  /** Toggler le gradient. Quand le user ferme le panneau, le parent
+   *  remet à false automatiquement. */
+  onTogglePreviewGradient?: () => void;
 }
 
 // ── Component ──
@@ -210,6 +217,8 @@ export default function ImageEditorPanel({
   onUpdate,
   onUploadFile,
   showToast,
+  previewGradientHidden,
+  onTogglePreviewGradient,
 }: ImageEditorPanelProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [urlDraft, setUrlDraft] = useState(config?.url ?? '');
@@ -424,6 +433,24 @@ export default function ImageEditorPanel({
         <span className="text-white font-medium">{SEQ_LABELS[seqKey]}</span>.
         Si aucune image, l&apos;éditeur utilise l&apos;image globale (Pexels / poster).
       </div>
+
+      {/* ── Toggle pour cacher temporairement le gradient overlay du
+           preview, sans modifier la config user. Utile pour voir clairement
+           le recadrage en live (le gradient peut sinon masquer le bg shift). */}
+      {config?.url && onTogglePreviewGradient && (
+        <button
+          type="button"
+          onClick={onTogglePreviewGradient}
+          className={`w-full flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[10px] font-medium transition ${
+            previewGradientHidden
+              ? 'bg-purple-600/30 text-purple-300 ring-1 ring-purple-500/40'
+              : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white'
+          }`}
+          title="Cacher temporairement le gradient pour voir l'image clairement (n'affecte pas l'export)"
+        >
+          {previewGradientHidden ? '👁️ Gradient masqué (cliquer pour réafficher)' : '👁️‍🗨️ Cacher le gradient pour voir l\'image'}
+        </button>
+      )}
 
       {/* ── Image preview + drag-to-crop + detach ── */}
       {config?.url ? (
