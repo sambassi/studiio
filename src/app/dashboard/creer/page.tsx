@@ -3001,6 +3001,10 @@ function InfographicPageInner() {
   const [showEmojiPicker, setShowEmojiPicker] = useState<string | null>(null);
   const [showMobilePreview, setShowMobilePreview] = useState(false);
   const [showExportPanel, setShowExportPanel] = useState(false);
+  // Sub-accordions inside the expanded export panel — keep the panel
+  // short by default and let the user open Format / Publier on demand.
+  const [formatExpanded, setFormatExpanded] = useState(false);
+  const [publishExpanded, setPublishExpanded] = useState(false);
   // Per-card AI icon generation state
   const [iconPrompts, setIconPrompts] = useState<Record<string, string>>({});
   const [iconLoadingId, setIconLoadingId] = useState<string | null>(null);
@@ -11572,28 +11576,45 @@ function InfographicPageInner() {
             >
               <X size={12} />
             </button>
-            <span className="text-[8px] font-bold uppercase tracking-wider text-gray-500 leading-none">Format</span>
             {isExporting && (
               <div className="h-10 w-0.5 bg-gray-800 rounded-full overflow-hidden">
                 <div className="w-full bg-gradient-to-b from-purple-500 to-pink-500 transition-all duration-300" style={{ height: `${exportProgress}%` }} />
               </div>
             )}
-            {/* Format selector — MP4 / JPG / PNG */}
-            {([
-              { key: 'video' as const, Icon: Video, label: 'MP4', tip: 'Vidéo MP4' },
-              { key: 'jpeg' as const, Icon: ImageIcon, label: 'JPG', tip: 'Image JPG (compressée)' },
-              { key: 'png' as const, Icon: ImageIcon, label: 'PNG', tip: 'Image PNG (sans perte)' },
-            ]).map(({ key, Icon, label, tip }) => (
-              <button key={key} onClick={() => setExportFormat(key)} title={tip}
-                className={`h-7 w-9 rounded-md flex items-center justify-center gap-0.5 transition-all flex-shrink-0 ${
-                  exportFormat === key ? 'bg-purple-600 text-white ring-1 ring-purple-300' : 'bg-gray-800 text-gray-400 hover:text-white'
-                }`}
-              >
-                <Icon size={9} />
-                <span className="text-[8px] font-bold leading-none">{label}</span>
-              </button>
-            ))}
+            {/* ─── FORMAT ACCORDION ───
+                Collapsed: a 2-line pill showing the section label + the
+                currently chosen format. Click expands the 3 format buttons
+                + the destination icons inline. Click a format → auto-collapse
+                so the panel stays short. */}
+            <button
+              onClick={() => setFormatExpanded((v) => !v)}
+              className="flex flex-col items-center gap-0 rounded-md bg-gray-800/60 hover:bg-gray-800 px-1.5 py-1 transition w-12"
+              title="Format de sortie"
+            >
+              <span className="text-[7px] font-bold uppercase tracking-wider text-gray-500 leading-none">Format</span>
+              <span className="text-[9px] font-bold text-purple-400 leading-tight mt-0.5">{exportFormat === 'video' ? 'MP4' : exportFormat === 'jpeg' ? 'JPG' : 'PNG'}</span>
+            </button>
+            {formatExpanded && (
+              <>
+                {([
+                  { key: 'video' as const, Icon: Video, label: 'MP4', tip: 'Vidéo MP4' },
+                  { key: 'jpeg' as const, Icon: ImageIcon, label: 'JPG', tip: 'Image JPG (compressée)' },
+                  { key: 'png' as const, Icon: ImageIcon, label: 'PNG', tip: 'Image PNG (sans perte)' },
+                ]).map(({ key, Icon, label, tip }) => (
+                  <button key={key} onClick={() => { setExportFormat(key); setFormatExpanded(false); }} title={tip}
+                    className={`h-7 w-9 rounded-md flex items-center justify-center gap-0.5 transition-all flex-shrink-0 ${
+                      exportFormat === key ? 'bg-purple-600 text-white ring-1 ring-purple-300' : 'bg-gray-800 text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    <Icon size={9} />
+                    <span className="text-[8px] font-bold leading-none">{label}</span>
+                  </button>
+                ))}
+              </>
+            )}
             <div className="h-px w-7 bg-gray-700/50" />
+            {/* Destination icons stay always visible — they're the action
+                buttons (where to send the export), not a setting. */}
             {(exportFormat === 'video'
               ? [
                   { key: 'draft' as Destination, Icon: Calendar, color: '#3B82F6', tip: 'Calendrier' },
@@ -11613,11 +11634,22 @@ function InfographicPageInner() {
                 <Icon size={16} fill="currentColor" strokeWidth={1.5} />
               </button>
             ))}
+            {/* ─── PUBLIER ACCORDION ───
+                Same pattern as Format: a label-only pill that expands into
+                the 4 social toggles. Stays collapsed by default to keep
+                the sidebar short. */}
             {(destination === 'draft' || destination === 'both') && (
               <>
                 <div className="h-px w-7 bg-gray-700/50" />
-                <span className="text-[8px] font-bold uppercase tracking-wider text-gray-500 leading-none">Publier</span>
-                {(['instagram', 'facebook', 'tiktok', 'youtube'] as const).map((p) => (
+                <button
+                  onClick={() => setPublishExpanded((v) => !v)}
+                  className="flex flex-col items-center gap-0 rounded-md bg-gray-800/60 hover:bg-gray-800 px-1.5 py-1 transition w-12"
+                  title="Plateformes de publication"
+                >
+                  <span className="text-[7px] font-bold uppercase tracking-wider text-gray-500 leading-none">Publier</span>
+                  <span className="text-[9px] font-bold text-pink-400 leading-tight mt-0.5">{selectedPublishPlatforms.length || '—'}</span>
+                </button>
+                {publishExpanded && (['instagram', 'facebook', 'tiktok', 'youtube'] as const).map((p) => (
                   <PlatformIcon
                     key={p}
                     platform={p}
