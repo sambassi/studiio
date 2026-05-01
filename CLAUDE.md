@@ -643,7 +643,24 @@ Retourne un objet `{ title, text, links }` après avoir retiré nav/footer/banni
 ## DÉMARRAGE DE SESSION
 1. Lire tasks/lessons.md — appliquer toutes les leçons avant de toucher quoi que ce soit
 2. Lire tasks/todo.md — comprendre l'état actuel
-3. Si aucun des deux n'existe, les créer avant de commencer
+3. Lire tasks/pre-pr-checklist.md — la checklist anti-régression à respecter à chaque merge
+4. Si aucun des trois n'existe, les créer avant de commencer
+
+## ANTI-RÉGRESSION (lecture obligatoire avant tout merge)
+
+`tasks/pre-pr-checklist.md` liste 7 flux critiques à smoke-tester sur preview Vercel
+avant chaque merge. Le respecter est NON-NÉGOCIABLE tant que l'étape 3 (Playwright
+E2E sur CI) n'est pas en place.
+
+Trois règles méta à appliquer en permanence :
+1. **Grep avant modif** — si `<state>` apparaît N fois dans le fichier, modifier les
+   N occurrences ou expliquer dans la PR pourquoi seulement K. Ne JAMAIS modifier
+   1 occurrence sans avoir listé les autres.
+2. **Default safe** — toute nouvelle option/flag doit avoir un default qui garantit
+   le comportement actuel (rétro-compat 100%). Sans ce default, c'est une régression
+   pour tous les configs/posts existants.
+3. **Hard-refresh sur preview Vercel** avant de merger, jamais sur le local. Le local
+   échoue souvent à cause d'env vars, ce qui n'est pas un signal valide.
 
 ## WORKFLOW
 
