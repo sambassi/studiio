@@ -64,6 +64,8 @@ const nextConfig = {
         '@remotion/transitions': 'commonjs @remotion/transitions',
         '@sparticuz/chromium': 'commonjs @sparticuz/chromium',
         'esbuild': 'commonjs esbuild',
+        // minio utilise des imports node:* non bundlables
+        'minio': 'commonjs minio',
       });
     }
     return config;
