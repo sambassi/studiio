@@ -11,6 +11,10 @@ const nextConfig = {
       '/api/cron/publish': ['./node_modules/ffmpeg-static/**/*'],
       '/api/convert/to-mp4': ['./node_modules/ffmpeg-static/**/*'],
     },
+    // minio SDK utilise des imports `node:fs`, `node:stream` etc. que
+    // webpack ne sait pas bundler. On le marque comme external pour qu'il
+    // soit require() au runtime depuis node_modules.
+    serverComponentsExternalPackages: ['minio'],
   },
   typescript: {
     ignoreBuildErrors: true,
