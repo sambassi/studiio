@@ -41,9 +41,20 @@ function getSupabaseAdmin(): SupabaseClient {
     return _supabaseAdmin;
 }
 
+// Storage provider — when STORAGE_PROVIDER=s3 (migration vers MinIO/Hetzner),
+// le proxy `.storage` est redirigé vers notre client S3 compatible Supabase.
+// Toutes les autres méthodes (`.from()`, `.auth`, etc.) restent sur Supabase.
+const STORAGE_PROVIDER = process.env.STORAGE_PROVIDER || 'supabase';
+
 // Proxy so existing code using `supabaseAdmin.from(...)` etc. continues to work
 export const supabaseAdmin: SupabaseClient = new Proxy({} as SupabaseClient, {
     get(_target, prop) {
+          if (prop === 'storage' && STORAGE_PROVIDER === 's3') {
+              // Lazy import pour éviter de charger `minio` côté client
+              // eslint-disable-next-line @typescript-eslint/no-require-imports
+              const { s3Storage } = require('@/lib/storage/s3-client');
+              return s3Storage;
+          }
           return (getSupabaseAdmin() as any)[prop];
     }
 });
