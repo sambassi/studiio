@@ -1,0 +1,17 @@
+node_modules
+.next
+.git
+.env.local
+.env
+*.md
+tasks/
+scripts/
+__tests__/
+.vscode
+.idea
+.DS_Store
+coverage
+.turbo
+.vercel
+**/*.log
+remotion/out

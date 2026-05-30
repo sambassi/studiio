@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // standalone : nécessaire pour Docker (Coolify) — produit un build minimal
+  // dans .next/standalone qui contient tout ce qu'il faut pour `node server.js`.
+  output: 'standalone',
   reactStrictMode: true,
   experimental: {
     serverActionsBodySizeLimit: '50mb',
