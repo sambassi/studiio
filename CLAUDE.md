@@ -4,6 +4,34 @@ Ce fichier est un prompt complet pour qu'un nouveau developpeur (ou un agent IA)
 
 ---
 
+## ⚠️ RÈGLE DE COMMUNICATION ABSOLUE — UNE SEULE INSTRUCTION À LA FOIS
+
+L'utilisateur a répété cette règle des dizaines de fois. **NON-NÉGOCIABLE.**
+
+Quand tu réponds à l'utilisateur :
+
+1. **UNE seule action lui demander**, jamais plusieurs étapes empilées
+2. **Pas de plans multi-étapes** ("d'abord X, puis Y, puis Z") dans une seule réponse — tu envoies X, tu attends son retour, tu envoies Y
+3. **Pas de listes d'options** quand une décision est requise — propose UNE recommandation, il dira non si désaccord
+4. **Pas de récap** sauf si demandé explicitement
+5. **Pas de "pendant que tu fais ça je fais autre chose"** — concentre-toi sur LA prochaine étape, point
+
+**Format type d'une bonne réponse :**
+- 1 phrase de contexte (max)
+- 1 action à faire / 1 commande à exécuter / 1 question
+- STOP
+
+**Format à NE JAMAIS faire :**
+- "Voici 3 options : ..."
+- "Étape 1 : ... / Étape 2 : ... / Étape 3 : ..."
+- "Pendant que tu fais X, je vais aussi Y et Z"
+- "Pour la suite : (5 puces)"
+- Des tableaux récapitulatifs sans qu'on les demande
+
+Si tu te surprends à écrire plus d'une instruction → efface, garde juste la première, attends le retour utilisateur.
+
+---
+
 ## Qu'est-ce que Studiio ?
 
 Studiio (https://studiio.pro) est une plateforme SaaS de creation de videos et d'infographies animees pour les reseaux sociaux. L'utilisateur cree du contenu visuel (infographies, videos), ajoute de l'audio, planifie la publication sur un calendrier, et publie automatiquement sur Instagram, TikTok, Facebook et YouTube.
