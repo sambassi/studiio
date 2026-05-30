@@ -27,17 +27,36 @@ async function resolveSupabaseUserId(
   fallbackAvatar?: string | null,
 ): Promise<ResolvedUser | null> {
   try {
-    const { data: existing, error: lookupErr } = await supabaseAdmin
+    // Lookup with explicit list (NOT .single/.maybeSingle) because
+    // historical data may contain DUPLICATES with the same email — the
+    // previous code path created one duplicate per login attempt because
+    // .maybeSingle() returned `null` when >1 rows matched, triggering the
+    // INSERT branch indefinitely. Sort by credits DESC so we always pick
+    // the user with the most credits (the original, real account).
+    const { data: matches, error: lookupErr } = await supabaseAdmin
       .from('users')
-      .select('id')
+      .select('id, credits, created_at')
       .eq('email', email)
-      .maybeSingle();
+      .order('credits', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: true })
+      .limit(5);
     if (lookupErr) {
       console.error('[auth] users lookup error:', lookupErr);
     }
-    if (existing?.id) return { id: existing.id, isNew: false };
+    if (matches && matches.length > 0) {
+      if (matches.length > 1) {
+        console.warn('[auth] duplicate users detected for email', {
+          email,
+          count: matches.length,
+          ids: matches.map((m: any) => m.id),
+          picked: matches[0].id,
+          pickedCredits: matches[0].credits,
+        });
+      }
+      return { id: matches[0].id, isNew: false };
+    }
 
-    // Not found → create
+    // No existing row → create one
     const { data: created, error: insertErr } = await supabaseAdmin
       .from('users')
       .insert({
@@ -55,12 +74,15 @@ async function resolveSupabaseUserId(
     }
 
     // Insert failed → maybe a parallel request created it. One more lookup.
-    const { data: retry } = await supabaseAdmin
+    const { data: retryRows } = await supabaseAdmin
       .from('users')
-      .select('id')
+      .select('id, credits')
       .eq('email', email)
-      .maybeSingle();
-    if (retry?.id) return { id: retry.id, isNew: false };
+      .order('credits', { ascending: false, nullsFirst: false })
+      .limit(1);
+    if (retryRows && retryRows.length > 0) {
+      return { id: retryRows[0].id, isNew: false };
+    }
   } catch (err) {
     console.error('[auth] resolveSupabaseUserId threw:', err);
   }
