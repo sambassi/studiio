@@ -1,14 +1,19 @@
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { RENDER_COSTS } from '@/lib/stripe/constants';
+import { isAdmin } from '@/lib/admin';
+
+const ADMIN_BALANCE = 999_999_999;
 
 export async function getUserCredits(userId: string): Promise<number> {
   const { data, error } = await supabase
     .from('users')
-    .select('credits')
+    .select('credits, email')
     .eq('id', userId)
     .single();
 
   if (error) throw new Error('Failed to fetch user credits');
+  // Admin = solde illimité (jamais bloqué par les checks de crédits).
+  if (data?.email && isAdmin(data.email)) return ADMIN_BALANCE;
   return data?.credits || 0;
 }
 
@@ -17,6 +22,14 @@ export async function deductCredits(
   amount: number,
   reason: string = 'render'
 ): Promise<boolean> {
+  // Admin = pas de décrément. On retourne true sans toucher à la DB.
+  const { data: u } = await supabase
+    .from('users')
+    .select('email')
+    .eq('id', userId)
+    .single();
+  if (u?.email && isAdmin(u.email)) return true;
+
   const currentCredits = await getUserCredits(userId);
 
   if (currentCredits < amount) {
