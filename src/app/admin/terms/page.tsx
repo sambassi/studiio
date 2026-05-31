@@ -36,11 +36,11 @@ export default function TermsPage() {
 
       if (!res.ok) throw new Error(t('terms.errorLoading'));
 
-      const data: TermsData = await res.json();
-      setContent(data.content);
-      setOriginalContent(data.content);
-      setLastModified(data.lastModified);
-      setModifiedBy(data.modifiedBy);
+      const data: Partial<TermsData> = await res.json();
+      setContent(data.content || '');
+      setOriginalContent(data.content || '');
+      setLastModified(data.lastModified || '');
+      setModifiedBy(data.modifiedBy || '');
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.errorOccurred'));
     } finally {
@@ -66,10 +66,10 @@ export default function TermsPage() {
 
       if (!res.ok) throw new Error(t('terms.errorSaving'));
 
-      const data: TermsData = await res.json();
+      const data: Partial<TermsData> = await res.json();
       setOriginalContent(content);
-      setLastModified(data.lastModified);
-      setModifiedBy(data.modifiedBy);
+      setLastModified(data.lastModified || '');
+      setModifiedBy(data.modifiedBy || '');
       showToast(t('terms.saved'), 'success');
     } catch (err) {
       showToast(err instanceof Error ? err.message : t('common.errorOccurred'), 'error');
