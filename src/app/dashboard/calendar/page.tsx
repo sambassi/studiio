@@ -1658,6 +1658,7 @@ export default function CalendarPage() {
           const putOk = await new Promise<{ ok: boolean; status: number }>((resolve) => {
             const xhr = new XMLHttpRequest();
             xhr.open('PUT', signData.signedUrl);
+            xhr.withCredentials = true;
             xhr.setRequestHeader('Content-Type', file.type);
             xhr.upload.onprogress = (ev) => {
               if (ev.lengthComputable) setImportProgress(Math.round((ev.loaded / ev.total) * 100));

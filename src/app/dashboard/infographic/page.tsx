@@ -462,6 +462,7 @@ export default function InfographiePage() {
           method: 'PUT',
           headers: { 'Content-Type': file.type },
           body: file,
+          credentials: 'include',
         });
         if (!putRes.ok) { console.error('[Upload] PUT failed:', putRes.status); return null; }
         console.log('[Upload] Signed URL upload OK:', signData.publicUrl);

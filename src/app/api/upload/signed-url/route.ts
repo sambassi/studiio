@@ -25,7 +25,26 @@ export async function POST(req: NextRequest) {
     const safeFilename = sanitizeStorageFilename(filename);
     const storagePath = `${session.user.id}/${purpose || 'rush'}/${timestamp}-${safeFilename}`;
 
-    // Create a signed upload URL (valid for 2 minutes)
+    // Quand on est sur S3/MinIO (Hetzner), on ne peut pas exposer un
+    // presigned URL MinIO direct au browser : le hostname interne
+    // `studiio-minio:9000` n'est pas résolvable depuis l'extérieur.
+    // On retourne plutôt un URL pointant vers notre proxy PUT côté
+    // Next.js (/api/storage/upload) qui authentifie via session cookie
+    // et stream vers MinIO en interne.
+    if ((process.env.STORAGE_PROVIDER || '').toLowerCase() === 's3') {
+      const proxyUrl = `/api/storage/upload?bucket=${encodeURIComponent(bucket)}&path=${encodeURIComponent(storagePath)}`;
+      const publicUrl = `/storage/v1/object/public/${bucket}/${storagePath}`;
+      return NextResponse.json({
+        success: true,
+        signedUrl: proxyUrl, // PUT vers cet URL avec credentials: 'include'
+        token: '',
+        path: storagePath,
+        publicUrl,
+        bucket,
+      });
+    }
+
+    // Sinon (Supabase legacy), comportement historique
     const { data, error } = await supabaseAdmin.storage
       .from(bucket)
       .createSignedUploadUrl(storagePath);
@@ -35,7 +54,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 
-    // Also get the public URL for later use
     const { data: urlData } = supabaseAdmin.storage
       .from(bucket)
       .getPublicUrl(storagePath);

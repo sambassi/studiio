@@ -3851,6 +3851,7 @@ function InfographicPageInner() {
         const putResult = await new Promise<{ ok: boolean; status: number; responseText: string }>((resolve) => {
           const xhr = new XMLHttpRequest();
           xhr.open('PUT', signData.signedUrl);
+          xhr.withCredentials = true;
           xhr.setRequestHeader('Content-Type', file.type);
           xhr.upload.onprogress = (e) => {
             if (e.lengthComputable) setVideoUploadProgress(Math.round((e.loaded / e.total) * 100));
@@ -4659,6 +4660,7 @@ function InfographicPageInner() {
                 method: "PUT",
                 headers: { "Content-Type": file.type },
                 body: file,
+                credentials: 'include',
               });
               if (putRes.ok) mediaUrl = signData.publicUrl;
             }
@@ -11778,7 +11780,7 @@ function InfographicPageInner() {
               if (!res.ok || !data.success || !data.signedUrl || !data.publicUrl) {
                 throw new Error(data.error || `Signed URL: HTTP ${res.status}`);
               }
-              const putRes = await fetch(data.signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+              const putRes = await fetch(data.signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file, credentials: 'include' });
               if (!putRes.ok) throw new Error(`Upload: HTTP ${putRes.status}`);
               const headRes = await fetch(data.publicUrl, { method: 'HEAD' });
               if (!headRes.ok) throw new Error(`Vérification HEAD: HTTP ${headRes.status}`);
