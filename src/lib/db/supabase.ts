@@ -20,18 +20,21 @@ export const supabase = new Proxy({} as SupabaseClient, {
 
 // Server-side Supabase with service key (bypasses RLS, for API routes only)
 // Lazy-initialized to prevent crash when this module is bundled client-side.
-// Configured with `cache: 'no-store'` because Next.js wraps the global fetch
-// with a caching layer that would otherwise return stale reads after writes
-// from another route.
+//
+// Migration Hetzner : on peut séparer l'URL serveur de l'URL client.
+// `SUPABASE_URL` (server only, prioritaire) peut pointer vers notre
+// PostgREST self-hosted (http://studiio-postgrest:3000 dans le réseau
+// Docker). Sinon fallback sur `NEXT_PUBLIC_SUPABASE_URL` (Supabase).
 let _supabaseAdmin: SupabaseClient | null = null;
 function getSupabaseAdmin(): SupabaseClient {
     if (!_supabaseAdmin) {
+          const adminUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
           const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
           const key = supabaseServiceKey || supabaseAnonKey;
-          if (!supabaseUrl || !key) {
+          if (!adminUrl || !key) {
                   throw new Error('supabaseAdmin requires SUPABASE_URL and SUPABASE_SERVICE_KEY (server-side only)');
           }
-          _supabaseAdmin = createClient(supabaseUrl, key, {
+          _supabaseAdmin = createClient(adminUrl, key, {
               global: {
                   fetch: (input: RequestInfo | URL, init?: RequestInit) =>
                       fetch(input, { ...init, cache: 'no-store' }),
