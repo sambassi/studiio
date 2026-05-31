@@ -14,6 +14,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Client as MinioClient } from 'minio';
 import { Readable } from 'stream';
 
+// Force the route to run on Node (Edge can't stream from the MinIO SDK) and
+// never be statically cached — Range requests must hit the handler every
+// time so the right byte slice is served.
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const STORAGE_PROVIDER = process.env.STORAGE_PROVIDER || 'supabase';
 const MINIO_ENDPOINT = process.env.MINIO_ENDPOINT || 'studiio-minio';
 const MINIO_PORT = parseInt(process.env.MINIO_PORT || '9000', 10);
