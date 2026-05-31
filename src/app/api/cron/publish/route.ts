@@ -5,6 +5,7 @@ import { writeFile, readFile, unlink, access } from 'fs/promises';
 import { join } from 'path';
 import { promisify } from 'util';
 import { transcodeWebmToMp4WithLadder } from '@/lib/ffmpeg/transcode-to-mp4';
+import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 
 const execFileAsync = promisify(execFile);
 
@@ -471,7 +472,7 @@ async function convertToMp4IfNeeded(videoUrl: string): Promise<string> {
   try {
     // Step 1: Download the WebM file
     console.log(`[CONVERT] Downloading WebM...`);
-    const response = await fetch(videoUrl);
+    const response = await fetch(toAbsoluteMediaUrl(videoUrl));
     if (!response.ok) {
       throw new Error(`Download failed: HTTP ${response.status}`);
     }
@@ -548,7 +549,7 @@ async function muxAudioIntoVideo(
   try {
     // Étape 1 : Télécharger la vidéo
     console.log(`[MUX] Téléchargement vidéo...`);
-    const videoRes = await fetch(videoUrl);
+    const videoRes = await fetch(toAbsoluteMediaUrl(videoUrl));
     if (!videoRes.ok) throw new Error(`Téléchargement vidéo échoué: HTTP ${videoRes.status}`);
     await writeFile(videoPath, Buffer.from(await videoRes.arrayBuffer()));
 
@@ -558,7 +559,7 @@ async function muxAudioIntoVideo(
 
     if (musicUrl) {
       console.log(`[MUX] Téléchargement musique...`);
-      const musicRes = await fetch(musicUrl);
+      const musicRes = await fetch(toAbsoluteMediaUrl(musicUrl));
       if (musicRes.ok) {
         await writeFile(musicPath, Buffer.from(await musicRes.arrayBuffer()));
         inputArgs.push('-i', musicPath);
@@ -570,7 +571,7 @@ async function muxAudioIntoVideo(
 
     if (voiceUrl) {
       console.log(`[MUX] Téléchargement voix...`);
-      const voiceRes = await fetch(voiceUrl);
+      const voiceRes = await fetch(toAbsoluteMediaUrl(voiceUrl));
       if (voiceRes.ok) {
         await writeFile(voicePath, Buffer.from(await voiceRes.arrayBuffer()));
         inputArgs.push('-i', voicePath);
@@ -969,7 +970,7 @@ async function publishToYouTube(
     }
 
     const publicVideoUrl = await ensurePublicUrl(video.video_url);
-    const videoRes = await fetch(publicVideoUrl);
+    const videoRes = await fetch(toAbsoluteMediaUrl(publicVideoUrl));
     if (!videoRes.ok) {
       console.error('[SOCIAL_PUBLISH_ERROR]', { platform: 'youtube', step: 'download', status: videoRes.status });
       return { success: false, error: 'Failed to download video for YouTube upload' };

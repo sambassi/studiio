@@ -3,6 +3,7 @@ import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { writeFile, readFile, unlink, access } from 'fs/promises';
 import { join } from 'path';
 import { transcodeWebmToMp4WithLadder } from '@/lib/ffmpeg/transcode-to-mp4';
+import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 
 // Allow up to 300s for video conversion (Vercel Pro plan)
 export const maxDuration = 300;
@@ -58,8 +59,12 @@ export async function POST(req: NextRequest) {
     const outputPath = join(tmpDir, `convert_output_${timestamp}.mp4`);
 
     try {
+      // Resolve relative URLs (post Hetzner/MinIO migration uploads use
+      // /storage/v1/object/public/...). See helper for resolution order.
+      const absoluteUrl = toAbsoluteMediaUrl(videoUrl, req.nextUrl?.origin);
+
       // Download WebM
-      const response = await fetch(videoUrl);
+      const response = await fetch(absoluteUrl);
       if (!response.ok) {
         return NextResponse.json({ success: false, error: `Download failed: HTTP ${response.status}` }, { status: 500 });
       }
