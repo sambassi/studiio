@@ -113,19 +113,42 @@ function from(bucket: string) {
         const client = getClient();
         const limit = opts?.limit ?? 100;
         const offset = opts?.offset ?? 0;
+        // Supabase Storage list() utilise le pattern : prefix = "folder"
+        // (sans trailing slash) retourne les entries directes (sous-dossiers
+        // + fichiers). MinIO listObjectsV2 fait pareil mais exige un
+        // trailing "/" pour bien grouper par delimiter.
+        const minioPrefix = prefix ? (prefix.endsWith('/') ? prefix : `${prefix}/`) : '';
         const items: any[] = [];
-        const stream = client.listObjectsV2(bucket, prefix || '', false);
+        const stream = client.listObjectsV2(bucket, minioPrefix, false);
         return await new Promise((resolve) => {
           stream.on('data', (o) => {
-            // Supabase returns objects with `name`, `id`, `metadata.size`, `created_at`
-            const name = (o.name || o.prefix || '').replace(prefix || '', '');
-            items.push({
-              name: name.replace(/^\//, ''),
-              id: o.name || o.prefix,
-              metadata: { size: o.size || 0 },
-              created_at: o.lastModified ? o.lastModified.toISOString() : null,
-              updated_at: o.lastModified ? o.lastModified.toISOString() : null,
-            });
+            // o.prefix = sub-dossier virtuel (delimiter "/")
+            // o.name  = fichier réel
+            // On mime l'API Supabase : { name, id, metadata:{size}, created_at }
+            // avec id=null pour les dossiers (utilisé par le code app pour
+            // discriminer via `if (!folder.id)`)
+            if (o.prefix) {
+              // Sub-folder. Retire le prefix parent et le "/" final.
+              const folderName = o.prefix.replace(minioPrefix, '').replace(/\/$/, '');
+              if (folderName) {
+                items.push({
+                  name: folderName,
+                  id: null,
+                  metadata: null,
+                  created_at: null,
+                  updated_at: null,
+                });
+              }
+            } else if (o.name) {
+              const fileName = o.name.replace(minioPrefix, '');
+              items.push({
+                name: fileName,
+                id: o.name, // full key, non-null = c'est un fichier
+                metadata: { size: o.size || 0, mimetype: undefined },
+                created_at: o.lastModified ? o.lastModified.toISOString() : null,
+                updated_at: o.lastModified ? o.lastModified.toISOString() : null,
+              });
+            }
           });
           stream.on('error', (err) => resolve({ data: [], error: { message: err.message } }));
           stream.on('end', () => {
