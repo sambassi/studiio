@@ -1240,58 +1240,69 @@ export default function CalendarPage() {
     if (!videoSrc) { setVideoPlayable(false); return; }
 
     let cancelled = false;
+    let blobUrl: string | null = null;
 
-    // The proxy now supports Range requests so we go direct.
-    // We only need to detect genuine failures (network error, 404) to set
-    // videoPlayable=false. The optimistic default (set in handleFullPreview)
-    // means the sequence will show even while the moov atom is still loading.
-    setTimeout(() => {
-      if (cancelled) return;
-      const vid = document.getElementById('preview-video-infographic') as HTMLVideoElement | null;
-      if (!vid) return;
-      vid.muted = true;
+    // Download the rush video as a blob URL so playback is fully smooth —
+    // no buffering pauses during the sequence, no ecran noir waiting for the
+    // moov atom. This is the same approach Supabase used implicitly (CDN, fast
+    // bytes). With our self-hosted MinIO proxy the file streams at ~2-5 MB/s,
+    // which is too slow for streaming playback of a 20+ MB file.
+    // Strategy: start the blob download immediately, update the video src when
+    // ready. videoPlayable stays true (optimistic) so the sequence is shown
+    // from the start — the video just shows a black background until the blob
+    // is ready (~3-8s for a 22MB file). Much better than buffering pauses.
+    const downloadAsBlob = async () => {
+      try {
+        console.log('[Calendar] Téléchargement rush en blob URL…', videoSrc.substring(0, 60));
+        const res = await fetch(videoSrc);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        if (cancelled) return;
+        blobUrl = URL.createObjectURL(blob);
+        console.log(`[Calendar] Blob prêt (${(blob.size / 1024 / 1024).toFixed(1)} Mo) — mise à jour vidéo`);
+        const vid = document.getElementById('preview-video-infographic') as HTMLVideoElement | null;
+        if (!vid || cancelled) return;
+        // Swap to blob URL — the video will restart loading from memory,
+        // which is instant, giving perfectly smooth playback.
+        vid.src = blobUrl;
+        vid.muted = true;
+        vid.load();
+        vid.onloadeddata = () => {
+          if (!cancelled) {
+            videoPlayableRef.current = true;
+            setVideoPlayable(true);
+          }
+        };
+      } catch (err) {
+        if (!cancelled) {
+          console.warn('[Calendar] Blob download failed, keeping direct src:', err);
+          // Fallback: keep direct src, video might stutter but will play
+        }
+      }
+    };
 
-      // Safety timeout — only mark unplayable if the browser can't even get
-      // metadata (readyState < 1) after 30s. A slow proxy may take several
-      // seconds to deliver the moov atom; we must not skip the sequence
-      // before that window closes.
-      const loadTimeout = setTimeout(() => {
-        if (vid.readyState < 1 && !cancelled) {
-          console.warn('[Calendar] Vidéo non chargée après 30s, séquence vidéo ignorée:', vid.src);
+    // Kick off blob download immediately (no setTimeout — every ms counts)
+    downloadAsBlob();
+
+    // Safety: if blob takes > 45s (very large file / slow connection),
+    // mark as unplayable so the sequence is skipped rather than showing
+    // a permanent black rectangle.
+    const safetyTimeout = setTimeout(() => {
+      if (!cancelled) {
+        const vid = document.getElementById('preview-video-infographic') as HTMLVideoElement | null;
+        if (vid && vid.readyState < 1) {
+          console.warn('[Calendar] Vidéo non prête après 45s, séquence ignorée');
           videoPlayableRef.current = false;
           setVideoPlayable(false);
         }
-      }, 30000);
+      }
+    }, 45000);
 
-      vid.onloadedmetadata = () => {
-        clearTimeout(loadTimeout);
-        console.log('[Calendar] Métadonnées vidéo OK, durée:', vid.duration, 'readyState:', vid.readyState);
-        if (!cancelled) {
-          videoPlayableRef.current = true;
-          setVideoPlayable(true);
-        }
-      };
-      vid.onloadeddata = () => {
-        clearTimeout(loadTimeout);
-        console.log('[Calendar] Vidéo chargée OK, readyState:', vid.readyState);
-        if (!cancelled) {
-          videoPlayableRef.current = true;
-          setVideoPlayable(true);
-        }
-      };
-      vid.onerror = () => {
-        clearTimeout(loadTimeout);
-        console.error('[Calendar] Erreur de chargement vidéo, séquence vidéo ignorée');
-        if (!cancelled) {
-          videoPlayableRef.current = false;
-          setVideoPlayable(false);
-        }
-      };
-
-      vid.load();
-    }, 100);
-
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      clearTimeout(safetyTimeout);
+      if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
+    };
   }, [showFullPreview, fullPreviewPost]);
 
   // Précharger TOUS les éléments audio (y compris le rendu WebM) quand la preview s'ouvre
