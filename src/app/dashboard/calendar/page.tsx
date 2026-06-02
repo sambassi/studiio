@@ -305,6 +305,11 @@ export default function CalendarPage() {
   const [montageAutoPlay, setMontageAutoPlay] = useState(true);
   const [montageMuted, setMontageMuted] = useState(true);
   const [videoPlayable, setVideoPlayable] = useState(false); // Track if video file is loadable — default false until proven
+  // Blob URL of the fully-downloaded rush video. Once set, the <video> uses it
+  // instead of the streaming /storage URL → smooth playback from memory.
+  // Must be React state (not vid.src=) so re-renders on sequence change don't
+  // overwrite it back to the streaming URL.
+  const [rushBlobUrl, setRushBlobUrl] = useState<string | null>(null);
 
   // Import-file state (shown while a user uploads a local video/image via "Importer")
   const [importing, setImporting] = useState(false);
@@ -1139,6 +1144,7 @@ export default function CalendarPage() {
     const hasRush = !!(post.metadata?.rawVideoUrl || post.metadata?.rushUrls?.[0]);
     videoPlayableRef.current = hasRush;
     setVideoPlayable(hasRush);
+    setRushBlobUrl(null); // reset — the preload effect re-downloads for this post
     setMontageProgress(0);
     setShowFullPreview(true);
   };
@@ -1244,13 +1250,14 @@ export default function CalendarPage() {
 
     // Download the rush video as a blob URL so playback is fully smooth —
     // no buffering pauses during the sequence, no ecran noir waiting for the
-    // moov atom. This is the same approach Supabase used implicitly (CDN, fast
-    // bytes). With our self-hosted MinIO proxy the file streams at ~2-5 MB/s,
-    // which is too slow for streaming playback of a 20+ MB file.
-    // Strategy: start the blob download immediately, update the video src when
-    // ready. videoPlayable stays true (optimistic) so the sequence is shown
-    // from the start — the video just shows a black background until the blob
-    // is ready (~3-8s for a 22MB file). Much better than buffering pauses.
+    // moov atom. With our self-hosted MinIO proxy the file streams at
+    // ~2-5 MB/s, too slow for stutter-free streaming playback of a 20+ MB file.
+    //
+    // CRITICAL: the blob URL is stored in React STATE (setRushBlobUrl), NOT by
+    // assigning vid.src directly. The <video> element's src is controlled by
+    // React via JSX; every sequence change re-renders and would overwrite a
+    // manual vid.src back to the streaming URL — which is exactly what made
+    // playback stutter. Storing in state means the JSX renders src={blobUrl}.
     const downloadAsBlob = async () => {
       try {
         console.log('[Calendar] Téléchargement rush en blob URL…', videoSrc.substring(0, 60));
@@ -1259,24 +1266,14 @@ export default function CalendarPage() {
         const blob = await res.blob();
         if (cancelled) return;
         blobUrl = URL.createObjectURL(blob);
-        console.log(`[Calendar] Blob prêt (${(blob.size / 1024 / 1024).toFixed(1)} Mo) — mise à jour vidéo`);
-        const vid = document.getElementById('preview-video-infographic') as HTMLVideoElement | null;
-        if (!vid || cancelled) return;
-        // Swap to blob URL — the video will restart loading from memory,
-        // which is instant, giving perfectly smooth playback.
-        vid.src = blobUrl;
-        vid.muted = true;
-        vid.load();
-        vid.onloadeddata = () => {
-          if (!cancelled) {
-            videoPlayableRef.current = true;
-            setVideoPlayable(true);
-          }
-        };
+        console.log(`[Calendar] Blob prêt (${(blob.size / 1024 / 1024).toFixed(1)} Mo)`);
+        videoPlayableRef.current = true;
+        setVideoPlayable(true);
+        setRushBlobUrl(blobUrl); // JSX will render <video src={blobUrl}>
       } catch (err) {
         if (!cancelled) {
           console.warn('[Calendar] Blob download failed, keeping direct src:', err);
-          // Fallback: keep direct src, video might stutter but will play
+          // Fallback: keep direct streaming src; may stutter but will play.
         }
       }
     };
@@ -1302,6 +1299,7 @@ export default function CalendarPage() {
       cancelled = true;
       clearTimeout(safetyTimeout);
       if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
+      setRushBlobUrl(null); // clear so next post doesn't reuse a revoked URL
     };
   }, [showFullPreview, fullPreviewPost]);
 
@@ -3372,12 +3370,16 @@ export default function CalendarPage() {
                       // ce qui causerait un effet "double CTA" dans la preview HTML.
                       const rawSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0];
                       if (!rawSrc) return null;
-                      // Ajout du hint #t=0.1 pour forcer Chrome à faire une range-request
-                      // Aide les gros MP4 sans faststart (moov atom à la fin du fichier)
-                      const videoSrcWithHint = rawSrc.includes('#') ? rawSrc : `${rawSrc}#t=0.1`;
+                      // Prefer the fully-downloaded blob URL (smooth, in-memory
+                      // playback). Until the blob is ready, fall back to the
+                      // streaming URL with #t=0.1 hint (forces a range request
+                      // so the first frame shows quickly on big MP4s).
+                      const videoSrc = rushBlobUrl
+                        ? rushBlobUrl
+                        : (rawSrc.includes('#') ? rawSrc : `${rawSrc}#t=0.1`);
                       return (
                       <div className="absolute inset-0" style={{ opacity: currentSeq === 'video' ? 1 : 0, zIndex: currentSeq === 'video' ? 10 : 1, transition: 'opacity 800ms ease-in-out', willChange: 'opacity' }}>
-                        <video id="preview-video-infographic" src={videoSrcWithHint} muted loop playsInline preload="metadata" className="absolute inset-0 w-full h-full object-cover"
+                        <video id="preview-video-infographic" src={videoSrc} muted loop playsInline preload="auto" className="absolute inset-0 w-full h-full object-cover"
                           onLoadedData={(e) => { console.log('[Calendar] Rush video loaded, readyState:', (e.target as HTMLVideoElement).readyState); }}
                           onError={(e) => { console.error('[Calendar] Rush video error:', (e.target as HTMLVideoElement).error); }}
                         />
