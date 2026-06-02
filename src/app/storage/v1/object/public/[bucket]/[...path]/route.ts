@@ -146,6 +146,14 @@ export async function GET(
       'Content-Length': String(length),
       'Accept-Ranges': 'bytes',
       'Cache-Control': 'public, max-age=3600',
+      // CORS required so the video-composer can draw frames to a Canvas2D
+      // context (crossOrigin="anonymous"). Without this the canvas gets
+      // tainted and captureStream() emits empty frames — video sequence
+      // missing in all client-side re-compositions.
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+      'Access-Control-Allow-Headers': 'Range, Content-Type',
+      'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges',
     };
     if (isPartial) {
       headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
@@ -192,6 +200,10 @@ export async function HEAD(
         'Content-Length': String(stat.size),
         'Accept-Ranges': 'bytes',
         'Cache-Control': 'public, max-age=3600',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+        'Access-Control-Allow-Headers': 'Range, Content-Type',
+        'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges',
       },
     });
   } catch (err: any) {
@@ -200,4 +212,17 @@ export async function HEAD(
     }
     return new NextResponse(null, { status: 500 });
   }
+}
+
+// OPTIONS: browsers send preflight for CORS requests (e.g. crossOrigin=anonymous)
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+      'Access-Control-Allow-Headers': 'Range, Content-Type',
+      'Access-Control-Max-Age': '86400',
+    },
+  });
 }
