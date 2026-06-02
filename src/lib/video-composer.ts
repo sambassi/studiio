@@ -497,7 +497,19 @@ function loadVideo(src: string, timeoutMs = 30000): Promise<HTMLVideoElement> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error(`Video load timeout (${timeoutMs}ms): ${src.substring(0, 60)}`)), timeoutMs);
     const vid = document.createElement('video');
-    if (!src.startsWith('blob:') && !src.startsWith('data:')) vid.crossOrigin = 'anonymous';
+
+    // crossOrigin='anonymous' is needed for cross-origin URLs so drawImage()
+    // doesn't taint the canvas. BUT — after migration to self-hosted MinIO,
+    // rush videos are served from the same origin (/storage/v1/object/public/...).
+    // Setting crossOrigin on a same-origin URL forces a CORS negotiation; if the
+    // browser has a cached response WITHOUT CORS headers (pre-PR#180 cache), the
+    // request fails and drawImage() gets a null/error video — video sequence black.
+    // Rule: omit crossOrigin for same-origin paths so the browser skips CORS entirely.
+    const isSameOrigin = src.startsWith('/') ||
+      (typeof location !== 'undefined' && src.startsWith(location.origin + '/'));
+    const needsCrossOrigin = !src.startsWith('blob:') && !src.startsWith('data:') && !isSameOrigin;
+    if (needsCrossOrigin) vid.crossOrigin = 'anonymous';
+
     vid.muted = true;
     vid.playsInline = true;
     vid.preload = 'auto';
@@ -506,7 +518,7 @@ function loadVideo(src: string, timeoutMs = 30000): Promise<HTMLVideoElement> {
       if (src.startsWith('blob:') || src.startsWith('data:')) { clearTimeout(timeout); return reject(new Error('Video load failed')); }
       console.warn(`[Composer] Video direct load failed, trying proxy: ${src.substring(0, 60)}`);
       const vid2 = document.createElement('video');
-      vid2.crossOrigin = 'anonymous';
+      // Proxy route is same-origin — no crossOrigin needed
       vid2.muted = true; vid2.playsInline = true; vid2.preload = 'auto';
       vid2.oncanplaythrough = () => { clearTimeout(timeout); resolve(vid2); };
       vid2.onerror = () => { clearTimeout(timeout); reject(new Error(`Video load failed (direct + proxy): ${src.substring(0, 60)}`)); };
