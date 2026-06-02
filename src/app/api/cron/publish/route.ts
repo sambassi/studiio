@@ -6,6 +6,7 @@ import { join } from 'path';
 import { promisify } from 'util';
 import { transcodeWebmToMp4WithLadder } from '@/lib/ffmpeg/transcode-to-mp4';
 import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
+import { downloadMediaToFile, downloadMediaToBuffer } from '@/lib/storage/fetch-media';
 
 const execFileAsync = promisify(execFile);
 
@@ -470,16 +471,10 @@ async function convertToMp4IfNeeded(videoUrl: string): Promise<string> {
   const outputPath = join(tmpDir, `cron_output_${timestamp}.mp4`);
 
   try {
-    // Step 1: Download the WebM file
+    // Step 1: Download the WebM — internal storage paths go direct to MinIO
     console.log(`[CONVERT] Downloading WebM...`);
-    const response = await fetch(toAbsoluteMediaUrl(videoUrl));
-    if (!response.ok) {
-      throw new Error(`Download failed: HTTP ${response.status}`);
-    }
-    const buffer = Buffer.from(await response.arrayBuffer());
-    await writeFile(inputPath, buffer);
-    const sizeMB = (buffer.length / 1024 / 1024).toFixed(1);
-    console.log(`[CONVERT] Downloaded ${sizeMB}MB to ${inputPath}`);
+    const { sizeBytes: dlBytes } = await downloadMediaToFile(videoUrl, inputPath);
+    console.log(`[CONVERT] Downloaded ${(dlBytes / 1024 / 1024).toFixed(1)}MB to ${inputPath}`);
 
     // Step 2: Convert via the shared ladder helper (1080p → 720p → 540p
     // progressive fallback, ultrafast + zerolatency + threads 0 + crf 28).
@@ -547,11 +542,9 @@ async function muxAudioIntoVideo(
   const outputPath = join(tmpDir, `mux_output_${ts}.mp4`);
 
   try {
-    // Étape 1 : Télécharger la vidéo
+    // Étape 1 : Télécharger la vidéo (direct MinIO si chemin interne)
     console.log(`[MUX] Téléchargement vidéo...`);
-    const videoRes = await fetch(toAbsoluteMediaUrl(videoUrl));
-    if (!videoRes.ok) throw new Error(`Téléchargement vidéo échoué: HTTP ${videoRes.status}`);
-    await writeFile(videoPath, Buffer.from(await videoRes.arrayBuffer()));
+    await downloadMediaToFile(videoUrl, videoPath);
 
     // Étape 2 : Télécharger les fichiers audio
     const inputArgs: string[] = ['-i', videoPath];
@@ -559,26 +552,20 @@ async function muxAudioIntoVideo(
 
     if (musicUrl) {
       console.log(`[MUX] Téléchargement musique...`);
-      const musicRes = await fetch(toAbsoluteMediaUrl(musicUrl));
-      if (musicRes.ok) {
-        await writeFile(musicPath, Buffer.from(await musicRes.arrayBuffer()));
+      try {
+        await downloadMediaToFile(musicUrl, musicPath);
         inputArgs.push('-i', musicPath);
         audioInputCount++;
-      } else {
-        console.warn(`[MUX] Téléchargement musique échoué: HTTP ${musicRes.status}`);
-      }
+      } catch (e) { console.warn(`[MUX] Téléchargement musique échoué:`, e); }
     }
 
     if (voiceUrl) {
       console.log(`[MUX] Téléchargement voix...`);
-      const voiceRes = await fetch(toAbsoluteMediaUrl(voiceUrl));
-      if (voiceRes.ok) {
-        await writeFile(voicePath, Buffer.from(await voiceRes.arrayBuffer()));
+      try {
+        await downloadMediaToFile(voiceUrl, voicePath);
         inputArgs.push('-i', voicePath);
         audioInputCount++;
-      } else {
-        console.warn(`[MUX] Téléchargement voix échoué: HTTP ${voiceRes.status}`);
-      }
+      } catch (e) { console.warn(`[MUX] Téléchargement voix échoué:`, e); }
     }
 
     if (audioInputCount <= 1) {
