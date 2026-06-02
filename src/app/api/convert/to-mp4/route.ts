@@ -3,7 +3,7 @@ import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { writeFile, readFile, unlink, access } from 'fs/promises';
 import { join } from 'path';
 import { transcodeWebmToMp4WithLadder } from '@/lib/ffmpeg/transcode-to-mp4';
-import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
+import { downloadMediaToFile } from '@/lib/storage/fetch-media';
 
 // Allow up to 300s for video conversion (Vercel Pro plan)
 export const maxDuration = 300;
@@ -59,29 +59,18 @@ export async function POST(req: NextRequest) {
     const outputPath = join(tmpDir, `convert_output_${timestamp}.mp4`);
 
     try {
-      // Resolve relative URLs (post Hetzner/MinIO migration uploads use
-      // /storage/v1/object/public/...). See helper for resolution order.
-      const absoluteUrl = toAbsoluteMediaUrl(videoUrl, req.nextUrl?.origin);
+      // Download WebM — internal storage paths are fetched directly from MinIO
+      // (bypasses Traefik → Next.js loop). External URLs use fetch() as before.
+      const { sizeBytes } = await downloadMediaToFile(videoUrl, inputPath);
+      console.log(`[CONVERT-API] Downloaded ${(sizeBytes / 1024 / 1024).toFixed(1)}MB (${sizeBytes} bytes)`);
 
-      // Download WebM
-      const response = await fetch(absoluteUrl);
-      if (!response.ok) {
-        return NextResponse.json({ success: false, error: `Download failed: HTTP ${response.status}` }, { status: 500 });
-      }
-      const buffer = Buffer.from(await response.arrayBuffer());
-      await writeFile(inputPath, buffer);
-      console.log(`[CONVERT-API] Downloaded ${(buffer.length / 1024 / 1024).toFixed(1)}MB (${buffer.length} bytes)`);
-
-      // Guard: refuse to feed FFmpeg a suspiciously small file. FFmpeg will
-      // emit cryptic "Invalid data" errors instead of erroring out cleanly,
-      // and waste 1-3 min before failing — surface this to the client right
-      // away with the actual byte count for debugging.
-      if (buffer.length < 1024) {
-        console.warn(`[CONVERT-API] Source file too small (${buffer.length} bytes) — skipping FFmpeg`);
+      // Guard: refuse to feed FFmpeg a suspiciously small file.
+      if (sizeBytes < 1024) {
+        console.warn(`[CONVERT-API] Source file too small (${sizeBytes} bytes) — skipping FFmpeg`);
         return NextResponse.json({
           success: false,
-          error: `Source file too small (${buffer.length} bytes) — likely corrupted or empty. Re-render the post in /creer or click Régénérer in /calendar.`,
-          sourceSize: buffer.length,
+          error: `Source file too small (${sizeBytes} bytes) — likely corrupted or empty. Re-render the post in /creer or click Régénérer in /calendar.`,
+          sourceSize: sizeBytes,
         }, { status: 422 });
       }
 
