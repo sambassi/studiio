@@ -1282,14 +1282,26 @@ export default function CalendarPage() {
         if (!vid) return;
         vid.muted = true;
 
-        // Timeout de sécurité — 12s pour les fichiers accessibles directement
+        // Timeout de sécurité — 30s. On accepte readyState >= 1 (HAVE_METADATA)
+        // pour considérer la vidéo "ok" : Chrome peut mettre du temps à
+        // récupérer le moov atom puis bufferer la première frame, mais dès
+        // que les métadonnées sont là on sait que la séquence se jouera.
+        // Avant : 12s + readyState === 0 → après migration MinIO le proxy
+        // streame plus lentement que Supabase et la séquence était cachée
+        // alors que la vidéo finissait par charger.
         const loadTimeout = setTimeout(() => {
-          if (vid.readyState === 0) {
-            console.warn('[Calendar] Vidéo non chargée après 12s, séquence vidéo ignorée:', vid.src);
+          if (vid.readyState < 1) {
+            console.warn('[Calendar] Vidéo non chargée après 30s, séquence vidéo ignorée:', vid.src);
             if (!cancelled) setVideoPlayable(false);
+          } else {
+            console.log('[Calendar] Timeout atteint mais readyState=', vid.readyState, '— séquence conservée');
+            if (!cancelled) setVideoPlayable(true);
           }
-        }, 12000);
+        }, 30000);
 
+        // Métadonnées suffisent à afficher la séquence — on bascule
+        // setVideoPlayable(true) dès loadedmetadata pour éviter d'attendre
+        // un loadeddata qui peut tarder sur un proxy lent.
         vid.onloadeddata = () => {
           clearTimeout(loadTimeout);
           console.log('[Calendar] Vidéo chargée OK, readyState:', vid.readyState, 'durée:', vid.duration);
@@ -1297,6 +1309,9 @@ export default function CalendarPage() {
         };
         vid.onloadedmetadata = () => {
           console.log('[Calendar] Métadonnées vidéo chargées, durée:', vid.duration, 'readyState:', vid.readyState);
+          // Métadonnées = HAVE_METADATA (readyState 1). C'est suffisant pour
+          // afficher la séquence — la suite bufferise pendant la lecture.
+          if (!cancelled) setVideoPlayable(true);
         };
         vid.onerror = () => {
           clearTimeout(loadTimeout);
