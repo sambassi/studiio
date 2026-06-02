@@ -316,6 +316,10 @@ export default function CalendarPage() {
   const [regenProgress, setRegenProgress] = useState(0);
   const [regenStage, setRegenStage] = useState('');
   const montageTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Ref mirror of videoPlayable — lets the timer effect read the latest value
+  // without having videoPlayable in its dependency array (which would reset the
+  // timer every time the video finishes loading mid-sequence).
+  const videoPlayableRef = useRef<boolean>(false);
   const [montageProgress, setMontageProgress] = useState(0); // only used for non-CSS fallback
   const montageProgressRef = useRef<NodeJS.Timeout | null>(null);
   const seqDurationRef = useRef<number>(5000); // current sequence duration in ms for CSS animation
@@ -1128,7 +1132,13 @@ export default function CalendarPage() {
     setInfoSeqIndex(0);
     setMontageAutoPlay(true);
     setMontageMuted(true);
-    setVideoPlayable(false); // Default false — only set true after video actually loads
+    // Optimistic: if the post has a rush video URL, assume it will load.
+    // The preload effect will set it to false if the video truly errors.
+    // Starting false was causing the video sequence to be skipped immediately
+    // before the browser had a chance to fetch the moov atom.
+    const hasRush = !!(post.metadata?.rawVideoUrl || post.metadata?.rushUrls?.[0]);
+    videoPlayableRef.current = hasRush;
+    setVideoPlayable(hasRush);
     setMontageProgress(0);
     setShowFullPreview(true);
   };
@@ -1150,8 +1160,10 @@ export default function CalendarPage() {
     const seqs = (meta?.sequences || {}) as Record<string, number>;
     const currentSeq = seqOrder[infoSeqIndex] || 'intro';
 
-    // If current sequence is 'video' but not playable, skip it instantly
-    if (currentSeq === 'video' && !videoPlayable) {
+    // If current sequence is 'video' but not playable, skip it instantly.
+    // Use the REF (not state) so videoPlayable loading mid-sequence never
+    // restarts this timer for a non-video sequence.
+    if (currentSeq === 'video' && !videoPlayableRef.current) {
       if (infoSeqIndex < seqOrder.length - 1) {
         setInfoSeqIndex(infoSeqIndex + 1);
       } else {
@@ -1181,7 +1193,14 @@ export default function CalendarPage() {
     return () => {
       if (montageTimerRef.current) clearTimeout(montageTimerRef.current);
     };
-  }, [showFullPreview, fullPreviewPost, infoSeqIndex, montageAutoPlay, videoPlayable]);
+  // videoPlayable intentionally EXCLUDED from deps — we read it via the ref.
+  // Including it would reset the timer every time the video loads, breaking
+  // all sequence durations for intro/cards/cta.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showFullPreview, fullPreviewPost, infoSeqIndex, montageAutoPlay]);
+
+  // Keep ref in sync with state — the timer effect reads the ref directly
+  useEffect(() => { videoPlayableRef.current = videoPlayable; }, [videoPlayable]);
 
   // Explicit video play/pause when sequence changes — browser autoplay is unreliable
   useEffect(() => {
@@ -1222,108 +1241,55 @@ export default function CalendarPage() {
 
     let cancelled = false;
 
-    // Charger la vidéo rush — si le fichier est gros et le serveur ne supporte pas
-    // les range requests (Supabase), on télécharge le fichier complet en blob URL.
-    // Cela permet la lecture même sans range requests (moov atom à la fin du MP4).
-    const MAX_SIZE_DIRECT = 8 * 1024 * 1024; // 8 Mo — au-delà, utiliser blob URL
-
-    const checkAndLoad = async () => {
-      try {
-        const headRes = await fetch(videoSrc, { method: 'HEAD' });
-        const contentLength = parseInt(headRes.headers.get('content-length') || '0', 10);
-        const acceptRanges = headRes.headers.get('accept-ranges');
-        const supportsRanges = acceptRanges === 'bytes';
-
-        if (contentLength > MAX_SIZE_DIRECT && !supportsRanges) {
-          // Fichier gros sans range requests → télécharger en blob URL
-          console.log(`[Calendar] Rush vidéo ${(contentLength / 1024 / 1024).toFixed(1)} Mo sans range requests — téléchargement en blob URL...`);
-          if (cancelled) return;
-          try {
-            const res = await fetch(videoSrc);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const blob = await res.blob();
-            if (cancelled) { URL.revokeObjectURL(URL.createObjectURL(blob)); return; }
-            const blobUrl = URL.createObjectURL(blob);
-            console.log(`[Calendar] Blob URL créée: ${(blob.size / 1024 / 1024).toFixed(1)} Mo`);
-            // Mettre à jour le src de la vidéo avec le blob URL
-            setTimeout(() => {
-              if (cancelled) { URL.revokeObjectURL(blobUrl); return; }
-              const vid = document.getElementById('preview-video-infographic') as HTMLVideoElement | null;
-              if (!vid) { URL.revokeObjectURL(blobUrl); return; }
-              vid.muted = true;
-              vid.onloadeddata = () => {
-                console.log('[Calendar] Vidéo blob chargée OK, durée:', vid.duration);
-                if (!cancelled) setVideoPlayable(true);
-              };
-              vid.onerror = () => {
-                console.error('[Calendar] Erreur chargement vidéo blob');
-                URL.revokeObjectURL(blobUrl);
-                if (!cancelled) setVideoPlayable(false);
-              };
-              vid.src = blobUrl;
-              vid.load();
-            }, 100);
-          } catch (dlErr) {
-            console.warn('[Calendar] Téléchargement vidéo échoué:', dlErr);
-            if (!cancelled) setVideoPlayable(false);
-          }
-          return;
-        }
-      } catch {
-        // HEAD échoué — on essaie quand même de charger la vidéo directement
-      }
-
+    // The proxy now supports Range requests so we go direct.
+    // We only need to detect genuine failures (network error, 404) to set
+    // videoPlayable=false. The optimistic default (set in handleFullPreview)
+    // means the sequence will show even while the moov atom is still loading.
+    setTimeout(() => {
       if (cancelled) return;
+      const vid = document.getElementById('preview-video-infographic') as HTMLVideoElement | null;
+      if (!vid) return;
+      vid.muted = true;
 
-      // Fichier petit ou serveur supporte range requests — chargement direct
-      setTimeout(() => {
-        if (cancelled) return;
-        const vid = document.getElementById('preview-video-infographic') as HTMLVideoElement | null;
-        if (!vid) return;
-        vid.muted = true;
+      // Safety timeout — only mark unplayable if the browser can't even get
+      // metadata (readyState < 1) after 30s. A slow proxy may take several
+      // seconds to deliver the moov atom; we must not skip the sequence
+      // before that window closes.
+      const loadTimeout = setTimeout(() => {
+        if (vid.readyState < 1 && !cancelled) {
+          console.warn('[Calendar] Vidéo non chargée après 30s, séquence vidéo ignorée:', vid.src);
+          videoPlayableRef.current = false;
+          setVideoPlayable(false);
+        }
+      }, 30000);
 
-        // Timeout de sécurité — 30s. On accepte readyState >= 1 (HAVE_METADATA)
-        // pour considérer la vidéo "ok" : Chrome peut mettre du temps à
-        // récupérer le moov atom puis bufferer la première frame, mais dès
-        // que les métadonnées sont là on sait que la séquence se jouera.
-        // Avant : 12s + readyState === 0 → après migration MinIO le proxy
-        // streame plus lentement que Supabase et la séquence était cachée
-        // alors que la vidéo finissait par charger.
-        const loadTimeout = setTimeout(() => {
-          if (vid.readyState < 1) {
-            console.warn('[Calendar] Vidéo non chargée après 30s, séquence vidéo ignorée:', vid.src);
-            if (!cancelled) setVideoPlayable(false);
-          } else {
-            console.log('[Calendar] Timeout atteint mais readyState=', vid.readyState, '— séquence conservée');
-            if (!cancelled) setVideoPlayable(true);
-          }
-        }, 30000);
+      vid.onloadedmetadata = () => {
+        clearTimeout(loadTimeout);
+        console.log('[Calendar] Métadonnées vidéo OK, durée:', vid.duration, 'readyState:', vid.readyState);
+        if (!cancelled) {
+          videoPlayableRef.current = true;
+          setVideoPlayable(true);
+        }
+      };
+      vid.onloadeddata = () => {
+        clearTimeout(loadTimeout);
+        console.log('[Calendar] Vidéo chargée OK, readyState:', vid.readyState);
+        if (!cancelled) {
+          videoPlayableRef.current = true;
+          setVideoPlayable(true);
+        }
+      };
+      vid.onerror = () => {
+        clearTimeout(loadTimeout);
+        console.error('[Calendar] Erreur de chargement vidéo, séquence vidéo ignorée');
+        if (!cancelled) {
+          videoPlayableRef.current = false;
+          setVideoPlayable(false);
+        }
+      };
 
-        // Métadonnées suffisent à afficher la séquence — on bascule
-        // setVideoPlayable(true) dès loadedmetadata pour éviter d'attendre
-        // un loadeddata qui peut tarder sur un proxy lent.
-        vid.onloadeddata = () => {
-          clearTimeout(loadTimeout);
-          console.log('[Calendar] Vidéo chargée OK, readyState:', vid.readyState, 'durée:', vid.duration);
-          if (!cancelled) setVideoPlayable(true);
-        };
-        vid.onloadedmetadata = () => {
-          console.log('[Calendar] Métadonnées vidéo chargées, durée:', vid.duration, 'readyState:', vid.readyState);
-          // Métadonnées = HAVE_METADATA (readyState 1). C'est suffisant pour
-          // afficher la séquence — la suite bufferise pendant la lecture.
-          if (!cancelled) setVideoPlayable(true);
-        };
-        vid.onerror = () => {
-          clearTimeout(loadTimeout);
-          console.error('[Calendar] Erreur de chargement vidéo, séquence vidéo ignorée');
-          if (!cancelled) setVideoPlayable(false);
-        };
-
-        vid.load();
-      }, 100);
-    };
-
-    checkAndLoad();
+      vid.load();
+    }, 100);
 
     return () => { cancelled = true; };
   }, [showFullPreview, fullPreviewPost]);
