@@ -3230,34 +3230,6 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     for (const track of audioDest.stream.getAudioTracks()) combinedStream.addTrack(track);
   }
 
-  // FAST mode (no music/voice) records video-only by default. But if the
-  // montage embeds a rush video that has its own soundtrack, we still want
-  // that sound in the export — otherwise the exported montage is silent even
-  // though the uploaded rush had audio. Route the rush element's audio into a
-  // dedicated destination and add it to the recorded stream. (Music/voice
-  // montages take the real-time path below, which already routes the rush
-  // audio.) Best-effort: on failure the montage stays silent as before.
-  let fastRushAudioCtx: AudioContext | null = null;
-  if (useFastMode && videoEl) {
-    try {
-      fastRushAudioCtx = new AudioContext({ sampleRate: 48000 });
-      if (fastRushAudioCtx.state === 'suspended') { await fastRushAudioCtx.resume().catch(() => {}); }
-      const rushDest = fastRushAudioCtx.createMediaStreamDestination();
-      videoEl.muted = false; // createMediaElementSource bypasses speaker output → no double playback
-      const rushSrc = fastRushAudioCtx.createMediaElementSource(videoEl);
-      const rushGain = fastRushAudioCtx.createGain();
-      rushGain.gain.value = options.audioKeyframes?.[0]?.rushVolume ?? 1.0;
-      rushSrc.connect(rushGain);
-      rushGain.connect(rushDest);
-      for (const track of rushDest.stream.getAudioTracks()) combinedStream.addTrack(track);
-      console.log('[Composer] FAST mode: rush audio routed —', rushDest.stream.getAudioTracks().length, 'track(s), ctx:', fastRushAudioCtx.state);
-    } catch (err) {
-      console.warn('[Composer] FAST mode rush-audio routing failed (montage stays silent):', err);
-      try { fastRushAudioCtx?.close(); } catch {}
-      fastRushAudioCtx = null;
-    }
-  }
-
   console.log('[Composer] Stream tracks:', combinedStream.getTracks().map(t => t.kind + ':' + t.readyState).join(', '));
 
   // Choose best mimeType — WebM (VP9/VP8) MUST come first. Chrome's
@@ -3365,7 +3337,6 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         const blob = new Blob(chunks, { type: outputType });
         console.log('[Composer] ✅ DONE — blob:', (blob.size / 1024 / 1024).toFixed(1), 'MB, type:', outputType, ', chunks:', chunks.length);
         if (videoEl) videoEl.pause();
-        try { fastRushAudioCtx?.close(); } catch {}
         if (fallbackTimer) clearInterval(fallbackTimer);
         stopTicker();
         document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -3376,7 +3347,6 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       };
       recorder.onerror = (e) => {
         console.error('[Composer] MediaRecorder error:', e);
-        try { fastRushAudioCtx?.close(); } catch {}
         if (fallbackTimer) clearInterval(fallbackTimer);
         stopTicker();
         document.removeEventListener('visibilitychange', onVisibilityChange);
