@@ -310,6 +310,14 @@ export default function CalendarPage() {
   // Must be React state (not vid.src=) so re-renders on sequence change don't
   // overwrite it back to the streaming URL.
   const [rushBlobUrl, setRushBlobUrl] = useState<string | null>(null);
+  // Blob URL of the fully-downloaded COMPOSED montage (renderedVideoUrl). The
+  // calendar preview plays this composed WebM directly; streaming a ~20 MB file
+  // through the self-hosted MinIO proxy (~2-5 MB/s) stutters badly — saccades,
+  // the rush sequence appears to "disappear", and the configured durations look
+  // wrong because the player can't keep up. Downloading it to a blob first →
+  // smooth playback from memory (same trick as the rush above). Falls back to
+  // the streaming URL while the blob loads / if the download fails.
+  const [montageBlobUrl, setMontageBlobUrl] = useState<string | null>(null);
 
   // Import-file state (shown while a user uploads a local video/image via "Importer")
   const [importing, setImporting] = useState(false);
@@ -1145,6 +1153,7 @@ export default function CalendarPage() {
     videoPlayableRef.current = hasRush;
     setVideoPlayable(hasRush);
     setRushBlobUrl(null); // reset — the preload effect re-downloads for this post
+    setMontageBlobUrl(null); // reset — the montage preload effect re-downloads for this post
     setMontageProgress(0);
     setShowFullPreview(true);
   };
@@ -1301,6 +1310,36 @@ export default function CalendarPage() {
       if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
       setRushBlobUrl(null); // clear so next post doesn't reuse a revoked URL
     };
+  }, [showFullPreview, fullPreviewPost]);
+
+  // ── Préchargement du montage rendu en blob (anti-saccades) ──
+  // Streamer le montage WebM (~20 Mo) via le proxy MinIO self-hosted (~2-5 MB/s)
+  // bufferise en continu → lecture saccadée, séquence vidéo qui "saute", durées
+  // faussées. On télécharge le fichier complet en mémoire et on le lit depuis un
+  // blob: URL (lecture fluide, exactement comme le rush). Best-effort : si le
+  // téléchargement échoue, le <video> retombe sur l'URL de streaming.
+  useEffect(() => {
+    if (!showFullPreview || !fullPreviewPost) return;
+    const meta = fullPreviewPost.metadata as Record<string, unknown> | undefined;
+    const url = meta?.renderedVideoUrl as string | undefined;
+    if (!url) { setMontageBlobUrl(null); return; }
+    let cancelled = false;
+    let createdUrl: string | null = null;
+    (async () => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        if (cancelled) return;
+        createdUrl = URL.createObjectURL(blob);
+        setMontageBlobUrl(createdUrl);
+        console.log('[Calendar] Montage rendu téléchargé en blob URL —', (blob.size / 1024 / 1024).toFixed(1), 'Mo (lecture fluide)');
+      } catch (err) {
+        console.warn('[Calendar] Téléchargement montage en blob échoué — fallback streaming:', err);
+        if (!cancelled) setMontageBlobUrl(null);
+      }
+    })();
+    return () => { cancelled = true; if (createdUrl) URL.revokeObjectURL(createdUrl); };
   }, [showFullPreview, fullPreviewPost]);
 
   // Précharger TOUS les éléments audio (y compris le rendu WebM) quand la preview s'ouvre
@@ -3006,8 +3045,8 @@ export default function CalendarPage() {
                        user keeps seeing the old stale composed video even after
                        a successful regeneration. */}
                   <video
-                    key={meta.renderedVideoUrl}
-                    src={meta.renderedVideoUrl}
+                    key={montageBlobUrl || (meta.renderedVideoUrl as string)}
+                    src={montageBlobUrl || (meta.renderedVideoUrl as string)}
                     autoPlay
                     loop
                     muted={montageMuted}
