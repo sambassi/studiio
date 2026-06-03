@@ -203,3 +203,8 @@ function from(bucket: string) {
 
 export const s3Storage = { from };
 export type S3Storage = typeof s3Storage;
+
+// Default export en plus du named export : le proxy `supabaseAdmin.storage`
+// résout `mod.s3Storage || mod.default || mod`, ce qui rend le require runtime
+// robuste quelle que soit la forme d'interop CJS/ESM du bundle.
+export default s3Storage;

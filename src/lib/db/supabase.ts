@@ -53,10 +53,20 @@ const STORAGE_PROVIDER = process.env.STORAGE_PROVIDER || 'supabase';
 export const supabaseAdmin: SupabaseClient = new Proxy({} as SupabaseClient, {
     get(_target, prop) {
           if (prop === 'storage' && STORAGE_PROVIDER === 's3') {
-              // Lazy import pour éviter de charger `minio` côté client
+              // Lazy require (server-only) pour éviter de charger `minio` dans le
+              // bundle client.
+              //
+              // IMPORTANT : utiliser un chemin RELATIF, surtout PAS l'alias `@/`.
+              // Dans un `require()` exécuté au runtime, l'alias `@/` n'est pas
+              // résolu correctement par le bundle serveur standalone de Next :
+              // le module revenait sans `s3Storage`, donc `supabaseAdmin.storage`
+              // était `undefined` → toutes les opérations storage plantaient avec
+              // « Cannot read properties of undefined (reading 'from') »
+              // (upload to-mp4, cleanup remove, etc.). Le chemin relatif est
+              // résolu/bundlé de façon fiable par webpack.
               // eslint-disable-next-line @typescript-eslint/no-require-imports
-              const { s3Storage } = require('@/lib/storage/s3-client');
-              return s3Storage;
+              const mod = require('../storage/s3-client');
+              return mod.s3Storage || mod.default || mod;
           }
           return (getSupabaseAdmin() as any)[prop];
     }
