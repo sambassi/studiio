@@ -2,9 +2,21 @@
 
 _Fichier vivant. Claude y écrit les plans en cours et coche les étapes au fur et à mesure._
 
-## En cours
+## En cours — Rush "vidéo absente" (montage MinIO) — 2026-06-03
 
-(aucune tâche active)
+État du diagnostic (ordre des pistes éliminées) :
+1. ✅ **Revert `4ff6401`** (son temps-réel qui régressait la vidéo) → main = `7a853f6`, état bon. **→ Redéployer Coolify.**
+2. ❌ **cleanup-media** : fausse piste (aucune Scheduled Task Coolify, vercel crons n'atteignent pas MinIO). Confirmé par l'utilisateur.
+3. ✅ **Cause racine = upload→serve** : en prod le PUT proxy renvoie 200 ("Upload OK") mais le GET 404 immédiat sur la même clé. Repro local (vrai MinIO, mêmes appels SDK) → le code persiste+sert correctement ⇒ **bug INFRA, pas code** : write non durable / instances MinIO PUT≠GET.
+4. ✅ **Shipped** :
+   - `#184` — `/api/storage/upload` vérifie l'objet (`statObject`) après `putObject` → 500 explicite au lieu d'un faux "OK" + logs ; `/api/proxy-media` autorise notre propre `/storage` (fix 403).
+   - `#185` — durcissement SSRF de `/api/proxy-media` (allowlist de `hostname` exacts, suite revue sécu).
+
+⏳ **Bloqué sur retour utilisateur** : après redeploy Coolify, faire 1 upload rush et reporter :
+   - **500 "Write not durable"** → MinIO n'écrit pas durablement (volume non monté / bucket non servi) — fix infra MinIO.
+   - **toujours "OK" + URL 404** → PUT proxy et GET proxy tapent des endpoints MinIO différents (env/instance) — fix env Coolify.
+
+## Archivé
 
 ## Backlog — Conversion WebM → MP4 client-side (PR #105 reverted 2026-04-29)
 
