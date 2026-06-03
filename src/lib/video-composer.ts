@@ -3311,12 +3311,34 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   if (useFastMode) {
     return new Promise<{ video: Blob; thumbnail: Blob | null }>((resolve, reject) => {
       let fallbackTimer: ReturnType<typeof setInterval> | null = null;
+
+      // ── Worker-driven ticker (anti-throttling arrière-plan) ──
+      // Le rendu est en temps réel (totalDuration s). Si l'utilisateur change
+      // d'onglet/de page pendant l'export, Chrome throttle requestAnimationFrame
+      // ET setTimeout/setInterval du thread principal à ~1 Hz. La séquence en
+      // cours à ce moment (souvent la vidéo, qui passe après l'intro+cartes) ne
+      // reçoit alors qu'une poignée d'images → elle ressort figée/absente,
+      // saccadée, et le minutage paraît faux. Le timer d'un Web Worker n'est
+      // PAS throttlé en arrière-plan : on l'utilise pour piloter la boucle de
+      // dessin à pleine cadence quoi qu'il arrive. Si le Worker est indisponible
+      // (CSP, etc.), on retombe proprement sur requestAnimationFrame.
+      let ticker: Worker | null = null;
+      try {
+        const intervalMs = Math.max(8, Math.round(1000 / fps));
+        const tickCode = 'let i=null;onmessage=function(e){if(e.data==="start"){i=setInterval(function(){postMessage(0);},' + intervalMs + ');}else{clearInterval(i);i=null;}};';
+        ticker = new Worker(URL.createObjectURL(new Blob([tickCode], { type: 'application/javascript' })));
+      } catch { ticker = null; }
+      const stopTicker = () => { try { ticker?.postMessage('stop'); ticker?.terminate(); } catch {} ticker = null; };
+
+      console.log('[Composer] FAST loop driver:', ticker ? 'Web Worker (background-proof)' : 'requestAnimationFrame (fallback)');
+
       recorder.onstop = () => {
         const outputType = isMP4 ? 'video/mp4' : 'video/webm';
         const blob = new Blob(chunks, { type: outputType });
         console.log('[Composer] ✅ DONE — blob:', (blob.size / 1024 / 1024).toFixed(1), 'MB, type:', outputType, ', chunks:', chunks.length);
         if (videoEl) videoEl.pause();
         if (fallbackTimer) clearInterval(fallbackTimer);
+        stopTicker();
         document.removeEventListener('visibilitychange', onVisibilityChange);
         releaseWakeLock();
         try { document.body.removeChild(canvas); } catch {}
@@ -3326,6 +3348,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       recorder.onerror = (e) => {
         console.error('[Composer] MediaRecorder error:', e);
         if (fallbackTimer) clearInterval(fallbackTimer);
+        stopTicker();
         document.removeEventListener('visibilitychange', onVisibilityChange);
         releaseWakeLock();
         reject(new Error('Recording failed'));
@@ -3357,6 +3380,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         if (elapsed >= totalDuration + 0.3) {
           animStopped = true;
           console.log('[Composer] Render complete, stopping recorder');
+          stopTicker();
           recorder.stop();
           return;
         }
@@ -3383,19 +3407,27 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         const pct = Math.round(15 + (elapsed / totalDuration) * 80);
         onProgress?.(Math.min(pct, 95), `Montage en cours... ${Math.round((elapsed / totalDuration) * 100)}%`);
 
-        requestAnimationFrame(doFrame);
+        // When driven by the Worker ticker we do NOT self-schedule via rAF
+        // (the ticker fires the next frame, immune to background throttling).
+        // Only self-chain via rAF when the Worker is unavailable.
+        if (!ticker) requestAnimationFrame(doFrame);
       };
 
-      // Background-safe tick: if rAF stalls (backgrounded tab), this
-      // timer keeps drawFrame firing. setInterval is also throttled in
-      // background but the Wake Lock above should keep it near full rate,
-      // and even a few Hz is enough for captureStream to keep recording.
+      if (ticker) {
+        ticker.onmessage = () => doFrame();
+        ticker.postMessage('start');
+      }
+
+      // Background-safe safety net: even with the Worker ticker, keep a timer
+      // that forces a draw if more than 500 ms elapsed without one (covers the
+      // no-Worker fallback path and any transient stall).
       fallbackTimer = setInterval(() => {
         if (animStopped) { if (fallbackTimer) clearInterval(fallbackTimer); return; }
         if (performance.now() - lastDrawAt > 500) doFrame();
       }, 250);
 
-      // Kick off animation loop (frame 0 already drawn above)
+      // Kick off the loop (frame 0 already drawn above). The ticker also drives
+      // it, but fire once immediately so we never wait a full interval.
       requestAnimationFrame(doFrame);
     });
   }
