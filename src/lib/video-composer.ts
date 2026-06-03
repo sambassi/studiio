@@ -2754,13 +2754,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     }
   }
 
-  // Un rush vidéo avec sa propre piste son doit AUSSI déclencher le chemin
-  // temps-réel (le mode FAST produit un flux vidéo sans audio → montage muet).
-  // Le chemin temps-réel resume + amorce l'AudioContext, donc le routage de
-  // l'audio du rush (ligne ~3190) y fonctionne — contrairement à la tentative
-  // FAST où un contexte suspendu mettait le rush en pause. `videoEl` = le vrai
-  // rush (pas le fallback image fixe).
-  const hasAudio = !!options.musicBuffer || !!validVoiceBuffer || musicEl !== null || voiceEl !== null || hasAnySeqVoice || !!videoEl;
+  const hasAudio = !!options.musicBuffer || !!validVoiceBuffer || musicEl !== null || voiceEl !== null || hasAnySeqVoice;
   console.log('[Composer] Audio — musicBuffer:', !!options.musicBuffer, 'voiceBuffer:', !!validVoiceBuffer, 'musicEl:', !!musicEl, 'voiceEl:', !!voiceEl, 'seqVoices:', hasAnySeqVoice, 'hasAudio:', hasAudio);
 
   // Critical check: if poster is needed but failed to load, abort early with clear error
@@ -3203,9 +3197,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         videoEl.muted = false;
         const rushSource = audioCtx.createMediaElementSource(videoEl);
         const rushGain = audioCtx.createGain();
-        // Sans musique, le rush est la seule source audio → volume plein (1.0).
-        // Avec musique, on le garde duck à 0.5 (sauf keyframe explicite).
-        rushGain.gain.value = options.audioKeyframes?.[0]?.rushVolume ?? (musicGainNode ? 0.5 : 1.0);
+        rushGain.gain.value = options.audioKeyframes?.[0]?.rushVolume ?? 0.5;
         rushSource.connect(rushGain);
         rushGain.connect(audioDest);
         rushGainNode = rushGain;
@@ -3444,19 +3436,6 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // REAL-TIME MODE: With audio → must render in sync with audio
   // ═══════════════════════════════════════════════════════════
   return new Promise<{ video: Blob; thumbnail: Blob | null }>(async (resolve, reject) => {
-    // Worker-driven ticker (anti-throttling arrière-plan), identique au mode FAST.
-    // La boucle de dessin dépend de requestAnimationFrame, que Chrome throttle à
-    // ~1 Hz quand l'onglet est en arrière-plan → la séquence vidéo se sous-rend.
-    // Un timer de Web Worker n'est PAS throttlé : il pilote le dessin à pleine
-    // cadence. Fallback rAF si le Worker est indisponible (CSP).
-    let ticker: Worker | null = null;
-    try {
-      const intervalMs = Math.max(8, Math.round(1000 / fps));
-      const tickCode = 'let i=null;onmessage=function(e){if(e.data==="start"){i=setInterval(function(){postMessage(0);},' + intervalMs + ');}else{clearInterval(i);i=null;}};';
-      ticker = new Worker(URL.createObjectURL(new Blob([tickCode], { type: 'application/javascript' })));
-    } catch { ticker = null; }
-    const stopTicker = () => { try { ticker?.postMessage('stop'); ticker?.terminate(); } catch {} ticker = null; };
-
     recorder.onstop = () => {
       const outputType = isMP4 ? 'video/mp4' : 'video/webm';
       const blob = new Blob(chunks, { type: outputType });
@@ -3467,7 +3446,6 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       try { musicBufferSource?.stop(); } catch {}
       try { voiceBufferSource?.stop(); } catch {}
       if (videoEl) videoEl.pause();
-      stopTicker();
       document.removeEventListener('visibilitychange', onVisibilityChange);
       releaseWakeLock();
       try { document.body.removeChild(canvas); } catch {}
@@ -3479,7 +3457,6 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
 
     recorder.onerror = (e) => {
       console.error('[Composer] MediaRecorder error:', e);
-      stopTicker();
       document.removeEventListener('visibilitychange', onVisibilityChange);
       releaseWakeLock();
       reject(new Error('Recording failed'));
@@ -3659,7 +3636,6 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         if (voiceEl) voiceEl.pause();
         try { musicBufferSource?.stop(); } catch {}
         try { voiceBufferSource?.stop(); } catch {}
-        stopTicker();
         recorder.stop();
         return;
       }
@@ -3688,9 +3664,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         onProgress?.(Math.min(pct, 95), 'Montage vidéo en cours...');
       }
 
-      // Driven by the Worker ticker (background-proof). Only self-chain via rAF
-      // when the Worker is unavailable.
-      if (!ticker) requestAnimationFrame(doFrame);
+      requestAnimationFrame(doFrame);
     };
 
     // Watchdog : si rAF est en pause (onglet en arrière-plan), setTimeout prend le relais
@@ -3706,9 +3680,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       }
     }, 2000);
 
-    // Frame 0 already drawn above. Drive the loop via the Worker ticker (or rAF
-    // fallback if the Worker is unavailable). Fire once immediately too.
-    if (ticker) { ticker.onmessage = () => doFrame(); ticker.postMessage('start'); }
+    // Frame 0 already drawn above (before recorder.start) — just kick off the loop
     requestAnimationFrame(doFrame);
   });
 }
