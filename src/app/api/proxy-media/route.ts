@@ -42,42 +42,62 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
     }
 
-    // Schéma + credentials : bloque file:/gopher:/data: et `user:pass@host`.
-    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-      return NextResponse.json({ error: 'URL scheme not allowed' }, { status: 403 });
-    }
-    if (parsed.username || parsed.password) {
-      return NextResponse.json({ error: 'URL must not contain credentials' }, { status: 403 });
-    }
-    // Anti-traversal sur le chemin décodé.
-    let decodedPath = parsed.pathname;
-    try { decodedPath = decodeURIComponent(parsed.pathname); } catch {
-      return NextResponse.json({ error: 'Invalid URL path' }, { status: 400 });
-    }
-    if (decodedPath.includes('..') || decodedPath.includes('\\')) {
-      return NextResponse.json({ error: 'URL path not allowed' }, { status: 403 });
+    // Validation réutilisable — appliquée à l'URL initiale ET à chaque hop
+    // de redirection (schéma, credentials, traversal, host exact + chemin).
+    const checkUrl = (u: URL): { ok: true } | { ok: false; status: number; error: string } => {
+      if (u.protocol !== 'https:' && u.protocol !== 'http:') {
+        return { ok: false, status: 403, error: 'URL scheme not allowed' };
+      }
+      if (u.username || u.password) {
+        return { ok: false, status: 403, error: 'URL must not contain credentials' };
+      }
+      let dp = u.pathname;
+      try { dp = decodeURIComponent(u.pathname); } catch {
+        return { ok: false, status: 400, error: 'Invalid URL path' };
+      }
+      if (dp.includes('..') || dp.includes('\\')) {
+        return { ok: false, status: 403, error: 'URL path not allowed' };
+      }
+      const h = u.hostname.toLowerCase().replace(/\.$/, '');
+      let allowed = false;
+      if (appHost && h === appHost) allowed = u.pathname.startsWith('/storage/v1/object/public/');
+      else if (supabaseHost && h === supabaseHost) allowed = u.pathname.startsWith('/storage/');
+      else if (cdnHosts.has(h)) allowed = true;
+      return allowed ? { ok: true } : { ok: false, status: 403, error: 'URL domain not allowed' };
+    };
+
+    const initial = checkUrl(parsed);
+    if (!initial.ok) {
+      return NextResponse.json({ error: initial.error }, { status: initial.status });
     }
 
-    const host = parsed.hostname.toLowerCase().replace(/\.$/, '');
-    let isAllowed = false;
-    if (appHost && host === appHost) {
-      // Notre propre proxy storage MinIO — uniquement le chemin public.
-      isAllowed = parsed.pathname.startsWith('/storage/v1/object/public/');
-    } else if (supabaseHost && host === supabaseHost) {
-      isAllowed = parsed.pathname.startsWith('/storage/');
-    } else if (cdnHosts.has(host)) {
-      isAllowed = true;
+    // SSRF via redirect : `fetch` suit les redirections par défaut → un hôte
+    // autorisé qui renvoie un 3xx vers un hôte interne serait suivi. On suit
+    // MANUELLEMENT et on re-valide chaque hop contre la même allowlist.
+    const MAX_HOPS = 3;
+    let current = parsed;
+    let response: Response;
+    for (let hop = 0; ; hop++) {
+      response = await fetch(current.toString(), {
+        redirect: 'manual',
+        headers: { 'Accept': '*/*' },
+      });
+      if (response.status < 300 || response.status >= 400) break;
+      const location = response.headers.get('location');
+      if (!location) break;
+      if (hop >= MAX_HOPS) {
+        return NextResponse.json({ error: 'Too many redirects' }, { status: 502 });
+      }
+      let next: URL;
+      try { next = new URL(location, current); } catch {
+        return NextResponse.json({ error: 'Invalid redirect target' }, { status: 502 });
+      }
+      const check = checkUrl(next);
+      if (!check.ok) {
+        return NextResponse.json({ error: 'Redirect target not allowed' }, { status: 403 });
+      }
+      current = next;
     }
-    if (!isAllowed) {
-      return NextResponse.json({ error: 'URL domain not allowed' }, { status: 403 });
-    }
-
-    const fetchUrl = parsed.toString();
-    const response = await fetch(fetchUrl, {
-      headers: {
-        'Accept': '*/*',
-      },
-    });
 
     if (!response.ok) {
       return NextResponse.json(
