@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
-import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 
 /**
  * Proxy media files (audio/images) from Supabase storage
@@ -19,45 +18,61 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'URL parameter required' }, { status: 400 });
     }
 
-    // Security: only allow trusted media URLs (Supabase storage + Pexels CDN)
-    // Security: only allow trusted media URLs (Supabase + Pexels + Unsplash).
-    // Unsplash was missing, so every Unsplash poster picked in the editor
-    // returned 403 here. The composer's loadImage fallback then tried a
-    // direct load which tainted the canvas (Unsplash lacks permissive CORS
-    // for cross-origin canvas) — captureStream() emits empty frames on a
-    // tainted canvas, so several batch iterations rendered the gradient
-    // instead of the picked photo, looking "identical" on the calendar.
+    // SSRF hardening : on ne fait JAMAIS de match par sous-chaîne sur l'URL
+    // brute (contournable : `https://evil.com/storage/v1/object/public/x`).
+    // On PARSE l'URL et on compare le `hostname` exact à une allowlist.
+    // Les chemins relatifs (`/storage/...` du compositeur) sont résolus
+    // contre l'origine CONFIGURÉE (NEXT_PUBLIC_APP_URL), pas le header Host
+    // (qui est spoofable), pour empêcher la redirection vers un hôte interne.
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || '';
-    const allowedDomains = [
-      '.supabase.co/storage/',
-      'images.pexels.com',
-      'www.pexels.com',
-      'images.unsplash.com',
-      'plus.unsplash.com',
-    ];
-    // Post-migration Hetzner/MinIO : les rushes/montages sont servis depuis
-    // NOTRE proxy storage, soit en relatif `/storage/v1/object/public/...`,
-    // soit en absolu `https://studiio.pro/storage/...`. L'ancienne allowlist
-    // (Supabase only) renvoyait 403 dessus → le fallback proxy du compositeur
-    // échouait et la vidéo n'apparaissait pas. On autorise notre propre
-    // storage explicitement.
-    const isOwnStorage =
-      url.startsWith('/storage/') ||
-      url.includes('/storage/v1/object/public/') ||
-      (!!appUrl && url.startsWith(appUrl));
-    const isAllowed =
-      isOwnStorage ||
-      (!!supabaseUrl && url.startsWith(supabaseUrl)) ||
-      allowedDomains.some(d => url.includes(d));
+    const hostOf = (u: string): string => {
+      try { return new URL(u).hostname.toLowerCase().replace(/\.$/, ''); } catch { return ''; }
+    };
+    const appHost = hostOf(appUrl);
+    const supabaseHost = hostOf(supabaseUrl);
+    const cdnHosts = new Set([
+      'images.pexels.com', 'www.pexels.com', 'images.unsplash.com', 'plus.unsplash.com',
+    ]);
+
+    // Résolution : base = origine configurée (jamais le header Host).
+    const base = appUrl || supabaseUrl || undefined;
+    let parsed: URL;
+    try { parsed = new URL(url, base); } catch {
+      return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
+    }
+
+    // Schéma + credentials : bloque file:/gopher:/data: et `user:pass@host`.
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      return NextResponse.json({ error: 'URL scheme not allowed' }, { status: 403 });
+    }
+    if (parsed.username || parsed.password) {
+      return NextResponse.json({ error: 'URL must not contain credentials' }, { status: 403 });
+    }
+    // Anti-traversal sur le chemin décodé.
+    let decodedPath = parsed.pathname;
+    try { decodedPath = decodeURIComponent(parsed.pathname); } catch {
+      return NextResponse.json({ error: 'Invalid URL path' }, { status: 400 });
+    }
+    if (decodedPath.includes('..') || decodedPath.includes('\\')) {
+      return NextResponse.json({ error: 'URL path not allowed' }, { status: 403 });
+    }
+
+    const host = parsed.hostname.toLowerCase().replace(/\.$/, '');
+    let isAllowed = false;
+    if (appHost && host === appHost) {
+      // Notre propre proxy storage MinIO — uniquement le chemin public.
+      isAllowed = parsed.pathname.startsWith('/storage/v1/object/public/');
+    } else if (supabaseHost && host === supabaseHost) {
+      isAllowed = parsed.pathname.startsWith('/storage/');
+    } else if (cdnHosts.has(host)) {
+      isAllowed = true;
+    }
     if (!isAllowed) {
       return NextResponse.json({ error: 'URL domain not allowed' }, { status: 403 });
     }
 
-    // `fetch` côté serveur (undici) refuse les URLs relatives ("Failed to
-    // parse URL from /storage/..."). On absolutise via l'origin de la requête
-    // / NEXT_PUBLIC_APP_URL avant l'appel.
-    const fetchUrl = toAbsoluteMediaUrl(url, req.nextUrl.origin);
+    const fetchUrl = parsed.toString();
     const response = await fetch(fetchUrl, {
       headers: {
         'Accept': '*/*',
