@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
+import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 
 /**
  * Proxy media files (audio/images) from Supabase storage
@@ -27,6 +28,7 @@ export async function GET(req: NextRequest) {
     // tainted canvas, so several batch iterations rendered the gradient
     // instead of the picked photo, looking "identical" on the calendar.
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || '';
     const allowedDomains = [
       '.supabase.co/storage/',
       'images.pexels.com',
@@ -34,12 +36,29 @@ export async function GET(req: NextRequest) {
       'images.unsplash.com',
       'plus.unsplash.com',
     ];
-    const isAllowed = url.startsWith(supabaseUrl) || allowedDomains.some(d => url.includes(d));
+    // Post-migration Hetzner/MinIO : les rushes/montages sont servis depuis
+    // NOTRE proxy storage, soit en relatif `/storage/v1/object/public/...`,
+    // soit en absolu `https://studiio.pro/storage/...`. L'ancienne allowlist
+    // (Supabase only) renvoyait 403 dessus → le fallback proxy du compositeur
+    // échouait et la vidéo n'apparaissait pas. On autorise notre propre
+    // storage explicitement.
+    const isOwnStorage =
+      url.startsWith('/storage/') ||
+      url.includes('/storage/v1/object/public/') ||
+      (!!appUrl && url.startsWith(appUrl));
+    const isAllowed =
+      isOwnStorage ||
+      (!!supabaseUrl && url.startsWith(supabaseUrl)) ||
+      allowedDomains.some(d => url.includes(d));
     if (!isAllowed) {
       return NextResponse.json({ error: 'URL domain not allowed' }, { status: 403 });
     }
 
-    const response = await fetch(url, {
+    // `fetch` côté serveur (undici) refuse les URLs relatives ("Failed to
+    // parse URL from /storage/..."). On absolutise via l'origin de la requête
+    // / NEXT_PUBLIC_APP_URL avant l'appel.
+    const fetchUrl = toAbsoluteMediaUrl(url, req.nextUrl.origin);
+    const response = await fetch(fetchUrl, {
       headers: {
         'Accept': '*/*',
       },

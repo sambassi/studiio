@@ -92,10 +92,36 @@ export async function PUT(req: NextRequest) {
       { 'Content-Type': contentType },
     );
 
+    // Durabilité : un `putObject` qui résout DOIT être immédiatement
+    // `statObject`-able sur le même client. En prod on observait des uploads
+    // qui renvoyaient 200 ("Upload OK") puis 404 au GET — le `putObject`
+    // résout mais l'objet n'est pas durable côté MinIO (instance/volume
+    // mal partagé). On ne doit JAMAIS retourner un succès non vérifié :
+    // sinon l'URL est persistée dans le post et la vidéo est "absente".
+    let verifiedSize = -1;
+    try {
+      const st = await client.statObject(bucket, storagePath);
+      verifiedSize = st.size;
+    } catch (verifyErr: any) {
+      console.error('[storage/upload] WRITE NOT DURABLE', {
+        bucket, path: storagePath, contentLength,
+        verifyError: verifyErr?.code || verifyErr?.message,
+      });
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Write not durable: object missing immediately after putObject (bucket=${bucket}). MinIO storage misconfig?`,
+        },
+        { status: 500 },
+      );
+    }
+
+    console.log('[storage/upload] OK', { bucket, path: storagePath, contentLength, verifiedSize });
     return NextResponse.json({
       success: true,
       bucket,
       path: storagePath,
+      size: verifiedSize,
     });
   } catch (err: any) {
     console.error('[storage/upload] error', err);
