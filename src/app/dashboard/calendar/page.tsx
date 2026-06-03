@@ -308,6 +308,11 @@ export default function CalendarPage() {
   // loader pendant 20s). Un loader global "Préparation du montage…" est affiché
   // tant que c'est vrai, puis l'auto-play démarre depuis l'intro.
   const [preparingMontage, setPreparingMontage] = useState(false);
+  // Le montage rendu (renderedVideoUrl) est lu DIRECTEMENT en streaming (le
+  // compositeur v38 produit un WebM valide via captureStream(fps), Range OK
+  // côté proxy MinIO). On ne bascule sur le rebuild HTML (rush rejoué live)
+  // QUE si la lecture directe échoue réellement (onError) — vieux WebM cassé.
+  const [montageDirectFailed, setMontageDirectFailed] = useState(false);
   const [montageMuted, setMontageMuted] = useState(true);
   const [videoPlayable, setVideoPlayable] = useState(false); // Track if video file is loadable — default false until proven
   // Blob URL of the fully-downloaded rush video. Once set, the <video> uses it
@@ -321,14 +326,7 @@ export default function CalendarPage() {
   // True while the 'video' sequence is waiting for the rush blob to finish
   // downloading — drives a short loader instead of playing a stuttering stream.
   const [videoSeqWaiting, setVideoSeqWaiting] = useState(false);
-  // Blob URL of the fully-downloaded COMPOSED montage (renderedVideoUrl). The
-  // calendar preview plays this composed WebM directly; streaming a ~20 MB file
-  // through the self-hosted MinIO proxy (~2-5 MB/s) stutters badly — saccades,
-  // the rush sequence appears to "disappear", and the configured durations look
-  // wrong because the player can't keep up. Downloading it to a blob first →
-  // smooth playback from memory (same trick as the rush above). Falls back to
-  // the streaming URL while the blob loads / if the download fails.
-  const [montageBlobUrl, setMontageBlobUrl] = useState<string | null>(null);
+  // (Le montage rendu est lu directement en streaming — plus de blob intermédiaire.)
 
   // Import-file state (shown while a user uploads a local video/image via "Importer")
   const [importing, setImporting] = useState(false);
@@ -1161,31 +1159,30 @@ export default function CalendarPage() {
     videoPlayableRef.current = hasRush;
     setVideoPlayable(hasRush);
 
-    // Décision de rendu (cf #187) + faut-il pré-bufferiser le rush ?
+    // Décision de rendu : on lit TOUJOURS le montage rendu directement quand il
+    // existe (WebM v38 valide). Le rebuild HTML (+ prebuffer rush) n'est utilisé
+    // QUE pour les posts sans renderedVideoUrl (legacy) — ou plus tard en
+    // fallback si la lecture directe échoue (onError → montageDirectFailed).
     const m = post.metadata || {};
     const isMontage = m.type === 'infographic' || (m.type === 'creator' && !!m.sequences);
-    const montageIsFast = m.hasAudio === false; // FAST = sans musique/voix → WebM aux timestamps cassés
-    const willPlayRenderedDirectly = isMontage && !!m.renderedVideoUrl && !montageIsFast;
-    // Rebuild HTML AVEC rush → on attend le blob complet du rush avant de
-    // démarrer l'auto-play, sinon la 1re lecture de la séquence 'video' tombe
-    // sur un blob incomplet (loader 20s). Loader global "Préparation…" entre-temps.
+    const willPlayRenderedDirectly = isMontage && !!m.renderedVideoUrl;
+    // Prebuffer du rush uniquement dans le chemin rebuild (legacy sans montage).
     const needsRushPrebuffer = isMontage && !willPlayRenderedDirectly && hasRush;
     console.log('[Calendar] Aperçu plein écran — décision de rendu:', {
       type: m.type,
       hasAudio: m.hasAudio,
       renderedVideoUrl: m.renderedVideoUrl ? '…' + String(m.renderedVideoUrl).slice(-46) : null,
       rush: hasRush ? '…' + String(m.rawVideoUrl || m.rushUrls?.[0]).slice(-46) : null,
-      montageIsFast,
       chemin: willPlayRenderedDirectly
-        ? 'MONTAGE WEBM direct (renderedVideoUrl)'
+        ? 'LECTURE DIRECTE montage (renderedVideoUrl, streaming)'
         : 'REBUILD HTML (séquences intro/cards/video/cta + rush .mov)',
       preBufferRush: needsRushPrebuffer,
     });
 
+    setMontageDirectFailed(false); // reset — on retente toujours la lecture directe
     setMontageAutoPlay(!needsRushPrebuffer); // si prebuffer → l'auto-play démarre quand le rush est prêt
     setPreparingMontage(needsRushPrebuffer);
     setRushBlobUrl(null); // reset — the preload effect re-downloads for this post
-    setMontageBlobUrl(null); // reset — the montage preload effect re-downloads for this post
     setMontageProgress(0);
     setVideoSeqWaiting(false); // reset — recomputed when the 'video' sequence starts
     setShowFullPreview(true);
@@ -1202,11 +1199,11 @@ export default function CalendarPage() {
     if (!isMontagePost) return;
 
     // Le rebuild HTML (séquences + #preview-video-infographic) n'est rendu que
-    // quand on NE joue PAS renderedVideoUrl en direct (cf #187 : montage FAST
-    // hasAudio:false, ou pas de renderedVideoUrl). Le gating "attendre le blob"
-    // ne s'applique qu'à ce chemin — sinon l'élément vidéo n'existe pas et le
-    // timer se bloquerait pour les posts à montage direct (parité audio).
-    const usingHtmlRebuild = !meta?.renderedVideoUrl || meta?.hasAudio === false;
+    // quand on NE joue PAS renderedVideoUrl en direct : soit pas de montage
+    // rendu (legacy), soit la lecture directe a échoué (montageDirectFailed).
+    // Le gating "attendre le blob" ne s'applique qu'à ce chemin — sinon
+    // l'élément vidéo n'existe pas et le timer se bloquerait.
+    const usingHtmlRebuild = !meta?.renderedVideoUrl || montageDirectFailed;
 
     // IMPORTANT: Always use the full seqOrder (including video) to avoid index shifts
     // when videoPlayable changes mid-playback. If video isn't playable, we skip it
@@ -1341,7 +1338,7 @@ export default function CalendarPage() {
   // Including it would reset the timer every time the video loads, breaking
   // all sequence durations for intro/cards/cta.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showFullPreview, fullPreviewPost, infoSeqIndex, montageAutoPlay]);
+  }, [showFullPreview, fullPreviewPost, infoSeqIndex, montageAutoPlay, montageDirectFailed]);
 
   // Keep refs in sync with state — the timer effect reads them directly
   useEffect(() => { videoPlayableRef.current = videoPlayable; }, [videoPlayable]);
@@ -1380,6 +1377,12 @@ export default function CalendarPage() {
   useEffect(() => {
     if (!showFullPreview || !fullPreviewPost) return;
     const meta = fullPreviewPost.metadata;
+    // Lecture directe du montage (cas normal) → on NE télécharge PAS le rush :
+    // le montage rendu contient déjà le rush, on évite le double chargement.
+    // Le rush n'est bufferisé que dans le chemin rebuild (legacy sans montage,
+    // ou fallback onError = montageDirectFailed).
+    const usingDirectMontage = !!meta?.renderedVideoUrl && !montageDirectFailed;
+    if (usingDirectMontage) { return; }
     // ONLY test raw rush video — never rendered montage (has full montage with CTA baked in)
     const videoSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0];
     if (!videoSrc) { setVideoPlayable(false); return; }
@@ -1461,45 +1464,15 @@ export default function CalendarPage() {
       if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
       setRushBlobUrl(null); // clear so next post doesn't reuse a revoked URL
     };
-  }, [showFullPreview, fullPreviewPost]);
+  // montageDirectFailed : re-run pour bufferiser le rush quand on bascule sur
+  // le rebuild après un échec de lecture directe.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showFullPreview, fullPreviewPost, montageDirectFailed]);
 
-  // ── Préchargement du montage rendu en blob (anti-saccades) ──
-  // Streamer le montage WebM (~20 Mo) via le proxy MinIO self-hosted (~2-5 MB/s)
-  // bufferise en continu → lecture saccadée, séquence vidéo qui "saute", durées
-  // faussées. On télécharge le fichier complet en mémoire et on le lit depuis un
-  // blob: URL (lecture fluide, exactement comme le rush). Best-effort : si le
-  // téléchargement échoue, le <video> retombe sur l'URL de streaming.
-  useEffect(() => {
-    if (!showFullPreview || !fullPreviewPost) return;
-    const meta = fullPreviewPost.metadata as Record<string, unknown> | undefined;
-    const url = meta?.renderedVideoUrl as string | undefined;
-    if (!url) { setMontageBlobUrl(null); return; }
-    // Rebuild HTML (montage FAST hasAudio:false) : le montage WebM n'est PAS
-    // lu (on rejoue le rush live) → ne pas le télécharger, il volait la bande
-    // passante du rush (~22 Mo en parallèle) et ralentissait sa préparation.
-    if (meta?.hasAudio === false) {
-      console.log('[Calendar] Montage blob skippé (rebuild HTML — montage WebM non lu)');
-      setMontageBlobUrl(null);
-      return;
-    }
-    let cancelled = false;
-    let createdUrl: string | null = null;
-    (async () => {
-      try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const blob = await res.blob();
-        if (cancelled) return;
-        createdUrl = URL.createObjectURL(blob);
-        setMontageBlobUrl(createdUrl);
-        console.log('[Calendar] Montage rendu téléchargé en blob URL —', (blob.size / 1024 / 1024).toFixed(1), 'Mo (lecture fluide)');
-      } catch (err) {
-        console.warn('[Calendar] Téléchargement montage en blob échoué — fallback streaming:', err);
-        if (!cancelled) setMontageBlobUrl(null);
-      }
-    })();
-    return () => { cancelled = true; if (createdUrl) URL.revokeObjectURL(createdUrl); };
-  }, [showFullPreview, fullPreviewPost]);
+  // Note : on NE pré-télécharge plus le montage rendu en blob. Le compositeur
+  // v38 produit un WebM valide (captureStream(fps)) et le proxy MinIO supporte
+  // le Range → on lit renderedVideoUrl DIRECTEMENT en streaming dans le <video>
+  // (une seule charge). Le détour blob était la cause du double chargement.
 
   // Précharger TOUS les éléments audio (y compris le rendu WebM) quand la preview s'ouvre
   // #preview-audio-rendered utilise maintenant preload="auto" — on le charge aussi ici
@@ -3006,17 +2979,12 @@ export default function CalendarPage() {
         const postHasAudio = !!meta?.hasAudio || !!meta?.renderedVideoUrl;
 
         // ── Sélection du chemin de rendu du montage ──
-        // Un montage rendu en mode FAST (sans musique/voix → captureStream(0))
-        // a des timestamps WebM cassés (cf CLAUDE.md) et a souvent perdu le
-        // rush au moment du compose → le jouer directement affiche un segment
-        // vidéo NOIR. Marqueur fiable : `hasAudio === false` (les rendus Studio
-        // Son embarquent toujours de l'audio → hasAudio:true). Pour ces posts
-        // on retombe sur le rebuild HTML, qui joue le VRAI rush .mov dans
-        // #preview-video-infographic pendant la séquence 'video'.
-        // 100% rétro-compat : tout post avec hasAudio:true OU hasAudio absent
-        // garde le chemin direct (parité réseaux sociaux) inchangé.
-        const montageIsFast = meta?.hasAudio === false;
-        const playRenderedDirectly = hasMontage && !!meta?.renderedVideoUrl && !montageIsFast;
+        // Le montage rendu (renderedVideoUrl) est un WebM VALIDE (compositeur
+        // v38, captureStream(fps)) contenant déjà le rush + le son → on le lit
+        // DIRECTEMENT en streaming (proxy MinIO supporte le Range). Une seule
+        // charge. On ne bascule sur le rebuild HTML QUE si la lecture directe
+        // échoue réellement (onError → montageDirectFailed) — vieux WebM cassé.
+        const playRenderedDirectly = hasMontage && !!meta?.renderedVideoUrl && !montageDirectFailed;
 
         // ── Extraction du design avec fallbacks pour les anciens posts sans champ design ──
         const design = meta?.design;
@@ -3227,16 +3195,25 @@ export default function CalendarPage() {
                        user keeps seeing the old stale composed video even after
                        a successful regeneration. */}
                   <video
-                    key={montageBlobUrl || (meta.renderedVideoUrl as string)}
-                    src={montageBlobUrl || (meta.renderedVideoUrl as string)}
+                    key={meta.renderedVideoUrl as string}
+                    src={meta.renderedVideoUrl as string}
                     autoPlay
                     loop
                     muted={montageMuted}
                     playsInline
                     controls
                     className="absolute inset-0 w-full h-full object-cover"
-                    onLoadedData={(e) => console.log('[Calendar] Montage WebM chargé, readyState:', (e.target as HTMLVideoElement).readyState, 'durée:', (e.target as HTMLVideoElement).duration)}
-                    onError={(e) => console.error('[Calendar] Montage WebM erreur (timestamps FAST cassés ?):', (e.target as HTMLVideoElement).error)}
+                    onLoadedData={(e) => console.log('[Calendar] Lecture directe montage —', { readyState: (e.target as HTMLVideoElement).readyState, duree: (e.target as HTMLVideoElement).duration })}
+                    onError={(e) => {
+                      // Vieux WebM réellement illisible → fallback rebuild HTML
+                      // (rush rejoué live). Seul cas où l'on accepte un 2e load.
+                      console.warn('[Calendar] Montage direct illisible → fallback rebuild HTML', (e.target as HTMLVideoElement).error);
+                      const hasRush = !!(meta?.rawVideoUrl || meta?.rushUrls?.[0]);
+                      setInfoSeqIndex(0);
+                      setMontageDirectFailed(true);
+                      if (hasRush) { setMontageAutoPlay(false); setPreparingMontage(true); }
+                      else { setMontageAutoPlay(true); }
+                    }}
                   />
                 </div>
               ) : hasMontage ? (() => {
