@@ -1152,6 +1152,23 @@ export default function CalendarPage() {
     const hasRush = !!(post.metadata?.rawVideoUrl || post.metadata?.rushUrls?.[0]);
     videoPlayableRef.current = hasRush;
     setVideoPlayable(hasRush);
+    // Diagnostic : quel chemin de rendu va être pris pour ce post ?
+    {
+      const m = post.metadata || {};
+      const isMontage = m.type === 'infographic' || (m.type === 'creator' && !!m.sequences);
+      const montageIsFast = m.hasAudio === false; // FAST = sans musique/voix → WebM aux timestamps cassés
+      const willPlayRenderedDirectly = isMontage && !!m.renderedVideoUrl && !montageIsFast;
+      console.log('[Calendar] Aperçu plein écran — décision de rendu:', {
+        type: m.type,
+        hasAudio: m.hasAudio,
+        renderedVideoUrl: m.renderedVideoUrl ? '…' + String(m.renderedVideoUrl).slice(-46) : null,
+        rush: hasRush ? '…' + String(m.rawVideoUrl || m.rushUrls?.[0]).slice(-46) : null,
+        montageIsFast,
+        chemin: willPlayRenderedDirectly
+          ? 'MONTAGE WEBM direct (renderedVideoUrl)'
+          : 'REBUILD HTML (séquences intro/cards/video/cta + rush .mov)',
+      });
+    }
     setRushBlobUrl(null); // reset — the preload effect re-downloads for this post
     setMontageBlobUrl(null); // reset — the montage preload effect re-downloads for this post
     setMontageProgress(0);
@@ -2846,6 +2863,19 @@ export default function CalendarPage() {
         // Detect audio: explicit hasAudio flag OR renderedVideoUrl exists (Studio Son always embeds audio)
         const postHasAudio = !!meta?.hasAudio || !!meta?.renderedVideoUrl;
 
+        // ── Sélection du chemin de rendu du montage ──
+        // Un montage rendu en mode FAST (sans musique/voix → captureStream(0))
+        // a des timestamps WebM cassés (cf CLAUDE.md) et a souvent perdu le
+        // rush au moment du compose → le jouer directement affiche un segment
+        // vidéo NOIR. Marqueur fiable : `hasAudio === false` (les rendus Studio
+        // Son embarquent toujours de l'audio → hasAudio:true). Pour ces posts
+        // on retombe sur le rebuild HTML, qui joue le VRAI rush .mov dans
+        // #preview-video-infographic pendant la séquence 'video'.
+        // 100% rétro-compat : tout post avec hasAudio:true OU hasAudio absent
+        // garde le chemin direct (parité réseaux sociaux) inchangé.
+        const montageIsFast = meta?.hasAudio === false;
+        const playRenderedDirectly = hasMontage && !!meta?.renderedVideoUrl && !montageIsFast;
+
         // ── Extraction du design avec fallbacks pour les anciens posts sans champ design ──
         const design = meta?.design;
         // Mapping CSS des polices — doit correspondre au FONT_CSS_MAP de l'éditeur
@@ -3034,7 +3064,7 @@ export default function CalendarPage() {
                    editor export == calendar preview == Instagram/TikTok post. The HTML
                    rebuild below is kept as a legacy fallback for posts that never got
                    a `renderedVideoUrl` (never passed through the composer). ── */}
-              {hasMontage && meta?.renderedVideoUrl ? (
+              {playRenderedDirectly ? (
                 <div
                   className={`relative overflow-hidden rounded-xl bg-black ${fullPreviewPost.format === 'reel' ? '' : 'aspect-video w-full'}`}
                   style={fullPreviewPost.format === 'reel' ? { aspectRatio: '9/16', height: '70dvh', maxHeight: '70dvh' } : undefined}
@@ -3053,6 +3083,8 @@ export default function CalendarPage() {
                     playsInline
                     controls
                     className="absolute inset-0 w-full h-full object-cover"
+                    onLoadedData={(e) => console.log('[Calendar] Montage WebM chargé, readyState:', (e.target as HTMLVideoElement).readyState, 'durée:', (e.target as HTMLVideoElement).duration)}
+                    onError={(e) => console.error('[Calendar] Montage WebM erreur (timestamps FAST cassés ?):', (e.target as HTMLVideoElement).error)}
                   />
                 </div>
               ) : hasMontage ? (() => {
