@@ -303,6 +303,11 @@ export default function CalendarPage() {
   const [fullPreviewPost, setFullPreviewPost] = useState<Post | null>(null);
   const [infoSeqIndex, setInfoSeqIndex] = useState(0);
   const [montageAutoPlay, setMontageAutoPlay] = useState(true);
+  // Rebuild HTML : on pré-bufferise le rush en blob AVANT de lancer l'auto-play
+  // (sinon la 1re lecture de la séquence 'video' tombe sur un blob incomplet →
+  // loader pendant 20s). Un loader global "Préparation du montage…" est affiché
+  // tant que c'est vrai, puis l'auto-play démarre depuis l'intro.
+  const [preparingMontage, setPreparingMontage] = useState(false);
   const [montageMuted, setMontageMuted] = useState(true);
   const [videoPlayable, setVideoPlayable] = useState(false); // Track if video file is loadable — default false until proven
   // Blob URL of the fully-downloaded rush video. Once set, the <video> uses it
@@ -1149,32 +1154,36 @@ export default function CalendarPage() {
   const handleFullPreview = (post: Post) => {
     setFullPreviewPost(post);
     setInfoSeqIndex(0);
-    setMontageAutoPlay(true);
     setMontageMuted(true);
     // Optimistic: if the post has a rush video URL, assume it will load.
     // The preload effect will set it to false if the video truly errors.
-    // Starting false was causing the video sequence to be skipped immediately
-    // before the browser had a chance to fetch the moov atom.
     const hasRush = !!(post.metadata?.rawVideoUrl || post.metadata?.rushUrls?.[0]);
     videoPlayableRef.current = hasRush;
     setVideoPlayable(hasRush);
-    // Diagnostic : quel chemin de rendu va être pris pour ce post ?
-    {
-      const m = post.metadata || {};
-      const isMontage = m.type === 'infographic' || (m.type === 'creator' && !!m.sequences);
-      const montageIsFast = m.hasAudio === false; // FAST = sans musique/voix → WebM aux timestamps cassés
-      const willPlayRenderedDirectly = isMontage && !!m.renderedVideoUrl && !montageIsFast;
-      console.log('[Calendar] Aperçu plein écran — décision de rendu:', {
-        type: m.type,
-        hasAudio: m.hasAudio,
-        renderedVideoUrl: m.renderedVideoUrl ? '…' + String(m.renderedVideoUrl).slice(-46) : null,
-        rush: hasRush ? '…' + String(m.rawVideoUrl || m.rushUrls?.[0]).slice(-46) : null,
-        montageIsFast,
-        chemin: willPlayRenderedDirectly
-          ? 'MONTAGE WEBM direct (renderedVideoUrl)'
-          : 'REBUILD HTML (séquences intro/cards/video/cta + rush .mov)',
-      });
-    }
+
+    // Décision de rendu (cf #187) + faut-il pré-bufferiser le rush ?
+    const m = post.metadata || {};
+    const isMontage = m.type === 'infographic' || (m.type === 'creator' && !!m.sequences);
+    const montageIsFast = m.hasAudio === false; // FAST = sans musique/voix → WebM aux timestamps cassés
+    const willPlayRenderedDirectly = isMontage && !!m.renderedVideoUrl && !montageIsFast;
+    // Rebuild HTML AVEC rush → on attend le blob complet du rush avant de
+    // démarrer l'auto-play, sinon la 1re lecture de la séquence 'video' tombe
+    // sur un blob incomplet (loader 20s). Loader global "Préparation…" entre-temps.
+    const needsRushPrebuffer = isMontage && !willPlayRenderedDirectly && hasRush;
+    console.log('[Calendar] Aperçu plein écran — décision de rendu:', {
+      type: m.type,
+      hasAudio: m.hasAudio,
+      renderedVideoUrl: m.renderedVideoUrl ? '…' + String(m.renderedVideoUrl).slice(-46) : null,
+      rush: hasRush ? '…' + String(m.rawVideoUrl || m.rushUrls?.[0]).slice(-46) : null,
+      montageIsFast,
+      chemin: willPlayRenderedDirectly
+        ? 'MONTAGE WEBM direct (renderedVideoUrl)'
+        : 'REBUILD HTML (séquences intro/cards/video/cta + rush .mov)',
+      preBufferRush: needsRushPrebuffer,
+    });
+
+    setMontageAutoPlay(!needsRushPrebuffer); // si prebuffer → l'auto-play démarre quand le rush est prêt
+    setPreparingMontage(needsRushPrebuffer);
     setRushBlobUrl(null); // reset — the preload effect re-downloads for this post
     setMontageBlobUrl(null); // reset — the montage preload effect re-downloads for this post
     setMontageProgress(0);
@@ -1388,6 +1397,13 @@ export default function CalendarPage() {
     // React via JSX; every sequence change re-renders and would overwrite a
     // manual vid.src back to the streaming URL — which is exactly what made
     // playback stutter. Storing in state means the JSX renders src={blobUrl}.
+    const t0 = (typeof performance !== 'undefined' ? performance.now() : 0);
+    // Démarre l'auto-play du montage depuis l'intro (lève le loader global de
+    // préparation). Appelé quand le rush est prêt OU en secours (échec/timeout).
+    const releasePrepare = () => {
+      setPreparingMontage(false);
+      setMontageAutoPlay(true);
+    };
     const downloadAsBlob = async () => {
       try {
         console.log('[Calendar] Téléchargement rush en blob URL…', videoSrc.substring(0, 60));
@@ -1396,20 +1412,33 @@ export default function CalendarPage() {
         const blob = await res.blob();
         if (cancelled) return;
         blobUrl = URL.createObjectURL(blob);
-        console.log(`[Calendar] Blob prêt (${(blob.size / 1024 / 1024).toFixed(1)} Mo)`);
+        const secs = t0 ? ((performance.now() - t0) / 1000).toFixed(1) : '?';
+        console.log(`[Calendar] Blob rush prêt (${(blob.size / 1024 / 1024).toFixed(1)} Mo en ${secs}s)`);
         videoPlayableRef.current = true;
         setVideoPlayable(true);
         setRushBlobUrl(blobUrl); // JSX will render <video src={blobUrl}>
+        releasePrepare(); // rush bufferisé → on peut démarrer le montage (1re lecture fluide)
       } catch (err) {
         if (!cancelled) {
           console.warn('[Calendar] Blob download failed, keeping direct src:', err);
-          // Fallback: keep direct streaming src; may stutter but will play.
+          // Anti-gel : ne pas rester bloqué sur le loader global — démarrer le
+          // montage quand même ; la séquence 'video' retombera sur le streaming.
+          releasePrepare();
         }
       }
     };
 
     // Kick off blob download immediately (no setTimeout — every ms counts)
     downloadAsBlob();
+
+    // Filet anti-gel : si le téléchargement n'a ni abouti ni échoué (réseau qui
+    // traîne) au bout de 30s, on lève quand même le loader global de préparation.
+    const prepareTimeout = setTimeout(() => {
+      if (!cancelled) {
+        console.warn('[Calendar] Rush toujours pas prêt après 30s — démarrage du montage (secours)');
+        releasePrepare();
+      }
+    }, 30000);
 
     // Safety: if blob takes > 45s (very large file / slow connection),
     // mark as unplayable so the sequence is skipped rather than showing
@@ -1428,6 +1457,7 @@ export default function CalendarPage() {
     return () => {
       cancelled = true;
       clearTimeout(safetyTimeout);
+      clearTimeout(prepareTimeout);
       if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
       setRushBlobUrl(null); // clear so next post doesn't reuse a revoked URL
     };
@@ -1444,6 +1474,14 @@ export default function CalendarPage() {
     const meta = fullPreviewPost.metadata as Record<string, unknown> | undefined;
     const url = meta?.renderedVideoUrl as string | undefined;
     if (!url) { setMontageBlobUrl(null); return; }
+    // Rebuild HTML (montage FAST hasAudio:false) : le montage WebM n'est PAS
+    // lu (on rejoue le rush live) → ne pas le télécharger, il volait la bande
+    // passante du rush (~22 Mo en parallèle) et ralentissait sa préparation.
+    if (meta?.hasAudio === false) {
+      console.log('[Calendar] Montage blob skippé (rebuild HTML — montage WebM non lu)');
+      setMontageBlobUrl(null);
+      return;
+    }
     let cancelled = false;
     let createdUrl: string | null = null;
     (async () => {
@@ -3110,6 +3148,16 @@ export default function CalendarPage() {
           : fullPreviewPost.title;
         return (
         <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-0 md:p-4" onClick={() => setShowFullPreview(false)}>
+          {/* Loader global pendant la pré-bufferisation du rush (rebuild HTML) —
+              l'auto-play du montage ne démarre que lorsque le rush est prêt, pour
+              que la 1re lecture soit fluide et complète dès l'intro. */}
+          {preparingMontage && (
+            <div className="absolute inset-0 z-[55] flex flex-col items-center justify-center gap-4 bg-black/85 backdrop-blur-sm" onClick={(e) => e.stopPropagation()}>
+              <div className="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+              <span className="text-white/90 text-base font-semibold">Préparation du montage…</span>
+              <span className="text-white/50 text-xs">Téléchargement de la vidéo pour une lecture fluide</span>
+            </div>
+          )}
           {/* Audio caché : toujours utiliser les fichiers audio séparés (musicUrl/voiceUrl) s'ils existent.
               Le renderedVideoUrl peut être un WebM mode rapide SANS audio embarqué.
               Les fichiers musicUrl/voiceUrl sont la source la plus fiable pour l'audio. */}
