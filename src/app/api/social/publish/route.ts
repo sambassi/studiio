@@ -444,7 +444,7 @@ async function publishToYouTube(
         categoryId: '22', // People & Blogs
       },
       status: {
-        privacyStatus: 'private', // Start as private for safety
+        privacyStatus: 'public', // Publier directement en public (validé : YouTube accepte le passage public)
         selfDeclaredMadeForKids: false,
       },
     };
