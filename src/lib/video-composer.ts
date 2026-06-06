@@ -2754,8 +2754,19 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     }
   }
 
-  const hasAudio = !!options.musicBuffer || !!validVoiceBuffer || musicEl !== null || voiceEl !== null || hasAnySeqVoice;
-  console.log('[Composer] Audio — musicBuffer:', !!options.musicBuffer, 'voiceBuffer:', !!validVoiceBuffer, 'musicEl:', !!musicEl, 'voiceEl:', !!voiceEl, 'seqVoices:', hasAnySeqVoice, 'hasAudio:', hasAudio);
+  // Music / voice-over mix sources (the legacy notion of "has audio").
+  const hasMixAudio = !!options.musicBuffer || !!validVoiceBuffer || musicEl !== null || voiceEl !== null || hasAnySeqVoice;
+  // A real rush video (videoEl, NOT a still image — videoImageEl) carries its
+  // own audio track. When it's the ONLY audio source, the legacy detection
+  // stayed false → FAST mode → the recorder captured video frames only → the
+  // montage was SILENT during the 'video' sequence. Treat the rush as an audio
+  // source so we take the REAL-TIME path, which resumes/primes the AudioContext
+  // and routes the rush track (guarded by ctx.state === 'running' below — never
+  // freeze the video, per lessons 2026-06-03). A rush IMAGE or a non-running
+  // context falls back to the unchanged FAST path.
+  const hasRushAudio = !!videoEl;
+  const hasAudio = hasMixAudio || hasRushAudio;
+  console.log('[Composer] Audio — musicBuffer:', !!options.musicBuffer, 'voiceBuffer:', !!validVoiceBuffer, 'musicEl:', !!musicEl, 'voiceEl:', !!voiceEl, 'seqVoices:', hasAnySeqVoice, 'rushAudio:', hasRushAudio, 'hasAudio:', hasAudio);
 
   // Critical check: if poster is needed but failed to load, abort early with clear error
   if (posterUrl && !posterImg) {
@@ -3187,7 +3198,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     // via the keyframe graph below). createMediaElementSource disconnects
     // the element's audio from the default speaker output, which is
     // exactly what MediaRecorder needs.
-    if (videoEl && audioCtx && audioDest) {
+    if (videoEl && audioCtx && audioDest && audioCtx.state === 'running') {
       try {
         // Chromium routes 0 audio samples through createMediaElementSource if
         // the element was muted at routing time (loadVideo defaults to muted
@@ -3197,17 +3208,27 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         videoEl.muted = false;
         const rushSource = audioCtx.createMediaElementSource(videoEl);
         const rushGain = audioCtx.createGain();
-        rushGain.gain.value = options.audioKeyframes?.[0]?.rushVolume ?? 0.5;
+        // No keyframes (rush-only montage) → full volume since there's nothing
+        // to duck against; with a music/voice mix keep the legacy 0.5 default.
+        rushGain.gain.value = options.audioKeyframes?.[0]?.rushVolume ?? (hasMixAudio ? 0.5 : 1.0);
         rushSource.connect(rushGain);
         rushGain.connect(audioDest);
         rushGainNode = rushGain;
-        console.log('[Composer] ✅ Rush audio routed at gain', rushGain.gain.value, '| chain: source→gain→dest | el.muted:', videoEl.muted);
+        console.log('[Composer] ✅ Rush audio routed at gain', rushGain.gain.value, '| chain: source→gain→dest | el.muted:', videoEl.muted, '| ctx.state:', audioCtx.state);
       } catch (err) {
         // InvalidStateError is typical if the element was already tied to
         // another AudioContext (batch reuse). Log and move on — the rush
         // just won't be audible in the output, same as pre-ducking era.
         console.warn('[Composer] ⚠️ Rush audio routing failed — rush will be silent in recording:', err);
       }
+    } else if (videoEl && audioCtx && audioDest) {
+      // RÈGLE ABSOLUE (lessons 2026-06-03, commits a9569e0 / 4ff6401 reverted):
+      // calling createMediaElementSource on a SUSPENDED context makes Chrome
+      // PAUSE the rush element → frozen/blank video. Only route when the context
+      // is guaranteed 'running'. Otherwise leave the rush on its default (muted)
+      // output: the montage still renders correctly, just silent during the
+      // video sequence — never a frozen video.
+      console.warn('[Composer] ⚠️ Rush audio NOT routed — ctx.state is', audioCtx.state, '(not running). Video stays intact, rush silent.');
     }
 
     // Final audio status
@@ -3336,7 +3357,9 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         const outputType = isMP4 ? 'video/mp4' : 'video/webm';
         const blob = new Blob(chunks, { type: outputType });
         console.log('[Composer] ✅ DONE — blob:', (blob.size / 1024 / 1024).toFixed(1), 'MB, type:', outputType, ', chunks:', chunks.length);
-        if (videoEl) videoEl.pause();
+        // No videoEl handling here: a real rush video now always forces the
+        // REAL-TIME path (hasRushAudio), so FAST only ever renders still images
+        // (videoImageEl, drawn via drawFrame) — never a playable rush.
         if (fallbackTimer) clearInterval(fallbackTimer);
         stopTicker();
         document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -3355,9 +3378,6 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       };
 
       void acquireWakeLock();
-
-      // Start video element paused — we'll control seeking
-      if (videoEl) { videoEl.currentTime = 0; videoEl.pause(); }
 
       // ── CRITICAL: draw frame 0 BEFORE starting the recorder ──
       // The canvas must already contain the intro (title, poster, etc.)
@@ -3387,17 +3407,9 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
 
         const t = Math.min(elapsed, totalDuration - 0.001);
 
-        // Manage video element playback
-        if (videoEl) {
-          const videoSeq = sequences.find(s => s.type === 'video');
-          if (videoSeq) {
-            const vs = seqStarts[sequences.indexOf(videoSeq)];
-            const ve = vs + videoSeq.duration;
-            if (t >= vs && t < ve) {
-              if (videoEl.paused) { videoEl.currentTime = Math.max(0, t - vs); videoEl.play().catch((e) => console.warn('[Composer] Video play failed:', e.message)); }
-            } else if (!videoEl.paused) { videoEl.pause(); }
-          }
-        }
+        // No video element playback management in FAST mode: a real rush video
+        // always takes the REAL-TIME path now (so its audio track is captured).
+        // FAST renders still-image backgrounds only, painted by drawFrame.
 
         drawFrame(t);
         // Capture a JPEG thumbnail ~0.5s into the intro — non-blocking.
@@ -3436,6 +3448,24 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // REAL-TIME MODE: With audio → must render in sync with audio
   // ═══════════════════════════════════════════════════════════
   return new Promise<{ video: Blob; thumbnail: Blob | null }>(async (resolve, reject) => {
+    // ── Worker-driven ticker (anti-throttling arrière-plan) ──
+    // Same defense as the FAST loop: a backgrounded tab throttles BOTH
+    // requestAnimationFrame and main-thread setInterval/setTimeout to ~1 Hz.
+    // Whatever sequence is mid-render at that moment (often the rush video,
+    // which plays after intro+cards) then receives only a handful of frames →
+    // it comes out frozen/absent and the timing looks wrong (same bug as
+    // a0b9412). A Web Worker timer is NOT throttled in the background, so we
+    // use it to drive the draw loop at full cadence. Falls back to rAF if the
+    // Worker is unavailable (CSP, etc.).
+    let rtTicker: Worker | null = null;
+    try {
+      const intervalMs = Math.max(8, Math.round(1000 / fps));
+      const tickCode = 'let i=null;onmessage=function(e){if(e.data==="start"){i=setInterval(function(){postMessage(0);},' + intervalMs + ');}else{clearInterval(i);i=null;}};';
+      rtTicker = new Worker(URL.createObjectURL(new Blob([tickCode], { type: 'application/javascript' })));
+    } catch { rtTicker = null; }
+    const stopRtTicker = () => { try { rtTicker?.postMessage('stop'); rtTicker?.terminate(); } catch {} rtTicker = null; };
+    console.log('[Composer] REAL-TIME loop driver:', rtTicker ? 'Web Worker (background-proof)' : 'requestAnimationFrame (fallback)');
+
     recorder.onstop = () => {
       const outputType = isMP4 ? 'video/mp4' : 'video/webm';
       const blob = new Blob(chunks, { type: outputType });
@@ -3446,6 +3476,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       try { musicBufferSource?.stop(); } catch {}
       try { voiceBufferSource?.stop(); } catch {}
       if (videoEl) videoEl.pause();
+      stopRtTicker();
       document.removeEventListener('visibilitychange', onVisibilityChange);
       releaseWakeLock();
       try { document.body.removeChild(canvas); } catch {}
@@ -3457,6 +3488,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
 
     recorder.onerror = (e) => {
       console.error('[Composer] MediaRecorder error:', e);
+      stopRtTicker();
       document.removeEventListener('visibilitychange', onVisibilityChange);
       releaseWakeLock();
       reject(new Error('Recording failed'));
@@ -3631,6 +3663,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       if (elapsed >= totalDuration + 0.3) {
         animStopped = true;
         console.log('[Composer] Rendu terminé, arrêt du recorder');
+        stopRtTicker();
         if (keepAliveInterval) clearInterval(keepAliveInterval);
         if (musicEl) musicEl.pause();
         if (voiceEl) voiceEl.pause();
@@ -3664,12 +3697,21 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         onProgress?.(Math.min(pct, 95), 'Montage vidéo en cours...');
       }
 
-      requestAnimationFrame(doFrame);
+      // When driven by the Worker ticker we do NOT self-schedule via rAF (the
+      // ticker fires the next frame, immune to background throttling). Only
+      // self-chain via rAF when the Worker is unavailable.
+      if (!rtTicker) requestAnimationFrame(doFrame);
     };
+
+    if (rtTicker) {
+      rtTicker.onmessage = () => doFrame();
+      rtTicker.postMessage('start');
+    }
 
     // Watchdog : si rAF est en pause (onglet en arrière-plan), setTimeout prend le relais
     // Chrome met rAF en pause dans les onglets en arrière-plan, ce qui bloque le rendu.
     // Le watchdog vérifie toutes les 2s si rAF a tourné récemment. Sinon, il force un frame.
+    // Filet de sécurité supplémentaire pour le chemin fallback (sans Worker).
     const watchdogInterval = setInterval(() => {
       if (animStopped) { clearInterval(watchdogInterval); return; }
       const timeSinceLastAnim = performance.now() - lastAnimTime;
@@ -3680,7 +3722,9 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       }
     }, 2000);
 
-    // Frame 0 already drawn above (before recorder.start) — just kick off the loop
+    // Frame 0 already drawn above (before recorder.start) — kick off the loop.
+    // The ticker also drives it, but fire once immediately so we never wait a
+    // full interval for the first frame.
     requestAnimationFrame(doFrame);
   });
 }

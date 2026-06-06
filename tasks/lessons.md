@@ -115,6 +115,16 @@ _Fichier à relire à chaque démarrage de session. Appliquer toutes les leçons
 
 ---
 
+## 2026-06-06 — Son du rush absent dans le montage (mode FAST)
+
+- **2026-06-06** | Un montage exporté depuis `/creer` avec un rush vidéo MAIS sans musique/voix sortait MUET pendant la séquence `video`. Cause : `hasAudio` ne comptait que musique/voix/seqVoices, jamais la piste audio du rush → `useFastMode = !hasAudio = true` → `captureStream` vidéo seule → WebM sans piste opus. Le code de routage du rush (`createMediaElementSource(videoEl) → gain → audioDest`) existait déjà mais était mort car il vit dans `if (hasAudio)` qui n'était jamais vrai. | **Règle** : (1) la détection « a-t-on de l'audio » doit inclure TOUTES les sources réellement embarquées dans le fichier final, pas seulement celles ajoutées par l'éditeur — un rush vidéo (`videoEl`, pas une image `videoImageEl`) porte sa propre piste → `hasRushAudio = !!videoEl` doit forcer le chemin TEMPS-RÉEL. (2) Quand on étend une condition `const` dérivée d'un état (ici `videoEl`), TypeScript propage le narrowing : `useFastMode = !hasAudio` a fait inférer `videoEl: never` dans la boucle FAST → 9 erreurs TS révélant que le code rush de la boucle FAST était désormais DEAD CODE. Le bon réflexe : supprimer le code mort (un rush ne peut plus jamais atteindre FAST), pas le caster. Toujours re-typecheck après modif et comparer le COUNT d'erreurs au baseline (`git stash` avant/après).
+
+- **2026-06-06** | Rappel du piège déjà payé 2× (a9569e0 / 4ff6401 revertés via 1b52725) : `createMediaElementSource(videoEl)` sur un `AudioContext` SUSPENDU met Chrome en PAUSE sur l'élément → vidéo figée/absente. | **Règle** : ne JAMAIS router l'audio d'un `<video>` tant que `audioCtx.state !== 'running'`. Garder explicitement `if (videoEl && audioCtx && audioDest && audioCtx.state === 'running')`, sinon fallback log + rush muet (vidéo intacte) — jamais geler la vidéo. Le `else if` sans le check d'état sert à logguer la raison.
+
+- **2026-06-06** | Le ticker Web Worker anti-throttling (onglet arrière-plan) n'était appliqué qu'à la boucle FAST. La boucle TEMPS-RÉEL ne s'appuyait que sur rAF + un watchdog `setInterval(2s)` — or `setInterval` du thread principal est AUSSI throttlé en arrière-plan (~1 Hz, voire 1/min après 5 min). Avec le rush qui passe maintenant par TEMPS-RÉEL, ça re-cassait le rendu vidéo (même bug que a0b9412). | **Règle** : tout chemin de rendu MediaRecorder piloté par une boucle de dessin doit utiliser le ticker Web Worker (immunisé au throttling) comme driver principal, rAF seulement en fallback si le Worker est indisponible. Penser à `stopTicker()` dans TOUS les chemins de sortie (onstop, onerror, fin de boucle).
+
+---
+
 ## Pré-merge : checklist obligatoire
 
 À cocher MENTALEMENT avant chaque merge (et écrire dans le PR body si non trivial) :
