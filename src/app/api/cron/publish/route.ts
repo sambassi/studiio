@@ -920,7 +920,7 @@ async function publishToYouTube(
         categoryId: '22',
       },
       status: {
-        privacyStatus: 'private',
+        privacyStatus: 'public', // Publier directement en public (validé : YouTube accepte le passage public)
         selfDeclaredMadeForKids: false,
       },
     };
