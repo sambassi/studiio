@@ -124,11 +124,14 @@ export async function POST(req: NextRequest) {
       // on laissera HeyGen trancher, avec son message reel desormais visible.
     }
 
-    // 2. Voix — jamais de voice_id vide (cause probable des 400 HeyGen).
+    // 2. Voix — OBLIGATOIRE. HeyGen l'a confirme explicitement :
+    //    "voice_id is required: this avatar has no default voice configured".
+    //    resolveVoiceId() garantit une valeur (liste HeyGen, puis env, puis
+    //    constante documentee).
     const resolvedVoiceId = await resolveVoiceId(voiceId);
-    if (!resolvedVoiceId) {
-      console.warn('[Avatar] Aucune voix resolue — generation tentee sans voice_id');
-    }
+    console.log(
+      `[Avatar][HeyGen] Requete a envoyer — avatar_id=${avatarRow.provider_avatar_id} voice_id=${resolvedVoiceId} ratio=${aspectRatio} script=${script.length} car.`,
+    );
 
     // 3. Solde
     const credits = await getUserCredits(userId);
@@ -162,7 +165,7 @@ export async function POST(req: NextRequest) {
         user_avatar_id: avatarRow.id,
         provider_video_id: videoId,
         script,
-        voice_id: resolvedVoiceId ?? null,
+        voice_id: resolvedVoiceId,
         aspect_ratio: aspectRatio,
         status: status === 'completed' ? 'processing' : 'pending',
         credits_charged: AVATAR_VIDEO_COST,

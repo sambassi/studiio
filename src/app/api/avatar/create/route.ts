@@ -44,14 +44,22 @@ export async function GET() {
     // voix par defaut. L'UI ne doit jamais proposer un choix "vide" : un
     // voice_id absent ou vide fait echouer /v3/videos en 400.
     const allVoices = await listVoices();
-    const voices = allVoices
-      .filter((v) => {
-        const lang = (v.language || '').toLowerCase();
-        return !lang || lang.startsWith('fr') || lang.startsWith('en');
-      })
-      .slice(0, 60);
+
+    const rank = (v: { language?: string }) => {
+      const l = (v.language || '').toLowerCase();
+      if (l.startsWith('fr') || l.includes('french')) return 0;
+      if (l.startsWith('en') || l.includes('english')) return 1;
+      return 2;
+    };
+
+    // Voix francaises en tete, puis anglaises, puis le reste : l'utilisateur
+    // trouve immediatement une voix pertinente dans le selecteur.
+    const voices = [...allVoices].sort((a, b) => rank(a) - rank(b)).slice(0, 80);
 
     const defaultVoiceId = pickDefaultVoice(voices)?.voiceId ?? null;
+    console.log(
+      `[Avatar][HeyGen] ${allVoices.length} voix chargees, ${voices.length} exposees, defaut=${defaultVoiceId ?? 'aucun'}`,
+    );
 
     return NextResponse.json({ success: true, data: { avatar, voices, defaultVoiceId } });
   } catch (error) {
