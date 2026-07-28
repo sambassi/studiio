@@ -638,8 +638,36 @@ export default function AssistantWizard() {
           // police de repli et le rendu diverge de l'écran.
           try { await (document as unknown as { fonts?: FontFaceSet }).fonts?.ready; } catch { /* ignore */ }
           const videoW = isReel ? 1080 : 1920;
-          const scale = videoW / (previewEl.offsetWidth || (isReel ? 320 : 512));
+          const baseScale = videoW / (previewEl.offsetWidth || (isReel ? 320 : 512));
+
+          // ── Surechantillonnage ────────────────────────────────────────
+          // A `baseScale`, le raster fait exactement la taille de destination
+          // dans la video : le texte des cartes, mis en page a 9 px CSS, est
+          // rasterise a ~29 px et ressort flou.
+          //
+          // On capture donc a SUPERSAMPLE fois la resolution utile et on
+          // laisse le canvas reduire — le compositeur dessine le snapshot
+          // dans les bornes de `cardsSnapshotRect`, jamais a sa taille
+          // naturelle, donc une source plus grande ne change QUE la nettete.
+          //
+          // Pourquoi pas rendre les cartes hors-ecran a la taille cible
+          // (~970 px) : la mise en page changerait. Le `truncate` des
+          // libelles et les retours a la ligne dependent de la largeur, donc
+          // la video ne correspondrait plus a l'apercu — ce serait perdre la
+          // parite que le snapshot sert justement a garantir.
+          const SUPERSAMPLE = 3;
+          // Garde-fou memoire : Chrome plafonne les dimensions de canvas.
+          // On rabaisse le facteur plutot que de produire un canvas vide.
+          const MAX_DIM = 8192;
+          const maxByWidth = MAX_DIM / Math.max(1, cardsEl.offsetWidth * baseScale);
+          const maxByHeight = MAX_DIM / Math.max(1, cardsEl.offsetHeight * baseScale);
+          const ss = Math.max(1, Math.min(SUPERSAMPLE, maxByWidth, maxByHeight));
+          const scale = baseScale * ss;
+
           const canvas = await domToCanvas(cardsEl, { backgroundColor: undefined, scale });
+          console.log(
+            `[Assistant] Capture cartes ${canvas.width}x${canvas.height} (base x${baseScale.toFixed(2)}, surechantillonnage x${ss.toFixed(2)})`,
+          );
           const img = new Image();
           img.src = canvas.toDataURL('image/png');
           // onerror ET timeout : sans eux, une data URL qui ne se décode pas

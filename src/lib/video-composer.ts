@@ -1424,7 +1424,17 @@ function drawCards(
       const drawH = (rect.height / 100) * h;
       // eslint-disable-next-line no-console
       console.log('[Composer] Drawing cards from SNAPSHOT (rect)', snap.width, 'x', snap.height, '→', drawX, drawY, drawW, drawH);
+      // Le snapshot peut etre surechantillonne (capture a plusieurs fois la
+      // taille de destination pour que le texte des cartes soit net). Sans
+      // `imageSmoothingQuality = 'high'`, Chrome reduit en qualite « low » et
+      // crenelle le texte, ce qui annulerait le benefice.
+      // save/restore : le reglage ne fuit pas sur le reste du dessin, et un
+      // snapshot deja a l'echelle 1:1 n'est pas affecte.
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(snap, drawX, drawY, drawW, drawH);
+      ctx.restore();
       return;
     }
     const snapW = snap.width;
