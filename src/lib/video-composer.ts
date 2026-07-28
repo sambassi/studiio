@@ -1148,7 +1148,9 @@ function drawIntro(
     ctx.restore();
     // Restore main text style (save/restore already restored filter, but reset explicitly)
     ctx.textBaseline = 'top';
-    ctx.font = `${fontStyle}${fontWeight} ${fontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
+    // `titleAlign` et non 'center' en dur : sinon un titre aligne a gauche AVEC
+    // calque duplique aurait le fantome a gauche et le texte principal centre.
+    ctx.font = `${fontStyle}${fontWeight} ${fontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = titleAlign;
     ctx.fillStyle = hexToRgba(titleColor, titleAlpha);
     ctx.filter = dropShadowLgFilter(w);
   }

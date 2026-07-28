@@ -134,12 +134,34 @@ const DESIGN = {
   /** Largeur du bloc de titre, en % de la largeur totale. */
   titleWidth: 84,
   titleColor: '#FFFFFF',
-  /** CTA : bas-centre. C'est déjà le défaut du compositeur, on l'écrit quand même. */
+  /** CTA : bas-centre. Le defaut du compositeur est y=97 ; on fixe 92. */
   ctaPos: { x: 50, y: 92 },
   ctaWidth: 70,
   ctaColor: '#FFFFFF',
   gradientOpacity: 0.5,
+  /**
+   * Police. Sans ce champ le compositeur retombe sur 'sans-serif' (Helvetica)
+   * alors que l'aperçu et le snapshot des cartes sont en Inter — titre et CTA
+   * n'auraient pas la même fonte que les cartes dans la vidéo.
+   * 'Inter' fait partie des familles que le compositeur charge (document.fonts).
+   */
+  font: 'Inter',
 } as const;
+
+/**
+ * Tailles de police, exprimées en POURCENTAGE DE LA LARGEUR — exactement la
+ * convention du compositeur (`w * 0.04375`, etc.). L'aperçu les applique en
+ * `cqw` (unités de conteneur), donc les proportions coïncident quelle que soit
+ * la largeur d'affichage.
+ */
+const FONT_PCT = {
+  '9:16': { title: 4.375, subtitle: 2.8, cta: 3.75, ctaSub: 2.8 },
+  '16:9': { title: 3.5, subtitle: 2.15, cta: 3.1, ctaSub: 2.3 },
+} as const;
+
+/** Reproduit `dropShadowLgFilter` du compositeur (échelle w/320). */
+const TITLE_SHADOW =
+  'drop-shadow(0 0.0125em 0.0094em rgba(0,0,0,0.1)) drop-shadow(0 0.031em 0.025em rgba(0,0,0,0.04))';
 
 /**
  * Angle CSS reproduisant `createLinearGradient(0, 0, w, h)` du compositeur.
@@ -232,18 +254,26 @@ function Preview({
         </span>
       </div>
 
+      {/* `containerType: 'size'` active les unites `cqw` : 1cqw = 1 % de la
+          largeur du cadre. Les tailles de police sont donc exprimees dans la
+          meme unite que le compositeur (% de la largeur du canvas), et les
+          proportions restent exactes quelle que soit la taille d'affichage.
+          Aucun padding fixe : les insets sont en %, sinon les positions
+          divergeraient du compositeur des que la fenetre change de largeur. */}
       <div
         ref={previewRef}
-        className="w-full rounded-xl overflow-hidden flex flex-col justify-between p-4 gap-3"
+        className="w-full rounded-xl overflow-hidden relative"
         style={{
           aspectRatio: format === '9:16' ? '9 / 16' : '16 / 9',
+          containerType: 'size',
           // Fond STRICTEMENT identique a celui peint par le compositeur.
           background: generated ? backdropCSS(format) : DARK,
           border: generated ? 'none' : '1px dashed #1F2937',
+          fontFamily: DESIGN.font,
         }}
       >
         {!generated ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center px-2">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center px-2">
             <MonitorPlay className="w-8 h-8 text-gray-700" />
             <p className="text-xs text-gray-600 leading-relaxed">
               Votre visuel s&apos;affichera ici
@@ -253,24 +283,39 @@ function Preview({
           </div>
         ) : (
           <>
-            {/* Titre — haut-gauche, aligne a gauche. Le compositeur recoit
-                titleAlign:'left' + titlePosition {x:8,y:8} pour reproduire
-                exactement cet ancrage. Le sous-titre reprend titleColor a
-                80 % d'opacite, comme le fait drawIntro. */}
-            <div style={{ textAlign: 'left', width: `${DESIGN.titleWidth}%` }}>
+            {/* Titre — ancre au bord GAUCHE (x) et au bord HAUT (y), comme
+                drawIntro avec titleAlign:'left' et textBaseline:'top'.
+                Graisse 900 et ombre : le compositeur les applique en dur. */}
+            <div
+              style={{
+                position: 'absolute',
+                left: `${DESIGN.titlePos.x}%`,
+                top: `${DESIGN.titlePos.y}%`,
+                width: `${DESIGN.titleWidth}%`,
+                textAlign: 'left',
+              }}
+            >
               <div
-                className="font-extrabold uppercase leading-tight"
+                className="uppercase"
                 style={{
-                  fontSize: format === '9:16' ? '1.05rem' : '0.95rem',
+                  fontSize: `${FONT_PCT[format].title}cqw`,
+                  fontWeight: 900,
                   color: DESIGN.titleColor,
                   lineHeight: 1.1,
+                  filter: TITLE_SHADOW,
                 }}
               >
                 {generated.title}
               </div>
               <div
-                className="text-[10px] mt-1 leading-snug"
-                style={{ color: `${DESIGN.titleColor}CC` }}
+                style={{
+                  fontSize: `${FONT_PCT[format].subtitle}cqw`,
+                  fontWeight: 900,
+                  // drawIntro dessine le sous-titre en titleColor a 80 %
+                  color: `${DESIGN.titleColor}CC`,
+                  lineHeight: 1.1,
+                  marginTop: '1.25%',
+                }}
               >
                 {generated.subtitle}
               </div>
@@ -283,7 +328,8 @@ function Preview({
             <div
               ref={cardsRef}
               data-cards-grid
-              className="flex-1 flex flex-col justify-center gap-1.5 min-h-0 overflow-hidden"
+              className="absolute flex flex-col justify-center gap-1.5"
+              style={{ left: '8%', right: '8%', top: '30%', bottom: '22%' }}
             >
               {generated.cards.map((c, i) => (
                 <div
@@ -307,18 +353,41 @@ function Preview({
               ))}
             </div>
 
-            {/* CTA — bas-centre, comme drawCTA (watermarkPosition ancre par le bas) */}
+            {/* CTA — ancre par le BAS a ctaPos.y, centre horizontalement :
+                drawCTA fait `curY = ctaPosY - blockH`, donc y designe le bas
+                du bloc. Graisse 900 en dur cote compositeur. */}
             <div
-              className="text-center mx-auto"
-              style={{ width: `${DESIGN.ctaWidth}%` }}
+              style={{
+                position: 'absolute',
+                left: '50%',
+                top: `${DESIGN.ctaPos.y}%`,
+                transform: 'translate(-50%, -100%)',
+                width: `${DESIGN.ctaWidth}%`,
+                textAlign: 'center',
+              }}
             >
               <div
-                className="text-[11px] font-extrabold uppercase"
-                style={{ color: DESIGN.ctaColor }}
+                className="uppercase"
+                style={{
+                  fontSize: `${FONT_PCT[format].cta}cqw`,
+                  fontWeight: 900,
+                  color: DESIGN.ctaColor,
+                  lineHeight: 1.2,
+                  textShadow: `0 0 2cqw ${DESIGN.ctaColor}66`,
+                }}
               >
                 {generated.cta}
               </div>
-              <div className="text-[8px] font-bold uppercase" style={{ color: GRADIENT_END }}>
+              <div
+                className="uppercase"
+                style={{
+                  fontSize: `${FONT_PCT[format].ctaSub}cqw`,
+                  fontWeight: 900,
+                  color: GRADIENT_END,
+                  lineHeight: 1.2,
+                  marginTop: '1.25%',
+                }}
+              >
                 {generated.ctaSub}
               </div>
             </div>
@@ -539,6 +608,8 @@ export default function AssistantWizard() {
         watermarkText: generated.cta,
         design: {
           cardStyle: CARD_STYLE,
+          // Sans ce champ : titre et CTA en Helvetica, cartes en Inter.
+          font: DESIGN.font,
 
           // ── Fond ──────────────────────────────────────────────────────
           gradientColor1: ACCENT,
@@ -550,6 +621,7 @@ export default function AssistantWizard() {
 
           // ── Titre : haut-gauche ───────────────────────────────────────
           titleAlign: 'left' as const,
+          titleFont: DESIGN.font,
           titlePosition: { x: DESIGN.titlePos.x, y: DESIGN.titlePos.y },
           titleSize: DESIGN.titleWidth,
           titleColor: DESIGN.titleColor,
@@ -616,12 +688,16 @@ export default function AssistantWizard() {
           accentColor: ACCENT,
           ctaText: generated.cta,
           ctaSubText: generated.ctaSub,
-          watermarkText: 'AFROBOOST',
+          watermarkText: generated.cta,
           borderEnabled: false,
           borderColor: null,
         },
         design: {
           cardStyle: CARD_STYLE,
+          font: DESIGN.font,
+          // Persiste pour que le Calendrier (apercu HTML et regeneration)
+          // ancre le titre a GAUCHE comme la video, et non centre sur x=8%.
+          titleAlign: 'left',
           titleColor: DESIGN.titleColor,
           ctaColor: DESIGN.ctaColor,
           ctaSubColor: GRADIENT_END,
