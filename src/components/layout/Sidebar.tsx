@@ -4,13 +4,14 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { LayoutDashboard, Zap, Library, Share2, Calendar, Shield, Settings, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Zap, Library, Share2, Calendar, Shield, Settings, Menu, X, UserSquare2 } from 'lucide-react';
 import { useTranslations } from '@/i18n/client';
 import { LanguageSelector } from '@/components/LanguageSelector';
 
 const menuKeys = [
   { icon: LayoutDashboard, key: 'dashboard', href: '/dashboard', color: '#7C3AED' },
   { icon: Zap, key: 'create', href: '/dashboard/creer', color: '#F59E0B' },
+  { icon: UserSquare2, key: 'avatar', href: '/dashboard/avatar', color: '#EC4899' },
   { icon: Calendar, key: 'calendar', href: '/dashboard/calendar', color: '#3B82F6' },
   { icon: Library, key: 'library', href: '/dashboard/library', color: '#8B5CF6' },
   { icon: Share2, key: 'social', href: '/dashboard/social', color: '#06B6D4' },
