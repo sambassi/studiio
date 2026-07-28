@@ -362,8 +362,8 @@ export default function AvatarPage() {
           <div>
             <h2 className="font-semibold mb-1">1. À partir de quoi ?</h2>
             <p className="text-sm text-gray-400">
-              La vidéo donne un rendu nettement plus réaliste, mais demande un entraînement de
-              plusieurs minutes.
+              Créez votre avatar à partir d’une photo. L’avatar vidéo (rendu encore plus réaliste)
+              arrive bientôt.
             </p>
           </div>
 
@@ -375,25 +375,36 @@ export default function AvatarPage() {
                 Icon: ImageIcon,
                 title: 'À partir d’une photo',
                 sub: 'Prêt en quelques minutes',
+                soon: false,
               },
               {
                 id: 'video' as const,
                 Icon: Clapperboard,
                 title: 'À partir d’une vidéo',
                 sub: 'Plus réaliste, entraînement plus long',
+                soon: true,
               },
-            ]).map(({ id, Icon, title, sub }) => (
+            ]).map(({ id, Icon, title, sub, soon }) => (
               <button
                 key={id}
-                onClick={() => selectKind(id)}
-                className={`rounded-xl p-4 text-left transition ${
-                  kind === id
-                    ? 'bg-purple-600/20 ring-1 ring-purple-500/50'
-                    : 'bg-gray-900/60 hover:bg-gray-800/70'
+                onClick={() => !soon && selectKind(id)}
+                disabled={soon}
+                aria-disabled={soon}
+                className={`relative rounded-xl p-4 text-left transition ${
+                  soon
+                    ? 'bg-gray-900/40 opacity-60 cursor-not-allowed'
+                    : kind === id
+                      ? 'bg-purple-600/20 ring-1 ring-purple-500/50'
+                      : 'bg-gray-900/60 hover:bg-gray-800/70'
                 }`}
               >
+                {soon && (
+                  <span className="absolute top-2 right-2 rounded-full bg-purple-500/20 text-purple-200 text-[10px] font-semibold px-2 py-0.5 ring-1 ring-purple-500/40">
+                    Bientôt disponible
+                  </span>
+                )}
                 <Icon
-                  className={`w-5 h-5 mb-2 ${kind === id ? 'text-purple-300' : 'text-gray-400'}`}
+                  className={`w-5 h-5 mb-2 ${kind === id && !soon ? 'text-purple-300' : 'text-gray-400'}`}
                 />
                 <div className="text-sm font-medium">{title}</div>
                 <div className="text-xs text-gray-500 mt-0.5">{sub}</div>
