@@ -9,16 +9,41 @@ export interface BrandingSettings {
   ctaText: string;
   ctaSubText: string;
   accentColor: string;
+  /** Debut du degrade de fond. Kit de marque (F7). */
+  gradientColor1: string;
+  /** Fin du degrade de fond. */
+  gradientColor2: string;
+  /** Opacite du calque de degrade, 0 a 1. */
+  gradientOpacity: number;
 }
 
+/**
+ * Defauts NEUTRES studiio.pro.
+ *
+ * `accentColor` valait `#D91CD2` — le magenta d'Afroboost. Le produit demande
+ * un defaut neutre : violet #7C3AED / rose #EC4899, les couleurs de la charte
+ * studiio.pro (cf. CLAUDE.md, Conventions de code).
+ *
+ * ⚠️ Portee du changement : ce defaut ne s'applique qu'aux comptes dont le
+ * localStorage `studiio_branding` est VIDE, c'est-a-dire qui n'ont jamais
+ * ouvert Reglages -> Branding. Toute valeur deja enregistree l'emporte
+ * (merge `{ ...DEFAULT_BRANDING, ...parsed }`), et aucun post existant n'est
+ * affecte : ils portent leurs couleurs dans `metadata.design`.
+ */
 const DEFAULT_BRANDING: BrandingSettings = {
   watermarkText: '',
-  borderColor: '#D91CD2',
+  borderColor: '#7C3AED',
   borderEnabled: false,
   ctaText: 'CHAT POUR PLUS D\'INFOS',
   ctaSubText: 'LIEN EN BIO',
-  accentColor: '#D91CD2',
+  accentColor: '#7C3AED',
+  gradientColor1: '#7C3AED',
+  gradientColor2: '#EC4899',
+  gradientOpacity: 0.5,
 };
+
+/** Reexporte pour que les consommateurs partagent le meme repli neutre. */
+export const NEUTRAL_BRANDING = DEFAULT_BRANDING;
 
 const STORAGE_KEY = 'studiio_branding';
 

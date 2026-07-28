@@ -22,6 +22,7 @@ import {
 import { generateSmartContent } from '@/lib/smart-content';
 import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
 import { CardIcon } from '@/components/ui/CardIcon';
+import { useBranding } from '@/lib/hooks/useBranding';
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { Card, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -114,8 +115,13 @@ const TONES: Array<{
   },
 ];
 
-const ACCENT = '#7C3AED';
-const GRADIENT_END = '#EC4899';
+/**
+ * Repli NEUTRE studiio.pro, utilise tant que l'utilisateur n'a pas configure
+ * son kit de marque (Reglages -> Branding). Ce ne sont pas les couleurs
+ * d'Afroboost : la charte du produit est violet #7C3AED / rose #EC4899.
+ */
+const NEUTRAL_ACCENT = '#7C3AED';
+const NEUTRAL_GRADIENT_END = '#EC4899';
 const DARK = '#0A0A0F';
 
 /**
@@ -222,15 +228,20 @@ function backdropAngle(format: Format): number {
  * de repeindre le fond de TOUS les posts existants), c'est l'aperçu qui
  * s'aligne sur le compositeur.
  */
-function backdropCSS(format: Format): string {
-  const a = DESIGN.gradientOpacity;
+function backdropCSS(
+  format: Format,
+  gradStart: string,
+  gradEnd: string,
+  gradientOpacity: number,
+): string {
+  const a = gradientOpacity;
   const rgba = (hex: string, alpha: number) => {
     const n = parseInt(hex.slice(1), 16);
     return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
   };
   return [
-    `linear-gradient(180deg, ${rgba(ACCENT, a)} 0%, rgba(0,0,0,0) 40%, rgba(0,0,0,0) 60%, ${rgba(GRADIENT_END, a)} 100%)`,
-    `linear-gradient(${backdropAngle(format).toFixed(2)}deg, ${ACCENT} 0%, ${GRADIENT_END} 100%)`,
+    `linear-gradient(180deg, ${rgba(gradStart, a)} 0%, rgba(0,0,0,0) 40%, rgba(0,0,0,0) 60%, ${rgba(gradEnd, a)} 100%)`,
+    `linear-gradient(${backdropAngle(format).toFixed(2)}deg, ${gradStart} 0%, ${gradEnd} 100%)`,
   ].join(', ');
 }
 
@@ -275,11 +286,18 @@ function Preview({
   previewRef,
   cardsRef,
   activeOrder,
+  gradStart,
+  gradEnd,
+  gradientOpacity,
 }: {
   generated: Generated | null;
   format: Format;
   previewRef?: React.RefObject<HTMLDivElement>;
   cardsRef?: React.RefObject<HTMLDivElement>;
+  /** Couleurs issues du kit de marque, ou repli neutre. */
+  gradStart: string;
+  gradEnd: string;
+  gradientOpacity: number;
   /**
    * Sequences activees, dans l'ordre choisi. L'apercu est une composition
    * fixe (les 3 blocs empiles) alors que la video les joue l'une apres
@@ -310,7 +328,7 @@ function Preview({
           aspectRatio: format === '9:16' ? '9 / 16' : '16 / 9',
           containerType: 'size',
           // Fond STRICTEMENT identique a celui peint par le compositeur.
-          background: generated ? backdropCSS(format) : DARK,
+          background: generated ? backdropCSS(format, gradStart, gradEnd, gradientOpacity) : DARK,
           border: generated ? 'none' : '1px dashed #1F2937',
           // `var(--font-inter)` est la SEULE reference valide : Next charge la
           // police via next/font, il n'existe aucune @font-face nommee 'Inter'.
@@ -396,7 +414,7 @@ function Preview({
                   {c.value && (
                     <span
                       className="text-[9px] font-bold flex-shrink-0"
-                      style={{ color: GRADIENT_END }}
+                      style={{ color: gradEnd }}
                     >
                       {c.value}
                     </span>
@@ -436,7 +454,7 @@ function Preview({
                 style={{
                   fontSize: `${FONT_PCT[format].ctaSub}cqw`,
                   fontWeight: 900,
-                  color: GRADIENT_END,
+                  color: gradEnd,
                   lineHeight: 1.2,
                   marginTop: '1.25cqw',
                 }}
@@ -459,6 +477,17 @@ function Preview({
 }
 
 export default function AssistantWizard() {
+  // Kit de marque (F7). `useBranding` fournit deja des defauts neutres ; les
+  // `||` couvrent une valeur vide heritee d'un ancien enregistrement.
+  const { branding } = useBranding();
+  const accent = branding.accentColor || NEUTRAL_ACCENT;
+  // Le kit distingue la couleur d'accent (bordures, icones) du DEBUT du
+  // degrade de fond. Ils valent la meme chose par defaut, mais l'utilisateur
+  // peut les dissocier.
+  const gradStart = branding.gradientColor1 || accent;
+  const gradEnd = branding.gradientColor2 || NEUTRAL_GRADIENT_END;
+  const gradientOpacity =
+    typeof branding.gradientOpacity === 'number' ? branding.gradientOpacity : DESIGN.gradientOpacity;
   const [started, setStarted] = useState(false);
   const [step, setStep] = useState(0);
 
@@ -709,7 +738,7 @@ export default function AssistantWizard() {
           label: c.title,
           value: c.value,
           description: c.description,
-          color: ACCENT,
+          color: accent,
         })),
       );
       const composed = await composeAndUpload({
@@ -729,7 +758,7 @@ export default function AssistantWizard() {
         videoDuration: 0,
         ctaDuration: activeOrder.includes('cta') ? SEQ.cta : 0,
         sequenceOrder: activeOrder,
-        accentColor: ACCENT,
+        accentColor: accent,
         // drawCTA lit `design.ctaMainText || watermarkText || 'AFROBOOST'` :
         // ces deux options seules ne suffisent pas, d'ou les champs `design`
         // ci-dessous. Sans eux la video affichait « AFROBOOST » en gros.
@@ -742,9 +771,9 @@ export default function AssistantWizard() {
           font: DESIGN.font,
 
           // ── Fond ──────────────────────────────────────────────────────
-          gradientColor1: ACCENT,
-          gradientColor2: GRADIENT_END,
-          gradientOpacity: DESIGN.gradientOpacity,
+          gradientColor1: gradStart,
+          gradientColor2: gradEnd,
+          gradientOpacity,
           // Aucune sequence en noir plein, et pas d'affiche : le backdrop
           // degrade est peint partout, exactement comme dans l'apercu.
           noColorSequences: [],
@@ -764,7 +793,7 @@ export default function AssistantWizard() {
           watermarkPosition: { x: DESIGN.ctaPos.x, y: DESIGN.ctaPos.y },
           watermarkSize: DESIGN.ctaWidth,
           ctaColor: DESIGN.ctaColor,
-          ctaSubColor: GRADIENT_END,
+          ctaSubColor: gradEnd,
 
           // ── Cartes : image de l'apercu, blittee telle quelle ──────────
           cardsSnapshot,
@@ -800,7 +829,7 @@ export default function AssistantWizard() {
           label: c.title,
           value: c.value,
           description: c.description,
-          color: ACCENT,
+          color: accent,
         })),
         hasAudio: false,
         renderedVideoUrl: composed.url,
@@ -817,7 +846,7 @@ export default function AssistantWizard() {
           order: activeOrder,
         },
         branding: {
-          accentColor: ACCENT,
+          accentColor: accent,
           ctaText: generated.cta,
           ctaSubText: generated.ctaSub,
           watermarkText: generated.cta,
@@ -832,12 +861,12 @@ export default function AssistantWizard() {
           titleAlign: 'left',
           titleColor: DESIGN.titleColor,
           ctaColor: DESIGN.ctaColor,
-          ctaSubColor: GRADIENT_END,
+          ctaSubColor: gradEnd,
           ctaMainText: generated.cta,
           ctaSubText: generated.ctaSub,
-          gradientColor1: ACCENT,
-          gradientColor2: GRADIENT_END,
-          gradientOpacity: DESIGN.gradientOpacity,
+          gradientColor1: gradStart,
+          gradientColor2: gradEnd,
+          gradientOpacity,
           noColorSequences: [],
           // Le Calendrier lit les positions sous `positions.*` (imbrique),
           // la ou le compositeur attend des cles a plat. On ecrit la forme
@@ -939,7 +968,7 @@ export default function AssistantWizard() {
               <div className="flex items-start gap-4">
                 <div
                   className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ backgroundColor: `${ACCENT}26`, color: '#C4B5FD' }}
+                  style={{ backgroundColor: `${accent}26`, color: '#C4B5FD' }}
                 >
                   <Wand2 className="w-5 h-5" />
                 </div>
@@ -972,9 +1001,9 @@ export default function AssistantWizard() {
                     <span
                       className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
                       style={{
-                        backgroundColor: `${ACCENT}33`,
+                        backgroundColor: `${accent}33`,
                         color: '#DDD6FE',
-                        boxShadow: `inset 0 0 0 1px ${ACCENT}66`,
+                        boxShadow: `inset 0 0 0 1px ${accent}66`,
                       }}
                     >
                       Pro
@@ -1006,7 +1035,7 @@ export default function AssistantWizard() {
                       className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
                       style={
                         i <= step
-                          ? { backgroundColor: ACCENT, color: '#fff' }
+                          ? { backgroundColor: accent, color: '#fff' }
                           : { backgroundColor: '#1F2937', color: '#6B7280' }
                       }
                     >
@@ -1021,7 +1050,7 @@ export default function AssistantWizard() {
                   {i < STEPS.length - 1 && (
                     <div
                       className="h-px flex-1 min-w-2"
-                      style={{ backgroundColor: i < step ? ACCENT : '#1F2937' }}
+                      style={{ backgroundColor: i < step ? accent : '#1F2937' }}
                     />
                   )}
                 </div>
@@ -1179,7 +1208,7 @@ export default function AssistantWizard() {
                             className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
                             style={
                               seq.enabled
-                                ? { backgroundColor: ACCENT, color: '#fff' }
+                                ? { backgroundColor: accent, color: '#fff' }
                                 : { backgroundColor: '#1F2937', color: '#6B7280' }
                             }
                           >
@@ -1290,7 +1319,7 @@ export default function AssistantWizard() {
                           {c.value && (
                             <span
                               className="text-xs font-bold flex-shrink-0"
-                              style={{ color: GRADIENT_END }}
+                              style={{ color: gradEnd }}
                             >
                               {c.value}
                             </span>
@@ -1304,7 +1333,7 @@ export default function AssistantWizard() {
                         Appel à l&apos;action
                       </div>
                       <div className="text-sm font-bold">{generated.cta}</div>
-                      <div className="text-xs" style={{ color: GRADIENT_END }}>
+                      <div className="text-xs" style={{ color: gradEnd }}>
                         {generated.ctaSub}
                       </div>
                     </div>
@@ -1440,7 +1469,7 @@ export default function AssistantWizard() {
                               className="h-full rounded-full"
                               style={{
                                 width: `${renderProgress}%`,
-                                background: `linear-gradient(90deg, ${ACCENT} 0%, ${GRADIENT_END} 100%)`,
+                                background: `linear-gradient(90deg, ${accent} 0%, ${gradEnd} 100%)`,
                                 transition: 'width 300ms ease-out',
                               }}
                             />
@@ -1472,6 +1501,9 @@ export default function AssistantWizard() {
           previewRef={previewRef}
           cardsRef={cardsRef}
           activeOrder={activeOrder}
+          gradStart={gradStart}
+          gradEnd={gradEnd}
+          gradientOpacity={gradientOpacity}
         />
       </div>
     </div>

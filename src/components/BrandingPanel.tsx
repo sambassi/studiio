@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { type BrandingSettings } from '@/lib/hooks/useBranding';
+import ColorWheel from '@/components/ui/ColorWheel';
 import { useTranslations } from '@/i18n/client';
 
 interface BrandingPanelProps {
@@ -129,13 +130,61 @@ export default function BrandingPanel({ branding, onChange, compact = false }: B
               style={{ backgroundColor: color }}
             />
           ))}
-          <input
-            type="color"
-            value={branding.accentColor}
-            onChange={(e) => onChange({ accentColor: e.target.value })}
-            className="w-7 h-7 rounded cursor-pointer bg-transparent border-0"
+        </div>
+        {/* ColorWheel remplace l'`input type="color"` natif : meme composant
+            que l'editeur (roue + saisie hexa), donc un seul vocabulaire de
+            selection de couleur dans toute l'app. Les pastilles de preselection
+            ci-dessus sont conservees. */}
+        <div className="mt-2">
+          <ColorWheel
+            color={branding.accentColor}
+            onChange={(c) => onChange({ accentColor: c })}
           />
         </div>
+      </div>
+
+      {/* Degrade de fond — kit de marque (F7) */}
+      <div>
+        <label className="block text-xs font-semibold text-gray-400 mb-1.5">
+          Dégradé de fond
+        </label>
+        <p className="text-[11px] text-gray-500 mb-2">
+          Appliqué au fond de vos créations. Par défaut, les couleurs studiio.pro.
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <ColorWheel
+            label="Début"
+            color={branding.gradientColor1}
+            onChange={(c) => onChange({ gradientColor1: c })}
+          />
+          <ColorWheel
+            label="Fin"
+            color={branding.gradientColor2}
+            onChange={(c) => onChange({ gradientColor2: c })}
+          />
+        </div>
+
+        <div className="mt-3">
+          <label className="block text-[10px] text-gray-400 font-medium uppercase tracking-wider mb-1">
+            Intensité — {Math.round(branding.gradientOpacity * 100)}%
+          </label>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={Math.round(branding.gradientOpacity * 100)}
+            onChange={(e) => onChange({ gradientOpacity: Number(e.target.value) / 100 })}
+            className="w-full accent-purple-600"
+          />
+        </div>
+
+        {/* Apercu du degrade tel qu'il sera peint */}
+        <div
+          className="mt-3 h-12 rounded-lg border border-gray-700"
+          style={{
+            background: `linear-gradient(135deg, ${branding.gradientColor1}, ${branding.gradientColor2})`,
+          }}
+        />
       </div>
     </div>
   );
