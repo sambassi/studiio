@@ -61,6 +61,15 @@ export interface DesignOptions {
   font?: string;
   /** Title text color (default: #FFFFFF) */
   titleColor?: string;
+  /**
+   * Horizontal alignment of the intro title.
+   *
+   * Default 'center' — historical behaviour, byte-identical for every existing
+   * post. With 'left', `titlePosition.x` becomes the LEFT edge of the title
+   * block instead of its centre (standard ctx.textAlign semantics).
+   * Opt-in only: the editor never sets it.
+   */
+  titleAlign?: 'left' | 'center';
   /** Primary gradient color (default: accentColor) */
   gradientColor1?: string;
   /** Secondary gradient color (default: accentColor lighter) */
@@ -1102,9 +1111,14 @@ function drawIntro(
   }
 
   ctx.save();
+  // Alignement horizontal du titre. Opt-in : la valeur par defaut 'center'
+  // reproduit exactement le comportement historique, donc aucun contenu
+  // existant ne bouge d'un pixel. Avec 'left', titlePosX designe le bord
+  // GAUCHE du bloc au lieu de son centre (convention de ctx.textAlign).
+  const titleAlign: CanvasTextAlign = design?.titleAlign === 'left' ? 'left' : 'center';
   // Use 'top' baseline so Y coordinate = top edge of text (matches CSS top: Y%)
   ctx.textBaseline = 'top';
-  ctx.font = `${fontStyle}${fontWeight} ${fontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
+  ctx.font = `${fontStyle}${fontWeight} ${fontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = titleAlign;
   ctx.fillStyle = hexToRgba(titleColor, titleAlpha);
   // Editor uses Tailwind `drop-shadow-lg` — a COMPOUND filter that single-shadow
   // ctx.shadow* cannot reproduce. Use ctx.filter to match exactly.
@@ -1134,7 +1148,9 @@ function drawIntro(
     ctx.restore();
     // Restore main text style (save/restore already restored filter, but reset explicitly)
     ctx.textBaseline = 'top';
-    ctx.font = `${fontStyle}${fontWeight} ${fontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
+    // `titleAlign` et non 'center' en dur : sinon un titre aligne a gauche AVEC
+    // calque duplique aurait le fantome a gauche et le texte principal centre.
+    ctx.font = `${fontStyle}${fontWeight} ${fontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = titleAlign;
     ctx.fillStyle = hexToRgba(titleColor, titleAlpha);
     ctx.filter = dropShadowLgFilter(w);
   }
@@ -1161,9 +1177,12 @@ function drawIntro(
     // Pass 2: overdraw with gradient fill (no shadow)
     // 135deg gradient: from top-left to bottom-right across the text block
     const totalTextH = titleLines.length * lineSpacing;
+    // La boite du degrade suit l'alignement : centre => [x-W/2, x+W/2],
+    // gauche => [x, x+W]. En 'center' le calcul est inchange.
+    const gradLeft = titleAlign === 'left' ? titlePosX : titlePosX - titleWidth / 2;
     const textGrad = ctx.createLinearGradient(
-      titlePosX - titleWidth / 2, titleDrawY,
-      titlePosX + titleWidth / 2, titleDrawY + totalTextH
+      gradLeft, titleDrawY,
+      gradLeft + titleWidth, titleDrawY + totalTextH
     );
     textGrad.addColorStop(0, gradC1);
     textGrad.addColorStop(1, gradC2);

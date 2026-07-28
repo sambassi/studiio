@@ -120,6 +120,92 @@ const DARK = '#0A0A0F';
  */
 const SEQ = { intro: 4, cards: 6, video: 0, cta: 4 } as const;
 
+/**
+ * SPEC DE DESIGN PARTAGÉE — une seule définition pour l'aperçu, le
+ * compositeur et les métadonnées lues par le Calendrier.
+ *
+ * Chaque valeur est transmise EXPLICITEMENT au compositeur. Sans cela il
+ * applique ses propres défauts, qui diffèrent de l'aperçu — c'est ce qui
+ * faisait diverger le titre, le CTA et le fond.
+ */
+const DESIGN = {
+  /** Titre : bord gauche à 8 %, haut à 8 %. Nécessite titleAlign:'left'. */
+  titlePos: { x: 8, y: 8 },
+  /** Largeur du bloc de titre, en % de la largeur totale. */
+  titleWidth: 84,
+  titleColor: '#FFFFFF',
+  /** CTA : bas-centre. Le defaut du compositeur est y=97 ; on fixe 92. */
+  ctaPos: { x: 50, y: 92 },
+  ctaWidth: 70,
+  ctaColor: '#FFFFFF',
+  gradientOpacity: 0.5,
+  /**
+   * Police. Sans ce champ le compositeur retombe sur 'sans-serif' (Helvetica)
+   * alors que l'aperçu et le snapshot des cartes sont en Inter — titre et CTA
+   * n'auraient pas la même fonte que les cartes dans la vidéo.
+   * 'Inter' fait partie des familles que le compositeur charge (document.fonts).
+   */
+  font: 'Inter',
+} as const;
+
+/**
+ * Tailles de police, exprimées en POURCENTAGE DE LA LARGEUR — exactement la
+ * convention du compositeur (`w * 0.04375`, etc.). L'aperçu les applique en
+ * `cqw` (unités de conteneur), donc les proportions coïncident quelle que soit
+ * la largeur d'affichage.
+ */
+const FONT_PCT = {
+  '9:16': { title: 4.375, subtitle: 2.8, cta: 3.75, ctaSub: 2.8 },
+  '16:9': { title: 3.5, subtitle: 2.15, cta: 3.1, ctaSub: 2.3 },
+} as const;
+
+/**
+ * Reproduit `dropShadowLgFilter` du compositeur, qui vaut `4/320` et `10/320`
+ * de la LARGEUR. Exprimes en `em`, il faut donc diviser par la taille de
+ * police relative (4.375 % de la largeur) : 4/320 / 0.04375 = 0.2857em.
+ */
+const TITLE_SHADOW =
+  'drop-shadow(0 0.2857em 0.2143em rgba(0,0,0,0.1)) drop-shadow(0 0.714em 0.571em rgba(0,0,0,0.04))';
+
+/** Equivalent de `dropShadowBaseFilter`, applique au sous-titre. */
+const SUBTITLE_SHADOW = 'drop-shadow(0 0.1786em 0.1071em rgba(0,0,0,0.1))';
+
+/**
+ * Angle CSS reproduisant `createLinearGradient(0, 0, w, h)` du compositeur.
+ *
+ * Le canvas trace la diagonale coin à coin ; l'équivalent CSS n'est PAS
+ * `to bottom right` (CSS utilise la perpendiculaire à l'autre diagonale) mais
+ * `180° − atan(w/h)`. En 9:16 → 150,64° ; en 16:9 → 119,36°.
+ */
+function backdropAngle(format: Format): number {
+  const [w, h] = format === '9:16' ? [1080, 1920] : [1920, 1080];
+  return 180 - (Math.atan(w / h) * 180) / Math.PI;
+}
+
+/**
+ * Fond identique à celui peint par le compositeur : le backdrop diagonal
+ * (paintSeqBackdrop, 2 arrêts) surmonté de l'overlay `both` (paintSeqGradient,
+ * 4 arrêts verticaux). Le premier de la liste CSS est au-dessus, comme dans
+ * le canvas.
+ *
+ * Un dégradé à 3 arrêts sur 160° — l'ancien fond de l'aperçu — n'est pas
+ * exprimable via les options du compositeur : le backdrop y est figé à 2
+ * arrêts sur la diagonale du canvas. Plutôt que de modifier le moteur (donc
+ * de repeindre le fond de TOUS les posts existants), c'est l'aperçu qui
+ * s'aligne sur le compositeur.
+ */
+function backdropCSS(format: Format): string {
+  const a = DESIGN.gradientOpacity;
+  const rgba = (hex: string, alpha: number) => {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+  };
+  return [
+    `linear-gradient(180deg, ${rgba(ACCENT, a)} 0%, rgba(0,0,0,0) 40%, rgba(0,0,0,0) 60%, ${rgba(GRADIENT_END, a)} 100%)`,
+    `linear-gradient(${backdropAngle(format).toFixed(2)}deg, ${ACCENT} 0%, ${GRADIENT_END} 100%)`,
+  ].join(', ');
+}
+
 /** Style de cartes utilisé partout : aperçu, compositeur, metadata. */
 const CARD_STYLE = 'Compact';
 
@@ -175,19 +261,30 @@ function Preview({
         </span>
       </div>
 
+      {/* `containerType: 'size'` active les unites `cqw` : 1cqw = 1 % de la
+          largeur du cadre. Les tailles de police sont donc exprimees dans la
+          meme unite que le compositeur (% de la largeur du canvas), et les
+          proportions restent exactes quelle que soit la taille d'affichage.
+          Aucun padding fixe : les insets sont en %, sinon les positions
+          divergeraient du compositeur des que la fenetre change de largeur. */}
       <div
         ref={previewRef}
-        className="w-full rounded-xl overflow-hidden flex flex-col justify-between p-4 gap-3"
+        className="w-full rounded-xl overflow-hidden relative"
         style={{
           aspectRatio: format === '9:16' ? '9 / 16' : '16 / 9',
-          background: generated
-            ? `linear-gradient(160deg, ${ACCENT}55 0%, ${DARK} 55%, ${GRADIENT_END}44 100%)`
-            : DARK,
+          containerType: 'size',
+          // Fond STRICTEMENT identique a celui peint par le compositeur.
+          background: generated ? backdropCSS(format) : DARK,
           border: generated ? 'none' : '1px dashed #1F2937',
+          // `var(--font-inter)` est la SEULE reference valide : Next charge la
+          // police via next/font, il n'existe aucune @font-face nommee 'Inter'.
+          // Sans cette variable, l'apercu ET le snapshot des cartes tombent en
+          // police par defaut (serif), alors que la video serait en vraie Inter.
+          fontFamily: 'var(--font-inter), Inter, sans-serif',
         }}
       >
         {!generated ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center px-2">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center px-2">
             <MonitorPlay className="w-8 h-8 text-gray-700" />
             <p className="text-xs text-gray-600 leading-relaxed">
               Votre visuel s&apos;affichera ici
@@ -197,15 +294,43 @@ function Preview({
           </div>
         ) : (
           <>
-            {/* Titre */}
-            <div>
+            {/* Titre — ancre au bord GAUCHE (x) et au bord HAUT (y), comme
+                drawIntro avec titleAlign:'left' et textBaseline:'top'.
+                Graisse 900 et ombre : le compositeur les applique en dur. */}
+            <div
+              style={{
+                position: 'absolute',
+                left: `${DESIGN.titlePos.x}%`,
+                top: `${DESIGN.titlePos.y}%`,
+                width: `${DESIGN.titleWidth}%`,
+                textAlign: 'left',
+              }}
+            >
               <div
-                className="font-extrabold uppercase leading-tight text-white"
-                style={{ fontSize: format === '9:16' ? '1.05rem' : '0.95rem' }}
+                className="uppercase"
+                style={{
+                  fontSize: `${FONT_PCT[format].title}cqw`,
+                  fontWeight: 900,
+                  color: DESIGN.titleColor,
+                  lineHeight: 1.1,
+                  filter: TITLE_SHADOW,
+                }}
               >
                 {generated.title}
               </div>
-              <div className="text-[10px] text-gray-300 mt-1 leading-snug">
+              <div
+                style={{
+                  fontSize: `${FONT_PCT[format].subtitle}cqw`,
+                  fontWeight: 900,
+                  // drawIntro dessine le sous-titre en titleColor a 80 %
+                  color: `${DESIGN.titleColor}CC`,
+                  lineHeight: 1.1,
+                  // cqw et non % : un % se resout sur la largeur du PARENT (84 %),
+                  // pas sur celle du cadre. Le compositeur utilise w*4/320.
+                  marginTop: '1.25cqw',
+                  filter: SUBTITLE_SHADOW,
+                }}
+              >
                 {generated.subtitle}
               </div>
             </div>
@@ -217,7 +342,8 @@ function Preview({
             <div
               ref={cardsRef}
               data-cards-grid
-              className="flex-1 flex flex-col justify-center gap-1.5 min-h-0 overflow-hidden"
+              className="absolute flex flex-col justify-center gap-1.5"
+              style={{ left: '8%', right: '8%', top: '30%', bottom: '22%' }}
             >
               {generated.cards.map((c, i) => (
                 <div
@@ -241,10 +367,41 @@ function Preview({
               ))}
             </div>
 
-            {/* CTA */}
-            <div className="text-center">
-              <div className="text-[11px] font-extrabold text-white">{generated.cta}</div>
-              <div className="text-[8px] font-bold" style={{ color: GRADIENT_END }}>
+            {/* CTA — ancre par le BAS a ctaPos.y, centre horizontalement :
+                drawCTA fait `curY = ctaPosY - blockH`, donc y designe le bas
+                du bloc. Graisse 900 en dur cote compositeur. */}
+            <div
+              style={{
+                position: 'absolute',
+                left: '50%',
+                top: `${DESIGN.ctaPos.y}%`,
+                transform: 'translate(-50%, -100%)',
+                width: `${DESIGN.ctaWidth}%`,
+                textAlign: 'center',
+              }}
+            >
+              <div
+                className="uppercase"
+                style={{
+                  fontSize: `${FONT_PCT[format].cta}cqw`,
+                  fontWeight: 900,
+                  color: DESIGN.ctaColor,
+                  lineHeight: 1.2,
+                  textShadow: `0 0 2cqw ${DESIGN.ctaColor}66`,
+                }}
+              >
+                {generated.cta}
+              </div>
+              <div
+                className="uppercase"
+                style={{
+                  fontSize: `${FONT_PCT[format].ctaSub}cqw`,
+                  fontWeight: 900,
+                  color: GRADIENT_END,
+                  lineHeight: 1.2,
+                  marginTop: '1.25cqw',
+                }}
+              >
                 {generated.ctaSub}
               </div>
             </div>
@@ -441,7 +598,9 @@ export default function AssistantWizard() {
         width: isReel ? 1080 : 1920,
         height: isReel ? 1920 : 1080,
         fps: 30,
-        title: generated.title || 'Infographie',
+        // Le compositeur ne met PAS le titre en majuscules (contrairement a
+        // l'apercu, qui applique `uppercase` en CSS) : on le fait ici.
+        title: (generated.title || 'Infographie').toUpperCase(),
         subtitle: generated.subtitle || undefined,
         cards: generated.cards.map((c) => ({
           emoji: c.icon,
@@ -455,16 +614,43 @@ export default function AssistantWizard() {
         videoDuration: SEQ.video,
         ctaDuration: SEQ.cta,
         accentColor: ACCENT,
-        ctaText: generated.cta,
+        // drawCTA lit `design.ctaMainText || watermarkText || 'AFROBOOST'` :
+        // ces deux options seules ne suffisent pas, d'ou les champs `design`
+        // ci-dessous. Sans eux la video affichait « AFROBOOST » en gros.
+        ctaText: generated.ctaSub,
         ctaSubText: generated.ctaSub,
+        watermarkText: generated.cta,
         design: {
           cardStyle: CARD_STYLE,
+          // Sans ce champ : titre et CTA en Helvetica, cartes en Inter.
+          font: DESIGN.font,
+
+          // ── Fond ──────────────────────────────────────────────────────
           gradientColor1: ACCENT,
           gradientColor2: GRADIENT_END,
-          gradientOpacity: 0.5,
-          titleColor: '#FFFFFF',
-          ctaColor: '#FFFFFF',
+          gradientOpacity: DESIGN.gradientOpacity,
+          // Aucune sequence en noir plein, et pas d'affiche : le backdrop
+          // degrade est peint partout, exactement comme dans l'apercu.
+          noColorSequences: [],
+
+          // ── Titre : haut-gauche ───────────────────────────────────────
+          titleAlign: 'left' as const,
+          titleFont: DESIGN.font,
+          titlePosition: { x: DESIGN.titlePos.x, y: DESIGN.titlePos.y },
+          titleSize: DESIGN.titleWidth,
+          titleColor: DESIGN.titleColor,
+
+          // ── CTA : bas-centre ──────────────────────────────────────────
+          // `ctaMainText` est lu EN PREMIER par drawCTA ; `ctaSubTextDesign`
+          // est le nom du champ cote design pour le sous-texte.
+          ctaMainText: generated.cta,
+          ctaSubTextDesign: generated.ctaSub,
+          watermarkPosition: { x: DESIGN.ctaPos.x, y: DESIGN.ctaPos.y },
+          watermarkSize: DESIGN.ctaWidth,
+          ctaColor: DESIGN.ctaColor,
           ctaSubColor: GRADIENT_END,
+
+          // ── Cartes : image de l'apercu, blittee telle quelle ──────────
           cardsSnapshot,
           cardsSnapshotRect,
         },
@@ -516,20 +702,37 @@ export default function AssistantWizard() {
           accentColor: ACCENT,
           ctaText: generated.cta,
           ctaSubText: generated.ctaSub,
-          watermarkText: 'AFROBOOST',
+          watermarkText: generated.cta,
           borderEnabled: false,
           borderColor: null,
         },
         design: {
           cardStyle: CARD_STYLE,
-          titleColor: '#FFFFFF',
-          ctaColor: '#FFFFFF',
+          font: DESIGN.font,
+          // Persiste pour que le Calendrier (apercu HTML et regeneration)
+          // ancre le titre a GAUCHE comme la video, et non centre sur x=8%.
+          titleAlign: 'left',
+          titleColor: DESIGN.titleColor,
+          ctaColor: DESIGN.ctaColor,
           ctaSubColor: GRADIENT_END,
           ctaMainText: generated.cta,
           ctaSubText: generated.ctaSub,
           gradientColor1: ACCENT,
           gradientColor2: GRADIENT_END,
-          gradientOpacity: 0.5,
+          gradientOpacity: DESIGN.gradientOpacity,
+          noColorSequences: [],
+          // Le Calendrier lit les positions sous `positions.*` (imbrique),
+          // la ou le compositeur attend des cles a plat. On ecrit la forme
+          // du Calendrier ici pour que sa reconstruction HTML de secours
+          // place le titre et le CTA au meme endroit que la video.
+          positions: {
+            title: { x: DESIGN.titlePos.x, y: DESIGN.titlePos.y },
+            watermark: { x: DESIGN.ctaPos.x, y: DESIGN.ctaPos.y },
+          },
+          sizes: {
+            title: DESIGN.titleWidth,
+            watermark: DESIGN.ctaWidth,
+          },
         },
       };
 
@@ -537,7 +740,9 @@ export default function AssistantWizard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: generated.title || 'Infographie',
+          // Meme casse que le titre envoye au compositeur : une recomposition
+          // ulterieure repart de post.title et doit produire le meme rendu.
+          title: (generated.title || 'Infographie').toUpperCase(),
           caption: generated.subtitle || '',
           media_url: composed.url,
           media_type: 'video',

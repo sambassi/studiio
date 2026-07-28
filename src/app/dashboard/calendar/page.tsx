@@ -573,6 +573,8 @@ export default function CalendarPage() {
           ctaTextScale: designMeta.ctaTextScale || undefined,
           cardStyle: designMeta.cardStyle || undefined,
           titlePosition: designMeta.positions?.title || undefined,
+          // undefined pour tout post existant -> le compositeur retombe sur 'center'
+          titleAlign: (designMeta as any).titleAlign || undefined,
           cardsPosition: designMeta.positions?.cards || undefined,
           cardsSize: designMeta.sizes?.cards || undefined,
           ctaMainText: designMeta.ctaMainText || undefined,
@@ -975,6 +977,8 @@ export default function CalendarPage() {
             ctaTextScale: designMeta.ctaTextScale || undefined,
             cardStyle: designMeta.cardStyle || undefined,
             titlePosition: designMeta.positions?.title || undefined,
+          // undefined pour tout post existant -> le compositeur retombe sur 'center'
+          titleAlign: (designMeta as any).titleAlign || undefined,
             cardsPosition: designMeta.positions?.cards || undefined,
             cardsSize: designMeta.sizes?.cards || undefined,
             ctaMainText: designMeta.ctaMainText || undefined,
@@ -1586,6 +1590,8 @@ export default function CalendarPage() {
               ctaTextScale: designMeta.ctaTextScale || undefined,
               cardStyle: designMeta.cardStyle || undefined,
               titlePosition: designMeta.positions?.title || undefined,
+          // undefined pour tout post existant -> le compositeur retombe sur 'center'
+          titleAlign: (designMeta as any).titleAlign || undefined,
               cardsPosition: designMeta.positions?.cards || undefined,
               cardsSize: designMeta.sizes?.cards || undefined,
               ctaMainText: designMeta.ctaMainText || undefined,
@@ -2085,6 +2091,7 @@ export default function CalendarPage() {
           ctaTextScale: calDesign?.ctaTextScale || undefined,
           cardStyle: calDesign?.cardStyle || undefined,
           titlePosition: calDesign?.positions?.title || undefined,
+          titleAlign: (calDesign as any)?.titleAlign || undefined,
           cardsPosition: calDesign?.positions?.cards || undefined,
           cardsSize: calDesign?.sizes?.cards || undefined,
           ctaMainText: calDesign?.ctaMainText || undefined,
@@ -2947,6 +2954,9 @@ export default function CalendarPage() {
           'Bebas Neue': 'var(--font-bebas)',
           Poppins: 'var(--font-poppins)',
           'Space Grotesk': 'var(--font-space)',
+          // Inter est la police de base de l'app (next/font). Sans cette entree,
+          // un post qui demande 'Inter' retombe en serif dans la reconstruction.
+          Inter: 'var(--font-inter)',
         };
         const rawFontName = design?.font || 'sans-serif';
         const designFont = FONT_CSS_MAP[rawFontName] || rawFontName;
@@ -3216,17 +3226,25 @@ export default function CalendarPage() {
                         return (
                           <>
                             <div className="absolute inset-0 z-10" style={{ pointerEvents: 'none' }}>
+                              {/* `titleAlign: 'left'` (opt-in) : x designe alors le bord
+                                  GAUCHE du bloc, pas son centre — meme convention que
+                                  ctx.textAlign cote compositeur. Absent => 'center',
+                                  donc comportement inchange pour tout post existant. */}
                               <div style={{
                                 position: 'absolute',
                                 left: `${positions.title?.x ?? 50}%`,
                                 top: `${positions.title?.y ?? 10}%`,
-                                transform: 'translate(-50%, 0)',
+                                transform: (design as any)?.titleAlign === 'left'
+                                  ? 'translate(0, 0)'
+                                  : 'translate(-50%, 0)',
                                 display: 'flex',
                                 flexDirection: 'column' as const,
-                                alignItems: 'center',
+                                alignItems: (design as any)?.titleAlign === 'left' ? 'flex-start' : 'center',
                                 gap: editorPxToDvh(4),
-                                maxWidth: '90%',
-                                textAlign: 'center' as const,
+                                maxWidth: `${(design as any)?.sizes?.title ?? 90}%`,
+                                textAlign: (design as any)?.titleAlign === 'left'
+                                  ? ('left' as const)
+                                  : ('center' as const),
                               }}>
                                 <h3 style={{
                                   fontFamily: designFont,
