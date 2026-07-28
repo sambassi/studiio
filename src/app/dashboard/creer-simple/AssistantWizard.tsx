@@ -254,7 +254,7 @@ function Preview({
 
       {generated && (
         <p className="mt-3 text-[10px] text-gray-600 leading-relaxed">
-          Aperçu simplifié. La vidéo finale est composée depuis le calendrier ou le mode avancé.
+          Les cartes de la vidéo seront exactement celles-ci. Le titre et le CTA, eux, apparaissent en séquences successives dans le montage.
         </p>
       )}
     </div>
@@ -360,7 +360,10 @@ export default function AssistantWizard() {
     setRenderStage('Préparation…');
 
     const isReel = format === '9:16';
-    const renderFormat: 'reel' | 'tv' = isReel ? 'tv' : 'reel';
+    // 9:16 = reel, 16:9 = tv. Même convention que l'éditeur (creer/page.tsx).
+    // Inverser ces deux valeurs fait recadrer la vidéo par le Calendrier, qui
+    // choisit son conteneur d'après `post.format`.
+    const renderFormat: 'reel' | 'tv' = isReel ? 'reel' : 'tv';
     const cost = isReel ? COST.reel : COST.tv;
 
     try {
@@ -395,7 +398,15 @@ export default function AssistantWizard() {
           const canvas = await domToCanvas(cardsEl, { backgroundColor: undefined, scale });
           const img = new Image();
           img.src = canvas.toDataURL('image/png');
-          await new Promise<void>((r) => { img.onload = () => r(); });
+          // onerror ET timeout : sans eux, une data URL qui ne se décode pas
+          // laisse la promesse pendante pour toujours — le bouton reste
+          // désactivé et l'utilisateur doit recharger la page.
+          await new Promise<void>((resolve) => {
+            const done = () => resolve();
+            const timer = setTimeout(done, 10000);
+            img.onload = () => { clearTimeout(timer); done(); };
+            img.onerror = () => { clearTimeout(timer); done(); };
+          });
           if (img.naturalWidth > 0 && img.naturalHeight > 0) {
             cardsSnapshot = img;
             const pRect = previewEl.getBoundingClientRect();
@@ -460,15 +471,13 @@ export default function AssistantWizard() {
         return;
       }
 
-      // 4. Débit des crédits — seulement maintenant, le rendu est en ligne.
+      // 4. Création du post AVANT le débit. Dans l'autre ordre, un échec de
+      //    /api/posts laissait l'utilisateur débité, sans post, avec une vidéo
+      //    orpheline — et le message l'invitait à recommencer, donc à payer
+      //    une seconde fois.
       setRenderStage('Finalisation…');
-      await fetch('/api/credits/deduct', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cost, reason: 'render', format: renderFormat }),
-      }).catch(() => {});
 
-      // 5. Création du post, montage inclus. `renderedVideoUrl` +
+      // Le post, montage inclus. `renderedVideoUrl` +
       //    `thumbnailUrl` + `composerVersion` à jour : le Calendrier lit la
       //    vidéo directement et n'affiche même pas son bouton « Régénérer ».
       const metadata = {
@@ -542,6 +551,22 @@ export default function AssistantWizard() {
         );
         return;
       }
+      // 5. Débit — le post existe, la vidéo est en ligne. On lit le statut :
+      //    `/api/credits/deduct` répond 402 sur solde insuffisant, et un
+      //    `.catch()` seul n'attrape que les erreurs réseau, pas un 402.
+      try {
+        const deductRes = await fetch('/api/credits/deduct', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cost, reason: 'render', format: renderFormat }),
+        });
+        if (!deductRes.ok) {
+          console.warn(`[Assistant] Débit des crédits refusé (${deductRes.status}) — post ${json.post.id} conservé`);
+        }
+      } catch (e) {
+        console.warn('[Assistant] Débit des crédits injoignable — post conservé:', e);
+      }
+
       setRenderProgress(100);
       setSent(true);
     } catch (err) {
