@@ -664,6 +664,227 @@ Le code du Calendrier se trouve dans `src/app/dashboard/calendar/page.tsx`. Le c
 
 ---
 
+## Inventaire des icones SVG du site
+
+> Recense au **2026-07-28**. Sert de reference pour le point F1 du cahier des charges v2
+> (« deux icones grille se ressemblent trop »).
+
+### Fait structurant : il n'y a AUCUN fichier `.svg` dans le repo
+
+`find public src -name '*.svg'` ne retourne **rien**. Toutes les icones du site viennent de
+**trois sources** et de nulle part d'ailleurs :
+
+| Source | Ou | Nature |
+|--------|-----|--------|
+| **lucide-react** | 48 fichiers `.tsx` | Composants React, glyphes stroke |
+| **Chemins SVG inline** | 3 fichiers | Constantes `Record<string, string>` de `path d="..."` |
+| **Emojis** | editeur `/creer` | Caracteres Unicode, pas des SVG |
+
+Les seuls fichiers d'image de `public/` sont `favicon.ico`, `favicon-32.png`, `icon-192.png`,
+`icon-512.png` (PWA, references par `manifest.json`) — aucun n'est un SVG.
+
+### 1. Bibliotheque d'icones de l'editeur (onglet « Icones SVG »)
+
+Definie dans `src/app/dashboard/creer/page.tsx` — **et non `/dashboard/infographie`**, qui est
+une page distincte et plus ancienne.
+
+Deux constantes travaillent ensemble :
+
+- **`ICON_MAP`** (ligne ~98) : `Record<string, LucideIcon>`, nom → composant. Les imports sont
+  **explicites et non `import * as LucideIcons`** : le tree-shaking de production supprimait les
+  icones resolues dynamiquement, et le nom brut de l'icone s'affichait alors en texte dans la
+  carte. Ne jamais repasser a un import namespace.
+- **`ICON_LIBRARY`** (ligne ~285) : `Record<categorie, string[]>`, ce qui est reellement affiche
+  dans le picker, groupe par categorie.
+
+Les **24 categories** et leur contenu :
+
+| Categorie (cle) | Nb | Icones |
+|-----------------|----|--------|
+| `sport` | 9 | Dumbbell, Flame, Zap, Trophy, Target, Activity, Bike, Medal, Crown |
+| `santé` | 9 | Heart, Brain, Stethoscope, Pill, Cross, HeartPulse, Syringe, Thermometer, Bone |
+| `nutrition` | 7 | Apple, Carrot, Salad, Coffee, Pizza, Utensils, Wheat |
+| `temps` | 11 | Clock, Timer, AlarmClock, Watch, Hourglass, Calendar, CalendarDays, CalendarCheck, CalendarClock, Sunrise, Sunset |
+| `nature` | 12 | Leaf, Sun, Moon, Star, Cloud, Flower, TreePine, Sprout, Trees, TreeDeciduous, Waves, Mountain |
+| `météo` | 6 | CloudRain, CloudSnow, Snowflake, Wind, Umbrella, Rainbow |
+| `tech` | 12 | Laptop, Smartphone, Cpu, Wifi, Battery, Code, Bot, Database, Server, Terminal, Bug, FileCode |
+| `finance` | 13 | DollarSign, TrendingUp, TrendingDown, Gem, Briefcase, Wallet, BarChart, PieChart, Receipt, HandCoins, Landmark, PiggyBank, Coins |
+| `multimedia` | 17 | Palette, Camera, Music, Mic, Video, PenTool, Brush, Paintbrush, Image, Aperture, Clapperboard, Disc, Volume2, Headphones, Speaker, Radio, Podcast |
+| `loisirs` | 4 | Gamepad2, Joystick, Puzzle, Diamond |
+| `voyage` | 14 | Plane, Globe, Map, Compass, MapPin, MapPinned, Route, Hotel, Tent, Navigation, Flag, Anchor, Sailboat, Footprints |
+| `émotions` | 13 | Smile, Frown, Meh, Laugh, Award, ThumbsUp, Gift, Bell, Megaphone, PartyPopper, Sparkles, Cake, Crown |
+| `famille` | 5 | Baby, Users, User, UserPlus, PersonStanding |
+| `animaux` | 6 | Dog, Cat, Bird, Fish, Rabbit, Turtle |
+| `logement` | 6 | Home, Building, Store, Warehouse, Factory, Church |
+| `transport` | 7 | Car, Bike, Train, Rocket, Ship, Bus, Truck |
+| `communication` | 6 | Mail, MessageSquare, MessageCircle, Send, Inbox, Archive |
+| `outils` | 11 | Clipboard, ClipboardList, FileText, File, Folder, FolderOpen, Filter, Settings2, Wrench, Hammer, Scissors |
+| `sécurité` | 7 | Shield, ShieldCheck, ShieldAlert, Lock, Unlock, Key, Fingerprint |
+| `énergie` | 4 | Plug, Power, BatteryCharging, Signal |
+| `shopping` | 5 | ShoppingBag, ShoppingCart, Tag, Package, CreditCard |
+| `education` | 6 | Book, GraduationCap, Lightbulb, Library, Pencil, Ruler |
+
+**`ICON_KEYWORDS`** (ligne ~310) ajoute des synonymes francais pour la recherche (ex.
+`Dumbbell: ['haltère', 'musculation']`), mais ne couvre que ~30 icones sur ~200.
+
+**Duplication a connaitre** : `CARD_ICON_MAP` dans `src/components/ui/CardIcon.tsx` est une
+**copie quasi-identique** de `ICON_MAP`. Le commentaire du fichier le dit explicitement : les deux
+doivent rester synchronises, sinon une icone ajoutee cote editeur s'affiche vide dans l'apercu du
+Calendrier. C'est une source de bug latente.
+
+Le picker est instancie **3 fois** dans `creer/page.tsx` (lignes ~518, ~10112, ~10517) : icone de
+carte, icone de titre (`titleIconName`), icone de CTA (`ctaIconName`).
+
+### 2. Icones d'UI de l'editeur `/creer`
+
+**Barre d'outils utilitaire** (lignes ~8038-8102), de gauche a droite :
+
+| Icone | Ligne | Fonction |
+|-------|-------|----------|
+| `Undo2` / `Redo2` | ~7990 | Annuler / refaire (Cmd+Z, Cmd+Shift+Z) |
+| `Crosshair` | 8052 | Afficher/masquer les guides (centre + tiers) |
+| `Grid3x3` | 8065 | Afficher/masquer la **grille visuelle** de fond |
+| `Grid3x3` ou `Move` | 8078 | Basculer **mode grille ↔ mode libre** des cartes |
+| `ImageIcon` | ~8101 | Ouvrir le panneau **Fond** de la sequence active |
+
+**Rail de navigation** (`railItems`, ligne ~5709) — 7 onglets :
+
+| Onglet | Icone | Couleur |
+|--------|-------|---------|
+| Modeles | `LayoutGrid` | purple |
+| Elements | `Sparkles` | amber |
+| Texte | `Type` | blue |
+| Cartes | `Grid2x2` | pink |
+| Medias | `Film` | emerald |
+| Audio | `Music` | cyan |
+| Parametres | `SettingsIcon` (alias de `Settings`) | slate |
+
+**Selecteur de sequences** (ligne ~7963) :
+
+| Sequence | Icone | Couleur |
+|----------|-------|---------|
+| Titre | `Type` | amber |
+| Cartes | `LayoutGrid` | pink |
+| Video (si rush) | `Film` | emerald |
+| CTA | `Megaphone` | blue |
+
+Chaque bouton de sequence porte un second bouton `Eye` / `EyeOff` (ligne ~8011) : inclure ou
+exclure la sequence de l'export. Le bouton Lire/Stop utilise `Play` / `Pause` (ligne ~7940).
+
+**Autres actions de l'editeur** : `Combine` (grouper, 10373), `Ungroup` (degrouper, 10382),
+`CopyPlus` (dupliquer le groupe, 10391), `Group` (badge de groupe sur une carte, 9631),
+`CopyIcon` (dupliquer un element, 8292 / 11516), `Grid3x3` (reinitialiser les positions des
+cartes, 7022), `Rows3` / `Columns3` (distribuer vertical / horizontal, 6328 / 6335),
+`Layers` (destination d'export « Les deux », 11961 / 12057), `Video` (export MP4, 11939).
+
+### 3. Chemins SVG inline (3 fichiers)
+
+| Fichier | Constante | Contenu |
+|---------|-----------|---------|
+| `src/components/ui/PlatformIcon.tsx` | `PLATFORM_SVG_PATHS` | Logos officiels : `instagram`, `tiktok`, `youtube`, `facebook` (+ `PLATFORM_COLORS` : `#E1306C`, `#00F2EA`, `#FF0000`, `#1877F2`) |
+| `src/components/ui/DesignOption.tsx` | `DESIGN_ICON_PATHS` | 10 cles style Material : `font`, `filter_none`, `filter_neon`, `filter_cinematic`, `filter_warm`, `filter_cool`, `card_compact`, `card_stats`, `card_minimal`, `card_fullwidth` |
+| `src/components/LanguageSelector.tsx` | — | Un unique chevron bas inline (`M19 9l-7 7-7-7`), qui pivote a l'ouverture |
+
+`src/components/creer/SmartGuides.tsx` produit du SVG (`<rect>`, lignes de guides dans un
+`viewBox="0 0 100 100"`) mais **ne contient aucune icone** — ce sont les guides d'alignement.
+
+### 4. Icones lucide par zone applicative
+
+| Zone | Fichier | Icones |
+|------|---------|--------|
+| Sidebar | `layout/Sidebar.tsx` | LayoutDashboard, Zap, Library, Share2, Calendar, Shield, Settings, Menu, X |
+| Navbar | `layout/Navbar.tsx` | Bell, User, LogOut, Shield, Zap |
+| Sidebar admin | `layout/AdminSidebar.tsx` | LayoutDashboard, Users, CreditCard, Zap, Film, Settings, FileText, Mail, Shield, ArrowLeft, Globe |
+| Calendrier | `dashboard/calendar/page.tsx` | ChevronLeft, ChevronRight, Plus, Upload, Edit2, Copy, FileVideo, Eye, Send, Trash2, Clock, Bot, Loader2, FileText, Calendar, Music, CheckSquare, ImageIcon, Sparkles, Play, CalendarDays, Mic, Volume2, VolumeX, Download, Film, RefreshCw, AlertTriangle |
+| Bibliotheque | `dashboard/library/page.tsx` | Play, Trash2, Download, Film, Loader2, Copy, Edit, Share2, X |
+| Reseaux sociaux | `dashboard/social/page.tsx` | Instagram, Music2, Facebook, Youtube, Check, Loader2, X, Settings, Hash, FileText, Bell, ExternalLink |
+| Accueil dashboard | `dashboard/page.tsx` | Video, Film, Zap, Eye, Sparkles, Calendar, Music, Library, Share2, Settings, ArrowRight |
+| Parametres | `dashboard/settings/page.tsx` | Target, CreditCard, Palette, User, LogOut |
+| Studio Son | `creer/AudioStudioPanel.tsx` | Music, Mic, Upload, Trash2, Volume2, VolumeX, Loader2, Play, Pause, Square, Sparkles, ImageIcon, LayoutGrid, Film, Megaphone |
+| Voix par sequence | `creer/SequenceVoicesPanel.tsx` | Mic, Square, Sparkles, Loader2, Trash2, Play, Pause, AlertTriangle, Info |
+| Editeur d'image | `creer/ImageEditorPanel.tsx` | Sun, Contrast, Palette, Thermometer, Sparkles, CircleOff, Upload, Link2, Trash2, ImageIcon, Wand2, Eraser, Maximize, Video, Paintbrush, Layers, ArrowUpCircle, Move |
+| Agent IA | `creer/AgentIAModal.tsx` | Bot, Loader2, Folder, FileVideo, ImageIcon, Music, CalendarDays |
+| Mediatheque | `shared/MediaLibrary.tsx` | Search, Upload, Loader2, Music, X, Clock, ShieldCheck, Trash2 |
+| Barre d'export | `shared/ExportBar.tsx` | Calendar, Download, Loader2 |
+| Assistant chat | `chat/StudiioAssistant.tsx` | MessageCircle, X, Send, Loader2 |
+| Landing publique | `app/page.tsx` | ArrowRight, Zap, Sparkles, BarChart3, Play, Check, Star, Video, Calendar, Share2, Target, Palette, Globe, Shield, ChevronDown, ChevronUp, Users, TrendingUp, Clock, Award, Smartphone, Monitor, Instagram, Youtube, Facebook, Music, Menu, X |
+| Composants `ui/` | Modal, FloatingPanel, Table, ServiceAlertBanner | X, ChevronUp, ChevronDown, AlertTriangle |
+
+### 5. ⚠️ Icones qui se ressemblent et pretent a confusion
+
+C'est la liste de travail pour **F1.4** du cahier des charges v2.
+
+**A. Le bug signale — deux `Grid3x3` cote a cote dans la meme barre d'outils**
+
+Ligne **8065** et ligne **8078** de `creer/page.tsx` rendent le **meme glyphe `Grid3x3`**, dans
+deux boutons **adjacents**, pour deux fonctions differentes :
+
+- 8065 → afficher/masquer la **grille visuelle** de reperage
+- 8078 → basculer le **mode de positionnement des cartes** (grille ↔ libre)
+
+Le seul indice visuel differenciant est la couleur de l'etat actif (cyan pour la grille, orange
+pour le mode libre) — invisible tant que les deux sont inactifs. **Le bouton 8078 n'affiche
+`Grid3x3` que lorsqu'il est en mode grille** ; en mode libre il devient `Move`. Autrement dit les
+deux boutons sont identiques exactement dans l'etat par defaut. C'est bien la confusion decrite
+dans le cahier des charges.
+
+**B. Un troisieme `Grid3x3`, ailleurs**
+
+Ligne **7022**, le bouton « Positions » (reinitialiser les positions individuelles des cartes)
+utilise encore `Grid3x3`. Trois fonctions distinctes partagent donc un seul glyphe.
+
+**C. « Cartes » a deux icones differentes**
+
+- Rail lateral, onglet « Cartes » → `Grid2x2` (ligne 5713)
+- Selecteur de sequence, « Cartes » → `LayoutGrid` (ligne 7965)
+
+Le meme concept metier a deux representations. Et `Grid2x2` / `Grid3x3` / `LayoutGrid` sont trois
+variantes de grille tres proches a 16 px.
+
+**D. `LayoutGrid` designe deux choses opposees**
+
+- Rail, onglet « **Modeles** » → `LayoutGrid` (5710)
+- Sequence « **Cartes** » → `LayoutGrid` (7965)
+
+**E. `Film` vs `Video` vs `FileVideo` vs `Clapperboard`**
+
+Quatre glyphes video coexistent : `Film` (rail « Medias » 5714, sequence « Video » 7967,
+« Mediatheque » 6141), `Video` (« Televerser video » 6125, export MP4 11939), `FileVideo`
+(Calendrier, Agent IA), `Clapperboard` (bibliotheque d'icones, categorie multimedia). `Film` sert
+a la fois pour « Medias » et pour « Video », deux entrees differentes du meme ecran.
+
+**F. `Copy` vs `CopyPlus`**
+
+« Dupliquer » un element utilise `CopyIcon` (8292, 11516), « dupliquer un groupe » utilise
+`CopyPlus` (10391). Glyphes tres proches, actions voisines.
+
+**G. `Crosshair` vs `Grid3x3`, boutons voisins**
+
+Guides d'alignement et grille sont deux aides visuelles differentes, cote a cote, sans libelle.
+
+**H. `Settings` vs `Settings2`**
+
+`Settings` (engrenage) pour l'onglet Parametres du rail et la sidebar ; `Settings2` (curseurs)
+dans la bibliotheque d'icones, categorie `outils`.
+
+**I. `Zap` porte trois sens**
+
+Sidebar → « Creer » ; `CreditsDisplay` + Navbar → **credits** ; landing + signup → argument
+marketing « rapidite » ; et il est aussi dans la categorie `sport` du picker.
+
+**J. `Music` vs `Music2`**
+
+`Music` = audio partout dans l'app ; `Music2` = **logo TikTok** dans `dashboard/social`.
+
+**K. Doublons internes a la bibliotheque d'icones** (moins critiques, choix utilisateur assume)
+
+`Crown` est dans `sport` **et** `émotions` ; `Bike` dans `sport` **et** `transport` ; `Palette`,
+`Camera`, `Music`, `Mic`, `Video` sont a la fois dans `multimedia` et utilises comme icones d'UI.
+Les familles `Calendar*` (5 variantes), `Shield*` (3), `BarChart*` (3), `Tree*` (3) sont proches
+a petite taille.
+
+---
+
 ## Conventions de code
 
 - **Langue du code** : Variables et fonctions en anglais, UI et contenu en francais
