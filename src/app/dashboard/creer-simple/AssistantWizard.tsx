@@ -16,6 +16,8 @@ import {
   GripVertical,
   Eye,
   EyeOff,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
 import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
@@ -508,6 +510,18 @@ export default function AssistantWizard() {
       if (fi === -1 || ti === -1) return prev;
       const [moved] = next.splice(fi, 1);
       next.splice(ti, 0, moved);
+      return next;
+    });
+  };
+
+  /** Deplacement relatif — repli accessible du glisser-deposer. */
+  const moveSequenceBy = (key: SeqKey, delta: number) => {
+    setSequences((prev) => {
+      const i = prev.findIndex((s) => s.key === key);
+      const j = i + delta;
+      if (i === -1 || j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
       return next;
     });
   };
@@ -1108,12 +1122,18 @@ export default function AssistantWizard() {
                         <div
                           key={seq.key}
                           draggable={!isVideo}
-                          onDragStart={() => setDragKey(seq.key)}
+                          onDragStart={(e) => {
+                            // Firefox n'initie aucun drag HTML5 sans donnees.
+                            e.dataTransfer.setData('text/plain', seq.key);
+                            e.dataTransfer.effectAllowed = 'move';
+                            setDragKey(seq.key);
+                          }}
                           onDragEnd={() => setDragKey(null)}
                           onDragOver={(e) => e.preventDefault()}
                           onDrop={(e) => {
                             e.preventDefault();
-                            if (dragKey) moveSequence(dragKey, seq.key);
+                            const from = (dragKey || e.dataTransfer.getData('text/plain')) as SeqKey;
+                            if (from) moveSequence(from, seq.key);
                             setDragKey(null);
                           }}
                           className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition ${
@@ -1144,6 +1164,30 @@ export default function AssistantWizard() {
                           <span className="text-[11px] text-gray-500 flex-shrink-0">
                             {seq.enabled ? `${SEQ[seq.key]}s` : ''}
                           </span>
+                          {/* Repli tactile et clavier : le glisser-deposer
+                              HTML5 n'existe pas sur mobile. */}
+                          <div className="flex flex-col flex-shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => moveSequenceBy(seq.key, -1)}
+                              disabled={isVideo}
+                              title="Monter"
+                              aria-label={`Monter ${meta.label}`}
+                              className="text-gray-500 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed leading-none"
+                            >
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveSequenceBy(seq.key, 1)}
+                              disabled={isVideo}
+                              title="Descendre"
+                              aria-label={`Descendre ${meta.label}`}
+                              className="text-gray-500 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed leading-none"
+                            >
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                           <button
                             type="button"
                             onClick={() => toggleSequence(seq.key)}

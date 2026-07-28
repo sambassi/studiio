@@ -483,8 +483,15 @@ export default function CalendarPage() {
     // Sanity-clamp durations: a stored `sequences.video = 1` (or any sub-2s value)
     // is almost certainly corrupted metadata from an old export and would produce
     // the "1 second flash" bug. Fall back to the editor defaults.
+    // `0` est une valeur VOULUE : elle signifie « sequence masquee ». Sans ce
+    // cas explicite, safeDuration(0, 6) renvoyait 6 et ressuscitait la
+    // sequence a la regeneration. Le bug preexistait, mais depuis que l'ordre
+    // est transmis au compositeur la sequence ressuscitee — absente de
+    // `order` — se retrouvait reléguee APRES le CTA au lieu de sa place
+    // canonique. Le fallback ne doit s'appliquer qu'aux valeurs absentes ou
+    // aberrantes, jamais a un 0 explicite.
     const safeDuration = (val: unknown, fallback: number, min = 2) =>
-      (typeof val === 'number' && val >= min) ? val : fallback;
+      val === 0 ? 0 : ((typeof val === 'number' && val >= min) ? val : fallback);
 
     console.log('[Regenerate] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('[Regenerate] Starting montage regeneration for post:', post.id);

@@ -3634,6 +3634,10 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         const el = seqVoiceEls[k];
         if (!el) continue;
         const { start, end } = offsets[k];
+        // Sequence non construite (masquee) : `end === 0`. Sans ce garde, la
+        // borne `max(startMs + 100, 0)` faisait jouer 100 ms de voix au tout
+        // debut du montage.
+        if (end <= 0) continue;
         // setTimeout vs the wall clock — same pattern as the legacy voiceEl
         // play() which fires at audio-start. The recorder is also started
         // around audioStartTime so the wall-clock Δ matches the video Δ.
