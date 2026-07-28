@@ -15,6 +15,7 @@ import {
   MonitorPlay,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
+import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
 import { CardIcon } from '@/components/ui/CardIcon';
 import { Card, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -111,6 +112,20 @@ const ACCENT = '#7C3AED';
 const GRADIENT_END = '#EC4899';
 const DARK = '#0A0A0F';
 
+/**
+ * Durées des séquences, en secondes. Elles sont passées au compositeur ET
+ * écrites dans `metadata.sequences` : une seule source, donc pas de dérive
+ * entre la vidéo produite et ce que le Calendrier croit savoir.
+ * `video: 0` — il n'y a jamais de rush dans ce parcours.
+ */
+const SEQ = { intro: 4, cards: 6, video: 0, cta: 4 } as const;
+
+/** Style de cartes utilisé partout : aperçu, compositeur, metadata. */
+const CARD_STYLE = 'Compact';
+
+/** Coût du rendu, aligné sur l'éditeur (RENDER_COSTS). */
+const COST = { reel: 10, tv: 15 } as const;
+
 type Format = '9:16' | '16:9';
 
 interface GeneratedCard {
@@ -140,7 +155,17 @@ const DISABLED = 'disabled:opacity-40 disabled:cursor-not-allowed';
  * démontait puis remontait tout le sous-arbre à chaque frappe dans le champ
  * « votre sujet ».
  */
-function Preview({ generated, format }: { generated: Generated | null; format: Format }) {
+function Preview({
+  generated,
+  format,
+  previewRef,
+  cardsRef,
+}: {
+  generated: Generated | null;
+  format: Format;
+  previewRef?: React.RefObject<HTMLDivElement>;
+  cardsRef?: React.RefObject<HTMLDivElement>;
+}) {
   return (
     <div className="card-base p-4">
       <div className="flex items-center gap-2 mb-3">
@@ -151,6 +176,7 @@ function Preview({ generated, format }: { generated: Generated | null; format: F
       </div>
 
       <div
+        ref={previewRef}
         className="w-full rounded-xl overflow-hidden flex flex-col justify-between p-4 gap-3"
         style={{
           aspectRatio: format === '9:16' ? '9 / 16' : '16 / 9',
@@ -184,8 +210,15 @@ function Preview({ generated, format }: { generated: Generated | null; format: F
               </div>
             </div>
 
-            {/* Cartes */}
-            <div className="flex-1 flex flex-col justify-center gap-1.5 min-h-0 overflow-hidden">
+            {/* Cartes — ce conteneur est PHOTOGRAPHIÉ (modern-screenshot) et
+                l'image est blittée telle quelle dans la vidéo par le
+                compositeur. C'est ce qui garantit que les cartes de l'aperçu
+                et celles du montage sont pixel pour pixel identiques. */}
+            <div
+              ref={cardsRef}
+              data-cards-grid
+              className="flex-1 flex flex-col justify-center gap-1.5 min-h-0 overflow-hidden"
+            >
               {generated.cards.map((c, i) => (
                 <div
                   key={i}
@@ -221,7 +254,7 @@ function Preview({ generated, format }: { generated: Generated | null; format: F
 
       {generated && (
         <p className="mt-3 text-[10px] text-gray-600 leading-relaxed">
-          Aperçu simplifié. La vidéo finale est composée depuis le calendrier ou le mode avancé.
+          Les cartes de la vidéo seront exactement celles-ci. Le titre et le CTA, eux, apparaissent en séquences successives dans le montage.
         </p>
       )}
     </div>
@@ -244,6 +277,12 @@ export default function AssistantWizard() {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Rendu du montage
+  const [renderProgress, setRenderProgress] = useState(0);
+  const [renderStage, setRenderStage] = useState('');
+  const previewRef = useRef<HTMLDivElement>(null);
+  const cardsRef = useRef<HTMLDivElement>(null);
 
   const genTimerRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
@@ -297,17 +336,158 @@ export default function AssistantWizard() {
   };
 
   // ── Envoi au calendrier ─────────────────────────────────────────────
+  /**
+   * Envoi au calendrier — LE point où le montage est produit.
+   *
+   * Cette page est la source de vérité : la vidéo est composée ICI, à partir
+   * du design exact montré dans l'aperçu, puis le post est créé AVEC son
+   * `renderedVideoUrl`. Le Calendrier n'a donc plus rien à recomposer : il lit
+   * la vidéo telle quelle (calendar/page.tsx branche `renderedVideoUrl`).
+   *
+   * Ordre volontaire :
+   *   1. vérification du solde   → on ne lance pas un rendu qu'on ne peut payer
+   *   2. photo des cartes        → garantit apercu == video, pixel pour pixel
+   *   3. composition + upload    → composeAndUpload fait les deux
+   *   4. création du post
+   *   5. débit des crédits       → EN DERNIER
+   *
+   * Le débit vient après le post, et non l'inverse : si /api/posts échoue,
+   * l'utilisateur ne doit pas se retrouver débité, sans post, avec une vidéo
+   * orpheline — et invité à recommencer, donc à payer une seconde fois.
+   * Un échec de composition ne débite rien non plus.
+   */
   const sendToCalendar = async () => {
     if (!generated || sending) return;
     setSending(true);
     setError(null);
+    setRenderProgress(0);
+    setRenderStage('Préparation…');
+
+    const isReel = format === '9:16';
+    // 9:16 = reel, 16:9 = tv. Même convention que l'éditeur (creer/page.tsx).
+    // Inverser ces deux valeurs fait recadrer la vidéo par le Calendrier, qui
+    // choisit son conteneur d'après `post.format`.
+    const renderFormat: 'reel' | 'tv' = isReel ? 'reel' : 'tv';
+    const cost = isReel ? COST.reel : COST.tv;
 
     try {
-      // Métadonnées alignées sur celles de l'éditeur, réduites à ce que le
-      // Calendrier lit réellement pour reconstruire un aperçu HTML.
-      // `renderedVideoUrl` est volontairement absent : aucun montage n'a été
-      // composé ici. Le Calendrier affiche donc ce post en aperçu HTML léger,
-      // et ne compose la vidéo qu'au moment de planifier ou publier.
+      // 1. Solde — non bloquant si l'endpoint est indisponible, comme l'éditeur.
+      try {
+        const check = await fetch('/api/credits/balance').then((r) => r.json());
+        const balance = check?.data?.credits ?? check?.balance;
+        // `check.ok` est indispensable : la route renvoie `{ok:false, balance:0}`
+        // sur 401/500. Sans ce garde, une panne passagère afficherait
+        // « Crédits insuffisants : 0 disponible » à un utilisateur qui en a.
+        const readable = check?.success !== false && check?.ok !== false;
+        if (readable && typeof balance === 'number' && balance < cost) {
+          setError(`Crédits insuffisants : ${cost} requis, ${balance} disponible(s).`);
+          return;
+        }
+      } catch {
+        // On continue : un échec de lecture du solde ne doit pas bloquer.
+      }
+
+      // 2. Photo des cartes de l'aperçu (WYSIWYG). Le compositeur blitte cette
+      //    image au lieu de redessiner les cartes lui-même — c'est ce qui rend
+      //    l'aperçu et la vidéo strictement identiques.
+      let cardsSnapshot: HTMLImageElement | undefined;
+      let cardsSnapshotRect: { x: number; y: number; width: number; height: number } | undefined;
+      try {
+        const cardsEl = cardsRef.current;
+        const previewEl = previewRef.current;
+        if (cardsEl && previewEl && cardsEl.offsetWidth > 0) {
+          setRenderStage('Capture de l’aperçu…');
+          const { domToCanvas } = await import('modern-screenshot');
+          // Les polices doivent être chargées, sinon la capture sérialise une
+          // police de repli et le rendu diverge de l'écran.
+          try { await (document as unknown as { fonts?: FontFaceSet }).fonts?.ready; } catch { /* ignore */ }
+          const videoW = isReel ? 1080 : 1920;
+          const scale = videoW / (previewEl.offsetWidth || (isReel ? 320 : 512));
+          const canvas = await domToCanvas(cardsEl, { backgroundColor: undefined, scale });
+          const img = new Image();
+          img.src = canvas.toDataURL('image/png');
+          // onerror ET timeout : sans eux, une data URL qui ne se décode pas
+          // laisse la promesse pendante pour toujours — le bouton reste
+          // désactivé et l'utilisateur doit recharger la page.
+          await new Promise<void>((resolve) => {
+            const done = () => resolve();
+            const timer = setTimeout(done, 10000);
+            img.onload = () => { clearTimeout(timer); done(); };
+            img.onerror = () => { clearTimeout(timer); done(); };
+          });
+          if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+            cardsSnapshot = img;
+            const pRect = previewEl.getBoundingClientRect();
+            const cRect = cardsEl.getBoundingClientRect();
+            cardsSnapshotRect = {
+              x: ((cRect.left - pRect.left) / pRect.width) * 100,
+              y: ((cRect.top - pRect.top) / pRect.height) * 100,
+              width: (cRect.width / pRect.width) * 100,
+              height: (cRect.height / pRect.height) * 100,
+            };
+          }
+        }
+      } catch (err) {
+        // Non fatal : sans photo, le compositeur redessine les cartes lui-même
+        // (style Compact, qu'il connaît). Le rendu reste correct, simplement
+        // moins fidèle au pixel près.
+        console.warn('[Assistant] Capture des cartes impossible, rendu canvas de secours:', err);
+      }
+
+      // 3. Composition + upload (composeAndUpload fait les deux et produit
+      //    aussi la vignette).
+      setRenderStage('Rendu du montage…');
+      const composed = await composeAndUpload({
+        width: isReel ? 1080 : 1920,
+        height: isReel ? 1920 : 1080,
+        fps: 30,
+        title: generated.title || 'Infographie',
+        subtitle: generated.subtitle || undefined,
+        cards: generated.cards.map((c) => ({
+          emoji: c.icon,
+          label: c.title,
+          value: c.value,
+          description: c.description,
+          color: ACCENT,
+        })),
+        introDuration: SEQ.intro,
+        cardsDuration: SEQ.cards,
+        videoDuration: SEQ.video,
+        ctaDuration: SEQ.cta,
+        accentColor: ACCENT,
+        ctaText: generated.cta,
+        ctaSubText: generated.ctaSub,
+        design: {
+          cardStyle: CARD_STYLE,
+          gradientColor1: ACCENT,
+          gradientColor2: GRADIENT_END,
+          gradientOpacity: 0.5,
+          titleColor: '#FFFFFF',
+          ctaColor: '#FFFFFF',
+          ctaSubColor: GRADIENT_END,
+          cardsSnapshot,
+          cardsSnapshotRect,
+        },
+        onProgress: (pct, stage) => {
+          setRenderProgress(Math.max(0, Math.min(100, Math.round(pct))));
+          if (stage) setRenderStage(stage);
+        },
+      });
+
+      if (!composed.url) {
+        setError("Le montage a été rendu mais son envoi a échoué. Réessayez.");
+        return;
+      }
+
+      // 4. Création du post AVANT le débit. Dans l'autre ordre, un échec de
+      //    /api/posts laissait l'utilisateur débité, sans post, avec une vidéo
+      //    orpheline — et le message l'invitait à recommencer, donc à payer
+      //    une seconde fois.
+      setRenderStage('Finalisation…');
+
+      // Le post, montage inclus. `renderedVideoUrl` +
+      //    `thumbnailUrl` + `composerVersion` à jour : le Calendrier lit la
+      //    vidéo directement et n'affiche même pas son bouton « Régénérer ».
       const metadata = {
         type: 'infographic',
         source: 'assistant-simple',
@@ -321,12 +501,15 @@ export default function AssistantWizard() {
           color: ACCENT,
         })),
         hasAudio: false,
+        renderedVideoUrl: composed.url,
+        thumbnailUrl: composed.thumbnailUrl || undefined,
+        composerVersion: composed.composerVersion || CURRENT_COMPOSER_VERSION,
         sequences: {
-          intro: 5,
-          cards: 8,
-          video: 0,
-          cta: 5,
-          total: 18,
+          intro: SEQ.intro,
+          cards: SEQ.cards,
+          video: SEQ.video,
+          cta: SEQ.cta,
+          total: SEQ.intro + SEQ.cards + SEQ.cta,
           order: ['intro', 'cards', 'cta'],
         },
         branding: {
@@ -338,6 +521,7 @@ export default function AssistantWizard() {
           borderColor: null,
         },
         design: {
+          cardStyle: CARD_STYLE,
           titleColor: '#FFFFFF',
           ctaColor: '#FFFFFF',
           ctaSubColor: GRADIENT_END,
@@ -346,7 +530,6 @@ export default function AssistantWizard() {
           gradientColor1: ACCENT,
           gradientColor2: GRADIENT_END,
           gradientOpacity: 0.5,
-          cardStyle: 'Compact',
         },
       };
 
@@ -356,9 +539,9 @@ export default function AssistantWizard() {
         body: JSON.stringify({
           title: generated.title || 'Infographie',
           caption: generated.subtitle || '',
-          media_url: null,
-          media_type: 'image',
-          format: format === '16:9' ? 'tv' : 'reel',
+          media_url: composed.url,
+          media_type: 'video',
+          format: renderFormat,
           platforms: [],
           scheduled_date: scheduledDate,
           scheduled_time: '12:00',
@@ -369,22 +552,43 @@ export default function AssistantWizard() {
 
       const json = await res.json();
       if (!json.success || !json.post?.id) {
-        // La route renvoie des messages techniques en anglais ("Unauthorized",
-        // "Failed to create post") — on les traduit pour l'utilisateur.
         setError(
           res.status === 401
             ? 'Votre session a expiré. Reconnectez-vous et réessayez.'
-            : "L'envoi au calendrier a échoué. Réessayez dans un instant.",
+            : "Le montage est prêt mais l'enregistrement du post a échoué.",
         );
         return;
       }
+      // 5. Débit — le post existe, la vidéo est en ligne. On lit le statut :
+      //    `/api/credits/deduct` répond 402 sur solde insuffisant, et un
+      //    `.catch()` seul n'attrape que les erreurs réseau, pas un 402.
+      try {
+        const deductRes = await fetch('/api/credits/deduct', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cost, reason: 'render', format: renderFormat }),
+        });
+        if (!deductRes.ok) {
+          console.warn(`[Assistant] Débit des crédits refusé (${deductRes.status}) — post ${json.post.id} conservé`);
+        }
+      } catch (e) {
+        console.warn('[Assistant] Débit des crédits injoignable — post conservé:', e);
+      }
+
+      setRenderProgress(100);
       setSent(true);
-    } catch {
-      setError('Connexion impossible. Réessayez.');
+    } catch (err) {
+      console.error('[Assistant] Envoi au calendrier échoué:', err);
+      setError(
+        err instanceof Error && err.message
+          ? `Le rendu a échoué : ${err.message}`
+          : 'Le rendu du montage a échoué. Réessayez.',
+      );
     } finally {
       setSending(false);
     }
   };
+
 
   const reset = () => {
     setStarted(false);
@@ -729,8 +933,8 @@ export default function AssistantWizard() {
                     <div>
                       <div className="font-semibold">Envoyé au calendrier</div>
                       <p className="text-sm text-gray-400 mt-1">
-                        Le post est enregistré en brouillon. Composez la vidéo depuis le
-                        calendrier, ou affinez le design en mode avancé.
+                        La vidéo est composée et le post enregistré en brouillon. Le calendrier
+                        la lit telle quelle — aucun nouveau rendu n'est nécessaire.
                       </p>
                     </div>
                     <div className="flex gap-2 justify-center flex-wrap">
@@ -747,8 +951,12 @@ export default function AssistantWizard() {
                     <div>
                       <h3 className="font-semibold mb-1">Envoyer au calendrier</h3>
                       <p className="text-sm text-gray-400">
-                        Le post est créé en brouillon, sans consommer de crédits — aucune vidéo
-                        n&apos;est composée à cette étape.
+                        La vidéo est composée maintenant, exactement telle que l&apos;aperçu
+                        l&apos;affiche, puis enregistrée en brouillon.{' '}
+                        <span className="text-gray-300">
+                          {format === '9:16' ? COST.reel : COST.tv} crédits
+                        </span>{' '}
+                        seront débités une fois le rendu terminé.
                       </p>
                     </div>
 
@@ -778,16 +986,51 @@ export default function AssistantWizard() {
                         <span className="flex items-center gap-2">
                           {sending ? (
                             <>
-                              <Loader2 className="w-4 h-4 animate-spin" /> Envoi…
+                              <Loader2 className="w-4 h-4 animate-spin" /> Rendu…
                             </>
                           ) : (
                             <>
-                              <CalendarPlus className="w-4 h-4" /> Envoyer au calendrier
+                              <CalendarPlus className="w-4 h-4" /> Composer et envoyer
                             </>
                           )}
                         </span>
                       </Button>
                     </div>
+
+                    {/* Progression du rendu — même barre fine que la page avatar */}
+                    {sending && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="flex-1 rounded-full overflow-hidden"
+                            style={{ height: 5, backgroundColor: '#1F2937' }}
+                            role="progressbar"
+                            aria-valuenow={renderProgress}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-label="Progression du rendu"
+                          >
+                            <div
+                              className="h-full rounded-full"
+                              style={{
+                                width: `${renderProgress}%`,
+                                background: `linear-gradient(90deg, ${ACCENT} 0%, ${GRADIENT_END} 100%)`,
+                                transition: 'width 300ms ease-out',
+                              }}
+                            />
+                          </div>
+                          <span
+                            className="text-xs font-medium text-gray-400 text-right"
+                            style={{ minWidth: 34, fontVariantNumeric: 'tabular-nums' }}
+                          >
+                            {renderProgress}%
+                          </span>
+                        </div>
+                        {renderStage && (
+                          <p className="text-center text-xs text-gray-500">{renderStage}</p>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -797,7 +1040,7 @@ export default function AssistantWizard() {
       </div>
 
       <div className="lg:col-span-2">
-        <Preview generated={generated} format={format} />
+        <Preview generated={generated} format={format} previewRef={previewRef} cardsRef={cardsRef} />
       </div>
     </div>
   );

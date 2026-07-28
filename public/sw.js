@@ -89,10 +89,14 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       caches.match(request).then((cached) => {
         if (cached) return cached;
-        return fetch(request).then((response) => {
-          putInCache(request, response);
-          return response;
-        });
+        return fetch(request)
+          .then((response) => {
+            putInCache(request, response);
+            return response;
+          })
+          // Cette branche n'avait aucun catch : un echec sur une icone
+          // rejetait respondWith et polluait la console comme ci-dessus.
+          .catch(() => Response.error());
       })
     );
     return;
@@ -105,13 +109,18 @@ self.addEventListener('fetch', (event) => {
         putInCache(request, response);
         return response;
       })
-      .catch((err) => {
+      .catch(() => {
         return caches.match(request).then((cached) => {
           if (cached) return cached;
-          // Pas de reponse fabriquee : un « 408 » invente masquait la vraie
-          // cause (souvent une simple annulation) et polluait la console.
-          // On relaie l'echec reseau reel au navigateur.
-          throw err;
+          // `Response.error()` = echec reseau natif, exactement ce que le
+          // navigateur aurait produit sans service worker.
+          //
+          // On ne relance PAS l'erreur : un `throw` ici rejette la promesse de
+          // respondWith, ce qui ajoute un « Failed to fetch » non gere et un
+          // « the promise was rejected » en console — du bruit pour une simple
+          // annulation de requete. Resoudre avec une reponse d'erreur donne le
+          // meme comportement reseau, sans le bruit.
+          return Response.error();
         });
       })
   );
