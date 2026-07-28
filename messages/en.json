@@ -78,6 +78,7 @@
   "sidebar": {
     "dashboard": "Dashboard",
     "create": "Create",
+    "createSimple": "Create (simple)",
     "avatar": "My avatar",
     "infographic": "Infographic",
     "calendar": "AI Calendar",
