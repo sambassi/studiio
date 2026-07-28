@@ -94,6 +94,22 @@ export const CREDIT_PACKAGES = {
 export const RENDER_COSTS = { reel: 10, tv: 15 };
 export const FREE_CREDITS = 10;
 
+/**
+ * Cout en credits d'une generation de video "avatar qui parle" (HeyGen).
+ *
+ * Choisi a 40 credits car HeyGen facture a la duree et le cout reel d'une
+ * video d'environ 1 minute est nettement superieur a celui d'un rendu local
+ * (10-15 credits). Repere de marge : au tarif Starter (29,99 EUR / 300
+ * credits ≈ 0,10 EUR le credit), 40 credits ≈ 4 EUR encaisses.
+ *
+ * Le texte est plafonne a AVATAR_MAX_SCRIPT_CHARS pour borner la duree, donc
+ * le cout HeyGen, a un forfait unique.
+ */
+export const AVATAR_VIDEO_COST = 40;
+
+/** Plafond du texte prononce — borne la duree video et donc la facture HeyGen. */
+export const AVATAR_MAX_SCRIPT_CHARS = 1200;
+
 export function hasWatermark(plan: string | null | undefined): boolean {
   if (!plan || plan === 'free') return true;
   return false;
