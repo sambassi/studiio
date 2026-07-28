@@ -65,7 +65,17 @@ export default function AvatarPage() {
         if (cancelled) return;
         if (json.success) {
           setAvatar(json.data.avatar);
-          setVoices(json.data.voices || []);
+          const list: Voice[] = json.data.voices || [];
+          setVoices(list);
+          // On preselectionne une vraie voix : aucun choix "vide" n'est
+          // propose, car un voice_id absent fait echouer HeyGen en 400.
+          const fallback = json.data.defaultVoiceId || list[0]?.voiceId || '';
+          setVoiceId(fallback);
+          if (list.length === 0) {
+            setNotice(
+              "Les voix HeyGen n'ont pas pu etre chargees. La generation utilisera la voix par defaut du compte HeyGen.",
+            );
+          }
         }
       } catch {
         // La page reste utilisable : l'utilisateur pourra réessayer.
@@ -363,9 +373,10 @@ export default function AvatarPage() {
               <select
                 value={voiceId}
                 onChange={(e) => setVoiceId(e.target.value)}
-                className="w-full rounded-xl bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2.5 text-sm"
+                disabled={voices.length === 0}
+                className="w-full rounded-xl bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2.5 text-sm disabled:opacity-50"
               >
-                <option value="">Voix par défaut</option>
+                {voices.length === 0 && <option value="">Voix indisponibles</option>}
                 {voices.map((v) => (
                   <option key={v.voiceId} value={v.voiceId}>
                     {v.name}

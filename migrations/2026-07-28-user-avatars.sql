@@ -54,3 +54,28 @@ create index if not exists avatar_generations_user_id_idx
 
 create index if not exists avatar_generations_status_idx
   on avatar_generations (status);
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- DROITS POSTGREST
+--
+-- Sans ce grant, PostgREST voit bien la table mais repond
+-- « table not in schema cache » / 404 : le role utilise par PostgREST n'a
+-- aucun droit dessus, donc la table n'entre pas dans le cache de schema.
+-- ─────────────────────────────────────────────────────────────────────────
+grant all on table public.user_avatars, public.avatar_generations to public;
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- ⚠️ APRES CETTE MIGRATION — ETAPE OBLIGATOIRE
+--
+-- PostgREST met son schema en cache au demarrage. Tant qu'il n'est pas
+-- recharge, toute table fraichement creee reste invisible et l'API renvoie
+-- « Could not find the table ... in the schema cache ».
+--
+-- Recharger le cache (sur le serveur Hetzner) :
+--
+--     docker kill -s SIGUSR1 studiio-postgrest
+--
+-- Cette commande ne redemarre PAS le conteneur : elle demande juste a
+-- PostgREST de relire le schema. A refaire apres CHAQUE migration qui cree
+-- ou modifie une table, sinon le bug se reproduira a l'identique.
+-- ─────────────────────────────────────────────────────────────────────────

@@ -47,9 +47,43 @@ function apiKey(): string {
 }
 
 /**
- * Traduit une reponse HeyGen en message utilisateur francais.
- * On ne renvoie JAMAIS le corps brut de HeyGen au navigateur : il peut
- * contenir des identifiants de compte.
+ * Extrait le message d'erreur reel renvoye par HeyGen.
+ * La forme varie selon l'endpoint : { message }, { error: "..." },
+ * { error: { message } }, { msg }... On ratisse large.
+ */
+function extractHeyGenMessage(body: unknown): string | undefined {
+  if (!body) return undefined;
+  if (typeof body === 'string') return body.slice(0, 500) || undefined;
+
+  const b = body as Record<string, any>;
+  const candidates = [
+    b.message,
+    b.msg,
+    typeof b.error === 'string' ? b.error : undefined,
+    b.error?.message,
+    b.error?.detail,
+    b.detail,
+    b.data?.error,
+    b.data?.message,
+  ];
+  for (const c of candidates) {
+    if (typeof c === 'string' && c.trim()) return c.trim().slice(0, 500);
+  }
+  // Rien d'exploitable : on renvoie le JSON tronque plutot que rien du tout.
+  try {
+    const dump = JSON.stringify(body);
+    return dump && dump !== '{}' ? dump.slice(0, 500) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Traduit une reponse HeyGen en HeyGenError.
+ *
+ * Le message REEL de HeyGen est propage jusqu'a l'UI : sans lui, un 400 est
+ * indiagnosticable (on ne sait pas si c'est la voix, l'avatar ou le texte).
+ * Le corps complet est en plus journalise cote serveur par heygenFetch.
  */
 function mapHeyGenFailure(status: number, body: unknown): HeyGenError {
   const raw = typeof body === 'string' ? body : JSON.stringify(body ?? '');
@@ -57,30 +91,32 @@ function mapHeyGenFailure(status: number, body: unknown): HeyGenError {
   const code =
     (body as { code?: string; error?: { code?: string } })?.code ??
     (body as { error?: { code?: string } })?.error?.code;
+  const detail = extractHeyGenMessage(body);
+  const suffix = detail ? ` — HeyGen : ${detail}` : '';
 
   if (status === 401 || status === 403) {
     return new HeyGenError(
-      "Cle API HeyGen refusee. Verifier HEYGEN_API_KEY cote serveur.",
+      `Cle API HeyGen refusee. Verifier HEYGEN_API_KEY cote serveur.${suffix}`,
       503,
       code ?? 'unauthorized',
     );
   }
   if (status === 429 || lowered.includes('quota') || lowered.includes('rate limit')) {
     return new HeyGenError(
-      "Quota HeyGen atteint. Reessayer plus tard ou augmenter le forfait HeyGen.",
+      `Quota HeyGen atteint. Reessayer plus tard ou augmenter le forfait HeyGen.${suffix}`,
       503,
       code ?? 'quota_exceeded',
     );
   }
   if (status === 400 || status === 422) {
     return new HeyGenError(
-      "HeyGen a refuse la demande (image ou texte invalide).",
+      `HeyGen a refuse la demande.${suffix}`,
       400,
       code ?? 'invalid_request',
     );
   }
   return new HeyGenError(
-    `HeyGen a repondu ${status}.`,
+    `HeyGen a repondu ${status}.${suffix}`,
     502,
     code ?? 'upstream_error',
   );
@@ -122,12 +158,20 @@ async function heygenFetch<T>(
     parsed = text;
   }
 
-  if (!res.ok) throw mapHeyGenFailure(res.status, parsed);
+  if (!res.ok) {
+    // Journal serveur : corps COMPLET, non tronque. C'est la seule trace qui
+    // permet de diagnostiquer un 400 HeyGen.
+    console.error('[Avatar][HeyGen]', rest.method ?? 'GET', path, res.status, text);
+    throw mapHeyGenFailure(res.status, parsed);
+  }
 
   // HeyGen encapsule tout dans `data`. Certains endpoints renvoient aussi un
   // `error` non nul avec un HTTP 200 — on le traite comme un echec.
   const envelope = parsed as { data?: T; error?: unknown } | null;
-  if (envelope && envelope.error) throw mapHeyGenFailure(200, envelope.error);
+  if (envelope && envelope.error) {
+    console.error('[Avatar][HeyGen]', rest.method ?? 'GET', path, '200-with-error', text);
+    throw mapHeyGenFailure(200, envelope.error);
+  }
   return (envelope?.data ?? parsed) as T;
 }
 
@@ -257,7 +301,16 @@ export async function generateAvatarVideo(
     resolution: '720p',
     output_format: 'mp4',
   };
+  // Une voix est TOUJOURS envoyee quand on en a une : HeyGen refuse un
+  // voice_id vide, et l'omettre ne garantit pas une voix par defaut.
   if (voiceId) body.voice_id = voiceId;
+
+  // Trace de la requete sortante : couplee au log d'erreur de heygenFetch,
+  // elle permet de voir exactement quel champ HeyGen rejette.
+  console.log(
+    '[Avatar][HeyGen] POST /v3/videos payload',
+    JSON.stringify({ ...body, script: `${script.slice(0, 60)}… (${script.length} car.)` }),
+  );
 
   const data = await heygenFetch<{ video_id?: string; id?: string; status?: string }>(
     '/v3/videos',
@@ -346,7 +399,13 @@ export interface HeyGenVoice {
   gender?: string;
 }
 
-/** GET /v3/voices — liste des voix. Retourne [] en cas d'echec (non bloquant). */
+/**
+ * GET /v3/voices — liste des voix.
+ *
+ * Retourne [] en cas d'echec (non bloquant pour l'affichage), mais journalise
+ * la raison : une liste vide est justement ce qui menait a envoyer une
+ * generation sans voix, et donc au 400 de HeyGen.
+ */
 export async function listVoices(): Promise<HeyGenVoice[]> {
   try {
     const data = await heygenFetch<{
@@ -358,10 +417,16 @@ export async function listVoices(): Promise<HeyGenVoice[]> {
         language?: string;
         gender?: string;
       }>;
-    }>('/v3/voices', { method: 'GET', timeoutMs: 20_000 });
+    }>('/v3/voices?limit=200', { method: 'GET', timeoutMs: 20_000 });
 
-    const list = Array.isArray(data?.voices) ? data.voices : [];
-    return list
+    // Selon la version, la liste est sous `voices` ou directement un tableau.
+    const list = Array.isArray(data?.voices)
+      ? data.voices
+      : Array.isArray(data)
+        ? (data as unknown as Array<Record<string, string>>)
+        : [];
+
+    const voices = list
       .map((v) => ({
         voiceId: v.voice_id ?? v.id ?? '',
         name: v.display_name ?? v.name ?? 'Voix',
@@ -369,7 +434,43 @@ export async function listVoices(): Promise<HeyGenVoice[]> {
         gender: v.gender,
       }))
       .filter((v) => v.voiceId);
-  } catch {
+
+    if (voices.length === 0) {
+      console.error('[Avatar][HeyGen] /v3/voices a renvoye 0 voix exploitable');
+    }
+    return voices;
+  } catch (err) {
+    console.error(
+      '[Avatar][HeyGen] Chargement des voix impossible:',
+      err instanceof Error ? err.message : err,
+    );
     return [];
   }
+}
+
+/** Une voix francaise si possible, sinon anglaise, sinon la premiere venue. */
+export function pickDefaultVoice(voices: HeyGenVoice[]): HeyGenVoice | undefined {
+  if (voices.length === 0) return undefined;
+  const isLang = (v: HeyGenVoice, prefix: string) =>
+    (v.language || '').toLowerCase().startsWith(prefix);
+  return (
+    voices.find((v) => isLang(v, 'fr')) ??
+    voices.find((v) => isLang(v, 'en')) ??
+    voices[0]
+  );
+}
+
+/**
+ * Resout la voix a utiliser cote serveur.
+ * Garantit qu'on n'envoie JAMAIS un voice_id vide a HeyGen : soit une voix
+ * valide, soit `undefined` (champ omis) si la liste est indisponible.
+ */
+export async function resolveVoiceId(requested?: string): Promise<string | undefined> {
+  if (requested && requested.trim()) return requested.trim();
+  const voices = await listVoices();
+  const fallback = pickDefaultVoice(voices);
+  if (fallback) {
+    console.log('[Avatar][HeyGen] Voix par defaut retenue:', fallback.voiceId, fallback.name);
+  }
+  return fallback?.voiceId;
 }

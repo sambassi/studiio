@@ -93,6 +93,25 @@ La base est **auto-hebergee sur le meme serveur Hetzner**, ce n'est plus Supabas
 Cote **serveur**, la variable `SUPABASE_URL` pointe vers ce **PostgREST auto-heberge** — le nom
 de la variable est un residu historique, la valeur ne designe plus Supabase cloud.
 
+#### ⚠️ Toute migration exige DEUX etapes de plus
+
+Creer une table ne suffit pas : PostgREST la renvoie en erreur
+« Could not find the table ... in the schema cache » tant que l'on n'a pas :
+
+1. **Donne les droits** au role PostgREST, sinon la table n'entre jamais dans le cache :
+   ```sql
+   grant all on table public.ma_table to public;
+   ```
+2. **Recharge le cache de schema**, que PostgREST ne lit qu'au demarrage :
+   ```bash
+   docker kill -s SIGUSR1 studiio-postgrest
+   ```
+   (n'arrete pas le conteneur, demande juste la relecture du schema)
+
+Ces deux etapes sont a repeter apres **chaque** migration creant ou modifiant une table.
+Les oublier produit un bug qui ressemble a une erreur applicative alors qu'il est purement
+infrastructurel.
+
 ### Stockage
 
 **MinIO auto-heberge** (service `studiio-minio`), active par `STORAGE_PROVIDER=s3`. Les rushes et

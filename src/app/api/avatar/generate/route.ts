@@ -3,7 +3,13 @@ import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { getUserCredits, deductCredits, addCredits } from '@/lib/credits/system';
 import { AVATAR_VIDEO_COST, AVATAR_MAX_SCRIPT_CHARS } from '@/lib/stripe/constants';
-import { generateAvatarVideo, HeyGenError, type AvatarAspectRatio } from '@/lib/avatar/heygen';
+import {
+  generateAvatarVideo,
+  getAvatarStatus,
+  resolveVoiceId,
+  HeyGenError,
+  type AvatarAspectRatio,
+} from '@/lib/avatar/heygen';
 
 export const maxDuration = 120;
 export const dynamic = 'force-dynamic';
@@ -76,7 +82,55 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Solde
+    // 1. L'avatar est-il pret ? HeyGen entraine l'avatar photo en asynchrone
+    //    et refuse une generation sur un avatar encore en cours.
+    //    Ce controle est fait AVANT tout debit : un avatar pas pret ne doit
+    //    jamais consommer de credits, meme rembourses ensuite.
+    if (avatarRow.status !== 'completed') {
+      const remoteStatus = await getAvatarStatus(avatarRow.provider_avatar_id);
+      console.log(
+        `[Avatar] Avatar ${avatarRow.provider_avatar_id} — statut local "${avatarRow.status}", statut HeyGen "${remoteStatus ?? 'inconnu'}"`,
+      );
+
+      if (remoteStatus && remoteStatus !== avatarRow.status) {
+        await supabaseAdmin
+          .from('user_avatars')
+          .update({ status: remoteStatus })
+          .eq('id', avatarRow.id);
+        avatarRow.status = remoteStatus;
+      }
+
+      if (remoteStatus === 'failed') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "L'entrainement de votre avatar a echoue chez HeyGen. Renvoyez une photo.",
+            code: 'avatar_failed',
+          },
+          { status: 409 },
+        );
+      }
+      if (remoteStatus && remoteStatus !== 'completed') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Votre avatar est encore en cours de preparation. Reessayez dans une minute.",
+            code: 'avatar_not_ready',
+          },
+          { status: 409 },
+        );
+      }
+      // remoteStatus null = endpoint de statut indisponible : on continue et
+      // on laissera HeyGen trancher, avec son message reel desormais visible.
+    }
+
+    // 2. Voix — jamais de voice_id vide (cause probable des 400 HeyGen).
+    const resolvedVoiceId = await resolveVoiceId(voiceId);
+    if (!resolvedVoiceId) {
+      console.warn('[Avatar] Aucune voix resolue — generation tentee sans voice_id');
+    }
+
+    // 3. Solde
     const credits = await getUserCredits(userId);
     if (credits < AVATAR_VIDEO_COST) {
       return NextResponse.json(
@@ -89,15 +143,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2. Debit avant appel externe
+    // 4. Debit avant appel externe
     await deductCredits(userId, AVATAR_VIDEO_COST, 'avatar');
     creditsDeducted = true;
 
-    // 3. HeyGen
+    // 5. HeyGen
     const { videoId, status } = await generateAvatarVideo({
       avatarId: avatarRow.provider_avatar_id,
       script,
-      voiceId,
+      voiceId: resolvedVoiceId,
       aspectRatio,
     });
 
@@ -108,7 +162,7 @@ export async function POST(req: NextRequest) {
         user_avatar_id: avatarRow.id,
         provider_video_id: videoId,
         script,
-        voice_id: voiceId ?? null,
+        voice_id: resolvedVoiceId ?? null,
         aspect_ratio: aspectRatio,
         status: status === 'completed' ? 'processing' : 'pending',
         credits_charged: AVATAR_VIDEO_COST,
@@ -150,6 +204,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (error instanceof HeyGenError) {
+      // Le corps brut a deja ete journalise par heygenFetch ; on trace ici le
+      // contexte applicatif pour relier les deux dans les logs Coolify.
+      console.error(
+        `[Avatar][HeyGen] Generation refusee pour ${userId} — code=${error.code} http=${error.httpStatus} : ${error.message}`,
+      );
       return NextResponse.json(
         { success: false, error: error.message, code: error.code, refunded: creditsDeducted },
         { status: error.httpStatus },
