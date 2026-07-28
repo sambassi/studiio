@@ -24,7 +24,7 @@ import {
   Shield, ShieldCheck, ShieldAlert, Lock, Unlock, Key, Fingerprint,
   Plug, Power, BatteryCharging, Signal,
   // Ajouts : cibles de la table d'icones de smart-content (droplet/eye/chain).
-  Droplet, Eye, Link,
+  Droplet, Eye, Link, Egg, Milk,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -54,7 +54,7 @@ export const CARD_ICON_MAP: Record<string, LucideIcon> = {
   Filter, Settings2, Wrench, Hammer,
   Shield, ShieldCheck, ShieldAlert, Lock, Unlock, Key, Fingerprint,
   Plug, Power, BatteryCharging, Signal,
-  Droplet, Eye, Link,
+  Droplet, Eye, Link, Egg, Milk,
 };
 
 interface CardIconProps {

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Trash2, Upload, Zap, Loader2, Sparkles, Film, X, Play, Volume2, Image as ImageIcon, Search, ChevronRight, ChevronLeft, ArrowUp, ArrowDown, Calendar, Music, Package, RefreshCw } from 'lucide-react';
 import { CardIcon } from '@/components/ui/CardIcon';
+import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { generateSmartContent } from '@/lib/smart-content';
 import { useBranding } from '@/lib/hooks/useBranding';
 import { useCreatorPreferences } from '@/lib/hooks/useCreatorPreferences';
@@ -550,7 +551,7 @@ export default function InfographiePage() {
             const result = await composeAndUpload({
               width: compWidth, height: compHeight, fps: 30,
               title: bTitle, subtitle: bSub, salesPhrase: bPhrase,
-              cards: cards.map(c => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color })),
+              cards: await preRenderCardIcons(cards.map(c => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color }))),
               posterUrl: bMediaUrl || characterUrl, videoUrl, logoUrl, musicUrl, voiceUrl,
               introDuration: seqIntro, cardsDuration: seqCards, videoDuration: seqVideo, ctaDuration: seqCta,
               accentColor: branding.accentColor || '#D91CD2',
@@ -662,7 +663,7 @@ export default function InfographiePage() {
             const result = await composeAndUpload({
               width: compWidth, height: compHeight, fps: 30,
               title: title || 'Infographie', subtitle, salesPhrase,
-              cards: cards.map(c => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color })),
+              cards: await preRenderCardIcons(cards.map(c => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color }))),
               posterUrl: posterUrl || selectedPexelsUrl || characterUrl, videoUrl, logoUrl, musicUrl, voiceUrl,
               introDuration: seqIntro, cardsDuration: seqCards, videoDuration: seqVideo, ctaDuration: seqCta,
               accentColor: branding.accentColor || '#D91CD2',
