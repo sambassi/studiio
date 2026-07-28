@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Wand2,
   Rocket,
@@ -130,6 +130,104 @@ interface Generated {
 
 const STEPS = ['Sujet', 'Style', 'Contenu', 'Envoi'] as const;
 
+/** Classes de désactivation : `Button` n'en fournit aucune (ui/Button.tsx). */
+const DISABLED = 'disabled:opacity-40 disabled:cursor-not-allowed';
+
+/**
+ * Aperçu — déclaré HORS du composant parent.
+ *
+ * Déclaré à l'intérieur, sa référence changeait à chaque rendu : React
+ * démontait puis remontait tout le sous-arbre à chaque frappe dans le champ
+ * « votre sujet ».
+ */
+function Preview({ generated, format }: { generated: Generated | null; format: Format }) {
+  return (
+    <div className="card-base p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <MonitorPlay className="w-4 h-4 text-gray-500" />
+        <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+          Aperçu
+        </span>
+      </div>
+
+      <div
+        className="w-full rounded-xl overflow-hidden flex flex-col justify-between p-4 gap-3"
+        style={{
+          aspectRatio: format === '9:16' ? '9 / 16' : '16 / 9',
+          background: generated
+            ? `linear-gradient(160deg, ${ACCENT}55 0%, ${DARK} 55%, ${GRADIENT_END}44 100%)`
+            : DARK,
+          border: generated ? 'none' : '1px dashed #1F2937',
+        }}
+      >
+        {!generated ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center px-2">
+            <MonitorPlay className="w-8 h-8 text-gray-700" />
+            <p className="text-xs text-gray-600 leading-relaxed">
+              Votre visuel s&apos;affichera ici
+              <br />
+              au fil des étapes.
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* Titre */}
+            <div>
+              <div
+                className="font-extrabold uppercase leading-tight text-white"
+                style={{ fontSize: format === '9:16' ? '1.05rem' : '0.95rem' }}
+              >
+                {generated.title}
+              </div>
+              <div className="text-[10px] text-gray-300 mt-1 leading-snug">
+                {generated.subtitle}
+              </div>
+            </div>
+
+            {/* Cartes */}
+            <div className="flex-1 flex flex-col justify-center gap-1.5 min-h-0 overflow-hidden">
+              {generated.cards.map((c, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-2 rounded-lg px-2 py-1.5"
+                  style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}
+                >
+                  <CardIcon name={c.icon} size={13} color="#FFFFFF" className="" />
+                  <span className="text-[9px] font-semibold text-white truncate flex-1">
+                    {c.title}
+                  </span>
+                  {c.value && (
+                    <span
+                      className="text-[9px] font-bold flex-shrink-0"
+                      style={{ color: GRADIENT_END }}
+                    >
+                      {c.value}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* CTA */}
+            <div className="text-center">
+              <div className="text-[11px] font-extrabold text-white">{generated.cta}</div>
+              <div className="text-[8px] font-bold" style={{ color: GRADIENT_END }}>
+                {generated.ctaSub}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {generated && (
+        <p className="mt-3 text-[10px] text-gray-600 leading-relaxed">
+          Aperçu simplifié. La vidéo finale est composée depuis le calendrier ou le mode avancé.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function AssistantWizard() {
   const [started, setStarted] = useState(false);
   const [step, setStep] = useState(0);
@@ -146,6 +244,13 @@ export default function AssistantWizard() {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const genTimerRef = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => {
+    return () => {
+      if (genTimerRef.current) clearTimeout(genTimerRef.current);
+    };
+  }, []);
 
   // Date du jour posée après le montage : la calculer pendant le rendu
   // provoquerait un écart d'hydratation entre serveur et navigateur.
@@ -164,8 +269,10 @@ export default function AssistantWizard() {
     setGenerating(true);
     setError(null);
     // Laisse le navigateur peindre l'état « génération » avant le calcul
-    // synchrone de smart-content.
-    setTimeout(() => {
+    // synchrone de smart-content. Le timer est mémorisé pour être annulé au
+    // démontage — même discipline que le reste du dépôt.
+    if (genTimerRef.current) clearTimeout(genTimerRef.current);
+    genTimerRef.current = setTimeout(() => {
       try {
         const seed = Math.floor(Math.random() * 100000) + tone.seedOffset;
         const result = generateSmartContent(topicText, seed);
@@ -261,7 +368,13 @@ export default function AssistantWizard() {
 
       const json = await res.json();
       if (!json.success || !json.post?.id) {
-        setError(json.error || "L'envoi au calendrier a échoué.");
+        // La route renvoie des messages techniques en anglais ("Unauthorized",
+        // "Failed to create post") — on les traduit pour l'utilisateur.
+        setError(
+          res.status === 401
+            ? 'Votre session a expiré. Reconnectez-vous et réessayez.'
+            : "L'envoi au calendrier a échoué. Réessayez dans un instant.",
+        );
         return;
       }
       setSent(true);
@@ -279,97 +392,6 @@ export default function AssistantWizard() {
     setSent(false);
     setError(null);
   };
-
-  // ── Aperçu (colonne de droite) ──────────────────────────────────────
-  // Aucun composant d'aperçu réutilisable n'existe dans le dépôt : ceux de
-  // /dashboard/creer et /dashboard/calendar sont du JSX inline dépendant de
-  // dizaines de variables locales, non extractibles sans refactor. On rend
-  // donc un aperçu léger, en réutilisant CardIcon pour les icônes.
-  const Preview = () => (
-    <div className="card-base p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <MonitorPlay className="w-4 h-4 text-gray-500" />
-        <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-          Aperçu
-        </span>
-      </div>
-
-      <div
-        className="w-full rounded-xl overflow-hidden flex flex-col justify-between p-4 gap-3"
-        style={{
-          aspectRatio: format === '9:16' ? '9 / 16' : '16 / 9',
-          background: generated
-            ? `linear-gradient(160deg, ${ACCENT}55 0%, ${DARK} 55%, ${GRADIENT_END}44 100%)`
-            : DARK,
-          border: generated ? 'none' : '1px dashed #1F2937',
-        }}
-      >
-        {!generated ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center px-2">
-            <MonitorPlay className="w-8 h-8 text-gray-700" />
-            <p className="text-xs text-gray-600 leading-relaxed">
-              Votre visuel s&apos;affichera ici
-              <br />
-              au fil des étapes.
-            </p>
-          </div>
-        ) : (
-          <>
-            {/* Titre */}
-            <div>
-              <div
-                className="font-extrabold uppercase leading-tight text-white"
-                style={{ fontSize: format === '9:16' ? '1.05rem' : '0.95rem' }}
-              >
-                {generated.title}
-              </div>
-              <div className="text-[10px] text-gray-300 mt-1 leading-snug">
-                {generated.subtitle}
-              </div>
-            </div>
-
-            {/* Cartes */}
-            <div className="flex-1 flex flex-col justify-center gap-1.5 min-h-0 overflow-hidden">
-              {generated.cards.map((c, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-2 rounded-lg px-2 py-1.5"
-                  style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}
-                >
-                  <CardIcon name={c.icon} size={13} color="#FFFFFF" className="" />
-                  <span className="text-[9px] font-semibold text-white truncate flex-1">
-                    {c.title}
-                  </span>
-                  {c.value && (
-                    <span
-                      className="text-[9px] font-bold flex-shrink-0"
-                      style={{ color: GRADIENT_END }}
-                    >
-                      {c.value}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* CTA */}
-            <div className="text-center">
-              <div className="text-[11px] font-extrabold text-white">{generated.cta}</div>
-              <div className="text-[8px] font-bold" style={{ color: GRADIENT_END }}>
-                {generated.ctaSub}
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-
-      {generated && (
-        <p className="mt-3 text-[10px] text-gray-600 leading-relaxed">
-          Aperçu simplifié. La vidéo finale est composée depuis le calendrier ou le mode avancé.
-        </p>
-      )}
-    </div>
-  );
 
   // ── Rendu ───────────────────────────────────────────────────────────
   return (
@@ -434,7 +456,7 @@ export default function AssistantWizard() {
                     Studiio produit et planifie vos contenus en continu à partir de vos objectifs.
                   </CardContent>
                   <div className="mt-4">
-                    <Button variant="secondary" size="sm" disabled aria-disabled="true">
+                    <Button variant="secondary" size="sm" disabled aria-disabled="true" className={DISABLED}>
                       Activer
                     </Button>
                   </div>
@@ -670,6 +692,7 @@ export default function AssistantWizard() {
                       size="sm"
                       onClick={runGeneration}
                       disabled={generating}
+                      className={DISABLED}
                     >
                       <span className="flex items-center gap-2">
                         <RefreshCw className="w-4 h-4" /> Relancer
@@ -680,6 +703,7 @@ export default function AssistantWizard() {
                       size="sm"
                       onClick={() => setStep(3)}
                       disabled={generating || !generated}
+                      className={DISABLED}
                     >
                       <span className="flex items-center gap-2">
                         Continuer <ArrowRight className="w-4 h-4" />
@@ -748,6 +772,7 @@ export default function AssistantWizard() {
                         size="sm"
                         onClick={sendToCalendar}
                         disabled={sending || !scheduledDate}
+                        className={DISABLED}
                       >
                         <span className="flex items-center gap-2">
                           {sending ? (
@@ -771,7 +796,7 @@ export default function AssistantWizard() {
       </div>
 
       <div className="lg:col-span-2">
-        <Preview />
+        <Preview generated={generated} format={format} />
       </div>
     </div>
   );
