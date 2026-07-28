@@ -2954,6 +2954,9 @@ export default function CalendarPage() {
           'Bebas Neue': 'var(--font-bebas)',
           Poppins: 'var(--font-poppins)',
           'Space Grotesk': 'var(--font-space)',
+          // Inter est la police de base de l'app (next/font). Sans cette entree,
+          // un post qui demande 'Inter' retombe en serif dans la reconstruction.
+          Inter: 'var(--font-inter)',
         };
         const rawFontName = design?.font || 'sans-serif';
         const designFont = FONT_CSS_MAP[rawFontName] || rawFontName;

@@ -159,9 +159,16 @@ const FONT_PCT = {
   '16:9': { title: 3.5, subtitle: 2.15, cta: 3.1, ctaSub: 2.3 },
 } as const;
 
-/** Reproduit `dropShadowLgFilter` du compositeur (échelle w/320). */
+/**
+ * Reproduit `dropShadowLgFilter` du compositeur, qui vaut `4/320` et `10/320`
+ * de la LARGEUR. Exprimes en `em`, il faut donc diviser par la taille de
+ * police relative (4.375 % de la largeur) : 4/320 / 0.04375 = 0.2857em.
+ */
 const TITLE_SHADOW =
-  'drop-shadow(0 0.0125em 0.0094em rgba(0,0,0,0.1)) drop-shadow(0 0.031em 0.025em rgba(0,0,0,0.04))';
+  'drop-shadow(0 0.2857em 0.2143em rgba(0,0,0,0.1)) drop-shadow(0 0.714em 0.571em rgba(0,0,0,0.04))';
+
+/** Equivalent de `dropShadowBaseFilter`, applique au sous-titre. */
+const SUBTITLE_SHADOW = 'drop-shadow(0 0.1786em 0.1071em rgba(0,0,0,0.1))';
 
 /**
  * Angle CSS reproduisant `createLinearGradient(0, 0, w, h)` du compositeur.
@@ -269,7 +276,11 @@ function Preview({
           // Fond STRICTEMENT identique a celui peint par le compositeur.
           background: generated ? backdropCSS(format) : DARK,
           border: generated ? 'none' : '1px dashed #1F2937',
-          fontFamily: DESIGN.font,
+          // `var(--font-inter)` est la SEULE reference valide : Next charge la
+          // police via next/font, il n'existe aucune @font-face nommee 'Inter'.
+          // Sans cette variable, l'apercu ET le snapshot des cartes tombent en
+          // police par defaut (serif), alors que la video serait en vraie Inter.
+          fontFamily: 'var(--font-inter), Inter, sans-serif',
         }}
       >
         {!generated ? (
@@ -314,7 +325,10 @@ function Preview({
                   // drawIntro dessine le sous-titre en titleColor a 80 %
                   color: `${DESIGN.titleColor}CC`,
                   lineHeight: 1.1,
-                  marginTop: '1.25%',
+                  // cqw et non % : un % se resout sur la largeur du PARENT (84 %),
+                  // pas sur celle du cadre. Le compositeur utilise w*4/320.
+                  marginTop: '1.25cqw',
+                  filter: SUBTITLE_SHADOW,
                 }}
               >
                 {generated.subtitle}
@@ -385,7 +399,7 @@ function Preview({
                   fontWeight: 900,
                   color: GRADIENT_END,
                   lineHeight: 1.2,
-                  marginTop: '1.25%',
+                  marginTop: '1.25cqw',
                 }}
               >
                 {generated.ctaSub}
@@ -726,7 +740,9 @@ export default function AssistantWizard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: generated.title || 'Infographie',
+          // Meme casse que le titre envoye au compositeur : une recomposition
+          // ulterieure repart de post.title et doit produire le meme rendu.
+          title: (generated.title || 'Infographie').toUpperCase(),
           caption: generated.subtitle || '',
           media_url: composed.url,
           media_type: 'video',
