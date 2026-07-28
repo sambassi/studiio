@@ -483,8 +483,15 @@ export default function CalendarPage() {
     // Sanity-clamp durations: a stored `sequences.video = 1` (or any sub-2s value)
     // is almost certainly corrupted metadata from an old export and would produce
     // the "1 second flash" bug. Fall back to the editor defaults.
+    // `0` est une valeur VOULUE : elle signifie « sequence masquee ». Sans ce
+    // cas explicite, safeDuration(0, 6) renvoyait 6 et ressuscitait la
+    // sequence a la regeneration. Le bug preexistait, mais depuis que l'ordre
+    // est transmis au compositeur la sequence ressuscitee — absente de
+    // `order` — se retrouvait reléguee APRES le CTA au lieu de sa place
+    // canonique. Le fallback ne doit s'appliquer qu'aux valeurs absentes ou
+    // aberrantes, jamais a un 0 explicite.
     const safeDuration = (val: unknown, fallback: number, min = 2) =>
-      (typeof val === 'number' && val >= min) ? val : fallback;
+      val === 0 ? 0 : ((typeof val === 'number' && val >= min) ? val : fallback);
 
     console.log('[Regenerate] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('[Regenerate] Starting montage regeneration for post:', post.id);
@@ -539,6 +546,9 @@ export default function CalendarPage() {
         musicUrl: meta.musicUrl || null,
         voiceUrl: meta.voiceUrl || null,
         sequenceVoiceUrls: (meta as any).sequenceVoiceUrls || undefined,
+        // Ordre de sequences stocke : sans lui la video repartait toujours
+        // en intro->cards->video->cta, divergeant de l'apercu.
+        sequenceOrder: (meta?.sequences?.order as string[] | undefined) || undefined,
         introDuration: safeDuration(meta.sequences?.intro, 5),
         cardsDuration: (meta.cards?.length > 0 || meta.textCards?.length > 0)
           ? safeDuration(meta.sequences?.cards, 6)
@@ -947,6 +957,9 @@ export default function CalendarPage() {
           musicUrl,
           voiceUrl,
           sequenceVoiceUrls: (meta as any).sequenceVoiceUrls || undefined,
+          // Ordre de sequences stocke : sans lui la video repartait toujours
+          // en intro->cards->video->cta, divergeant de l'apercu.
+          sequenceOrder: (meta?.sequences?.order as string[] | undefined) || undefined,
           introDuration: seq?.intro ?? 5,
           cardsDuration: seq?.cards ?? ((meta.cards?.length > 0 || meta.textCards?.length > 0) ? 6 : 0),
           videoDuration: seq?.video ?? 12,
@@ -1560,6 +1573,9 @@ export default function CalendarPage() {
             musicUrl,
             voiceUrl,
             sequenceVoiceUrls: (meta as any).sequenceVoiceUrls || undefined,
+            // Ordre de sequences stocke : sans lui la video repartait toujours
+            // en intro->cards->video->cta, divergeant de l'apercu.
+            sequenceOrder: (meta?.sequences?.order as string[] | undefined) || undefined,
             introDuration: seq?.intro ?? 5,
             cardsDuration: seq?.cards ?? ((meta.cards?.length > 0 || meta.textCards?.length > 0) ? 6 : 0),
             videoDuration: seq?.video ?? 12,
@@ -2060,6 +2076,9 @@ export default function CalendarPage() {
         musicUrl,
         voiceUrl,
         sequenceVoiceUrls: (meta as any)?.sequenceVoiceUrls || undefined,
+        // Ordre de sequences stocke : sans lui la video repartait toujours
+        // en intro->cards->video->cta, divergeant de l'apercu.
+        sequenceOrder: (meta?.sequences?.order as string[] | undefined) || undefined,
         introDuration: seq?.intro ?? 5,
         cardsDuration: seq?.cards ?? ((meta?.cards?.length > 0 || meta?.textCards?.length > 0) ? 6 : 0),
         videoDuration: seq?.video ?? 12,
