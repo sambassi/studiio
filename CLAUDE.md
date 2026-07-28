@@ -47,8 +47,8 @@ Le public cible est constitue de createurs de contenu, coachs fitness, entrepren
 | Framework | Next.js (App Router) | 14.2 |
 | Language | TypeScript (strict) | 5.x |
 | Styling | Tailwind CSS | 3.x |
-| Database | Supabase (PostgreSQL) | - |
-| Storage | Supabase Storage | - |
+| Database | Postgres 16-alpine auto-heberge + PostgREST | 16 |
+| Storage | MinIO auto-heberge (`STORAGE_PROVIDER=s3`) | - |
 | Auth | NextAuth v5 beta | 5.0.0-beta.19 |
 | Paiements | Stripe | v15 |
 | Video (client) | Canvas + MediaRecorder | - |
@@ -57,7 +57,7 @@ Le public cible est constitue de createurs de contenu, coachs fitness, entrepren
 | TTS | msedge-tts | 2.x |
 | Email | Resend (REST) | - |
 | i18n | next-intl | 4.x |
-| Deploiement | Vercel | auto-deploy main |
+| Hebergement | Hetzner + Coolify v4 | - |
 | Validation | Zod | 3.x |
 | Color Picker | react-colorful | 3.x |
 | Fonts | next/font/google | - |
@@ -65,6 +65,58 @@ Le public cible est constitue de createurs de contenu, coachs fitness, entrepren
 **Path alias** : `@/*` mappe vers `./src/*` (configure dans tsconfig.json).
 
 **Polices Google Fonts** : 5 polices chargees via `next/font/google` avec CSS variables : Anton (`--font-anton`), Syne (`--font-syne`), Bebas Neue (`--font-bebas`), Poppins (`--font-poppins`), Space Grotesk (`--font-space`).
+
+---
+
+## Infrastructure reelle (post-migration Hetzner)
+
+> Verifie en production sur Coolify le **2026-07-28**. Cette section fait autorite sur toute
+> mention de Vercel ou de Supabase cloud ailleurs dans ce fichier (mentions historiques non
+> encore nettoyees).
+
+### Hebergement
+
+Le projet ne tourne **plus sur Vercel**. Il tourne sur un serveur **Hetzner** (`178.105.201.62`)
+pilote par **Coolify v4**. L'application est le service `studiio-app` : une image Next.js
+construite depuis le `Dockerfile` du repo.
+
+### Base de donnees
+
+La base est **auto-hebergee sur le meme serveur Hetzner**, ce n'est plus Supabase cloud :
+
+| Service Coolify | Role |
+|-----------------|------|
+| `studiio-db` | Postgres **16-alpine** — user `studiio`, database `studiio` |
+| `studiio-postgrest` | API REST sur la base, exposee sur le port `3000` |
+| `studiio-pgrst-proxy` | Proxy devant PostgREST |
+
+Cote **serveur**, la variable `SUPABASE_URL` pointe vers ce **PostgREST auto-heberge** — le nom
+de la variable est un residu historique, la valeur ne designe plus Supabase cloud.
+
+### Stockage
+
+**MinIO auto-heberge** (service `studiio-minio`), active par `STORAGE_PROVIDER=s3`. Les rushes et
+les montages y sont stockes. Ce n'est plus Supabase Storage.
+
+### ⚠️ Migration a moitie faite — risque de production actif
+
+`NEXT_PUBLIC_SUPABASE_URL`, la variable utilisee **cote client / navigateur**, pointe **encore**
+vers le projet Supabase cloud `lhuqdmlkhezdwzwlpfqo.supabase.co`.
+
+Ce projet cloud est en **plan gratuit, en depassement de quota, grace period terminee**. S'il est
+coupe par Supabase, **tout ce qui passe encore par le client cassera** — sans aucun deploiement de
+notre cote, donc sans signal preventif.
+
+**A nettoyer (tache prioritaire de fiabilite)** : faire pointer le client vers le PostgREST
+auto-heberge, ou supprimer purement et simplement la dependance client a Supabase. Tant que ce
+n'est pas fait, la migration Hetzner n'est pas terminee.
+
+### Sauvegardes et points de restauration
+
+- **Base** : `studiio-db` est sauvegarde **quotidiennement a 03h00** (cron `0 3 * * *`), en local
+  sur le serveur, via Coolify.
+- **Code** : point de restauration = tag Git **`v2-baseline-2026-07-28`** (commit `814d609`).
+- **Rollback** : redeployer un commit anterieur depuis Coolify.
 
 ---
 
@@ -629,10 +681,15 @@ Le code du Calendrier se trouve dans `src/app/dashboard/calendar/page.tsx`. Le c
 
 ## Deploiement
 
-Chaque push sur `main` declenche un auto-deploy Vercel. Le build prend ~45-60s. Le projet est sur le plan Pro Vercel (`maxDuration: 300s` pour les fonctions).
+Le deploiement se fait via **Coolify v4** sur le serveur Hetzner `178.105.201.62`, a partir du
+`Dockerfile` du repo (service `studiio-app`). Voir la section **Infrastructure reelle
+(post-migration Hetzner)** pour le detail des services.
 
 **Domaine** : studiio.pro
-**Vercel project** : `studiio-saas-app` sous `bassicustomshoes-3610s-projects`
+
+> Historique : le projet a ete heberge sur Vercel (`studiio-saas-app` sous
+> `bassicustomshoes-3610s-projects`). Les mentions de Vercel ailleurs dans ce fichier (limite de
+> payload 4.5 Mo, cron, previews) datent de cette periode et n'ont pas encore ete revues.
 
 ---
 
