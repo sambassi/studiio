@@ -88,6 +88,9 @@ import {
   Trees, TreeDeciduous, Waves,
   Crown, Diamond, Medal,
   Rows3, Columns3,
+  // Cibles des tables d'icones (smart-content, libelles) — doivent exister
+  // ici aussi, sinon toLucideName les rabat sur 'Sparkles'.
+  Droplet, Link, Egg, Milk,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { PlatformIcon, type PlatformKey } from "@/components/ui/PlatformIcon";
@@ -117,6 +120,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Filter, Settings2, Wrench, Hammer,
   Shield, ShieldCheck, ShieldAlert, Lock, Unlock, Key, Fingerprint,
   Plug, Power, BatteryCharging, Signal,
+  Droplet, Link, Egg, Milk, Eye,
 };
 import { AgentIAModal } from "@/components/creer/AgentIAModal";
 import {
@@ -132,6 +136,7 @@ import {
 import FloatingPanel from "@/components/ui/FloatingPanel";
 import ColorWheel from "@/components/ui/ColorWheel";
 import { composeAndUpload, downloadBlob } from "@/lib/video-composer";
+import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { Modal } from "@/components/ui/Modal";
 import { detectClips, extractClip, type DetectedClip } from "@/lib/clip-detector";
 import CropRushModal from "@/components/creer/CropRushModal";
@@ -284,8 +289,8 @@ const QUICK_EMOJIS = ['📝', '✨', '⭐', '🎯', '💪', '🔥', '💡', '�
 // at render time via ICON_MAP[name] to keep this file lean.
 const ICON_LIBRARY: Record<string, string[]> = {
   sport:       ['Dumbbell', 'Flame', 'Zap', 'Trophy', 'Target', 'Activity', 'Bike', 'Medal', 'Crown'],
-  santé:       ['Heart', 'Brain', 'Stethoscope', 'Pill', 'Cross', 'HeartPulse', 'Syringe', 'Thermometer', 'Bone'],
-  nutrition:   ['Apple', 'Carrot', 'Salad', 'Coffee', 'Pizza', 'Utensils', 'Wheat'],
+  santé:       ['Heart', 'Brain', 'Stethoscope', 'Pill', 'Cross', 'HeartPulse', 'Syringe', 'Thermometer', 'Bone', 'Droplet', 'Eye'],
+  nutrition:   ['Apple', 'Carrot', 'Salad', 'Coffee', 'Pizza', 'Utensils', 'Wheat', 'Egg', 'Milk'],
   temps:       ['Clock', 'Timer', 'AlarmClock', 'Watch', 'Hourglass', 'Calendar', 'CalendarDays', 'CalendarCheck', 'CalendarClock', 'Sunrise', 'Sunset'],
   nature:      ['Leaf', 'Sun', 'Moon', 'Star', 'Cloud', 'Flower', 'TreePine', 'Sprout', 'Trees', 'TreeDeciduous', 'Waves', 'Mountain'],
   météo:       ['CloudRain', 'CloudSnow', 'Snowflake', 'Wind', 'Umbrella', 'Rainbow'],
@@ -1132,33 +1137,8 @@ const EMOJIS = [
 ];
 
 // Map icon names from smart-content.ts to actual emoji characters (legacy fallback)
-const ICON_TO_EMOJI: Record<string, string> = {
-  droplet: "💧",
-  brain: "🧠",
-  fire: "🔥",
-  shield: "🛡️",
-  energy: "⚡",
-  thermometer: "🌡️",
-  muscle: "💪",
-  apple: "🍎",
-  heart: "❤️",
-  moon: "😴",
-  sun: "☀️",
-  chart: "📈",
-  audio: "🎵",
-  leaf: "🌿",
-  star: "⭐",
-  clock: "⏰",
-  bone: "🦴",
-  eye: "👁️",
-  running: "🏃",
-  target: "🎯",
-  vitamin: "💊",
-  dna: "🧬",
-  scale: "⚖️",
-  food: "🍽️",
-  water: "💧",
-};
+// ICON_TO_EMOJI supprime : table morte (0 usage), et les emojis sont
+// proscrits dans le contenu genere (CLAUDE.md).
 
 // Map smart-content icon names → lucide icon name (must exist in ICON_MAP)
 const SMART_ICON_TO_LUCIDE: Record<string, string> = {
@@ -1231,101 +1211,111 @@ function toLucideName(input: string | undefined): string {
  * label (and optionally description) with a substring check. Keys are normalized
  * (lowercase, accent-stripped).
  */
-const LABEL_TO_EMOJI: Record<string, string> = {
+/**
+ * Mot-cle de libelle -> NOM D'ICONE LUCIDE (SVG).
+ *
+ * Cette table renvoyait des EMOJIS et alimentait `resolveCardIcon` : la page
+ * Creer produisait donc des cartes a emoji des qu'un libelle contenait
+ * « eau », « muscle », « proteine »... Regle projet (CLAUDE.md) : aucun emoji
+ * dans le contenu genere.
+ *
+ * Chaque valeur DOIT exister dans ICON_MAP / CARD_ICON_MAP.
+ */
+const LABEL_TO_ICON: Record<string, string> = {
   // Fruits
-  ananas: '🍍', 'pina': '🍍', pineapple: '🍍',
-  mangue: '🥭', mango: '🥭',
-  avocat: '🥑', avocado: '🥑',
-  banane: '🍌', banana: '🍌', plantain: '🍌',
-  pomme: '🍎', apple: '🍎',
-  citron: '🍋', lemon: '🍋', lime: '🍋',
-  orange: '🍊', clementine: '🍊', mandarine: '🍊',
-  fraise: '🍓', strawberry: '🍓',
-  raisin: '🍇', grape: '🍇',
-  pasteque: '🍉', watermelon: '🍉',
-  melon: '🍈',
-  cerise: '🍒', cherry: '🍒',
-  peche: '🍑', peach: '🍑',
-  poire: '🍐', pear: '🍐',
-  kiwi: '🥝',
-  coco: '🥥', noixcoco: '🥥', coconut: '🥥',
-  myrtille: '🫐', blueberry: '🫐',
-  framboise: '🍓', raspberry: '🍓',
-  grenade: '🍎', pomegranate: '🍎',
-  papaye: '🥭', papaya: '🥭',
-  baobab: '🌳',
+  ananas: 'Apple', 'pina': 'Apple', pineapple: 'Apple',
+  mangue: 'Apple', mango: 'Apple',
+  avocat: 'Salad', avocado: 'Salad',
+  banane: 'Apple', banana: 'Apple', plantain: 'Apple',
+  pomme: 'Apple', apple: 'Apple',
+  citron: 'Apple', lemon: 'Apple', lime: 'Apple',
+  orange: 'Apple', clementine: 'Apple', mandarine: 'Apple',
+  fraise: 'Apple', strawberry: 'Apple',
+  raisin: 'Apple', grape: 'Apple',
+  pasteque: 'Apple', watermelon: 'Apple',
+  melon: 'Apple',
+  cerise: 'Apple', cherry: 'Apple',
+  peche: 'Apple', peach: 'Apple',
+  poire: 'Apple', pear: 'Apple',
+  kiwi: 'Apple',
+  coco: 'Apple', noixcoco: 'Apple', coconut: 'Apple',
+  myrtille: 'Apple', blueberry: 'Apple',
+  framboise: 'Apple', raspberry: 'Apple',
+  grenade: 'Apple', pomegranate: 'Apple',
+  papaye: 'Apple', papaya: 'Apple',
+  baobab: 'TreeDeciduous',
   // Vegetables / herbs
-  tomate: '🍅', tomato: '🍅',
-  carotte: '🥕', carrot: '🥕',
-  brocoli: '🥦', broccoli: '🥦',
-  piment: '🌶️', chili: '🌶️',
-  champignon: '🍄', mushroom: '🍄',
-  aubergine: '🍆', eggplant: '🍆',
-  mais: '🌽', corn: '🌽',
-  concombre: '🥒', cucumber: '🥒',
-  poivron: '🫑', pepper: '🫑',
-  patate: '🥔', potato: '🥔',
-  igname: '🍠', yam: '🍠', sweetpotato: '🍠',
-  oignon: '🧅', onion: '🧅',
-  ail: '🧄', garlic: '🧄',
-  gingembre: '🫚', ginger: '🫚',
-  curcuma: '🟡', turmeric: '🟡',
-  moringa: '🌿',
-  epinard: '🥬', spinach: '🥬',
-  salade: '🥗', lettuce: '🥗',
-  manioc: '🍠',
+  tomate: 'Apple', tomato: 'Apple',
+  carotte: 'Carrot', carrot: 'Carrot',
+  brocoli: 'Salad', broccoli: 'Salad',
+  piment: 'Flame', chili: 'Flame',
+  champignon: 'Sprout', mushroom: 'Sprout',
+  aubergine: 'Carrot', eggplant: 'Carrot',
+  mais: 'Wheat', corn: 'Wheat',
+  concombre: 'Carrot', cucumber: 'Carrot',
+  poivron: 'Carrot', pepper: 'Carrot',
+  patate: 'Carrot', potato: 'Carrot',
+  igname: 'Carrot', yam: 'Carrot', sweetpotato: 'Carrot',
+  oignon: 'Salad', onion: 'Salad',
+  ail: 'Salad', garlic: 'Salad',
+  gingembre: 'Sprout', ginger: 'Sprout',
+  curcuma: 'Sun', turmeric: 'Sun',
+  moringa: 'Leaf',
+  epinard: 'Salad', spinach: 'Salad',
+  salade: 'Salad', lettuce: 'Salad',
+  manioc: 'Carrot',
   // Proteins / staples
-  pain: '🍞', bread: '🍞',
-  fromage: '🧀', cheese: '🧀',
-  oeuf: '🥚', egg: '🥚',
-  viande: '🥩', meat: '🥩', beef: '🥩',
-  poulet: '🍗', chicken: '🍗',
-  poisson: '🐟', fish: '🐟',
-  crevette: '🍤', shrimp: '🍤',
-  riz: '🍚', rice: '🍚',
-  pate: '🍝', pasta: '🍝',
-  quinoa: '🌾', avoine: '🌾', oats: '🌾', cereale: '🌾',
-  legumineuse: '🫘', haricot: '🫘', lentille: '🫘', pois: '🫘',
+  pain: 'Wheat', bread: 'Wheat',
+  fromage: 'Milk', cheese: 'Milk',
+  oeuf: 'Egg', egg: 'Egg',
+  viande: 'Utensils', meat: 'Utensils', beef: 'Utensils',
+  poulet: 'Utensils', chicken: 'Utensils',
+  poisson: 'Fish', fish: 'Fish',
+  crevette: 'Fish', shrimp: 'Fish',
+  riz: 'Utensils', rice: 'Utensils',
+  pate: 'Utensils', pasta: 'Utensils',
+  quinoa: 'Wheat', avoine: 'Wheat', oats: 'Wheat', cereale: 'Wheat',
+  legumineuse: 'Salad', haricot: 'Salad', lentille: 'Salad', pois: 'Salad',
   // Sweet / processed
-  chocolat: '🍫', chocolate: '🍫',
-  miel: '🍯', honey: '🍯',
-  gateau: '🍰', cake: '🍰',
-  beurre: '🧈',
+  chocolat: 'Coffee', chocolate: 'Coffee',
+  miel: 'Droplet', honey: 'Droplet',
+  gateau: 'Cake', cake: 'Cake',
+  beurre: 'Milk',
   // Drinks
-  the: '🍵', tea: '🍵', matcha: '🍵',
-  cafe: '☕', coffee: '☕',
-  lait: '🥛', milk: '🥛',
-  eau: '💧', water: '💧', hydration: '💧', hydratation: '💧',
-  jus: '🧃', juice: '🧃',
-  smoothie: '🥤',
-  vin: '🍷', wine: '🍷',
-  biere: '🍺', beer: '🍺',
+  the: 'Coffee', tea: 'Coffee', matcha: 'Coffee',
+  cafe: 'Coffee', coffee: 'Coffee',
+  lait: 'Milk', milk: 'Milk',
+  eau: 'Droplet', water: 'Droplet', hydration: 'Droplet', hydratation: 'Droplet',
+  jus: 'Droplet', juice: 'Droplet',
+  smoothie: 'Droplet',
+  vin: 'Coffee', wine: 'Coffee',
+  biere: 'Coffee', beer: 'Coffee',
   // Nuts / seeds
-  noix: '🥜', nut: '🥜', amande: '🥜', almond: '🥜',
-  graine: '🌱', seed: '🌱', chia: '🌱', lin: '🌱',
-  olive: '🫒',
-  sesame: '🌱',
-  arachide: '🥜', peanut: '🥜',
+  noix: 'Salad', nut: 'Salad', amande: 'Salad', almond: 'Salad',
+  graine: 'Sprout', seed: 'Sprout', chia: 'Sprout', lin: 'Sprout',
+  olive: 'Salad',
+  sesame: 'Sprout',
+  arachide: 'Salad', peanut: 'Salad',
   // Wellness / body (prefer emoji over generic SVG when very specific)
-  sommeil: '😴', sleep: '😴',
-  meditation: '🧘', relaxation: '🧘',
-  cerveau: '🧠', brain: '🧠',
-  coeur: '❤️', heart: '❤️',
-  poumon: '🫁', lungs: '🫁',
-  os: '🦴', bone: '🦴',
-  muscle: '💪', biceps: '💪',
-  oeil: '👁️', eye: '👁️', vue: '👁️',
-  dent: '🦷', teeth: '🦷',
-  peau: '✨', skin: '✨',
+  sommeil: 'Moon', sleep: 'Moon',
+  meditation: 'PersonStanding', relaxation: 'PersonStanding',
+  cerveau: 'Brain', brain: 'Brain',
+  coeur: 'Heart', heart: 'Heart',
+  poumon: 'HeartPulse', lungs: 'HeartPulse',
+  os: 'Bone', bone: 'Bone',
+  muscle: 'Dumbbell', biceps: 'Dumbbell',
+  oeil: 'Eye', eye: 'Eye', vue: 'Eye',
+  dent: 'Bone', teeth: 'Bone',
+  peau: 'Sparkles', skin: 'Sparkles',
   // Science / nutrients
-  vitamine: '💊', vitamin: '💊',
-  calcium: '🦴', magnesium: '💊', fer: '🩸', zinc: '💊', iode: '💊',
-  omega: '🐟', potassium: '🍌', sodium: '🧂', sel: '🧂',
-  antioxydant: '🫐', antioxidant: '🫐',
-  proteine: '🥩', protein: '🥩',
-  glucide: '🍞', carb: '🍞',
-  lipide: '🧈', fat: '🧈',
-  fibre: '🌾', fiber: '🌾',
+  vitamine: 'Pill', vitamin: 'Pill',
+  calcium: 'Bone', magnesium: 'Pill', fer: 'Droplet', zinc: 'Pill', iode: 'Pill',
+  omega: 'Fish', potassium: 'Apple', sodium: 'Salad', sel: 'Salad',
+  antioxydant: 'Apple', antioxidant: 'Apple',
+  proteine: 'Utensils', protein: 'Utensils',
+  glucide: 'Wheat', carb: 'Wheat',
+  lipide: 'Milk', fat: 'Milk',
+  fibre: 'Wheat', fiber: 'Wheat',
 };
 
 /**
@@ -1348,12 +1338,12 @@ function resolveCardIcon(
   const words = normalized.split(/\s+/).filter(Boolean);
   // Exact word match first (avoids "pain" in "panning" false positives).
   for (const w of words) {
-    if (LABEL_TO_EMOJI[w]) return { iconType: 'emoji', emoji: LABEL_TO_EMOJI[w] };
+    if (LABEL_TO_ICON[w]) return { iconType: 'svg', emoji: LABEL_TO_ICON[w] };
   }
   // Fallback: substring scan for composite keys and partial matches.
-  for (const key of Object.keys(LABEL_TO_EMOJI)) {
+  for (const key of Object.keys(LABEL_TO_ICON)) {
     if (key.length >= 4 && normalized.includes(key)) {
-      return { iconType: 'emoji', emoji: LABEL_TO_EMOJI[key] };
+      return { iconType: 'svg', emoji: LABEL_TO_ICON[key] };
     }
   }
   return { iconType: 'svg', emoji: fallbackLucide };
@@ -3100,7 +3090,9 @@ function InfographicPageInner() {
         const data = await res.json();
         if (data?.icon) {
           setCards((prev) =>
-            prev.map((c) => (c.id === cardId ? { ...c, emoji: data.icon } : c)),
+            // La route renvoie un NOM LUCIDE : `iconType` doit suivre, sinon
+            // renderCardIcon affiche le nom en texte brut.
+            prev.map((c) => (c.id === cardId ? { ...c, emoji: data.icon, iconType: 'svg' as const } : c)),
           );
         }
       }
@@ -4194,28 +4186,9 @@ function InfographicPageInner() {
     }
   };
 
-  const preRenderCardIcons = async (cardList: typeof cards) => {
-    const { renderToStaticMarkup } = await import('react-dom/server');
-    const React = await import('react');
-    return Promise.all(cardList.map(async (c) => {
-      if (c.iconType === 'svg' && c.emoji && ICON_MAP[c.emoji]) {
-        try {
-          const IconComp = ICON_MAP[c.emoji];
-          const svg = renderToStaticMarkup(React.createElement(IconComp, { size: 64, color: c.iconColor || '#FFFFFF', strokeWidth: 2 }));
-          const blob = new Blob([svg], { type: 'image/svg+xml' });
-          const url = URL.createObjectURL(blob);
-          const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-            const image = new Image();
-            image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
-            image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('icon load failed')); };
-            image.src = url;
-          });
-          return { ...c, iconImage: img };
-        } catch { return c; }
-      }
-      return c;
-    }));
-  };
+  // preRenderCardIcons vit desormais dans @/lib/icons/prerender : la copie
+  // locale filtrait sur ICON_MAP et exigeait iconType==='svg', ce qui
+  // laissait passer des noms lucide sans image jusqu'au canvas.
 
   // ── Export ──────────────────────────────────────────────────
   /** Image export — for each visible sequence, switch the preview to that
@@ -4482,7 +4455,10 @@ function InfographicPageInner() {
                     // otherwise use the lucide icon resolved from the
                     // new label text.
                     emoji: resolved.emoji,
-                    iconType: template?.iconType || resolved.iconType,
+                    // `resolved.emoji` est TOUJOURS un nom lucide desormais : garder le
+            // `iconType` du template le marquerait 'emoji' et ferait afficher
+            // « Dumbbell » en toutes lettres. `resolved` fait foi.
+            iconType: resolved.iconType,
                     color: template?.color || accent,
                   } as InfoCard;
                 }),
@@ -4529,7 +4505,10 @@ function InfographicPageInner() {
                     value: c.value || "",
                     description: c.description || "",
                     emoji: resolved.emoji,
-                    iconType: template?.iconType || resolved.iconType,
+                    // `resolved.emoji` est TOUJOURS un nom lucide desormais : garder le
+            // `iconType` du template le marquerait 'emoji' et ferait afficher
+            // « Dumbbell » en toutes lettres. `resolved` fait foi.
+            iconType: resolved.iconType,
                     color: template?.color || accent,
                   } as InfoCard;
                 }),

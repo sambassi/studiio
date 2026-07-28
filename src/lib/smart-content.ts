@@ -18,29 +18,43 @@ type InfoCardData = {
 };
 
 // ── BIBLIOTHÈQUE D'ICÔNES ────────────────────────────────────
+/**
+ * Cles d'icone -> NOM D'ICONE LUCIDE (SVG).
+ *
+ * Cette table contenait des EMOJIS. Regle absolue du projet (CLAUDE.md,
+ * section Conventions de code) : aucun emoji dans le contenu genere.
+ *
+ * Chaque valeur DOIT exister dans CARD_ICON_MAP (src/components/ui/CardIcon.tsx),
+ * sinon CardIcon retombe sur un rendu texte du nom. Le repli ci-dessous est
+ * "Sparkles", jamais un emoji.
+ */
 const ICONS: Record<string, string> = {
-  energy: "⚡", heart: "❤️", dance: "💃", audio: "🎧", apple: "🍎",
-  moon: "🌙", fire: "🔥", droplet: "💧", muscle: "💪", clock: "⏱️",
-  star: "⭐", brain: "🧠", shield: "🛡️", target: "🎯", trophy: "🏆",
-  people: "👥", sun: "☀️", leaf: "🌿", chart: "📈", sparkle: "✨",
-  thermometer: "🌡️", bone: "🦴", eye: "👁️", lungs: "🫁", dna: "🧬",
+  energy: "Zap", heart: "Heart", dance: "PersonStanding", audio: "Headphones", apple: "Apple",
+  moon: "Moon", fire: "Flame", droplet: "Droplet", muscle: "Dumbbell", clock: "Timer",
+  star: "Star", brain: "Brain", shield: "Shield", target: "Target", trophy: "Trophy",
+  people: "Users", sun: "Sun", leaf: "Leaf", chart: "TrendingUp", sparkle: "Sparkles",
+  thermometer: "Thermometer", bone: "Bone", eye: "Eye", lungs: "HeartPulse", dna: "Activity",
   // Extended icons for new content themes
-  lipstick: "💄", perfume: "🧴", mirror: "🪞", nailpolish: "💅",
-  baby: "👶", family: "👨‍👩‍👧", bottle: "🍼", school: "🏫",
-  plane: "✈️", map: "🗺️", suitcase: "🧳", beach: "🏖️", mountain: "⛰️",
-  compass: "🧭", camera: "📸",
-  checklist: "✅", calendar: "📅", rocket: "🚀", hourglass: "⏳",
-  money: "💰", bank: "🏦", coin: "🪙", piggy: "🐷", bill: "💵",
-  code: "💻", bug: "🐛", gear: "⚙️", keyboard: "⌨️", cloud: "☁️",
-  crypto: "🪙", chain: "⛓️", bitcoin: "₿", trend: "📊",
-  game: "🎮", joystick: "🕹️", controller: "🎮", dice: "🎲",
-  pizza: "🍕", burger: "🍔", salad: "🥗", chef: "👨‍🍳", knife: "🔪",
-  dog: "🐕", cat: "🐈", paw: "🐾", fish: "🐟", bird: "🐦",
-  car: "🚗", fuel: "⛽", wheel: "🛞", key: "🔑", road: "🛣️",
-  house: "🏠", door: "🚪", keys: "🗝️", building: "🏢",
-  book: "📚", pencil: "✏️", graduation: "🎓", lightbulb: "💡", teacher: "👨‍🏫",
-  zodiac: "♈", stars: "🌟", crystal: "🔮", planet: "🪐", tarot: "🃏",
-  flex: "💪", flame: "🔥", crown: "👑", thunder: "⚡",
+  lipstick: "Sparkles", perfume: "Flower", mirror: "Sparkles", nailpolish: "Brush",
+  baby: "Baby", family: "Users", bottle: "Baby", school: "GraduationCap",
+  plane: "Plane", map: "Map", suitcase: "Briefcase", beach: "Waves", mountain: "Mountain",
+  compass: "Compass", camera: "Camera",
+  checklist: "ClipboardList", calendar: "Calendar", rocket: "Rocket", hourglass: "Hourglass",
+  money: "Wallet", bank: "Landmark", coin: "Coins", piggy: "PiggyBank", bill: "Receipt",
+  code: "Code", bug: "Bug", gear: "Settings2", keyboard: "Laptop", cloud: "Cloud",
+  crypto: "Coins", chain: "Link", bitcoin: "Coins", trend: "BarChart3",
+  game: "Gamepad2", joystick: "Joystick", controller: "Gamepad2", dice: "Puzzle",
+  pizza: "Pizza", burger: "Utensils", salad: "Salad", chef: "Utensils", knife: "Scissors",
+  dog: "Dog", cat: "Cat", paw: "Dog", fish: "Fish", bird: "Bird",
+  car: "Car", fuel: "Plug", wheel: "Car", key: "Key", road: "Route",
+  house: "Home", door: "Home", keys: "Key", building: "Building",
+  book: "Book", pencil: "Pencil", graduation: "GraduationCap", lightbulb: "Lightbulb", teacher: "GraduationCap",
+  zodiac: "Star", stars: "Sparkles", crystal: "Gem", planet: "Globe", tarot: "Diamond",
+  flex: "Dumbbell", flame: "Flame", crown: "Crown", thunder: "Zap",
+  // Cles employees par la base de connaissances mais absentes de la table
+  // d'origine : elles retombaient toutes sur le repli. Mappees explicitement.
+  alert: "ShieldAlert", ban: "ShieldAlert", battery: "Battery",
+  scale: "Activity", vitamin: "Pill", water: "Droplet",
 };
 
 // ── TYPES ────────────────────────────────────────────────────
@@ -1946,7 +1960,7 @@ export function generateSmartContent(title: string, seed?: number): SmartContent
     ? [...sourceCards.slice(offset), ...sourceCards.slice(0, offset)]
     : sourceCards;
   const cards: InfoCardData[] = rotated.map((card) => ({
-    icon: ICONS[card.icon] || "⚡",
+    icon: ICONS[card.icon] || "Sparkles",  // repli SVG neutre, jamais un emoji
     title: card.title,
     description: shortenForCard(card.description, 80),
     value: card.value,

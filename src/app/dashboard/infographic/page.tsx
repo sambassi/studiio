@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Trash2, Upload, Zap, Loader2, Sparkles, Film, X, Play, Volume2, Image as ImageIcon, Search, ChevronRight, ChevronLeft, ArrowUp, ArrowDown, Calendar, Music, Package, RefreshCw } from 'lucide-react';
+import { CardIcon } from '@/components/ui/CardIcon';
+import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { generateSmartContent } from '@/lib/smart-content';
 import { useBranding } from '@/lib/hooks/useBranding';
 import { useCreatorPreferences } from '@/lib/hooks/useCreatorPreferences';
@@ -38,43 +40,43 @@ const THEME_PRESETS: Record<ThemeType, { title: string; subtitle: string; cards:
     title: 'SOMMEIL & SPORT',
     subtitle: 'Les bienfaits de la danse sur ton repos',
     cards: [
-      { emoji: '😴', label: 'Qualité sommeil', value: '+45%', color: '#6366f1' },
-      { emoji: '⚡', label: 'Énergie matin', value: '+60%', color: '#f59e0b' },
+      { emoji: 'Moon', label: 'Qualité sommeil', value: '+45%', color: '#6366f1' },
+      { emoji: 'Zap', label: 'Énergie matin', value: '+60%', color: '#f59e0b' },
     ],
   },
   nutrition: {
     title: 'NUTRITION & DANSE',
     subtitle: 'Nourris ton corps, libère ton énergie',
     cards: [
-      { emoji: '🥗', label: 'Métabolisme', value: '+35%', color: '#22c55e' },
-      { emoji: '💪', label: 'Force', value: '+50%', color: '#ef4444' },
+      { emoji: 'Salad', label: 'Métabolisme', value: '+35%', color: '#22c55e' },
+      { emoji: 'Dumbbell', label: 'Force', value: '+50%', color: '#ef4444' },
     ],
   },
   energie: {
     title: 'ÉNERGIE & CARDIO',
     subtitle: 'Pousse tes limites avec Afroboost',
     cards: [
-      { emoji: '⚡', label: 'Intensité', value: 'MAX', color: '#ec4899' },
-      { emoji: '❤️', label: 'Fréquence', value: '140+', color: '#ef4444' },
-      { emoji: '💃', label: 'Chorégraphie', value: '50+', color: '#a855f7' },
-      { emoji: '🎵', label: 'Playlist', value: '100%', color: '#3b82f6' },
-      { emoji: '🔄', label: 'Récupération', value: '-45%', color: '#22c55e' },
+      { emoji: 'Zap', label: 'Intensité', value: 'MAX', color: '#ec4899' },
+      { emoji: 'Heart', label: 'Fréquence', value: '140+', color: '#ef4444' },
+      { emoji: 'PersonStanding', label: 'Chorégraphie', value: '50+', color: '#a855f7' },
+      { emoji: 'Music', label: 'Playlist', value: '100%', color: '#3b82f6' },
+      { emoji: 'Activity', label: 'Récupération', value: '-45%', color: '#22c55e' },
     ],
   },
   stress: {
     title: 'STRESS & MENTAL',
     subtitle: 'Danse pour ton bien-être mental',
     cards: [
-      { emoji: '🧠', label: 'Stress', value: '-70%', color: '#8b5cf6' },
-      { emoji: '😊', label: 'Bien-être', value: '+80%', color: '#f59e0b' },
+      { emoji: 'Brain', label: 'Stress', value: '-70%', color: '#8b5cf6' },
+      { emoji: 'Smile', label: 'Bien-être', value: '+80%', color: '#f59e0b' },
     ],
   },
   communaute: {
     title: 'COMMUNAUTÉ',
     subtitle: 'Rejoins la tribu Afroboost',
     cards: [
-      { emoji: '👥', label: 'Membres actifs', value: '5000+', color: '#ec4899' },
-      { emoji: '🎉', label: 'Événements', value: 'Chaque semaine', color: '#f59e0b' },
+      { emoji: 'Users', label: 'Membres actifs', value: '5000+', color: '#ec4899' },
+      { emoji: 'PartyPopper', label: 'Événements', value: 'Chaque semaine', color: '#f59e0b' },
     ],
   },
   custom: {
@@ -110,9 +112,9 @@ export default function InfographiePage() {
   const [title, setTitle] = useState('ÉNERGIE & CARDIO');
   const [subtitle, setSubtitle] = useState('Pousse tes limites avec Afroboost');
   const [cards, setCards] = useState<InfoCard[]>([
-    { id: '1', emoji: '⚡', label: 'Intensité', value: 'MAX', color: '#ec4899' },
-    { id: '2', emoji: '❤️', label: 'Fréquence', value: '140+', color: '#ef4444' },
-    { id: '3', emoji: '💃', label: 'Chorégraphie', value: '50+', color: '#a855f7' },
+    { id: '1', emoji: 'Zap', label: 'Intensité', value: 'MAX', color: '#ec4899' },
+    { id: '2', emoji: 'Heart', label: 'Fréquence', value: '140+', color: '#ef4444' },
+    { id: '3', emoji: 'PersonStanding', label: 'Chorégraphie', value: '50+', color: '#a855f7' },
   ]);
 
   // Format and batch state
@@ -269,13 +271,8 @@ export default function InfographiePage() {
     }
   };
 
-  const ICON_TO_EMOJI: Record<string, string> = {
-    energy: '⚡', heart: '❤️', dance: '💃', audio: '🎧', apple: '🍎',
-    moon: '🌙', fire: '🔥', droplet: '💧', muscle: '💪', clock: '⏱️',
-    star: '⭐', brain: '🧠', shield: '🛡️', target: '🎯', trophy: '🏆',
-    people: '👥', sun: '☀️', leaf: '🌿', chart: '📈', sparkle: '✨',
-    thermometer: '🌡️', bone: '🦴', eye: '👁️', lungs: '🫁', dna: '🧬',
-  };
+  // ICON_TO_EMOJI supprime : smart-content ne produit plus d'emoji, et la
+  // regle projet les proscrit dans le contenu genere (CLAUDE.md).
 
   const handleGenerateTitleAndSubtitle = () => {
     const suggestions = [
@@ -297,7 +294,9 @@ export default function InfographiePage() {
       const colors = ['#ec4899', '#ef4444', '#a855f7', '#3b82f6', '#22c55e', '#f59e0b', '#6366f1'];
       setCards(result.cards.slice(0, 5).map((card, idx) => ({
         id: `smart-${idx}-${Date.now()}`,
-        emoji: ICON_TO_EMOJI[card.icon] || '⭐',
+        // `card.icon` est desormais un NOM D'ICONE LUCIDE (smart-content ne
+        // produit plus d'emoji) : on le prend tel quel, rendu en SVG.
+        emoji: card.icon || 'Sparkles',
         label: card.title,
         value: card.value,
         color: colors[idx % colors.length],
@@ -324,18 +323,21 @@ export default function InfographiePage() {
         const colors = ['#ec4899', '#ef4444', '#a855f7', '#3b82f6', '#22c55e', '#f59e0b', '#6366f1'];
         setCards(prev => [...prev, {
           id: Date.now().toString(),
-          emoji: aiCard.emoji || '⭐',
+          // `iconName` et non `emoji` : la route ai-generate renvoie les deux,
+          // mais `emoji` vaut '📊' par defaut. `iconName` est deja valide
+          // contre une liste blanche cote route.
+          emoji: aiCard.iconName || 'Sparkles',
           label: aiCard.label || aiCard.title || 'Info',
           value: aiCard.value || '100%',
           color: colors[prev.length % colors.length],
         }]);
       } else {
         // Fallback to generic card if AI fails
-        setCards(prev => [...prev, { id: Date.now().toString(), emoji: '⭐', label: t('infoCards.newCard'), value: t('infoCards.value'), color: '#ec4899' }]);
+        setCards(prev => [...prev, { id: Date.now().toString(), emoji: 'Star', label: t('infoCards.newCard'), value: t('infoCards.value'), color: '#ec4899' }]);
       }
     } catch {
       // Fallback on error
-      setCards(prev => [...prev, { id: Date.now().toString(), emoji: '⭐', label: t('infoCards.newCard'), value: t('infoCards.value'), color: '#ec4899' }]);
+      setCards(prev => [...prev, { id: Date.now().toString(), emoji: 'Star', label: t('infoCards.newCard'), value: t('infoCards.value'), color: '#ec4899' }]);
     } finally {
       setIsAddingCard(false);
     }
@@ -552,7 +554,7 @@ export default function InfographiePage() {
             const result = await composeAndUpload({
               width: compWidth, height: compHeight, fps: 30,
               title: bTitle, subtitle: bSub, salesPhrase: bPhrase,
-              cards: cards.map(c => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color })),
+              cards: await preRenderCardIcons(cards.map(c => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color }))),
               posterUrl: bMediaUrl || characterUrl, videoUrl, logoUrl, musicUrl, voiceUrl,
               introDuration: seqIntro, cardsDuration: seqCards, videoDuration: seqVideo, ctaDuration: seqCta,
               accentColor: branding.accentColor || '#D91CD2',
@@ -586,7 +588,7 @@ export default function InfographiePage() {
           const hour = 9 + Math.floor(b / 2);
           const minute = (b % 2) * 30;
           const scheduledTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-          const caption = [bSub, bPhrase, cards.map((c) => `${c.emoji} ${c.label}: ${c.value}`).join(' | ')].filter(Boolean).join('\n');
+          const caption = [bSub, bPhrase, cards.map((c) => `${c.label}: ${c.value}`).join(' | ')].filter(Boolean).join('\n');
           // ALWAYS use the rendered montage video — never fall back to raw video
           const postMediaUrl = renderedVideoUrl || bMediaUrl;
           const postMediaType = renderedVideoUrl ? 'video' : (bMediaUrl ? 'image' : 'video');
@@ -664,7 +666,7 @@ export default function InfographiePage() {
             const result = await composeAndUpload({
               width: compWidth, height: compHeight, fps: 30,
               title: title || 'Infographie', subtitle, salesPhrase,
-              cards: cards.map(c => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color })),
+              cards: await preRenderCardIcons(cards.map(c => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color }))),
               posterUrl: posterUrl || selectedPexelsUrl || characterUrl, videoUrl, logoUrl, musicUrl, voiceUrl,
               introDuration: seqIntro, cardsDuration: seqCards, videoDuration: seqVideo, ctaDuration: seqCta,
               accentColor: branding.accentColor || '#D91CD2',
@@ -747,7 +749,7 @@ export default function InfographiePage() {
             <p className="text-[8px] font-bold text-white/60 uppercase tracking-widest text-center mb-2">{t('preview.information')}</p>
             {cards.slice(0, 5).map((card, i) => (
               <div key={i} className="flex items-center gap-2 bg-black/40 backdrop-blur-sm rounded-lg px-2 py-1.5 border-l-2" style={{ borderColor: card.color }}>
-                <span className="text-sm">{card.emoji}</span>
+                <CardIcon name={card.emoji} size={14} color="#FFFFFF" className="" />
                 <span className="text-[8px] text-white/70 flex-1">{card.label}</span>
                 <span className="text-[10px] font-bold text-white" style={{ textShadow: `0 0 6px ${accent}80` }}>{card.value}</span>
               </div>
@@ -957,7 +959,7 @@ export default function InfographiePage() {
                   {cards.map((card) => (
                     <div key={card.id} className="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-gray-800 rounded-lg p-2.5 border border-gray-700">
                       <div className="flex-shrink-0 relative group">
-                        <button className="w-8 h-8 bg-gray-700 hover:bg-gray-600 rounded text-lg flex items-center justify-center">{card.emoji}</button>
+                        <button className="w-8 h-8 bg-gray-700 hover:bg-gray-600 rounded flex items-center justify-center"><CardIcon name={card.emoji} size={16} color="#FFFFFF" className="" /></button>
                         <div className="absolute bottom-full mb-2 left-0 hidden group-hover:grid grid-cols-4 gap-1 bg-gray-700 p-2 rounded-lg shadow-lg z-10">
                           {EMOJI_LIST.map((emoji) => (<button key={emoji} onClick={() => updateCard(card.id, { emoji })} className="w-6 h-6 text-sm hover:bg-gray-600 rounded flex items-center justify-center">{emoji}</button>))}
                         </div>

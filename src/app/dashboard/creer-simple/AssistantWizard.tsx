@@ -17,6 +17,7 @@ import {
 import { generateSmartContent } from '@/lib/smart-content';
 import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
 import { CardIcon } from '@/components/ui/CardIcon';
+import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { Card, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 
@@ -48,19 +49,19 @@ import { Button } from '@/components/ui/Button';
 // pas être modifié. On redéclare donc une liste locale dont les libellés sont
 // choisis pour tomber sur les bonnes entrées de la base de connaissances
 // (le matching se fait sur du texte libre, pas sur un slug).
-const THEMES: Array<{ id: string; label: string; emoji: string; topic: string }> = [
-  { id: 'sommeil', label: 'Sommeil & récupération', emoji: '🌙', topic: 'sommeil' },
-  { id: 'nutrition', label: 'Nutrition', emoji: '🥗', topic: 'nutrition' },
-  { id: 'energie', label: 'Énergie & cardio', emoji: '⚡', topic: 'energie' },
-  { id: 'stress', label: 'Stress & mental', emoji: '🧠', topic: 'stress' },
-  { id: 'danse', label: 'Danse', emoji: '💃', topic: 'danse' },
-  { id: 'motivation', label: 'Motivation', emoji: '🔥', topic: 'motivation' },
-  { id: 'eau', label: 'Hydratation', emoji: '💧', topic: 'eau' },
-  { id: 'beauty', label: 'Beauté', emoji: '✨', topic: 'beauty' },
-  { id: 'finance', label: 'Finance', emoji: '💰', topic: 'finance' },
-  { id: 'productivity', label: 'Productivité', emoji: '🎯', topic: 'productivity' },
-  { id: 'food', label: 'Cuisine', emoji: '🍽️', topic: 'food' },
-  { id: 'travel', label: 'Voyage', emoji: '✈️', topic: 'travel' },
+const THEMES: Array<{ id: string; label: string; icon: string; topic: string }> = [
+  { id: 'sommeil', label: 'Sommeil & récupération', icon: 'Moon', topic: 'sommeil' },
+  { id: 'nutrition', label: 'Nutrition', icon: 'Salad', topic: 'nutrition' },
+  { id: 'energie', label: 'Énergie & cardio', icon: 'Zap', topic: 'energie' },
+  { id: 'stress', label: 'Stress & mental', icon: 'Brain', topic: 'stress' },
+  { id: 'danse', label: 'Danse', icon: 'PersonStanding', topic: 'danse' },
+  { id: 'motivation', label: 'Motivation', icon: 'Flame', topic: 'motivation' },
+  { id: 'eau', label: 'Hydratation', icon: 'Droplet', topic: 'eau' },
+  { id: 'beauty', label: 'Beauté', icon: 'Sparkles', topic: 'beauty' },
+  { id: 'finance', label: 'Finance', icon: 'Wallet', topic: 'finance' },
+  { id: 'productivity', label: 'Productivité', icon: 'Target', topic: 'productivity' },
+  { id: 'food', label: 'Cuisine', icon: 'Utensils', topic: 'food' },
+  { id: 'travel', label: 'Voyage', icon: 'Plane', topic: 'travel' },
 ];
 
 // ── Tons ──────────────────────────────────────────────────────────────────
@@ -594,6 +595,17 @@ export default function AssistantWizard() {
       // 3. Composition + upload (composeAndUpload fait les deux et produit
       //    aussi la vignette).
       setRenderStage('Rendu du montage…');
+      // Cartes enrichies d'un `iconImage` : sans cela le repli canvas du
+      // compositeur ecrirait « Droplet » en toutes lettres.
+      const composerCards = await preRenderCardIcons(
+        generated.cards.map((c) => ({
+          emoji: c.icon,
+          label: c.title,
+          value: c.value,
+          description: c.description,
+          color: ACCENT,
+        })),
+      );
       const composed = await composeAndUpload({
         width: isReel ? 1080 : 1920,
         height: isReel ? 1920 : 1080,
@@ -602,13 +614,7 @@ export default function AssistantWizard() {
         // l'apercu, qui applique `uppercase` en CSS) : on le fait ici.
         title: (generated.title || 'Infographie').toUpperCase(),
         subtitle: generated.subtitle || undefined,
-        cards: generated.cards.map((c) => ({
-          emoji: c.icon,
-          label: c.title,
-          value: c.value,
-          description: c.description,
-          color: ACCENT,
-        })),
+        cards: composerCards,
         introDuration: SEQ.intro,
         cardsDuration: SEQ.cards,
         videoDuration: SEQ.video,
@@ -934,7 +940,7 @@ export default function AssistantWizard() {
                           : 'bg-gray-900/60 text-gray-400 hover:text-white hover:bg-gray-800/70'
                       }`}
                     >
-                      <span className="mr-1.5">{t.emoji}</span>
+                      <CardIcon name={t.icon} size={13} color="currentColor" className="inline-block mr-1.5 align-[-2px]" />
                       {t.label}
                     </button>
                   ))}

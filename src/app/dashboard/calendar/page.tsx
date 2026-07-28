@@ -37,6 +37,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { useBranding } from '@/lib/hooks/useBranding';
 import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
+import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { useTranslations, useLocale } from '@/i18n/client';
 import { AgentIAModal } from '@/components/creer/AgentIAModal';
 import { CardIcon } from '@/components/ui/CardIcon';
@@ -530,8 +531,8 @@ export default function CalendarPage() {
         subtitle: meta.subtitle || undefined,
         salesPhrase: meta.salesPhrase || undefined,
         cards: meta.cards?.length > 0
-          ? meta.cards.map((c: any) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color }))
-          : (meta.textCards || []).map((tCard: any) => ({ emoji: '📝', label: tCard.text, value: tCard.text, color: tCard.color })),
+          ? await preRenderCardIcons(meta.cards.map((c: any) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color })))
+          : (meta.textCards || []).map((tCard: any) => ({ emoji: 'FileText', label: tCard.text, value: tCard.text, color: tCard.color })),
         posterUrl: meta.posterUrl || meta.pexelsUrl || meta.characterUrl || null,
         videoUrl: meta.rushUrls?.[0] || null,
         logoUrl: meta.logoUrl || designMeta.logoUrl || null,
@@ -938,8 +939,8 @@ export default function CalendarPage() {
           subtitle: meta.subtitle || undefined,
           salesPhrase: meta.salesPhrase || undefined,
           cards: meta.cards?.length > 0
-            ? meta.cards.map((c: any) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color }))
-            : (meta.textCards || []).map((tCard: any) => ({ emoji: '📝', label: tCard.text, value: tCard.text, color: tCard.color })),
+            ? await preRenderCardIcons(meta.cards.map((c: any) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color })))
+            : (meta.textCards || []).map((tCard: any) => ({ emoji: 'FileText', label: tCard.text, value: tCard.text, color: tCard.color })),
           posterUrl,
           videoUrl,
           logoUrl,
@@ -1551,8 +1552,8 @@ export default function CalendarPage() {
             subtitle: meta.subtitle || undefined,
             salesPhrase: meta.salesPhrase || undefined,
             cards: meta.cards?.length > 0
-              ? meta.cards.map((c: any) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color }))
-              : (meta.textCards || []).map((tCard: any) => ({ emoji: '📝', label: tCard.text, value: tCard.text, color: tCard.color })),
+              ? await preRenderCardIcons(meta.cards.map((c: any) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color })))
+              : (meta.textCards || []).map((tCard: any) => ({ emoji: 'FileText', label: tCard.text, value: tCard.text, color: tCard.color })),
             posterUrl,
             videoUrl,
             logoUrl,
@@ -2051,8 +2052,8 @@ export default function CalendarPage() {
         subtitle: meta?.subtitle || undefined,
         salesPhrase: meta?.salesPhrase || undefined,
         cards: meta?.cards?.length > 0
-          ? meta.cards.map((c: { emoji: string; label: string; value: string; color?: string }) => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color }))
-          : (meta?.textCards || []).map((tCard: { text: string; color?: string }) => ({ emoji: '📝', label: tCard.text, value: tCard.text, color: tCard.color })),
+          ? await preRenderCardIcons(meta.cards.map((c: { emoji: string; label: string; value: string; color?: string }) => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color })))
+          : (meta?.textCards || []).map((tCard: { text: string; color?: string }) => ({ emoji: 'FileText', label: tCard.text, value: tCard.text, color: tCard.color })),
         posterUrl,
         videoUrl,
         logoUrl,
@@ -3354,7 +3355,7 @@ export default function CalendarPage() {
                           {(() => {
                             const displayCards = meta?.cards?.length > 0
                               ? meta.cards.map((c: { emoji: string; label: string; value: string; description?: string; color?: string }) => c)
-                              : (meta?.textCards || []).map((tCard: { text: string; color?: string }) => ({ emoji: '📝', label: tCard.text, value: tCard.text, color: tCard.color }));
+                              : (meta?.textCards || []).map((tCard: { text: string; color?: string }) => ({ emoji: 'FileText', label: tCard.text, value: tCard.text, color: tCard.color }));
                             // ── Cards-specific scale multiplier (parité /creer) ──
                             // /creer's editor multiplies card fonts by BOTH textScale AND
                             // (cardsTextScale / 100). Calendar previously only used
