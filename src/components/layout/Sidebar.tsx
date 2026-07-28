@@ -4,13 +4,14 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { LayoutDashboard, Zap, Library, Share2, Calendar, Shield, Settings, Menu, X, UserSquare2 } from 'lucide-react';
+import { LayoutDashboard, Zap, Library, Share2, Calendar, Shield, Settings, Menu, X, UserSquare2, Wand2 } from 'lucide-react';
 import { useTranslations } from '@/i18n/client';
 import { LanguageSelector } from '@/components/LanguageSelector';
 
 const menuKeys = [
   { icon: LayoutDashboard, key: 'dashboard', href: '/dashboard', color: '#7C3AED' },
   { icon: Zap, key: 'create', href: '/dashboard/creer', color: '#F59E0B' },
+  { icon: Wand2, key: 'createSimple', href: '/dashboard/creer-simple', color: '#A855F7' },
   { icon: UserSquare2, key: 'avatar', href: '/dashboard/avatar', color: '#EC4899' },
   { icon: Calendar, key: 'calendar', href: '/dashboard/calendar', color: '#3B82F6' },
   { icon: Library, key: 'library', href: '/dashboard/library', color: '#8B5CF6' },
@@ -58,7 +59,12 @@ export function Sidebar() {
 
       <nav className="space-y-1.5 flex-1">
         {menuKeys.map(({ icon: Icon, key, href, color }) => {
-          const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+          // Le `+ '/'` borne la comparaison sur un segment complet. Sans lui,
+          // `/dashboard/creer` etant un prefixe de `/dashboard/creer-simple`,
+          // les deux entrees s'allumaient en meme temps sur la page simplifiee.
+          // Les sous-routes reelles (`/dashboard/x/y`) restent bien detectees.
+          const isActive =
+            pathname === href || (href !== '/dashboard' && pathname.startsWith(`${href}/`));
           return (
             <Link
               key={href}
