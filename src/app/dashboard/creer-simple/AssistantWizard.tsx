@@ -13,6 +13,9 @@ import {
   CalendarPlus,
   RefreshCw,
   MonitorPlay,
+  GripVertical,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
 import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
@@ -120,6 +123,28 @@ const DARK = '#0A0A0F';
  * `video: 0` — il n'y a jamais de rush dans ce parcours.
  */
 const SEQ = { intro: 4, cards: 6, video: 0, cta: 4 } as const;
+
+/**
+ * Les 4 sequences, dans leur ordre par defaut — le meme que celui du
+ * compositeur (intro -> cards -> video -> cta). L'utilisateur peut les
+ * reordonner et les desactiver ; `video` part desactivee car ce parcours
+ * n'accepte pas de rush.
+ */
+type SeqKey = 'intro' | 'cards' | 'video' | 'cta';
+
+const SEQ_META: Record<SeqKey, { label: string; hint: string }> = {
+  intro: { label: 'Titre', hint: 'Titre et sous-titre' },
+  cards: { label: 'Cartes', hint: 'Les points cles' },
+  video: { label: 'Vidéo', hint: 'Aucun rush dans ce parcours' },
+  cta: { label: 'CTA', hint: "Appel a l'action" },
+};
+
+const DEFAULT_SEQUENCES: Array<{ key: SeqKey; enabled: boolean }> = [
+  { key: 'intro', enabled: true },
+  { key: 'cards', enabled: true },
+  { key: 'video', enabled: false },
+  { key: 'cta', enabled: true },
+];
 
 /**
  * SPEC DE DESIGN PARTAGÉE — une seule définition pour l'aperçu, le
@@ -247,11 +272,19 @@ function Preview({
   format,
   previewRef,
   cardsRef,
+  activeOrder,
 }: {
   generated: Generated | null;
   format: Format;
   previewRef?: React.RefObject<HTMLDivElement>;
   cardsRef?: React.RefObject<HTMLDivElement>;
+  /**
+   * Sequences activees, dans l'ordre choisi. L'apercu est une composition
+   * fixe (les 3 blocs empiles) alors que la video les joue l'une apres
+   * l'autre : l'ORDRE n'y est donc pas representable, mais la VISIBILITE
+   * l'est — une sequence masquee disparait de l'apercu comme de la video.
+   */
+  activeOrder: string[];
 }) {
   return (
     <div className="card-base p-4">
@@ -295,9 +328,10 @@ function Preview({
           </div>
         ) : (
           <>
-            {/* Titre — ancre au bord GAUCHE (x) et au bord HAUT (y), comme
+            {activeOrder.includes('intro') && (
+            /* Titre — ancre au bord GAUCHE (x) et au bord HAUT (y), comme
                 drawIntro avec titleAlign:'left' et textBaseline:'top'.
-                Graisse 900 et ombre : le compositeur les applique en dur. */}
+                Graisse 900 et ombre : le compositeur les applique en dur. */
             <div
               style={{
                 position: 'absolute',
@@ -335,6 +369,7 @@ function Preview({
                 {generated.subtitle}
               </div>
             </div>
+            )}
 
             {/* Cartes — ce conteneur est PHOTOGRAPHIÉ (modern-screenshot) et
                 l'image est blittée telle quelle dans la vidéo par le
@@ -346,7 +381,7 @@ function Preview({
               className="absolute flex flex-col justify-center gap-1.5"
               style={{ left: '8%', right: '8%', top: '30%', bottom: '22%' }}
             >
-              {generated.cards.map((c, i) => (
+              {(activeOrder.includes('cards') ? generated.cards : []).map((c, i) => (
                 <div
                   key={i}
                   className="flex items-center gap-2 rounded-lg px-2 py-1.5"
@@ -368,9 +403,10 @@ function Preview({
               ))}
             </div>
 
-            {/* CTA — ancre par le BAS a ctaPos.y, centre horizontalement :
+            {activeOrder.includes('cta') && (
+            /* CTA — ancre par le BAS a ctaPos.y, centre horizontalement :
                 drawCTA fait `curY = ctaPosY - blockH`, donc y designe le bas
-                du bloc. Graisse 900 en dur cote compositeur. */}
+                du bloc. Graisse 900 en dur cote compositeur. */
             <div
               style={{
                 position: 'absolute',
@@ -406,6 +442,7 @@ function Preview({
                 {generated.ctaSub}
               </div>
             </div>
+            )}
           </>
         )}
       </div>
@@ -427,6 +464,8 @@ export default function AssistantWizard() {
   const [customTopic, setCustomTopic] = useState('');
   const [toneId, setToneId] = useState(TONES[0].id);
   const [format, setFormat] = useState<Format>('9:16');
+  const [sequences, setSequences] = useState(DEFAULT_SEQUENCES);
+  const [dragKey, setDragKey] = useState<SeqKey | null>(null);
 
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState<Generated | null>(null);
@@ -456,6 +495,31 @@ export default function AssistantWizard() {
     const pad = (n: number) => String(n).padStart(2, '0');
     setScheduledDate(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
   }, []);
+
+  /** Ordre effectif : sequences activees, dans l'ordre choisi. */
+  const activeOrder = sequences.filter((s) => s.enabled).map((s) => s.key);
+
+  const moveSequence = (from: SeqKey, to: SeqKey) => {
+    if (from === to) return;
+    setSequences((prev) => {
+      const next = [...prev];
+      const fi = next.findIndex((s) => s.key === from);
+      const ti = next.findIndex((s) => s.key === to);
+      if (fi === -1 || ti === -1) return prev;
+      const [moved] = next.splice(fi, 1);
+      next.splice(ti, 0, moved);
+      return next;
+    });
+  };
+
+  const toggleSequence = (key: SeqKey) => {
+    setSequences((prev) => {
+      const next = prev.map((s) => (s.key === key ? { ...s, enabled: !s.enabled } : s));
+      // Garde-fou : jamais zero sequence. Le compositeur retomberait sur une
+      // intro d'1 s et le Calendrier afficherait une barre de progression NaN.
+      return next.some((s) => s.enabled) ? next : prev;
+    });
+  };
 
   const theme = THEMES.find((t) => t.id === themeId) ?? THEMES[0];
   const tone = TONES.find((t) => t.id === toneId) ?? TONES[0];
@@ -615,10 +679,14 @@ export default function AssistantWizard() {
         title: (generated.title || 'Infographie').toUpperCase(),
         subtitle: generated.subtitle || undefined,
         cards: composerCards,
-        introDuration: SEQ.intro,
-        cardsDuration: SEQ.cards,
-        videoDuration: SEQ.video,
-        ctaDuration: SEQ.cta,
+        // Une sequence desactivee a une duree nulle : c'est ainsi que le
+        // compositeur l'exclut (conditions d'inclusion), et le Calendrier la
+        // filtre pareil (`dur > 0`).
+        introDuration: activeOrder.includes('intro') ? SEQ.intro : 0,
+        cardsDuration: activeOrder.includes('cards') ? SEQ.cards : 0,
+        videoDuration: 0,
+        ctaDuration: activeOrder.includes('cta') ? SEQ.cta : 0,
+        sequenceOrder: activeOrder,
         accentColor: ACCENT,
         // drawCTA lit `design.ctaMainText || watermarkText || 'AFROBOOST'` :
         // ces deux options seules ne suffisent pas, d'ou les champs `design`
@@ -696,13 +764,15 @@ export default function AssistantWizard() {
         renderedVideoUrl: composed.url,
         thumbnailUrl: composed.thumbnailUrl || undefined,
         composerVersion: composed.composerVersion || CURRENT_COMPOSER_VERSION,
+        // Meme source que les durees passees au compositeur : l'apercu, la
+        // video et le Calendrier suivent donc strictement le meme ordre.
         sequences: {
-          intro: SEQ.intro,
-          cards: SEQ.cards,
-          video: SEQ.video,
-          cta: SEQ.cta,
-          total: SEQ.intro + SEQ.cards + SEQ.cta,
-          order: ['intro', 'cards', 'cta'],
+          intro: activeOrder.includes('intro') ? SEQ.intro : 0,
+          cards: activeOrder.includes('cards') ? SEQ.cards : 0,
+          video: 0,
+          cta: activeOrder.includes('cta') ? SEQ.cta : 0,
+          total: activeOrder.reduce((t, k) => t + (SEQ[k] || 0), 0),
+          order: activeOrder,
         },
         branding: {
           accentColor: ACCENT,
@@ -1020,6 +1090,79 @@ export default function AssistantWizard() {
                   </div>
                 </div>
 
+                {/* Sequences — reordonnables par glisser-deposer.
+                    L'ordre choisi part a la fois au compositeur
+                    (`sequenceOrder`) et dans `metadata.sequences.order`, donc
+                    la video et l'apercu du Calendrier le suivent tous deux. */}
+                <div>
+                  <label className="block text-sm font-medium mb-2">Séquences</label>
+                  <p className="text-xs text-gray-500 mb-2">
+                    Glissez pour réordonner. L&apos;œil active ou masque une séquence.
+                  </p>
+                  <div className="space-y-1.5">
+                    {sequences.map((seq) => {
+                      const meta = SEQ_META[seq.key];
+                      const position = activeOrder.indexOf(seq.key);
+                      const isVideo = seq.key === 'video';
+                      return (
+                        <div
+                          key={seq.key}
+                          draggable={!isVideo}
+                          onDragStart={() => setDragKey(seq.key)}
+                          onDragEnd={() => setDragKey(null)}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            if (dragKey) moveSequence(dragKey, seq.key);
+                            setDragKey(null);
+                          }}
+                          className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition ${
+                            dragKey === seq.key ? 'opacity-40' : ''
+                          } ${
+                            seq.enabled
+                              ? 'bg-gray-900/60 ring-1 ring-purple-500/20'
+                              : 'bg-gray-900/30 opacity-50'
+                          } ${isVideo ? 'cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'}`}
+                        >
+                          <GripVertical
+                            className={`w-4 h-4 flex-shrink-0 ${isVideo ? 'text-gray-700' : 'text-gray-500'}`}
+                          />
+                          <span
+                            className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
+                            style={
+                              seq.enabled
+                                ? { backgroundColor: ACCENT, color: '#fff' }
+                                : { backgroundColor: '#1F2937', color: '#6B7280' }
+                            }
+                          >
+                            {seq.enabled ? position + 1 : '—'}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-medium truncate">{meta.label}</div>
+                            <div className="text-[11px] text-gray-500 truncate">{meta.hint}</div>
+                          </div>
+                          <span className="text-[11px] text-gray-500 flex-shrink-0">
+                            {seq.enabled ? `${SEQ[seq.key]}s` : ''}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => toggleSequence(seq.key)}
+                            disabled={isVideo}
+                            title={seq.enabled ? 'Masquer' : 'Afficher'}
+                            className="flex-shrink-0 text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            {seq.enabled ? (
+                              <Eye className="w-4 h-4" />
+                            ) : (
+                              <EyeOff className="w-4 h-4" />
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div className="flex justify-between pt-2">
                   <Button variant="ghost" size="sm" onClick={() => setStep(0)}>
                     <span className="flex items-center gap-2">
@@ -1062,7 +1205,7 @@ export default function AssistantWizard() {
                     </div>
 
                     <div className="space-y-1.5">
-                      {generated.cards.map((c, i) => (
+                      {(activeOrder.includes('cards') ? generated.cards : []).map((c, i) => (
                         <div
                           key={i}
                           className="flex items-start gap-3 rounded-xl bg-gray-900/60 p-3"
@@ -1251,7 +1394,13 @@ export default function AssistantWizard() {
       </div>
 
       <div className="lg:col-span-2">
-        <Preview generated={generated} format={format} previewRef={previewRef} cardsRef={cardsRef} />
+        <Preview
+          generated={generated}
+          format={format}
+          previewRef={previewRef}
+          cardsRef={cardsRef}
+          activeOrder={activeOrder}
+        />
       </div>
     </div>
   );

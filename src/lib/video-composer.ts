@@ -389,6 +389,15 @@ export interface ComposerOptions {
     video?: string | null;
     cta?: string | null;
   };
+  /**
+   * Ordre de lecture des sequences, ex. ['cta','cards','intro'].
+   *
+   * OPT-IN. Absent ou vide => aucun reordonnancement, l'ordre historique
+   * intro -> cards -> video -> cta est conserve au bit pres. Accepte les noms
+   * FR (titre/cartes) comme EN (intro/cards) ; les types absents de la liste
+   * restent a la fin, dans leur ordre naturel.
+   */
+  sequenceOrder?: string[];
   introDuration?: number;
   cardsDuration?: number;
   videoDuration?: number;
@@ -2496,6 +2505,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     title, subtitle, salesPhrase, cards = [],
     posterUrl, videoUrl, videoImageUrl, rushTransform, logoUrl, musicUrl, voiceUrl,
     sequenceBackgrounds,
+    sequenceOrder,
     introDuration = 4, cardsDuration = 6, videoDuration = 10, ctaDuration = 4,
     accentColor = '#D91CD2',
     ctaText = 'CHAT POUR PLUS D\'INFOS', ctaSubText = 'LIEN EN BIO',
@@ -2814,6 +2824,26 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     : 0;
   if (ctaDuration + ctaExtraFromDeadVideo > 0) {
     sequences.push({ type: 'cta', duration: ctaDuration + ctaExtraFromDeadVideo });
+  }
+
+  // ── Reordonnancement optionnel ────────────────────────────────────────
+  // Applique APRES la construction : les conditions d'inclusion et la
+  // redistribution de duree ci-dessus raisonnent sur l'ordre canonique
+  // (`sequences[0]` recoit le bonus d'une video morte). Reordonner avant
+  // enverrait ce bonus a la mauvaise sequence.
+  // Tri STABLE (ES2019+) : les types absents de `order` restent a la fin,
+  // dans leur ordre naturel. Le tri ne peut qu'echanger, jamais inserer une
+  // sequence exclue par les conditions.
+  const normalizedOrder = sequenceOrder?.length
+    ? sequenceOrder.map((s2) => SEQ_NAME_MAP[String(s2).toLowerCase()] || s2)
+    : null;
+  if (normalizedOrder) {
+    const rank = (t: string) => {
+      const i = normalizedOrder.indexOf(t);
+      return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+    };
+    sequences.sort((a, b) => rank(a.type) - rank(b.type));
+    console.log('[Composer] Ordre des sequences:', sequences.map((x) => x.type).join(' -> '));
   }
 
   if (sequences.length === 0) {
@@ -3577,12 +3607,29 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       const cardsS = cardsDuration || 0;
       const videoS = videoDuration || 0;
       const ctaS = ctaDuration || 0;
-      const offsets: Record<SeqVoiceKey, { start: number; end: number }> = {
-        titre:  { start: 0,                              end: introS },
-        cartes: { start: introS,                         end: introS + cardsS },
-        video:  { start: introS + cardsS,                end: introS + cardsS + videoS },
-        cta:    { start: introS + cardsS + videoS,       end: introS + cardsS + videoS + ctaS },
-      };
+      // Sans ordre personnalise : table historique, conservee telle quelle
+      // pour une retro-compat bit a bit (elle est deja approximative quand une
+      // sequence est masquee, mais c'est le comportement existant).
+      // Avec un ordre personnalise : offsets DERIVES de seqStarts, sinon les
+      // voix se joueraient au mauvais moment.
+      const offsets: Record<SeqVoiceKey, { start: number; end: number }> = normalizedOrder
+        ? (() => {
+            const derived = {} as Record<SeqVoiceKey, { start: number; end: number }>;
+            for (const k of SEQ_VOICE_KEYS) {
+              const type = SEQ_NAME_MAP[k] || k;
+              const idx = sequences.findIndex((sq) => sq.type === type);
+              derived[k] = idx === -1
+                ? { start: 0, end: 0 }
+                : { start: seqStarts[idx], end: seqStarts[idx] + sequences[idx].duration };
+            }
+            return derived;
+          })()
+        : {
+            titre:  { start: 0,                              end: introS },
+            cartes: { start: introS,                         end: introS + cardsS },
+            video:  { start: introS + cardsS,                end: introS + cardsS + videoS },
+            cta:    { start: introS + cardsS + videoS,       end: introS + cardsS + videoS + ctaS },
+          };
       for (const k of SEQ_VOICE_KEYS) {
         const el = seqVoiceEls[k];
         if (!el) continue;

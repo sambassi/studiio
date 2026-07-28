@@ -539,6 +539,9 @@ export default function CalendarPage() {
         musicUrl: meta.musicUrl || null,
         voiceUrl: meta.voiceUrl || null,
         sequenceVoiceUrls: (meta as any).sequenceVoiceUrls || undefined,
+        // Ordre de sequences stocke : sans lui la video repartait toujours
+        // en intro->cards->video->cta, divergeant de l'apercu.
+        sequenceOrder: (meta?.sequences?.order as string[] | undefined) || undefined,
         introDuration: safeDuration(meta.sequences?.intro, 5),
         cardsDuration: (meta.cards?.length > 0 || meta.textCards?.length > 0)
           ? safeDuration(meta.sequences?.cards, 6)
@@ -947,6 +950,9 @@ export default function CalendarPage() {
           musicUrl,
           voiceUrl,
           sequenceVoiceUrls: (meta as any).sequenceVoiceUrls || undefined,
+          // Ordre de sequences stocke : sans lui la video repartait toujours
+          // en intro->cards->video->cta, divergeant de l'apercu.
+          sequenceOrder: (meta?.sequences?.order as string[] | undefined) || undefined,
           introDuration: seq?.intro ?? 5,
           cardsDuration: seq?.cards ?? ((meta.cards?.length > 0 || meta.textCards?.length > 0) ? 6 : 0),
           videoDuration: seq?.video ?? 12,
@@ -1560,6 +1566,9 @@ export default function CalendarPage() {
             musicUrl,
             voiceUrl,
             sequenceVoiceUrls: (meta as any).sequenceVoiceUrls || undefined,
+            // Ordre de sequences stocke : sans lui la video repartait toujours
+            // en intro->cards->video->cta, divergeant de l'apercu.
+            sequenceOrder: (meta?.sequences?.order as string[] | undefined) || undefined,
             introDuration: seq?.intro ?? 5,
             cardsDuration: seq?.cards ?? ((meta.cards?.length > 0 || meta.textCards?.length > 0) ? 6 : 0),
             videoDuration: seq?.video ?? 12,
@@ -2060,6 +2069,9 @@ export default function CalendarPage() {
         musicUrl,
         voiceUrl,
         sequenceVoiceUrls: (meta as any)?.sequenceVoiceUrls || undefined,
+        // Ordre de sequences stocke : sans lui la video repartait toujours
+        // en intro->cards->video->cta, divergeant de l'apercu.
+        sequenceOrder: (meta?.sequences?.order as string[] | undefined) || undefined,
         introDuration: seq?.intro ?? 5,
         cardsDuration: seq?.cards ?? ((meta?.cards?.length > 0 || meta?.textCards?.length > 0) ? 6 : 0),
         videoDuration: seq?.video ?? 12,
