@@ -120,7 +120,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Filter, Settings2, Wrench, Hammer,
   Shield, ShieldCheck, ShieldAlert, Lock, Unlock, Key, Fingerprint,
   Plug, Power, BatteryCharging, Signal,
-  Droplet, Link, Egg, Milk,
+  Droplet, Link, Egg, Milk, Eye,
 };
 import { AgentIAModal } from "@/components/creer/AgentIAModal";
 import {
@@ -136,6 +136,7 @@ import {
 import FloatingPanel from "@/components/ui/FloatingPanel";
 import ColorWheel from "@/components/ui/ColorWheel";
 import { composeAndUpload, downloadBlob } from "@/lib/video-composer";
+import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { Modal } from "@/components/ui/Modal";
 import { detectClips, extractClip, type DetectedClip } from "@/lib/clip-detector";
 import CropRushModal from "@/components/creer/CropRushModal";
@@ -3089,7 +3090,9 @@ function InfographicPageInner() {
         const data = await res.json();
         if (data?.icon) {
           setCards((prev) =>
-            prev.map((c) => (c.id === cardId ? { ...c, emoji: data.icon } : c)),
+            // La route renvoie un NOM LUCIDE : `iconType` doit suivre, sinon
+            // renderCardIcon affiche le nom en texte brut.
+            prev.map((c) => (c.id === cardId ? { ...c, emoji: data.icon, iconType: 'svg' as const } : c)),
           );
         }
       }
@@ -4183,28 +4186,9 @@ function InfographicPageInner() {
     }
   };
 
-  const preRenderCardIcons = async (cardList: typeof cards) => {
-    const { renderToStaticMarkup } = await import('react-dom/server');
-    const React = await import('react');
-    return Promise.all(cardList.map(async (c) => {
-      if (c.iconType === 'svg' && c.emoji && ICON_MAP[c.emoji]) {
-        try {
-          const IconComp = ICON_MAP[c.emoji];
-          const svg = renderToStaticMarkup(React.createElement(IconComp, { size: 64, color: c.iconColor || '#FFFFFF', strokeWidth: 2 }));
-          const blob = new Blob([svg], { type: 'image/svg+xml' });
-          const url = URL.createObjectURL(blob);
-          const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-            const image = new Image();
-            image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
-            image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('icon load failed')); };
-            image.src = url;
-          });
-          return { ...c, iconImage: img };
-        } catch { return c; }
-      }
-      return c;
-    }));
-  };
+  // preRenderCardIcons vit desormais dans @/lib/icons/prerender : la copie
+  // locale filtrait sur ICON_MAP et exigeait iconType==='svg', ce qui
+  // laissait passer des noms lucide sans image jusqu'au canvas.
 
   // ── Export ──────────────────────────────────────────────────
   /** Image export — for each visible sequence, switch the preview to that
@@ -4471,7 +4455,10 @@ function InfographicPageInner() {
                     // otherwise use the lucide icon resolved from the
                     // new label text.
                     emoji: resolved.emoji,
-                    iconType: template?.iconType || resolved.iconType,
+                    // `resolved.emoji` est TOUJOURS un nom lucide desormais : garder le
+            // `iconType` du template le marquerait 'emoji' et ferait afficher
+            // « Dumbbell » en toutes lettres. `resolved` fait foi.
+            iconType: resolved.iconType,
                     color: template?.color || accent,
                   } as InfoCard;
                 }),
@@ -4518,7 +4505,10 @@ function InfographicPageInner() {
                     value: c.value || "",
                     description: c.description || "",
                     emoji: resolved.emoji,
-                    iconType: template?.iconType || resolved.iconType,
+                    // `resolved.emoji` est TOUJOURS un nom lucide desormais : garder le
+            // `iconType` du template le marquerait 'emoji' et ferait afficher
+            // « Dumbbell » en toutes lettres. `resolved` fait foi.
+            iconType: resolved.iconType,
                     color: template?.color || accent,
                   } as InfoCard;
                 }),

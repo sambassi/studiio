@@ -20,12 +20,17 @@ import { CARD_ICON_MAP } from '@/components/ui/CardIcon';
  * rendu passe par `Image` + `URL.createObjectURL`.
  */
 
-/** Forme minimale attendue : le champ portant le nom d'icone. */
+/**
+ * Forme minimale attendue : le champ portant le nom d'icone.
+ *
+ * Pas de signature d'index — elle empechait TypeScript d'inferer le type
+ * concret des cartes de l'appelant, qui se retrouvait avec des proprietes
+ * `unknown` en sortie.
+ */
 export interface PreRenderableCard {
   emoji?: string;
   iconColor?: string;
   iconImage?: HTMLImageElement;
-  [key: string]: unknown;
 }
 
 /**

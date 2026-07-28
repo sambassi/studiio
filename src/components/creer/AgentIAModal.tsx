@@ -12,6 +12,7 @@ import {
   CalendarDays,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { CardIcon } from '@/components/ui/CardIcon';
 import { Modal } from '@/components/ui/Modal';
 import { useBranding } from '@/lib/hooks/useBranding';
 import { useCreatorPreferences } from '@/lib/hooks/useCreatorPreferences';
@@ -22,26 +23,26 @@ import { useTranslations, useLocale } from '@/i18n/client';
 import { getContentPools } from '@/lib/i18n-content';
 
 const AGENT_THEMES = [
-  { id: 'sommeil-sport', label: 'Sommeil & Sport', emoji: '😴' },
-  { id: 'nutrition-danse', label: 'Nutrition & Danse', emoji: '🍎' },
-  { id: 'energie-cardio', label: 'Énergie & Cardio', emoji: '⚡' },
-  { id: 'stress-mental', label: 'Stress & Mental', emoji: '🧠' },
-  { id: 'communaute', label: 'Communauté', emoji: '👥' },
-  { id: 'beauty', label: 'Beauté', emoji: '💄' },
-  { id: 'parenting', label: 'Parentalité', emoji: '👶' },
-  { id: 'travel', label: 'Voyage', emoji: '✈️' },
-  { id: 'productivity', label: 'Productivité', emoji: '🚀' },
-  { id: 'finance', label: 'Finance', emoji: '💰' },
-  { id: 'coding', label: 'Coding', emoji: '💻' },
-  { id: 'crypto', label: 'Crypto', emoji: '🪙' },
-  { id: 'gaming', label: 'Gaming', emoji: '🎮' },
-  { id: 'food', label: 'Food', emoji: '🍕' },
-  { id: 'pets', label: 'Animaux', emoji: '🐾' },
-  { id: 'cars', label: 'Auto', emoji: '🚗' },
-  { id: 'realestate', label: 'Immobilier', emoji: '🏠' },
-  { id: 'education', label: 'Éducation', emoji: '📚' },
-  { id: 'astrology', label: 'Astrologie', emoji: '🔮' },
-  { id: 'motivation', label: 'Motivation', emoji: '🔥' },
+  { id: 'sommeil-sport', label: 'Sommeil & Sport', icon: 'Moon' },
+  { id: 'nutrition-danse', label: 'Nutrition & Danse', icon: 'Apple' },
+  { id: 'energie-cardio', label: 'Énergie & Cardio', icon: 'Zap' },
+  { id: 'stress-mental', label: 'Stress & Mental', icon: 'Brain' },
+  { id: 'communaute', label: 'Communauté', icon: 'Users' },
+  { id: 'beauty', label: 'Beauté', icon: 'Sparkles' },
+  { id: 'parenting', label: 'Parentalité', icon: 'Baby' },
+  { id: 'travel', label: 'Voyage', icon: 'Plane' },
+  { id: 'productivity', label: 'Productivité', icon: 'Rocket' },
+  { id: 'finance', label: 'Finance', icon: 'Wallet' },
+  { id: 'coding', label: 'Coding', icon: 'Code' },
+  { id: 'crypto', label: 'Crypto', icon: 'Coins' },
+  { id: 'gaming', label: 'Gaming', icon: 'Gamepad2' },
+  { id: 'food', label: 'Food', icon: 'Pizza' },
+  { id: 'pets', label: 'Animaux', icon: 'Dog' },
+  { id: 'cars', label: 'Auto', icon: 'Car' },
+  { id: 'realestate', label: 'Immobilier', icon: 'Home' },
+  { id: 'education', label: 'Éducation', icon: 'Book' },
+  { id: 'astrology', label: 'Astrologie', icon: 'Star' },
+  { id: 'motivation', label: 'Motivation', icon: 'Flame' },
 ];
 
 interface AgentIAModalProps {
@@ -739,7 +740,7 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
                           : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'
                       }`}
                     >
-                      <span>{theme.emoji}</span>
+                      <CardIcon name={theme.icon} size={16} color="currentColor" className="" />
                       <span className="truncate">{theme.label}</span>
                     </button>
                   ))}

@@ -40,43 +40,43 @@ const THEME_PRESETS: Record<ThemeType, { title: string; subtitle: string; cards:
     title: 'SOMMEIL & SPORT',
     subtitle: 'Les bienfaits de la danse sur ton repos',
     cards: [
-      { emoji: '😴', label: 'Qualité sommeil', value: '+45%', color: '#6366f1' },
-      { emoji: '⚡', label: 'Énergie matin', value: '+60%', color: '#f59e0b' },
+      { emoji: 'Moon', label: 'Qualité sommeil', value: '+45%', color: '#6366f1' },
+      { emoji: 'Zap', label: 'Énergie matin', value: '+60%', color: '#f59e0b' },
     ],
   },
   nutrition: {
     title: 'NUTRITION & DANSE',
     subtitle: 'Nourris ton corps, libère ton énergie',
     cards: [
-      { emoji: '🥗', label: 'Métabolisme', value: '+35%', color: '#22c55e' },
-      { emoji: '💪', label: 'Force', value: '+50%', color: '#ef4444' },
+      { emoji: 'Salad', label: 'Métabolisme', value: '+35%', color: '#22c55e' },
+      { emoji: 'Dumbbell', label: 'Force', value: '+50%', color: '#ef4444' },
     ],
   },
   energie: {
     title: 'ÉNERGIE & CARDIO',
     subtitle: 'Pousse tes limites avec Afroboost',
     cards: [
-      { emoji: '⚡', label: 'Intensité', value: 'MAX', color: '#ec4899' },
-      { emoji: '❤️', label: 'Fréquence', value: '140+', color: '#ef4444' },
-      { emoji: '💃', label: 'Chorégraphie', value: '50+', color: '#a855f7' },
-      { emoji: '🎵', label: 'Playlist', value: '100%', color: '#3b82f6' },
-      { emoji: '🔄', label: 'Récupération', value: '-45%', color: '#22c55e' },
+      { emoji: 'Zap', label: 'Intensité', value: 'MAX', color: '#ec4899' },
+      { emoji: 'Heart', label: 'Fréquence', value: '140+', color: '#ef4444' },
+      { emoji: 'PersonStanding', label: 'Chorégraphie', value: '50+', color: '#a855f7' },
+      { emoji: 'Music', label: 'Playlist', value: '100%', color: '#3b82f6' },
+      { emoji: 'Activity', label: 'Récupération', value: '-45%', color: '#22c55e' },
     ],
   },
   stress: {
     title: 'STRESS & MENTAL',
     subtitle: 'Danse pour ton bien-être mental',
     cards: [
-      { emoji: '🧠', label: 'Stress', value: '-70%', color: '#8b5cf6' },
-      { emoji: '😊', label: 'Bien-être', value: '+80%', color: '#f59e0b' },
+      { emoji: 'Brain', label: 'Stress', value: '-70%', color: '#8b5cf6' },
+      { emoji: 'Smile', label: 'Bien-être', value: '+80%', color: '#f59e0b' },
     ],
   },
   communaute: {
     title: 'COMMUNAUTÉ',
     subtitle: 'Rejoins la tribu Afroboost',
     cards: [
-      { emoji: '👥', label: 'Membres actifs', value: '5000+', color: '#ec4899' },
-      { emoji: '🎉', label: 'Événements', value: 'Chaque semaine', color: '#f59e0b' },
+      { emoji: 'Users', label: 'Membres actifs', value: '5000+', color: '#ec4899' },
+      { emoji: 'PartyPopper', label: 'Événements', value: 'Chaque semaine', color: '#f59e0b' },
     ],
   },
   custom: {
@@ -112,9 +112,9 @@ export default function InfographiePage() {
   const [title, setTitle] = useState('ÉNERGIE & CARDIO');
   const [subtitle, setSubtitle] = useState('Pousse tes limites avec Afroboost');
   const [cards, setCards] = useState<InfoCard[]>([
-    { id: '1', emoji: '⚡', label: 'Intensité', value: 'MAX', color: '#ec4899' },
-    { id: '2', emoji: '❤️', label: 'Fréquence', value: '140+', color: '#ef4444' },
-    { id: '3', emoji: '💃', label: 'Chorégraphie', value: '50+', color: '#a855f7' },
+    { id: '1', emoji: 'Zap', label: 'Intensité', value: 'MAX', color: '#ec4899' },
+    { id: '2', emoji: 'Heart', label: 'Fréquence', value: '140+', color: '#ef4444' },
+    { id: '3', emoji: 'PersonStanding', label: 'Chorégraphie', value: '50+', color: '#a855f7' },
   ]);
 
   // Format and batch state
@@ -330,11 +330,11 @@ export default function InfographiePage() {
         }]);
       } else {
         // Fallback to generic card if AI fails
-        setCards(prev => [...prev, { id: Date.now().toString(), emoji: '⭐', label: t('infoCards.newCard'), value: t('infoCards.value'), color: '#ec4899' }]);
+        setCards(prev => [...prev, { id: Date.now().toString(), emoji: 'Star', label: t('infoCards.newCard'), value: t('infoCards.value'), color: '#ec4899' }]);
       }
     } catch {
       // Fallback on error
-      setCards(prev => [...prev, { id: Date.now().toString(), emoji: '⭐', label: t('infoCards.newCard'), value: t('infoCards.value'), color: '#ec4899' }]);
+      setCards(prev => [...prev, { id: Date.now().toString(), emoji: 'Star', label: t('infoCards.newCard'), value: t('infoCards.value'), color: '#ec4899' }]);
     } finally {
       setIsAddingCard(false);
     }
