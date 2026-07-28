@@ -289,8 +289,8 @@ const QUICK_EMOJIS = ['📝', '✨', '⭐', '🎯', '💪', '🔥', '💡', '�
 // at render time via ICON_MAP[name] to keep this file lean.
 const ICON_LIBRARY: Record<string, string[]> = {
   sport:       ['Dumbbell', 'Flame', 'Zap', 'Trophy', 'Target', 'Activity', 'Bike', 'Medal', 'Crown'],
-  santé:       ['Heart', 'Brain', 'Stethoscope', 'Pill', 'Cross', 'HeartPulse', 'Syringe', 'Thermometer', 'Bone'],
-  nutrition:   ['Apple', 'Carrot', 'Salad', 'Coffee', 'Pizza', 'Utensils', 'Wheat'],
+  santé:       ['Heart', 'Brain', 'Stethoscope', 'Pill', 'Cross', 'HeartPulse', 'Syringe', 'Thermometer', 'Bone', 'Droplet', 'Eye'],
+  nutrition:   ['Apple', 'Carrot', 'Salad', 'Coffee', 'Pizza', 'Utensils', 'Wheat', 'Egg', 'Milk'],
   temps:       ['Clock', 'Timer', 'AlarmClock', 'Watch', 'Hourglass', 'Calendar', 'CalendarDays', 'CalendarCheck', 'CalendarClock', 'Sunrise', 'Sunset'],
   nature:      ['Leaf', 'Sun', 'Moon', 'Star', 'Cloud', 'Flower', 'TreePine', 'Sprout', 'Trees', 'TreeDeciduous', 'Waves', 'Mountain'],
   météo:       ['CloudRain', 'CloudSnow', 'Snowflake', 'Wind', 'Umbrella', 'Rainbow'],

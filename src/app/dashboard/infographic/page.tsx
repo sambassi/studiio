@@ -323,7 +323,10 @@ export default function InfographiePage() {
         const colors = ['#ec4899', '#ef4444', '#a855f7', '#3b82f6', '#22c55e', '#f59e0b', '#6366f1'];
         setCards(prev => [...prev, {
           id: Date.now().toString(),
-          emoji: aiCard.emoji || '⭐',
+          // `iconName` et non `emoji` : la route ai-generate renvoie les deux,
+          // mais `emoji` vaut '📊' par defaut. `iconName` est deja valide
+          // contre une liste blanche cote route.
+          emoji: aiCard.iconName || 'Sparkles',
           label: aiCard.label || aiCard.title || 'Info',
           value: aiCard.value || '100%',
           color: colors[prev.length % colors.length],
