@@ -22,7 +22,7 @@ import {
 import { generateSmartContent } from '@/lib/smart-content';
 import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
 import { CardIcon } from '@/components/ui/CardIcon';
-import { useBranding } from '@/lib/hooks/useBranding';
+import { useBranding, NEUTRAL_BRANDING } from '@/lib/hooks/useBranding';
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { Card, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -119,9 +119,12 @@ const TONES: Array<{
  * Repli NEUTRE studiio.pro, utilise tant que l'utilisateur n'a pas configure
  * son kit de marque (Reglages -> Branding). Ce ne sont pas les couleurs
  * d'Afroboost : la charte du produit est violet #7C3AED / rose #EC4899.
+ *
+ * Reprises de NEUTRAL_BRANDING plutot que redeclarees : une seule definition
+ * du repli dans toute l'app.
  */
-const NEUTRAL_ACCENT = '#7C3AED';
-const NEUTRAL_GRADIENT_END = '#EC4899';
+const NEUTRAL_ACCENT = NEUTRAL_BRANDING.accentColor;
+const NEUTRAL_GRADIENT_END = NEUTRAL_BRANDING.gradientColor2;
 const DARK = '#0A0A0F';
 
 /**
@@ -482,8 +485,9 @@ export default function AssistantWizard() {
   const { branding } = useBranding();
   const accent = branding.accentColor || NEUTRAL_ACCENT;
   // Le kit distingue la couleur d'accent (bordures, icones) du DEBUT du
-  // degrade de fond. Ils valent la meme chose par defaut, mais l'utilisateur
-  // peut les dissocier.
+  // degrade de fond : changer l'une ne change pas l'autre, le panneau les
+  // expose separement. Le `|| accent` ne couvre qu'une valeur vide heritee
+  // d'un enregistrement anterieur a ce champ.
   const gradStart = branding.gradientColor1 || accent;
   const gradEnd = branding.gradientColor2 || NEUTRAL_GRADIENT_END;
   const gradientOpacity =
