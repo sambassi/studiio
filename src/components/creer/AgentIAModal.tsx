@@ -493,12 +493,16 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
               pexelsUrl: posterUrl || undefined,
               characterUrl: posterUrl || undefined,
               voiceMode: musicUrl ? 'music' : 'none',
+              // La duree DOIT suivre la meme condition que `introDuration`
+              // ci-dessus et que `order` ci-dessous. Ecrire `intro: 5` sans
+              // affiche laissait une duree non nulle absente de `order` :
+              // a la regeneration, l'intro etait relayee apres le CTA.
               sequences: {
-                intro: 5,
+                intro: posterUrl ? 5 : 0,
                 cards: 0,
                 video: 12,
                 cta: 5,
-                total: 22,
+                total: posterUrl ? 22 : 17,
                 order: posterUrl ? ['intro', 'video', 'cta'] : ['video', 'cta'],
               },
               branding: {
