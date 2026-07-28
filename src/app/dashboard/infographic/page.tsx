@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Trash2, Upload, Zap, Loader2, Sparkles, Film, X, Play, Volume2, Image as ImageIcon, Search, ChevronRight, ChevronLeft, ArrowUp, ArrowDown, Calendar, Music, Package, RefreshCw } from 'lucide-react';
+import { CardIcon } from '@/components/ui/CardIcon';
 import { generateSmartContent } from '@/lib/smart-content';
 import { useBranding } from '@/lib/hooks/useBranding';
 import { useCreatorPreferences } from '@/lib/hooks/useCreatorPreferences';
@@ -269,13 +270,8 @@ export default function InfographiePage() {
     }
   };
 
-  const ICON_TO_EMOJI: Record<string, string> = {
-    energy: '⚡', heart: '❤️', dance: '💃', audio: '🎧', apple: '🍎',
-    moon: '🌙', fire: '🔥', droplet: '💧', muscle: '💪', clock: '⏱️',
-    star: '⭐', brain: '🧠', shield: '🛡️', target: '🎯', trophy: '🏆',
-    people: '👥', sun: '☀️', leaf: '🌿', chart: '📈', sparkle: '✨',
-    thermometer: '🌡️', bone: '🦴', eye: '👁️', lungs: '🫁', dna: '🧬',
-  };
+  // ICON_TO_EMOJI supprime : smart-content ne produit plus d'emoji, et la
+  // regle projet les proscrit dans le contenu genere (CLAUDE.md).
 
   const handleGenerateTitleAndSubtitle = () => {
     const suggestions = [
@@ -297,7 +293,9 @@ export default function InfographiePage() {
       const colors = ['#ec4899', '#ef4444', '#a855f7', '#3b82f6', '#22c55e', '#f59e0b', '#6366f1'];
       setCards(result.cards.slice(0, 5).map((card, idx) => ({
         id: `smart-${idx}-${Date.now()}`,
-        emoji: ICON_TO_EMOJI[card.icon] || '⭐',
+        // `card.icon` est desormais un NOM D'ICONE LUCIDE (smart-content ne
+        // produit plus d'emoji) : on le prend tel quel, rendu en SVG.
+        emoji: card.icon || 'Sparkles',
         label: card.title,
         value: card.value,
         color: colors[idx % colors.length],
@@ -586,7 +584,7 @@ export default function InfographiePage() {
           const hour = 9 + Math.floor(b / 2);
           const minute = (b % 2) * 30;
           const scheduledTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-          const caption = [bSub, bPhrase, cards.map((c) => `${c.emoji} ${c.label}: ${c.value}`).join(' | ')].filter(Boolean).join('\n');
+          const caption = [bSub, bPhrase, cards.map((c) => `${c.label}: ${c.value}`).join(' | ')].filter(Boolean).join('\n');
           // ALWAYS use the rendered montage video — never fall back to raw video
           const postMediaUrl = renderedVideoUrl || bMediaUrl;
           const postMediaType = renderedVideoUrl ? 'video' : (bMediaUrl ? 'image' : 'video');
@@ -747,7 +745,7 @@ export default function InfographiePage() {
             <p className="text-[8px] font-bold text-white/60 uppercase tracking-widest text-center mb-2">{t('preview.information')}</p>
             {cards.slice(0, 5).map((card, i) => (
               <div key={i} className="flex items-center gap-2 bg-black/40 backdrop-blur-sm rounded-lg px-2 py-1.5 border-l-2" style={{ borderColor: card.color }}>
-                <span className="text-sm">{card.emoji}</span>
+                <CardIcon name={card.emoji} size={14} color="#FFFFFF" className="" />
                 <span className="text-[8px] text-white/70 flex-1">{card.label}</span>
                 <span className="text-[10px] font-bold text-white" style={{ textShadow: `0 0 6px ${accent}80` }}>{card.value}</span>
               </div>
@@ -957,7 +955,7 @@ export default function InfographiePage() {
                   {cards.map((card) => (
                     <div key={card.id} className="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-gray-800 rounded-lg p-2.5 border border-gray-700">
                       <div className="flex-shrink-0 relative group">
-                        <button className="w-8 h-8 bg-gray-700 hover:bg-gray-600 rounded text-lg flex items-center justify-center">{card.emoji}</button>
+                        <button className="w-8 h-8 bg-gray-700 hover:bg-gray-600 rounded flex items-center justify-center"><CardIcon name={card.emoji} size={16} color="#FFFFFF" className="" /></button>
                         <div className="absolute bottom-full mb-2 left-0 hidden group-hover:grid grid-cols-4 gap-1 bg-gray-700 p-2 rounded-lg shadow-lg z-10">
                           {EMOJI_LIST.map((emoji) => (<button key={emoji} onClick={() => updateCard(card.id, { emoji })} className="w-6 h-6 text-sm hover:bg-gray-600 rounded flex items-center justify-center">{emoji}</button>))}
                         </div>

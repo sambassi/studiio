@@ -911,6 +911,7 @@ a petite taille.
 - **Types** : Definis dans `src/lib/types/database.ts` et `src/lib/types/api.ts`
 - **API routes** : Pattern REST, NextResponse, auth via `getServerSession()`
 - **Composants UI** : Dans `src/components/ui/` (Button, Card, Modal, etc.)
+- **Icônes — RÈGLE ABSOLUE** : Toujours utiliser des **icônes SVG** (jeu lucide via `CardIcon` / `ICON_MAP`), **JAMAIS d'emojis** dans le contenu généré (cartes, titres, CTA, séquences) ni dans l'UI. Les emojis (🔥, 💪, etc.) sont proscrits — même quand `smart-content` ou l'assistant propose un `icon`, il doit résoudre vers un nom d'icône lucide SVG, pas un caractère emoji. Si une carte reçoit un emoji, le remplacer par l'icône SVG équivalente. Cette règle a été demandée explicitement par l'utilisateur : les icônes emoji ne doivent plus apparaître.
 - **Couleurs** : Primary `#7C3AED` (purple), Accent `#EC4899` (pink), Magenta `#D91CD2`, Dark `#0A0A0F`
 - **Fonts** : Inter (UI), Anton, Syne, Bebas Neue, Poppins, Space Grotesk (editeur infographie) — via `next/font/google` avec CSS variables
 - **Theme** : Dark mode uniquement

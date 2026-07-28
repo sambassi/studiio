@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
 import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
-import { CardIcon } from '@/components/ui/CardIcon';
+import { CardIcon, CARD_ICON_MAP } from '@/components/ui/CardIcon';
 import { Card, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 
@@ -227,6 +227,46 @@ interface Generated {
   cards: GeneratedCard[];
   cta: string;
   ctaSub: string;
+}
+
+/**
+ * Pre-rend les icones lucide en images, pour le compositeur.
+ *
+ * Le compositeur ne connait que deux champs : `iconImage` (dessine tel quel)
+ * et `emoji` (dessine en TEXTE sur le canvas). `card.icon` etant desormais un
+ * nom lucide, sans cette conversion le repli canvas dessinerait litteralement
+ * « Droplet » a la place de l'icone.
+ *
+ * Ce chemin ne sert que si la capture de l'apercu echoue — en marche normale
+ * les cartes viennent du snapshot. C'est precisement pour ce cas de repli
+ * qu'il ne doit pas produire de texte.
+ */
+async function preRenderCardIcons(
+  cards: GeneratedCard[],
+): Promise<Array<{ image?: HTMLImageElement }>> {
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  const React = await import('react');
+  return Promise.all(
+    cards.map(async (c) => {
+      const IconComp = CARD_ICON_MAP[c.icon];
+      if (!IconComp) return {};
+      try {
+        const svg = renderToStaticMarkup(
+          React.createElement(IconComp, { size: 64, color: '#FFFFFF', strokeWidth: 2 }),
+        );
+        const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+        const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+          img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('icon load failed')); };
+          img.src = url;
+        });
+        return { image };
+      } catch {
+        return {};
+      }
+    }),
+  );
 }
 
 const STEPS = ['Sujet', 'Style', 'Contenu', 'Envoi'] as const;
@@ -594,6 +634,7 @@ export default function AssistantWizard() {
       // 3. Composition + upload (composeAndUpload fait les deux et produit
       //    aussi la vignette).
       setRenderStage('Rendu du montage…');
+      const cardIcons = await preRenderCardIcons(generated.cards);
       const composed = await composeAndUpload({
         width: isReel ? 1080 : 1920,
         height: isReel ? 1920 : 1080,
@@ -602,8 +643,11 @@ export default function AssistantWizard() {
         // l'apercu, qui applique `uppercase` en CSS) : on le fait ici.
         title: (generated.title || 'Infographie').toUpperCase(),
         subtitle: generated.subtitle || undefined,
-        cards: generated.cards.map((c) => ({
+        cards: generated.cards.map((c, i) => ({
+          // `emoji` porte un NOM LUCIDE, pas un emoji : le compositeur le
+          // dessinerait en texte, d'ou `iconImage` qui a la priorite.
           emoji: c.icon,
+          iconImage: cardIcons[i]?.image,
           label: c.title,
           value: c.value,
           description: c.description,
