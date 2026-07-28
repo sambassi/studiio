@@ -182,25 +182,34 @@ export interface UploadedAsset {
   url?: string;
 }
 
+/** Limite documentee de POST /v3/assets. Au-dela, HeyGen impose l'upload direct. */
+export const HEYGEN_ASSET_MAX_BYTES = 32 * 1024 * 1024;
+
 /**
- * POST /v3/assets — envoie l'image (multipart, champ `file`, max 32 Mo cote HeyGen).
+ * POST /v3/assets — envoie le fichier source (multipart, champ `file`).
+ * Formats acceptes par HeyGen : PNG, JPEG, MP4, WebM. Taille max : 32 Mo.
  */
 export async function uploadAsset(
   file: Blob,
   filename: string,
 ): Promise<UploadedAsset> {
+  console.log(
+    `[Avatar][HeyGen] POST /v3/assets — fichier="${filename}" type=${file.type || 'inconnu'} taille=${Math.round(file.size / 1024)} Ko`,
+  );
+
   const form = new FormData();
   form.append('file', file, filename);
 
   const data = await heygenFetch<{ asset_id?: string; id?: string; url?: string }>(
     '/v3/assets',
-    { method: 'POST', body: form, timeoutMs: 120_000 },
+    { method: 'POST', body: form, timeoutMs: 300_000 },
   );
 
   const assetId = data?.asset_id ?? data?.id;
   if (!assetId) {
     throw new HeyGenError("HeyGen n'a pas retourne d'identifiant d'asset.", 502, 'no_asset_id');
   }
+  console.log(`[Avatar][HeyGen] Asset uploade — asset_id=${assetId}`);
   return { assetId, url: data?.url };
 }
 
@@ -208,19 +217,38 @@ export async function uploadAsset(
 
 export interface CreatedAvatar {
   avatarId: string;
-  /** 'processing' | 'completed' | 'failed' selon HeyGen. */
+  /** 'processing' | 'pending_consent' | 'completed' | 'failed' selon HeyGen. */
   status: string;
   avatarGroupId?: string;
 }
 
+/** Nature de l'avatar cote Studiio → valeur du champ `type` chez HeyGen. */
+export type AvatarKind = 'photo' | 'video';
+
+const HEYGEN_AVATAR_TYPE: Record<AvatarKind, string> = {
+  photo: 'photo',
+  // Un avatar entraine a partir de vraies images video. Rendu nettement plus
+  // realiste qu'une talking photo, mais entrainement asynchrone plus long.
+  video: 'digital_twin',
+};
+
 /**
- * POST /v3/avatars — cree un avatar photo a partir d'un asset deja uploade.
- * L'entrainement est asynchrone : le statut initial est generalement 'processing'.
+ * POST /v3/avatars — cree un avatar a partir d'un asset deja uploade.
+ *
+ * Le MEME endpoint sert aux deux natures d'avatar, seul le champ `type`
+ * change : 'photo' (image fixe) ou 'digital_twin' (footage video).
+ * L'entrainement est asynchrone dans les deux cas.
  */
-export async function createPhotoAvatar(
+export async function createAvatarFromAsset(
   assetId: string,
   name: string,
+  kind: AvatarKind,
 ): Promise<CreatedAvatar> {
+  const heygenType = HEYGEN_AVATAR_TYPE[kind];
+  console.log(
+    `[Avatar][HeyGen] POST /v3/avatars — type=${heygenType} (${kind}) asset_id=${assetId} name="${name}"`,
+  );
+
   const data = await heygenFetch<{
     avatar_item?: { id?: string; status?: string };
     avatar_group?: { id?: string; status?: string };
@@ -231,11 +259,13 @@ export async function createPhotoAvatar(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      type: 'photo',
+      type: heygenType,
       name,
       file: { type: 'asset_id', asset_id: assetId },
     }),
-    timeoutMs: 60_000,
+    // L'entrainement d'un digital twin demarre plus lentement que celui d'une
+    // talking photo : la reponse de creation peut tarder.
+    timeoutMs: kind === 'video' ? 180_000 : 60_000,
   });
 
   // La forme de reponse varie (avatar_item vs champs a plat) : on tolere les deux.
@@ -243,32 +273,93 @@ export async function createPhotoAvatar(
   if (!avatarId) {
     throw new HeyGenError("HeyGen n'a pas retourne d'identifiant d'avatar.", 502, 'no_avatar_id');
   }
+  const status = data?.avatar_item?.status ?? data?.status ?? 'processing';
+  console.log(`[Avatar][HeyGen] Avatar ${kind} cree — id=${avatarId} statut=${status}`);
+
   return {
     avatarId,
-    status: data?.avatar_item?.status ?? data?.status ?? 'processing',
+    status,
     avatarGroupId: data?.avatar_group?.id ?? data?.avatar_group_id,
   };
 }
 
 /**
- * GET /v3/avatars/{id} — statut d'entrainement de l'avatar.
- *
- * Cet endpoint n'est pas formellement documente pour les avatars photo. S'il
- * echoue, on renvoie `null` : l'appelant considere alors l'avatar comme
- * utilisable et laissera la generation video echouer avec un message clair si
- * l'entrainement n'est pas termine. On ne bloque jamais l'utilisateur sur une
- * incertitude de documentation.
+ * Avatar photo (talking photo). Conserve pour ne rien changer au flux existant.
  */
-export async function getAvatarStatus(avatarId: string): Promise<string | null> {
+export async function createPhotoAvatar(
+  assetId: string,
+  name: string,
+): Promise<CreatedAvatar> {
+  return createAvatarFromAsset(assetId, name, 'photo');
+}
+
+/** Avatar video (digital twin) — entraine a partir d'un footage. */
+export async function createVideoAvatar(
+  assetId: string,
+  name: string,
+): Promise<CreatedAvatar> {
+  return createAvatarFromAsset(assetId, name, 'video');
+}
+
+export interface AvatarTrainingStatus {
+  /** 'processing' | 'pending_consent' | 'completed' | 'failed' */
+  status: string;
+  /** Renseigne uniquement quand status vaut 'failed'. */
+  error?: string;
+  /** Voix par defaut associee a l'avatar, si HeyGen en propose une. */
+  defaultVoiceId?: string;
+}
+
+/**
+ * GET /v3/avatars/looks/{look_id} — statut d'entrainement.
+ *
+ * L'identifiant rendu par la creation est un « look », d'ou ce chemin. Une
+ * version anterieure interrogeait /v3/avatars/{id}, qui echouait en silence :
+ * le statut etait donc toujours inconnu, pour la photo comme pour la video.
+ *
+ * Renvoie `null` si l'appel echoue : l'appelant considere alors l'avatar comme
+ * potentiellement utilisable et laisse HeyGen trancher a la generation, avec
+ * son message reel. On ne bloque jamais l'utilisateur sur une incertitude.
+ */
+export async function getAvatarTrainingStatus(
+  avatarId: string,
+): Promise<AvatarTrainingStatus | null> {
   try {
     const data = await heygenFetch<{
       status?: string;
-      avatar_item?: { status?: string };
-    }>(`/v3/avatars/${encodeURIComponent(avatarId)}`, { method: 'GET', timeoutMs: 15_000 });
-    return data?.avatar_item?.status ?? data?.status ?? null;
-  } catch {
+      error?: string;
+      default_voice_id?: string;
+      avatar_item?: { status?: string; error?: string; default_voice_id?: string };
+    }>(`/v3/avatars/looks/${encodeURIComponent(avatarId)}`, {
+      method: 'GET',
+      timeoutMs: 15_000,
+    });
+
+    const item = data?.avatar_item ?? data;
+    const status = item?.status;
+    if (!status) {
+      console.warn(`[Avatar][HeyGen] Statut d'entrainement absent pour ${avatarId}`);
+      return null;
+    }
+    console.log(`[Avatar][HeyGen] Entrainement ${avatarId} — statut=${status}`);
+    return {
+      status,
+      error: item?.error,
+      defaultVoiceId: item?.default_voice_id,
+    };
+  } catch (err) {
+    console.warn(
+      `[Avatar][HeyGen] Statut d'entrainement illisible pour ${avatarId}:`,
+      err instanceof Error ? err.message : err,
+    );
     return null;
   }
+}
+
+/** Compatibilite : ancienne signature, ne renvoie que la chaine de statut. */
+export async function getAvatarStatus(avatarId: string): Promise<string | null> {
+  const res = await getAvatarTrainingStatus(avatarId);
+  return res?.status ?? null;
 }
 
 // ── 3. Generation de la video parlante ────────────────────────────────────

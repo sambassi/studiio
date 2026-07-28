@@ -10,15 +10,26 @@ import {
   Check,
   Download,
   RefreshCw,
+  Image as ImageIcon,
+  Clapperboard,
 } from 'lucide-react';
 
 const AVATAR_VIDEO_COST = 40;
 const MAX_SCRIPT_CHARS = 1200;
+/** Limite imposée par HeyGen sur l'envoi d'un asset. */
+const MAX_VIDEO_MB = 32;
+
+type AvatarKind = 'photo' | 'video';
+
+/** Statuts HeyGen signifiant « avatar utilisable ». */
+const READY_STATUSES = ['completed', 'ready', 'success'];
 
 interface AvatarRow {
   id: string;
   name: string | null;
   status: string;
+  avatar_type?: AvatarKind;
+  training_error?: string | null;
   source_url: string | null;
   created_at: string;
 }
@@ -37,6 +48,7 @@ export default function AvatarPage() {
   const [voices, setVoices] = useState<Voice[]>([]);
 
   // Création
+  const [kind, setKind] = useState<AvatarKind>('photo');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
@@ -56,28 +68,41 @@ export default function AvatarPage() {
   const pollRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const trainingPollRef = useRef<NodeJS.Timeout | null>(null);
+
+  /**
+   * Recharge l'avatar et les voix. Le GET rafraîchit au passage le statut
+   * d'entraînement côté HeyGen — c'est ce qui permet de suivre la préparation
+   * d'un avatar vidéo sans route dédiée.
+   */
+  const loadAvatar = useCallback(async (withVoices: boolean) => {
+    const res = await fetch('/api/avatar/create');
+    const json = await res.json();
+    if (!json.success) return null;
+
+    setAvatar(json.data.avatar);
+
+    if (withVoices) {
+      const list: Voice[] = json.data.voices || [];
+      setVoices(list);
+      // On présélectionne une vraie voix : aucun choix « vide » n'est proposé,
+      // car un voice_id absent fait échouer HeyGen en 400.
+      setVoiceId(json.data.defaultVoiceId || list[0]?.voiceId || '');
+      if (list.length === 0) {
+        setNotice(
+          "Les voix HeyGen n'ont pas pu être chargées. La génération utilisera une voix de secours — le résultat peut ne pas être en français.",
+        );
+      }
+    }
+    return json.data.avatar as AvatarRow | null;
+  }, []);
+
   // ── Chargement initial ──────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/avatar/create');
-        const json = await res.json();
-        if (cancelled) return;
-        if (json.success) {
-          setAvatar(json.data.avatar);
-          const list: Voice[] = json.data.voices || [];
-          setVoices(list);
-          // On preselectionne une vraie voix : aucun choix "vide" n'est
-          // propose, car un voice_id absent fait echouer HeyGen en 400.
-          const fallback = json.data.defaultVoiceId || list[0]?.voiceId || '';
-          setVoiceId(fallback);
-          if (list.length === 0) {
-            setNotice(
-              "Les voix HeyGen n'ont pas pu être chargées. La génération utilisera une voix de secours — le résultat peut ne pas être en français.",
-            );
-          }
-        }
+        if (!cancelled) await loadAvatar(true);
       } catch {
         // La page reste utilisable : l'utilisateur pourra réessayer.
       } finally {
@@ -87,7 +112,34 @@ export default function AvatarPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadAvatar]);
+
+  // ── Suivi de l'entraînement ─────────────────────────────────────────
+  // Un avatar vidéo (digital twin) s'entraîne pendant plusieurs minutes. Tant
+  // qu'il n'est pas prêt, on réinterroge périodiquement — la génération reste
+  // bloquée côté serveur (409) pendant ce temps.
+  const training = !!avatar && !READY_STATUSES.includes(avatar.status);
+  const trainingFailed = avatar?.status === 'failed';
+
+  useEffect(() => {
+    if (!training || trainingFailed) return;
+    let cancelled = false;
+
+    const tick = async () => {
+      try {
+        await loadAvatar(false);
+      } catch {
+        // Erreur transitoire : on retentera au prochain tour.
+      }
+      if (!cancelled) trainingPollRef.current = setTimeout(tick, 10000);
+    };
+
+    trainingPollRef.current = setTimeout(tick, 10000);
+    return () => {
+      cancelled = true;
+      if (trainingPollRef.current) clearTimeout(trainingPollRef.current);
+    };
+  }, [training, trainingFailed, loadAvatar]);
 
   // Nettoyage du timer de polling au démontage — évite une fuite si
   // l'utilisateur quitte la page pendant une génération.
@@ -129,9 +181,32 @@ export default function AvatarPage() {
     const f = e.target.files?.[0];
     if (!f) return;
     setError(null);
+
+    // Contrôle côté client de la limite HeyGen : évite un upload de plusieurs
+    // dizaines de Mo pour rien.
+    if (f.type.startsWith('video/') && f.size > MAX_VIDEO_MB * 1024 * 1024) {
+      setError(
+        `Vidéo trop lourde (${Math.round(f.size / 1024 / 1024)} Mo). HeyGen limite l'envoi à ${MAX_VIDEO_MB} Mo — réduisez la durée ou la qualité.`,
+      );
+      e.target.value = '';
+      return;
+    }
+
     if (preview) URL.revokeObjectURL(preview);
     setFile(f);
-    setPreview(f.type.startsWith('image/') ? URL.createObjectURL(f) : null);
+    // Aperçu local pour l'image comme pour la vidéo.
+    setPreview(URL.createObjectURL(f));
+  };
+
+  const selectKind = (k: AvatarKind) => {
+    if (k === kind) return;
+    setKind(k);
+    setError(null);
+    if (preview) URL.revokeObjectURL(preview);
+    setPreview(null);
+    setFile(null);
+    setConsent(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleCreate = async () => {
@@ -143,7 +218,7 @@ export default function AvatarPage() {
       const fd = new FormData();
       fd.append('file', file);
       fd.append('consent', 'true');
-      fd.append('name', 'Mon avatar');
+      fd.append('name', kind === 'video' ? 'Mon avatar vidéo' : 'Mon avatar');
 
       const res = await fetch('/api/avatar/create', { method: 'POST', body: fd });
       const json = await res.json();
@@ -154,7 +229,9 @@ export default function AvatarPage() {
       }
       setAvatar(json.data.avatar);
       setNotice(
-        "Avatar créé. HeyGen l'entraîne quelques minutes — vous pouvez déjà écrire votre texte.",
+        kind === 'video'
+          ? "Avatar vidéo créé. L'entraînement chez HeyGen prend plusieurs minutes — la page se met à jour toute seule."
+          : "Avatar créé. HeyGen l'entraîne quelques minutes — vous pouvez déjà écrire votre texte.",
       );
       setFile(null);
       if (preview) URL.revokeObjectURL(preview);
@@ -283,16 +360,74 @@ export default function AvatarPage() {
       {!avatar && (
         <div className="card-base p-6 space-y-5">
           <div>
-            <h2 className="font-semibold mb-1">1. Votre photo</h2>
+            <h2 className="font-semibold mb-1">1. À partir de quoi ?</h2>
             <p className="text-sm text-gray-400">
-              Un portrait net, de face, visage bien visible. JPG, PNG ou WebP, 10 Mo maximum.
+              La vidéo donne un rendu nettement plus réaliste, mais demande un entraînement de
+              plusieurs minutes.
             </p>
+          </div>
+
+          {/* Choix de la nature de l'avatar */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {([
+              {
+                id: 'photo' as const,
+                Icon: ImageIcon,
+                title: 'À partir d’une photo',
+                sub: 'Prêt en quelques minutes',
+              },
+              {
+                id: 'video' as const,
+                Icon: Clapperboard,
+                title: 'À partir d’une vidéo',
+                sub: 'Plus réaliste, entraînement plus long',
+              },
+            ]).map(({ id, Icon, title, sub }) => (
+              <button
+                key={id}
+                onClick={() => selectKind(id)}
+                className={`rounded-xl p-4 text-left transition ${
+                  kind === id
+                    ? 'bg-purple-600/20 ring-1 ring-purple-500/50'
+                    : 'bg-gray-900/60 hover:bg-gray-800/70'
+                }`}
+              >
+                <Icon
+                  className={`w-5 h-5 mb-2 ${kind === id ? 'text-purple-300' : 'text-gray-400'}`}
+                />
+                <div className="text-sm font-medium">{title}</div>
+                <div className="text-xs text-gray-500 mt-0.5">{sub}</div>
+              </button>
+            ))}
+          </div>
+
+          {/* Recommandations HeyGen, propres à chaque mode */}
+          <div className="rounded-xl bg-gray-900/60 p-4 text-xs text-gray-400 leading-relaxed">
+            {kind === 'photo' ? (
+              <>
+                <span className="text-gray-300 font-medium">Pour un bon résultat :</span> un
+                portrait net, de face, visage bien éclairé et non masqué. JPG, PNG ou WebP,
+                10 Mo maximum.
+              </>
+            ) : (
+              <>
+                <span className="text-gray-300 font-medium">Pour un bon résultat :</span> visage
+                de face, bien éclairé, en train de parler. Idéalement 1 à 2 minutes, arrière-plan
+                calme et peu de mouvement, cadrage stable. MP4 ou WebM,{' '}
+                <span className="text-gray-300">{MAX_VIDEO_MB} Mo maximum</span> — c&apos;est la
+                limite d&apos;envoi de HeyGen, pensez à compresser.
+              </>
+            )}
           </div>
 
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/jpeg,image/png,image/webp"
+            accept={
+              kind === 'video'
+                ? 'video/mp4,video/webm,video/quicktime'
+                : 'image/jpeg,image/png,image/webp'
+            }
             onChange={handleFileChange}
             className="hidden"
           />
@@ -301,7 +436,15 @@ export default function AvatarPage() {
             onClick={() => fileInputRef.current?.click()}
             className="w-full rounded-xl border-2 border-dashed border-gray-700 hover:border-purple-500 transition p-8 flex flex-col items-center gap-3 text-gray-400 hover:text-white"
           >
-            {preview ? (
+            {preview && kind === 'video' ? (
+              <video
+                src={preview}
+                className="w-40 rounded-xl bg-black"
+                muted
+                playsInline
+                controls
+              />
+            ) : preview ? (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 src={preview}
@@ -312,7 +455,11 @@ export default function AvatarPage() {
               <Upload className="w-8 h-8" />
             )}
             <span className="text-sm">
-              {file ? file.name : 'Choisir une photo'}
+              {file
+                ? `${file.name} — ${Math.round(file.size / 1024 / 1024)} Mo`
+                : kind === 'video'
+                  ? 'Choisir une vidéo'
+                  : 'Choisir une photo'}
             </span>
           </button>
 
@@ -325,8 +472,9 @@ export default function AvatarPage() {
               className="mt-0.5 w-4 h-4 flex-shrink-0 accent-purple-600"
             />
             <span className="text-sm text-gray-300">
-              Je certifie être la personne visible sur l&apos;image et j&apos;autorise Studiio à en
-              créer un avatar animé.
+              {kind === 'video'
+                ? "Je certifie être la personne visible dans la vidéo et j'autorise Studiio et HeyGen à l'utiliser pour entraîner un avatar à mon effigie."
+                : "Je certifie être la personne visible sur l'image et j'autorise Studiio à en créer un avatar animé."}
             </span>
           </label>
 
@@ -337,11 +485,13 @@ export default function AvatarPage() {
           >
             {creating ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" /> Création…
+                <Loader2 className="w-4 h-4 animate-spin" />
+                {kind === 'video' ? 'Envoi de la vidéo…' : 'Création…'}
               </>
             ) : (
               <>
-                <Sparkles className="w-4 h-4" /> Créer mon avatar
+                <Sparkles className="w-4 h-4" />
+                {kind === 'video' ? 'Créer mon avatar vidéo' : 'Créer mon avatar'}
               </>
             )}
           </button>
@@ -353,17 +503,28 @@ export default function AvatarPage() {
         <div className="card-base p-6 space-y-5">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 min-w-0">
-              {avatar.source_url && (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img
-                  src={avatar.source_url}
-                  alt="Votre avatar"
-                  className="w-12 h-12 rounded-xl object-cover flex-shrink-0"
-                />
-              )}
+              {avatar.source_url &&
+                (avatar.avatar_type === 'video' ? (
+                  <video
+                    src={avatar.source_url}
+                    className="w-12 h-12 rounded-xl object-cover flex-shrink-0 bg-black"
+                    muted
+                    playsInline
+                  />
+                ) : (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={avatar.source_url}
+                    alt="Votre avatar"
+                    className="w-12 h-12 rounded-xl object-cover flex-shrink-0"
+                  />
+                ))}
               <div className="min-w-0">
                 <div className="font-semibold truncate">{avatar.name || 'Mon avatar'}</div>
-                <div className="text-xs text-gray-500">Avatar prêt à parler</div>
+                <div className="text-xs text-gray-500">
+                  {avatar.avatar_type === 'video' ? 'Avatar vidéo' : 'Avatar photo'}
+                  {training ? ' — en préparation' : ' — prêt à parler'}
+                </div>
               </div>
             </div>
             <button
@@ -377,9 +538,38 @@ export default function AvatarPage() {
               }}
               className="text-xs text-gray-400 hover:text-white flex items-center gap-1.5 flex-shrink-0"
             >
-              <RefreshCw className="w-3.5 h-3.5" /> Changer de photo
+              <RefreshCw className="w-3.5 h-3.5" /> Changer de source
             </button>
           </div>
+
+          {/* Entraînement en cours — la génération reste bloquée (409 côté serveur) */}
+          {training && !trainingFailed && (
+            <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
+              <Loader2 className="w-5 h-5 flex-shrink-0 mt-0.5 animate-spin" />
+              <div>
+                <div className="font-medium">Entraînement en cours…</div>
+                <div className="text-xs mt-1 text-amber-200/80">
+                  {avatar.avatar_type === 'video'
+                    ? "HeyGen entraîne votre avatar vidéo à partir du footage. Cela prend généralement plusieurs minutes. Cette page se met à jour toute seule."
+                    : "HeyGen prépare votre avatar. Encore un instant — cette page se met à jour toute seule."}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {trainingFailed && (
+            <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+              <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+              <div>
+                <div className="font-medium">L&apos;entraînement a échoué</div>
+                <div className="text-xs mt-1 text-red-200/80">
+                  {avatar.training_error ||
+                    "HeyGen n'a pas pu entraîner cet avatar."}{' '}
+                  Utilisez « Changer de source » pour réessayer avec un autre fichier.
+                </div>
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium mb-2">Ce que dit votre avatar</label>
@@ -435,13 +625,17 @@ export default function AvatarPage() {
 
           <button
             onClick={handleGenerate}
-            disabled={!script.trim() || busy}
+            disabled={!script.trim() || busy || training}
             className="w-full button-primary disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {busy ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
                 {genStatus === 'pending' ? 'Lancement…' : 'Génération en cours…'}
+              </>
+            ) : training ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" /> Avatar en préparation…
               </>
             ) : (
               <>
