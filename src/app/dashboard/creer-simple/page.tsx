@@ -1,7 +1,6 @@
 import Link from 'next/link';
-import { Wand2, Rocket, Sparkles, SlidersHorizontal, MonitorPlay } from 'lucide-react';
-import { Card, CardTitle, CardContent } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
+import { Wand2, Sparkles, SlidersHorizontal } from 'lucide-react';
+import AssistantWizard from './AssistantWizard';
 
 /**
  * Page Créer simplifiée (F5) — couche NON DESTRUCTIVE.
@@ -10,13 +9,12 @@ import { Button } from '@/components/ui/Button';
  * qui reste l'éditeur complet et n'est modifié en rien. Le bouton « Mode
  * avancé » y renvoie.
  *
- * Les deux parcours (Assistant, Autopilote) sont pour l'instant des maquettes
- * sans logique. Les boutons sont volontairement désactivés plutôt que de
- * simuler une action : rien ici ne doit laisser croire qu'un traitement a
- * démarré.
+ * Le parcours « Créer avec l'assistant » est câblé (voir AssistantWizard).
+ * « Autopilote » reste une maquette, avec un bouton désactivé plutôt qu'actif
+ * sans effet : rien ne doit laisser croire qu'un traitement a démarré.
  *
- * Composant serveur : aucune interactivité n'est nécessaire, le toggle est un
- * simple lien.
+ * Cette page reste un composant SERVEUR : seul le wizard, qui a besoin d'état,
+ * est un composant client. Le toggle est un simple lien.
  */
 
 const BRAND = '#7C3AED';
@@ -66,103 +64,9 @@ export default function CreerSimplePage() {
         </div>
       </div>
 
-      {/* ── Corps : parcours à gauche, aperçu à droite ───────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
-        {/* Colonne parcours */}
-        <div className="lg:col-span-3 space-y-4">
-          {/* Assistant guidé */}
-          <Card className="transition" >
-            <div className="flex items-start gap-4">
-              <div
-                className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: `${BRAND}26`, color: '#C4B5FD' }}
-              >
-                <Wand2 className="w-5 h-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <CardTitle className="text-lg">Créer avec l&apos;assistant</CardTitle>
-                <CardContent className="mt-1 text-sm text-gray-400">
-                  On vous pose quelques questions — sujet, ton, format — et la vidéo se construit
-                  toute seule. Vous gardez la main sur le résultat avant publication.
-                </CardContent>
-                <div className="mt-4">
-                  <Button variant="primary" size="sm" disabled aria-disabled="true">
-                    Commencer
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          {/* Autopilote */}
-          <Card>
-            <div className="flex items-start gap-4">
-              <div
-                className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: '#EC489926', color: '#F9A8D4' }}
-              >
-                <Rocket className="w-5 h-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <CardTitle className="text-lg">Autopilote</CardTitle>
-                  <span
-                    className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                    style={{
-                      backgroundColor: `${BRAND}33`,
-                      color: '#DDD6FE',
-                      boxShadow: `inset 0 0 0 1px ${BRAND}66`,
-                    }}
-                  >
-                    Pro
-                  </span>
-                </div>
-                <CardContent className="mt-1 text-sm text-gray-400">
-                  Studiio produit et planifie vos contenus en continu à partir de vos objectifs.
-                  Vous validez, il publie.
-                </CardContent>
-                <div className="mt-4">
-                  <Button variant="secondary" size="sm" disabled aria-disabled="true">
-                    Activer
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          <p className="text-xs text-gray-600 italic px-1">
-            Ces deux parcours arrivent. En attendant, l&apos;éditeur complet reste accessible via
-            le mode avancé.
-          </p>
-        </div>
-
-        {/* Colonne aperçu — conteneur vide, accueillera l'aperçu permanent */}
-        <div className="lg:col-span-2">
-          <div className="card-base p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <MonitorPlay className="w-4 h-4 text-gray-500" />
-              <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Aperçu
-              </span>
-            </div>
-
-            {/* Placeholder au ratio 9:16 — le format par défaut de Studiio.
-                Ratio en style inline : les classes Tailwind arbitraires du type
-                aspect-[9/16] sont purgées en production (cf. CLAUDE.md). */}
-            <div
-              className="w-full rounded-xl border border-dashed border-gray-800 flex flex-col items-center justify-center gap-2 text-center px-4"
-              style={{ aspectRatio: '9 / 16', backgroundColor: '#0A0A0F' }}
-            >
-              <MonitorPlay className="w-8 h-8 text-gray-700" />
-              <p className="text-xs text-gray-600 leading-relaxed">
-                Votre vidéo s&apos;affichera ici,
-                <br />
-                et se mettra à jour à chaque modification.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Corps : parcours a gauche, apercu a droite — tout est pilote par
+          le wizard, qui doit partager son etat entre les deux colonnes. */}
+      <AssistantWizard />
     </div>
   );
 }
