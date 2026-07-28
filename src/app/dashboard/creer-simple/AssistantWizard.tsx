@@ -185,27 +185,54 @@ const DESIGN = {
   font: 'Inter',
 } as const;
 
-/**
- * Tailles de police, exprimées en POURCENTAGE DE LA LARGEUR — exactement la
- * convention du compositeur (`w * 0.04375`, etc.). L'aperçu les applique en
- * `cqw` (unités de conteneur), donc les proportions coïncident quelle que soit
- * la largeur d'affichage.
- */
-const FONT_PCT = {
-  '9:16': { title: 4.375, subtitle: 2.8, cta: 3.75, ctaSub: 2.8 },
-  '16:9': { title: 3.5, subtitle: 2.15, cta: 3.1, ctaSub: 2.3 },
+/** Resolution native de la video, par format. */
+const VIDEO_SIZE = {
+  '9:16': { w: 1080, h: 1920 },
+  '16:9': { w: 1920, h: 1080 },
 } as const;
 
 /**
- * Reproduit `dropShadowLgFilter` du compositeur, qui vaut `4/320` et `10/320`
- * de la LARGEUR. Exprimes en `em`, il faut donc diviser par la taille de
- * police relative (4.375 % de la largeur) : 4/320 / 0.04375 = 0.2857em.
+ * Metriques exprimees en FRACTION DE LA LARGEUR VIDEO.
+ *
+ * L'apercu etant desormais rendu a la resolution native puis reduit par un
+ * `transform: scale`, toutes les tailles se calculent directement en pixels
+ * video. Plus de `cqw`, plus de dependance a la largeur du panneau — les
+ * proportions ne derivent plus avec la taille de la fenetre.
+ *
+ * Les valeurs de police reprennent celles du compositeur (w * 0.04375 pour le
+ * titre, etc.) ; celles des cartes reprennent l'ancien rendu (9 px de texte
+ * sur un panneau de 330 px, soit 9/330 de la largeur).
  */
-const TITLE_SHADOW =
-  'drop-shadow(0 0.2857em 0.2143em rgba(0,0,0,0.1)) drop-shadow(0 0.714em 0.571em rgba(0,0,0,0.04))';
+const FONT_RATIO = {
+  '9:16': { title: 0.04375, subtitle: 0.028, cta: 0.0375, ctaSub: 0.028 },
+  '16:9': { title: 0.035, subtitle: 0.0215, cta: 0.031, ctaSub: 0.023 },
+} as const;
 
-/** Equivalent de `dropShadowBaseFilter`, applique au sous-titre. */
-const SUBTITLE_SHADOW = 'drop-shadow(0 0.1786em 0.1071em rgba(0,0,0,0.1))';
+const CARD_RATIO = {
+  text: 9 / 330,
+  icon: 13 / 330,
+  gap: 6 / 330,
+  padX: 8 / 330,
+  padY: 6 / 330,
+  radius: 8 / 330,
+} as const;
+
+/** Marge titre/sous-titre et CTA : le compositeur utilise w * 4/320. */
+const GAP_RATIO = 4 / 320;
+
+
+/**
+ * Ombres du compositeur, en fraction de la largeur video.
+ * `dropShadowLgFilter` vaut 4/320 et 10/320 ; `dropShadowBaseFilter` 2.5/320.
+ */
+function titleShadow(w: number): string {
+  const px = (r: number) => Math.max(1, Math.round(w * r));
+  return `drop-shadow(0 ${px(4 / 320)}px ${px(3 / 320)}px rgba(0,0,0,0.1)) drop-shadow(0 ${px(10 / 320)}px ${px(8 / 320)}px rgba(0,0,0,0.04))`;
+}
+function subtitleShadow(w: number): string {
+  const px = (r: number) => Math.max(1, Math.round(w * r));
+  return `drop-shadow(0 ${px(2.5 / 320)}px ${px(2 / 320)}px rgba(0,0,0,0.1))`;
+}
 
 /**
  * Angle CSS reproduisant `createLinearGradient(0, 0, w, h)` du compositeur.
@@ -288,6 +315,8 @@ function Preview({
   format,
   previewRef,
   cardsRef,
+  frameRef,
+  displayScale,
   activeOrder,
   gradStart,
   gradEnd,
@@ -297,6 +326,10 @@ function Preview({
   format: Format;
   previewRef?: React.RefObject<HTMLDivElement>;
   cardsRef?: React.RefObject<HTMLDivElement>;
+  /** Cadre visible, mesure pour calculer la reduction. */
+  frameRef?: React.RefObject<HTMLDivElement>;
+  /** Facteur de reduction du plateau : largeurCadre / largeurVideo. */
+  displayScale: number;
   /** Couleurs issues du kit de marque, ou repli neutre. */
   gradStart: string;
   gradEnd: string;
@@ -309,6 +342,7 @@ function Preview({
    */
   activeOrder: string[];
 }) {
+  const vw = VIDEO_SIZE[format].w;
   return (
     <div className="card-base p-4">
       <div className="flex items-center gap-2 mb-3">
@@ -318,25 +352,37 @@ function Preview({
         </span>
       </div>
 
-      {/* `containerType: 'size'` active les unites `cqw` : 1cqw = 1 % de la
-          largeur du cadre. Les tailles de police sont donc exprimees dans la
-          meme unite que le compositeur (% de la largeur du canvas), et les
-          proportions restent exactes quelle que soit la taille d'affichage.
-          Aucun padding fixe : les insets sont en %, sinon les positions
-          divergeraient du compositeur des que la fenetre change de largeur. */}
+      {/* ── Rendu 1:1 ──────────────────────────────────────────────────
+          Le plateau interne fait la TAILLE REELLE de la video (1080x1920 ou
+          1920x1080) et n'est que REDUIT a l'affichage par un transform. Ce
+          que l'utilisateur voit est donc une mini-version exacte de l'image
+          video, et la capture du bloc cartes se fait a 1:1 — texte net par
+          construction, sans surechantillonnage.
+          `transform` n'affecte pas la taille de layout : modern-screenshot
+          capture bien le plateau a sa resolution native. */}
       <div
-        ref={previewRef}
+        ref={frameRef}
         className="w-full rounded-xl overflow-hidden relative"
         style={{
           aspectRatio: format === '9:16' ? '9 / 16' : '16 / 9',
-          containerType: 'size',
+          border: generated ? 'none' : '1px dashed #1F2937',
+          backgroundColor: DARK,
+        }}
+      >
+      <div
+        ref={previewRef}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: VIDEO_SIZE[format].w,
+          height: VIDEO_SIZE[format].h,
+          transform: `scale(${displayScale})`,
+          transformOrigin: 'top left',
           // Fond STRICTEMENT identique a celui peint par le compositeur.
           background: generated ? backdropCSS(format, gradStart, gradEnd, gradientOpacity) : DARK,
-          border: generated ? 'none' : '1px dashed #1F2937',
           // `var(--font-inter)` est la SEULE reference valide : Next charge la
           // police via next/font, il n'existe aucune @font-face nommee 'Inter'.
-          // Sans cette variable, l'apercu ET le snapshot des cartes tombent en
-          // police par defaut (serif), alors que la video serait en vraie Inter.
           fontFamily: 'var(--font-inter), Inter, sans-serif',
         }}
       >
@@ -367,26 +413,24 @@ function Preview({
               <div
                 className="uppercase"
                 style={{
-                  fontSize: `${FONT_PCT[format].title}cqw`,
+                  fontSize: vw * FONT_RATIO[format].title,
                   fontWeight: 900,
                   color: DESIGN.titleColor,
                   lineHeight: 1.1,
-                  filter: TITLE_SHADOW,
+                  filter: titleShadow(vw),
                 }}
               >
                 {generated.title}
               </div>
               <div
                 style={{
-                  fontSize: `${FONT_PCT[format].subtitle}cqw`,
+                  fontSize: vw * FONT_RATIO[format].subtitle,
                   fontWeight: 900,
                   // drawIntro dessine le sous-titre en titleColor a 80 %
                   color: `${DESIGN.titleColor}CC`,
                   lineHeight: 1.1,
-                  // cqw et non % : un % se resout sur la largeur du PARENT (84 %),
-                  // pas sur celle du cadre. Le compositeur utilise w*4/320.
-                  marginTop: '1.25cqw',
-                  filter: SUBTITLE_SHADOW,
+                  marginTop: vw * GAP_RATIO,
+                  filter: subtitleShadow(vw),
                 }}
               >
                 {generated.subtitle}
@@ -401,23 +445,36 @@ function Preview({
             <div
               ref={cardsRef}
               data-cards-grid
-              className="absolute flex flex-col justify-center gap-1.5"
-              style={{ left: '8%', right: '8%', top: '30%', bottom: '22%' }}
+              className="absolute flex flex-col justify-center"
+              style={{ left: '8%', right: '8%', top: '30%', bottom: '22%', gap: vw * CARD_RATIO.gap }}
             >
               {(activeOrder.includes('cards') ? generated.cards : []).map((c, i) => (
                 <div
                   key={i}
-                  className="flex items-center gap-2 rounded-lg px-2 py-1.5"
-                  style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}
+                  className="flex items-center"
+                  style={{
+                    backgroundColor: 'rgba(255,255,255,0.08)',
+                    gap: vw * CARD_RATIO.gap,
+                    borderRadius: vw * CARD_RATIO.radius,
+                    padding: `${vw * CARD_RATIO.padY}px ${vw * CARD_RATIO.padX}px`,
+                  }}
                 >
-                  <CardIcon name={c.icon} size={13} color="#FFFFFF" className="" />
-                  <span className="text-[9px] font-semibold text-white truncate flex-1">
+                  <CardIcon
+                    name={c.icon}
+                    size={Math.round(vw * CARD_RATIO.icon)}
+                    color="#FFFFFF"
+                    className=""
+                  />
+                  <span
+                    className="font-semibold text-white truncate flex-1"
+                    style={{ fontSize: vw * CARD_RATIO.text }}
+                  >
                     {c.title}
                   </span>
                   {c.value && (
                     <span
-                      className="text-[9px] font-bold flex-shrink-0"
-                      style={{ color: gradEnd }}
+                      className="font-bold flex-shrink-0"
+                      style={{ fontSize: vw * CARD_RATIO.text, color: gradEnd }}
                     >
                       {c.value}
                     </span>
@@ -443,11 +500,11 @@ function Preview({
               <div
                 className="uppercase"
                 style={{
-                  fontSize: `${FONT_PCT[format].cta}cqw`,
+                  fontSize: vw * FONT_RATIO[format].cta,
                   fontWeight: 900,
                   color: DESIGN.ctaColor,
                   lineHeight: 1.2,
-                  textShadow: `0 0 2cqw ${DESIGN.ctaColor}66`,
+                  textShadow: `0 0 ${vw * 0.02}px ${DESIGN.ctaColor}66`,
                 }}
               >
                 {generated.cta}
@@ -455,11 +512,11 @@ function Preview({
               <div
                 className="uppercase"
                 style={{
-                  fontSize: `${FONT_PCT[format].ctaSub}cqw`,
+                  fontSize: vw * FONT_RATIO[format].ctaSub,
                   fontWeight: 900,
                   color: gradEnd,
                   lineHeight: 1.2,
-                  marginTop: '1.25cqw',
+                  marginTop: vw * GAP_RATIO,
                 }}
               >
                 {generated.ctaSub}
@@ -468,6 +525,8 @@ function Preview({
             )}
           </>
         )}
+      </div>
+
       </div>
 
       {generated && (
@@ -515,6 +574,24 @@ export default function AssistantWizard() {
   const [renderStage, setRenderStage] = useState('');
   const previewRef = useRef<HTMLDivElement>(null);
   const cardsRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
+
+  // Facteur de reduction du plateau : largeur affichee / largeur video.
+  // Mesure par ResizeObserver — le panneau est fluide, et le plateau doit le
+  // remplir exactement quelle que soit la largeur de la fenetre.
+  const [displayScale, setDisplayScale] = useState(0.3);
+  useEffect(() => {
+    const el = frameRef.current;
+    if (!el) return;
+    const apply = () => {
+      const w = el.clientWidth;
+      if (w > 0) setDisplayScale(w / VIDEO_SIZE[format].w);
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [format]);
 
   const genTimerRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
@@ -670,36 +747,14 @@ export default function AssistantWizard() {
           // Les polices doivent être chargées, sinon la capture sérialise une
           // police de repli et le rendu diverge de l'écran.
           try { await (document as unknown as { fonts?: FontFaceSet }).fonts?.ready; } catch { /* ignore */ }
-          const videoW = isReel ? 1080 : 1920;
-          const baseScale = videoW / (previewEl.offsetWidth || (isReel ? 320 : 512));
-
-          // ── Surechantillonnage ────────────────────────────────────────
-          // A `baseScale`, le raster fait exactement la taille de destination
-          // dans la video : le texte des cartes, mis en page a 9 px CSS, est
-          // rasterise a ~29 px et ressort flou.
-          //
-          // On capture donc a SUPERSAMPLE fois la resolution utile et on
-          // laisse le canvas reduire — le compositeur dessine le snapshot
-          // dans les bornes de `cardsSnapshotRect`, jamais a sa taille
-          // naturelle, donc une source plus grande ne change QUE la nettete.
-          //
-          // Pourquoi pas rendre les cartes hors-ecran a la taille cible
-          // (~970 px) : la mise en page changerait. Le `truncate` des
-          // libelles et les retours a la ligne dependent de la largeur, donc
-          // la video ne correspondrait plus a l'apercu — ce serait perdre la
-          // parite que le snapshot sert justement a garantir.
-          const SUPERSAMPLE = 3;
-          // Garde-fou memoire : Chrome plafonne les dimensions de canvas.
-          // On rabaisse le facteur plutot que de produire un canvas vide.
-          const MAX_DIM = 8192;
-          const maxByWidth = MAX_DIM / Math.max(1, cardsEl.offsetWidth * baseScale);
-          const maxByHeight = MAX_DIM / Math.max(1, cardsEl.offsetHeight * baseScale);
-          const ss = Math.max(1, Math.min(SUPERSAMPLE, maxByWidth, maxByHeight));
-          const scale = baseScale * ss;
-
-          const canvas = await domToCanvas(cardsEl, { backgroundColor: undefined, scale });
+          // Capture 1:1 : le bloc cartes est deja rendu a la resolution
+          // native de la video (le plateau fait 1080 ou 1920 de large, seul
+          // l'affichage est reduit par un transform). `scale: 1` suffit donc
+          // pour un texte net — le surechantillonnage x3 de #208, qui
+          // compensait une capture a taille d'apercu, n'a plus lieu d'etre.
+          const canvas = await domToCanvas(cardsEl, { backgroundColor: undefined, scale: 1 });
           console.log(
-            `[Assistant] Capture cartes ${canvas.width}x${canvas.height} (base x${baseScale.toFixed(2)}, surechantillonnage x${ss.toFixed(2)})`,
+            `[Assistant] Capture cartes ${canvas.width}x${canvas.height} (1:1, resolution native)`,
           );
           const img = new Image();
           img.src = canvas.toDataURL('image/png');
@@ -1504,6 +1559,8 @@ export default function AssistantWizard() {
           format={format}
           previewRef={previewRef}
           cardsRef={cardsRef}
+          frameRef={frameRef}
+          displayScale={displayScale}
           activeOrder={activeOrder}
           gradStart={gradStart}
           gradEnd={gradEnd}
