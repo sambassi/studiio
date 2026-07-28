@@ -5,7 +5,7 @@ import { getUserCredits, deductCredits, addCredits } from '@/lib/credits/system'
 import { AVATAR_VIDEO_COST, AVATAR_MAX_SCRIPT_CHARS } from '@/lib/stripe/constants';
 import {
   generateAvatarVideo,
-  getAvatarStatus,
+  getAvatarTrainingStatus,
   resolveVoiceId,
   HeyGenError,
   type AvatarAspectRatio,
@@ -15,6 +15,9 @@ export const maxDuration = 120;
 export const dynamic = 'force-dynamic';
 
 const VALID_RATIOS: AvatarAspectRatio[] = ['9:16', '16:9', '1:1'];
+
+/** Statuts HeyGen consideres comme « avatar utilisable ». */
+const READY_STATUSES = ['completed', 'ready', 'success'];
 
 /**
  * POST /api/avatar/generate — lance une video ou l'avatar prononce un texte.
@@ -86,35 +89,51 @@ export async function POST(req: NextRequest) {
     //    et refuse une generation sur un avatar encore en cours.
     //    Ce controle est fait AVANT tout debit : un avatar pas pret ne doit
     //    jamais consommer de credits, meme rembourses ensuite.
-    if (avatarRow.status !== 'completed') {
-      const remoteStatus = await getAvatarStatus(avatarRow.provider_avatar_id);
+    const isVideoAvatar = avatarRow.avatar_type === 'video';
+
+    if (!READY_STATUSES.includes(avatarRow.status)) {
+      const training = await getAvatarTrainingStatus(avatarRow.provider_avatar_id);
+      const remoteStatus = training?.status ?? null;
       console.log(
-        `[Avatar] Avatar ${avatarRow.provider_avatar_id} — statut local "${avatarRow.status}", statut HeyGen "${remoteStatus ?? 'inconnu'}"`,
+        `[Avatar] Avatar ${avatarRow.provider_avatar_id} (${avatarRow.avatar_type ?? 'photo'}) — statut local "${avatarRow.status}", statut HeyGen "${remoteStatus ?? 'inconnu'}"`,
       );
 
       if (remoteStatus && remoteStatus !== avatarRow.status) {
-        await supabaseAdmin
-          .from('user_avatars')
-          .update({ status: remoteStatus })
-          .eq('id', avatarRow.id);
+        const patch: Record<string, unknown> = { status: remoteStatus };
+        if (remoteStatus === 'failed' && training?.error) patch.training_error = training.error;
+        await supabaseAdmin.from('user_avatars').update(patch).eq('id', avatarRow.id);
         avatarRow.status = remoteStatus;
       }
 
       if (remoteStatus === 'failed') {
+        const detail = training?.error ? ` (${training.error})` : '';
         return NextResponse.json(
           {
             success: false,
-            error: "L'entrainement de votre avatar a echoue chez HeyGen. Renvoyez une photo.",
+            error: `L'entrainement de votre avatar a echoue chez HeyGen${detail}. Renvoyez ${isVideoAvatar ? 'une video' : 'une photo'}.`,
             code: 'avatar_failed',
           },
           { status: 409 },
         );
       }
-      if (remoteStatus && remoteStatus !== 'completed') {
+      if (remoteStatus === 'pending_consent') {
         return NextResponse.json(
           {
             success: false,
-            error: "Votre avatar est encore en cours de preparation. Reessayez dans une minute.",
+            error:
+              "HeyGen attend une validation de consentement sur cet avatar. Verifiez votre compte HeyGen pour la finaliser.",
+            code: 'avatar_pending_consent',
+          },
+          { status: 409 },
+        );
+      }
+      if (remoteStatus && !READY_STATUSES.includes(remoteStatus)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: isVideoAvatar
+              ? "Votre avatar video est encore en cours d'entrainement. Cela peut prendre plusieurs minutes."
+              : 'Votre avatar est encore en cours de preparation. Reessayez dans une minute.',
             code: 'avatar_not_ready',
           },
           { status: 409 },
