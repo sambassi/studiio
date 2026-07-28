@@ -48,6 +48,7 @@ export default function AvatarPage() {
   const [ratio, setRatio] = useState<'9:16' | '16:9' | '1:1'>('9:16');
   const [genStatus, setGenStatus] = useState<GenStatus>('idle');
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
 
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -102,6 +103,26 @@ export default function AvatarPage() {
       if (preview) URL.revokeObjectURL(preview);
     };
   }, [preview]);
+
+  // Progression estimée pendant la génération.
+  //
+  // HeyGen ne renvoie qu'un statut (pending/processing/completed), pas de
+  // pourcentage. On monte donc de façon asymptotique vers 90 % : rapide au
+  // début, de plus en plus lente ensuite. La barre n'est jamais bloquée à 0 et
+  // n'atteint jamais 100 % avant la fin réelle. Si l'API expose un jour un
+  // pourcentage réel, poll() le prend en compte et il l'emporte.
+  useEffect(() => {
+    if (genStatus !== 'pending' && genStatus !== 'processing') return;
+    const startedAt = Date.now();
+    const id = setInterval(() => {
+      const elapsedSec = (Date.now() - startedAt) / 1000;
+      const estimated = 90 * (1 - Math.exp(-elapsedSec / 45));
+      // Math.max : la progression ne recule jamais, même quand le statut
+      // passe de "pending" à "processing" et relance cet effet.
+      setProgress((prev) => Math.max(prev, Math.min(90, estimated)));
+    }, 200);
+    return () => clearInterval(id);
+  }, [genStatus]);
 
   // ── Création de l'avatar ────────────────────────────────────────────
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -158,9 +179,10 @@ export default function AvatarPage() {
         return;
       }
 
-      const { status, videoUrl: url, error: errMsg } = json.data;
+      const { status, videoUrl: url, error: errMsg, progress: realProgress } = json.data;
 
       if (status === 'completed' && url) {
+        setProgress(100);
         setVideoUrl(url);
         setGenStatus('completed');
         return;
@@ -169,6 +191,10 @@ export default function AvatarPage() {
         setGenStatus('failed');
         setError(errMsg || 'La génération a échoué.');
         return;
+      }
+      // Pourcentage réel s'il existe un jour côté API : il prime sur l'estimation.
+      if (typeof realProgress === 'number' && Number.isFinite(realProgress)) {
+        setProgress((prev) => Math.max(prev, Math.min(99, realProgress)));
       }
       setGenStatus('processing');
       pollRef.current = setTimeout(() => poll(generationId), 5000);
@@ -182,6 +208,7 @@ export default function AvatarPage() {
     setError(null);
     setNotice(null);
     setVideoUrl(null);
+    setProgress(0);
     setGenStatus('pending');
 
     try {
@@ -343,6 +370,7 @@ export default function AvatarPage() {
               onClick={() => {
                 setAvatar(null);
                 setVideoUrl(null);
+                setProgress(0);
                 setGenStatus('idle');
                 setError(null);
                 setNotice(null);
@@ -421,6 +449,36 @@ export default function AvatarPage() {
               </>
             )}
           </button>
+
+          {/* Barre de progression — masquée à l'état initial et en cas d'échec. */}
+          {(busy || genStatus === 'completed') && (
+            <div className="flex items-center gap-3">
+              <div
+                className="flex-1 rounded-full overflow-hidden"
+                style={{ height: 5, backgroundColor: '#1F2937' }}
+                role="progressbar"
+                aria-valuenow={Math.round(progress)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label="Progression de la génération"
+              >
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${progress}%`,
+                    background: 'linear-gradient(90deg, #7C3AED 0%, #EC4899 100%)',
+                    transition: 'width 300ms ease-out',
+                  }}
+                />
+              </div>
+              <span
+                className="text-xs font-medium text-gray-400 text-right"
+                style={{ minWidth: 34, fontVariantNumeric: 'tabular-nums' }}
+              >
+                {Math.round(progress)}%
+              </span>
+            </div>
+          )}
 
           {busy && (
             <p className="text-center text-xs text-gray-500">
