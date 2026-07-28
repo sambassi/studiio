@@ -73,7 +73,7 @@ export default function AvatarPage() {
           setVoiceId(fallback);
           if (list.length === 0) {
             setNotice(
-              "Les voix HeyGen n'ont pas pu etre chargees. La generation utilisera la voix par defaut du compte HeyGen.",
+              "Les voix HeyGen n'ont pas pu être chargées. La génération utilisera une voix de secours — le résultat peut ne pas être en français.",
             );
           }
         }

@@ -279,8 +279,12 @@ export interface GenerateVideoParams {
   avatarId: string;
   /** Texte prononce par l'avatar. */
   script: string;
-  /** Voix HeyGen. Optionnel : HeyGen choisit une voix par defaut si absent. */
-  voiceId?: string;
+  /**
+   * Voix HeyGen — OBLIGATOIRE. Un avatar photo n'a pas de voix par defaut :
+   * sans cet identifiant HeyGen renvoie 400 "voice_id is required".
+   * Utiliser resolveVoiceId() qui garantit une valeur.
+   */
+  voiceId: string;
   aspectRatio?: AvatarAspectRatio;
 }
 
@@ -293,17 +297,25 @@ export async function generateAvatarVideo(
 ): Promise<{ videoId: string; status: string }> {
   const { avatarId, script, voiceId, aspectRatio = '9:16' } = params;
 
+  if (!voiceId || !voiceId.trim()) {
+    // Garde-fou : on prefere une erreur explicite a un 400 HeyGen garanti.
+    throw new HeyGenError(
+      "Aucune voix disponible pour la generation. Verifier la cle HeyGen ou definir HEYGEN_FALLBACK_VOICE_ID.",
+      503,
+      'no_voice_available',
+    );
+  }
+
   const body: Record<string, unknown> = {
     type: 'avatar',
     avatar_id: avatarId,
     script,
+    // Toujours present : un avatar photo n'a pas de voix par defaut.
+    voice_id: voiceId,
     aspect_ratio: aspectRatio,
     resolution: '720p',
     output_format: 'mp4',
   };
-  // Une voix est TOUJOURS envoyee quand on en a une : HeyGen refuse un
-  // voice_id vide, et l'omettre ne garantit pas une voix par defaut.
-  if (voiceId) body.voice_id = voiceId;
 
   // Trace de la requete sortante : couplee au log d'erreur de heygenFetch,
   // elle permet de voir exactement quel champ HeyGen rejette.
@@ -400,77 +412,151 @@ export interface HeyGenVoice {
 }
 
 /**
- * GET /v3/voices — liste des voix.
+ * Voix de dernier recours.
  *
- * Retourne [] en cas d'echec (non bloquant pour l'affichage), mais journalise
- * la raison : une liste vide est justement ce qui menait a envoyer une
- * generation sans voix, et donc au 400 de HeyGen.
+ * ⚠️ Cet identifiant provient d'un EXEMPLE de la documentation HeyGen
+ * (developers.heygen.com, flux photo-to-video). Il n'a pas ete verifie sur le
+ * compte de production : il sert uniquement a ne jamais partir sans voix.
+ * Pour le fiabiliser, relever un vrai voice_id du compte via GET /v2/voices et
+ * le poser dans la variable d'environnement HEYGEN_FALLBACK_VOICE_ID, qui a
+ * priorite sur cette constante.
  */
-export async function listVoices(): Promise<HeyGenVoice[]> {
-  try {
-    const data = await heygenFetch<{
-      voices?: Array<{
-        voice_id?: string;
-        id?: string;
-        name?: string;
-        display_name?: string;
-        language?: string;
-        gender?: string;
-      }>;
-    }>('/v3/voices?limit=200', { method: 'GET', timeoutMs: 20_000 });
+const DOCUMENTED_FALLBACK_VOICE_ID = '1bd001e7e50f421d891986aad5e3e5d2';
 
-    // Selon la version, la liste est sous `voices` ou directement un tableau.
-    const list = Array.isArray(data?.voices)
-      ? data.voices
-      : Array.isArray(data)
-        ? (data as unknown as Array<Record<string, string>>)
-        : [];
+/**
+ * Endpoints de listing des voix, essayes dans l'ordre.
+ *
+ * v2 d'abord : c'est l'endpoint documente et stable (support jusqu'au
+ * 31/10/2026), et c'est celui qui repond sur les cles API actuelles. v3 en
+ * second, au cas ou le compte n'exposerait que la nouvelle API.
+ */
+const VOICE_ENDPOINTS = ['/v2/voices', '/v3/voices'];
 
-    const voices = list
-      .map((v) => ({
-        voiceId: v.voice_id ?? v.id ?? '',
-        name: v.display_name ?? v.name ?? 'Voix',
-        language: v.language,
-        gender: v.gender,
-      }))
-      .filter((v) => v.voiceId);
-
-    if (voices.length === 0) {
-      console.error('[Avatar][HeyGen] /v3/voices a renvoye 0 voix exploitable');
-    }
-    return voices;
-  } catch (err) {
-    console.error(
-      '[Avatar][HeyGen] Chargement des voix impossible:',
-      err instanceof Error ? err.message : err,
-    );
-    return [];
+/** Extrait un tableau de voix quelle que soit la forme de l'enveloppe. */
+function extractVoiceArray(body: unknown): Array<Record<string, any>> {
+  if (!body) return [];
+  if (Array.isArray(body)) return body as Array<Record<string, any>>;
+  const b = body as Record<string, any>;
+  for (const candidate of [b.voices, b.data?.voices, b.data?.list, b.data?.items, b.data, b.list, b.items]) {
+    if (Array.isArray(candidate)) return candidate;
   }
-}
-
-/** Une voix francaise si possible, sinon anglaise, sinon la premiere venue. */
-export function pickDefaultVoice(voices: HeyGenVoice[]): HeyGenVoice | undefined {
-  if (voices.length === 0) return undefined;
-  const isLang = (v: HeyGenVoice, prefix: string) =>
-    (v.language || '').toLowerCase().startsWith(prefix);
-  return (
-    voices.find((v) => isLang(v, 'fr')) ??
-    voices.find((v) => isLang(v, 'en')) ??
-    voices[0]
-  );
+  return [];
 }
 
 /**
- * Resout la voix a utiliser cote serveur.
- * Garantit qu'on n'envoie JAMAIS un voice_id vide a HeyGen : soit une voix
- * valide, soit `undefined` (champ omis) si la liste est indisponible.
+ * Liste les voix HeyGen.
+ *
+ * Chaque tentative journalise l'URL exacte, le statut HTTP et le corps de la
+ * reponse (tronque) : c'est ce qui manquait pour comprendre pourquoi le
+ * fallback de voix ne produisait aucun voice_id.
  */
-export async function resolveVoiceId(requested?: string): Promise<string | undefined> {
-  if (requested && requested.trim()) return requested.trim();
-  const voices = await listVoices();
-  const fallback = pickDefaultVoice(voices);
-  if (fallback) {
-    console.log('[Avatar][HeyGen] Voix par defaut retenue:', fallback.voiceId, fallback.name);
+export async function listVoices(): Promise<HeyGenVoice[]> {
+  for (const path of VOICE_ENDPOINTS) {
+    const url = `${HEYGEN_BASE}${path}`;
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 20_000);
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          method: 'GET',
+          headers: { 'X-Api-Key': apiKey() },
+          signal: controller.signal,
+          cache: 'no-store',
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+
+      const text = await res.text();
+      console.log(
+        `[Avatar][HeyGen] GET ${url} -> ${res.status} | corps: ${text.slice(0, 800)}`,
+      );
+
+      if (!res.ok) continue;
+
+      let parsed: unknown = null;
+      try {
+        parsed = text ? JSON.parse(text) : null;
+      } catch {
+        console.error(`[Avatar][HeyGen] ${url} : reponse non-JSON`);
+        continue;
+      }
+
+      const voices = extractVoiceArray(parsed)
+        .map((v) => ({
+          voiceId: String(v.voice_id ?? v.id ?? ''),
+          name: String(v.display_name ?? v.name ?? 'Voix'),
+          language: v.language ? String(v.language) : undefined,
+          gender: v.gender ? String(v.gender) : undefined,
+        }))
+        .filter((v) => v.voiceId);
+
+      if (voices.length > 0) {
+        console.log(`[Avatar][HeyGen] ${url} : ${voices.length} voix exploitables`);
+        return voices;
+      }
+      console.error(`[Avatar][HeyGen] ${url} : 0 voix exploitable dans la reponse`);
+    } catch (err) {
+      console.error(
+        `[Avatar][HeyGen] ${url} : appel impossible —`,
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
-  return fallback?.voiceId;
+
+  console.error('[Avatar][HeyGen] Aucun endpoint de voix exploitable');
+  return [];
+}
+
+/**
+ * Une voix francaise si possible, sinon anglaise, sinon la premiere venue.
+ * Le champ `language` est parfois un libelle ("French", "fr-FR", "Francais") :
+ * on teste les deux ecritures.
+ */
+export function pickDefaultVoice(voices: HeyGenVoice[]): HeyGenVoice | undefined {
+  if (voices.length === 0) return undefined;
+  const lang = (v: HeyGenVoice) => (v.language || '').toLowerCase();
+  const isFrench = (v: HeyGenVoice) => lang(v).startsWith('fr') || lang(v).includes('french');
+  const isEnglish = (v: HeyGenVoice) => lang(v).startsWith('en') || lang(v).includes('english');
+  return voices.find(isFrench) ?? voices.find(isEnglish) ?? voices[0];
+}
+
+/**
+ * Resout la voix a utiliser, avec garantie de resultat.
+ *
+ * Un avatar photo HeyGen n'a AUCUNE voix par defaut : sans voice_id, la
+ * generation echoue systematiquement en 400
+ * ("voice_id is required: this avatar has no default voice configured").
+ * Cette fonction ne rend donc jamais `undefined`.
+ *
+ * Ordre : voix demandee → liste HeyGen (FR prioritaire) → env
+ * HEYGEN_FALLBACK_VOICE_ID → constante issue de la doc HeyGen.
+ */
+export async function resolveVoiceId(requested?: string): Promise<string> {
+  if (requested && requested.trim()) {
+    const v = requested.trim();
+    console.log('[Avatar][HeyGen] Voix demandee par le client:', v);
+    return v;
+  }
+
+  const voices = await listVoices();
+  const picked = pickDefaultVoice(voices);
+  if (picked) {
+    console.log(
+      `[Avatar][HeyGen] Voix par defaut retenue: ${picked.voiceId} (${picked.name}, ${picked.language ?? 'langue inconnue'})`,
+    );
+    return picked.voiceId;
+  }
+
+  const envFallback = process.env.HEYGEN_FALLBACK_VOICE_ID?.trim();
+  if (envFallback) {
+    console.warn('[Avatar][HeyGen] Liste de voix indisponible — repli sur HEYGEN_FALLBACK_VOICE_ID');
+    return envFallback;
+  }
+
+  console.warn(
+    '[Avatar][HeyGen] Liste de voix indisponible et HEYGEN_FALLBACK_VOICE_ID non definie — repli sur la voix documentee',
+  );
+  return DOCUMENTED_FALLBACK_VOICE_ID;
 }
