@@ -5,6 +5,30 @@ const STATIC_ASSETS = [
   '/icon-512.png',
 ];
 
+// Une reponse n'est stockable dans l'API Cache que si :
+//  - la requete est un GET (Cache.put rejette les autres methodes)
+//  - le status est exactement 200 (206 Partial Content est refuse par Cache.put :
+//    "Partial response (status code 206) is unsupported")
+//  - le type n'est ni 'opaque' (no-cors, status 0) ni 'opaqueredirect'
+function isCacheable(request, response) {
+  if (!request || request.method !== 'GET') return false;
+  if (!response) return false;
+  if (response.status !== 200) return false;
+  if (response.type === 'opaque' || response.type === 'opaqueredirect') return false;
+  return true;
+}
+
+// Stockage defensif : on ne clone/pose en cache que si c'est autorise,
+// et on avale les erreurs pour ne jamais casser la reponse reseau.
+function putInCache(request, response) {
+  if (!isCacheable(request, response)) return;
+  const clone = response.clone();
+  caches
+    .open(CACHE_NAME)
+    .then((cache) => cache.put(request, clone))
+    .catch(() => {});
+}
+
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -45,16 +69,28 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // NEVER intercept media : le Calendrier telecharge le meme fichier en
+  // streaming (<video src>) ET en blob (fetch) puis bascule le src sur le
+  // blob. La bascule annule la requete en vol ; le SW voyait un fetch rejete
+  // et fabriquait un « 408 » visible en console alors que rien n'avait
+  // echoue. Ces reponses sont de toute facon incachables (206 Partial).
+  // Le proxy MinIO gere correctement les Range : on le laisse faire.
+  if (
+    url.pathname.startsWith('/storage/') ||
+    request.destination === 'video' ||
+    request.destination === 'audio' ||
+    request.headers.has('range')
+  ) {
+    return;
+  }
+
   // Cache-first ONLY for static icon assets
   if (STATIC_ASSETS.includes(url.pathname)) {
     event.respondWith(
       caches.match(request).then((cached) => {
         if (cached) return cached;
         return fetch(request).then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          }
+          putInCache(request, response);
           return response;
         });
       })
@@ -66,17 +102,16 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(request)
       .then((response) => {
-        if (response.ok) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-        }
+        putInCache(request, response);
         return response;
       })
-      .catch(() => {
+      .catch((err) => {
         return caches.match(request).then((cached) => {
           if (cached) return cached;
-          // Don't return fake responses — let the browser show its native error
-          return new Response('', { status: 408 });
+          // Pas de reponse fabriquee : un « 408 » invente masquait la vraie
+          // cause (souvent une simple annulation) et polluait la console.
+          // On relaie l'echec reseau reel au navigateur.
+          throw err;
         });
       })
   );

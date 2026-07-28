@@ -306,7 +306,8 @@ export default function AssistantWizard() {
       // Métadonnées alignées sur celles de l'éditeur, réduites à ce que le
       // Calendrier lit réellement pour reconstruire un aperçu HTML.
       // `renderedVideoUrl` est volontairement absent : aucun montage n'a été
-      // composé ici, donc le Calendrier affichera son bouton « Régénérer ».
+      // composé ici. Le Calendrier affiche donc ce post en aperçu HTML léger,
+      // et ne compose la vidéo qu'au moment de planifier ou publier.
       const metadata = {
         type: 'infographic',
         source: 'assistant-simple',

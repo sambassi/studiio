@@ -143,6 +143,84 @@ interface Post {
   metadata?: PostMetadata;
 }
 
+/**
+ * Le post possède-t-il une source visuelle exploitable par le compositeur ?
+ *
+ * Un post créé par l'assistant (`/dashboard/creer-simple`) n'a AUCUNE de ces
+ * URLs : pas de montage rendu, pas de rush, pas d'affiche, pas de media_url.
+ * Il ne doit donc jamais déclencher le compositeur vidéo tout seul — il reste
+ * affiché en aperçu HTML léger (séquences intro → cartes → CTA sur dégradé).
+ *
+ * La liste des URLs est un sur-ensemble strict de l'ancienne sous-condition
+ * `posterUrl || rushUrls[0] || characterUrl || pexelsUrl || media_url` : tout
+ * post existant porteur d'un média reste détecté.
+ *
+ * ⚠️ Ce helper NE remplace PAS l'ancienne condition de composition complète,
+ * qui était `isInfographic || <urls>`. Le disjoint `isInfographic` a été
+ * retiré du chemin d'APERÇU seulement — voir `shouldComposeMontage` pour la
+ * planification et la publication, qui le conservent via le contenu.
+ */
+function postHasVisualSource(post: Pick<Post, 'media_url' | 'metadata'> | null | undefined): boolean {
+  const meta = post?.metadata;
+  return !!(
+    meta?.renderedVideoUrl ||   // montage déjà composé
+    meta?.videoUrl ||           // ancien montage (WebM mode rapide)
+    meta?.rawVideoUrl ||        // rush brut (anciens posts)
+    meta?.rushUrls?.[0] ||      // rush brut (posts éditeur)
+    meta?.posterUrl ||
+    meta?.pexelsUrl ||
+    meta?.characterUrl ||
+    meta?.thumbnailUrl ||       // vignette = preuve qu'un montage a existé
+    post?.media_url
+  );
+}
+
+/**
+ * Le post a-t-il de quoi être dessiné, même sans média source ?
+ *
+ * Le compositeur sait produire un montage « texte seul » : il retombe sur un
+ * dégradé quand aucune affiche n'est fournie. Un post de l'assistant, qui a
+ * des cartes et un titre, est donc parfaitement composable.
+ */
+function postHasDrawableContent(
+  post: Pick<Post, 'title' | 'metadata'> | null | undefined,
+): boolean {
+  const meta = post?.metadata;
+  return !!(
+    (meta?.cards?.length || 0) > 0 ||
+    (meta?.textCards?.length || 0) > 0 ||
+    post?.title
+  );
+}
+
+/**
+ * Faut-il lancer le compositeur pour ce post ?
+ *
+ * ⚠️ Cette question n'a pas la même réponse selon le CONTEXTE, et les
+ * confondre casse quelque chose dans les deux sens :
+ *
+ * - **Aperçu / régénération** (aucune intention exprimée) : on ne compose
+ *   JAMAIS sans source visuelle réelle → `postHasVisualSource`. C'était le
+ *   bug : ouvrir un post de l'assistant lançait un rendu WebM de 11,5 Mo.
+ *
+ * - **Planification / publication** (action explicite) : une vidéo est
+ *   INDISPENSABLE, on ne publie pas du texte sur Instagram. Refuser de
+ *   composer ici rendrait les posts de l'assistant impossibles à publier,
+ *   avec un message « réessayez » qui ne réussirait jamais. On compose donc
+ *   dès qu'il y a quelque chose à dessiner.
+ *
+ * Prédicat PUR, sans effet de bord : appelé depuis des handlers où une boîte
+ * de dialogue bloquante serait inattendue.
+ */
+function shouldComposeMontage(post: Pick<Post, 'title' | 'media_url' | 'metadata'>): boolean {
+  if (postHasVisualSource(post) || postHasDrawableContent(post)) return true;
+  // Filet « default safe » : on conserve le disjoint historique `isInfographic`
+  // pour que la planification et la publication restent STRICTEMENT identiques
+  // à l'existant, même sur un post dégénéré (ni média, ni cartes, ni titre).
+  const meta = post?.metadata;
+  return meta?.type === 'infographic' || (meta?.type === 'creator' && !!meta?.sequences);
+}
+
 const platformColors: Record<string, string> = {
   Instagram: 'bg-pink-500',
   TikTok: 'bg-black',
@@ -392,6 +470,14 @@ export default function CalendarPage() {
     const designMeta: any = meta.design || {};
     const isReel = post.format === 'reel';
     const hasRush = !!meta.rushUrls?.[0];
+
+    // Garde-fou : un post sans AUCUNE source visuelle (assistant simple) n'a
+    // rien à recomposer — il vit en aperçu HTML. Le bouton est déjà masqué
+    // dans ce cas ; ce garde-fou couvre tout appel programmatique futur.
+    if (!postHasVisualSource(post)) {
+      console.warn('[Regenerate] Aborted — no visual source, post stays in HTML preview:', post.id);
+      return;
+    }
 
     // Sanity-clamp durations: a stored `sequences.video = 1` (or any sub-2s value)
     // is almost certainly corrupted metadata from an old export and would produce
@@ -821,9 +907,10 @@ export default function CalendarPage() {
     // Only compose if no rendered video exists yet (editor already composes at export time)
     // Skip recomposition if renderedVideoUrl or media_url already has a montage URL
     const alreadyHasVideo = !!(meta.renderedVideoUrl || post.media_url);
-    const isInfographic = meta.type === 'infographic' || (meta.type === 'creator' && meta.sequences);
-    const hasVisualSource = meta.posterUrl || meta.rushUrls?.length > 0 || meta.characterUrl || meta.pexelsUrl || post.media_url;
-    const needsComposition = !alreadyHasVideo && (isInfographic || hasVisualSource);
+    // Planifier est une action EXPLICITE et la vidéo est indispensable : on
+    // compose dès qu'il y a quelque chose à dessiner (média source OU cartes/
+    // titre). Refuser ici rendrait les posts de l'assistant impubliables.
+    const needsComposition = !alreadyHasVideo && shouldComposeMontage(post);
     if (needsComposition) {
       console.log('[Schedule] No video found, composing montage...');
       setExportRendering(true);
@@ -1427,7 +1514,12 @@ export default function CalendarPage() {
       // Only compose if no rendered video exists yet (editor already composes at export time)
       const alreadyHasVideo = !!(meta.renderedVideoUrl || updatedPost.media_url);
       const isMontagePost = meta.type === 'infographic' || (meta.type === 'creator' && meta.sequences);
-      if (isMontagePost && !alreadyHasVideo) {
+      // Même règle qu'à la planification : action explicite, vidéo requise,
+      // donc on compose s'il y a de quoi dessiner. `hasVisualSource` est lu
+      // par le garde-fou plus bas (log d'abandon), où la variable n'était pas
+      // définie auparavant — c'était un ReferenceError latent.
+      const hasVisualSource = postHasVisualSource(updatedPost);
+      if (isMontagePost && !alreadyHasVideo && shouldComposeMontage(updatedPost)) {
         console.log('[Publish] No video found, composing montage...');
         setExportRendering(true);
         setExportRenderProgress(0);
@@ -3008,8 +3100,11 @@ export default function CalendarPage() {
                 - composerVersion outdated  → rendered by an older/buggy composer
               Freshly exported posts (all three present + matching version)
               hide the button so the UI stays clean. Also shown while a
-              regeneration is in progress so the progress label is readable. */}
-          {(regenerating
+              regeneration is in progress so the progress label is readable.
+              Le bouton n'est JAMAIS proposé pour un post sans source visuelle
+              (assistant simple) : il n'y a rien à recomposer, l'aperçu HTML
+              léger est le rendu final. */}
+          {postHasVisualSource(fullPreviewPost) && (regenerating
             || !meta?.renderedVideoUrl
             || !meta?.thumbnailUrl
             || meta?.composerVersion !== CURRENT_COMPOSER_VERSION) && (
