@@ -19,6 +19,11 @@ export interface CreatorPreferences {
   watermarkText?: string;
   borderColor?: string;
   borderEnabled?: boolean;
+  // Kit de marque (F7) — doit rester jumelle de l'interface du meme nom dans
+  // src/app/api/user/preferences/route.ts.
+  gradientColor1?: string;
+  gradientColor2?: string;
+  gradientOpacity?: number;
   // Media (persistent Supabase URLs)
   savedLogoUrl?: string;
   savedLogoName?: string;

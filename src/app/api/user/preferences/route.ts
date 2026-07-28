@@ -20,6 +20,11 @@ export interface CreatorPreferences {
   watermarkText?: string;
   borderColor?: string;
   borderEnabled?: boolean;
+  // Kit de marque (F7) — degrade de fond. Absent jusqu'ici : il ne vivait que
+  // dans le localStorage de l'editeur et dans metadata.design de chaque post.
+  gradientColor1?: string;
+  gradientColor2?: string;
+  gradientOpacity?: number;
   // Media URLs (Supabase Storage URLs that persist)
   savedLogoUrl?: string;
   savedLogoName?: string;
