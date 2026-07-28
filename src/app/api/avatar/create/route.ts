@@ -5,6 +5,7 @@ import {
   uploadAsset,
   createPhotoAvatar,
   listVoices,
+  pickDefaultVoice,
   HeyGenError,
 } from '@/lib/avatar/heygen';
 
@@ -39,17 +40,20 @@ export async function GET() {
 
     const avatar = avatars?.[0] ?? null;
 
-    // Voix : non bloquant. Si HeyGen ne repond pas, l'UI utilisera la voix par
-    // defaut de HeyGen et la page reste fonctionnelle.
+    // Voix : non bloquant pour l'affichage, mais on renvoie explicitement une
+    // voix par defaut. L'UI ne doit jamais proposer un choix "vide" : un
+    // voice_id absent ou vide fait echouer /v3/videos en 400.
     const allVoices = await listVoices();
     const voices = allVoices
       .filter((v) => {
         const lang = (v.language || '').toLowerCase();
-        return !lang || lang.includes('fr') || lang.includes('en');
+        return !lang || lang.startsWith('fr') || lang.startsWith('en');
       })
-      .slice(0, 40);
+      .slice(0, 60);
 
-    return NextResponse.json({ success: true, data: { avatar, voices } });
+    const defaultVoiceId = pickDefaultVoice(voices)?.voiceId ?? null;
+
+    return NextResponse.json({ success: true, data: { avatar, voices, defaultVoiceId } });
   } catch (error) {
     console.error('[Avatar] GET create failed:', error);
     return NextResponse.json(
