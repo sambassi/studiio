@@ -344,13 +344,17 @@ export default function AssistantWizard() {
    * `renderedVideoUrl`. Le Calendrier n'a donc plus rien à recomposer : il lit
    * la vidéo telle quelle (calendar/page.tsx branche `renderedVideoUrl`).
    *
-   * Ordre volontaire, calqué sur l'éditeur :
+   * Ordre volontaire :
    *   1. vérification du solde   → on ne lance pas un rendu qu'on ne peut payer
    *   2. photo des cartes        → garantit apercu == video, pixel pour pixel
    *   3. composition + upload    → composeAndUpload fait les deux
-   *   4. débit des crédits       → APRES succès, jamais avant
-   *   5. création du post
-   * Un échec avant l'étape 4 ne débite rien.
+   *   4. création du post
+   *   5. débit des crédits       → EN DERNIER
+   *
+   * Le débit vient après le post, et non l'inverse : si /api/posts échoue,
+   * l'utilisateur ne doit pas se retrouver débité, sans post, avec une vidéo
+   * orpheline — et invité à recommencer, donc à payer une seconde fois.
+   * Un échec de composition ne débite rien non plus.
    */
   const sendToCalendar = async () => {
     if (!generated || sending) return;
@@ -371,7 +375,11 @@ export default function AssistantWizard() {
       try {
         const check = await fetch('/api/credits/balance').then((r) => r.json());
         const balance = check?.data?.credits ?? check?.balance;
-        if (typeof balance === 'number' && balance < cost) {
+        // `check.ok` est indispensable : la route renvoie `{ok:false, balance:0}`
+        // sur 401/500. Sans ce garde, une panne passagère afficherait
+        // « Crédits insuffisants : 0 disponible » à un utilisateur qui en a.
+        const readable = check?.success !== false && check?.ok !== false;
+        if (readable && typeof balance === 'number' && balance < cost) {
           setError(`Crédits insuffisants : ${cost} requis, ${balance} disponible(s).`);
           return;
         }
