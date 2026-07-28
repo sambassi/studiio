@@ -151,10 +151,14 @@ interface Post {
  * Il ne doit donc jamais déclencher le compositeur vidéo tout seul — il reste
  * affiché en aperçu HTML léger (séquences intro → cartes → CTA sur dégradé).
  *
- * La liste est volontairement PERMISSIVE : c'est un sur-ensemble strict de
- * l'ancienne condition `posterUrl || rushUrls[0] || characterUrl || pexelsUrl
- * || media_url`. Tout post existant qui composait avant continue donc de
- * composer exactement pareil (default safe / rétro-compat 100 %).
+ * La liste des URLs est un sur-ensemble strict de l'ancienne sous-condition
+ * `posterUrl || rushUrls[0] || characterUrl || pexelsUrl || media_url` : tout
+ * post existant porteur d'un média reste détecté.
+ *
+ * ⚠️ Ce helper NE remplace PAS l'ancienne condition de composition complète,
+ * qui était `isInfographic || <urls>`. Le disjoint `isInfographic` a été
+ * retiré du chemin d'APERÇU seulement — voir `shouldComposeMontage` pour la
+ * planification et la publication, qui le conservent via le contenu.
  */
 function postHasVisualSource(post: Pick<Post, 'media_url' | 'metadata'> | null | undefined): boolean {
   const meta = post?.metadata;
@@ -172,18 +176,49 @@ function postHasVisualSource(post: Pick<Post, 'media_url' | 'metadata'> | null |
 }
 
 /**
+ * Le post a-t-il de quoi être dessiné, même sans média source ?
+ *
+ * Le compositeur sait produire un montage « texte seul » : il retombe sur un
+ * dégradé quand aucune affiche n'est fournie. Un post de l'assistant, qui a
+ * des cartes et un titre, est donc parfaitement composable.
+ */
+function postHasDrawableContent(
+  post: Pick<Post, 'title' | 'metadata'> | null | undefined,
+): boolean {
+  const meta = post?.metadata;
+  return !!(
+    (meta?.cards?.length || 0) > 0 ||
+    (meta?.textCards?.length || 0) > 0 ||
+    post?.title
+  );
+}
+
+/**
  * Faut-il lancer le compositeur pour ce post ?
  *
- * Prédicat PUR, sans effet de bord : il est appelé depuis la planification, la
- * publication et le rendu, où une boîte de dialogue bloquante serait à la fois
- * inattendue (un simple « Enregistrer » la déclencherait) et hasardeuse.
+ * ⚠️ Cette question n'a pas la même réponse selon le CONTEXTE, et les
+ * confondre casse quelque chose dans les deux sens :
  *
- * - Source visuelle présente → `true` (comportement historique inchangé).
- * - Aucune source visuelle   → `false`, jamais de composition. Le post reste
- *   en aperçu HTML léger. C'est le cas des posts de l'assistant.
+ * - **Aperçu / régénération** (aucune intention exprimée) : on ne compose
+ *   JAMAIS sans source visuelle réelle → `postHasVisualSource`. C'était le
+ *   bug : ouvrir un post de l'assistant lançait un rendu WebM de 11,5 Mo.
+ *
+ * - **Planification / publication** (action explicite) : une vidéo est
+ *   INDISPENSABLE, on ne publie pas du texte sur Instagram. Refuser de
+ *   composer ici rendrait les posts de l'assistant impossibles à publier,
+ *   avec un message « réessayez » qui ne réussirait jamais. On compose donc
+ *   dès qu'il y a quelque chose à dessiner.
+ *
+ * Prédicat PUR, sans effet de bord : appelé depuis des handlers où une boîte
+ * de dialogue bloquante serait inattendue.
  */
-function shouldComposeMontage(post: Pick<Post, 'media_url' | 'metadata'>): boolean {
-  return postHasVisualSource(post);
+function shouldComposeMontage(post: Pick<Post, 'title' | 'media_url' | 'metadata'>): boolean {
+  if (postHasVisualSource(post) || postHasDrawableContent(post)) return true;
+  // Filet « default safe » : on conserve le disjoint historique `isInfographic`
+  // pour que la planification et la publication restent STRICTEMENT identiques
+  // à l'existant, même sur un post dégénéré (ni média, ni cartes, ni titre).
+  const meta = post?.metadata;
+  return meta?.type === 'infographic' || (meta?.type === 'creator' && !!meta?.sequences);
 }
 
 const platformColors: Record<string, string> = {
@@ -872,11 +907,9 @@ export default function CalendarPage() {
     // Only compose if no rendered video exists yet (editor already composes at export time)
     // Skip recomposition if renderedVideoUrl or media_url already has a montage URL
     const alreadyHasVideo = !!(meta.renderedVideoUrl || post.media_url);
-    // `meta.type === 'infographic'` NE suffit PLUS à déclencher la composition :
-    // l'assistant (/dashboard/creer-simple) pose ce type sans aucune source
-    // visuelle, ce qui relançait le compositeur complet pour rien. On exige
-    // désormais une vraie source visuelle — ou une confirmation explicite de
-    // l'utilisateur pour un montage « texte seul ».
+    // Planifier est une action EXPLICITE et la vidéo est indispensable : on
+    // compose dès qu'il y a quelque chose à dessiner (média source OU cartes/
+    // titre). Refuser ici rendrait les posts de l'assistant impubliables.
     const needsComposition = !alreadyHasVideo && shouldComposeMontage(post);
     if (needsComposition) {
       console.log('[Schedule] No video found, composing montage...');
@@ -1481,10 +1514,10 @@ export default function CalendarPage() {
       // Only compose if no rendered video exists yet (editor already composes at export time)
       const alreadyHasVideo = !!(meta.renderedVideoUrl || updatedPost.media_url);
       const isMontagePost = meta.type === 'infographic' || (meta.type === 'creator' && meta.sequences);
-      // Même règle qu'à la planification : pas de source visuelle → pas de
-      // composition automatique (l'utilisateur doit confirmer un montage
-      // « texte seul »). `hasVisualSource` est aussi lu par le garde-fou
-      // plus bas (log d'abandon), où il n'était pas défini auparavant.
+      // Même règle qu'à la planification : action explicite, vidéo requise,
+      // donc on compose s'il y a de quoi dessiner. `hasVisualSource` est lu
+      // par le garde-fou plus bas (log d'abandon), où la variable n'était pas
+      // définie auparavant — c'était un ReferenceError latent.
       const hasVisualSource = postHasVisualSource(updatedPost);
       if (isMontagePost && !alreadyHasVideo && shouldComposeMontage(updatedPost)) {
         console.log('[Publish] No video found, composing montage...');
