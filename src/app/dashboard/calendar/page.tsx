@@ -231,14 +231,17 @@ function shouldComposeMontage(post: Pick<Post, 'title' | 'media_url' | 'metadata
  *
  * Email est FONCTIONNEL et ne requiert aucun compte social.
  */
-const CHANNELS: Array<{ name: string; soon: boolean }> = [
+const CHANNELS: Array<{ name: string; key?: string; soon: boolean }> = [
   { name: 'Instagram', soon: false },
   { name: 'TikTok', soon: false },
   { name: 'Facebook', soon: false },
   { name: 'YouTube', soon: false },
   { name: 'Email', soon: false },
-  { name: 'WhatsApp', soon: true },
-  { name: 'Afroboost.com', soon: true },
+  // `soon` par defaut : le canal ne devient selectionnable que si le serveur
+  // annonce qu'il est configure (GET /api/social/status -> channels.whatsapp).
+  // Le token n'est jamais expose, seul un booleen circule.
+  { name: 'WhatsApp', key: 'whatsapp', soon: true },
+  { name: 'Afroboost.com', key: 'afroboost.com', soon: true },
 ];
 
 const platformColors: Record<string, string> = {
@@ -363,6 +366,25 @@ export default function CalendarPage() {
   const localeMap: Record<string, string> = { fr: 'fr-FR', en: 'en-GB', de: 'de-DE' };
   const intlLocale = localeMap[locale] || 'fr-FR';
   const { branding } = useBranding();
+
+  // Disponibilite des canaux hors reseaux sociaux, decidee par le SERVEUR.
+  const [channelAvailability, setChannelAvailability] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    fetch('/api/social/status')
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d?.channels) return;
+        const map: Record<string, boolean> = {};
+        for (const [k, v] of Object.entries(d.channels as Record<string, { available?: boolean }>)) {
+          map[k] = !!v?.available;
+        }
+        setChannelAvailability(map);
+      })
+      .catch(() => {
+        // Endpoint injoignable : on garde les valeurs par defaut, donc
+        // « bientot disponible ». Jamais l'inverse.
+      });
+  }, []);
   const agentIAEnabled = useAgentIAEnabled();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [posts, setPosts] = useState<Post[]>([]);
@@ -2881,7 +2903,11 @@ export default function CalendarPage() {
             <div>
               <label className="block text-sm font-medium text-white mb-2">{t('editModal.platforms')}</label>
               <div className="flex flex-wrap gap-2">
-                {CHANNELS.map(({ name, soon }) => (
+                {CHANNELS.map(({ name, key, soon: soonDefault }) => {
+                  // Le serveur peut ouvrir un canal ; il ne peut jamais en fermer un
+                  // qui ne dependait pas de configuration.
+                  const soon = key ? !channelAvailability[key] : soonDefault;
+                  return (
                   <button
                     key={name}
                     onClick={() => {
@@ -2906,7 +2932,8 @@ export default function CalendarPage() {
                     )}
                     {name}
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
             <div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { getValidToken } from '@/lib/social/token-refresh';
+import { isWhatsAppEnabled, broadcastWhatsApp, resolveRecipients } from '@/lib/social/whatsapp';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 
 // POST /api/social/publish - Publish a video to social platforms
@@ -61,6 +62,46 @@ export async function POST(req: NextRequest) {
 
     for (const platformName of platforms) {
       const platform = platformName.toLowerCase();
+
+      // ── Canaux SANS compte social ────────────────────────────────────
+      // Traites avant la recherche de compte, comme dans le cron : sinon ils
+      // tomberaient sur « non connecte » puis sur le `default` du switch.
+      if (platform === 'whatsapp') {
+        if (!isWhatsAppEnabled()) {
+          results.push({ platform: platformName, success: false, message: 'WhatsApp : canal pas encore configure.' });
+          continue;
+        }
+        // `metadata.whatsappTo` du post si on en a un ; sinon le numero
+        // d'environnement (auto-test). Requete faite ici seulement, pour ne
+        // rien couter aux publications qui ne visent pas WhatsApp.
+        let waMeta: unknown = null;
+        if (scheduledPostId) {
+          const { data: sp } = await supabase
+            .from('scheduled_posts')
+            .select('metadata')
+            .eq('id', scheduledPostId)
+            .single();
+          waMeta = sp?.metadata ?? null;
+        }
+        const recipients = resolveRecipients(waMeta);
+        if (recipients.length === 0) {
+          results.push({ platform: platformName, success: false, message: 'WhatsApp : aucun destinataire configure.' });
+          continue;
+        }
+        // Une seule variable : le modele attend {{1}}. Un ecart de nombre ou
+        // d'ordre renvoie l'erreur Meta 132018.
+        const var1 = String(video?.title || caption || 'Nouvelle publication').slice(0, 900);
+        const bc = await broadcastWhatsApp(recipients, { templateParams: [var1] });
+        results.push({
+          platform: platformName,
+          success: bc.success,
+          message: bc.success
+            ? `WhatsApp : ${bc.sent} envoye(s), ${bc.failed} echec(s).`
+            : `WhatsApp : ${bc.failed} envoi(s) en echec.`,
+        });
+        continue;
+      }
+
       const account = accounts?.find((a) => a.platform === platform);
 
       if (!account) {
