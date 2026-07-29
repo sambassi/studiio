@@ -12,6 +12,8 @@
  * « Bientot disponible » cote UI et les routes le refusent proprement.
  */
 
+import { isAdmin } from '@/lib/admin';
+
 /** Identifiants NON secrets — surchargeables par env si le compte change. */
 const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID || '1062611940271584';
 const WABA_ID = process.env.WHATSAPP_WABA_ID || '1615280896432370';
@@ -23,6 +25,21 @@ const TEMPLATE_LANG = process.env.WHATSAPP_TEMPLATE_LANG || 'fr';
 
 /** Pause entre deux envois d'une diffusion, en millisecondes. */
 const BROADCAST_DELAY_MS = 500;
+
+/**
+ * Plafond dur du nombre de destinataires par post.
+ *
+ * Deux raisons. D'abord le temps : le cron a `maxDuration = 300`, et 500 ms
+ * par envoi plafonnent donc autour de 600 destinataires — au-dela la fonction
+ * est tuee EN COURS de diffusion, le post n'est jamais marque, il repasse au
+ * tour suivant et les destinataires deja servis recoivent le message une
+ * seconde fois. Ensuite l'abus : une liste non bornee transforme le WABA en
+ * relais de masse.
+ *
+ * La troncature n'est jamais silencieuse : elle est journalisee et remontee
+ * dans le resultat.
+ */
+export const MAX_RECIPIENTS = 50;
 
 export { WABA_ID };
 
@@ -149,7 +166,7 @@ export async function sendWhatsApp(
     const data = await res.json().catch(() => ({}));
 
     // Un `error` present fait foi, meme sur un HTTP 200.
-    const metaError = data?.error || data?.messages?.[0]?.message_status_error;
+    const metaError = data?.error;
     if (metaError || !res.ok) {
       const code = metaError?.code ?? metaError?.error_code;
       const message =
@@ -161,7 +178,12 @@ export async function sendWhatsApp(
     }
 
     const messageId = data?.messages?.[0]?.id as string | undefined;
-    console.log(`[WhatsApp] Message envoye — wamid=${messageId ?? 'n/a'}`);
+    if (!messageId) {
+      // Un 200 sans wamid n'est pas un envoi : ne pas le compter comme reussi.
+      console.error('[WhatsApp] Reponse 200 sans identifiant de message');
+      return { success: false, error: 'Reponse Meta sans identifiant de message' };
+    }
+    console.log(`[WhatsApp] Message envoye — wamid=${messageId}`);
     return { success: true, messageId };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erreur reseau';
@@ -174,6 +196,8 @@ export interface BroadcastResult {
   success: boolean;
   sent: number;
   failed: number;
+  /** Destinataires ignores par le plafond MAX_RECIPIENTS. */
+  truncated: number;
   /** Detail par destinataire, numero normalise pour ne pas fuiter la saisie brute. */
   results: Array<{ to: string; success: boolean; messageId?: string; error?: string }>;
 }
@@ -193,8 +217,16 @@ export async function broadcastWhatsApp(
   let sent = 0;
   let failed = 0;
 
-  for (let i = 0; i < recipients.length; i++) {
-    const raw = recipients[i];
+  const list = recipients.slice(0, MAX_RECIPIENTS);
+  const truncated = recipients.length - list.length;
+  if (truncated > 0) {
+    console.warn(
+      `[WhatsApp] Diffusion plafonnee : ${list.length} destinataires envoyes, ${truncated} ignores (limite ${MAX_RECIPIENTS}).`,
+    );
+  }
+
+  for (let i = 0; i < list.length; i++) {
+    const raw = list[i];
     const res = await sendWhatsApp(raw, options);
     results.push({
       to: normalizePhone(raw) || raw,
@@ -205,25 +237,51 @@ export async function broadcastWhatsApp(
     if (res.success) sent++;
     else failed++;
 
-    if (i < recipients.length - 1) {
+    if (i < list.length - 1) {
       await new Promise((r) => setTimeout(r, BROADCAST_DELAY_MS));
     }
   }
 
-  return { success: sent > 0, sent, failed, results };
+  return { success: sent > 0, sent, failed, truncated, results };
 }
 
 /**
- * Destinataires d'un post : `metadata.whatsappTo` (tableau) en priorite, sinon
- * le numero unique d'environnement, prevu pour l'auto-test.
+ * Destinataires d'un post.
+ *
+ * ⚠️ CONTROLE D'ABUS — a lire avant de toucher a cette fonction.
+ *
+ * `metadata` est stocke VERBATIM depuis le corps de requete par
+ * /api/posts : n'importe quel compte inscrit peut donc poser
+ * `metadata.whatsappTo` avec des numeros arbitraires. Sans garde, le WABA
+ * d'Afroboost devient un relais de diffusion ouvert — et Meta suspend un WABA
+ * qui envoie du non-sollicite.
+ *
+ * La liste fournie par le post n'est donc honoree que si son proprietaire est
+ * ADMIN, c'est-a-dire le detenteur du compte Meta. Pour tout autre compte, on
+ * retombe sur le numero d'environnement, prevu pour l'auto-test.
+ *
+ * Le canal Email n'a pas ce probleme : il ecrit au proprietaire du post, pas a
+ * une adresse fournie par le client.
  */
-export function resolveRecipients(metadata: unknown): string[] {
-  const meta = metadata as { whatsappTo?: unknown } | null | undefined;
-  const fromPost = Array.isArray(meta?.whatsappTo)
-    ? (meta!.whatsappTo as unknown[]).map(String).filter(Boolean)
-    : [];
-  if (fromPost.length > 0) return fromPost;
-
+export function resolveRecipients(
+  metadata: unknown,
+  opts: { ownerEmail?: string | null } = {},
+): string[] {
   const fallback = process.env.WHATSAPP_DEFAULT_RECIPIENT?.trim();
-  return fallback ? [fallback] : [];
+  const envList = fallback ? [fallback] : [];
+
+  if (!isAdmin(opts.ownerEmail)) {
+    return envList;
+  }
+
+  const meta = metadata as { whatsappTo?: unknown } | null | undefined;
+  // `.filter` AVANT `.map(String)` : dans l'autre sens, `null` devenait la
+  // chaine "null" et partait comme destinataire, produisant un echec parasite.
+  const fromPost = Array.isArray(meta?.whatsappTo)
+    ? (meta!.whatsappTo as unknown[])
+        .filter((v) => typeof v === 'string' && v.trim() !== '')
+        .map((v) => String(v).trim())
+    : [];
+
+  return fromPost.length > 0 ? fromPost : envList;
 }

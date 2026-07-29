@@ -80,10 +80,14 @@ export async function POST(req: NextRequest) {
             .from('scheduled_posts')
             .select('metadata')
             .eq('id', scheduledPostId)
+            // Filtre de propriete : `supabaseAdmin` contourne la RLS, sans lui
+            // un utilisateur connaissant l'id d'un post d'un autre compte
+            // declencherait des envois vers SA liste de destinataires.
+            .eq('user_id', session.user.id)
             .single();
           waMeta = sp?.metadata ?? null;
         }
-        const recipients = resolveRecipients(waMeta);
+        const recipients = resolveRecipients(waMeta, { ownerEmail: session.user.email });
         if (recipients.length === 0) {
           results.push({ platform: platformName, success: false, message: 'WhatsApp : aucun destinataire configure.' });
           continue;
@@ -95,9 +99,11 @@ export async function POST(req: NextRequest) {
         results.push({
           platform: platformName,
           success: bc.success,
-          message: bc.success
-            ? `WhatsApp : ${bc.sent} envoye(s), ${bc.failed} echec(s).`
-            : `WhatsApp : ${bc.failed} envoi(s) en echec.`,
+          message:
+            (bc.success
+              ? `WhatsApp : ${bc.sent} envoye(s), ${bc.failed} echec(s).`
+              : `WhatsApp : ${bc.failed} envoi(s) en echec.`) +
+            (bc.truncated > 0 ? ` ${bc.truncated} destinataire(s) ignore(s) (plafond).` : ''),
         });
         continue;
       }

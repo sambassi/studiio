@@ -440,7 +440,9 @@ export async function GET(req: NextRequest) {
               platformResults.push({ platform, success: false, error: 'WhatsApp : canal pas encore configure' });
               continue;
             }
-            const recipients = resolveRecipients(post.metadata);
+            const recipients = resolveRecipients(post.metadata, {
+              ownerEmail: (post as any).users?.email,
+            });
             if (recipients.length === 0) {
               platformResults.push({ platform, success: false, error: 'WhatsApp : aucun destinataire (metadata.whatsappTo ou WHATSAPP_DEFAULT_RECIPIENT)' });
               continue;
@@ -453,7 +455,14 @@ export async function GET(req: NextRequest) {
               platformResults.push({
                 platform,
                 success: bc.success,
-                error: bc.success ? undefined : `WhatsApp : ${bc.failed} envoi(s) en echec`,
+                // La troncature est signalee : un plafond silencieux ferait
+                // croire a une diffusion complete.
+                error: [
+                  bc.success ? null : `WhatsApp : ${bc.failed} envoi(s) en echec`,
+                  bc.truncated > 0 ? `${bc.truncated} destinataire(s) ignore(s) (plafond)` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' — ') || undefined,
               });
             } catch (waErr) {
               platformResults.push({
