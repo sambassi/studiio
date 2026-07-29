@@ -10,7 +10,8 @@ import { downloadMediaToFile, downloadMediaToBuffer } from '@/lib/storage/fetch-
 import { getValidToken } from '@/lib/social/token-refresh';
 import { sendEmail } from '@/lib/email/resend';
 import { isWhatsAppEnabled, canUseWhatsApp, broadcastWhatsApp, resolveRecipients, MAX_RECIPIENTS, formatBroadcastFailures } from '@/lib/social/whatsapp';
-import { fetchSubscribers, unsubscribeUrl } from '@/lib/social/subscribers';
+import { fetchSubscribers } from '@/lib/social/subscribers';
+import { unsubscribeEndpoint, filterSuppressed } from '@/lib/email/unsubscribe';
 import { isAdmin } from '@/lib/admin';
 
 const execFileAsync = promisify(execFile);
@@ -107,6 +108,12 @@ async function sendPostByEmail(
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
 
+  // Lien VISIBLE identique a celui de l'en-tete `List-Unsubscribe` : Gmail
+  // exige les deux, et un ecart entre les deux est suspect. Ce n'est PAS la
+  // page afroboost (`unsubscribeUrl`) : l'en-tete un-clic impose une URL qui
+  // accepte un POST et desabonne reellement.
+  const unsubLink = unsubscribeEndpoint(to);
+
   // Style aligne sur src/lib/email/templates.ts (violet #7C3AED / rose #EC4899).
   const html = `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0A0A0F;padding:32px 16px;">
@@ -129,12 +136,30 @@ async function sendPostByEmail(
         </div>
         <div style="padding:16px 24px;border-top:1px solid #1F2937;color:#6B7280;font-size:12px;">
           Envoyé par Studiio — studiio.pro<br />
-          <a href="${esc(unsubscribeUrl(to))}" style="color:#9CA3AF;">Se désabonner</a>
+          <a href="${esc(unsubLink)}" style="color:#9CA3AF;">Se désabonner</a>
         </div>
       </div>
     </div>`;
 
-  const res = await sendEmail({ to, subject: `📅 ${title}`, html });
+  // Version texte redigee a la main plutot que derivee du HTML : le gabarit
+  // contient beaucoup de mise en forme, et un texte propre pese dans le score
+  // anti-spam autant que sa simple presence.
+  const text = [
+    title,
+    'Votre publication programmée est prête.',
+    name ? `Bonjour ${name},` : '',
+    caption,
+    mediaUrl ? `Ouvrir le média : ${mediaUrl}` : 'Aucun média associé à ce post.',
+    '',
+    'Envoyé par Studiio — studiio.pro',
+    `Se désabonner : ${unsubLink}`,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
+  // Sujet sans emoji en tete : un emoji en premier caractere est un marqueur
+  // promotionnel classique pour les filtres.
+  const res = await sendEmail({ to, subject: title, html, text });
   return res.success
     ? { success: true }
     : { success: false, error: res.error || "Echec d'envoi de l'email" };
@@ -422,7 +447,11 @@ export async function GET(req: NextRequest) {
             // afroboost, un tiers ne peut pas attester du consentement de ses
             // destinataires. Sinon, comportement historique : on ecrit a
             // l'auteur du post.
-            const subs = isAdmin(owner) ? [...new Set(await fetchSubscribers('email'))] : [];
+            const optIn = isAdmin(owner) ? [...new Set(await fetchSubscribers('email'))] : [];
+            // Liste de suppression relue AVANT CHAQUE diffusion : un
+            // desabonnement doit prendre effet immediatement, y compris entre
+            // deux posts du meme cron.
+            const subs = await filterSuppressed(optIn);
             if (subs.length > 0) {
               let sent = 0;
               let failed = 0;
@@ -457,9 +486,29 @@ export async function GET(req: NextRequest) {
               continue;
             }
 
+            // Liste opt-in non vide mais integralement desabonnee : on le dit
+            // au lieu de retomber sur l'auto-envoi, qui laisserait croire a
+            // une diffusion reussie.
+            if (optIn.length > 0) {
+              platformResults.push({
+                platform,
+                success: false,
+                error: `Email : les ${optIn.length} destinataire(s) de la liste sont desabonne(s)`,
+              });
+              continue;
+            }
+
             const to = owner;
             if (!to) {
               platformResults.push({ platform, success: false, error: 'Adresse email introuvable' });
+              continue;
+            }
+            if ((await filterSuppressed([to])).length === 0) {
+              platformResults.push({
+                platform,
+                success: false,
+                error: 'Email : cette adresse est desabonnee',
+              });
               continue;
             }
             // try/catch propre : cette branche est HORS du try par plateforme

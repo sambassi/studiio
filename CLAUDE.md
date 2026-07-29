@@ -402,6 +402,37 @@ Ne jamais uploader des fichiers video via les routes API normales (limite Vercel
 sendEmailSilent({ to, subject, html }); // pas de await, pas de try/catch
 ```
 
+### Delivrabilite email — RÈGLE ABSOLUE
+
+**Tout email part de `sendEmail()` / `sendEmailSilent()` (`src/lib/email/resend.ts`). Jamais d'appel direct a `api.resend.com`.**
+
+Ce point unique garantit trois exigences Gmail, qu'un seul contournement suffit
+a casser pour tout le domaine :
+
+| Exigence | Ou c'est traite |
+|----------|-----------------|
+| `from` = `RESEND_FROM` (le seul domaine dont SPF/DKIM/DMARC sont alignes) | `DEFAULT_FROM` dans `resend.ts` |
+| En-tetes `List-Unsubscribe` + `List-Unsubscribe-Post: List-Unsubscribe=One-Click` | injectes automatiquement pour tout envoi a UN destinataire |
+| Version `text/plain` en plus du HTML | derivee du HTML par `htmlToText()` si l'appelant n'en fournit pas |
+
+Le desabonnement vit dans `src/lib/email/unsubscribe.ts` + `/api/email/unsubscribe` :
+
+- L'URL porte l'adresse et un **HMAC** de cette adresse (`UNSUBSCRIBE_SECRET`,
+  a defaut `AUTH_SECRET`). Sans jeton valide, rien n'est ecrit.
+- **POST** = un-clic Gmail, repond 200 meme si la persistance echoue (un 5xx
+  ferait reessayer Gmail en boucle et abimerait la reputation).
+- **GET** = page de confirmation, **sans effet de bord** : les antivirus et
+  previsualiseurs visitent les liens des emails et desabonneraient a l'insu
+  des gens.
+- La suppression est ecrite dans `email_suppressions` (migration
+  `2026-07-29-email-suppressions.sql`) puis relayee a afroboost en
+  best-effort.
+- `filterSuppressed()` est appelee **avant chaque diffusion**, en plus de la
+  liste opt-in afroboost relue elle aussi sans cache.
+
+Variables : `RESEND_FROM`, `RESEND_API_KEY`, `RESEND_REPLY_TO`,
+`AFROBOOST_LIST_API_KEY`, `NEXT_PUBLIC_APP_URL` (base de l'URL de desabo).
+
 ### Dynamic imports (Remotion)
 
 ```typescript

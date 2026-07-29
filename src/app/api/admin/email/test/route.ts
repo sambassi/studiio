@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin, logAdminAction } from '@/lib/admin';
 import { ApiResponse } from '@/lib/types/api';
+import { sendEmail } from '@/lib/email/resend';
 
 /**
  * Sends a test email to verify email configuration
@@ -32,51 +33,41 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<a
       );
     }
 
-    // Send test email using Resend or your email service
-    const emailServiceUrl = process.env.EMAIL_SERVICE_URL || process.env.RESEND_API_URL;
-    const emailServiceKey = process.env.EMAIL_SERVICE_KEY || process.env.RESEND_API_KEY;
-
-    if (!emailServiceKey) {
+    if (!process.env.RESEND_API_KEY) {
       return NextResponse.json(
         { success: false, error: 'Email service not configured' },
         { status: 503 }
       );
     }
 
-    // Try to send via Resend (common choice for Next.js)
+    // Cette route sert AUSSI aux campagnes en masse (src/app/admin/emails).
+    // Elle appelait l'API Resend en direct avec
+    // `from: process.env.EMAIL_FROM || 'noreply@studiio.app'` — un domaine
+    // sans SPF/DKIM/DMARC alignes, et meme absent de .env.example : tous les
+    // envois partaient donc d'un expediteur non authentifie, ce qui suffit a
+    // faire classer le message en spam. On passe par le client partage, seul
+    // detenteur de `RESEND_FROM`, qui ajoute au passage la version texte et
+    // les en-tetes de desabonnement.
     try {
-      const response = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${emailServiceKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: process.env.EMAIL_FROM || 'noreply@studiio.app',
-          to,
-          subject,
-          html: emailBody,
-        }),
-      });
+      const result = await sendEmail({ to, subject, html: emailBody });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to send email');
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to send email');
       }
 
-      const result = await response.json();
+      const messageId = (result.data as { id?: string } | null)?.id;
 
       // Log the action
       await logAdminAction({
         adminEmail: session!.user.email!,
         action: 'send_test_email',
         targetType: 'email',
-        details: { to, subject, messageId: result.id },
+        details: { to, subject, messageId },
       });
 
       return NextResponse.json({
         success: true,
-        data: { messageId: result.id, to, subject },
+        data: { messageId, to, subject },
         message: 'Test email sent successfully',
       });
     } catch (emailError) {
