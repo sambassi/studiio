@@ -19,7 +19,12 @@ function getOAuthUrl(platform: string, state: string): string | null {
       case 'instagram':
       case 'facebook': {
               const redirectUri = encodeURIComponent(`${APP_URL}/api/social/callback?platform=${platform}`);
-              const appId = process.env.META_INSTAGRAM_APP_ID || process.env.FACEBOOK_CLIENT_ID;
+              // Meme resolution d'app id que le callback : Facebook est pilote
+              // uniquement par FACEBOOK_CLIENT_ID, sinon l'echange de code echoue
+              // avec « Error validating client secret ».
+              const appId = platform === 'instagram'
+                ? process.env.META_INSTAGRAM_APP_ID || process.env.FACEBOOK_CLIENT_ID
+                : process.env.FACEBOOK_CLIENT_ID;
               const configId = process.env.META_CONFIG_ID;
               if (!appId || !configId) return null;
               return `https://www.facebook.com/v23.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&config_id=${configId}&response_type=code&state=${state}`;
@@ -80,7 +85,7 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json({
               success: false,
-              error: `Configuration OAuth manquante pour ${platform}. Ajoutez ${platformNames[platform] || 'les identifiants'} dans les variables d'environnement Vercel.`,
+              error: `Configuration OAuth manquante pour ${platform}. Ajoutez ${platformNames[platform] || 'les identifiants'} dans les variables d'environnement.`,
               needsConfig: true,
       }, { status: 422 });
     } catch (error) {
