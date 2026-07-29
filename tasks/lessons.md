@@ -163,6 +163,34 @@ sortie** (`api.resend.com`, `fetch(` vers le fournisseur, le nom du SDK) et
 prouver qu'il n'existe qu'un seul appelant. Un grep sur la valeur ne trouve que
 les contournements écrits comme on les imaginait.
 
+## [2026-07-29] `git stash` est partagé entre worktrees — ne jamais l'utiliser en parallèle
+
+**Ce qui a mal tourné** — Deux sessions travaillaient en parallèle sur le même
+dépôt : l'une dans `/Users/afroboost/studiio` (publication Instagram), l'autre
+dans un `git worktree` séparé (page Média). Pour comparer un build avec et sans
+mes changements, j'ai fait `git stash push` → build → `git stash pop` dans mon
+worktree. Or **`refs/stash` est une référence unique du dépôt, partagée par
+tous les worktrees** : entre mon `push` et mon `pop`, l'autre session a empilé
+son propre stash, et mon `pop` a récupéré SON travail en cours
+(`ctaIconPos` dans `creer/page.tsx`) tout en le retirant de la pile. Leur
+modification s'est retrouvée dans mon worktree, absente du leur, à un doigt
+d'entrer dans ma PR — c'est-à-dire exactement le fichier que la consigne
+interdisait de toucher. Récupérée en extrayant le diff et en le réappliquant
+à leur worktree.
+
+**Règle** — En worktrees parallèles sur le même dépôt, **ne jamais utiliser
+`git stash`**. Pour mettre du travail de côté, **committer sur sa propre
+branche** (`git commit`, quitte à `--amend` ou `reset --soft` ensuite) : un
+commit est local à la branche, la pile de stash ne l'est pas. Idem pour toute
+autre référence globale au dépôt (`refs/stash`, `HEAD` détaché partagé,
+`git bisect`).
+
+**Corollaire** — Ne pas non plus faire pointer le `node_modules` d'un worktree
+en lien symbolique vers celui d'un autre : toute commande qui installe
+(`npm ci`, `npx next lint` qui propose son setup ESLint) écrit alors dans
+l'arbre de l'autre session et peut le vider. Un worktree = son propre
+`node_modules`.
+
 ## Pré-merge : checklist obligatoire
 
 À cocher MENTALEMENT avant chaque merge (et écrire dans le PR body si non trivial) :
