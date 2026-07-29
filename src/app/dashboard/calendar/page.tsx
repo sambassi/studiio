@@ -222,7 +222,30 @@ function shouldComposeMontage(post: Pick<Post, 'title' | 'media_url' | 'metadata
   return meta?.type === 'infographic' || (meta?.type === 'creator' && !!meta?.sequences);
 }
 
+/**
+ * Canaux de planification (F3).
+ *
+ * `platforms[]` est un TEXT[] libre : aucune migration necessaire. Les canaux
+ * marques `soon` ne sont pas selectionnables ; le cron les ignore malgre tout
+ * explicitement, au cas ou un post ancien en porterait.
+ *
+ * Email est FONCTIONNEL et ne requiert aucun compte social.
+ */
+const CHANNELS: Array<{ name: string; soon: boolean }> = [
+  { name: 'Instagram', soon: false },
+  { name: 'TikTok', soon: false },
+  { name: 'Facebook', soon: false },
+  { name: 'YouTube', soon: false },
+  { name: 'Email', soon: false },
+  { name: 'WhatsApp', soon: true },
+  { name: 'Afroboost.com', soon: true },
+];
+
 const platformColors: Record<string, string> = {
+  // Canaux de planification hors reseaux sociaux (F3).
+  Email: 'bg-emerald-600',
+  WhatsApp: 'bg-green-600',
+  'Afroboost.com': 'bg-purple-600',
   Instagram: 'bg-pink-500',
   TikTok: 'bg-black',
   Facebook: 'bg-blue-600',
@@ -911,7 +934,7 @@ export default function CalendarPage() {
   const handleSchedulePost = async (post: Post) => {
     // Validate: must have at least one platform selected
     if (!post.platforms || post.platforms.length === 0) {
-      alert(t('validation.noPlatforms') || 'Veuillez sélectionner au moins un réseau social avant de planifier.');
+      alert(t('validation.noPlatforms') || 'Veuillez sélectionner au moins un canal avant de planifier.');
       return;
     }
 
@@ -1077,7 +1100,7 @@ export default function CalendarPage() {
   const handleSavePost = async () => {
     // Validate: if scheduling, must have platforms
     if (editTab === 'scheduled' && (!editFormData.platforms || editFormData.platforms.length === 0)) {
-      alert(t('validation.noPlatforms') || 'Veuillez sélectionner au moins un réseau social avant de planifier.');
+      alert(t('validation.noPlatforms') || 'Veuillez sélectionner au moins un canal avant de planifier.');
       return;
     }
 
@@ -2858,15 +2881,31 @@ export default function CalendarPage() {
             <div>
               <label className="block text-sm font-medium text-white mb-2">{t('editModal.platforms')}</label>
               <div className="flex flex-wrap gap-2">
-                {['Instagram', 'TikTok', 'Facebook', 'YouTube'].map((p) => (
-                  <button key={p} onClick={() => {
-                    const pls = editFormData.platforms || [];
-                    setEditFormData({ ...editFormData, platforms: pls.includes(p) ? pls.filter((x) => x !== p) : [...pls, p] });
-                  }}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-                      editFormData.platforms?.includes(p) ? `${platformColors[p]} text-white` : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                {CHANNELS.map(({ name, soon }) => (
+                  <button
+                    key={name}
+                    onClick={() => {
+                      if (soon) return;
+                      const pls = editFormData.platforms || [];
+                      setEditFormData({ ...editFormData, platforms: pls.includes(name) ? pls.filter((x) => x !== name) : [...pls, name] });
+                    }}
+                    disabled={soon}
+                    aria-disabled={soon}
+                    className={`relative px-3 py-2 rounded-lg text-sm font-medium transition ${
+                      soon
+                        ? 'bg-gray-900/40 text-gray-500 opacity-60 cursor-not-allowed'
+                        : editFormData.platforms?.includes(name)
+                          ? `${platformColors[name]} text-white`
+                          : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
                     }`}
-                  >{p}</button>
+                  >
+                    {soon && (
+                      <span className="absolute -top-2 -right-1 rounded-full bg-purple-500/20 text-purple-200 text-[9px] font-semibold px-1.5 py-0.5 ring-1 ring-purple-500/40 whitespace-nowrap">
+                        Bientôt
+                      </span>
+                    )}
+                    {name}
+                  </button>
                 ))}
               </div>
             </div>
@@ -4051,7 +4090,7 @@ export default function CalendarPage() {
                         // No platforms selected — open edit modal so user can pick them
                         setShowFullPreview(false);
                         handleEditPost(fullPreviewPost);
-                        alert(t('validation.noPlatforms') || 'Veuillez sélectionner au moins un réseau social avant de planifier.');
+                        alert(t('validation.noPlatforms') || 'Veuillez sélectionner au moins un canal avant de planifier.');
                         return;
                       }
                       handleSchedulePost(fullPreviewPost).then(() => { setShowFullPreview(false); });

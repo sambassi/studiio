@@ -956,7 +956,7 @@
       "save": "Enregistrer"
     },
     "validation": {
-      "noPlatforms": "Veuillez sélectionner au moins un réseau social avant de planifier.",
+      "noPlatforms": "Veuillez sélectionner au moins un canal avant de planifier.",
       "noMedia": "Veuillez ajouter un média (vidéo ou image) avant de planifier."
     },
     "exportOverlay": {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
+import { getValidToken } from '@/lib/social/token-refresh';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 
 // POST /api/social/publish - Publish a video to social platforms
@@ -85,21 +86,48 @@ export async function POST(req: NextRequest) {
         .single();
 
       try {
+        // Rafraichissement du token AVANT publication. `getValidToken` ne
+        // rafraichit que si `expires_at` est proche (buffer 5 min) et persiste
+        // le nouveau token ; pour une plateforme qu'il ne gere pas, il rend le
+        // token existant. Il THROW en cas d'echec : on rattrape ici pour que la
+        // plateforme echoue seule, sans faire tomber les autres.
+        // DEFAULT SAFE : si le refresh echoue, on publie avec le token
+        // STOCKE, exactement comme avant ce changement. Laisser le throw
+        // remonter empecherait la tentative alors qu'elle reussissait.
+        //
+        // Le cas Meta l'impose : le callback ecrit `expires_at` a +60 jours
+        // alors qu'un Page Access Token n'expire pas. Passe ce delai, chaque
+        // publication IG/FB declencherait `refreshMetaToken`, qui echange un
+        // PAGE token via fb_exchange_token — au mieux une erreur, au pire un
+        // USER token persiste a la place du page token, cassant IG/FB
+        // jusqu'a reconnexion. Le repli neutralise ce risque tout en gardant
+        // le benefice sur YouTube et TikTok, qui ont un vrai refresh_token.
+        let freshToken = account.access_token;
+        try {
+          freshToken = await getValidToken(account.id);
+        } catch (refreshErr) {
+          console.warn(
+            `[publish] Refresh token echoue pour ${platform}, on garde le token stocke:`,
+            refreshErr instanceof Error ? refreshErr.message : refreshErr,
+          );
+        }
+        const authedAccount = { ...account, access_token: freshToken };
+
         // Platform-specific publishing logic
         let publishResult: { success: boolean; platformPostId?: string; platformUrl?: string; error?: string };
 
         switch (platform) {
           case 'instagram':
-            publishResult = await publishToInstagram(account, video, caption, hashtags);
+            publishResult = await publishToInstagram(authedAccount, video, caption, hashtags);
             break;
           case 'facebook':
-            publishResult = await publishToFacebook(account, video, caption, hashtags);
+            publishResult = await publishToFacebook(authedAccount, video, caption, hashtags);
             break;
           case 'tiktok':
-            publishResult = await publishToTikTok(account, video, caption, hashtags);
+            publishResult = await publishToTikTok(authedAccount, video, caption, hashtags);
             break;
           case 'youtube':
-            publishResult = await publishToYouTube(account, video, caption, hashtags);
+            publishResult = await publishToYouTube(authedAccount, video, caption, hashtags);
             break;
           default:
             publishResult = { success: false, error: `Plateforme non supportee: ${platformName}` };

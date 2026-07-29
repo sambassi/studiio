@@ -950,7 +950,7 @@
       "save": "Save"
     },
     "validation": {
-      "noPlatforms": "Please select at least one social network before scheduling.",
+      "noPlatforms": "Please select at least one channel before scheduling.",
       "noMedia": "Please add media (video or image) before scheduling."
     },
     "exportOverlay": {

@@ -7,6 +7,8 @@ import { promisify } from 'util';
 import { transcodeWebmToMp4WithLadder } from '@/lib/ffmpeg/transcode-to-mp4';
 import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 import { downloadMediaToFile, downloadMediaToBuffer } from '@/lib/storage/fetch-media';
+import { getValidToken } from '@/lib/social/token-refresh';
+import { sendEmail } from '@/lib/email/resend';
 
 const execFileAsync = promisify(execFile);
 
@@ -55,6 +57,85 @@ function verifyCronSecret(req: NextRequest): boolean {
 // GET /api/cron/publish - Automatically publish scheduled posts whose time has passed
 // Supports ?force=true — picks the first scheduled/draft post and publishes it immediately,
 // skipping the time check. CRON_SECRET bearer check is still required.
+
+/**
+ * Canaux qui ne requierent AUCUN compte social ni media publiable.
+ * Ils doivent echapper aux gardes « aucun compte connecte » et « aucun media »
+ * placees avant la boucle, sinon le canal Email — dont tout l'interet est de
+ * fonctionner sans reseau connecte — ne partirait jamais.
+ */
+const NO_ACCOUNT_CHANNELS = ['email', 'whatsapp', 'afroboost.com', 'afroboost'];
+
+function requiresSocialAccount(platforms: string[] | null | undefined): boolean {
+  // `every` et non `some` : la garde ne doit se declencher que si AUCUN canal
+  // ne peut aboutir sans compte social. Avec `some`, un post mixte
+  // ['Email','Instagram'] sur un compte sans reseau connecte repassait dans la
+  // garde et l'email n'etait jamais envoye, alors qu'il n'a besoin de rien.
+  // Desormais Instagram echoue seul, en « not connected », et l'email part.
+  return (platforms || []).every((p) => !NO_ACCOUNT_CHANNELS.includes(String(p).toLowerCase()));
+}
+
+/**
+ * Canal EMAIL — envoie le post a son auteur a l'heure planifiee.
+ *
+ * Ce canal ne requiert AUCUN compte social : c'est tout son interet. Il
+ * reutilise `sendEmail` (src/lib/email/resend.ts), qui ne throw jamais et
+ * renvoie `{ success, error }`.
+ */
+async function sendPostByEmail(
+  to: string,
+  name: string | null,
+  post: any,
+  videoData: { video_url?: string | null; thumbnail_url?: string | null } | null,
+): Promise<{ success: boolean; error?: string }> {
+  const mediaUrl =
+    post?.metadata?.renderedVideoUrl || post?.media_url || videoData?.video_url || null;
+  const posterUrl = post?.metadata?.thumbnailUrl || post?.metadata?.posterUrl || null;
+  const title = post?.title || 'Votre publication';
+  const caption = post?.caption || '';
+
+  // `String(v)` : une metadonnee non-string ferait throw sur .replace.
+  // `"` est indispensable — esc() sert aussi en contexte d'ATTRIBUT
+  // (src="..." / href="..."), ou un guillemet permettrait d'en sortir.
+  const esc = (v: unknown) =>
+    String(v ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+  // Style aligne sur src/lib/email/templates.ts (violet #7C3AED / rose #EC4899).
+  const html = `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0A0A0F;padding:32px 16px;">
+      <div style="max-width:560px;margin:0 auto;background:#14141B;border-radius:16px;overflow:hidden;">
+        <div style="background:linear-gradient(135deg,#7C3AED,#EC4899);padding:24px;">
+          <h1 style="margin:0;color:#fff;font-size:20px;">${esc(title)}</h1>
+          <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:13px;">
+            Votre publication programmée est prête.
+          </p>
+        </div>
+        <div style="padding:24px;color:#E5E7EB;font-size:14px;line-height:1.6;">
+          ${name ? `<p style="margin:0 0 16px;">Bonjour ${esc(name)},</p>` : ''}
+          ${caption ? `<p style="margin:0 0 20px;white-space:pre-wrap;">${esc(caption)}</p>` : ''}
+          ${posterUrl ? `<img src="${esc(posterUrl)}" alt="" style="width:100%;border-radius:12px;margin-bottom:20px;" />` : ''}
+          ${
+            mediaUrl
+              ? `<a href="${esc(mediaUrl)}" style="display:inline-block;background:#7C3AED;color:#fff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:600;">Ouvrir le média</a>`
+              : `<p style="margin:0;color:#9CA3AF;">Aucun média associé à ce post.</p>`
+          }
+        </div>
+        <div style="padding:16px 24px;border-top:1px solid #1F2937;color:#6B7280;font-size:12px;">
+          Envoyé par Studiio — studiio.pro
+        </div>
+      </div>
+    </div>`;
+
+  const res = await sendEmail({ to, subject: `📅 ${title}`, html });
+  return res.success
+    ? { success: true }
+    : { success: false, error: res.error || "Echec d'envoi de l'email" };
+}
+
 export async function GET(req: NextRequest) {
   // Security: only allow Vercel Cron (or authenticated manual triggers) to run
   if (!verifyCronSecret(req)) {
@@ -73,7 +154,7 @@ export async function GET(req: NextRequest) {
       console.log('[CRON] force=true — picking first scheduled/draft post, skipping time check');
       const { data: forcePosts, error: forceErr } = await supabase
         .from('scheduled_posts')
-        .select('*, videos:video_id(*)')
+        .select('*, videos:video_id(*), users:user_id(email, name)')
         .in('status', ['scheduled', 'draft'])
         .order('scheduled_date', { ascending: true })
         .order('scheduled_time', { ascending: true })
@@ -141,7 +222,7 @@ export async function GET(req: NextRequest) {
       ? { data: null, error: null }
       : await supabase
           .from('scheduled_posts')
-          .select('*, videos:video_id(*)')
+          .select('*, videos:video_id(*), users:user_id(email, name)')
           .eq('status', 'scheduled')
           .or(`scheduled_date.lt.${latestDate},and(scheduled_date.eq.${latestDate},scheduled_time.lte.${latestTime})`)
           .order('scheduled_date', { ascending: true })
@@ -256,7 +337,8 @@ export async function GET(req: NextRequest) {
           continue;
         }
 
-        if (!accounts || accounts.length === 0) {
+        // La garde ne s'applique qu'aux posts visant un vrai reseau social.
+        if (requiresSocialAccount(post.platforms) && (!accounts || accounts.length === 0)) {
           await supabase
             .from('scheduled_posts')
             .update({ status: 'failed', metadata: { ...post.metadata, error: 'Aucun compte social connecté / No connected social accounts' } })
@@ -278,7 +360,8 @@ export async function GET(req: NextRequest) {
         // Fallback: media_url (which is also set to renderedUrl during scheduling), puis la vidéo brute
         let videoUrl = renderedUrl || post.media_url || video?.video_url;
 
-        if (!videoUrl) {
+        // Idem : un envoi par email reste pertinent sans media (legende seule).
+        if (!videoUrl && requiresSocialAccount(post.platforms)) {
           console.log(`[CRON] FAIL: No video or media URL for post ${post.id}`);
           await supabase
             .from('scheduled_posts')
@@ -321,27 +404,95 @@ export async function GET(req: NextRequest) {
         const platformResults: Array<{ platform: string; success: boolean; error?: string }> = [];
 
         for (const platform of (post.platforms || [])) {
-          const account = accounts.find((a: any) => a.platform === platform.toLowerCase());
+          const channel = platform.toLowerCase();
+
+          // ── Canaux SANS compte social ────────────────────────────────
+          // Traites avant la recherche de compte : sinon ils tomberaient sur
+          // « not connected » puis sur le `default` du switch, et le post
+          // partirait en `failed`.
+          if (channel === 'email') {
+            const to = (post as any).users?.email as string | undefined;
+            if (!to) {
+              platformResults.push({ platform, success: false, error: 'Adresse email introuvable' });
+              continue;
+            }
+            // try/catch propre : cette branche est HORS du try par plateforme
+            // situe plus bas. Sans lui, une exception ferait tomber le catch
+            // par POST et perdrait les autres canaux du meme post.
+            try {
+              const sent = await sendPostByEmail(to, (post as any).users?.name || null, post, videoData);
+              platformResults.push({ platform, success: sent.success, error: sent.error });
+            } catch (mailErr) {
+              platformResults.push({
+                platform,
+                success: false,
+                error: mailErr instanceof Error ? mailErr.message : "Echec d'envoi de l'email",
+              });
+            }
+            continue;
+          }
+          if (channel === 'whatsapp' || channel === 'afroboost.com' || channel === 'afroboost') {
+            // Canaux annonces « bientot disponible » : non selectionnables,
+            // mais un post ancien ou importe pourrait en porter. On les marque
+            // en echec EXPLICITE, avec un motif lisible, plutot que de les
+            // laisser tomber dans le `default` du switch. Un post qui ne
+            // viserait QUE ces canaux finira donc en `failed` — c'est correct,
+            // rien n'a ete publie.
+            platformResults.push({ platform, success: false, error: `${platform} : canal pas encore disponible` });
+            continue;
+          }
+
+          //  peut etre null depuis que la garde amont ne s'applique
+          // plus aux canaux sans compte : un post Email + Instagram sur un
+          // compte sans reseau connecte atteint desormais cette ligne.
+          const account = accounts?.find((a: any) => a.platform === channel);
           if (!account) {
             platformResults.push({ platform, success: false, error: `${platform} not connected` });
             continue;
           }
 
           try {
+            // Rafraichissement du token AVANT publication : le cron lisait
+            // `account.access_token` brut, d'ou des echecs sur token expire.
+            // `getValidToken` persiste le token rafraichi et rend l'existant
+            // pour une plateforme non geree. Il THROW en cas d'echec — le
+            // try/catch par plateforme deja present isole la panne.
+            // DEFAULT SAFE : si le refresh echoue, on publie avec le token
+            // STOCKE, exactement comme avant ce changement. Laisser le throw
+            // remonter empecherait la tentative alors qu'elle reussissait.
+            //
+            // Le cas Meta l'impose : le callback ecrit `expires_at` a +60 jours
+            // alors qu'un Page Access Token n'expire pas. Passe ce delai, chaque
+            // publication IG/FB declencherait `refreshMetaToken`, qui echange un
+            // PAGE token via fb_exchange_token — au mieux une erreur, au pire un
+            // USER token persiste a la place du page token, cassant IG/FB
+            // jusqu'a reconnexion. Le repli neutralise ce risque tout en gardant
+            // le benefice sur YouTube et TikTok, qui ont un vrai refresh_token.
+            let freshToken = account.access_token;
+            try {
+              freshToken = await getValidToken(account.id);
+            } catch (refreshErr) {
+              console.warn(
+                `[publish] Refresh token echoue pour ${platform}, on garde le token stocke:`,
+                refreshErr instanceof Error ? refreshErr.message : refreshErr,
+              );
+            }
+            const authedAccount = { ...account, access_token: freshToken };
+
             let result: { success: boolean; platformPostId?: string; platformUrl?: string; error?: string };
 
             switch (platform.toLowerCase()) {
               case 'instagram':
-                result = await publishToInstagram(account, videoData, post.caption);
+                result = await publishToInstagram(authedAccount, videoData, post.caption);
                 break;
               case 'facebook':
-                result = await publishToFacebook(account, videoData, post.caption);
+                result = await publishToFacebook(authedAccount, videoData, post.caption);
                 break;
               case 'tiktok':
-                result = await publishToTikTok(account, videoData, post.caption);
+                result = await publishToTikTok(authedAccount, videoData, post.caption);
                 break;
               case 'youtube':
-                result = await publishToYouTube(account, videoData, post.caption);
+                result = await publishToYouTube(authedAccount, videoData, post.caption);
                 break;
               default:
                 result = { success: false, error: `Unsupported platform: ${platform}` };

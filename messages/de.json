@@ -968,7 +968,7 @@
       "mediaClickToImport": "oder zum Importieren klicken"
     },
     "validation": {
-      "noPlatforms": "Bitte wählen Sie mindestens ein soziales Netzwerk aus, bevor Sie planen.",
+      "noPlatforms": "Bitte wählen Sie mindestens einen Kanal aus, bevor Sie planen.",
       "noMedia": "Bitte fügen Sie Medien (Video oder Bild) hinzu, bevor Sie planen."
     },
     "exportOverlay": {
