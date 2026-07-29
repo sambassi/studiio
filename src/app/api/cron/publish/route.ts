@@ -7,6 +7,8 @@ import { promisify } from 'util';
 import { transcodeWebmToMp4WithLadder } from '@/lib/ffmpeg/transcode-to-mp4';
 import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 import { downloadMediaToFile, downloadMediaToBuffer } from '@/lib/storage/fetch-media';
+import { getValidToken } from '@/lib/social/token-refresh';
+import { sendEmail } from '@/lib/email/resend';
 
 const execFileAsync = promisify(execFile);
 
@@ -55,6 +57,61 @@ function verifyCronSecret(req: NextRequest): boolean {
 // GET /api/cron/publish - Automatically publish scheduled posts whose time has passed
 // Supports ?force=true — picks the first scheduled/draft post and publishes it immediately,
 // skipping the time check. CRON_SECRET bearer check is still required.
+
+/**
+ * Canal EMAIL — envoie le post a son auteur a l'heure planifiee.
+ *
+ * Ce canal ne requiert AUCUN compte social : c'est tout son interet. Il
+ * reutilise `sendEmail` (src/lib/email/resend.ts), qui ne throw jamais et
+ * renvoie `{ success, error }`.
+ */
+async function sendPostByEmail(
+  to: string,
+  name: string | null,
+  post: any,
+  videoData: { video_url?: string | null; thumbnail_url?: string | null } | null,
+): Promise<{ success: boolean; error?: string }> {
+  const mediaUrl =
+    post?.metadata?.renderedVideoUrl || post?.media_url || videoData?.video_url || null;
+  const posterUrl = post?.metadata?.thumbnailUrl || post?.metadata?.posterUrl || null;
+  const title = post?.title || 'Votre publication';
+  const caption = post?.caption || '';
+
+  const esc = (v: string) =>
+    v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  // Style aligne sur src/lib/email/templates.ts (violet #7C3AED / rose #EC4899).
+  const html = `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0A0A0F;padding:32px 16px;">
+      <div style="max-width:560px;margin:0 auto;background:#14141B;border-radius:16px;overflow:hidden;">
+        <div style="background:linear-gradient(135deg,#7C3AED,#EC4899);padding:24px;">
+          <h1 style="margin:0;color:#fff;font-size:20px;">${esc(title)}</h1>
+          <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:13px;">
+            Votre publication programmée est prête.
+          </p>
+        </div>
+        <div style="padding:24px;color:#E5E7EB;font-size:14px;line-height:1.6;">
+          ${name ? `<p style="margin:0 0 16px;">Bonjour ${esc(name)},</p>` : ''}
+          ${caption ? `<p style="margin:0 0 20px;white-space:pre-wrap;">${esc(caption)}</p>` : ''}
+          ${posterUrl ? `<img src="${esc(posterUrl)}" alt="" style="width:100%;border-radius:12px;margin-bottom:20px;" />` : ''}
+          ${
+            mediaUrl
+              ? `<a href="${esc(mediaUrl)}" style="display:inline-block;background:#7C3AED;color:#fff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:600;">Ouvrir le média</a>`
+              : `<p style="margin:0;color:#9CA3AF;">Aucun média associé à ce post.</p>`
+          }
+        </div>
+        <div style="padding:16px 24px;border-top:1px solid #1F2937;color:#6B7280;font-size:12px;">
+          Envoyé par Studiio — studiio.pro
+        </div>
+      </div>
+    </div>`;
+
+  const res = await sendEmail({ to, subject: `📅 ${title}`, html });
+  return res.success
+    ? { success: true }
+    : { success: false, error: res.error || "Echec d'envoi de l'email" };
+}
+
 export async function GET(req: NextRequest) {
   // Security: only allow Vercel Cron (or authenticated manual triggers) to run
   if (!verifyCronSecret(req)) {
@@ -73,7 +130,7 @@ export async function GET(req: NextRequest) {
       console.log('[CRON] force=true — picking first scheduled/draft post, skipping time check');
       const { data: forcePosts, error: forceErr } = await supabase
         .from('scheduled_posts')
-        .select('*, videos:video_id(*)')
+        .select('*, videos:video_id(*), users:user_id(email, name)')
         .in('status', ['scheduled', 'draft'])
         .order('scheduled_date', { ascending: true })
         .order('scheduled_time', { ascending: true })
@@ -141,7 +198,7 @@ export async function GET(req: NextRequest) {
       ? { data: null, error: null }
       : await supabase
           .from('scheduled_posts')
-          .select('*, videos:video_id(*)')
+          .select('*, videos:video_id(*), users:user_id(email, name)')
           .eq('status', 'scheduled')
           .or(`scheduled_date.lt.${latestDate},and(scheduled_date.eq.${latestDate},scheduled_time.lte.${latestTime})`)
           .order('scheduled_date', { ascending: true })
@@ -321,27 +378,60 @@ export async function GET(req: NextRequest) {
         const platformResults: Array<{ platform: string; success: boolean; error?: string }> = [];
 
         for (const platform of (post.platforms || [])) {
-          const account = accounts.find((a: any) => a.platform === platform.toLowerCase());
+          const channel = platform.toLowerCase();
+
+          // ── Canaux SANS compte social ────────────────────────────────
+          // Traites avant la recherche de compte : sinon ils tomberaient sur
+          // « not connected » puis sur le `default` du switch, et le post
+          // partirait en `failed`.
+          if (channel === 'email') {
+            const to = (post as any).users?.email as string | undefined;
+            if (!to) {
+              platformResults.push({ platform, success: false, error: 'Adresse email introuvable' });
+              continue;
+            }
+            const sent = await sendPostByEmail(to, (post as any).users?.name || null, post, videoData);
+            platformResults.push({ platform, success: sent.success, error: sent.error });
+            continue;
+          }
+          if (channel === 'whatsapp' || channel === 'afroboost.com' || channel === 'afroboost') {
+            // Canaux annonces « bientot disponible » : ils ne devraient pas
+            // etre selectionnables, mais un post ancien ou importe pourrait en
+            // porter. On les ignore explicitement plutot que de faire echouer
+            // tout le post.
+            platformResults.push({ platform, success: false, error: `${platform} : canal pas encore disponible` });
+            continue;
+          }
+
+          const account = accounts.find((a: any) => a.platform === channel);
           if (!account) {
             platformResults.push({ platform, success: false, error: `${platform} not connected` });
             continue;
           }
 
           try {
+            // Rafraichissement du token AVANT publication : le cron lisait
+            // `account.access_token` brut, d'ou des echecs sur token expire.
+            // `getValidToken` persiste le token rafraichi et rend l'existant
+            // pour une plateforme non geree. Il THROW en cas d'echec — le
+            // try/catch par plateforme deja present isole la panne.
+            const freshToken = await getValidToken(account.id);
+            const authedAccount = { ...account, access_token: freshToken };
+
             let result: { success: boolean; platformPostId?: string; platformUrl?: string; error?: string };
 
             switch (platform.toLowerCase()) {
               case 'instagram':
-                result = await publishToInstagram(account, videoData, post.caption);
+                result = await publishToInstagram(authedAccount, videoData, post.caption);
                 break;
               case 'facebook':
-                result = await publishToFacebook(account, videoData, post.caption);
+                result = await publishToFacebook(authedAccount, videoData, post.caption);
                 break;
               case 'tiktok':
-                result = await publishToTikTok(account, videoData, post.caption);
+                result = await publishToTikTok(authedAccount, videoData, post.caption);
                 break;
               case 'youtube':
-                result = await publishToYouTube(account, videoData, post.caption);
+                result = await publishToYouTube(authedAccount, videoData, post.caption);
                 break;
               default:
                 result = { success: false, error: `Unsupported platform: ${platform}` };

@@ -56,6 +56,11 @@ const PLATFORMS = [
     icon: Music2,
     color: 'text-slate-900',
     gradient: 'from-slate-500/20 to-slate-600/20',
+    // L'application n'est pas encore auditee par TikTok : l'API impose donc
+    // SELF_ONLY. Les posts partent en brouillon prive, ce qui est le
+    // comportement actuel — on l'annonce plutot que de le laisser surprendre.
+    notice:
+      'Publication publique en attente de validation TikTok — vos posts arrivent en brouillon privé sur votre compte.',
   },
   {
     id: 'facebook',
@@ -511,6 +516,13 @@ export default function SocialPage() {
                     </Badge>
                   ) : null}
                 </div>
+
+                {/* Avertissement propre a la plateforme (ex. validation TikTok) */}
+                {'notice' in platform && platform.notice && (
+                  <div className="mb-3 p-3 bg-amber-900/20 border border-amber-500/30 rounded-lg">
+                    <p className="text-xs text-amber-300">{platform.notice}</p>
+                  </div>
+                )}
 
                 {/* OAuth not configured info */}
                 {!hasOAuth && !isConnected && (

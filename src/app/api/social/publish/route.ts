@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
+import { getValidToken } from '@/lib/social/token-refresh';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 
 // POST /api/social/publish - Publish a video to social platforms
@@ -85,21 +86,29 @@ export async function POST(req: NextRequest) {
         .single();
 
       try {
+        // Rafraichissement du token AVANT publication. `getValidToken` ne
+        // rafraichit que si `expires_at` est proche (buffer 5 min) et persiste
+        // le nouveau token ; pour une plateforme qu'il ne gere pas, il rend le
+        // token existant. Il THROW en cas d'echec : on rattrape ici pour que la
+        // plateforme echoue seule, sans faire tomber les autres.
+        const freshToken = await getValidToken(account.id);
+        const authedAccount = { ...account, access_token: freshToken };
+
         // Platform-specific publishing logic
         let publishResult: { success: boolean; platformPostId?: string; platformUrl?: string; error?: string };
 
         switch (platform) {
           case 'instagram':
-            publishResult = await publishToInstagram(account, video, caption, hashtags);
+            publishResult = await publishToInstagram(authedAccount, video, caption, hashtags);
             break;
           case 'facebook':
-            publishResult = await publishToFacebook(account, video, caption, hashtags);
+            publishResult = await publishToFacebook(authedAccount, video, caption, hashtags);
             break;
           case 'tiktok':
-            publishResult = await publishToTikTok(account, video, caption, hashtags);
+            publishResult = await publishToTikTok(authedAccount, video, caption, hashtags);
             break;
           case 'youtube':
-            publishResult = await publishToYouTube(account, video, caption, hashtags);
+            publishResult = await publishToYouTube(authedAccount, video, caption, hashtags);
             break;
           default:
             publishResult = { success: false, error: `Plateforme non supportee: ${platformName}` };
