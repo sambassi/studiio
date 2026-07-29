@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { getValidToken } from '@/lib/social/token-refresh';
-import { isWhatsAppEnabled, canUseWhatsApp, broadcastWhatsApp, resolveRecipients } from '@/lib/social/whatsapp';
+import { isWhatsAppEnabled, canUseWhatsApp, broadcastWhatsApp, resolveRecipients, formatBroadcastFailures } from '@/lib/social/whatsapp';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 
 // POST /api/social/publish - Publish a video to social platforms
@@ -105,11 +105,17 @@ export async function POST(req: NextRequest) {
         results.push({
           platform: platformName,
           success: bc.success,
-          message:
-            (bc.success
+          // Meme detail que le cron : code et message Meta, plus le numero
+          // reellement vise apres normalisation.
+          message: [
+            bc.success
               ? `WhatsApp : ${bc.sent} envoye(s), ${bc.failed} echec(s).`
-              : `WhatsApp : ${bc.failed} envoi(s) en echec.`) +
-            (bc.truncated > 0 ? ` ${bc.truncated} destinataire(s) ignore(s) (plafond).` : ''),
+              : `WhatsApp : ${bc.failed} envoi(s) en echec.`,
+            formatBroadcastFailures(bc),
+            bc.truncated > 0 ? `${bc.truncated} destinataire(s) ignore(s) (plafond).` : null,
+          ]
+            .filter(Boolean)
+            .join(' '),
         });
         continue;
       }
@@ -253,6 +259,37 @@ export async function POST(req: NextRequest) {
         // l'atteindre. Le canal WhatsApp, qui reussit sans aucun compte
         // social, le rendait declenchable en un appel.
         .eq('user_id', session.user.id);
+    }
+
+    // Echec total : on PERSISTE le detail sur le post, sinon il ne vit que
+    // dans la reponse HTTP et le Calendrier n'affiche rien. Meme forme que le
+    // cron (`cron_publish_results`), pour que l'UI existante le rende sans
+    // modification.
+    if (scheduledPostId && !anySuccess && results.length > 0) {
+      const { data: current } = await supabase
+        .from('scheduled_posts')
+        .select('metadata')
+        .eq('id', scheduledPostId)
+        .eq('user_id', session.user.id)
+        .single();
+
+      if (current) {
+        await supabase
+          .from('scheduled_posts')
+          .update({
+            metadata: {
+              ...(current.metadata || {}),
+              cron_publish_results: results.map((r) => ({
+                platform: r.platform,
+                success: r.success,
+                error: r.message,
+              })),
+              cron_published_at: new Date().toISOString(),
+            },
+          })
+          .eq('id', scheduledPostId)
+          .eq('user_id', session.user.id);
+      }
     }
 
     return NextResponse.json({
