@@ -80,6 +80,11 @@ export async function detectClips(
   }
 
   // Canvas for frame analysis
+  //
+  // Celui-ci reste volontairement en 160x90 FIXE, meme sur une source 9:16 :
+  // il ne sert qu'a comparer les frames entre elles. La deformation est
+  // identique d'une frame a l'autre, donc sans effet sur les differences
+  // mesurees, et aucune de ces images n'est montree a l'utilisateur.
   const canvas = document.createElement('canvas');
   const analysisWidth = 160; // Small for fast analysis
   const analysisHeight = 90;
@@ -88,9 +93,24 @@ export async function detectClips(
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
 
   // Thumbnail canvas (higher res)
+  //
+  // Dimensionne d'apres le RATIO DE LA SOURCE. Il etait fige a 320x180 (16:9),
+  // si bien qu'un rush 9:16 apparaissait ecrase dans la liste des temps forts —
+  // alors que le clip extrait, lui, utilise deja les dimensions natives et
+  // etait donc correct. Seul l'apercu mentait.
+  const THUMB_MAX = 320;
+  const srcW = video.videoWidth || 16;
+  const srcH = video.videoHeight || 9;
   const thumbCanvas = document.createElement('canvas');
-  thumbCanvas.width = 320;
-  thumbCanvas.height = 180;
+  // On contraint la plus GRANDE dimension a THUMB_MAX : une vignette 9:16 ne
+  // doit pas devenir plus haute que large ne l'etait une 16:9.
+  if (srcW >= srcH) {
+    thumbCanvas.width = THUMB_MAX;
+    thumbCanvas.height = Math.max(1, Math.round((THUMB_MAX * srcH) / srcW));
+  } else {
+    thumbCanvas.height = THUMB_MAX;
+    thumbCanvas.width = Math.max(1, Math.round((THUMB_MAX * srcW) / srcH));
+  }
   const thumbCtx = thumbCanvas.getContext('2d')!;
 
   onProgress?.(5, 'Analyse des frames...');
