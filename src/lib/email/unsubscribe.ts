@@ -221,8 +221,12 @@ export async function unsubscribeFooter(email: string): Promise<string> {
  */
 export function appendToHtmlBody(html: string, fragment: string): string {
   if (!fragment) return html;
-  return /<\/body>/i.test(html)
-    ? html.replace(/<\/body>/i, `${fragment}</body>`)
+  // Remplacement par FONCTION : une chaine litterale ferait interpreter `$&`,
+  // "$`", `$'` et `$1` par String.replace. Le pied de page n'en contient pas
+  // aujourd'hui, mais ce helper a l'air generique — le piege serait invisible.
+  // `<\/body\s*>` : l'espace avant `>` est legal en HTML.
+  return /<\/body\s*>/i.test(html)
+    ? html.replace(/<\/body\s*>/i, () => `${fragment}</body>`)
     : `${html}${fragment}`;
 }
 
