@@ -43,9 +43,29 @@ export const MAX_RECIPIENTS = 50;
 
 export { WABA_ID };
 
-/** Le canal est-il utilisable ? Un token vide vaut « non configure ». */
+/** Le canal est-il configure ? Un token vide vaut « non configure ». */
 export function isWhatsAppEnabled(): boolean {
   return !!process.env.STUDIIO_WHATSAPP_TOKEN?.trim();
+}
+
+/**
+ * Le canal est-il utilisable PAR CE COMPTE ?
+ *
+ * DECISION DE PERIMETRE, a connaitre avant d'elargir : le WABA est celui
+ * d'Afroboost. Ouvrir l'envoi a tous les comptes inscrits pose deux problemes
+ * qui ne se resolvent pas par du code defensif :
+ *
+ *  - QUOTA : sans limite de debit ni debit de credits, n'importe qui peut
+ *    declencher des envois en boucle et consommer le quota Meta du compte.
+ *  - CONFORMITE : Meta exige le consentement prealable du destinataire. Un
+ *    tiers ne peut pas l'attester pour des numeros qu'il fournit.
+ *
+ * Le canal est donc reserve au detenteur du compte Meta. L'ouvrir plus
+ * largement suppose un WABA par utilisateur, ou une limite de debit avec
+ * debit de credits et une preuve d'opt-in.
+ */
+export function canUseWhatsApp(email: string | null | undefined): boolean {
+  return isWhatsAppEnabled() && isAdmin(email);
 }
 
 /**

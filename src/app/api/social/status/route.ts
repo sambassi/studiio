@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
-import { isWhatsAppEnabled } from '@/lib/social/whatsapp';
+import { canUseWhatsApp } from '@/lib/social/whatsapp';
 
 // GET /api/social/status - Check REAL connection status for all platforms
 // Only trusts database records (from completed OAuth flows), NOT env vars
@@ -81,7 +81,9 @@ export async function GET(req: NextRequest) {
     // configuration — jamais le token, qui ne doit pas atteindre le navigateur.
     const channels = {
       email: { available: !!process.env.RESEND_API_KEY },
-      whatsapp: { available: isWhatsAppEnabled() },
+      // Booleen calcule pour CE compte : un utilisateur non autorise voit
+      // le canal « bientot disponible », comme s'il n'etait pas configure.
+      whatsapp: { available: canUseWhatsApp(session.user.email) },
       'afroboost.com': { available: false },
     };
 

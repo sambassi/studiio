@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { getValidToken } from '@/lib/social/token-refresh';
-import { isWhatsAppEnabled, broadcastWhatsApp, resolveRecipients } from '@/lib/social/whatsapp';
+import { isWhatsAppEnabled, canUseWhatsApp, broadcastWhatsApp, resolveRecipients } from '@/lib/social/whatsapp';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 
 // POST /api/social/publish - Publish a video to social platforms
@@ -67,8 +67,14 @@ export async function POST(req: NextRequest) {
       // Traites avant la recherche de compte, comme dans le cron : sinon ils
       // tomberaient sur « non connecte » puis sur le `default` du switch.
       if (platform === 'whatsapp') {
-        if (!isWhatsAppEnabled()) {
-          results.push({ platform: platformName, success: false, message: 'WhatsApp : canal pas encore configure.' });
+        if (!canUseWhatsApp(session.user.email)) {
+          results.push({
+            platform: platformName,
+            success: false,
+            message: isWhatsAppEnabled()
+              ? 'WhatsApp : canal reserve au detenteur du compte Meta.'
+              : 'WhatsApp : canal pas encore configure.',
+          });
           continue;
         }
         // `metadata.whatsappTo` du post si on en a un ; sinon le numero
@@ -238,7 +244,15 @@ export async function POST(req: NextRequest) {
           status: 'published',
           published_at: new Date().toISOString(),
         })
-        .eq('id', scheduledPostId);
+        .eq('id', scheduledPostId)
+        // Filtre de propriete, meme motif que la lecture plus haut.
+        // Sans lui, un compte inscrit pouvait marquer « publie » le post d'un
+        // AUTRE compte : le cron ne ramasse que les `scheduled`, la victime ne
+        // publiait donc jamais. Le defaut preexistait, mais il fallait un
+        // compte OAuth connecte ET une publication reelle reussie pour
+        // l'atteindre. Le canal WhatsApp, qui reussit sans aucun compte
+        // social, le rendait declenchable en un appel.
+        .eq('user_id', session.user.id);
     }
 
     return NextResponse.json({

@@ -9,7 +9,7 @@ import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 import { downloadMediaToFile, downloadMediaToBuffer } from '@/lib/storage/fetch-media';
 import { getValidToken } from '@/lib/social/token-refresh';
 import { sendEmail } from '@/lib/email/resend';
-import { isWhatsAppEnabled, broadcastWhatsApp, resolveRecipients } from '@/lib/social/whatsapp';
+import { isWhatsAppEnabled, canUseWhatsApp, broadcastWhatsApp, resolveRecipients } from '@/lib/social/whatsapp';
 
 const execFileAsync = promisify(execFile);
 
@@ -436,8 +436,15 @@ export async function GET(req: NextRequest) {
           // Actif seulement si STUDIIO_WHATSAPP_TOKEN est defini ; sinon le
           // canal reste « bientot disponible » et l'echec est explicite.
           if (channel === 'whatsapp') {
-            if (!isWhatsAppEnabled()) {
-              platformResults.push({ platform, success: false, error: 'WhatsApp : canal pas encore configure' });
+            const waOwner = (post as any).users?.email as string | undefined;
+            if (!canUseWhatsApp(waOwner)) {
+              platformResults.push({
+                platform,
+                success: false,
+                error: isWhatsAppEnabled()
+                  ? 'WhatsApp : canal reserve au detenteur du compte Meta'
+                  : 'WhatsApp : canal pas encore configure',
+              });
               continue;
             }
             const recipients = resolveRecipients(post.metadata, {
