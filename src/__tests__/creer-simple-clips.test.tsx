@@ -156,12 +156,60 @@ describe('Temps forts — découpe d’un extrait du rush', () => {
     expect(handler).toMatch(/const clip = clips\[0\]/);
     // `applyRush` est le point unique : il met à jour l'aperçu, active la
     // séquence et fixe sa durée. Un `setRushUrl` direct sauterait tout cela.
-    expect(handler).toMatch(/void applyRush\(clip\.url, clip\.name\)/);
+    expect(handler).toMatch(/void applyRush\(clip\.url, clip\.name, true\)/);
   });
 
   it('remonte un échec partiel d’extraction à l’utilisateur', () => {
-    // Le message du modal disparaît avec lui : sans cette remontée, une
-    // extraction interrompue passerait pour un succès.
+    // En cas d'échec le modal RESTE ouvert sur son propre encart ; ce message
+    // prend le relais une fois qu'il est fermé, sans quoi l'échec ne
+    // laisserait aucune trace.
     expect(wizardSource).toMatch(/if \(failure\) setError\(failure\)/);
+    expect(wizardSource).toMatch(/if \(!failure\) setClipSource\(null\)/);
+  });
+
+  it('n’impose pas un extrait quand le rush a été retiré entre-temps', () => {
+    // « Interrompre » ferme le modal immédiatement ; l'utilisateur pouvait
+    // alors supprimer le rush et le voir revenir quand les clips déjà
+    // téléversés étaient remontés.
+    const handler = wizardSource.slice(
+      wizardSource.indexOf('onExtracted={(clips, failure)'),
+      wizardSource.indexOf('void applyRush(clip.url, clip.name, true)'),
+    );
+    expect(handler).toMatch(/if \(!rushUrl\) \{/);
+  });
+
+  it('survit au changement d’étape pendant l’extraction', () => {
+    // Monté dans `{step === S.style && …}`, le modal se démontait sans
+    // interrompre sa boucle : elle continuait à téléverser puis remplaçait le
+    // rush alors que l'utilisateur était deux étapes plus loin.
+    const styleStep = wizardSource.slice(
+      wizardSource.indexOf('{step === S.style &&'),
+      wizardSource.indexOf('{step === S.audio &&'),
+    );
+    expect(styleStep).not.toContain('<ClipDetectorModal');
+    expect(wizardSource).toContain('<ClipDetectorModal');
+  });
+
+  it('ne relance pas la détection sur un extrait — elle ne peut qu’échouer', () => {
+    // Un WebM `MediaRecorder` n'a pas de durée dans son en-tête, et
+    // `detectClips` abandonne sur une durée non finie (clip-detector.ts) en
+    // affichant « la vidéo est peut-être trop courte ou illisible ».
+    expect(wizardSource).toMatch(/\{rushUrl && !rushIsClip && \(/);
+    expect(wizardSource).toMatch(/void applyRush\(clip\.url, clip\.name, true\)/);
+  });
+
+  it('mesure la durée d’un extrait malgré l’en-tête WebM sans durée', () => {
+    // C'est LE bug de #224 : `duration === Infinity` renvoyait `null`, donc
+    // la durée de repli pour tout extrait — image figée ou clip tronqué.
+    const probe = wizardSource.slice(
+      wizardSource.indexOf('function probeRushDuration'),
+      wizardSource.indexOf('* Les 4 sequences'),
+    );
+    // Le rattrapage : seek au-delà de la fin, puis relecture de la durée.
+    expect(probe).toMatch(/vid\.currentTime = 1e101/);
+    expect(probe).toMatch(/Number\.isFinite\(vid\.duration\) \? vid\.duration : vid\.currentTime/);
+    // …tenté UNIQUEMENT sur une durée non finie : un MP4 normal reste mesuré
+    // sur son seul en-tête, sans télécharger le fichier entier.
+    expect(probe).toMatch(/if \(Number\.isFinite\(d\)\) \{\s*finish\(d\);\s*return;/);
   });
 });

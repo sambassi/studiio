@@ -162,8 +162,17 @@ const RUSH_SECONDS = { fallback: 6, min: 1, max: 10 } as const;
  * rapatrie pour cette seule mesure. Le delai de garde evite qu'un fichier dont
  * l'entete n'arrive jamais (atome `moov` en fin de fichier sur un stockage sans
  * requetes de plage) laisse la promesse pendante et bloque le bouton.
+ *
+ * ⚠️ Cas du WebM produit par `MediaRecorder` — c'est-a-dire TOUT extrait rendu
+ * par « Temps forts » (`extractClip`, clip-detector.ts) : son en-tete EBML ne
+ * porte aucune duree, et Chrome renvoie donc `Infinity`. Sans le rattrapage
+ * ci-dessous, chaque clip retombait sur la duree par defaut : un temps fort de
+ * 3 s laissait 3 s d'image figee, un temps fort de 12 s etait ampute de moitie.
+ * Le contournement est celui, connu, du seek au-dela de la fin : le decodeur
+ * lit alors le dernier bloc et publie la vraie duree. Il n'est tente QUE sur
+ * une duree non finie — un MP4 normal reste mesure sur son seul en-tete.
  */
-function probeRushDuration(url: string, timeoutMs = 8000): Promise<number | null> {
+function probeRushDuration(url: string, timeoutMs = 15000): Promise<number | null> {
   return new Promise((resolve) => {
     const vid = document.createElement('video');
     let settled = false;
@@ -173,7 +182,7 @@ function probeRushDuration(url: string, timeoutMs = 8000): Promise<number | null
       clearTimeout(timer);
       vid.removeAttribute('src');
       vid.load();
-      resolve(value);
+      resolve(value && value > 0 ? value : null);
     };
     const timer = setTimeout(() => finish(null), timeoutMs);
     vid.preload = 'metadata';
@@ -183,7 +192,25 @@ function probeRushDuration(url: string, timeoutMs = 8000): Promise<number | null
     }
     vid.onloadedmetadata = () => {
       const d = vid.duration;
-      finish(Number.isFinite(d) && d > 0 ? d : null);
+      if (Number.isFinite(d)) {
+        finish(d);
+        return;
+      }
+      // Duree absente de l'en-tete : on force le decodeur a atteindre la fin.
+      // Selon les moteurs, la vraie valeur apparait ensuite dans `duration`
+      // (Chrome) ou dans `currentTime`, ramene a la fin reelle du media.
+      vid.onseeked = () => {
+        const after = Number.isFinite(vid.duration) ? vid.duration : vid.currentTime;
+        finish(Number.isFinite(after) ? after : null);
+      };
+      vid.ontimeupdate = () => {
+        if (Number.isFinite(vid.duration)) finish(vid.duration);
+      };
+      try {
+        vid.currentTime = 1e101;
+      } catch {
+        finish(null);
+      }
     };
     vid.onerror = () => finish(null);
     vid.src = url;
@@ -695,6 +722,13 @@ export default function AssistantWizard() {
   const [rushName, setRushName] = useState('');
   const [rushLibOpen, setRushLibOpen] = useState(false);
   const [rushLoading, setRushLoading] = useState(false);
+  // Le rush courant est-il DEJA un extrait produit par « Temps forts » ?
+  // `detectClips` abandonne sur une duree non finie (clip-detector.ts) — or
+  // c'est exactement ce que renvoie un WebM `MediaRecorder`. Relancer la
+  // detection sur un extrait ne pouvait donc qu'echouer, sur un message
+  // trompeur (« la video est peut-etre trop courte ou illisible »).
+  const [rushIsClip, setRushIsClip] = useState(false);
+  const rushRunIdRef = useRef(0);
   // Rush soumis a la detection des temps forts. C'est l'IDENTITE de cet objet
   // qui pilote (re)lancement et fermeture du modal — meme contrat que
   // /dashboard/media, qui l'utilise deja ainsi.
@@ -827,13 +861,19 @@ export default function AssistantWizard() {
    * liste… et absent du montage. Les deux vont donc ensemble, ici, en un seul
    * point.
    */
-  const applyRush = async (url: string, name: string) => {
+  const applyRush = async (url: string, name: string, isClip = false) => {
+    // Jeton d'import : deux imports rapproches se resolvent dans l'ordre de
+    // leur SONDE, pas de leur appel. Sans ce garde, le rush affiche pourrait
+    // porter la duree de celui qu'il vient de remplacer.
+    const runId = ++rushRunIdRef.current;
     setRushUrl(url);
     setRushName(name);
+    setRushIsClip(isClip);
     setSequences((prev) => prev.map((s) => (s.key === 'video' ? { ...s, enabled: true } : s)));
     setRushLoading(true);
     try {
       const probed = await probeRushDuration(url);
+      if (rushRunIdRef.current !== runId) return;
       const seconds = probed
         ? Math.min(Math.max(Math.round(probed), RUSH_SECONDS.min), RUSH_SECONDS.max)
         : RUSH_SECONDS.fallback;
@@ -842,14 +882,19 @@ export default function AssistantWizard() {
         `[Assistant] Rush importé — durée source ${probed ? probed.toFixed(1) + 's' : 'illisible'}, séquence vidéo ${seconds}s`,
       );
     } finally {
-      setRushLoading(false);
+      if (rushRunIdRef.current === runId) setRushLoading(false);
     }
   };
 
   /** Retrait du rush : la sequence video repart masquee et a duree nulle. */
   const clearRush = () => {
+    // Invalide toute sonde en vol : sans cela elle reposerait une duree sur
+    // une sequence que l'utilisateur vient de retirer.
+    rushRunIdRef.current++;
+    setRushLoading(false);
     setRushUrl(null);
     setRushName('');
+    setRushIsClip(false);
     setVideoDuration(0);
     setSequences((prev) => prev.map((s) => (s.key === 'video' ? { ...s, enabled: false } : s)));
   };
@@ -1030,7 +1075,13 @@ export default function AssistantWizard() {
         // Rush : `drawVideoSeq` le cadre en « cover » (echelle uniforme
         // `max(w/srcW, h/srcH)`), donc il recadre mais n'etire JAMAIS — le
         // ratio de la source est preserve quel que soit le format de sortie.
-        videoUrl: rushUrl || undefined,
+        //
+        // Conditionne a la sequence : un rush transmis alors que la sequence
+        // « Video » est masquee etait quand meme telecharge et decode, et sa
+        // seule presence fait basculer le compositeur en rendu TEMPS REEL
+        // (`hasRushAudio = !!videoEl`) — dix fois plus lent, pour une video
+        // qui n'apparait nulle part dans le montage.
+        videoUrl: seqDuration('video') > 0 ? rushUrl || undefined : undefined,
         // Une sequence desactivee a une duree nulle : c'est ainsi que le
         // compositeur l'exclut (conditions d'inclusion), et le Calendrier la
         // filtre pareil (`dur > 0`).
@@ -1125,7 +1176,12 @@ export default function AssistantWizard() {
         //
         // `hasAudio` reste vrai meme si l'URL n'est pas persistable : le son
         // est de toute facon EMBARQUE dans le fichier rendu.
-        hasAudio: !!(musicUrl || voiceUrl),
+        //
+        // Le rush compte lui aussi : il porte sa propre piste, que le
+        // compositeur route et embarque dans le fichier
+        // (`hasRushAudio = !!videoEl`). L'omettre faisait proposer par le
+        // Calendrier « Ajouter du son » sur un montage qui en avait deja.
+        hasAudio: !!(musicUrl || voiceUrl || (rushUrl && seqDuration('video') > 0)),
         // Les URL `blob:` ne survivent pas au rechargement de la page. Le
         // panneau audio televerse normalement les pistes et renvoie une URL
         // publique, mais il retombe sur un blob local si le televersement de
@@ -1137,7 +1193,13 @@ export default function AssistantWizard() {
         // meme sous `rushUrls` — c'est le champ que le Calendrier relit pour
         // regenerer (`videoUrl: meta.rushUrls?.[0]`). Sans lui, une
         // regeneration produirait le meme montage AMPUTE de sa sequence video.
-        rushUrls: persistableUrl(rushUrl) ? [persistableUrl(rushUrl)!] : undefined,
+        // Meme condition que `videoUrl` ci-dessus : un rush persiste alors que
+        // sa sequence est masquee ferait re-telecharger et re-decoder le
+        // fichier a chaque regeneration depuis le Calendrier, en pure perte.
+        rushUrls:
+          seqDuration('video') > 0 && persistableUrl(rushUrl)
+            ? [persistableUrl(rushUrl)!]
+            : undefined,
         renderedVideoUrl: composed.url,
         thumbnailUrl: composed.thumbnailUrl || undefined,
         composerVersion: composed.composerVersion || CURRENT_COMPOSER_VERSION,
@@ -1553,13 +1615,13 @@ export default function AssistantWizard() {
                                 )}
                                 {rushUrl ? 'Changer' : 'Importer'}
                               </button>
-                              {rushUrl && (
+                              {rushUrl && !rushIsClip && (
                                 <button
                                   type="button"
                                   onClick={() => setClipSource({ url: rushUrl, name: rushName || 'rush' })}
                                   disabled={rushLoading}
-                                  title="Détecter les temps forts et n’en garder qu’un extrait"
-                                  aria-label="Détecter les temps forts du rush"
+                                  title="Découper les temps forts du rush. Le premier extrait devient la séquence Vidéo ; les autres restent dans la médiathèque."
+                                  aria-label="Découper les temps forts du rush"
                                   className="flex items-center gap-1 rounded-lg bg-gray-800 hover:bg-gray-700 px-2 py-1 text-[10px] font-medium text-gray-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
                                 >
                                   <Sparkles className="w-3 h-3" />
@@ -1635,28 +1697,6 @@ export default function AssistantWizard() {
                     onClose={() => setRushLibOpen(false)}
                     mediaType="video"
                     onSelect={(url, name) => { void applyRush(url, name); }}
-                  />
-                  {/* Temps forts — le modal est reutilise TEL QUEL depuis
-                      /dashboard/media. Il decoupe, televerse, puis rend les
-                      clips ; on retient le premier comme nouveau rush. */}
-                  <ClipDetectorModal
-                    isOpen={clipSource !== null}
-                    source={clipSource}
-                    onClose={() => setClipSource(null)}
-                    onExtracted={(clips, failure) => {
-                      // `failure` = succes partiel ou interruption. Le message
-                      // du modal disparait avec lui : sans cette remontee,
-                      // l'utilisateur ne verrait aucune trace de l'echec.
-                      if (failure) setError(failure);
-                      const clip = clips[0];
-                      if (!clip) return;
-                      // Le clip DEVIENT le rush : c'est lui qui part au
-                      // compositeur et s'affiche dans l'apercu. Les autres
-                      // extraits restent dans la mediatheque, accessibles via
-                      // « Changer ».
-                      void applyRush(clip.url, clip.name);
-                      if (!failure) setClipSource(null);
-                    }}
                   />
                 </div>
 
@@ -1962,6 +2002,42 @@ export default function AssistantWizard() {
           rushUrl={rushUrl}
         />
       </div>
+
+      {/* Temps forts — le modal est reutilise TEL QUEL depuis /dashboard/media.
+          Il decoupe, televerse, puis rend les clips ; on retient le premier
+          comme nouveau rush.
+
+          Monte a la RACINE, et non dans l'etape Style : demonte, il
+          disparaissait de l'ecran sans interrompre sa boucle d'extraction, qui
+          finissait par remplacer le rush alors que l'utilisateur etait deja
+          deux etapes plus loin. A la racine, il reste visible et sous son
+          controle — la fermeture passe par son propre garde-fou. */}
+      <ClipDetectorModal
+        isOpen={clipSource !== null}
+        source={clipSource}
+        onClose={() => setClipSource(null)}
+        onExtracted={(clips, failure) => {
+          // `failure` = succes partiel ou interruption. Le modal reste alors
+          // ouvert sur son propre encart d'erreur ; ce message-ci prend le
+          // relais une fois qu'il est ferme, sans quoi l'echec ne laisserait
+          // aucune trace.
+          if (failure) setError(failure);
+          const clip = clips[0];
+          if (!clip) return;
+          // Plus de rush : l'utilisateur l'a retire pendant l'extraction. Ses
+          // extraits restent dans la mediatheque, mais aucun ne doit revenir
+          // s'imposer dans un montage dont il a justement retire la video.
+          if (!rushUrl) {
+            console.warn('[Assistant] Extraits ignorés — le rush a été retiré entre-temps');
+            return;
+          }
+          // Le clip DEVIENT le rush : c'est lui qui part au compositeur et
+          // s'affiche dans l'apercu. Les autres extraits restent dans la
+          // mediatheque, accessibles via « Changer ».
+          void applyRush(clip.url, clip.name, true);
+          if (!failure) setClipSource(null);
+        }}
+      />
     </div>
   );
 }
