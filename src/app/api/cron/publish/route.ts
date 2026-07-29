@@ -59,6 +59,18 @@ function verifyCronSecret(req: NextRequest): boolean {
 // skipping the time check. CRON_SECRET bearer check is still required.
 
 /**
+ * Canaux qui ne requierent AUCUN compte social ni media publiable.
+ * Ils doivent echapper aux gardes « aucun compte connecte » et « aucun media »
+ * placees avant la boucle, sinon le canal Email — dont tout l'interet est de
+ * fonctionner sans reseau connecte — ne partirait jamais.
+ */
+const NO_ACCOUNT_CHANNELS = ['email', 'whatsapp', 'afroboost.com', 'afroboost'];
+
+function requiresSocialAccount(platforms: string[] | null | undefined): boolean {
+  return (platforms || []).some((p) => !NO_ACCOUNT_CHANNELS.includes(String(p).toLowerCase()));
+}
+
+/**
  * Canal EMAIL — envoie le post a son auteur a l'heure planifiee.
  *
  * Ce canal ne requiert AUCUN compte social : c'est tout son interet. Il
@@ -77,8 +89,15 @@ async function sendPostByEmail(
   const title = post?.title || 'Votre publication';
   const caption = post?.caption || '';
 
-  const esc = (v: string) =>
-    v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // `String(v)` : une metadonnee non-string ferait throw sur .replace.
+  // `"` est indispensable — esc() sert aussi en contexte d'ATTRIBUT
+  // (src="..." / href="..."), ou un guillemet permettrait d'en sortir.
+  const esc = (v: unknown) =>
+    String(v ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
 
   // Style aligne sur src/lib/email/templates.ts (violet #7C3AED / rose #EC4899).
   const html = `
@@ -313,7 +332,8 @@ export async function GET(req: NextRequest) {
           continue;
         }
 
-        if (!accounts || accounts.length === 0) {
+        // La garde ne s'applique qu'aux posts visant un vrai reseau social.
+        if (requiresSocialAccount(post.platforms) && (!accounts || accounts.length === 0)) {
           await supabase
             .from('scheduled_posts')
             .update({ status: 'failed', metadata: { ...post.metadata, error: 'Aucun compte social connecté / No connected social accounts' } })
@@ -335,7 +355,8 @@ export async function GET(req: NextRequest) {
         // Fallback: media_url (which is also set to renderedUrl during scheduling), puis la vidéo brute
         let videoUrl = renderedUrl || post.media_url || video?.video_url;
 
-        if (!videoUrl) {
+        // Idem : un envoi par email reste pertinent sans media (legende seule).
+        if (!videoUrl && requiresSocialAccount(post.platforms)) {
           console.log(`[CRON] FAIL: No video or media URL for post ${post.id}`);
           await supabase
             .from('scheduled_posts')
@@ -390,20 +411,36 @@ export async function GET(req: NextRequest) {
               platformResults.push({ platform, success: false, error: 'Adresse email introuvable' });
               continue;
             }
-            const sent = await sendPostByEmail(to, (post as any).users?.name || null, post, videoData);
-            platformResults.push({ platform, success: sent.success, error: sent.error });
+            // try/catch propre : cette branche est HORS du try par plateforme
+            // situe plus bas. Sans lui, une exception ferait tomber le catch
+            // par POST et perdrait les autres canaux du meme post.
+            try {
+              const sent = await sendPostByEmail(to, (post as any).users?.name || null, post, videoData);
+              platformResults.push({ platform, success: sent.success, error: sent.error });
+            } catch (mailErr) {
+              platformResults.push({
+                platform,
+                success: false,
+                error: mailErr instanceof Error ? mailErr.message : "Echec d'envoi de l'email",
+              });
+            }
             continue;
           }
           if (channel === 'whatsapp' || channel === 'afroboost.com' || channel === 'afroboost') {
-            // Canaux annonces « bientot disponible » : ils ne devraient pas
-            // etre selectionnables, mais un post ancien ou importe pourrait en
-            // porter. On les ignore explicitement plutot que de faire echouer
-            // tout le post.
+            // Canaux annonces « bientot disponible » : non selectionnables,
+            // mais un post ancien ou importe pourrait en porter. On les marque
+            // en echec EXPLICITE, avec un motif lisible, plutot que de les
+            // laisser tomber dans le `default` du switch. Un post qui ne
+            // viserait QUE ces canaux finira donc en `failed` — c'est correct,
+            // rien n'a ete publie.
             platformResults.push({ platform, success: false, error: `${platform} : canal pas encore disponible` });
             continue;
           }
 
-          const account = accounts.find((a: any) => a.platform === channel);
+          //  peut etre null depuis que la garde amont ne s'applique
+          // plus aux canaux sans compte : un post Email + Instagram sur un
+          // compte sans reseau connecte atteint desormais cette ligne.
+          const account = accounts?.find((a: any) => a.platform === channel);
           if (!account) {
             platformResults.push({ platform, success: false, error: `${platform} not connected` });
             continue;
@@ -415,7 +452,26 @@ export async function GET(req: NextRequest) {
             // `getValidToken` persiste le token rafraichi et rend l'existant
             // pour une plateforme non geree. Il THROW en cas d'echec — le
             // try/catch par plateforme deja present isole la panne.
-            const freshToken = await getValidToken(account.id);
+            // DEFAULT SAFE : si le refresh echoue, on publie avec le token
+            // STOCKE, exactement comme avant ce changement. Laisser le throw
+            // remonter empecherait la tentative alors qu'elle reussissait.
+            //
+            // Le cas Meta l'impose : le callback ecrit `expires_at` a +60 jours
+            // alors qu'un Page Access Token n'expire pas. Passe ce delai, chaque
+            // publication IG/FB declencherait `refreshMetaToken`, qui echange un
+            // PAGE token via fb_exchange_token — au mieux une erreur, au pire un
+            // USER token persiste a la place du page token, cassant IG/FB
+            // jusqu'a reconnexion. Le repli neutralise ce risque tout en gardant
+            // le benefice sur YouTube et TikTok, qui ont un vrai refresh_token.
+            let freshToken = account.access_token;
+            try {
+              freshToken = await getValidToken(account.id);
+            } catch (refreshErr) {
+              console.warn(
+                `[publish] Refresh token echoue pour ${platform}, on garde le token stocke:`,
+                refreshErr instanceof Error ? refreshErr.message : refreshErr,
+              );
+            }
             const authedAccount = { ...account, access_token: freshToken };
 
             let result: { success: boolean; platformPostId?: string; platformUrl?: string; error?: string };

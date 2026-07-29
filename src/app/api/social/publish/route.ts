@@ -91,7 +91,26 @@ export async function POST(req: NextRequest) {
         // le nouveau token ; pour une plateforme qu'il ne gere pas, il rend le
         // token existant. Il THROW en cas d'echec : on rattrape ici pour que la
         // plateforme echoue seule, sans faire tomber les autres.
-        const freshToken = await getValidToken(account.id);
+        // DEFAULT SAFE : si le refresh echoue, on publie avec le token
+        // STOCKE, exactement comme avant ce changement. Laisser le throw
+        // remonter empecherait la tentative alors qu'elle reussissait.
+        //
+        // Le cas Meta l'impose : le callback ecrit `expires_at` a +60 jours
+        // alors qu'un Page Access Token n'expire pas. Passe ce delai, chaque
+        // publication IG/FB declencherait `refreshMetaToken`, qui echange un
+        // PAGE token via fb_exchange_token — au mieux une erreur, au pire un
+        // USER token persiste a la place du page token, cassant IG/FB
+        // jusqu'a reconnexion. Le repli neutralise ce risque tout en gardant
+        // le benefice sur YouTube et TikTok, qui ont un vrai refresh_token.
+        let freshToken = account.access_token;
+        try {
+          freshToken = await getValidToken(account.id);
+        } catch (refreshErr) {
+          console.warn(
+            `[publish] Refresh token echoue pour ${platform}, on garde le token stocke:`,
+            refreshErr instanceof Error ? refreshErr.message : refreshErr,
+          );
+        }
         const authedAccount = { ...account, access_token: freshToken };
 
         // Platform-specific publishing logic
