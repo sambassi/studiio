@@ -19,10 +19,13 @@ import {
   ChevronUp,
   ChevronDown,
   Music,
+  Film,
+  Trash2,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
 import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
 import { AudioStudioPanel } from '@/components/creer/AudioStudioPanel';
+import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import { CardIcon } from '@/components/ui/CardIcon';
 import { useBranding, NEUTRAL_BRANDING } from '@/lib/hooks/useBranding';
 import { preRenderCardIcons } from '@/lib/icons/prerender';
@@ -133,9 +136,59 @@ const DARK = '#0A0A0F';
  * Durées des séquences, en secondes. Elles sont passées au compositeur ET
  * écrites dans `metadata.sequences` : une seule source, donc pas de dérive
  * entre la vidéo produite et ce que le Calendrier croit savoir.
- * `video: 0` — il n'y a jamais de rush dans ce parcours.
+ * `video: 0` — valeur de DEPART : tant qu'aucun rush n'est importé, la
+ * sequence video est masquee et sa duree nulle. L'import d'un rush la fixe
+ * (voir `applyRush`).
  */
 const SEQ = { intro: 4, cards: 6, video: 0, cta: 4 } as const;
+
+/**
+ * Duree de la sequence video, en secondes, quand un rush vient d'etre importe.
+ *
+ * On prend la duree REELLE du rush, plafonnee : un rush d'une minute ne doit
+ * pas transformer un reel de 14 s en montage d'une minute. En dessous du
+ * plafond, la sequence dure exactement le rush — sinon le compositeur fige la
+ * derniere image pendant le reste de la sequence.
+ * Ce n'est qu'une valeur de depart : le champ « Video » du panneau audio
+ * permet ensuite de monter jusqu'a 30 s.
+ */
+const RUSH_SECONDS = { fallback: 6, min: 1, max: 10 } as const;
+
+/**
+ * Duree d'un rush, lue dans ses metadonnees — `null` si elle est illisible.
+ *
+ * `preload='metadata'` ne telecharge que l'entete : un rush de 40 Mo n'est pas
+ * rapatrie pour cette seule mesure. Le delai de garde evite qu'un fichier dont
+ * l'entete n'arrive jamais (atome `moov` en fin de fichier sur un stockage sans
+ * requetes de plage) laisse la promesse pendante et bloque le bouton.
+ */
+function probeRushDuration(url: string, timeoutMs = 8000): Promise<number | null> {
+  return new Promise((resolve) => {
+    const vid = document.createElement('video');
+    let settled = false;
+    const finish = (value: number | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      vid.removeAttribute('src');
+      vid.load();
+      resolve(value);
+    };
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    vid.preload = 'metadata';
+    vid.muted = true;
+    if (!url.startsWith('blob:') && !url.startsWith('/') && !url.startsWith(location.origin + '/')) {
+      vid.crossOrigin = 'anonymous';
+    }
+    vid.onloadedmetadata = () => {
+      const d = vid.duration;
+      finish(Number.isFinite(d) && d > 0 ? d : null);
+    };
+    vid.onerror = () => finish(null);
+    vid.src = url;
+    vid.load();
+  });
+}
 
 /**
  * Les 4 sequences, dans leur ordre par defaut — le meme que celui du
@@ -148,7 +201,9 @@ type SeqKey = 'intro' | 'cards' | 'video' | 'cta';
 const SEQ_META: Record<SeqKey, { label: string; hint: string }> = {
   intro: { label: 'Titre', hint: 'Titre et sous-titre' },
   cards: { label: 'Cartes', hint: 'Les points cles' },
-  video: { label: 'Vidéo', hint: 'Aucun rush dans ce parcours' },
+  // Le libelle de la sequence video depend du rush importe : il est calcule au
+  // rendu (nom du fichier une fois importe), ce hint est l'etat « vide ».
+  video: { label: 'Vidéo', hint: 'Importez un rush pour l’activer' },
   cta: { label: 'CTA', hint: "Appel a l'action" },
 };
 
@@ -582,6 +637,15 @@ export default function AssistantWizard() {
   const [sequences, setSequences] = useState(DEFAULT_SEQUENCES);
   const [dragKey, setDragKey] = useState<SeqKey | null>(null);
 
+  // ── Rush video ───────────────────────────────────────────────────────
+  // Le compositeur accepte deja `videoUrl` : il suffit de le lui passer. Sans
+  // rush, `rushUrl` reste nul et la sequence « Video » demeure masquee —
+  // comportement strictement identique a celui d'avant cet ajout.
+  const [rushUrl, setRushUrl] = useState<string | null>(null);
+  const [rushName, setRushName] = useState('');
+  const [rushLibOpen, setRushLibOpen] = useState(false);
+  const [rushLoading, setRushLoading] = useState(false);
+
   // ── Audio ────────────────────────────────────────────────────────────
   // Le compositeur accepte deja `musicUrl` / `voiceUrl` : il suffit de les
   // lui passer. Sans audio il rend en mode « fast » (~10x temps reel) ; des
@@ -699,6 +763,41 @@ export default function AssistantWizard() {
       // intro d'1 s et le Calendrier afficherait une barre de progression NaN.
       return next.some((s) => s.enabled) ? next : prev;
     });
+  };
+
+  /**
+   * Rush importe : la sequence « Video » s'active et prend une duree utile.
+   *
+   * Sans cette duree la sequence resterait a zero, et le compositeur l'exclut
+   * a zero (`videoDuration > 0`) : le rush serait televerse, affiche dans la
+   * liste… et absent du montage. Les deux vont donc ensemble, ici, en un seul
+   * point.
+   */
+  const applyRush = async (url: string, name: string) => {
+    setRushUrl(url);
+    setRushName(name);
+    setSequences((prev) => prev.map((s) => (s.key === 'video' ? { ...s, enabled: true } : s)));
+    setRushLoading(true);
+    try {
+      const probed = await probeRushDuration(url);
+      const seconds = probed
+        ? Math.min(Math.max(Math.round(probed), RUSH_SECONDS.min), RUSH_SECONDS.max)
+        : RUSH_SECONDS.fallback;
+      setVideoDuration(seconds);
+      console.log(
+        `[Assistant] Rush importé — durée source ${probed ? probed.toFixed(1) + 's' : 'illisible'}, séquence vidéo ${seconds}s`,
+      );
+    } finally {
+      setRushLoading(false);
+    }
+  };
+
+  /** Retrait du rush : la sequence video repart masquee et a duree nulle. */
+  const clearRush = () => {
+    setRushUrl(null);
+    setRushName('');
+    setVideoDuration(0);
+    setSequences((prev) => prev.map((s) => (s.key === 'video' ? { ...s, enabled: false } : s)));
   };
 
   const theme = THEMES.find((t) => t.id === themeId) ?? THEMES[0];
@@ -874,6 +973,10 @@ export default function AssistantWizard() {
         title: (generated.title || 'Infographie').toUpperCase(),
         subtitle: generated.subtitle || undefined,
         cards: composerCards,
+        // Rush : `drawVideoSeq` le cadre en « cover » (echelle uniforme
+        // `max(w/srcW, h/srcH)`), donc il recadre mais n'etire JAMAIS — le
+        // ratio de la source est preserve quel que soit le format de sortie.
+        videoUrl: rushUrl || undefined,
         // Une sequence desactivee a une duree nulle : c'est ainsi que le
         // compositeur l'exclut (conditions d'inclusion), et le Calendrier la
         // filtre pareil (`dur > 0`).
@@ -976,6 +1079,11 @@ export default function AssistantWizard() {
         // reference morte dans le post.
         musicUrl: persistableUrl(musicUrl),
         voiceUrl: persistableUrl(voiceUrl),
+        // Le rush est deja INCRUSTE dans le montage ; on le persiste quand
+        // meme sous `rushUrls` — c'est le champ que le Calendrier relit pour
+        // regenerer (`videoUrl: meta.rushUrls?.[0]`). Sans lui, une
+        // regeneration produirait le meme montage AMPUTE de sa sequence video.
+        rushUrls: persistableUrl(rushUrl) ? [persistableUrl(rushUrl)!] : undefined,
         renderedVideoUrl: composed.url,
         thumbnailUrl: composed.thumbnailUrl || undefined,
         composerVersion: composed.composerVersion || CURRENT_COMPOSER_VERSION,
@@ -1319,10 +1427,14 @@ export default function AssistantWizard() {
                       const meta = SEQ_META[seq.key];
                       const position = activeOrder.indexOf(seq.key);
                       const isVideo = seq.key === 'video';
+                      // Seule une sequence video SANS rush reste inerte. Des
+                      // qu'un rush est importe, elle se deplace, se masque et
+                      // s'affiche comme les trois autres.
+                      const inert = isVideo && !rushUrl;
                       return (
                         <div
                           key={seq.key}
-                          draggable={!isVideo}
+                          draggable={!inert}
                           onDragStart={(e) => {
                             // Firefox n'initie aucun drag HTML5 sans donnees.
                             e.dataTransfer.setData('text/plain', seq.key);
@@ -1343,10 +1455,10 @@ export default function AssistantWizard() {
                             seq.enabled
                               ? 'bg-gray-900/60 ring-1 ring-purple-500/20'
                               : 'bg-gray-900/30 opacity-50'
-                          } ${isVideo ? 'cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'}`}
+                          } ${inert ? 'cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'}`}
                         >
                           <GripVertical
-                            className={`w-4 h-4 flex-shrink-0 ${isVideo ? 'text-gray-700' : 'text-gray-500'}`}
+                            className={`w-4 h-4 flex-shrink-0 ${inert ? 'text-gray-700' : 'text-gray-500'}`}
                           />
                           <span
                             className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
@@ -1360,18 +1472,53 @@ export default function AssistantWizard() {
                           </span>
                           <div className="min-w-0 flex-1">
                             <div className="text-sm font-medium truncate">{meta.label}</div>
-                            <div className="text-[11px] text-gray-500 truncate">{meta.hint}</div>
+                            <div className="text-[11px] text-gray-500 truncate" title={isVideo && rushUrl ? rushName : undefined}>
+                              {isVideo && rushUrl ? rushName || 'Rush importé' : meta.hint}
+                            </div>
                           </div>
                           <span className="text-[11px] text-gray-500 flex-shrink-0">
                             {seq.enabled ? `${seqDuration(seq.key)}s` : ''}
                           </span>
+                          {/* Import du rush — la mediatheque sert a la fois de
+                              televersement et de re-selection d'un fichier
+                              deja envoye, comme dans le panneau audio. */}
+                          {isVideo && (
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => setRushLibOpen(true)}
+                                disabled={rushLoading}
+                                title={rushUrl ? 'Remplacer le rush' : 'Importer un rush'}
+                                aria-label={rushUrl ? 'Remplacer le rush' : 'Importer un rush'}
+                                className="flex items-center gap-1 rounded-lg bg-gray-800 hover:bg-gray-700 px-2 py-1 text-[10px] font-medium text-gray-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
+                              >
+                                {rushLoading ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Film className="w-3 h-3" />
+                                )}
+                                {rushUrl ? 'Changer' : 'Importer'}
+                              </button>
+                              {rushUrl && (
+                                <button
+                                  type="button"
+                                  onClick={clearRush}
+                                  title="Retirer le rush"
+                                  aria-label="Retirer le rush"
+                                  className="text-gray-500 hover:text-red-400 transition"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          )}
                           {/* Repli tactile et clavier : le glisser-deposer
                               HTML5 n'existe pas sur mobile. */}
                           <div className="flex flex-col flex-shrink-0">
                             <button
                               type="button"
                               onClick={() => moveSequenceBy(seq.key, -1)}
-                              disabled={isVideo}
+                              disabled={inert}
                               title="Monter"
                               aria-label={`Monter ${meta.label}`}
                               className="text-gray-500 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed leading-none"
@@ -1381,7 +1528,7 @@ export default function AssistantWizard() {
                             <button
                               type="button"
                               onClick={() => moveSequenceBy(seq.key, 1)}
-                              disabled={isVideo}
+                              disabled={inert}
                               title="Descendre"
                               aria-label={`Descendre ${meta.label}`}
                               className="text-gray-500 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed leading-none"
@@ -1392,7 +1539,7 @@ export default function AssistantWizard() {
                           <button
                             type="button"
                             onClick={() => toggleSequence(seq.key)}
-                            disabled={isVideo}
+                            disabled={inert}
                             title={seq.enabled ? 'Masquer' : 'Afficher'}
                             className="flex-shrink-0 text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
                           >
@@ -1406,6 +1553,22 @@ export default function AssistantWizard() {
                       );
                     })}
                   </div>
+                  {rushUrl && (
+                    <p className="text-[11px] text-gray-500 mt-2">
+                      Le rush est intégré au montage à la place qu&apos;occupe la séquence
+                      Vidéo, au ratio de la source. Le rendu se fait alors en temps réel :
+                      comptez la durée du montage.
+                    </p>
+                  )}
+                  {/* Mediatheque — televersement ET re-selection d'un rush deja
+                      envoye. Meme composant que le panneau audio, filtre sur
+                      les videos. */}
+                  <MediaLibrary
+                    isOpen={rushLibOpen}
+                    onClose={() => setRushLibOpen(false)}
+                    mediaType="video"
+                    onSelect={(url, name) => { void applyRush(url, name); }}
+                  />
                 </div>
 
                 <div className="flex justify-between pt-2">
@@ -1459,9 +1622,9 @@ export default function AssistantWizard() {
                   onCardsDurationChange={setCardsDuration}
                   onVideoDurationChange={setVideoDuration}
                   onCtaDurationChange={setCtaDuration}
-                  // L'assistant ne gere pas encore de rush video : la sequence
-                  // « Video » reste donc a zero et masquee.
-                  hasRush={false}
+                  // Sans rush, le champ « durée de la séquence Vidéo » reste
+                  // masqué : il n'y aurait rien à cadencer.
+                  hasRush={!!rushUrl}
                   contentTheme={themeId}
                 />
 
