@@ -9,7 +9,7 @@ import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 import { downloadMediaToFile, downloadMediaToBuffer } from '@/lib/storage/fetch-media';
 import { getValidToken } from '@/lib/social/token-refresh';
 import { sendEmail } from '@/lib/email/resend';
-import { isWhatsAppEnabled, canUseWhatsApp, broadcastWhatsApp, resolveRecipients, MAX_RECIPIENTS } from '@/lib/social/whatsapp';
+import { isWhatsAppEnabled, canUseWhatsApp, broadcastWhatsApp, resolveRecipients, MAX_RECIPIENTS, formatBroadcastFailures } from '@/lib/social/whatsapp';
 import { fetchSubscribers, unsubscribeUrl } from '@/lib/social/subscribers';
 import { isAdmin } from '@/lib/admin';
 
@@ -504,13 +504,18 @@ export async function GET(req: NextRequest) {
               // {{1}}. Tout ecart de nombre/ordre renvoie l'erreur Meta 132018.
               const var1 = String(post.title || post.caption || 'Nouvelle publication').slice(0, 900);
               const bc = await broadcastWhatsApp(recipients, { templateParams: [var1] });
+              // Le detail Meta (code + message + destinataire) est remonte tel
+              // quel : c'est ce qui est persiste dans metadata.cron_publish_results
+              // et affiche par le Calendrier. Un « 1 envoi en echec » seul est
+              // inexploitable sans acces aux logs serveur.
+              const waDetail = formatBroadcastFailures(bc);
               platformResults.push({
                 platform,
                 success: bc.success,
                 // La troncature est signalee : un plafond silencieux ferait
                 // croire a une diffusion complete.
                 error: [
-                  bc.success ? null : `WhatsApp : ${bc.failed} envoi(s) en echec`,
+                  waDetail,
                   bc.truncated > 0 ? `${bc.truncated} destinataire(s) ignore(s) (plafond)` : null,
                 ]
                   .filter(Boolean)

@@ -227,8 +227,11 @@ export async function sendWhatsApp(
       const code = metaError?.code ?? metaError?.error_code;
       const message =
         metaError?.message || metaError?.error_user_msg || `HTTP ${res.status}`;
+      // Le numero est journalise : sans lui, impossible de savoir vers QUI
+      // l'envoi partait reellement — c'est la premiere question au diagnostic
+      // (numero mal normalise ? destinataire hors liste de test ?).
       console.error(
-        `[WhatsApp] Echec envoi — code=${code ?? 'n/a'} message=${message}`,
+        `[WhatsApp] Echec envoi — code=${code ?? 'n/a'} message=${message} to=${to}`,
       );
       return { success: false, error: message, errorCode: typeof code === 'number' ? code : undefined };
     }
@@ -255,7 +258,14 @@ export interface BroadcastResult {
   /** Destinataires ignores par le plafond MAX_RECIPIENTS. */
   truncated: number;
   /** Detail par destinataire, numero normalise pour ne pas fuiter la saisie brute. */
-  results: Array<{ to: string; success: boolean; messageId?: string; error?: string }>;
+  results: Array<{
+    to: string;
+    success: boolean;
+    messageId?: string;
+    error?: string;
+    /** Code Meta, ex. 132018 (parametres) ou 131030 (numero non autorise). */
+    errorCode?: number;
+  }>;
 }
 
 /**
@@ -289,6 +299,7 @@ export async function broadcastWhatsApp(
       success: res.success,
       messageId: res.messageId,
       error: res.error,
+      errorCode: res.errorCode,
     });
     if (res.success) sent++;
     else failed++;
@@ -299,6 +310,33 @@ export async function broadcastWhatsApp(
   }
 
   return { success: sent > 0, sent, failed, truncated, results };
+}
+
+/** Nombre d'echecs detailles conserves — au-dela, on resume. */
+const MAX_DETAILED_FAILURES = 5;
+
+/**
+ * Met en forme les echecs d'une diffusion, pour affichage a l'utilisateur.
+ *
+ * L'UI n'affichait qu'un « 1 envoi(s) en echec » inexploitable : sans le code
+ * ni le message Meta, impossible de distinguer un modele mal parametre (132018)
+ * d'un numero hors liste de test (131030) sans ouvrir les logs serveur.
+ *
+ * Le detail est borne : ces chaines sont persistees dans `metadata`, une
+ * diffusion de 50 numeros ne doit pas y ecrire 50 lignes.
+ */
+export function formatBroadcastFailures(bc: BroadcastResult): string | undefined {
+  const failures = bc.results.filter((r) => !r.success);
+  if (failures.length === 0) return undefined;
+
+  const shown = failures.slice(0, MAX_DETAILED_FAILURES).map((f) => {
+    const code = f.errorCode !== undefined ? `code=${f.errorCode}` : 'code=n/a';
+    return `${code} — ${f.error || 'erreur inconnue'} (to=${f.to})`;
+  });
+
+  const rest = failures.length - shown.length;
+  const suffix = rest > 0 ? ` … et ${rest} autre(s) echec(s)` : '';
+  return `WhatsApp: ${shown.join(' | ')}${suffix}`;
 }
 
 /**

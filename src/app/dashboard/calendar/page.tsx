@@ -2751,7 +2751,7 @@ export default function CalendarPage() {
                             {post.status === 'failed' && (post.metadata?.error || post.metadata?.cron_publish_results) && (
                               <div className="flex items-start gap-1 px-1 py-1 bg-red-900/30 rounded text-[8px] text-red-300 leading-tight">
                                 <AlertTriangle className="w-2.5 h-2.5 flex-shrink-0 mt-0.5" />
-                                <span className="break-all">{post.metadata?.error || post.metadata?.cron_publish_results?.filter((r: any) => !r.success).map((r: any) => `${r.platform}: ${r.error}`).join(' | ')}</span>
+                                <span className="break-words">{post.metadata?.error || post.metadata?.cron_publish_results?.filter((r: any) => !r.success).map((r: any) => `${r.platform}: ${r.error}`).join(' | ')}</span>
                               </div>
                             )}
                           </>
@@ -4080,7 +4080,7 @@ export default function CalendarPage() {
                     </Badge>
                   </div>
                   {fullPreviewPost.status === 'failed' && (fullPreviewPost.metadata?.error || fullPreviewPost.metadata?.cron_publish_results) && (
-                    <p className="text-xs text-red-400">
+                    <p className="text-xs text-red-400 break-words whitespace-pre-wrap">
                       {fullPreviewPost.metadata?.error || fullPreviewPost.metadata?.cron_publish_results?.filter((r: any) => !r.success).map((r: any) => `${r.platform}: ${r.error}`).join(', ')}
                     </p>
                   )}
