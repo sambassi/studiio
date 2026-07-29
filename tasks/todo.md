@@ -2,6 +2,28 @@
 
 _Fichier vivant. Claude y écrit les plans en cours et coche les étapes au fur et à mesure._
 
+## Fait — F2 incrément 1 : page Média + « Temps forts » — 2026-07-29
+
+Objectif : rendre la détection de temps forts d'un rush **découvrable**, en
+couche **non destructive** (aucun fichier de `/dashboard/creer` ni de la
+publication sociale touché).
+
+- [x] Route `/dashboard/media` (`src/app/dashboard/media/page.tsx`) : grille des
+      rushes via `GET /api/media/list?type=video`, upload multi-fichiers via le
+      flux `signed-url` existant, suppression via `/api/media/delete`.
+- [x] Entrée « Média » dans la Sidebar — **ajout pur**, aucune entrée retirée.
+      Icône `Clapperboard` (et non `Film`, déjà surchargé — audit CLAUDE.md pt E).
+      Clé i18n `sidebar.media` ajoutée dans fr / en / de.
+- [x] `src/components/media/ClipDetectorModal.tsx` — composant **propre** à cette
+      page (celui de `/creer` n'a été ni extrait ni partagé, pour qu'une
+      évolution ici ne puisse pas régresser l'éditeur). Réutilise tel quel
+      `detectClips` / `extractClip` de `src/lib/clip-detector.ts`, inchangé.
+      Progression, vignette + score d'intensité + durée, sélection, aperçu,
+      extraction → upload → retour dans la médiathèque.
+- [x] Build vert, `npx tsc --noEmit` sans erreur sur les fichiers ajoutés.
+
+Hors périmètre (incrément 2) : enchaînement « montage auto » des clips extraits.
+
 ## En cours — Rush "vidéo absente" (montage MinIO) — 2026-06-03
 
 État du diagnostic (ordre des pistes éliminées) :
