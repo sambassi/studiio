@@ -17,6 +17,56 @@
 
 export type SequenceKey = 'titre' | 'cartes' | 'video' | 'cta';
 
+// ── Voix HeyGen (voix clonee de l'utilisateur) ────────────────────────────
+//
+// Les voix HeyGen ne sont PAS codees en dur : elles sont listees a la volee
+// par `GET /api/tts/heygen`, qui interroge `GET /v3/voices?engine=starfish`
+// cote serveur (la cle API ne quitte jamais le serveur). La voix clonee du
+// compte apparait donc toute seule dans le selecteur, sans rien redeployer.
+//
+// Convention d'identifiant : `heygen-<voice_id>`. C'est ce prefixe — et lui
+// seul — qui route la synthese vers /api/tts/heygen dans edge-tts-client.
+
+/** Prefixe des identifiants de voix HeyGen cote Studiio. */
+export const HEYGEN_VOICE_PREFIX = 'heygen-';
+
+/** Une voix HeyGen exploitable en TTS, au format attendu par le selecteur. */
+export interface HeyGenTtsVoice {
+  /** Identifiant prefixe (`heygen-...`) — c'est lui qui route la synthese. */
+  id: string;
+  name: string;
+  /** Code langue court utilise par le selecteur (FR, EN, ES...). */
+  lang: string;
+  gender: 'Female' | 'Male';
+  flag: string;
+  provider: 'heygen';
+  /** true = voix privee du compte, c'est-a-dire une voix clonee. */
+  cloned: boolean;
+}
+
+/** true si cet identifiant de voix doit passer par HeyGen. */
+export function isHeyGenVoiceId(voiceId: string | undefined | null): boolean {
+  return typeof voiceId === 'string' && voiceId.startsWith(HEYGEN_VOICE_PREFIX);
+}
+
+/**
+ * Voix HeyGen du compte, pour alimenter le selecteur.
+ *
+ * Ne leve jamais : HeyGen est optionnel (cle absente, quota, panne). En cas
+ * d'echec on renvoie une liste vide et le selecteur garde les voix Edge et
+ * OpenAI — aucune regression possible pour un compte sans HeyGen.
+ */
+export async function fetchHeyGenVoices(): Promise<HeyGenTtsVoice[]> {
+  try {
+    const res = await fetch('/api/tts/heygen', { method: 'GET' });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { voices?: HeyGenTtsVoice[] };
+    return Array.isArray(data?.voices) ? data.voices : [];
+  } catch {
+    return [];
+  }
+}
+
 export type VoiceSource = 'tts' | 'record' | null;
 
 export interface SequenceVoice {

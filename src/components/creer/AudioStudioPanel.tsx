@@ -3,7 +3,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Music, Mic, Upload, Trash2, Volume2, VolumeX, Loader2, Play, Pause, Square, Sparkles, Image as ImageIcon, LayoutGrid, Film, Megaphone } from 'lucide-react';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
-import { TTS_VOICES, synthesize } from '@/lib/tts/edge-tts-client';
+import { TTS_VOICES, synthesize, type TtsVoice } from '@/lib/tts/edge-tts-client';
+import { fetchHeyGenVoices, isHeyGenVoiceId } from '@/lib/types/voice';
 
 const VOICE_STORAGE_KEY = 'tts.voiceId';
 const DEFAULT_VOICE_ID = 'fr-FR-DeniseNeural';
@@ -14,7 +15,9 @@ function loadInitialVoiceId(): string {
     const saved = window.localStorage.getItem(VOICE_STORAGE_KEY);
     // Reject anything not in TTS_VOICES (e.g., legacy SpeechSynthesisVoice
     // names from before this lib was wired up). Silent fallback to Denise.
-    if (saved && TTS_VOICES.some((v) => v.id === saved)) return saved;
+    // Les voix HeyGen sont listees a la volee : on les accepte sur leur
+    // prefixe, sinon un rechargement perdrait la voix clonee choisie.
+    if (saved && (isHeyGenVoiceId(saved) || TTS_VOICES.some((v) => v.id === saved))) return saved;
   } catch { /* ignore */ }
   return DEFAULT_VOICE_ID;
 }
@@ -124,6 +127,17 @@ export function AudioStudioPanel({
   const [ttsLoading, setTtsLoading] = useState(false);
   const [ttsError, setTtsError] = useState('');
   const [ttsSuggestLoading, setTtsSuggestLoading] = useState(false);
+  // Voix HeyGen du compte (voix clonee comprise), chargees a la volee.
+  // Echec ou compte sans HeyGen → liste vide, le selecteur ne change pas.
+  const [heygenVoices, setHeygenVoices] = useState<TtsVoice[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchHeyGenVoices().then((voices) => {
+      if (!cancelled) setHeygenVoices(voices);
+    });
+    return () => { cancelled = true; };
+  }, []);
+  const allVoices: TtsVoice[] = [...heygenVoices, ...TTS_VOICES];
   useEffect(() => {
     try { window.localStorage.setItem(VOICE_STORAGE_KEY, selectedVoiceId); } catch { /* ignore */ }
   }, [selectedVoiceId]);
@@ -216,7 +230,7 @@ export function AudioStudioPanel({
     setTtsLoading(true);
     setTtsError('');
     try {
-      const voice = TTS_VOICES.find((v) => v.id === selectedVoiceId);
+      const voice = allVoices.find((v) => v.id === selectedVoiceId);
       const voiceLabel = voice?.name || 'Voix';
 
       // synthesize() handles the full chain: OpenAI (if openai-* id) →
@@ -391,7 +405,7 @@ export function AudioStudioPanel({
         <div className="flex flex-wrap items-center gap-2 mt-2">
           <select value={selectedVoiceId} onChange={(e) => setSelectedVoiceId(e.target.value)}
             className="flex-1 min-w-[140px] rounded-lg bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white">
-            {TTS_VOICES.map((v) => (
+            {allVoices.map((v) => (
               <option key={v.id} value={v.id}>
                 {v.flag} {v.name} ({v.lang}, {v.gender === 'Female' ? 'F' : 'M'})
               </option>
