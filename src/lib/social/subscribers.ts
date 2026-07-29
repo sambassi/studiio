@@ -87,10 +87,60 @@ export async function fetchSubscribers(channel: SubscriberChannel): Promise<stri
 }
 
 /**
+ * Relaie un desabonnement a afroboost, en best-effort.
+ *
+ * POURQUOI BEST-EFFORT
+ * La source de verite du desabonnement est la liste de suppression LOCALE
+ * (`email_suppressions`), ecrite avant cet appel. Si afroboost est hors ligne
+ * ou n'expose pas encore cet endpoint, le desabonnement reste effectif cote
+ * Studiio : on ne doit surtout pas repondre une erreur a Gmail pour autant.
+ *
+ * Ne leve jamais. Renvoie `true` uniquement si afroboost a confirme.
+ */
+export async function notifyAfroboostUnsubscribe(
+  contact: string,
+  channel: SubscriberChannel,
+): Promise<boolean> {
+  const key = process.env.AFROBOOST_LIST_API_KEY?.trim();
+  if (!key) return false;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${listApiUrl()}/unsubscribe`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ channel, contact }),
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      console.warn(`[Subscribers] Relai desabonnement : HTTP ${res.status} (sans effet local)`);
+      return false;
+    }
+    return true;
+  } catch {
+    console.warn('[Subscribers] Relai desabonnement : endpoint injoignable (sans effet local)');
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Lien de desabonnement, derive de l'origine de l'API de listes.
  *
  * Pas de variable d'environnement supplementaire : si le domaine change,
  * `AFROBOOST_LIST_API_URL` suffit a tout deplacer.
+ *
+ * ⚠️ Reserve aux canaux NON email (WhatsApp). Le canal email utilise
+ * `unsubscribeEndpoint()` de `@/lib/email/unsubscribe` : Gmail exige une URL
+ * qui accepte un POST et desabonne reellement, ce que cette page afroboost
+ * ne garantit pas.
  */
 export function unsubscribeUrl(recipient: string): string {
   let origin = 'https://afroboost.com';

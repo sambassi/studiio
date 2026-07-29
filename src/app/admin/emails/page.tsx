@@ -114,6 +114,14 @@ export default function EmailsPage() {
 
       if (!res.ok) throw new Error(t('emails.testEmail.error'));
 
+      // Adresse desabonnee : 200 mais aucun envoi. Annoncer « envoye »
+      // ferait chercher un email qui n'arrivera jamais.
+      const payload = await res.json().catch(() => null);
+      if (payload?.data?.skipped) {
+        showToast(t('emails.bulk.skipped', { skipped: '1' }), 'error');
+        return;
+      }
+
       showToast(t('emails.testEmail.sent'), 'success');
       setTestEmail('');
       setTestSubject('');
@@ -213,6 +221,10 @@ export default function EmailsPage() {
 
       let sentCount = 0;
       let errorCount = 0;
+      // Un destinataire desabonne repond 200 sans email envoye. Le compter
+      // comme « envoye » mentirait a l'admin sur la taille reelle de sa
+      // liste — precisement l'information dont il a besoin.
+      let skippedCount = 0;
 
       // Send emails one by one (to avoid rate limits)
       for (const user of selectedUsers) {
@@ -228,20 +240,26 @@ export default function EmailsPage() {
           });
 
           if (res.ok) {
-            sentCount++;
+            // `skipped` = destinataire desabonne, ni envoi ni echec.
+            const payload = await res.json().catch(() => null);
+            if (payload?.data?.skipped) skippedCount++;
+            else sentCount++;
           } else {
             errorCount++;
           }
         } catch {
           errorCount++;
         }
-        setBulkProgress({ sent: sentCount + errorCount, total: selectedUsers.length });
+        setBulkProgress({ sent: sentCount + skippedCount + errorCount, total: selectedUsers.length });
       }
 
+      const skippedNote = skippedCount > 0
+        ? ` — ${t('emails.bulk.skipped', { skipped: String(skippedCount) })}`
+        : '';
       if (errorCount > 0) {
-        showToast(t('emails.bulk.successPartial', { sent: String(sentCount), errors: String(errorCount) }), sentCount > 0 ? 'success' : 'error');
+        showToast(t('emails.bulk.successPartial', { sent: String(sentCount), errors: String(errorCount) }) + skippedNote, sentCount > 0 ? 'success' : 'error');
       } else {
-        showToast(t('emails.bulk.successAll', { sent: String(sentCount) }), 'success');
+        showToast(t('emails.bulk.successAll', { sent: String(sentCount) }) + skippedNote, 'success');
       }
 
       // Reset

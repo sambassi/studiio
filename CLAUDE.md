@@ -402,6 +402,51 @@ Ne jamais uploader des fichiers video via les routes API normales (limite Vercel
 sendEmailSilent({ to, subject, html }); // pas de await, pas de try/catch
 ```
 
+### Delivrabilite email — RÈGLE ABSOLUE
+
+**Tout email part de `sendEmail()` / `sendEmailSilent()` (`src/lib/email/resend.ts`). Jamais d'appel direct a `api.resend.com`.**
+
+Ce point unique garantit trois exigences Gmail, qu'un seul contournement suffit
+a casser pour tout le domaine :
+
+| Exigence | Ou c'est traite |
+|----------|-----------------|
+| `from` = `RESEND_FROM` (le seul domaine dont SPF/DKIM/DMARC sont alignes) | `resend.ts`. **`RESEND_FROM` est OBLIGATOIRE** : sans elle l'envoi est annule. Il n'y a plus de repli `noreply@studiio.pro` — un expediteur non authentifie, c'est du spam garanti en silence. |
+| En-tetes `List-Unsubscribe` + `List-Unsubscribe-Post: List-Unsubscribe=One-Click` | injectes pour tout envoi `unsubscribable: true` a UN destinataire |
+| Version `text/plain` en plus du HTML | derivee du HTML par `htmlToText()` si l'appelant n'en fournit pas |
+
+**`unsubscribable` — a passer a `true` pour TOUT envoi en nombre**, et a lui seul
+(canal email du cron, campagnes `/api/admin/email/test`). Defaut `false` : un
+email transactionnel — recu de paiement, bienvenue, compte suspendu — ne doit
+pas annoncer un desabonnement qu'on ne peut pas honorer. Une desinscription
+annoncee puis ignoree est ce qui transforme un desabo en signalement spam.
+
+**Tout envoi en nombre doit aussi appeler `isSuppressed()` / `filterSuppressed()`**
+avant d'envoyer. Un en-tete de desabonnement sans filtre en amont ne sert a rien.
+
+Le desabonnement vit dans `src/lib/email/unsubscribe.ts` + `/api/email/unsubscribe` :
+
+- L'URL porte l'adresse et un **HMAC** de cette adresse (`UNSUBSCRIBE_SECRET`,
+  a defaut `AUTH_SECRET`). Sans jeton valide, rien n'est ecrit.
+- **POST** = un-clic Gmail, repond 200 meme si la persistance echoue (un 5xx
+  ferait reessayer Gmail en boucle et abimerait la reputation).
+- **GET** = page de confirmation, **sans effet de bord** : les antivirus et
+  previsualiseurs visitent les liens des emails et desabonneraient a l'insu
+  des gens.
+- La suppression est ecrite dans `email_suppressions` (migration
+  `2026-07-29-email-suppressions.sql`) puis relayee a afroboost en
+  best-effort.
+- **Aucun en-tete n'est emis tant que la table n'existe pas** :
+  `suppressionStoreReady()` sonde la table (resultat memoise 60 s). Sans cela,
+  l'endpoint repondrait 200 a Gmail sans rien enregistrer — pire que de ne
+  rien annoncer. Les en-tetes reapparaissent seuls apres la migration, sans
+  redeploiement.
+- `filterSuppressed()` est appelee **avant chaque diffusion**, en plus de la
+  liste opt-in afroboost relue elle aussi sans cache.
+
+Variables : `RESEND_FROM`, `RESEND_API_KEY`, `RESEND_REPLY_TO`,
+`AFROBOOST_LIST_API_KEY`, `NEXT_PUBLIC_APP_URL` (base de l'URL de desabo).
+
 ### Dynamic imports (Remotion)
 
 ```typescript
