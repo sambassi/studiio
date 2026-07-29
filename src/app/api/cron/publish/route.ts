@@ -974,17 +974,36 @@ async function publishToInstagram(
   caption?: string,
 ): Promise<{ success: boolean; platformPostId?: string; platformUrl?: string; error?: string }> {
   const accessToken = account.access_token;
-  const igAccountId = account.account_id;
+  // `account_id` porte desormais l'IDENTIFIANT INSTAGRAM (`user_id` rendu par
+  // graph.instagram.com), et non plus l'IG Business Account rattache a une Page.
+  // « Instagram API with Instagram Login » publie directement pour le compte
+  // Instagram : plus de Page Facebook, donc plus d'appel `me/accounts` ni de
+  // resolution de Page a faire ici.
+  const igUserId = account.account_id;
 
-  console.log(`[CRON][IG] Starting Instagram publish. igAccountId=${igAccountId}, hasToken=${!!accessToken}, tokenPreview=${accessToken ? accessToken.substring(0, 15) + '...' : 'NULL'}`);
+  console.log(`[CRON][IG] Starting Instagram publish. igUserId=${igUserId}, hasToken=${!!accessToken}, tokenPreview=${accessToken ? accessToken.substring(0, 15) + '...' : 'NULL'}`);
   console.log(`[CRON][IG] Video URL: ${video.video_url?.substring(0, 100) || 'NULL'}`);
 
-  if (!accessToken || !igAccountId) {
-    console.log(`[CRON][IG] FAIL: Missing credentials. token=${!!accessToken}, accountId=${!!igAccountId}`);
+  if (!accessToken || !igUserId) {
+    console.log(`[CRON][IG] FAIL: Missing credentials. token=${!!accessToken}, accountId=${!!igUserId}`);
     return { success: false, error: 'Instagram credentials missing' };
   }
 
   const fullCaption = caption || video.title || '';
+
+  // Met en forme une erreur Meta pour l'UTILISATEUR, pas seulement pour les
+  // logs : meme intention que la PR #214 sur WhatsApp. Cette chaine est
+  // persistee dans `metadata.cron_publish_results[].error` et affichee telle
+  // quelle par le Calendrier ; sans le code ni le sous-code, impossible de
+  // distinguer un token prive de `instagram_business_content_publish` d'une
+  // video au mauvais format sans ouvrir les logs serveur.
+  const formatIgError = (data: any, fallback: string): string => {
+    const err = data?.error;
+    if (!err) return fallback;
+    const code = err.code ?? 'n/a';
+    const subcode = err.error_subcode !== undefined ? ` / subcode=${err.error_subcode}` : '';
+    return `code=${code}${subcode} — ${err.message || fallback}`;
+  };
 
   try {
     // Step 0: Convert WebM to MP4 if needed (Instagram only accepts MP4/MOV H.264)
@@ -1002,11 +1021,16 @@ async function publishToInstagram(
       media_type: 'REELS',
       video_url: publishableVideoUrl,
       caption: fullCaption,
-      share_to_feed: true,
+      // Pas de `share_to_feed` : ce parametre appartenait a l'API Business via
+      // Page. Les Reels publies avec Instagram Login apparaissent d'office dans
+      // le fil du compte.
       access_token: accessToken,
     };
+    // Hote `graph.instagram.com` (et non graph.facebook.com) : c'est le seul
+    // endpoint qui accepte un token « Instagram Login ». Un tel token envoye a
+    // graph.facebook.com est rejete (code 190).
     const createRes = await fetch(
-      `https://graph.facebook.com/v24.0/${igAccountId}/media`,
+      `https://graph.instagram.com/v21.0/${igUserId}/media`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1018,12 +1042,13 @@ async function publishToInstagram(
     console.log(`[CRON][IG] Step 1 response: status=${createRes.status}, data=${JSON.stringify(createData)}`);
 
     if (!createData.id) {
-      const errMsg = createData.error?.message || JSON.stringify(createData);
+      const errMsg = formatIgError(createData, JSON.stringify(createData));
       console.log(`[CRON][IG] FAIL at Step 1: ${errMsg}`);
       console.error('[SOCIAL_PUBLISH_ERROR]', {
         platform: 'instagram',
         step: 'container_create',
         code: createData.error?.code,
+        error_subcode: createData.error?.error_subcode,
         message: createData.error?.message,
         fbtrace_id: createData.error?.fbtrace_id,
         response: createData,
@@ -1035,12 +1060,14 @@ async function publishToInstagram(
     console.log(`[CRON][IG] Container created: ${containerId}`);
 
     // Step 2: Poll until processing is complete (max 30 attempts for cron, 5s each = 150s)
+    // Cadence, nombre d'essais et traitement du timeout inchanges : seul l'hote
+    // du sondage change.
     let status = 'IN_PROGRESS';
     let attempts = 0;
     while (status === 'IN_PROGRESS' && attempts < 30) {
       await new Promise((resolve) => setTimeout(resolve, 5000));
       const statusRes = await fetch(
-        `https://graph.facebook.com/v24.0/${containerId}?fields=status_code&access_token=${accessToken}`
+        `https://graph.instagram.com/${containerId}?fields=status_code&access_token=${accessToken}`
       );
       const statusData = await statusRes.json();
       status = statusData.status_code;
@@ -1056,7 +1083,7 @@ async function publishToInstagram(
     // Step 3: Publish
     console.log(`[CRON][IG] Step 3: Publishing container ${containerId}...`);
     const publishRes = await fetch(
-      `https://graph.facebook.com/v24.0/${igAccountId}/media_publish`,
+      `https://graph.instagram.com/v21.0/${igUserId}/media_publish`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1079,12 +1106,13 @@ async function publishToInstagram(
       };
     }
 
-    const errMsg = publishData.error?.message || JSON.stringify(publishData);
+    const errMsg = formatIgError(publishData, JSON.stringify(publishData));
     console.log(`[CRON][IG] FAIL at Step 3: ${errMsg}`);
     console.error('[SOCIAL_PUBLISH_ERROR]', {
       platform: 'instagram',
       step: 'media_publish',
       code: publishData.error?.code,
+      error_subcode: publishData.error?.error_subcode,
       message: publishData.error?.message,
       fbtrace_id: publishData.error?.fbtrace_id,
       response: publishData,

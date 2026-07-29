@@ -41,7 +41,12 @@ async function refreshToken(account: any): Promise<string> {
       return await refreshYouTubeToken(account);
     case 'tiktok':
       return await refreshTikTokToken(account);
+    // Instagram est sorti du groupe Meta : depuis la migration vers
+    // « Instagram API with Instagram Login », le token vient de
+    // graph.instagram.com et n'est PAS echangeable via fb_exchange_token.
+    // Facebook, lui, reste strictement sur l'ancien chemin.
     case 'instagram':
+      return await refreshInstagramToken(account);
     case 'facebook':
       return await refreshMetaToken(account);
     default:
@@ -131,6 +136,76 @@ async function refreshTikTokToken(account: any): Promise<string> {
     .eq('id', account.id);
 
   return data.access_token;
+}
+
+/**
+ * Rafraichissement d'un token « Instagram API with Instagram Login ».
+ *
+ * Endpoint : GET https://graph.instagram.com/refresh_access_token
+ *   ?grant_type=ig_refresh_token&access_token=<token longue duree>
+ * Reponse : { access_token, token_type, expires_in }  (~60 jours)
+ *
+ * POURQUOI PAS DE client_id / client_secret : contrairement a
+ * `fb_exchange_token` (Facebook Login), le flux `ig_refresh_token` ne prend
+ * AUCUN identifiant d'application. Le token porte lui-meme l'app et l'utilisateur ;
+ * ajouter client_id/client_secret ferait rejeter la requete. C'est la difference
+ * cle avec `refreshMetaToken`, qu'il ne faut donc pas reutiliser ici.
+ *
+ * POURQUOI ON NE THROW PAS : un token Instagram longue duree n'est
+ * rafraichissable que s'il a PLUS de 24 h et MOINS de 60 jours. Un token tout
+ * juste emis fait donc legitimement echouer cet appel alors qu'il est
+ * parfaitement valide pour publier. Faire remonter l'erreur casserait une
+ * publication qui aurait reussi : on journalise le code et le message exacts
+ * renvoyes par Meta, puis on retombe sur le token stocke (default safe).
+ */
+async function refreshInstagramToken(account: any): Promise<string> {
+  try {
+    const res = await fetch(
+      `https://graph.instagram.com/refresh_access_token?` +
+      `grant_type=ig_refresh_token&access_token=${encodeURIComponent(account.access_token)}`
+    );
+
+    const data = await res.json();
+
+    if (data.error || !data.access_token) {
+      // On trace le code ET le message exacts : le code (ex. 190 /
+      // error_subcode 463) est le seul moyen de distinguer « token trop
+      // recent, non eligible » de « token revoque, reconnexion requise ».
+      const err = data.error || {};
+      console.warn(
+        `[token-refresh] Instagram refresh echoue (compte ${account.id}) — ` +
+        `code=${err.code ?? 'n/a'} subcode=${err.error_subcode ?? 'n/a'} ` +
+        `type=${err.type ?? 'n/a'} message=${err.message ?? 'reponse sans access_token'} ` +
+        `fbtrace_id=${err.fbtrace_id ?? 'n/a'} http=${res.status}`
+      );
+      return account.access_token;
+    }
+
+    // Meme persistance que refreshMetaToken : memes colonnes, meme updated_at,
+    // meme filtre sur l'id du compte.
+    const expiresAt = data.expires_in
+      ? new Date(Date.now() + data.expires_in * 1000).toISOString()
+      : new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
+
+    await supabaseAdmin
+      .from('social_accounts')
+      .update({
+        access_token: data.access_token,
+        expires_at: expiresAt,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', account.id);
+
+    return data.access_token;
+  } catch (e) {
+    // Panne reseau ou reponse non JSON : meme repli, la publication doit
+    // pouvoir tenter sa chance avec le token deja en base.
+    console.warn(
+      `[token-refresh] Instagram refresh injoignable (compte ${account.id}):`,
+      e instanceof Error ? e.message : e
+    );
+    return account.access_token;
+  }
 }
 
 async function refreshMetaToken(account: any): Promise<string> {

@@ -1,22 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
+import { signState } from '@/lib/social/oauth-state';
 
 const APP_URL = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
-function generateState(userId: string): string {
-    const timestamp = Date.now();
-    const random = Math.random().toString(36).slice(2, 10);
-    return `${userId}:${timestamp}:${random}`;
-}
+// Le `state` est desormais SIGNE (4e segment). Voir src/lib/social/oauth-state.ts :
+// sans signature, forger `state=<id victime>:0:x` rattachait le compte social de
+// l'attaquant au compte Studiio de la victime. Les callbacks historiques lisent
+// `state.split(':')[0]` et ignorent donc le segment ajoute — aucune regression.
+const generateState = signState;
 
 function getOAuthUrl(platform: string, state: string): string | null {
     switch (platform) {
-      // Instagram + Facebook go through the same unified Meta app using
-      // Facebook Login for Business. Scopes are bound to the Login
-      // Configuration on Meta's side — the client passes `config_id`
-      // instead of `scope`.
-      case 'instagram':
+      // Instagram passe desormais par « Instagram API with Instagram Login » :
+      // Meta a deprecie l'acces Instagram via Facebook Login, l'utilisateur se
+      // connecte directement avec son compte Instagram Business/Creator, sans
+      // Page Facebook intermediaire.
+      //
+      // La redirection pointe vers une route DEDIEE et SANS query param :
+      // Instagram compare l'URI de redirection au caractere pres a la liste
+      // blanche du tableau de bord Meta et rejette tout parametre ajoute
+      // (meme contrainte que TikTok, d'ou le meme pattern de route dediee).
+      case 'instagram': {
+              const redirectUri = encodeURIComponent(`${APP_URL}/api/social/callback/instagram`);
+              const appId = process.env.INSTAGRAM_APP_ID;
+              if (!appId) return null;
+              // Scopes « Instagram Login » : lecture du profil + publication.
+              // La virgule est le separateur attendu par Instagram, on l'encode
+              // pour ne pas dependre de la tolerance du provider.
+              const scope = encodeURIComponent('instagram_business_basic,instagram_business_content_publish');
+              return `https://www.instagram.com/oauth/authorize?client_id=${appId}&redirect_uri=${redirectUri}&scope=${scope}&response_type=code&state=${state}`;
+      }
+
+      // Facebook reste sur Facebook Login for Business. Les scopes sont lies a
+      // la Login Configuration cote Meta — le client passe `config_id` au lieu
+      // de `scope`.
       case 'facebook': {
               const redirectUri = encodeURIComponent(`${APP_URL}/api/social/callback?platform=${platform}`);
               const appId = process.env.META_INSTAGRAM_APP_ID || process.env.FACEBOOK_CLIENT_ID;
@@ -72,7 +91,7 @@ export async function POST(req: NextRequest) {
       }
 
       const platformNames: Record<string, string> = {
-              instagram: 'META_INSTAGRAM_APP_ID + META_CONFIG_ID',
+              instagram: 'INSTAGRAM_APP_ID + INSTAGRAM_APP_SECRET',
               facebook: 'FACEBOOK_CLIENT_ID + META_CONFIG_ID',
               tiktok: 'TIKTOK_CLIENT_KEY',
               youtube: 'YOUTUBE_CLIENT_ID ou GOOGLE_CLIENT_ID',

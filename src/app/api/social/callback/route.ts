@@ -116,14 +116,30 @@ export async function GET(req: NextRequest) {
     }
 }
 
+/** Echappement HTML complet (contexte texte et attribut). */
+function escapeHtml(v: unknown): string {
+    return String(v ?? '').replace(
+      /[&<>"']/g,
+      (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string,
+    );
+}
+
 function redirectWithMessage(type: string, message: string): NextResponse {
     const isSuccess = type === 'success';
-    const safeMessage = message.replace(/'/g, "\\'").replace(/</g, '&lt;');
+    // Deux contextes, deux echappements — les confondre est une XSS.
+    //
+    // L'ancien `replace(/'/g, "\\'")` ne tenait pas : un antislash final
+    // (`...\`) devenait `...\'` et fermait la chaine JS, permettant d'injecter
+    // du script. Or `message` transporte `error_description`, un parametre
+    // d'URL entierement controle par l'appelant. Faille PRE-EXISTANTE, sans
+    // rapport avec Instagram, mais identique — corrigee ici aussi.
+    const jsMessage = JSON.stringify(message);
+    const safeMessage = escapeHtml(message);
     const html = isSuccess
       ? `<!DOCTYPE html><html><head><title>Connexion reussie</title></head><body style="font-family:sans-serif;padding:40px;text-align:center">
 <script>
   if (window.opener) {
-    window.opener.postMessage({ type: 'social-oauth-success', message: '${safeMessage}' }, '*');
+    window.opener.postMessage({ type: 'social-oauth-success', message: ${jsMessage} }, '*');
   }
   setTimeout(() => window.close(), 800);
 </script>
@@ -137,7 +153,7 @@ function redirectWithMessage(type: string, message: string): NextResponse {
 <button onclick="window.close()" style="padding:10px 20px;background:#333;color:#fff;border:0;border-radius:6px;cursor:pointer">Fermer</button>
 <script>
   if (window.opener) {
-    window.opener.postMessage({ type: 'social-oauth-error', message: '${safeMessage}' }, '*');
+    window.opener.postMessage({ type: 'social-oauth-error', message: ${jsMessage} }, '*');
   }
 </script>
 </body></html>`;
