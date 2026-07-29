@@ -330,12 +330,18 @@ export async function resolveRecipients(
   const fallback = process.env.WHATSAPP_DEFAULT_RECIPIENT?.trim();
   const envList = fallback ? [fallback] : [];
 
-  // (1) Abonnes opt-in — la seule source utilisable pour une vraie diffusion.
-  const subscribers = await fetchSubscribers('whatsapp');
-  if (subscribers.length > 0) return subscribers;
-
-  // (2) Liste du post, reservee au detenteur du compte Meta.
+  // Defense en profondeur : le gate `canUseWhatsApp` des appelants suffit
+  // AUJOURD'HUI, mais un futur appelant qui l'oublierait diffuserait a toute
+  // la liste opt-in. La restriction est donc aussi portee ici.
   if (!isAdmin(opts.ownerEmail)) return envList;
+
+  // (1) Abonnes opt-in — la seule source utilisable pour une vraie diffusion.
+  // Dedupliques : un doublon dans la liste servie produirait deux envois au
+  // meme destinataire, ce qui degrade la reputation d'envoi.
+  const subscribers = await fetchSubscribers('whatsapp');
+  if (subscribers.length > 0) return [...new Set(subscribers)];
+
+  // (2) Liste du post, elle aussi reservee au detenteur du compte Meta.
 
   const meta = metadata as { whatsappTo?: unknown } | null | undefined;
   // `.filter` AVANT `.map(String)` : dans l'autre sens, `null` devenait la

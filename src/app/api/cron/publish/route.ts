@@ -9,9 +9,8 @@ import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 import { downloadMediaToFile, downloadMediaToBuffer } from '@/lib/storage/fetch-media';
 import { getValidToken } from '@/lib/social/token-refresh';
 import { sendEmail } from '@/lib/email/resend';
-import { isWhatsAppEnabled, canUseWhatsApp, broadcastWhatsApp, resolveRecipients } from '@/lib/social/whatsapp';
+import { isWhatsAppEnabled, canUseWhatsApp, broadcastWhatsApp, resolveRecipients, MAX_RECIPIENTS } from '@/lib/social/whatsapp';
 import { fetchSubscribers, unsubscribeUrl } from '@/lib/social/subscribers';
-import { MAX_RECIPIENTS } from '@/lib/social/whatsapp';
 import { isAdmin } from '@/lib/admin';
 
 const execFileAsync = promisify(execFile);
@@ -423,7 +422,7 @@ export async function GET(req: NextRequest) {
             // afroboost, un tiers ne peut pas attester du consentement de ses
             // destinataires. Sinon, comportement historique : on ecrit a
             // l'auteur du post.
-            const subs = isAdmin(owner) ? await fetchSubscribers('email') : [];
+            const subs = isAdmin(owner) ? [...new Set(await fetchSubscribers('email'))] : [];
             if (subs.length > 0) {
               let sent = 0;
               let failed = 0;
@@ -432,10 +431,17 @@ export async function GET(req: NextRequest) {
               if (skipped > 0) {
                 console.warn(`[Email] Diffusion plafonnee : ${capped.length} envoyes, ${skipped} ignores.`);
               }
+              // try/catch, comme le chemin historique juste en dessous : cette
+              // branche est hors du try par plateforme, une exception ferait
+              // perdre les autres canaux du post.
               for (let i = 0; i < capped.length; i++) {
-                const r = await sendPostByEmail(capped[i], null, post, videoData);
-                if (r.success) sent++;
-                else failed++;
+                try {
+                  const r = await sendPostByEmail(capped[i], null, post, videoData);
+                  if (r.success) sent++;
+                  else failed++;
+                } catch {
+                  failed++;
+                }
                 if (i < capped.length - 1) await new Promise((x) => setTimeout(x, 500));
               }
               platformResults.push({
@@ -490,7 +496,7 @@ export async function GET(req: NextRequest) {
               ownerEmail: (post as any).users?.email,
             });
             if (recipients.length === 0) {
-              platformResults.push({ platform, success: false, error: 'WhatsApp : aucun destinataire (metadata.whatsappTo ou WHATSAPP_DEFAULT_RECIPIENT)' });
+              platformResults.push({ platform, success: false, error: 'WhatsApp : aucun destinataire (liste opt-in afroboost, metadata.whatsappTo ou WHATSAPP_DEFAULT_RECIPIENT)' });
               continue;
             }
             try {
