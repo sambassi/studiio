@@ -125,6 +125,44 @@ _Fichier à relire à chaque démarrage de session. Appliquer toutes les leçons
 
 ---
 
+## [2026-07-29] Un garde-fou posé sur UNE seule des surfaces qui portent la promesse
+
+**Ce qui a mal tourné** — En corrigeant la délivrabilité email (PR #215), j'ai
+conditionné l'en-tête `List-Unsubscribe` à la disponibilité de la table
+`email_suppressions` (pour ne pas promettre à Gmail un désabonnement qu'on ne
+peut pas honorer)… mais j'ai laissé le **lien visible du corps** conditionné à
+autre chose. Résultat : le bouton Gmail était protégé, le lien humain juste à
+côté renvoyait toujours « Désabonnement enregistré. » sans rien enregistrer.
+Le trou était fermé par la porte d'entrée et ouvert par celle de service. Pire,
+mon propre commentaire affirmait l'invariant inverse — donc le prochain lecteur
+n'aurait pas revérifié.
+
+**Règle** — Quand un garde-fou protège une PROMESSE (ne pas annoncer ce qu'on
+ne peut pas tenir), lister d'abord TOUTES les surfaces qui portent cette
+promesse, puis les brancher sur UNE SEULE source de vérité — jamais sur des
+conditions parallèles qui « se ressemblent ». Ici : en-tête, lien visible HTML,
+lien de la version texte → un unique `canUnsubscribe()`. C'est le pendant de la
+règle « grep avant modif » appliqué aux invariants, pas aux variables.
+
+**Corollaire** — Un commentaire qui affirme un invariant (« les deux restent
+donc cohérents ») doit être vérifié à l'exécution, pas raisonné. Le mien était
+faux et l'audit l'a démasqué en exécutant le code dans le scénario réel.
+
+## [2026-07-29] Un chemin d'envoi qui contourne la lib partagée annule tout le travail
+
+**Ce qui a mal tourné** — La demande disait « vérifier qu'aucun `from` hardcodé
+ne contourne `RESEND_FROM` ». Mon premier grep (`from: *['"]`) n'a rien trouvé
+et j'ai failli conclure. Le vrai coupable s'écrivait `from: process.env.EMAIL_FROM
+|| 'noreply@studiio.app'` — invisible pour ce motif. C'était
+`/api/admin/email/test`, c'est-à-dire le **seul vrai chemin de campagne en
+masse** de l'app : tous les envois partaient d'un domaine sans SPF/DKIM/DMARC.
+
+**Règle** — Pour vérifier qu'une contrainte transverse (expéditeur, auth, quota,
+logging) est respectée, ne pas grep la VALEUR attendue : grep le **point de
+sortie** (`api.resend.com`, `fetch(` vers le fournisseur, le nom du SDK) et
+prouver qu'il n'existe qu'un seul appelant. Un grep sur la valeur ne trouve que
+les contournements écrits comme on les imaginait.
+
 ## Pré-merge : checklist obligatoire
 
 À cocher MENTALEMENT avant chaque merge (et écrire dans le PR body si non trivial) :
