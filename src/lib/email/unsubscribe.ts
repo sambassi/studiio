@@ -83,13 +83,25 @@ export function unsubscribeEndpoint(email: string): string {
   return `${appOrigin()}/api/email/unsubscribe?${qs.toString()}`;
 }
 
+/** Un lien de desabonnement n'est signable que si un secret est configure. */
+export function canSignRecipient(email: string): boolean {
+  const normalized = normalizeEmail(email);
+  return looksLikeEmail(normalized) && !!signRecipient(normalized);
+}
+
 /**
- * Adresse mailto de l'en-tete, extraite de `RESEND_FROM`.
+ * Adresse mailto de l'en-tete.
  *
- * Elle doit appartenir au domaine d'envoi, sinon l'en-tete pointe vers une
- * boite qui n'existe pas — ce qui degrade la reputation au lieu de l'ameliorer.
+ * Par defaut, extraite de `RESEND_FROM` : elle doit appartenir au domaine
+ * d'envoi, sinon l'en-tete pointe vers une boite qui n'existe pas — ce qui
+ * degrade la reputation au lieu de l'ameliorer. `UNSUBSCRIBE_MAILTO` permet
+ * de pointer vers une boite REELLEMENT relevee, `notifications@` etant par
+ * convention une adresse d'emission.
  */
 export function unsubscribeMailto(): string {
+  const override = (process.env.UNSUBSCRIBE_MAILTO || '').trim();
+  if (looksLikeEmail(override)) return override;
+
   const from = (process.env.RESEND_FROM || '').trim();
   const angle = from.match(/<([^>]+)>/);
   const candidate = (angle ? angle[1] : from).trim();
@@ -97,15 +109,60 @@ export function unsubscribeMailto(): string {
 }
 
 /**
+ * La table `email_suppressions` est-elle exploitable ?
+ *
+ * POURQUOI CETTE SONDE EXISTE
+ * Annoncer `List-Unsubscribe-Post` engage a honorer le desabonnement. Tant
+ * que la migration n'est pas appliquee (elle exige deux etapes manuelles :
+ * `grant all` puis `docker kill -s SIGUSR1 studiio-postgrest`), l'endpoint
+ * repondrait 200 a Gmail sans rien enregistrer — donc un desabonne
+ * continuerait a recevoir les envois. C'est exactement la faute que les
+ * regles expediteurs de Gmail sanctionnent, et elle est PIRE que l'absence
+ * d'en-tete : sans en-tete, aucune promesse n'est rompue.
+ *
+ * Resultat memoise avec un TTL court : une fois la migration appliquee, les
+ * en-tetes reapparaissent seuls, sans redeploiement.
+ */
+const STORE_PROBE_TTL_MS = 60_000;
+let storeProbe: { ready: boolean; at: number } | null = null;
+
+export async function suppressionStoreReady(): Promise<boolean> {
+  const now = Date.now();
+  // Une fois prete, la table ne disparait pas : on ne re-sonde plus.
+  if (storeProbe?.ready) return true;
+  if (storeProbe && now - storeProbe.at < STORE_PROBE_TTL_MS) return false;
+
+  let ready = false;
+  try {
+    const { error } = await supabaseAdmin.from('email_suppressions').select('email').limit(1);
+    ready = !error;
+    if (error) {
+      console.error(
+        `[Unsubscribe] Table email_suppressions indisponible (${error.message}) — ` +
+          'en-tetes de desabonnement DESACTIVES. Appliquer migrations/2026-07-29-email-suppressions.sql ' +
+          'puis `docker kill -s SIGUSR1 studiio-postgrest`.',
+      );
+    }
+  } catch (err) {
+    console.error('[Unsubscribe] Sonde email_suppressions impossible :', err);
+  }
+
+  storeProbe = { ready, at: now };
+  return ready;
+}
+
+/**
  * En-tetes de desabonnement pour UN destinataire.
  *
- * Renvoie `{}` si l'adresse est inexploitable ou si aucun secret n'est
- * configure : mieux vaut aucun en-tete qu'un en-tete pointant vers une URL
- * qui repondra 400.
+ * Renvoie `{}` si l'adresse est inexploitable, si aucun secret n'est
+ * configure, ou si la liste de suppression n'est pas encore operationnelle.
+ * Mieux vaut aucun en-tete qu'un en-tete pointant vers une URL qui ne
+ * desabonne rien.
  */
-export function listUnsubscribeHeaders(email: string): Record<string, string> {
+export async function listUnsubscribeHeaders(email: string): Promise<Record<string, string>> {
   const normalized = normalizeEmail(email);
-  if (!looksLikeEmail(normalized) || !signRecipient(normalized)) return {};
+  if (!canSignRecipient(normalized)) return {};
+  if (!(await suppressionStoreReady())) return {};
 
   const targets = [`<${unsubscribeEndpoint(normalized)}>`];
   const mailto = unsubscribeMailto();
@@ -115,6 +172,30 @@ export function listUnsubscribeHeaders(email: string): Record<string, string> {
     'List-Unsubscribe': targets.join(', '),
     'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
   };
+}
+
+/**
+ * Pied de page HTML portant le lien de desabonnement VISIBLE.
+ *
+ * Gmail veut le lien dans le corps EN PLUS de l'en-tete. Ce bloc est ajoute
+ * cote serveur pour les envois dont le corps est saisi librement (campagnes
+ * admin) : le lien ne doit pas dependre du fait que le redacteur y pense.
+ *
+ * Chaine vide si l'adresse n'est pas signable — auquel cas l'en-tete est lui
+ * aussi absent, les deux restent donc coherents.
+ */
+export function unsubscribeFooter(email: string): string {
+  if (!canSignRecipient(email)) return '';
+  // L'URL ne contient que des caracteres encodes (encodeURIComponent) et un
+  // jeton base64url : l'echappement est une ceinture de securite.
+  const url = unsubscribeEndpoint(email).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  return (
+    `<div style="margin-top:24px;padding-top:16px;border-top:1px solid #E5E7EB;` +
+    `color:#6B7280;font-size:12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">` +
+    `Vous recevez cet email car vous êtes inscrit à nos actualités.<br />` +
+    `<a href="${url}" style="color:#6B7280;">Se désabonner</a>` +
+    `</div>`
+  );
 }
 
 /** Enregistre un desabonnement. `false` si l'ecriture a echoue (table absente, base injoignable). */
@@ -184,8 +265,16 @@ export async function filterSuppressed(emails: string[]): Promise<string[]> {
   }
 }
 
-/** Raccourci pour un destinataire unique. */
+/**
+ * Raccourci pour un destinataire unique.
+ *
+ * Une adresse malformee n'est PAS « desabonnee » : elle est invalide. Les
+ * confondre produirait un diagnostic trompeur (« cette adresse est
+ * desabonnee ») la ou l'erreur reelle de l'API d'envoi serait bien plus
+ * utile. On laisse donc passer et l'envoi remontera la vraie cause.
+ */
 export async function isSuppressed(email: string): Promise<boolean> {
+  if (!looksLikeEmail(normalizeEmail(email))) return false;
   const kept = await filterSuppressed([email]);
   return kept.length === 0;
 }

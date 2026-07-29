@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin, logAdminAction } from '@/lib/admin';
 import { ApiResponse } from '@/lib/types/api';
 import { sendEmail } from '@/lib/email/resend';
+import { isSuppressed, unsubscribeFooter } from '@/lib/email/unsubscribe';
 
 /**
  * Sends a test email to verify email configuration
@@ -48,8 +49,31 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<a
     // faire classer le message en spam. On passe par le client partage, seul
     // detenteur de `RESEND_FROM`, qui ajoute au passage la version texte et
     // les en-tetes de desabonnement.
+
+    // Etant un envoi en nombre (la page admin boucle dessus destinataire par
+    // destinataire), il DOIT respecter les desabonnements. Sans ce filtre, un
+    // destinataire qui s'est desabonne via l'en-tete un-clic recevrait quand
+    // meme la campagne suivante — l'exact contraire de ce que l'en-tete
+    // promet. On repond 200 : la boucle cliente compte les non-200 comme des
+    // echecs, or ce n'en est pas un.
+    if (await isSuppressed(to)) {
+      return NextResponse.json({
+        success: true,
+        data: { to, subject, skipped: true },
+        message: 'Destinataire désabonné — email non envoyé',
+      });
+    }
+
     try {
-      const result = await sendEmail({ to, subject, html: emailBody });
+      const result = await sendEmail({
+        to,
+        subject,
+        // Pied de page ajoute cote SERVEUR : le corps est saisi librement par
+        // l'admin, et un lien de desabonnement visible ne doit pas dependre
+        // de son bon vouloir — Gmail exige qu'il accompagne l'en-tete.
+        html: `${emailBody}${unsubscribeFooter(to)}`,
+        unsubscribable: true,
+      });
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to send email');

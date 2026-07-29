@@ -17,7 +17,6 @@ import { listUnsubscribeHeaders } from './unsubscribe';
  */
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
-const DEFAULT_FROM = process.env.RESEND_FROM || 'Studiio <noreply@studiio.pro>';
 
 interface SendEmailParams {
   to: string | string[];
@@ -29,6 +28,18 @@ interface SendEmailParams {
   text?: string;
   /** En-tetes additionnels. Ceux fournis ici l'emportent sur l'injection automatique. */
   headers?: Record<string, string>;
+  /**
+   * Envoi en nombre (diffusion, campagne) : ajoute les en-tetes de
+   * desabonnement un-clic.
+   *
+   * Defaut `false`, et c'est VOLONTAIRE. Un email transactionnel — recu de
+   * paiement, bienvenue, compte suspendu, credits ajoutes — ne doit pas
+   * annoncer un desabonnement : le destinataire qui cliquerait continuerait a
+   * le recevoir (on ne peut pas supprimer un recu de paiement), et une
+   * desinscription annoncee puis non honoree est precisement ce qui
+   * transforme un desabo en signalement spam.
+   */
+  unsubscribable?: boolean;
 }
 
 /**
@@ -70,13 +81,14 @@ export async function sendEmail({
   to,
   subject,
   html,
-  from = DEFAULT_FROM,
+  from,
   // Adresse reelle et surveillee : un Reply-To mort degrade la reputation.
   // Non definie par defaut, donc comportement identique tant que la variable
   // n'est pas renseignee.
   replyTo = process.env.RESEND_REPLY_TO?.trim() || undefined,
   text,
   headers,
+  unsubscribable = false,
 }: SendEmailParams) {
   const apiKey = process.env.RESEND_API_KEY;
 
@@ -85,14 +97,27 @@ export async function sendEmail({
     return { success: false, error: 'RESEND_API_KEY not set', data: null };
   }
 
+  // `RESEND_FROM` est OBLIGATOIRE : c'est le seul domaine dont SPF, DKIM et
+  // DMARC sont alignes. L'ancien repli `Studiio <noreply@studiio.pro>` etait
+  // un expediteur non authentifie — donc du spam garanti, en silence. Mieux
+  // vaut ne pas envoyer et le voir dans les logs que remplir les dossiers
+  // spam en abimant durablement la reputation du domaine.
+  const sender = from || process.env.RESEND_FROM?.trim();
+  if (!sender) {
+    console.error('[Email] RESEND_FROM not set — envoi annule (expediteur non authentifie)');
+    return { success: false, error: 'RESEND_FROM not set', data: null };
+  }
+
   const recipients = Array.isArray(to) ? to : [to];
 
-  // En-tetes de desabonnement : uniquement pour un destinataire unique, le
-  // jeton etant lie a l'adresse. Les envois groupes (`to` multiple) sont
-  // laisses tels quels — le canal de diffusion, lui, envoie un email par
-  // destinataire, justement pour en beneficier.
+  // En-tetes de desabonnement : uniquement pour les envois en nombre, et pour
+  // un destinataire unique — le jeton est lie a l'adresse. Les envois groupes
+  // (`to` multiple) sont laisses tels quels ; le canal de diffusion, lui,
+  // envoie un email par destinataire, justement pour en beneficier.
   const autoHeaders =
-    recipients.length === 1 ? listUnsubscribeHeaders(recipients[0]) : {};
+    unsubscribable && recipients.length === 1
+      ? await listUnsubscribeHeaders(recipients[0])
+      : {};
   // L'appelant a le dernier mot : ses en-tetes ecrasent l'injection.
   const finalHeaders = { ...autoHeaders, ...(headers || {}) };
 
@@ -106,7 +131,7 @@ export async function sendEmail({
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from,
+        from: sender,
         to: recipients,
         subject,
         html,

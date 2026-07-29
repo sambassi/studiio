@@ -10,8 +10,13 @@ import { downloadMediaToFile, downloadMediaToBuffer } from '@/lib/storage/fetch-
 import { getValidToken } from '@/lib/social/token-refresh';
 import { sendEmail } from '@/lib/email/resend';
 import { isWhatsAppEnabled, canUseWhatsApp, broadcastWhatsApp, resolveRecipients, MAX_RECIPIENTS, formatBroadcastFailures } from '@/lib/social/whatsapp';
-import { fetchSubscribers } from '@/lib/social/subscribers';
-import { unsubscribeEndpoint, filterSuppressed } from '@/lib/email/unsubscribe';
+import { fetchSubscribers, unsubscribeUrl } from '@/lib/social/subscribers';
+import {
+  unsubscribeEndpoint,
+  filterSuppressed,
+  isSuppressed,
+  canSignRecipient,
+} from '@/lib/email/unsubscribe';
 import { isAdmin } from '@/lib/admin';
 
 const execFileAsync = promisify(execFile);
@@ -112,7 +117,12 @@ async function sendPostByEmail(
   // exige les deux, et un ecart entre les deux est suspect. Ce n'est PAS la
   // page afroboost (`unsubscribeUrl`) : l'en-tete un-clic impose une URL qui
   // accepte un POST et desabonne reellement.
-  const unsubLink = unsubscribeEndpoint(to);
+  //
+  // Repli sur la page afroboost si l'adresse n'est pas signable (aucun
+  // secret configure) : sans lui, le lien partirait avec un jeton vide et
+  // repondrait 400 — un lien de desabonnement casse est pire qu'un lien
+  // generique.
+  const unsubLink = canSignRecipient(to) ? unsubscribeEndpoint(to) : unsubscribeUrl(to);
 
   // Style aligne sur src/lib/email/templates.ts (violet #7C3AED / rose #EC4899).
   const html = `
@@ -159,7 +169,8 @@ async function sendPostByEmail(
 
   // Sujet sans emoji en tete : un emoji en premier caractere est un marqueur
   // promotionnel classique pour les filtres.
-  const res = await sendEmail({ to, subject: title, html, text });
+  // `unsubscribable` : c'est une diffusion, pas un email transactionnel.
+  const res = await sendEmail({ to, subject: title, html, text, unsubscribable: true });
   return res.success
     ? { success: true }
     : { success: false, error: res.error || "Echec d'envoi de l'email" };
@@ -503,7 +514,7 @@ export async function GET(req: NextRequest) {
               platformResults.push({ platform, success: false, error: 'Adresse email introuvable' });
               continue;
             }
-            if ((await filterSuppressed([to])).length === 0) {
+            if (await isSuppressed(to)) {
               platformResults.push({
                 platform,
                 success: false,
