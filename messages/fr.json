@@ -1492,6 +1492,7 @@
         "confirmSend": "Envoyer cet email à {count} utilisateur(s) ?",
         "successPartial": "{sent} emails envoyés, {errors} erreurs",
         "successAll": "{sent} emails envoyés avec succès",
+        "skipped": "{skipped} destinataire(s) désabonné(s) ignoré(s)",
         "usersSelected": "{count} utilisateurs sélectionnés"
       },
       "templates": {

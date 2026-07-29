@@ -175,17 +175,30 @@ export async function listUnsubscribeHeaders(email: string): Promise<Record<stri
 }
 
 /**
+ * Le lien de desabonnement peut-il etre HONORE ?
+ *
+ * Meme condition que `listUnsubscribeHeaders`, et c'est essentiel : le lien
+ * VISIBLE engage exactement autant que l'en-tete. Ne gater que l'en-tete
+ * laisserait le trou ouvert par la porte a cote — un humain cliquerait un
+ * lien signe, d'apparence valide, obtiendrait « Desabonnement enregistre. »,
+ * et recevrait l'envoi suivant.
+ */
+export async function canUnsubscribe(email: string): Promise<boolean> {
+  return canSignRecipient(email) && (await suppressionStoreReady());
+}
+
+/**
  * Pied de page HTML portant le lien de desabonnement VISIBLE.
  *
  * Gmail veut le lien dans le corps EN PLUS de l'en-tete. Ce bloc est ajoute
  * cote serveur pour les envois dont le corps est saisi librement (campagnes
  * admin) : le lien ne doit pas dependre du fait que le redacteur y pense.
  *
- * Chaine vide si l'adresse n'est pas signable — auquel cas l'en-tete est lui
- * aussi absent, les deux restent donc coherents.
+ * Chaine vide si le desabonnement ne peut pas etre honore — auquel cas
+ * l'en-tete est lui aussi absent : les deux restent coherents.
  */
-export function unsubscribeFooter(email: string): string {
-  if (!canSignRecipient(email)) return '';
+export async function unsubscribeFooter(email: string): Promise<string> {
+  if (!(await canUnsubscribe(email))) return '';
   // L'URL ne contient que des caracteres encodes (encodeURIComponent) et un
   // jeton base64url : l'echappement est une ceinture de securite.
   const url = unsubscribeEndpoint(email).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
@@ -196,6 +209,21 @@ export function unsubscribeFooter(email: string): string {
     `<a href="${url}" style="color:#6B7280;">Se désabonner</a>` +
     `</div>`
   );
+}
+
+/**
+ * Insere un fragment dans un corps HTML, avant `</body>` s'il existe.
+ *
+ * Une concatenation brute placerait le pied de page APRES `</html>` quand
+ * l'admin colle un document complet. Les navigateurs le replient dans le
+ * body, mais un client strict pourrait le tronquer — donc perdre le lien
+ * visible que ce pied de page existe justement pour garantir.
+ */
+export function appendToHtmlBody(html: string, fragment: string): string {
+  if (!fragment) return html;
+  return /<\/body>/i.test(html)
+    ? html.replace(/<\/body>/i, `${fragment}</body>`)
+    : `${html}${fragment}`;
 }
 
 /** Enregistre un desabonnement. `false` si l'ecriture a echoue (table absente, base injoignable). */

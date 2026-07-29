@@ -1486,6 +1486,7 @@
         "confirmSend": "Send this email to {count} user(s)?",
         "successPartial": "{sent} emails sent, {errors} errors",
         "successAll": "{sent} emails sent successfully",
+        "skipped": "{skipped} unsubscribed recipient(s) skipped",
         "usersSelected": "{count} users selected"
       },
       "templates": {

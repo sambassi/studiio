@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin, logAdminAction } from '@/lib/admin';
 import { ApiResponse } from '@/lib/types/api';
 import { sendEmail } from '@/lib/email/resend';
-import { isSuppressed, unsubscribeFooter } from '@/lib/email/unsubscribe';
+import { isSuppressed, unsubscribeFooter, appendToHtmlBody } from '@/lib/email/unsubscribe';
 
 /**
  * Sends a test email to verify email configuration
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<a
         // Pied de page ajoute cote SERVEUR : le corps est saisi librement par
         // l'admin, et un lien de desabonnement visible ne doit pas dependre
         // de son bon vouloir — Gmail exige qu'il accompagne l'en-tete.
-        html: `${emailBody}${unsubscribeFooter(to)}`,
+        html: appendToHtmlBody(emailBody, await unsubscribeFooter(to)),
         unsubscribable: true,
       });
 

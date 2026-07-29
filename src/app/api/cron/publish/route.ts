@@ -15,7 +15,7 @@ import {
   unsubscribeEndpoint,
   filterSuppressed,
   isSuppressed,
-  canSignRecipient,
+  canUnsubscribe,
 } from '@/lib/email/unsubscribe';
 import { isAdmin } from '@/lib/admin';
 
@@ -118,11 +118,11 @@ async function sendPostByEmail(
   // page afroboost (`unsubscribeUrl`) : l'en-tete un-clic impose une URL qui
   // accepte un POST et desabonne reellement.
   //
-  // Repli sur la page afroboost si l'adresse n'est pas signable (aucun
-  // secret configure) : sans lui, le lien partirait avec un jeton vide et
-  // repondrait 400 — un lien de desabonnement casse est pire qu'un lien
-  // generique.
-  const unsubLink = canSignRecipient(to) ? unsubscribeEndpoint(to) : unsubscribeUrl(to);
+  // Repli sur la page afroboost si le desabonnement ne peut pas etre honore
+  // — adresse non signable, ou table `email_suppressions` pas encore creee.
+  // Sans ce repli, le lien partirait avec un jeton vide (400), ou pire :
+  // repondrait 200 sans rien enregistrer.
+  const unsubLink = (await canUnsubscribe(to)) ? unsubscribeEndpoint(to) : unsubscribeUrl(to);
 
   // Style aligne sur src/lib/email/templates.ts (violet #7C3AED / rose #EC4899).
   const html = `
