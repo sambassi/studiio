@@ -3,14 +3,19 @@
  * Tries server-side Edge TTS first, falls back to browser voices if server fails.
  */
 
+import { isHeyGenVoiceId } from '@/lib/types/voice';
+
 export interface TtsVoice {
   id: string;
   name: string;
   lang: string;
   gender: 'Female' | 'Male';
   flag: string;
-  /** Optional. Absent = legacy Edge TTS (default). 'openai' routes to /api/tts/openai. */
-  provider?: 'edge' | 'openai';
+  /**
+   * Optional. Absent = legacy Edge TTS (default).
+   * 'openai' routes to /api/tts/openai, 'heygen' to /api/tts/heygen.
+   */
+  provider?: 'edge' | 'openai' | 'heygen';
 }
 
 export const TTS_VOICES: TtsVoice[] = [
@@ -62,6 +67,41 @@ async function tryServerSynthesize(
   voiceId: string,
   options?: { rate?: string; pitch?: string },
 ): Promise<Blob | null> {
+  // ── HeyGen provider branch ─────────────────────────────────────────────
+  // Les voix HeyGen sont listees dynamiquement (voix clonee comprise) : elles
+  // n'existent pas dans TTS_VOICES, on route donc sur le prefixe de l'id.
+  // En cas d'echec on renvoie null — inutile de tenter Edge avec un id HeyGen,
+  // synthesize() enchaine directement sur le repli OpenAI.
+  if (isHeyGenVoiceId(voiceId)) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 50_000);
+    try {
+      const res = await fetch('/api/tts/heygen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, voice: voiceId }),
+        signal: ctl.signal,
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        console.warn('[TTS] HeyGen failed:', data.error || res.status);
+        return null;
+      }
+      const blob = await res.blob();
+      if (blob.size === 0) {
+        console.warn('[TTS] HeyGen returned empty audio');
+        return null;
+      }
+      console.log('[TTS] HeyGen success:', (blob.size / 1024).toFixed(1), 'KB');
+      return blob;
+    } catch (err) {
+      console.warn('[TTS] HeyGen exception:', err instanceof Error ? err.message : err);
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   // ── OpenAI provider branch ─────────────────────────────────────────────
   // Routes openai-* voice IDs to /api/tts/openai. On any failure, falls
   // through to the existing Edge code below (Edge will return 4xx for an

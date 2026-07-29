@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Mic, Square, Sparkles, Loader2, Trash2, Play, Pause, AlertTriangle, Info } from 'lucide-react';
-import { TTS_VOICES, synthesize } from '@/lib/tts/edge-tts-client';
+import { TTS_VOICES, synthesize, type TtsVoice } from '@/lib/tts/edge-tts-client';
 import {
+  fetchHeyGenVoices,
+  isHeyGenVoiceId,
   SEQUENCE_KEYS,
   type SequenceKey,
   type SequenceVoice,
@@ -185,13 +187,27 @@ export function SequenceVoicesPanel({
     if (typeof window === 'undefined') return DEFAULT_VOICE_ID;
     try {
       const saved = window.localStorage.getItem(VOICE_STORAGE_KEY);
-      if (saved && TTS_VOICES.some((v) => v.id === saved)) return saved;
+      // Les voix HeyGen sont listees a la volee : on les accepte sur leur
+      // prefixe, sinon un rechargement perdrait la voix clonee choisie.
+      if (saved && (isHeyGenVoiceId(saved) || TTS_VOICES.some((v) => v.id === saved))) return saved;
     } catch { /* ignore */ }
     return DEFAULT_VOICE_ID;
   });
   useEffect(() => {
     try { window.localStorage.setItem(VOICE_STORAGE_KEY, selectedTtsVoiceId); } catch { /* ignore */ }
   }, [selectedTtsVoiceId]);
+
+  // Voix HeyGen du compte (voix clonee comprise), chargees a la volee.
+  // Echec ou compte sans HeyGen → liste vide, le selecteur ne change pas.
+  const [heygenVoices, setHeygenVoices] = useState<TtsVoice[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchHeyGenVoices().then((voices) => {
+      if (!cancelled) setHeygenVoices(voices);
+    });
+    return () => { cancelled = true; };
+  }, []);
+  const allVoices: TtsVoice[] = [...heygenVoices, ...TTS_VOICES];
 
   // Per-sequence loading + recording state
   const [busy, setBusy] = useState<Record<SequenceKey, boolean>>({ titre: false, cartes: false, video: false, cta: false });
@@ -446,7 +462,7 @@ export function SequenceVoicesPanel({
           onChange={(e) => setSelectedTtsVoiceId(e.target.value)}
           className="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-[11px] text-white focus:border-purple-500 focus:outline-none"
         >
-          {TTS_VOICES.map((v) => (
+          {allVoices.map((v) => (
             <option key={v.id} value={v.id}>
               {v.flag} {v.name} ({v.lang})
             </option>
