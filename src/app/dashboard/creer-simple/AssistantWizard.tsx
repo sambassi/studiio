@@ -26,6 +26,7 @@ import { generateSmartContent } from '@/lib/smart-content';
 import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
 import { AudioStudioPanel } from '@/components/creer/AudioStudioPanel';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
+import ClipDetectorModal, { type ClipSource } from '@/components/media/ClipDetectorModal';
 import { CardIcon } from '@/components/ui/CardIcon';
 import { useBranding, NEUTRAL_BRANDING } from '@/lib/hooks/useBranding';
 import { preRenderCardIcons } from '@/lib/icons/prerender';
@@ -385,8 +386,12 @@ const DISABLED = 'disabled:opacity-40 disabled:cursor-not-allowed';
  * Déclaré à l'intérieur, sa référence changeait à chaque rendu : React
  * démontait puis remontait tout le sous-arbre à chaque frappe dans le champ
  * « votre sujet ».
+ *
+ * Exporté pour être monté seul dans les tests : le cadrage du rush (règle
+ * « aucune vidéo déformée ») se vérifie alors sur le DOM produit, pas sur une
+ * lecture du source.
  */
-function Preview({
+export function Preview({
   generated,
   format,
   previewRef,
@@ -397,9 +402,16 @@ function Preview({
   gradStart,
   gradEnd,
   gradientOpacity,
+  rushUrl,
 }: {
   generated: Generated | null;
   format: Format;
+  /**
+   * Rush de la sequence « Video », ou `null`. Il occupe tout le plateau —
+   * c'est ce que le compositeur en fait : `drawVideoSeq` peint le rush en
+   * plein cadre, sans titre ni cartes par-dessus.
+   */
+  rushUrl?: string | null;
   previewRef?: React.RefObject<HTMLDivElement>;
   cardsRef?: React.RefObject<HTMLDivElement>;
   /** Cadre visible, mesure pour calculer la reduction. */
@@ -419,6 +431,15 @@ function Preview({
   activeOrder: string[];
 }) {
   const vw = VIDEO_SIZE[format].w;
+
+  // Rush illisible (fichier expire, format refuse par le navigateur) : on le
+  // retire de l'apercu plutot que de laisser un rectangle noir. L'etat est
+  // remis a zero a chaque changement d'URL — jamais de mutation directe du
+  // DOM dans un `onError`, qui survivrait aux rendus suivants.
+  const [rushBroken, setRushBroken] = useState(false);
+  useEffect(() => setRushBroken(false), [rushUrl]);
+  const showRush = !!rushUrl && !rushBroken && activeOrder.includes('video');
+
   return (
     <div className="card-base p-4">
       <div className="flex items-center gap-2 mb-3">
@@ -462,6 +483,34 @@ function Preview({
           fontFamily: 'var(--font-inter), Inter, sans-serif',
         }}
       >
+        {/* ── Rush de la sequence « Video » ─────────────────────────────
+            `object-fit: cover` est l'exact equivalent CSS du cadrage du
+            compositeur : `drawVideoSeq` calcule `max(w/srcW, h/srcH)` et
+            applique cette MEME echelle aux deux dimensions. Le rush est
+            donc recadre, jamais etire — quel que soit le format de sortie.
+            Ne JAMAIS y substituer `width:100%; height:100%` sans
+            `object-fit`, qui deformerait (regle absolue du cahier).
+            Il est peint EN PREMIER, donc sous le titre, les cartes et le
+            CTA : dans la video ces sequences se succedent, l'apercu les
+            empile — comme il le fait deja pour les trois autres. */}
+        {showRush && (
+          <video
+            src={rushUrl!}
+            muted
+            loop
+            autoPlay
+            playsInline
+            preload="metadata"
+            onError={() => setRushBroken(true)}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+            }}
+          />
+        )}
         {!generated ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center px-2">
             <MonitorPlay className="w-8 h-8 text-gray-700" />
@@ -608,6 +657,7 @@ function Preview({
       {generated && (
         <p className="mt-3 text-[10px] text-gray-600 leading-relaxed">
           Les cartes de la vidéo seront exactement celles-ci. Le titre et le CTA, eux, apparaissent en séquences successives dans le montage.
+          {showRush && ' Le rush occupe seul sa séquence, cadré comme ici.'}
         </p>
       )}
     </div>
@@ -645,6 +695,10 @@ export default function AssistantWizard() {
   const [rushName, setRushName] = useState('');
   const [rushLibOpen, setRushLibOpen] = useState(false);
   const [rushLoading, setRushLoading] = useState(false);
+  // Rush soumis a la detection des temps forts. C'est l'IDENTITE de cet objet
+  // qui pilote (re)lancement et fermeture du modal — meme contrat que
+  // /dashboard/media, qui l'utilise deja ainsi.
+  const [clipSource, setClipSource] = useState<ClipSource | null>(null);
 
   // ── Audio ────────────────────────────────────────────────────────────
   // Le compositeur accepte deja `musicUrl` / `voiceUrl` : il suffit de les
@@ -1502,6 +1556,19 @@ export default function AssistantWizard() {
                               {rushUrl && (
                                 <button
                                   type="button"
+                                  onClick={() => setClipSource({ url: rushUrl, name: rushName || 'rush' })}
+                                  disabled={rushLoading}
+                                  title="Détecter les temps forts et n’en garder qu’un extrait"
+                                  aria-label="Détecter les temps forts du rush"
+                                  className="flex items-center gap-1 rounded-lg bg-gray-800 hover:bg-gray-700 px-2 py-1 text-[10px] font-medium text-gray-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
+                                >
+                                  <Sparkles className="w-3 h-3" />
+                                  Temps forts
+                                </button>
+                              )}
+                              {rushUrl && (
+                                <button
+                                  type="button"
                                   onClick={clearRush}
                                   title="Retirer le rush"
                                   aria-label="Retirer le rush"
@@ -1568,6 +1635,28 @@ export default function AssistantWizard() {
                     onClose={() => setRushLibOpen(false)}
                     mediaType="video"
                     onSelect={(url, name) => { void applyRush(url, name); }}
+                  />
+                  {/* Temps forts — le modal est reutilise TEL QUEL depuis
+                      /dashboard/media. Il decoupe, televerse, puis rend les
+                      clips ; on retient le premier comme nouveau rush. */}
+                  <ClipDetectorModal
+                    isOpen={clipSource !== null}
+                    source={clipSource}
+                    onClose={() => setClipSource(null)}
+                    onExtracted={(clips, failure) => {
+                      // `failure` = succes partiel ou interruption. Le message
+                      // du modal disparait avec lui : sans cette remontee,
+                      // l'utilisateur ne verrait aucune trace de l'echec.
+                      if (failure) setError(failure);
+                      const clip = clips[0];
+                      if (!clip) return;
+                      // Le clip DEVIENT le rush : c'est lui qui part au
+                      // compositeur et s'affiche dans l'apercu. Les autres
+                      // extraits restent dans la mediatheque, accessibles via
+                      // « Changer ».
+                      void applyRush(clip.url, clip.name);
+                      if (!failure) setClipSource(null);
+                    }}
                   />
                 </div>
 
@@ -1870,6 +1959,7 @@ export default function AssistantWizard() {
           gradStart={gradStart}
           gradEnd={gradEnd}
           gradientOpacity={gradientOpacity}
+          rushUrl={rushUrl}
         />
       </div>
     </div>
