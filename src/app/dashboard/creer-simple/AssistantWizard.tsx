@@ -579,7 +579,9 @@ export default function AssistantWizard() {
   // Facteur de reduction du plateau : largeur affichee / largeur video.
   // Mesure par ResizeObserver — le panneau est fluide, et le plateau doit le
   // remplir exactement quelle que soit la largeur de la fenetre.
-  const [displayScale, setDisplayScale] = useState(0.3);
+  // Initialise a 0 : le plateau reste invisible jusqu'a la premiere mesure,
+  // plutot que de flasher a une echelle arbitraire (0.3 debordait en 16:9).
+  const [displayScale, setDisplayScale] = useState(0);
   useEffect(() => {
     const el = frameRef.current;
     if (!el) return;
@@ -747,12 +749,21 @@ export default function AssistantWizard() {
           // Les polices doivent être chargées, sinon la capture sérialise une
           // police de repli et le rendu diverge de l'écran.
           try { await (document as unknown as { fonts?: FontFaceSet }).fonts?.ready; } catch { /* ignore */ }
-          // Capture 1:1 : le bloc cartes est deja rendu a la resolution
-          // native de la video (le plateau fait 1080 ou 1920 de large, seul
-          // l'affichage est reduit par un transform). `scale: 1` suffit donc
-          // pour un texte net — le surechantillonnage x3 de #208, qui
-          // compensait une capture a taille d'apercu, n'a plus lieu d'etre.
-          const canvas = await domToCanvas(cardsEl, { backgroundColor: undefined, scale: 1 });
+          // Capture 1:1 a la resolution NATIVE du plateau.
+          //
+          // `width`/`height` sont OBLIGATOIRES ici. Sans eux, `resolveBoundingBox`
+          // (modern-screenshot) appelle `getBoundingClientRect()`, qui renvoie la
+          // boite APRES le `transform: scale` de l'ancetre : la lib capturerait
+          // 272x276 au lieu de 907x922, et forcerait cette taille sur le clone
+          // racine alors que ses enfants gardent leurs px natifs — contenu
+          // deborde et rogne. Les fournir court-circuite ce calcul et donne au
+          // clone ses dimensions de layout.
+          const canvas = await domToCanvas(cardsEl, {
+            backgroundColor: undefined,
+            scale: 1,
+            width: cardsEl.offsetWidth,
+            height: cardsEl.offsetHeight,
+          });
           console.log(
             `[Assistant] Capture cartes ${canvas.width}x${canvas.height} (1:1, resolution native)`,
           );
