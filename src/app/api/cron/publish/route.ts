@@ -67,7 +67,12 @@ function verifyCronSecret(req: NextRequest): boolean {
 const NO_ACCOUNT_CHANNELS = ['email', 'whatsapp', 'afroboost.com', 'afroboost'];
 
 function requiresSocialAccount(platforms: string[] | null | undefined): boolean {
-  return (platforms || []).some((p) => !NO_ACCOUNT_CHANNELS.includes(String(p).toLowerCase()));
+  // `every` et non `some` : la garde ne doit se declencher que si AUCUN canal
+  // ne peut aboutir sans compte social. Avec `some`, un post mixte
+  // ['Email','Instagram'] sur un compte sans reseau connecte repassait dans la
+  // garde et l'email n'etait jamais envoye, alors qu'il n'a besoin de rien.
+  // Desormais Instagram echoue seul, en « not connected », et l'email part.
+  return (platforms || []).every((p) => !NO_ACCOUNT_CHANNELS.includes(String(p).toLowerCase()));
 }
 
 /**
