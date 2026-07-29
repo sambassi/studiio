@@ -592,10 +592,17 @@ export default function ClipDetectorModal({
                           : undefined
                       }
                     >
+                      {/*
+                        Hauteur fixe + object-contain : la vignette est
+                        desormais generee au ratio de la source, et
+                        `aspect-video object-cover` la recadrait — un rush 9:16
+                        perdait le haut et le bas de l'image. `object-contain`
+                        montre la frame entiere, quel que soit le format.
+                      */}
                       <img
                         src={clip.thumbnailUrl}
                         alt={clip.label}
-                        className="aspect-video w-full object-cover"
+                        className="h-32 w-full bg-black object-contain"
                       />
                       <span
                         className={`absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded border-2 text-[10px] transition ${
