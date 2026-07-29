@@ -24,7 +24,12 @@ function getOAuthUrl(platform: string, state: string): string | null {
       // (meme contrainte que TikTok, d'ou le meme pattern de route dediee).
       case 'instagram': {
               const redirectUri = encodeURIComponent(`${APP_URL}/api/social/callback/instagram`);
-              const appId = process.env.INSTAGRAM_APP_ID;
+              // Les DEUX identifiants sont testes ici, pas seulement l'ID :
+              // sans le secret, l'utilisateur ferait tout l'aller-retour OAuth
+              // avant de tomber sur « configuration manquante » au callback.
+              const appId = process.env.INSTAGRAM_APP_ID && process.env.INSTAGRAM_APP_SECRET
+                ? process.env.INSTAGRAM_APP_ID
+                : undefined;
               if (!appId) return null;
               // Scopes « Instagram Login » : lecture du profil + publication.
               // La virgule est le separateur attendu par Instagram, on l'encode

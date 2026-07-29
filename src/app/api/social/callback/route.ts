@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { toJsStringLiteral, escapeHtml } from '@/lib/social/html-escape';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 
@@ -34,7 +35,20 @@ export async function GET(req: NextRequest) {
       let tokenData: { accessToken: string; refreshToken?: string; accountId: string; accountName: string; expiresAt?: string };
 
       switch (platform) {
+        // Instagram ne passe PLUS par ici : Meta a deprecie l'acces Instagram
+        // via Facebook Login, et le flux vit desormais dans
+        // /api/social/callback/instagram. Laisser `exchangeMetaToken` traiter
+        // Instagram recreerait une ligne au format herite (account_id = compte
+        // IG Business rattache a une Page, token Facebook) que le nouveau code
+        // de publication ne sait pas utiliser : la connexion semblerait reussir
+        // et TOUTES les publications echoueraient ensuite. Mieux vaut un refus
+        // explicite. Seul un flux OAuth en vol au moment du deploiement peut
+        // encore arriver ici.
         case 'instagram':
+                  return redirectWithMessage(
+                    'error',
+                    'Instagram a change de methode de connexion. Relancez « Connecter » depuis Reglages : le compte sera reconnecte via Instagram Login.',
+                  );
         case 'facebook':
                   tokenData = await exchangeMetaToken(code, platform);
                   break;
@@ -116,13 +130,6 @@ export async function GET(req: NextRequest) {
     }
 }
 
-/** Echappement HTML complet (contexte texte et attribut). */
-function escapeHtml(v: unknown): string {
-    return String(v ?? '').replace(
-      /[&<>"']/g,
-      (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string,
-    );
-}
 
 function redirectWithMessage(type: string, message: string): NextResponse {
     const isSuccess = type === 'success';
@@ -133,7 +140,7 @@ function redirectWithMessage(type: string, message: string): NextResponse {
     // du script. Or `message` transporte `error_description`, un parametre
     // d'URL entierement controle par l'appelant. Faille PRE-EXISTANTE, sans
     // rapport avec Instagram, mais identique — corrigee ici aussi.
-    const jsMessage = JSON.stringify(message);
+    const jsMessage = toJsStringLiteral(message);
     const safeMessage = escapeHtml(message);
     const html = isSuccess
       ? `<!DOCTYPE html><html><head><title>Connexion reussie</title></head><body style="font-family:sans-serif;padding:40px;text-align:center">
@@ -158,7 +165,7 @@ function redirectWithMessage(type: string, message: string): NextResponse {
 </script>
 </body></html>`;
     return new NextResponse(html, {
-      headers: { 'Content-Type': 'text/html' },
+      headers: { 'Content-Type': 'text/html; charset=utf-8', 'X-Content-Type-Options': 'nosniff' },
     });
 }
 

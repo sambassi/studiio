@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { toJsStringLiteral, escapeHtml } from '@/lib/social/html-escape';
 import { auth } from '@/lib/auth/config';
 import { verifyState } from '@/lib/social/oauth-state';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
@@ -164,7 +165,12 @@ export async function GET(req: NextRequest) {
         });
       } else {
         if (meData.username) accountName = meData.username;
-        if (!accountId && meData.user_id) accountId = String(meData.user_id);
+        // `/me` fait AUTORITE sur l'identifiant : il renvoie le « Instagram
+        // professional account ID », celui qu'attendent les appels API. Le
+        // `user_id` de l'echange du code est un « Instagram-scoped user ID »,
+        // proche mais pas garanti identique. On prend donc /me en priorite et
+        // on ne garde l'autre que comme repli, cet appel etant non bloquant.
+        if (meData.user_id) accountId = String(meData.user_id);
       }
     } catch (e: any) {
       console.error('[SOCIAL_CALLBACK_IG] /me threw (non bloquant)', e?.message || String(e));
@@ -285,7 +291,7 @@ function redirectWithMessage(type: string, message: string): NextResponse {
   //
   // JSON.stringify produit un litteral JS complet et sur (guillemets inclus),
   // et `escapeHtml` couvre le contexte HTML.
-  const jsMessage = JSON.stringify(message);
+  const jsMessage = toJsStringLiteral(message);
   const safeMessage = escapeHtml(message);
   const html = isSuccess
     ? `<!DOCTYPE html><html><head><title>Connexion reussie</title></head><body style="font-family:sans-serif;padding:40px;text-align:center">
@@ -310,20 +316,7 @@ function redirectWithMessage(type: string, message: string): NextResponse {
 </script>
 </body></html>`;
   return new NextResponse(html, {
-    headers: { 'Content-Type': 'text/html' },
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'X-Content-Type-Options': 'nosniff' },
   });
 }
 
-/**
- * Echappement HTML complet (contexte texte).
- *
- * Les cinq caracteres comptent : `'` et `"` parce que ce helper peut servir en
- * contexte d'attribut, `&` en premier sous peine de re-echapper les entites
- * produites par les remplacements suivants.
- */
-function escapeHtml(v: unknown): string {
-  return String(v ?? '').replace(
-    /[&<>"']/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string,
-  );
-}

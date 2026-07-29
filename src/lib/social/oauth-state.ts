@@ -22,6 +22,9 @@ import { createHmac, timingSafeEqual } from 'crypto';
  * explicitement — aucun n'en a besoin aujourd'hui.
  */
 
+/** Duree de vie d'un `state`. Large, un aller-retour OAuth pouvant inclure une 2FA. */
+const STATE_TTL_MS = 30 * 60 * 1000;
+
 function secret(): string {
   return (process.env.AUTH_SECRET || '').trim();
 }
@@ -70,6 +73,15 @@ export function verifyState(state: string | null): VerifiedState {
   const [userId, timestamp, random, sig] = parts;
   if (!userId || !timestamp || !random || !sig) {
     return { valid: false, userId: null, reason: 'state malforme' };
+  }
+
+  // Sans peremption, un state signe reste valable indefiniment : intercepte
+  // une fois (historique de navigation, journal de proxy), il serait rejouable
+  // des annees plus tard. 30 minutes couvrent largement un aller-retour OAuth,
+  // authentification a deux facteurs comprise.
+  const issuedAt = Number(timestamp);
+  if (!Number.isFinite(issuedAt) || Date.now() - issuedAt > STATE_TTL_MS) {
+    return { valid: false, userId: null, reason: 'state expire' };
   }
 
   const expected = computeSignature(`${userId}:${timestamp}:${random}`);
