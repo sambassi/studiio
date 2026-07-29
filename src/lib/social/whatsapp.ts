@@ -13,6 +13,7 @@
  */
 
 import { isAdmin } from '@/lib/admin';
+import { fetchSubscribers } from '@/lib/social/subscribers';
 
 /** Identifiants NON secrets — surchargeables par env si le compte change. */
 const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID || '1062611940271584';
@@ -89,6 +90,27 @@ export function normalizePhone(raw: string | null | undefined): string | null {
   return n;
 }
 
+/** Longueur maximale d'un parametre de modele. Meta rejette bien au-dela. */
+const MAX_PARAM_LEN = 700;
+
+/**
+ * Assainit un parametre de modele.
+ *
+ * C'est la cause directe de l'erreur Meta 100 « Invalid parameter » : un
+ * parametre contenant un SAUT DE LIGNE ou une TABULATION est refuse, et les
+ * titres de posts en contiennent regulierement. On aplatit donc tout blanc en
+ * espace simple, on borne la longueur, et on garantit une valeur non vide —
+ * un parametre vide est rejete tout autant.
+ */
+export function sanitizeTemplateParam(value: unknown, fallback = 'Nouvelle publication'): string {
+  const flat = String(value ?? '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  if (!flat) return fallback;
+  return flat.length > MAX_PARAM_LEN ? `${flat.slice(0, MAX_PARAM_LEN - 1).trimEnd()}…` : flat;
+}
+
 export interface WhatsAppResult {
   success: boolean;
   /** Identifiant de message Meta (wamid) en cas de succes. */
@@ -142,6 +164,15 @@ export async function sendWhatsApp(
   }
 
   const kind = options.kind || 'template';
+  // Le modele attend UNE variable : on prend la premiere fournie, assainie.
+  // Les eventuelles suivantes sont ignorees plutot que d'etre envoyees et de
+  // provoquer une 132018 (« number of parameters does not match »).
+  const templateParam = sanitizeTemplateParam(options.templateParams?.[0]);
+  if ((options.templateParams?.length ?? 0) > 1) {
+    console.warn(
+      `[WhatsApp] ${options.templateParams!.length} parametres fournis, le modele ${TEMPLATE_NAME} n'en attend qu'un — seul le premier est envoye.`,
+    );
+  }
   const body =
     kind === 'text'
       ? {
@@ -157,13 +188,18 @@ export async function sendWhatsApp(
           template: {
             name: TEMPLATE_NAME,
             language: { code: TEMPLATE_LANG },
+            // Structure EXACTE du modele approuve `afroboost_campagne` :
+            //   corps « Afroboost vous informe: {{1}}. Rendez-vous sur afroboost.com »
+            //   AUCUN en-tete, AUCUN bouton, AUCUN pied de page.
+            // On n'emet donc qu'un seul composant `body`. Ajouter un composant
+            // `header` ou `button` que le modele ne declare pas fait echouer
+            // l'appel en erreur 100.
             components: [
               {
                 type: 'body',
-                parameters: (options.templateParams || []).map((text) => ({
-                  type: 'text',
-                  text,
-                })),
+                // Exactement UN parametre, garanti : `parameters: []` sur un
+                // modele qui attend {{1}} renvoie aussi une erreur 100.
+                parameters: [{ type: 'text', text: templateParam }],
               },
             ],
           },
@@ -266,37 +302,44 @@ export async function broadcastWhatsApp(
 }
 
 /**
- * Destinataires d'un post.
+ * Destinataires d'un post, par ordre de priorite.
  *
- * ⚠️ CONTROLE D'ABUS — a lire avant de toucher a cette fonction.
+ *   1. liste d'abonnes opt-in servie par afroboost (vraie diffusion) ;
+ *   2. `metadata.whatsappTo` du post, ADMIN UNIQUEMENT (voir plus bas) ;
+ *   3. `WHATSAPP_DEFAULT_RECIPIENT` — l'auto-test.
  *
- * `metadata` est stocke VERBATIM depuis le corps de requete par
- * /api/posts : n'importe quel compte inscrit peut donc poser
- * `metadata.whatsappTo` avec des numeros arbitraires. Sans garde, le WABA
- * d'Afroboost devient un relais de diffusion ouvert — et Meta suspend un WABA
- * qui envoie du non-sollicite.
+ * La liste (1) est relue a chaque envoi, sans cache, pour respecter les STOP.
+ * Si l'endpoint afroboost n'est pas encore en ligne, `fetchSubscribers` rend
+ * un tableau vide et l'on retombe sur (2) puis (3) : l'auto-test actuel
+ * continue de fonctionner a l'identique.
  *
- * La liste fournie par le post n'est donc honoree que si son proprietaire est
- * ADMIN, c'est-a-dire le detenteur du compte Meta. Pour tout autre compte, on
- * retombe sur le numero d'environnement, prevu pour l'auto-test.
+ * ⚠️ CONTROLE D'ABUS pour (2) — a lire avant de toucher a cette fonction.
+ * `metadata` est stocke VERBATIM depuis le corps de requete par /api/posts :
+ * n'importe quel compte inscrit peut y poser des numeros arbitraires. Sans
+ * garde, le WABA d'Afroboost devient un relais ouvert — et Meta suspend un
+ * WABA qui envoie du non-sollicite. La liste du post n'est donc honoree que si
+ * son proprietaire est ADMIN, c'est-a-dire le detenteur du compte Meta.
  *
  * Le canal Email n'a pas ce probleme : il ecrit au proprietaire du post, pas a
  * une adresse fournie par le client.
  */
-export function resolveRecipients(
+export async function resolveRecipients(
   metadata: unknown,
   opts: { ownerEmail?: string | null } = {},
-): string[] {
+): Promise<string[]> {
   const fallback = process.env.WHATSAPP_DEFAULT_RECIPIENT?.trim();
   const envList = fallback ? [fallback] : [];
 
-  if (!isAdmin(opts.ownerEmail)) {
-    return envList;
-  }
+  // (1) Abonnes opt-in — la seule source utilisable pour une vraie diffusion.
+  const subscribers = await fetchSubscribers('whatsapp');
+  if (subscribers.length > 0) return subscribers;
+
+  // (2) Liste du post, reservee au detenteur du compte Meta.
+  if (!isAdmin(opts.ownerEmail)) return envList;
 
   const meta = metadata as { whatsappTo?: unknown } | null | undefined;
   // `.filter` AVANT `.map(String)` : dans l'autre sens, `null` devenait la
-  // chaine "null" et partait comme destinataire, produisant un echec parasite.
+  // chaine "null" et partait comme destinataire.
   const fromPost = Array.isArray(meta?.whatsappTo)
     ? (meta!.whatsappTo as unknown[])
         .filter((v) => typeof v === 'string' && v.trim() !== '')

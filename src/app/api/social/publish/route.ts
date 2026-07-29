@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
             .single();
           waMeta = sp?.metadata ?? null;
         }
-        const recipients = resolveRecipients(waMeta, { ownerEmail: session.user.email });
+        const recipients = await resolveRecipients(waMeta, { ownerEmail: session.user.email });
         if (recipients.length === 0) {
           results.push({ platform: platformName, success: false, message: 'WhatsApp : aucun destinataire configure.' });
           continue;
