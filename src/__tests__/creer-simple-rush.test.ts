@@ -26,14 +26,27 @@ describe('Créer (simple) — import d’un rush', () => {
   it('passe le rush au compositeur via `videoUrl`', () => {
     // Sans cette ligne, le rush est téléversé, listé dans l'UI… et absent du
     // montage. C'est le point de câblage le plus facile à oublier.
-    expect(wizardSource).toMatch(/videoUrl:\s*rushUrl\s*\|\|\s*undefined/);
+    // Conditionné à la séquence : un rush transmis alors que la séquence est
+    // masquée force le rendu temps réel pour rien (`hasRushAudio`).
+    expect(wizardSource).toMatch(
+      /videoUrl:\s*seqDuration\('video'\) > 0 \? rushUrl \|\| undefined : undefined/,
+    );
   });
 
   it('persiste le rush sous `rushUrls` — le champ que le Calendrier relit', () => {
     // `regenerateMontage` (calendar/page.tsx) lit `meta.rushUrls?.[0]`. Sans
     // ce champ, une régénération produirait le même montage sans sa séquence
-    // vidéo.
-    expect(wizardSource).toMatch(/rushUrls:\s*persistableUrl\(rushUrl\)/);
+    // vidéo. Même condition que `videoUrl`.
+    expect(wizardSource).toMatch(/rushUrls:\s*\n?\s*seqDuration\('video'\) > 0 && persistableUrl\(rushUrl\)/);
+  });
+
+  it('déclare `hasAudio` quand le rush apporte sa propre piste', () => {
+    // Le compositeur route et embarque l'audio du rush
+    // (`hasRushAudio = !!videoEl`). Sans ce terme, le Calendrier proposait
+    // « Ajouter du son » sur un montage qui en avait déjà.
+    expect(wizardSource).toMatch(
+      /hasAudio:\s*!!\(musicUrl \|\| voiceUrl \|\| \(rushUrl && seqDuration\('video'\) > 0\)\)/,
+    );
   });
 
   it('active la séquence vidéo ET lui donne une durée non nulle à l’import', () => {
@@ -104,24 +117,8 @@ describe('Rush — le ratio de la source est préservé', () => {
     expect(composerSource).not.toMatch(/drawImage\(\s*backgroundSource,\s*0,\s*0,\s*w,\s*h\s*\)/);
   });
 
-  it('la formule « cover » conserve le ratio quel que soit le format de sortie', () => {
-    // Même calcul que `drawVideoSeq`, appliqué aux cas réels : rush vertical
-    // vers une sortie paysage, et l'inverse.
-    const cover = (srcW: number, srcH: number, w: number, h: number) => {
-      const s = Math.max(w / srcW, h / srcH);
-      return { drawW: srcW * s, drawH: srcH * s };
-    };
-    const cases: Array<[number, number, number, number]> = [
-      [1080, 1920, 1920, 1080], // rush 9:16 → sortie 16:9
-      [1920, 1080, 1080, 1920], // rush 16:9 → sortie 9:16
-      [1080, 1080, 1080, 1920], // rush 1:1  → sortie 9:16
-    ];
-    for (const [srcW, srcH, w, h] of cases) {
-      const { drawW, drawH } = cover(srcW, srcH, w, h);
-      expect(drawW / drawH).toBeCloseTo(srcW / srcH, 6);
-      // « Cover » : le cadre est entièrement couvert, sans bande noire.
-      expect(drawW).toBeGreaterThanOrEqual(w - 1e-6);
-      expect(drawH).toBeGreaterThanOrEqual(h - 1e-6);
-    }
-  });
+  // Il y avait ici un test qui réimplémentait la formule « cover » puis
+  // vérifiait sa propre réimplémentation : il ne touchait aucune ligne de
+  // code de production. Retiré. Le cadrage de l'aperçu est vérifié pour de
+  // bon sur le DOM produit, dans `creer-simple-clips.test.tsx`.
 });
