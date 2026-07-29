@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { LayoutDashboard, Zap, Library, Share2, Calendar, Shield, Settings, Menu, X, UserSquare2, Wand2 } from 'lucide-react';
+import { LayoutDashboard, Zap, Library, Share2, Calendar, Shield, Settings, Menu, X, UserSquare2, Wand2, Clapperboard } from 'lucide-react';
 import { useTranslations } from '@/i18n/client';
 import { LanguageSelector } from '@/components/LanguageSelector';
 
@@ -15,6 +15,9 @@ const menuKeys = [
   { icon: UserSquare2, key: 'avatar', href: '/dashboard/avatar', color: '#EC4899' },
   { icon: Calendar, key: 'calendar', href: '/dashboard/calendar', color: '#3B82F6' },
   { icon: Library, key: 'library', href: '/dashboard/library', color: '#8B5CF6' },
+  // `Clapperboard` plutot que `Film` : l'audit d'icones (CLAUDE.md, point E)
+  // note que `Film` porte deja quatre sens differents dans l'editeur.
+  { icon: Clapperboard, key: 'media', href: '/dashboard/media', color: '#10B981' },
   { icon: Share2, key: 'social', href: '/dashboard/social', color: '#06B6D4' },
   { icon: Settings, key: 'settings', href: '/dashboard/settings', color: '#6B7280' },
 ];
