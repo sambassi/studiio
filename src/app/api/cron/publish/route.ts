@@ -9,7 +9,9 @@ import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 import { downloadMediaToFile, downloadMediaToBuffer } from '@/lib/storage/fetch-media';
 import { getValidToken } from '@/lib/social/token-refresh';
 import { sendEmail } from '@/lib/email/resend';
-import { isWhatsAppEnabled, canUseWhatsApp, broadcastWhatsApp, resolveRecipients } from '@/lib/social/whatsapp';
+import { isWhatsAppEnabled, canUseWhatsApp, broadcastWhatsApp, resolveRecipients, MAX_RECIPIENTS } from '@/lib/social/whatsapp';
+import { fetchSubscribers, unsubscribeUrl } from '@/lib/social/subscribers';
+import { isAdmin } from '@/lib/admin';
 
 const execFileAsync = promisify(execFile);
 
@@ -126,7 +128,8 @@ async function sendPostByEmail(
           }
         </div>
         <div style="padding:16px 24px;border-top:1px solid #1F2937;color:#6B7280;font-size:12px;">
-          Envoyé par Studiio — studiio.pro
+          Envoyé par Studiio — studiio.pro<br />
+          <a href="${esc(unsubscribeUrl(to))}" style="color:#9CA3AF;">Se désabonner</a>
         </div>
       </div>
     </div>`;
@@ -412,7 +415,49 @@ export async function GET(req: NextRequest) {
           // « not connected » puis sur le `default` du switch, et le post
           // partirait en `failed`.
           if (channel === 'email') {
-            const to = (post as any).users?.email as string | undefined;
+            const owner = (post as any).users?.email as string | undefined;
+
+            // Vraie diffusion : liste opt-in relue a chaque envoi. Reservee au
+            // detenteur du compte, comme WhatsApp — la liste appartient a
+            // afroboost, un tiers ne peut pas attester du consentement de ses
+            // destinataires. Sinon, comportement historique : on ecrit a
+            // l'auteur du post.
+            const subs = isAdmin(owner) ? [...new Set(await fetchSubscribers('email'))] : [];
+            if (subs.length > 0) {
+              let sent = 0;
+              let failed = 0;
+              const capped = subs.slice(0, MAX_RECIPIENTS);
+              const skipped = subs.length - capped.length;
+              if (skipped > 0) {
+                console.warn(`[Email] Diffusion plafonnee : ${capped.length} envoyes, ${skipped} ignores.`);
+              }
+              // try/catch, comme le chemin historique juste en dessous : cette
+              // branche est hors du try par plateforme, une exception ferait
+              // perdre les autres canaux du post.
+              for (let i = 0; i < capped.length; i++) {
+                try {
+                  const r = await sendPostByEmail(capped[i], null, post, videoData);
+                  if (r.success) sent++;
+                  else failed++;
+                } catch {
+                  failed++;
+                }
+                if (i < capped.length - 1) await new Promise((x) => setTimeout(x, 500));
+              }
+              platformResults.push({
+                platform,
+                success: sent > 0,
+                error: [
+                  sent > 0 ? null : `Email : ${failed} envoi(s) en echec`,
+                  skipped > 0 ? `${skipped} destinataire(s) ignore(s) (plafond)` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' — ') || undefined,
+              });
+              continue;
+            }
+
+            const to = owner;
             if (!to) {
               platformResults.push({ platform, success: false, error: 'Adresse email introuvable' });
               continue;
@@ -447,11 +492,11 @@ export async function GET(req: NextRequest) {
               });
               continue;
             }
-            const recipients = resolveRecipients(post.metadata, {
+            const recipients = await resolveRecipients(post.metadata, {
               ownerEmail: (post as any).users?.email,
             });
             if (recipients.length === 0) {
-              platformResults.push({ platform, success: false, error: 'WhatsApp : aucun destinataire (metadata.whatsappTo ou WHATSAPP_DEFAULT_RECIPIENT)' });
+              platformResults.push({ platform, success: false, error: 'WhatsApp : aucun destinataire (liste opt-in afroboost, metadata.whatsappTo ou WHATSAPP_DEFAULT_RECIPIENT)' });
               continue;
             }
             try {
