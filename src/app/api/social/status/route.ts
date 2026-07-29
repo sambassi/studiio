@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
+import { canUseWhatsApp } from '@/lib/social/whatsapp';
 
 // GET /api/social/status - Check REAL connection status for all platforms
 // Only trusts database records (from completed OAuth flows), NOT env vars
@@ -76,7 +77,17 @@ export async function GET(req: NextRequest) {
       },
     };
 
-    return NextResponse.json({ success: true, platforms });
+    // Canaux hors reseaux sociaux. On expose UNIQUEMENT un booleen de
+    // configuration — jamais le token, qui ne doit pas atteindre le navigateur.
+    const channels = {
+      email: { available: !!process.env.RESEND_API_KEY },
+      // Booleen calcule pour CE compte : un utilisateur non autorise voit
+      // le canal « bientot disponible », comme s'il n'etait pas configure.
+      whatsapp: { available: canUseWhatsApp(session.user.email) },
+      'afroboost.com': { available: false },
+    };
+
+    return NextResponse.json({ success: true, platforms, channels });
   } catch (error) {
     console.error('Social status error:', error);
     return NextResponse.json({ success: false, error: 'Failed to check status' }, { status: 500 });

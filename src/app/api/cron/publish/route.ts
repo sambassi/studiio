@@ -9,6 +9,7 @@ import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 import { downloadMediaToFile, downloadMediaToBuffer } from '@/lib/storage/fetch-media';
 import { getValidToken } from '@/lib/social/token-refresh';
 import { sendEmail } from '@/lib/email/resend';
+import { isWhatsAppEnabled, canUseWhatsApp, broadcastWhatsApp, resolveRecipients } from '@/lib/social/whatsapp';
 
 const execFileAsync = promisify(execFile);
 
@@ -431,7 +432,55 @@ export async function GET(req: NextRequest) {
             }
             continue;
           }
-          if (channel === 'whatsapp' || channel === 'afroboost.com' || channel === 'afroboost') {
+          // ── WhatsApp (Meta Cloud API) ────────────────────────────────
+          // Actif seulement si STUDIIO_WHATSAPP_TOKEN est defini ; sinon le
+          // canal reste « bientot disponible » et l'echec est explicite.
+          if (channel === 'whatsapp') {
+            const waOwner = (post as any).users?.email as string | undefined;
+            if (!canUseWhatsApp(waOwner)) {
+              platformResults.push({
+                platform,
+                success: false,
+                error: isWhatsAppEnabled()
+                  ? 'WhatsApp : canal reserve au detenteur du compte Meta'
+                  : 'WhatsApp : canal pas encore configure',
+              });
+              continue;
+            }
+            const recipients = resolveRecipients(post.metadata, {
+              ownerEmail: (post as any).users?.email,
+            });
+            if (recipients.length === 0) {
+              platformResults.push({ platform, success: false, error: 'WhatsApp : aucun destinataire (metadata.whatsappTo ou WHATSAPP_DEFAULT_RECIPIENT)' });
+              continue;
+            }
+            try {
+              // Une seule variable : le modele `afroboost_campagne` attend
+              // {{1}}. Tout ecart de nombre/ordre renvoie l'erreur Meta 132018.
+              const var1 = String(post.title || post.caption || 'Nouvelle publication').slice(0, 900);
+              const bc = await broadcastWhatsApp(recipients, { templateParams: [var1] });
+              platformResults.push({
+                platform,
+                success: bc.success,
+                // La troncature est signalee : un plafond silencieux ferait
+                // croire a une diffusion complete.
+                error: [
+                  bc.success ? null : `WhatsApp : ${bc.failed} envoi(s) en echec`,
+                  bc.truncated > 0 ? `${bc.truncated} destinataire(s) ignore(s) (plafond)` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' — ') || undefined,
+              });
+            } catch (waErr) {
+              platformResults.push({
+                platform,
+                success: false,
+                error: waErr instanceof Error ? waErr.message : 'Echec WhatsApp',
+              });
+            }
+            continue;
+          }
+          if (channel === 'afroboost.com' || channel === 'afroboost') {
             // Canaux annonces « bientot disponible » : non selectionnables,
             // mais un post ancien ou importe pourrait en porter. On les marque
             // en echec EXPLICITE, avec un motif lisible, plutot que de les

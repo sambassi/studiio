@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { getValidToken } from '@/lib/social/token-refresh';
+import { isWhatsAppEnabled, canUseWhatsApp, broadcastWhatsApp, resolveRecipients } from '@/lib/social/whatsapp';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 
 // POST /api/social/publish - Publish a video to social platforms
@@ -61,6 +62,58 @@ export async function POST(req: NextRequest) {
 
     for (const platformName of platforms) {
       const platform = platformName.toLowerCase();
+
+      // ── Canaux SANS compte social ────────────────────────────────────
+      // Traites avant la recherche de compte, comme dans le cron : sinon ils
+      // tomberaient sur « non connecte » puis sur le `default` du switch.
+      if (platform === 'whatsapp') {
+        if (!canUseWhatsApp(session.user.email)) {
+          results.push({
+            platform: platformName,
+            success: false,
+            message: isWhatsAppEnabled()
+              ? 'WhatsApp : canal reserve au detenteur du compte Meta.'
+              : 'WhatsApp : canal pas encore configure.',
+          });
+          continue;
+        }
+        // `metadata.whatsappTo` du post si on en a un ; sinon le numero
+        // d'environnement (auto-test). Requete faite ici seulement, pour ne
+        // rien couter aux publications qui ne visent pas WhatsApp.
+        let waMeta: unknown = null;
+        if (scheduledPostId) {
+          const { data: sp } = await supabase
+            .from('scheduled_posts')
+            .select('metadata')
+            .eq('id', scheduledPostId)
+            // Filtre de propriete : `supabaseAdmin` contourne la RLS, sans lui
+            // un utilisateur connaissant l'id d'un post d'un autre compte
+            // declencherait des envois vers SA liste de destinataires.
+            .eq('user_id', session.user.id)
+            .single();
+          waMeta = sp?.metadata ?? null;
+        }
+        const recipients = resolveRecipients(waMeta, { ownerEmail: session.user.email });
+        if (recipients.length === 0) {
+          results.push({ platform: platformName, success: false, message: 'WhatsApp : aucun destinataire configure.' });
+          continue;
+        }
+        // Une seule variable : le modele attend {{1}}. Un ecart de nombre ou
+        // d'ordre renvoie l'erreur Meta 132018.
+        const var1 = String(video?.title || caption || 'Nouvelle publication').slice(0, 900);
+        const bc = await broadcastWhatsApp(recipients, { templateParams: [var1] });
+        results.push({
+          platform: platformName,
+          success: bc.success,
+          message:
+            (bc.success
+              ? `WhatsApp : ${bc.sent} envoye(s), ${bc.failed} echec(s).`
+              : `WhatsApp : ${bc.failed} envoi(s) en echec.`) +
+            (bc.truncated > 0 ? ` ${bc.truncated} destinataire(s) ignore(s) (plafond).` : ''),
+        });
+        continue;
+      }
+
       const account = accounts?.find((a) => a.platform === platform);
 
       if (!account) {
@@ -191,7 +244,15 @@ export async function POST(req: NextRequest) {
           status: 'published',
           published_at: new Date().toISOString(),
         })
-        .eq('id', scheduledPostId);
+        .eq('id', scheduledPostId)
+        // Filtre de propriete, meme motif que la lecture plus haut.
+        // Sans lui, un compte inscrit pouvait marquer « publie » le post d'un
+        // AUTRE compte : le cron ne ramasse que les `scheduled`, la victime ne
+        // publiait donc jamais. Le defaut preexistait, mais il fallait un
+        // compte OAuth connecte ET une publication reelle reussie pour
+        // l'atteindre. Le canal WhatsApp, qui reussit sans aucun compte
+        // social, le rendait declenchable en un appel.
+        .eq('user_id', session.user.id);
     }
 
     return NextResponse.json({
