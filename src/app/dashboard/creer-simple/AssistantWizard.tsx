@@ -18,9 +18,11 @@ import {
   EyeOff,
   ChevronUp,
   ChevronDown,
+  Music,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
 import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
+import { AudioStudioPanel } from '@/components/creer/AudioStudioPanel';
 import { CardIcon } from '@/components/ui/CardIcon';
 import { useBranding, NEUTRAL_BRANDING } from '@/lib/hooks/useBranding';
 import { preRenderCardIcons } from '@/lib/icons/prerender';
@@ -298,7 +300,26 @@ interface Generated {
   ctaSub: string;
 }
 
-const STEPS = ['Sujet', 'Style', 'Contenu', 'Envoi'] as const;
+const STEPS = ['Sujet', 'Style', 'Audio', 'Contenu', 'Envoi'] as const;
+
+/**
+ * Index des etapes, NOMMES.
+ *
+ * Ils etaient ecrits en chiffres en dur a onze endroits. Inserer « Audio » au
+ * milieu decale tout : une seule occurrence oubliee enverrait l'utilisateur
+ * sur la mauvaise etape, sans erreur visible ni au build ni a l'execution.
+ */
+const S = { sujet: 0, style: 1, audio: 2, contenu: 3, envoi: 4 } as const;
+
+/**
+ * URL stockable dans les metadonnees d'un post, ou `undefined`.
+ *
+ * Une URL `blob:` n'existe que dans l'onglet qui l'a creee : elle est parfaite
+ * pour composer la video (tout se passe dans le navigateur) mais morte des le
+ * rechargement de la page. On ne la persiste donc pas.
+ */
+const persistableUrl = (url: string | null): string | undefined =>
+  url && !url.startsWith('blob:') ? url : undefined;
 
 /** Classes de désactivation : `Button` n'en fournit aucune (ui/Button.tsx). */
 const DISABLED = 'disabled:opacity-40 disabled:cursor-not-allowed';
@@ -561,6 +582,27 @@ export default function AssistantWizard() {
   const [sequences, setSequences] = useState(DEFAULT_SEQUENCES);
   const [dragKey, setDragKey] = useState<SeqKey | null>(null);
 
+  // ── Audio ────────────────────────────────────────────────────────────
+  // Le compositeur accepte deja `musicUrl` / `voiceUrl` : il suffit de les
+  // lui passer. Sans audio il rend en mode « fast » (~10x temps reel) ; des
+  // qu'une piste est posee il bascule en mode « normal », temps reel, et
+  // embarque le son dans le fichier.
+  const [musicUrl, setMusicUrl] = useState<string | null>(null);
+  const [musicName, setMusicName] = useState('');
+  const [voiceUrl, setVoiceUrl] = useState<string | null>(null);
+  const [voiceName, setVoiceName] = useState('');
+  const [musicVolume, setMusicVolume] = useState(0.5);
+  const [voiceVolume, setVoiceVolume] = useState(1);
+
+  // Durees par sequence. Elles etaient figees dans la constante `SEQ` ; le
+  // panneau audio expose des reglages de duree, et les afficher sans qu'ils
+  // agissent serait mensonger. Valeurs initiales identiques a `SEQ`, donc
+  // comportement par defaut strictement inchange.
+  const [introDuration, setIntroDuration] = useState<number>(SEQ.intro);
+  const [cardsDuration, setCardsDuration] = useState<number>(SEQ.cards);
+  const [videoDuration, setVideoDuration] = useState<number>(SEQ.video);
+  const [ctaDuration, setCtaDuration] = useState<number>(SEQ.cta);
+
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState<Generated | null>(null);
 
@@ -612,6 +654,18 @@ export default function AssistantWizard() {
 
   /** Ordre effectif : sequences activees, dans l'ordre choisi. */
   const activeOrder = sequences.filter((s) => s.enabled).map((s) => s.key);
+
+  /**
+   * Duree effective d'une sequence : 0 si elle est desactivee.
+   *
+   * Une sequence masquee a une duree NULLE — c'est ainsi que le compositeur
+   * l'exclut, et que le Calendrier la filtre (`dur > 0`). Passer par ce seul
+   * point evite que l'apercu, la video et le Calendrier divergent.
+   */
+  const seqDuration = (k: SeqKey): number => {
+    if (!activeOrder.includes(k)) return 0;
+    return { intro: introDuration, cards: cardsDuration, video: videoDuration, cta: ctaDuration }[k];
+  };
 
   const moveSequence = (from: SeqKey, to: SeqKey) => {
     if (from === to) return;
@@ -679,7 +733,7 @@ export default function AssistantWizard() {
   }, [topicText, tone]);
 
   const goToGeneration = () => {
-    setStep(2);
+    setStep(S.contenu);
     runGeneration();
   };
 
@@ -823,10 +877,17 @@ export default function AssistantWizard() {
         // Une sequence desactivee a une duree nulle : c'est ainsi que le
         // compositeur l'exclut (conditions d'inclusion), et le Calendrier la
         // filtre pareil (`dur > 0`).
-        introDuration: activeOrder.includes('intro') ? SEQ.intro : 0,
-        cardsDuration: activeOrder.includes('cards') ? SEQ.cards : 0,
-        videoDuration: 0,
-        ctaDuration: activeOrder.includes('cta') ? SEQ.cta : 0,
+        introDuration: seqDuration('intro'),
+        cardsDuration: seqDuration('cards'),
+        videoDuration: seqDuration('video'),
+        ctaDuration: seqDuration('cta'),
+        // Le compositeur bascule en mode « normal » (temps reel, audio mixe et
+        // embarque) des qu'une de ces deux URL est fournie ; sans elles il
+        // reste en mode « fast ».
+        musicUrl: musicUrl || undefined,
+        voiceUrl: voiceUrl || undefined,
+        musicVolume,
+        voiceVolume,
         sequenceOrder: activeOrder,
         accentColor: accent,
         // drawCTA lit `design.ctaMainText || watermarkText || 'AFROBOOST'` :
@@ -901,18 +962,31 @@ export default function AssistantWizard() {
           description: c.description,
           color: accent,
         })),
-        hasAudio: false,
+        // Le Calendrier detecte l'audio via `!!meta?.hasAudio` : le laisser a
+        // `false` alors qu'une piste est embarquee ferait afficher l'apercu en
+        // muet, avec le bouton de son masque.
+        //
+        // `hasAudio` reste vrai meme si l'URL n'est pas persistable : le son
+        // est de toute facon EMBARQUE dans le fichier rendu.
+        hasAudio: !!(musicUrl || voiceUrl),
+        // Les URL `blob:` ne survivent pas au rechargement de la page. Le
+        // panneau audio televerse normalement les pistes et renvoie une URL
+        // publique, mais il retombe sur un blob local si le televersement de
+        // la voix de synthese echoue. Stocker cette URL-la laisserait une
+        // reference morte dans le post.
+        musicUrl: persistableUrl(musicUrl),
+        voiceUrl: persistableUrl(voiceUrl),
         renderedVideoUrl: composed.url,
         thumbnailUrl: composed.thumbnailUrl || undefined,
         composerVersion: composed.composerVersion || CURRENT_COMPOSER_VERSION,
         // Meme source que les durees passees au compositeur : l'apercu, la
         // video et le Calendrier suivent donc strictement le meme ordre.
         sequences: {
-          intro: activeOrder.includes('intro') ? SEQ.intro : 0,
-          cards: activeOrder.includes('cards') ? SEQ.cards : 0,
-          video: 0,
-          cta: activeOrder.includes('cta') ? SEQ.cta : 0,
-          total: activeOrder.reduce((t, k) => t + (SEQ[k] || 0), 0),
+          intro: seqDuration('intro'),
+          cards: seqDuration('cards'),
+          video: seqDuration('video'),
+          cta: seqDuration('cta'),
+          total: activeOrder.reduce((t, k) => t + seqDuration(k), 0),
           order: activeOrder,
         },
         branding: {
@@ -1014,7 +1088,7 @@ export default function AssistantWizard() {
 
   const reset = () => {
     setStarted(false);
-    setStep(0);
+    setStep(S.sujet);
     setGenerated(null);
     setSent(false);
     setError(null);
@@ -1128,7 +1202,7 @@ export default function AssistantWizard() {
             </div>
 
             {/* Étape 1 — sujet */}
-            {step === 0 && (
+            {step === S.sujet && (
               <div className="space-y-4">
                 <div>
                   <h3 className="font-semibold mb-1">De quoi parle votre contenu ?</h3>
@@ -1169,7 +1243,7 @@ export default function AssistantWizard() {
                 </div>
 
                 <div className="flex justify-end pt-2">
-                  <Button variant="primary" size="sm" onClick={() => setStep(1)}>
+                  <Button variant="primary" size="sm" onClick={() => setStep(S.style)}>
                     <span className="flex items-center gap-2">
                       Continuer <ArrowRight className="w-4 h-4" />
                     </span>
@@ -1179,7 +1253,7 @@ export default function AssistantWizard() {
             )}
 
             {/* Étape 2 — ton + format */}
-            {step === 1 && (
+            {step === S.style && (
               <div className="space-y-5">
                 <div>
                   <h3 className="font-semibold mb-1">Quel style ?</h3>
@@ -1289,7 +1363,7 @@ export default function AssistantWizard() {
                             <div className="text-[11px] text-gray-500 truncate">{meta.hint}</div>
                           </div>
                           <span className="text-[11px] text-gray-500 flex-shrink-0">
-                            {seq.enabled ? `${SEQ[seq.key]}s` : ''}
+                            {seq.enabled ? `${seqDuration(seq.key)}s` : ''}
                           </span>
                           {/* Repli tactile et clavier : le glisser-deposer
                               HTML5 n'existe pas sur mobile. */}
@@ -1335,7 +1409,64 @@ export default function AssistantWizard() {
                 </div>
 
                 <div className="flex justify-between pt-2">
-                  <Button variant="ghost" size="sm" onClick={() => setStep(0)}>
+                  <Button variant="ghost" size="sm" onClick={() => setStep(S.sujet)}>
+                    <span className="flex items-center gap-2">
+                      <ArrowLeft className="w-4 h-4" /> Retour
+                    </span>
+                  </Button>
+                  <Button variant="primary" size="sm" onClick={() => setStep(S.audio)}>
+                    <span className="flex items-center gap-2">
+                      <Music className="w-4 h-4" /> Suivant : audio
+                    </span>
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Étape 3 — audio (facultatif) */}
+            {step === S.audio && (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-base font-semibold">Musique et voix</h3>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Facultatif. Sans piste, le montage est rendu bien plus vite ;
+                    avec une piste, le son est intégré au fichier exporté.
+                  </p>
+                </div>
+
+                <AudioStudioPanel
+                  musicUrl={musicUrl}
+                  musicName={musicName}
+                  voiceUrl={voiceUrl}
+                  voiceName={voiceName}
+                  musicVolume={musicVolume}
+                  voiceVolume={voiceVolume}
+                  onMusicChange={(url, name) => {
+                    setMusicUrl(url);
+                    setMusicName(name);
+                  }}
+                  onVoiceChange={(url, name) => {
+                    setVoiceUrl(url);
+                    setVoiceName(name);
+                  }}
+                  onMusicVolumeChange={setMusicVolume}
+                  onVoiceVolumeChange={setVoiceVolume}
+                  introDuration={introDuration}
+                  cardsDuration={cardsDuration}
+                  videoDuration={videoDuration}
+                  ctaDuration={ctaDuration}
+                  onIntroDurationChange={setIntroDuration}
+                  onCardsDurationChange={setCardsDuration}
+                  onVideoDurationChange={setVideoDuration}
+                  onCtaDurationChange={setCtaDuration}
+                  // L'assistant ne gere pas encore de rush video : la sequence
+                  // « Video » reste donc a zero et masquee.
+                  hasRush={false}
+                  contentTheme={themeId}
+                />
+
+                <div className="flex justify-between pt-2">
+                  <Button variant="ghost" size="sm" onClick={() => setStep(S.style)}>
                     <span className="flex items-center gap-2">
                       <ArrowLeft className="w-4 h-4" /> Retour
                     </span>
@@ -1349,8 +1480,8 @@ export default function AssistantWizard() {
               </div>
             )}
 
-            {/* Étape 3 — contenu généré */}
-            {step === 2 && (
+            {/* Étape 4 — contenu généré */}
+            {step === S.contenu && (
               <div className="space-y-4">
                 <div>
                   <h3 className="font-semibold mb-1">Votre contenu</h3>
@@ -1411,7 +1542,7 @@ export default function AssistantWizard() {
                 )}
 
                 <div className="flex justify-between pt-2 gap-2 flex-wrap">
-                  <Button variant="ghost" size="sm" onClick={() => setStep(1)}>
+                  <Button variant="ghost" size="sm" onClick={() => setStep(S.audio)}>
                     <span className="flex items-center gap-2">
                       <ArrowLeft className="w-4 h-4" /> Retour
                     </span>
@@ -1431,7 +1562,7 @@ export default function AssistantWizard() {
                     <Button
                       variant="primary"
                       size="sm"
-                      onClick={() => setStep(3)}
+                      onClick={() => setStep(S.envoi)}
                       disabled={generating || !generated}
                       className={DISABLED}
                     >
@@ -1445,7 +1576,7 @@ export default function AssistantWizard() {
             )}
 
             {/* Étape 4 — envoi */}
-            {step === 3 && (
+            {step === S.envoi && (
               <div className="space-y-4">
                 {sent ? (
                   <div className="py-6 text-center space-y-4">
@@ -1496,7 +1627,7 @@ export default function AssistantWizard() {
                     </div>
 
                     <div className="flex justify-between pt-2">
-                      <Button variant="ghost" size="sm" onClick={() => setStep(2)}>
+                      <Button variant="ghost" size="sm" onClick={() => setStep(S.contenu)}>
                         <span className="flex items-center gap-2">
                           <ArrowLeft className="w-4 h-4" /> Retour
                         </span>
