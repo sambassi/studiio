@@ -45,7 +45,13 @@ export async function GET(req: NextRequest) {
     });
 
     // Check which platforms have OAuth configured (can initiate connection)
-    const hasInstagramOAuth = !!(process.env.META_INSTAGRAM_APP_ID || process.env.FACEBOOK_CLIENT_ID);
+    // Instagram a ses PROPRES identifiants depuis le passage a « Instagram API
+    // with Instagram Login ». Detecter la disponibilite via les variables Meta
+    // historiques ferait afficher « Pret » et un bouton actif alors que
+    // /api/social/connect repond 422 « Configuration OAuth manquante » — donc un
+    // bouton qui echoue systematiquement. Les DEUX variables sont requises,
+    // comme dans connect/route.ts.
+    const hasInstagramOAuth = !!(process.env.INSTAGRAM_APP_ID && process.env.INSTAGRAM_APP_SECRET);
     const hasFacebookOAuth = !!process.env.FACEBOOK_CLIENT_ID;
     const hasTiktokOAuth = !!process.env.TIKTOK_CLIENT_KEY;
     const hasYoutubeOAuth = !!(process.env.YOUTUBE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID);

@@ -358,14 +358,18 @@ async function publishToInstagram(
     // endpoint qui accepte un token « Instagram Login ». Un tel token envoye a
     // graph.facebook.com est rejete (code 190).
     const createRes = await fetch(
-  // Endpoint `me` plutot que l'identifiant stocke : le token Instagram Login est
-  // deja porte sur UN compte, donc `me` le designe sans ambiguite. Meta expose
-  // deux valeurs proches — le « Instagram-scoped user ID » renvoye par l'echange
-  // du code, et le « Instagram professional account ID » renvoye par /me — et se
-  // tromper de l'une pour l'autre fait echouer 100 % des publications avec
-  // « Object with ID does not exist ». `me` supprime le probleme a la racine.
-  // `account_id` reste stocke, mais pour l'affichage et la tracabilite.
-      'https://graph.instagram.com/v21.0/me/media',
+  // Identifiant numerique, pas `me` : c'est la SEULE forme documentee par Meta
+  // pour POST /{ig-id}/media et /media_publish sur graph.instagram.com. `me`
+  // n'y est documente que comme noeud de lecture (GET /me?fields=...), jamais
+  // comme prefixe d'edge en POST.
+  //
+  // L'ambiguite entre les deux identifiants Meta — le « Instagram-scoped user
+  // ID » renvoye par l'echange du code et le « Instagram professional account
+  // ID » renvoye par /me, seul attendu par l'API — est deja tranchee dans le
+  // callback, qui prend /me comme autorite pour `account_id`. Basculer ici sur
+  // `me` echangerait donc un risque resolu contre un risque non documente, sur
+  // le chemin le plus critique du produit.
+      `https://graph.instagram.com/v21.0/${igUserId}/media`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -418,7 +422,7 @@ async function publishToInstagram(
 
     // Step 3: Publish
     const publishRes = await fetch(
-      'https://graph.instagram.com/v21.0/me/media_publish',
+      `https://graph.instagram.com/v21.0/${igUserId}/media_publish`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -52,7 +52,14 @@ export async function GET(req: NextRequest) {
     const verified = verifyState(state);
     if (!verified.valid || !verified.userId) {
       console.error('[SOCIAL_CALLBACK_IG] state rejete :', verified.reason);
-      return redirectWithMessage('error', 'State invalide');
+      // Un state perime est le cas le plus frequent et le seul actionnable :
+      // « State invalide » laisserait l'utilisateur sans rien a faire.
+      return redirectWithMessage(
+        'error',
+        verified.reason === 'state expire'
+          ? 'Lien de connexion expire. Relancez « Connecter » depuis Reglages.'
+          : 'State invalide',
+      );
     }
     const userId = verified.userId;
 
