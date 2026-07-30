@@ -16,7 +16,7 @@ const STUDIIO_KNOWLEDGE = `
 - Durées séquences : Titre (~4s), Cartes (~6s), Vidéo rush (variable), CTA (~4s)
 
 3. EXPORT
-- Bouton vertical à droite : 4 destinations (Calendrier, Bureau, Les deux, Studio Son)
+- Bouton vertical à droite : 3 destinations (Calendrier, Bureau, Les deux)
 - Coût : 25 crédits par montage
 - Batch x1/x3/x5/x10 pour générer plusieurs variations
 
