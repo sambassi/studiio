@@ -175,11 +175,22 @@ describe('Export — la photo part toujours de la composition complète', () => 
 });
 
 describe('Disposition — l’aperçu ne disparaît plus', () => {
-  it('la colonne d’aperçu est collée', () => {
-    expect(wizardSource).toMatch(/className="lg:col-span-2 lg:sticky lg:top-4"/);
-    // `items-start` est ce qui rend le `sticky` opérant : sans lui la colonne
-    // s'étire sur toute la hauteur et n'a plus rien à coller.
-    expect(wizardSource).toMatch(/grid grid-cols-1 lg:grid-cols-5 gap-6 items-start/);
+  it('la colonne d’aperçu est collée, sous la navbar et pas dessous', () => {
+    const col = /<div className="([^"]*lg:sticky[^"]*)">/.exec(wizardSource);
+    expect(col).not.toBeNull();
+    const classes = col![1].split(/\s+/);
+    expect(classes).toContain('lg:sticky');
+    expect(classes).toContain('lg:col-span-2');
+    // La navbar est `fixed h-16` (64 px) : `top-4` glissait 48 px de la carte
+    // — en-tête et onglets compris — sous cette barre.
+    const navbar = readFileSync(resolve(__dirname, '../components/layout/Navbar.tsx'), 'utf-8');
+    expect(navbar).toMatch(/fixed[^"]*h-16/);
+    const top = classes.find((c) => c.startsWith('lg:top-'));
+    expect(top).toBeDefined();
+    expect(Number(top!.replace('lg:top-', ''))).toBeGreaterThanOrEqual(16);
+    // `items-start` rend le `sticky` opérant — il préexistait, on vérifie
+    // seulement qu'il n'a pas été perdu en chemin.
+    expect(wizardSource).toMatch(/lg:grid-cols-5[^"]*items-start/);
   });
 
   it('une seule section ouverte à la fois', () => {
@@ -202,10 +213,13 @@ describe('Disposition — l’aperçu ne disparaît plus', () => {
 
 describe('Aucun réglage perdu', () => {
   it('les quatre sections couvrent tout ce qui existait', () => {
-    const step = wizardSource.slice(
-      wizardSource.indexOf('{step === S.style && ('),
-      wizardSource.indexOf('{/* Étape 3 — audio'),
-    );
+    // Bornes gardées : sans cela, un `indexOf` à -1 élargissait la tranche
+    // jusqu'à l'étape Envoi et le test restait vert en ne testant plus rien.
+    const from = wizardSource.indexOf('{step === S.style && (');
+    const to = wizardSource.indexOf('{/* Étape 3 — audio');
+    expect(from).toBeGreaterThan(-1);
+    expect(to).toBeGreaterThan(from);
+    const step = wizardSource.slice(from, to);
     // Un contrôle par famille, pris dans le corps de l'étape : si la refonte
     // en avait laissé un dehors, il aurait disparu de l'écran.
     for (const marker of [
@@ -218,11 +232,18 @@ describe('Aucun réglage perdu', () => {
       'Interlettrage',                   // typo
       'Interligne',
       'aria-label={`Gras — ${zoneLabel}`}',
+      'aria-label={`Italique — ${zoneLabel}`}',
+      'aria-label={`Taille du texte — ${zoneLabel}`}',
+      'aria-label={`Couleur — ${zoneLabel}`}',
+      'Couleur du sous-texte du CTA',    // sous-couleur CTA
+      'Réinitialiser',                   // remise à zéro de la typo
       'id="wm-text"',                    // filigrane
       'moveSequenceBy',                  // ordre des séquences
+      'onDrop',                          // glisser-déposer des séquences
       'toggleSequence',                  // œil
       '<MediaLibrary',                   // import rush
       'Temps forts',                     // découpe
+      'onClick={clearRush}',             // retrait du rush
     ]) {
       expect(step).toContain(marker);
     }
@@ -252,3 +273,57 @@ describe('Aucun réglage perdu', () => {
     expect(wizardSource).toMatch(/siteText: watermarkConfig/);
   });
 });
+
+describe('Les trois pièges trouvés à l’audit', () => {
+  it('le contenu est généré DÈS l’étape Style, pas deux étapes plus loin', () => {
+    // Sans contenu, l'aperçu n'est qu'un placeholder : ni onglets, ni effet
+    // visible des couleurs et de la typo — c'est-à-dire exactement ce que la
+    // refonte devait apporter. Le contenu n'est plus généré à l'entrée de
+    // « Contenu » mais à l'entrée de « Style ».
+    expect(wizardSource).toMatch(/const goToStyle = \(\) => \{\s*setStep\(S\.style\);\s*ensureGenerated\(\);/);
+    expect(wizardSource).toMatch(/onClick=\{goToStyle\}/);
+    // …et il n'est PAS régénéré en avançant : le texte sur lequel on vient de
+    // régler son style doit rester le même.
+    expect(wizardSource).toMatch(
+      /if \(generated && genSigRef\.current === `\$\{topicText\}\|\$\{tone\.id\}`\) return;/,
+    );
+    // Changer de sujet ou de ton le régénère quand même.
+    expect(wizardSource).toMatch(/genSigRef\.current = `\$\{topicText\}\|\$\{tone\.id\}`;/);
+  });
+
+  it('un onglet ne reste pas braqué sur une séquence masquée', () => {
+    // `disabled` empêche de CHOISIR un onglet mort, pas d'y RESTER : masquer
+    // la séquence après coup laissait un plateau vide, sans explication.
+    expect(wizardSource).toMatch(
+      /if \(previewFocus !== 'all' && !activeOrder\.includes\(previewFocus\)\) setPreviewFocus\('all'\);/,
+    );
+    // Et choisir une zone de texte ne braque l'aperçu que sur une séquence
+    // réellement active.
+    expect(wizardSource).toMatch(/if \(activeOrder\.includes\(target\)\) setPreviewFocus\(target\);/);
+  });
+
+  it('l’attente de peinture ne peut pas bloquer l’envoi', () => {
+    // `requestAnimationFrame` est GELÉ dans un onglet en arrière-plan :
+    // lancer l'envoi puis changer d'onglet laissait la promesse pendante et
+    // le bouton désactivé. Le fichier applique la même discipline 30 lignes
+    // plus bas sur le décodage de la data URL.
+    const capture = wizardSource.slice(
+      wizardSource.indexOf('const focusBeforeCapture = previewFocus;'),
+      wizardSource.indexOf('// 3. Composition + upload'),
+    );
+    expect(capture).toMatch(/setTimeout\(r, 300\)/);
+    expect(capture).toMatch(/clearTimeout\(timer\)/);
+  });
+
+  it('« créer un autre contenu » repart d’une vue à plat', () => {
+    const reset = wizardSource.slice(
+      wizardSource.indexOf('const reset = () => {'),
+      wizardSource.indexOf('// ── Rendu ──'),
+    );
+    expect(reset).not.toHaveLength(0);
+    expect(reset).toMatch(/setPreviewFocus\('all'\)/);
+    expect(reset).toMatch(/setOpenSection\('format'\)/);
+    expect(reset).toMatch(/genSigRef\.current = '';/);
+  });
+});
+

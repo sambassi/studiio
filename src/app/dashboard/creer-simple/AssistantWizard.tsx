@@ -662,7 +662,8 @@ function StyleSection({
         className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-gray-800/40"
       >
         <span className="text-sm font-medium text-white">{title}</span>
-        <span className="flex-1 truncate text-[11px] text-gray-500">{hint}</span>
+        {/* Le separateur evite un nom accessible colle (« Ton et formatPunchy »). */}
+        <span className="flex-1 truncate text-[11px] text-gray-500">{hint ? `— ${hint}` : ''}</span>
         {swatches && (
           <span className="flex flex-shrink-0 gap-1">
             {swatches.map((c, i) => (
@@ -1451,6 +1452,15 @@ export default function AssistantWizard() {
   const activeOrder = sequences.filter((s) => s.enabled).map((s) => s.key);
 
   /**
+   * Un onglet braque sur une sequence masquee ne montrerait qu'un plateau
+   * vide, sans rien pour l'expliquer — le desactiver empeche de le CHOISIR,
+   * pas d'y RESTER. On revient donc a la vue d'ensemble.
+   */
+  useEffect(() => {
+    if (previewFocus !== 'all' && !activeOrder.includes(previewFocus)) setPreviewFocus('all');
+  }, [previewFocus, activeOrder]);
+
+  /**
    * Duree effective d'une sequence : 0 si elle est desactivee.
    *
    * Une sequence masquee a une duree NULLE — c'est ainsi que le compositeur
@@ -1572,6 +1582,7 @@ export default function AssistantWizard() {
     genTimerRef.current = setTimeout(() => {
       try {
         const seed = Math.floor(Math.random() * 100000) + tone.seedOffset;
+        genSigRef.current = `${topicText}|${tone.id}`;
         const result = generateSmartContent(topicText, seed);
         setGenerated({
           title: result.tagLine,
@@ -1588,9 +1599,38 @@ export default function AssistantWizard() {
     }, 30);
   }, [topicText, tone]);
 
+  /**
+   * Sujet ou ton depuis la derniere generation. Sert a ne PAS regenerer un
+   * contenu que l'utilisateur vient de regler — et a le regenerer des qu'il
+   * change de sujet.
+   */
+  const genSigRef = useRef('');
+
+  /**
+   * Genere le contenu s'il manque, ou si le sujet/ton a change depuis.
+   *
+   * Appele en entrant dans Style : sans contenu, l'apercu n'affiche qu'un
+   * placeholder, les onglets n'ont rien a montrer et regler les couleurs ou
+   * la typo se fait a l'aveugle — ce que la refonte etait justement censee
+   * corriger.
+   */
+  const ensureGenerated = useCallback(() => {
+    if (generated && genSigRef.current === `${topicText}|${tone.id}`) return;
+    runGeneration();
+  }, [generated, topicText, tone.id, runGeneration]);
+
+  const goToStyle = () => {
+    setStep(S.style);
+    ensureGenerated();
+  };
+
   const goToGeneration = () => {
     setStep(S.contenu);
-    runGeneration();
+    // Le contenu existe deja si l'utilisateur n'a pas change de sujet : le
+    // regenerer lui donnerait un texte different de celui sur lequel il vient
+    // de regler son style. Le bouton « Relancer » reste la pour le faire
+    // explicitement.
+    ensureGenerated();
   };
 
   // ── Envoi au calendrier ─────────────────────────────────────────────
@@ -1668,8 +1708,15 @@ export default function AssistantWizard() {
       try {
         if (focusBeforeCapture !== 'all') {
           flushSync(() => setPreviewFocus('all'));
-          // Deux frames : React a commit, le navigateur doit encore peindre.
-          await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+          // Une frame de peinture, bornee : `requestAnimationFrame` est GELE
+          // dans un onglet en arriere-plan. Sans ce delai de garde, lancer
+          // l'envoi puis changer d'onglet laissait la promesse pendante et le
+          // bouton desactive jusqu'au retour de l'utilisateur.
+          await new Promise<void>((r) => {
+            const done = () => { clearTimeout(timer); r(); };
+            const timer = setTimeout(r, 300);
+            requestAnimationFrame(() => requestAnimationFrame(done));
+          });
         }
         const cardsEl = cardsRef.current;
         const previewEl = previewRef.current;
@@ -2013,6 +2060,10 @@ export default function AssistantWizard() {
   const reset = () => {
     setStarted(false);
     setStep(S.sujet);
+    // Sans cela, le montage suivant naitrait filtre sur l'onglet du precedent.
+    setPreviewFocus('all');
+    setOpenSection('format');
+    genSigRef.current = '';
     setGenerated(null);
     setSent(false);
     setError(null);
@@ -2167,7 +2218,7 @@ export default function AssistantWizard() {
                 </div>
 
                 <div className="flex justify-end pt-2">
-                  <Button variant="primary" size="sm" onClick={() => setStep(S.style)}>
+                  <Button variant="primary" size="sm" onClick={goToStyle}>
                     <span className="flex items-center gap-2">
                       Continuer <ArrowRight className="w-4 h-4" />
                     </span>
@@ -2367,8 +2418,11 @@ export default function AssistantWizard() {
                           setEditedZone(z.key);
                           setEditedTextColor(null);
                           // Le sous-titre n'a pas d'onglet : il vit avec le
-                          // titre, comme dans le montage.
-                          setPreviewFocus(z.key === 'cta' ? 'cta' : 'intro');
+                          // titre, comme dans le montage. Et on ne braque
+                          // l'apercu que sur une sequence reellement active,
+                          // sinon le plateau se viderait sans explication.
+                          const target = z.key === 'cta' ? 'cta' : 'intro';
+                          if (activeOrder.includes(target)) setPreviewFocus(target);
                         }}
                             aria-pressed={editedZone === z.key}
                             className={`flex-1 rounded-xl px-3 py-2 text-left transition ${
@@ -3101,9 +3155,12 @@ export default function AssistantWizard() {
 
       {/* Colonne d'apercu COLLEE : elle defilait avec les reglages et sortait
           de l'ecran des que le panneau s'allongeait. `items-start` sur la
-          grille est ce qui rend le `sticky` operant — sans lui, la colonne
-          s'etire sur toute la hauteur et n'a plus rien a coller. */}
-      <div className="lg:col-span-2 lg:sticky lg:top-4">
+          grille (deja present) est ce qui rend le `sticky` operant : sans lui
+          la colonne s'etire sur toute la hauteur et n'a plus rien a coller.
+          `top-20` et non `top-4` : la navbar est `fixed h-16`, un decalage
+          plus court glissait 48 px de la carte — en-tete et onglets compris —
+          sous cette barre. */}
+      <div className="lg:col-span-2 lg:sticky lg:top-20">
         <Preview
           generated={generated}
           format={format}
