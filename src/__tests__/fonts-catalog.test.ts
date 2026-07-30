@@ -10,51 +10,35 @@ import {
 /**
  * Catalogue de polices.
  *
- * Le défaut qui a motivé ce module n'est pas un manque de polices, c'est une
- * URL : l'API CSS de Google répond **400 Bad Request** dès qu'on lui demande
- * une graisse qu'une famille ne possède pas. Le repli générique du compositeur
- * réclamait `wght@400;…;900` à toute famille inconnue — donc aucune feuille
- * pour Pacifico, Anton, Bebas et l'écrasante majorité des display et des
- * scriptes, qui n'existent qu'en 400. La police n'arrivait jamais, le canvas
- * retombait en silence sur une police système, et la vidéo sortait dans une
- * autre typographie que l'aperçu.
+ * Le défaut qui a motivé ce module est SILENCIEUX : `document.fonts.load()`
+ * appelé juste après avoir inséré la balise `<link>` ne trouve encore aucune
+ * `@font-face` — la feuille n'est pas analysée — et résout sur un tableau
+ * vide, immédiatement. Pire, `document.fonts.check()` renvoie `true` par
+ * spécification quand rien ne correspond. Un chargement qui ne charge rien se
+ * déclarait donc réussi en quelques millisecondes, et le canvas dessinait en
+ * police système pendant que l'aperçu affichait la bonne police.
  *
- * C'est ce que ces tests surveillent en premier.
+ * Ces tests exercent ce scénario précis : feuille non encore analysée,
+ * `check()` menteur, `load()` qui rend un tableau vide.
  */
 
-describe('Les graisses demandées sont celles qui existent', () => {
-  it('n’écrit jamais une URL qui ferait répondre 400 à Google', () => {
-    for (const f of FONT_CATALOG) {
-      const url = googleFontsUrl(f.family, f.weights);
-      const asked = /wght@([\d;]+)/.exec(url)![1].split(';').map(Number);
-      // Chaque graisse demandée doit être déclarée pour CETTE famille.
-      for (const w of asked) expect(f.weights).toContain(w);
-      expect(asked).toEqual([...f.weights].sort((a, b) => a - b));
-    }
-  });
-
-  it('déclare des graisses plausibles, et le 400 partout', () => {
-    // Le 400 est la seule graisse que toute famille Google publie : sans lui,
-    // une famille pourrait n'avoir aucune graisse chargeable.
+describe('Les graisses demandées', () => {
+  it('couvrent celles que la famille publie, et rien de plus', () => {
+    // L'API Google tolère les graisses surnuméraires — elle les rabat sur les
+    // plus proches — et ne répond 400 que si AUCUNE n'existe. Ne demander que
+    // les publiées allège la feuille et permet surtout de VÉRIFIER le
+    // chargement sur les bonnes : contrôler le 900 d'une Pacifico qui n'a que
+    // le 400 faisait conclure à tort à un échec.
     for (const f of FONT_CATALOG) {
       expect(f.weights.length).toBeGreaterThan(0);
-      expect(f.weights).toContain(400);
+      // Le 400 est la seule graisse que toute famille publie : sans lui, une
+      // URL ne contenant que des graisses absentes ferait bien répondre 400.
+      expect(f.weights, f.family).toContain(400);
       for (const w of f.weights) {
+        expect(w % 100, `${f.family} ${w}`).toBe(0);
         expect(w).toBeGreaterThanOrEqual(100);
         expect(w).toBeLessThanOrEqual(900);
-        expect(w % 100).toBe(0);
       }
-    }
-  });
-
-  it('les familles à graisse unique ne demandent QUE le 400', () => {
-    // Anton, Bebas Neue, Pacifico… : leur demander 900 suffisait à ce que
-    // rien ne se charge.
-    for (const family of ['Anton', 'Bebas Neue', 'Pacifico', 'Archivo Black', 'Lobster']) {
-      const def = findFont(family);
-      expect(def, family).toBeDefined();
-      expect(def!.weights).toEqual([400]);
-      expect(googleFontsUrl(family, def!.weights)).toContain('wght@400&');
     }
   });
 
@@ -62,6 +46,10 @@ describe('Les graisses demandées sont celles qui existent', () => {
     expect(googleFontsUrl('Dancing Script', [400, 700])).toBe(
       'https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&display=swap',
     );
+  });
+
+  it('trie et dédoublonne les graisses', () => {
+    expect(googleFontsUrl('X', [700, 400, 700])).toContain('wght@400;700');
   });
 });
 
@@ -123,85 +111,143 @@ describe('Pile CSS', () => {
 });
 
 describe('Chargement à la demande', () => {
-  let loaded: string[];
-  let check: (spec: string) => boolean;
+  /** Feuilles « analysées » — c'est ce qui décide si `load()` rend des faces. */
+  let parsed: Set<string>;
+  let loadCalls: string[];
+  /** Si vrai, la balise ne déclenche jamais `load` (CDN injoignable). */
+  let sheetFails: boolean;
 
   beforeEach(() => {
-    loaded = [];
-    check = () => true;
+    parsed = new Set();
+    loadCalls = [];
+    sheetFails = false;
     document.head.replaceChildren();
     vi.resetModules();
+
+    // Une balise <link> qui se comporte comme dans un navigateur : elle
+    // n'émet `load` qu'après un tour de boucle, et c'est SEULEMENT à ce
+    // moment que les @font-face existent.
+    // La methode du PROTOTYPE, pas celle de l'instance : celle-ci est deja
+    // remplacee par l'espion du test precedent, et s'y rappeler recursait.
+    vi.restoreAllMocks();
+    const realAppend = Node.prototype.appendChild;
+    vi.spyOn(document.head, 'appendChild').mockImplementation(((node: Node) => {
+      const out = realAppend.call(document.head, node);
+      const link = node as HTMLLinkElement;
+      if (link.tagName === 'LINK') {
+        setTimeout(() => {
+          if (sheetFails) {
+            link.dispatchEvent(new Event('error'));
+            return;
+          }
+          const m = /family=([^:&]+)/g;
+          let hit: RegExpExecArray | null;
+          while ((hit = m.exec(link.href))) parsed.add(decodeURIComponent(hit[1]).replace(/\+/g, ' '));
+          link.dispatchEvent(new Event('load'));
+        }, 0);
+      }
+      return out;
+    }) as typeof document.head.appendChild);
+
     Object.defineProperty(document, 'fonts', {
       configurable: true,
       value: {
+        // Rend des `FontFace` UNIQUEMENT si la feuille est analysée — c'est
+        // exactement ce que fait un navigateur, et c'est ce que l'ancienne
+        // version ignorait.
         load: (spec: string) => {
-          loaded.push(spec);
-          return Promise.resolve([]);
+          loadCalls.push(spec);
+          const fam = /"([^"]+)"/.exec(spec)?.[1] ?? '';
+          return Promise.resolve(parsed.has(fam) ? [{ family: fam }] : []);
         },
-        check: (spec: string) => check(spec),
+        // Menteur, comme la vraie API : `true` quand rien ne correspond.
+        check: () => true,
         ready: Promise.resolve(),
       },
     });
   });
 
-  it('injecte UNE feuille, avec les bonnes graisses', async () => {
-    const { ensureFontLoaded: fresh } = await import('../lib/fonts/catalog');
-    await fresh('Pacifico');
+  it('attend que la feuille soit ANALYSÉE avant de demander la police', async () => {
+    // Le cœur du correctif. Sans cette attente, `load()` rendait un tableau
+    // vide en ~5 ms et le chargement se déclarait réussi.
+    const { ensureFontLoaded } = await import('../lib/fonts/catalog');
+    expect(await ensureFontLoaded('Pacifico')).toBe(true);
+    expect(loadCalls).toEqual(['400 48px "Pacifico"']);
     const links = document.head.querySelectorAll('link[data-font="Pacifico"]');
     expect(links).toHaveLength(1);
     expect(links[0].getAttribute('href')).toBe(
       'https://fonts.googleapis.com/css2?family=Pacifico:wght@400&display=swap',
     );
-    // Et on n'attend QUE la graisse qui existe.
-    expect(loaded).toEqual(['400 48px "Pacifico"']);
   });
 
-  it('ne recharge pas une famille déjà demandée', async () => {
-    const { ensureFontLoaded: fresh } = await import('../lib/fonts/catalog');
-    await fresh('Caveat');
-    await fresh('Caveat');
-    await fresh('Caveat');
+  it('ne se fie PAS à `check()`, qui répond vrai sur une police absente', async () => {
+    // `check()` renvoie `true` par spécification quand aucune @font-face ne
+    // correspond : s'y fier faisait passer tout échec pour un succès.
+    sheetFails = true;
+    const { ensureFontLoaded } = await import('../lib/fonts/catalog');
+    expect(await ensureFontLoaded('Lobster')).toBe(false);
+  });
+
+  it('ne met PAS l’échec en cache — le prochain export doit pouvoir réussir', async () => {
+    // L'ancien compositeur rattrapait au second export ; mémoriser l'échec
+    // aurait figé la police de repli pour toute la session.
+    const { ensureFontLoaded } = await import('../lib/fonts/catalog');
+    sheetFails = true;
+    expect(await ensureFontLoaded('Satisfy')).toBe(false);
+    sheetFails = false;
+    document.head.replaceChildren();
+    expect(await ensureFontLoaded('Satisfy')).toBe(true);
+  });
+
+  it('mémorise en revanche les succès — une seule feuille par famille', async () => {
+    const { ensureFontLoaded } = await import('../lib/fonts/catalog');
+    await ensureFontLoaded('Caveat');
+    await ensureFontLoaded('Caveat');
+    await ensureFontLoaded('Caveat');
     expect(document.head.querySelectorAll('link[data-font="Caveat"]')).toHaveLength(1);
+    expect(loadCalls.filter((c) => c.includes('Caveat'))).toHaveLength(4); // 4 graisses, un seul passage
   });
 
   it('ne charge que ce qu’on lui demande', async () => {
-    // Charger les 52 familles plomberait la page pour n'en servir qu'une.
-    const { ensureFontLoaded: fresh } = await import('../lib/fonts/catalog');
-    await fresh('Teko');
+    const { ensureFontLoaded } = await import('../lib/fonts/catalog');
+    await ensureFontLoaded('Teko');
     expect(document.head.querySelectorAll('link[data-font]')).toHaveLength(1);
   });
 
-  it('dit franchement qu’une police n’est pas arrivée', async () => {
-    // Sans ce retour, l'utilisateur réglerait sa typo sur un rendu de repli
-    // et l'export sortirait pareil, sans un mot.
-    check = () => false;
-    const { ensureFontLoaded: fresh } = await import('../lib/fonts/catalog');
-    expect(await fresh('Lobster')).toBe(false);
-    check = () => true;
-    expect(await fresh('Satisfy')).toBe(true);
-  });
-
-  it('ne vérifie que les graisses publiées par la famille', async () => {
-    // Vérifier le 900 d'une Pacifico qui n'existe qu'en 400 ferait conclure à
-    // tort à un échec — c'est le faux avertissement qu'on voyait en prod sur
-    // Anton et Bebas Neue.
-    check = (spec) => spec.startsWith('400 ');
-    const { ensureFontLoaded: fresh } = await import('../lib/fonts/catalog');
-    expect(await fresh('Anton')).toBe(true);
-  });
-
   it('ignore les valeurs qui ne désignent pas une police', async () => {
-    const { ensureFontLoaded: fresh } = await import('../lib/fonts/catalog');
-    expect(await fresh('')).toBe(false);
-    expect(await fresh('sans-serif')).toBe(false);
+    const { ensureFontLoaded } = await import('../lib/fonts/catalog');
+    expect(await ensureFontLoaded('')).toBe(false);
+    expect(await ensureFontLoaded('sans-serif')).toBe(false);
     expect(document.head.querySelectorAll('link[data-font]')).toHaveLength(0);
   });
 
   it('demande le seul 400 pour une famille inconnue', async () => {
-    // Réclamer 900 ferait répondre 400 à l'API et ne chargerait rien.
-    const { ensureFontLoaded: fresh } = await import('../lib/fonts/catalog');
-    await fresh('Comic Sans MS');
-    expect(loaded).toEqual(['400 48px "Comic Sans MS"']);
+    // Une URL ne contenant que des graisses absentes ferait répondre 400.
+    const { ensureFontLoaded } = await import('../lib/fonts/catalog');
+    await ensureFontLoaded('Comic Sans MS');
+    expect(loadCalls).toEqual(['400 48px "Comic Sans MS"']);
+  });
+
+  it('précharge tout le catalogue en UNE requête pour le sélecteur', async () => {
+    // Sans feuille, les 52 noms s'affichent dans la même police système —
+    // pour un catalogue dont la variété est l'intérêt, c'est le plus visible
+    // des défauts. 52 requêtes seraient un remède pire que le mal.
+    const { preloadCatalogPreview, FONT_CATALOG: cat } = await import('../lib/fonts/catalog');
+    expect(await preloadCatalogPreview()).toBe(true);
+    const links = document.head.querySelectorAll('link[data-font="__catalog-preview"]');
+    expect(links).toHaveLength(1);
+    const href = links[0].getAttribute('href')!;
+    expect((href.match(/family=/g) || []).length).toBe(cat.length);
+    // Uniquement la graisse normale : l'aperçu du sélecteur n'a pas besoin
+    // des autres, et elles tripleraient le poids.
+    expect(href).not.toMatch(/wght@400;/);
+  });
+
+  it('ne réinjecte pas le préchargement', async () => {
+    const { preloadCatalogPreview } = await import('../lib/fonts/catalog');
+    await preloadCatalogPreview();
+    await preloadCatalogPreview();
+    expect(document.head.querySelectorAll('link[data-font="__catalog-preview"]')).toHaveLength(1);
   });
 });
 

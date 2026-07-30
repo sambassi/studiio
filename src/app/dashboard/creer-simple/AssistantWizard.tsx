@@ -34,7 +34,7 @@ import ColorWheel from '@/components/ui/ColorWheel';
 // Catalogue de polices — LA source unique, partagee avec le compositeur.
 // Deux listes finiraient par diverger, et la video ne ressemblerait plus a
 // l'apercu.
-import { FONT_GROUPS, fontStack, ensureFontLoaded } from '@/lib/fonts/catalog';
+import { FONT_GROUPS, fontStack, ensureFontLoaded, preloadCatalogPreview } from '@/lib/fonts/catalog';
 import { useBranding, NEUTRAL_BRANDING } from '@/lib/hooks/useBranding';
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { Card, CardTitle, CardContent } from '@/components/ui/Card';
@@ -2480,6 +2480,13 @@ export default function AssistantWizard() {
                                 id="txt-font"
                                 value={zone.font}
                                 onChange={(e) => patch({ font: e.target.value })}
+                                // Sans feuille chargee, les cinquante et
+                                // quelques noms s'affichent tous dans la meme
+                                // police systeme. On charge donc le 400 de
+                                // TOUT le catalogue — une seule requete — des
+                                // que l'utilisateur s'approche du selecteur.
+                                onFocus={() => { void preloadCatalogPreview(); }}
+                                onPointerEnter={() => { void preloadCatalogPreview(); }}
                                 style={{ fontFamily: fontStack(zone.font) }}
                                 className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none px-2 py-1.5 text-sm"
                               >

@@ -8,14 +8,21 @@
  * par diverger, et la video ne ressemblerait plus a ce que l'utilisateur a
  * valide a l'ecran.
  *
- * ⚠️ Les GRAISSES sont declarees famille par famille, et ce n'est pas du
- * confort : l'API CSS de Google Fonts repond **400 Bad Request** quand on lui
- * demande une graisse qu'une famille ne possede pas. Reclamer
- * `Pacifico:wght@400;500;600;700;800;900` — ce que faisait le repli generique
- * du compositeur — ne renvoie donc AUCUNE feuille : la police n'arrive jamais,
- * le canvas retombe sur une police systeme, et la video sort dans une autre
- * typographie que l'apercu. C'est precisement le cas de toutes les scriptes et
- * de la plupart des display, qui n'existent qu'en 400.
+ * Les GRAISSES sont declarees famille par famille : c'est ce qui permet de ne
+ * telecharger que ce qui existe, et de VERIFIER le chargement sur les seules
+ * graisses qu'une famille publie — controler le 900 d'une Pacifico qui n'a que
+ * le 400 faisait conclure a tort a un echec.
+ *
+ * ⚠️ Le vrai piege est ailleurs, et il est silencieux : `document.fonts.load()`
+ * appele juste apres avoir insere la balise `<link>` ne trouve encore AUCUNE
+ * `@font-face` — la feuille n'est pas analysee — et resout donc sur un tableau
+ * vide, immediatement. Pire, `document.fonts.check()` renvoie `true` par
+ * specification quand rien ne correspond (le texte se rendra, en police
+ * systeme). Un chargement qui ne charge rien se declarait ainsi reussi en
+ * quelques millisecondes, et le canvas dessinait en Helvetica pendant que
+ * l'apercu, lui, affichait la bonne police. Il faut attendre le `load` de la
+ * balise AVANT de demander les polices, et se fier aux `FontFace` reellement
+ * renvoyees, jamais a `check()`.
  */
 
 export type FontGroup = 'display' | 'text' | 'script';
@@ -137,8 +144,10 @@ export function fontStack(family: string): string {
 /**
  * URL de la feuille Google Fonts d'une famille, avec SES graisses.
  *
- * Demander une graisse absente fait repondre 400 a l'API : la feuille n'arrive
- * pas, et la police non plus.
+ * L'API tolere les graisses surnumeraires — elle les rabat sur les plus
+ * proches — et ne repond 400 que si AUCUNE des graisses demandees n'existe.
+ * Ne demander que les graisses publiees allege donc la feuille et permet de
+ * verifier le chargement sur les bonnes, sans etre en soi un correctif.
  */
 export function googleFontsUrl(family: string, weights: number[]): string {
   const name = family.trim().replace(/\s+/g, '+');
@@ -146,10 +155,44 @@ export function googleFontsUrl(family: string, weights: number[]): string {
   return `https://fonts.googleapis.com/css2?family=${name}:wght@${list}&display=swap`;
 }
 
-/** Familles deja demandees — une seule balise `<link>` par famille. */
-const injected = new Set<string>();
-/** Chargements en cours ou termines, par famille. */
-const pending = new Map<string, Promise<boolean>>();
+/** Familles deja servies par une feuille complete — une balise par famille. */
+const injected = new Map<string, Promise<boolean>>();
+/** Chargements REUSSIS, memorises. Les echecs, eux, doivent pouvoir etre rejoues. */
+const loaded = new Map<string, Promise<boolean>>();
+
+/**
+ * Insere une feuille et attend qu'elle soit ANALYSEE.
+ *
+ * C'est l'etape qui manquait : sans elle, `document.fonts` est encore vide
+ * quand on lui demande la police, et tout le reste s'ecroule en silence.
+ */
+function injectSheet(href: string, key: string, timeoutMs: number): Promise<boolean> {
+  const existing = injected.get(key);
+  if (existing) return existing;
+  const ready = new Promise<boolean>((resolve) => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = href;
+    link.dataset.font = key;
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(ok);
+    };
+    // Delai de garde : un CDN injoignable ne doit pas retenir un export.
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    link.onload = () => finish(true);
+    link.onerror = () => finish(false);
+    document.head.appendChild(link);
+  });
+  injected.set(key, ready);
+  // Une feuille qui n'arrive pas ne doit pas rester en cache : le prochain
+  // export — ou le prochain reseau — doit pouvoir la redemander.
+  void ready.then((ok) => { if (!ok) injected.delete(key); });
+  return ready;
+}
 
 /**
  * Rend une famille utilisable — dans le DOM **et** dans un canvas.
@@ -157,52 +200,71 @@ const pending = new Map<string, Promise<boolean>>();
  * Charge a la demande : le catalogue compte des dizaines de familles, les
  * telecharger toutes plomberait la page pour n'en servir qu'une ou deux.
  *
- * Renvoie `true` si au moins une graisse est reellement disponible. `false`
- * dit que le canvas dessinera dans une police de repli — l'appelant peut
- * alors le signaler plutot que de produire en silence une video qui ne
- * ressemble pas a l'apercu.
+ * Renvoie `true` quand au moins une graisse est REELLEMENT arrivee — mesure
+ * sur les `FontFace` que renvoie `document.fonts.load`, et non sur
+ * `document.fonts.check`, qui repond `true` des qu'aucune `@font-face` ne
+ * correspond. Un `false` dit que le canvas dessinera dans une police de
+ * repli : l'appelant peut le signaler plutot que de produire en silence une
+ * video qui ne ressemble pas a l'apercu.
+ *
+ * Seuls les SUCCES sont memorises. Memoriser un echec figerait pour toute la
+ * session une police que le prochain export aurait pu obtenir.
  */
 export async function ensureFontLoaded(family: string, timeoutMs = 8000): Promise<boolean> {
   if (typeof document === 'undefined' || !family || family === 'sans-serif') return false;
-  const cached = pending.get(family);
+  const cached = loaded.get(family);
   if (cached) return cached;
 
   const def = findFont(family);
-  // Famille hors catalogue (metadonnee d'un ancien post, saisie manuelle) :
-  // on ne demande que le 400, la seule graisse que toute famille possede.
-  // Reclamer 900 ferait repondre 400 a l'API et ne chargerait rien du tout.
+  // Famille hors catalogue (metadonnee d'un ancien post, saisie manuelle) : on
+  // ne demande que le 400. L'API Google repond 400 Bad Request quand AUCUNE
+  // des graisses demandees n'existe, et le 400 est la seule que toute famille
+  // publie.
   const weights = def?.weights ?? [400];
 
   const run = (async () => {
-    if (!injected.has(family)) {
-      injected.add(family);
-      // La variable `next/font` ne sert QUE le DOM : `ctx.font` du canvas ne
-      // sait pas la lire. La feuille Google enregistre la famille sous son
-      // vrai nom, ce qui rend les deux rendus possibles.
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = googleFontsUrl(family, weights);
-      link.dataset.font = family;
-      document.head.appendChild(link);
+    // La variable `next/font` ne sert QUE le DOM : `ctx.font` du canvas ne
+    // sait pas lire `var(--font-anton)`, il lui faut la famille sous son vrai
+    // nom. D'ou cette feuille, meme pour les familles deja dans la page.
+    const sheetOk = await injectSheet(googleFontsUrl(family, weights), family, timeoutMs);
+    if (!sheetOk) {
+      console.warn(`[Fonts] feuille « ${family} » non chargée — rendu en police de repli`);
+      return false;
     }
 
-    const loads = weights.map((w) =>
-      document.fonts.load(`${w} 48px "${family}"`).catch(() => []),
-    );
-    await Promise.race([
-      Promise.all(loads).then(() => document.fonts.ready),
-      new Promise((r) => setTimeout(r, timeoutMs)),
+    // `load()` renvoie les `FontFace` reellement obtenues : un tableau vide
+    // signifie qu'aucune ne correspond, la seule mesure fiable ici.
+    const faces = await Promise.race([
+      Promise.all(weights.map((w) => document.fonts.load(`${w} 48px "${family}"`).catch(() => []))),
+      new Promise<FontFace[][]>((r) => setTimeout(() => r([]), timeoutMs)),
     ]);
-
-    // On ne verifie QUE les graisses que la famille publie : demander 900 a
-    // une Pacifico qui n'existe qu'en 400 ferait conclure a tort a un echec.
-    const ok = weights.some((w) => document.fonts.check(`${w} 48px "${family}"`));
+    const ok = faces.some((f) => f.length > 0);
     if (!ok) console.warn(`[Fonts] « ${family} » indisponible — rendu en police de repli`);
     return ok;
   })();
 
-  pending.set(family, run);
+  loaded.set(family, run);
+  // Un echec ne doit pas rester en cache : l'ancien compositeur rattrapait au
+  // second export, ce cache-la l'en empecherait.
+  void run.then((ok) => { if (!ok) loaded.delete(family); });
   return run;
+}
+
+/**
+ * Charge les 400 de TOUT le catalogue, en UNE requete.
+ *
+ * Sert l'apercu du selecteur : sans police chargee, les cinquante et quelques
+ * noms s'affichent tous dans la meme police systeme — pour un catalogue dont
+ * la variete est justement l'interet, c'est le plus visible des defauts.
+ * L'API Google accepte plusieurs `family=` dans la meme URL : une seule
+ * feuille, une seule requete, uniquement la graisse normale.
+ */
+export function preloadCatalogPreview(timeoutMs = 8000): Promise<boolean> {
+  if (typeof document === 'undefined') return Promise.resolve(false);
+  const href = `https://fonts.googleapis.com/css2?${FONT_CATALOG.map(
+    (f) => `family=${f.family.trim().replace(/\s+/g, '+')}:wght@400`,
+  ).join('&')}&display=swap`;
+  return injectSheet(href, '__catalog-preview', timeoutMs);
 }
 
 /** Charge plusieurs familles de front, et dit lesquelles ont echoue. */

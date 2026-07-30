@@ -424,9 +424,16 @@ describe('Catalogue de polices', () => {
     // une police connue d'un seul côté donnait un aperçu et une vidéo en
     // caractères différents. Une seule source supprime la classe entière de
     // bugs — reste à vérifier que les deux la consultent.
-    expect(wizardSource).toMatch(
-      /import \{ FONT_GROUPS, fontStack, ensureFontLoaded \} from '@\/lib\/fonts\/catalog'/,
+    expect(wizardSource).toMatch(/from '@\/lib\/fonts\/catalog'/);
+    // Le Calendrier aussi : il portait sa propre table de six polices, si
+    // bien qu'un post réglé hors de ces six s'y affichait en police système
+    // alors que la vidéo, elle, la portait bien.
+    const calendarSource = readFileSync(
+      resolve(__dirname, '../app/dashboard/calendar/page.tsx'),
+      'utf-8',
     );
+    expect(calendarSource).toMatch(/from '@\/lib\/fonts\/catalog'/);
+    expect(calendarSource).not.toMatch(/const FONT_CSS_MAP/);
     expect(composerSource).toMatch(
       /const \{ ensureFontsLoaded \} = await import\('@\/lib\/fonts\/catalog'\)/,
     );
