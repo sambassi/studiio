@@ -73,6 +73,11 @@ interface PostMetadata {
   logoUrl?: string;
   voiceUrl?: string;
   renderedVideoUrl?: string;
+  /**
+   * Dimensions REELLES du montage. `format` ne distingue que « reel » et
+   * « tv » : sans ce champ, un montage carre serait cadre en 16:9 et recadre.
+   */
+  videoSize?: { w: number; h: number };
   rawVideoUrl?: string;
   /** JPEG thumbnail captured by the composer at export time (~100-200 KB). Used as the sidebar miniature. */
   thumbnailUrl?: string;
@@ -3292,9 +3297,31 @@ export default function CalendarPage() {
                    rebuild below is kept as a legacy fallback for posts that never got
                    a `renderedVideoUrl` (never passed through the composer). ── */}
               {hasMontage && meta?.renderedVideoUrl ? (
+                (() => {
+                  // Dimensions REELLES du montage quand le post les porte.
+                  // `format` ne distingue que « reel » et « tv » : un montage
+                  // carre tombait donc dans un conteneur 16:9 et perdait le
+                  // haut et le bas — CTA compris — par le recadrage `cover`.
+                  // Les posts sans ce champ gardent le comportement d'avant.
+                  const vs = meta?.videoSize;
+                  const custom = vs && vs.w > 0 && vs.h > 0 && vs.w !== vs.h * (16 / 9);
+                  const isPortrait = vs ? vs.h > vs.w : fullPreviewPost.format === 'reel';
+                  return (
                 <div
-                  className={`relative overflow-hidden rounded-xl bg-black ${fullPreviewPost.format === 'reel' ? '' : 'aspect-video w-full'}`}
-                  style={fullPreviewPost.format === 'reel' ? { aspectRatio: '9/16', height: '70dvh', maxHeight: '70dvh' } : undefined}
+                  className={`relative overflow-hidden rounded-xl bg-black ${
+                    custom ? 'w-full' : fullPreviewPost.format === 'reel' ? '' : 'aspect-video w-full'
+                  }`}
+                  style={
+                    custom
+                      ? {
+                          aspectRatio: `${vs!.w} / ${vs!.h}`,
+                          ...(isPortrait ? { height: '70dvh', maxHeight: '70dvh' } : {}),
+                          margin: '0 auto',
+                        }
+                      : fullPreviewPost.format === 'reel'
+                        ? { aspectRatio: '9/16', height: '70dvh', maxHeight: '70dvh' }
+                        : undefined
+                  }
                 >
                   {/* `key` forces React to remount the <video> element when the URL
                        changes — HTML5 `<video>` doesn't always reload a new `src`
@@ -3309,9 +3336,15 @@ export default function CalendarPage() {
                     muted={montageMuted}
                     playsInline
                     controls
-                    className="absolute inset-0 w-full h-full object-cover"
+                    // `contain` et non `cover` : le conteneur porte desormais
+                    // le ratio exact du montage, les deux sont donc
+                    // equivalents pour tous les posts existants — mais
+                    // `contain` garantit qu'aucun format futur ne soit rogne.
+                    className="absolute inset-0 w-full h-full object-contain"
                   />
                 </div>
+                  );
+                })()
               ) : hasMontage ? (() => {
                 // Legacy HTML montage rebuild — used only for posts without renderedVideoUrl.
                 // Use stable sequence order (always includes video) to prevent index shifts

@@ -275,6 +275,7 @@ const DESIGN = {
 /** Resolution native de la video, par format. */
 const VIDEO_SIZE = {
   '9:16': { w: 1080, h: 1920 },
+  '1:1': { w: 1080, h: 1080 },
   '16:9': { w: 1920, h: 1080 },
 } as const;
 
@@ -292,6 +293,16 @@ const VIDEO_SIZE = {
  */
 const FONT_RATIO = {
   '9:16': { title: 0.04375, subtitle: 0.028, cta: 0.0375, ctaSub: 0.028 },
+  /**
+   * ⚠️ Le carre reprend les ratios du 16:9, et ce n'est pas un choix
+   * esthetique : le compositeur ne connait pas les formats, il teste
+   * `isReel = h > w` (video-composer.ts). Pour un canvas 1080x1080 cette
+   * condition est FAUSSE — il applique donc, du titre au CTA en passant par
+   * les cartes, exactement les metriques du paysage. Y mettre des valeurs
+   * « mieux adaptees au carre » ferait diverger l'apercu de l'export : ce
+   * serait plus joli a l'ecran et faux dans la video.
+   */
+  '1:1': { title: 0.035, subtitle: 0.0215, cta: 0.031, ctaSub: 0.023 },
   '16:9': { title: 0.035, subtitle: 0.0215, cta: 0.031, ctaSub: 0.023 },
 } as const;
 
@@ -326,10 +337,14 @@ function subtitleShadow(w: number): string {
  *
  * Le canvas trace la diagonale coin à coin ; l'équivalent CSS n'est PAS
  * `to bottom right` (CSS utilise la perpendiculaire à l'autre diagonale) mais
- * `180° − atan(w/h)`. En 9:16 → 150,64° ; en 16:9 → 119,36°.
+ * `180° − atan(w/h)`. En 9:16 → 150,64° ; en 1:1 → 135° ; en 16:9 → 119,36°.
+ *
+ * Les dimensions viennent de `VIDEO_SIZE` : codees en dur, elles auraient
+ * donne au carre l'angle du paysage, et un fond different de celui peint par
+ * le compositeur.
  */
 function backdropAngle(format: Format): number {
-  const [w, h] = format === '9:16' ? [1080, 1920] : [1920, 1080];
+  const { w, h } = VIDEO_SIZE[format];
   return 180 - (Math.atan(w / h) * 180) / Math.PI;
 }
 
@@ -391,8 +406,27 @@ const WATERMARK = {
   opacity: 0.85,
   color: '#FFFFFF',
   '9:16': { size: 1, y: 95 },
+  // Carre : meme largeur qu'en 9:16, donc `size: 1` donne la meme taille
+  // absolue (40,5 px). Mais le cadre est deux fois moins haut, si bien qu'a
+  // 95 % le filigrane venait toucher le CTA ancre a 92 % — d'ou le point de
+  // plus, comme en 16:9.
+  '1:1': { size: 1, y: 96 },
   '16:9': { size: 1080 / 1920, y: 96 },
 } as const;
+
+/** Libelle sous chaque bouton de format. */
+const FORMAT_HINT: Record<Format, string> = {
+  '9:16': 'Reel / Short',
+  '1:1': 'Post carré',
+  '16:9': 'Paysage',
+};
+
+/** Ratio CSS du cadre d'apercu — derive des dimensions natives, pas ecrit deux fois. */
+const ASPECT_CSS: Record<Format, string> = {
+  '9:16': '9 / 16',
+  '1:1': '1 / 1',
+  '16:9': '16 / 9',
+};
 
 /** Sequences ou le filigrane est visible — noms cote editeur, comme le Calendrier les attend. */
 const WATERMARK_SEQUENCES = ['titre', 'cartes', 'video', 'cta'] as const;
@@ -536,7 +570,7 @@ const CARD_STYLE = 'Compact';
 /** Coût du rendu, aligné sur l'éditeur (RENDER_COSTS). */
 const COST = { reel: 10, tv: 15 } as const;
 
-type Format = '9:16' | '16:9';
+type Format = '9:16' | '1:1' | '16:9';
 
 interface GeneratedCard {
   icon: string; // emoji renvoyé par smart-content
@@ -712,7 +746,7 @@ export function Preview({
         ref={frameRef}
         className="w-full rounded-xl overflow-hidden relative"
         style={{
-          aspectRatio: format === '9:16' ? '9 / 16' : '16 / 9',
+          aspectRatio: ASPECT_CSS[format],
           border: generated ? 'none' : '1px dashed #1F2937',
           backgroundColor: DARK,
         }}
@@ -1456,11 +1490,20 @@ export default function AssistantWizard() {
     setRenderStage('Préparation…');
 
     const isReel = format === '9:16';
-    // 9:16 = reel, 16:9 = tv. Même convention que l'éditeur (creer/page.tsx).
-    // Inverser ces deux valeurs fait recadrer la vidéo par le Calendrier, qui
-    // choisit son conteneur d'après `post.format`.
+    const size = VIDEO_SIZE[format];
+    // 9:16 = reel, tout le reste = tv. Même convention que l'éditeur
+    // (creer/page.tsx), et même classification que le compositeur, qui range
+    // le carré du côté non-vertical (`isReel = h > w`).
+    //
+    // `post.format` ne distingue que ces deux valeurs : c'est
+    // `metadata.videoSize` qui porte les dimensions réelles, et c'est lui que
+    // le Calendrier lit pour dimensionner son conteneur. Sans cela un montage
+    // carré serait recadré dans un cadre 16:9 — la vidéo n'est pas déformée,
+    // mais on en perdrait le haut et le bas, CTA compris.
     const renderFormat: 'reel' | 'tv' = isReel ? 'reel' : 'tv';
-    const cost = isReel ? COST.reel : COST.tv;
+    // Le carré est aussi large que le 9:16 et deux fois moins haut : le
+    // facturer au tarif paysage ferait payer plus cher un rendu plus petit.
+    const cost = format === '16:9' ? COST.tv : COST.reel;
 
     try {
       // 1. Solde — non bloquant si l'endpoint est indisponible, comme l'éditeur.
@@ -1556,8 +1599,8 @@ export default function AssistantWizard() {
         })),
       );
       const composed = await composeAndUpload({
-        width: isReel ? 1080 : 1920,
-        height: isReel ? 1920 : 1080,
+        width: size.w,
+        height: size.h,
         fps: 30,
         // Le compositeur ne met PAS le titre en majuscules (contrairement a
         // l'apercu, qui applique `uppercase` en CSS) : on le fait ici.
@@ -1704,6 +1747,11 @@ export default function AssistantWizard() {
         renderedVideoUrl: composed.url,
         thumbnailUrl: composed.thumbnailUrl || undefined,
         composerVersion: composed.composerVersion || CURRENT_COMPOSER_VERSION,
+        // Dimensions REELLES du montage. `post.format` ne connait que
+        // « reel » et « tv » : sans ce champ, le Calendrier cadrerait un
+        // carre dans un conteneur 16:9 et en perdrait le haut et le bas,
+        // CTA compris.
+        videoSize: { w: size.w, h: size.h },
         // Meme source que les durees passees au compositeur : l'apercu, la
         // video et le Calendrier suivent donc strictement le meme ordre.
         sequences: {
@@ -2017,10 +2065,11 @@ export default function AssistantWizard() {
                 <div>
                   <label className="block text-sm font-medium mb-2">Format</label>
                   <div className="flex gap-2">
-                    {(['9:16', '16:9'] as const).map((f) => (
+                    {(['9:16', '1:1', '16:9'] as const).map((f) => (
                       <button
                         key={f}
                         onClick={() => setFormat(f)}
+                        aria-pressed={format === f}
                         className={`flex-1 rounded-xl px-3 py-2.5 text-sm transition ${
                           format === f
                             ? 'bg-purple-600/20 text-purple-200 ring-1 ring-purple-500/50'
@@ -2029,7 +2078,7 @@ export default function AssistantWizard() {
                       >
                         {f}
                         <span className="block text-[10px] text-gray-500">
-                          {f === '9:16' ? 'Reel / Short' : 'Paysage'}
+                          {FORMAT_HINT[f]}
                         </span>
                       </button>
                     ))}
