@@ -22,6 +22,8 @@ import {
   Music,
   Film,
   Trash2,
+  RotateCcw,
+  X,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
 import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
@@ -35,6 +37,17 @@ import ColorWheel from '@/components/ui/ColorWheel';
 // Deux listes finiraient par diverger, et la video ne ressemblerait plus a
 // l'apercu.
 import { FONT_GROUPS, fontStack, ensureFontLoaded, preloadCatalogPreview } from '@/lib/fonts/catalog';
+import { useSession } from 'next-auth/react';
+import {
+  DRAFT_VERSION,
+  draftKey,
+  readDraft,
+  sanitizeDraft,
+  writeDraft,
+  clearDraft,
+  persistableUrl as persistableDraftUrl,
+  type Draft,
+} from '@/lib/creer/draft';
 import { useBranding, NEUTRAL_BRANDING } from '@/lib/hooks/useBranding';
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { Card, CardTitle, CardContent } from '@/components/ui/Card';
@@ -1436,6 +1449,180 @@ export default function AssistantWizard() {
     return () => ro.disconnect();
   }, [format]);
 
+  // ── Brouillon : sauvegarde automatique ───────────────────────────────
+  //
+  // Un rafraichissement perdait tout le travail. Tout ce qui suit sert a ce
+  // qu'il n'en perde plus rien.
+  const { data: session } = useSession();
+  const storageKey = draftKey(session?.user?.email);
+  /** Vrai une fois la restauration tentee : on n'ecrit rien avant. */
+  const restoredRef = useRef(false);
+  const [restoredNotice, setRestoredNotice] = useState<string | null>(null);
+
+  /**
+   * Etat a conserver, construit en UN SEUL endroit.
+   *
+   * Les trois chemins d'ecriture (minuterie, demontage, fermeture d'onglet)
+   * appellent cette meme fonction : ecrite trois fois, elle aurait fini par
+   * diverger, et c'est le chemin le moins teste qui aurait enregistre un
+   * brouillon incomplet.
+   */
+  const buildDraft = useCallback((): Draft => ({
+    version: DRAFT_VERSION,
+    savedAt: Date.now(),
+    started,
+    step,
+    themeId,
+    customTopic,
+    toneId,
+    format,
+    colors,
+    titleStyle,
+    subtitleStyle,
+    ctaStyle,
+    watermarkOverride,
+    watermarkEnabled,
+    sequences,
+    introDuration,
+    cardsDuration,
+    videoDuration,
+    ctaDuration,
+    generated,
+    // Les `blob:` ne survivent pas au rechargement : les enregistrer laisserait
+    // un media fantome dans le brouillon restaure.
+    musicUrl: persistableDraftUrl(musicUrl),
+    musicName,
+    voiceUrl: persistableDraftUrl(voiceUrl),
+    voiceName,
+    musicVolume,
+    voiceVolume,
+    rushUrl: persistableDraftUrl(rushUrl),
+    rushName,
+    rushIsClip,
+    scheduledDate,
+  }), [
+    started, step, themeId, customTopic, toneId, format, colors,
+    titleStyle, subtitleStyle, ctaStyle, watermarkOverride, watermarkEnabled,
+    sequences, introDuration, cardsDuration, videoDuration, ctaDuration,
+    generated, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
+    voiceVolume, rushUrl, rushName, rushIsClip, scheduledDate,
+  ]);
+
+  /** La derniere version connue, pour ecrire sans attendre un rendu. */
+  const draftRef = useRef(buildDraft);
+  draftRef.current = buildDraft;
+
+  /**
+   * Restauration, au montage.
+   *
+   * Chaque champ est valide separement : un brouillon d'une version
+   * anterieure, ou dont une police a disparu du catalogue, doit rendre ce
+   * qu'il a de bon plutot que de tout perdre.
+   */
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    const draft = sanitizeDraft(readDraft(storageKey), {
+      themeIds: THEMES.map((t) => t.id),
+      toneIds: TONES.map((t) => t.id),
+      formats: Object.keys(VIDEO_SIZE),
+      maxStep: S.contenu,
+      defaults: {
+        themeId: THEMES[0].id,
+        toneId: TONES[0].id,
+        format: '9:16',
+        titleStyle: DEFAULT_TEXT_STYLES.title,
+        subtitleStyle: DEFAULT_TEXT_STYLES.subtitle,
+        ctaStyle: { ...DEFAULT_TEXT_STYLES.cta, subColor: '' },
+        sequences: DEFAULT_SEQUENCES,
+        durations: { intro: SEQ.intro, cards: SEQ.cards, video: SEQ.video, cta: SEQ.cta },
+      },
+    });
+    if (!draft) return;
+
+    setStarted(!!draft.started);
+    setStep(draft.step ?? 0);
+    setThemeId(draft.themeId!);
+    setCustomTopic(draft.customTopic ?? '');
+    setToneId(draft.toneId!);
+    setFormat(draft.format as Format);
+    setColors(draft.colors ?? null);
+    setTitleStyle(draft.titleStyle as TextStyles['title']);
+    setSubtitleStyle(draft.subtitleStyle as TextStyles['subtitle']);
+    setCtaStyle(draft.ctaStyle as TextStyles['cta']);
+    setWatermarkOverride(draft.watermarkOverride ?? null);
+    setWatermarkEnabled(draft.watermarkEnabled !== false);
+    setSequences(draft.sequences as typeof DEFAULT_SEQUENCES);
+    setIntroDuration(draft.introDuration!);
+    setCardsDuration(draft.cardsDuration!);
+    setVideoDuration(draft.videoDuration!);
+    setCtaDuration(draft.ctaDuration!);
+    if (draft.generated) setGenerated(draft.generated as Generated);
+    if (draft.musicUrl) { setMusicUrl(draft.musicUrl); setMusicName(draft.musicName ?? ''); }
+    if (draft.voiceUrl) { setVoiceUrl(draft.voiceUrl); setVoiceName(draft.voiceName ?? ''); }
+    setMusicVolume(draft.musicVolume!);
+    setVoiceVolume(draft.voiceVolume!);
+    if (draft.rushUrl) {
+      setRushUrl(draft.rushUrl);
+      setRushName(draft.rushName ?? '');
+      setRushIsClip(!!draft.rushIsClip);
+    }
+    if (draft.scheduledDate) setScheduledDate(draft.scheduledDate);
+    // Le contenu a ete regenere s'il vient du brouillon : la signature evite
+    // qu'il soit remplace par un autre texte des la premiere navigation.
+    if (draft.generated) genSigRef.current = `${draft.customTopic?.trim() || (THEMES.find((t) => t.id === draft.themeId) ?? THEMES[0]).topic}|${draft.toneId}`;
+
+    // Dire ce qui a ete retrouve : sans un mot, l'utilisateur ne sait pas si
+    // son travail est revenu ou si l'ecran est reparti de zero.
+    const bits = [
+      draft.generated ? 'contenu' : null,
+      draft.colors ? 'couleurs' : null,
+      draft.rushUrl ? 'rush' : null,
+      draft.musicUrl || draft.voiceUrl ? 'audio' : null,
+    ].filter(Boolean);
+    setRestoredNotice(
+      `Brouillon restauré${bits.length ? ` (${bits.join(', ')})` : ''}.`,
+    );
+    // Uniquement au montage : `storageKey` peut arriver apres la session, et
+    // relancer la restauration ecraserait ce que l'utilisateur vient de
+    // regler.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * Sauvegarde : minuterie, PLUS trois filets.
+   *
+   * Le `beforeunload` seul ne suffit pas : il ne se declenche pas sur une
+   * navigation interne Next (un clic dans la barre laterale demonte le
+   * composant sans jamais le lever), et il est ignore sur mobile. D'ou
+   * l'ecriture dans le nettoyage de l'effet — qui couvre le demontage, donc
+   * la navigation interne — et `pagehide`, plus fiable qu'`unload` sur iOS.
+   */
+  useEffect(() => {
+    if (!restoredRef.current) return;
+    const flush = () => writeDraft(storageKey, draftRef.current());
+    const timer = setTimeout(flush, 400);
+    window.addEventListener('pagehide', flush);
+    window.addEventListener('beforeunload', flush);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('pagehide', flush);
+      window.removeEventListener('beforeunload', flush);
+      // Demontage : ecriture SYNCHRONE. Sans elle, les 400 dernieres
+      // millisecondes d'edition disparaissaient a chaque navigation interne.
+      flush();
+    };
+  }, [storageKey, buildDraft]);
+
+  /** Repartir de zero — le brouillon est efface, la page se recharge propre. */
+  const discardDraft = () => {
+    clearDraft(storageKey);
+    // On empeche le nettoyage de l'effet de re-ecrire ce qu'on vient
+    // d'effacer : sans ce garde, « repartir de zero » ne partait de rien.
+    restoredRef.current = false;
+    window.location.reload();
+  };
+
   const genTimerRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     return () => {
@@ -2080,6 +2267,31 @@ export default function AssistantWizard() {
           <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
             <span>{error}</span>
+          </div>
+        )}
+
+        {/* Brouillon retrouve. Sans un mot, l'utilisateur ne sait pas si son
+            travail est revenu ou si l'ecran est reparti de zero — et « repartir
+            de zero » doit rester a portee, sans etre un gros bouton. */}
+        {restoredNotice && (
+          <div className="flex items-center gap-3 rounded-xl border border-gray-800 bg-gray-900/50 px-4 py-2.5 text-[13px] text-gray-400">
+            <RotateCcw className="w-4 h-4 flex-shrink-0 text-gray-500" />
+            <span className="flex-1">{restoredNotice}</span>
+            <button
+              type="button"
+              onClick={discardDraft}
+              className="text-gray-500 underline underline-offset-2 hover:text-white transition"
+            >
+              Repartir de zéro
+            </button>
+            <button
+              type="button"
+              onClick={() => setRestoredNotice(null)}
+              aria-label="Masquer ce message"
+              className="text-gray-600 hover:text-white transition"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
 
