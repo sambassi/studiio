@@ -2,6 +2,66 @@
 
 _Fichier vivant. Claude y écrit les plans en cours et coche les étapes au fur et à mesure._
 
+## En cours — Génération en batch, éditeur avancé `/dashboard/creer` — 2026-07-30
+
+### 1. Exploration : la fonctionnalité existe déjà à ~90 %
+
+Grep + lecture de `src/app/dashboard/creer/page.tsx` (12 400 lignes) :
+
+| Besoin exprimé | État réel |
+|---|---|
+| Thème libre (mot-clé quelconque) | **existe** — thème `personnalise` + `customTopic`, avec validation (`:3237`, `:3391`) |
+| Recherche Pexels | **existe** — `fetchPexelsPhotos` (`:3180`) |
+| Recherche Unsplash | **existe** — bascule `imageSource`, persistée (`:1650-1658`) |
+| Upload d'affiche depuis le bureau | **existe** — bouton « Ma photo » (`:6826`), **mais en data URL** → écart B |
+| Pool multi-sélection | **existe** — `batchPhotoIndices`, UI « Sélectionnées : X / N » (`:6775-6821`) |
+| Affiche différente par vidéo | **existe** — index explicite, sinon cycle `b % pexelsPhotos.length` (`:4659-4672`) |
+| Texte + sous-sujet différents | **existe** — `generateBatchVariation(b)` (`:4456`) : un **angle** par index (`ANGLES`), `variationNonce`, titres déjà produits envoyés au modèle |
+| Moteur réutilisé | **existe** — `/api/content/ai-generate` + repli local `smart-content` |
+| 1 post par vidéo | **existe** — la boucle d'export crée un post par itération |
+| Progression X/N | **existe** — `setExportProgress` + `[Batch b/total]` |
+| Sélecteur 10 / 20 / 30 | **partiel** — préréglages `[1, 3, 5, 10, 20]`, **plafond 20** |
+
+Écrire un second moteur de batch serait de la duplication. Restent deux écarts.
+
+### 2. Les deux écarts réels
+
+**A. Plafond 20 au lieu de 30** — `:7321` `Math.min(20, …)`, `:7322` `disabled >= 20`,
+libellé « 1 à 20 », préréglages sans 30.
+
+**B. L'upload d'affiche passe par une data URL** (`:6829-6838`, `FileReader.readAsDataURL`)
+au lieu du stockage. Deux conséquences mesurables :
+1. `pexelsPhotos` est dans le snapshot d'auto-sauvegarde (`:2874`) : une photo de 3 Mo
+   devient ~4 Mo de base64 → `QuotaExceededError` attrapée en silence, **l'auto-sauvegarde
+   du montage cesse de fonctionner** sans rien signaler ;
+2. le data URL part dans `metadata.posterUrl` de **chaque** post du batch — 30 posts × 4 Mo.
+
+### 3. Plan
+
+- [ ] `src/lib/creer/posterUpload.ts` — `uploadPosterFile(file)` via `/api/upload/signed-url`
+      puis `PUT`. Garde SSR, `try/catch`, repli documenté sur data URL si la signature
+      échoue (ne pas régresser : aujourd'hui l'upload aboutit toujours).
+- [ ] Bouton « Ma photo » → `uploadPosterFile`, état d'envoi, toast d'échec.
+      **Grep-before-modify** : `setPexelsPhotos` × 8 (`:1994`, `:2284`, `:2685`, `:3195`,
+      `:3206`, `:3210`, `:3383`, `:6836`) — seule `:6836` change ; les 7 autres alimentent
+      le pool depuis les recherches ou la restauration.
+- [ ] Plafond 20 → 30 + préréglage 30. **Grep** : `batchCount` × 18, seules les 4
+      occurrences du sélecteur (`:7310-7330`) portent le plafond.
+- [ ] Tests : upload → URL publique, échec de signature → repli, garde SSR, et le cycle
+      d'affiches ne répète jamais deux fois la même image d'affilée quand le pool ≥ 2.
+
+### 4. Écarté volontairement
+
+Pas de second moteur de variation, pas de refonte du pool, pas de bascule vers
+`/api/agent/generate` (l'éditeur utilise `/api/content/ai-generate`, plus riche ici :
+nonce + titres déjà produits ; basculer serait une régression de qualité).
+
+### 5. Vérification
+
+`npm run build` complet, `tsc` à la baseline de `main` (84), `npm test`. Limite connue :
+`/dashboard/creer` est derrière le middleware d'authentification, le cycle complet
+n'est pas jouable en headless.
+
 ## Fait — F2 incrément 1 : page Média + « Temps forts » — 2026-07-29
 
 Objectif : rendre la détection de temps forts d'un rush **découvrable**, en
