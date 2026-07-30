@@ -28,6 +28,13 @@ const GENERATED = {
   ctaSub: 'LIEN EN BIO',
 };
 
+
+/** Réglages typographiques par défaut — identiques à ceux du wizard. */
+const TEXT = {
+  title: { font: 'Inter', color: '#FFFFFF', scale: 1, bold: true, italic: false, letterSpacing: 0, lineHeight: 1.1 },
+  cta: { font: 'Inter', color: '#FFFFFF', subColor: '#EC4899', scale: 1, letterSpacing: 0, lineHeight: 1.2 },
+};
+
 function renderPreview(props: Partial<React.ComponentProps<typeof Preview>> = {}) {
   return render(
     <Preview
@@ -40,6 +47,7 @@ function renderPreview(props: Partial<React.ComponentProps<typeof Preview>> = {}
       gradientOpacity={0.5}
       watermark="Studiio.pro"
       accent="#7C3AED"
+      text={TEXT}
       {...props}
     />,
   );

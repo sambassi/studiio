@@ -29,6 +29,13 @@ const GENERATED = {
 
 const RUSH = 'https://exemple.test/rush.mp4';
 
+
+/** Réglages typographiques par défaut — identiques à ceux du wizard. */
+const TEXT = {
+  title: { font: 'Inter', color: '#FFFFFF', scale: 1, bold: true, italic: false, letterSpacing: 0, lineHeight: 1.1 },
+  cta: { font: 'Inter', color: '#FFFFFF', subColor: '#EC4899', scale: 1, letterSpacing: 0, lineHeight: 1.2 },
+};
+
 function renderPreview(props: Partial<React.ComponentProps<typeof Preview>> = {}) {
   return render(
     <Preview
@@ -40,6 +47,7 @@ function renderPreview(props: Partial<React.ComponentProps<typeof Preview>> = {}
       gradEnd="#EC4899"
       gradientOpacity={0.5}
       accent="#7C3AED"
+      text={TEXT}
       rushUrl={RUSH}
       {...props}
     />,
@@ -116,6 +124,7 @@ describe('Aperçu — le rush est affiché sans déformation', () => {
         gradEnd="#EC4899"
         gradientOpacity={0.5}
         accent="#7C3AED"
+        text={TEXT}
         rushUrl="https://exemple.test/autre.mp4"
       />,
     );
