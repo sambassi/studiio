@@ -77,11 +77,14 @@ describe('Button — rétro-compatibilité des props', () => {
         py: /\bpy-\d/.test(cls),
         // `text-sm` réintroduit un line-height et casse `leading-none`.
         arbitraryText: /text-\[\d+px\]/.test(cls),
+        // Un `px-0` collerait le libellé aux bords.
+        px: Number(/\bpx-(\d+(?:\.\d+)?)/.exec(cls)?.[1] ?? '0'),
       };
     });
     expect(geo.map((g) => g.h)).toEqual(['28', '34', '40']);
     expect(geo.map((g) => g.py)).toEqual([false, false, false]);
     expect(geo.map((g) => g.arbitraryText)).toEqual([true, true, true]);
+    for (const g of geo) expect(g.px).toBeGreaterThanOrEqual(2);
   });
 
   it("le className de l'appelant est conservé, et placé en DERNIER", () => {
