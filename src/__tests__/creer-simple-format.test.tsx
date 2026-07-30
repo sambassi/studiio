@@ -3,6 +3,7 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { render, screen, cleanup } from '@testing-library/react';
 import { Preview } from '../app/dashboard/creer-simple/AssistantWizard';
+import { montageFrame, montageSize } from '../app/dashboard/calendar/page';
 
 /**
  * Format 1:1 (carré, 1080×1080) dans « Créer (simple) ».
@@ -109,7 +110,6 @@ describe('Aperçu — les métriques du carré sont celles que rendra la vidéo'
     // C'est le fait qui commande tout le reste : `h > w` est faux pour un
     // canvas carré.
     expect(composerSource).toMatch(/const isReel = h > w;/);
-    expect(1080 > 1080).toBe(false);
   });
 
   it('titre et sous-titre reprennent donc les ratios du 16:9', () => {
@@ -183,8 +183,9 @@ describe('Export — 1080 × 1080 part vraiment au compositeur', () => {
       resolve(__dirname, '../app/dashboard/calendar/page.tsx'),
       'utf-8',
     );
-    expect(calendarSource).toMatch(/const vs = meta\?\.videoSize;/);
-    expect(calendarSource).toMatch(/aspectRatio: `\$\{vs!\.w\} \/ \$\{vs!\.h\}`/);
+    // La géométrie elle-même est vérifiée sur `montageFrame` plus bas —
+    // ici on s'assure seulement que le Calendrier la consulte.
+    expect(calendarSource).toMatch(/montageFrame\(meta\?\.videoSize, fullPreviewPost\.format\)/);
     // `contain` : équivalent à `cover` quand le conteneur porte le ratio
     // exact, mais aucun format futur ne sera rogné.
     expect(calendarSource).toMatch(/w-full h-full object-contain/);
@@ -210,5 +211,53 @@ describe('Sélecteur de format', () => {
 
   it('le type Format porte les trois valeurs', () => {
     expect(wizardSource).toMatch(/type Format = '9:16' \| '1:1' \| '16:9';/);
+  });
+});
+
+describe('Calendrier — le cadre du montage', () => {
+  it('donne au carré son propre ratio, plafonné en hauteur', () => {
+    const f = montageFrame({ w: 1080, h: 1080 }, 'tv');
+    expect(f.style.aspectRatio).toBe('1080 / 1080');
+    expect(f.style.height).toBe('70dvh');
+    // PAS de `w-full` : une largeur ET une hauteur fixées rendent
+    // `aspect-ratio` inerte — c'est ce qui, dans une première version,
+    // élargissait les 9:16 à toute la colonne.
+    expect(f.className).toBe('');
+  });
+
+  it('laisse les 9:16 exactement comme avant, avec ou sans videoSize', () => {
+    const sans = montageFrame(undefined, 'reel');
+    expect(sans.className).toBe('');
+    expect(sans.style).toEqual({ aspectRatio: '9/16', height: '70dvh', maxHeight: '70dvh' });
+    // Le point qui avait régressé : un nouveau post 9:16 porte `videoSize`.
+    const avec = montageFrame({ w: 1080, h: 1920 }, 'reel');
+    expect(avec.className).toBe('');
+    expect(avec.style.height).toBe('70dvh');
+    expect(avec.style.aspectRatio).toBe('1080 / 1920');
+  });
+
+  it('laisse les 16:9 en pleine largeur', () => {
+    expect(montageFrame(undefined, 'tv').className).toBe('w-full');
+    expect(montageFrame({ w: 1920, h: 1080 }, 'tv').className).toBe('w-full');
+    // Pas de hauteur imposée : sinon `aspect-ratio` serait ignoré.
+    expect(montageFrame({ w: 1920, h: 1080 }, 'tv').style.height).toBeUndefined();
+  });
+
+  it('ignore des dimensions absurdes', () => {
+    expect(montageFrame({ w: 0, h: 0 }, 'reel').style.aspectRatio).toBe('9/16');
+  });
+});
+
+describe('Calendrier — recomposer un montage', () => {
+  it('reprend les dimensions réelles quand le post les porte', () => {
+    // Sans cela un carré se recomposait en 1920×1080, dans un cadre annoncé
+    // 1:1 — et le PATCH gardait un `videoSize` devenu faux.
+    expect(montageSize({ w: 1080, h: 1080 }, 'tv')).toEqual({ width: 1080, height: 1080 });
+  });
+
+  it('retombe sur le format pour les posts qui ne les portent pas', () => {
+    expect(montageSize(undefined, 'reel')).toEqual({ width: 1080, height: 1920 });
+    expect(montageSize(undefined, 'tv')).toEqual({ width: 1920, height: 1080 });
+    expect(montageSize({ w: 0, h: 0 }, 'reel')).toEqual({ width: 1080, height: 1920 });
   });
 });

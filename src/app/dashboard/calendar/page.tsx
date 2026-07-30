@@ -176,6 +176,56 @@ interface Post {
  * retiré du chemin d'APERÇU seulement — voir `shouldComposeMontage` pour la
  * planification et la publication, qui le conservent via le contenu.
  */
+/**
+ * Geometrie du cadre qui accueille le montage dans l'apercu plein ecran.
+ *
+ * `post.format` ne distingue que « reel » et « tv » : un montage CARRE y
+ * tombe du cote « tv » et son cadre 16:9 en couperait le haut et le bas, CTA
+ * compris. `metadata.videoSize`, quand le post le porte, donne les
+ * dimensions reelles et donc le bon ratio.
+ *
+ * ⚠️ Une largeur ET une hauteur fixees rendent `aspect-ratio` inerte : c'est
+ * ce qui, dans une premiere version, elargissait les 9:16 a toute la colonne
+ * et faisait deborder les controles natifs de la video. D'ou la regle unique
+ * ci-dessous — hauteur plafonnee pour tout ce qui n'est pas paysage,
+ * `w-full` pour le paysage, jamais les deux.
+ *
+ * Sortie volontairement identique a l'ancien code pour les deux formats
+ * historiques : 9:16 → cadre 9/16 plafonne a 70dvh ; 16:9 → `w-full` au
+ * ratio 16/9.
+ */
+/**
+ * Dimensions a recomposer pour un post.
+ *
+ * `format` ne connait que deux resolutions : un montage carre recompose
+ * d'apres lui ressortait en 1920x1080, dans un cadre annonce 1:1. Quand le
+ * post porte ses dimensions reelles, ce sont elles qui font foi.
+ */
+export function montageSize(
+  videoSize: { w: number; h: number } | undefined,
+  format: 'reel' | 'tv',
+): { width: number; height: number } {
+  if (videoSize && videoSize.w > 0 && videoSize.h > 0) {
+    return { width: videoSize.w, height: videoSize.h };
+  }
+  return format === 'reel' ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 };
+}
+
+export function montageFrame(
+  videoSize: { w: number; h: number } | undefined,
+  format: 'reel' | 'tv',
+): { className: string; style: React.CSSProperties } {
+  const valid = videoSize && videoSize.w > 0 && videoSize.h > 0 ? videoSize : null;
+  const ratio = valid ? valid.w / valid.h : format === 'reel' ? 9 / 16 : 16 / 9;
+  const aspectRatio = valid ? `${valid.w} / ${valid.h}` : format === 'reel' ? '9/16' : '16/9';
+  // Carre compris : au-dela d'une modale haute, un cadre 1:1 forcerait le
+  // defilement pour voir le montage entier.
+  if (ratio <= 1) {
+    return { className: '', style: { aspectRatio, height: '70dvh', maxHeight: '70dvh' } };
+  }
+  return { className: 'w-full', style: { aspectRatio } };
+}
+
 function postHasVisualSource(post: Pick<Post, 'media_url' | 'metadata'> | null | undefined): boolean {
   const meta = post?.metadata;
   return !!(
@@ -291,6 +341,7 @@ function PostThumbnail({
   videoUrl,
   title,
   format,
+  videoSize,
   className,
 }: {
   thumbnailUrl: string | null;
@@ -299,6 +350,13 @@ function PostThumbnail({
   title: string;
   /** 'tv' → 16:9, 'reel' (default) → 9:16. Controls the miniature's aspect ratio. */
   format?: string | null;
+  /**
+   * Dimensions REELLES du montage, quand le post les porte. `format` ne
+   * distingue que deux ratios : sans ce champ, une vignette carree tombait
+   * dans une boite 16:9 en `object-cover` et perdait 44 % de sa hauteur —
+   * titre et CTA coupes.
+   */
+  videoSize?: { w: number; h: number } | null;
   className?: string;
 }) {
   const [extractedThumb, setExtractedThumb] = useState<string | null>(null);
@@ -342,12 +400,22 @@ function PostThumbnail({
 
   // Match the post's format: 16:9 landscape for 'tv', 9:16 portrait otherwise.
   const isTv = format === 'tv';
-  const defaultCls = isTv
-    ? 'w-48 sm:w-64 aspect-[16/9] rounded-xl overflow-hidden border border-gray-700 bg-black relative'
-    : 'w-28 sm:w-36 aspect-[9/16] rounded-xl overflow-hidden border border-gray-700 bg-black relative';
+  const realRatio = videoSize && videoSize.w > 0 && videoSize.h > 0 ? videoSize.w / videoSize.h : null;
+  // Un ratio reel qui ne correspond a aucun des deux formats historiques
+  // (le carre) prend la largeur du paysage et son propre ratio, plutot que
+  // d'etre recadre dans une boite qui n'est pas la sienne.
+  const custom = realRatio !== null && Math.abs(realRatio - (isTv ? 16 / 9 : 9 / 16)) > 0.01;
+  const defaultCls = custom
+    ? 'w-36 sm:w-48 rounded-xl overflow-hidden border border-gray-700 bg-black relative'
+    : isTv
+      ? 'w-48 sm:w-64 aspect-[16/9] rounded-xl overflow-hidden border border-gray-700 bg-black relative'
+      : 'w-28 sm:w-36 aspect-[9/16] rounded-xl overflow-hidden border border-gray-700 bg-black relative';
 
   return (
-    <div className={className || defaultCls}>
+    <div
+      className={className || defaultCls}
+      style={custom && !className ? { aspectRatio: `${videoSize!.w} / ${videoSize!.h}` } : undefined}
+    >
       {displayImg ? (
         // `key` forces remount when the URL changes (e.g. after a regenerate),
         // so the new thumbnail actually displays instead of a stale cached <img>.
@@ -529,7 +597,6 @@ export default function CalendarPage() {
     const meta: any = post.metadata || {};
     const brand = meta.branding;
     const designMeta: any = meta.design || {};
-    const isReel = post.format === 'reel';
     const hasRush = !!meta.rushUrls?.[0];
 
     // Garde-fou : un post sans AUCUNE source visuelle (assistant simple) n'a
@@ -591,8 +658,9 @@ export default function CalendarPage() {
 
     try {
       const { url: renderedUrl, thumbnailUrl: freshThumb, composerVersion: freshVersion } = await composeAndUpload({
-        width: isReel ? 1080 : 1920,
-        height: isReel ? 1920 : 1080,
+        // Dimensions reelles du montage quand le post les porte : sans
+        // elles, un carre se recomposait en 1920x1080.
+        ...montageSize(meta?.videoSize, post?.format ?? 'tv'),
         fps: 30,
         title: post.title || 'Vidéo',
         subtitle: meta.subtitle || undefined,
@@ -1012,12 +1080,12 @@ export default function CalendarPage() {
         const logoUrl = meta.logoUrl || meta.design?.logoUrl || null;
         const seq = meta.sequences;
         const brand = meta.branding;
-        const isReel = post.format === 'reel';
 
         const designMeta = meta.design || {};
         const { url: renderedUrl } = await composeAndUpload({
-          width: isReel ? 1080 : 1920,
-          height: isReel ? 1920 : 1080,
+          // Dimensions reelles du montage quand le post les porte : sans
+          // elles, un carre se recomposait en 1920x1080.
+          ...montageSize(meta?.videoSize, post?.format ?? 'tv'),
           fps: 30,
           title: post.title || 'Vidéo',
           subtitle: meta.subtitle || undefined,
@@ -1639,15 +1707,15 @@ export default function CalendarPage() {
           const logoUrl = meta.logoUrl || meta.design?.logoUrl || null;
           const seq = meta.sequences;
           const brand = meta.branding;
-          const isReel = post.format === 'reel';
           const designMeta = meta.design || {};
 
           console.log('[Publish] Media URLs:', { posterUrl: posterUrl?.substring(0, 60), videoUrl: videoUrl?.substring(0, 60), logoUrl: logoUrl?.substring(0, 30), musicUrl: musicUrl?.substring(0, 60) });
 
           // Wrap composition in a 3-minute timeout to prevent hanging forever
           const composePromise = composeAndUpload({
-            width: isReel ? 1080 : 1920,
-            height: isReel ? 1920 : 1080,
+            // Dimensions reelles du montage quand le post les porte : sans
+            // elles, un carre se recomposait en 1920x1080.
+            ...montageSize(meta?.videoSize, post?.format ?? 'tv'),
             fps: 30,
             title: post.title || 'Vidéo',
             subtitle: meta.subtitle || undefined,
@@ -2142,7 +2210,6 @@ export default function CalendarPage() {
       const logoUrl = meta?.logoUrl || meta?.design?.logoUrl || null;
       const seq = meta?.sequences;
       const brand = meta?.branding;
-      const isReel = post.format === 'reel';
 
       // If no media at all, the recompose has nothing to draw with — bail
       // out cleanly instead of letting composeAndUpload throw on a useless
@@ -2163,8 +2230,9 @@ export default function CalendarPage() {
       const calSiteText = calDesign?.siteText;
 
       const { blob, url: renderedUrl } = await composeAndUpload({
-        width: isReel ? 1080 : 1920,
-        height: isReel ? 1920 : 1080,
+        // Dimensions reelles du montage quand le post les porte : sans
+        // elles, un carre se recomposait en 1920x1080.
+        ...montageSize(meta?.videoSize, post?.format ?? 'tv'),
         fps: 30,
         title: post.title || 'Vidéo',
         subtitle: meta?.subtitle || undefined,
@@ -2736,6 +2804,7 @@ export default function CalendarPage() {
                         videoUrl={videoUrl}
                         title={fp.title}
                         format={fp.format}
+                        videoSize={fpMeta?.videoSize ?? null}
                       />
                     </div>
                   );
@@ -3298,30 +3367,11 @@ export default function CalendarPage() {
                    a `renderedVideoUrl` (never passed through the composer). ── */}
               {hasMontage && meta?.renderedVideoUrl ? (
                 (() => {
-                  // Dimensions REELLES du montage quand le post les porte.
-                  // `format` ne distingue que « reel » et « tv » : un montage
-                  // carre tombait donc dans un conteneur 16:9 et perdait le
-                  // haut et le bas — CTA compris — par le recadrage `cover`.
-                  // Les posts sans ce champ gardent le comportement d'avant.
-                  const vs = meta?.videoSize;
-                  const custom = vs && vs.w > 0 && vs.h > 0 && vs.w !== vs.h * (16 / 9);
-                  const isPortrait = vs ? vs.h > vs.w : fullPreviewPost.format === 'reel';
+                  const frame = montageFrame(meta?.videoSize, fullPreviewPost.format);
                   return (
                 <div
-                  className={`relative overflow-hidden rounded-xl bg-black ${
-                    custom ? 'w-full' : fullPreviewPost.format === 'reel' ? '' : 'aspect-video w-full'
-                  }`}
-                  style={
-                    custom
-                      ? {
-                          aspectRatio: `${vs!.w} / ${vs!.h}`,
-                          ...(isPortrait ? { height: '70dvh', maxHeight: '70dvh' } : {}),
-                          margin: '0 auto',
-                        }
-                      : fullPreviewPost.format === 'reel'
-                        ? { aspectRatio: '9/16', height: '70dvh', maxHeight: '70dvh' }
-                        : undefined
-                  }
+                  className={`relative overflow-hidden rounded-xl bg-black ${frame.className}`}
+                  style={frame.style}
                 >
                   {/* `key` forces React to remount the <video> element when the URL
                        changes — HTML5 `<video>` doesn't always reload a new `src`
