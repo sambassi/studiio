@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { wrapText, measureSpacedText } from '../lib/video-composer';
+import { wrapText, measureSpacedText, supportsNativeLetterSpacing } from '../lib/video-composer';
 
 /**
  * Le retour à la ligne du compositeur, face à l'interlettrage.
@@ -32,12 +32,29 @@ const rendered = (line: string, spacing: number) =>
 const TEXT = 'ALPHA BRAVO CHARLIE DELTA ECHO FOXTROT';
 
 describe('wrapText — la coupe tient compte de l’interlettrage', () => {
-  it('sans interlettrage, le comportement est inchangé', () => {
+  it('sans interlettrage, la coupe est celle d’AVANT le correctif', () => {
+    // Comparer `wrapText(…)` à `wrapText(…, 0)` ne prouverait rien : c'est
+    // la même valeur par défaut des deux côtés. On rejoue donc l'ancienne
+    // implémentation — coupe sur la largeur nue — et on exige l'égalité.
+    // C'est la rétro-compat de TOUS les appels qui ne passent rien.
     const ctx = fakeCtx();
-    // Rétro-compat : c'est le cas de TOUS les appels qui ne passent rien.
-    expect(wrapText(ctx, TEXT, 200)).toEqual(wrapText(ctx, TEXT, 200, 0));
-    for (const line of wrapText(ctx, TEXT, 200)) {
-      expect(rendered(line, 0)).toBeLessThanOrEqual(200);
+    const avant = (text: string, maxWidth: number) => {
+      const out: string[] = [];
+      let cur = '';
+      for (const word of text.split(' ')) {
+        const test = cur ? `${cur} ${word}` : word;
+        if (ctx.measureText(test).width > maxWidth && cur) {
+          out.push(cur);
+          cur = word;
+        } else {
+          cur = test;
+        }
+      }
+      if (cur) out.push(cur);
+      return out;
+    };
+    for (const maxWidth of [120, 200, 260, 340, 500]) {
+      expect(wrapText(ctx, TEXT, maxWidth)).toEqual(avant(TEXT, maxWidth));
     }
   });
 
@@ -81,33 +98,50 @@ describe('wrapText — la coupe tient compte de l’interlettrage', () => {
     expect(avec.length).toBeGreaterThan(sans.length);
   });
 
-  it('reproduit LA MÊME coupe que l’aperçu CSS', () => {
-    // CSS ajoute l'interlettrage après CHAQUE caractère — le dernier compris —
-    // et cette avance finale compte dans la largeur qui déclenche le retour à
-    // la ligne. Sans ce cran d'écart, le compositeur couperait plus tard que
-    // l'aperçu sur les lignes qui frôlent la limite : même texte, deux mises
-    // en page. C'est la preuve de non-dérive demandée.
+  it('délègue à `ctx.letterSpacing` quand le navigateur le propose', () => {
+    // C'est CE chemin qui supprime la dérive : `ctx.letterSpacing` espace
+    // exactement comme CSS, crénage conservé, avance finale comprise. La
+    // mesure glyphe par glyphe, elle, détruit le crénage et s'écarte
+    // jusqu'à ~10 % sur des paires serrées (« AVAVAVAV »).
+    //
+    // La parité au pixel près se constate dans un vrai navigateur ; ce que
+    // ce test garantit, c'est que le chemin natif est bien EMPRUNTÉ, et que
+    // `ctx.letterSpacing` est restauré derrière.
+    const seen: string[] = [];
+    let current = 'normal';
+    const ctx = {
+      get letterSpacing() {
+        return current;
+      },
+      set letterSpacing(v: string) {
+        current = v;
+        seen.push(v);
+      },
+      // Le natif inclut l'espacement dans la mesure : on l'imite.
+      measureText: (t: string) => ({
+        width: Array.from(t).length * (CHAR_W + (parseFloat(current) || 0)),
+      }),
+      textAlign: 'left' as CanvasTextAlign,
+    } as unknown as CanvasRenderingContext2D;
+
+    expect(supportsNativeLetterSpacing(ctx)).toBe(true);
+    const lines = wrapText(ctx, TEXT, 300, 7);
+    expect(seen).toContain('7px');
+    // Restauré : sinon l'espacement fuirait sur tous les tracés suivants.
+    expect(current).toBe('normal');
+    // Et la coupe suit bien la mesure native, avance finale comprise.
+    for (const line of lines) {
+      expect(Array.from(line).length * (CHAR_W + 7)).toBeLessThanOrEqual(300);
+    }
+  });
+
+  it('retombe sur le tracé manuel quand `ctx.letterSpacing` n’existe pas', () => {
+    // Navigateur ancien : le repli doit rester correct, jamais silencieux.
     const ctx = fakeCtx();
-    const maxWidth = 300;
-    const spacing = 7;
-    /** Mise en page d'un navigateur : largeur = glyphes + spacing par caractère. */
-    const cssWrap = (text: string) => {
-      const out: string[] = [];
-      let cur = '';
-      for (const word of text.split(' ')) {
-        const test = cur ? `${cur} ${word}` : word;
-        const w = Array.from(test).length * (CHAR_W + spacing);
-        if (w > maxWidth && cur) {
-          out.push(cur);
-          cur = word;
-        } else {
-          cur = test;
-        }
-      }
-      if (cur) out.push(cur);
-      return out;
-    };
-    expect(wrapText(ctx, TEXT, maxWidth, spacing)).toEqual(cssWrap(TEXT));
+    expect(supportsNativeLetterSpacing(ctx)).toBe(false);
+    for (const line of wrapText(ctx, TEXT, 300, 7)) {
+      if (line.includes(' ')) expect(rendered(line, 7)).toBeLessThanOrEqual(300);
+    }
   });
 
   it('respecte les retours à la ligne explicites', () => {

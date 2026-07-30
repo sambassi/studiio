@@ -171,6 +171,22 @@ describe('Sous-titre — sa typographie propre', () => {
     expect(styleOf('Mon titre').fontFamily).toContain('var(--font-anton)');
   });
 
+  it('la régénération depuis le Calendrier garde sa typographie', () => {
+    // Persistés mais relus nulle part, les trois champs se perdaient : un
+    // sous-titre Poppins bleu à 140 % se régénérait dans la police du titre,
+    // blanc à 80 %, taille 100 %.
+    const calendarSource = readFileSync(
+      resolve(__dirname, '../app/dashboard/calendar/page.tsx'),
+      'utf-8',
+    );
+    for (const field of ['subtitleFont', 'subtitleColor', 'subtitleScale']) {
+      const uses = calendarSource.match(
+        new RegExp(`${field}: (designMeta|calDesign\\?)\\.${field}`, 'g'),
+      );
+      expect(uses).toHaveLength(4); // les 4 appels a composeAndUpload
+    }
+  });
+
   it('le compositeur lit bien ces trois champs', () => {
     expect(composerSource).toMatch(/const subFamily = design\?\.subtitleFont \|\| fontFamily/);
     expect(composerSource).toMatch(/design\?\.subtitleScale \?\? 1/);

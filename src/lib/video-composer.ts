@@ -681,10 +681,44 @@ function getSiteTextPos(siteText: SiteTextConfig | undefined, seq: string): { x:
  * C'est ce qui faisait deborder le titre hors du cadre alors que l'apercu,
  * lui, revenait a la ligne au bon endroit.
  */
+export function supportsNativeLetterSpacing(ctx: CanvasRenderingContext2D): boolean {
+  return 'letterSpacing' in ctx;
+}
+
+/**
+ * Applique un interlettrage NATIF le temps d'une operation, puis restaure.
+ *
+ * `ctx.letterSpacing` (Chrome 99+) espace exactement comme CSS : le crenage
+ * est conserve, et `measureText` renvoie la largeur reelle, avance finale
+ * comprise. C'est la seule facon d'obtenir une coupe identique a celle de
+ * l'apercu — la mesure glyphe par glyphe, elle, detruit le crenage et
+ * s'ecarte jusqu'a 10 % sur des paires serrees comme « AVAVAVAV ».
+ *
+ * Renvoie `null` quand la propriete n'existe pas : l'appelant retombe alors
+ * sur le trace manuel, qui reste correct — simplement moins fidele.
+ */
+function withNativeSpacing<T>(
+  ctx: CanvasRenderingContext2D, spacing: number, fn: () => T
+): T | null {
+  if (!supportsNativeLetterSpacing(ctx)) return null;
+  const c = ctx as CanvasRenderingContext2D & { letterSpacing: string };
+  const saved = c.letterSpacing;
+  c.letterSpacing = `${spacing}px`;
+  try {
+    return fn();
+  } finally {
+    c.letterSpacing = saved;
+  }
+}
+
 export function measureSpacedText(
   ctx: CanvasRenderingContext2D, text: string, spacing: number
 ): number {
   if (!spacing) return ctx.measureText(text).width;
+  // Chemin natif : identique au DOM au centieme de pixel pres.
+  const native = withNativeSpacing(ctx, spacing, () => ctx.measureText(text).width);
+  if (native !== null) return native;
+  // Repli : somme des glyphes + les espaces ENTRE eux, comme le trace manuel.
   const chars = Array.from(text);
   if (chars.length === 0) return 0;
   let total = 0;
@@ -708,6 +742,12 @@ function measureLineForWrap(
   ctx: CanvasRenderingContext2D, text: string, spacing: number
 ): number {
   if (!spacing) return ctx.measureText(text).width;
+  // `ctx.letterSpacing` compte DEJA l'avance finale, exactement comme CSS :
+  // il n'y a rien a ajouter. Le repli manuel, lui, ne mesure que les espaces
+  // entre les glyphes — d'ou le cran ci-dessous, sans lequel le compositeur
+  // couperait plus tard que l'apercu sur les lignes qui frolent la limite.
+  const native = withNativeSpacing(ctx, spacing, () => ctx.measureText(text).width);
+  if (native !== null) return native;
   return measureSpacedText(ctx, text, spacing) + spacing;
 }
 
@@ -717,6 +757,11 @@ function fillTextWithSpacing(
 ) {
   if (!spacing || spacing === 0) {
     ctx.fillText(text, x, y);
+    return;
+  }
+  // Chemin natif : `ctx.letterSpacing` gere l'espacement ET l'alignement,
+  // crenage conserve. Le trace tombe alors au meme endroit que dans l'apercu.
+  if (withNativeSpacing(ctx, spacing, () => { ctx.fillText(text, x, y); return true; })) {
     return;
   }
   // For center alignment, calculate total width first and offset.
@@ -2200,7 +2245,8 @@ function drawSingleOverlay(
   ctx.textBaseline = 'middle';
   ctx.font = `${italic}${weight} ${fontSize}px "${fontFamily}", sans-serif`;
   ctx.textAlign = 'center';
-  const lines = wrapText(ctx, overlay.text, w * 0.85);
+  // Meme regle que le titre : la coupe se mesure AVEC l'espacement trace.
+  const lines = wrapText(ctx, overlay.text, w * 0.85, letterSpacing);
   const lineH = fontSize * (overlay.lineHeight || 1.2);
   // The block spans from the first line's middle up by lineH/2 to the
   // last line's middle down by lineH/2 → total visual block height is

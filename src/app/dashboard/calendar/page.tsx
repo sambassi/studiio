@@ -99,6 +99,10 @@ interface PostMetadata {
     titleFont?: string;
     ctaFont?: string;
     watermarkFont?: string;
+    /** Typographie propre au sous-titre — chaque champ absent suit le titre. */
+    subtitleFont?: string;
+    subtitleColor?: string;
+    subtitleScale?: number;
     /** Echelle du texte des cartes, en %, independante de `textScale`. */
     cardsTextScale?: number;
     titleColor?: string;
@@ -638,6 +642,11 @@ export default function CalendarPage() {
           // facteur compensateur. `|| undefined` : les posts qui n'ont pas ces
           // champs se comportent exactement comme avant.
           titleFont: designMeta.titleFont || undefined,
+          // Typographie du sous-titre : sans elle, un sous-titre regle en
+          // Poppins bleu se regenerait dans la police du titre, blanc a 80 %.
+          subtitleFont: designMeta.subtitleFont || undefined,
+          subtitleColor: designMeta.subtitleColor || undefined,
+          subtitleScale: designMeta.subtitleScale ?? undefined,
           ctaFont: designMeta.ctaFont || undefined,
           watermarkFont: designMeta.watermarkFont || undefined,
           cardsTextScale: designMeta.cardsTextScale ?? undefined,
@@ -1054,6 +1063,11 @@ export default function CalendarPage() {
             // facteur compensateur. `|| undefined` : les posts qui n'ont pas ces
             // champs se comportent exactement comme avant.
             titleFont: designMeta.titleFont || undefined,
+            // Typographie du sous-titre : sans elle, un sous-titre regle en
+            // Poppins bleu se regenerait dans la police du titre, blanc a 80 %.
+            subtitleFont: designMeta.subtitleFont || undefined,
+            subtitleColor: designMeta.subtitleColor || undefined,
+            subtitleScale: designMeta.subtitleScale ?? undefined,
             ctaFont: designMeta.ctaFont || undefined,
             watermarkFont: designMeta.watermarkFont || undefined,
             cardsTextScale: designMeta.cardsTextScale ?? undefined,
@@ -1679,6 +1693,11 @@ export default function CalendarPage() {
               // facteur compensateur. `|| undefined` : les posts qui n'ont pas ces
               // champs se comportent exactement comme avant.
               titleFont: designMeta.titleFont || undefined,
+              // Typographie du sous-titre : sans elle, un sous-titre regle en
+              // Poppins bleu se regenerait dans la police du titre, blanc a 80 %.
+              subtitleFont: designMeta.subtitleFont || undefined,
+              subtitleColor: designMeta.subtitleColor || undefined,
+              subtitleScale: designMeta.subtitleScale ?? undefined,
               ctaFont: designMeta.ctaFont || undefined,
               watermarkFont: designMeta.watermarkFont || undefined,
               cardsTextScale: designMeta.cardsTextScale ?? undefined,
@@ -2192,6 +2211,11 @@ export default function CalendarPage() {
           // facteur compensateur. `|| undefined` : les posts qui n'ont pas ces
           // champs se comportent exactement comme avant.
           titleFont: calDesign?.titleFont || undefined,
+          // Typographie du sous-titre : sans elle, un sous-titre regle en
+          // Poppins bleu se regenerait dans la police du titre, blanc a 80 %.
+          subtitleFont: calDesign?.subtitleFont || undefined,
+          subtitleColor: calDesign?.subtitleColor || undefined,
+          subtitleScale: calDesign?.subtitleScale ?? undefined,
           ctaFont: calDesign?.ctaFont || undefined,
           watermarkFont: calDesign?.watermarkFont || undefined,
           cardsTextScale: calDesign?.cardsTextScale ?? undefined,
@@ -3388,16 +3412,27 @@ export default function CalendarPage() {
                                   ...(titleGradStyle ?? { color: designTitleColor }),
                                 }}>{displayTitle || 'TITRE'}</h3>
                                 {meta?.subtitle && <p style={{
-                                  fontFamily: designFont,
-                                  fontSize: editorPxToDvh((isReelFormat ? 9 : 11) * designTextScale),
-                                  letterSpacing: `${titleTypo.letterSpacing || 0}px`,
+                                  // Typographie propre au sous-titre, chaque
+                                  // champ absent suivant le titre — comme
+                                  // `drawIntro`. Sans cela l'apercu montrait
+                                  // autre chose que la video.
+                                  fontFamily: design?.subtitleFont
+                                    ? (FONT_CSS_MAP[design.subtitleFont] || design.subtitleFont)
+                                    : designFont,
+                                  fontSize: editorPxToDvh(
+                                    (isReelFormat ? 9 : 11) * designTextScale * (design?.subtitleScale ?? 1),
+                                  ),
+                                  // PAS d'interlettrage : le compositeur trace
+                                  // le sous-titre avec `fillText` nu.
                                   lineHeight: titleTypo.lineHeight || 1.1,
                                   fontWeight: titleTypo.bold !== false ? 900 : 400,
                                   fontStyle: titleTypo.italic ? 'italic' : 'normal',
                                   textShadow: titleHasGrad ? 'none' : '0 2px 4px rgba(0,0,0,0.15)',
                                   margin: 0,
                                   whiteSpace: 'pre-wrap' as const,
-                                  ...(titleGradStyle ?? { color: `${designTitleColor}CC` }),
+                                  ...(titleGradStyle ?? {
+                                    color: design?.subtitleColor || `${designTitleColor}CC`,
+                                  }),
                                 }}>{meta.subtitle}</p>}
                               </div>
                             </div>
