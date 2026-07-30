@@ -1187,6 +1187,14 @@
       "disconnectError": "Error during disconnection"
     },
     "comingSoonHint": "{platform} is coming soon. Connecting will reopen shortly.",
+    "selfPublish": {
+      "title": "Publish it yourself",
+      "intro": "Automatic publishing is waiting on {platform} approval. In the meantime, post from your own account in three steps.",
+      "step1": "Download your video",
+      "step2": "Open the {platform} app",
+      "step3": "Publish from your account",
+      "cta": "Download to publish"
+    },
     "settings": {
       "title": "Publishing settings",
       "autoPublish": {

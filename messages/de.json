@@ -1207,6 +1207,14 @@
       "disconnectError": "Fehler beim Trennen"
     },
     "comingSoonHint": "{platform} ist demnächst verfügbar. Die Verbindung wird bald wieder möglich sein.",
+    "selfPublish": {
+      "title": "Selbst veröffentlichen",
+      "intro": "Die automatische Veröffentlichung wartet auf die Freigabe von {platform}. Veröffentlichen Sie so lange in drei Schritten über Ihr eigenes Konto.",
+      "step1": "Laden Sie Ihr Video herunter",
+      "step2": "Öffnen Sie die {platform}-App",
+      "step3": "Veröffentlichen Sie über Ihr Konto",
+      "cta": "Zum Veröffentlichen herunterladen"
+    },
     "settings": {
       "title": "Veröffentlichungseinstellungen",
       "autoPublish": {
