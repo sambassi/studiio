@@ -1177,7 +1177,7 @@
       "disconnect": "Déconnecter",
       "connecting": "Connexion..."
     },
-    "oauthInfo": "Pour activer la connexion {platform}, configurez les clés API OAuth dans les variables d'environnement Vercel.",
+    "oauthInfo": "Pour activer la connexion {platform}, configurez les clés API OAuth dans les variables d'environnement Coolify (service studiio-app).",
     "toasts": {
       "connectionSuccess": "Connexion à {platform} réussie!",
       "connectionInitiated": "Connexion initiée pour {platform}",
@@ -1185,7 +1185,7 @@
       "platformNotRecognized": "Plateforme non reconnue",
       "popupsRequired": "Les popups doivent être activées pour se connecter",
       "connectionInProgress": "Connexion en cours...",
-      "oauthNotConfigured": "OAuth non configuré pour {platform}. Configurez les clés API dans Vercel > Settings > Environment Variables.",
+      "oauthNotConfigured": "OAuth non configuré pour {platform}. Configurez les clés API dans Coolify > studiio-app > Environment Variables.",
       "serverError": "Erreur serveur lors de la connexion",
       "noAuthUrl": "Erreur: pas de lien d'authentification reçu pour {platform}",
       "connectionError": "Erreur lors de la connexion",

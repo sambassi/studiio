@@ -209,7 +209,7 @@ export function detectAndReportServiceError(
       service,
       'critical',
       `🔑 ${serviceLabel(service)} — Clé API invalide`,
-      `L'API ${serviceLabel(service)} a rejeté la clé d'authentification. Vérifiez la variable d'environnement sur Vercel.`,
+      `L'API ${serviceLabel(service)} a rejeté la clé d'authentification. Vérifiez la variable d'environnement sur Coolify (service studiio-app).`,
     );
     return;
   }
