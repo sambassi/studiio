@@ -1191,7 +1191,7 @@
       "disconnect": "Trennen",
       "connecting": "Verbindung wird hergestellt..."
     },
-    "oauthInfo": "Um die Verbindung zu {platform} zu aktivieren, konfigurieren Sie die OAuth-API-Schlüssel in den Vercel-Umgebungsvariablen.",
+    "oauthInfo": "Um die Verbindung zu {platform} zu aktivieren, konfigurieren Sie die OAuth-API-Schlüssel in den Coolify-Umgebungsvariablen (Dienst studiio-app).",
     "toasts": {
       "connectionSuccess": "Erfolgreich mit {platform} verbunden!",
       "connectionInitiated": "Verbindung zu {platform} eingeleitet",
@@ -1199,7 +1199,7 @@
       "platformNotRecognized": "Plattform nicht erkannt",
       "popupsRequired": "Popups müssen für die Verbindung aktiviert sein",
       "connectionInProgress": "Verbindung wird hergestellt...",
-      "oauthNotConfigured": "OAuth für {platform} nicht konfiguriert. Konfigurieren Sie die API-Schlüssel unter Vercel > Settings > Environment Variables.",
+      "oauthNotConfigured": "OAuth für {platform} nicht konfiguriert. Konfigurieren Sie die API-Schlüssel unter Coolify > studiio-app > Environment Variables.",
       "serverError": "Serverfehler bei der Verbindung",
       "noAuthUrl": "Fehler: Kein Authentifizierungslink für {platform} empfangen",
       "connectionError": "Fehler bei der Verbindung",
