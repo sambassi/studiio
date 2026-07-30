@@ -12,13 +12,29 @@ import {
   accountBanned,
   creditsAdded,
 } from './templates';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Initialize Supabase client for user lookups
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-);
+// Client Supabase pour les recherches d'utilisateurs.
+//
+// Construit PARESSEUSEMENT, jamais a l'import : `createClient('')` leve
+// « supabaseUrl is required ». Ce module est atteint depuis
+// `lib/auth/config.ts`, donc depuis quasiment toutes les routes : construit a
+// l'import, il faisait echouer `next build` des que les cles Supabase etaient
+// absentes de l'environnement (« Failed to collect page data for /api/... »),
+// alors qu'aucune requete n'est faite pendant le build.
+//
+// Memes variables d'environnement et meme client qu'avant : quand les cles
+// sont presentes (prod), le comportement est strictement identique.
+let _supabase: SupabaseClient | null = null;
+function getSupabase(): SupabaseClient {
+  if (!_supabase) {
+    _supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+      process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+    );
+  }
+  return _supabase;
+}
 
 /**
  * Get user email from database
@@ -27,7 +43,7 @@ const supabase = createClient(
  */
 async function getUserEmail(userId: string): Promise<string | null> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await getSupabase()
       .from('users')
       .select('email')
       .eq('id', userId)
@@ -175,7 +191,7 @@ export async function notifyBan(
     }
 
     // Get user name for personalization
-    const { data } = await supabase
+    const { data } = await getSupabase()
       .from('users')
       .select('name')
       .eq('id', userId)
@@ -223,7 +239,7 @@ export async function notifyCreditsAdded(
     }
 
     // Get user name and current balance
-    const { data, error: userError } = await supabase
+    const { data, error: userError } = await getSupabase()
       .from('users')
       .select('name, credits')
       .eq('id', userId)
