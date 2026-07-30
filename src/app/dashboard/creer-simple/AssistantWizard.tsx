@@ -824,6 +824,21 @@ export default function AssistantWizard() {
     return { intro: introDuration, cards: cardsDuration, video: videoDuration, cta: ctaDuration }[k];
   };
 
+  /**
+   * Geometrie du montage pour le mixeur audio : elle doit etre calculee sur
+   * `activeOrder` + `seqDuration`, jamais sur les durees brutes. Une sequence
+   * masquee ou deplacee change le debut de la sequence video et la duree
+   * totale ; sans ca la timeline du mixeur decrirait un autre montage que
+   * celui exporte, et un keyframe pose « au milieu » tomberait ailleurs.
+   */
+  const mixLayout = {
+    totalDuration: activeOrder.reduce((sum, k) => sum + seqDuration(k), 0),
+    videoSeqStart: activeOrder
+      .slice(0, Math.max(0, activeOrder.indexOf('video')))
+      .reduce((sum, k) => sum + seqDuration(k), 0),
+    videoSeqDuration: seqDuration('video'),
+  };
+
   const moveSequence = (from: SeqKey, to: SeqKey) => {
     if (from === to) return;
     setSequences((prev) => {
@@ -1769,6 +1784,9 @@ export default function AssistantWizard() {
                   rushUrl={rushUrl}
                   audioKeyframes={audioKeyframes}
                   onAudioKeyframesChange={setAudioKeyframes}
+                  // Geometrie reelle (sequences masquees / reordonnees prises
+                  // en compte) : sans elle le mixeur decrirait un autre montage.
+                  mixLayout={mixLayout}
                 />
 
                 <div className="flex justify-between pt-2">

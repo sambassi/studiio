@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Music, Mic, Upload, Trash2, Volume2, VolumeX, Loader2, Play, Pause, Square, Sparkles, Image as ImageIcon, LayoutGrid, Film, Megaphone, SlidersHorizontal, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import { TTS_VOICES, synthesize, type TtsVoice } from '@/lib/tts/edge-tts-client';
@@ -133,6 +133,18 @@ interface AudioStudioPanelProps {
    */
   audioKeyframes?: AudioKeyframe[];
   onAudioKeyframesChange?: (next: AudioKeyframe[]) => void;
+  /**
+   * Geometrie REELLE du montage, telle que l'export la verra.
+   *
+   * Obligatoire des que les sequences sont masquables ou reordonnables : les
+   * durees brutes passees separement ignorent l'ordre et les sequences
+   * desactivees, et la timeline decrirait alors un montage qui n'existe pas.
+   */
+  mixLayout?: {
+    totalDuration: number;
+    videoSeqStart: number;
+    videoSeqDuration: number;
+  };
 }
 
 export function AudioStudioPanel({
@@ -143,7 +155,7 @@ export function AudioStudioPanel({
   introDuration, cardsDuration, videoDuration, ctaDuration,
   onIntroDurationChange, onCardsDurationChange, onVideoDurationChange, onCtaDurationChange,
   hasRush, contentTheme,
-  rushUrl = null, audioKeyframes, onAudioKeyframesChange,
+  rushUrl = null, audioKeyframes, onAudioKeyframesChange, mixLayout,
 }: AudioStudioPanelProps) {
   const [ttsText, setTtsText] = useState('');
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>(loadInitialVoiceId);
@@ -204,30 +216,62 @@ export function AudioStudioPanel({
   const [mixerOpen, setMixerOpen] = useState(false);
   const [autoDuckRunning, setAutoDuckRunning] = useState(false);
   const [mixError, setMixError] = useState('');
+  /** Geometrie du montage au moment du dernier auto-mix (voir `mixStale`). */
+  const [autoMixSignature, setAutoMixSignature] = useState<string | null>(null);
   const [playheadTime, setPlayheadTime] = useState<number | null>(null);
 
   /** Le mixeur ne s'affiche que si le parent branche les keyframes. */
   const mixerEnabled = typeof onAudioKeyframesChange === 'function';
-  const hasAnyAudio = !!(musicUrl || voiceUrl || (hasRush && rushUrl));
 
-  // Fenetre temporelle du montage — sert au timeline et a l'ecoute.
-  const videoSeqDuration = hasRush ? videoDuration : 0;
-  const videoSeqStart = introDuration + cardsDuration;
-  const totalDuration = introDuration + cardsDuration + videoSeqDuration + ctaDuration;
+  /**
+   * Fenetre temporelle du montage.
+   *
+   * ⚠️ Les durees brutes recues en props NE SUFFISENT PAS : une sequence peut
+   * etre masquee (duree effective 0) ou reordonnee. Le parent qui autorise ca
+   * doit fournir `mixLayout`, sinon la timeline et l'ecoute decrivent un
+   * montage different de celui qui sera exporte (keyframe pose « au milieu »
+   * atterrissant dans une autre sequence). La somme naive ci-dessous n'est
+   * qu'un repli pour un parcours a 4 sequences fixes.
+   */
+  const videoSeqDuration = mixLayout ? mixLayout.videoSeqDuration : (hasRush ? videoDuration : 0);
+  const videoSeqStart = mixLayout ? mixLayout.videoSeqStart : introDuration + cardsDuration;
+  const totalDuration = mixLayout
+    ? mixLayout.totalDuration
+    : introDuration + cardsDuration + videoSeqDuration + ctaDuration;
+
+  /**
+   * Signature de la geometrie. Les temps d'un auto-mix sont cales sur le
+   * montage tel qu'il etait ; changer une duree, masquer ou deplacer une
+   * sequence apres coup decale toute la courbe sans que rien ne le signale.
+   */
+  const layoutSignature = `${videoSeqStart}|${videoSeqDuration}|${totalDuration}`;
+  const mixStale = autoMixSignature !== null && autoMixSignature !== layoutSignature;
+
+  /** Le rush ne compte comme source audio que si sa sequence est reellement jouee. */
+  const rushInMix = !!rushUrl && hasRush && videoSeqDuration > 0;
+  const hasAnyAudio = !!(musicUrl || voiceUrl || rushInMix);
 
   /**
    * Keyframe d'amorce : tant que l'utilisateur n'a rien touche, le parent n'a
    * AUCUN keyframe et l'export garde exactement le comportement actuel. Le
-   * mixeur affiche cette valeur seed, derivee des volumes deja choisis.
+   * seed doit donc afficher CE que le compositeur ferait sans keyframes,
+   * sinon le mixeur ment : cote compositeur le rush vaut 0.5 seulement s'il
+   * y a une autre source audio, sinon 1.0 (video-composer.ts, `hasMixAudio`).
+   *
+   * Memoise : `AudioMixPreview` redemarre la lecture des que l'identite du
+   * tableau change. Un tableau recree a chaque rendu — et le playhead en
+   * recree un par frame — relancait la lecture ~60 fois par seconde.
    */
-  const seedKeyframe: AudioKeyframe = {
-    id: 'mix-0',
-    time: 0,
-    musicVolume,
-    rushVolume: 0.5,
-    voiceVolume,
-  };
-  const effectiveKeyframes = audioKeyframes && audioKeyframes.length > 0 ? audioKeyframes : [seedKeyframe];
+  const effectiveKeyframes = useMemo<AudioKeyframe[]>(() => {
+    if (audioKeyframes && audioKeyframes.length > 0) return audioKeyframes;
+    return [{
+      id: 'mix-0',
+      time: 0,
+      musicVolume,
+      rushVolume: (musicUrl || voiceUrl) ? 0.5 : 1.0,
+      voiceVolume,
+    }];
+  }, [audioKeyframes, musicVolume, voiceVolume, musicUrl, voiceUrl]);
 
   // Volumes affiches par les mini-lecteurs : quand le mixeur pilote, ils
   // suivent le mixage, sinon les props historiques.
@@ -239,21 +283,73 @@ export function AudioStudioPanel({
     onAudioKeyframesChange?.(next);
   }, [onAudioKeyframesChange]);
 
+  /**
+   * Auto-mix : analyse la piste du rush et baisse la musique quand ca parle.
+   *
+   * Deux recalages indispensables, que l'analyseur ne peut pas faire seul :
+   *   1. Ses temps partent du DEBUT DU FICHIER rush ; le compositeur, lui, les
+   *      applique depuis le debut du MONTAGE. Sans decalage de `videoSeqStart`,
+   *      la musique baisse pendant le titre et les cartes, et plus du tout
+   *      pendant la video. On coupe aussi ce qui depasse la fenetre video.
+   *   2. Les valeurs rendues sont absolues (0.25 / 1.0) : on les met a l'echelle
+   *      du niveau de musique choisi, sinon l'auto-mix ecrase le reglage
+   *      manuel. Le niveau de voix off est preserve tel quel ; le niveau du
+   *      rush, lui, est bien remplace par la courbe analysee — c'est l'objet
+   *      meme de l'auto-mix.
+   */
   const runAutoDuck = useCallback(async () => {
-    if (!rushUrl) return;
+    if (!rushUrl || videoSeqDuration <= 0) return;
     setAutoDuckRunning(true);
     setMixError('');
     try {
-      const kf = await analyseRushForDucking(rushUrl);
-      if (kf.length > 0) onAudioKeyframesChange?.(kf);
-      else setMixError("Aucune variation detectee dans le rush — niveaux inchanges");
+      const raw = await analyseRushForDucking(rushUrl);
+      const inWindow = raw.filter((k) => k.time < videoSeqDuration);
+      if (inWindow.length === 0) {
+        setMixError('Aucune variation detectee dans le rush — niveaux inchanges');
+        return;
+      }
+      const baseMusic = effectiveKeyframes[0]?.musicVolume ?? musicVolume;
+      const keepVoice = effectiveKeyframes[0]?.voiceVolume ?? voiceVolume;
+      const shifted: AudioKeyframe[] = inWindow.map((k, i) => ({
+        id: `mix-auto-${i}`,
+        time: videoSeqStart + k.time,
+        musicVolume: k.musicVolume * baseMusic,
+        rushVolume: k.rushVolume,
+        voiceVolume: keepVoice,
+      }));
+      // Avant la sequence video : musique au niveau choisi, rien a ducker.
+      //
+      // ⚠️ Uniquement si la video ne commence PAS a 0 : l'analyseur pose
+      // toujours un keyframe a t=0, et quand la sequence video est la premiere
+      // ce keyframe EST le premier duck. Un head a `baseMusic` le remplacerait
+      // et rendrait la courbe plate — l'auto-mix ne duckerait plus rien.
+      const head: AudioKeyframe[] = videoSeqStart > 0
+        ? [{
+            id: 'mix-auto-head',
+            time: 0,
+            musicVolume: baseMusic,
+            rushVolume: shifted[0].rushVolume,
+            voiceVolume: keepVoice,
+          }]
+        : [];
+      // Apres : on remonte la musique, le rush ne joue plus.
+      const tailTime = videoSeqStart + videoSeqDuration;
+      const tail: AudioKeyframe[] = tailTime < totalDuration
+        ? [{ id: 'mix-auto-tail', time: tailTime, musicVolume: baseMusic, rushVolume: shifted[shifted.length - 1].rushVolume, voiceVolume: keepVoice }]
+        : [];
+      const body = head.length > 0 ? shifted.filter((k) => k.time > 0) : shifted;
+      onAudioKeyframesChange?.([...head, ...body, ...tail]);
+      // Signature de la geometrie au moment de l'analyse : si les durees ou
+      // l'ordre changent ensuite, la courbe ne colle plus au montage et on
+      // previent au lieu de laisser exporter un ducking decale.
+      setAutoMixSignature(layoutSignature);
     } catch (err) {
       console.error('[AudioPanel] auto-mix failed:', err);
-      setMixError("Analyse du rush impossible — regle les niveaux a la main");
+      setMixError('Analyse du rush impossible — regle les niveaux a la main');
     } finally {
       setAutoDuckRunning(false);
     }
-  }, [rushUrl, onAudioKeyframesChange]);
+  }, [rushUrl, videoSeqStart, videoSeqDuration, totalDuration, layoutSignature, effectiveKeyframes, musicVolume, voiceVolume, onAudioKeyframesChange]);
 
   const handleFileUpload = async (file: File, target: 'music' | 'voice') => {
     if (target === 'music') setIsUploadingMusic(true);
@@ -544,7 +640,7 @@ export function AudioStudioPanel({
                 keyframes={effectiveKeyframes}
                 onChange={handleKeyframesChange}
                 totalDuration={totalDuration}
-                rushUrl={hasRush ? rushUrl : null}
+                rushUrl={rushInMix ? rushUrl : null}
                 autoDuckRunning={autoDuckRunning}
                 onAutoDuck={runAutoDuck}
                 playheadTime={playheadTime}
@@ -553,7 +649,7 @@ export function AudioStudioPanel({
                 audioKeyframes={effectiveKeyframes}
                 musicUrl={musicUrl}
                 voiceUrl={voiceUrl}
-                rushUrl={hasRush ? rushUrl : null}
+                rushUrl={rushInMix ? rushUrl : null}
                 introDuration={introDuration}
                 cardsDuration={cardsDuration}
                 ctaDuration={ctaDuration}
@@ -567,6 +663,23 @@ export function AudioStudioPanel({
                 <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-2">
                   <AlertTriangle size={12} className="mt-0.5 flex-shrink-0 text-amber-400" />
                   <p className="text-[10px] text-amber-200 leading-snug">{mixError}</p>
+                </div>
+              )}
+              {mixStale && !mixError && (
+                <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-2">
+                  <AlertTriangle size={12} className="mt-0.5 flex-shrink-0 text-amber-400" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] text-amber-200 leading-snug">
+                      Les durées ont changé depuis l&apos;auto-mix : la courbe ne tombe plus au bon moment.
+                    </p>
+                    <button
+                      onClick={runAutoDuck}
+                      disabled={autoDuckRunning || !rushInMix}
+                      className="mt-1 text-[10px] font-medium text-amber-100 underline underline-offset-2 hover:text-white disabled:opacity-50"
+                    >
+                      Relancer l&apos;auto-mix
+                    </button>
+                  </div>
                 </div>
               )}
             </>
