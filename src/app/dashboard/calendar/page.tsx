@@ -95,6 +95,12 @@ interface PostMetadata {
     cardStyle?: string;
     textScale?: number;
     ctaTextScale?: number;
+    /** Polices par element — le grand texte du CTA lit `watermarkFont`. */
+    titleFont?: string;
+    ctaFont?: string;
+    watermarkFont?: string;
+    /** Echelle du texte des cartes, en %, independante de `textScale`. */
+    cardsTextScale?: number;
     titleColor?: string;
     ctaColor?: string;
     ctaSubColor?: string;
@@ -626,6 +632,15 @@ export default function CalendarPage() {
           // position/timing/style when the calendar re-composes.
           overlays: Array.isArray(meta.overlays) ? meta.overlays : undefined,
           textScale: designMeta.textScale || undefined,
+          // Polices par element et echelle des cartes : le Calendrier ne les
+          // relisait pas, si bien qu'un titre regle sur Anton se regenerait en
+          // Inter, et que `textScale` regrossissait le texte des cartes sans son
+          // facteur compensateur. `|| undefined` : les posts qui n'ont pas ces
+          // champs se comportent exactement comme avant.
+          titleFont: designMeta.titleFont || undefined,
+          ctaFont: designMeta.ctaFont || undefined,
+          watermarkFont: designMeta.watermarkFont || undefined,
+          cardsTextScale: designMeta.cardsTextScale ?? undefined,
           ctaTextScale: designMeta.ctaTextScale || undefined,
           cardStyle: designMeta.cardStyle || undefined,
           titlePosition: designMeta.positions?.title || undefined,
@@ -1033,6 +1048,15 @@ export default function CalendarPage() {
             overlayEndTime: (meta as any).overlayEndTime,
             overlays: Array.isArray((meta as any).overlays) ? (meta as any).overlays : undefined,
             textScale: designMeta.textScale || undefined,
+            // Polices par element et echelle des cartes : le Calendrier ne les
+            // relisait pas, si bien qu'un titre regle sur Anton se regenerait en
+            // Inter, et que `textScale` regrossissait le texte des cartes sans son
+            // facteur compensateur. `|| undefined` : les posts qui n'ont pas ces
+            // champs se comportent exactement comme avant.
+            titleFont: designMeta.titleFont || undefined,
+            ctaFont: designMeta.ctaFont || undefined,
+            watermarkFont: designMeta.watermarkFont || undefined,
+            cardsTextScale: designMeta.cardsTextScale ?? undefined,
             ctaTextScale: designMeta.ctaTextScale || undefined,
             cardStyle: designMeta.cardStyle || undefined,
             titlePosition: designMeta.positions?.title || undefined,
@@ -1649,6 +1673,15 @@ export default function CalendarPage() {
               overlayEndTime: (meta as any).overlayEndTime,
               overlays: Array.isArray((meta as any).overlays) ? (meta as any).overlays : undefined,
               textScale: designMeta.textScale || undefined,
+              // Polices par element et echelle des cartes : le Calendrier ne les
+              // relisait pas, si bien qu'un titre regle sur Anton se regenerait en
+              // Inter, et que `textScale` regrossissait le texte des cartes sans son
+              // facteur compensateur. `|| undefined` : les posts qui n'ont pas ces
+              // champs se comportent exactement comme avant.
+              titleFont: designMeta.titleFont || undefined,
+              ctaFont: designMeta.ctaFont || undefined,
+              watermarkFont: designMeta.watermarkFont || undefined,
+              cardsTextScale: designMeta.cardsTextScale ?? undefined,
               ctaTextScale: designMeta.ctaTextScale || undefined,
               cardStyle: designMeta.cardStyle || undefined,
               titlePosition: designMeta.positions?.title || undefined,
@@ -2153,6 +2186,15 @@ export default function CalendarPage() {
           overlays: Array.isArray((meta as any)?.overlays) ? (meta as any).overlays : undefined,
           overlayPosition: (meta as any)?.overlayPosition || calDesign?.positions?.overlay || undefined,
           textScale: calDesign?.textScale || undefined,
+          // Polices par element et echelle des cartes : le Calendrier ne les
+          // relisait pas, si bien qu'un titre regle sur Anton se regenerait en
+          // Inter, et que `textScale` regrossissait le texte des cartes sans son
+          // facteur compensateur. `|| undefined` : les posts qui n'ont pas ces
+          // champs se comportent exactement comme avant.
+          titleFont: calDesign?.titleFont || undefined,
+          ctaFont: calDesign?.ctaFont || undefined,
+          watermarkFont: calDesign?.watermarkFont || undefined,
+          cardsTextScale: calDesign?.cardsTextScale ?? undefined,
           ctaTextScale: calDesign?.ctaTextScale || undefined,
           cardStyle: calDesign?.cardStyle || undefined,
           titlePosition: calDesign?.positions?.title || undefined,

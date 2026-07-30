@@ -443,13 +443,21 @@ const fontStack = (name: string): string => `${FONT_CSS[name] || `'${name}'`}, '
  *           `ctaColor`, `ctaSubColor`, `ctaTextScale`, et
  *           `ctaTypography.{letterSpacing,lineHeight}`.
  *
- * Deux absences VOLONTAIRES, verifiees dans le code du compositeur :
+ * TROIS absences VOLONTAIRES, verifiees dans le code du compositeur :
  *   - Le SOUS-TITRE n'a aucun reglage propre : `drawIntro` lui impose la
  *     police, la graisse, l'italique et l'interligne du titre, et sa couleur
  *     a 80 %. Lui donner des controles afficherait des reglages sans effet.
  *   - Le CTA n'a ni gras ni italique : `drawCTA` ecrit `900` en dur dans
  *     `ctx.font` et n'y met jamais `italic`. `ctaTypography.bold/italic`
  *     existent dans le type mais ne sont JAMAIS lus.
+ *   - L'INTERLETTRAGE est reporte a l'increment 2, ou le compositeur pourra
+ *     etre corrige. `wrapText` mesure les lignes avec `measureText`, qui
+ *     ignore l'espacement ajoute ensuite par `fillTextWithSpacing` : le
+ *     compositeur croit donc les lignes plus courtes qu'elles ne seront et
+ *     les laisse deborder du cadre. L'apercu CSS, lui, tient compte de
+ *     l'espacement et revient a la ligne — l'utilisateur validerait un
+ *     apercu correct et recevrait une video tronquee. Le correctif tient en
+ *     une ligne dans `wrapText`, mais ce fichier n'est pas modifiable ici.
  */
 interface TextStyles {
   title: {
@@ -458,7 +466,6 @@ interface TextStyles {
     scale: number;
     bold: boolean;
     italic: boolean;
-    letterSpacing: number;
     lineHeight: number;
   };
   cta: {
@@ -466,7 +473,6 @@ interface TextStyles {
     color: string;
     subColor: string;
     scale: number;
-    letterSpacing: number;
     lineHeight: number;
   };
 }
@@ -490,7 +496,6 @@ const DEFAULT_TEXT_STYLES: {
     // `drawIntro` : `bold !== false ? 900 : 400`. L'apercu ecrivait 900 en dur.
     bold: true,
     italic: false,
-    letterSpacing: 0,
     // Defaut du compositeur ET de l'apercu.
     lineHeight: 1.1,
   },
@@ -498,7 +503,6 @@ const DEFAULT_TEXT_STYLES: {
     font: DESIGN.font,
     color: DESIGN.ctaColor,
     scale: 1,
-    letterSpacing: 0,
     lineHeight: 1.2,
   },
 };
@@ -626,13 +630,25 @@ export function Preview({
   useEffect(() => setRushBroken(false), [rushUrl]);
   const showRush = !!rushUrl && !rushBroken && activeOrder.includes('video');
 
-  // Interlettrage : le compositeur multiplie la valeur de l'editeur par
-  // `w / 320`. Le plateau etant a la resolution native, on applique le meme
-  // facteur — sinon 2 px saisis donneraient 2 px a l'ecran et 6,75 px dans la
-  // video.
-  const spacingPx = (value: number) => (value * vw) / 320;
   const titleWeight = text.title.bold ? 900 : 400;
   const titleStyle = text.title.italic ? 'italic' : 'normal';
+
+  /**
+   * Suppression du demi-interligne CSS.
+   *
+   * Le compositeur dessine en `textBaseline: 'top'` : le glyphe commence
+   * EXACTEMENT a Y. En CSS, une `line-height` de L repartit `(L-1)·F` a parts
+   * egales au-dessus et au-dessous de chaque ligne — le texte descendrait
+   * donc de `(L-1)·F/2`, et le bloc serait d'autant plus haut, decalant le
+   * sous-titre. A l'interligne par defaut (1,1) l'ecart est de 2 px ; a 2,0,
+   * le maximum du reglage, il atteint 24 px sur le titre et 63 px sur le
+   * sous-titre. Les marges negatives rendent la boite au ras des glyphes,
+   * comme le canvas.
+   */
+  const leadingTrim = (fontSizePx: number, lineHeight: number) => {
+    const half = ((lineHeight - 1) * fontSizePx) / 2;
+    return { marginTop: -half, marginBottom: -half };
+  };
 
   return (
     <div className="card-base p-4">
@@ -736,9 +752,9 @@ export function Preview({
                   fontSize: vw * FONT_RATIO[format].title * text.title.scale,
                   fontWeight: titleWeight,
                   fontStyle: titleStyle,
-                  letterSpacing: spacingPx(text.title.letterSpacing),
                   color: text.title.color,
                   lineHeight: text.title.lineHeight,
+                  ...leadingTrim(vw * FONT_RATIO[format].title * text.title.scale, text.title.lineHeight),
                   filter: titleShadow(vw),
                 }}
               >
@@ -756,7 +772,12 @@ export function Preview({
                   fontStyle: titleStyle,
                   color: `${text.title.color}CC`,
                   lineHeight: text.title.lineHeight,
-                  marginTop: vw * GAP_RATIO,
+                  ...leadingTrim(vw * FONT_RATIO[format].subtitle * text.title.scale, text.title.lineHeight),
+                  // `mt1` du compositeur, mesure depuis le BAS des glyphes du
+                  // titre — d'ou le retrait du demi-interligne ci-dessus.
+                  marginTop:
+                    vw * GAP_RATIO
+                    - ((text.title.lineHeight - 1) * vw * FONT_RATIO[format].subtitle * text.title.scale) / 2,
                   filter: subtitleShadow(vw),
                 }}
               >
@@ -834,9 +855,9 @@ export function Preview({
                   fontFamily: fontStack(text.cta.font),
                   fontSize: vw * FONT_RATIO[format].cta * text.cta.scale,
                   fontWeight: 900,
-                  letterSpacing: spacingPx(text.cta.letterSpacing),
                   color: text.cta.color,
                   lineHeight: text.cta.lineHeight,
+                  ...leadingTrim(vw * FONT_RATIO[format].cta * text.cta.scale, text.cta.lineHeight),
                   textShadow: `0 0 ${vw * 0.02}px ${text.cta.color}66`,
                 }}
               >
@@ -848,10 +869,12 @@ export function Preview({
                   fontFamily: fontStack(text.cta.font),
                   fontSize: vw * FONT_RATIO[format].ctaSub * text.cta.scale,
                   fontWeight: 900,
-                  letterSpacing: spacingPx(text.cta.letterSpacing),
                   color: text.cta.subColor,
                   lineHeight: text.cta.lineHeight,
-                  marginTop: vw * GAP_RATIO,
+                  ...leadingTrim(vw * FONT_RATIO[format].ctaSub * text.cta.scale, text.cta.lineHeight),
+                  marginTop:
+                    vw * GAP_RATIO
+                    - ((text.cta.lineHeight - 1) * vw * FONT_RATIO[format].ctaSub * text.cta.scale) / 2,
                 }}
               >
                 {generated.ctaSub}
@@ -997,15 +1020,31 @@ export default function AssistantWizard() {
    * Le nommage cote compositeur est deroutant et n'est pas de notre fait :
    * le GRAND texte du CTA prend `watermarkFont`, le sous-texte `ctaFont`
    * (drawCTA). On pose donc la meme police dans les deux.
+   *
+   * ⚠️ Le Calendrier ne lit PAS ces cles a plat : il attend
+   * `design.typography.{title,cta}` (calendar/page.tsx). D'ou le champ
+   * `typography` ci-dessous, qui porte les memes valeurs — sans lui, gras,
+   * italique et interligne disparaissaient a la regeneration.
    */
   const textDesign = {
     titleFont: textStyles.title.font,
     titleColor: textStyles.title.color,
     textScale: textStyles.title.scale,
+    /**
+     * Neutralise l'effet de bord de `textScale` sur les CARTES.
+     *
+     * `textScale` est le seul levier de taille que `drawIntro` connait, mais
+     * `drawCards` le lit aussi : `fontPx = w × cssPx / viewport × textScale ×
+     * cardsTextScale/100`. Regler « Taille » sous l'onglet Titre grossirait
+     * donc le texte des cartes d'autant — sans effet tant que les cartes sont
+     * blittees depuis la photo de l'apercu, mais bien reel des que la capture
+     * echoue, et SYSTEMATIQUE dans la reconstruction HTML du Calendrier, qui
+     * applique la meme formule. Le produit reste donc a 1, quoi qu'il arrive.
+     */
+    cardsTextScale: 100 / textStyles.title.scale,
     titleTypography: {
       bold: textStyles.title.bold,
       italic: textStyles.title.italic,
-      letterSpacing: textStyles.title.letterSpacing,
       lineHeight: textStyles.title.lineHeight,
     },
     watermarkFont: textStyles.cta.font,
@@ -1014,8 +1053,25 @@ export default function AssistantWizard() {
     ctaSubColor: textStyles.cta.subColor,
     ctaTextScale: textStyles.cta.scale,
     ctaTypography: {
-      letterSpacing: textStyles.cta.letterSpacing,
       lineHeight: textStyles.cta.lineHeight,
+    },
+    /**
+     * MEMES valeurs, sous la forme imbriquee que relit le Calendrier
+     * (`designMeta.typography?.title` / `.cta`, calendar/page.tsx) — c'est
+     * aussi le contrat qu'ecrit l'editeur complet. Les cles a plat
+     * ci-dessus servent au compositeur, celle-ci a la regeneration et a
+     * l'apercu du Calendrier. Elles derivent du meme objet, donc elles ne
+     * peuvent pas diverger.
+     */
+    typography: {
+      title: {
+        bold: textStyles.title.bold,
+        italic: textStyles.title.italic,
+        lineHeight: textStyles.title.lineHeight,
+      },
+      cta: {
+        lineHeight: textStyles.cta.lineHeight,
+      },
     },
   };
 
@@ -2095,25 +2151,6 @@ export default function AssistantWizard() {
                           />
                           <span className="text-[11px] text-gray-400 w-11 text-right tabular-nums">
                             {Math.round(zone.scale * 100)}%
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">
-                            Interlettrage
-                          </span>
-                          <input
-                            type="range"
-                            min={-2}
-                            max={10}
-                            step={0.5}
-                            value={zone.letterSpacing}
-                            onChange={(e) => patch({ letterSpacing: Number(e.target.value) })}
-                            aria-label={`Interlettrage — ${isTitle ? 'titre' : 'CTA'}`}
-                            className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
-                          />
-                          <span className="text-[11px] text-gray-400 w-11 text-right tabular-nums">
-                            {zone.letterSpacing}
                           </span>
                         </div>
 

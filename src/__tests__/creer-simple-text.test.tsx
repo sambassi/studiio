@@ -38,7 +38,6 @@ const BASE_TEXT = {
     scale: 1,
     bold: true,
     italic: false,
-    letterSpacing: 0,
     lineHeight: 1.1,
   },
   cta: {
@@ -46,7 +45,6 @@ const BASE_TEXT = {
     color: '#FFFFFF',
     subColor: '#EC4899',
     scale: 1,
-    letterSpacing: 0,
     lineHeight: 1.2,
   },
 };
@@ -110,14 +108,22 @@ describe('Aperçu — les réglages de titre s’y voient', () => {
     expect(styleOf('Mon sous-titre').fontStyle).toBe('italic');
   });
 
-  it('convertit l’interlettrage dans l’échelle du compositeur', () => {
-    // Le compositeur multiplie la valeur saisie par `w / 320`. Sans cette
-    // conversion, 2 px à l'écran donneraient 6,75 px dans la vidéo.
-    renderPreview({ ...BASE_TEXT, title: { ...BASE_TEXT.title, letterSpacing: 2 } });
-    expect(styleOf('Mon titre').letterSpacing).toBe(`${(2 * 1080) / 320}px`);
+  it('n’expose PAS l’interlettrage — il déborderait du cadre à l’export', () => {
+    // `wrapText` mesure les lignes avec `measureText`, qui ignore l'espacement
+    // ajouté ensuite par `fillTextWithSpacing` : le compositeur croit les
+    // lignes plus courtes qu'elles ne seront et les laisse déborder. L'aperçu
+    // CSS, lui, revient à la ligne — l'utilisateur validerait un aperçu
+    // correct et recevrait une vidéo tronquée. Reporté à l'incrément 2, où le
+    // compositeur pourra être corrigé.
+    // `wrapText` décide du retour à la ligne sur la largeur NUE…
     expect(composerSource).toMatch(
-      /titleLetterSpacing = \(design\?\.titleTypography\?\.letterSpacing \|\| 0\) \* \(w \/ 320\)/,
+      /if \(ctx\.measureText\(testLine\)\.width > maxWidth && currentLine\)/,
     );
+    // …alors que le rendu ajoute ensuite l'espacement, caractère par caractère.
+    expect(composerSource).toMatch(/cursor \+= ctx\.measureText\(ch\)\.width \+ letterSpacing/);
+    // Aucun réglage d'interlettrage n'est proposé ni envoyé.
+    expect(wizardSource).not.toMatch(/letterSpacing: textStyles/);
+    expect(wizardSource).not.toMatch(/patch\(\{ letterSpacing/);
   });
 
   it('applique interligne et couleur, sous-titre à 80 %', () => {
@@ -134,10 +140,10 @@ describe('Aperçu — les réglages de titre s’y voient', () => {
 });
 
 describe('Aperçu — les réglages de CTA s’y voient', () => {
-  it('applique police, taille, interlettrage et interligne aux deux lignes', () => {
+  it('applique police, taille et interligne aux deux lignes', () => {
     renderPreview({
       ...BASE_TEXT,
-      cta: { ...BASE_TEXT.cta, font: 'Syne', scale: 1.2, letterSpacing: 3, lineHeight: 1.5 },
+      cta: { ...BASE_TEXT.cta, font: 'Syne', scale: 1.2, lineHeight: 1.5 },
     });
     const main = styleOf('JE ME LANCE');
     const sub = styleOf('LIEN EN BIO');
@@ -145,7 +151,6 @@ describe('Aperçu — les réglages de CTA s’y voient', () => {
     expect(sub.fontFamily).toContain('var(--font-syne)');
     expect(main.fontSize).toBe(`${1080 * 0.0375 * 1.2}px`);
     expect(sub.fontSize).toBe(`${1080 * 0.028 * 1.2}px`);
-    expect(main.letterSpacing).toBe(`${(3 * 1080) / 320}px`);
     expect(main.lineHeight).toBe('1.5');
     expect(sub.lineHeight).toBe('1.5');
   });
@@ -213,6 +218,49 @@ describe('Export — les mêmes valeurs partent au compositeur', () => {
     expect(composerSource).toMatch(/const fontFamily = design\?\.ctaFont \|\| design\?\.font/);
   });
 
+  it('écrit AUSSI la forme imbriquée que relit le Calendrier', () => {
+    // Le Calendrier lit `design.typography.title` / `.cta`, jamais les clés à
+    // plat `titleTypography` / `ctaTypography` : sans cette seconde forme,
+    // gras, italique et interligne disparaissaient à la régénération et dans
+    // l'aperçu du Calendrier.
+    const calendarSource = readFileSync(
+      resolve(__dirname, '../app/dashboard/calendar/page.tsx'),
+      'utf-8',
+    );
+    expect(calendarSource).toMatch(/titleTypography: designMeta\.typography\?\.title/);
+    expect(calendarSource).toMatch(/ctaTypography: designMeta\.typography\?\.cta/);
+    const block = wizardSource.slice(
+      wizardSource.indexOf('const textDesign = {'),
+      wizardSource.indexOf('const [started, setStarted]'),
+    );
+    expect(block).toMatch(/typography: \{\s*title: \{/);
+    expect(block).toMatch(/cta: \{\s*lineHeight: textStyles\.cta\.lineHeight/);
+  });
+
+  it('fait suivre la police choisie à la régénération', () => {
+    // Le Calendrier ne relisait AUCUNE police par élément : un titre réglé sur
+    // Anton se régénérait en Inter.
+    const calendarSource = readFileSync(
+      resolve(__dirname, '../app/dashboard/calendar/page.tsx'),
+      'utf-8',
+    );
+    // Les quatre appels à composeAndUpload du Calendrier.
+    expect(calendarSource.match(/titleFont: (designMeta|calDesign\?)\.titleFont/g)).toHaveLength(4);
+    expect(calendarSource.match(/watermarkFont: (designMeta|calDesign\?)\.watermarkFont/g)).toHaveLength(4);
+  });
+
+  it('empêche la taille du titre de grossir les cartes', () => {
+    // `textScale` est aussi lu par `drawCards` et par la reconstruction HTML
+    // du Calendrier. Sans compensation, régler « Taille » sous l'onglet Titre
+    // grossissait le texte des cartes d'autant — invisible tant que la photo
+    // de l'aperçu est blittée, mais bien réel dès qu'elle échoue.
+    expect(composerSource).toMatch(
+      /fontPx = \(cssPx: number\) => Math\.round\(w \* cssPx \/ editorViewportPx \* textScale \* cardsTextMul\)/,
+    );
+    expect(composerSource).toMatch(/cardsTextMul = \(design\?\.cardsTextScale \?\? 100\) \/ 100/);
+    expect(wizardSource).toMatch(/cardsTextScale: 100 \/ textStyles\.title\.scale/);
+  });
+
   it('l’aperçu et l’export lisent le MÊME objet', () => {
     // `textDesign` dérive de `textStyles`, qui est aussi ce que reçoit
     // `Preview` : aucune dérive possible entre ce qui est validé à l'écran et
@@ -236,7 +284,6 @@ describe('Rétro-compatibilité — sans réglage, rien ne bouge', () => {
     expect(defaults).toMatch(/color: DESIGN\.ctaColor/);
     expect(defaults).toMatch(/bold: true/);
     expect(defaults).toMatch(/italic: false/);
-    expect(defaults).toMatch(/letterSpacing: 0/);
     expect(defaults).toMatch(/lineHeight: 1\.1/);
     expect(defaults).toMatch(/lineHeight: 1\.2/);
     expect(defaults).toMatch(/scale: 1,/);
@@ -249,8 +296,24 @@ describe('Rétro-compatibilité — sans réglage, rien ne bouge', () => {
     expect(title.fontStyle).toBe('normal');
     expect(title.lineHeight).toBe('1.1');
     expect(title.fontSize).toBe(`${1080 * 0.04375}px`);
-    expect(title.letterSpacing).toBe('0px');
     expect(styleOf('JE ME LANCE').lineHeight).toBe('1.2');
+  });
+
+  it('aligne le haut du texte sur celui du canvas, quel que soit l’interligne', () => {
+    // Le compositeur dessine en `textBaseline: 'top'` — le glyphe commence
+    // EXACTEMENT à Y. CSS répartit `(L-1)·F` moitié au-dessus, moitié
+    // au-dessous : sans correction, l'aperçu descendrait le titre de 24 px et
+    // le sous-titre de 63 px à l'interligne maximal.
+    expect(composerSource).toMatch(/ctx\.textBaseline = 'top'/);
+    const F = 1080 * 0.04375;
+    renderPreview({ ...BASE_TEXT, title: { ...BASE_TEXT.title, lineHeight: 2 } });
+    const title = styleOf('Mon titre');
+    expect(title.marginTop).toBe(`${-((2 - 1) * F) / 2}px`);
+    expect(title.marginBottom).toBe(`${-((2 - 1) * F) / 2}px`);
+    // À l'interligne 1, il n'y a rien à retrancher.
+    cleanup();
+    renderPreview({ ...BASE_TEXT, title: { ...BASE_TEXT.title, lineHeight: 1 } });
+    expect(styleOf('Mon titre').marginTop).toBe('0px');
   });
 
   it('la couleur du sous-texte du CTA suit le dégradé tant qu’elle n’est pas choisie', () => {
