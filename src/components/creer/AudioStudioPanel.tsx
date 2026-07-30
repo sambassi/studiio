@@ -1,10 +1,13 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Music, Mic, Upload, Trash2, Volume2, VolumeX, Loader2, Play, Pause, Square, Sparkles, Image as ImageIcon, LayoutGrid, Film, Megaphone } from 'lucide-react';
+import { Music, Mic, Upload, Trash2, Volume2, VolumeX, Loader2, Play, Pause, Square, Sparkles, Image as ImageIcon, LayoutGrid, Film, Megaphone, SlidersHorizontal, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import { TTS_VOICES, synthesize, type TtsVoice } from '@/lib/tts/edge-tts-client';
 import { fetchHeyGenVoices, isHeyGenVoiceId } from '@/lib/types/voice';
+import AudioDuckingTimeline from '@/components/creer/AudioDuckingTimeline';
+import AudioMixPreview from '@/components/creer/AudioMixPreview';
+import { analyseRushForDucking, type AudioKeyframe } from '@/lib/creer/audioDucking';
 
 const VOICE_STORAGE_KEY = 'tts.voiceId';
 const DEFAULT_VOICE_ID = 'fr-FR-DeniseNeural';
@@ -111,6 +114,25 @@ interface AudioStudioPanelProps {
   onCtaDurationChange: (v: number) => void;
   hasRush: boolean;
   contentTheme?: string;
+  /**
+   * URL du rush — necessaire au mixeur unifie : l'auto-mix analyse sa piste
+   * audio et l'ecoute du mixage la rejoue au bon moment.
+   */
+  rushUrl?: string | null;
+  /**
+   * Mixeur unifie (musique + voix off + son de la video en UN seul endroit).
+   *
+   * **Opt-in** : il ne s'affiche que si `onAudioKeyframesChange` est fourni.
+   * Sans ce branchement, le panneau garde ses curseurs de volume par source —
+   * c'est ce qui evite un doublon dans /creer, qui affiche deja son propre
+   * `AudioDuckingTimeline` + `AudioMixPreview` sous le panneau.
+   *
+   * Quand il est branche, ce sont les keyframes qui pilotent l'export : le
+   * compositeur ecrase le bus musique avec `kf.musicVolume`, automatise le bus
+   * rush avec `kf.rushVolume` et le bus voix avec `kf.voiceVolume`.
+   */
+  audioKeyframes?: AudioKeyframe[];
+  onAudioKeyframesChange?: (next: AudioKeyframe[]) => void;
 }
 
 export function AudioStudioPanel({
@@ -121,6 +143,7 @@ export function AudioStudioPanel({
   introDuration, cardsDuration, videoDuration, ctaDuration,
   onIntroDurationChange, onCardsDurationChange, onVideoDurationChange, onCtaDurationChange,
   hasRush, contentTheme,
+  rushUrl = null, audioKeyframes, onAudioKeyframesChange,
 }: AudioStudioPanelProps) {
   const [ttsText, setTtsText] = useState('');
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>(loadInitialVoiceId);
@@ -152,6 +175,85 @@ export function AudioStudioPanel({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // ── Progression de la synthese vocale ───────────────────────────────────
+  // Ni synthesize() ni le PUT de stockage n'exposent d'octets transferes : la
+  // progression est donc une rampe temporelle par etape, plafonnee tant que
+  // l'etape n'est pas finie. Elle ne ment jamais en montrant 100 % avant la
+  // fin — elle sature a 70 % (synthese) puis 95 % (upload).
+  const [ttsProgress, setTtsProgress] = useState(0);
+  const [ttsStage, setTtsStage] = useState<'idle' | 'synth' | 'upload' | 'done'>('idle');
+  const ttsRampRef = useRef<NodeJS.Timeout | null>(null);
+
+  const stopTtsRamp = useCallback(() => {
+    if (ttsRampRef.current) { clearInterval(ttsRampRef.current); ttsRampRef.current = null; }
+  }, []);
+
+  /** Rampe asymptotique vers `ceiling` — avance vite au debut, ralentit ensuite. */
+  const startTtsRamp = useCallback((ceiling: number) => {
+    stopTtsRamp();
+    ttsRampRef.current = setInterval(() => {
+      setTtsProgress((p) => (p >= ceiling ? ceiling : p + Math.max(0.4, (ceiling - p) * 0.06)));
+    }, 120);
+  }, [stopTtsRamp]);
+
+  // Un demontage pendant une generation laisserait l'intervalle tourner.
+  useEffect(() => () => stopTtsRamp(), [stopTtsRamp]);
+
+  // ── Mixeur unifie ───────────────────────────────────────────────────────
+  const [mixerOpen, setMixerOpen] = useState(false);
+  const [autoDuckRunning, setAutoDuckRunning] = useState(false);
+  const [mixError, setMixError] = useState('');
+  const [playheadTime, setPlayheadTime] = useState<number | null>(null);
+
+  /** Le mixeur ne s'affiche que si le parent branche les keyframes. */
+  const mixerEnabled = typeof onAudioKeyframesChange === 'function';
+  const hasAnyAudio = !!(musicUrl || voiceUrl || (hasRush && rushUrl));
+
+  // Fenetre temporelle du montage — sert au timeline et a l'ecoute.
+  const videoSeqDuration = hasRush ? videoDuration : 0;
+  const videoSeqStart = introDuration + cardsDuration;
+  const totalDuration = introDuration + cardsDuration + videoSeqDuration + ctaDuration;
+
+  /**
+   * Keyframe d'amorce : tant que l'utilisateur n'a rien touche, le parent n'a
+   * AUCUN keyframe et l'export garde exactement le comportement actuel. Le
+   * mixeur affiche cette valeur seed, derivee des volumes deja choisis.
+   */
+  const seedKeyframe: AudioKeyframe = {
+    id: 'mix-0',
+    time: 0,
+    musicVolume,
+    rushVolume: 0.5,
+    voiceVolume,
+  };
+  const effectiveKeyframes = audioKeyframes && audioKeyframes.length > 0 ? audioKeyframes : [seedKeyframe];
+
+  // Volumes affiches par les mini-lecteurs : quand le mixeur pilote, ils
+  // suivent le mixage, sinon les props historiques.
+  const mixMusicVolume = mixerEnabled ? (effectiveKeyframes[0]?.musicVolume ?? musicVolume) : musicVolume;
+  const mixVoiceVolume = mixerEnabled ? (effectiveKeyframes[0]?.voiceVolume ?? voiceVolume) : voiceVolume;
+
+  const handleKeyframesChange = useCallback((next: AudioKeyframe[]) => {
+    setMixError('');
+    onAudioKeyframesChange?.(next);
+  }, [onAudioKeyframesChange]);
+
+  const runAutoDuck = useCallback(async () => {
+    if (!rushUrl) return;
+    setAutoDuckRunning(true);
+    setMixError('');
+    try {
+      const kf = await analyseRushForDucking(rushUrl);
+      if (kf.length > 0) onAudioKeyframesChange?.(kf);
+      else setMixError("Aucune variation detectee dans le rush — niveaux inchanges");
+    } catch (err) {
+      console.error('[AudioPanel] auto-mix failed:', err);
+      setMixError("Analyse du rush impossible — regle les niveaux a la main");
+    } finally {
+      setAutoDuckRunning(false);
+    }
+  }, [rushUrl, onAudioKeyframesChange]);
 
   const handleFileUpload = async (file: File, target: 'music' | 'voice') => {
     if (target === 'music') setIsUploadingMusic(true);
@@ -229,6 +331,9 @@ export function AudioStudioPanel({
     if (!ttsText.trim()) return;
     setTtsLoading(true);
     setTtsError('');
+    setTtsProgress(0);
+    setTtsStage('synth');
+    startTtsRamp(70);
     try {
       const voice = allVoices.find((v) => v.id === selectedVoiceId);
       const voiceLabel = voice?.name || 'Voix';
@@ -241,6 +346,11 @@ export function AudioStudioPanel({
         setTtsError('Synthèse vocale indisponible — réessaie ou choisis une autre voix');
         return;
       }
+
+      // Synthese terminee : on quitte le plafond des 70 % pour l'upload.
+      setTtsStage('upload');
+      setTtsProgress((p) => Math.max(p, 70));
+      startTtsRamp(95);
 
       const isWebm = blob.type.includes('webm');
       const ext = isWebm ? 'webm' : 'mp3';
@@ -257,16 +367,24 @@ export function AudioStudioPanel({
         const uploadData = await uploadRes.json();
         if (uploadData.success) {
           await fetch(uploadData.signedUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
+          setTtsProgress(100);
+          setTtsStage('done');
           onVoiceChange(uploadData.publicUrl, `TTS — ${voiceLabel}`);
           return;
         }
       } catch { /* fall through to local URL */ }
+      setTtsProgress(100);
+      setTtsStage('done');
       onVoiceChange(localUrl, `TTS — ${voiceLabel}`);
     } catch (err: any) {
       console.error('[AudioPanel] TTS error:', err);
       setTtsError(err.message || 'Erreur de synthèse vocale');
     } finally {
+      // Toujours arreter la rampe, meme sur erreur : sinon la barre continue
+      // d'avancer alors que plus rien ne tourne (cf. lecons, regle 6).
+      stopTtsRamp();
       setTtsLoading(false);
+      setTtsStage((s) => (s === 'done' ? 'done' : 'idle'));
     }
   };
 
@@ -311,14 +429,19 @@ export function AudioStudioPanel({
                 {musicMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
               </button>
             </div>
-            <MiniPlayer src={musicUrl} onDelete={() => onMusicChange(null, '')} volume={musicMuted ? 0 : musicVolume} />
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] text-gray-500 w-8">Vol.</span>
-              <input type="range" min={0} max={1} step={0.05} value={musicMuted ? 0 : musicVolume}
-                onChange={(e) => { onMusicVolumeChange(Number(e.target.value)); setMusicMuted(false); }}
-                className="flex-1 accent-purple-500" />
-              <span className="text-[9px] text-gray-400 w-8 text-right">{Math.round((musicMuted ? 0 : musicVolume) * 100)}%</span>
-            </div>
+            <MiniPlayer src={musicUrl} onDelete={() => onMusicChange(null, '')} volume={musicMuted ? 0 : mixMusicVolume} />
+            {/* Curseur par source — masque quand le mixeur unifie est branche :
+                c'est tout l'objet du bouton « Mixer », ne plus regler le volume
+                a plusieurs endroits. */}
+            {!mixerEnabled && (
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] text-gray-500 w-8">Vol.</span>
+                <input type="range" min={0} max={1} step={0.05} value={musicMuted ? 0 : musicVolume}
+                  onChange={(e) => { onMusicVolumeChange(Number(e.target.value)); setMusicMuted(false); }}
+                  className="flex-1 accent-purple-500" />
+                <span className="text-[9px] text-gray-400 w-8 text-right">{Math.round((musicMuted ? 0 : musicVolume) * 100)}%</span>
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex gap-2">
@@ -353,14 +476,18 @@ export function AudioStudioPanel({
                 {voiceMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
               </button>
             </div>
-            <MiniPlayer src={voiceUrl} onDelete={() => onVoiceChange(null, '')} volume={voiceMuted ? 0 : voiceVolume} />
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] text-gray-500 w-8">Vol.</span>
-              <input type="range" min={0} max={1} step={0.05} value={voiceMuted ? 0 : voiceVolume}
-                onChange={(e) => { onVoiceVolumeChange(Number(e.target.value)); setVoiceMuted(false); }}
-                className="flex-1 accent-purple-500" />
-              <span className="text-[9px] text-gray-400 w-8 text-right">{Math.round((voiceMuted ? 0 : voiceVolume) * 100)}%</span>
-            </div>
+            <MiniPlayer src={voiceUrl} onDelete={() => onVoiceChange(null, '')} volume={voiceMuted ? 0 : mixVoiceVolume} />
+            {/* Idem musique : un seul endroit pour les niveaux quand le
+                mixeur unifie est branche. */}
+            {!mixerEnabled && (
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] text-gray-500 w-8">Vol.</span>
+                <input type="range" min={0} max={1} step={0.05} value={voiceMuted ? 0 : voiceVolume}
+                  onChange={(e) => { onVoiceVolumeChange(Number(e.target.value)); setVoiceMuted(false); }}
+                  className="flex-1 accent-purple-500" />
+                <span className="text-[9px] text-gray-400 w-8 text-right">{Math.round((voiceMuted ? 0 : voiceVolume) * 100)}%</span>
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex flex-wrap gap-2">
@@ -386,6 +513,67 @@ export function AudioStudioPanel({
         )}
       </div>
 
+      {/* ── Mixer unifié ──
+          Un seul bouton pour les trois niveaux (musique, voix off, son de la
+          vidéo). Il remplace les curseurs par source ci-dessus. Le contenu
+          réutilise tel quel AudioDuckingTimeline (3 niveaux globaux +
+          auto-mix) et AudioMixPreview (écoute du mixage réel). */}
+      {mixerEnabled && (
+        <div className="border-t border-gray-700 pt-3">
+          <button
+            onClick={() => setMixerOpen((v) => !v)}
+            disabled={!hasAnyAudio}
+            className={`w-full flex items-center gap-2 rounded-lg px-3 py-2.5 text-xs font-semibold transition ${
+              hasAnyAudio
+                ? 'bg-purple-600/20 border border-purple-500/40 text-white hover:bg-purple-600/30'
+                : 'border border-gray-700 text-gray-500 cursor-not-allowed'
+            }`}
+            title={hasAnyAudio
+              ? 'Régler musique, voix off et son de la vidéo au même endroit'
+              : 'Ajoute une musique, une voix off ou un rush pour mixer'}
+          >
+            <SlidersHorizontal size={14} className={hasAnyAudio ? 'text-purple-300' : ''} />
+            <span className="flex-1 text-left">Mixer</span>
+            <span className="text-[9px] font-normal text-gray-400">musique · voix · vidéo</span>
+            {mixerOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          </button>
+
+          {mixerOpen && hasAnyAudio && (
+            <>
+              <AudioDuckingTimeline
+                keyframes={effectiveKeyframes}
+                onChange={handleKeyframesChange}
+                totalDuration={totalDuration}
+                rushUrl={hasRush ? rushUrl : null}
+                autoDuckRunning={autoDuckRunning}
+                onAutoDuck={runAutoDuck}
+                playheadTime={playheadTime}
+              />
+              <AudioMixPreview
+                audioKeyframes={effectiveKeyframes}
+                musicUrl={musicUrl}
+                voiceUrl={voiceUrl}
+                rushUrl={hasRush ? rushUrl : null}
+                introDuration={introDuration}
+                cardsDuration={cardsDuration}
+                ctaDuration={ctaDuration}
+                totalDuration={totalDuration}
+                videoSeqStart={videoSeqStart}
+                videoSeqDuration={videoSeqDuration}
+                onTimeUpdate={(t) => setPlayheadTime(t)}
+                onPlayStateChange={(playing) => { if (!playing) setPlayheadTime(null); }}
+              />
+              {mixError && (
+                <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-2">
+                  <AlertTriangle size={12} className="mt-0.5 flex-shrink-0 text-amber-400" />
+                  <p className="text-[10px] text-amber-200 leading-snug">{mixError}</p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* ── TTS ── */}
       <div>
         <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2 flex items-center justify-between">
@@ -400,7 +588,7 @@ export function AudioStudioPanel({
             <span className="text-[9px]">IA</span>
           </button>
         </div>
-        <textarea value={ttsText} onChange={(e) => { setTtsText(e.target.value); setTtsError(''); }} placeholder="Tapez votre texte ici..."
+        <textarea value={ttsText} onChange={(e) => { setTtsText(e.target.value); setTtsError(''); setTtsStage('idle'); setTtsProgress(0); }} placeholder="Tapez votre texte ici..."
           className="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-xs text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none resize-none" rows={3} />
         <div className="flex flex-wrap items-center gap-2 mt-2">
           <select value={selectedVoiceId} onChange={(e) => setSelectedVoiceId(e.target.value)}
@@ -416,7 +604,47 @@ export function AudioStudioPanel({
             {ttsLoading ? <Loader2 size={12} className="animate-spin" /> : <Mic size={12} />} Générer
           </button>
         </div>
-        {ttsError && <p className="mt-1 text-[10px] text-red-400">{ttsError}</p>}
+
+        {/* Progression de la génération — étapes nommées + pourcentage.
+            Le pourcentage sature tant que l'étape n'est pas finie, il
+            n'atteint 100 % qu'une fois le fichier réellement disponible. */}
+        {(ttsLoading || ttsStage === 'done') && (
+          <div className="mt-2 rounded-lg bg-gray-800/70 px-2.5 py-2">
+            <div className="flex items-center justify-between text-[9px] mb-1">
+              <span className="flex items-center gap-1.5 text-gray-300">
+                {ttsStage === 'done'
+                  ? <Sparkles size={10} className="text-emerald-400" />
+                  : <Loader2 size={10} className="animate-spin text-purple-400" />}
+                {ttsStage === 'synth' && 'Synthèse de la voix…'}
+                {ttsStage === 'upload' && 'Envoi du fichier audio…'}
+                {ttsStage === 'done' && 'Voix off prête'}
+              </span>
+              <span className="font-mono tabular-nums text-gray-400">{Math.round(ttsProgress)}%</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-gray-700 overflow-hidden">
+              <div
+                className={`h-full rounded-full ${ttsStage === 'done' ? 'bg-emerald-500' : 'bg-purple-500'}`}
+                style={{ width: `${Math.min(100, Math.max(2, ttsProgress))}%`, transition: 'width 150ms linear' }}
+              />
+            </div>
+          </div>
+        )}
+
+        {ttsError && (
+          <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-red-500/40 bg-red-500/10 px-2.5 py-2">
+            <AlertTriangle size={12} className="mt-0.5 flex-shrink-0 text-red-400" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] text-red-300 leading-snug">{ttsError}</p>
+              <button
+                onClick={generateTTS}
+                disabled={ttsLoading || !ttsText.trim()}
+                className="mt-1 text-[10px] font-medium text-red-200 underline underline-offset-2 hover:text-white disabled:opacity-50"
+              >
+                Réessayer
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Sequence Durations ── */}

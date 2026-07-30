@@ -25,6 +25,7 @@ import {
 import { generateSmartContent } from '@/lib/smart-content';
 import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
 import { AudioStudioPanel } from '@/components/creer/AudioStudioPanel';
+import type { AudioKeyframe } from '@/lib/creer/audioDucking';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import ClipDetectorModal, { type ClipSource } from '@/components/media/ClipDetectorModal';
 import { CardIcon } from '@/components/ui/CardIcon';
@@ -745,6 +746,10 @@ export default function AssistantWizard() {
   const [voiceName, setVoiceName] = useState('');
   const [musicVolume, setMusicVolume] = useState(0.5);
   const [voiceVolume, setVoiceVolume] = useState(1);
+  // Niveaux du mixeur unifie (musique + voix off + son du rush). Tant que
+  // l'utilisateur n'a pas touche au mixeur, la liste reste vide et le
+  // compositeur garde strictement son comportement actuel.
+  const [audioKeyframes, setAudioKeyframes] = useState<AudioKeyframe[]>([]);
 
   // Durees par sequence. Elles etaient figees dans la constante `SEQ` ; le
   // panneau audio expose des reglages de duree, et les afficher sans qu'ils
@@ -1096,6 +1101,10 @@ export default function AssistantWizard() {
         voiceUrl: voiceUrl || undefined,
         musicVolume,
         voiceVolume,
+        // Mixeur unifie : ces keyframes pilotent les trois bus audio du
+        // compositeur (musique, rush, voix). Absents tant que l'utilisateur
+        // n'a rien reglé — donc aucun changement pour les montages existants.
+        audioKeyframes: audioKeyframes.length > 0 ? audioKeyframes : undefined,
         sequenceOrder: activeOrder,
         accentColor: accent,
         // drawCTA lit `design.ctaMainText || watermarkText || 'AFROBOOST'` :
@@ -1755,6 +1764,11 @@ export default function AssistantWizard() {
                   // masqué : il n'y aurait rien à cadencer.
                   hasRush={!!rushUrl}
                   contentTheme={themeId}
+                  // Branche le mixeur unifie : un seul bouton « Mixer » pour
+                  // les trois niveaux, au lieu d'un curseur par source.
+                  rushUrl={rushUrl}
+                  audioKeyframes={audioKeyframes}
+                  onAudioKeyframesChange={setAudioKeyframes}
                 />
 
                 <div className="flex justify-between pt-2">
