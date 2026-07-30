@@ -19,8 +19,15 @@ import { Button } from '@/components/ui/Button';
  */
 
 const css = readFileSync(resolve(__dirname, '../app/globals.css'), 'utf-8');
+/**
+ * Position de la DIRECTIVE `@layer components {`, pas de la première mention
+ * du terme : le commentaire au-dessus du bloc contient les mêmes mots, et
+ * découper là rendait le test de couche tautologique (il passait même après
+ * suppression de la directive).
+ */
+const layerStart = css.search(/@layer\s+components\s*\{/);
 /** Le bloc des boutons, isolé pour ne pas tester le reste de la feuille. */
-const buttonLayer = css.slice(css.indexOf('@layer components'), css.indexOf('.text-gradient'));
+const buttonLayer = layerStart === -1 ? '' : css.slice(layerStart, css.indexOf('.text-gradient'));
 
 describe('Button — rétro-compatibilité des props', () => {
   it('rend la variante primary par défaut', () => {
@@ -132,7 +139,10 @@ describe('CSS livré — le style épuré', () => {
   it('les classes vivent dans la couche components, pour que l appelant puisse surcharger', () => {
     // Declarees apres `@tailwind utilities`, elles ecrasaient la couleur
     // demandee par l'appelant (`bg-purple-600`) sans rien dire.
-    expect(buttonLayer.startsWith('@layer components')).toBe(true);
+    expect(layerStart).toBeGreaterThan(-1);
+    // Et la directive doit bien OUVRIR le bloc des boutons.
+    expect(layerStart).toBeLessThan(css.indexOf('.button-base'));
+    expect(buttonLayer).toContain('.button-primary');
   });
 
   it('un etat focus visible au clavier est prevu', () => {
