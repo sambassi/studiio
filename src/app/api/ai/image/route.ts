@@ -17,6 +17,8 @@ const AI_CREDITS: Record<string, number> = {
   'generate-bg': 5,
   'magic-layers': 3,
   'style-transfer': 5,
+  // OCR : modele CPU a ~0,0003 $ le run, de loin le moins cher du lot.
+  'ocr': 1,
 };
 
 // ── Replicate model IDs ──
@@ -27,6 +29,11 @@ const MODELS: Record<string, `${string}/${string}`> = {
   'image-edit': 'black-forest-labs/flux-kontext-pro',         // ✅ Warm, Official, 49.7M runs, $0.04/img
   'generate-bg': 'black-forest-labs/flux-schnell',             // ✅ Warm, Official, 655M runs
   'image-to-video': 'wan-video/wan-2.2-i2v-fast',             // ✅ Warm, Official, 10.6M runs
+  // ✅ Warm, 91.4M runs — le modele OCR le plus utilise de Replicate.
+  // Communautaire → hash de version OBLIGATOIRE (une seule version publiee,
+  // relevee sur replicate.com/abiruyt/text-extract-ocr/versions).
+  // Entree : { image: <url> }. Sortie : du TEXTE, pas une image.
+  'ocr': 'abiruyt/text-extract-ocr:a524caeaa23495bc9edc805ab08ab5fe943afd3febed884a4f3747aa32e9cd61',
 };
 
 // ── French → English translation pour les prompts IA ──
@@ -60,6 +67,37 @@ const FR_TO_EN_PROMPTS: Array<[RegExp, string]> = [
   [/\bchanger?\b/gi, 'change'],
   [/\bajouter?\b/gi, 'add'],
 ];
+
+/**
+ * Lit la sortie TEXTE d'un modele Replicate (action `ocr`).
+ *
+ * Trois formes possibles selon le modele et le SDK :
+ *   - `string` — le cas de abiruyt/text-extract-ocr ;
+ *   - `string[]` — sortie declaree `Iterator[str]` : `replicate.run` rend les
+ *     morceaux streames dans l'ordre, a recoller sans separateur ;
+ *   - objet avec `toString()` (FileOutput du SDK 1.x).
+ *
+ * Renvoie `null` si rien n'est lisible (a distinguer de `''`, qui veut dire
+ * « lu correctement, mais aucun texte dans l'image »).
+ */
+export function extractText(output: unknown): string | null {
+  if (output == null) return null;
+  if (typeof output === 'string') return output.trim();
+  if (Array.isArray(output)) {
+    const parts = output.filter((p) => typeof p === 'string') as string[];
+    if (parts.length !== output.length) return null;
+    return parts.join('').trim();
+  }
+  if (typeof output === 'object') {
+    const obj = output as { toString?: () => string };
+    if (typeof obj.toString === 'function') {
+      const str = obj.toString();
+      // `[object Object]` = pas de toString utile → illisible.
+      if (str && !str.startsWith('[object ')) return str.trim();
+    }
+  }
+  return null;
+}
 
 function translateFrPromptToEn(prompt: string): string {
   let result = prompt;
@@ -222,6 +260,49 @@ export async function POST(req: NextRequest) {
         });
         if (Array.isArray(output)) output = output[0];
         break;
+      }
+
+      // ── 9. OCR / Capture de texte ──
+      // SEULE action dont la sortie est du texte. Elle repond ici et ne
+      // descend PAS dans l'extraction d'URL ci-dessous : le chemin image des
+      // huit autres outils reste strictement inchange.
+      case 'ocr': {
+        if (!imageUrl) return NextResponse.json({ success: false, error: 'imageUrl requis' }, { status: 400 });
+        const ocrOutput = await replicate.run(MODELS['ocr'], {
+          input: { image: imageUrl },
+        });
+
+        const text = extractText(ocrOutput);
+        if (text === null) {
+          console.error('[AI Image][OCR] Sortie illisible. Type:', typeof ocrOutput, 'Constructor:', (ocrOutput as { constructor?: { name?: string } })?.constructor?.name);
+          return NextResponse.json({
+            success: false,
+            error: 'Le modèle OCR a répondu mais le texte n\'a pas pu être lu. Réessayez.',
+          }, { status: 500 });
+        }
+        if (text.length === 0) {
+          // Aucun texte trouve : ce n'est pas une panne, mais on ne facture
+          // pas un resultat vide.
+          return NextResponse.json({
+            success: true,
+            text: '',
+            empty: true,
+            action,
+            creditsUsed: 0,
+            creditsRemaining: credits,
+          });
+        }
+
+        // Debit APRES lecture reussie, comme sur le chemin image.
+        await deductCredits(session.user.id, cost, `ai-${action}`);
+
+        return NextResponse.json({
+          success: true,
+          text,
+          action,
+          creditsUsed: cost,
+          creditsRemaining: credits - cost,
+        });
       }
 
       default:

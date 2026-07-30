@@ -5,6 +5,7 @@ import {
   Sun, Contrast, Palette, Thermometer, Sparkles, CircleOff,
   Upload, Link2, Trash2, Image as ImageIcon, Wand2, Eraser,
   Maximize, Video, Paintbrush, Layers, ArrowUpCircle, Move,
+  ScanText, Copy, Check, X,
 } from 'lucide-react';
 
 // ── Types (mirrored from page.tsx to avoid circular imports) ──
@@ -125,7 +126,7 @@ const FILTER_SLIDERS: FilterSliderDef[] = [
 
 // ── AI tools config ──
 
-type AiAction = 'remove-bg' | 'magic-eraser' | 'magic-edit' | 'upscale' | 'image-to-video' | 'generate-bg' | 'magic-layers' | 'style-transfer';
+type AiAction = 'remove-bg' | 'magic-eraser' | 'magic-edit' | 'upscale' | 'image-to-video' | 'generate-bg' | 'magic-layers' | 'style-transfer' | 'ocr';
 
 interface AiToolDef {
   action: AiAction;
@@ -152,6 +153,9 @@ const AI_TOOLS: AiToolDef[] = [
   { action: 'generate-bg', label: 'Générer arrière-plan', icon: <ImageIcon size={11} />, needsImage: false, needsPrompt: true, promptPlaceholder: 'Décrivez le fond (ex: gym moderne sombre avec néons violets)', credits: 5 },
   { action: 'magic-layers', label: 'Calques magiques', icon: <Layers size={11} />, needsImage: true, needsPrompt: false, credits: 3 },
   { action: 'style-transfer', label: 'Transfert de style', icon: <Maximize size={11} />, needsImage: true, needsPrompt: false, needsStyle: true, credits: 5 },
+  // Seul outil dont le resultat est du TEXTE : il ne remplace pas l'image,
+  // il affiche ce qu'elle contient (voir le bloc « Texte reconnu »).
+  { action: 'ocr', label: 'Capture de texte', icon: <ScanText size={11} />, needsImage: true, needsPrompt: false, credits: 1 },
 ];
 
 const STYLE_PRESETS = [
@@ -231,6 +235,9 @@ export default function ImageEditorPanel({
   const [aiLoading, setAiLoading] = useState<AiAction | null>(null);
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiPromptFor, setAiPromptFor] = useState<AiAction | null>(null);
+  /** Texte reconnu par l'OCR. `null` = jamais lance ; `''` = lance, rien trouve. */
+  const [ocrText, setOcrText] = useState<string | null>(null);
+  const [ocrCopied, setOcrCopied] = useState(false);
   const [aiStyle, setAiStyle] = useState<string | null>(null);
   const cropStartRef = useRef<{ x: number; y: number; startPosX: number; startPosY: number } | null>(null);
   const cropContainerRef = useRef<HTMLDivElement>(null);
@@ -308,6 +315,19 @@ export default function ImageEditorPanel({
       if (!res.ok || !data.success) {
         throw new Error(data.error || `Erreur ${res.status}`);
       }
+      // ── Chemin TEXTE (OCR) ──
+      // L'OCR ne renvoie pas d'image : il ne faut surtout pas remplacer le
+      // fond par quoi que ce soit. On affiche le texte reconnu, copiable.
+      if (tool.action === 'ocr') {
+        setOcrText(typeof data.text === 'string' ? data.text : '');
+        setOcrCopied(false);
+        if (data.empty || !data.text) {
+          showToast('Aucun texte détecté sur cette image', 'error');
+        } else {
+          showToast(`Texte reconnu ! (${data.creditsUsed} cr.)`, 'success');
+        }
+        return;
+      }
       if (data.resultUrl) {
         // For image-to-video, the result is a video URL — store differently
         if (tool.action === 'image-to-video') {
@@ -327,6 +347,23 @@ export default function ImageEditorPanel({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config?.url, onUpdate, showToast]);
+
+  /**
+   * Copie du texte reconnu. `navigator.clipboard` n'existe pas hors HTTPS
+   * (ni dans certains navigateurs embarques) : on retombe alors sur une
+   * selection manuelle plutot que de laisser un bouton sans effet.
+   */
+  const copyOcrText = useCallback(async () => {
+    if (!ocrText) return;
+    try {
+      if (!navigator.clipboard) throw new Error('clipboard indisponible');
+      await navigator.clipboard.writeText(ocrText);
+      setOcrCopied(true);
+      setTimeout(() => setOcrCopied(false), 2000);
+    } catch {
+      showToast('Copie impossible — sélectionnez le texte pour le copier', 'error');
+    }
+  }, [ocrText, showToast]);
 
   // ── Parse current object-position into x/y percentages ──
   const parseObjPos = (pos: string): { x: number; y: number } => {
@@ -824,6 +861,53 @@ export default function ImageEditorPanel({
             );
           })}
         </div>
+
+        {/* ── Texte reconnu (OCR) ──
+            Affiche apres « Capture de texte ». Selectionnable a la souris ET
+            copiable en un clic ; les retours a la ligne de l'image sont
+            preserves (whitespace-pre-wrap). */}
+        {ocrText !== null && (
+          <div className="mt-2 rounded-lg border border-purple-900/50 bg-gray-900/70 p-2">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <ScanText size={11} className="text-purple-400" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 flex-1">
+                Texte reconnu
+              </span>
+              {ocrText.length > 0 && (
+                <button
+                  type="button"
+                  onClick={copyOcrText}
+                  className="flex items-center gap-1 rounded bg-gray-800 px-1.5 py-0.5 text-[9px] text-gray-300 hover:bg-purple-700/50 hover:text-white transition-colors"
+                  title="Copier le texte"
+                >
+                  {ocrCopied ? <Check size={10} className="text-emerald-400" /> : <Copy size={10} />}
+                  {ocrCopied ? 'Copié' : 'Copier'}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setOcrText(null)}
+                className="rounded p-0.5 text-gray-500 hover:text-white transition-colors"
+                title="Fermer"
+              >
+                <X size={11} />
+              </button>
+            </div>
+            {ocrText.length > 0 ? (
+              <textarea
+                readOnly
+                value={ocrText}
+                onFocus={(e) => e.currentTarget.select()}
+                rows={Math.min(10, Math.max(3, ocrText.split('\n').length))}
+                className="w-full resize-y rounded bg-gray-950/60 px-2 py-1.5 text-[11px] leading-relaxed text-gray-200 whitespace-pre-wrap font-mono focus:outline-none focus:ring-1 focus:ring-purple-500"
+              />
+            ) : (
+              <p className="text-[10px] text-gray-500">
+                Aucun texte détecté sur cette image.
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
