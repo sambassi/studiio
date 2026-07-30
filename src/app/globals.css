@@ -53,12 +53,21 @@ body {
  */
 @layer components {
   .button-base {
-    @apply inline-flex items-center justify-center gap-2 align-middle whitespace-nowrap
-           min-h-[34px] px-3.5 text-[13px] font-medium leading-none
+    /* PAS de `gap` : avant cette refonte la base n'en avait pas, donc les 23
+       appels qui espacent leur icône avec `mr-2` fournissent déjà l'écart.
+       Ajouter un `gap` l'aurait DOUBLÉ (marge et gap s'additionnent) sur tous
+       les boutons à icône de l'admin et du dashboard.
+
+       Le padding vertical reste présent en plus de `min-h` : si un appelant
+       impose `display: block` (la sidebar le faisait), `items-center` devient
+       inerte et le padding est alors la seule chose qui garde le libellé
+       centré au lieu de le coller en haut. */
+    @apply inline-flex items-center justify-center align-middle whitespace-nowrap
+           min-h-[34px] px-3.5 py-1.5 text-[13px] font-medium leading-none
            transition-colors duration-150
-           focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-studiio-primary/70
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-studiio-primary
            focus-visible:ring-offset-2 focus-visible:ring-offset-studiio-dark
-           disabled:opacity-45 disabled:pointer-events-none;
+           disabled:opacity-45 disabled:cursor-not-allowed;
     border-radius: var(--radius);
   }
 
@@ -72,16 +81,20 @@ body {
            border-[0.5px] border-white/10 hover:bg-studiio-primary/95;
   }
 
-  /* Action secondaire — contour fin sur fond transparent, survol à peine posé. */
+  /* Action secondaire — contour fin sur fond transparent, survol à peine posé.
+     Le contour est tenu à 24 % de blanc : plus bas, il tombait sous le
+     contraste de l'ancien `border-gray-700` (1,9:1) et le bouton cessait
+     d'être perceptible comme un contrôle. */
   .button-secondary {
     @apply button-base bg-transparent text-gray-100
-           border-[0.5px] border-white/[0.14] hover:bg-white/[0.05] hover:border-white/25;
+           border-[0.5px] border-white/[0.24] hover:bg-white/[0.05] hover:border-white/40;
   }
 
-  /* Tertiaire — même dessin, encore plus effacé. */
+  /* Tertiaire — même dessin, plus effacé, mais jamais invisible :
+     18 % reste au-dessus du contour d'origine. */
   .button-ghost {
-    @apply button-base bg-transparent text-gray-400
-           border-[0.5px] border-white/[0.08] hover:bg-white/[0.04] hover:text-gray-100;
+    @apply button-base bg-transparent text-gray-300
+           border-[0.5px] border-white/[0.18] hover:bg-white/[0.04] hover:text-white;
   }
 
   /* Réservé aux mises en avant (offres, paiement) — même retenue que primary. */

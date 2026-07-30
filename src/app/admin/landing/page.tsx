@@ -629,7 +629,7 @@ export default function AdminLandingPage() {
 
       {/* Floating save button */}
       <div className="sticky bottom-4 flex justify-end">
-        <Button variant="primary" size="lg" onClick={handleSave} disabled={saving} className="shadow-xl shadow-orange-500/20">
+        <Button variant="primary" size="lg" onClick={handleSave} disabled={saving}>
           {saving ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Sauvegarde...</> : <><Save size={16} className="mr-2" /> Sauvegarder toutes les modifications</>}
         </Button>
       </div>

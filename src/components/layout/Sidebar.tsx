@@ -115,7 +115,10 @@ export function Sidebar() {
           <div className="text-2xl font-bold text-studiio-accent mb-4">
             {credits !== null ? credits.toLocaleString() : '...'}
           </div>
-          <Link href="/dashboard/settings?tab=abonnement" className="w-full button-primary text-center text-sm block">
+          {/* Pas de `block` ici : c'est un utilitaire, il gagne sur le `inline-flex`
+              de .button-base, ce qui neutralise le centrage vertical. `w-full`
+              suffit a occuper la largeur. */}
+          <Link href="/dashboard/settings?tab=abonnement" className="w-full button-primary text-center">
             {t('buy')}
           </Link>
         </div>

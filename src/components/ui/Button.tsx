@@ -34,10 +34,13 @@ export function Button({
 
   // Trois hauteurs : 28 / 34 / 40 px. `md` est la référence, `sm` sert aux
   // barres d'outils denses, `lg` aux appels à l'action isolés.
+  // Tailles en valeurs arbitraires pour les trois : `text-sm` porte son propre
+  // `line-height` et écraserait `leading-none`, ce qui rendait la hauteur de
+  // `lg` imprévisible dès qu'un appelant ajoutait du padding.
   const sizeClass = {
-    sm: 'min-h-[28px] px-2.5 text-[12px] gap-1.5',
+    sm: 'min-h-[28px] px-2.5 text-[12px]',
     md: 'min-h-[34px] px-3.5 text-[13px]',
-    lg: 'min-h-[40px] px-5 text-sm',
+    lg: 'min-h-[40px] px-5 text-[14px]',
   }[size];
 
   return (
