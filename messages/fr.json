@@ -1163,7 +1163,8 @@
     "status": {
       "connected": "Connecté",
       "ready": "Prêt",
-      "oauthNotConfigured": "OAuth non configuré"
+      "oauthNotConfigured": "OAuth non configuré",
+      "comingSoon": "Bientôt disponible"
     },
     "actions": {
       "connect": "Connecter {platform}",
@@ -1185,6 +1186,7 @@
       "connectionError": "Erreur lors de la connexion",
       "disconnectError": "Erreur lors de la déconnexion"
     },
+    "comingSoonHint": "{platform} sera bientôt disponible. La connexion rouvrira prochainement.",
     "settings": {
       "title": "Paramètres de publication",
       "autoPublish": {

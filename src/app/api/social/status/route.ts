@@ -50,26 +50,40 @@ export async function GET(req: NextRequest) {
     const hasTiktokOAuth = !!process.env.TIKTOK_CLIENT_KEY;
     const hasYoutubeOAuth = !!(process.env.YOUTUBE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID);
 
+    /**
+     * Plateformes mises en attente.
+     *
+     * Masquage d'interface REVERSIBLE, et uniquement cela : aucune cle,
+     * aucun jeton, aucun compte deja connecte n'est supprime. Retirer une
+     * entree de cet ensemble suffit a rendre la plateforme connectable —
+     * c'est le meme principe que `channels['afroboost.com']` plus bas.
+     */
+    const ON_HOLD = new Set(['youtube', 'tiktok']);
+
     const platforms = {
       instagram: {
+        available: !ON_HOLD.has('instagram'),
         connected: !!dbMap.instagram,
         username: dbMap.instagram?.account_name || null,
         source: dbMap.instagram ? 'database' : null,
         oauthAvailable: hasInstagramOAuth,
       },
       facebook: {
+        available: !ON_HOLD.has('facebook'),
         connected: !!dbMap.facebook,
         username: dbMap.facebook?.account_name || null,
         source: dbMap.facebook ? 'database' : null,
         oauthAvailable: hasFacebookOAuth,
       },
       tiktok: {
+        available: !ON_HOLD.has('tiktok'),
         connected: !!dbMap.tiktok,
         username: dbMap.tiktok?.account_name || null,
         source: dbMap.tiktok ? 'database' : null,
         oauthAvailable: hasTiktokOAuth,
       },
       youtube: {
+        available: !ON_HOLD.has('youtube'),
         connected: !!dbMap.youtube,
         username: dbMap.youtube?.account_name || null,
         source: dbMap.youtube ? 'database' : null,
