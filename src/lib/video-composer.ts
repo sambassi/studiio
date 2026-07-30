@@ -2573,7 +2573,10 @@ export function drawTransition(
   style: TransitionStyle = DEFAULT_TRANSITION,
   scratch?: TransitionScratch | null,
 ) {
-  if (style === 'crossfade' || !scratch) {
+  // Le repli est decide AVANT de peindre quoi que ce soit : un style inconnu
+  // ne doit pas rendre les sequences deux fois (une fois sur les calques,
+  // une fois sur le canvas final).
+  if (style === 'crossfade' || !TRANSITION_STYLES.includes(style) || !scratch) {
     ctx.globalAlpha = 1 - t; drawA(1, ctx);
     ctx.globalAlpha = t; drawB(t * 0.3, ctx);
     ctx.globalAlpha = 1;
@@ -2622,7 +2625,11 @@ export function drawTransition(
       ctx.drawImage(layerA, 0, 0);
       ctx.restore();
 
-      const scaleB = 0.82 + 0.18 * e;
+      // B entre en zoom AVANT (facteur toujours >= 1). Un facteur < 1 la
+      // laisserait plus petite que la frame : sur la fin de la transition,
+      // le pourtour n'aurait plus que A a 10-30 % d'opacite pour le couvrir,
+      // d'ou un liseré sombre qui palpite a chaque transition.
+      const scaleB = 1 + 0.18 * (1 - e);
       ctx.save();
       ctx.globalAlpha = e;
       ctx.translate(w / 2, h / 2);
@@ -2650,18 +2657,19 @@ export function drawTransition(
       break;
     }
 
-    default: {
-      // Style inconnu (donnee ancienne ou corrompue) → fondu historique.
-      ctx.globalAlpha = 1 - t; drawA(1, ctx);
-      ctx.globalAlpha = t; drawB(t * 0.3, ctx);
-      ctx.globalAlpha = 1;
-    }
   }
+  // Pas de branche `default` : un style inconnu est deja parti en crossfade
+  // au tout debut de la fonction, avant le rendu des calques.
 }
 
 /**
  * Resout le style a jouer a la fin de `seqType`.
  * Ordre : reglage par sequence → reglage global → `design.transition` → defaut.
+ *
+ * Les cles par sequence sont acceptees dans les DEUX vocabulaires : celui de
+ * l'editeur (`titre`, `cartes`, …) et celui du compositeur (`intro`, `cards`,
+ * …). Toutes les autres options par sequence passent par `SEQ_NAME_MAP` ;
+ * sans ca, un reglage persiste par l'editeur serait ignore en silence.
  */
 export function resolveTransitionStyle(
   seqType: string,
@@ -2669,7 +2677,14 @@ export function resolveTransitionStyle(
   global?: TransitionStyle,
   fromDesign?: TransitionStyle,
 ): TransitionStyle {
-  const candidate = perSequence?.[seqType] ?? global ?? fromDesign;
+  let perSeqValue: TransitionStyle | undefined;
+  if (perSequence) {
+    for (const [key, value] of Object.entries(perSequence)) {
+      const normalized = SEQ_NAME_MAP[key.toLowerCase()] || key;
+      if (normalized === seqType) { perSeqValue = value; break; }
+    }
+  }
+  const candidate = perSeqValue ?? global ?? fromDesign;
   return candidate && TRANSITION_STYLES.includes(candidate) ? candidate : DEFAULT_TRANSITION;
 }
 
@@ -3075,6 +3090,21 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     }
     return transitionScratch;
   };
+
+  // Pre-chauffage : si au moins une frontiere de sequence utilise un style
+  // geometrique, on alloue les deux calques (2 x width*height) MAINTENANT.
+  // Les creer a la premiere frame de transition reviendrait a allouer ~16 Mo
+  // pendant l'enregistrement, au risque de perdre une frame en temps reel.
+  // Un montage en crossfade n'alloue toujours rien.
+  const usesGeometricTransition = sequences.slice(0, -1).some((s) =>
+    resolveTransitionStyle(
+      s.type,
+      options.sequenceTransitions,
+      options.transition,
+      normalizedDesign?.transition,
+    ) !== 'crossfade',
+  );
+  if (usesGeometricTransition) getTransitionScratch();
 
   // Thumbnail capture state — we snapshot the first frame past 0.5s into the
   // intro sequence. Saved as JPEG 0.85 quality and uploaded alongside the video
