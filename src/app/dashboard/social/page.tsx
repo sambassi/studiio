@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -20,6 +21,7 @@ import {
   Bell,
   ExternalLink,
   Clock,
+  Download,
 } from 'lucide-react';
 
 interface SocialAccount {
@@ -598,6 +600,40 @@ export default function SocialPage() {
                       {t('actions.disconnect')}
                     </Button>
                   )}
+
+                  {/* « Publier vous-même » — AJOUT, jamais un remplacement :
+                      la connexion automatique (Facebook/Instagram) garde son
+                      bouton juste au-dessus. Tant que la publication auto
+                      attend la validation des plateformes, ce chemin permet
+                      de publier quand même, depuis son propre compte. */}
+                  <div className="mt-3 rounded-lg border border-gray-800 bg-gray-900/40 p-3">
+                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                      {t('selfPublish.title')}
+                    </p>
+                    <p className="mb-2 text-[11px] leading-snug text-gray-500">
+                      {t('selfPublish.intro', { platform: platform.name })}
+                    </p>
+                    <ol className="mb-3 space-y-1">
+                      {[
+                        t('selfPublish.step1'),
+                        t('selfPublish.step2', { platform: platform.name }),
+                        t('selfPublish.step3'),
+                      ].map((label, i) => (
+                        <li key={label} className="flex items-start gap-2 text-[11px] text-gray-300">
+                          <span className="mt-px flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-gray-800 text-[9px] font-semibold text-gray-400">
+                            {i + 1}
+                          </span>
+                          {label}
+                        </li>
+                      ))}
+                    </ol>
+                    <Link href="/dashboard/library" className="block">
+                      <Button variant="secondary" className="w-full">
+                        <Download size={14} className="mr-2" />
+                        {t('selfPublish.cta')}
+                      </Button>
+                    </Link>
+                  </div>
                 </div>
               </CardContent>
             </Card>

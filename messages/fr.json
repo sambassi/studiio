@@ -1187,6 +1187,14 @@
       "disconnectError": "Erreur lors de la déconnexion"
     },
     "comingSoonHint": "{platform} sera bientôt disponible. La connexion rouvrira prochainement.",
+    "selfPublish": {
+      "title": "Publier vous-même",
+      "intro": "La publication automatique attend la validation de {platform}. En attendant, publiez depuis votre compte en trois étapes.",
+      "step1": "Téléchargez votre vidéo",
+      "step2": "Ouvrez l'application {platform}",
+      "step3": "Publiez depuis votre compte",
+      "cta": "Télécharger pour publier"
+    },
     "settings": {
       "title": "Paramètres de publication",
       "autoPublish": {
