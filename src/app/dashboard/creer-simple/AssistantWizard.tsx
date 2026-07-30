@@ -33,6 +33,8 @@ import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import ClipDetectorModal, { type ClipSource } from '@/components/media/ClipDetectorModal';
 import { CardIcon } from '@/components/ui/CardIcon';
 import ColorWheel from '@/components/ui/ColorWheel';
+import { importLutFile, decodeImageInBrowser, uploadLutFile } from '@/lib/luts/import';
+import type { LutRef } from '@/lib/luts/types';
 // Catalogue de polices — LA source unique, partagee avec le compositeur.
 // Deux listes finiraient par diverger, et la video ne ressemblerait plus a
 // l'apercu.
@@ -618,7 +620,7 @@ const PREVIEW_TABS: Array<{ id: 'all' | 'intro' | 'cards' | 'cta'; label: string
 ];
 
 /** Sections repliables de l'etape Style — l'ordre du panneau. */
-type SectionId = 'format' | 'couleurs' | 'texte' | 'sequences';
+type SectionId = 'format' | 'couleurs' | 'ambiance' | 'texte' | 'sequences';
 
 /**
  * Une section repliable.
@@ -1388,6 +1390,14 @@ export default function AssistantWizard() {
   // Le compositeur accepte deja `videoUrl` : il suffit de le lui passer. Sans
   // rush, `rushUrl` reste nul et la sequence « Video » demeure masquee —
   // comportement strictement identique a celui d'avant cet ajout.
+  // ── Filtre couleur (LUT) ─────────────────────────────────────────────
+  // N'etalonne QUE le rush : les textes, le degrade et l'habillage gardent
+  // leurs couleurs. Seule la REFERENCE vit ici — la table parsee, elle, ne
+  // sert qu'a valider le fichier a l'import et n'est jamais conservee.
+  const [lut, setLut] = useState<LutRef | null>(null);
+  const [lutLoading, setLutLoading] = useState(false);
+  const lutInputRef = useRef<HTMLInputElement>(null);
+
   const [rushUrl, setRushUrl] = useState<string | null>(null);
   const [rushName, setRushName] = useState('');
   const [rushLibOpen, setRushLibOpen] = useState(false);
@@ -1526,13 +1536,17 @@ export default function AssistantWizard() {
     rushUrl: persistableDraftUrl(rushUrl),
     rushName,
     rushIsClip,
+    // La reference seule. Le fichier vit dans le stockage : une `.cube` de
+    // 6 Mo ici ferait sauter le quota `localStorage`, et l'auto-sauvegarde
+    // echouerait ensuite en silence pour TOUT le brouillon.
+    lut: lut ?? undefined,
     scheduledDate,
   }), [
     started, step, themeId, customTopic, toneId, format, colors,
     titleStyle, subtitleStyle, ctaStyle, watermarkOverride, watermarkEnabled,
     sequences, introDuration, cardsDuration, videoDuration, ctaDuration,
     generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
-    voiceVolume, rushUrl, rushName, rushIsClip, scheduledDate,
+    voiceVolume, rushUrl, rushName, rushIsClip, lut, scheduledDate,
   ]);
 
   /** La derniere version connue, pour ecrire sans attendre un rendu. */
@@ -1595,6 +1609,7 @@ export default function AssistantWizard() {
       setRushName(draft.rushName ?? '');
       setRushIsClip(!!draft.rushIsClip);
     }
+    if (draft.lut) setLut(draft.lut);
     if (draft.scheduledDate) setScheduledDate(draft.scheduledDate);
     // Le contenu a ete regenere s'il vient du brouillon : la signature evite
     // qu'il soit remplace par un autre texte des la premiere navigation.
@@ -1823,6 +1838,36 @@ export default function AssistantWizard() {
     setRushIsClip(false);
     setVideoDuration(0);
     setSequences((prev) => prev.map((s) => (s.key === 'video' ? { ...s, enabled: false } : s)));
+  };
+
+  /**
+   * Import d'un filtre couleur.
+   *
+   * Le fichier est LU ET VALIDE avant d'etre televerse : un `.cube` tronque
+   * qui atteindrait le stockage donnerait a l'utilisateur un filtre visible
+   * dans son montage, et l'echec ne surviendrait qu'au rendu, loin de sa
+   * cause. Le champ est remis a zero dans le `finally` — sans quoi
+   * reselectionner le meme fichier apres un echec ne declenche aucun
+   * `change`, et l'ecran parait figé.
+   */
+  const handleLutFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLutLoading(true);
+    setError(null);
+    try {
+      const { ref } = await importLutFile(file, {
+        upload: uploadLutFile,
+        decodeImage: decodeImageInBrowser,
+      });
+      setLut(ref);
+      console.log(`[Assistant] Filtre couleur importé : ${ref.name}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Filtre illisible.');
+    } finally {
+      setLutLoading(false);
+      e.target.value = '';
+    }
   };
 
   const theme = THEMES.find((t) => t.id === themeId) ?? THEMES[0];
@@ -2662,6 +2707,84 @@ export default function AssistantWizard() {
                         </span>
                       </div>
                     </div>
+                </StyleSection>
+
+                {/* Filtre couleur — n'etalonne QUE le rush. Le dire ici est
+                    la moitie de la fonctionnalite : sans cette phrase,
+                    l'utilisateur attend un etalonnage du montage entier et
+                    croit le filtre casse quand le titre garde ses couleurs. */}
+                <StyleSection
+                  id="ambiance"
+                  title="Ambiance"
+                  hint={lut ? `${lut.name} · ${Math.round(lut.intensity * 100)}%` : 'Aucun filtre'}
+                  open={openSection === 'ambiance'}
+                  onToggle={toggleSection}
+                >
+                  <p className="text-[11px] text-gray-500">
+                    Un filtre couleur (LUT) s&apos;applique à la vidéo importée — le rush — et
+                    à elle seule. Les textes, le dégradé et l&apos;habillage gardent leurs
+                    couleurs. Formats acceptés : .cube et .png.
+                  </p>
+
+                  {!lut ? (
+                    <button
+                      type="button"
+                      onClick={() => lutInputRef.current?.click()}
+                      disabled={lutLoading}
+                      className={`w-full rounded-xl bg-gray-900/60 px-3 py-2.5 text-sm text-gray-300 transition hover:bg-gray-800/70 ${DISABLED}`}
+                    >
+                      {lutLoading ? 'Lecture du filtre…' : 'Importer un filtre…'}
+                    </button>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <span className="flex-1 truncate text-sm text-white">{lut.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => setLut(null)}
+                          className="rounded-lg px-2 py-1 text-[11px] text-gray-500 transition hover:text-white"
+                        >
+                          Retirer
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-24 flex-shrink-0 text-[11px] text-gray-500">
+                          Intensité
+                        </span>
+                        <input
+                          type="range"
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          value={lut.intensity}
+                          onChange={(e) =>
+                            setLut((prev) =>
+                              prev ? { ...prev, intensity: Number(e.target.value) } : prev,
+                            )
+                          }
+                          aria-label="Intensité du filtre"
+                          className="h-1 flex-1 cursor-pointer appearance-none rounded-lg bg-gray-700 accent-purple-500"
+                        />
+                        <span className="w-9 text-right text-[11px] tabular-nums text-gray-400">
+                          {Math.round(lut.intensity * 100)}%
+                        </span>
+                      </div>
+                      {!rushUrl && (
+                        <p className="text-[11px] text-amber-400/80">
+                          Aucun rush pour l&apos;instant : le filtre n&apos;aura rien à
+                          étalonner tant qu&apos;une vidéo n&apos;est pas importée.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <input
+                    ref={lutInputRef}
+                    type="file"
+                    accept=".cube,.png"
+                    hidden
+                    onChange={handleLutFile}
+                  />
                 </StyleSection>
 
                 <StyleSection

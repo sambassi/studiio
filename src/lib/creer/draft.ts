@@ -1,6 +1,7 @@
 'use client';
 
 import { findFont } from '@/lib/fonts/catalog';
+import type { LutRef } from '@/lib/luts/types';
 
 /**
  * Brouillon de « Créer (simple) » — écriture, relecture, validation.
@@ -81,7 +82,31 @@ export interface Draft {
   rushUrl?: string;
   rushName?: string;
   rushIsClip?: boolean;
+  /**
+   * Étalonnage du rush. **La référence seule** — jamais la table parsée : une
+   * `.cube` de 6 Mo dans le brouillon ferait sauter le quota `localStorage`,
+   * et l'auto-sauvegarde échouerait ensuite en silence pour tout le reste.
+   */
+  lut?: LutRef;
   scheduledDate?: string;
+}
+
+/**
+ * Référence de LUT relue.
+ *
+ * Une URL `blob:` est écartée comme partout ailleurs dans ce fichier, et tout
+ * champ superflu qu'un brouillon ancien porterait est laissé de côté : on
+ * reconstruit l'objet plutôt que de recopier ce qu'on a reçu.
+ */
+function sanitizeLutRef(raw: unknown): LutRef | undefined {
+  if (!isObj(raw)) return undefined;
+  const url = persistableUrl(raw.url as string);
+  if (!url) return undefined;
+  return {
+    url,
+    name: typeof raw.name === 'string' ? raw.name.slice(0, 120) : '',
+    intensity: num(raw.intensity, 0, 1, 1),
+  };
 }
 
 /** URL conservable — jamais un `blob:`, qui meurt avec l'onglet. */
@@ -257,6 +282,7 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
     rushUrl: persistableUrl(raw.rushUrl as string),
     rushName: typeof raw.rushName === 'string' ? raw.rushName : '',
     rushIsClip: raw.rushIsClip === true,
+    lut: sanitizeLutRef(raw.lut),
     scheduledDate:
       typeof raw.scheduledDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.scheduledDate)
         ? raw.scheduledDate

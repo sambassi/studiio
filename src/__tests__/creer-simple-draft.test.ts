@@ -355,3 +355,41 @@ describe('Structure du câblage', () => {
     expect(flush).toMatch(/if \(!draft\.started && !draft\.generated\) return;/);
   });
 });
+
+/**
+ * LUT — seule la RÉFÉRENCE est conservée.
+ *
+ * Le fichier lui-même vit dans le stockage : une `.cube` de 6 Mo transformée
+ * en data URL ferait sauter le quota `localStorage`, et l'auto-sauvegarde
+ * échouerait ensuite en silence pour TOUT le brouillon, pas seulement pour la
+ * LUT.
+ */
+describe('Brouillon — référence de LUT', () => {
+  const LUT = { url: 'https://minio.example/luts/teal.cube', name: 'teal.cube', intensity: 0.6 };
+
+  it('conserve une référence complète', () => {
+    const d = sanitizeDraft(valid({ lut: LUT }), DEPS)!;
+    expect(d.lut).toEqual(LUT);
+  });
+
+  it('ne restaure pas une LUT dont l’URL est un blob:', () => {
+    // Elle pointerait vers rien après un rafraîchissement, et le rendu
+    // échouerait sur un média fantôme.
+    const d = sanitizeDraft(valid({ lut: { ...LUT, url: 'blob:http://x/1' } }), DEPS)!;
+    expect(d.lut).toBeUndefined();
+  });
+
+  it('ramène une intensité hors plage à la pleine intensité', () => {
+    expect(sanitizeDraft(valid({ lut: { ...LUT, intensity: 4 } }), DEPS)!.lut!.intensity).toBe(1);
+    expect(sanitizeDraft(valid({ lut: { ...LUT, intensity: -2 } }), DEPS)!.lut!.intensity).toBe(1);
+  });
+
+  it('ignore une LUT sans URL', () => {
+    expect(sanitizeDraft(valid({ lut: { name: 'x.cube', intensity: 1 } }), DEPS)!.lut).toBeUndefined();
+  });
+
+  it('ne conserve jamais de table parsée, même si le brouillon en porte une', () => {
+    const d = sanitizeDraft(valid({ lut: { ...LUT, table: [1, 2, 3], size: 33 } }), DEPS)!;
+    expect(d.lut).toEqual(LUT);
+  });
+});
