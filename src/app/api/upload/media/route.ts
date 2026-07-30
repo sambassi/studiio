@@ -64,8 +64,7 @@ export async function POST(req: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    const { data, error } = await supabaseAdmin.storage
-      .from(bucket)
+    const { error } = await supabaseAdmin.storage      .from(bucket)
       .upload(storagePath, buffer, {
         contentType: mimeType,
         upsert: false,

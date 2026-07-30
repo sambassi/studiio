@@ -4,7 +4,7 @@ import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 
 // GET /api/posts/[id] — fetch a single post by ID
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {

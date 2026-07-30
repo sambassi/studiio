@@ -124,7 +124,6 @@ const ICON_MAP: Record<string, LucideIcon> = {
 };
 import { AgentIAModal } from "@/components/creer/AgentIAModal";
 import {
-  DesignOption,
   FONT_OPTIONS,
   FILTER_OPTIONS,
   CARD_STYLE_OPTIONS,
@@ -5592,7 +5591,7 @@ function InfographicPageInner() {
                 gradColor2: extraSubtitleGradColor2,
               },
             },
-            onProgress: (pct, stage) => {
+            onProgress: (pct, _stage) => {
               setExportProgress(50 + Math.round(pct * 0.35));
             },
           });

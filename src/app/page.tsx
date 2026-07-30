@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import {
   ArrowRight, Zap, Sparkles, BarChart3, Play, Check, Star,
-  Video, Calendar, Share2, Target, Palette, Globe, Shield,
+  Video, Calendar, Share2, Target, Palette, Shield,
   ChevronDown, ChevronUp, Users, TrendingUp, Clock, Award,
   Smartphone, Monitor, Instagram, Youtube, Facebook, Music, Menu, X,
 } from 'lucide-react';

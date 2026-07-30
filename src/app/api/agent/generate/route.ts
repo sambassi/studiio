@@ -185,8 +185,7 @@ export async function POST(req: NextRequest) {
       const { caption, hashtags } = generateCaption(objective, captionStyle);
 
       // Create scheduled post
-      const { data: post, error: postError } = await supabase
-        .from('scheduled_posts')
+      const { data: post, } = await supabase        .from('scheduled_posts')
         .insert({
           user_id: session.user.id,
           title: pickRandom(AGENT_PHRASES[objective]),

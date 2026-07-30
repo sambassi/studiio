@@ -297,7 +297,7 @@ const MixSection: React.FC<{
 const CTAScreen: React.FC<{
   logoUrl?: string; ctaText: string; ctaSubText: string;
   isVertical: boolean; fps: number;
-}> = ({logoUrl, ctaText, ctaSubText, isVertical, fps}) => {
+}> = ({logoUrl, isVertical, fps}) => {
   const frame = useCurrentFrame();
   const {width} = useVideoConfig();
   const logoSp = spring({fps, frame: Math.max(0, frame), config: {damping: 14, stiffness: 160, mass: 0.6}});

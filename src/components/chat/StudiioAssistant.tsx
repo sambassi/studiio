@@ -56,7 +56,7 @@ export function StudiioAssistant() {
     if (dx > 5 || dy > 5) setBtnPos({ x: e.clientX - 28, y: e.clientY - 28 });
   }, [open]);
 
-  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+  const handlePointerUp = useCallback((_e: React.PointerEvent) => {
     if (window.innerWidth >= 1024 || open) { dragStart.current = null; return; }
     const wasDrag = isDragging;
     if (wasDrag && btnPos) {

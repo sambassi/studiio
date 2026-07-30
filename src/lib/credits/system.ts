@@ -20,7 +20,7 @@ export async function getUserCredits(userId: string): Promise<number> {
 export async function deductCredits(
   userId: string,
   amount: number,
-  reason: string = 'render'
+  _reason: string = 'render'
 ): Promise<boolean> {
   // Admin = pas de décrément. On retourne true sans toucher à la DB.
   const { data: u } = await supabase

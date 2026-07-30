@@ -3,7 +3,7 @@ import { requireAdmin } from '@/lib/admin';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 
 // GET /api/admin/stats/revenue - Revenue by month (last 6 months)
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   const { error } = await requireAdmin();
   if (error) return error;
 

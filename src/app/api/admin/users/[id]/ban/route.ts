@@ -55,7 +55,7 @@ export async function POST(
 }
 
 export async function DELETE(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { id: string } }
 ): Promise<NextResponse<ApiResponse<any>>> {
   try {

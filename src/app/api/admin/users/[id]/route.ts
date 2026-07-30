@@ -4,12 +4,11 @@ import { supabaseAdmin } from '@/lib/db/supabase';
 import { ApiResponse } from '@/lib/types/api';
 
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { id: string } }
 ): Promise<NextResponse<ApiResponse<any>>> {
   try {
-    const { error: adminError, session } = await requireAdmin();
-    if (adminError) return adminError as NextResponse;
+    const { error: adminError, } = await requireAdmin();    if (adminError) return adminError as NextResponse;
 
     const userId = params.id;
 
@@ -127,7 +126,7 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { id: string } }
 ): Promise<NextResponse<ApiResponse<any>>> {
   try {

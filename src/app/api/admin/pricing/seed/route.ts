@@ -5,7 +5,7 @@ import { STRIPE_PLANS, CREDIT_PACKAGES } from '@/lib/stripe/constants';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(req: NextRequest) {
+export async function POST(_req: NextRequest) {
   const session = await auth();
   if (!session?.user?.email || !['contact.artboost@gmail.com', 'bassicustomshoes@gmail.com'].includes(session.user.email)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

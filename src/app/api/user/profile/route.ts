@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth/config';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { ApiResponse } from '@/lib/types/api';
 
-export async function GET(req: NextRequest): Promise<NextResponse<ApiResponse<any>>> {
+export async function GET(_req: NextRequest): Promise<NextResponse<ApiResponse<any>>> {
   try {
     const session = await auth();
     if (!session?.user?.email) {
