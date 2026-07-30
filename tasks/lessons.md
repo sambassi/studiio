@@ -191,6 +191,29 @@ en lien symbolique vers celui d'un autre : toute commande qui installe
 l'arbre de l'autre session et peut le vider. Un worktree = son propre
 `node_modules`.
 
+## [2026-07-30] `git checkout HEAD -- <fichier>` efface le travail non commité
+
+**Ce qui a mal tourné** — Pour prouver que les tests du moteur de transitions
+n'étaient pas décoratifs, je faisais du test de mutation : injecter une
+régression dans `video-composer.ts`, lancer les tests, puis restaurer avec
+`git checkout HEAD -- src/lib/video-composer.ts`. Sauf que quatre correctifs
+issus de l'audit étaient **écrits mais pas encore commités**. La première
+restauration les a donc supprimés sans un mot, et les six mutations suivantes
+ont été mesurées contre l'ancienne version du moteur. Détecté seulement parce
+qu'une septième mutation « ne s'appliquait pas » : son motif visait une ligne
+qui n'existait plus.
+
+**Règle** — Le test de mutation exige un point de restauration **commité**.
+Séquence : `git commit` d'abord, mutation ensuite, `git checkout HEAD --` enfin.
+Plus généralement, `git checkout HEAD -- <fichier>` et `git restore` sont des
+suppressions silencieuses : avant de les lancer, vérifier `git status` — si le
+fichier y apparaît modifié, on est en train de jeter du travail.
+
+**Corollaire** — Une mutation qui « ne s'applique pas » n'est jamais un détail
+à ignorer : c'est le signe que le fichier n'est pas celui qu'on croit. Faire
+échouer bruyamment ce cas dans le script de mutation, jamais le passer sous
+silence.
+
 ## Pré-merge : checklist obligatoire
 
 À cocher MENTALEMENT avant chaque merge (et écrire dans le PR body si non trivial) :
