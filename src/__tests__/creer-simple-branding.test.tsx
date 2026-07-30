@@ -39,6 +39,7 @@ function renderPreview(props: Partial<React.ComponentProps<typeof Preview>> = {}
       gradEnd="#EC4899"
       gradientOpacity={0.5}
       watermark="Studiio.pro"
+      accent="#7C3AED"
       {...props}
     />,
   );
@@ -62,10 +63,13 @@ describe('Filigrane — pourquoi ce réglage existe', () => {
       wizardSource.indexOf('const composed = await composeAndUpload({'),
       wizardSource.indexOf('onProgress: (pct, stage)'),
     );
-    expect(call).toMatch(/siteText: \{/);
-    expect(call).toMatch(/text: watermarkLabel \|\| DEFAULT_WATERMARK/);
-    // `enabled: false` est la SEULE façon d'éteindre le calque.
-    expect(call).toMatch(/enabled: !!watermarkLabel/);
+    expect(call).toMatch(/siteText: watermarkConfig/);
+    expect(wizardSource).toMatch(/text: watermarkLabel \|\| DEFAULT_WATERMARK/);
+    // `enabled: false` est la SEULE façon d'éteindre le calque, et il doit
+    // être un vrai booléen : `siteText?.enabled !== false` laisse passer
+    // toute autre valeur falsy.
+    expect(wizardSource).toMatch(/enabled: watermarkVisible/);
+    expect(wizardSource).toMatch(/const watermarkVisible = !!watermarkLabel/);
   });
 
   it('le défaut est « Studiio.pro », et le kit de marque l’emporte', () => {
@@ -75,17 +79,35 @@ describe('Filigrane — pourquoi ce réglage existe', () => {
     );
   });
 
-  it('persiste le filigrane pour le Calendrier', () => {
-    // Le Calendrier relit `design.siteText` pour sa reconstruction HTML ET
-    // pour toute régénération. Sans lui, les deux retombent sur
-    // « Afroboost.com » : le post afficherait un filigrane que l'utilisateur
-    // n'a jamais choisi, différent de sa vidéo.
+  it('persiste le filigrane pour le Calendrier, avec son champ `sequences`', () => {
+    // Le Calendrier relit `design.siteText` pour toute régénération du
+    // montage, et pour sa reconstruction HTML. Cette dernière fait
+    // `(siteText.sequences || []).includes(seq)` : un objet sans ce champ
+    // n'affiche JAMAIS le filigrane, alors que le compositeur applique sa
+    // propre liste par défaut. Les deux rendus divergeraient en silence.
     const metadata = wizardSource.slice(
       wizardSource.indexOf('const metadata = {'),
       wizardSource.indexOf("const res = await fetch('/api/posts'"),
     );
-    expect(metadata).toMatch(/siteText: \{/);
-    expect(metadata).toMatch(/enabled: !!watermarkLabel/);
+    expect(metadata).toMatch(/siteText: watermarkConfig/);
+    expect(wizardSource).toMatch(/sequences: \[\.\.\.WATERMARK_SEQUENCES\]/);
+    expect(wizardSource).toMatch(
+      /const WATERMARK_SEQUENCES = \['titre', 'cartes', 'video', 'cta'\]/,
+    );
+    // Le garde du Calendrier qui rend ce champ obligatoire.
+    const calendarSource = readFileSync(
+      resolve(__dirname, '../app/dashboard/calendar/page.tsx'),
+      'utf-8',
+    );
+    expect(calendarSource).toMatch(/siteTextConfig\.sequences \|\| \[\]/);
+  });
+
+  it('n’écrit qu’UNE définition du filigrane, partagée', () => {
+    // En deux copies littérales, l'une aurait fini par dériver de l'autre —
+    // et c'est le Calendrier, qui relit la seconde, qui aurait affiché autre
+    // chose que la vidéo.
+    expect(wizardSource.match(/siteText: watermarkConfig/g)).toHaveLength(2);
+    expect(wizardSource.match(/const watermarkConfig = \{/g)).toHaveLength(1);
   });
 
   it('l’aperçu affiche le filigrane', () => {
@@ -93,13 +115,39 @@ describe('Filigrane — pourquoi ce réglage existe', () => {
     expect(screen.getByText('Studiio.pro')).toBeDefined();
   });
 
-  it('l’aperçu le place là où le compositeur le peint', () => {
-    // Compositeur : centré, à 95 % de la hauteur, graisse 700.
+  it('l’aperçu reprend les métriques du compositeur', () => {
+    // Compositeur : centré, graisse 700, `width * 0.0375 * size`, opacité
+    // 0.85, base à 95 % de la hauteur en 9:16.
     renderPreview();
     const style = (screen.getByText('Studiio.pro') as HTMLElement).style;
     expect(style.top).toBe('95%');
     expect(style.textAlign).toBe('center');
     expect(style.fontWeight).toBe('700');
+    expect(style.opacity).toBe('0.85');
+    expect(style.fontSize).toBe(`${1080 * 0.0375}px`);
+    // `y` désigne la LIGNE DE BASE côté canvas : le bloc CSS remonte d'une
+    // ascendante. Un `translateY(-50%)` le centrerait, donc descendrait le
+    // texte d'un tiers de cadratin sous sa place réelle.
+    expect(style.transform).toBe('translateY(-0.8em)');
+    expect(style.lineHeight).toBe('1');
+  });
+
+  it('garde la même taille de filigrane en 16:9 — sans chevaucher le CTA', () => {
+    // Le compositeur indexe la taille sur la LARGEUR mais la position sur la
+    // HAUTEUR : en 16:9, `1920 * 0.0375` donnait 72 px sur un cadre de 1080,
+    // un filigrane plus gros que le sous-CTA, qui venait le chevaucher.
+    renderPreview({ format: '16:9' });
+    const style = (screen.getByText('Studiio.pro') as HTMLElement).style;
+    expect(style.fontSize).toBe(`${1080 * 0.0375}px`); // 40,5 px, comme en 9:16
+    expect(style.top).toBe('96%');
+  });
+
+  it('reprend la couleur d’accent dans le halo du filigrane', () => {
+    // Le compositeur peint ce halo (`shadowColor = accentColor`). Sans lui
+    // ici, régler l'accent ne se voyait nulle part dans l'aperçu.
+    renderPreview({ accent: '#00FF00' });
+    const shadow = (screen.getByText('Studiio.pro') as HTMLElement).style.textShadow;
+    expect(shadow).toMatch(/#00FF00|rgb\(0,\s*255,\s*0\)/i);
   });
 
   it('n’affiche rien quand le filigrane est masqué ou vide', () => {
@@ -126,16 +174,23 @@ describe('Couleurs — réglables, et effectivement propagées', () => {
     expect(bg).toMatch(/#445566|rgb\(68,\s*85,\s*102\)/);
   });
 
-  it('la surcharge part de `null` — le kit de marque charge après le montage', () => {
-    // Quatre états seedés au montage captureraient les défauts neutres puis
-    // ignoreraient le kit chargé une milliseconde plus tard, par un effet.
-    expect(wizardSource).toMatch(/const \[colors, setColors\] = useState<\{/);
-    expect(wizardSource).toMatch(/const accent = colors\?\.accent \?\? brandAccent/);
-    expect(wizardSource).toMatch(/const gradStart = colors\?\.gradStart \?\? brandGradStart/);
-    expect(wizardSource).toMatch(/const gradEnd = colors\?\.gradEnd \?\? brandGradEnd/);
-    expect(wizardSource).toMatch(
-      /const gradientOpacity = colors\?\.gradientOpacity \?\? brandGradientOpacity/,
-    );
+  it('ne lit plus le kit de marque ailleurs que dans le repli', () => {
+    // Le vrai risque n'est pas la forme de la surcharge (une regex qui récite
+    // les lignes qu'on vient d'écrire ne prouve rien) : c'est qu'un endroit
+    // continue de peindre avec `branding.*` au lieu de la couleur réglée.
+    const body = wizardSource.slice(wizardSource.indexOf('export default function AssistantWizard'));
+    const brandingReads = body.match(/branding\.\w+/g) || [];
+    const allowed = new Set([
+      'branding.accentColor',
+      'branding.gradientColor1',
+      'branding.gradientColor2',
+      'branding.gradientOpacity',
+      'branding.watermarkText',
+    ]);
+    for (const read of brandingReads) expect(allowed.has(read)).toBe(true);
+    // …et chacune de ces lectures ne sert qu'à alimenter une variable `brand*`
+    // ou le repli du filigrane, jamais un rendu directement.
+    expect(wizardSource).not.toMatch(/(accentColor|gradientColor1|gradientColor2):\s*branding\./);
   });
 
   it('les couleurs réglées alimentent le compositeur', () => {
@@ -163,6 +218,10 @@ describe('Couleurs — réglables, et effectivement propagées', () => {
   it('offre un retour au kit de marque', () => {
     // Sans ce retour, une couleur réglée par curiosité resterait pour toute
     // la session, sans moyen de retrouver la charte enregistrée.
-    expect(wizardSource).toMatch(/setColors\(null\); setEditedColor\(null\);/);
+    // Motif volontairement insensible au formatage : la version précédente
+    // exigeait les deux appels sur une même ligne et cassait au premier
+    // passage de Prettier, sans qu'aucun comportement n'ait changé.
+    expect(wizardSource).toMatch(/setColors\(null\)/);
+    expect(wizardSource).toMatch(/Revenir au kit de marque/);
   });
 });

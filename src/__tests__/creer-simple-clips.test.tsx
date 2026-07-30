@@ -39,6 +39,7 @@ function renderPreview(props: Partial<React.ComponentProps<typeof Preview>> = {}
       gradStart="#7C3AED"
       gradEnd="#EC4899"
       gradientOpacity={0.5}
+      accent="#7C3AED"
       rushUrl={RUSH}
       {...props}
     />,
@@ -114,6 +115,7 @@ describe('Aperçu — le rush est affiché sans déformation', () => {
         gradStart="#7C3AED"
         gradEnd="#EC4899"
         gradientOpacity={0.5}
+        accent="#7C3AED"
         rushUrl="https://exemple.test/autre.mp4"
       />,
     );

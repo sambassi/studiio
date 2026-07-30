@@ -375,11 +375,26 @@ function backdropCSS(
 const DEFAULT_WATERMARK = 'Studiio.pro';
 
 /**
- * Filigrane : metriques du compositeur, en fraction de la largeur video.
- * `linkFontSize = width * 0.0375 * size`, `y = 95 %`, centre, graisse 700,
- * opacite 0.85 (video-composer.ts, calque siteText).
+ * Filigrane : metriques du compositeur (calque `siteText`), centre, graisse
+ * 700, opacite 0.85.
+ *
+ * ⚠️ Le compositeur calcule `linkFontSize = width * 0.0375 * size` — indexe
+ * sur la LARGEUR — mais place le texte a un pourcentage de la HAUTEUR. En
+ * 16:9 cela donnait 72 px de haut sur un cadre de 1080 : un filigrane plus
+ * gros que le sous-CTA, qui venait le chevaucher. Le facteur `size` ramene
+ * les deux formats a la meme taille absolue (40,5 px), et le 16:9 descend
+ * d'un point pour retrouver la meme respiration au-dessus du CTA.
  */
-const WATERMARK = { fontRatio: 0.0375, y: 95, opacity: 0.85, color: '#FFFFFF' } as const;
+const WATERMARK = {
+  fontRatio: 0.0375,
+  opacity: 0.85,
+  color: '#FFFFFF',
+  '9:16': { size: 1, y: 95 },
+  '16:9': { size: 1080 / 1920, y: 96 },
+} as const;
+
+/** Sequences ou le filigrane est visible — noms cote editeur, comme le Calendrier les attend. */
+const WATERMARK_SEQUENCES = ['titre', 'cartes', 'video', 'cta'] as const;
 
 /** Style de cartes utilisé partout : aperçu, compositeur, metadata. */
 const CARD_STYLE = 'Compact';
@@ -452,9 +467,16 @@ export function Preview({
   gradientOpacity,
   rushUrl,
   watermark,
+  accent,
 }: {
   /** Filigrane affiche sur toutes les sequences, ou chaine vide si masque. */
   watermark?: string;
+  /**
+   * Couleur d'accent. Le compositeur ne s'en sert que pour le halo du
+   * filigrane et la barre de progression : l'apercu reproduit le halo, sans
+   * quoi le reglage « Accent » ne se verrait nulle part.
+   */
+  accent: string;
   generated: Generated | null;
   format: Format;
   /**
@@ -710,14 +732,28 @@ export function Preview({
                   position: 'absolute',
                   left: 0,
                   right: 0,
-                  top: `${WATERMARK.y}%`,
-                  transform: 'translateY(-50%)',
+                  // Cote canvas, `y` designe la LIGNE DE BASE. En CSS on
+                  // remonte le bloc d'une ascendante (~0,8 em avec
+                  // `lineHeight: 1`) pour que la base tombe au meme endroit —
+                  // un `translateY(-50%)` y centrerait le bloc, donc
+                  // descendrait le texte d'un tiers de cadratin.
+                  top: `${WATERMARK[format].y}%`,
+                  transform: 'translateY(-0.8em)',
+                  lineHeight: 1,
                   textAlign: 'center',
-                  fontSize: vw * WATERMARK.fontRatio,
+                  fontSize: vw * WATERMARK.fontRatio * WATERMARK[format].size,
                   fontWeight: 700,
                   color: WATERMARK.color,
                   opacity: WATERMARK.opacity,
-                  textShadow: '0 0 8px rgba(0,0,0,0.85)',
+                  // Contour noir + halo a la couleur d'accent : le compositeur
+                  // peint les deux (`fillTextWithOutline` + `shadowColor =
+                  // accentColor`). Sans le halo ici, regler l'accent ne se
+                  // voyait nulle part dans l'apercu.
+                  textShadow: [
+                    '0 1px 2px rgba(0,0,0,0.85)',
+                    '0 -1px 2px rgba(0,0,0,0.85)',
+                    `0 0 8px ${accent}`,
+                  ].join(', '),
                 }}
               >
                 {watermark}
@@ -793,6 +829,11 @@ export default function AssistantWizard() {
   const watermarkText = watermarkOverride ?? (branding.watermarkText || DEFAULT_WATERMARK);
   /** Ce qui est reellement peint : chaine vide si masque ou vide. */
   const watermarkLabel = watermarkEnabled ? watermarkText.trim() : '';
+  /**
+   * Un champ vide eteint le filigrane. Le bouton doit le dire, sinon il
+   * annonce « Affiche » devant un apercu ou rien ne s'affiche.
+   */
+  const watermarkVisible = !!watermarkLabel;
 
   const [started, setStarted] = useState(false);
   const [step, setStep] = useState(0);
@@ -803,6 +844,28 @@ export default function AssistantWizard() {
   const [format, setFormat] = useState<Format>('9:16');
   const [sequences, setSequences] = useState(DEFAULT_SEQUENCES);
   const [dragKey, setDragKey] = useState<SeqKey | null>(null);
+
+  /**
+   * Configuration du filigrane, ECRITE UNE FOIS et transmise a l'identique au
+   * compositeur et aux metadonnees. En deux copies, l'une aurait fini par
+   * deriver de l'autre — et c'est le Calendrier, qui relit la seconde, qui
+   * aurait affiche autre chose que la video.
+   *
+   * `sequences` est indispensable cote Calendrier : sa reconstruction HTML
+   * fait `(siteText.sequences || []).includes(seq)`, donc un objet sans ce
+   * champ n'affiche JAMAIS le filigrane — alors que le compositeur, lui,
+   * applique sa propre liste par defaut. Les deux rendus divergeraient en
+   * silence. Depend du format, d'ou sa place apres `format`.
+   */
+  const watermarkConfig = {
+    text: watermarkLabel || DEFAULT_WATERMARK,
+    enabled: watermarkVisible,
+    color: WATERMARK.color,
+    opacity: WATERMARK.opacity,
+    size: WATERMARK[format].size,
+    sequences: [...WATERMARK_SEQUENCES],
+    pos: { x: 50, y: WATERMARK[format].y },
+  };
 
   // ── Rush video ───────────────────────────────────────────────────────
   // Le compositeur accepte deja `videoUrl` : il suffit de le lui passer. Sans
@@ -1197,14 +1260,7 @@ export default function AssistantWizard() {
         // Filigrane. `enabled: false` est la SEULE facon de l'eteindre : le
         // compositeur allume le calque des qu'il n'est pas explicitement
         // desactive, et se rabat alors sur « Afroboost.com ».
-        siteText: {
-          text: watermarkLabel || DEFAULT_WATERMARK,
-          enabled: !!watermarkLabel,
-          color: WATERMARK.color,
-          opacity: WATERMARK.opacity,
-          size: 1,
-          pos: { x: 50, y: WATERMARK.y },
-        },
+        siteText: watermarkConfig,
         design: {
           cardStyle: CARD_STYLE,
           // Sans ce champ : titre et CTA en Helvetica, cartes en Inter.
@@ -1342,14 +1398,7 @@ export default function AssistantWizard() {
           // regeneration du montage. Sans lui, les deux se rabattent sur
           // « Afroboost.com » — le post afficherait un filigrane que
           // l'utilisateur n'a jamais choisi, et different de sa video.
-          siteText: {
-            text: watermarkLabel || DEFAULT_WATERMARK,
-            enabled: !!watermarkLabel,
-            color: WATERMARK.color,
-            opacity: WATERMARK.opacity,
-            size: 1,
-            pos: { x: 50, y: WATERMARK.y },
-          },
+          siteText: watermarkConfig,
           // Le Calendrier lit les positions sous `positions.*` (imbrique),
           // la ou le compositeur attend des cles a plat. On ecrit la forme
           // du Calendrier ici pour que sa reconstruction HTML de secours
@@ -1705,6 +1754,11 @@ export default function AssistantWizard() {
                     </div>
                   )}
 
+                  <p className="mt-1.5 text-[11px] text-gray-500">
+                    Le dégradé peint le fond ; l&apos;accent colore le halo du filigrane et la
+                    barre de progression.
+                  </p>
+
                   <div className="mt-2 flex items-center gap-2">
                     <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Opacité du fond</span>
                     <input
@@ -1736,8 +1790,8 @@ export default function AssistantWizard() {
                       title={watermarkEnabled ? 'Masquer le filigrane' : 'Afficher le filigrane'}
                       className="flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-white transition"
                     >
-                      {watermarkEnabled ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                      {watermarkEnabled ? 'Affiché' : 'Masqué'}
+                      {watermarkVisible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                      {watermarkVisible ? 'Affiché' : 'Masqué'}
                     </button>
                   </div>
                   <input
@@ -1752,6 +1806,7 @@ export default function AssistantWizard() {
                   />
                   <p className="mt-1 text-[11px] text-gray-500">
                     Affiché en bas de chaque séquence du montage.
+                    {watermarkEnabled && !watermarkVisible && ' Champ vide : rien ne sera affiché.'}
                   </p>
                 </div>
 
@@ -2227,6 +2282,7 @@ export default function AssistantWizard() {
           gradientOpacity={gradientOpacity}
           rushUrl={rushUrl}
           watermark={watermarkLabel}
+          accent={accent}
         />
       </div>
 
