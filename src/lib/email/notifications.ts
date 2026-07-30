@@ -175,7 +175,8 @@ export async function notifyBan(
     }
 
     // Get user name for personalization
-    const { data, } = await supabase      .from('users')
+    const { data } = await supabase
+      .from('users')
       .select('name')
       .eq('id', userId)
       .single();

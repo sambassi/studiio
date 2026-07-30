@@ -8,7 +8,8 @@ export async function GET(
   { params }: { params: { id: string } }
 ): Promise<NextResponse<ApiResponse<any>>> {
   try {
-    const { error: adminError, } = await requireAdmin();    if (adminError) return adminError as NextResponse;
+    const { error: adminError } = await requireAdmin();
+    if (adminError) return adminError as NextResponse;
 
     const userId = params.id;
 

@@ -23,7 +23,8 @@ export async function uploadToStorage(options: {
   const mimeType = contentType || getMimeType(filePath);
 
   // Upload to Supabase Storage
-  const { error } = await supabaseAdmin.storage    .from(bucket)
+  const { error } = await supabaseAdmin.storage
+    .from(bucket)
     .upload(storagePath, fileBuffer, {
       contentType: mimeType,
       upsert: true,
@@ -59,7 +60,8 @@ export async function uploadBufferToStorage(options: {
 }): Promise<string> {
   const { buffer, bucket, storagePath, contentType } = options;
 
-  const { error } = await supabaseAdmin.storage    .from(bucket)
+  const { error } = await supabaseAdmin.storage
+    .from(bucket)
     .upload(storagePath, buffer, {
       contentType,
       upsert: true,
@@ -86,7 +88,8 @@ export async function uploadFileToStorage(options: {
 }): Promise<string> {
   const { file, bucket, storagePath } = options;
 
-  const { error } = await supabaseAdmin.storage    .from(bucket)
+  const { error } = await supabaseAdmin.storage
+    .from(bucket)
     .upload(storagePath, file, {
       upsert: true,
     });

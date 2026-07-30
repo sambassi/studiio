@@ -90,7 +90,8 @@ export async function GET(_req: NextRequest) {
     }));
 
     // 3. Get publishing history
-    const { error: historyError } = await supabase      .from('publishing_history')
+    const { error: historyError } = await supabase
+      .from('publishing_history')
       .select('id, platform, status, error_message, platform_post_id, published_at, created_at, scheduled_post_id')
       .eq('video_id', posts?.[0]?.video_id || '00000000-0000-0000-0000-000000000000')
       .order('created_at', { ascending: false })
