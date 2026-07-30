@@ -59,6 +59,12 @@ export interface SiteTextConfig {
 export interface DesignOptions {
   /** Font family name (e.g. 'Anton', 'Syne', 'Poppins') — will be loaded via document.fonts */
   font?: string;
+  /**
+   * Style de transition entre sequences, cote design (l'editeur persiste ses
+   * reglages ici). `ComposerOptions.transition` est prioritaire ; absent des
+   * deux cotes, on garde le fondu historique.
+   */
+  transition?: TransitionStyle;
   /** Title text color (default: #FFFFFF) */
   titleColor?: string;
   /**
@@ -427,6 +433,19 @@ export interface ComposerOptions {
    * so its audio is embedded in the recording.
    */
   audioKeyframes?: AudioKeyframe[];
+  /**
+   * Style de transition joue entre DEUX sequences consecutives.
+   *
+   * Defaut `'crossfade'` = le fondu historique, au pixel pres : un montage
+   * sans cette option rend exactement comme avant (voir `drawTransition`).
+   */
+  transition?: TransitionStyle;
+  /**
+   * Transition par sequence, prioritaire sur `transition`. La cle est le type
+   * de la sequence QUI SORT (`'intro' | 'cards' | 'video' | 'cta'`) : c'est a
+   * la fin de celle-ci que la transition se joue.
+   */
+  sequenceTransitions?: Record<string, TransitionStyle>;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2492,13 +2511,181 @@ function drawCTA(
   ctx.restore();
 }
 
-function drawTransition(
-  ctx: CanvasRenderingContext2D, _w: number, _h: number,
-  drawA: (p: number) => void, drawB: (p: number) => void, t: number
+// ═══════════════════════════════════════════════════════════
+// MOTEUR DE TRANSITIONS
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Styles disponibles entre deux sequences.
+ *
+ * - `crossfade`   : fondu croise — le comportement HISTORIQUE, defaut absolu.
+ * - `slide`       : la sequence sortante glisse a gauche, l'entrante arrive
+ *                   par la droite. Translation pure : aucune deformation.
+ * - `wipe`        : balayage — l'entrante est revelee par un volet vertical.
+ * - `zoom`        : la sortante s'eloigne en grossissant, l'entrante arrive
+ *                   depuis un leger recul. Echelle UNIFORME (sx === sy).
+ * - `fade-to-black`: fondu au noir puis ouverture sur la sequence suivante.
+ */
+export type TransitionStyle = 'crossfade' | 'slide' | 'wipe' | 'zoom' | 'fade-to-black';
+
+export const TRANSITION_STYLES: TransitionStyle[] = [
+  'crossfade', 'slide', 'wipe', 'zoom', 'fade-to-black',
+];
+
+/** Style applique quand rien n'est demande — ne jamais changer sans casser la retro-compat. */
+export const DEFAULT_TRANSITION: TransitionStyle = 'crossfade';
+
+/**
+ * Calques hors-ecran utilises par les transitions geometriques.
+ *
+ * Elles ne peuvent pas dessiner directement sur le canvas final : il faut
+ * disposer de l'image COMPLETE de chaque sequence avant de la deplacer, la
+ * decouper ou la mettre a l'echelle. Le crossfade, lui, n'en a pas besoin —
+ * et n'en utilise pas, pour rester identique a l'ancien rendu.
+ */
+export interface TransitionScratch {
+  a: { canvas: CanvasImageSource; ctx: CanvasRenderingContext2D };
+  b: { canvas: CanvasImageSource; ctx: CanvasRenderingContext2D };
+}
+
+/** Accelere puis ralentit — evite le depart mecanique d'une rampe lineaire. */
+function easeInOut(t: number): number {
+  const c = Math.max(0, Math.min(1, t));
+  return c < 0.5 ? 2 * c * c : 1 - Math.pow(-2 * c + 2, 2) / 2;
+}
+
+/**
+ * Dessine la fenetre de transition entre la sequence sortante (A) et
+ * l'entrante (B).
+ *
+ * `drawA` / `drawB` recoivent le contexte CIBLE : le canvas final pour le
+ * crossfade, un calque hors-ecran pour les autres styles.
+ *
+ * ⚠️ RETRO-COMPAT : la branche `crossfade` est l'ancien code, mot pour mot.
+ * Elle est aussi le repli quand aucun calque n'est disponible (contexte 2D
+ * refuse par le navigateur) : mieux vaut l'ancien fondu qu'une frame noire.
+ */
+export function drawTransition(
+  ctx: CanvasRenderingContext2D, w: number, h: number,
+  drawA: (p: number, target: CanvasRenderingContext2D) => void,
+  drawB: (p: number, target: CanvasRenderingContext2D) => void,
+  t: number,
+  style: TransitionStyle = DEFAULT_TRANSITION,
+  scratch?: TransitionScratch | null,
 ) {
-  ctx.globalAlpha = 1 - t; drawA(1);
-  ctx.globalAlpha = t; drawB(t * 0.3);
-  ctx.globalAlpha = 1;
+  // Le repli est decide AVANT de peindre quoi que ce soit : un style inconnu
+  // ne doit pas rendre les sequences deux fois (une fois sur les calques,
+  // une fois sur le canvas final).
+  if (style === 'crossfade' || !TRANSITION_STYLES.includes(style) || !scratch) {
+    ctx.globalAlpha = 1 - t; drawA(1, ctx);
+    ctx.globalAlpha = t; drawB(t * 0.3, ctx);
+    ctx.globalAlpha = 1;
+    return;
+  }
+
+  // Les deux sequences sont rendues en entier sur leur calque, avec la meme
+  // progression que le crossfade historique (A terminee, B qui demarre).
+  scratch.a.ctx.clearRect(0, 0, w, h);
+  drawA(1, scratch.a.ctx);
+  scratch.b.ctx.clearRect(0, 0, w, h);
+  drawB(t * 0.3, scratch.b.ctx);
+
+  const layerA = scratch.a.canvas;
+  const layerB = scratch.b.canvas;
+  const e = easeInOut(t);
+
+  switch (style) {
+    case 'slide': {
+      // Translation pure des deux calques : le ratio ne peut pas bouger.
+      ctx.drawImage(layerA, -w * e, 0);
+      ctx.drawImage(layerB, w * (1 - e), 0);
+      break;
+    }
+
+    case 'wipe': {
+      // A reste en place, B est revelee par un volet qui s'elargit.
+      ctx.drawImage(layerA, 0, 0);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, w * e, h);
+      ctx.clip();
+      ctx.drawImage(layerB, 0, 0);
+      ctx.restore();
+      break;
+    }
+
+    case 'zoom': {
+      // Echelles uniformes (sx === sy) : jamais d'etirement.
+      const scaleA = 1 + 0.18 * e;
+      ctx.save();
+      ctx.globalAlpha = 1 - e;
+      ctx.translate(w / 2, h / 2);
+      ctx.scale(scaleA, scaleA);
+      ctx.translate(-w / 2, -h / 2);
+      ctx.drawImage(layerA, 0, 0);
+      ctx.restore();
+
+      // B entre en zoom AVANT (facteur toujours >= 1). Un facteur < 1 la
+      // laisserait plus petite que la frame : sur la fin de la transition,
+      // le pourtour n'aurait plus que A a 10-30 % d'opacite pour le couvrir,
+      // d'ou un liseré sombre qui palpite a chaque transition.
+      const scaleB = 1 + 0.18 * (1 - e);
+      ctx.save();
+      ctx.globalAlpha = e;
+      ctx.translate(w / 2, h / 2);
+      ctx.scale(scaleB, scaleB);
+      ctx.translate(-w / 2, -h / 2);
+      ctx.drawImage(layerB, 0, 0);
+      ctx.restore();
+      break;
+    }
+
+    case 'fade-to-black': {
+      // Premiere moitie : A s'eteint. Seconde : B s'allume. Le noir est
+      // peint en dessous pour qu'aucune frame ne soit transparente.
+      ctx.save();
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, w, h);
+      if (t < 0.5) {
+        ctx.globalAlpha = 1 - t / 0.5;
+        ctx.drawImage(layerA, 0, 0);
+      } else {
+        ctx.globalAlpha = (t - 0.5) / 0.5;
+        ctx.drawImage(layerB, 0, 0);
+      }
+      ctx.restore();
+      break;
+    }
+
+  }
+  // Pas de branche `default` : un style inconnu est deja parti en crossfade
+  // au tout debut de la fonction, avant le rendu des calques.
+}
+
+/**
+ * Resout le style a jouer a la fin de `seqType`.
+ * Ordre : reglage par sequence → reglage global → `design.transition` → defaut.
+ *
+ * Les cles par sequence sont acceptees dans les DEUX vocabulaires : celui de
+ * l'editeur (`titre`, `cartes`, …) et celui du compositeur (`intro`, `cards`,
+ * …). Toutes les autres options par sequence passent par `SEQ_NAME_MAP` ;
+ * sans ca, un reglage persiste par l'editeur serait ignore en silence.
+ */
+export function resolveTransitionStyle(
+  seqType: string,
+  perSequence?: Record<string, TransitionStyle>,
+  global?: TransitionStyle,
+  fromDesign?: TransitionStyle,
+): TransitionStyle {
+  let perSeqValue: TransitionStyle | undefined;
+  if (perSequence) {
+    for (const [key, value] of Object.entries(perSequence)) {
+      const normalized = SEQ_NAME_MAP[key.toLowerCase()] || key;
+      if (normalized === seqType) { perSeqValue = value; break; }
+    }
+  }
+  const candidate = perSeqValue ?? global ?? fromDesign;
+  return candidate && TRANSITION_STYLES.includes(candidate) ? candidate : DEFAULT_TRANSITION;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2876,6 +3063,49 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   canvas.style.cssText = 'position:fixed;top:-9999px;left:-9999px;pointer-events:none;opacity:0;';
   document.body.appendChild(canvas);
 
+  /**
+   * Calques hors-ecran des transitions geometriques (slide / wipe / zoom /
+   * fade-to-black). Crees a la PREMIERE utilisation seulement : un montage en
+   * crossfade — le defaut — n'alloue rien et suit exactement l'ancien chemin.
+   * Renvoie `null` si le navigateur refuse un contexte 2D : `drawTransition`
+   * retombe alors sur le fondu historique plutot que de rendre du noir.
+   */
+  let transitionScratch: TransitionScratch | null | undefined;
+  const getTransitionScratch = (): TransitionScratch | null => {
+    if (transitionScratch !== undefined) return transitionScratch;
+    try {
+      const mk = () => {
+        const c = document.createElement('canvas');
+        c.width = width; c.height = height;
+        const cctx = c.getContext('2d');
+        return cctx ? { canvas: c as unknown as CanvasImageSource, ctx: cctx } : null;
+      };
+      const a = mk();
+      const b = mk();
+      transitionScratch = a && b ? { a, b } : null;
+      if (!transitionScratch) console.warn('[Composer] Calques de transition indisponibles — repli sur le fondu');
+    } catch (err) {
+      console.warn('[Composer] Calques de transition impossibles a creer:', err);
+      transitionScratch = null;
+    }
+    return transitionScratch;
+  };
+
+  // Pre-chauffage : si au moins une frontiere de sequence utilise un style
+  // geometrique, on alloue les deux calques (2 x width*height) MAINTENANT.
+  // Les creer a la premiere frame de transition reviendrait a allouer ~16 Mo
+  // pendant l'enregistrement, au risque de perdre une frame en temps reel.
+  // Un montage en crossfade n'alloue toujours rien.
+  const usesGeometricTransition = sequences.slice(0, -1).some((s) =>
+    resolveTransitionStyle(
+      s.type,
+      options.sequenceTransitions,
+      options.transition,
+      normalizedDesign?.transition,
+    ) !== 'crossfade',
+  );
+  if (usesGeometricTransition) getTransitionScratch();
+
   // Thumbnail capture state — we snapshot the first frame past 0.5s into the
   // intro sequence. Saved as JPEG 0.85 quality and uploaded alongside the video
   // so the calendar can render a static miniature instead of loading the full
@@ -2998,7 +3228,9 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       return off;
     };
 
-    const drawSeq = (type: string, progress: number) => {
+    // `target` : le canvas sur lequel dessiner. C'est le canvas final dans le
+    // cas general ; les transitions geometriques passent un calque hors-ecran.
+    const drawSeq = (type: string, progress: number, target: CanvasRenderingContext2D = ctx) => {
       // Resolve per-sequence background override (or fall back to posterImg).
       // Opacity is applied to the BG image only — text/cards/etc. drawn on
       // top stay fully opaque. Canvas filters (Phase 2) are pre-applied to
@@ -3020,32 +3252,47 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       }
 
       switch (type) {
-        case 'intro': drawIntro(ctx, width, height, bgImg, logoImg, title, subtitle, accentColor, progress, normalizedDesign, seqBg.opacity); break;
+        case 'intro': drawIntro(target, width, height, bgImg, logoImg, title, subtitle, accentColor, progress, normalizedDesign, seqBg.opacity); break;
         case 'cards': {
           // eslint-disable-next-line no-console
           console.log('[Composer] About to call drawCards. Snapshot in design?', !!normalizedDesign?.cardsSnapshot, 'Snapshot in options?', !!(options as any)?.cardsSnapshot);
-          drawCards(ctx, width, height, cards, logoImg, accentColor, progress, normalizedDesign, bgImg, seqBg.opacity);
+          drawCards(target, width, height, cards, logoImg, accentColor, progress, normalizedDesign, bgImg, seqBg.opacity);
           break;
         }
         case 'video': {
           const videoSeq = sequences.find((s) => s.type === 'video');
           const secondsIn = videoSeq ? progress * videoSeq.duration : 0;
-          drawVideoSeq(ctx, width, height, videoEl, logoImg, progress, normalizedDesign, rushTransform, videoImageEl, secondsIn, bgImg, seqBg.opacity);
+          drawVideoSeq(target, width, height, videoEl, logoImg, progress, normalizedDesign, rushTransform, videoImageEl, secondsIn, bgImg, seqBg.opacity);
           break;
         }
-        case 'cta': drawCTA(ctx, width, height, accentColor, ctaText, ctaSubText, salesPhrase, watermarkText, logoImg, progress, normalizedDesign, bgImg, seqBg.opacity); break;
+        case 'cta': drawCTA(target, width, height, accentColor, ctaText, ctaSubText, salesPhrase, watermarkText, logoImg, progress, normalizedDesign, bgImg, seqBg.opacity); break;
       }
       // Vignette overlay (radial gradient from transparent center to dark edges)
       if (seqBg.vignette > 0) {
-        const grad = ctx.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.3, width / 2, height / 2, Math.max(width, height) * 0.7);
+        const grad = target.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.3, width / 2, height / 2, Math.max(width, height) * 0.7);
         grad.addColorStop(0, 'rgba(0,0,0,0)');
         grad.addColorStop(1, `rgba(0,0,0,${seqBg.vignette})`);
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, width, height);
+        target.fillStyle = grad;
+        target.fillRect(0, 0, width, height);
       }
     };
     if (inTransition && seqIdx < sequences.length - 1) {
-      drawTransition(ctx, width, height, (p) => drawSeq(seq.type, p), (p) => drawSeq(sequences[seqIdx + 1].type, p), transProgress);
+      const style = resolveTransitionStyle(
+        seq.type,
+        options.sequenceTransitions,
+        options.transition,
+        normalizedDesign?.transition,
+      );
+      drawTransition(
+        ctx, width, height,
+        (p, target) => drawSeq(seq.type, p, target),
+        (p, target) => drawSeq(sequences[seqIdx + 1].type, p, target),
+        transProgress,
+        style,
+        // Les calques ne sont crees que si un style en a besoin : un montage
+        // en crossfade n'alloue rien de plus qu'avant.
+        style === 'crossfade' ? null : getTransitionScratch(),
+      );
     } else { drawSeq(seq.type, seqProgress); }
 
     if (needsBackdropClip) ctx.restore();
