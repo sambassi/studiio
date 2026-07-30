@@ -419,28 +419,22 @@ describe('Rétro-compatibilité — sans réglage, rien ne bouge', () => {
 });
 
 describe('Catalogue de polices', () => {
-  it('ne propose que des polices connues DES DEUX côtés', () => {
-    // Une police que Next charge mais que le compositeur ne sait pas injecter
-    // (ou l'inverse) donnerait un aperçu et une vidéo en caractères
-    // différents.
-    // Borné au littéral lui-même : les commentaires voisins contiennent des
-    // apostrophes françaises que le motif prendrait pour des délimiteurs.
-    const start = wizardSource.indexOf('const FONT_GROUPS');
-    const groups = wizardSource.slice(start, wizardSource.indexOf('];', start));
-    const offered = [...groups.matchAll(/'([^']+)'/g)]
-      .map((m) => m[1])
-      .filter((f) => f !== 'Titres' && f !== 'Texte');
-    expect(offered.length).toBeGreaterThan(0);
-    for (const font of offered) {
-      // Connue du compositeur (FONT_URLS)…
-      expect(composerSource).toContain(`'${font}':`);
-      // …et exposée par next/font via une variable CSS.
-      expect(wizardSource).toMatch(new RegExp(`'?${font}'?: 'var\\(--font-`));
-    }
+  it('l’aperçu et le compositeur lisent LE MÊME catalogue', () => {
+    // C'était une liste dans le wizard et une autre dans le compositeur :
+    // une police connue d'un seul côté donnait un aperçu et une vidéo en
+    // caractères différents. Une seule source supprime la classe entière de
+    // bugs — reste à vérifier que les deux la consultent.
+    expect(wizardSource).toMatch(
+      /import \{ FONT_GROUPS, fontStack, ensureFontLoaded \} from '@\/lib\/fonts\/catalog'/,
+    );
+    expect(composerSource).toMatch(
+      /const \{ ensureFontsLoaded \} = await import\('@\/lib\/fonts\/catalog'\)/,
+    );
+    // Et plus aucune liste d'URL en dur côté compositeur.
+    expect(composerSource).not.toMatch(/const FONT_URLS/);
   });
 
-  it('classe les polices en « Titres » et « Texte »', () => {
-    expect(wizardSource).toMatch(/label: 'Titres'/);
-    expect(wizardSource).toMatch(/label: 'Texte'/);
+  it('classe les polices en Titres, Texte et Script', () => {
+    expect(wizardSource).toMatch(/<optgroup key=\{g\.group\} label=\{g\.label\}>/);
   });
 });

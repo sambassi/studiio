@@ -3087,72 +3087,27 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // the first ~2 s of frames rendered in sans-serif fallback before
   // Google Fonts arrived, producing visibly inconsistent thumbnails on
   // Instagram and stale-looking previews in the calendar.
+  //
+  // Le chargement passe par `@/lib/fonts/catalog`, le MEME module que
+  // l'apercu. Une seconde liste ici finirait par diverger de la sienne, et
+  // c'est la video qui cesserait de ressembler a ce que l'utilisateur a
+  // valide a l'ecran.
+  //
+  // Le repli generique d'avant demandait `wght@400;500;600;700;800;900` a
+  // toute famille inconnue — or l'API Google repond **400 Bad Request** des
+  // qu'une graisse manque. Aucune feuille n'arrivait donc pour les scriptes
+  // et les display, qui n'existent qu'en 400 : `ctx.font` retombait en
+  // silence sur une police systeme. Le catalogue declare les graisses
+  // famille par famille, ce qui supprime la cause.
   try {
-    const FONT_URLS: Record<string, string> = {
-      'Anton': 'https://fonts.googleapis.com/css2?family=Anton&display=swap',
-      'Syne': 'https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800;900&display=swap',
-      'Bebas Neue': 'https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap',
-      'Poppins': 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap',
-      'Space Grotesk': 'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap',
-      'Montserrat': 'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap',
-      'Inter': 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap',
-      'Oswald': 'https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&display=swap',
-      'Playfair Display': 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&display=swap',
-      'Raleway': 'https://fonts.googleapis.com/css2?family=Raleway:wght@400;500;600;700;800;900&display=swap',
-    };
-
-    // Collect every font referenced anywhere in `design`. Skip empty /
-    // sans-serif sentinels — there's nothing to load for those.
-    const fontsToLoad = new Set<string>();
-    const candidates = [
+    const { ensureFontsLoaded } = await import('@/lib/fonts/catalog');
+    const failed = await ensureFontsLoaded([
       design?.font,
       design?.titleFont, design?.subtitleFont, design?.ctaFont, design?.overlayFont,
       design?.watermarkFont, design?.cardsFont,
-    ];
-    for (const f of candidates) {
-      if (typeof f === 'string' && f && f !== 'sans-serif') fontsToLoad.add(f);
-    }
-
-    if (fontsToLoad.size > 0) {
-      console.log('[Composer] Loading fonts:', Array.from(fontsToLoad));
-      // Inject CSS links for any fonts not already present.
-      for (const font of fontsToLoad) {
-        const fontUrl = FONT_URLS[font]
-          || `https://fonts.googleapis.com/css2?family=${encodeURIComponent(font)}:wght@400;500;600;700;800;900&display=swap`;
-        if (!document.querySelector(`link[href*="${encodeURIComponent(font)}"]`)) {
-          const link = document.createElement('link');
-          link.rel = 'stylesheet';
-          link.href = fontUrl;
-          document.head.appendChild(link);
-        }
-      }
-
-      // Wait for every weight × every font with an 8s ceiling so a flaky
-      // CDN can't stall the export. document.fonts.ready as a final
-      // safety net flushes any remaining font activations.
-      const weightsNeeded = [400, 500, 700, 900];
-      const loadPromises: Promise<unknown>[] = [];
-      for (const font of fontsToLoad) {
-        for (const w of weightsNeeded) {
-          loadPromises.push(document.fonts.load(`${w} 48px "${font}"`));
-        }
-      }
-      await Promise.race([
-        Promise.all(loadPromises).then(() => document.fonts.ready),
-        new Promise(r => setTimeout(r, 8000)),
-      ]);
-
-      // Verification pass — log which font/weight combinations actually
-      // landed so we can spot problematic fonts in production logs.
-      for (const font of fontsToLoad) {
-        const loadedWeights = weightsNeeded.filter(w =>
-          document.fonts.check(`${w} 48px "${font}"`),
-        );
-        console.log(`[Composer] Font "${font}" loaded weights: ${loadedWeights.join(', ')} / ${weightsNeeded.join(', ')}`);
-        if (loadedWeights.length === 0) {
-          console.warn(`[Composer] ⚠️ Font "${font}" failed to load ANY weight — falling back to sans-serif`);
-        }
-      }
+    ]);
+    if (failed.length > 0) {
+      console.warn('[Composer] ⚠️ Polices indisponibles, rendu en repli:', failed.join(', '));
     }
   } catch (err) {
     console.warn('[Composer] Font loading failed, using fallback:', err);
