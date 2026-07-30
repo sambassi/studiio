@@ -52,6 +52,7 @@ import {
   Palette,
   Share2,
   RotateCcw,
+  History,
   // Card-icon library — explicit imports so the bundler keeps them all.
   // `import * as LucideIcons` was tree-shaken in production, leaving dynamic
   // lookups undefined and the raw icon name bleeding through as text.
@@ -155,6 +156,7 @@ import {
   readAutosave,
   clearAutosave,
   formatAutosaveAge,
+  clearMontageContent,
 } from "@/lib/creer/autosave";
 import { useSession } from "next-auth/react";
 import { BuyCreditsModal } from "@/components/billing/BuyCreditsModal";
@@ -1793,9 +1795,30 @@ function InfographicPageInner() {
   }, [autosaveAt]);
   // Au montage : reprend l'horodatage du dernier passage s'il existe, pour
   // afficher « Enregistre il y a X » sans attendre une premiere modification.
+  //
+  // `draftBanner` retient CE meme horodatage a part : l'indicateur, lui, sera
+  // ecrase des la premiere sauvegarde de la session. Sans marqueur — premiere
+  // visite, brouillon deja exporte, stockage indisponible — il reste `null` et
+  // l'ecran est identique a aujourd'hui.
+  const [draftBanner, setDraftBanner] = useState<number | null>(null);
   useEffect(() => {
     const mark = readAutosave(AUTOSAVE_KEY_CREER);
-    if (mark) setAutosaveAt(mark.savedAt);
+    if (mark) {
+      setAutosaveAt(mark.savedAt);
+      setDraftBanner(mark.savedAt);
+    }
+  }, []);
+
+  /**
+   * « Repartir de zéro » : efface le CONTENU du montage et recharge.
+   * Les preferences de design (polices, couleurs, positions, logo) sont
+   * conservees — c'est tout l'objet de `clearMontageContent`.
+   */
+  const startFreshMontage = useCallback(() => {
+    if (!confirm('Repartir de zéro ? Le contenu du montage en cours est effacé. Vos couleurs, polices et positions sont conservées.')) return;
+    clearMontageContent();
+    clearAutosave(AUTOSAVE_KEY_CREER);
+    window.location.reload();
   }, []);
 
   // Load saved design prefs on mount. Prefer the new key; migrate from the
@@ -5747,6 +5770,39 @@ function InfographicPageInner() {
 
   return (
     <div className="flex min-h-[calc(100vh-4rem)] flex-col bg-gray-900 text-white overflow-x-hidden">
+      {/* Bandeau de brouillon — informe que le montage affiche vient d'une
+          session precedente, et offre la seule action qui manquait : repartir
+          d'un montage neuf sans perdre sa charte visuelle. Non bloquant. */}
+      {draftBanner !== null && (
+        <div
+          data-testid="draft-banner"
+          className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-purple-900/40 bg-purple-950/25 px-4 py-2 text-[12px] text-gray-300"
+        >
+          <History size={13} className="text-purple-300 flex-shrink-0" />
+          <span>
+            Brouillon restauré{' '}
+            <span className="text-gray-500">{formatAutosaveAge(draftBanner, autosaveNow)}</span>
+          </span>
+          <button
+            type="button"
+            onClick={startFreshMontage}
+            className="button-secondary min-h-[26px] px-2.5 text-[11px]"
+          >
+            <RotateCcw size={11} />
+            Repartir de zéro
+          </button>
+          <button
+            type="button"
+            onClick={() => setDraftBanner(null)}
+            title="Masquer"
+            aria-label="Masquer le bandeau"
+            className="ml-auto rounded p-1 text-gray-500 hover:text-white transition-colors"
+          >
+            <X size={13} />
+          </button>
+        </div>
+      )}
+
       {/* Toast */}
       {toast && (
         <div
