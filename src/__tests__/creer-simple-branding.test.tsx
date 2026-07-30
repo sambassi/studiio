@@ -23,7 +23,7 @@ const composerSource = readFileSync(resolve(__dirname, '../lib/video-composer.ts
 const GENERATED = {
   title: 'Titre',
   subtitle: 'Sous-titre',
-  cards: [{ icon: 'Droplet', title: 'Carte', description: 'Description', value: '80%' }],
+  cards: [{ id: 'c1', icon: 'Droplet', title: 'Carte', description: 'Description', value: '80%' }],
   cta: 'JE ME LANCE',
   ctaSub: 'LIEN EN BIO',
 };
