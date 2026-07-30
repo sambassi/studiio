@@ -34,7 +34,10 @@ import ClipDetectorModal, { type ClipSource } from '@/components/media/ClipDetec
 import { CardIcon } from '@/components/ui/CardIcon';
 import ColorWheel from '@/components/ui/ColorWheel';
 import { importLutFile, decodeImageInBrowser, uploadLutFile } from '@/lib/luts/import';
-import type { LutRef } from '@/lib/luts/types';
+import { loadLut } from '@/lib/luts/load';
+import GradedVideo from '@/components/creer/GradedVideo';
+import LutSwatch from '@/components/creer/LutSwatch';
+import type { Lut, LutRef } from '@/lib/luts/types';
 // Catalogue de polices — LA source unique, partagee avec le compositeur.
 // Deux listes finiraient par diverger, et la video ne ressemblerait plus a
 // l'apercu.
@@ -708,6 +711,8 @@ export function Preview({
   gradEnd,
   gradientOpacity,
   rushUrl,
+  lut = null,
+  lutIntensity = 1,
   watermark,
   accent,
   text,
@@ -729,6 +734,14 @@ export function Preview({
    * compositeur. Une seule source : l'apercu ne peut pas deriver de l'export.
    */
   text: TextStyles;
+  /**
+   * Table de la LUT active, ou `null`. Elle n'etalonne QUE le rush : les
+   * textes, le degrade et l'habillage gardent leurs couleurs — c'est ce que
+   * fera aussi l'export, sans quoi l'apercu mentirait.
+   */
+  lut?: Lut | null;
+  /** Intensite du melange, 0 → 1. */
+  lutIntensity?: number;
   /** Filigrane affiche sur toutes les sequences, ou chaine vide si masque. */
   watermark?: string;
   /**
@@ -899,21 +912,11 @@ export function Preview({
             CTA : dans la video ces sequences se succedent, l'apercu les
             empile — comme il le fait deja pour les trois autres. */}
         {showRush && (
-          <video
+          <GradedVideo
             src={rushUrl!}
-            muted
-            loop
-            autoPlay
-            playsInline
-            preload="metadata"
+            lut={lut}
+            intensity={lutIntensity}
             onError={() => setRushBroken(true)}
-            style={{
-              position: 'absolute',
-              inset: 0,
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-            }}
           />
         )}
         {!generated ? (
@@ -1397,6 +1400,36 @@ export default function AssistantWizard() {
   const [lut, setLut] = useState<LutRef | null>(null);
   const [lutLoading, setLutLoading] = useState(false);
   const lutInputRef = useRef<HTMLInputElement>(null);
+  // Table chargee depuis l'URL — en memoire seulement, JAMAIS persistee.
+  // `null` couvre trois cas volontairement confondus : pas de filtre, filtre
+  // en cours de chargement, filtre illisible. Dans les trois, l'apercu montre
+  // le rush tel quel, ce qui est toujours preferable a un ecran noir.
+  const [lutTable, setLutTable] = useState<Lut | null>(null);
+
+  useEffect(() => {
+    const url = lut?.url;
+    if (!url) {
+      setLutTable(null);
+      return;
+    }
+    // Jeton d'annulation : deux changements rapproches se resolvent dans
+    // l'ordre du RESEAU, pas de l'appel. Sans lui, l'apercu pourrait afficher
+    // le filtre qui vient d'etre remplace.
+    let cancelled = false;
+    loadLut(url, { decodeImage: decodeImageInBrowser })
+      .then((table) => { if (!cancelled) setLutTable(table); })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        // Un filtre perdu ne doit pas emporter l'apercu : on retombe sur le
+        // rush non etalonne plutot que d'echouer.
+        setLutTable(null);
+        console.warn(
+          '[Assistant] Filtre couleur illisible :',
+          err instanceof Error ? err.message : err,
+        );
+      });
+    return () => { cancelled = true; };
+  }, [lut?.url]);
 
   const [rushUrl, setRushUrl] = useState<string | null>(null);
   const [rushName, setRushName] = useState('');
@@ -2769,6 +2802,10 @@ export default function AssistantWizard() {
                           {Math.round(lut.intensity * 100)}%
                         </span>
                       </div>
+                      {/* Ce que la LUT fait aux couleurs, meme sans rush : les
+                          teintes en haut montrent les virages, les gris en bas
+                          la courbe de contraste. */}
+                      <LutSwatch lut={lutTable} intensity={lut.intensity} />
                       {!rushUrl && (
                         <p className="text-[11px] text-amber-400/80">
                           Aucun rush pour l&apos;instant : le filtre n&apos;aura rien à
@@ -3593,6 +3630,8 @@ export default function AssistantWizard() {
           gradEnd={gradEnd}
           gradientOpacity={gradientOpacity}
           rushUrl={rushUrl}
+          lut={lutTable}
+          lutIntensity={lut?.intensity ?? 1}
           watermark={watermarkLabel}
           accent={accent}
           text={textStyles}

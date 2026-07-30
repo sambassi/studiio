@@ -37,6 +37,7 @@ vi.mock('@/lib/fonts/catalog', async () => {
 
 import AssistantWizard from '../app/dashboard/creer-simple/AssistantWizard';
 import { draftKey, DRAFT_VERSION } from '../lib/creer/draft';
+import { clearLutCache } from '../lib/luts/load';
 
 const KEY = draftKey('a@b.c');
 
@@ -81,6 +82,7 @@ beforeEach(() => {
     JSON.stringify({ version: DRAFT_VERSION, savedAt: 1, started: true, step: 1 }),
   );
   stubUpload();
+  clearLutCache();
   vi.useFakeTimers({ shouldAdvanceTime: true });
 });
 
@@ -208,5 +210,81 @@ describe('Brouillon', () => {
     expect(draft.lut.url).toBe('https://minio.example/luts/teal.cube');
     expect(draft.lut.name).toBe('teal.cube');
     expect(draft.lut.intensity).toBe(1);
+  });
+});
+
+/**
+ * Aperçu.
+ *
+ * Le réglage ne vaut que s'il se voit AVANT l'export : régler une intensité
+ * à l'aveugle puis découvrir le résultat dans une vidéo rendue, c'est
+ * demander à l'utilisateur de deviner.
+ */
+describe('Aperçu étalonné', () => {
+  /** Brouillon complet : un rush ET un filtre, comme après la phase 1. */
+  const seedWithRushAndLut = () => {
+    window.localStorage.setItem(
+      KEY,
+      JSON.stringify({
+        version: DRAFT_VERSION,
+        savedAt: 1,
+        started: true,
+        step: 1,
+        rushUrl: 'https://minio.example/rushes/r.mp4',
+        rushName: 'r.mp4',
+        sequences: [
+          { key: 'intro', enabled: true },
+          { key: 'cards', enabled: true },
+          { key: 'video', enabled: true },
+          { key: 'cta', enabled: true },
+        ],
+        videoDuration: 6,
+        lut: { url: 'https://minio.example/luts/teal.cube', name: 'teal.cube', intensity: 1 },
+      }),
+    );
+  };
+
+  /** Le fichier de LUT revient par le proxy — jamais en direct (CORS). */
+  function stubLutFetch(body: { ok: boolean; text?: string }) {
+    const fetchMock = vi.fn(async (url: unknown) => {
+      if (String(url).includes('/api/proxy-media')) {
+        return {
+          ok: body.ok,
+          status: body.ok ? 200 : 404,
+          text: async () => body.text ?? '',
+        } as unknown as Response;
+      }
+      return { ok: true, json: async () => ({}) } as unknown as Response;
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    return fetchMock;
+  }
+
+  it('charge le filtre par le proxy et pose une surface étalonnée sur le rush', async () => {
+    seedWithRushAndLut();
+    const fetchMock = stubLutFetch({ ok: true, text: IDENTITY_2 });
+
+    render(<AssistantWizard />);
+    await settle();
+
+    await waitFor(() => expect(document.querySelector('canvas')).toBeTruthy());
+    // En direct sur MinIO, la requête se prendrait le CORS.
+    expect(
+      fetchMock.mock.calls.some((c) => String(c[0]).includes('/api/proxy-media?url=')),
+    ).toBe(true);
+  });
+
+  it('n’étalonne rien quand le filtre est illisible, et laisse l’aperçu debout', async () => {
+    // Un filtre perdu ne doit pas emporter l'aperçu avec lui : le rush
+    // continue de s'afficher, simplement sans étalonnage.
+    seedWithRushAndLut();
+    stubLutFetch({ ok: false });
+
+    render(<AssistantWizard />);
+    await settle();
+    await settle();
+
+    expect(document.querySelector('canvas')).toBeNull();
+    expect(document.querySelector('video')).toBeTruthy();
   });
 });
