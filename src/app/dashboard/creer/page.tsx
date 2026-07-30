@@ -150,6 +150,7 @@ import {
   type ElementPos,
 } from "@/lib/creer/smartGuides";
 import { useDesignHistory } from "@/lib/creer/useDesignHistory";
+import { uploadPosterFile } from "@/lib/creer/posterUpload";
 import {
   AUTOSAVE_KEY_CREER,
   markAutosave,
@@ -1643,6 +1644,8 @@ function InfographicPageInner() {
 
   // ── Pexels Photos ───────────────────────────────────────────
   const [pexelsPhotos, setPexelsPhotos] = useState<PexelsPhoto[]>([]);
+  // Envoi d'une affiche locale en cours (bouton « Ma photo »).
+  const [posterUploading, setPosterUploading] = useState(false);
   const [pexelsLoading, setPexelsLoading] = useState(false);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
   const [batchPhotoIndices, setBatchPhotoIndices] = useState<number[]>([]);
@@ -6825,18 +6828,31 @@ function InfographicPageInner() {
 
                 {/* Upload custom photo button */}
                 <label className="flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-600 px-3 py-2 text-xs text-gray-400 cursor-pointer hover:border-purple-500 hover:text-white transition mt-2">
-                  <Upload size={12} /> Ma photo
-                  <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                  {posterUploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                  {posterUploading ? 'Envoi…' : 'Ma photo'}
+                  <input type="file" accept="image/*" className="hidden" disabled={posterUploading} onChange={async (e) => {
                     const file = e.target.files?.[0];
+                    e.target.value = '';
                     if (!file) return;
-                    const reader = new FileReader();
-                    reader.onload = (ev) => {
-                      const dataUrl = ev.target?.result as string;
-                      const customPhoto = { id: `custom-${Date.now()}`, url: dataUrl, medium: dataUrl, small: dataUrl, photographer: 'Vous', alt: file.name };
+                    // Passe par le stockage : un data URL dans le pool ferait
+                    // exploser le quota localStorage de l'auto-sauvegarde, et
+                    // serait recopie dans chaque post du lot.
+                    setPosterUploading(true);
+                    try {
+                      const uploaded = await uploadPosterFile(file);
+                      if (!uploaded.url) {
+                        showToast(`Photo non ajoutée : ${uploaded.reason || 'envoi impossible'}`);
+                        return;
+                      }
+                      if (uploaded.dataUrl) {
+                        showToast(`Photo ajoutée localement (${uploaded.reason}) — elle ne sera pas conservée d'une session à l'autre`);
+                      }
+                      const customPhoto = { id: `custom-${Date.now()}`, url: uploaded.url, medium: uploaded.url, small: uploaded.url, photographer: 'Vous', alt: file.name };
                       setPexelsPhotos(prev => [customPhoto, ...prev]);
                       setSelectedPhotoIndex(0);
-                    };
-                    reader.readAsDataURL(file);
+                    } finally {
+                      setPosterUploading(false);
+                    }
                   }} />
                 </label>
                 <button
@@ -7319,15 +7335,15 @@ function InfographicPageInner() {
                   </span>
                 </div>
                 <button
-                  onClick={() => setBatchCount(Math.min(20, batchCount + 1))}
-                  disabled={batchCount >= 20}
+                  onClick={() => setBatchCount(Math.min(30, batchCount + 1))}
+                  disabled={batchCount >= 30}
                   className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-800 border border-gray-700 text-lg font-bold text-white hover:bg-gray-700 disabled:opacity-30 transition-all"
                 >
                   +
                 </button>
-                <span className="text-[10px] text-gray-500 ml-1">1 à 20</span>
+                <span className="text-[10px] text-gray-500 ml-1">1 à 30</span>
                 <div className="flex items-center gap-1 ml-1">
-                  {[1, 3, 5, 10, 20].map((n) => (
+                  {[1, 3, 5, 10, 20, 30].map((n) => (
                     <button
                       key={n}
                       onClick={() => setBatchCount(n)}
@@ -12118,7 +12134,7 @@ function InfographicPageInner() {
                 <button onClick={() => setBatchCount(Math.max(1, batchCount - 1))} disabled={batchCount <= 1}
                   className="h-5 w-5 rounded text-[10px] font-bold text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 transition">−</button>
                 <span className="text-[10px] font-bold text-purple-400 w-5 text-center">x{batchCount}</span>
-                <button onClick={() => setBatchCount(Math.min(20, batchCount + 1))} disabled={batchCount >= 20}
+                <button onClick={() => setBatchCount(Math.min(30, batchCount + 1))} disabled={batchCount >= 30}
                   className="h-5 w-5 rounded text-[10px] font-bold text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-30 transition">+</button>
               </div>
             </div>
