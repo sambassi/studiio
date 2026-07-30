@@ -741,12 +741,6 @@
       "both": "Calendrier + Export",
       "studio": "Studio Son"
     },
-    "posterPhoto": {
-      "title": "Photo affiche",
-      "upload": "Importer une photo",
-      "searchPexels": "Rechercher sur Pexels",
-      "searchPlaceholder": "Ex: fitness, yoga, danse..."
-    },
     "videoRush": {
       "title": "Vidéo",
       "upload": "Importer une vidéo"
