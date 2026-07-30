@@ -178,7 +178,7 @@ export async function GET(
 // HEAD: some clients probe with HEAD before issuing the Range GET. Mirror GET
 // headers without a body so file size and Accept-Ranges are visible.
 export async function HEAD(
-  req: NextRequest,
+  _req: NextRequest,
   ctx: { params: Promise<{ bucket: string; path: string[] }> },
 ) {
   if (STORAGE_PROVIDER !== 's3') {

@@ -7,8 +7,6 @@ import { supabaseAdmin } from '@/lib/db/supabase';
 import fs from 'fs';
 import path from 'path';
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
-
 /**
  * Upload a local file to Supabase Storage
  */
@@ -25,7 +23,7 @@ export async function uploadToStorage(options: {
   const mimeType = contentType || getMimeType(filePath);
 
   // Upload to Supabase Storage
-  const { data, error } = await supabaseAdmin.storage
+  const { error } = await supabaseAdmin.storage
     .from(bucket)
     .upload(storagePath, fileBuffer, {
       contentType: mimeType,
@@ -62,7 +60,7 @@ export async function uploadBufferToStorage(options: {
 }): Promise<string> {
   const { buffer, bucket, storagePath, contentType } = options;
 
-  const { data, error } = await supabaseAdmin.storage
+  const { error } = await supabaseAdmin.storage
     .from(bucket)
     .upload(storagePath, buffer, {
       contentType,
@@ -90,7 +88,7 @@ export async function uploadFileToStorage(options: {
 }): Promise<string> {
   const { file, bucket, storagePath } = options;
 
-  const { data, error } = await supabaseAdmin.storage
+  const { error } = await supabaseAdmin.storage
     .from(bucket)
     .upload(storagePath, file, {
       upsert: true,

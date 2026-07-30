@@ -201,7 +201,7 @@ const VideoClip: React.FC<{
   videoPosition?: ElementPosition;
   startFrom?: number;
   isTemoignage?: boolean;
-}> = ({src, segIndex, cadrage, segDuration, isVertical, videoPosition, startFrom, isTemoignage = false}) => {
+}> = ({src, cadrage, segDuration, isVertical, videoPosition, startFrom, isTemoignage = false}) => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const progress = segDuration > 0 ? frame / segDuration : 0;
@@ -277,7 +277,7 @@ const ImageClip: React.FC<{
   segDuration: number;
   isVertical: boolean;
   videoPosition?: ElementPosition;
-}> = ({src, segIndex, cadrage, segDuration, isVertical, videoPosition}) => {
+}> = ({src, segIndex, cadrage, segDuration, isVertical}) => {
   const frame = useCurrentFrame();
   const progress = segDuration > 0 ? frame / segDuration : 0;
 

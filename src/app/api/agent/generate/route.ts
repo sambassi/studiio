@@ -142,8 +142,7 @@ export async function POST(req: NextRequest) {
       objectives = ['promotion', 'motivation', 'bienfaits', 'abonnement', 'nutrition'],
       captionStyle = 'motivant' as AgentCaptionStyle,
       defaultTime = '18:00',
-      format = 'reel',
-    } = body;
+      format = 'reel' } = body;
 
     if (planDays < 1 || planDays > 90) {
       return NextResponse.json({ success: false, error: 'planDays must be 1-90' }, { status: 400 });
@@ -185,7 +184,7 @@ export async function POST(req: NextRequest) {
       const { caption, hashtags } = generateCaption(objective, captionStyle);
 
       // Create scheduled post
-      const { data: post, error: postError } = await supabase
+      const { data: post } = await supabase
         .from('scheduled_posts')
         .insert({
           user_id: session.user.id,

@@ -12,7 +12,7 @@ interface NotificationSettings {
   digestTime?: string;
 }
 
-export async function GET(req: NextRequest): Promise<NextResponse<ApiResponse<any>>> {
+export async function GET(_req: NextRequest): Promise<NextResponse<ApiResponse<any>>> {
   try {
     const { error: adminError } = await requireAdmin();
     if (adminError) return adminError as NextResponse;

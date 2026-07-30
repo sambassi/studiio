@@ -55,7 +55,6 @@ export async function POST(req: NextRequest) {
 
     // Determine bucket and path
     const bucket = getBucket(mimeType);
-    const ext = file.name.split('.').pop() || 'bin';
     const timestamp = Date.now();
     const safeFilename = sanitizeStorageFilename(file.name);
     const storagePath = `${session.user.id}/${purpose}/${timestamp}-${safeFilename}`;
@@ -64,7 +63,7 @@ export async function POST(req: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    const { data, error } = await supabaseAdmin.storage
+    const { error } = await supabaseAdmin.storage
       .from(bucket)
       .upload(storagePath, buffer, {
         contentType: mimeType,

@@ -124,7 +124,6 @@ const ICON_MAP: Record<string, LucideIcon> = {
 };
 import { AgentIAModal } from "@/components/creer/AgentIAModal";
 import {
-  DesignOption,
   FONT_OPTIONS,
   FILTER_OPTIONS,
   CARD_STYLE_OPTIONS,
@@ -167,7 +166,6 @@ import {
   emptySequenceVoices,
   emptySequenceVoicesUserEdited,
   SEQUENCE_KEYS,
-  type SequenceKey,
   type SequenceVoices,
   type SequenceVoicesUserEdited,
 } from "@/lib/types/voice";
@@ -5496,11 +5494,6 @@ function InfographicPageInner() {
               ctaTextScale: ctaTextScale || undefined,
               cardsTextScale: cardsTextScale || undefined,
               cardsLetterSpacing: cardsLetterSpacing || undefined,
-              cardsFont: cardsFont || undefined,
-              titleFont: titleFont || undefined,
-              ctaFont: ctaFont || undefined,
-              overlayFont: overlayFont || undefined,
-              watermarkFont: watermarkFont || undefined,
               cardStyle: selectedCardStyle || undefined,
               titlePosition: titlePos || undefined,
               cardsPosition: cardsPos || undefined,
@@ -5592,7 +5585,7 @@ function InfographicPageInner() {
                 gradColor2: extraSubtitleGradColor2,
               },
             },
-            onProgress: (pct, stage) => {
+            onProgress: (pct, _stage) => {
               setExportProgress(50 + Math.round(pct * 0.35));
             },
           });

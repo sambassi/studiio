@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
                 }
 
           // Parse the signed request
-          const [encodedSig, payload] = signed_request.split('.', 2);
+          const [, payload] = signed_request.split('.', 2);
           const data = JSON.parse(Buffer.from(payload, 'base64').toString('utf-8'));
           const userId = data.user_id;
 

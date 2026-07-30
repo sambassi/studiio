@@ -5,7 +5,7 @@ import { PaginatedResponse, ApiResponse } from '@/lib/types/api';
 
 export async function GET(req: NextRequest): Promise<NextResponse<PaginatedResponse<any>>> {
   try {
-    const { error: adminError, session } = await requireAdmin();
+    const { error: adminError } = await requireAdmin();
     if (adminError) return adminError as NextResponse;
 
     const { searchParams } = new URL(req.url);

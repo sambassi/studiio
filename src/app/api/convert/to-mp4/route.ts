@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
-import { writeFile, readFile, unlink, access } from 'fs/promises';
+import { readFile, unlink, access } from 'fs/promises';
 import { join } from 'path';
 import { transcodeWebmToMp4WithLadder } from '@/lib/ffmpeg/transcode-to-mp4';
 import { downloadMediaToFile } from '@/lib/storage/fetch-media';

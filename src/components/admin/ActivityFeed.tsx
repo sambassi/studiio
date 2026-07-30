@@ -1,7 +1,6 @@
 'use client';
 
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
 
 const activities = [
   { id: 1, type: 'subscription', user: 'Jean Dupont', action: 'a souscrit au plan Pro', time: 'il y a 2h', icon: '📱' },
