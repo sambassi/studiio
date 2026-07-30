@@ -111,6 +111,150 @@ export async function analyseRushForDucking(rushUrl: string): Promise<AudioKeyfr
 }
 
 /**
+ * Intervalle parle, en secondes depuis le debut de la piste analysee.
+ */
+export interface SpeechSegment {
+  start: number;
+  end: number;
+}
+
+/**
+ * Convertit un masque « ca parle / ca ne parle pas » en intervalles.
+ *
+ * Fonction PURE, et c'est voulu : c'est la seule partie de la detection
+ * qu'on peut verifier sans decoder un vrai fichier audio. Le decodage,
+ * lui, appartient au navigateur.
+ */
+export function maskToSegments(mask: boolean[], chunkDuration: number): SpeechSegment[] {
+  const out: SpeechSegment[] = [];
+  let start: number | null = null;
+  for (let i = 0; i < mask.length; i++) {
+    if (mask[i] && start === null) start = i * chunkDuration;
+    if (!mask[i] && start !== null) {
+      out.push({ start, end: i * chunkDuration });
+      start = null;
+    }
+  }
+  // Un dernier segment encore ouvert court jusqu'a la fin de la piste.
+  if (start !== null) out.push({ start, end: mask.length * chunkDuration });
+  return out;
+}
+
+/**
+ * Ou la voix off parle-t-elle ?
+ *
+ * Meme mesure que pour le rush — RMS sur des tranches de 500 ms, seuil a
+ * -40 dBFS — mais la sortie n'est PAS une liste de keyframes : ce sont des
+ * intervalles. La difference compte : le ducking de la voix doit pouvoir se
+ * combiner a celui du rush sans que l'un ecrase la courbe de l'autre.
+ *
+ * ⚠️ Les temps sont ceux de la piste, et le compositeur demarre la voix off
+ * a t=0 du montage (`voiceBufferSource.start(audioStartTime)`,
+ * video-composer.ts). Ils sont donc deja en temps de montage — contrairement
+ * au rush, qu'il faut decaler de `videoSeqStart`.
+ */
+export async function detectVoiceSpeech(voiceUrl: string): Promise<SpeechSegment[]> {
+  const res = await fetch(voiceUrl);
+  if (!res.ok) throw new Error(`voice fetch ${res.status}`);
+  const buf = await res.arrayBuffer();
+
+  const AudioCtx = (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext);
+  const decodeCtx = new AudioCtx();
+  const audioBuf = await decodeCtx.decodeAudioData(buf.slice(0));
+  decodeCtx.close().catch(() => { /* ignore */ });
+
+  const samples = audioBuf.getChannelData(0);
+  const chunkSamples = Math.floor(audioBuf.sampleRate * CHUNK_DURATION_S);
+  const totalChunks = Math.ceil(samples.length / chunkSamples);
+
+  const mask: boolean[] = new Array(totalChunks);
+  for (let i = 0; i < totalChunks; i++) {
+    mask[i] = linearToDb(rms(samples, i * chunkSamples, chunkSamples)) > SPEECH_THRESHOLD_DB;
+  }
+  return maskToSegments(mask, CHUNK_DURATION_S);
+}
+
+/**
+ * Baisse la musique pendant que la voix off parle, PAR-DESSUS une courbe
+ * existante.
+ *
+ * Fonction PURE, appliquee APRES l'auto-mix du rush : celui-ci n'est pas
+ * modifie d'une ligne, et sa courbe reste intacte partout ou la voix se
+ * tait. La ou elle parle, la musique descend — sans jamais REMONTER un
+ * passage que le rush avait deja baisse, d'ou le `Math.min`.
+ *
+ * `rushVolume` et `voiceVolume` sont herites du keyframe precedent : ce
+ * sont deux reglages que la voix n'a aucune raison de toucher.
+ */
+export function applyVoiceDucking(
+  keyframes: AudioKeyframe[],
+  segments: SpeechSegment[],
+  options: { duckedMusic?: number; totalDuration?: number } = {},
+): AudioKeyframe[] {
+  if (segments.length === 0) return keyframes;
+  const ducked = options.duckedMusic ?? DUCKED_MUSIC;
+  const limit = options.totalDuration ?? Infinity;
+
+  const base = [...keyframes].sort((a, b) => a.time - b.time);
+  /** Niveaux de la courbe existante juste avant `t`. */
+  const at = (t: number): AudioKeyframe => {
+    let picked = base[0];
+    for (const k of base) {
+      if (k.time <= t) picked = k;
+      else break;
+    }
+    return picked ?? { id: 'v-0', time: 0, musicVolume: 1, rushVolume: 0.5, voiceVolume: 1 };
+  };
+
+  // Un keyframe a chaque bord de segment : entree = musique baissee,
+  // sortie = retour a ce que la courbe disait a cet instant.
+  const marks: AudioKeyframe[] = [];
+  segments.forEach((seg, i) => {
+    if (seg.start >= limit) return;
+    const inside = at(seg.start);
+    marks.push({
+      id: `voice-duck-in-${i}`,
+      time: seg.start,
+      // Jamais plus fort que ce que le rush avait deja impose.
+      musicVolume: Math.min(inside.musicVolume, ducked * (base[0]?.musicVolume ?? 1)),
+      rushVolume: inside.rushVolume,
+      voiceVolume: inside.voiceVolume ?? 1,
+    });
+    const end = Math.min(seg.end, limit);
+    if (end > seg.start && end < limit) {
+      const outside = at(end);
+      marks.push({
+        id: `voice-duck-out-${i}`,
+        time: end,
+        musicVolume: outside.musicVolume,
+        rushVolume: outside.rushVolume,
+        voiceVolume: outside.voiceVolume ?? 1,
+      });
+    }
+  });
+
+  // Fusion : les bords de la voix s'ajoutent, et un keyframe existant qui
+  // tombe DANS un segment parle est baisse a son tour — sans quoi la
+  // musique remonterait au milieu d'une phrase.
+  const insideSegment = (t: number) => segments.some((s) => t >= s.start && t < s.end);
+  const adjusted = base.map((k) =>
+    insideSegment(k.time)
+      ? { ...k, musicVolume: Math.min(k.musicVolume, ducked * (base[0]?.musicVolume ?? 1)) }
+      : k,
+  );
+
+  const merged = [...adjusted, ...marks].sort((a, b) => a.time - b.time);
+  // Deux keyframes au meme instant : le dernier pose gagne, comme le ferait
+  // le compositeur en echantillonnant.
+  const out: AudioKeyframe[] = [];
+  for (const k of merged) {
+    if (out.length > 0 && Math.abs(out[out.length - 1].time - k.time) < 1e-6) out.pop();
+    out.push(k);
+  }
+  return out;
+}
+
+/**
  * Resolve the music + rush volumes at a given absolute second. Returns
  * the nearest PRIOR keyframe (stepped curve) so callers don't need to
  * reason about interpolation. Called by the composer on every frame.

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, Trash2, Wand2, Loader2, ChevronDown, ChevronRight, Volume2, VolumeX } from 'lucide-react';
+import { Plus, Trash2, Wand2, Loader2, ChevronDown, ChevronRight, Volume2, VolumeX, Mic } from 'lucide-react';
 
 export interface AudioKeyframe {
   id: string;
@@ -29,6 +29,17 @@ interface Props {
    * rendu qu'avant.
    */
   flush?: boolean;
+  /**
+   * « La musique s'adapte a la voix » — l'auto-mix baisse aussi la musique
+   * pendant que la voix off parle, pas seulement pendant que le rush parle.
+   *
+   * `undefined` = interrupteur masque : un parent qui ne gere pas l'option
+   * ne voit rien de nouveau. C'est le cas de `/dashboard/creer`.
+   */
+  duckOnVoice?: boolean;
+  onDuckOnVoiceChange?: (next: boolean) => void;
+  /** Grise l'interrupteur quand il n'y a aucune voix off a analyser. */
+  hasVoice?: boolean;
 }
 
 /**
@@ -47,6 +58,9 @@ export default function AudioDuckingTimeline({
   onAutoDuck,
   playheadTime,
   flush = false,
+  duckOnVoice,
+  onDuckOnVoiceChange,
+  hasVoice = false,
 }: Props) {
   const duration = Math.max(1, totalDuration); // never divide by zero
   const sorted = [...keyframes].sort((a, b) => a.time - b.time);
@@ -232,6 +246,41 @@ export default function AudioDuckingTimeline({
           Baisse la musique quand le rush parle
         </span>
       </div>
+
+      {/* « La musique s'adapte a la voix ». L'auto-mix ne baissait la
+          musique que pour le rush ; ici elle descend aussi pendant que la
+          voix off parle, puis remonte. Defaut ETEINT : tant que
+          l'utilisateur ne l'allume pas, la courbe est celle d'avant. */}
+      {typeof duckOnVoice === 'boolean' && onDuckOnVoiceChange && (
+        <button
+          type="button"
+          onClick={() => onDuckOnVoiceChange(!duckOnVoice)}
+          disabled={!hasVoice}
+          role="switch"
+          aria-checked={duckOnVoice}
+          aria-label="Musique s'adapte à la voix"
+          title={hasVoice
+            ? 'Pendant que la voix off parle, la musique descend puis remonte'
+            : 'Ajoute une voix off pour activer cette option'}
+          className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-[10px] text-gray-300 hover:bg-gray-800/50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+        >
+          <Mic size={11} className={duckOnVoice && hasVoice ? 'text-purple-300' : 'text-gray-500'} />
+          <span className="flex-1 text-left">Musique s&apos;adapte à la voix</span>
+          {/* Interrupteur dessine plutot qu'une case a cocher : l'etat se
+              lit d'un coup d'oeil dans un panneau deja dense. */}
+          <span
+            className={`relative h-3.5 w-6 flex-shrink-0 rounded-full transition ${
+              duckOnVoice && hasVoice ? 'bg-purple-500' : 'bg-gray-700'
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 h-2.5 w-2.5 rounded-full bg-white transition-all ${
+                duckOnVoice && hasVoice ? 'left-3' : 'left-0.5'
+              }`}
+            />
+          </span>
+        </button>
+      )}
 
       {/* Timeline bar — click to add a keyframe */}
       <div

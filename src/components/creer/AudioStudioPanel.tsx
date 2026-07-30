@@ -7,7 +7,7 @@ import { TTS_VOICES, synthesize, type TtsVoice } from '@/lib/tts/edge-tts-client
 import { fetchHeyGenVoices, isHeyGenVoiceId } from '@/lib/types/voice';
 import AudioDuckingTimeline from '@/components/creer/AudioDuckingTimeline';
 import AudioMixPreview from '@/components/creer/AudioMixPreview';
-import { analyseRushForDucking, type AudioKeyframe } from '@/lib/creer/audioDucking';
+import { analyseRushForDucking, detectVoiceSpeech, applyVoiceDucking, type AudioKeyframe } from '@/lib/creer/audioDucking';
 
 const VOICE_STORAGE_KEY = 'tts.voiceId';
 const DEFAULT_VOICE_ID = 'fr-FR-DeniseNeural';
@@ -215,6 +215,13 @@ export function AudioStudioPanel({
   // ── Mixeur unifie ───────────────────────────────────────────────────────
   const [mixerOpen, setMixerOpen] = useState(false);
   const [autoDuckRunning, setAutoDuckRunning] = useState(false);
+  /**
+   * « La musique s'adapte a la voix ».
+   *
+   * Eteint par defaut : l'auto-mix garde exactement le comportement qu'il
+   * avait — baisser la musique pendant que le RUSH parle, et rien d'autre.
+   */
+  const [duckOnVoice, setDuckOnVoice] = useState(false);
   const [mixError, setMixError] = useState('');
   /** Geometrie du montage au moment du dernier auto-mix (voir `mixStale`). */
   const [autoMixSignature, setAutoMixSignature] = useState<string | null>(null);
@@ -298,18 +305,29 @@ export function AudioStudioPanel({
    *      meme de l'auto-mix.
    */
   const runAutoDuck = useCallback(async () => {
-    if (!rushUrl || videoSeqDuration <= 0) return;
+    // Avec « s'adapte a la voix », une voix off suffit : sans rush, il y a
+    // quand meme quelque chose a ducker.
+    const duckVoice = duckOnVoice && !!voiceUrl;
+    const hasRushWindow = !!rushUrl && videoSeqDuration > 0;
+    if (!hasRushWindow && !duckVoice) return;
     setAutoDuckRunning(true);
     setMixError('');
     try {
-      const raw = await analyseRushForDucking(rushUrl);
+      const baseMusic = effectiveKeyframes[0]?.musicVolume ?? musicVolume;
+      const keepVoice = effectiveKeyframes[0]?.voiceVolume ?? voiceVolume;
+
+      // ── Rush ────────────────────────────────────────────────────────
+      // Inchange. Sans rush utilisable, on part de la courbe actuelle et
+      // seule la voix la modifiera.
+      let curve: AudioKeyframe[] = effectiveKeyframes;
+      if (hasRushWindow) {
+      const raw = await analyseRushForDucking(rushUrl!);
       const inWindow = raw.filter((k) => k.time < videoSeqDuration);
-      if (inWindow.length === 0) {
+      if (inWindow.length === 0 && !duckVoice) {
         setMixError('Aucune variation detectee dans le rush — niveaux inchanges');
         return;
       }
-      const baseMusic = effectiveKeyframes[0]?.musicVolume ?? musicVolume;
-      const keepVoice = effectiveKeyframes[0]?.voiceVolume ?? voiceVolume;
+      if (inWindow.length > 0) {
       const shifted: AudioKeyframe[] = inWindow.map((k, i) => ({
         id: `mix-auto-${i}`,
         time: videoSeqStart + k.time,
@@ -338,18 +356,36 @@ export function AudioStudioPanel({
         ? [{ id: 'mix-auto-tail', time: tailTime, musicVolume: baseMusic, rushVolume: shifted[shifted.length - 1].rushVolume, voiceVolume: keepVoice }]
         : [];
       const body = head.length > 0 ? shifted.filter((k) => k.time > 0) : shifted;
-      onAudioKeyframesChange?.([...head, ...body, ...tail]);
+      curve = [...head, ...body, ...tail];
+      }
+      }
+
+      // ── Voix off ────────────────────────────────────────────────────
+      // Applique PAR-DESSUS la courbe du rush, qui n'est pas modifiee : la
+      // musique baisse la ou la voix parle, sans jamais remonter un passage
+      // que le rush avait deja baisse.
+      if (duckVoice) {
+        const segments = await detectVoiceSpeech(voiceUrl!);
+        if (segments.length === 0) {
+          setMixError('Aucune parole detectee dans la voix off — niveaux inchanges');
+          if (!hasRushWindow) return;
+        } else {
+          curve = applyVoiceDucking(curve, segments, { totalDuration });
+        }
+      }
+
+      onAudioKeyframesChange?.(curve);
       // Signature de la geometrie au moment de l'analyse : si les durees ou
       // l'ordre changent ensuite, la courbe ne colle plus au montage et on
       // previent au lieu de laisser exporter un ducking decale.
       setAutoMixSignature(layoutSignature);
     } catch (err) {
       console.error('[AudioPanel] auto-mix failed:', err);
-      setMixError('Analyse du rush impossible — regle les niveaux a la main');
+      setMixError('Analyse audio impossible — regle les niveaux a la main');
     } finally {
       setAutoDuckRunning(false);
     }
-  }, [rushUrl, videoSeqStart, videoSeqDuration, totalDuration, layoutSignature, effectiveKeyframes, musicVolume, voiceVolume, onAudioKeyframesChange]);
+  }, [rushUrl, videoSeqStart, videoSeqDuration, totalDuration, layoutSignature, effectiveKeyframes, musicVolume, voiceVolume, onAudioKeyframesChange, duckOnVoice, voiceUrl]);
 
   const handleFileUpload = async (file: File, target: 'music' | 'voice') => {
     if (target === 'music') setIsUploadingMusic(true);
@@ -647,6 +683,9 @@ export function AudioStudioPanel({
                 rushUrl={rushInMix ? rushUrl : null}
                 autoDuckRunning={autoDuckRunning}
                 onAutoDuck={runAutoDuck}
+                duckOnVoice={duckOnVoice}
+                onDuckOnVoiceChange={setDuckOnVoice}
+                hasVoice={!!voiceUrl}
                 playheadTime={playheadTime}
               />
               <AudioMixPreview
