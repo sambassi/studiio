@@ -111,3 +111,72 @@ describe('Mixer épuré — ce qui est replié', () => {
     expect(screen.getAllByRole('slider')).toHaveLength(3);
   });
 });
+
+describe('Mixer vraiment unifié — plus de second jeu de niveaux', () => {
+  it('affiche une jauge sous chaque piste quand les niveaux sont fournis', () => {
+    const { container } = render(
+      <AudioDuckingTimeline
+        keyframes={[kf()]}
+        onChange={vi.fn()}
+        totalDuration={20}
+        rushUrl={null}
+        autoDuckRunning={false}
+        onAutoDuck={vi.fn()}
+        levels={{ music: 0.4, rush: 0.2, voice: 0.1 }}
+      />,
+    );
+    // Trois jauges : une par piste, dans la ligne de la piste.
+    expect(container.querySelectorAll('.h-0\\.5').length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('sans niveaux fournis, aucune jauge — rendu inchangé pour /creer', () => {
+    const { container } = render(
+      <AudioDuckingTimeline
+        keyframes={[kf()]}
+        onChange={vi.fn()}
+        totalDuration={20}
+        rushUrl={null}
+        autoDuckRunning={false}
+        onAutoDuck={vi.fn()}
+      />,
+    );
+    expect(container.querySelectorAll('.h-0\\.5').length).toBe(0);
+  });
+
+  it('propose de revenir à un mixage simple dès qu il y a plusieurs points', () => {
+    const onChange = vi.fn();
+    render(
+      <AudioDuckingTimeline
+        keyframes={[kf({ id: 'a', time: 0, musicVolume: 0.6 }), kf({ id: 'b', time: 4 }), kf({ id: 'c', time: 8 })]}
+        onChange={onChange}
+        totalDuration={20}
+        rushUrl={null}
+        autoDuckRunning={false}
+        onAutoDuck={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByText(/Avancé/));
+    fireEvent.click(screen.getByText(/Revenir à un mixage simple/));
+
+    const next = onChange.mock.calls[0][0] as AudioKeyframe[];
+    expect(next).toHaveLength(1);
+    // Les volumes en cours sont conservés : on simplifie, on ne réinitialise pas.
+    expect(next[0].musicVolume).toBe(0.6);
+    expect(next[0].time).toBe(0);
+  });
+
+  it('ne propose rien quand la courbe est déjà simple', () => {
+    render(
+      <AudioDuckingTimeline
+        keyframes={[kf()]}
+        onChange={vi.fn()}
+        totalDuration={20}
+        rushUrl={null}
+        autoDuckRunning={false}
+        onAutoDuck={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByText(/Avancé/));
+    expect(screen.queryByText(/Revenir à un mixage simple/)).not.toBeInTheDocument();
+  });
+});

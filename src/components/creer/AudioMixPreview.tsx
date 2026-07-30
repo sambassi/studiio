@@ -39,6 +39,13 @@ interface Props {
    * Defaut `false` : rendu inchange pour les appelants existants.
    */
   flush?: boolean;
+  /**
+   * Niveaux mesures en direct, remontes au parent. Quand ils sont consommes
+   * ailleurs — une jauge dans la ligne de chaque piste — ce composant cesse
+   * d'afficher ses propres compteurs : c'est ce doublon qui donnait
+   * l'impression de plusieurs mixers empiles.
+   */
+  onLevels?: (levels: { music: number; rush: number; voice: number }) => void;
 }
 
 /**
@@ -66,6 +73,7 @@ export default function AudioMixPreview({
   onTimeUpdate,
   onPlayStateChange,
   flush = false,
+  onLevels,
 }: Props) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -74,6 +82,10 @@ export default function AudioMixPreview({
   const [rushLevel, setRushLevel] = useState(0);
   const [voiceLevel, setVoiceLevel] = useState(0);
   const [busy, setBusy] = useState(false);
+  // Ref : le parent recree sa lambda a chaque rendu, la mettre en dependance
+  // relancerait la lecture en boucle (regression deja vue en #226).
+  const onLevelsRef = useRef(onLevels);
+  useEffect(() => { onLevelsRef.current = onLevels; }, [onLevels]);
 
   // ── Persistent across start()s ────────────────────────────────
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -186,6 +198,7 @@ export default function AudioMixPreview({
     setMusicLevel(0);
     setRushLevel(0);
     setVoiceLevel(0);
+    onLevelsRef.current?.({ music: 0, rush: 0, voice: 0 });
   }, []);
 
   const stop = useCallback(() => {
@@ -390,9 +403,13 @@ export default function AudioMixPreview({
           }
           return Math.sqrt(sum / tmpBuf.length);
         };
-        setMusicLevel(measure(musicAnalyserRef.current));
-        setRushLevel(measure(rushAnalyserRef.current));
-        setVoiceLevel(measure(voiceAnalyserRef.current));
+        const mL = measure(musicAnalyserRef.current);
+        const rL = measure(rushAnalyserRef.current);
+        const vL = measure(voiceAnalyserRef.current);
+        setMusicLevel(mL);
+        setRushLevel(rL);
+        setVoiceLevel(vL);
+        onLevelsRef.current?.({ music: mL, rush: rL, voice: vL });
 
         setCurrentTime(t);
         onTimeUpdate?.(t);
@@ -448,7 +465,7 @@ export default function AudioMixPreview({
 
   return (
     <div className={flush ? 'space-y-2' : 'mt-3 rounded-lg border border-purple-900/50 bg-gray-900/60 p-3 space-y-2 backdrop-blur-sm'}>
-      <div className="flex items-center justify-between">
+      <div className={`flex items-center justify-between ${flush ? 'hidden' : ''}`}>
         <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
           Écouter le mixage
         </span>
@@ -488,8 +505,11 @@ export default function AudioMixPreview({
         </span>
       </div>
 
-      {/* VU meters — RMS from AnalyserNodes, scaled 2× for visual punch */}
-      <div className="grid grid-cols-3 gap-2">
+      {/* VU meters — RMS from AnalyserNodes, scaled 2× for visual punch.
+          Masques quand le parent consomme `onLevels` : ils y sont alors
+          affiches DANS la ligne de chaque piste, et les garder ici donnait un
+          second jeu « Musique / Son rush / Voix off » sous le premier. */}
+      <div className={`grid grid-cols-3 gap-2 ${onLevels ? 'hidden' : ''}`}>
         <div className="space-y-0.5">
           <div className="flex justify-between text-[9px] text-gray-400">
             <span>Musique</span>
