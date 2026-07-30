@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* Rayon commun aux contrôles. Les boutons le lisent via var(--radius) :
+     un seul endroit à changer pour ajuster la douceur des coins partout. */
+  --radius: 10px;
+}
+
 * {
   @apply border-gray-800;
 }
@@ -30,16 +36,59 @@ body {
   @apply bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:border-studiio-primary focus:ring-1 focus:ring-studiio-primary;
 }
 
-.button-primary {
-  @apply bg-studiio-primary hover:bg-purple-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors;
-}
+/* ── Boutons ───────────────────────────────────────────────────────────────
+ *
+ * Style épuré : un seul aplat discret pour l'action principale, un contour
+ * fin sur fond transparent pour tout le reste. Ni ombre ni dégradé.
+ *
+ * ⚠️ Ces classes vivent dans `@layer components` pour que les utilitaires
+ * passés par l'appelant (`bg-purple-600`, `px-6`, `h-11`…) les emportent :
+ * la couche `utilities` gagne sur `components`. Déclarées après
+ * `@tailwind utilities` comme avant, elles écrasaient en silence la couleur
+ * demandée par l'appelant.
+ *
+ * Elles gardent une hauteur et un padding par défaut : elles servent aussi
+ * SANS le composant `<Button>` (sidebar, page avatar, lien de l'assistant),
+ * où rien d'autre ne fournirait la géométrie.
+ */
+@layer components {
+  .button-base {
+    @apply inline-flex items-center justify-center gap-2 align-middle whitespace-nowrap
+           min-h-[34px] px-3.5 text-[13px] font-medium leading-none
+           transition-colors duration-150
+           focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-studiio-primary/70
+           focus-visible:ring-offset-2 focus-visible:ring-offset-studiio-dark
+           disabled:opacity-45 disabled:pointer-events-none;
+    border-radius: var(--radius);
+  }
 
-.button-secondary {
-  @apply bg-gray-800 hover:bg-gray-700 text-gray-100 font-semibold py-2 px-4 rounded-lg transition-colors border border-gray-700;
-}
+  /* Action principale — l'aplat accent est tenu à 82 % sur le fond sombre :
+     il donne un violet plus profond (#6532C1 environ) au lieu du violet vif
+     d'origine, qui était l'élément le plus criard de chaque écran. Le contraste
+     du texte blanc reste à ~6:1, bien au-dessus du seuil AA. Le survol le
+     ravive légèrement — c'est la seule récompense d'interaction, sans ombre. */
+  .button-primary {
+    @apply button-base bg-studiio-primary/[0.82] text-white
+           border-[0.5px] border-white/10 hover:bg-studiio-primary/95;
+  }
 
-.button-accent {
-  @apply bg-studiio-accent hover:bg-pink-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors;
+  /* Action secondaire — contour fin sur fond transparent, survol à peine posé. */
+  .button-secondary {
+    @apply button-base bg-transparent text-gray-100
+           border-[0.5px] border-white/[0.14] hover:bg-white/[0.05] hover:border-white/25;
+  }
+
+  /* Tertiaire — même dessin, encore plus effacé. */
+  .button-ghost {
+    @apply button-base bg-transparent text-gray-400
+           border-[0.5px] border-white/[0.08] hover:bg-white/[0.04] hover:text-gray-100;
+  }
+
+  /* Réservé aux mises en avant (offres, paiement) — même retenue que primary. */
+  .button-accent {
+    @apply button-base bg-studiio-accent/[0.82] text-white
+           border-[0.5px] border-white/10 hover:bg-studiio-accent/95;
+  }
 }
 
 .text-gradient {
