@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { toJsStringLiteral, escapeHtml } from '@/lib/social/html-escape';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 
@@ -34,7 +35,20 @@ export async function GET(req: NextRequest) {
       let tokenData: { accessToken: string; refreshToken?: string; accountId: string; accountName: string; expiresAt?: string };
 
       switch (platform) {
+        // Instagram ne passe PLUS par ici : Meta a deprecie l'acces Instagram
+        // via Facebook Login, et le flux vit desormais dans
+        // /api/social/callback/instagram. Laisser `exchangeMetaToken` traiter
+        // Instagram recreerait une ligne au format herite (account_id = compte
+        // IG Business rattache a une Page, token Facebook) que le nouveau code
+        // de publication ne sait pas utiliser : la connexion semblerait reussir
+        // et TOUTES les publications echoueraient ensuite. Mieux vaut un refus
+        // explicite. Seul un flux OAuth en vol au moment du deploiement peut
+        // encore arriver ici.
         case 'instagram':
+                  return redirectWithMessage(
+                    'error',
+                    'Instagram a change de methode de connexion. Relancez « Connecter » depuis Reglages : le compte sera reconnecte via Instagram Login.',
+                  );
         case 'facebook':
                   tokenData = await exchangeMetaToken(code, platform);
                   break;
@@ -116,14 +130,23 @@ export async function GET(req: NextRequest) {
     }
 }
 
+
 function redirectWithMessage(type: string, message: string): NextResponse {
     const isSuccess = type === 'success';
-    const safeMessage = message.replace(/'/g, "\\'").replace(/</g, '&lt;');
+    // Deux contextes, deux echappements — les confondre est une XSS.
+    //
+    // L'ancien `replace(/'/g, "\\'")` ne tenait pas : un antislash final
+    // (`...\`) devenait `...\'` et fermait la chaine JS, permettant d'injecter
+    // du script. Or `message` transporte `error_description`, un parametre
+    // d'URL entierement controle par l'appelant. Faille PRE-EXISTANTE, sans
+    // rapport avec Instagram, mais identique — corrigee ici aussi.
+    const jsMessage = toJsStringLiteral(message);
+    const safeMessage = escapeHtml(message);
     const html = isSuccess
       ? `<!DOCTYPE html><html><head><title>Connexion reussie</title></head><body style="font-family:sans-serif;padding:40px;text-align:center">
 <script>
   if (window.opener) {
-    window.opener.postMessage({ type: 'social-oauth-success', message: '${safeMessage}' }, '*');
+    window.opener.postMessage({ type: 'social-oauth-success', message: ${jsMessage} }, '*');
   }
   setTimeout(() => window.close(), 800);
 </script>
@@ -137,12 +160,12 @@ function redirectWithMessage(type: string, message: string): NextResponse {
 <button onclick="window.close()" style="padding:10px 20px;background:#333;color:#fff;border:0;border-radius:6px;cursor:pointer">Fermer</button>
 <script>
   if (window.opener) {
-    window.opener.postMessage({ type: 'social-oauth-error', message: '${safeMessage}' }, '*');
+    window.opener.postMessage({ type: 'social-oauth-error', message: ${jsMessage} }, '*');
   }
 </script>
 </body></html>`;
     return new NextResponse(html, {
-      headers: { 'Content-Type': 'text/html' },
+      headers: { 'Content-Type': 'text/html; charset=utf-8', 'X-Content-Type-Options': 'nosniff' },
     });
 }
 
