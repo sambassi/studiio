@@ -635,8 +635,12 @@ export function AudioStudioPanel({
           </button>
 
           {mixerOpen && hasAnyAudio && (
-            <>
+            /* UN seul bloc : les deux composants sont rendus « flush », le
+               cadre est fourni ici. Sans ca, l'utilisateur voyait deux cartes
+               empilees pour un seul et meme mixage. */
+            <div className="mt-2 rounded-lg border border-gray-800 bg-gray-900/60 p-3 space-y-3">
               <AudioDuckingTimeline
+                flush
                 keyframes={effectiveKeyframes}
                 onChange={handleKeyframesChange}
                 totalDuration={totalDuration}
@@ -646,6 +650,7 @@ export function AudioStudioPanel({
                 playheadTime={playheadTime}
               />
               <AudioMixPreview
+                flush
                 audioKeyframes={effectiveKeyframes}
                 musicUrl={musicUrl}
                 voiceUrl={voiceUrl}
@@ -682,7 +687,7 @@ export function AudioStudioPanel({
                   </div>
                 </div>
               )}
-            </>
+            </div>
           )}
         </div>
       )}
