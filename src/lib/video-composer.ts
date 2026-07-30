@@ -2652,19 +2652,55 @@ function drawCTA(
 /**
  * Styles disponibles entre deux sequences.
  *
- * - `crossfade`   : fondu croise — le comportement HISTORIQUE, defaut absolu.
- * - `slide`       : la sequence sortante glisse a gauche, l'entrante arrive
- *                   par la droite. Translation pure : aucune deformation.
- * - `wipe`        : balayage — l'entrante est revelee par un volet vertical.
- * - `zoom`        : la sortante s'eloigne en grossissant, l'entrante arrive
- *                   depuis un leger recul. Echelle UNIFORME (sx === sy).
- * - `fade-to-black`: fondu au noir puis ouverture sur la sequence suivante.
+ * Les cinq premiers datent de #228 et sont figes : leur rendu ne doit plus
+ * bouger. Les quatre suivants sont les styles « cinema ».
+ *
+ * - `crossfade`     : fondu croise — le comportement HISTORIQUE, defaut absolu.
+ * - `slide`         : la sortante glisse a gauche, l'entrante arrive par la
+ *                     droite. Translation pure : aucune deformation.
+ * - `wipe`          : balayage — l'entrante est revelee par un volet vertical.
+ * - `zoom`          : la sortante s'eloigne en grossissant, l'entrante arrive
+ *                     depuis un leger recul. Echelle UNIFORME (sx === sy).
+ * - `fade-to-black` : fondu au noir puis ouverture sur la suivante.
+ * - `push`          : poussee VERTICALE — la sortante est chassee vers le haut,
+ *                     l'entrante monte par le bas. Le pendant vertical de
+ *                     `slide`, translation pure elle aussi.
+ * - `iris`          : ouverture circulaire au centre, facon fermeture a l'iris
+ *                     du cinema muet.
+ * - `blur-dissolve` : fondu enchaine avec un flou qui monte puis redescend —
+ *                     le fondu « doux » des documentaires.
+ * - `whip-pan`      : balayage lateral rapide et flou, facon transition
+ *                     camera fouettee.
  */
-export type TransitionStyle = 'crossfade' | 'slide' | 'wipe' | 'zoom' | 'fade-to-black';
+export type TransitionStyle =
+  | 'crossfade' | 'slide' | 'wipe' | 'zoom' | 'fade-to-black'
+  | 'push' | 'iris' | 'blur-dissolve' | 'whip-pan';
 
-export const TRANSITION_STYLES: TransitionStyle[] = [
+/**
+ * Liste de reference des styles — c'est elle que l'UI lira pour son menu.
+ * L'ordre est celui d'affichage : le defaut d'abord, puis les geometriques,
+ * puis les styles « cinema ».
+ */
+export const TRANSITION_KEYS: TransitionStyle[] = [
   'crossfade', 'slide', 'wipe', 'zoom', 'fade-to-black',
+  'push', 'iris', 'blur-dissolve', 'whip-pan',
 ];
+
+/** Libelles pour le futur menu de l'editeur. */
+export const TRANSITION_LABELS: Record<TransitionStyle, string> = {
+  'crossfade': 'Fondu enchaîné',
+  'slide': 'Glissement',
+  'wipe': 'Balayage',
+  'zoom': 'Zoom',
+  'fade-to-black': 'Fondu au noir',
+  'push': 'Poussée verticale',
+  'iris': 'Iris',
+  'blur-dissolve': 'Fondu flouté',
+  'whip-pan': 'Balayage fouetté',
+};
+
+/** @deprecated Utiliser `TRANSITION_KEYS`. Conserve pour les appelants existants. */
+export const TRANSITION_STYLES: TransitionStyle[] = TRANSITION_KEYS;
 
 /** Style applique quand rien n'est demande — ne jamais changer sans casser la retro-compat. */
 export const DEFAULT_TRANSITION: TransitionStyle = 'crossfade';
@@ -2686,6 +2722,62 @@ export interface TransitionScratch {
 function easeInOut(t: number): number {
   const c = Math.max(0, Math.min(1, t));
   return c < 0.5 ? 2 * c * c : 1 - Math.pow(-2 * c + 2, 2) / 2;
+}
+
+/**
+ * Meme forme que `easeInOut` mais en cubique : le mouvement est presque a
+ * l'arret aux deux extremites et fulgurant au milieu. C'est ce contraste qui
+ * fait lire un `whip-pan` comme un coup de camera et non comme un glissement.
+ */
+function easeInOutCubic(t: number): number {
+  const c = Math.max(0, Math.min(1, t));
+  return c < 0.5 ? 4 * c * c * c : 1 - Math.pow(-2 * c + 2, 3) / 2;
+}
+
+/** Flou maximal (au milieu de la transition) du style `blur-dissolve`, en px a 1080 de large. */
+const BLUR_DISSOLVE_MAX_PX = 16;
+/** Flou maximal du filé de `whip-pan`. Plus marque : c'est un mouvement rapide. */
+const WHIP_PAN_MAX_BLUR_PX = 26;
+/**
+ * Sur-echelle appliquee a un calque floute.
+ *
+ * Un flou fait baver l'image AU-DELA de ses bords, donc ses bords deviennent
+ * semi-transparents : dessine tel quel, un calque floute laisse un lisere
+ * translucide sur les quatre cotes de la frame. On l'agrandit legerement pour
+ * repousser ce lisere hors du cadre. Echelle UNIFORME — aucune deformation.
+ */
+const BLUR_OVERSCALE = 1.06;
+
+/**
+ * Dessine un calque avec flou, opacite et decalage horizontal optionnels.
+ *
+ * `ctx.filter` fait partie de l'etat du canvas : le `save`/`restore` le remet
+ * seul a sa valeur precedente. On le remet malgre tout explicitement a `none`
+ * avant de rendre la main, car un navigateur qui ignore `filter` laisserait
+ * sinon la chaine en place pour tout le reste de la frame.
+ */
+function drawBlurredLayer(
+  ctx: CanvasRenderingContext2D,
+  layer: CanvasImageSource,
+  w: number, h: number,
+  blurPx: number,
+  alpha: number,
+  offsetX = 0,
+) {
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+  if (blurPx > 0.1) {
+    ctx.filter = `blur(${blurPx.toFixed(1)}px)`;
+    // Recentre la sur-echelle sur le milieu du calque, decalage inclus.
+    ctx.translate(offsetX + w / 2, h / 2);
+    ctx.scale(BLUR_OVERSCALE, BLUR_OVERSCALE);
+    ctx.translate(-w / 2, -h / 2);
+    ctx.drawImage(layer, 0, 0);
+  } else {
+    ctx.drawImage(layer, offsetX, 0);
+  }
+  ctx.filter = 'none';
+  ctx.restore();
 }
 
 /**
@@ -2788,6 +2880,50 @@ export function drawTransition(
         ctx.drawImage(layerB, 0, 0);
       }
       ctx.restore();
+      break;
+    }
+
+    // ── Styles « cinema » ──
+
+    case 'push': {
+      // Pendant VERTICAL de `slide` : la sortante est chassee vers le haut,
+      // l'entrante monte par le bas. Translation pure, calques jointifs.
+      ctx.drawImage(layerA, 0, -h * e);
+      ctx.drawImage(layerB, 0, h * (1 - e));
+      break;
+    }
+
+    case 'iris': {
+      // Ouverture circulaire. Le rayon final couvre les coins (demi-diagonale),
+      // sinon la frame finirait avec quatre angles restes sur la sortante.
+      ctx.drawImage(layerA, 0, 0);
+      const rMax = Math.hypot(w, h) / 2;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(w / 2, h / 2, rMax * e, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(layerB, 0, 0);
+      ctx.restore();
+      break;
+    }
+
+    case 'blur-dissolve': {
+      // Fondu enchaine, mais les deux calques passent par un flou qui monte
+      // puis redescend (nul aux deux extremites, maximal au milieu).
+      const blurPx = BLUR_DISSOLVE_MAX_PX * Math.sin(Math.PI * Math.max(0, Math.min(1, t)));
+      drawBlurredLayer(ctx, layerA, w, h, blurPx, 1 - e);
+      drawBlurredLayer(ctx, layerB, w, h, blurPx, e);
+      break;
+    }
+
+    case 'whip-pan': {
+      // Balayage lateral tres rapide : meme translation que `slide` mais avec
+      // une courbe cubique (quasi immobile aux extremites, fulgurante au
+      // milieu) et un flou qui simule le filé de la camera.
+      const eWhip = easeInOutCubic(t);
+      const blurPx = WHIP_PAN_MAX_BLUR_PX * Math.sin(Math.PI * Math.max(0, Math.min(1, t)));
+      drawBlurredLayer(ctx, layerA, w, h, blurPx, 1, -w * eWhip);
+      drawBlurredLayer(ctx, layerB, w, h, blurPx, 1, w * (1 - eWhip));
       break;
     }
 
