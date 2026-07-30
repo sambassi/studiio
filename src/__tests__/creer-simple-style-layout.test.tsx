@@ -23,7 +23,7 @@ const wizardSource = readFileSync(
 const GENERATED = {
   title: 'Mon titre',
   subtitle: 'Mon sous-titre',
-  cards: [{ icon: 'Droplet', title: 'Ma carte', description: 'Description', value: '80%' }],
+  cards: [{ id: 'c1', icon: 'Droplet', title: 'Ma carte', description: 'Description', value: '80%' }],
   cta: 'JE ME LANCE',
   ctaSub: 'LIEN EN BIO',
 };

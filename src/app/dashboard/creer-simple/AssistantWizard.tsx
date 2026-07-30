@@ -46,6 +46,7 @@ import {
   writeDraft,
   clearDraft,
   persistableUrl as persistableDraftUrl,
+  newCardId,
   type Draft,
 } from '@/lib/creer/draft';
 import { useBranding, NEUTRAL_BRANDING } from '@/lib/hooks/useBranding';
@@ -557,6 +558,19 @@ const COST = { reel: 10, tv: 15 } as const;
 type Format = '9:16' | '1:1' | '16:9';
 
 interface GeneratedCard {
+  /**
+   * Identite stable d'une carte, portee par la carte elle-meme et non par sa
+   * place dans le tableau.
+   *
+   * Les cartes etaient rendues avec `key={i}` : l'index sert d'identite tant
+   * que la liste ne bouge pas, mais il designe une AUTRE carte des qu'on en
+   * insere, supprime ou reordonne une. C'est le prealable a dupliquer et a
+   * regrouper, qui doivent tous deux nommer une carte precise.
+   *
+   * L'`id` est cree a la generation et survit au brouillon (`draft.ts`), pour
+   * qu'un groupe enregistre designe encore les memes cartes apres un F5.
+   */
+  id: string;
   icon: string; // emoji renvoyé par smart-content
   title: string;
   description: string;
@@ -978,9 +992,9 @@ export function Preview({
               className="absolute flex flex-col justify-center"
               style={{ left: '8%', right: '8%', top: '30%', bottom: '22%', gap: vw * CARD_RATIO.gap }}
             >
-              {(shows('cards') ? generated.cards : []).map((c, i) => (
+              {(shows('cards') ? generated.cards : []).map((c) => (
                 <div
-                  key={i}
+                  key={c.id}
                   className="flex items-center"
                   style={{
                     backgroundColor: 'rgba(255,255,255,0.08)',
@@ -1831,7 +1845,7 @@ export default function AssistantWizard() {
         setGenerated({
           title: result.tagLine,
           subtitle: result.subtitle,
-          cards: result.cards.slice(0, 5),
+          cards: result.cards.slice(0, 5).map((c) => ({ ...c, id: newCardId() })),
           cta: tone.cta,
           ctaSub: tone.ctaSub,
         });
@@ -3248,9 +3262,9 @@ export default function AssistantWizard() {
                     </div>
 
                     <div className="space-y-1.5">
-                      {(activeOrder.includes('cards') ? generated.cards : []).map((c, i) => (
+                      {(activeOrder.includes('cards') ? generated.cards : []).map((c) => (
                         <div
-                          key={i}
+                          key={c.id}
                           className="flex items-start gap-3 rounded-xl bg-gray-900/60 p-3"
                         >
                           <CardIcon name={c.icon} size={16} color="#C4B5FD" className="" />

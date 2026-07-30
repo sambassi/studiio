@@ -275,11 +275,24 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
   return out;
 }
 
+/**
+ * Identifiant de carte. Le compteur importe autant que l'horodatage :
+ * `Date.now()` seul donnerait le meme `id` a deux cartes creees dans la meme
+ * milliseconde, ce que fait une duplication multiple.
+ */
+let cardIdSeq = 0;
+export const newCardId = () => `card-${Date.now().toString(36)}-${(cardIdSeq++).toString(36)}`;
+
 /** Contenu généré relu — la forme entière, ou rien. */
 function sanitizeGenerated(raw: unknown): unknown {
   if (!isObj(raw)) return null;
   const { title, subtitle, cards, cta, ctaSub } = raw;
   if (typeof title !== 'string' || !Array.isArray(cards)) return null;
+  // Les `id` deja vus. Un brouillon anterieur a l'introduction des `id` n'en a
+  // aucun ; un brouillon abime peut en avoir deux fois le meme. Dans les deux
+  // cas on en refabrique un, sans quoi l'identite ne vaudrait pas mieux que
+  // l'index qu'elle remplace.
+  const seen = new Set<string>();
   return {
     title,
     subtitle: typeof subtitle === 'string' ? subtitle : '',
@@ -288,12 +301,17 @@ function sanitizeGenerated(raw: unknown): unknown {
     cards: cards
       .filter(isObj)
       .slice(0, 10)
-      .map((c) => ({
-        icon: typeof c.icon === 'string' ? c.icon : 'Sparkles',
-        title: typeof c.title === 'string' ? c.title : '',
-        description: typeof c.description === 'string' ? c.description : '',
-        value: typeof c.value === 'string' ? c.value : '',
-      })),
+      .map((c) => {
+        const id = typeof c.id === 'string' && c.id && !seen.has(c.id) ? c.id : newCardId();
+        seen.add(id);
+        return {
+          id,
+          icon: typeof c.icon === 'string' ? c.icon : 'Sparkles',
+          title: typeof c.title === 'string' ? c.title : '',
+          description: typeof c.description === 'string' ? c.description : '',
+          value: typeof c.value === 'string' ? c.value : '',
+        };
+      }),
   };
 }
 
