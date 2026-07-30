@@ -49,6 +49,37 @@ interface Props {
  * volume + rush volume) in a compact row below. The ducking curve is
  * applied by the composer via `sampleKeyframes`.
  */
+/** Valeurs de repli, alignees sur ce que le compositeur applique par defaut. */
+const FALLBACK = { time: 0, musicVolume: 1, rushVolume: 0.5, voiceVolume: 1 };
+
+/**
+ * Rend un keyframe sur : tout champ absent, non numerique ou infini est
+ * remplace par son repli. Un keyframe valide ressort INCHANGE — c'est ce qui
+ * garantit qu'aucune courbe existante n'est modifiee par ce garde-fou.
+ */
+export function sanitizeKeyframe(kf: AudioKeyframe): AudioKeyframe {
+  const num = (v: unknown, fallback: number) =>
+    typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+  const time = Math.max(0, num(kf?.time, FALLBACK.time));
+  const musicVolume = num(kf?.musicVolume, FALLBACK.musicVolume);
+  const rushVolume = num(kf?.rushVolume, FALLBACK.rushVolume);
+  // `voiceVolume` est optionnel par contrat : `undefined` reste `undefined`,
+  // les appelants le lisent deja en `?? 1`. On ne corrige que l'aberrant.
+  const voiceVolume = kf?.voiceVolume === undefined
+    ? undefined
+    : num(kf.voiceVolume, FALLBACK.voiceVolume);
+  // `id` compte autant que les nombres : il sert de cle React ET de cible aux
+  // modifications par keyframe. Absent, la ligne devient immodifiable.
+  const hasId = typeof kf?.id === 'string' && kf.id.length > 0;
+  if (
+    hasId && time === kf?.time && musicVolume === kf?.musicVolume
+    && rushVolume === kf?.rushVolume && voiceVolume === kf?.voiceVolume
+  ) {
+    return kf; // rien a reparer : meme reference, zero re-rendu inutile
+  }
+  return { ...kf, id: hasId ? kf.id : `kf-${Math.round(time * 100)}`, time, musicVolume, rushVolume, voiceVolume };
+}
+
 export default function AudioDuckingTimeline({
   keyframes,
   onChange,
@@ -63,7 +94,14 @@ export default function AudioDuckingTimeline({
   hasVoice = false,
 }: Props) {
   const duration = Math.max(1, totalDuration); // never divide by zero
-  const sorted = [...keyframes].sort((a, b) => a.time - b.time);
+  // ⚠️ Les keyframes viennent d'ailleurs : brouillon restaure, post relu,
+  // generateur d'auto-mix. Un seul champ manquant suffisait a faire tomber
+  // toute la page — `kf.time.toFixed()` sur `undefined` leve, et le crash
+  // survenait DANS le map de rendu, donc au deploiement du bloc « Avancé ».
+  // On repare au lieu d'ecarter : ecarter un keyframe malforme le ferait
+  // disparaitre a la premiere modification globale (les mutations remappent
+  // cette liste), c'est-a-dire une perte de donnee silencieuse.
+  const sorted = [...keyframes].map(sanitizeKeyframe).sort((a, b) => a.time - b.time);
   // Mode avancé: timeline + keyframes individuels. Caché par défaut pour
   // que le panneau reste lisible — l'utilisateur lambda n'a besoin que
   // des 3 sliders globaux. Auto-duck reste accessible directement.
