@@ -1453,7 +1453,19 @@ export default function AssistantWizard() {
   //
   // Un rafraichissement perdait tout le travail. Tout ce qui suit sert a ce
   // qu'il n'en perde plus rien.
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
+  /**
+   * La session n'est PAS disponible au premier rendu.
+   *
+   * `SessionProvider` est monte sans session initiale : `useSession()` rend
+   * d'abord `status === 'loading'` et `data === undefined`. Restaurer a ce
+   * moment-la lisait la cle anonyme, ne trouvait rien — et la sauvegarde
+   * ecrasait ensuite la cle du compte avec l'etat par defaut. Autrement dit :
+   * un rafraichissement ne restaurait rien ET detruisait le brouillon, alors
+   * que la navigation interne, elle, fonctionnait (le fournisseur y est deja
+   * resolu). C'est le seul cas qui comptait qui echouait.
+   */
+  const sessionReady = status !== 'loading';
   const storageKey = draftKey(session?.user?.email);
   /** Vrai une fois la restauration tentee : on n'ecrit rien avant. */
   const restoredRef = useRef(false);
@@ -1488,6 +1500,7 @@ export default function AssistantWizard() {
     videoDuration,
     ctaDuration,
     generated,
+    audioKeyframes,
     // Les `blob:` ne survivent pas au rechargement : les enregistrer laisserait
     // un media fantome dans le brouillon restaure.
     musicUrl: persistableDraftUrl(musicUrl),
@@ -1504,7 +1517,7 @@ export default function AssistantWizard() {
     started, step, themeId, customTopic, toneId, format, colors,
     titleStyle, subtitleStyle, ctaStyle, watermarkOverride, watermarkEnabled,
     sequences, introDuration, cardsDuration, videoDuration, ctaDuration,
-    generated, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
+    generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
     voiceVolume, rushUrl, rushName, rushIsClip, scheduledDate,
   ]);
 
@@ -1520,7 +1533,7 @@ export default function AssistantWizard() {
    * qu'il a de bon plutot que de tout perdre.
    */
   useEffect(() => {
-    if (restoredRef.current) return;
+    if (!sessionReady || restoredRef.current) return;
     restoredRef.current = true;
     const draft = sanitizeDraft(readDraft(storageKey), {
       themeIds: THEMES.map((t) => t.id),
@@ -1558,6 +1571,7 @@ export default function AssistantWizard() {
     setVideoDuration(draft.videoDuration!);
     setCtaDuration(draft.ctaDuration!);
     if (draft.generated) setGenerated(draft.generated as Generated);
+    if (draft.audioKeyframes) setAudioKeyframes(draft.audioKeyframes as AudioKeyframe[]);
     if (draft.musicUrl) { setMusicUrl(draft.musicUrl); setMusicName(draft.musicName ?? ''); }
     if (draft.voiceUrl) { setVoiceUrl(draft.voiceUrl); setVoiceName(draft.voiceName ?? ''); }
     setMusicVolume(draft.musicVolume!);
@@ -1580,14 +1594,15 @@ export default function AssistantWizard() {
       draft.rushUrl ? 'rush' : null,
       draft.musicUrl || draft.voiceUrl ? 'audio' : null,
     ].filter(Boolean);
-    setRestoredNotice(
-      `Brouillon restauré${bits.length ? ` (${bits.join(', ')})` : ''}.`,
-    );
-    // Uniquement au montage : `storageKey` peut arriver apres la session, et
-    // relancer la restauration ecraserait ce que l'utilisateur vient de
-    // regler.
+    // Uniquement si le brouillon porte du travail : annoncer « Brouillon
+    // restaure » sur un ecran vierge inquiete sans rien apprendre.
+    if (draft.started || draft.generated) {
+      setRestoredNotice(`Brouillon restauré${bits.length ? ` (${bits.join(', ')})` : ''}.`);
+    }
+    // `restoredRef` garantit un seul passage : une fois la session resolue,
+    // relancer la restauration ecraserait ce que l'utilisateur vient de regler.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [sessionReady, storageKey]);
 
   /**
    * Sauvegarde : minuterie, PLUS trois filets.
@@ -1598,28 +1613,61 @@ export default function AssistantWizard() {
    * l'ecriture dans le nettoyage de l'effet — qui couvre le demontage, donc
    * la navigation interne — et `pagehide`, plus fiable qu'`unload` sur iOS.
    */
+  /**
+   * Ecriture effective — le SEUL point qui touche au stockage.
+   *
+   * Le garde est ici, et pas seulement a l'entree des effets : « Repartir de
+   * zero » le baisse puis recharge la page, et c'est `pagehide` qui, sinon,
+   * reecrivait aussitot le brouillon qu'on venait d'effacer.
+   *
+   * Rien n'est ecrit tant que l'utilisateur n'a pas commence : une simple
+   * visite laissait sinon un brouillon par defaut, et la visite suivante
+   * annoncait « Brouillon restaure » sur un ecran vierge.
+   */
+  const flushDraft = useCallback(() => {
+    if (!restoredRef.current || !sessionReady) return;
+    const draft = draftRef.current();
+    if (!draft.started && !draft.generated) return;
+    writeDraft(storageKey, draft);
+  }, [storageKey, sessionReady]);
+  const flushRef = useRef(flushDraft);
+  flushRef.current = flushDraft;
+
+  // Minuterie : une ecriture APRES la pause de frappe. Le nettoyage ne fait
+  // qu'annuler le minuteur — y ecrire rendait le debounce inoperant, puisque
+  // cet effet se relance a chaque frappe.
   useEffect(() => {
-    if (!restoredRef.current) return;
-    const flush = () => writeDraft(storageKey, draftRef.current());
-    const timer = setTimeout(flush, 400);
-    window.addEventListener('pagehide', flush);
-    window.addEventListener('beforeunload', flush);
+    const timer = setTimeout(() => flushRef.current(), 400);
+    return () => clearTimeout(timer);
+  }, [buildDraft, flushDraft]);
+
+  /**
+   * Les filets : demontage et fermeture d'onglet.
+   *
+   * `beforeunload` ne se declenche pas sur une navigation interne Next — un
+   * clic dans la barre laterale demonte le composant sans jamais le lever —
+   * d'ou l'ecriture dans le nettoyage. Et `pagehide` est plus fiable
+   * qu'`unload` sur mobile.
+   */
+  useEffect(() => {
+    const onHide = () => flushRef.current();
+    window.addEventListener('pagehide', onHide);
+    window.addEventListener('beforeunload', onHide);
     return () => {
-      clearTimeout(timer);
-      window.removeEventListener('pagehide', flush);
-      window.removeEventListener('beforeunload', flush);
-      // Demontage : ecriture SYNCHRONE. Sans elle, les 400 dernieres
-      // millisecondes d'edition disparaissaient a chaque navigation interne.
-      flush();
+      window.removeEventListener('pagehide', onHide);
+      window.removeEventListener('beforeunload', onHide);
+      onHide();
     };
-  }, [storageKey, buildDraft]);
+  }, []);
 
   /** Repartir de zero — le brouillon est efface, la page se recharge propre. */
   const discardDraft = () => {
-    clearDraft(storageKey);
-    // On empeche le nettoyage de l'effet de re-ecrire ce qu'on vient
-    // d'effacer : sans ce garde, « repartir de zero » ne partait de rien.
+    // L'ordre compte : baisser le garde AVANT d'effacer. `flushDraft` le lit
+    // a chaque appel, donc plus rien ne peut reecrire — ni le nettoyage des
+    // effets, ni le `pagehide` que va lever le rechargement. Sans cela,
+    // « repartir de zero » repartait du meme brouillon.
     restoredRef.current = false;
+    clearDraft(storageKey);
     window.location.reload();
   };
 
@@ -1633,9 +1681,15 @@ export default function AssistantWizard() {
   // Date du jour posée après le montage : la calculer pendant le rendu
   // provoquerait un écart d'hydratation entre serveur et navigateur.
   useEffect(() => {
-    const d = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    setScheduledDate(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
+    // `setScheduledDate` seulement si le champ est encore vide : cet effet
+    // s'executait APRES la restauration et ecrasait la date du brouillon par
+    // celle du jour.
+    setScheduledDate((prev) => {
+      if (prev) return prev;
+      const d = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    });
   }, []);
 
   /** Ordre effectif : sequences activees, dans l'ordre choisi. */

@@ -71,6 +71,7 @@ export interface Draft {
   videoDuration?: number;
   ctaDuration?: number;
   generated?: unknown;
+  audioKeyframes?: unknown;
   musicUrl?: string;
   musicName?: string;
   voiceUrl?: string;
@@ -176,7 +177,7 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
       }
     : null;
 
-  return {
+  const out: Draft = {
     version: DRAFT_VERSION,
     savedAt: typeof raw.savedAt === 'number' ? raw.savedAt : 0,
     started: raw.started === true,
@@ -234,6 +235,17 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
     videoDuration: num(raw.videoDuration, 0, 60, d.durations.video),
     ctaDuration: num(raw.ctaDuration, 0, 60, d.durations.cta),
     generated: sanitizeGenerated(raw.generated),
+    audioKeyframes: Array.isArray(raw.audioKeyframes)
+      ? raw.audioKeyframes
+          .filter(isObj)
+          .slice(0, 200)
+          .map((k) => ({
+            t: num(k.t, 0, 3600, 0),
+            music: num(k.music, 0, 1, 0.5),
+            voice: num(k.voice, 0, 1, 1),
+            rush: num(k.rush, 0, 1, 1),
+          }))
+      : undefined,
     // Ces URL sont relues telles quelles : elles ont été filtrées A L'ECRITURE
     // (`persistableUrl`), donc aucune `blob:` n'a pu être enregistrée.
     musicUrl: persistableUrl(raw.musicUrl as string),
@@ -250,6 +262,17 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
         ? raw.scheduledDate
         : undefined,
   };
+
+  // Sequence « Video » active mais rush disparu — URL `blob:` filtree a
+  // l'ecriture, ou fichier expire depuis. La laisser active ferait sortir un
+  // montage avec N secondes de vide a la place de la video.
+  if (!out.rushUrl) {
+    out.sequences = out.sequences!.map((s) =>
+      s.key === 'video' ? { ...s, enabled: false } : s,
+    );
+    out.videoDuration = 0;
+  }
+  return out;
 }
 
 /** Contenu généré relu — la forme entière, ou rien. */

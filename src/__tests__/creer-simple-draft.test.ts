@@ -325,58 +325,33 @@ describe('Stockage', () => {
   });
 });
 
-describe('Quand la sauvegarde se déclenche', () => {
-  const effect = wizardSource.slice(
-    wizardSource.indexOf('if (!restoredRef.current) return;\n    const flush'),
-    wizardSource.indexOf('const discardDraft'),
-  );
-
-  it('écrit après une pause de frappe, pas à chaque caractère', () => {
-    expect(effect).toMatch(/setTimeout\(flush, 400\)/);
-  });
-
-  it('écrit AUSSI au démontage — la navigation interne ne lève pas `beforeunload`', () => {
-    // Un clic dans la barre latérale démonte le composant sans jamais lever
-    // `beforeunload` : sans cette écriture, les 400 dernières millisecondes
-    // d'édition disparaissaient à chaque navigation.
-    expect(effect).toMatch(/return \(\) => \{[\s\S]*flush\(\);[\s\S]*\}/);
-  });
-
-  it('écoute `pagehide`, plus fiable qu’`unload` sur mobile', () => {
-    expect(effect).toMatch(/addEventListener\('pagehide', flush\)/);
-    expect(effect).toMatch(/addEventListener\('beforeunload', flush\)/);
-    // Et retire ses écouteurs : sans cela, chaque montage en ajouterait un.
-    expect(effect).toMatch(/removeEventListener\('pagehide', flush\)/);
-    expect(effect).toMatch(/removeEventListener\('beforeunload', flush\)/);
-  });
-
-  it('n’écrit rien avant d’avoir tenté la restauration', () => {
-    // Écrire un état par défaut avant de relire écraserait le brouillon
-    // qu'on s'apprête à restaurer.
-    expect(effect).toMatch(/if \(!restoredRef\.current\) return;/);
-  });
-
+describe('Structure du câblage', () => {
+  // Le COMPORTEMENT (débounce, écriture au démontage, `pagehide`, « repartir
+  // de zéro ») est vérifié en montant le vrai composant, dans
+  // `creer-simple-draft-behaviour.test.tsx`. Les expressions régulières qui
+  // s'en chargeaient ici passaient alors que trois de ces comportements
+  // étaient cassés — elles ne testaient que la présence de texte.
+  // Ne reste ici que ce qu'un test de comportement ne montre pas : qu'il
+  // n'existe qu'un seul endroit où l'état est construit et écrit.
   it('construit l’état à sauvegarder en UN SEUL endroit', () => {
-    // Trois chemins d'écriture : minuterie, démontage, fermeture d'onglet.
+    // Trois moments d'écriture : minuterie, démontage, fermeture d'onglet.
     // Écrit trois fois, l'état aurait fini par diverger, et c'est le chemin
     // le moins testé qui aurait enregistré un brouillon incomplet.
     expect(wizardSource.match(/const buildDraft = useCallback/g)).toHaveLength(1);
-    expect(wizardSource.match(/writeDraft\(storageKey, draftRef\.current\(\)\)/g)).toHaveLength(1);
+    expect(wizardSource.match(/writeDraft\(/g)).toHaveLength(1);
   });
-});
 
-describe('Repartir de zéro', () => {
-  it('efface le brouillon sans que le démontage le réécrive', () => {
-    // Sans ce garde, le nettoyage de l'effet réécrivait aussitôt ce qu'on
-    // venait d'effacer : « repartir de zéro » ne partait de rien.
-    const discard = wizardSource.slice(
-      wizardSource.indexOf('const discardDraft = () => {'),
-      wizardSource.indexOf('const genTimerRef'),
+  it('n’a qu’un seul point d’écriture, et il porte le garde', () => {
+    // Le garde doit vivre DANS l'écriture, pas seulement à l'entrée des
+    // effets : « repartir de zéro » le baisse puis recharge, et c'est
+    // `pagehide` qui réécrivait le brouillon effacé.
+    const flush = wizardSource.slice(
+      wizardSource.indexOf('const flushDraft = useCallback'),
+      wizardSource.indexOf('const flushRef'),
     );
-    expect(discard).toMatch(/clearDraft\(storageKey\)/);
-    expect(discard).toMatch(/restoredRef\.current = false/);
-    expect(discard.indexOf('restoredRef.current = false')).toBeGreaterThan(
-      discard.indexOf('clearDraft(storageKey)'),
-    );
+    expect(flush).not.toHaveLength(0);
+    expect(flush).toMatch(/if \(!restoredRef\.current \|\| !sessionReady\) return;/);
+    // Et rien n'est écrit tant qu'il n'y a pas de travail.
+    expect(flush).toMatch(/if \(!draft\.started && !draft\.generated\) return;/);
   });
 });
