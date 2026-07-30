@@ -895,7 +895,7 @@ interface PexelsPhoto {
 }
 
 type Format = "9:16" | "16:9";
-type Destination = "draft" | "export" | "both" | "audio-studio";
+type Destination = "draft" | "export" | "both";
 
 // ── Content Themes ─────────────────────────────────────────────
 const CONTENT_THEMES = [
@@ -3083,7 +3083,7 @@ function InfographicPageInner() {
   const [destination, setDestination] = useState<Destination>("draft");
   // Image export only goes to "Bureau" (download). Force destination back
   // to 'export' if the user switches to JPG/PNG while another destination
-  // (calendrier / both / audio-studio) is selected.
+  // (calendrier / both) is selected.
   // (exportFormat is declared earlier — see "Export format must be declared
   // before snapshot save useEffect" comment near line ~2070.)
   useEffect(() => {
@@ -4726,7 +4726,7 @@ function InfographicPageInner() {
         const hasVideo = !!rushUrl;
         const mediaType = hasVideo ? "video" : "image";
 
-        if (destination === "draft" || destination === "both" || destination === "audio-studio") {
+        if (destination === "draft" || destination === "both") {
           // Spread within the current month so all batch posts stay visible on
           // the same calendar view. The calendar fetches one month at a time,
           // so a naive `today + b` pushes b=1, b=2 into the next month and the
@@ -5290,7 +5290,7 @@ function InfographicPageInner() {
               },
             }),
           });
-          // Capture created post ID for Studio Son redirect
+          // Capture created post ID — sert a la redirection Calendrier
           let createdPostId: string | null = null;
           try {
             const postData = await postRes.json();
@@ -5708,14 +5708,7 @@ function InfographicPageInner() {
       // Success is conveyed by the progress bar reaching 100%; no extra toast.
       // (User explicitly asked: ne pas en afficher ailleurs.)
 
-      if (destination === 'audio-studio') {
-        const audioStudioUrl = createdPostIds.length === 1
-          ? `/dashboard/audio-studio?postId=${createdPostIds[0]}`
-          : createdPostIds.length > 1
-            ? `/dashboard/audio-studio?postIds=${createdPostIds.join(',')}`
-            : '/dashboard/audio-studio';
-        setTimeout(() => router.push(audioStudioUrl), 1500);
-      } else if (destination === "draft" || destination === "both") {
+      if (destination === "draft" || destination === "both") {
         setTimeout(() => router.push("/dashboard/calendar"), 2000);
       }
     } catch (error) {
@@ -12073,7 +12066,6 @@ function InfographicPageInner() {
                   { key: 'draft' as Destination, Icon: Calendar, color: '#3B82F6', tip: 'Calendrier' },
                   { key: 'export' as Destination, Icon: Download, color: '#10B981', tip: 'Fichier' },
                   { key: 'both' as Destination, Icon: Layers, color: '#A855F7', tip: 'Les deux' },
-                  { key: 'audio-studio' as Destination, Icon: Music, color: '#EC4899', tip: 'Studio Son' },
                 ]
               : [
                   { key: 'export' as Destination, Icon: Download, color: '#10B981', tip: 'Fichier (Bureau)' },
@@ -12169,7 +12161,6 @@ function InfographicPageInner() {
                 { key: 'draft' as Destination, Icon: Calendar, color: '#3B82F6' },
                 { key: 'export' as Destination, Icon: Download, color: '#10B981' },
                 { key: 'both' as Destination, Icon: Layers, color: '#A855F7' },
-                { key: 'audio-studio' as Destination, Icon: Music, color: '#EC4899' },
               ]
             : [
                 { key: 'export' as Destination, Icon: Download, color: '#10B981' },
