@@ -22,6 +22,8 @@ import {
   Music,
   Film,
   Trash2,
+  RotateCcw,
+  X,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
 import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
@@ -35,6 +37,17 @@ import ColorWheel from '@/components/ui/ColorWheel';
 // Deux listes finiraient par diverger, et la video ne ressemblerait plus a
 // l'apercu.
 import { FONT_GROUPS, fontStack, ensureFontLoaded, preloadCatalogPreview } from '@/lib/fonts/catalog';
+import { useSession } from 'next-auth/react';
+import {
+  DRAFT_VERSION,
+  draftKey,
+  readDraft,
+  sanitizeDraft,
+  writeDraft,
+  clearDraft,
+  persistableUrl as persistableDraftUrl,
+  type Draft,
+} from '@/lib/creer/draft';
 import { useBranding, NEUTRAL_BRANDING } from '@/lib/hooks/useBranding';
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { Card, CardTitle, CardContent } from '@/components/ui/Card';
@@ -1436,6 +1449,228 @@ export default function AssistantWizard() {
     return () => ro.disconnect();
   }, [format]);
 
+  // ── Brouillon : sauvegarde automatique ───────────────────────────────
+  //
+  // Un rafraichissement perdait tout le travail. Tout ce qui suit sert a ce
+  // qu'il n'en perde plus rien.
+  const { data: session, status } = useSession();
+  /**
+   * La session n'est PAS disponible au premier rendu.
+   *
+   * `SessionProvider` est monte sans session initiale : `useSession()` rend
+   * d'abord `status === 'loading'` et `data === undefined`. Restaurer a ce
+   * moment-la lisait la cle anonyme, ne trouvait rien — et la sauvegarde
+   * ecrasait ensuite la cle du compte avec l'etat par defaut. Autrement dit :
+   * un rafraichissement ne restaurait rien ET detruisait le brouillon, alors
+   * que la navigation interne, elle, fonctionnait (le fournisseur y est deja
+   * resolu). C'est le seul cas qui comptait qui echouait.
+   */
+  const sessionReady = status !== 'loading';
+  const storageKey = draftKey(session?.user?.email);
+  /** Vrai une fois la restauration tentee : on n'ecrit rien avant. */
+  const restoredRef = useRef(false);
+  const [restoredNotice, setRestoredNotice] = useState<string | null>(null);
+
+  /**
+   * Etat a conserver, construit en UN SEUL endroit.
+   *
+   * Les trois chemins d'ecriture (minuterie, demontage, fermeture d'onglet)
+   * appellent cette meme fonction : ecrite trois fois, elle aurait fini par
+   * diverger, et c'est le chemin le moins teste qui aurait enregistre un
+   * brouillon incomplet.
+   */
+  const buildDraft = useCallback((): Draft => ({
+    version: DRAFT_VERSION,
+    savedAt: Date.now(),
+    started,
+    step,
+    themeId,
+    customTopic,
+    toneId,
+    format,
+    colors,
+    titleStyle,
+    subtitleStyle,
+    ctaStyle,
+    watermarkOverride,
+    watermarkEnabled,
+    sequences,
+    introDuration,
+    cardsDuration,
+    videoDuration,
+    ctaDuration,
+    generated,
+    audioKeyframes,
+    // Les `blob:` ne survivent pas au rechargement : les enregistrer laisserait
+    // un media fantome dans le brouillon restaure.
+    musicUrl: persistableDraftUrl(musicUrl),
+    musicName,
+    voiceUrl: persistableDraftUrl(voiceUrl),
+    voiceName,
+    musicVolume,
+    voiceVolume,
+    rushUrl: persistableDraftUrl(rushUrl),
+    rushName,
+    rushIsClip,
+    scheduledDate,
+  }), [
+    started, step, themeId, customTopic, toneId, format, colors,
+    titleStyle, subtitleStyle, ctaStyle, watermarkOverride, watermarkEnabled,
+    sequences, introDuration, cardsDuration, videoDuration, ctaDuration,
+    generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
+    voiceVolume, rushUrl, rushName, rushIsClip, scheduledDate,
+  ]);
+
+  /** La derniere version connue, pour ecrire sans attendre un rendu. */
+  const draftRef = useRef(buildDraft);
+  draftRef.current = buildDraft;
+
+  /**
+   * Restauration, au montage.
+   *
+   * Chaque champ est valide separement : un brouillon d'une version
+   * anterieure, ou dont une police a disparu du catalogue, doit rendre ce
+   * qu'il a de bon plutot que de tout perdre.
+   */
+  useEffect(() => {
+    if (!sessionReady || restoredRef.current) return;
+    restoredRef.current = true;
+    const draft = sanitizeDraft(readDraft(storageKey), {
+      themeIds: THEMES.map((t) => t.id),
+      toneIds: TONES.map((t) => t.id),
+      formats: Object.keys(VIDEO_SIZE),
+      maxStep: S.contenu,
+      defaults: {
+        themeId: THEMES[0].id,
+        toneId: TONES[0].id,
+        format: '9:16',
+        titleStyle: DEFAULT_TEXT_STYLES.title,
+        subtitleStyle: DEFAULT_TEXT_STYLES.subtitle,
+        ctaStyle: { ...DEFAULT_TEXT_STYLES.cta, subColor: '' },
+        sequences: DEFAULT_SEQUENCES,
+        durations: { intro: SEQ.intro, cards: SEQ.cards, video: SEQ.video, cta: SEQ.cta },
+      },
+    });
+    if (!draft) return;
+
+    setStarted(!!draft.started);
+    setStep(draft.step ?? 0);
+    setThemeId(draft.themeId!);
+    setCustomTopic(draft.customTopic ?? '');
+    setToneId(draft.toneId!);
+    setFormat(draft.format as Format);
+    setColors(draft.colors ?? null);
+    setTitleStyle(draft.titleStyle as TextStyles['title']);
+    setSubtitleStyle(draft.subtitleStyle as TextStyles['subtitle']);
+    setCtaStyle(draft.ctaStyle as TextStyles['cta']);
+    setWatermarkOverride(draft.watermarkOverride ?? null);
+    setWatermarkEnabled(draft.watermarkEnabled !== false);
+    setSequences(draft.sequences as typeof DEFAULT_SEQUENCES);
+    setIntroDuration(draft.introDuration!);
+    setCardsDuration(draft.cardsDuration!);
+    setVideoDuration(draft.videoDuration!);
+    setCtaDuration(draft.ctaDuration!);
+    if (draft.generated) setGenerated(draft.generated as Generated);
+    if (draft.audioKeyframes) setAudioKeyframes(draft.audioKeyframes as AudioKeyframe[]);
+    if (draft.musicUrl) { setMusicUrl(draft.musicUrl); setMusicName(draft.musicName ?? ''); }
+    if (draft.voiceUrl) { setVoiceUrl(draft.voiceUrl); setVoiceName(draft.voiceName ?? ''); }
+    setMusicVolume(draft.musicVolume!);
+    setVoiceVolume(draft.voiceVolume!);
+    if (draft.rushUrl) {
+      setRushUrl(draft.rushUrl);
+      setRushName(draft.rushName ?? '');
+      setRushIsClip(!!draft.rushIsClip);
+    }
+    if (draft.scheduledDate) setScheduledDate(draft.scheduledDate);
+    // Le contenu a ete regenere s'il vient du brouillon : la signature evite
+    // qu'il soit remplace par un autre texte des la premiere navigation.
+    if (draft.generated) genSigRef.current = `${draft.customTopic?.trim() || (THEMES.find((t) => t.id === draft.themeId) ?? THEMES[0]).topic}|${draft.toneId}`;
+
+    // Dire ce qui a ete retrouve : sans un mot, l'utilisateur ne sait pas si
+    // son travail est revenu ou si l'ecran est reparti de zero.
+    const bits = [
+      draft.generated ? 'contenu' : null,
+      draft.colors ? 'couleurs' : null,
+      draft.rushUrl ? 'rush' : null,
+      draft.musicUrl || draft.voiceUrl ? 'audio' : null,
+    ].filter(Boolean);
+    // Uniquement si le brouillon porte du travail : annoncer « Brouillon
+    // restaure » sur un ecran vierge inquiete sans rien apprendre.
+    if (draft.started || draft.generated) {
+      setRestoredNotice(`Brouillon restauré${bits.length ? ` (${bits.join(', ')})` : ''}.`);
+    }
+    // `restoredRef` garantit un seul passage : une fois la session resolue,
+    // relancer la restauration ecraserait ce que l'utilisateur vient de regler.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionReady, storageKey]);
+
+  /**
+   * Sauvegarde : minuterie, PLUS trois filets.
+   *
+   * Le `beforeunload` seul ne suffit pas : il ne se declenche pas sur une
+   * navigation interne Next (un clic dans la barre laterale demonte le
+   * composant sans jamais le lever), et il est ignore sur mobile. D'ou
+   * l'ecriture dans le nettoyage de l'effet — qui couvre le demontage, donc
+   * la navigation interne — et `pagehide`, plus fiable qu'`unload` sur iOS.
+   */
+  /**
+   * Ecriture effective — le SEUL point qui touche au stockage.
+   *
+   * Le garde est ici, et pas seulement a l'entree des effets : « Repartir de
+   * zero » le baisse puis recharge la page, et c'est `pagehide` qui, sinon,
+   * reecrivait aussitot le brouillon qu'on venait d'effacer.
+   *
+   * Rien n'est ecrit tant que l'utilisateur n'a pas commence : une simple
+   * visite laissait sinon un brouillon par defaut, et la visite suivante
+   * annoncait « Brouillon restaure » sur un ecran vierge.
+   */
+  const flushDraft = useCallback(() => {
+    if (!restoredRef.current || !sessionReady) return;
+    const draft = draftRef.current();
+    if (!draft.started && !draft.generated) return;
+    writeDraft(storageKey, draft);
+  }, [storageKey, sessionReady]);
+  const flushRef = useRef(flushDraft);
+  flushRef.current = flushDraft;
+
+  // Minuterie : une ecriture APRES la pause de frappe. Le nettoyage ne fait
+  // qu'annuler le minuteur — y ecrire rendait le debounce inoperant, puisque
+  // cet effet se relance a chaque frappe.
+  useEffect(() => {
+    const timer = setTimeout(() => flushRef.current(), 400);
+    return () => clearTimeout(timer);
+  }, [buildDraft, flushDraft]);
+
+  /**
+   * Les filets : demontage et fermeture d'onglet.
+   *
+   * `beforeunload` ne se declenche pas sur une navigation interne Next — un
+   * clic dans la barre laterale demonte le composant sans jamais le lever —
+   * d'ou l'ecriture dans le nettoyage. Et `pagehide` est plus fiable
+   * qu'`unload` sur mobile.
+   */
+  useEffect(() => {
+    const onHide = () => flushRef.current();
+    window.addEventListener('pagehide', onHide);
+    window.addEventListener('beforeunload', onHide);
+    return () => {
+      window.removeEventListener('pagehide', onHide);
+      window.removeEventListener('beforeunload', onHide);
+      onHide();
+    };
+  }, []);
+
+  /** Repartir de zero — le brouillon est efface, la page se recharge propre. */
+  const discardDraft = () => {
+    // L'ordre compte : baisser le garde AVANT d'effacer. `flushDraft` le lit
+    // a chaque appel, donc plus rien ne peut reecrire — ni le nettoyage des
+    // effets, ni le `pagehide` que va lever le rechargement. Sans cela,
+    // « repartir de zero » repartait du meme brouillon.
+    restoredRef.current = false;
+    clearDraft(storageKey);
+    window.location.reload();
+  };
+
   const genTimerRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     return () => {
@@ -1446,9 +1681,15 @@ export default function AssistantWizard() {
   // Date du jour posée après le montage : la calculer pendant le rendu
   // provoquerait un écart d'hydratation entre serveur et navigateur.
   useEffect(() => {
-    const d = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    setScheduledDate(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
+    // `setScheduledDate` seulement si le champ est encore vide : cet effet
+    // s'executait APRES la restauration et ecrasait la date du brouillon par
+    // celle du jour.
+    setScheduledDate((prev) => {
+      if (prev) return prev;
+      const d = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    });
   }, []);
 
   /** Ordre effectif : sequences activees, dans l'ordre choisi. */
@@ -2080,6 +2321,31 @@ export default function AssistantWizard() {
           <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
             <span>{error}</span>
+          </div>
+        )}
+
+        {/* Brouillon retrouve. Sans un mot, l'utilisateur ne sait pas si son
+            travail est revenu ou si l'ecran est reparti de zero — et « repartir
+            de zero » doit rester a portee, sans etre un gros bouton. */}
+        {restoredNotice && (
+          <div className="flex items-center gap-3 rounded-xl border border-gray-800 bg-gray-900/50 px-4 py-2.5 text-[13px] text-gray-400">
+            <RotateCcw className="w-4 h-4 flex-shrink-0 text-gray-500" />
+            <span className="flex-1">{restoredNotice}</span>
+            <button
+              type="button"
+              onClick={discardDraft}
+              className="text-gray-500 underline underline-offset-2 hover:text-white transition"
+            >
+              Repartir de zéro
+            </button>
+            <button
+              type="button"
+              onClick={() => setRestoredNotice(null)}
+              aria-label="Masquer ce message"
+              className="text-gray-600 hover:text-white transition"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
 
