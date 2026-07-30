@@ -5,9 +5,8 @@ import { Music, Mic, Upload, Trash2, Volume2, VolumeX, Loader2, Play, Pause, Squ
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import { TTS_VOICES, synthesize, type TtsVoice } from '@/lib/tts/edge-tts-client';
 import { fetchHeyGenVoices, isHeyGenVoiceId } from '@/lib/types/voice';
-import AudioDuckingTimeline from '@/components/creer/AudioDuckingTimeline';
-import AudioMixPreview from '@/components/creer/AudioMixPreview';
 import { analyseRushForDucking, type AudioKeyframe } from '@/lib/creer/audioDucking';
+import AudioMixer from './AudioMixer';
 
 const VOICE_STORAGE_KEY = 'tts.voiceId';
 const DEFAULT_VOICE_ID = 'fr-FR-DeniseNeural';
@@ -218,7 +217,6 @@ export function AudioStudioPanel({
   const [mixError, setMixError] = useState('');
   /** Geometrie du montage au moment du dernier auto-mix (voir `mixStale`). */
   const [autoMixSignature, setAutoMixSignature] = useState<string | null>(null);
-  const [playheadTime, setPlayheadTime] = useState<number | null>(null);
 
   /** Le mixeur ne s'affiche que si le parent branche les keyframes. */
   const mixerEnabled = typeof onAudioKeyframesChange === 'function';
@@ -636,28 +634,25 @@ export function AudioStudioPanel({
 
           {mixerOpen && hasAnyAudio && (
             <>
-              <AudioDuckingTimeline
+              {/* UN seul bloc. `AudioMixer` porte une ligne par piste
+                  (volume + coupure), un seul bouton de lecture, et replie
+                  auto-mix et keyframes derriere « Avance ». Il reutilise
+                  `AudioDuckingTimeline` et `AudioMixPreview` tels quels :
+                  rien n'est retire, tout est reagence. */}
+              <AudioMixer
                 keyframes={effectiveKeyframes}
                 onChange={handleKeyframesChange}
                 totalDuration={totalDuration}
                 rushUrl={rushInMix ? rushUrl : null}
-                autoDuckRunning={autoDuckRunning}
-                onAutoDuck={runAutoDuck}
-                playheadTime={playheadTime}
-              />
-              <AudioMixPreview
-                audioKeyframes={effectiveKeyframes}
                 musicUrl={musicUrl}
                 voiceUrl={voiceUrl}
-                rushUrl={rushInMix ? rushUrl : null}
+                autoDuckRunning={autoDuckRunning}
+                onAutoDuck={runAutoDuck}
                 introDuration={introDuration}
                 cardsDuration={cardsDuration}
                 ctaDuration={ctaDuration}
-                totalDuration={totalDuration}
                 videoSeqStart={videoSeqStart}
                 videoSeqDuration={videoSeqDuration}
-                onTimeUpdate={(t) => setPlayheadTime(t)}
-                onPlayStateChange={(playing) => { if (!playing) setPlayheadTime(null); }}
               />
               {mixError && (
                 <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-2">

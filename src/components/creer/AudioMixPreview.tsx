@@ -34,6 +34,17 @@ interface Props {
   onTimeUpdate?: (t: number) => void;
   /** Called when playback starts or stops. */
   onPlayStateChange?: (playing: boolean) => void;
+  /**
+   * Rendu resserre, pour le bloc mixer unifie.
+   *
+   * Defaut `false` : le rendu est celui d'avant ce drapeau, et
+   * `/dashboard/creer` — qui monte ce composant directement — est inchange.
+   * En mode resserre, le titre et les VU-metres disparaissent : le mixer
+   * porte deja une ligne par piste, et repeter les niveaux juste en dessous
+   * etait precisement ce qui rendait le panneau redondant. Ne reste que ce
+   * que ce composant est seul a savoir faire : lire le mixage.
+   */
+  compact?: boolean;
 }
 
 /**
@@ -60,6 +71,7 @@ export default function AudioMixPreview({
   videoSeqDuration,
   onTimeUpdate,
   onPlayStateChange,
+  compact = false,
 }: Props) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -441,7 +453,14 @@ export default function AudioMixPreview({
   const pct = totalDuration > 0 ? Math.min(100, (currentTime / totalDuration) * 100) : 0;
 
   return (
-    <div className="mt-3 rounded-lg border border-purple-900/50 bg-gray-900/60 p-3 space-y-2 backdrop-blur-sm">
+    <div
+      className={
+        compact
+          ? 'space-y-2'
+          : 'mt-3 rounded-lg border border-purple-900/50 bg-gray-900/60 p-3 space-y-2 backdrop-blur-sm'
+      }
+    >
+      {!compact && (
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
           Écouter le mixage
@@ -456,6 +475,7 @@ export default function AudioMixPreview({
           <Repeat size={10} /> Boucler
         </label>
       </div>
+      )}
 
       <div className="flex items-center gap-2">
         <button
@@ -469,7 +489,9 @@ export default function AudioMixPreview({
           }
         >
           {isPlaying ? <Pause size={12} /> : <Play size={12} />}
-          {isPlaying ? 'Pause mixage' : 'Écouter le mixage'}
+          {compact
+            ? (isPlaying ? 'Pause' : 'Écouter')
+            : (isPlaying ? 'Pause mixage' : 'Écouter le mixage')}
         </button>
         <div className="flex-1 h-1.5 rounded bg-gray-800 overflow-hidden">
           <div
@@ -483,6 +505,7 @@ export default function AudioMixPreview({
       </div>
 
       {/* VU meters — RMS from AnalyserNodes, scaled 2× for visual punch */}
+      {!compact && (
       <div className="grid grid-cols-3 gap-2">
         <div className="space-y-0.5">
           <div className="flex justify-between text-[9px] text-gray-400">
@@ -521,6 +544,7 @@ export default function AudioMixPreview({
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

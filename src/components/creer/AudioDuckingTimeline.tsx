@@ -22,6 +22,15 @@ interface Props {
   /** When set, render a vertical playhead line at this time (seconds)
    *  on the timeline bar. Driven by AudioMixPreview rAF tick. */
   playheadTime?: number | null;
+  /**
+   * Afficher les trois curseurs de volume globaux.
+   *
+   * Defaut `true` : le rendu est celui d'avant ce drapeau, et
+   * `/dashboard/creer` — qui monte ce composant directement — est inchange.
+   * `AudioMixer` le passe a `false` : il porte lui-meme une ligne par piste,
+   * et les garder ici ferait regler le meme son a deux endroits.
+   */
+  showLevels?: boolean;
 }
 
 /**
@@ -39,6 +48,7 @@ export default function AudioDuckingTimeline({
   autoDuckRunning,
   onAutoDuck,
   playheadTime,
+  showLevels = true,
 }: Props) {
   const duration = Math.max(1, totalDuration); // never divide by zero
   const sorted = [...keyframes].sort((a, b) => a.time - b.time);
@@ -110,6 +120,7 @@ export default function AudioDuckingTimeline({
       </div>
 
       {/* Global volume sliders — bulk-apply to every keyframe at once */}
+      {showLevels && (
       <div className="rounded bg-gray-900/60 p-1.5 space-y-1">
         <label className="flex items-center gap-1.5 text-[9px] text-gray-300">
           <span className="w-24 text-gray-400">Volume musique global</span>
@@ -148,6 +159,7 @@ export default function AudioDuckingTimeline({
           <span className="w-9 text-right text-purple-300 font-mono">{globalVoiceValue}%</span>
         </label>
       </div>
+      )}
 
       {/* ─── ADVANCED TOGGLE ──────────────────────────────────────────
           Les sliders globaux ci-dessus suffisent à 99% des utilisateurs.
