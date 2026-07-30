@@ -103,12 +103,17 @@ function makeScratch(): TransitionScratch & {
  * `drawA` / `drawB` marquent le calque qu'on leur donne, comme le ferait une
  * vraie sequence : on peut ainsi verifier sur QUEL contexte elles ont peint.
  */
-function renderFrame(style: TransitionStyle | undefined, t: number, withScratch = true) {
+function renderFrame(
+  style: TransitionStyle | undefined,
+  t: number,
+  withScratch = true,
+  size: { w: number; h: number } = { w: W, h: H },
+) {
   const ctx = recordingCtx('main');
   const scratch = withScratch ? makeScratch() : null;
   const painted: string[] = [];
   drawTransition(
-    ctx, W, H,
+    ctx, size.w, size.h,
     (p, target) => {
       painted.push(`A:${(target as unknown as { label: string }).label}:${p}`);
       (target as unknown as { ops: Op[] }).ops.push({ op: 'paintA', args: [p], alpha: target.globalAlpha });
@@ -587,6 +592,23 @@ describe("Style 'blur-dissolve' — fondu floute", () => {
     expect(mid[0]).toBeGreaterThanOrEqual(W * 0.01);
     expect(mid[1]).toBeGreaterThanOrEqual(W * 0.01);
     expect(early[0]).toBeLessThan(mid[0]);
+  });
+
+  it('met le flou a l ECHELLE de la largeur : meme rendu relatif en 9:16 et en 16:9', () => {
+    // Un flou en px absolus pese deux fois moins dans un cadre deux fois plus
+    // large : le meme montage exporte en Reel et en TV n'aurait pas la meme
+    // transition. Le fichier a deja cette convention (ombres portees, rayon
+    // du backdrop).
+    const blurAtWidth = (w: number) => {
+      const op = renderFrame('blur-dissolve', 0.5, true, { w, h: Math.round((w * 9) / 16) }).ops
+        .find((o) => o.op === 'filter');
+      return blurValue(String(op!.args[0]));
+    };
+    const at1080 = blurAtWidth(1080);
+    const at1920 = blurAtWidth(1920);
+    expect(at1080).toBeGreaterThan(0);
+    // Proportionnel a la largeur, a l'arrondi d'affichage pres.
+    expect(at1920 / at1080).toBeCloseTo(1920 / 1080, 2);
   });
 
   it('ne floute plus rien aux extremites : la sequence doit finir nette', () => {
