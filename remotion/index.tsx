@@ -4,7 +4,6 @@ import { AfroboostComposition } from "./AfroboostComposition";
 import { InfographicComposition } from "./InfographicComposition";
 import { AiMontageComposition } from "./AiMontageComposition";
 import type { AfroboostProps, InfographicProps } from "./types";
-import type { AiMontageProps } from "./AiMontageComposition";
 
 const RemotionRoot: React.FC = () => {
   return (

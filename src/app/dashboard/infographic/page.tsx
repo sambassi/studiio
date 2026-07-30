@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Trash2, Upload, Zap, Loader2, Sparkles, Film, X, Play, Volume2, Image as ImageIcon, Search, ChevronRight, ChevronLeft, ArrowUp, ArrowDown, Calendar, Music, Package, RefreshCw } from 'lucide-react';
+import { Trash2, Upload, Zap, Loader2, Sparkles, Film, X, Play, Volume2, Image as ImageIcon, Search, ChevronRight, ChevronLeft, ArrowUp, ArrowDown, Calendar, Music, Package, RefreshCw } from 'lucide-react';
 import { CardIcon } from '@/components/ui/CardIcon';
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { generateSmartContent } from '@/lib/smart-content';
