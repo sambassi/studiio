@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import {
   Wand2,
   Rocket,
@@ -611,6 +612,80 @@ const persistableUrl = (url: string | null): string | undefined =>
 /** Classes de désactivation : `Button` n'en fournit aucune (ui/Button.tsx). */
 const DISABLED = 'disabled:opacity-40 disabled:cursor-not-allowed';
 
+/** Onglets au-dessus de l'apercu. « Tout » d'abord : c'est l'etat par defaut. */
+const PREVIEW_TABS: Array<{ id: 'all' | 'intro' | 'cards' | 'cta'; label: string }> = [
+  { id: 'all', label: 'Tout' },
+  { id: 'intro', label: 'Titre' },
+  { id: 'cards', label: 'Cartes' },
+  { id: 'cta', label: 'CTA' },
+];
+
+/** Sections repliables de l'etape Style — l'ordre du panneau. */
+type SectionId = 'format' | 'couleurs' | 'texte' | 'sequences';
+
+/**
+ * Une section repliable.
+ *
+ * L'en-tete porte un RESUME de ce que la section contient : replie, le panneau
+ * doit encore dire ou en sont les reglages, sinon replier revient a cacher.
+ *
+ * Le contenu est monte en permanence et masque par `hidden` plutot que
+ * demonte : les panneaux replies gardent ainsi leur etat, et surtout le bloc
+ * de cartes de l'apercu — photographie a l'export — ne depend d'aucune
+ * section ouverte.
+ */
+function StyleSection({
+  id,
+  title,
+  hint,
+  swatches,
+  open,
+  onToggle,
+  children,
+}: {
+  id: SectionId;
+  title: string;
+  hint?: string;
+  /** Pastilles de couleur affichees dans l'en-tete replie. */
+  swatches?: string[];
+  open: boolean;
+  onToggle: (id: SectionId) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`rounded-xl transition ${open ? 'bg-gray-900/40' : ''}`}>
+      <button
+        type="button"
+        onClick={() => onToggle(id)}
+        aria-expanded={open}
+        aria-controls={`section-${id}`}
+        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-gray-800/40"
+      >
+        <span className="text-sm font-medium text-white">{title}</span>
+        {/* Le separateur evite un nom accessible colle (« Ton et formatPunchy »). */}
+        <span className="flex-1 truncate text-[11px] text-gray-500">{hint ? `— ${hint}` : ''}</span>
+        {swatches && (
+          <span className="flex flex-shrink-0 gap-1">
+            {swatches.map((c, i) => (
+              <span
+                key={i}
+                className="h-3.5 w-3.5 rounded-full border border-white/10"
+                style={{ backgroundColor: c }}
+              />
+            ))}
+          </span>
+        )}
+        <ChevronDown
+          className={`w-4 h-4 flex-shrink-0 text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+      <div id={`section-${id}`} hidden={!open} className="space-y-4 px-3 pb-3 pt-1">
+        {children}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Aperçu — déclaré HORS du composant parent.
  *
@@ -637,7 +712,19 @@ export function Preview({
   watermark,
   accent,
   text,
+  focus = 'all',
+  onFocusChange,
 }: {
+  /** Absent = pas d'onglets (l'apercu reste la composition complete). */
+  onFocusChange?: (focus: 'all' | 'intro' | 'cards' | 'cta') => void;
+  /**
+   * Element mis en avant par les onglets au-dessus de l'apercu.
+   *
+   * `'all'` = la composition complete, celle que photographie l'export. Les
+   * autres valeurs n'isolent qu'un element pour le regler de pres : elles ne
+   * changent RIEN au montage, seulement ce qui est montre.
+   */
+  focus?: 'all' | 'intro' | 'cards' | 'cta';
   /**
    * Reglages typographiques — la MEME valeur que celle envoyee au
    * compositeur. Une seule source : l'apercu ne peut pas deriver de l'export.
@@ -685,7 +772,11 @@ export function Preview({
   // DOM dans un `onError`, qui survivrait aux rendus suivants.
   const [rushBroken, setRushBroken] = useState(false);
   useEffect(() => setRushBroken(false), [rushUrl]);
-  const showRush = !!rushUrl && !rushBroken && activeOrder.includes('video');
+  const showRush = !!rushUrl && !rushBroken && activeOrder.includes('video') && focus === 'all';
+
+  /** Une sequence est visible si elle est active ET mise en avant. */
+  const shows = (seq: 'intro' | 'cards' | 'cta') =>
+    activeOrder.includes(seq) && (focus === 'all' || focus === seq);
 
   const titleWeight = text.title.bold ? 900 : 400;
   const titleStyle = text.title.italic ? 'italic' : 'normal';
@@ -733,6 +824,36 @@ export function Preview({
           Aperçu
         </span>
       </div>
+
+      {/* Onglets — isolent un element pour le regler de pres. « Tout » reste
+          la composition complete, celle qui part a l'export : ces onglets ne
+          changent que ce qui est MONTRE, jamais le montage. */}
+      {generated && onFocusChange && (
+        <div className="flex gap-1 mb-3" role="tablist" aria-label="Élément mis en avant">
+          {PREVIEW_TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={focus === t.id}
+              onClick={() => onFocusChange(t.id)}
+              disabled={t.id !== 'all' && !activeOrder.includes(t.id)}
+              title={
+                t.id !== 'all' && !activeOrder.includes(t.id)
+                  ? 'Séquence masquée — activez-la dans Séquences'
+                  : undefined
+              }
+              className={`flex-1 rounded-lg px-2 py-1.5 text-[11px] font-medium transition disabled:opacity-30 disabled:cursor-not-allowed ${
+                focus === t.id
+                  ? 'bg-gray-800 text-white ring-1 ring-purple-500/40'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* ── Rendu 1:1 ──────────────────────────────────────────────────
           Le plateau interne fait la TAILLE REELLE de la video (1080x1920 ou
@@ -807,7 +928,7 @@ export function Preview({
           </div>
         ) : (
           <>
-            {activeOrder.includes('intro') && (
+            {shows('intro') && (
             /* Titre — ancre au bord GAUCHE (x) et au bord HAUT (y), comme
                 drawIntro avec titleAlign:'left' et textBaseline:'top'.
                 L'ombre est appliquee en dur par le compositeur. */
@@ -874,7 +995,7 @@ export function Preview({
               className="absolute flex flex-col justify-center"
               style={{ left: '8%', right: '8%', top: '30%', bottom: '22%', gap: vw * CARD_RATIO.gap }}
             >
-              {(activeOrder.includes('cards') ? generated.cards : []).map((c, i) => (
+              {(shows('cards') ? generated.cards : []).map((c, i) => (
                 <div
                   key={i}
                   className="flex items-center"
@@ -909,7 +1030,7 @@ export function Preview({
               ))}
             </div>
 
-            {activeOrder.includes('cta') && (
+            {shows('cta') && (
             /* CTA — ancre par le BAS a ctaPos.y, centre horizontalement :
                 drawCTA fait `curY = ctaPosY - blockH`, donc y designe le bas
                 du bloc. Graisse 900 en dur cote compositeur. */
@@ -1075,6 +1196,18 @@ export default function AssistantWizard() {
     // l'utilisateur n'a pas choisi de couleur de sous-texte.
     subColor: '',
   });
+  /**
+   * Section ouverte. Une seule a la fois : c'est ce qui empeche le panneau de
+   * s'allonger indefiniment. `null` = tout replie.
+   */
+  const [openSection, setOpenSection] = useState<SectionId | null>('format');
+  /**
+   * Element mis en avant dans l'apercu. Purement visuel : l'export force
+   * `'all'` le temps de la photo des cartes (voir `sendToCalendar`).
+   */
+  const [previewFocus, setPreviewFocus] = useState<'all' | 'intro' | 'cards' | 'cta'>('all');
+  const toggleSection = (id: SectionId) => setOpenSection((prev) => (prev === id ? null : id));
+
   /** Zone de texte en cours de reglage — purement local a l'interface. */
   const [editedZone, setEditedZone] = useState<'title' | 'subtitle' | 'cta'>('title');
   /** Champ de couleur ouvert dans la roue, pour la zone active. */
@@ -1319,6 +1452,15 @@ export default function AssistantWizard() {
   const activeOrder = sequences.filter((s) => s.enabled).map((s) => s.key);
 
   /**
+   * Un onglet braque sur une sequence masquee ne montrerait qu'un plateau
+   * vide, sans rien pour l'expliquer — le desactiver empeche de le CHOISIR,
+   * pas d'y RESTER. On revient donc a la vue d'ensemble.
+   */
+  useEffect(() => {
+    if (previewFocus !== 'all' && !activeOrder.includes(previewFocus)) setPreviewFocus('all');
+  }, [previewFocus, activeOrder]);
+
+  /**
    * Duree effective d'une sequence : 0 si elle est desactivee.
    *
    * Une sequence masquee a une duree NULLE — c'est ainsi que le compositeur
@@ -1440,6 +1582,7 @@ export default function AssistantWizard() {
     genTimerRef.current = setTimeout(() => {
       try {
         const seed = Math.floor(Math.random() * 100000) + tone.seedOffset;
+        genSigRef.current = `${topicText}|${tone.id}`;
         const result = generateSmartContent(topicText, seed);
         setGenerated({
           title: result.tagLine,
@@ -1456,9 +1599,38 @@ export default function AssistantWizard() {
     }, 30);
   }, [topicText, tone]);
 
+  /**
+   * Sujet ou ton depuis la derniere generation. Sert a ne PAS regenerer un
+   * contenu que l'utilisateur vient de regler — et a le regenerer des qu'il
+   * change de sujet.
+   */
+  const genSigRef = useRef('');
+
+  /**
+   * Genere le contenu s'il manque, ou si le sujet/ton a change depuis.
+   *
+   * Appele en entrant dans Style : sans contenu, l'apercu n'affiche qu'un
+   * placeholder, les onglets n'ont rien a montrer et regler les couleurs ou
+   * la typo se fait a l'aveugle — ce que la refonte etait justement censee
+   * corriger.
+   */
+  const ensureGenerated = useCallback(() => {
+    if (generated && genSigRef.current === `${topicText}|${tone.id}`) return;
+    runGeneration();
+  }, [generated, topicText, tone.id, runGeneration]);
+
+  const goToStyle = () => {
+    setStep(S.style);
+    ensureGenerated();
+  };
+
   const goToGeneration = () => {
     setStep(S.contenu);
-    runGeneration();
+    // Le contenu existe deja si l'utilisateur n'a pas change de sujet : le
+    // regenerer lui donnerait un texte different de celui sur lequel il vient
+    // de regler son style. Le bouton « Relancer » reste la pour le faire
+    // explicitement.
+    ensureGenerated();
   };
 
   // ── Envoi au calendrier ─────────────────────────────────────────────
@@ -1527,7 +1699,25 @@ export default function AssistantWizard() {
       //    l'aperçu et la vidéo strictement identiques.
       let cardsSnapshot: HTMLImageElement | undefined;
       let cardsSnapshotRect: { x: number; y: number; width: number; height: number } | undefined;
+      // Les onglets de l'apercu n'affichent qu'un element a la fois. La photo,
+      // elle, doit TOUJOURS partir de la composition complete : prise depuis
+      // l'onglet « Titre », elle aurait fige des cartes vides dans la video.
+      // `flushSync` force le rendu AVANT la capture ; le `finally` restaure
+      // l'onglet de l'utilisateur meme si la capture echoue.
+      const focusBeforeCapture = previewFocus;
       try {
+        if (focusBeforeCapture !== 'all') {
+          flushSync(() => setPreviewFocus('all'));
+          // Une frame de peinture, bornee : `requestAnimationFrame` est GELE
+          // dans un onglet en arriere-plan. Sans ce delai de garde, lancer
+          // l'envoi puis changer d'onglet laissait la promesse pendante et le
+          // bouton desactive jusqu'au retour de l'utilisateur.
+          await new Promise<void>((r) => {
+            const done = () => { clearTimeout(timer); r(); };
+            const timer = setTimeout(r, 300);
+            requestAnimationFrame(() => requestAnimationFrame(done));
+          });
+        }
         const cardsEl = cardsRef.current;
         const previewEl = previewRef.current;
         if (cardsEl && previewEl && cardsEl.offsetWidth > 0) {
@@ -1582,6 +1772,8 @@ export default function AssistantWizard() {
         // (style Compact, qu'il connaît). Le rendu reste correct, simplement
         // moins fidèle au pixel près.
         console.warn('[Assistant] Capture des cartes impossible, rendu canvas de secours:', err);
+      } finally {
+        if (focusBeforeCapture !== 'all') setPreviewFocus(focusBeforeCapture);
       }
 
       // 3. Composition + upload (composeAndUpload fait les deux et produit
@@ -1868,6 +2060,10 @@ export default function AssistantWizard() {
   const reset = () => {
     setStarted(false);
     setStep(S.sujet);
+    // Sans cela, le montage suivant naitrait filtre sur l'onglet du precedent.
+    setPreviewFocus('all');
+    setOpenSection('format');
+    genSigRef.current = '';
     setGenerated(null);
     setSent(false);
     setError(null);
@@ -2022,7 +2218,7 @@ export default function AssistantWizard() {
                 </div>
 
                 <div className="flex justify-end pt-2">
-                  <Button variant="primary" size="sm" onClick={() => setStep(S.style)}>
+                  <Button variant="primary" size="sm" onClick={goToStyle}>
                     <span className="flex items-center gap-2">
                       Continuer <ArrowRight className="w-4 h-4" />
                     </span>
@@ -2033,7 +2229,7 @@ export default function AssistantWizard() {
 
             {/* Étape 2 — ton + format */}
             {step === S.style && (
-              <div className="space-y-5">
+              <div className="space-y-3">
                 <div>
                   <h3 className="font-semibold mb-1">Quel style ?</h3>
                   <p className="text-sm text-gray-400">
@@ -2041,597 +2237,626 @@ export default function AssistantWizard() {
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  {TONES.map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => setToneId(t.id)}
-                      className={`rounded-xl px-3 py-2.5 text-left transition ${
-                        toneId === t.id
-                          ? 'bg-purple-600/20 ring-1 ring-purple-500/50'
-                          : 'bg-gray-900/60 hover:bg-gray-800/70'
-                      }`}
-                    >
-                      <div
-                        className={`text-sm font-medium ${toneId === t.id ? 'text-white' : 'text-gray-300'}`}
-                      >
-                        {t.label}
-                      </div>
-                      <div className="text-[11px] text-gray-500 mt-0.5">{t.hint}</div>
-                    </button>
-                  ))}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">Format</label>
-                  <div className="flex gap-2">
-                    {(['9:16', '1:1', '16:9'] as const).map((f) => (
-                      <button
-                        key={f}
-                        onClick={() => setFormat(f)}
-                        aria-pressed={format === f}
-                        className={`flex-1 rounded-xl px-3 py-2.5 text-sm transition ${
-                          format === f
-                            ? 'bg-purple-600/20 text-purple-200 ring-1 ring-purple-500/50'
-                            : 'bg-gray-900 text-gray-400 hover:text-white'
-                        }`}
-                      >
-                        {f}
-                        <span className="block text-[10px] text-gray-500">
-                          {FORMAT_HINT[f]}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Couleurs — accent + degrade de fond. Elles alimentent d'un
-                    seul tenant l'apercu, le compositeur et les metadonnees :
-                    ce sont les memes variables partout, la surcharge se pose
-                    en amont. Tant qu'on n'y touche pas, le kit de marque
-                    (Reglages -> Branding) fait foi. */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium">Couleurs</label>
-                    {colors && (
-                      <button
-                        type="button"
-                        onClick={() => { setColors(null); setEditedColor(null); }}
-                        className="text-[11px] text-gray-500 hover:text-white transition"
-                      >
-                        Revenir au kit de marque
-                      </button>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    {([
-                      { key: 'accent' as const, label: 'Accent', value: accent },
-                      { key: 'gradStart' as const, label: 'Dégradé — début', value: gradStart },
-                      { key: 'gradEnd' as const, label: 'Dégradé — fin', value: gradEnd },
-                    ]).map((c) => (
-                      <button
-                        key={c.key}
-                        type="button"
-                        onClick={() => setEditedColor(editedColor === c.key ? null : c.key)}
-                        aria-pressed={editedColor === c.key}
-                        className={`flex-1 rounded-xl px-3 py-2.5 text-left transition ${
-                          editedColor === c.key
-                            ? 'bg-gray-800 ring-1 ring-purple-500/50'
-                            : 'bg-gray-900/60 hover:bg-gray-800/70'
-                        }`}
-                      >
-                        <span
-                          className="block h-5 w-full rounded-md border border-white/10"
-                          style={{ backgroundColor: c.value }}
-                        />
-                        <span className="mt-1.5 block text-[10px] text-gray-400 truncate">{c.label}</span>
-                      </button>
-                    ))}
-                  </div>
-
-                  {editedColor && (
-                    <div className="mt-2 rounded-xl bg-gray-900/60 p-3">
-                      <ColorWheel
-                        color={
-                          editedColor === 'accent' ? accent : editedColor === 'gradStart' ? gradStart : gradEnd
-                        }
-                        onChange={(value) => setColor({ [editedColor]: value })}
-                        label={
-                          editedColor === 'accent'
-                            ? 'Accent'
-                            : editedColor === 'gradStart'
-                              ? 'Dégradé — début'
-                              : 'Dégradé — fin'
-                        }
-                      />
-                    </div>
-                  )}
-
-                  <p className="mt-1.5 text-[11px] text-gray-500">
-                    Le dégradé peint le fond ; l&apos;accent colore le halo du filigrane et la
-                    barre de progression.
-                  </p>
-
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Opacité du fond</span>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      value={Math.round(gradientOpacity * 100)}
-                      onChange={(e) => setColor({ gradientOpacity: Number(e.target.value) / 100 })}
-                      aria-label="Opacité du dégradé de fond"
-                      className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
-                    />
-                    <span className="text-[11px] text-gray-400 w-9 text-right tabular-nums">
-                      {Math.round(gradientOpacity * 100)}%
-                    </span>
-                  </div>
-                </div>
-
-                {/* Texte — UNIQUEMENT les reglages que le compositeur honore
-                    deja, zone par zone. Voir `TextStyles` pour ce qui est
-                    volontairement absent (sous-titre, gras/italique du CTA)
-                    et pourquoi. */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium">Texte</label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTitleStyle(DEFAULT_TEXT_STYLES.title);
-                        setSubtitleStyle(DEFAULT_TEXT_STYLES.subtitle);
-                        setCtaStyle({ ...DEFAULT_TEXT_STYLES.cta, subColor: '' });
-                        setEditedTextColor(null);
-                      }}
-                      className="text-[11px] text-gray-500 hover:text-white transition"
-                    >
-                      Réinitialiser
-                    </button>
-                  </div>
-
-                  <div className="flex gap-2 mb-2">
-                    {([
-                      { key: 'title' as const, label: 'Titre', hint: 'le grand texte' },
-                      { key: 'subtitle' as const, label: 'Sous-titre', hint: 'sous le titre' },
-                      { key: 'cta' as const, label: 'CTA', hint: 'et sous-texte' },
-                    ]).map((z) => (
-                      <button
-                        key={z.key}
-                        type="button"
-                        onClick={() => { setEditedZone(z.key); setEditedTextColor(null); }}
-                        aria-pressed={editedZone === z.key}
-                        className={`flex-1 rounded-xl px-3 py-2 text-left transition ${
-                          editedZone === z.key
-                            ? 'bg-purple-600/20 ring-1 ring-purple-500/50'
-                            : 'bg-gray-900/60 hover:bg-gray-800/70'
-                        }`}
-                      >
-                        <span
-                          className={`block text-sm font-medium ${editedZone === z.key ? 'text-white' : 'text-gray-300'}`}
+                {/* Accordeon — une seule section ouverte a la fois. Le panneau
+                    s'allongeait jusqu'a chasser l'apercu hors de l'ecran ; en
+                    repliant, la colonne de reglages garde une hauteur a peu
+                    pres constante et l'apercu reste en vis-a-vis. Aucun reglage
+                    n'a ete retire : ils sont seulement regroupes. */}
+                <StyleSection
+                  id="format"
+                  title="Ton et format"
+                  hint={`${tone.label} · ${format}`}
+                  open={openSection === 'format'}
+                  onToggle={toggleSection}
+                >
+                    <div className="grid grid-cols-2 gap-2">
+                      {TONES.map((t) => (
+                        <button
+                          key={t.id}
+                          onClick={() => setToneId(t.id)}
+                          className={`rounded-xl px-3 py-2.5 text-left transition ${
+                            toneId === t.id
+                              ? 'bg-purple-600/20 ring-1 ring-purple-500/50'
+                              : 'bg-gray-900/60 hover:bg-gray-800/70'
+                          }`}
                         >
-                          {z.label}
-                        </span>
-                        <span className="block text-[10px] text-gray-500">{z.hint}</span>
-                      </button>
-                    ))}
-                  </div>
-
-                  {(() => {
-                    const isTitle = editedZone === 'title';
-                    const isSubtitle = editedZone === 'subtitle';
-                    const zoneLabel = isTitle ? 'titre' : isSubtitle ? 'sous-titre' : 'CTA';
-                    /** Applique un correctif a la zone en cours. */
-                    const patch = (p: Record<string, unknown>) =>
-                      isTitle
-                        ? setTitleStyle((prev) => ({ ...prev, ...p }))
-                        : isSubtitle
-                          ? setSubtitleStyle((prev) => ({ ...prev, ...p }))
-                          : setCtaStyle((prev) => ({ ...prev, ...p }));
-                    // Le sous-titre affiche ce qu'il HERITE tant qu'il n'a
-                    // rien de propre : montrer « Inter » alors que le titre
-                    // est en Anton mentirait sur ce que produit la video.
-                    const zone = isTitle
-                      ? textStyles.title
-                      : isSubtitle
-                        ? {
-                            font: textStyles.subtitle.font || textStyles.title.font,
-                            color: textStyles.subtitle.color || `${textStyles.title.color}CC`,
-                            scale: textStyles.subtitle.scale,
-                          }
-                        : textStyles.cta;
-                    return (
-                      <div className="rounded-xl bg-gray-900/60 p-3 space-y-3">
-                        <div>
-                          <label
-                            htmlFor="txt-font"
-                            className="block text-[10px] uppercase tracking-wider text-gray-500 mb-1"
+                          <div
+                            className={`text-sm font-medium ${toneId === t.id ? 'text-white' : 'text-gray-300'}`}
                           >
-                            Police
-                          </label>
-                          <select
-                            id="txt-font"
-                            value={zone.font}
-                            onChange={(e) => patch({ font: e.target.value })}
-                            style={{ fontFamily: fontStack(zone.font) }}
-                            className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none px-2 py-1.5 text-sm"
+                            {t.label}
+                          </div>
+                          <div className="text-[11px] text-gray-500 mt-0.5">{t.hint}</div>
+                        </button>
+                      ))}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2">Format</label>
+                      <div className="flex gap-2">
+                        {(['9:16', '1:1', '16:9'] as const).map((f) => (
+                          <button
+                            key={f}
+                            onClick={() => setFormat(f)}
+                            aria-pressed={format === f}
+                            className={`flex-1 rounded-xl px-3 py-2.5 text-sm transition ${
+                              format === f
+                                ? 'bg-purple-600/20 text-purple-200 ring-1 ring-purple-500/50'
+                                : 'bg-gray-900 text-gray-400 hover:text-white'
+                            }`}
                           >
-                            {FONT_GROUPS.map((g) => (
-                              <optgroup key={g.label} label={g.label}>
-                                {g.fonts.map((f) => (
-                                  <option key={f} value={f} style={{ fontFamily: fontStack(f) }}>
-                                    {f}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Taille</span>
-                          <input
-                            type="range"
-                            min={60}
-                            max={180}
-                            step={5}
-                            value={Math.round(zone.scale * 100)}
-                            onChange={(e) => patch({ scale: Number(e.target.value) / 100 })}
-                            aria-label={`Taille du texte — ${zoneLabel}`}
-                            className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
-                          />
-                          <span className="text-[11px] text-gray-400 w-11 text-right tabular-nums">
-                            {Math.round(zone.scale * 100)}%
-                          </span>
-                        </div>
-
-                        {!isSubtitle && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">
-                            Interligne
-                          </span>
-                          <input
-                            type="range"
-                            min={0.9}
-                            max={2}
-                            step={0.05}
-                            value={'lineHeight' in zone ? zone.lineHeight : 1.1}
-                            onChange={(e) => patch({ lineHeight: Number(e.target.value) })}
-                            aria-label={`Interligne — ${zoneLabel}`}
-                            className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
-                          />
-                          <span className="text-[11px] text-gray-400 w-11 text-right tabular-nums">
-                            {'lineHeight' in zone ? zone.lineHeight.toFixed(2) : ''}
-                          </span>
-                        </div>
-                        )}
-
-                        {/* Gras / italique — titre ET CTA. `drawCTA` lit
-                            desormais `ctaTypography.bold/italic` ; le
-                            sous-titre, lui, reste sur ceux du titre, que
-                            `drawIntro` lui impose. */}
-                        {!isSubtitle && (() => {
-                          const st = isTitle ? textStyles.title : textStyles.cta;
-                          return (
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Style</span>
-                            <button
-                              type="button"
-                              onClick={() => patch({ bold: !st.bold })}
-                              aria-pressed={st.bold}
-                              aria-label={`Gras — ${zoneLabel}`}
-                              className={`rounded-lg px-3 py-1 text-xs font-bold transition ${
-                                st.bold
-                                  ? 'bg-purple-600/30 text-white ring-1 ring-purple-500/50'
-                                  : 'bg-gray-800 text-gray-400 hover:text-white'
-                              }`}
-                            >
-                              G
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => patch({ italic: !st.italic })}
-                              aria-pressed={st.italic}
-                              aria-label={`Italique — ${zoneLabel}`}
-                              className={`rounded-lg px-3 py-1 text-xs italic transition ${
-                                st.italic
-                                  ? 'bg-purple-600/30 text-white ring-1 ring-purple-500/50'
-                                  : 'bg-gray-800 text-gray-400 hover:text-white'
-                              }`}
-                            >
-                              I
-                            </button>
-                          </div>
-                          );
-                        })()}
-
-                        {/* Interlettrage — titre et CTA. La coupe des lignes
-                            est desormais mesuree AVEC l'espacement cote
-                            compositeur : la video coupe la ou l'apercu coupe,
-                            et le texte ne sort plus du cadre. Le sous-titre en
-                            est prive : il est trace par `fillText` nu. */}
-                        {!isSubtitle && (() => {
-                          const st = isTitle ? textStyles.title : textStyles.cta;
-                          return (
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">
-                              Interlettrage
+                            {f}
+                            <span className="block text-[10px] text-gray-500">
+                              {FORMAT_HINT[f]}
                             </span>
-                            <input
-                              type="range"
-                              min={-2}
-                              max={10}
-                              step={0.5}
-                              value={st.letterSpacing}
-                              onChange={(e) => patch({ letterSpacing: Number(e.target.value) })}
-                              aria-label={`Interlettrage — ${zoneLabel}`}
-                              className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
-                            />
-                            <span className="text-[11px] text-gray-400 w-11 text-right tabular-nums">
-                              {st.letterSpacing}
-                            </span>
-                          </div>
-                          );
-                        })()}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                </StyleSection>
 
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Couleur</span>
+                <StyleSection
+                  id="couleurs"
+                  title="Couleurs"
+                  hint={colors ? 'Personnalisées' : 'Kit de marque'}
+                  swatches={[accent, gradStart, gradEnd]}
+                  open={openSection === 'couleurs'}
+                  onToggle={toggleSection}
+                >
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-sm font-medium">Couleurs</label>
+                        {colors && (
                           <button
                             type="button"
-                            onClick={() =>
-                              setEditedTextColor(editedTextColor === 'color' ? null : 'color')
-                            }
-                            aria-pressed={editedTextColor === 'color'}
-                            aria-label={`Couleur — ${zoneLabel}`}
-                            className={`h-6 flex-1 rounded-md border transition ${
-                              editedTextColor === 'color' ? 'border-purple-400' : 'border-white/10'
+                            onClick={() => { setColors(null); setEditedColor(null); }}
+                            className="text-[11px] text-gray-500 hover:text-white transition"
+                          >
+                            Revenir au kit de marque
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        {([
+                          { key: 'accent' as const, label: 'Accent', value: accent },
+                          { key: 'gradStart' as const, label: 'Dégradé — début', value: gradStart },
+                          { key: 'gradEnd' as const, label: 'Dégradé — fin', value: gradEnd },
+                        ]).map((c) => (
+                          <button
+                            key={c.key}
+                            type="button"
+                            onClick={() => setEditedColor(editedColor === c.key ? null : c.key)}
+                            aria-pressed={editedColor === c.key}
+                            className={`flex-1 rounded-xl px-3 py-2.5 text-left transition ${
+                              editedColor === c.key
+                                ? 'bg-gray-800 ring-1 ring-purple-500/50'
+                                : 'bg-gray-900/60 hover:bg-gray-800/70'
                             }`}
-                            style={{ backgroundColor: zone.color }}
-                          />
-                          {editedZone === 'cta' && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setEditedTextColor(editedTextColor === 'subColor' ? null : 'subColor')
-                              }
-                              aria-pressed={editedTextColor === 'subColor'}
-                              aria-label="Couleur du sous-texte du CTA"
-                              className={`h-6 flex-1 rounded-md border transition ${
-                                editedTextColor === 'subColor'
-                                  ? 'border-purple-400'
-                                  : 'border-white/10'
-                              }`}
-                              style={{ backgroundColor: textStyles.cta.subColor }}
+                          >
+                            <span
+                              className="block h-5 w-full rounded-md border border-white/10"
+                              style={{ backgroundColor: c.value }}
                             />
-                          )}
-                        </div>
+                            <span className="mt-1.5 block text-[10px] text-gray-400 truncate">{c.label}</span>
+                          </button>
+                        ))}
+                      </div>
 
-                        {editedTextColor && (
+                      {editedColor && (
+                        <div className="mt-2 rounded-xl bg-gray-900/60 p-3">
                           <ColorWheel
                             color={
-                              editedTextColor === 'subColor' ? textStyles.cta.subColor : zone.color
+                              editedColor === 'accent' ? accent : editedColor === 'gradStart' ? gradStart : gradEnd
                             }
-                            onChange={(value) => patch({ [editedTextColor]: value })}
-                            label={editedTextColor === 'subColor' ? 'Sous-texte' : 'Texte'}
+                            onChange={(value) => setColor({ [editedColor]: value })}
+                            label={
+                              editedColor === 'accent'
+                                ? 'Accent'
+                                : editedColor === 'gradStart'
+                                  ? 'Dégradé — début'
+                                  : 'Dégradé — fin'
+                            }
                           />
-                        )}
+                        </div>
+                      )}
 
-                        <p className="text-[11px] text-gray-500">
-                          {isTitle
-                            ? 'Sans réglage propre, le sous-titre suit le titre.'
-                            : isSubtitle
-                              ? 'Graisse, italique et interligne restent ceux du titre : le montage les lui impose.'
-                              : 'La même police sert au CTA et à son sous-texte.'}
-                        </p>
+                      <p className="mt-1.5 text-[11px] text-gray-500">
+                        Le dégradé peint le fond ; l&apos;accent colore le halo du filigrane et la
+                        barre de progression.
+                      </p>
+
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Opacité du fond</span>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          value={Math.round(gradientOpacity * 100)}
+                          onChange={(e) => setColor({ gradientOpacity: Number(e.target.value) / 100 })}
+                          aria-label="Opacité du dégradé de fond"
+                          className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
+                        />
+                        <span className="text-[11px] text-gray-400 w-9 text-right tabular-nums">
+                          {Math.round(gradientOpacity * 100)}%
+                        </span>
                       </div>
-                    );
-                  })()}
-                </div>
+                    </div>
+                </StyleSection>
 
-                {/* Filigrane — repris du kit de marque, sinon « Studiio.pro ».
-                    Sans ce reglage le compositeur ecrivait « Afroboost.com »
-                    sur chaque sequence, sans moyen de l'enlever. */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label htmlFor="wm-text" className="block text-sm font-medium">
-                      Filigrane
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setWatermarkEnabled((v) => !v)}
-                      title={watermarkEnabled ? 'Masquer le filigrane' : 'Afficher le filigrane'}
-                      className="flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-white transition"
-                    >
-                      {watermarkVisible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                      {watermarkVisible ? 'Affiché' : 'Masqué'}
-                    </button>
-                  </div>
-                  <input
-                    id="wm-text"
-                    type="text"
-                    value={watermarkText}
-                    onChange={(e) => setWatermarkOverride(e.target.value)}
-                    disabled={!watermarkEnabled}
-                    placeholder={DEFAULT_WATERMARK}
-                    maxLength={40}
-                    className="w-full rounded-xl bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2.5 text-sm disabled:opacity-40"
-                  />
-                  <p className="mt-1 text-[11px] text-gray-500">
-                    Affiché en bas de chaque séquence du montage.
-                    {watermarkEnabled && !watermarkVisible && ' Champ vide : rien ne sera affiché.'}
-                  </p>
-                </div>
-
-                {/* Sequences — reordonnables par glisser-deposer.
-                    L'ordre choisi part a la fois au compositeur
-                    (`sequenceOrder`) et dans `metadata.sequences.order`, donc
-                    la video et l'apercu du Calendrier le suivent tous deux. */}
-                <div>
-                  <label className="block text-sm font-medium mb-2">Séquences</label>
-                  <p className="text-xs text-gray-500 mb-2">
-                    Glissez pour réordonner. L&apos;œil active ou masque une séquence.
-                  </p>
-                  <div className="space-y-1.5">
-                    {sequences.map((seq) => {
-                      const meta = SEQ_META[seq.key];
-                      const position = activeOrder.indexOf(seq.key);
-                      const isVideo = seq.key === 'video';
-                      // Seule une sequence video SANS rush reste inerte. Des
-                      // qu'un rush est importe, elle se deplace, se masque et
-                      // s'affiche comme les trois autres.
-                      const inert = isVideo && !rushUrl;
-                      return (
-                        <div
-                          key={seq.key}
-                          draggable={!inert}
-                          onDragStart={(e) => {
-                            // Firefox n'initie aucun drag HTML5 sans donnees.
-                            e.dataTransfer.setData('text/plain', seq.key);
-                            e.dataTransfer.effectAllowed = 'move';
-                            setDragKey(seq.key);
+                <StyleSection
+                  id="texte"
+                  title="Texte"
+                  hint={`${textStyles.title.font} · filigrane ${watermarkVisible ? 'affiché' : 'masqué'}`}
+                  open={openSection === 'texte'}
+                  onToggle={toggleSection}
+                >
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-sm font-medium">Texte</label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTitleStyle(DEFAULT_TEXT_STYLES.title);
+                            setSubtitleStyle(DEFAULT_TEXT_STYLES.subtitle);
+                            setCtaStyle({ ...DEFAULT_TEXT_STYLES.cta, subColor: '' });
+                            setEditedTextColor(null);
                           }}
-                          onDragEnd={() => setDragKey(null)}
-                          onDragOver={(e) => e.preventDefault()}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            const from = (dragKey || e.dataTransfer.getData('text/plain')) as SeqKey;
-                            if (from) moveSequence(from, seq.key);
-                            setDragKey(null);
-                          }}
-                          className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition ${
-                            dragKey === seq.key ? 'opacity-40' : ''
-                          } ${
-                            seq.enabled
-                              ? 'bg-gray-900/60 ring-1 ring-purple-500/20'
-                              : 'bg-gray-900/30 opacity-50'
-                          } ${inert ? 'cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'}`}
+                          className="text-[11px] text-gray-500 hover:text-white transition"
                         >
-                          <GripVertical
-                            className={`w-4 h-4 flex-shrink-0 ${inert ? 'text-gray-700' : 'text-gray-500'}`}
-                          />
-                          <span
-                            className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
-                            style={
-                              seq.enabled
-                                ? { backgroundColor: accent, color: '#fff' }
-                                : { backgroundColor: '#1F2937', color: '#6B7280' }
-                            }
+                          Réinitialiser
+                        </button>
+                      </div>
+
+                      <div className="flex gap-2 mb-2">
+                        {([
+                          { key: 'title' as const, label: 'Titre', hint: 'le grand texte' },
+                          { key: 'subtitle' as const, label: 'Sous-titre', hint: 'sous le titre' },
+                          { key: 'cta' as const, label: 'CTA', hint: 'et sous-texte' },
+                        ]).map((z) => (
+                          <button
+                            key={z.key}
+                            type="button"
+                            onClick={() => {
+                          setEditedZone(z.key);
+                          setEditedTextColor(null);
+                          // Le sous-titre n'a pas d'onglet : il vit avec le
+                          // titre, comme dans le montage. Et on ne braque
+                          // l'apercu que sur une sequence reellement active,
+                          // sinon le plateau se viderait sans explication.
+                          const target = z.key === 'cta' ? 'cta' : 'intro';
+                          if (activeOrder.includes(target)) setPreviewFocus(target);
+                        }}
+                            aria-pressed={editedZone === z.key}
+                            className={`flex-1 rounded-xl px-3 py-2 text-left transition ${
+                              editedZone === z.key
+                                ? 'bg-purple-600/20 ring-1 ring-purple-500/50'
+                                : 'bg-gray-900/60 hover:bg-gray-800/70'
+                            }`}
                           >
-                            {seq.enabled ? position + 1 : '—'}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-sm font-medium truncate">{meta.label}</div>
-                            <div className="text-[11px] text-gray-500 truncate" title={isVideo && rushUrl ? rushName : undefined}>
-                              {isVideo && rushUrl ? rushName || 'Rush importé' : meta.hint}
+                            <span
+                              className={`block text-sm font-medium ${editedZone === z.key ? 'text-white' : 'text-gray-300'}`}
+                            >
+                              {z.label}
+                            </span>
+                            <span className="block text-[10px] text-gray-500">{z.hint}</span>
+                          </button>
+                        ))}
+                      </div>
+
+                      {(() => {
+                        const isTitle = editedZone === 'title';
+                        const isSubtitle = editedZone === 'subtitle';
+                        const zoneLabel = isTitle ? 'titre' : isSubtitle ? 'sous-titre' : 'CTA';
+                        /** Applique un correctif a la zone en cours. */
+                        const patch = (p: Record<string, unknown>) =>
+                          isTitle
+                            ? setTitleStyle((prev) => ({ ...prev, ...p }))
+                            : isSubtitle
+                              ? setSubtitleStyle((prev) => ({ ...prev, ...p }))
+                              : setCtaStyle((prev) => ({ ...prev, ...p }));
+                        // Le sous-titre affiche ce qu'il HERITE tant qu'il n'a
+                        // rien de propre : montrer « Inter » alors que le titre
+                        // est en Anton mentirait sur ce que produit la video.
+                        const zone = isTitle
+                          ? textStyles.title
+                          : isSubtitle
+                            ? {
+                                font: textStyles.subtitle.font || textStyles.title.font,
+                                color: textStyles.subtitle.color || `${textStyles.title.color}CC`,
+                                scale: textStyles.subtitle.scale,
+                              }
+                            : textStyles.cta;
+                        return (
+                          <div className="rounded-xl bg-gray-900/60 p-3 space-y-3">
+                            <div>
+                              <label
+                                htmlFor="txt-font"
+                                className="block text-[10px] uppercase tracking-wider text-gray-500 mb-1"
+                              >
+                                Police
+                              </label>
+                              <select
+                                id="txt-font"
+                                value={zone.font}
+                                onChange={(e) => patch({ font: e.target.value })}
+                                style={{ fontFamily: fontStack(zone.font) }}
+                                className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none px-2 py-1.5 text-sm"
+                              >
+                                {FONT_GROUPS.map((g) => (
+                                  <optgroup key={g.label} label={g.label}>
+                                    {g.fonts.map((f) => (
+                                      <option key={f} value={f} style={{ fontFamily: fontStack(f) }}>
+                                        {f}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                ))}
+                              </select>
                             </div>
-                          </div>
-                          <span className="text-[11px] text-gray-500 flex-shrink-0">
-                            {seq.enabled ? `${seqDuration(seq.key)}s` : ''}
-                          </span>
-                          {/* Import du rush — la mediatheque sert a la fois de
-                              televersement et de re-selection d'un fichier
-                              deja envoye, comme dans le panneau audio. */}
-                          {isVideo && (
-                            <div className="flex items-center gap-1 flex-shrink-0">
+
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Taille</span>
+                              <input
+                                type="range"
+                                min={60}
+                                max={180}
+                                step={5}
+                                value={Math.round(zone.scale * 100)}
+                                onChange={(e) => patch({ scale: Number(e.target.value) / 100 })}
+                                aria-label={`Taille du texte — ${zoneLabel}`}
+                                className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
+                              />
+                              <span className="text-[11px] text-gray-400 w-11 text-right tabular-nums">
+                                {Math.round(zone.scale * 100)}%
+                              </span>
+                            </div>
+
+                            {!isSubtitle && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">
+                                Interligne
+                              </span>
+                              <input
+                                type="range"
+                                min={0.9}
+                                max={2}
+                                step={0.05}
+                                value={'lineHeight' in zone ? zone.lineHeight : 1.1}
+                                onChange={(e) => patch({ lineHeight: Number(e.target.value) })}
+                                aria-label={`Interligne — ${zoneLabel}`}
+                                className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
+                              />
+                              <span className="text-[11px] text-gray-400 w-11 text-right tabular-nums">
+                                {'lineHeight' in zone ? zone.lineHeight.toFixed(2) : ''}
+                              </span>
+                            </div>
+                            )}
+
+                            {/* Gras / italique — titre ET CTA. `drawCTA` lit
+                                desormais `ctaTypography.bold/italic` ; le
+                                sous-titre, lui, reste sur ceux du titre, que
+                                `drawIntro` lui impose. */}
+                            {!isSubtitle && (() => {
+                              const st = isTitle ? textStyles.title : textStyles.cta;
+                              return (
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Style</span>
+                                <button
+                                  type="button"
+                                  onClick={() => patch({ bold: !st.bold })}
+                                  aria-pressed={st.bold}
+                                  aria-label={`Gras — ${zoneLabel}`}
+                                  className={`rounded-lg px-3 py-1 text-xs font-bold transition ${
+                                    st.bold
+                                      ? 'bg-purple-600/30 text-white ring-1 ring-purple-500/50'
+                                      : 'bg-gray-800 text-gray-400 hover:text-white'
+                                  }`}
+                                >
+                                  G
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => patch({ italic: !st.italic })}
+                                  aria-pressed={st.italic}
+                                  aria-label={`Italique — ${zoneLabel}`}
+                                  className={`rounded-lg px-3 py-1 text-xs italic transition ${
+                                    st.italic
+                                      ? 'bg-purple-600/30 text-white ring-1 ring-purple-500/50'
+                                      : 'bg-gray-800 text-gray-400 hover:text-white'
+                                  }`}
+                                >
+                                  I
+                                </button>
+                              </div>
+                              );
+                            })()}
+
+                            {/* Interlettrage — titre et CTA. La coupe des lignes
+                                est desormais mesuree AVEC l'espacement cote
+                                compositeur : la video coupe la ou l'apercu coupe,
+                                et le texte ne sort plus du cadre. Le sous-titre en
+                                est prive : il est trace par `fillText` nu. */}
+                            {!isSubtitle && (() => {
+                              const st = isTitle ? textStyles.title : textStyles.cta;
+                              return (
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">
+                                  Interlettrage
+                                </span>
+                                <input
+                                  type="range"
+                                  min={-2}
+                                  max={10}
+                                  step={0.5}
+                                  value={st.letterSpacing}
+                                  onChange={(e) => patch({ letterSpacing: Number(e.target.value) })}
+                                  aria-label={`Interlettrage — ${zoneLabel}`}
+                                  className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
+                                />
+                                <span className="text-[11px] text-gray-400 w-11 text-right tabular-nums">
+                                  {st.letterSpacing}
+                                </span>
+                              </div>
+                              );
+                            })()}
+
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Couleur</span>
                               <button
                                 type="button"
-                                onClick={() => setRushLibOpen(true)}
-                                disabled={rushLoading}
-                                title={rushUrl ? 'Remplacer le rush' : 'Importer un rush'}
-                                aria-label={rushUrl ? 'Remplacer le rush' : 'Importer un rush'}
-                                className="flex items-center gap-1 rounded-lg bg-gray-800 hover:bg-gray-700 px-2 py-1 text-[10px] font-medium text-gray-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
-                              >
-                                {rushLoading ? (
-                                  <Loader2 className="w-3 h-3 animate-spin" />
-                                ) : (
-                                  <Film className="w-3 h-3" />
-                                )}
-                                {rushUrl ? 'Changer' : 'Importer'}
-                              </button>
-                              {rushUrl && !rushIsClip && (
+                                onClick={() =>
+                                  setEditedTextColor(editedTextColor === 'color' ? null : 'color')
+                                }
+                                aria-pressed={editedTextColor === 'color'}
+                                aria-label={`Couleur — ${zoneLabel}`}
+                                className={`h-6 flex-1 rounded-md border transition ${
+                                  editedTextColor === 'color' ? 'border-purple-400' : 'border-white/10'
+                                }`}
+                                style={{ backgroundColor: zone.color }}
+                              />
+                              {editedZone === 'cta' && (
                                 <button
                                   type="button"
-                                  onClick={() => setClipSource({ url: rushUrl, name: rushName || 'rush' })}
-                                  disabled={rushLoading}
-                                  title="Découper les temps forts du rush. Le premier extrait devient la séquence Vidéo ; les autres restent dans la médiathèque."
-                                  aria-label="Découper les temps forts du rush"
-                                  className="flex items-center gap-1 rounded-lg bg-gray-800 hover:bg-gray-700 px-2 py-1 text-[10px] font-medium text-gray-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
-                                >
-                                  <Sparkles className="w-3 h-3" />
-                                  Temps forts
-                                </button>
-                              )}
-                              {rushUrl && (
-                                <button
-                                  type="button"
-                                  onClick={clearRush}
-                                  title="Retirer le rush"
-                                  aria-label="Retirer le rush"
-                                  className="text-gray-500 hover:text-red-400 transition"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
+                                  onClick={() =>
+                                    setEditedTextColor(editedTextColor === 'subColor' ? null : 'subColor')
+                                  }
+                                  aria-pressed={editedTextColor === 'subColor'}
+                                  aria-label="Couleur du sous-texte du CTA"
+                                  className={`h-6 flex-1 rounded-md border transition ${
+                                    editedTextColor === 'subColor'
+                                      ? 'border-purple-400'
+                                      : 'border-white/10'
+                                  }`}
+                                  style={{ backgroundColor: textStyles.cta.subColor }}
+                                />
                               )}
                             </div>
-                          )}
-                          {/* Repli tactile et clavier : le glisser-deposer
-                              HTML5 n'existe pas sur mobile. */}
-                          <div className="flex flex-col flex-shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => moveSequenceBy(seq.key, -1)}
-                              disabled={inert}
-                              title="Monter"
-                              aria-label={`Monter ${meta.label}`}
-                              className="text-gray-500 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed leading-none"
-                            >
-                              <ChevronUp className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => moveSequenceBy(seq.key, 1)}
-                              disabled={inert}
-                              title="Descendre"
-                              aria-label={`Descendre ${meta.label}`}
-                              className="text-gray-500 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed leading-none"
-                            >
-                              <ChevronDown className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => toggleSequence(seq.key)}
-                            disabled={inert}
-                            title={seq.enabled ? 'Masquer' : 'Afficher'}
-                            className="flex-shrink-0 text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
-                          >
-                            {seq.enabled ? (
-                              <Eye className="w-4 h-4" />
-                            ) : (
-                              <EyeOff className="w-4 h-4" />
+
+                            {editedTextColor && (
+                              <ColorWheel
+                                color={
+                                  editedTextColor === 'subColor' ? textStyles.cta.subColor : zone.color
+                                }
+                                onChange={(value) => patch({ [editedTextColor]: value })}
+                                label={editedTextColor === 'subColor' ? 'Sous-texte' : 'Texte'}
+                              />
                             )}
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {rushUrl && (
-                    <p className="text-[11px] text-gray-500 mt-2">
-                      Le rush est intégré au montage à la place qu&apos;occupe la séquence
-                      Vidéo, au ratio de la source. Le rendu se fait alors en temps réel :
-                      comptez la durée du montage.
-                    </p>
-                  )}
-                  {/* Mediatheque — televersement ET re-selection d'un rush deja
-                      envoye. Meme composant que le panneau audio, filtre sur
-                      les videos. */}
-                  <MediaLibrary
-                    isOpen={rushLibOpen}
-                    onClose={() => setRushLibOpen(false)}
-                    mediaType="video"
-                    onSelect={(url, name) => { void applyRush(url, name); }}
-                  />
-                </div>
+
+                            <p className="text-[11px] text-gray-500">
+                              {isTitle
+                                ? 'Sans réglage propre, le sous-titre suit le titre.'
+                                : isSubtitle
+                                  ? 'Graisse, italique et interligne restent ceux du titre : le montage les lui impose.'
+                                  : 'La même police sert au CTA et à son sous-texte.'}
+                            </p>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label htmlFor="wm-text" className="block text-sm font-medium">
+                          Filigrane
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setWatermarkEnabled((v) => !v)}
+                          title={watermarkEnabled ? 'Masquer le filigrane' : 'Afficher le filigrane'}
+                          className="flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-white transition"
+                        >
+                          {watermarkVisible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                          {watermarkVisible ? 'Affiché' : 'Masqué'}
+                        </button>
+                      </div>
+                      <input
+                        id="wm-text"
+                        type="text"
+                        value={watermarkText}
+                        onChange={(e) => setWatermarkOverride(e.target.value)}
+                        disabled={!watermarkEnabled}
+                        placeholder={DEFAULT_WATERMARK}
+                        maxLength={40}
+                        className="w-full rounded-xl bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2.5 text-sm disabled:opacity-40"
+                      />
+                      <p className="mt-1 text-[11px] text-gray-500">
+                        Affiché en bas de chaque séquence du montage.
+                        {watermarkEnabled && !watermarkVisible && ' Champ vide : rien ne sera affiché.'}
+                      </p>
+                    </div>
+                </StyleSection>
+
+                <StyleSection
+                  id="sequences"
+                  title="Séquences"
+                  hint={`${activeOrder.length} active${activeOrder.length > 1 ? 's' : ''}${rushUrl ? ' · rush' : ''}`}
+                  open={openSection === 'sequences'}
+                  onToggle={toggleSection}
+                >
+                    <div>
+                      <label className="block text-sm font-medium mb-2">Séquences</label>
+                      <p className="text-xs text-gray-500 mb-2">
+                        Glissez pour réordonner. L&apos;œil active ou masque une séquence.
+                      </p>
+                      <div className="space-y-1.5">
+                        {sequences.map((seq) => {
+                          const meta = SEQ_META[seq.key];
+                          const position = activeOrder.indexOf(seq.key);
+                          const isVideo = seq.key === 'video';
+                          // Seule une sequence video SANS rush reste inerte. Des
+                          // qu'un rush est importe, elle se deplace, se masque et
+                          // s'affiche comme les trois autres.
+                          const inert = isVideo && !rushUrl;
+                          return (
+                            <div
+                              key={seq.key}
+                              draggable={!inert}
+                              onDragStart={(e) => {
+                                // Firefox n'initie aucun drag HTML5 sans donnees.
+                                e.dataTransfer.setData('text/plain', seq.key);
+                                e.dataTransfer.effectAllowed = 'move';
+                                setDragKey(seq.key);
+                              }}
+                              onDragEnd={() => setDragKey(null)}
+                              onDragOver={(e) => e.preventDefault()}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                const from = (dragKey || e.dataTransfer.getData('text/plain')) as SeqKey;
+                                if (from) moveSequence(from, seq.key);
+                                setDragKey(null);
+                              }}
+                              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition ${
+                                dragKey === seq.key ? 'opacity-40' : ''
+                              } ${
+                                seq.enabled
+                                  ? 'bg-gray-900/60 ring-1 ring-purple-500/20'
+                                  : 'bg-gray-900/30 opacity-50'
+                              } ${inert ? 'cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'}`}
+                            >
+                              <GripVertical
+                                className={`w-4 h-4 flex-shrink-0 ${inert ? 'text-gray-700' : 'text-gray-500'}`}
+                              />
+                              <span
+                                className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
+                                style={
+                                  seq.enabled
+                                    ? { backgroundColor: accent, color: '#fff' }
+                                    : { backgroundColor: '#1F2937', color: '#6B7280' }
+                                }
+                              >
+                                {seq.enabled ? position + 1 : '—'}
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-sm font-medium truncate">{meta.label}</div>
+                                <div className="text-[11px] text-gray-500 truncate" title={isVideo && rushUrl ? rushName : undefined}>
+                                  {isVideo && rushUrl ? rushName || 'Rush importé' : meta.hint}
+                                </div>
+                              </div>
+                              <span className="text-[11px] text-gray-500 flex-shrink-0">
+                                {seq.enabled ? `${seqDuration(seq.key)}s` : ''}
+                              </span>
+                              {/* Import du rush — la mediatheque sert a la fois de
+                                  televersement et de re-selection d'un fichier
+                                  deja envoye, comme dans le panneau audio. */}
+                              {isVideo && (
+                                <div className="flex items-center gap-1 flex-shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => setRushLibOpen(true)}
+                                    disabled={rushLoading}
+                                    title={rushUrl ? 'Remplacer le rush' : 'Importer un rush'}
+                                    aria-label={rushUrl ? 'Remplacer le rush' : 'Importer un rush'}
+                                    className="flex items-center gap-1 rounded-lg bg-gray-800 hover:bg-gray-700 px-2 py-1 text-[10px] font-medium text-gray-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
+                                  >
+                                    {rushLoading ? (
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      <Film className="w-3 h-3" />
+                                    )}
+                                    {rushUrl ? 'Changer' : 'Importer'}
+                                  </button>
+                                  {rushUrl && !rushIsClip && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setClipSource({ url: rushUrl, name: rushName || 'rush' })}
+                                      disabled={rushLoading}
+                                      title="Découper les temps forts du rush. Le premier extrait devient la séquence Vidéo ; les autres restent dans la médiathèque."
+                                      aria-label="Découper les temps forts du rush"
+                                      className="flex items-center gap-1 rounded-lg bg-gray-800 hover:bg-gray-700 px-2 py-1 text-[10px] font-medium text-gray-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
+                                    >
+                                      <Sparkles className="w-3 h-3" />
+                                      Temps forts
+                                    </button>
+                                  )}
+                                  {rushUrl && (
+                                    <button
+                                      type="button"
+                                      onClick={clearRush}
+                                      title="Retirer le rush"
+                                      aria-label="Retirer le rush"
+                                      className="text-gray-500 hover:text-red-400 transition"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                              {/* Repli tactile et clavier : le glisser-deposer
+                                  HTML5 n'existe pas sur mobile. */}
+                              <div className="flex flex-col flex-shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => moveSequenceBy(seq.key, -1)}
+                                  disabled={inert}
+                                  title="Monter"
+                                  aria-label={`Monter ${meta.label}`}
+                                  className="text-gray-500 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed leading-none"
+                                >
+                                  <ChevronUp className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => moveSequenceBy(seq.key, 1)}
+                                  disabled={inert}
+                                  title="Descendre"
+                                  aria-label={`Descendre ${meta.label}`}
+                                  className="text-gray-500 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed leading-none"
+                                >
+                                  <ChevronDown className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => toggleSequence(seq.key)}
+                                disabled={inert}
+                                title={seq.enabled ? 'Masquer' : 'Afficher'}
+                                className="flex-shrink-0 text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+                              >
+                                {seq.enabled ? (
+                                  <Eye className="w-4 h-4" />
+                                ) : (
+                                  <EyeOff className="w-4 h-4" />
+                                )}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {rushUrl && (
+                        <p className="text-[11px] text-gray-500 mt-2">
+                          Le rush est intégré au montage à la place qu&apos;occupe la séquence
+                          Vidéo, au ratio de la source. Le rendu se fait alors en temps réel :
+                          comptez la durée du montage.
+                        </p>
+                      )}
+                      {/* Mediatheque — televersement ET re-selection d'un rush deja
+                          envoye. Meme composant que le panneau audio, filtre sur
+                          les videos. */}
+                      <MediaLibrary
+                        isOpen={rushLibOpen}
+                        onClose={() => setRushLibOpen(false)}
+                        mediaType="video"
+                        onSelect={(url, name) => { void applyRush(url, name); }}
+                      />
+                    </div>
+                </StyleSection>
 
                 <div className="flex justify-between pt-2">
                   <Button variant="ghost" size="sm" onClick={() => setStep(S.sujet)}>
@@ -2928,7 +3153,14 @@ export default function AssistantWizard() {
         )}
       </div>
 
-      <div className="lg:col-span-2">
+      {/* Colonne d'apercu COLLEE : elle defilait avec les reglages et sortait
+          de l'ecran des que le panneau s'allongeait. `items-start` sur la
+          grille (deja present) est ce qui rend le `sticky` operant : sans lui
+          la colonne s'etire sur toute la hauteur et n'a plus rien a coller.
+          `top-20` et non `top-4` : la navbar est `fixed h-16`, un decalage
+          plus court glissait 48 px de la carte — en-tete et onglets compris —
+          sous cette barre. */}
+      <div className="lg:col-span-2 lg:sticky lg:top-20">
         <Preview
           generated={generated}
           format={format}
@@ -2944,6 +3176,8 @@ export default function AssistantWizard() {
           watermark={watermarkLabel}
           accent={accent}
           text={textStyles}
+          focus={previewFocus}
+          onFocusChange={setPreviewFocus}
         />
       </div>
 
