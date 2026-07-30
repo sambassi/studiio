@@ -250,6 +250,16 @@ export interface DesignOptions {
   titleIconPosition?: { x: number; y: number };
   /** Per-element font overrides (undefined → inherit `font`). */
   titleFont?: string;
+  /**
+   * Typographie PROPRE au sous-titre de la sequence intro. Chaque champ
+   * absent retombe sur le titre : police et taille du titre, couleur du
+   * titre a 80 % — c'est-a-dire le rendu qui precedait ces champs.
+   * `subtitleScale` multiplie la taille deja calculee (elle-meme derivee de
+   * `textScale`), `subtitleColor` est peinte a plein.
+   */
+  subtitleFont?: string;
+  subtitleColor?: string;
+  subtitleScale?: number;
   ctaFont?: string;
   overlayFont?: string;
   watermarkFont?: string;
@@ -657,6 +667,50 @@ function getSiteTextPos(siteText: SiteTextConfig | undefined, seq: string): { x:
   return { x: 50, y: 95 };
 }
 
+/**
+ * Largeur EXACTE d'un texte tel que `fillTextWithSpacing` le dessinera.
+ *
+ * C'est la seule mesure qui vaille des qu'il y a de l'interlettrage :
+ * `measureText(texte)` mesure la chaine rendue d'un bloc — crenage et
+ * ligatures compris — alors que le trace espace avance caractere par
+ * caractere et ajoute `spacing` entre chacun. Les deux ne donnent pas le
+ * meme nombre.
+ *
+ * Toute decision de mise en page — retour a la ligne, centrage — doit passer
+ * par ici, sinon elle raisonne sur une largeur que le rendu ne produira pas.
+ * C'est ce qui faisait deborder le titre hors du cadre alors que l'apercu,
+ * lui, revenait a la ligne au bon endroit.
+ */
+export function measureSpacedText(
+  ctx: CanvasRenderingContext2D, text: string, spacing: number
+): number {
+  if (!spacing) return ctx.measureText(text).width;
+  const chars = Array.from(text);
+  if (chars.length === 0) return 0;
+  let total = 0;
+  for (const ch of chars) total += ctx.measureText(ch).width;
+  return total + (chars.length - 1) * spacing;
+}
+
+/**
+ * Largeur retenue pour DECIDER d'un retour a la ligne.
+ *
+ * CSS ajoute l'interlettrage apres CHAQUE caractere, y compris le dernier, et
+ * cette avance finale compte dans la largeur qui declenche le retour a la
+ * ligne. Le trace canvas, lui, n'espace qu'ENTRE les caracteres. Sans ce
+ * cran d'ecart, le compositeur couperait un mot plus tard que l'apercu sur
+ * les lignes qui frolent la limite — meme texte, deux mises en page.
+ *
+ * On l'ajoute donc a la seule decision de coupe : le trace et le centrage,
+ * eux, gardent la largeur reelle (`measureSpacedText`).
+ */
+function measureLineForWrap(
+  ctx: CanvasRenderingContext2D, text: string, spacing: number
+): number {
+  if (!spacing) return ctx.measureText(text).width;
+  return measureSpacedText(ctx, text, spacing) + spacing;
+}
+
 /** Draw text with letter-spacing (Canvas 2D doesn't natively support it) */
 function fillTextWithSpacing(
   ctx: CanvasRenderingContext2D, text: string, x: number, y: number, spacing: number
@@ -665,10 +719,12 @@ function fillTextWithSpacing(
     ctx.fillText(text, x, y);
     return;
   }
-  // For center alignment, calculate total width first and offset
+  // For center alignment, calculate total width first and offset.
+  // La largeur vient de `measureSpacedText` : la boucle ci-dessous avance
+  // caractere par caractere, donc mesurer la chaine d'un bloc decalait le
+  // centrage de la difference de crenage.
   const chars = Array.from(text);
-  const totalExtra = (chars.length - 1) * spacing;
-  const textWidth = ctx.measureText(text).width + totalExtra;
+  const textWidth = measureSpacedText(ctx, text, spacing);
   let offsetX = 0;
   if (ctx.textAlign === 'center') offsetX = -textWidth / 2;
   else if (ctx.textAlign === 'right') offsetX = -textWidth;
@@ -745,8 +801,19 @@ function truncateToWidth(ctx: CanvasRenderingContext2D, text: string, maxWidth: 
   return lo > 0 ? text.slice(0, lo) + ellipsis : ellipsis;
 }
 
-/** Word-wrap text to fit within maxWidth, splitting at word boundaries */
-function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+/**
+ * Word-wrap text to fit within maxWidth, splitting at word boundaries.
+ *
+ * `letterSpacing` doit valoir l'espacement avec lequel les lignes seront
+ * REELLEMENT tracees. Sans lui, la coupe se decide sur la largeur nue puis le
+ * rendu ajoute l'espacement par-dessus : les lignes sortent du cadre, et
+ * l'apercu CSS — qui, lui, tient compte de l'espacement — coupe ailleurs.
+ * Defaut 0 : tous les appels qui dessinent sans espacement gardent le
+ * comportement exact d'avant.
+ */
+export function wrapText(
+  ctx: CanvasRenderingContext2D, text: string, maxWidth: number, letterSpacing = 0
+): string[] {
   // Split on explicit line breaks first, then word-wrap each segment.
   // This way users typing "Bonjour\ntout le monde" in a description get two
   // explicit lines, not one wrapped paragraph. Backward-compatible: text
@@ -759,7 +826,7 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
     let currentLine = '';
     for (const word of words) {
       const testLine = currentLine ? `${currentLine} ${word}` : word;
-      if (ctx.measureText(testLine).width > maxWidth && currentLine) {
+      if (measureLineForWrap(ctx, testLine, letterSpacing) > maxWidth && currentLine) {
         out.push(currentLine);
         currentLine = word;
       } else {
@@ -1155,7 +1222,8 @@ function drawIntro(
   ctx.shadowBlur = 0; ctx.shadowOffsetY = 0; ctx.shadowOffsetX = 0;
 
   // Word-wrap title to match editor behavior (text wraps within titleWidth)
-  const titleLines = wrapText(ctx, title, titleWidth);
+  // Coupe mesuree AVEC l'interlettrage : c'est lui qui sera trace.
+  const titleLines = wrapText(ctx, title, titleWidth, titleLetterSpacing);
   const lineSpacing = fontSize * (design?.titleTypography?.lineHeight || 1.1);
   // With textBaseline='top', Y = top of text — matches CSS top: Y% with translate(-50%, 0)
   // When a title icon is configured, the title is pushed below the icon.
@@ -1243,16 +1311,25 @@ function drawIntro(
   // long subtitles overflow the right edge of the canvas.
   let lastTextBottom = titleBlockBottom;
   if (subtitle) {
-    ctx.font = `${fontStyle}${fontWeight} ${subFontSize}px "${fontFamily}", sans-serif`;
-    ctx.fillStyle = hexToRgba(titleColor, 0.8);
+    // Typographie PROPRE au sous-titre. Chaque champ retombe sur celui du
+    // titre quand il est absent — c'est le rendu d'avant, a l'identique :
+    //   police  → celle du titre
+    //   taille  → `subFontSize` (deja multipliee par `textScale`)
+    //   couleur → `titleColor` a 80 %
+    // Une couleur explicite est peinte a plein : ce que l'utilisateur
+    // choisit est ce qu'il voit, sans attenuation surprise.
+    const subFamily = design?.subtitleFont || fontFamily;
+    const subSize = Math.max(1, Math.round(subFontSize * (design?.subtitleScale ?? 1)));
+    ctx.font = `${fontStyle}${fontWeight} ${subSize}px "${subFamily}", sans-serif`;
+    ctx.fillStyle = design?.subtitleColor || hexToRgba(titleColor, 0.8);
     ctx.filter = dropShadowBaseFilter(w);
     const mt1 = Math.round(w * (4 / 320));
     const subLines = wrapText(ctx, subtitle, titleWidth);
-    const subLineSpacing = subFontSize * (design?.titleTypography?.lineHeight || 1.1);
+    const subLineSpacing = subSize * (design?.titleTypography?.lineHeight || 1.1);
     for (let i = 0; i < subLines.length; i++) {
       ctx.fillText(subLines[i], titlePosX, titleBlockBottom + mt1 + i * subLineSpacing);
     }
-    lastTextBottom = titleBlockBottom + mt1 + (subLines.length - 1) * subLineSpacing + subFontSize;
+    lastTextBottom = titleBlockBottom + mt1 + (subLines.length - 1) * subLineSpacing + subSize;
     ctx.filter = 'none';
   }
 
@@ -1290,7 +1367,7 @@ function drawIntro(
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.filter = dropShadowBaseFilter(w);
-      const lines = wrapText(ctx, text, titleWidth);
+      const lines = wrapText(ctx, text, titleWidth, ls);
       const lineSpacing = size * lhMul;
       const totalH = (lines.length - 1) * lineSpacing;
       const startY = y - totalH / 2;
@@ -2321,6 +2398,17 @@ function drawCTA(
   const ctaColor = design?.ctaColor || '#FFFFFF'; // editor default is white, not accent
   const ctaTextScale = design?.ctaTextScale || 1.0;
 
+  // Graisse et italique du CTA. `drawCTA` ecrivait `900` en dur a chaque
+  // `ctx.font` et ne lisait jamais `ctaTypography.bold/italic`, pourtant
+  // declares : les deux reglages existaient dans le type sans aucun effet.
+  // `bold !== false` reproduit exactement le rendu d'avant — seul un `false`
+  // explicite allege la graisse, comme pour le titre (`drawIntro`).
+  const ctaBold = design?.ctaTypography?.bold !== false;
+  const ctaItalic = !!design?.ctaTypography?.italic;
+  /** Chaine `ctx.font` du CTA — un seul endroit ou graisse et style vivent. */
+  const ctaFontStr = (size: number, family: string) =>
+    `${ctaItalic ? 'italic ' : ''}${ctaBold ? 900 : 400} ${size}px "${family}", sans-serif`;
+
   // CTA text mapping — editor renders:
   //   BIG text = ctaMainText state ("AFROBOOST")     → saved in design.ctaMainText & branding.watermarkText
   //   Sub text = ctaSubText state ("CHAT POUR PLUS D'INFOS") → saved in design.ctaSubTextDesign & branding.ctaText
@@ -2367,13 +2455,13 @@ function drawCTA(
   const ctaContainerW = w * ((design?.watermarkSize ?? 70) / 100);
 
   // Word-wrap CTA text within container width
-  ctx.font = `900 ${ctaFontSize}px "${fontFamily}", sans-serif`;
+  ctx.font = ctaFontStr(ctaFontSize, fontFamily);
   const ctaWords = effectiveCtaText.toUpperCase().split(' ');
   let ctaLines: string[] = [];
   let currentLine = '';
   for (const word of ctaWords) {
     const testLine = currentLine ? currentLine + ' ' + word : word;
-    if (ctx.measureText(testLine).width > ctaContainerW && currentLine) {
+    if (measureLineForWrap(ctx, testLine, ctaLetterSpacing) > ctaContainerW && currentLine) {
       ctaLines.push(currentLine);
       currentLine = word;
     } else {
@@ -2400,10 +2488,10 @@ function drawCTA(
   // Wrap sales phrase + sub-text within the CTA container width — without
   // this, long phrases like "Atteignez le bien-être avec nos optimisations
   // expertes" overflow the canvas to the left/right.
-  ctx.font = `900 ${salesFontSize}px "${fontFamily}", sans-serif`;
-  const salesLines: string[] = salesPhrase ? wrapText(ctx, salesPhrase, ctaContainerW) : [];
-  ctx.font = `900 ${subFontSize}px "${fontFamily}", sans-serif`;
-  const subLines: string[] = wrapText(ctx, effectiveSubText.toUpperCase(), ctaContainerW);
+  ctx.font = ctaFontStr(salesFontSize, fontFamily);
+  const salesLines: string[] = salesPhrase ? wrapText(ctx, salesPhrase, ctaContainerW, ctaLetterSpacing) : [];
+  ctx.font = ctaFontStr(subFontSize, fontFamily);
+  const subLines: string[] = wrapText(ctx, effectiveSubText.toUpperCase(), ctaContainerW, ctaLetterSpacing);
 
   const salesLineH = salesFontSize * lineMul;
   const ctaLineH = ctaFontSize * lineMul;
@@ -2456,7 +2544,7 @@ function drawCTA(
 
   // Sales phrase (multi-line)
   if (salesLines.length > 0) {
-    ctx.font = `900 ${salesFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
+    ctx.font = ctaFontStr(salesFontSize, fontFamily); ctx.textAlign = 'center';
     ctx.fillStyle = hexToRgba(ctaColor, 0.93);
     salesLines.forEach((line, i) => {
       fillTextWithSpacing(ctx, line, ctaPosX, curY + i * salesLineH, ctaLetterSpacing);
@@ -2465,7 +2553,7 @@ function drawCTA(
   }
 
   // Main CTA text (multi-line) — uses watermarkFont + optional gradient.
-  ctx.font = `900 ${ctaFontSize}px "${watermarkFontFamily}", sans-serif`; ctx.textAlign = 'center';
+  ctx.font = ctaFontStr(ctaFontSize, watermarkFontFamily); ctx.textAlign = 'center';
   if (design?.watermarkTextGradient && design?.watermarkGradColor1 && design?.watermarkGradColor2) {
     const grad = ctx.createLinearGradient(
       ctaPosX - ctaContainerW / 2, curY,
@@ -2485,7 +2573,7 @@ function drawCTA(
   curY += ctaBlockH + mt1;
 
   // Sub-text (multi-line) — user-configured color, 900 weight, uppercase, optional gradient.
-  ctx.font = `900 ${subFontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = 'center';
+  ctx.font = ctaFontStr(subFontSize, fontFamily); ctx.textAlign = 'center';
   if (design?.ctaTypography?.textGradient && design?.ctaTypography?.gradColor1 && design?.ctaTypography?.gradColor2) {
     const grad = ctx.createLinearGradient(
       ctaPosX - ctaContainerW / 2, curY,
@@ -2809,7 +2897,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     const fontsToLoad = new Set<string>();
     const candidates = [
       design?.font,
-      design?.titleFont, design?.ctaFont, design?.overlayFont,
+      design?.titleFont, design?.subtitleFont, design?.ctaFont, design?.overlayFont,
       design?.watermarkFont, design?.cardsFont,
     ];
     for (const f of candidates) {

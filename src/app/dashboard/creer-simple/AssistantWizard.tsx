@@ -434,30 +434,26 @@ const fontStack = (name: string): string => `${FONT_CSS[name] || `'${name}'`}, '
 /**
  * Reglages typographiques par zone.
  *
- * ⚠️ Cette liste ne contient QUE ce que le compositeur honore reellement,
- * champ par champ (video-composer.ts) :
+ * Chaque champ correspond a une lecture REELLE du compositeur
+ * (video-composer.ts), verifiee ligne a ligne :
  *
- *   Titre — `titleFont`, `titleColor`, `textScale`, et
- *           `titleTypography.{bold,italic,letterSpacing,lineHeight}`.
- *   CTA   — `watermarkFont` (grand texte) et `ctaFont` (sous-texte),
- *           `ctaColor`, `ctaSubColor`, `ctaTextScale`, et
- *           `ctaTypography.{letterSpacing,lineHeight}`.
+ *   Titre       — `titleFont`, `titleColor`, `textScale`, et
+ *                 `titleTypography.{bold,italic,letterSpacing,lineHeight}`.
+ *   Sous-titre  — `subtitleFont`, `subtitleColor`, `subtitleScale`. Chacun
+ *                 retombe sur le titre quand il n'est pas renseigne : c'est
+ *                 le rendu d'avant, a l'identique.
+ *   CTA         — `watermarkFont` (grand texte) et `ctaFont` (sous-texte),
+ *                 `ctaColor`, `ctaSubColor`, `ctaTextScale`, et
+ *                 `ctaTypography.{bold,italic,letterSpacing,lineHeight}`.
  *
- * TROIS absences VOLONTAIRES, verifiees dans le code du compositeur :
- *   - Le SOUS-TITRE n'a aucun reglage propre : `drawIntro` lui impose la
- *     police, la graisse, l'italique et l'interligne du titre, et sa couleur
- *     a 80 %. Lui donner des controles afficherait des reglages sans effet.
- *   - Le CTA n'a ni gras ni italique : `drawCTA` ecrit `900` en dur dans
- *     `ctx.font` et n'y met jamais `italic`. `ctaTypography.bold/italic`
- *     existent dans le type mais ne sont JAMAIS lus.
- *   - L'INTERLETTRAGE est reporte a l'increment 2, ou le compositeur pourra
- *     etre corrige. `wrapText` mesure les lignes avec `measureText`, qui
- *     ignore l'espacement ajoute ensuite par `fillTextWithSpacing` : le
- *     compositeur croit donc les lignes plus courtes qu'elles ne seront et
- *     les laisse deborder du cadre. L'apercu CSS, lui, tient compte de
- *     l'espacement et revient a la ligne — l'utilisateur validerait un
- *     apercu correct et recevrait une video tronquee. Le correctif tient en
- *     une ligne dans `wrapText`, mais ce fichier n'est pas modifiable ici.
+ * L'INTERLETTRAGE revient : `wrapText` decide desormais la coupe avec
+ * `measureSpacedText`, c'est-a-dire la largeur que le trace produira
+ * vraiment. La video coupe donc aux memes endroits que l'apercu, et le titre
+ * ne sort plus du cadre.
+ *
+ * Restent hors de portee de ce parcours, faute d'etre lus la ou il faut :
+ * le sous-titre n'a ni graisse ni italique propres (`drawIntro` lui impose
+ * ceux du titre), ni interlettrage (il est trace par `fillText` nu).
  */
 interface TextStyles {
   title: {
@@ -466,13 +462,27 @@ interface TextStyles {
     scale: number;
     bold: boolean;
     italic: boolean;
+    letterSpacing: number;
     lineHeight: number;
+  };
+  /**
+   * Sous-titre. `null` = « suit le titre » — c'est ce que fait le
+   * compositeur en l'absence de champ, donc l'etat par defaut ne transmet
+   * rien et le rendu ne change pas.
+   */
+  subtitle: {
+    font: string | null;
+    color: string | null;
+    scale: number;
   };
   cta: {
     font: string;
     color: string;
     subColor: string;
     scale: number;
+    bold: boolean;
+    italic: boolean;
+    letterSpacing: number;
     lineHeight: number;
   };
 }
@@ -487,6 +497,7 @@ interface TextStyles {
  */
 const DEFAULT_TEXT_STYLES: {
   title: TextStyles['title'];
+  subtitle: TextStyles['subtitle'];
   cta: Omit<TextStyles['cta'], 'subColor'>;
 } = {
   title: {
@@ -496,13 +507,25 @@ const DEFAULT_TEXT_STYLES: {
     // `drawIntro` : `bold !== false ? 900 : 400`. L'apercu ecrivait 900 en dur.
     bold: true,
     italic: false,
+    letterSpacing: 0,
     // Defaut du compositeur ET de l'apercu.
     lineHeight: 1.1,
+  },
+  subtitle: {
+    // `null` = suit le titre. Le compositeur fait exactement cela quand le
+    // champ est absent : rien n'est transmis, rien ne change.
+    font: null,
+    color: null,
+    scale: 1,
   },
   cta: {
     font: DESIGN.font,
     color: DESIGN.ctaColor,
     scale: 1,
+    // `drawCTA` : `bold !== false ? 900 : 400`, desormais comme le titre.
+    bold: true,
+    italic: false,
+    letterSpacing: 0,
     lineHeight: 1.2,
   },
 };
@@ -632,6 +655,24 @@ export function Preview({
 
   const titleWeight = text.title.bold ? 900 : 400;
   const titleStyle = text.title.italic ? 'italic' : 'normal';
+  const ctaWeight = text.cta.bold ? 900 : 400;
+  const ctaFontStyle = text.cta.italic ? 'italic' : 'normal';
+
+  /**
+   * Interlettrage : le compositeur multiplie la valeur saisie par `w / 320`
+   * (l'echelle du viewport de l'editeur). Le plateau etant a la resolution
+   * native, on applique le meme facteur — sinon 2 px saisis donneraient 2 px
+   * a l'ecran et 6,75 px dans la video.
+   */
+  const spacingPx = (value: number) => (value * vw) / 320;
+
+  // Sous-titre : chaque champ non renseigne suit le titre, exactement comme
+  // `drawIntro` le fait en l'absence du champ correspondant.
+  const subFamily = text.subtitle.font || text.title.font;
+  const subSizePx = vw * FONT_RATIO[format].subtitle * text.title.scale * text.subtitle.scale;
+  // Sans couleur choisie : celle du titre a 80 % (le `CC` du compositeur).
+  // Avec : peinte a plein, ce que l'utilisateur choisit est ce qu'il voit.
+  const subColor = text.subtitle.color || `${text.title.color}CC`;
 
   /**
    * Suppression du demi-interligne CSS.
@@ -752,6 +793,7 @@ export function Preview({
                   fontSize: vw * FONT_RATIO[format].title * text.title.scale,
                   fontWeight: titleWeight,
                   fontStyle: titleStyle,
+                  letterSpacing: spacingPx(text.title.letterSpacing),
                   color: text.title.color,
                   lineHeight: text.title.lineHeight,
                   ...leadingTrim(vw * FONT_RATIO[format].title * text.title.scale, text.title.lineHeight),
@@ -766,18 +808,20 @@ export function Preview({
                   l'apercu promettrait ce que la video ne rendrait pas. */}
               <div
                 style={{
-                  fontFamily: fontStack(text.title.font),
-                  fontSize: vw * FONT_RATIO[format].subtitle * text.title.scale,
+                  fontFamily: fontStack(subFamily),
+                  fontSize: subSizePx,
+                  // Graisse, italique et interligne restent ceux du titre :
+                  // `drawIntro` les lui impose, lui donner des controles
+                  // afficherait des reglages sans effet sur la video.
                   fontWeight: titleWeight,
                   fontStyle: titleStyle,
-                  color: `${text.title.color}CC`,
+                  color: subColor,
                   lineHeight: text.title.lineHeight,
-                  ...leadingTrim(vw * FONT_RATIO[format].subtitle * text.title.scale, text.title.lineHeight),
+                  ...leadingTrim(subSizePx, text.title.lineHeight),
                   // `mt1` du compositeur, mesure depuis le BAS des glyphes du
                   // titre — d'ou le retrait du demi-interligne ci-dessus.
                   marginTop:
-                    vw * GAP_RATIO
-                    - ((text.title.lineHeight - 1) * vw * FONT_RATIO[format].subtitle * text.title.scale) / 2,
+                    vw * GAP_RATIO - ((text.title.lineHeight - 1) * subSizePx) / 2,
                   filter: subtitleShadow(vw),
                 }}
               >
@@ -845,16 +889,17 @@ export function Preview({
                 textAlign: 'center',
               }}
             >
-              {/* Graisse 900 en dur, des deux cotes : `drawCTA` l'ecrit
-                  litteralement dans `ctx.font` et ne lit jamais
-                  `ctaTypography.bold`. Un bouton « gras » ici serait sans
-                  effet sur la video. */}
+              {/* `drawCTA` lit desormais `ctaTypography.bold/italic` — il
+                  ecrivait `900` en dur, ce qui rendait ces deux champs
+                  inertes bien qu'ils existent dans le type depuis toujours. */}
               <div
                 className="uppercase"
                 style={{
                   fontFamily: fontStack(text.cta.font),
                   fontSize: vw * FONT_RATIO[format].cta * text.cta.scale,
-                  fontWeight: 900,
+                  fontWeight: ctaWeight,
+                  fontStyle: ctaFontStyle,
+                  letterSpacing: spacingPx(text.cta.letterSpacing),
                   color: text.cta.color,
                   lineHeight: text.cta.lineHeight,
                   ...leadingTrim(vw * FONT_RATIO[format].cta * text.cta.scale, text.cta.lineHeight),
@@ -868,7 +913,9 @@ export function Preview({
                 style={{
                   fontFamily: fontStack(text.cta.font),
                   fontSize: vw * FONT_RATIO[format].ctaSub * text.cta.scale,
-                  fontWeight: 900,
+                  fontWeight: ctaWeight,
+                  fontStyle: ctaFontStyle,
+                  letterSpacing: spacingPx(text.cta.letterSpacing),
                   color: text.cta.subColor,
                   lineHeight: text.cta.lineHeight,
                   ...leadingTrim(vw * FONT_RATIO[format].ctaSub * text.cta.scale, text.cta.lineHeight),
@@ -985,6 +1032,9 @@ export default function AssistantWizard() {
   // Un seul objet, transmis a l'identique a l'apercu, au compositeur et aux
   // metadonnees. Les defauts reproduisent le rendu d'avant ces reglages.
   const [titleStyle, setTitleStyle] = useState<TextStyles['title']>(DEFAULT_TEXT_STYLES.title);
+  const [subtitleStyle, setSubtitleStyle] = useState<TextStyles['subtitle']>(
+    DEFAULT_TEXT_STYLES.subtitle,
+  );
   const [ctaStyle, setCtaStyle] = useState<TextStyles['cta']>({
     ...DEFAULT_TEXT_STYLES.cta,
     // Provisoire : remplace juste en dessous par la fin du degrade tant que
@@ -992,7 +1042,7 @@ export default function AssistantWizard() {
     subColor: '',
   });
   /** Zone de texte en cours de reglage — purement local a l'interface. */
-  const [editedZone, setEditedZone] = useState<'title' | 'cta'>('title');
+  const [editedZone, setEditedZone] = useState<'title' | 'subtitle' | 'cta'>('title');
   /** Champ de couleur ouvert dans la roue, pour la zone active. */
   const [editedTextColor, setEditedTextColor] = useState<'color' | 'subColor' | null>(null);
 
@@ -1006,6 +1056,7 @@ export default function AssistantWizard() {
    */
   const textStyles: TextStyles = {
     title: titleStyle,
+    subtitle: subtitleStyle,
     cta: { ...ctaStyle, subColor: ctaStyle.subColor || gradEnd },
   };
 
@@ -1045,14 +1096,24 @@ export default function AssistantWizard() {
     titleTypography: {
       bold: textStyles.title.bold,
       italic: textStyles.title.italic,
+      letterSpacing: textStyles.title.letterSpacing,
       lineHeight: textStyles.title.lineHeight,
     },
+    // Sous-titre : on ne transmet QUE ce qui a ete choisi. Un champ absent
+    // fait retomber le compositeur sur le titre — c'est le rendu d'origine,
+    // et c'est aussi ce que fait l'apercu.
+    ...(textStyles.subtitle.font ? { subtitleFont: textStyles.subtitle.font } : {}),
+    ...(textStyles.subtitle.color ? { subtitleColor: textStyles.subtitle.color } : {}),
+    ...(textStyles.subtitle.scale !== 1 ? { subtitleScale: textStyles.subtitle.scale } : {}),
     watermarkFont: textStyles.cta.font,
     ctaFont: textStyles.cta.font,
     ctaColor: textStyles.cta.color,
     ctaSubColor: textStyles.cta.subColor,
     ctaTextScale: textStyles.cta.scale,
     ctaTypography: {
+      bold: textStyles.cta.bold,
+      italic: textStyles.cta.italic,
+      letterSpacing: textStyles.cta.letterSpacing,
       lineHeight: textStyles.cta.lineHeight,
     },
     /**
@@ -1067,9 +1128,13 @@ export default function AssistantWizard() {
       title: {
         bold: textStyles.title.bold,
         italic: textStyles.title.italic,
+        letterSpacing: textStyles.title.letterSpacing,
         lineHeight: textStyles.title.lineHeight,
       },
       cta: {
+        bold: textStyles.cta.bold,
+        italic: textStyles.cta.italic,
+        letterSpacing: textStyles.cta.letterSpacing,
         lineHeight: textStyles.cta.lineHeight,
       },
     },
@@ -2066,6 +2131,7 @@ export default function AssistantWizard() {
                       type="button"
                       onClick={() => {
                         setTitleStyle(DEFAULT_TEXT_STYLES.title);
+                        setSubtitleStyle(DEFAULT_TEXT_STYLES.subtitle);
                         setCtaStyle({ ...DEFAULT_TEXT_STYLES.cta, subColor: '' });
                         setEditedTextColor(null);
                       }}
@@ -2077,7 +2143,8 @@ export default function AssistantWizard() {
 
                   <div className="flex gap-2 mb-2">
                     {([
-                      { key: 'title' as const, label: 'Titre', hint: 'et sous-titre' },
+                      { key: 'title' as const, label: 'Titre', hint: 'le grand texte' },
+                      { key: 'subtitle' as const, label: 'Sous-titre', hint: 'sous le titre' },
                       { key: 'cta' as const, label: 'CTA', hint: 'et sous-texte' },
                     ]).map((z) => (
                       <button
@@ -2103,12 +2170,27 @@ export default function AssistantWizard() {
 
                   {(() => {
                     const isTitle = editedZone === 'title';
-                    const zone = isTitle ? textStyles.title : textStyles.cta;
+                    const isSubtitle = editedZone === 'subtitle';
+                    const zoneLabel = isTitle ? 'titre' : isSubtitle ? 'sous-titre' : 'CTA';
                     /** Applique un correctif a la zone en cours. */
                     const patch = (p: Record<string, unknown>) =>
                       isTitle
                         ? setTitleStyle((prev) => ({ ...prev, ...p }))
-                        : setCtaStyle((prev) => ({ ...prev, ...p }));
+                        : isSubtitle
+                          ? setSubtitleStyle((prev) => ({ ...prev, ...p }))
+                          : setCtaStyle((prev) => ({ ...prev, ...p }));
+                    // Le sous-titre affiche ce qu'il HERITE tant qu'il n'a
+                    // rien de propre : montrer « Inter » alors que le titre
+                    // est en Anton mentirait sur ce que produit la video.
+                    const zone = isTitle
+                      ? textStyles.title
+                      : isSubtitle
+                        ? {
+                            font: textStyles.subtitle.font || textStyles.title.font,
+                            color: textStyles.subtitle.color || `${textStyles.title.color}CC`,
+                            scale: textStyles.subtitle.scale,
+                          }
+                        : textStyles.cta;
                     return (
                       <div className="rounded-xl bg-gray-900/60 p-3 space-y-3">
                         <div>
@@ -2146,7 +2228,7 @@ export default function AssistantWizard() {
                             step={5}
                             value={Math.round(zone.scale * 100)}
                             onChange={(e) => patch({ scale: Number(e.target.value) / 100 })}
-                            aria-label={`Taille du texte — ${isTitle ? 'titre' : 'CTA'}`}
+                            aria-label={`Taille du texte — ${zoneLabel}`}
                             className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
                           />
                           <span className="text-[11px] text-gray-400 w-11 text-right tabular-nums">
@@ -2154,6 +2236,7 @@ export default function AssistantWizard() {
                           </span>
                         </div>
 
+                        {!isSubtitle && (
                         <div className="flex items-center gap-2">
                           <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">
                             Interligne
@@ -2163,27 +2246,33 @@ export default function AssistantWizard() {
                             min={0.9}
                             max={2}
                             step={0.05}
-                            value={zone.lineHeight}
+                            value={'lineHeight' in zone ? zone.lineHeight : 1.1}
                             onChange={(e) => patch({ lineHeight: Number(e.target.value) })}
-                            aria-label={`Interligne — ${isTitle ? 'titre' : 'CTA'}`}
+                            aria-label={`Interligne — ${zoneLabel}`}
                             className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
                           />
                           <span className="text-[11px] text-gray-400 w-11 text-right tabular-nums">
-                            {zone.lineHeight.toFixed(2)}
+                            {'lineHeight' in zone ? zone.lineHeight.toFixed(2) : ''}
                           </span>
                         </div>
+                        )}
 
-                        {/* Gras / italique : titre seulement. `drawCTA` ecrit
-                            900 en dur et ne met jamais 'italic'. */}
-                        {isTitle && (
+                        {/* Gras / italique — titre ET CTA. `drawCTA` lit
+                            desormais `ctaTypography.bold/italic` ; le
+                            sous-titre, lui, reste sur ceux du titre, que
+                            `drawIntro` lui impose. */}
+                        {!isSubtitle && (() => {
+                          const st = isTitle ? textStyles.title : textStyles.cta;
+                          return (
                           <div className="flex items-center gap-2">
                             <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Style</span>
                             <button
                               type="button"
-                              onClick={() => patch({ bold: !textStyles.title.bold })}
-                              aria-pressed={textStyles.title.bold}
+                              onClick={() => patch({ bold: !st.bold })}
+                              aria-pressed={st.bold}
+                              aria-label={`Gras — ${zoneLabel}`}
                               className={`rounded-lg px-3 py-1 text-xs font-bold transition ${
-                                textStyles.title.bold
+                                st.bold
                                   ? 'bg-purple-600/30 text-white ring-1 ring-purple-500/50'
                                   : 'bg-gray-800 text-gray-400 hover:text-white'
                               }`}
@@ -2192,10 +2281,11 @@ export default function AssistantWizard() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => patch({ italic: !textStyles.title.italic })}
-                              aria-pressed={textStyles.title.italic}
+                              onClick={() => patch({ italic: !st.italic })}
+                              aria-pressed={st.italic}
+                              aria-label={`Italique — ${zoneLabel}`}
                               className={`rounded-lg px-3 py-1 text-xs italic transition ${
-                                textStyles.title.italic
+                                st.italic
                                   ? 'bg-purple-600/30 text-white ring-1 ring-purple-500/50'
                                   : 'bg-gray-800 text-gray-400 hover:text-white'
                               }`}
@@ -2203,7 +2293,37 @@ export default function AssistantWizard() {
                               I
                             </button>
                           </div>
-                        )}
+                          );
+                        })()}
+
+                        {/* Interlettrage — titre et CTA. La coupe des lignes
+                            est desormais mesuree AVEC l'espacement cote
+                            compositeur : la video coupe la ou l'apercu coupe,
+                            et le texte ne sort plus du cadre. Le sous-titre en
+                            est prive : il est trace par `fillText` nu. */}
+                        {!isSubtitle && (() => {
+                          const st = isTitle ? textStyles.title : textStyles.cta;
+                          return (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">
+                              Interlettrage
+                            </span>
+                            <input
+                              type="range"
+                              min={-2}
+                              max={10}
+                              step={0.5}
+                              value={st.letterSpacing}
+                              onChange={(e) => patch({ letterSpacing: Number(e.target.value) })}
+                              aria-label={`Interlettrage — ${zoneLabel}`}
+                              className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
+                            />
+                            <span className="text-[11px] text-gray-400 w-11 text-right tabular-nums">
+                              {st.letterSpacing}
+                            </span>
+                          </div>
+                          );
+                        })()}
 
                         <div className="flex items-center gap-2">
                           <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Couleur</span>
@@ -2213,13 +2333,13 @@ export default function AssistantWizard() {
                               setEditedTextColor(editedTextColor === 'color' ? null : 'color')
                             }
                             aria-pressed={editedTextColor === 'color'}
-                            aria-label={`Couleur — ${isTitle ? 'titre' : 'CTA'}`}
+                            aria-label={`Couleur — ${zoneLabel}`}
                             className={`h-6 flex-1 rounded-md border transition ${
                               editedTextColor === 'color' ? 'border-purple-400' : 'border-white/10'
                             }`}
                             style={{ backgroundColor: zone.color }}
                           />
-                          {!isTitle && (
+                          {editedZone === 'cta' && (
                             <button
                               type="button"
                               onClick={() =>
@@ -2249,8 +2369,10 @@ export default function AssistantWizard() {
 
                         <p className="text-[11px] text-gray-500">
                           {isTitle
-                            ? 'Le sous-titre suit la police, la graisse et l’interligne du titre — c’est ainsi que le montage le dessine.'
-                            : 'Le montage écrit le CTA en graisse forte : gras et italique n’y auraient aucun effet.'}
+                            ? 'Sans réglage propre, le sous-titre suit le titre.'
+                            : isSubtitle
+                              ? 'Graisse, italique et interligne restent ceux du titre : le montage les lui impose.'
+                              : 'La même police sert au CTA et à son sous-texte.'}
                         </p>
                       </div>
                     );

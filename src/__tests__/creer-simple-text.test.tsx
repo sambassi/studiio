@@ -38,13 +38,22 @@ const BASE_TEXT = {
     scale: 1,
     bold: true,
     italic: false,
+    letterSpacing: 0,
     lineHeight: 1.1,
+  },
+  subtitle: {
+    font: null,
+    color: null,
+    scale: 1,
   },
   cta: {
     font: 'Inter',
     color: '#FFFFFF',
     subColor: '#EC4899',
     scale: 1,
+    bold: true,
+    italic: false,
+    letterSpacing: 0,
     lineHeight: 1.2,
   },
 };
@@ -108,22 +117,14 @@ describe('Aperçu — les réglages de titre s’y voient', () => {
     expect(styleOf('Mon sous-titre').fontStyle).toBe('italic');
   });
 
-  it('n’expose PAS l’interlettrage — il déborderait du cadre à l’export', () => {
-    // `wrapText` mesure les lignes avec `measureText`, qui ignore l'espacement
-    // ajouté ensuite par `fillTextWithSpacing` : le compositeur croit les
-    // lignes plus courtes qu'elles ne seront et les laisse déborder. L'aperçu
-    // CSS, lui, revient à la ligne — l'utilisateur validerait un aperçu
-    // correct et recevrait une vidéo tronquée. Reporté à l'incrément 2, où le
-    // compositeur pourra être corrigé.
-    // `wrapText` décide du retour à la ligne sur la largeur NUE…
+  it('convertit l’interlettrage dans l’échelle du compositeur', () => {
+    // Le compositeur multiplie la valeur saisie par `w / 320`. Sans cette
+    // conversion, 2 px à l'écran donneraient 6,75 px dans la vidéo.
+    renderPreview({ ...BASE_TEXT, title: { ...BASE_TEXT.title, letterSpacing: 2 } });
+    expect(styleOf('Mon titre').letterSpacing).toBe(`${(2 * 1080) / 320}px`);
     expect(composerSource).toMatch(
-      /if \(ctx\.measureText\(testLine\)\.width > maxWidth && currentLine\)/,
+      /titleLetterSpacing = \(design\?\.titleTypography\?\.letterSpacing \|\| 0\) \* \(w \/ 320\)/,
     );
-    // …alors que le rendu ajoute ensuite l'espacement, caractère par caractère.
-    expect(composerSource).toMatch(/cursor \+= ctx\.measureText\(ch\)\.width \+ letterSpacing/);
-    // Aucun réglage d'interlettrage n'est proposé ni envoyé.
-    expect(wizardSource).not.toMatch(/letterSpacing: textStyles/);
-    expect(wizardSource).not.toMatch(/patch\(\{ letterSpacing/);
   });
 
   it('applique interligne et couleur, sous-titre à 80 %', () => {
@@ -136,6 +137,73 @@ describe('Aperçu — les réglages de titre s’y voient', () => {
     expect(styleOf('Mon sous-titre').lineHeight).toBe('1.6');
     // `drawIntro` dessine le sous-titre en `titleColor` à 80 % — d'où le CC.
     expect(styleOf('Mon sous-titre').color).toMatch(/#00FF00CC|rgba\(0,\s*255,\s*0,\s*0\.8\)/i);
+  });
+});
+
+describe('Sous-titre — sa typographie propre', () => {
+  it('suit le titre tant qu’on ne lui donne rien', () => {
+    // `null` = aucun champ transmis. Le compositeur retombe alors sur le
+    // titre, et l'aperçu doit faire exactement pareil — c'est le rendu
+    // d'avant ces réglages.
+    renderPreview({
+      ...BASE_TEXT,
+      title: { ...BASE_TEXT.title, font: 'Anton', color: '#00FF00' },
+    });
+    const sub = styleOf('Mon sous-titre');
+    expect(sub.fontFamily).toContain('var(--font-anton)');
+    // `titleColor` à 80 %, le `CC` du compositeur.
+    expect(sub.color).toMatch(/#00FF00CC|rgba\(0,\s*255,\s*0,\s*0\.8\)/i);
+    expect(sub.fontSize).toBe(`${1080 * 0.028}px`);
+  });
+
+  it('applique sa police, sa taille et sa couleur propres', () => {
+    renderPreview({
+      ...BASE_TEXT,
+      title: { ...BASE_TEXT.title, font: 'Anton' },
+      subtitle: { font: 'Poppins', color: '#123456', scale: 1.4 },
+    });
+    const sub = styleOf('Mon sous-titre');
+    expect(sub.fontFamily).toContain('var(--font-poppins)');
+    // Une couleur choisie est peinte à PLEIN : pas d'atténuation surprise.
+    expect(sub.color).toMatch(/#123456|rgb\(18,\s*52,\s*86\)/i);
+    expect(sub.fontSize).toBe(`${1080 * 0.028 * 1.4}px`);
+    // Le titre, lui, garde la sienne.
+    expect(styleOf('Mon titre').fontFamily).toContain('var(--font-anton)');
+  });
+
+  it('le compositeur lit bien ces trois champs', () => {
+    expect(composerSource).toMatch(/const subFamily = design\?\.subtitleFont \|\| fontFamily/);
+    expect(composerSource).toMatch(/design\?\.subtitleScale \?\? 1/);
+    expect(composerSource).toMatch(
+      /ctx\.fillStyle = design\?\.subtitleColor \|\| hexToRgba\(titleColor, 0\.8\)/,
+    );
+    // La police du sous-titre doit être préchargée, sinon les premières
+    // secondes rendent en police de repli.
+    expect(composerSource).toMatch(/design\?\.titleFont, design\?\.subtitleFont/);
+  });
+
+  it('ne transmet rien tant que rien n’est choisi', () => {
+    // Un `subtitleFont: undefined` explicite serait sans effet, mais un
+    // `subtitleScale: 1` transmis ferait diverger la ligne de base d'un
+    // arrondi. On n'envoie que ce qui a été choisi.
+    expect(wizardSource).toMatch(
+      /\.\.\.\(textStyles\.subtitle\.font \? \{ subtitleFont: textStyles\.subtitle\.font \} : \{\}\)/,
+    );
+    expect(wizardSource).toMatch(/textStyles\.subtitle\.scale !== 1 \? \{ subtitleScale:/);
+  });
+
+  it('garde graisse, italique et interligne du titre', () => {
+    // `drawIntro` les lui impose : lui donner des contrôles afficherait des
+    // réglages sans effet sur la vidéo.
+    renderPreview({
+      ...BASE_TEXT,
+      title: { ...BASE_TEXT.title, bold: false, italic: true, lineHeight: 1.7 },
+      subtitle: { font: 'Poppins', color: null, scale: 1 },
+    });
+    const sub = styleOf('Mon sous-titre');
+    expect(sub.fontWeight).toBe('400');
+    expect(sub.fontStyle).toBe('italic');
+    expect(sub.lineHeight).toBe('1.7');
   });
 });
 
@@ -164,16 +232,26 @@ describe('Aperçu — les réglages de CTA s’y voient', () => {
     expect(styleOf('LIEN EN BIO').color).toMatch(/#445566|rgb\(68,\s*85,\s*102\)/i);
   });
 
-  it('garde la graisse 900 : le compositeur l’écrit en dur', () => {
-    // `drawCTA` fait `ctx.font = \`900 ${size}px …\`` et ne lit JAMAIS
-    // `ctaTypography.bold/italic`, pourtant déclarés dans le type. Exposer un
-    // bouton « gras » sur le CTA serait un bouton mort — d'où son absence.
+  it('rend le gras et l’italique du CTA', () => {
+    // `drawCTA` écrivait `900` en dur à chaque `ctx.font` et ne lisait jamais
+    // `ctaTypography.bold/italic`, pourtant déclarés : les deux réglages
+    // existaient dans le type sans le moindre effet.
+    renderPreview({ ...BASE_TEXT, cta: { ...BASE_TEXT.cta, bold: false, italic: true } });
+    expect(styleOf('JE ME LANCE').fontWeight).toBe('400');
+    expect(styleOf('JE ME LANCE').fontStyle).toBe('italic');
+    expect(styleOf('LIEN EN BIO').fontWeight).toBe('400');
+    // Plus aucune graisse figée dans `drawCTA` : tout passe par le helper.
+    expect(composerSource).not.toMatch(/ctx\.font = `900 \$\{ctaFontSize\}px/);
+    expect(composerSource).not.toMatch(/ctx\.font = `900 \$\{subFontSize\}px/);
+    expect(composerSource).toMatch(/const ctaBold = design\?\.ctaTypography\?\.bold !== false/);
+    expect(composerSource).toMatch(/const ctaItalic = !!design\?\.ctaTypography\?\.italic/);
+  });
+
+  it('garde la graisse 900 par défaut — rétro-compat du CTA', () => {
     renderPreview();
     expect(styleOf('JE ME LANCE').fontWeight).toBe('900');
     expect(styleOf('LIEN EN BIO').fontWeight).toBe('900');
-    expect(composerSource).toMatch(/ctx\.font = `900 \$\{ctaFontSize\}px/);
-    expect(composerSource).toMatch(/ctx\.font = `900 \$\{subFontSize\}px/);
-    expect(composerSource).not.toMatch(/ctaTypography\?\.(bold|italic)/);
+    expect(styleOf('JE ME LANCE').fontStyle).toBe('normal');
   });
 
   it('respecte les ratios du format 16:9', () => {
@@ -234,7 +312,7 @@ describe('Export — les mêmes valeurs partent au compositeur', () => {
       wizardSource.indexOf('const [started, setStarted]'),
     );
     expect(block).toMatch(/typography: \{\s*title: \{/);
-    expect(block).toMatch(/cta: \{\s*lineHeight: textStyles\.cta\.lineHeight/);
+    expect(block).toMatch(/cta: \{\s*bold: textStyles\.cta\.bold/);
   });
 
   it('fait suivre la police choisie à la régénération', () => {
