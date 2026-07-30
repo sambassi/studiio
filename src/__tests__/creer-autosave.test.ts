@@ -6,6 +6,8 @@ import {
   readAutosave,
   clearAutosave,
   formatAutosaveAge,
+  clearMontageContent,
+  MONTAGE_CONTENT_FIELDS,
 } from '@/lib/creer/autosave';
 
 /** Cle historique des preferences de design de l'editeur. */
@@ -131,5 +133,76 @@ describe('Age lisible', () => {
 
   it('une horloge qui recule ne produit pas d age negatif', () => {
     expect(formatAutosaveAge(t0, t0 - 60_000)).toBe("a l'instant");
+  });
+});
+
+describe('Repartir de zero — efface le montage, garde les preferences', () => {
+  const PREFS = 'studiio-creer-design-prefs';
+  /** Instantane realiste : contenu du montage + preferences de design. */
+  const snapshot = () => ({
+    // contenu
+    title: 'Mon titre', subtitle: 'Sous-titre', cards: [{ label: 'a' }],
+    rushList: ['https://cdn/rush.mp4'], audioMusicUrl: 'https://cdn/song.mp3',
+    pexelsPhotos: [{ id: 1 }], contentTheme: 'fitness', extraOverlays: [{ id: 'o1' }],
+    sequenceVoices: { titre: { text: 'x' } }, audioKeyframes: [{ time: 0 }],
+    sequenceBackgrounds: { intro: { url: 'x' } },
+    // preferences
+    titleColor: '#FFFFFF', selectedFont: 'Anton', gradientColor1: '#7C3AED',
+    logoImage: 'data:image/png;base64,xxx', titlePos: { x: 50, y: 75 },
+    ctaMainText: 'Découvrir', exportFormat: 'video', format: 'reel',
+  });
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.localStorage.setItem(PREFS, JSON.stringify(snapshot()));
+  });
+
+  it('supprime les champs de contenu', () => {
+    expect(clearMontageContent(PREFS)).toBe(true);
+    const after = JSON.parse(window.localStorage.getItem(PREFS)!);
+    for (const field of MONTAGE_CONTENT_FIELDS) {
+      expect(after, field).not.toHaveProperty(field);
+    }
+  });
+
+  it('conserve INTACTES les preferences de design', () => {
+    clearMontageContent(PREFS);
+    const after = JSON.parse(window.localStorage.getItem(PREFS)!);
+    // C'est la garantie qui justifie tout le filtrage : repartir d'un montage
+    // neuf ne doit pas emporter la charte visuelle.
+    expect(after).toMatchObject({
+      titleColor: '#FFFFFF', selectedFont: 'Anton', gradientColor1: '#7C3AED',
+      logoImage: 'data:image/png;base64,xxx', titlePos: { x: 50, y: 75 },
+      ctaMainText: 'Découvrir', exportFormat: 'video', format: 'reel',
+    });
+  });
+
+  it('aucune preference ne figure dans la liste des champs de contenu', () => {
+    const prefs = ['titleColor', 'selectedFont', 'gradientColor1', 'logoImage',
+                   'titlePos', 'ctaMainText', 'exportFormat', 'format'];
+    for (const p of prefs) expect(MONTAGE_CONTENT_FIELDS, p).not.toContain(p);
+  });
+
+  it('sans instantane : false, et aucune cle creee', () => {
+    window.localStorage.clear();
+    expect(clearMontageContent(PREFS)).toBe(false);
+    expect(window.localStorage.getItem(PREFS)).toBeNull();
+  });
+
+  it('instantane illisible ou non-objet : false, contenu laisse tel quel', () => {
+    for (const raw of ['pas du json', '"une chaine"', '[1,2]', 'null']) {
+      window.localStorage.setItem(PREFS, raw);
+      expect(clearMontageContent(PREFS), raw).toBe(false);
+      expect(window.localStorage.getItem(PREFS)).toBe(raw);
+    }
+  });
+
+  it('ecriture impossible (quota) : false, sans exception', () => {
+    const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('QuotaExceededError');
+    });
+    expect(() => clearMontageContent(PREFS)).not.toThrow();
+    expect(clearMontageContent(PREFS)).toBe(false);
+    spy.mockRestore();
   });
 });

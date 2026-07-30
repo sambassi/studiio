@@ -95,3 +95,57 @@ export function formatAutosaveAge(savedAt: number, now: number = Date.now()): st
   const days = Math.round(hours / 24);
   return days === 1 ? 'hier' : `il y a ${days} jours`;
 }
+
+// ── Repartir de zéro ──────────────────────────────────────────────────────
+
+/** Cle de l'instantane de l'editeur `/dashboard/creer`. */
+export const CREER_PREFS_KEY = 'studiio-creer-design-prefs';
+
+/**
+ * Champs de l'instantane qui appartiennent au MONTAGE en cours, par
+ * opposition aux preferences de design (polices, couleurs, positions,
+ * tailles, logo, gabarits) qui suivent l'utilisateur d'un montage a l'autre.
+ *
+ * C'est cette liste — et rien d'autre — que « Repartir de zéro » efface.
+ * Preferences et montage partagent une seule cle : sans ce filtrage, repartir
+ * d'un montage neuf emporterait aussi la charte visuelle de l'utilisateur.
+ *
+ * Volontairement CONSERVES malgre l'ambiguite : `ctaMainText` / `ctaSubText`
+ * (appel a l'action recurrent d'une marque, pas une copie jetable) et
+ * `logoImage`. Mieux vaut laisser survivre un champ de trop que supprimer un
+ * reglage que l'utilisateur croyait acquis.
+ */
+export const MONTAGE_CONTENT_FIELDS: readonly string[] = [
+  'title', 'subtitle', 'extraTitle', 'extraSubtitle',
+  'contentTheme', 'customTopic',
+  'cards', 'salesPhrases', 'customCardIcons', 'cardGroups',
+  'pexelsPhotos', 'selectedPhotoIndex', 'batchPhotoIndices',
+  'rushList',
+  'audioMusicUrl', 'audioVoiceUrl',
+  'sequenceVoices', 'sequenceVoicesUserEdited',
+  'videoOverlayText', 'extraOverlays',
+  'audioKeyframes',
+  'sequenceBackgrounds',
+];
+
+/**
+ * Retire du snapshot les seuls champs de contenu, et le reecrit.
+ *
+ * Renvoie `false` — sans rien casser — si le stockage est indisponible, si
+ * aucun instantane n'existe, ou s'il est illisible : l'appelant recharge
+ * alors sur l'etat courant, ce qui est le comportement d'aujourd'hui.
+ */
+export function clearMontageContent(key: string = CREER_PREFS_KEY): boolean {
+  if (!hasStorage()) return false;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return false;
+    const snap = JSON.parse(raw);
+    if (!snap || typeof snap !== 'object' || Array.isArray(snap)) return false;
+    for (const field of MONTAGE_CONTENT_FIELDS) delete (snap as Record<string, unknown>)[field];
+    window.localStorage.setItem(key, JSON.stringify(snap));
+    return true;
+  } catch {
+    return false;
+  }
+}
