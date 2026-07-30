@@ -214,6 +214,36 @@ fichier y apparaît modifié, on est en train de jeter du travail.
 échouer bruyamment ce cas dans le script de mutation, jamais le passer sous
 silence.
 
+## [2026-07-30] Vérifier qu'une fonctionnalité demandée n'existe pas déjà
+
+**Ce qui a mal tourné** — Tâche reçue : « ajouter une sauvegarde automatique du
+montage dans `/dashboard/creer`, aujourd'hui seules les préférences sont
+persistées ». Faux pour cette page : `buildSnapshot()` y persiste déjà TOUT le
+montage, avec un debounce de 500 ms **et** une sauvegarde synchrone sur
+`beforeunload`, `pagehide`, `visibilitychange` et au démontage. Appliquer la
+demande à la lettre — « debounce 1,5 s » — aurait **dégradé** la protection
+existante, et réécrire l'auto-save aurait dupliqué 300 lignes déjà là.
+
+**Règle** — Avant d'implémenter une fonctionnalité décrite comme absente,
+la chercher : `grep -n "localStorage" <fichier cible>` et lire les effets de
+persistance existants. Une prémisse de tâche est une hypothèse, pas un constat.
+Si elle est fausse, le dire et livrer l'écart réel plutôt que le travail
+demandé.
+
+**Corollaire — deux sessions sur la même fonctionnalité.** La même tâche
+tournait dans l'autre terminal (branche `feat/autosave`, `src/lib/creer/draft.ts`
+non commité). `git worktree list` et un coup d'œil au `git status` des autres
+worktrees le montrent en dix secondes. À faire AVANT d'écrire, pas au moment du
+merge.
+
+**Piège de conception trouvé au passage** — dans `/creer`, les préférences de
+design et l'état du montage partagent UNE seule clé localStorage
+(`studiio-creer-design-prefs`). Toute fonctionnalité qui veut « vider le
+brouillon » (après export, ou via un bouton « Ignorer ») effacerait donc aussi
+les couleurs et polices de l'utilisateur. D'où la clé séparée
+`studiio:autosave:v1:creer`, qui ne porte qu'un horodatage. Séparer réellement
+les deux reste à faire.
+
 ## Pré-merge : checklist obligatoire
 
 À cocher MENTALEMENT avant chaque merge (et écrire dans le PR body si non trivial) :
