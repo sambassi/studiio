@@ -226,6 +226,12 @@ export function AudioStudioPanel({
   /** Geometrie du montage au moment du dernier auto-mix (voir `mixStale`). */
   const [autoMixSignature, setAutoMixSignature] = useState<string | null>(null);
   const [playheadTime, setPlayheadTime] = useState<number | null>(null);
+  // Niveaux mesures par l'ecoute, affiches dans la ligne de chaque piste.
+  // Les remonter ici est ce qui permet de supprimer le second jeu de
+  // compteurs que « Écouter le mixage » affichait a part.
+  const [mixLevels, setMixLevels] = useState<{ music: number; rush: number; voice: number }>(
+    { music: 0, rush: 0, voice: 0 },
+  );
 
   /** Le mixeur ne s'affiche que si le parent branche les keyframes. */
   const mixerEnabled = typeof onAudioKeyframesChange === 'function';
@@ -687,6 +693,7 @@ export function AudioStudioPanel({
                 onDuckOnVoiceChange={setDuckOnVoice}
                 hasVoice={!!voiceUrl}
                 playheadTime={playheadTime}
+                levels={mixLevels}
               />
               <AudioMixPreview
                 flush
@@ -700,6 +707,7 @@ export function AudioStudioPanel({
                 totalDuration={totalDuration}
                 videoSeqStart={videoSeqStart}
                 videoSeqDuration={videoSeqDuration}
+                onLevels={setMixLevels}
                 onTimeUpdate={(t) => setPlayheadTime(t)}
                 onPlayStateChange={(playing) => { if (!playing) setPlayheadTime(null); }}
               />

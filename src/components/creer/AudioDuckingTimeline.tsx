@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, Trash2, Wand2, Loader2, ChevronDown, ChevronRight, Volume2, VolumeX, Mic } from 'lucide-react';
+import { Plus, Trash2, Wand2, Loader2, ChevronDown, ChevronRight, Volume2, VolumeX, Mic, RotateCcw } from 'lucide-react';
 
 export interface AudioKeyframe {
   id: string;
@@ -40,6 +40,12 @@ interface Props {
   onDuckOnVoiceChange?: (next: boolean) => void;
   /** Grise l'interrupteur quand il n'y a aucune voix off a analyser. */
   hasVoice?: boolean;
+  /**
+   * Niveaux mesures pendant l'ecoute, affiches DANS la ligne de chaque piste.
+   * Absents, aucune jauge n'apparait — rendu inchange pour les appelants qui
+   * ne les fournissent pas (`/dashboard/creer`).
+   */
+  levels?: { music: number; rush: number; voice: number };
 }
 
 /**
@@ -92,6 +98,7 @@ export default function AudioDuckingTimeline({
   duckOnVoice,
   onDuckOnVoiceChange,
   hasVoice = false,
+  levels,
 }: Props) {
   const duration = Math.max(1, totalDuration); // never divide by zero
   // ⚠️ Les keyframes viennent d'ailleurs : brouillon restaure, post relu,
@@ -179,6 +186,18 @@ export default function AudioDuckingTimeline({
     }
   };
 
+  /** Jauge de niveau en direct, sous le curseur — remplace le second jeu de
+   *  compteurs que « Écouter le mixage » affichait a part. */
+  const LevelBar = ({ track, color }: { track: 'music' | 'rush' | 'voice'; color: string }) => {
+    if (!levels) return null;
+    const pct = Math.min(100, (levels[track] ?? 0) * 200);
+    return (
+      <div className="mt-0.5 h-0.5 w-full overflow-hidden rounded bg-gray-800">
+        <div className={`h-full ${color}`} style={{ width: `${pct}%`, transition: 'width 40ms linear' }} />
+      </div>
+    );
+  };
+
   /** Bouton de coupure d'une piste — meme dessin pour les trois. */
   const MuteButton = ({ track, label }: { track: 'music' | 'rush' | 'voice'; label: string }) => (
     <button
@@ -216,6 +235,7 @@ export default function AudioDuckingTimeline({
           <span className="w-9 text-right text-cyan-300 font-mono">{globalMusicValue}%</span>
           <MuteButton track="music" label="la musique" />
         </div>
+        <LevelBar track="music" color="bg-cyan-500" />
         <div className="flex items-center gap-1.5 text-[9px] text-gray-300">
           <span className="w-16 text-gray-400">Son rush</span>
           <input
@@ -230,6 +250,7 @@ export default function AudioDuckingTimeline({
           <span className="w-9 text-right text-orange-300 font-mono">{globalRushValue}%</span>
           <MuteButton track="rush" label="le son du rush" />
         </div>
+        <LevelBar track="rush" color="bg-orange-500" />
         <div className="flex items-center gap-1.5 text-[9px] text-gray-300">
           <span className="w-16 text-gray-400">Voix off</span>
           <input
@@ -244,6 +265,7 @@ export default function AudioDuckingTimeline({
           <span className="w-9 text-right text-purple-300 font-mono">{globalVoiceValue}%</span>
           <MuteButton track="voice" label="la voix off" />
         </div>
+        <LevelBar track="voice" color="bg-purple-500" />
       </div>
 
       {/* ─── ADVANCED TOGGLE ──────────────────────────────────────────
@@ -266,6 +288,28 @@ export default function AudioDuckingTimeline({
 
       {advancedOpen && (
       <>
+      {sorted.length > 1 && (
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onChange([{
+              id: 'kf-0',
+              time: 0,
+              musicVolume: sorted[0].musicVolume,
+              rushVolume: sorted[0].rushVolume,
+              voiceVolume: sorted[0].voiceVolume,
+            }])}
+            className="flex items-center gap-1 rounded bg-gray-800 hover:bg-gray-700 px-2 py-1 text-[10px] font-medium text-gray-200 transition"
+            title="Remplace la courbe par un seul niveau constant, en gardant les volumes actuels"
+          >
+            <RotateCcw size={11} />
+            Revenir à un mixage simple
+          </button>
+          <span className="text-[9px] text-gray-500">
+            {sorted.length} points de réglage — un montage simple n&apos;en a besoin que d&apos;un
+          </span>
+        </div>
+      )}
       {/* Auto-mix — deplace ici depuis l'en-tete : c'est une aide ponctuelle,
           pas un reglage quotidien. Rien n'est retire, seulement replie. */}
       <div className="flex items-center gap-2">
