@@ -36,6 +36,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { useBranding } from '@/lib/hooks/useBranding';
+import { fontStack, ensureFontsLoaded } from '@/lib/fonts/catalog';
 import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { useTranslations, useLocale } from '@/i18n/client';
@@ -1474,6 +1475,20 @@ export default function CalendarPage() {
   // all sequence durations for intro/cards/cta.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showFullPreview, fullPreviewPost, infoSeqIndex, montageAutoPlay]);
+
+  /**
+   * Polices du post ouvert.
+   *
+   * Une pile CSS ne sert a rien tant qu'aucune `@font-face` ne porte la
+   * famille : le Calendrier n'injectait aucune feuille, si bien qu'un post
+   * regle sur une police hors des six historiques s'affichait ici en police
+   * systeme — alors que la video, elle, la portait bien.
+   */
+  useEffect(() => {
+    const d = fullPreviewPost?.metadata?.design as Record<string, string> | undefined;
+    if (!d) return;
+    void ensureFontsLoaded([d.font, d.titleFont, d.subtitleFont, d.ctaFont, d.watermarkFont, d.cardsFont]);
+  }, [fullPreviewPost]);
 
   // Keep ref in sync with state — the timer effect reads the ref directly
   useEffect(() => { videoPlayableRef.current = videoPlayable; }, [videoPlayable]);
@@ -3173,19 +3188,12 @@ export default function CalendarPage() {
 
         // ── Extraction du design avec fallbacks pour les anciens posts sans champ design ──
         const design = meta?.design;
-        // Mapping CSS des polices — doit correspondre au FONT_CSS_MAP de l'éditeur
-        const FONT_CSS_MAP: Record<string, string> = {
-          Anton: 'var(--font-anton)',
-          Syne: 'var(--font-syne)',
-          'Bebas Neue': 'var(--font-bebas)',
-          Poppins: 'var(--font-poppins)',
-          'Space Grotesk': 'var(--font-space)',
-          // Inter est la police de base de l'app (next/font). Sans cette entree,
-          // un post qui demande 'Inter' retombe en serif dans la reconstruction.
-          Inter: 'var(--font-inter)',
-        };
+        // Piles CSS des polices : le MEME catalogue que l'editeur et le
+        // compositeur. Ce fichier portait sa propre table de six entrees —
+        // toute police choisie hors de ces six rendait ici en police systeme,
+        // alors que la video, elle, la portait bien.
         const rawFontName = design?.font || 'sans-serif';
-        const designFont = FONT_CSS_MAP[rawFontName] || rawFontName;
+        const designFont = rawFontName === 'sans-serif' ? rawFontName : fontStack(rawFontName);
         const designTitleColor = design?.titleColor || '#FFFFFF';
         const designCtaColor = design?.ctaColor || accent;
         const designCtaSubColor = design?.ctaSubColor || '#FFFFFF';
@@ -3500,7 +3508,7 @@ export default function CalendarPage() {
                                   // `drawIntro`. Sans cela l'apercu montrait
                                   // autre chose que la video.
                                   fontFamily: design?.subtitleFont
-                                    ? (FONT_CSS_MAP[design.subtitleFont] || design.subtitleFont)
+                                    ? fontStack(design.subtitleFont)
                                     : designFont,
                                   fontSize: editorPxToDvh(
                                     (isReelFormat ? 9 : 11) * designTextScale * (design?.subtitleScale ?? 1),
@@ -3614,7 +3622,7 @@ export default function CalendarPage() {
                             const scaledDesc = editorPxToDvh(6 * designTextScale * cardsK);
                             // Cards-specific font override (parité /creer line 8235)
                             const cardsFontFamily = (design as any)?.cardsFont
-                              ? (FONT_CSS_MAP[(design as any).cardsFont] || (design as any).cardsFont)
+                              ? fontStack((design as any).cardsFont)
                               : designFont;
                             // Per-element gradient (parité éditeur). Read from typography.cards
                             // (new shape) OR cardsTypography (alias). Backward-compat: legacy

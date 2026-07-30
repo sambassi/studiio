@@ -31,6 +31,10 @@ import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import ClipDetectorModal, { type ClipSource } from '@/components/media/ClipDetectorModal';
 import { CardIcon } from '@/components/ui/CardIcon';
 import ColorWheel from '@/components/ui/ColorWheel';
+// Catalogue de polices — LA source unique, partagee avec le compositeur.
+// Deux listes finiraient par diverger, et la video ne ressemblerait plus a
+// l'apercu.
+import { FONT_GROUPS, fontStack, ensureFontLoaded, preloadCatalogPreview } from '@/lib/fonts/catalog';
 import { useBranding, NEUTRAL_BRANDING } from '@/lib/hooks/useBranding';
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { Card, CardTitle, CardContent } from '@/components/ui/Card';
@@ -431,40 +435,6 @@ const ASPECT_CSS: Record<Format, string> = {
 
 /** Sequences ou le filigrane est visible — noms cote editeur, comme le Calendrier les attend. */
 const WATERMARK_SEQUENCES = ['titre', 'cartes', 'video', 'cta'] as const;
-
-/**
- * Polices, classees par usage.
- *
- * Limitees a celles que Next charge deja (`next/font/google`, layout.tsx) ET
- * que le compositeur sait injecter (`FONT_URLS`, video-composer.ts) : proposer
- * une police qu'un seul des deux connait donnerait un apercu et une video en
- * caracteres differents.
- */
-const FONT_GROUPS: Array<{ label: string; fonts: string[] }> = [
-  { label: 'Titres', fonts: ['Anton', 'Bebas Neue', 'Syne'] },
-  { label: 'Texte', fonts: ['Inter', 'Poppins', 'Space Grotesk'] },
-];
-
-/**
- * Nom de police -> variable CSS posee par next/font.
- *
- * Il n'existe aucune `@font-face` nommee « Inter » ou « Anton » dans la page :
- * next/font genere des noms obfusques et n'expose que ces variables. Le nom
- * brut reste en repli car le compositeur, lui, injecte les feuilles Google
- * Fonts au moment du rendu — a ce moment-la, la famille existe sous son vrai
- * nom.
- */
-const FONT_CSS: Record<string, string> = {
-  Inter: 'var(--font-inter)',
-  Anton: 'var(--font-anton)',
-  Syne: 'var(--font-syne)',
-  'Bebas Neue': 'var(--font-bebas)',
-  Poppins: 'var(--font-poppins)',
-  'Space Grotesk': 'var(--font-space)',
-};
-
-/** Pile CSS complete pour une police du catalogue. */
-const fontStack = (name: string): string => `${FONT_CSS[name] || `'${name}'`}, '${name}', sans-serif`;
 
 /**
  * Reglages typographiques par zone.
@@ -1212,6 +1182,39 @@ export default function AssistantWizard() {
   const [editedZone, setEditedZone] = useState<'title' | 'subtitle' | 'cta'>('title');
   /** Champ de couleur ouvert dans la roue, pour la zone active. */
   const [editedTextColor, setEditedTextColor] = useState<'color' | 'subColor' | null>(null);
+
+  /**
+   * Chargement des polices A LA DEMANDE.
+   *
+   * Le catalogue compte des dizaines de familles : les charger toutes
+   * plomberait la page pour n'en servir qu'une ou deux. On ne demande que
+   * celles qui sont reellement choisies — et on force un rendu quand elles
+   * arrivent, sinon l'apercu resterait dans la police de repli jusqu'a la
+   * prochaine frappe.
+   *
+   * Les six familles servies par `next/font` sont deja dans la page : elles
+   * s'affichent immediatement, ce chargement ne fait que les rendre
+   * disponibles au canvas, qui ne sait pas lire une variable CSS.
+   */
+  const [, bumpFonts] = useState(0);
+  const [missingFonts, setMissingFonts] = useState<string[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const families = [titleStyle.font, subtitleStyle.font, ctaStyle.font].filter(
+      (f): f is string => !!f,
+    );
+    for (const family of families) {
+      void ensureFontLoaded(family).then((ok) => {
+        if (cancelled) return;
+        bumpFonts((n) => n + 1);
+        setMissingFonts((prev) => {
+          const without = prev.filter((f) => f !== family);
+          return ok ? without : [...without, family];
+        });
+      });
+    }
+    return () => { cancelled = true; };
+  }, [titleStyle.font, subtitleStyle.font, ctaStyle.font]);
 
   /**
    * Reglages de texte effectifs — LA source unique.
@@ -2477,11 +2480,18 @@ export default function AssistantWizard() {
                                 id="txt-font"
                                 value={zone.font}
                                 onChange={(e) => patch({ font: e.target.value })}
+                                // Sans feuille chargee, les cinquante et
+                                // quelques noms s'affichent tous dans la meme
+                                // police systeme. On charge donc le 400 de
+                                // TOUT le catalogue — une seule requete — des
+                                // que l'utilisateur s'approche du selecteur.
+                                onFocus={() => { void preloadCatalogPreview(); }}
+                                onPointerEnter={() => { void preloadCatalogPreview(); }}
                                 style={{ fontFamily: fontStack(zone.font) }}
                                 className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none px-2 py-1.5 text-sm"
                               >
                                 {FONT_GROUPS.map((g) => (
-                                  <optgroup key={g.label} label={g.label}>
+                                  <optgroup key={g.group} label={g.label}>
                                     {g.fonts.map((f) => (
                                       <option key={f} value={f} style={{ fontFamily: fontStack(f) }}>
                                         {f}
@@ -2638,6 +2648,13 @@ export default function AssistantWizard() {
                                 onChange={(value) => patch({ [editedTextColor]: value })}
                                 label={editedTextColor === 'subColor' ? 'Sous-texte' : 'Texte'}
                               />
+                            )}
+
+                            {missingFonts.includes(zone.font) && (
+                              <p className="text-[11px] text-amber-400/90">
+                                « {zone.font} » n’a pas pu être chargée : l’aperçu et la
+                                vidéo utiliseront une police de repli.
+                              </p>
                             )}
 
                             <p className="text-[11px] text-gray-500">
