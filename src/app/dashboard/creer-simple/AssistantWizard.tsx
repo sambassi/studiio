@@ -29,6 +29,7 @@ import type { AudioKeyframe } from '@/lib/creer/audioDucking';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import ClipDetectorModal, { type ClipSource } from '@/components/media/ClipDetectorModal';
 import { CardIcon } from '@/components/ui/CardIcon';
+import ColorWheel from '@/components/ui/ColorWheel';
 import { useBranding, NEUTRAL_BRANDING } from '@/lib/hooks/useBranding';
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { Card, CardTitle, CardContent } from '@/components/ui/Card';
@@ -361,6 +362,41 @@ function backdropCSS(
   ].join(', ');
 }
 
+/**
+ * Filigrane par defaut.
+ *
+ * ⚠️ Le compositeur allume le calque `siteText` DES QU'IL N'EST PAS DESACTIVE
+ * (`siteText?.enabled !== false`, video-composer.ts) et, faute de texte, ecrit
+ * `Afroboost.com`. Ce parcours ne lui transmettait rien : chaque montage sortait
+ * donc marque « Afroboost.com », sur les quatre sequences, sans que rien dans
+ * l'interface ne l'annonce ni ne permette de l'enlever. On transmet desormais
+ * la valeur explicitement — le kit de marque s'il en porte une, sinon
+ * `Studiio.pro`.
+ */
+const DEFAULT_WATERMARK = 'Studiio.pro';
+
+/**
+ * Filigrane : metriques du compositeur (calque `siteText`), centre, graisse
+ * 700, opacite 0.85.
+ *
+ * ⚠️ Le compositeur calcule `linkFontSize = width * 0.0375 * size` — indexe
+ * sur la LARGEUR — mais place le texte a un pourcentage de la HAUTEUR. En
+ * 16:9 cela donnait 72 px de haut sur un cadre de 1080 : un filigrane plus
+ * gros que le sous-CTA, qui venait le chevaucher. Le facteur `size` ramene
+ * les deux formats a la meme taille absolue (40,5 px), et le 16:9 descend
+ * d'un point pour retrouver la meme respiration au-dessus du CTA.
+ */
+const WATERMARK = {
+  fontRatio: 0.0375,
+  opacity: 0.85,
+  color: '#FFFFFF',
+  '9:16': { size: 1, y: 95 },
+  '16:9': { size: 1080 / 1920, y: 96 },
+} as const;
+
+/** Sequences ou le filigrane est visible — noms cote editeur, comme le Calendrier les attend. */
+const WATERMARK_SEQUENCES = ['titre', 'cartes', 'video', 'cta'] as const;
+
 /** Style de cartes utilisé partout : aperçu, compositeur, metadata. */
 const CARD_STYLE = 'Compact';
 
@@ -431,7 +467,17 @@ export function Preview({
   gradEnd,
   gradientOpacity,
   rushUrl,
+  watermark,
+  accent,
 }: {
+  /** Filigrane affiche sur toutes les sequences, ou chaine vide si masque. */
+  watermark?: string;
+  /**
+   * Couleur d'accent. Le compositeur ne s'en sert que pour le halo du
+   * filigrane et la barre de progression : l'apercu reproduit le halo, sans
+   * quoi le reglage « Accent » ne se verrait nulle part.
+   */
+  accent: string;
   generated: Generated | null;
   format: Format;
   /**
@@ -676,6 +722,44 @@ export function Preview({
               </div>
             </div>
             )}
+
+            {/* Filigrane — le compositeur le peint sur CHAQUE sequence, au
+                centre a 95 % de la hauteur. Mêmes police, graisse et opacite
+                que le calque `siteText`, pour que l'apercu ne promette pas
+                autre chose que la video. */}
+            {watermark && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  // Cote canvas, `y` designe la LIGNE DE BASE. En CSS on
+                  // remonte le bloc d'une ascendante (~0,8 em avec
+                  // `lineHeight: 1`) pour que la base tombe au meme endroit —
+                  // un `translateY(-50%)` y centrerait le bloc, donc
+                  // descendrait le texte d'un tiers de cadratin.
+                  top: `${WATERMARK[format].y}%`,
+                  transform: 'translateY(-0.8em)',
+                  lineHeight: 1,
+                  textAlign: 'center',
+                  fontSize: vw * WATERMARK.fontRatio * WATERMARK[format].size,
+                  fontWeight: 700,
+                  color: WATERMARK.color,
+                  opacity: WATERMARK.opacity,
+                  // Contour noir + halo a la couleur d'accent : le compositeur
+                  // peint les deux (`fillTextWithOutline` + `shadowColor =
+                  // accentColor`). Sans le halo ici, regler l'accent ne se
+                  // voyait nulle part dans l'apercu.
+                  textShadow: [
+                    '0 1px 2px rgba(0,0,0,0.85)',
+                    '0 -1px 2px rgba(0,0,0,0.85)',
+                    `0 0 8px ${accent}`,
+                  ].join(', '),
+                }}
+              >
+                {watermark}
+              </div>
+            )}
           </>
         )}
       </div>
@@ -696,15 +780,62 @@ export default function AssistantWizard() {
   // Kit de marque (F7). `useBranding` fournit deja des defauts neutres ; les
   // `||` couvrent une valeur vide heritee d'un ancien enregistrement.
   const { branding } = useBranding();
-  const accent = branding.accentColor || NEUTRAL_ACCENT;
+
+  /**
+   * Couleurs : le kit de marque fournit la base, l'utilisateur peut la
+   * surcharger POUR CETTE CREATION.
+   *
+   * La surcharge est un objet nul tant qu'on n'y a pas touche — et non quatre
+   * etats initialises depuis `branding`. `useBranding` lit le localStorage
+   * dans un effet : des etats seedes au montage captureraient les defauts
+   * neutres, puis ignoreraient le kit charge une milliseconde plus tard.
+   * Tant que `colors` vaut `null`, l'ecran suit le kit ; des le premier
+   * reglage, il suit l'utilisateur.
+   */
+  const [colors, setColors] = useState<{
+    accent: string;
+    gradStart: string;
+    gradEnd: string;
+    gradientOpacity: number;
+  } | null>(null);
+
+  const brandAccent = branding.accentColor || NEUTRAL_ACCENT;
   // Le kit distingue la couleur d'accent (bordures, icones) du DEBUT du
   // degrade de fond : changer l'une ne change pas l'autre, le panneau les
   // expose separement. Le `|| accent` ne couvre qu'une valeur vide heritee
   // d'un enregistrement anterieur a ce champ.
-  const gradStart = branding.gradientColor1 || accent;
-  const gradEnd = branding.gradientColor2 || NEUTRAL_GRADIENT_END;
-  const gradientOpacity =
+  const brandGradStart = branding.gradientColor1 || brandAccent;
+  const brandGradEnd = branding.gradientColor2 || NEUTRAL_GRADIENT_END;
+  const brandGradientOpacity =
     typeof branding.gradientOpacity === 'number' ? branding.gradientOpacity : DESIGN.gradientOpacity;
+
+  const accent = colors?.accent ?? brandAccent;
+  const gradStart = colors?.gradStart ?? brandGradStart;
+  const gradEnd = colors?.gradEnd ?? brandGradEnd;
+  const gradientOpacity = colors?.gradientOpacity ?? brandGradientOpacity;
+
+  /** Regle une couleur : fige les trois autres a leur valeur courante. */
+  const setColor = (patch: Partial<NonNullable<typeof colors>>) =>
+    setColors({ accent, gradStart, gradEnd, gradientOpacity, ...patch });
+
+  /** Couleur en cours d'edition dans la roue — purement local a l'interface. */
+  const [editedColor, setEditedColor] = useState<'accent' | 'gradStart' | 'gradEnd' | null>(null);
+
+  /**
+   * Filigrane. Meme raisonnement que les couleurs pour la surcharge nulle :
+   * `branding.watermarkText` arrive apres le premier rendu.
+   */
+  const [watermarkOverride, setWatermarkOverride] = useState<string | null>(null);
+  const [watermarkEnabled, setWatermarkEnabled] = useState(true);
+  const watermarkText = watermarkOverride ?? (branding.watermarkText || DEFAULT_WATERMARK);
+  /** Ce qui est reellement peint : chaine vide si masque ou vide. */
+  const watermarkLabel = watermarkEnabled ? watermarkText.trim() : '';
+  /**
+   * Un champ vide eteint le filigrane. Le bouton doit le dire, sinon il
+   * annonce « Affiche » devant un apercu ou rien ne s'affiche.
+   */
+  const watermarkVisible = !!watermarkLabel;
+
   const [started, setStarted] = useState(false);
   const [step, setStep] = useState(0);
 
@@ -714,6 +845,28 @@ export default function AssistantWizard() {
   const [format, setFormat] = useState<Format>('9:16');
   const [sequences, setSequences] = useState(DEFAULT_SEQUENCES);
   const [dragKey, setDragKey] = useState<SeqKey | null>(null);
+
+  /**
+   * Configuration du filigrane, ECRITE UNE FOIS et transmise a l'identique au
+   * compositeur et aux metadonnees. En deux copies, l'une aurait fini par
+   * deriver de l'autre — et c'est le Calendrier, qui relit la seconde, qui
+   * aurait affiche autre chose que la video.
+   *
+   * `sequences` est indispensable cote Calendrier : sa reconstruction HTML
+   * fait `(siteText.sequences || []).includes(seq)`, donc un objet sans ce
+   * champ n'affiche JAMAIS le filigrane — alors que le compositeur, lui,
+   * applique sa propre liste par defaut. Les deux rendus divergeraient en
+   * silence. Depend du format, d'ou sa place apres `format`.
+   */
+  const watermarkConfig = {
+    text: watermarkLabel || DEFAULT_WATERMARK,
+    enabled: watermarkVisible,
+    color: WATERMARK.color,
+    opacity: WATERMARK.opacity,
+    size: WATERMARK[format].size,
+    sequences: [...WATERMARK_SEQUENCES],
+    pos: { x: 50, y: WATERMARK[format].y },
+  };
 
   // ── Rush video ───────────────────────────────────────────────────────
   // Le compositeur accepte deja `videoUrl` : il suffit de le lui passer. Sans
@@ -1128,6 +1281,10 @@ export default function AssistantWizard() {
         ctaText: generated.ctaSub,
         ctaSubText: generated.ctaSub,
         watermarkText: generated.cta,
+        // Filigrane. `enabled: false` est la SEULE facon de l'eteindre : le
+        // compositeur allume le calque des qu'il n'est pas explicitement
+        // desactive, et se rabat alors sur « Afroboost.com ».
+        siteText: watermarkConfig,
         design: {
           cardStyle: CARD_STYLE,
           // Sans ce champ : titre et CTA en Helvetica, cartes en Inter.
@@ -1260,6 +1417,12 @@ export default function AssistantWizard() {
           gradientColor2: gradEnd,
           gradientOpacity,
           noColorSequences: [],
+          // Filigrane persiste : le Calendrier le relit pour sa
+          // reconstruction HTML (`design.siteText`) ET pour toute
+          // regeneration du montage. Sans lui, les deux se rabattent sur
+          // « Afroboost.com » — le post afficherait un filigrane que
+          // l'utilisateur n'a jamais choisi, et different de sa video.
+          siteText: watermarkConfig,
           // Le Calendrier lit les positions sous `positions.*` (imbrique),
           // la ou le compositeur attend des cles a plat. On ecrit la forme
           // du Calendrier ici pour que sa reconstruction HTML de secours
@@ -1551,6 +1714,124 @@ export default function AssistantWizard() {
                       </button>
                     ))}
                   </div>
+                </div>
+
+                {/* Couleurs — accent + degrade de fond. Elles alimentent d'un
+                    seul tenant l'apercu, le compositeur et les metadonnees :
+                    ce sont les memes variables partout, la surcharge se pose
+                    en amont. Tant qu'on n'y touche pas, le kit de marque
+                    (Reglages -> Branding) fait foi. */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium">Couleurs</label>
+                    {colors && (
+                      <button
+                        type="button"
+                        onClick={() => { setColors(null); setEditedColor(null); }}
+                        className="text-[11px] text-gray-500 hover:text-white transition"
+                      >
+                        Revenir au kit de marque
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    {([
+                      { key: 'accent' as const, label: 'Accent', value: accent },
+                      { key: 'gradStart' as const, label: 'Dégradé — début', value: gradStart },
+                      { key: 'gradEnd' as const, label: 'Dégradé — fin', value: gradEnd },
+                    ]).map((c) => (
+                      <button
+                        key={c.key}
+                        type="button"
+                        onClick={() => setEditedColor(editedColor === c.key ? null : c.key)}
+                        aria-pressed={editedColor === c.key}
+                        className={`flex-1 rounded-xl px-3 py-2.5 text-left transition ${
+                          editedColor === c.key
+                            ? 'bg-gray-800 ring-1 ring-purple-500/50'
+                            : 'bg-gray-900/60 hover:bg-gray-800/70'
+                        }`}
+                      >
+                        <span
+                          className="block h-5 w-full rounded-md border border-white/10"
+                          style={{ backgroundColor: c.value }}
+                        />
+                        <span className="mt-1.5 block text-[10px] text-gray-400 truncate">{c.label}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {editedColor && (
+                    <div className="mt-2 rounded-xl bg-gray-900/60 p-3">
+                      <ColorWheel
+                        color={
+                          editedColor === 'accent' ? accent : editedColor === 'gradStart' ? gradStart : gradEnd
+                        }
+                        onChange={(value) => setColor({ [editedColor]: value })}
+                        label={
+                          editedColor === 'accent'
+                            ? 'Accent'
+                            : editedColor === 'gradStart'
+                              ? 'Dégradé — début'
+                              : 'Dégradé — fin'
+                        }
+                      />
+                    </div>
+                  )}
+
+                  <p className="mt-1.5 text-[11px] text-gray-500">
+                    Le dégradé peint le fond ; l&apos;accent colore le halo du filigrane et la
+                    barre de progression.
+                  </p>
+
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Opacité du fond</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={Math.round(gradientOpacity * 100)}
+                      onChange={(e) => setColor({ gradientOpacity: Number(e.target.value) / 100 })}
+                      aria-label="Opacité du dégradé de fond"
+                      className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
+                    />
+                    <span className="text-[11px] text-gray-400 w-9 text-right tabular-nums">
+                      {Math.round(gradientOpacity * 100)}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* Filigrane — repris du kit de marque, sinon « Studiio.pro ».
+                    Sans ce reglage le compositeur ecrivait « Afroboost.com »
+                    sur chaque sequence, sans moyen de l'enlever. */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label htmlFor="wm-text" className="block text-sm font-medium">
+                      Filigrane
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setWatermarkEnabled((v) => !v)}
+                      title={watermarkEnabled ? 'Masquer le filigrane' : 'Afficher le filigrane'}
+                      className="flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-white transition"
+                    >
+                      {watermarkVisible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                      {watermarkVisible ? 'Affiché' : 'Masqué'}
+                    </button>
+                  </div>
+                  <input
+                    id="wm-text"
+                    type="text"
+                    value={watermarkText}
+                    onChange={(e) => setWatermarkOverride(e.target.value)}
+                    disabled={!watermarkEnabled}
+                    placeholder={DEFAULT_WATERMARK}
+                    maxLength={40}
+                    className="w-full rounded-xl bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2.5 text-sm disabled:opacity-40"
+                  />
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    Affiché en bas de chaque séquence du montage.
+                    {watermarkEnabled && !watermarkVisible && ' Champ vide : rien ne sera affiché.'}
+                  </p>
                 </div>
 
                 {/* Sequences — reordonnables par glisser-deposer.
@@ -2032,6 +2313,8 @@ export default function AssistantWizard() {
           gradEnd={gradEnd}
           gradientOpacity={gradientOpacity}
           rushUrl={rushUrl}
+          watermark={watermarkLabel}
+          accent={accent}
         />
       </div>
 
