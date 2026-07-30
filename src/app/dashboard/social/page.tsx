@@ -19,6 +19,7 @@ import {
   FileText,
   Bell,
   ExternalLink,
+  Clock,
 } from 'lucide-react';
 
 interface SocialAccount {
@@ -96,6 +97,14 @@ export default function SocialPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   const [oauthStatus, setOauthStatus] = useState<Record<string, boolean>>({});
+  /**
+   * Plateformes ouvertes a la connexion, d'apres le serveur
+   * (`/api/social/status` -> `platforms.<id>.available`).
+   *
+   * Absent = disponible : un serveur plus ancien, ou une reponse partielle,
+   * ne doit pas faire disparaitre les boutons de connexion.
+   */
+  const [availability, setAvailability] = useState<Record<string, boolean>>({});
 
   // Initialize accounts and settings from API only (no stale localStorage)
   useEffect(() => {
@@ -119,8 +128,12 @@ export default function SocialPage() {
             if (statusData.success && statusData.platforms) {
               const accountsMap: Record<string, SocialAccount | null> = {};
               const oauthMap: Record<string, boolean> = {};
+              const availableMap: Record<string, boolean> = {};
               Object.entries(statusData.platforms).forEach(([platform, info]: [string, any]) => {
                 oauthMap[platform] = info.oauthAvailable ?? false;
+                // `?? true` : sans information, la plateforme reste
+                // connectable — on ne masque jamais par accident.
+                availableMap[platform] = info.available ?? true;
                 if (info.connected) {
                   accountsMap[platform] = {
                     id: `${platform}_oauth`,
@@ -133,6 +146,7 @@ export default function SocialPage() {
               });
               setAccounts(accountsMap);
               setOauthStatus(oauthMap);
+              setAvailability(availableMap);
             }
           }
         } catch (error) {
@@ -448,6 +462,11 @@ export default function SocialPage() {
           const isConnecting = connecting === platform.id;
           const isConnected = account?.connected ?? false;
           const hasOAuth = oauthStatus[platform.id] ?? false;
+          // Plateforme mise en attente cote serveur : on annonce « bientot
+          // disponible » plutot que de proposer une connexion qui n'aboutira
+          // pas. Un compte deja connecte garde son bouton de deconnexion —
+          // rien n'est retire dans son dos.
+          const comingSoon = !(availability[platform.id] ?? true);
           const platformDescription = t(`platforms.${platform.id}.description`);
 
           return (
@@ -502,7 +521,11 @@ export default function SocialPage() {
                     </div>
                   </div>
 
-                  {isConnected ? (
+                  {comingSoon ? (
+                    <Badge className="flex items-center gap-1 bg-purple-500/20 text-purple-200 border-purple-500/30">
+                      <Clock size={12} /> {t('status.comingSoon')}
+                    </Badge>
+                  ) : isConnected ? (
                     <Badge
                       variant="success"
                       className="flex items-center gap-1 bg-green-500/20 text-green-300 border-green-500/30"
@@ -517,14 +540,14 @@ export default function SocialPage() {
                 </div>
 
                 {/* Avertissement propre a la plateforme (ex. validation TikTok) */}
-                {'notice' in platform && platform.notice && (
+                {!comingSoon && 'notice' in platform && platform.notice && (
                   <div className="mb-3 p-3 bg-amber-900/20 border border-amber-500/30 rounded-lg">
                     <p className="text-xs text-amber-300">{platform.notice}</p>
                   </div>
                 )}
 
                 {/* OAuth not configured info */}
-                {!hasOAuth && !isConnected && (
+                {!comingSoon && !hasOAuth && !isConnected && (
                   <div className="mb-3 p-3 bg-amber-900/20 border border-amber-500/30 rounded-lg">
                     <p className="text-xs text-amber-300">
                       {t('oauthInfo', { platform: platform.name })}
@@ -534,6 +557,12 @@ export default function SocialPage() {
 
                 {/* Action Buttons */}
                 <div className="space-y-2">
+                  {comingSoon ? (
+                    <div className="flex items-center justify-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 px-3 py-2.5 text-xs text-gray-400">
+                      <Clock size={14} className="flex-shrink-0 text-gray-500" />
+                      {t('comingSoonHint', { platform: platform.name })}
+                    </div>
+                  ) : (
                   <Button
                     variant={isConnected ? 'ghost' : 'primary'}
                     className="w-full"
@@ -557,6 +586,7 @@ export default function SocialPage() {
                       </>
                     )}
                   </Button>
+                  )}
 
                   {isConnected && (
                     <Button
