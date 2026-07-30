@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Mic, Square, Sparkles, Loader2, Trash2, Play, Pause, AlertTriangle, Info } from 'lucide-react';
+import { Mic, Square, Sparkles, Loader2, Trash2, Play, Pause, AlertTriangle, Info, Check } from 'lucide-react';
 import { TTS_VOICES, synthesize, type TtsVoice } from '@/lib/tts/edge-tts-client';
+import { compareVoiceToSequence, voiceFitMessage } from '@/lib/creer/voiceFit';
 import {
   fetchHeyGenVoices,
   isHeyGenVoiceId,
@@ -496,7 +497,10 @@ export function SequenceVoicesPanel({
           const sv = sequenceVoices[key];
           const seqDur = sequenceDuration(key);
           const audioDur = sv.duration ?? 0;
-          const overrun = sv.audioUrl && audioDur > seqDur + 0.3; // 300ms tolerance
+          // Trois etats au lieu d'un : la voix qui deborde etait signalee, la
+          // voix trop courte — donc du silence a l'ecran — ne l'etait pas.
+          const fit = sv.audioUrl ? compareVoiceToSequence(sv.duration, seqDur) : null;
+          const overrun = fit?.status === 'over';
           const isRecordingThis = recording === key;
           const isBusy = busy[key];
 
@@ -504,15 +508,33 @@ export function SequenceVoicesPanel({
             <div key={key} className={`rounded-md border p-2 ${SEQUENCE_ACCENT[key]}`}>
               <div className="mb-1.5 flex items-center justify-between gap-2">
                 <span className="text-xs font-semibold text-white">{SEQUENCE_LABELS[key]}</span>
-                <span className={`text-[10px] ${overrun ? 'text-orange-300' : 'text-gray-400'}`}>
+                <span className={`text-[10px] ${
+                  overrun ? 'text-orange-300' : fit?.status === 'ok' ? 'text-emerald-300' : 'text-gray-400'
+                }`}>
                   {seqDur}s {sv.audioUrl && `/ ${audioDur.toFixed(1)}s audio`}
                 </span>
               </div>
 
-              {overrun && (
-                <div className="mb-1.5 flex items-start gap-1 rounded bg-orange-500/10 px-1.5 py-1 text-[10px] text-orange-300">
-                  <AlertTriangle size={10} className="mt-0.5 flex-shrink-0" />
-                  <span>L'audio dépasse la durée de la séquence — raccourcir le texte ou allonger la séquence.</span>
+              {fit && fit.status !== 'unknown' && (
+                <div
+                  data-testid={`voice-fit-${key}`}
+                  className={`mb-1.5 flex items-start gap-1 rounded px-1.5 py-1 text-[10px] ${
+                    fit.status === 'ok'
+                      ? 'bg-emerald-500/10 text-emerald-300'
+                      : 'bg-orange-500/10 text-orange-300'
+                  }`}
+                >
+                  {fit.status === 'ok'
+                    ? <Check size={10} className="mt-0.5 flex-shrink-0" />
+                    : <AlertTriangle size={10} className="mt-0.5 flex-shrink-0" />}
+                  <span>
+                    {voiceFitMessage(fit, audioDur, seqDur)}
+                    {fit.status !== 'ok' && (
+                      <span className="text-gray-400">
+                        {' '}(séquence à {fit.suggestedSeqSec} s pour coller)
+                      </span>
+                    )}
+                  </span>
                 </div>
               )}
 
