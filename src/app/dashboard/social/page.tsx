@@ -83,7 +83,6 @@ const SETTINGS_KEY = 'studiio_publishing_settings';
 
 export default function SocialPage() {
   const t = useTranslations('social');
-  const tc = useTranslations('common');
 
   const [accounts, setAccounts] = useState<Record<string, SocialAccount | null>>({});
   const [connecting, setConnecting] = useState<string | null>(null);

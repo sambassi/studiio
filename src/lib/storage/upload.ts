@@ -7,8 +7,6 @@ import { supabaseAdmin } from '@/lib/db/supabase';
 import fs from 'fs';
 import path from 'path';
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
-
 /**
  * Upload a local file to Supabase Storage
  */

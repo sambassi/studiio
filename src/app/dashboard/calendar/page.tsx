@@ -46,6 +46,8 @@ import { useAgentIAEnabled } from '@/lib/hooks/useAgentIAEnabled';
 
 interface PostBranding {
   watermarkText?: string;
+  /** Couleur du sous-titre du CTA — lue par l'apercu, absente du type. */
+  ctaSubColor?: string;
   borderColor?: string;
   borderEnabled?: boolean;
   ctaText?: string;
@@ -86,6 +88,12 @@ interface PostMetadata {
    *  videos that need regeneration after a composer bug fix. */
   composerVersion?: string;
   hasAudio?: boolean;
+  /** Texte incruste sur la sequence video. */
+  videoOverlayText?: string;
+  /** Message d'echec du dernier essai de publication. */
+  error?: string | null;
+  /** Detail par plateforme du cron de publication (`{ platform, error }`). */
+  cron_publish_results?: Array<{ platform?: string; success?: boolean; error?: string }> | null;
   sequences?: {
     intro?: number;
     cards?: number;
@@ -136,6 +144,29 @@ interface PostMetadata {
     logoScale?: number;
     logoSequences?: string[];
     logoUrl?: string;
+    /**
+     * Champs relus par l'apercu mais absents du type : ils etaient lus via
+     * `as any`. Formes reprises telles quelles de ComposerOptions /
+     * DesignOptions dans `lib/video-composer.ts`.
+     */
+    siteText?: {
+      enabled?: boolean;
+      text?: string;
+      color?: string;
+      opacity?: number;
+      size?: number;
+      font?: string;
+      sequences?: string[];
+      pos?: { x?: number; y?: number };
+      positions?: Record<string, { x?: number; y?: number }>;
+    };
+    seqGradients?: Record<string, {
+      enabled?: boolean;
+      color1?: string;
+      color2?: string;
+      opacity?: number;
+      position?: 'top' | 'bottom' | 'left' | 'right' | 'both';
+    }>;
     typography?: {
       title?: { letterSpacing?: number; lineHeight?: number; bold?: boolean; italic?: boolean };
       cta?: { letterSpacing?: number; lineHeight?: number; bold?: boolean; italic?: boolean };

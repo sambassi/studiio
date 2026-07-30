@@ -55,7 +55,6 @@ export async function POST(req: NextRequest) {
 
     // Determine bucket and path
     const bucket = getBucket(mimeType);
-    const ext = file.name.split('.').pop() || 'bin';
     const timestamp = Date.now();
     const safeFilename = sanitizeStorageFilename(file.name);
     const storagePath = `${session.user.id}/${purpose}/${timestamp}-${safeFilename}`;

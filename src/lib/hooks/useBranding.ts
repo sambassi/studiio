@@ -15,6 +15,10 @@ export interface BrandingSettings {
   gradientColor2: string;
   /** Opacite du calque de degrade, 0 a 1. */
   gradientOpacity: number;
+  /** Police du kit de marque. Optionnels : anciens reglages sans ces champs. */
+  font?: string;
+  titleColor?: string;
+  ctaSubColor?: string;
 }
 
 /**
