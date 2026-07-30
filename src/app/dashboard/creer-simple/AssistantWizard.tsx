@@ -397,6 +397,112 @@ const WATERMARK = {
 /** Sequences ou le filigrane est visible — noms cote editeur, comme le Calendrier les attend. */
 const WATERMARK_SEQUENCES = ['titre', 'cartes', 'video', 'cta'] as const;
 
+/**
+ * Polices, classees par usage.
+ *
+ * Limitees a celles que Next charge deja (`next/font/google`, layout.tsx) ET
+ * que le compositeur sait injecter (`FONT_URLS`, video-composer.ts) : proposer
+ * une police qu'un seul des deux connait donnerait un apercu et une video en
+ * caracteres differents.
+ */
+const FONT_GROUPS: Array<{ label: string; fonts: string[] }> = [
+  { label: 'Titres', fonts: ['Anton', 'Bebas Neue', 'Syne'] },
+  { label: 'Texte', fonts: ['Inter', 'Poppins', 'Space Grotesk'] },
+];
+
+/**
+ * Nom de police -> variable CSS posee par next/font.
+ *
+ * Il n'existe aucune `@font-face` nommee « Inter » ou « Anton » dans la page :
+ * next/font genere des noms obfusques et n'expose que ces variables. Le nom
+ * brut reste en repli car le compositeur, lui, injecte les feuilles Google
+ * Fonts au moment du rendu — a ce moment-la, la famille existe sous son vrai
+ * nom.
+ */
+const FONT_CSS: Record<string, string> = {
+  Inter: 'var(--font-inter)',
+  Anton: 'var(--font-anton)',
+  Syne: 'var(--font-syne)',
+  'Bebas Neue': 'var(--font-bebas)',
+  Poppins: 'var(--font-poppins)',
+  'Space Grotesk': 'var(--font-space)',
+};
+
+/** Pile CSS complete pour une police du catalogue. */
+const fontStack = (name: string): string => `${FONT_CSS[name] || `'${name}'`}, '${name}', sans-serif`;
+
+/**
+ * Reglages typographiques par zone.
+ *
+ * ⚠️ Cette liste ne contient QUE ce que le compositeur honore reellement,
+ * champ par champ (video-composer.ts) :
+ *
+ *   Titre — `titleFont`, `titleColor`, `textScale`, et
+ *           `titleTypography.{bold,italic,letterSpacing,lineHeight}`.
+ *   CTA   — `watermarkFont` (grand texte) et `ctaFont` (sous-texte),
+ *           `ctaColor`, `ctaSubColor`, `ctaTextScale`, et
+ *           `ctaTypography.{letterSpacing,lineHeight}`.
+ *
+ * Deux absences VOLONTAIRES, verifiees dans le code du compositeur :
+ *   - Le SOUS-TITRE n'a aucun reglage propre : `drawIntro` lui impose la
+ *     police, la graisse, l'italique et l'interligne du titre, et sa couleur
+ *     a 80 %. Lui donner des controles afficherait des reglages sans effet.
+ *   - Le CTA n'a ni gras ni italique : `drawCTA` ecrit `900` en dur dans
+ *     `ctx.font` et n'y met jamais `italic`. `ctaTypography.bold/italic`
+ *     existent dans le type mais ne sont JAMAIS lus.
+ */
+interface TextStyles {
+  title: {
+    font: string;
+    color: string;
+    scale: number;
+    bold: boolean;
+    italic: boolean;
+    letterSpacing: number;
+    lineHeight: number;
+  };
+  cta: {
+    font: string;
+    color: string;
+    subColor: string;
+    scale: number;
+    letterSpacing: number;
+    lineHeight: number;
+  };
+}
+
+/**
+ * Defauts = rendu actuel, a l'identique.
+ *
+ * Chaque valeur reprend soit une constante `DESIGN`, soit le defaut du
+ * compositeur : un montage produit sans toucher a ces reglages sort donc
+ * exactement comme avant leur ajout. `cta.subColor` manque volontairement —
+ * il suit la fin du degrade du kit de marque, qui n'est pas une constante.
+ */
+const DEFAULT_TEXT_STYLES: {
+  title: TextStyles['title'];
+  cta: Omit<TextStyles['cta'], 'subColor'>;
+} = {
+  title: {
+    font: DESIGN.font,
+    color: DESIGN.titleColor,
+    scale: 1,
+    // `drawIntro` : `bold !== false ? 900 : 400`. L'apercu ecrivait 900 en dur.
+    bold: true,
+    italic: false,
+    letterSpacing: 0,
+    // Defaut du compositeur ET de l'apercu.
+    lineHeight: 1.1,
+  },
+  cta: {
+    font: DESIGN.font,
+    color: DESIGN.ctaColor,
+    scale: 1,
+    letterSpacing: 0,
+    lineHeight: 1.2,
+  },
+};
+
 /** Style de cartes utilisé partout : aperçu, compositeur, metadata. */
 const CARD_STYLE = 'Compact';
 
@@ -469,7 +575,13 @@ export function Preview({
   rushUrl,
   watermark,
   accent,
+  text,
 }: {
+  /**
+   * Reglages typographiques — la MEME valeur que celle envoyee au
+   * compositeur. Une seule source : l'apercu ne peut pas deriver de l'export.
+   */
+  text: TextStyles;
   /** Filigrane affiche sur toutes les sequences, ou chaine vide si masque. */
   watermark?: string;
   /**
@@ -513,6 +625,14 @@ export function Preview({
   const [rushBroken, setRushBroken] = useState(false);
   useEffect(() => setRushBroken(false), [rushUrl]);
   const showRush = !!rushUrl && !rushBroken && activeOrder.includes('video');
+
+  // Interlettrage : le compositeur multiplie la valeur de l'editeur par
+  // `w / 320`. Le plateau etant a la resolution native, on applique le meme
+  // facteur — sinon 2 px saisis donneraient 2 px a l'ecran et 6,75 px dans la
+  // video.
+  const spacingPx = (value: number) => (value * vw) / 320;
+  const titleWeight = text.title.bold ? 900 : 400;
+  const titleStyle = text.title.italic ? 'italic' : 'normal';
 
   return (
     <div className="card-base p-4">
@@ -599,7 +719,7 @@ export function Preview({
             {activeOrder.includes('intro') && (
             /* Titre — ancre au bord GAUCHE (x) et au bord HAUT (y), comme
                 drawIntro avec titleAlign:'left' et textBaseline:'top'.
-                Graisse 900 et ombre : le compositeur les applique en dur. */
+                L'ombre est appliquee en dur par le compositeur. */
             <div
               style={{
                 position: 'absolute',
@@ -612,22 +732,30 @@ export function Preview({
               <div
                 className="uppercase"
                 style={{
-                  fontSize: vw * FONT_RATIO[format].title,
-                  fontWeight: 900,
-                  color: DESIGN.titleColor,
-                  lineHeight: 1.1,
+                  fontFamily: fontStack(text.title.font),
+                  fontSize: vw * FONT_RATIO[format].title * text.title.scale,
+                  fontWeight: titleWeight,
+                  fontStyle: titleStyle,
+                  letterSpacing: spacingPx(text.title.letterSpacing),
+                  color: text.title.color,
+                  lineHeight: text.title.lineHeight,
                   filter: titleShadow(vw),
                 }}
               >
                 {generated.title}
               </div>
+              {/* Sous-titre : `drawIntro` lui impose la police, la graisse,
+                  l'italique et l'interligne du TITRE, et sa couleur a 80 %.
+                  Il n'a aucun reglage propre — en lui en donnant un ici,
+                  l'apercu promettrait ce que la video ne rendrait pas. */}
               <div
                 style={{
-                  fontSize: vw * FONT_RATIO[format].subtitle,
-                  fontWeight: 900,
-                  // drawIntro dessine le sous-titre en titleColor a 80 %
-                  color: `${DESIGN.titleColor}CC`,
-                  lineHeight: 1.1,
+                  fontFamily: fontStack(text.title.font),
+                  fontSize: vw * FONT_RATIO[format].subtitle * text.title.scale,
+                  fontWeight: titleWeight,
+                  fontStyle: titleStyle,
+                  color: `${text.title.color}CC`,
+                  lineHeight: text.title.lineHeight,
                   marginTop: vw * GAP_RATIO,
                   filter: subtitleShadow(vw),
                 }}
@@ -696,14 +824,20 @@ export function Preview({
                 textAlign: 'center',
               }}
             >
+              {/* Graisse 900 en dur, des deux cotes : `drawCTA` l'ecrit
+                  litteralement dans `ctx.font` et ne lit jamais
+                  `ctaTypography.bold`. Un bouton « gras » ici serait sans
+                  effet sur la video. */}
               <div
                 className="uppercase"
                 style={{
-                  fontSize: vw * FONT_RATIO[format].cta,
+                  fontFamily: fontStack(text.cta.font),
+                  fontSize: vw * FONT_RATIO[format].cta * text.cta.scale,
                   fontWeight: 900,
-                  color: DESIGN.ctaColor,
-                  lineHeight: 1.2,
-                  textShadow: `0 0 ${vw * 0.02}px ${DESIGN.ctaColor}66`,
+                  letterSpacing: spacingPx(text.cta.letterSpacing),
+                  color: text.cta.color,
+                  lineHeight: text.cta.lineHeight,
+                  textShadow: `0 0 ${vw * 0.02}px ${text.cta.color}66`,
                 }}
               >
                 {generated.cta}
@@ -711,10 +845,12 @@ export function Preview({
               <div
                 className="uppercase"
                 style={{
-                  fontSize: vw * FONT_RATIO[format].ctaSub,
+                  fontFamily: fontStack(text.cta.font),
+                  fontSize: vw * FONT_RATIO[format].ctaSub * text.cta.scale,
                   fontWeight: 900,
-                  color: gradEnd,
-                  lineHeight: 1.2,
+                  letterSpacing: spacingPx(text.cta.letterSpacing),
+                  color: text.cta.subColor,
+                  lineHeight: text.cta.lineHeight,
                   marginTop: vw * GAP_RATIO,
                 }}
               >
@@ -814,12 +950,74 @@ export default function AssistantWizard() {
   const gradEnd = colors?.gradEnd ?? brandGradEnd;
   const gradientOpacity = colors?.gradientOpacity ?? brandGradientOpacity;
 
+
   /** Regle une couleur : fige les trois autres a leur valeur courante. */
   const setColor = (patch: Partial<NonNullable<typeof colors>>) =>
     setColors({ accent, gradStart, gradEnd, gradientOpacity, ...patch });
 
   /** Couleur en cours d'edition dans la roue — purement local a l'interface. */
   const [editedColor, setEditedColor] = useState<'accent' | 'gradStart' | 'gradEnd' | null>(null);
+
+  // ── Typographie ──────────────────────────────────────────────────────
+  // Un seul objet, transmis a l'identique a l'apercu, au compositeur et aux
+  // metadonnees. Les defauts reproduisent le rendu d'avant ces reglages.
+  const [titleStyle, setTitleStyle] = useState<TextStyles['title']>(DEFAULT_TEXT_STYLES.title);
+  const [ctaStyle, setCtaStyle] = useState<TextStyles['cta']>({
+    ...DEFAULT_TEXT_STYLES.cta,
+    // Provisoire : remplace juste en dessous par la fin du degrade tant que
+    // l'utilisateur n'a pas choisi de couleur de sous-texte.
+    subColor: '',
+  });
+  /** Zone de texte en cours de reglage — purement local a l'interface. */
+  const [editedZone, setEditedZone] = useState<'title' | 'cta'>('title');
+  /** Champ de couleur ouvert dans la roue, pour la zone active. */
+  const [editedTextColor, setEditedTextColor] = useState<'color' | 'subColor' | null>(null);
+
+  /**
+   * Reglages de texte effectifs — LA source unique.
+   *
+   * La couleur du sous-texte du CTA suit la fin du degrade tant qu'elle n'a
+   * pas ete choisie : c'est ce que faisait le code avant ces reglages
+   * (`ctaSubColor: gradEnd`). Une valeur seedee au montage la figerait sur le
+   * repli neutre, le kit de marque n'etant lu qu'apres, dans un effet.
+   */
+  const textStyles: TextStyles = {
+    title: titleStyle,
+    cta: { ...ctaStyle, subColor: ctaStyle.subColor || gradEnd },
+  };
+
+  /**
+   * Traduction des reglages de texte vers les champs du compositeur.
+   *
+   * Ecrite UNE FOIS, etalee a la fois dans `design` (compositeur) et dans
+   * `metadata.design` (Calendrier). En deux copies, l'une aurait fini par
+   * deriver de l'autre — et c'est le Calendrier, qui relit la seconde, qui
+   * aurait affiche autre chose que la video.
+   *
+   * Le nommage cote compositeur est deroutant et n'est pas de notre fait :
+   * le GRAND texte du CTA prend `watermarkFont`, le sous-texte `ctaFont`
+   * (drawCTA). On pose donc la meme police dans les deux.
+   */
+  const textDesign = {
+    titleFont: textStyles.title.font,
+    titleColor: textStyles.title.color,
+    textScale: textStyles.title.scale,
+    titleTypography: {
+      bold: textStyles.title.bold,
+      italic: textStyles.title.italic,
+      letterSpacing: textStyles.title.letterSpacing,
+      lineHeight: textStyles.title.lineHeight,
+    },
+    watermarkFont: textStyles.cta.font,
+    ctaFont: textStyles.cta.font,
+    ctaColor: textStyles.cta.color,
+    ctaSubColor: textStyles.cta.subColor,
+    ctaTextScale: textStyles.cta.scale,
+    ctaTypography: {
+      letterSpacing: textStyles.cta.letterSpacing,
+      lineHeight: textStyles.cta.lineHeight,
+    },
+  };
 
   /**
    * Filigrane. Meme raisonnement que les couleurs pour la surcharge nulle :
@@ -1300,10 +1498,13 @@ export default function AssistantWizard() {
 
           // ── Titre : haut-gauche ───────────────────────────────────────
           titleAlign: 'left' as const,
-          titleFont: DESIGN.font,
           titlePosition: { x: DESIGN.titlePos.x, y: DESIGN.titlePos.y },
           titleSize: DESIGN.titleWidth,
-          titleColor: DESIGN.titleColor,
+          // Typographie du titre — memes valeurs que l'apercu.
+          // `textScale` est le SEUL levier de taille que `drawIntro` connait ;
+          // il vaut aussi pour le sous-titre, que le compositeur dimensionne
+          // avec le meme facteur.
+          ...textDesign,
 
           // ── CTA : bas-centre ──────────────────────────────────────────
           // `ctaMainText` est lu EN PREMIER par drawCTA ; `ctaSubTextDesign`
@@ -1312,8 +1513,6 @@ export default function AssistantWizard() {
           ctaSubTextDesign: generated.ctaSub,
           watermarkPosition: { x: DESIGN.ctaPos.x, y: DESIGN.ctaPos.y },
           watermarkSize: DESIGN.ctaWidth,
-          ctaColor: DESIGN.ctaColor,
-          ctaSubColor: gradEnd,
 
           // ── Cartes : image de l'apercu, blittee telle quelle ──────────
           cardsSnapshot,
@@ -1408,9 +1607,9 @@ export default function AssistantWizard() {
           // Persiste pour que le Calendrier (apercu HTML et regeneration)
           // ancre le titre a GAUCHE comme la video, et non centre sur x=8%.
           titleAlign: 'left',
-          titleColor: DESIGN.titleColor,
-          ctaColor: DESIGN.ctaColor,
-          ctaSubColor: gradEnd,
+          // Memes champs typographiques que ceux passes au compositeur : une
+          // regeneration depuis le Calendrier repart donc du meme rendu.
+          ...textDesign,
           ctaMainText: generated.cta,
           ctaSubText: generated.ctaSub,
           gradientColor1: gradStart,
@@ -1798,6 +1997,227 @@ export default function AssistantWizard() {
                       {Math.round(gradientOpacity * 100)}%
                     </span>
                   </div>
+                </div>
+
+                {/* Texte — UNIQUEMENT les reglages que le compositeur honore
+                    deja, zone par zone. Voir `TextStyles` pour ce qui est
+                    volontairement absent (sous-titre, gras/italique du CTA)
+                    et pourquoi. */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium">Texte</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTitleStyle(DEFAULT_TEXT_STYLES.title);
+                        setCtaStyle({ ...DEFAULT_TEXT_STYLES.cta, subColor: '' });
+                        setEditedTextColor(null);
+                      }}
+                      className="text-[11px] text-gray-500 hover:text-white transition"
+                    >
+                      Réinitialiser
+                    </button>
+                  </div>
+
+                  <div className="flex gap-2 mb-2">
+                    {([
+                      { key: 'title' as const, label: 'Titre', hint: 'et sous-titre' },
+                      { key: 'cta' as const, label: 'CTA', hint: 'et sous-texte' },
+                    ]).map((z) => (
+                      <button
+                        key={z.key}
+                        type="button"
+                        onClick={() => { setEditedZone(z.key); setEditedTextColor(null); }}
+                        aria-pressed={editedZone === z.key}
+                        className={`flex-1 rounded-xl px-3 py-2 text-left transition ${
+                          editedZone === z.key
+                            ? 'bg-purple-600/20 ring-1 ring-purple-500/50'
+                            : 'bg-gray-900/60 hover:bg-gray-800/70'
+                        }`}
+                      >
+                        <span
+                          className={`block text-sm font-medium ${editedZone === z.key ? 'text-white' : 'text-gray-300'}`}
+                        >
+                          {z.label}
+                        </span>
+                        <span className="block text-[10px] text-gray-500">{z.hint}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {(() => {
+                    const isTitle = editedZone === 'title';
+                    const zone = isTitle ? textStyles.title : textStyles.cta;
+                    /** Applique un correctif a la zone en cours. */
+                    const patch = (p: Record<string, unknown>) =>
+                      isTitle
+                        ? setTitleStyle((prev) => ({ ...prev, ...p }))
+                        : setCtaStyle((prev) => ({ ...prev, ...p }));
+                    return (
+                      <div className="rounded-xl bg-gray-900/60 p-3 space-y-3">
+                        <div>
+                          <label
+                            htmlFor="txt-font"
+                            className="block text-[10px] uppercase tracking-wider text-gray-500 mb-1"
+                          >
+                            Police
+                          </label>
+                          <select
+                            id="txt-font"
+                            value={zone.font}
+                            onChange={(e) => patch({ font: e.target.value })}
+                            style={{ fontFamily: fontStack(zone.font) }}
+                            className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none px-2 py-1.5 text-sm"
+                          >
+                            {FONT_GROUPS.map((g) => (
+                              <optgroup key={g.label} label={g.label}>
+                                {g.fonts.map((f) => (
+                                  <option key={f} value={f} style={{ fontFamily: fontStack(f) }}>
+                                    {f}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Taille</span>
+                          <input
+                            type="range"
+                            min={60}
+                            max={180}
+                            step={5}
+                            value={Math.round(zone.scale * 100)}
+                            onChange={(e) => patch({ scale: Number(e.target.value) / 100 })}
+                            aria-label={`Taille du texte — ${isTitle ? 'titre' : 'CTA'}`}
+                            className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
+                          />
+                          <span className="text-[11px] text-gray-400 w-11 text-right tabular-nums">
+                            {Math.round(zone.scale * 100)}%
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">
+                            Interlettrage
+                          </span>
+                          <input
+                            type="range"
+                            min={-2}
+                            max={10}
+                            step={0.5}
+                            value={zone.letterSpacing}
+                            onChange={(e) => patch({ letterSpacing: Number(e.target.value) })}
+                            aria-label={`Interlettrage — ${isTitle ? 'titre' : 'CTA'}`}
+                            className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
+                          />
+                          <span className="text-[11px] text-gray-400 w-11 text-right tabular-nums">
+                            {zone.letterSpacing}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">
+                            Interligne
+                          </span>
+                          <input
+                            type="range"
+                            min={0.9}
+                            max={2}
+                            step={0.05}
+                            value={zone.lineHeight}
+                            onChange={(e) => patch({ lineHeight: Number(e.target.value) })}
+                            aria-label={`Interligne — ${isTitle ? 'titre' : 'CTA'}`}
+                            className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
+                          />
+                          <span className="text-[11px] text-gray-400 w-11 text-right tabular-nums">
+                            {zone.lineHeight.toFixed(2)}
+                          </span>
+                        </div>
+
+                        {/* Gras / italique : titre seulement. `drawCTA` ecrit
+                            900 en dur et ne met jamais 'italic'. */}
+                        {isTitle && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Style</span>
+                            <button
+                              type="button"
+                              onClick={() => patch({ bold: !textStyles.title.bold })}
+                              aria-pressed={textStyles.title.bold}
+                              className={`rounded-lg px-3 py-1 text-xs font-bold transition ${
+                                textStyles.title.bold
+                                  ? 'bg-purple-600/30 text-white ring-1 ring-purple-500/50'
+                                  : 'bg-gray-800 text-gray-400 hover:text-white'
+                              }`}
+                            >
+                              G
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => patch({ italic: !textStyles.title.italic })}
+                              aria-pressed={textStyles.title.italic}
+                              className={`rounded-lg px-3 py-1 text-xs italic transition ${
+                                textStyles.title.italic
+                                  ? 'bg-purple-600/30 text-white ring-1 ring-purple-500/50'
+                                  : 'bg-gray-800 text-gray-400 hover:text-white'
+                              }`}
+                            >
+                              I
+                            </button>
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Couleur</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditedTextColor(editedTextColor === 'color' ? null : 'color')
+                            }
+                            aria-pressed={editedTextColor === 'color'}
+                            aria-label={`Couleur — ${isTitle ? 'titre' : 'CTA'}`}
+                            className={`h-6 flex-1 rounded-md border transition ${
+                              editedTextColor === 'color' ? 'border-purple-400' : 'border-white/10'
+                            }`}
+                            style={{ backgroundColor: zone.color }}
+                          />
+                          {!isTitle && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditedTextColor(editedTextColor === 'subColor' ? null : 'subColor')
+                              }
+                              aria-pressed={editedTextColor === 'subColor'}
+                              aria-label="Couleur du sous-texte du CTA"
+                              className={`h-6 flex-1 rounded-md border transition ${
+                                editedTextColor === 'subColor'
+                                  ? 'border-purple-400'
+                                  : 'border-white/10'
+                              }`}
+                              style={{ backgroundColor: textStyles.cta.subColor }}
+                            />
+                          )}
+                        </div>
+
+                        {editedTextColor && (
+                          <ColorWheel
+                            color={
+                              editedTextColor === 'subColor' ? textStyles.cta.subColor : zone.color
+                            }
+                            onChange={(value) => patch({ [editedTextColor]: value })}
+                            label={editedTextColor === 'subColor' ? 'Sous-texte' : 'Texte'}
+                          />
+                        )}
+
+                        <p className="text-[11px] text-gray-500">
+                          {isTitle
+                            ? 'Le sous-titre suit la police, la graisse et l’interligne du titre — c’est ainsi que le montage le dessine.'
+                            : 'Le montage écrit le CTA en graisse forte : gras et italique n’y auraient aucun effet.'}
+                        </p>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Filigrane — repris du kit de marque, sinon « Studiio.pro ».
@@ -2315,6 +2735,7 @@ export default function AssistantWizard() {
           rushUrl={rushUrl}
           watermark={watermarkLabel}
           accent={accent}
+          text={textStyles}
         />
       </div>
 
