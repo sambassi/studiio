@@ -149,16 +149,17 @@ interface PostMetadata {
      * `as any`. Formes reprises telles quelles de ComposerOptions /
      * DesignOptions dans `lib/video-composer.ts`.
      */
+    /** Meme forme que `SiteTextConfig` dans `lib/video-composer.ts` : `text`
+     *  y est OBLIGATOIRE, le rendre optionnel ici casse l'affectation. */
     siteText?: {
-      enabled?: boolean;
-      text?: string;
+      text: string;
       color?: string;
       opacity?: number;
       size?: number;
-      font?: string;
       sequences?: string[];
-      pos?: { x?: number; y?: number };
+      enabled?: boolean;
       positions?: Record<string, { x?: number; y?: number }>;
+      pos?: { x?: number; y?: number };
     };
     seqGradients?: Record<string, {
       enabled?: boolean;

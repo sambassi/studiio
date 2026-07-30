@@ -4,7 +4,8 @@ import '@testing-library/jest-dom/vitest';
  * Variables d'environnement factices pour les tests.
  *
  * Plusieurs modules construisent leur client Supabase AU CHARGEMENT
- * (`src/lib/auth/config.ts:18` appelle `createClient(process.env… || '')`).
+ * (`src/lib/email/notifications.ts:18` appelle `createClient(process.env… ||
+ * '')`, atteint depuis `src/lib/auth/config.ts`).
  * Avec une URL vide, supabase-js lève « supabaseUrl is required » et le
  * fichier de test entier échoue à l'import — avant même qu'un test tourne.
  * C'est ce qui mettait `credits-system.test.ts` au rouge alors que la
