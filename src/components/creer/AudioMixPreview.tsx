@@ -34,6 +34,11 @@ interface Props {
   onTimeUpdate?: (t: number) => void;
   /** Called when playback starts or stops. */
   onPlayStateChange?: (playing: boolean) => void;
+  /**
+   * `true` = rendu SANS cadre ni marge propres (voir AudioDuckingTimeline).
+   * Defaut `false` : rendu inchange pour les appelants existants.
+   */
+  flush?: boolean;
 }
 
 /**
@@ -60,6 +65,7 @@ export default function AudioMixPreview({
   videoSeqDuration,
   onTimeUpdate,
   onPlayStateChange,
+  flush = false,
 }: Props) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -441,7 +447,7 @@ export default function AudioMixPreview({
   const pct = totalDuration > 0 ? Math.min(100, (currentTime / totalDuration) * 100) : 0;
 
   return (
-    <div className="mt-3 rounded-lg border border-purple-900/50 bg-gray-900/60 p-3 space-y-2 backdrop-blur-sm">
+    <div className={flush ? 'space-y-2' : 'mt-3 rounded-lg border border-purple-900/50 bg-gray-900/60 p-3 space-y-2 backdrop-blur-sm'}>
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
           Écouter le mixage
