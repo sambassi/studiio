@@ -194,6 +194,24 @@ describe("Moteur de transitions — le canvas est rendu propre a l'appelant", ()
     }
   });
 
+  it('aucun style ne floute ni ne grossit au-dela du raisonnable', () => {
+    // Bornes SUPERIEURES : sans elles, un flou de 200 px ou une echelle de
+    // 3x passeraient les tests tout en rendant l'image meconnaissable.
+    for (const style of TRANSITION_STYLES) {
+      for (const t of [0.1, 0.5, 0.9]) {
+        const ops = renderFrame(style, t).ops;
+        for (const op of ops.filter((o) => o.op === 'scale')) {
+          expect({ style, t, sx: op.args[0] as number }).toEqual({ style, t, sx: op.args[0] as number });
+          expect(op.args[0] as number).toBeLessThanOrEqual(1.25);
+        }
+        for (const op of ops.filter((o) => o.op === 'filter')) {
+          const m = /blur\(([\d.]+)px\)/.exec(String(op.args[0]));
+          if (m) expect(parseFloat(m[1])).toBeLessThanOrEqual(W * 0.05);
+        }
+      }
+    }
+  });
+
   it('chaque calque est efface avant d etre repeint', () => {
     for (const style of TRANSITION_STYLES.filter((s) => s !== 'crossfade')) {
       const { scratch } = renderFrame(style, 0.5);
@@ -423,6 +441,10 @@ describe('Styles cinema — catalogue', () => {
       'push', 'iris', 'blur-dissolve', 'whip-pan',
     ]);
     expect(TRANSITION_KEYS[0]).toBe(DEFAULT_TRANSITION);
+    // La liste depreciee est une COPIE : la trier ne doit pas reordonner le
+    // catalogue de reference.
+    expect(TRANSITION_STYLES).not.toBe(TRANSITION_KEYS as unknown as TransitionStyle[]);
+    expect([...TRANSITION_STYLES]).toEqual([...TRANSITION_KEYS]);
   });
 
   it('chaque style du catalogue a un libelle pour le menu', () => {
@@ -431,6 +453,10 @@ describe('Styles cinema — catalogue', () => {
     }
     // Pas de libelle orphelin non plus.
     expect(Object.keys(TRANSITION_LABELS).sort()).toEqual([...TRANSITION_KEYS].sort());
+    // Ni deux entrees identiques : deux « Zoom » dans le menu seraient
+    // indiscernables pour l'utilisateur.
+    const labels = Object.values(TRANSITION_LABELS);
+    expect(new Set(labels).size).toBe(labels.length);
   });
 
   it('les nouveaux styles sont bien resolus, et un style inconnu retombe au defaut', () => {
@@ -481,6 +507,12 @@ describe("Style 'push' — poussee verticale", () => {
     expect(draws(1)[0].args[2]).toBe(-H);
   });
 
+  it('demarre en douceur, pas en rampe lineaire', () => {
+    // Meme garde-fou que pour l'iris : `t` brut au lieu de la courbe adoucie
+    // rendrait le depart mecanique.
+    expect(Math.abs(draws(0.25)[0].args[2] as number)).toBeLessThan(H * 0.25);
+  });
+
   it("n'est pas confondu avec 'slide' : l'un bouge en y, l'autre en x", () => {
     const push = draws(0.5)[0];
     const slide = renderFrame('slide', 0.5).ops.filter((o) => o.op === 'drawImage')[0];
@@ -501,6 +533,21 @@ describe("Style 'iris' — ouverture circulaire", () => {
     }
     expect(arcOf(0.2).args[2] as number).toBeLessThan(arcOf(0.6).args[2] as number);
     expect(arcOf(0).args[2]).toBe(0);
+  });
+
+  it('decoupe un cercle ENTIER, pas un secteur', () => {
+    // Sans verifier les angles, un `arc(..., 0, Math.PI)` passerait : l'iris
+    // deviendrait un demi-disque et le double 2D, qui ne modelise aucune
+    // region de clip, ne le verrait pas.
+    const arc = arcOf(0.5);
+    expect(arc.args[3]).toBe(0);
+    expect(arc.args[4]).toBe(Math.PI * 2);
+  });
+
+  it("ouvre en douceur, pas en rampe lineaire", () => {
+    // A un quart du parcours, une courbe adoucie a moins avance qu'une droite.
+    const rAtQuarter = arcOf(0.25).args[2] as number;
+    expect(rAtQuarter).toBeLessThan((Math.hypot(W, H) / 2) * 0.25);
   });
 
   it('couvre les COINS a la fin, sinon la frame garderait 4 angles de la sortante', () => {
@@ -534,8 +581,11 @@ describe("Style 'blur-dissolve' — fondu floute", () => {
   it('floute les deux calques, avec un maximum au milieu de la transition', () => {
     const mid = blursAt(0.5).map(blurValue);
     const early = blursAt(0.1).map(blurValue);
-    expect(mid[0]).toBeGreaterThan(0);
-    expect(mid[1]).toBeGreaterThan(0);
+    // PLANCHER : un flou d'1 px ferait degenerer le style en simple fondu
+    // tout en gardant les tests verts. On exige un flou reellement visible,
+    // au moins 1 % de la largeur.
+    expect(mid[0]).toBeGreaterThanOrEqual(W * 0.01);
+    expect(mid[1]).toBeGreaterThanOrEqual(W * 0.01);
     expect(early[0]).toBeLessThan(mid[0]);
   });
 
@@ -551,6 +601,27 @@ describe("Style 'blur-dissolve' — fondu floute", () => {
     const [aLate, bLate] = alphas(0.75);
     expect(aLate).toBeLessThan(aEarly);
     expect(bLate).toBeGreaterThan(bEarly);
+  });
+
+  it('centre la sur-echelle sur le milieu de la frame', () => {
+    // Un pivot decale (w/h permutes, par exemple) deplacerait le calque.
+    const translates = renderFrame('blur-dissolve', 0.5).ops.filter((o) => o.op === 'translate');
+    expect(translates.length).toBeGreaterThanOrEqual(2);
+    expect(translates[0].args).toEqual([W / 2, H / 2]);
+    expect(translates[1].args).toEqual([-W / 2, -H / 2]);
+  });
+
+  it('reste continu aux frontieres : pas de saut d echelle a l entree ni a la sortie', () => {
+    // La sur-echelle doit SUIVRE la cloche du flou. Appliquee en tout ou rien,
+    // elle faisait sauter le contenu de 6 % en une frame a chaque frontiere.
+    const scaleAt = (t: number) => {
+      const s = renderFrame('blur-dissolve', t).ops.find((o) => o.op === 'scale');
+      return s ? (s.args[0] as number) : 1;
+    };
+    expect(scaleAt(0)).toBeCloseTo(1, 4);
+    expect(scaleAt(1)).toBeCloseTo(1, 4);
+    expect(scaleAt(0.02)).toBeLessThan(1.01);
+    expect(scaleAt(0.5)).toBeGreaterThan(scaleAt(0.02));
   });
 
   it('agrandit uniformement le calque floute pour ne pas laisser de lisere translucide', () => {
@@ -579,13 +650,27 @@ describe("Style 'whip-pan' — balayage fouette", () => {
     return draws[which].args[1] as number;
   };
 
-  it('balaye horizontalement, calques jointifs', () => {
+  it('balaye horizontalement, calques jointifs avant sur-echelle', () => {
+    // Les decalages mesures sont ceux d'AVANT la sur-echelle du flou : celle-ci
+    // fait volontairement se CHEVAUCHER les deux calques de quelques pourcents,
+    // ce qui vaut mieux qu'un trou transparent entre eux.
     for (const t of [0.2, 0.5, 0.8]) {
       const xA = xOffsetOf(t, 0);
       const xB = xOffsetOf(t, 1);
       expect({ t, gap: Math.round(xB - xA) }).toEqual({ t, gap: W });
       expect(xA).toBeLessThanOrEqual(0);
       expect(xB).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('garde les DEUX calques opaques : un balayage n est pas un fondu', () => {
+    // Une opacite < 1 laisserait voir le vide derriere les calques — donc du
+    // noir a l'encodage — pendant tout le mouvement.
+    for (const t of [0.1, 0.5, 0.9]) {
+      const alphas = renderFrame('whip-pan', t).ops
+        .filter((o) => o.op === 'drawImage')
+        .map((o) => o.alpha);
+      expect({ t, alphas }).toEqual({ t, alphas: [1, 1] });
     }
   });
 

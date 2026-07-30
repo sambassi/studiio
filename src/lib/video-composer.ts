@@ -2681,10 +2681,10 @@ export type TransitionStyle =
  * L'ordre est celui d'affichage : le defaut d'abord, puis les geometriques,
  * puis les styles « cinema ».
  */
-export const TRANSITION_KEYS: TransitionStyle[] = [
+export const TRANSITION_KEYS: readonly TransitionStyle[] = Object.freeze([
   'crossfade', 'slide', 'wipe', 'zoom', 'fade-to-black',
   'push', 'iris', 'blur-dissolve', 'whip-pan',
-];
+] as TransitionStyle[]);
 
 /** Libelles pour le futur menu de l'editeur. */
 export const TRANSITION_LABELS: Record<TransitionStyle, string> = {
@@ -2699,8 +2699,14 @@ export const TRANSITION_LABELS: Record<TransitionStyle, string> = {
   'whip-pan': 'Balayage fouetté',
 };
 
-/** @deprecated Utiliser `TRANSITION_KEYS`. Conserve pour les appelants existants. */
-export const TRANSITION_STYLES: TransitionStyle[] = TRANSITION_KEYS;
+/**
+ * @deprecated Utiliser `TRANSITION_KEYS`.
+ *
+ * COPIE, pas alias : un appelant qui trierait cette liste en place pour son
+ * menu reordonnerait sinon `TRANSITION_KEYS` pour tout le monde, et le defaut
+ * ne serait plus en tete.
+ */
+export const TRANSITION_STYLES: TransitionStyle[] = [...TRANSITION_KEYS];
 
 /** Style applique quand rien n'est demande — ne jamais changer sans casser la retro-compat. */
 export const DEFAULT_TRANSITION: TransitionStyle = 'crossfade';
@@ -2734,27 +2740,44 @@ function easeInOutCubic(t: number): number {
   return c < 0.5 ? 4 * c * c * c : 1 - Math.pow(-2 * c + 2, 3) / 2;
 }
 
-/** Flou maximal (au milieu de la transition) du style `blur-dissolve`, en px a 1080 de large. */
+/**
+ * Flou maximal (au milieu de la transition) du style `blur-dissolve`, exprime
+ * pour une largeur de reference de 1080 px. Il est MIS A L'ECHELLE de la
+ * largeur reelle a l'usage : en 16:9 (1920 de large), 16 px absolus ne
+ * pesent plus que 0,8 % du cadre contre 1,5 % en 9:16 — le meme montage
+ * n'aurait pas le meme rendu selon le format. Meme convention que
+ * `dropShadowLgFilter` (`w / 320`) et le rayon du backdrop (`width / 1080`).
+ */
 const BLUR_DISSOLVE_MAX_PX = 16;
-/** Flou maximal du filé de `whip-pan`. Plus marque : c'est un mouvement rapide. */
+/** Flou maximal du filé de `whip-pan`, meme reference de 1080. Plus marque : mouvement rapide. */
 const WHIP_PAN_MAX_BLUR_PX = 26;
 /**
- * Sur-echelle appliquee a un calque floute.
+ * Sur-echelle maximale appliquee a un calque floute.
  *
  * Un flou fait baver l'image AU-DELA de ses bords, donc ses bords deviennent
  * semi-transparents : dessine tel quel, un calque floute laisse un lisere
  * translucide sur les quatre cotes de la frame. On l'agrandit legerement pour
  * repousser ce lisere hors du cadre. Echelle UNIFORME — aucune deformation.
  */
-const BLUR_OVERSCALE = 1.06;
+const BLUR_MAX_OVERSCALE = 1.06;
+
+/** Courbe en cloche : nulle aux deux extremites, maximale au milieu. */
+function bellCurve(t: number): number {
+  return Math.sin(Math.PI * Math.max(0, Math.min(1, t)));
+}
 
 /**
  * Dessine un calque avec flou, opacite et decalage horizontal optionnels.
  *
- * `ctx.filter` fait partie de l'etat du canvas : le `save`/`restore` le remet
- * seul a sa valeur precedente. On le remet malgre tout explicitement a `none`
- * avant de rendre la main, car un navigateur qui ignore `filter` laisserait
- * sinon la chaine en place pour tout le reste de la frame.
+ * La sur-echelle SUIT la montee du flou (meme cloche) : appliquee en tout ou
+ * rien, elle produisait un saut de 6 % — 32 px horizontaux en une frame — a
+ * l'entree et a la sortie de la transition, seule discontinuite visible a la
+ * frontiere des sequences.
+ *
+ * `ctx.filter` fait partie de l'etat du canvas : le `save`/`restore` qui
+ * encadre l'appel le remet seul a sa valeur precedente. Rien d'autre a faire
+ * — un reset explicite serait redondant sur un navigateur qui implemente
+ * `filter`, et sans effet sur un navigateur qui l'ignore.
  */
 function drawBlurredLayer(
   ctx: CanvasRenderingContext2D,
@@ -2763,20 +2786,17 @@ function drawBlurredLayer(
   blurPx: number,
   alpha: number,
   offsetX = 0,
+  overscale = 1,
 ) {
   ctx.save();
   ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
-  if (blurPx > 0.1) {
-    ctx.filter = `blur(${blurPx.toFixed(1)}px)`;
-    // Recentre la sur-echelle sur le milieu du calque, decalage inclus.
-    ctx.translate(offsetX + w / 2, h / 2);
-    ctx.scale(BLUR_OVERSCALE, BLUR_OVERSCALE);
-    ctx.translate(-w / 2, -h / 2);
-    ctx.drawImage(layer, 0, 0);
-  } else {
-    ctx.drawImage(layer, offsetX, 0);
-  }
-  ctx.filter = 'none';
+  if (blurPx > 0.1) ctx.filter = `blur(${blurPx.toFixed(1)}px)`;
+  // Un seul chemin de dessin, quelle que soit l'intensite : c'est ce qui rend
+  // l'echelle continue. A `overscale = 1` la transformation est neutre.
+  ctx.translate(offsetX + w / 2, h / 2);
+  ctx.scale(overscale, overscale);
+  ctx.translate(-w / 2, -h / 2);
+  ctx.drawImage(layer, 0, 0);
   ctx.restore();
 }
 
@@ -2910,9 +2930,11 @@ export function drawTransition(
     case 'blur-dissolve': {
       // Fondu enchaine, mais les deux calques passent par un flou qui monte
       // puis redescend (nul aux deux extremites, maximal au milieu).
-      const blurPx = BLUR_DISSOLVE_MAX_PX * Math.sin(Math.PI * Math.max(0, Math.min(1, t)));
-      drawBlurredLayer(ctx, layerA, w, h, blurPx, 1 - e);
-      drawBlurredLayer(ctx, layerB, w, h, blurPx, e);
+      const bell = bellCurve(t);
+      const blurPx = BLUR_DISSOLVE_MAX_PX * (w / 1080) * bell;
+      const overscale = 1 + (BLUR_MAX_OVERSCALE - 1) * bell;
+      drawBlurredLayer(ctx, layerA, w, h, blurPx, 1 - e, 0, overscale);
+      drawBlurredLayer(ctx, layerB, w, h, blurPx, e, 0, overscale);
       break;
     }
 
@@ -2921,9 +2943,14 @@ export function drawTransition(
       // une courbe cubique (quasi immobile aux extremites, fulgurante au
       // milieu) et un flou qui simule le filé de la camera.
       const eWhip = easeInOutCubic(t);
-      const blurPx = WHIP_PAN_MAX_BLUR_PX * Math.sin(Math.PI * Math.max(0, Math.min(1, t)));
-      drawBlurredLayer(ctx, layerA, w, h, blurPx, 1, -w * eWhip);
-      drawBlurredLayer(ctx, layerB, w, h, blurPx, 1, w * (1 - eWhip));
+      const bell = bellCurve(t);
+      const blurPx = WHIP_PAN_MAX_BLUR_PX * (w / 1080) * bell;
+      const overscale = 1 + (BLUR_MAX_OVERSCALE - 1) * bell;
+      // Les deux calques restent OPAQUES : c'est un mouvement, pas un fondu.
+      // Une opacite < 1 laisserait voir le vide derriere (donc du noir a
+      // l'encodage) pendant tout le balayage.
+      drawBlurredLayer(ctx, layerA, w, h, blurPx, 1, -w * eWhip, overscale);
+      drawBlurredLayer(ctx, layerB, w, h, blurPx, 1, w * (1 - eWhip), overscale);
       break;
     }
 
