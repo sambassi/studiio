@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { pickLatestDownloadable } from '@/lib/library/latest-download';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -86,6 +87,7 @@ const SETTINGS_KEY = 'studiio_publishing_settings';
 
 export default function SocialPage() {
   const t = useTranslations('social');
+  const router = useRouter();
 
   const [accounts, setAccounts] = useState<Record<string, SocialAccount | null>>({});
   const [connecting, setConnecting] = useState<string | null>(null);
@@ -107,6 +109,9 @@ export default function SocialPage() {
    * ne doit pas faire disparaitre les boutons de connexion.
    */
   const [availability, setAvailability] = useState<Record<string, boolean>>({});
+
+  /** « Telecharger pour publier » : resolution de la derniere video en cours. */
+  const [preparingDownload, setPreparingDownload] = useState(false);
 
   // Initialize accounts and settings from API only (no stale localStorage)
   useEffect(() => {
@@ -329,6 +334,56 @@ export default function SocialPage() {
       console.error('Error in handleConnect:', error);
       showToast(t('toasts.connectionError'), 'error');
       setConnecting(null);
+    }
+  };
+
+  /**
+   * « Telecharger pour publier » — mene DIRECTEMENT au fichier.
+   *
+   * On lit la Bibliotheque par la route existante (`GET /api/videos`, celle
+   * que /dashboard/library utilise deja), on prend la creation telechargeable
+   * la plus recente, et on declenche le meme telechargement que la
+   * Bibliotheque : une ancre vers `video_url`. Aucune route nouvelle.
+   *
+   * L'URL retenue est exactement celle que renverrait
+   * `POST /api/videos/[id]/export` pour ces elements (il renvoie `video_url`
+   * en premier) : appeler cette route n'ajouterait qu'un aller-retour, et
+   * echouerait sur les elements venant de `scheduled_posts`, qu'elle ne
+   * connait pas.
+   *
+   * Repli inchange (#254) : sans video exploitable, ou a la moindre erreur,
+   * on ouvre la Bibliotheque comme avant.
+   */
+  const handleSelfPublishDownload = async () => {
+    if (preparingDownload) return;
+    setPreparingDownload(true);
+
+    const fallbackToLibrary = () => {
+      showToast(t('selfPublish.noVideo'), 'info');
+      router.push('/dashboard/library');
+    };
+
+    try {
+      const res = await fetch('/api/videos?page=1&limit=12');
+      const data = await res.json();
+      const latest = data?.success ? pickLatestDownloadable(data.data) : null;
+
+      if (!latest?.video_url) {
+        fallbackToLibrary();
+        return;
+      }
+
+      const link = document.createElement('a');
+      link.href = latest.video_url;
+      link.download = '';
+      link.rel = 'noopener';
+      link.click();
+      showToast(t('selfPublish.downloadStarted'), 'success');
+    } catch (error) {
+      console.error('Error resolving latest video:', error);
+      fallbackToLibrary();
+    } finally {
+      setPreparingDownload(false);
     }
   };
 
@@ -627,12 +682,19 @@ export default function SocialPage() {
                         </li>
                       ))}
                     </ol>
-                    <Link href="/dashboard/library" className="block">
-                      <Button variant="secondary" className="w-full">
+                    <Button
+                      variant="secondary"
+                      className="w-full"
+                      disabled={preparingDownload}
+                      onClick={handleSelfPublishDownload}
+                    >
+                      {preparingDownload ? (
+                        <Loader2 size={14} className="mr-2 animate-spin" />
+                      ) : (
                         <Download size={14} className="mr-2" />
-                        {t('selfPublish.cta')}
-                      </Button>
-                    </Link>
+                      )}
+                      {t('selfPublish.cta')}
+                    </Button>
                   </div>
                 </div>
               </CardContent>

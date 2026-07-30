@@ -1213,7 +1213,9 @@
       "step1": "Laden Sie Ihr Video herunter",
       "step2": "Öffnen Sie die {platform}-App",
       "step3": "Veröffentlichen Sie über Ihr Konto",
-      "cta": "Zum Veröffentlichen herunterladen"
+      "cta": "Zum Veröffentlichen herunterladen",
+      "downloadStarted": "Ihr neuestes Video wird heruntergeladen",
+      "noVideo": "Noch kein Video bereit — Mediathek wird geöffnet"
     },
     "settings": {
       "title": "Veröffentlichungseinstellungen",

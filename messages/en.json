@@ -1193,7 +1193,9 @@
       "step1": "Download your video",
       "step2": "Open the {platform} app",
       "step3": "Publish from your account",
-      "cta": "Download to publish"
+      "cta": "Download to publish",
+      "downloadStarted": "Downloading your latest video",
+      "noVideo": "No video ready yet — opening your Library"
     },
     "settings": {
       "title": "Publishing settings",

@@ -1193,7 +1193,9 @@
       "step1": "Téléchargez votre vidéo",
       "step2": "Ouvrez l'application {platform}",
       "step3": "Publiez depuis votre compte",
-      "cta": "Télécharger pour publier"
+      "cta": "Télécharger pour publier",
+      "downloadStarted": "Téléchargement de votre dernière vidéo",
+      "noVideo": "Aucune vidéo prête — ouverture de la Bibliothèque"
     },
     "settings": {
       "title": "Paramètres de publication",
