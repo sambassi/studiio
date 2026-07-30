@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* Rayon commun aux contrôles. Les boutons le lisent via var(--radius) :
+     un seul endroit à changer pour ajuster la douceur des coins partout. */
+  --radius: 10px;
+}
+
 * {
   @apply border-gray-800;
 }
@@ -30,16 +36,72 @@ body {
   @apply bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:border-studiio-primary focus:ring-1 focus:ring-studiio-primary;
 }
 
-.button-primary {
-  @apply bg-studiio-primary hover:bg-purple-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors;
-}
+/* ── Boutons ───────────────────────────────────────────────────────────────
+ *
+ * Style épuré : un seul aplat discret pour l'action principale, un contour
+ * fin sur fond transparent pour tout le reste. Ni ombre ni dégradé.
+ *
+ * ⚠️ Ces classes vivent dans `@layer components` pour que les utilitaires
+ * passés par l'appelant (`bg-purple-600`, `px-6`, `h-11`…) les emportent :
+ * la couche `utilities` gagne sur `components`. Déclarées après
+ * `@tailwind utilities` comme avant, elles écrasaient en silence la couleur
+ * demandée par l'appelant.
+ *
+ * Elles gardent une hauteur et un padding par défaut : elles servent aussi
+ * SANS le composant `<Button>` (sidebar, page avatar, lien de l'assistant),
+ * où rien d'autre ne fournirait la géométrie.
+ */
+@layer components {
+  .button-base {
+    /* PAS de `gap` : avant cette refonte la base n'en avait pas, donc les 23
+       appels qui espacent leur icône avec `mr-2` fournissent déjà l'écart.
+       Ajouter un `gap` l'aurait DOUBLÉ (marge et gap s'additionnent) sur tous
+       les boutons à icône de l'admin et du dashboard.
 
-.button-secondary {
-  @apply bg-gray-800 hover:bg-gray-700 text-gray-100 font-semibold py-2 px-4 rounded-lg transition-colors border border-gray-700;
-}
+       Le padding vertical reste présent en plus de `min-h` : si un appelant
+       impose `display: block` (la sidebar le faisait), `items-center` devient
+       inerte et le padding est alors la seule chose qui garde le libellé
+       centré au lieu de le coller en haut. */
+    @apply inline-flex items-center justify-center align-middle whitespace-nowrap
+           min-h-[34px] px-3.5 py-1.5 text-[13px] font-medium leading-none
+           transition-colors duration-150
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-studiio-primary
+           focus-visible:ring-offset-2 focus-visible:ring-offset-studiio-dark
+           disabled:opacity-45 disabled:cursor-not-allowed;
+    border-radius: var(--radius);
+  }
 
-.button-accent {
-  @apply bg-studiio-accent hover:bg-pink-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors;
+  /* Action principale — l'aplat accent est tenu à 82 % sur le fond sombre :
+     il donne un violet plus profond (#6532C1 environ) au lieu du violet vif
+     d'origine, qui était l'élément le plus criard de chaque écran. Le contraste
+     du texte blanc reste à ~6:1, bien au-dessus du seuil AA. Le survol le
+     ravive légèrement — c'est la seule récompense d'interaction, sans ombre. */
+  .button-primary {
+    @apply button-base bg-studiio-primary/[0.82] text-white
+           border-[0.5px] border-white/10 hover:bg-studiio-primary/95;
+  }
+
+  /* Action secondaire — contour fin sur fond transparent, survol à peine posé.
+     Le contour est tenu à 24 % de blanc : plus bas, il tombait sous le
+     contraste de l'ancien `border-gray-700` (1,9:1) et le bouton cessait
+     d'être perceptible comme un contrôle. */
+  .button-secondary {
+    @apply button-base bg-transparent text-gray-100
+           border-[0.5px] border-white/[0.24] hover:bg-white/[0.05] hover:border-white/40;
+  }
+
+  /* Tertiaire — même dessin, plus effacé, mais jamais invisible :
+     18 % reste au-dessus du contour d'origine. */
+  .button-ghost {
+    @apply button-base bg-transparent text-gray-300
+           border-[0.5px] border-white/[0.18] hover:bg-white/[0.04] hover:text-white;
+  }
+
+  /* Réservé aux mises en avant (offres, paiement) — même retenue que primary. */
+  .button-accent {
+    @apply button-base bg-studiio-accent/[0.82] text-white
+           border-[0.5px] border-white/10 hover:bg-studiio-accent/95;
+  }
 }
 
 .text-gradient {

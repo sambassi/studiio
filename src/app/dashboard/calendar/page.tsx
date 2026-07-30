@@ -2990,7 +2990,7 @@ export default function CalendarPage() {
               </div>
             </div>
             <div className="flex gap-3">
-              <Button className="flex-1 bg-studiio-primary text-white" onClick={() => handleEditPost()}>
+              <Button className="flex-1" onClick={() => handleEditPost()}>
                 <Edit2 className="w-4 h-4 mr-2" />{t('actions.edit')}
               </Button>
               <Button variant="secondary" className="flex-1" onClick={() => handleDuplicatePost()} disabled={saving}>
@@ -3111,7 +3111,7 @@ export default function CalendarPage() {
           </div>
           <div className="flex gap-3 mt-6 pt-4 border-t border-gray-700">
             <Button variant="secondary" className="flex-1" onClick={() => setShowEditModal(false)}>{tc('cancel')}</Button>
-            <Button className="flex-1 bg-purple-600 hover:bg-purple-700 text-white" onClick={handleSavePost} disabled={saving}>
+            <Button className="flex-1" onClick={handleSavePost} disabled={saving}>
               {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
               {t('editModal.save')}
             </Button>
@@ -3146,7 +3146,7 @@ export default function CalendarPage() {
           </div>
           <div className="flex gap-3">
             <Button variant="secondary" className="flex-1" onClick={() => setShowBulkDateModal(false)}>{tc('cancel')}</Button>
-            <Button className="flex-1 bg-purple-600 hover:bg-purple-700 text-white" onClick={handleBulkDateChange} disabled={saving || !bulkNewDate}>
+            <Button className="flex-1" onClick={handleBulkDateChange} disabled={saving || !bulkNewDate}>
               {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CalendarDays className="w-4 h-4 mr-2" />}
               {t('bulkDateModal.confirm')}
             </Button>
