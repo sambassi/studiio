@@ -149,6 +149,13 @@ import {
   type ElementPos,
 } from "@/lib/creer/smartGuides";
 import { useDesignHistory } from "@/lib/creer/useDesignHistory";
+import {
+  AUTOSAVE_KEY_CREER,
+  markAutosave,
+  readAutosave,
+  clearAutosave,
+  formatAutosaveAge,
+} from "@/lib/creer/autosave";
 import { useSession } from "next-auth/react";
 import { BuyCreditsModal } from "@/components/billing/BuyCreditsModal";
 import { MediaLibrary } from "@/components/shared/MediaLibrary";
@@ -1770,6 +1777,27 @@ function InfographicPageInner() {
   const [configLoaded, setConfigLoaded] = useState(false);
   const restoringFromStorage = useRef(true); // Skip auto-generate during initial localStorage restore
 
+  // ── Indicateur d'auto-sauvegarde ──
+  // `null` = rien n'a encore ete sauvegarde depuis l'ouverture ; l'indicateur
+  // reste alors invisible, donc l'ecran est identique a l'actuel.
+  const [autosaveAt, setAutosaveAt] = useState<number | null>(null);
+  const [autosaveBusy, setAutosaveBusy] = useState(false);
+  // Instant courant, rafraichi toutes les 30 s : c'est ce qui fait vieillir
+  // « il y a X min » tout seul, sans dependre d'une frappe de l'utilisateur.
+  const [autosaveNow, setAutosaveNow] = useState<number>(() => Date.now());
+  useEffect(() => {
+    if (autosaveAt === null) return;
+    setAutosaveNow(Date.now());
+    const id = window.setInterval(() => setAutosaveNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, [autosaveAt]);
+  // Au montage : reprend l'horodatage du dernier passage s'il existe, pour
+  // afficher « Enregistre il y a X » sans attendre une premiere modification.
+  useEffect(() => {
+    const mark = readAutosave(AUTOSAVE_KEY_CREER);
+    if (mark) setAutosaveAt(mark.savedAt);
+  }, []);
+
   // Load saved design prefs on mount. Prefer the new key; migrate from the
   // legacy key (which also stored content fields) when only the old key is
   // present — we read the design subset and drop the rest.
@@ -2840,11 +2868,21 @@ function InfographicPageInner() {
           localStorage.removeItem(LEGACY_CONFIG_KEY);
         }
       } catch { /* ignore (quota, private mode) */ }
+      // Horodatage de la sauvegarde, dans une cle SEPAREE et versionnee.
+      // Place ici — et non dans le seul chemin debounce — pour couvrir aussi
+      // les sauvegardes synchrones (fermeture d'onglet, navigation interne).
+      markAutosave(AUTOSAVE_KEY_CREER);
     };
+    setAutosaveBusy(true);
     const handle = window.setTimeout(() => {
       const snapshot = buildSnapshot();
       persistSnapshot(snapshot);
       history.commit(snapshot);
+      // L'etat React n'est mis a jour que sur ce chemin : les autres
+      // s'executent au demontage ou a la fermeture, ou un setState serait
+      // au mieux inutile, au pire un avertissement React.
+      setAutosaveBusy(false);
+      setAutosaveAt(Date.now());
     }, 500);
     // Synchronous save on tab close / refresh / external navigation —
     // covers the window where the user edits something and quits before
@@ -4266,6 +4304,10 @@ function InfographicPageInner() {
       }
 
       setExportProgress(100);
+      // Montage exporte : le brouillon n'a plus a etre signale comme « en
+      // cours ». Seul le marqueur part — les preferences de design restent.
+      clearAutosave(AUTOSAVE_KEY_CREER);
+      setAutosaveAt(null);
       showToast(
         `✓ ${blobs.length} image${blobs.length > 1 ? 's' : ''} téléchargée${blobs.length > 1 ? 's (ZIP)' : ''}`,
         'success',
@@ -5249,6 +5291,8 @@ function InfographicPageInner() {
       }
 
       setExportProgress(100);
+      clearAutosave(AUTOSAVE_KEY_CREER);
+      setAutosaveAt(null);
 
       // ── Export bureau : composition du montage vidéo final (MP4 uniquement) ──
       // Loop runs once per batch iteration (b=0..total-1) so batch x N produces
@@ -5606,6 +5650,8 @@ function InfographicPageInner() {
                 setExportProgress(85 + Math.round(pct * 0.14));
               });
               setExportProgress(100);
+              clearAutosave(AUTOSAVE_KEY_CREER);
+              setAutosaveAt(null);
               console.log(`[Bureau Batch ${b + 1}/${total}] DONE — file:${downloadName} blobSize:${composedResult.blob.size}`);
             } catch (dlErr) {
               console.error('[Export Bureau] downloadBlob cascade failed:', dlErr);
@@ -8004,6 +8050,30 @@ function InfographicPageInner() {
           >
             <Redo2 size={16} strokeWidth={2} />
           </button>
+
+          {/* Indicateur d'auto-sauvegarde — invisible tant que rien n'a ete
+              sauvegarde, donc aucun changement visuel pour un ecran neuf. */}
+          {autosaveAt !== null && (
+            <span
+              className="ml-1 flex items-center gap-1.5 rounded-2xl bg-gray-900/60 px-2.5 h-9 text-[11px] text-gray-400 select-none"
+              title={autosaveBusy ? 'Sauvegarde en cours' : `Dernier enregistrement ${formatAutosaveAge(autosaveAt, autosaveNow)}`}
+              data-testid="autosave-indicator"
+            >
+              {autosaveBusy ? (
+                <>
+                  <Loader2 size={12} className="animate-spin text-purple-300" />
+                  <span className="hidden sm:inline">Enregistrement…</span>
+                </>
+              ) : (
+                <>
+                  <Check size={12} className="text-emerald-400" />
+                  <span className="hidden sm:inline">
+                    Enregistré <span className="text-gray-500">{formatAutosaveAge(autosaveAt, autosaveNow)}</span>
+                  </span>
+                </>
+              )}
+            </span>
+          )}
 
           {/* ── Compact utility toggles (icon-only, separated by a border) ── */}
           <div className="flex items-center gap-1 ml-1 pl-1 border-l border-gray-700/40">
