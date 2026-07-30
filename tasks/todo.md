@@ -147,16 +147,27 @@ ni rendu serveur ni API. `COST` (`AssistantWizard.tsx:555`) reste inchangé.
       ni l'export (phase 3) ne lisent `lut`. Ne pas laisser cet état en
       production plus longtemps que nécessaire.
 
-**Phase 2 — aperçu**
-- [ ] `Preview` (`:683`) : quand une LUT est active **et** que le rush est
-      visible (`showRush`), superposer un `<canvas>` à la taille de l'aperçu qui
-      rejoue les frames du `<video>` graduées (rAF, ~15 fps suffisent). Le
-      `<video>` reste la source, il passe en `opacity: 0` — **pas** de retrait du
-      DOM : c'est lui qui porte la lecture et la synchro.
-- [ ] Sans rush : pas d'aperçu graduable → vignette « avant / après » sur la
-      carte d'import (une image de référence embarquée, quelques Ko), et libellé
-      qui dit explicitement que le filtre s'applique au rush.
-- [ ] `try/finally` sur la boucle rAF (règle 6 de la checklist pré-merge).
+**Phase 2 — aperçu** — **FAIT, en attente de revue**
+- [x] `src/lib/luts/load.ts` — `loadLut(url)` avec cache par URL, **mais un
+      échec n'est jamais mis en cache** : il condamnerait la LUT pour toute la
+      session, y compris après le retour du réseau. Passe par
+      `/api/proxy-media` — en direct sur MinIO, la requête se prend le CORS.
+- [x] `src/lib/luts/gradeFrame.ts` — dessine puis lit, **dans cet ordre**.
+      Inversé, l'aperçu aurait une frame de retard en permanence. Sans LUT,
+      aucun `getImageData` : c'est la lecture qui coûte, elle n'a rien à faire.
+- [x] `GradedVideo.tsx` — la vidéo reste la source (lecture, boucle, synchro),
+      un canvas rejoue ses frames étalonnées par-dessus. **La vidéo n'est
+      masquée qu'une fois une frame réellement étalonnée** : sans cette
+      condition, un contexte 2D indisponible remplacerait le rush par un
+      rectangle noir. Boucle rAF annulée au démontage (test dédié).
+- [x] `LutSwatch.tsx` — nuancier « avant / après », mire **dessinée** et non
+      embarquée : teintes en haut (virages de couleur), gris en bas (courbe de
+      contraste). Zéro octet d'asset, plus d'information qu'une photo.
+- [x] Chargement de la table dans le wizard, avec jeton d'annulation : deux
+      changements rapprochés se résolvent dans l'ordre du réseau, pas de
+      l'appel. Échec → `console.warn` + rush non étalonné, jamais d'écran noir.
+- [x] `npx vitest run` : 475/475. `npx tsc --noEmit` : 86, la baseline.
+- [ ] ⚠️ L'**export** ne lit toujours pas la LUT — c'est la phase 3.
 
 **Phase 3 — export**
 - [ ] `video-composer.ts` : `DesignOptions.lut?: { url, intensity }`. **Défaut
