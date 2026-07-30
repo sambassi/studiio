@@ -250,6 +250,10 @@ export default function ImageEditorPanel({
   if ((config?.url ?? '') !== lastUrlRef.current) {
     lastUrlRef.current = config?.url ?? '';
     setUrlDraft(config?.url ?? '');
+    // Le texte reconnu appartient a l'image d'AVANT : le garder afficherait
+    // (et laisserait copier) le texte d'une autre image.
+    setOcrText(null);
+    setOcrCopied(false);
   }
 
   const updateFilter = useCallback(
@@ -322,7 +326,7 @@ export default function ImageEditorPanel({
         setOcrText(typeof data.text === 'string' ? data.text : '');
         setOcrCopied(false);
         if (data.empty || !data.text) {
-          showToast('Aucun texte détecté sur cette image', 'error');
+          showToast(`Aucun texte détecté sur cette image (${data.creditsUsed} cr.)`, 'error');
         } else {
           showToast(`Texte reconnu ! (${data.creditsUsed} cr.)`, 'success');
         }
@@ -353,13 +357,21 @@ export default function ImageEditorPanel({
    * (ni dans certains navigateurs embarques) : on retombe alors sur une
    * selection manuelle plutot que de laisser un bouton sans effet.
    */
+  const ocrCopyTimerRef = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => () => {
+    if (ocrCopyTimerRef.current) clearTimeout(ocrCopyTimerRef.current);
+  }, []);
+
   const copyOcrText = useCallback(async () => {
     if (!ocrText) return;
     try {
       if (!navigator.clipboard) throw new Error('clipboard indisponible');
       await navigator.clipboard.writeText(ocrText);
       setOcrCopied(true);
-      setTimeout(() => setOcrCopied(false), 2000);
+      // Un timer par copie, sinon celui du clic precedent efface le « Copié »
+      // du clic suivant.
+      if (ocrCopyTimerRef.current) clearTimeout(ocrCopyTimerRef.current);
+      ocrCopyTimerRef.current = setTimeout(() => setOcrCopied(false), 2000);
     } catch {
       showToast('Copie impossible — sélectionnez le texte pour le copier', 'error');
     }
@@ -896,6 +908,7 @@ export default function ImageEditorPanel({
             {ocrText.length > 0 ? (
               <textarea
                 readOnly
+                aria-label="Texte reconnu sur l'image"
                 value={ocrText}
                 onFocus={(e) => e.currentTarget.select()}
                 rows={Math.min(10, Math.max(3, ocrText.split('\n').length))}

@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth/config';
 import { deductCredits, getUserCredits } from '@/lib/credits/system';
 import { detectAndReportServiceError } from '@/lib/service-alerts';
 import Replicate from 'replicate';
+import { extractText } from '@/lib/ai/extract-text';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120; // AI models can take up to 2 min
@@ -67,37 +68,6 @@ const FR_TO_EN_PROMPTS: Array<[RegExp, string]> = [
   [/\bchanger?\b/gi, 'change'],
   [/\bajouter?\b/gi, 'add'],
 ];
-
-/**
- * Lit la sortie TEXTE d'un modele Replicate (action `ocr`).
- *
- * Trois formes possibles selon le modele et le SDK :
- *   - `string` — le cas de abiruyt/text-extract-ocr ;
- *   - `string[]` — sortie declaree `Iterator[str]` : `replicate.run` rend les
- *     morceaux streames dans l'ordre, a recoller sans separateur ;
- *   - objet avec `toString()` (FileOutput du SDK 1.x).
- *
- * Renvoie `null` si rien n'est lisible (a distinguer de `''`, qui veut dire
- * « lu correctement, mais aucun texte dans l'image »).
- */
-export function extractText(output: unknown): string | null {
-  if (output == null) return null;
-  if (typeof output === 'string') return output.trim();
-  if (Array.isArray(output)) {
-    const parts = output.filter((p) => typeof p === 'string') as string[];
-    if (parts.length !== output.length) return null;
-    return parts.join('').trim();
-  }
-  if (typeof output === 'object') {
-    const obj = output as { toString?: () => string };
-    if (typeof obj.toString === 'function') {
-      const str = obj.toString();
-      // `[object Object]` = pas de toString utile → illisible.
-      if (str && !str.startsWith('[object ')) return str.trim();
-    }
-  }
-  return null;
-}
 
 function translateFrPromptToEn(prompt: string): string {
   let result = prompt;
@@ -280,25 +250,19 @@ export async function POST(req: NextRequest) {
             error: 'Le modèle OCR a répondu mais le texte n\'a pas pu être lu. Réessayez.',
           }, { status: 500 });
         }
-        if (text.length === 0) {
-          // Aucun texte trouve : ce n'est pas une panne, mais on ne facture
-          // pas un resultat vide.
-          return NextResponse.json({
-            success: true,
-            text: '',
-            empty: true,
-            action,
-            creditsUsed: 0,
-            creditsRemaining: credits,
-          });
-        }
-
         // Debit APRES lecture reussie, comme sur le chemin image.
+        //
+        // ⚠️ Une image sans texte est debitee elle aussi : le modele a bien
+        // tourne et nous a bien coute. Un chemin gratuit serait le seul de
+        // cette route a appeler une API payante sans compteur — donc une
+        // boucle sur une image blanche depenserait sans limite. Le drapeau
+        // `empty` permet a l'UI de le dire clairement a l'utilisateur.
         await deductCredits(session.user.id, cost, `ai-${action}`);
 
         return NextResponse.json({
           success: true,
           text,
+          empty: text.length === 0,
           action,
           creditsUsed: cost,
           creditsRemaining: credits - cost,
