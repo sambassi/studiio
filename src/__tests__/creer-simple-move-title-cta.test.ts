@@ -72,8 +72,18 @@ describe('Default-safe : rien ne bouge tant qu on ne bouge rien', () => {
 
   it('aucun consommateur ne lit plus la constante figée', () => {
     // Sinon l'aperçu bougerait et l'export non — la divergence classique.
-    expect(wizard).not.toContain('DESIGN.titlePos.x');
-    expect(wizard).not.toContain('DESIGN.ctaPos.y');
+    // Interdiction TOTALE, et non une liste de formes littérales : une variante
+    // d'écriture (`DESIGN.titlePos.x + '%'`, une espace en plus) réintroduirait
+    // la divergence sans rien déclencher. Seule exception, retirée du texte
+    // avant l'examen : `layoutTouched`, qui COMPARE la position courante à la
+    // constante au lieu de la consommer.
+    const debut = wizard.indexOf('const layoutTouched =');
+    expect(debut).toBeGreaterThan(0);
+    const fin = wizard.indexOf(';', wizard.indexOf('ctaPos.y !== DESIGN.ctaPos.y'));
+    const sansComparaison = wizard.slice(0, debut) + wizard.slice(fin);
+    for (const interdit of ['DESIGN.titlePos.x', 'DESIGN.titlePos.y', 'DESIGN.ctaPos.x', 'DESIGN.ctaPos.y']) {
+      expect(sansComparaison, interdit).not.toContain(interdit);
+    }
   });
 
   it('le compositeur ET les métadonnées lisent la même source que l aperçu', () => {

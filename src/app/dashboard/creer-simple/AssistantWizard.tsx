@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import {
   Wand2,
@@ -29,7 +29,7 @@ import { generateSmartContent } from '@/lib/smart-content';
 import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
 import { AudioStudioPanel } from '@/components/creer/AudioStudioPanel';
 import type { AudioKeyframe } from '@/lib/creer/audioDucking';
-import { pointToPct, grabOffset, clampToBox, type Pos } from '@/lib/creer/dragPosition';
+import { pointToPct, grabOffset, clampToBox, type Pos, type CardBox, boxesFromRects, coversAll } from '@/lib/creer/dragPosition';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import ClipDetectorModal, { type ClipSource } from '@/components/media/ClipDetectorModal';
 import { CardIcon } from '@/components/ui/CardIcon';
@@ -695,11 +695,23 @@ function StyleSection({
  * « aucune vidéo déformée ») se vérifie alors sur le DOM produit, pas sur une
  * lecture du source.
  */
+/**
+ * Mode libre des cartes : les emplacements ET le format dans lequel ils ont
+ * ete mesures. Les separer laisserait rejouer une mesure 9:16 en 16:9.
+ */
+interface FreeCards {
+  format: Format;
+  boxes: Record<string, CardBox>;
+}
+
 export function Preview({
   generated,
   format,
   previewRef,
   cardsRef,
+  cardBoxes = null,
+  onCardDragStart,
+  draggingCard = null,
   frameRef,
   displayScale,
   activeOrder,
@@ -765,6 +777,14 @@ export function Preview({
   rushUrl?: string | null;
   previewRef?: React.RefObject<HTMLDivElement>;
   cardsRef?: React.RefObject<HTMLDivElement>;
+  /**
+   * Emplacements libres des cartes, ou `null` pour la disposition en flux
+   * d'origine. Optionnel et defaut `null` : un apercu monte nu rend
+   * exactement ce qu'il rendait avant le mode libre.
+   */
+  cardBoxes?: Record<string, CardBox> | null;
+  onCardDragStart?: (id: string, e: React.PointerEvent) => void;
+  draggingCard?: string | null;
   /** Cadre visible, mesure pour calculer la reduction. */
   frameRef?: React.RefObject<HTMLDivElement>;
   /** Facteur de reduction du plateau : largeurCadre / largeurVideo. */
@@ -1023,18 +1043,46 @@ export function Preview({
             <div
               ref={cardsRef}
               data-cards-grid
-              className="absolute flex flex-col justify-center"
-              style={{ left: '8%', right: '8%', top: '30%', bottom: '22%', gap: vw * CARD_RATIO.gap }}
+              className={cardBoxes ? 'absolute' : 'absolute flex flex-col justify-center'}
+              style={{
+                left: '8%', right: '8%', top: '30%', bottom: '22%',
+                // En mode libre chaque carte porte sa position : l'ecart du
+                // flux n'a plus lieu d'etre.
+                gap: cardBoxes ? undefined : vw * CARD_RATIO.gap,
+              }}
             >
-              {(shows('cards') ? generated.cards : []).map((c) => (
+              {(shows('cards') ? generated.cards : []).map((c) => {
+                const box = cardBoxes?.[c.id];
+                return (
                 <div
                   key={c.id}
+                  data-card-id={c.id}
+                  onPointerDown={(e) => onCardDragStart?.(c.id, e)}
+                  onPointerMove={onDragMove}
+                  onPointerUp={onDragEnd}
+                  onPointerCancel={onDragEnd}
+                  onLostPointerCapture={onDragEnd}
+                  title={onCardDragStart ? 'Glisser pour déplacer la carte' : undefined}
                   className="flex items-center"
                   style={{
                     backgroundColor: 'rgba(255,255,255,0.08)',
                     gap: vw * CARD_RATIO.gap,
                     borderRadius: vw * CARD_RATIO.radius,
                     padding: `${vw * CARD_RATIO.padY}px ${vw * CARD_RATIO.padX}px`,
+                    ...(box
+                      // La HAUTEUR mesuree est reappliquee : sans elle, une
+                      // carte absolue se retrecirait a son contenu au moment
+                      // meme de la bascule.
+                      ? { position: 'absolute' as const, left: `${box.x}%`, top: `${box.y}%`, width: `${box.w}%`, height: `${box.h}%` }
+                      : null),
+                    cursor: onCardDragStart ? (draggingCard === c.id ? 'grabbing' : 'grab') : undefined,
+                    touchAction: onCardDragStart ? 'none' : undefined,
+                    zIndex: draggingCard === c.id ? 1 : undefined,
+                    // Meme retour visuel que le titre et le CTA : sans lui, on
+                    // ne sait pas quelle carte on tient quand elles se
+                    // recouvrent.
+                    outline: draggingCard === c.id ? '1px dashed rgba(255,255,255,0.5)' : undefined,
+                    outlineOffset: 2,
                   }}
                 >
                   <CardIcon
@@ -1058,7 +1106,8 @@ export function Preview({
                     </span>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             {shows('cta') && (
@@ -1486,6 +1535,7 @@ export default function AssistantWizard() {
   const [renderProgress, setRenderProgress] = useState(0);
   const [renderStage, setRenderStage] = useState('');
   const previewRef = useRef<HTMLDivElement>(null);
+  const cardsRef = useRef<HTMLDivElement>(null);
 
   // ── Deplacement du titre et du CTA ────────────────────────────────────
   // Defauts = les constantes `DESIGN` d'origine : tant que l'utilisateur ne
@@ -1494,7 +1544,9 @@ export default function AssistantWizard() {
   const [ctaPos, setCtaPos] = useState<Pos>(DESIGN.ctaPos);
   /** Element en cours de glissement, et ecart de saisie fige au pointerdown. */
   const dragRef = useRef<{
-    el: 'title' | 'cta';
+    el: 'title' | 'cta' | 'card';
+    /** Carte glissee, quand `el === 'card'` — son repere est le conteneur. */
+    cardId?: string;
     pointerId: number;
     grab: Pos;
     box: { width: number; height: number };
@@ -1506,6 +1558,120 @@ export default function AssistantWizard() {
   const [dragging, setDragging] = useState<'title' | 'cta' | null>(null);
   useEffect(() => { titlePosRef.current = titlePos; }, [titlePos]);
   useEffect(() => { ctaPosRef.current = ctaPos; }, [ctaPos]);
+
+  // ── Cartes en mode libre ──────────────────────────────────────────────
+  // `null` = disposition en flux (colonne centree), celle d'origine. Le mode
+  // libre ne s'active qu'au premier glissement, et il commence par MESURER la
+  // disposition en flux : les cartes reprennent exactement la place qu'elles
+  // occupaient, donc rien ne saute a l'ecran ni a l'export.
+  // Le FORMAT de mesure fait partie de l'etat : `h` est un % de la hauteur du
+  // conteneur, or celle-ci et la taille du contenu varient en sens INVERSE
+  // d'un format a l'autre (le conteneur suit la hauteur video, les cartes la
+  // largeur). Rejouer un emplacement 9:16 en 16:9 ecraserait les cartes les
+  // unes sur les autres — a l'ecran comme dans la video, puisque ce bloc est
+  // photographie puis blitte.
+  const [cardBoxes, setCardBoxes] = useState<FreeCards | null>(null);
+  const cardBoxesRef = useRef<FreeCards | null>(null);
+  const [draggingCard, setDraggingCard] = useState<string | null>(null);
+  useEffect(() => { cardBoxesRef.current = cardBoxes; }, [cardBoxes]);
+
+  /**
+   * Le mode libre n'est VALIDE que s'il couvre toutes les cartes affichees.
+   *
+   * Regenerer le contenu, ajouter ou retirer une carte change les
+   * identifiants : une carte sans emplacement se rendrait sans position dans
+   * un conteneur qui n'est plus une colonne, donc empilee dans le coin avec
+   * les autres. Plutot que d'inventer une place, on revient a la disposition
+   * en flux — previsible, et c'est celle qu'on sait exacte.
+   */
+  const cardIds = useMemo(() => generated?.cards.map((c) => c.id) ?? [], [generated]);
+  const valid = (f: FreeCards | null | undefined, ids: string[], fmt: Format) =>
+    !!f && f.format === fmt && coversAll(f.boxes, ids);
+  const effectiveCardBoxes = valid(cardBoxes, cardIds, format) ? cardBoxes!.boxes : null;
+  // Lus par `startCardDrag`, memoise sans dependances.
+  const cardIdsRef = useRef<string[]>(cardIds);
+  const formatRef = useRef<Format>(format);
+  useEffect(() => { cardIdsRef.current = cardIds; }, [cardIds]);
+  useEffect(() => { formatRef.current = format; }, [format]);
+
+  /**
+   * Le mode libre a-t-il ete abandonne sous les pieds de l'utilisateur ?
+   *
+   * Regenerer le contenu ou changer de format invalide les emplacements. Les
+   * laisser disparaitre en silence, apres qu'on a passe du temps a ranger ses
+   * cartes, donne l'impression d'un bug — et l'etat perime resterait en
+   * memoire, a fusionner indefiniment des identifiants disparus.
+   */
+  const [layoutDropped, setLayoutDropped] = useState(false);
+  useEffect(() => {
+    if (cardBoxes && !valid(cardBoxes, cardIds, format)) {
+      cardBoxesRef.current = null;
+      setCardBoxes(null);
+      setLayoutDropped(true);
+    }
+  }, [cardBoxes, cardIds, format]);
+
+  /**
+   * Photographie la disposition en flux, en % du conteneur des cartes.
+   *
+   * La largeur NATURELLE est mesuree en plus : en flux, `align-items: stretch`
+   * etire chaque carte a toute la largeur du conteneur, ce qui ne laisserait
+   * aucune place au deplacement lateral. Les lectures et les ecritures sont
+   * groupees en deux passes — alterner les deux forcerait un recalcul de mise
+   * en page par carte.
+   */
+  const measureCards = useCallback((): Record<string, CardBox> | null => {
+    const host = cardsRef.current;
+    if (!host) return null;
+    const hostRect = host.getBoundingClientRect();
+    const els = Array.from(host.querySelectorAll<HTMLElement>('[data-card-id]'));
+    const rects = els.map((el) => el.getBoundingClientRect());
+    const saved = els.map((el) => el.style.width);
+    els.forEach((el) => { el.style.width = 'max-content'; });
+    const naturals = els.map((el) => el.getBoundingClientRect().width);
+    els.forEach((el, i) => { el.style.width = saved[i]; });
+    return boxesFromRects(
+      hostRect,
+      els.map((el, i) => ({ id: el.dataset.cardId ?? '', rect: rects[i], naturalWidth: naturals[i] })),
+    );
+  }, []);
+
+  const startCardDrag = useCallback((id: string, e: React.PointerEvent) => {
+    const rect = cardsRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0) return;
+    if (dragRef.current) return;
+    // Bascule en mode libre a la premiere prise, en figeant la disposition
+    // actuelle : sans cette mesure, la carte saisie sauterait en haut a gauche
+    // et les autres se recentreraient.
+    // Mesure a neuf si le mode libre ne vaut plus pour ces cartes ou ce format.
+    const known = cardBoxesRef.current;
+    const reusable = valid(known, cardIdsRef.current, formatRef.current);
+    const boxes = reusable ? known!.boxes : measureCards();
+    const box = boxes?.[id];
+    if (!boxes || !box) return;
+    if (!reusable) {
+      const free = { format: formatRef.current, boxes };
+      cardBoxesRef.current = free;
+      setCardBoxes(free);
+    }
+    dragRef.current = {
+      el: 'card',
+      cardId: id,
+      pointerId: e.pointerId,
+      grab: grabOffset(e.clientX, e.clientY, rect, { x: box.x, y: box.y }),
+      box: { width: box.w, height: box.h },
+    };
+    setDraggingCard(id);
+    setLayoutDropped(false);
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    } catch {
+      dragRef.current = null;
+      setDraggingCard(null);
+      return;
+    }
+    e.stopPropagation();
+  }, [measureCards]);
 
   const startDrag = useCallback((el: 'title' | 'cta', e: React.PointerEvent) => {
     const rect = previewRef.current?.getBoundingClientRect();
@@ -1540,13 +1706,31 @@ export default function AssistantWizard() {
 
   const moveDrag = useCallback((e: React.PointerEvent) => {
     const drag = dragRef.current;
-    const rect = previewRef.current?.getBoundingClientRect();
+    // Une carte se borne a SON conteneur, pas au plateau entier — c'est la
+    // zone photographiee et blittee par le compositeur.
+    const rect = (drag?.el === 'card' ? cardsRef : previewRef).current?.getBoundingClientRect();
     if (!drag || !rect) return;
     // Seul le pointeur qui a commence le glissement le poursuit.
     if (drag.pointerId !== e.pointerId) return;
     // `pointermove` se declenche aussi au simple survol : sans bouton appuye,
     // il n'y a pas de glissement (garde-fou anti « element collant »).
     if (e.buttons === 0 && e.pointerType === 'mouse') return;
+    if (drag.el === 'card') {
+      const id = drag.cardId as string;
+      const free = cardBoxesRef.current;
+      const boxes = free?.boxes;
+      const box = boxes?.[id];
+      // Le glissement a commence : `boxes` couvre forcement `id`. Le garde
+      // ci-dessous couvre le cas ou le contenu change EN COURS de glissement.
+      if (!boxes || !box) return;
+      const raw = pointToPct(e.clientX, e.clientY, rect, drag.grab, { x: box.x, y: box.y });
+      const next = clampToBox(raw, 'top-left', { width: box.w, height: box.h });
+      if (next.x === box.x && next.y === box.y) return;
+      const merged = { ...free!, boxes: { ...boxes, [id]: { ...box, x: next.x, y: next.y } } };
+      cardBoxesRef.current = merged;
+      setCardBoxes(merged);
+      return;
+    }
     const current = drag.el === 'title' ? titlePosRef.current : ctaPosRef.current;
     const raw = pointToPct(e.clientX, e.clientY, rect, drag.grab, current);
     const next = clampToBox(raw, drag.el === 'title' ? 'top-left' : 'bottom-center', drag.box);
@@ -1554,11 +1738,29 @@ export default function AssistantWizard() {
     else setCtaPos(next);
   }, []);
 
+  /**
+   * Le placement a-t-il ete touche ? Sans cette question, une carte deplacee
+   * par erreur ne se rattrapait qu'en repartant de zero : le mode libre ne se
+   * quitte pas tout seul.
+   */
+  const layoutTouched =
+    !!effectiveCardBoxes ||
+    titlePos.x !== DESIGN.titlePos.x || titlePos.y !== DESIGN.titlePos.y ||
+    ctaPos.x !== DESIGN.ctaPos.x || ctaPos.y !== DESIGN.ctaPos.y;
+
+  const resetLayout = useCallback(() => {
+    setLayoutDropped(false);
+    setTitlePos(DESIGN.titlePos);
+    setCtaPos(DESIGN.ctaPos);
+    setCardBoxes(null);
+    cardBoxesRef.current = null;
+  }, []);
+
   const endDrag = useCallback(() => {
     dragRef.current = null;
     setDragging(null);
+    setDraggingCard(null);
   }, []);
-  const cardsRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
 
   // Facteur de reduction du plateau : largeur affichee / largeur video.
@@ -2442,6 +2644,7 @@ export default function AssistantWizard() {
     // enverrait tels quels au compositeur et aux metadonnees.
     setTitlePos(DESIGN.titlePos);
     setCtaPos(DESIGN.ctaPos);
+    setCardBoxes(null);
     setOpenSection('format');
     genSigRef.current = '';
     setGenerated(null);
@@ -3591,6 +3794,9 @@ export default function AssistantWizard() {
           format={format}
           previewRef={previewRef}
           cardsRef={cardsRef}
+          cardBoxes={effectiveCardBoxes}
+          onCardDragStart={startCardDrag}
+          draggingCard={draggingCard}
           frameRef={frameRef}
           displayScale={displayScale}
           activeOrder={activeOrder}
@@ -3604,6 +3810,21 @@ export default function AssistantWizard() {
           focus={previewFocus}
           onFocusChange={setPreviewFocus}
         />
+        {layoutDropped && (
+          <p className="mt-2 text-center text-xs text-gray-500">
+            Disposition des cartes réinitialisée : le contenu ou le format a changé.
+          </p>
+        )}
+        {layoutTouched && (
+          <button
+            type="button"
+            onClick={resetLayout}
+            className="mt-2 w-full flex items-center justify-center gap-2 text-xs text-gray-400 hover:text-white transition-colors py-2"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            Rétablir la disposition d&apos;origine
+          </button>
+        )}
       </div>
 
       {/* Temps forts — le modal est reutilise TEL QUEL depuis /dashboard/media.
