@@ -56,7 +56,8 @@ async function resolveFFmpegPath(): Promise<string> {
 // Needed because WebM→MP4 conversion + Instagram polling can take 2-4 minutes
 export const maxDuration = 300;
 
-// Verify the request comes from Vercel Cron
+// Verifie que l'appel vient du planificateur (Coolify Scheduled Task
+// `publish-cron`, chaque minute) ou d'un declenchement manuel authentifie.
 function verifyCronSecret(req: NextRequest): boolean {
   const authHeader = req.headers.get('authorization');
   if (!authHeader) return false;
@@ -177,7 +178,8 @@ async function sendPostByEmail(
 }
 
 export async function GET(req: NextRequest) {
-  // Security: only allow Vercel Cron (or authenticated manual triggers) to run
+  // Securite : seuls le planificateur (Coolify) et un declenchement manuel
+  // authentifie peuvent publier.
   if (!verifyCronSecret(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

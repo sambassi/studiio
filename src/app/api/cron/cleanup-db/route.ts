@@ -20,7 +20,8 @@ export const maxDuration = 300;
  *  • credit_transactions                     → 365 days  (compliance)
  *  • audit_log                               → 30 days
  *
- * Schedule: 3 AM daily (vercel.json). Auth via the same Bearer
+ * Planification : Coolify Scheduled Tasks (voir docs/infra.md), PAS vercel.json.
+ * Auth via le meme Bearer
  * CRON_SECRET pattern used by /api/cron/publish + cleanup-media.
  */
 
