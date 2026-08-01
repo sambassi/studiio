@@ -5,7 +5,7 @@
 Studiio permet aux createurs de contenu, coachs fitness, entrepreneurs et marques de produire du contenu video professionnel (infographies animees, montages video avec audio) et de le publier automatiquement sur Instagram, TikTok, Facebook et YouTube.
 
 **URL production** : https://studiio.pro
-**Deploiement** : Vercel (auto-deploy depuis GitHub `main`)
+**Deploiement** : Hetzner + Coolify v4, service `studiio-app` (auto-deploy depuis GitHub `main`). Details et taches planifiees : [`docs/infra.md`](docs/infra.md).
 **Repo** : `sambassi/studiio`
 
 ---
@@ -53,7 +53,7 @@ Studiio permet aux createurs de contenu, coachs fitness, entrepreneurs et marque
 | Color Picker | react-colorful | 3.x | ColorWheel UI dans l'editeur infographie |
 | Fonts | next/font/google | - | 5 polices : Anton, Syne, Bebas Neue, Poppins, Space Grotesk |
 | Tests | Playwright | - | Tests end-to-end |
-| Deploiement | Vercel | auto-deploy | Plan Pro, `maxDuration: 300s` pour fonctions longues |
+| Deploiement | Hetzner + Coolify v4 | auto-deploy | Service `studiio-app`, image du `Dockerfile` — voir `docs/infra.md` |
 
 ---
 
@@ -201,7 +201,7 @@ L'Agent IA integre peut generer automatiquement du contenu pour 7, 14 ou 30 jour
 
 Gestion des comptes sociaux connectes via OAuth et publication vers Instagram (Reels, Stories, Posts), TikTok (videos courtes), Facebook (Videos, Reels, Stories), et YouTube (Shorts, videos longues). Les tokens OAuth sont rafraichis automatiquement avec un buffer de 5 minutes avant expiration.
 
-La publication automatique est geree par un cron job Vercel (`/api/cron/publish`) qui tourne en timezone Europe/Paris, authentifie par Bearer token (`CRON_SECRET`).
+La publication automatique est geree par la **Scheduled Task Coolify `publish-cron`**, qui appelle `/api/cron/publish` chaque minute en timezone Europe/Paris, authentifiee par Bearer token (`CRON_SECRET`). **Pas de cron Vercel** : voir [`docs/infra.md`](docs/infra.md).
 
 ### 5. Credits et facturation
 
