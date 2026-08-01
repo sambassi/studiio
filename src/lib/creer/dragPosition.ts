@@ -121,3 +121,57 @@ export interface CardBox {
   w: number;
   h: number;
 }
+
+/** Mesure brute d'une carte, telle que le DOM la rend. */
+export interface CardRect {
+  id: string;
+  rect: Rect;
+  /**
+   * Largeur du contenu, sans l'etirement du conteneur en flux. C'est elle qui
+   * donne au mode libre sa marge de manoeuvre HORIZONTALE : etiree, une carte
+   * fait 100 % de large, et `clampToBox` la borne alors a `x = 0` — le
+   * deplacement lateral serait ecrase a chaque mouvement.
+   */
+  naturalWidth: number;
+}
+
+/**
+ * Convertit des mesures ecran en emplacements, en % du conteneur.
+ *
+ * Fonction pure, separee du composant pour etre testable sur des valeurs : le
+ * placement des cartes est une regle de geometrie, pas un detail de rendu.
+ */
+export function boxesFromRects(host: Rect, cards: CardRect[]): Record<string, CardBox> | null {
+  if (!host || host.width <= 0 || host.height <= 0) return null;
+  const out: Record<string, CardBox> = {};
+  for (const c of cards) {
+    if (!c?.id || !c.rect) continue;
+    // La largeur naturelle ne peut pas depasser le conteneur, sinon la carte
+    // naitrait deja hors cadre.
+    const w = Math.min(host.width, c.naturalWidth > 0 ? c.naturalWidth : c.rect.width);
+    out[c.id] = {
+      x: ((c.rect.left - host.left) / host.width) * 100,
+      y: ((c.rect.top - host.top) / host.height) * 100,
+      w: (w / host.width) * 100,
+      h: (c.rect.height / host.height) * 100,
+    };
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/**
+ * Le mode libre est-il encore valable pour cette liste de cartes ?
+ *
+ * Regenerer le contenu attribue de nouveaux identifiants : une carte sans
+ * emplacement se rendrait sans position dans un conteneur qui n'est plus une
+ * colonne, donc empilee dans un coin avec les autres.
+ */
+export function coversAll(
+  boxes: Record<string, CardBox> | null | undefined,
+  ids: string[],
+): boolean {
+  // Liste vide : `[].every()` vaut `true`, ce qui declarerait valide un mode
+  // libre qui ne couvre rien.
+  if (!boxes || !ids || ids.length === 0) return false;
+  return ids.every((id) => !!boxes[id]);
+}
