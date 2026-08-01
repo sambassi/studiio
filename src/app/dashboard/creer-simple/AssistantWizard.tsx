@@ -29,7 +29,7 @@ import { generateSmartContent } from '@/lib/smart-content';
 import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
 import { AudioStudioPanel } from '@/components/creer/AudioStudioPanel';
 import type { AudioKeyframe } from '@/lib/creer/audioDucking';
-import { pointToPct, grabOffset, clampToBox, type Pos } from '@/lib/creer/dragPosition';
+import { pointToPct, grabOffset, clampToBox, type Pos, type CardBox } from '@/lib/creer/dragPosition';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import ClipDetectorModal, { type ClipSource } from '@/components/media/ClipDetectorModal';
 import { CardIcon } from '@/components/ui/CardIcon';
@@ -700,6 +700,9 @@ export function Preview({
   format,
   previewRef,
   cardsRef,
+  cardBoxes = null,
+  onCardDragStart,
+  draggingCard = null,
   frameRef,
   displayScale,
   activeOrder,
@@ -765,6 +768,14 @@ export function Preview({
   rushUrl?: string | null;
   previewRef?: React.RefObject<HTMLDivElement>;
   cardsRef?: React.RefObject<HTMLDivElement>;
+  /**
+   * Emplacements libres des cartes, ou `null` pour la disposition en flux
+   * d'origine. Optionnel et defaut `null` : un apercu monte nu rend
+   * exactement ce qu'il rendait avant le mode libre.
+   */
+  cardBoxes?: Record<string, CardBox> | null;
+  onCardDragStart?: (id: string, e: React.PointerEvent) => void;
+  draggingCard?: string | null;
   /** Cadre visible, mesure pour calculer la reduction. */
   frameRef?: React.RefObject<HTMLDivElement>;
   /** Facteur de reduction du plateau : largeurCadre / largeurVideo. */
@@ -1023,18 +1034,41 @@ export function Preview({
             <div
               ref={cardsRef}
               data-cards-grid
-              className="absolute flex flex-col justify-center"
-              style={{ left: '8%', right: '8%', top: '30%', bottom: '22%', gap: vw * CARD_RATIO.gap }}
+              className={cardBoxes ? 'absolute' : 'absolute flex flex-col justify-center'}
+              style={{
+                left: '8%', right: '8%', top: '30%', bottom: '22%',
+                // En mode libre chaque carte porte sa position : l'ecart du
+                // flux n'a plus lieu d'etre.
+                gap: cardBoxes ? undefined : vw * CARD_RATIO.gap,
+              }}
             >
-              {(shows('cards') ? generated.cards : []).map((c) => (
+              {(shows('cards') ? generated.cards : []).map((c) => {
+                const box = cardBoxes?.[c.id];
+                return (
                 <div
                   key={c.id}
+                  data-card-id={c.id}
+                  onPointerDown={(e) => onCardDragStart?.(c.id, e)}
+                  onPointerMove={onDragMove}
+                  onPointerUp={onDragEnd}
+                  onPointerCancel={onDragEnd}
+                  onLostPointerCapture={onDragEnd}
+                  title={onCardDragStart ? 'Glisser pour déplacer la carte' : undefined}
                   className="flex items-center"
                   style={{
                     backgroundColor: 'rgba(255,255,255,0.08)',
                     gap: vw * CARD_RATIO.gap,
                     borderRadius: vw * CARD_RATIO.radius,
                     padding: `${vw * CARD_RATIO.padY}px ${vw * CARD_RATIO.padX}px`,
+                    ...(box
+                      // La HAUTEUR mesuree est reappliquee : sans elle, une
+                      // carte absolue se retrecirait a son contenu au moment
+                      // meme de la bascule.
+                      ? { position: 'absolute' as const, left: `${box.x}%`, top: `${box.y}%`, width: `${box.w}%`, height: `${box.h}%` }
+                      : null),
+                    cursor: onCardDragStart ? (draggingCard === c.id ? 'grabbing' : 'grab') : undefined,
+                    touchAction: onCardDragStart ? 'none' : undefined,
+                    zIndex: draggingCard === c.id ? 1 : undefined,
                   }}
                 >
                   <CardIcon
@@ -1058,7 +1092,8 @@ export function Preview({
                     </span>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             {shows('cta') && (
@@ -1486,6 +1521,7 @@ export default function AssistantWizard() {
   const [renderProgress, setRenderProgress] = useState(0);
   const [renderStage, setRenderStage] = useState('');
   const previewRef = useRef<HTMLDivElement>(null);
+  const cardsRef = useRef<HTMLDivElement>(null);
 
   // ── Deplacement du titre et du CTA ────────────────────────────────────
   // Defauts = les constantes `DESIGN` d'origine : tant que l'utilisateur ne
@@ -1494,7 +1530,9 @@ export default function AssistantWizard() {
   const [ctaPos, setCtaPos] = useState<Pos>(DESIGN.ctaPos);
   /** Element en cours de glissement, et ecart de saisie fige au pointerdown. */
   const dragRef = useRef<{
-    el: 'title' | 'cta';
+    el: 'title' | 'cta' | 'card';
+    /** Carte glissee, quand `el === 'card'` — son repere est le conteneur. */
+    cardId?: string;
     pointerId: number;
     grab: Pos;
     box: { width: number; height: number };
@@ -1506,6 +1544,66 @@ export default function AssistantWizard() {
   const [dragging, setDragging] = useState<'title' | 'cta' | null>(null);
   useEffect(() => { titlePosRef.current = titlePos; }, [titlePos]);
   useEffect(() => { ctaPosRef.current = ctaPos; }, [ctaPos]);
+
+  // ── Cartes en mode libre ──────────────────────────────────────────────
+  // `null` = disposition en flux (colonne centree), celle d'origine. Le mode
+  // libre ne s'active qu'au premier glissement, et il commence par MESURER la
+  // disposition en flux : les cartes reprennent exactement la place qu'elles
+  // occupaient, donc rien ne saute a l'ecran ni a l'export.
+  const [cardBoxes, setCardBoxes] = useState<Record<string, CardBox> | null>(null);
+  const cardBoxesRef = useRef<Record<string, CardBox> | null>(null);
+  const [draggingCard, setDraggingCard] = useState<string | null>(null);
+  useEffect(() => { cardBoxesRef.current = cardBoxes; }, [cardBoxes]);
+
+  /** Photographie la disposition en flux, en % du conteneur des cartes. */
+  const measureCards = useCallback((): Record<string, CardBox> | null => {
+    const host = cardsRef.current;
+    if (!host) return null;
+    const box = host.getBoundingClientRect();
+    if (box.width <= 0 || box.height <= 0) return null;
+    const out: Record<string, CardBox> = {};
+    host.querySelectorAll<HTMLElement>('[data-card-id]').forEach((el) => {
+      const id = el.dataset.cardId;
+      if (!id) return;
+      const r = el.getBoundingClientRect();
+      out[id] = {
+        x: ((r.left - box.left) / box.width) * 100,
+        y: ((r.top - box.top) / box.height) * 100,
+        w: (r.width / box.width) * 100,
+        h: (r.height / box.height) * 100,
+      };
+    });
+    return Object.keys(out).length ? out : null;
+  }, []);
+
+  const startCardDrag = useCallback((id: string, e: React.PointerEvent) => {
+    const rect = cardsRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0) return;
+    if (dragRef.current) return;
+    // Bascule en mode libre a la premiere prise, en figeant la disposition
+    // actuelle : sans cette mesure, la carte saisie sauterait en haut a gauche
+    // et les autres se recentreraient.
+    const boxes = cardBoxesRef.current ?? measureCards();
+    const box = boxes?.[id];
+    if (!boxes || !box) return;
+    if (!cardBoxesRef.current) { cardBoxesRef.current = boxes; setCardBoxes(boxes); }
+    dragRef.current = {
+      el: 'card',
+      cardId: id,
+      pointerId: e.pointerId,
+      grab: grabOffset(e.clientX, e.clientY, rect, { x: box.x, y: box.y }),
+      box: { width: box.w, height: box.h },
+    };
+    setDraggingCard(id);
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    } catch {
+      dragRef.current = null;
+      setDraggingCard(null);
+      return;
+    }
+    e.stopPropagation();
+  }, [measureCards]);
 
   const startDrag = useCallback((el: 'title' | 'cta', e: React.PointerEvent) => {
     const rect = previewRef.current?.getBoundingClientRect();
@@ -1540,13 +1638,28 @@ export default function AssistantWizard() {
 
   const moveDrag = useCallback((e: React.PointerEvent) => {
     const drag = dragRef.current;
-    const rect = previewRef.current?.getBoundingClientRect();
+    // Une carte se borne a SON conteneur, pas au plateau entier — c'est la
+    // zone photographiee et blittee par le compositeur.
+    const rect = (drag?.el === 'card' ? cardsRef : previewRef).current?.getBoundingClientRect();
     if (!drag || !rect) return;
     // Seul le pointeur qui a commence le glissement le poursuit.
     if (drag.pointerId !== e.pointerId) return;
     // `pointermove` se declenche aussi au simple survol : sans bouton appuye,
     // il n'y a pas de glissement (garde-fou anti « element collant »).
     if (e.buttons === 0 && e.pointerType === 'mouse') return;
+    if (drag.el === 'card') {
+      const id = drag.cardId as string;
+      const boxes = cardBoxesRef.current;
+      const box = boxes?.[id];
+      if (!boxes || !box) return;
+      const raw = pointToPct(e.clientX, e.clientY, rect, drag.grab, { x: box.x, y: box.y });
+      const next = clampToBox(raw, 'top-left', { width: box.w, height: box.h });
+      if (next.x === box.x && next.y === box.y) return;
+      const merged = { ...boxes, [id]: { ...box, x: next.x, y: next.y } };
+      cardBoxesRef.current = merged;
+      setCardBoxes(merged);
+      return;
+    }
     const current = drag.el === 'title' ? titlePosRef.current : ctaPosRef.current;
     const raw = pointToPct(e.clientX, e.clientY, rect, drag.grab, current);
     const next = clampToBox(raw, drag.el === 'title' ? 'top-left' : 'bottom-center', drag.box);
@@ -1557,8 +1670,8 @@ export default function AssistantWizard() {
   const endDrag = useCallback(() => {
     dragRef.current = null;
     setDragging(null);
+    setDraggingCard(null);
   }, []);
-  const cardsRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
 
   // Facteur de reduction du plateau : largeur affichee / largeur video.
@@ -2442,6 +2555,7 @@ export default function AssistantWizard() {
     // enverrait tels quels au compositeur et aux metadonnees.
     setTitlePos(DESIGN.titlePos);
     setCtaPos(DESIGN.ctaPos);
+    setCardBoxes(null);
     setOpenSection('format');
     genSigRef.current = '';
     setGenerated(null);
@@ -3591,6 +3705,9 @@ export default function AssistantWizard() {
           format={format}
           previewRef={previewRef}
           cardsRef={cardsRef}
+          cardBoxes={cardBoxes}
+          onCardDragStart={startCardDrag}
+          draggingCard={draggingCard}
           frameRef={frameRef}
           displayScale={displayScale}
           activeOrder={activeOrder}

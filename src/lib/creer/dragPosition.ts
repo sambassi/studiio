@@ -106,3 +106,18 @@ export function clampToBox(pos: Pos, anchor: Anchor, box: BoxPct): Pos {
     y: Math.min(100 - h, Math.max(0, clampPct(pos.y))),
   };
 }
+
+/**
+ * Emplacement d'une carte en mode libre, en % de son CONTENEUR (pas du
+ * plateau) : `x/y` pour le coin haut-gauche, `w/h` pour l'encombrement.
+ *
+ * La taille fait partie de l'etat parce que le mode libre nait d'une MESURE de
+ * la disposition en flux : la conserver telle quelle est ce qui garantit qu'au
+ * moment de la bascule, rien ne bouge a l'ecran.
+ */
+export interface CardBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
