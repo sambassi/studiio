@@ -29,6 +29,7 @@ import { generateSmartContent } from '@/lib/smart-content';
 import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
 import { AudioStudioPanel } from '@/components/creer/AudioStudioPanel';
 import type { AudioKeyframe } from '@/lib/creer/audioDucking';
+import { pointToPct, grabOffset, type Pos } from '@/lib/creer/dragPosition';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import ClipDetectorModal, { type ClipSource } from '@/components/media/ClipDetectorModal';
 import { CardIcon } from '@/components/ui/CardIcon';
@@ -711,7 +712,26 @@ export function Preview({
   text,
   focus = 'all',
   onFocusChange,
+  titlePos = DESIGN.titlePos,
+  ctaPos = DESIGN.ctaPos,
+  dragging = null,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
 }: {
+  /**
+   * Position du titre et du CTA, en % du cadre. Optionnelles : sans elles,
+   * l'apercu retombe sur les constantes `DESIGN` historiques — c'est ce qui
+   * garde les montages existants et les tests d'apercu inchanges.
+   */
+  titlePos?: Pos;
+  ctaPos?: Pos;
+  /** Element en cours de glissement, pour le curseur et le liseré. */
+  dragging?: 'title' | 'cta' | null;
+  /** Absents = apercu non deplacable (lecture seule). */
+  onDragStart?: (el: 'title' | 'cta', e: React.PointerEvent) => void;
+  onDragMove?: (e: React.PointerEvent) => void;
+  onDragEnd?: () => void;
   /** Absent = pas d'onglets (l'apercu reste la composition complete). */
   onFocusChange?: (focus: 'all' | 'intro' | 'cards' | 'cta') => void;
   /**
@@ -930,12 +950,21 @@ export function Preview({
                 drawIntro avec titleAlign:'left' et textBaseline:'top'.
                 L'ombre est appliquee en dur par le compositeur. */
             <div
+              onPointerDown={(e) => onDragStart?.('title', e)}
+              onPointerMove={onDragMove}
+              onPointerUp={onDragEnd}
+              onPointerCancel={onDragEnd}
+              title="Glisser pour déplacer le titre"
               style={{
                 position: 'absolute',
-                left: `${DESIGN.titlePos.x}%`,
-                top: `${DESIGN.titlePos.y}%`,
+                left: `${titlePos.x}%`,
+                top: `${titlePos.y}%`,
                 width: `${DESIGN.titleWidth}%`,
                 textAlign: 'left',
+                cursor: onDragStart ? (dragging === 'title' ? 'grabbing' : 'grab') : undefined,
+                touchAction: 'none',
+                outline: dragging === 'title' ? '1px dashed rgba(255,255,255,0.5)' : undefined,
+                outlineOffset: 2,
               }}
             >
               <div
@@ -1032,13 +1061,22 @@ export function Preview({
                 drawCTA fait `curY = ctaPosY - blockH`, donc y designe le bas
                 du bloc. Graisse 900 en dur cote compositeur. */
             <div
+              onPointerDown={(e) => onDragStart?.('cta', e)}
+              onPointerMove={onDragMove}
+              onPointerUp={onDragEnd}
+              onPointerCancel={onDragEnd}
+              title="Glisser pour déplacer le CTA"
               style={{
                 position: 'absolute',
-                left: '50%',
-                top: `${DESIGN.ctaPos.y}%`,
+                left: `${ctaPos.x}%`,
+                top: `${ctaPos.y}%`,
                 transform: 'translate(-50%, -100%)',
                 width: `${DESIGN.ctaWidth}%`,
                 textAlign: 'center',
+                cursor: onDragStart ? (dragging === 'cta' ? 'grabbing' : 'grab') : undefined,
+                touchAction: 'none',
+                outline: dragging === 'cta' ? '1px dashed rgba(255,255,255,0.5)' : undefined,
+                outlineOffset: 2,
               }}
             >
               {/* `drawCTA` lit desormais `ctaTypography.bold/italic` — il
@@ -1441,6 +1479,40 @@ export default function AssistantWizard() {
   const [renderProgress, setRenderProgress] = useState(0);
   const [renderStage, setRenderStage] = useState('');
   const previewRef = useRef<HTMLDivElement>(null);
+
+  // ── Deplacement du titre et du CTA ────────────────────────────────────
+  // Defauts = les constantes `DESIGN` d'origine : tant que l'utilisateur ne
+  // deplace rien, l'apercu ET l'export sont identiques a avant, au pixel.
+  const [titlePos, setTitlePos] = useState<Pos>(DESIGN.titlePos);
+  const [ctaPos, setCtaPos] = useState<Pos>(DESIGN.ctaPos);
+  /** Element en cours de glissement, et ecart de saisie fige au pointerdown. */
+  const dragRef = useRef<{ el: 'title' | 'cta'; grab: Pos } | null>(null);
+  const [dragging, setDragging] = useState<'title' | 'cta' | null>(null);
+
+  const startDrag = useCallback((el: 'title' | 'cta', e: React.PointerEvent) => {
+    const rect = previewRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const anchor = el === 'title' ? titlePos : ctaPos;
+    dragRef.current = { el, grab: grabOffset(e.clientX, e.clientY, rect, anchor) };
+    setDragging(el);
+    // Capture : le glissement continue meme si le curseur sort de l'element.
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    e.stopPropagation();
+  }, [titlePos, ctaPos]);
+
+  const moveDrag = useCallback((e: React.PointerEvent) => {
+    const drag = dragRef.current;
+    const rect = previewRef.current?.getBoundingClientRect();
+    if (!drag || !rect) return;
+    const next = pointToPct(e.clientX, e.clientY, rect, drag.grab);
+    if (drag.el === 'title') setTitlePos(next);
+    else setCtaPos(next);
+  }, []);
+
+  const endDrag = useCallback(() => {
+    dragRef.current = null;
+    setDragging(null);
+  }, []);
   const cardsRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
 
@@ -2112,7 +2184,7 @@ export default function AssistantWizard() {
 
           // ── Titre : haut-gauche ───────────────────────────────────────
           titleAlign: 'left' as const,
-          titlePosition: { x: DESIGN.titlePos.x, y: DESIGN.titlePos.y },
+          titlePosition: { x: titlePos.x, y: titlePos.y },
           titleSize: DESIGN.titleWidth,
           // Typographie du titre — memes valeurs que l'apercu.
           // `textScale` est le SEUL levier de taille que `drawIntro` connait ;
@@ -2125,7 +2197,7 @@ export default function AssistantWizard() {
           // est le nom du champ cote design pour le sous-texte.
           ctaMainText: generated.cta,
           ctaSubTextDesign: generated.ctaSub,
-          watermarkPosition: { x: DESIGN.ctaPos.x, y: DESIGN.ctaPos.y },
+          watermarkPosition: { x: ctaPos.x, y: ctaPos.y },
           watermarkSize: DESIGN.ctaWidth,
 
           // ── Cartes : image de l'apercu, blittee telle quelle ──────────
@@ -2246,8 +2318,8 @@ export default function AssistantWizard() {
           // du Calendrier ici pour que sa reconstruction HTML de secours
           // place le titre et le CTA au meme endroit que la video.
           positions: {
-            title: { x: DESIGN.titlePos.x, y: DESIGN.titlePos.y },
-            watermark: { x: DESIGN.ctaPos.x, y: DESIGN.ctaPos.y },
+            title: { x: titlePos.x, y: titlePos.y },
+            watermark: { x: ctaPos.x, y: ctaPos.y },
           },
           sizes: {
             title: DESIGN.titleWidth,
@@ -3459,6 +3531,12 @@ export default function AssistantWizard() {
           sous cette barre. */}
       <div className="lg:col-span-2 lg:sticky lg:top-20">
         <Preview
+          titlePos={titlePos}
+          ctaPos={ctaPos}
+          dragging={dragging}
+          onDragStart={startDrag}
+          onDragMove={moveDrag}
+          onDragEnd={endDrag}
           generated={generated}
           format={format}
           previewRef={previewRef}
