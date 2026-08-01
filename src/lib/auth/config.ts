@@ -89,7 +89,51 @@ async function resolveSupabaseUserId(
   return null;
 }
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
+/**
+ * ── Contournement d'authentification, DÉVELOPPEMENT LOCAL UNIQUEMENT ──
+ *
+ * Sert à ce qu'un agent puisse ouvrir `/dashboard/*` en local pour VOIR l'UI
+ * et attraper les défauts visuels lui-même. Plusieurs correctifs de cette
+ * base ont dû être repris parce que le rendu n'avait pas pu être ouvert.
+ *
+ * DEUX verrous, tous deux CÔTÉ SERVEUR, tous deux obligatoires :
+ *   1. `NODE_ENV !== 'production'` — une image de production est bâtie avec
+ *      `NODE_ENV=production`, le contournement y est mort quoi qu'il arrive ;
+ *   2. `DEV_AUTH_BYPASS === '1'` — opt-in explicite, absent de `.env.example`
+ *      et des variables Coolify.
+ *
+ * Rien ici ne lit un cookie, un en-tête, un paramètre d'URL ni quoi que ce
+ * soit d'autre venant du client : aucune requête ne peut activer le
+ * contournement. La valeur est figée au chargement du module.
+ */
+export function isDevAuthBypassEnabled(
+  env: { NODE_ENV?: string; DEV_AUTH_BYPASS?: string } = process.env,
+): boolean {
+  return env.NODE_ENV !== 'production' && env.DEV_AUTH_BYPASS === '1';
+}
+
+/** Évalué UNE fois, au chargement — jamais recalculé par requête. */
+export const DEV_AUTH_BYPASS = isDevAuthBypassEnabled();
+
+/** Identité factice servie quand le contournement est actif. */
+export const DEV_SESSION = {
+  user: {
+    id: '00000000-0000-4000-8000-000000000000',
+    email: 'dev@localhost',
+    name: 'Développement local',
+    plan: 'pro',
+  },
+  expires: '2999-12-31T23:59:59.000Z',
+} as const;
+
+if (DEV_AUTH_BYPASS) {
+  console.warn(
+    '[auth] ⚠️  DEV_AUTH_BYPASS actif : toute session est acceptée. ' +
+    'Développement local uniquement — impossible en production.',
+  );
+}
+
+const nextAuth = NextAuth({
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_ID!,
@@ -191,3 +235,32 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     signIn: '/auth/login',
   },
 });
+
+export const { handlers, signIn, signOut } = nextAuth;
+
+/**
+ * `auth()` de NextAuth, sauf en développement local avec `DEV_AUTH_BYPASS=1`,
+ * où une session factice est renvoyée pour que les pages protégées
+ * s'affichent. En production, `DEV_AUTH_BYPASS` vaut `false` : c'est le
+ * `nextAuth.auth` d'origine qui est exporté, à l'identique.
+ */
+export const auth: typeof nextAuth.auth = DEV_AUTH_BYPASS
+  ? ((...args: unknown[]) => {
+      // Appel direct `await auth()` → session factice.
+      if (args.length === 0) return Promise.resolve(DEV_SESSION as never);
+      // Usage middleware `auth((req) => …)` → on injecte la session factice
+      // dans la requête avant de passer la main au gestionnaire.
+      const [handler] = args;
+      if (typeof handler === 'function') {
+        // `as never` : les surcharges de `auth()` ne modelisent pas cet
+        // enveloppement ; le comportement, lui, est identique — on ajoute
+        // seulement `req.auth` avant d'appeler le gestionnaire d'origine.
+        const wrapped = (req: { auth?: unknown }) => {
+          req.auth = DEV_SESSION;
+          return (handler as (r: unknown) => unknown)(req);
+        };
+        return (nextAuth.auth as unknown as (h: unknown) => unknown)(wrapped);
+      }
+      return (nextAuth.auth as unknown as (...a: unknown[]) => unknown)(...args);
+    }) as never
+  : nextAuth.auth;
