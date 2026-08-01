@@ -47,6 +47,27 @@ describe('Default-safe : la disposition en flux reste le défaut', () => {
     expect(wizard).toContain("cursor: onCardDragStart ? (draggingCard === c.id ? 'grabbing' : 'grab') : undefined");
   });
 
+  it('le mode libre est ABANDONNÉ s il ne couvre plus toutes les cartes', () => {
+    // Régénérer le contenu attribue de nouveaux identifiants : sans ce repli,
+    // les cartes sans emplacement se rendraient sans position dans un
+    // conteneur qui n'est plus une colonne — empilées dans un coin.
+    expect(wizard).toContain('const effectiveCardBoxes = covers(cardBoxes, cardIds) ? cardBoxes : null');
+    expect(wizard).toContain("ids.every((id) => !!b[id])");
+    // Une liste vide n'est pas une couverture : `[].every()` vaut `true`.
+    expect(wizard).toContain('ids.length > 0 &&');
+  });
+
+  it("c'est l'état VALIDE qui est rendu, pas l'état brut", () => {
+    expect(wizard).toContain('cardBoxes={effectiveCardBoxes}');
+    expect(wizard).toContain('!!effectiveCardBoxes ||');
+    expect(wizard).not.toContain('cardBoxes={cardBoxes}');
+  });
+
+  it('une nouvelle prise remesure au lieu de réutiliser un état périmé', () => {
+    expect(wizard).toContain('const boxes = covers(known, cardIdsRef.current) ? known : measureCards();');
+    expect(wizard).toContain('if (boxes !== cardBoxesRef.current)');
+  });
+
   it('les props de Preview sont optionnelles, défaut = comportement d avant', () => {
     expect(wizard).toContain('cardBoxes = null');
     expect(wizard).toContain('draggingCard = null');
@@ -149,5 +170,37 @@ describe('Glissement durci, comme pour le titre', () => {
     for (const h of ['onPointerMove', 'onPointerUp', 'onPointerCancel', 'onLostPointerCapture']) {
       expect(bloc, h).toContain(h);
     }
+  });
+});
+
+describe('On peut revenir en arrière sans repartir de zéro', () => {
+  it('le bouton n apparaît que si quelque chose a été déplacé', () => {
+    // Sans condition, un aperçu intact proposerait de « rétablir » un état
+    // déjà en place — un bouton qui ne fait rien.
+    expect(wizard).toContain('{layoutTouched && (');
+    expect(wizard).toContain('const layoutTouched =');
+    expect(wizard).toContain('!!effectiveCardBoxes ||');
+  });
+
+  it('la détection compare les VALEURS, pas les références', () => {
+    // `titlePos !== DESIGN.titlePos` serait vrai dès le premier setState avec
+    // des coordonnées pourtant identiques.
+    expect(wizard).toContain('titlePos.x !== DESIGN.titlePos.x');
+    expect(wizard).toContain('ctaPos.y !== DESIGN.ctaPos.y');
+  });
+
+  it('rétablir remet les trois placements ET la ref du mode libre', () => {
+    const start = wizard.indexOf('const resetLayout');
+    const bloc = wizard.slice(start, start + 400);
+    expect(bloc).toContain('setTitlePos(DESIGN.titlePos)');
+    expect(bloc).toContain('setCtaPos(DESIGN.ctaPos)');
+    expect(bloc).toContain('setCardBoxes(null)');
+    // La ref aussi : elle seule est lue au prochain `startCardDrag`, la
+    // laisser garnie rebasculerait en mode libre sur l'ancienne mesure.
+    expect(bloc).toContain('cardBoxesRef.current = null');
+  });
+
+  it('utilise une icône lucide, pas un emoji', () => {
+    expect(wizard).toContain('<RotateCcw className="w-3.5 h-3.5" />');
   });
 });

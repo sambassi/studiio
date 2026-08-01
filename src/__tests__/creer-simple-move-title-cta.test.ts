@@ -72,8 +72,19 @@ describe('Default-safe : rien ne bouge tant qu on ne bouge rien', () => {
 
   it('aucun consommateur ne lit plus la constante figée', () => {
     // Sinon l'aperçu bougerait et l'export non — la divergence classique.
-    expect(wizard).not.toContain('DESIGN.titlePos.x');
-    expect(wizard).not.toContain('DESIGN.ctaPos.y');
+    // Ce sont les formes exactes qu'avaient l'aperçu, le compositeur et les
+    // métadonnées avant le déplacement. Comparer une position À la constante
+    // reste légitime (bouton « rétablir ») : c'est la CONSOMMATION qui est
+    // proscrite, pas la mention.
+    for (const forme of [
+      'left: `${DESIGN.titlePos.x}%`',
+      'top: `${DESIGN.titlePos.y}%`',
+      'top: `${DESIGN.ctaPos.y}%`',
+      'titlePosition: { x: DESIGN.titlePos.x',
+      'watermarkPosition: { x: DESIGN.ctaPos.x',
+    ]) {
+      expect(wizard, forme).not.toContain(forme);
+    }
   });
 
   it('le compositeur ET les métadonnées lisent la même source que l aperçu', () => {

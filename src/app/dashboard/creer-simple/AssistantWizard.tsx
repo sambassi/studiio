@@ -1555,6 +1555,23 @@ export default function AssistantWizard() {
   const [draggingCard, setDraggingCard] = useState<string | null>(null);
   useEffect(() => { cardBoxesRef.current = cardBoxes; }, [cardBoxes]);
 
+  /**
+   * Le mode libre n'est VALIDE que s'il couvre toutes les cartes affichees.
+   *
+   * Regenerer le contenu, ajouter ou retirer une carte change les
+   * identifiants : une carte sans emplacement se rendrait sans position dans
+   * un conteneur qui n'est plus une colonne, donc empilee dans le coin avec
+   * les autres. Plutot que d'inventer une place, on revient a la disposition
+   * en flux — previsible, et c'est celle qu'on sait exacte.
+   */
+  const cardIds = generated?.cards.map((c) => c.id) ?? [];
+  const covers = (b: Record<string, CardBox> | null | undefined, ids: string[]) =>
+    !!b && ids.length > 0 && ids.every((id) => !!b[id]);
+  const effectiveCardBoxes = covers(cardBoxes, cardIds) ? cardBoxes : null;
+  // Lu par `startCardDrag`, memoise sans dependances.
+  const cardIdsRef = useRef<string[]>(cardIds);
+  useEffect(() => { cardIdsRef.current = cardIds; });
+
   /** Photographie la disposition en flux, en % du conteneur des cartes. */
   const measureCards = useCallback((): Record<string, CardBox> | null => {
     const host = cardsRef.current;
@@ -1583,10 +1600,12 @@ export default function AssistantWizard() {
     // Bascule en mode libre a la premiere prise, en figeant la disposition
     // actuelle : sans cette mesure, la carte saisie sauterait en haut a gauche
     // et les autres se recentreraient.
-    const boxes = cardBoxesRef.current ?? measureCards();
+    // Mesure a neuf si le mode libre ne couvre plus toutes les cartes.
+    const known = cardBoxesRef.current;
+    const boxes = covers(known, cardIdsRef.current) ? known : measureCards();
     const box = boxes?.[id];
     if (!boxes || !box) return;
-    if (!cardBoxesRef.current) { cardBoxesRef.current = boxes; setCardBoxes(boxes); }
+    if (boxes !== cardBoxesRef.current) { cardBoxesRef.current = boxes; setCardBoxes(boxes); }
     dragRef.current = {
       el: 'card',
       cardId: id,
@@ -1651,6 +1670,8 @@ export default function AssistantWizard() {
       const id = drag.cardId as string;
       const boxes = cardBoxesRef.current;
       const box = boxes?.[id];
+      // Le glissement a commence : `boxes` couvre forcement `id`. Le garde
+      // ci-dessous couvre le cas ou le contenu change EN COURS de glissement.
       if (!boxes || !box) return;
       const raw = pointToPct(e.clientX, e.clientY, rect, drag.grab, { x: box.x, y: box.y });
       const next = clampToBox(raw, 'top-left', { width: box.w, height: box.h });
@@ -1665,6 +1686,23 @@ export default function AssistantWizard() {
     const next = clampToBox(raw, drag.el === 'title' ? 'top-left' : 'bottom-center', drag.box);
     if (drag.el === 'title') setTitlePos(next);
     else setCtaPos(next);
+  }, []);
+
+  /**
+   * Le placement a-t-il ete touche ? Sans cette question, une carte deplacee
+   * par erreur ne se rattrapait qu'en repartant de zero : le mode libre ne se
+   * quitte pas tout seul.
+   */
+  const layoutTouched =
+    !!effectiveCardBoxes ||
+    titlePos.x !== DESIGN.titlePos.x || titlePos.y !== DESIGN.titlePos.y ||
+    ctaPos.x !== DESIGN.ctaPos.x || ctaPos.y !== DESIGN.ctaPos.y;
+
+  const resetLayout = useCallback(() => {
+    setTitlePos(DESIGN.titlePos);
+    setCtaPos(DESIGN.ctaPos);
+    setCardBoxes(null);
+    cardBoxesRef.current = null;
   }, []);
 
   const endDrag = useCallback(() => {
@@ -3705,7 +3743,7 @@ export default function AssistantWizard() {
           format={format}
           previewRef={previewRef}
           cardsRef={cardsRef}
-          cardBoxes={cardBoxes}
+          cardBoxes={effectiveCardBoxes}
           onCardDragStart={startCardDrag}
           draggingCard={draggingCard}
           frameRef={frameRef}
@@ -3721,6 +3759,16 @@ export default function AssistantWizard() {
           focus={previewFocus}
           onFocusChange={setPreviewFocus}
         />
+        {layoutTouched && (
+          <button
+            type="button"
+            onClick={resetLayout}
+            className="mt-2 w-full flex items-center justify-center gap-2 text-xs text-gray-400 hover:text-white transition-colors py-2"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            Rétablir la disposition d&apos;origine
+          </button>
+        )}
       </div>
 
       {/* Temps forts — le modal est reutilise TEL QUEL depuis /dashboard/media.
