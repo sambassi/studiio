@@ -48,8 +48,12 @@ export function pointToPct(
   clientY: number,
   rect: Rect,
   grab: Pos = { x: 0, y: 0 },
+  fallback: Pos = { x: MIN_PCT, y: MIN_PCT },
 ): Pos {
-  if (!rect || rect.width <= 0 || rect.height <= 0) return { x: MIN_PCT, y: MIN_PCT };
+  // Conteneur pas encore mesure (`displayScale` vaut 0 au premier rendu) :
+  // on rend la position COURANTE. Renvoyer {0,0} teleportait l'element dans
+  // le coin haut-gauche a la moindre mesure ratee.
+  if (!rect || rect.width <= 0 || rect.height <= 0) return fallback;
   const x = ((clientX - rect.left) / rect.width) * 100 - grab.x;
   const y = ((clientY - rect.top) / rect.height) * 100 - grab.y;
   return { x: clampPct(x), y: clampPct(y) };
@@ -67,7 +71,38 @@ export function grabOffset(clientX: number, clientY: number, rect: Rect, anchor:
   };
 }
 
-/** `true` si deux positions sont identiques a l'arrondi d'affichage pres. */
-export function samePos(a: Pos, b: Pos, epsilon = 0.01): boolean {
-  return Math.abs(a.x - b.x) < epsilon && Math.abs(a.y - b.y) < epsilon;
+
+/** Ancrage d'un element : d'ou partent ses coordonnees. */
+export type Anchor = 'top-left' | 'bottom-center';
+
+/** Encombrement du bloc, en % du conteneur. */
+export interface BoxPct {
+  width: number;
+  height: number;
+}
+
+/**
+ * Borne une position pour que le bloc reste ENTIEREMENT visible.
+ *
+ * Borner l'ancre a [0,100] ne suffit pas : un titre ancre en haut-gauche a
+ * `y=100` commence au bas du cadre, donc il n'en reste rien a l'ecran ; un CTA
+ * centre a `x=0` sort de moitie. Le compositeur reproduit fidelement ces
+ * positions — l'apercu et l'export seraient donc vides tous les deux.
+ */
+export function clampToBox(pos: Pos, anchor: Anchor, box: BoxPct): Pos {
+  const w = Math.max(0, Math.min(100, box.width));
+  const h = Math.max(0, Math.min(100, box.height));
+  if (anchor === 'bottom-center') {
+    // x designe le CENTRE, y designe le BAS du bloc.
+    const half = w / 2;
+    return {
+      x: Math.min(100 - half, Math.max(half, clampPct(pos.x))),
+      y: Math.min(100, Math.max(h, clampPct(pos.y))),
+    };
+  }
+  // top-left : x et y designent le coin haut-gauche.
+  return {
+    x: Math.min(100 - w, Math.max(0, clampPct(pos.x))),
+    y: Math.min(100 - h, Math.max(0, clampPct(pos.y))),
+  };
 }
