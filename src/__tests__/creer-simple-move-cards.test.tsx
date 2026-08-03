@@ -299,8 +299,10 @@ describe('Invariants du gestionnaire de glissement', () => {
    */
 
   it("l'écart de saisie est conservé : la carte ne se recentre pas sous le curseur", () => {
-    expect(startCardDrag).toContain(
-      'grab: grabOffset(e.clientX, e.clientY, rect, { x: box.x, y: box.y })',
+    // Calcule a l'ARMEMENT du glissement, depuis le point d'appui memorise —
+    // le mode libre ne s'active qu'au premier mouvement franc.
+    expect(brancheCarte).toContain(
+      'grabOffset(drag.startX!, drag.startY!, rect, { x: start.x, y: start.y })',
     );
   });
 
@@ -309,7 +311,8 @@ describe('Invariants du gestionnaire de glissement', () => {
   });
 
   it('une carte inconnue interrompt la prise au lieu de produire des NaN', () => {
-    expect(startCardDrag).toContain('if (!boxes || !box) return;');
+    expect(brancheCarte).toContain('if (!measured || !start) { dragRef.current = null; return; }');
+    expect(brancheCarte).toContain('if (!boxes || !box) return;');
   });
 
   it("une capture refusée relâche le verrou de glissement", () => {
