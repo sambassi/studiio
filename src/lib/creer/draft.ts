@@ -101,11 +101,17 @@ export interface Draft {
   cardBoxes?: { format: string; boxes: Record<string, { x: number; y: number; w: number; h: number }> };
   /** Groupes d'edition. Sans effet sur le montage exporte. */
   cardGroups?: { id: string; cardIds: string[] }[];
+  /**
+   * Elements libres poses dans la zone des cartes. Absent = aucun element,
+   * ce qui est le cas de tous les brouillons anterieurs.
+   */
+  elements?: { id: string; iconName: string; x: number; y: number; size: number; color: string }[];
 }
 
 /** Nombre d'emplacements et de groupes relus au maximum — garde-fou anti-brouillon abime. */
 const MAX_BOXES = 24;
 const MAX_GROUPS = 12;
+const MAX_ELEMENTS = 24;
 
 /** URL conservable — jamais un `blob:`, qui meurt avec l'onglet. */
 export const persistableUrl = (url: string | null | undefined): string | undefined =>
@@ -286,6 +292,36 @@ function sanitizeCardGroups(raw: unknown, connus: string[] | null): Draft['cardG
 }
 
 /**
+ * Elements libres relus.
+ *
+ * Chaque element est valide SEPAREMENT — contrairement aux emplacements des
+ * cartes, un element abime n'en empeche aucun autre d'exister : ils sont
+ * independants, et en perdre un vaut mieux que de tous les perdre.
+ *
+ * Le nom d'icone n'est PAS verifie contre la bibliotheque : `CardIcon` retombe
+ * deja sur une icone par defaut pour un nom inconnu, et refuser ici ferait
+ * disparaitre un element au moindre renommage cote lucide.
+ */
+function sanitizeElements(raw: unknown): Draft['elements'] {
+  if (!Array.isArray(raw)) return undefined;
+  const out: NonNullable<Draft['elements']> = [];
+  for (const e of raw.slice(0, MAX_ELEMENTS)) {
+    if (!isObj(e)) continue;
+    const x = pct(e.x);
+    const y = pct(e.y);
+    if (x === null || y === null) continue;
+    if (typeof e.id !== 'string' || !e.id) continue;
+    if (typeof e.iconName !== 'string' || !e.iconName) continue;
+    // Taille en px du plateau video : bornee pour qu'un brouillon abime ne
+    // produise ni un element invisible ni un aplat qui couvre tout le cadre.
+    if (typeof e.size !== 'number' || !Number.isFinite(e.size) || e.size <= 0 || e.size > 1000) continue;
+    const color = typeof e.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(e.color) ? e.color : '#FFFFFF';
+    out.push({ id: e.id, iconName: e.iconName, x, y, size: e.size, color });
+  }
+  return out.length ? out : undefined;
+}
+
+/**
  * Transforme un brouillon brut en valeurs sûres.
  *
  * Renvoie `null` quand il n'y a rien d'exploitable : l'appelant garde alors
@@ -403,6 +439,9 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
   const cardIds = cardIdsOf(out.generated);
   out.cardBoxes = sanitizeCardBoxes(raw.cardBoxes, out.format!, cardIds);
   out.cardGroups = sanitizeCardGroups(raw.cardGroups, cardIds);
+  // Les elements ne dependent d'aucune carte : ils survivent a une
+  // regeneration du contenu.
+  out.elements = sanitizeElements(raw.elements);
 
   // Sequence « Video » active mais rush disparu — URL `blob:` filtree a
   // l'ecriture, ou fichier expire depuis. La laisser active ferait sortir un

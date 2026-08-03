@@ -84,7 +84,7 @@ export function samePos(a: Pos, b: Pos): boolean {
 }
 
 /** Ancrage d'un element : d'ou partent ses coordonnees. */
-export type Anchor = 'top-left' | 'bottom-center';
+export type Anchor = 'top-left' | 'bottom-center' | 'center';
 
 /** Encombrement du bloc, en % du conteneur. */
 export interface BoxPct {
@@ -103,6 +103,15 @@ export interface BoxPct {
 export function clampToBox(pos: Pos, anchor: Anchor, box: BoxPct): Pos {
   const w = Math.max(0, Math.min(100, box.width));
   const h = Math.max(0, Math.min(100, box.height));
+  if (anchor === 'center') {
+    // x ET y designent le centre : les deux demi-cotes doivent tenir.
+    const halfW = w / 2;
+    const halfH = h / 2;
+    return {
+      x: Math.min(100 - halfW, Math.max(halfW, clampPct(pos.x))),
+      y: Math.min(100 - halfH, Math.max(halfH, clampPct(pos.y))),
+    };
+  }
   if (anchor === 'bottom-center') {
     // x designe le CENTRE, y designe le BAS du bloc.
     const half = w / 2;

@@ -136,6 +136,7 @@ import {
 import FloatingPanel from "@/components/ui/FloatingPanel";
 import ColorWheel from "@/components/ui/ColorWheel";
 import { composeAndUpload, downloadBlob } from "@/lib/video-composer";
+import { ICON_LIBRARY, ICON_KEYWORDS, ALL_LUCIDE_NAMES } from "@/lib/icons/library";
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { Modal } from "@/components/ui/Modal";
 import { detectClips, extractClip, type DetectedClip } from "@/lib/clip-detector";
@@ -295,45 +296,7 @@ const QUICK_EMOJIS = ['📝', '✨', '⭐', '🎯', '💪', '🔥', '💡', '�
 
 // Lucide icon library — names map to lucide-react exports. Looked up dynamically
 // at render time via ICON_MAP[name] to keep this file lean.
-const ICON_LIBRARY: Record<string, string[]> = {
-  sport:       ['Dumbbell', 'Flame', 'Zap', 'Trophy', 'Target', 'Activity', 'Bike', 'Medal', 'Crown'],
-  santé:       ['Heart', 'Brain', 'Stethoscope', 'Pill', 'Cross', 'HeartPulse', 'Syringe', 'Thermometer', 'Bone', 'Droplet', 'Eye'],
-  nutrition:   ['Apple', 'Carrot', 'Salad', 'Coffee', 'Pizza', 'Utensils', 'Wheat', 'Egg', 'Milk'],
-  temps:       ['Clock', 'Timer', 'AlarmClock', 'Watch', 'Hourglass', 'Calendar', 'CalendarDays', 'CalendarCheck', 'CalendarClock', 'Sunrise', 'Sunset'],
-  nature:      ['Leaf', 'Sun', 'Moon', 'Star', 'Cloud', 'Flower', 'TreePine', 'Sprout', 'Trees', 'TreeDeciduous', 'Waves', 'Mountain'],
-  météo:       ['CloudRain', 'CloudSnow', 'Snowflake', 'Wind', 'Umbrella', 'Rainbow'],
-  tech:        ['Laptop', 'Smartphone', 'Cpu', 'Wifi', 'Battery', 'Code', 'Bot', 'Database', 'Server', 'Terminal', 'Bug', 'FileCode'],
-  finance:     ['DollarSign', 'TrendingUp', 'TrendingDown', 'Gem', 'Briefcase', 'Wallet', 'BarChart', 'PieChart', 'Receipt', 'HandCoins', 'Landmark', 'PiggyBank', 'Coins'],
-  multimedia:  ['Palette', 'Camera', 'Music', 'Mic', 'Video', 'PenTool', 'Brush', 'Paintbrush', 'Image', 'Aperture', 'Clapperboard', 'Disc', 'Volume2', 'Headphones', 'Speaker', 'Radio', 'Podcast'],
-  loisirs:     ['Gamepad2', 'Joystick', 'Puzzle', 'Diamond'],
-  voyage:      ['Plane', 'Globe', 'Map', 'Compass', 'MapPin', 'MapPinned', 'Route', 'Hotel', 'Tent', 'Navigation', 'Flag', 'Anchor', 'Sailboat', 'Footprints'],
-  émotions:    ['Smile', 'Frown', 'Meh', 'Laugh', 'Award', 'ThumbsUp', 'Gift', 'Bell', 'Megaphone', 'PartyPopper', 'Sparkles', 'Cake', 'Crown'],
-  famille:     ['Baby', 'Users', 'User', 'UserPlus', 'PersonStanding'],
-  animaux:     ['Dog', 'Cat', 'Bird', 'Fish', 'Rabbit', 'Turtle'],
-  logement:    ['Home', 'Building', 'Store', 'Warehouse', 'Factory', 'Church'],
-  transport:   ['Car', 'Bike', 'Train', 'Rocket', 'Ship', 'Bus', 'Truck'],
-  communication: ['Mail', 'MessageSquare', 'MessageCircle', 'Send', 'Inbox', 'Archive'],
-  outils:      ['Clipboard', 'ClipboardList', 'FileText', 'File', 'Folder', 'FolderOpen', 'Filter', 'Settings2', 'Wrench', 'Hammer', 'Scissors'],
-  sécurité:    ['Shield', 'ShieldCheck', 'ShieldAlert', 'Lock', 'Unlock', 'Key', 'Fingerprint'],
-  énergie:     ['Plug', 'Power', 'BatteryCharging', 'Signal'],
-  shopping:    ['ShoppingBag', 'ShoppingCart', 'Tag', 'Package', 'CreditCard'],
-  education:   ['Book', 'GraduationCap', 'Lightbulb', 'Library', 'Pencil', 'Ruler'],
-};
 
-const ICON_KEYWORDS: Record<string, string[]> = {
-  Clock: ['horaire', 'heure', 'temps', 'clock'], Timer: ['chrono', 'compteur'],
-  AlarmClock: ['alarme', 'réveil'], Watch: ['montre'], Hourglass: ['sablier', 'attente'],
-  Calendar: ['calendrier', 'date'], CalendarDays: ['semaine'], CalendarCheck: ['rdv', 'rendez-vous'],
-  CalendarClock: ['planning'], Sunrise: ['matin', 'lever'], Sunset: ['soir', 'coucher'],
-  Heart: ['coeur', 'amour'], Brain: ['cerveau', 'intelligence'], Dumbbell: ['haltère', 'musculation'],
-  Apple: ['pomme'], Coffee: ['café'], Music: ['musique'], Camera: ['photo', 'appareil'],
-  Home: ['maison'], Car: ['voiture', 'auto'], Plane: ['avion'], Globe: ['monde', 'terre'],
-  Mail: ['email', 'courrier'], Lock: ['verrou', 'cadenas'], Key: ['clé'],
-  Shield: ['bouclier', 'protection'], Star: ['étoile', 'favori'],
-  Headphones: ['casque', 'audio'], Mic: ['micro', 'enregistrement'],
-};
-
-const ALL_LUCIDE_NAMES: string[] = Object.values(ICON_LIBRARY).flat();
 
 /** Map a content theme key to a sensible default lucide icon for new empty cards. */
 function themeIconName(theme: string | undefined): string {
