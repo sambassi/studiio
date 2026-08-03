@@ -271,7 +271,7 @@ describe('Le format fait partie de l état — sinon l export est écrasé', () 
   });
 
   it('le câblage passe par l état VALIDE, jamais par l état brut', () => {
-    expect(wizard).toContain('cardBoxes={effectiveCardBoxes}');
+    expect(wizard).toContain('cardBoxes: effectiveCardBoxes,');
     expect(wizard).toContain('onCardDragStart={startCardDrag}');
     expect(wizard).toContain('draggingCard={draggingCard}');
   });

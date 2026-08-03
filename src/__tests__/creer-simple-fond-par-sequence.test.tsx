@@ -144,8 +144,8 @@ describe('Câblage', () => {
   });
 
   it("l'aperçu montre le fond résolu, pas l'affiche globale en dur", () => {
-    expect(wizard).toContain('posterUrl={fondAffiche.url}');
-    expect(wizard).toContain('posterTransform={fondAffiche.transform}');
+    expect(wizard).toContain('posterUrl: fondAffiche.url,');
+    expect(wizard).toContain('posterTransform: fondAffiche.transform,');
   });
 
   it('« Réinitialiser » rend la séquence à l affiche globale', () => {
