@@ -668,7 +668,7 @@ const persistableUrl = (url: string | null): string | undefined =>
   url && !url.startsWith('blob:') ? url : undefined;
 
 /** Sequence mise en avant dans l'apercu, ou `'all'` pour la composition entiere. */
-type PreviewFocus = 'all' | 'intro' | 'cards' | 'video' | 'cta';
+export type PreviewFocus = 'all' | 'intro' | 'cards' | 'video' | 'cta';
 
 /** Classes de désactivation : `Button` n'en fournit aucune (ui/Button.tsx). */
 const DISABLED = 'disabled:opacity-40 disabled:cursor-not-allowed';
@@ -802,6 +802,44 @@ export interface PosterTransform {
   offsetY: number;
 }
 
+/** Cles de sequence du compositeur — l'apercu, lui, dit « intro » et « cards ». */
+export type SeqBgKey = 'titre' | 'cartes' | 'video' | 'cta';
+
+/** Fond propre a une sequence : une photo et son recadrage. */
+export interface SeqBackground {
+  url: string;
+  transform: PosterTransform;
+}
+
+export type SeqBackgrounds = Partial<Record<SeqBgKey, SeqBackground>>;
+
+/**
+ * Sequence visee par les actions « photo ».
+ *
+ * `null` sur l'onglet « Tout » : on y edite l'affiche GLOBALE. L'apercu empile
+ * les sequences, il ne saurait pas laquelle montrer.
+ */
+export function seqBgKeyForFocus(focus: PreviewFocus): SeqBgKey | null {
+  if (focus === 'intro') return 'titre';
+  if (focus === 'cards') return 'cartes';
+  if (focus === 'video') return 'video';
+  if (focus === 'cta') return 'cta';
+  return null;
+}
+
+/** Fond effectif d'un onglet : celui de la sequence, sinon l'affiche globale. */
+export function resolveBackground(
+  focus: PreviewFocus,
+  seqBackgrounds: SeqBackgrounds,
+  posterUrl: string | null,
+  posterTransform: PosterTransform,
+): { url: string | null; transform: PosterTransform } {
+  const cle = seqBgKeyForFocus(focus);
+  const propre = cle ? seqBackgrounds[cle] : undefined;
+  if (propre?.url) return { url: propre.url, transform: propre.transform };
+  return { url: posterUrl, transform: posterTransform };
+}
+
 /** Sans recadrage : le « cover » centre d'aujourd'hui. */
 export const POSTER_TRANSFORM_NEUTRAL: PosterTransform = { scale: 1, offsetX: 0, offsetY: 0 };
 
@@ -900,6 +938,7 @@ export function Preview({
   cropping = false,
   onPosterPanStart,
   onPosterZoomStart,
+  onPhotoDrop,
   elements,
   selectedElementId = null,
   onElementDragStart,
@@ -1005,6 +1044,8 @@ export function Preview({
   /** Mode recadrage actif : poignees visibles, fond saisissable. */
   cropping?: boolean;
   onPosterPanStart?: (e: React.PointerEvent) => void;
+  /** Photo deposee sur le plateau — devient le fond de la sequence affichee. */
+  onPhotoDrop?: (url: string) => void;
   onPosterZoomStart?: (e: React.PointerEvent) => void;
   elements?: FreeElement[];
   selectedElementId?: string | null;
@@ -1187,6 +1228,14 @@ export function Preview({
         // cartes arretent la propagation. C'est le geste universel « je
         // deselectionne ».
         onPointerDown={capturing ? undefined : onClearSelection}
+        // Depot d'une vignette : le geste le plus direct pour poser un fond
+        // sur la sequence qu'on regarde.
+        onDragOver={onPhotoDrop ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } : undefined}
+        onDrop={onPhotoDrop ? (e) => {
+          e.preventDefault();
+          const url = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain');
+          if (url) onPhotoDrop(url);
+        } : undefined}
         style={{
           position: 'absolute',
           top: 0,
@@ -1848,6 +1897,9 @@ export default function AssistantWizard() {
    * `'all'` le temps de la photo des cartes (voir `sendToCalendar`).
    */
   const [previewFocus, setPreviewFocus] = useState<PreviewFocus>('all');
+  // Lu par les gestes, memoises sans dependances.
+  const previewFocusRef = useRef<PreviewFocus>('all');
+  useEffect(() => { previewFocusRef.current = previewFocus; }, [previewFocus]);
   const toggleSection = (id: SectionId) => setOpenSection((prev) => (prev === id ? null : id));
 
   /** Zone de texte en cours de reglage — purement local a l'interface. */
@@ -2199,6 +2251,13 @@ export default function AssistantWizard() {
   const posterTransformRef = useRef<PosterTransform>(POSTER_TRANSFORM_NEUTRAL);
   useEffect(() => { posterTransformRef.current = posterTransform; }, [posterTransform]);
   const [cropping, setCropping] = useState(false);
+  /**
+   * Fonds propres a une sequence. Vide par defaut : chaque sequence herite
+   * alors de l'affiche globale, exactement comme avant.
+   */
+  const [seqBackgrounds, setSeqBackgrounds] = useState<SeqBackgrounds>({});
+  const seqBackgroundsRef = useRef<SeqBackgrounds>({});
+  useEffect(() => { seqBackgroundsRef.current = seqBackgrounds; }, [seqBackgrounds]);
   const posterPageRef = useRef(1);
   // Lu par `searchPhotos`, memoise sans dependances : la taille du lot decide
   // combien de photos ramener pour esperer en avoir assez de distinctes.
@@ -2360,6 +2419,31 @@ export default function AssistantWizard() {
       return next;
     });
     setSlotCible(null);
+  }, []);
+
+  /** Sequence visee par les actions « photo », ou `null` sur l'onglet « Tout ». */
+  const seqCible = seqBgKeyForFocus(previewFocus);
+  /** Fond REELLEMENT montre par l'onglet courant. */
+  const fondAffiche = resolveBackground(previewFocus, seqBackgrounds, posterUrl, posterTransform);
+
+  /** Pose une photo : sur la sequence affichee, ou sur l'affiche globale. */
+  const applyPhoto = useCallback((url: string) => {
+    const cle = seqBgKeyForFocus(previewFocusRef.current);
+    if (!cle) {
+      setPosterUrl(url);
+      return;
+    }
+    // Nouveau fond = nouveau cadrage : le precedent visait une autre image.
+    setSeqBackgrounds((prev) => ({ ...prev, [cle]: { url, transform: POSTER_TRANSFORM_NEUTRAL } }));
+  }, []);
+
+  /** Rend une sequence a l'affiche globale. */
+  const resetSeqBackground = useCallback((cle: SeqBgKey) => {
+    setSeqBackgrounds((prev) => {
+      const next = { ...prev };
+      delete next[cle];
+      return next;
+    });
   }, []);
 
   const addElement = useCallback((iconName: string) => {
@@ -2639,6 +2723,27 @@ export default function AssistantWizard() {
    * distance du pointeur au centre, doublee. Pas besoin de savoir quel coin a
    * ete saisi — les quatre donnent le meme geste.
    */
+  /** Recadrage courant : celui de la sequence affichee, sinon le global. */
+  const currentTransform = useCallback((): PosterTransform => {
+    const cle = seqBgKeyForFocus(previewFocusRef.current);
+    const propre = cle ? seqBackgroundsRef.current[cle] : undefined;
+    return propre?.transform ?? posterTransformRef.current;
+  }, []);
+
+  /** Ecrit un recadrage la ou il doit aller. */
+  const applyTransform = useCallback((maj: (t: PosterTransform) => PosterTransform) => {
+    const cle = seqBgKeyForFocus(previewFocusRef.current);
+    if (!cle || !seqBackgroundsRef.current[cle]) {
+      setPosterTransform((prev) => maj(prev));
+      return;
+    }
+    setSeqBackgrounds((prev) => {
+      const propre = prev[cle];
+      if (!propre) return prev;
+      return { ...prev, [cle]: { ...propre, transform: maj(propre.transform) } };
+    });
+  }, []);
+
   /** Glisser la photo : repositionne la zone visible. */
   const startPosterPan = useCallback((e: React.PointerEvent) => {
     if (e.button !== 0 || !e.isPrimary) return;
@@ -2646,7 +2751,7 @@ export default function AssistantWizard() {
     const rect = previewRef.current?.getBoundingClientRect();
     if (!rect || rect.width <= 0) return;
     if (dragRef.current) return;
-    const t = posterTransformRef.current;
+    const t = currentTransform();
     dragRef.current = {
       el: 'poster-pan',
       pointerId: e.pointerId,
@@ -2671,7 +2776,7 @@ export default function AssistantWizard() {
     const rect = previewRef.current?.getBoundingClientRect();
     if (!rect || rect.width <= 0) return;
     if (dragRef.current) return;
-    const t = posterTransformRef.current;
+    const t = currentTransform();
     // Distance au centre au moment de la prise : le zoom suivra son evolution,
     // ce qui evite un saut des le premier pixel.
     const dx = e.clientX - (rect.left + rect.width / 2);
@@ -2800,7 +2905,7 @@ export default function AssistantWizard() {
       // Deplacement RELATIF au point de prise, en fraction du plateau.
       const dx = (e.clientX - (drag.startX ?? e.clientX)) / rect.width;
       const dy = (e.clientY - (drag.startY ?? e.clientY)) / rect.height;
-      setPosterTransform((prev) =>
+      applyTransform((prev) =>
         clampPosterTransform({ ...prev, offsetX: drag.grab.x + dx, offsetY: drag.grab.y + dy }),
       );
       return;
@@ -2812,7 +2917,7 @@ export default function AssistantWizard() {
       // Le zoom suit le RAPPORT des distances : eloigner le coin agrandit,
       // le rapprocher retrecit, sans saut a la prise.
       const facteur = distance / (drag.startX || 1);
-      setPosterTransform((prev) => clampPosterTransform({ ...prev, scale: drag.grab.x * facteur }));
+      applyTransform((prev) => clampPosterTransform({ ...prev, scale: drag.grab.x * facteur }));
       return;
     }
     if (drag.el === 'element-resize') {
@@ -3113,6 +3218,7 @@ export default function AssistantWizard() {
     elements: freeElements.length ? freeElements : undefined,
     posterUrl: posterUrl ?? undefined,
     posterTransform: posterTransformActive(posterTransform) ? posterTransform : undefined,
+    seqBackgrounds: Object.keys(seqBackgrounds).length ? seqBackgrounds : undefined,
     imageSource,
     batchCount,
     batchPhotoUrls: batchPhotoUrls.length ? batchPhotoUrls : undefined,
@@ -3123,7 +3229,7 @@ export default function AssistantWizard() {
     sequences, introDuration, cardsDuration, videoDuration, ctaDuration,
     generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
     voiceVolume, rushUrl, rushName, rushIsClip, scheduledDate,
-    titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, posterTransform, imageSource, batchCount, batchPhotoUrls, batchPhotoMode,
+    titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, posterTransform, seqBackgrounds, imageSource, batchCount, batchPhotoUrls, batchPhotoMode,
   ]);
 
   /** La derniere version connue, pour ecrire sans attendre un rendu. */
@@ -3202,6 +3308,7 @@ export default function AssistantWizard() {
     if (draft.elements) setFreeElements(draft.elements);
     if (draft.posterUrl) setPosterUrl(draft.posterUrl);
     if (draft.posterTransform) setPosterTransform(clampPosterTransform(draft.posterTransform));
+    if (draft.seqBackgrounds) setSeqBackgrounds(draft.seqBackgrounds as SeqBackgrounds);
     if (draft.imageSource) setImageSource(draft.imageSource);
     if (draft.batchCount) setBatchCount(draft.batchCount);
     if (draft.batchPhotoUrls) setBatchPhotoUrls(draft.batchPhotoUrls);
@@ -3832,6 +3939,20 @@ export default function AssistantWizard() {
           // sequences (`posterOnAllSequences` absent vaut « partout »), avec le
           // voile de degrade par-dessus — exactement ce que montre l'apercu.
           posterUrl: affiche,
+          // Recadrage de l'affiche — le compositeur la pre-recadre une fois.
+          posterTransform,
+          // Fonds par sequence : le compositeur les substitue a l'affiche pour
+          // la sequence concernee, recadrage compris. `undefined` tant
+          // qu'aucune n'a le sien — le compositeur se comporte alors comme
+          // avant, a la ligne pres.
+          sequenceBackgrounds: Object.keys(seqBackgrounds).length
+            ? {
+                titre: seqBackgrounds.titre ? { url: seqBackgrounds.titre.url, opacity: 1, transform: seqBackgrounds.titre.transform } : null,
+                cartes: seqBackgrounds.cartes ? { url: seqBackgrounds.cartes.url, opacity: 1, transform: seqBackgrounds.cartes.transform } : null,
+                video: seqBackgrounds.video ? { url: seqBackgrounds.video.url, opacity: 1, transform: seqBackgrounds.video.transform } : null,
+                cta: seqBackgrounds.cta ? { url: seqBackgrounds.cta.url, opacity: 1, transform: seqBackgrounds.cta.transform } : null,
+              }
+            : undefined,
           design: {
             cardStyle: CARD_STYLE,
             // Sans ce champ : titre et CTA en Helvetica, cartes en Inter.
@@ -4084,6 +4205,7 @@ export default function AssistantWizard() {
     setPosterUrl(null);
     setPosterPhotos([]);
     setPosterTransform(POSTER_TRANSFORM_NEUTRAL);
+    setSeqBackgrounds({});
     setCropping(false);
     setBatchCount(1);
     setBatchPhotoUrls([]);
@@ -4622,6 +4744,12 @@ export default function AssistantWizard() {
                                     assignerAffiche(slotCible, photo.url);
                                     return;
                                   }
+                                  // Onglet d'une sequence : la photo devient
+                                  // SON fond, pas l'affiche globale.
+                                  if (seqCible) {
+                                    applyPhoto(photo.url);
+                                    return;
+                                  }
                                   if (batchCount > 1 && batchPhotoMode === 'manuel') {
                                     // Lot : on retient plusieurs affiches, dans
                                     // l'ordre des clics. Au-dela du nombre de
@@ -4639,6 +4767,8 @@ export default function AssistantWizard() {
                                   setPosterUrl(retenue ? null : photo.url);
                                 }}
                                 data-poster-photo={photo.url}
+                                draggable
+                                onDragStart={(e) => e.dataTransfer.setData('text/uri-list', photo.url)}
                                 title={photo.photographer ? `Photo : ${photo.photographer}` : 'Choisir cette photo'}
                                 className={`relative overflow-hidden rounded-lg border transition-colors ${
                                   retenue ? 'border-purple-500' : 'border-gray-800 hover:border-gray-600'
@@ -4712,7 +4842,7 @@ export default function AssistantWizard() {
                               source: 'upload',
                             };
                             setPosterPhotos((prev) => [perso, ...prev]);
-                            setPosterUrl(envoye.url);
+                            applyPhoto(envoye.url);
                             if (envoye.dataUrl) {
                               setPhotosError(
                                 'Photo utilisée localement : l’envoi au stockage a échoué, elle ne survivra pas au rechargement.',
@@ -4725,7 +4855,61 @@ export default function AssistantWizard() {
                       />
                     </label>
 
-                    {posterUrl && (
+                    {/* Recapitulatif : qui a son fond, qui herite. */}
+                    <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-3 space-y-1.5">
+                      <p className="text-[11px] uppercase tracking-wide text-gray-500">
+                        Fond par séquence
+                      </p>
+                      {([
+                        { cle: 'titre', label: 'Titre', focus: 'intro' },
+                        { cle: 'cartes', label: 'Cartes', focus: 'cards' },
+                        { cle: 'video', label: 'Vidéo', focus: 'video' },
+                        { cle: 'cta', label: 'CTA', focus: 'cta' },
+                      ] as const).map((seq) => {
+                        const propre = seqBackgrounds[seq.cle];
+                        return (
+                          <div key={seq.cle} className="flex items-center gap-2" data-seq-bg={seq.cle}>
+                            <button
+                              type="button"
+                              onClick={() => setPreviewFocus(seq.focus)}
+                              data-seq-bg-focus={seq.cle}
+                              className={`w-16 text-left text-xs transition-colors ${
+                                previewFocus === seq.focus ? 'text-white' : 'text-gray-400 hover:text-white'
+                              }`}
+                            >
+                              {seq.label}
+                            </button>
+                            {propre ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={propre.url} alt="" className="h-7 w-7 rounded object-cover" />
+                            ) : (
+                              <span className="h-7 w-7 rounded border border-dashed border-gray-700" />
+                            )}
+                            <span className="flex-1 truncate text-[11px] text-gray-500">
+                              {propre ? 'Fond propre' : 'Hérite de l’affiche'}
+                            </span>
+                            {propre && (
+                              <button
+                                type="button"
+                                onClick={() => resetSeqBackground(seq.cle)}
+                                data-seq-bg-reset={seq.cle}
+                                title="Rendre cette séquence à l’affiche globale"
+                                className="rounded-lg border border-gray-800 px-2 py-1 text-[11px] text-gray-400 hover:text-white hover:border-gray-700 transition-colors"
+                              >
+                                Réinitialiser
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                      <p className="text-[11px] text-gray-600">
+                        {seqCible
+                          ? `Les photos choisies s’appliquent à la séquence « ${previewFocus === 'intro' ? 'Titre' : previewFocus === 'cards' ? 'Cartes' : previewFocus === 'video' ? 'Vidéo' : 'CTA'} ». Glissez-en une dans l’aperçu.`
+                          : 'Onglet « Tout » : les photos choisies deviennent l’affiche globale.'}
+                      </p>
+                    </div>
+
+                    {fondAffiche.url && (
                       <button
                         type="button"
                         onClick={() => setCropping((v) => !v)}
@@ -4743,11 +4927,11 @@ export default function AssistantWizard() {
                     {cropping && (
                       <p className="text-xs text-gray-500">
                         Glissez la photo pour la repositionner, tirez un coin pour zoomer.
-                        {posterTransform.scale > 1 && ` Zoom ${posterTransform.scale.toFixed(1)}×.`}
+                        {fondAffiche.transform.scale > 1 && ` Zoom ${fondAffiche.transform.scale.toFixed(1)}×.`}
                         {' '}
                         <button
                           type="button"
-                          onClick={() => setPosterTransform(POSTER_TRANSFORM_NEUTRAL)}
+                          onClick={() => applyTransform(() => POSTER_TRANSFORM_NEUTRAL)}
                           data-poster-crop-reset
                           className="underline underline-offset-2 hover:text-white transition-colors"
                         >
@@ -5616,11 +5800,12 @@ export default function AssistantWizard() {
           selectedCards={selectedCards}
           onClearSelection={clearSelection}
           groupedCards={groupedByCard}
-          posterUrl={posterUrl}
-          posterTransform={posterTransform}
+          posterUrl={fondAffiche.url}
+          posterTransform={fondAffiche.transform}
           cropping={cropping}
           onPosterPanStart={startPosterPan}
           onPosterZoomStart={startPosterZoom}
+          onPhotoDrop={applyPhoto}
           elements={freeElements}
           selectedElementId={selectedElementId}
           onElementDragStart={startElementDrag}

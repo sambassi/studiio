@@ -362,6 +362,18 @@ export interface SequenceBackgroundConfig {
    *  permettre le recadrage même quand l'image et le container ont le
    *  même ratio. Défaut 1.0. */
   zoom?: number;
+  /**
+   * Recadrage au format de l'affiche — `{ scale, offsetX, offsetY }`, les
+   * decalages en fraction de la composition.
+   *
+   * Deuxieme convention a cote d'`objectPosition`/`zoom`, et c'est deliberé :
+   * le Mode simple recadre a la souris, ce qui produit naturellement un centre
+   * deplace, et convertir en `objectPosition` demanderait les dimensions
+   * NATURELLES de l'image — inconnues de l'ecran au moment de l'envoi. La
+   * meme fonction (`cropPosterToComposition`) sert donc a l'affiche globale et
+   * aux fonds par sequence, ce qui garantit qu'apercu et video s'accordent.
+   */
+  transform?: { scale?: number; offsetX?: number; offsetY?: number };
 }
 
 export type SequenceBackgrounds = {
@@ -3301,10 +3313,16 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       seqKeys.map(async (k) => {
         const url = sequenceBackgrounds[k]?.url;
         if (url) {
-          seqBgImages[k] = await loadImage(url).catch((err) => {
+          const charge = await loadImage(url).catch((err) => {
             console.warn(`[Composer] seq bg ${k} load failed:`, err.message);
             return null;
           });
+          // Meme pre-recadrage que l'affiche globale : le resultat est deja
+          // aux dimensions de la composition, les dessins « cover » qui
+          // suivent retombent sur un blit 1:1.
+          seqBgImages[k] = cropPosterToComposition(
+            charge, width, height, sequenceBackgrounds[k]?.transform,
+          ) as HTMLImageElement | null;
         }
       }),
     );
