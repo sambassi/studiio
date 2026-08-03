@@ -113,6 +113,14 @@ export interface Draft {
   posterUrl?: string;
   /** Recadrage de l'affiche. Absent = cadrage « cover » centre. */
   posterTransform?: { scale: number; offsetX: number; offsetY: number };
+  /**
+   * Fonds propres a une sequence. Absent = chaque sequence herite de
+   * l'affiche globale, le comportement de tous les brouillons anterieurs.
+   */
+  seqBackgrounds?: Partial<Record<'titre' | 'cartes' | 'video' | 'cta', {
+    url: string;
+    transform: { scale: number; offsetX: number; offsetY: number };
+  }>>;
   /** Source de recherche preferee. */
   imageSource?: 'pexels' | 'unsplash';
   /** Nombre de montages du lot. Absent ou 1 = un seul montage, comme avant. */
@@ -476,6 +484,31 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
     && typeof rt.offsetY === 'number' && Number.isFinite(rt.offsetY) && Math.abs(rt.offsetY) <= 1
       ? { scale: rt.scale, offsetX: rt.offsetX, offsetY: rt.offsetY }
       : undefined;
+  // Fonds par sequence : chaque entree est validee SEPAREMENT — elles sont
+  // independantes, et en perdre une vaut mieux que de toutes les perdre.
+  const bruts = raw.seqBackgrounds;
+  if (isObj(bruts)) {
+    const retenus: NonNullable<Draft['seqBackgrounds']> = {};
+    for (const cle of ['titre', 'cartes', 'video', 'cta'] as const) {
+      const b = bruts[cle];
+      if (!isObj(b) || typeof b.url !== 'string' || !/^https?:\/\//.test(b.url)) continue;
+      const t = b.transform;
+      const valide =
+        isObj(t)
+        && typeof t.scale === 'number' && Number.isFinite(t.scale) && t.scale >= 1 && t.scale <= 3
+        && typeof t.offsetX === 'number' && Number.isFinite(t.offsetX) && Math.abs(t.offsetX) <= 1
+        && typeof t.offsetY === 'number' && Number.isFinite(t.offsetY) && Math.abs(t.offsetY) <= 1;
+      retenus[cle] = {
+        url: b.url,
+        // Un recadrage abime n'annule pas le fond : on retombe sur le cadrage
+        // neutre, qui reste juste.
+        transform: valide
+          ? { scale: t.scale as number, offsetX: t.offsetX as number, offsetY: t.offsetY as number }
+          : { scale: 1, offsetX: 0, offsetY: 0 },
+      };
+    }
+    out.seqBackgrounds = Object.keys(retenus).length ? retenus : undefined;
+  }
   out.imageSource = raw.imageSource === 'unsplash' ? 'unsplash' : raw.imageSource === 'pexels' ? 'pexels' : undefined;
   // Un lot relu hors bornes debiterait des credits que l'ecran n'a jamais
   // proposes : on le ramene dans la plage, ou on l'oublie.

@@ -187,7 +187,8 @@ describe('Ma photo', () => {
 
   it('la photo envoyée rejoint la grille et devient la sélection', () => {
     expect(wizard).toContain('setPosterPhotos((prev) => [perso, ...prev]);');
-    expect(wizard).toContain('setPosterUrl(envoye.url);');
+    // `applyPhoto` vise la séquence affichée, ou l'affiche globale sur « Tout ».
+    expect(wizard).toContain('applyPhoto(envoye.url);');
   });
 });
 
