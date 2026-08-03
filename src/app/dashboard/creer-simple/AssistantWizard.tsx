@@ -33,10 +33,11 @@ import {
   ImageDown,
   ImagePlus,
   Upload,
+  Crop,
   X,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
-import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
+import { composeAndUpload, CURRENT_COMPOSER_VERSION, posterTransformActive } from '@/lib/video-composer';
 import { AudioStudioPanel } from '@/components/creer/AudioStudioPanel';
 import type { AudioKeyframe } from '@/lib/creer/audioDucking';
 import { pointToPct, grabOffset, clampToBox, type Pos, type CardBox, boxesFromRects, samePos } from '@/lib/creer/dragPosition';
@@ -788,6 +789,35 @@ function StyleSection({
  * conteneur qui est photographie puis blitte dans la video. Un element pose
  * ailleurs serait visible a l'apercu et absent du montage.
  */
+/**
+ * Recadrage de l'affiche.
+ *
+ * `scale` >= 1 (sous 1 le cadrage « cover » laisserait une bande vide),
+ * `offsetX`/`offsetY` en FRACTION du plateau — la meme convention que le
+ * compositeur, pour que l'apercu et la video montrent le meme cadrage.
+ */
+export interface PosterTransform {
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+/** Sans recadrage : le « cover » centre d'aujourd'hui. */
+export const POSTER_TRANSFORM_NEUTRAL: PosterTransform = { scale: 1, offsetX: 0, offsetY: 0 };
+
+/** Bornes du zoom d'affiche. */
+export const POSTER_ZOOM_MIN = 1;
+export const POSTER_ZOOM_MAX = 3;
+
+export function clampPosterTransform(t: Partial<PosterTransform> | undefined): PosterTransform {
+  const scale = Math.min(POSTER_ZOOM_MAX, Math.max(POSTER_ZOOM_MIN, Number(t?.scale) || 1));
+  // Le decalage utile est borne par ce que le zoom laisse depasser : au-dela,
+  // on tirerait l'image hors du cadre et une bande vide apparaitrait.
+  const marge = (scale - 1) / 2;
+  const borne = (v: number) => Math.min(marge, Math.max(-marge, Number.isFinite(v) ? v : 0));
+  return { scale, offsetX: borne(Number(t?.offsetX) || 0), offsetY: borne(Number(t?.offsetY) || 0) };
+}
+
 export interface FreeElement {
   id: string;
   iconName: string;
@@ -866,6 +896,10 @@ export function Preview({
   onClearSelection,
   groupedCards,
   posterUrl = null,
+  posterTransform,
+  cropping = false,
+  onPosterPanStart,
+  onPosterZoomStart,
   elements,
   selectedElementId = null,
   onElementDragStart,
@@ -966,6 +1000,12 @@ export function Preview({
    * Absente — le cas de tous les montages existants — le fond ne change pas.
    */
   posterUrl?: string | null;
+  /** Recadrage de l'affiche — zoom et decalages en fraction du plateau. */
+  posterTransform?: PosterTransform;
+  /** Mode recadrage actif : poignees visibles, fond saisissable. */
+  cropping?: boolean;
+  onPosterPanStart?: (e: React.PointerEvent) => void;
+  onPosterZoomStart?: (e: React.PointerEvent) => void;
   elements?: FreeElement[];
   selectedElementId?: string | null;
   onElementDragStart?: (id: string, e: React.PointerEvent) => void;
@@ -1164,16 +1204,116 @@ export function Preview({
           // VOILE du degrade — c'est ce que fait `drawIntro` (photo, puis
           // `paintSeqGradient`). Y laisser le degrade plein cacherait la photo
           // a l'ecran alors que la video la montrerait.
+          // Avec une affiche, le fond du plateau reste sombre : la photo et le
+          // voile sont deux CALQUES distincts (voir juste apres). C'est ce qui
+          // permet de recadrer la photo sans toucher au voile, et de refleter
+          // exactement ce que fait le compositeur — photo, puis degrade.
           background: !generated
             ? DARK
             : posterUrl
-              ? `${backdropVeilCSS(gradStart, gradEnd, gradientOpacity)}, url("${posterUrl}") center / cover no-repeat`
+              ? DARK
               : backdropCSS(format, gradStart, gradEnd, gradientOpacity),
           // `var(--font-inter)` est la SEULE reference valide : Next charge la
           // police via next/font, il n'existe aucune @font-face nommee 'Inter'.
           fontFamily: 'var(--font-inter), Inter, sans-serif',
         }}
       >
+        {/* ── AFFICHE ─────────────────────────────────────────────────
+            Deux calques : la photo, puis le voile du degrade. Le compositeur
+            peint dans cet ordre ; l'apercu doit dire la meme chose.
+
+            `transform` reproduit le recadrage : `translate` en % de la propre
+            largeur du calque — donc du plateau — puis `scale`, exactement le
+            `cx = w/2 + offX*w` du compositeur. */}
+        {generated && posterUrl && (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={posterUrl}
+              alt=""
+              data-poster-layer
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                transform: `translate(${(posterTransform?.offsetX ?? 0) * 100}%, ${(posterTransform?.offsetY ?? 0) * 100}%) scale(${posterTransform?.scale ?? 1})`,
+                transformOrigin: 'center',
+                // Toujours inerte : c'est la surface de recadrage ci-dessous
+                // qui capte le glissement. La photo est SOUS le titre et les
+                // cartes — un clic au centre du plateau les atteindrait avant
+                // elle, et le deplacement ne partirait jamais.
+                pointerEvents: 'none',
+              }}
+            />
+            <div
+              aria-hidden
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background: backdropVeilCSS(gradStart, gradEnd, gradientOpacity),
+                pointerEvents: 'none',
+              }}
+            />
+            {/* Surface de saisie du recadrage — au-dessus de tout le contenu,
+                sous les poignees. Sans elle, glisser au centre du plateau
+                attraperait le conteneur des cartes. */}
+            {cropping && !capturing && onPosterPanStart && (
+              <div
+                data-poster-pan
+                onPointerDown={onPosterPanStart}
+                onPointerMove={onDragMove}
+                onPointerUp={onDragEnd}
+                onPointerCancel={onDragEnd}
+                onLostPointerCapture={onDragEnd}
+                title="Glisser pour repositionner la photo"
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  cursor: 'grab',
+                  touchAction: 'none',
+                  zIndex: 5,
+                }}
+              />
+            )}
+            {/* Poignees de recadrage — memes gestes que celles d'un element. */}
+            {cropping && !capturing && onPosterZoomStart
+              && ([
+                { coin: 'nw', top: 0, left: 0 },
+                { coin: 'ne', top: 0, left: '100%' },
+                { coin: 'sw', top: '100%', left: 0 },
+                { coin: 'se', top: '100%', left: '100%' },
+              ] as const).map((p) => (
+                <span
+                  key={p.coin}
+                  data-poster-handle={p.coin}
+                  onPointerDown={(e) => { e.stopPropagation(); onPosterZoomStart(e); }}
+                  onPointerMove={onDragMove}
+                  onPointerUp={onDragEnd}
+                  onPointerCancel={onDragEnd}
+                  onLostPointerCapture={onDragEnd}
+                  title="Tirer pour zoomer"
+                  style={{
+                    position: 'absolute',
+                    top: p.top,
+                    left: p.left,
+                    width: uiPx(11),
+                    height: uiPx(11),
+                    marginTop: -uiPx(5.5),
+                    marginLeft: -uiPx(5.5),
+                    backgroundColor: '#FFFFFF',
+                    border: `${uiPx(1)}px solid rgba(0,0,0,0.5)`,
+                    borderRadius: uiPx(2),
+                    cursor: p.coin === 'nw' || p.coin === 'se' ? 'nwse-resize' : 'nesw-resize',
+                    touchAction: 'none',
+                    zIndex: 6,
+                  }}
+                />
+              ))}
+          </>
+        )}
+
         {/* ── Rush de la sequence « Video » ─────────────────────────────
             `object-fit: cover` est l'exact equivalent CSS du cadrage du
             compositeur : `drawVideoSeq` calcule `max(w/srcW, h/srcH)` et
@@ -1955,7 +2095,7 @@ export default function AssistantWizard() {
   const [ctaPos, setCtaPos] = useState<Pos>(DESIGN.ctaPos);
   /** Element en cours de glissement, et ecart de saisie fige au pointerdown. */
   const dragRef = useRef<{
-    el: 'title' | 'cta' | 'card' | 'element' | 'element-resize';
+    el: 'title' | 'cta' | 'card' | 'element' | 'element-resize' | 'poster-pan' | 'poster-zoom';
     /** Carte glissee, quand `el === 'card'` — son repere est le conteneur. */
     cardId?: string;
     pointerId: number;
@@ -2054,6 +2194,11 @@ export default function AssistantWizard() {
   const [photosLoading, setPhotosLoading] = useState(false);
   const [photosError, setPhotosError] = useState<string | null>(null);
   const [posterUploading, setPosterUploading] = useState(false);
+  /** Recadrage de l'affiche. Neutre = le « cover » centre d'avant. */
+  const [posterTransform, setPosterTransform] = useState<PosterTransform>(POSTER_TRANSFORM_NEUTRAL);
+  const posterTransformRef = useRef<PosterTransform>(POSTER_TRANSFORM_NEUTRAL);
+  useEffect(() => { posterTransformRef.current = posterTransform; }, [posterTransform]);
+  const [cropping, setCropping] = useState(false);
   const posterPageRef = useRef(1);
   // Lu par `searchPhotos`, memoise sans dependances : la taille du lot decide
   // combien de photos ramener pour esperer en avoir assez de distinctes.
@@ -2078,6 +2223,16 @@ export default function AssistantWizard() {
   const [batchPhotoMode, setBatchPhotoMode] = useState<'auto' | 'manuel'>('auto');
   /** Emplacement en cours de remplacement, ou `null`. */
   const [slotCible, setSlotCible] = useState<number | null>(null);
+  // Un recadrage vaut pour UNE photo : le garder en changeant d'affiche
+  // rognerait la nouvelle sur des reperes qui n'ont plus de sens.
+  const posterUrlPrecedent = useRef<string | null>(null);
+  useEffect(() => {
+    if (posterUrlPrecedent.current !== null && posterUrlPrecedent.current !== posterUrl) {
+      setPosterTransform(POSTER_TRANSFORM_NEUTRAL);
+      setCropping(false);
+    }
+    posterUrlPrecedent.current = posterUrl;
+  }, [posterUrl]);
   /**
    * Instant de la derniere prise d'un element.
    *
@@ -2484,6 +2639,58 @@ export default function AssistantWizard() {
    * distance du pointeur au centre, doublee. Pas besoin de savoir quel coin a
    * ete saisi — les quatre donnent le meme geste.
    */
+  /** Glisser la photo : repositionne la zone visible. */
+  const startPosterPan = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0 || !e.isPrimary) return;
+    e.stopPropagation();
+    const rect = previewRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0) return;
+    if (dragRef.current) return;
+    const t = posterTransformRef.current;
+    dragRef.current = {
+      el: 'poster-pan',
+      pointerId: e.pointerId,
+      // On memorise le point de depart ET le decalage d'alors : le
+      // deplacement est RELATIF, sinon la photo sauterait au premier pixel.
+      startX: e.clientX,
+      startY: e.clientY,
+      grab: { x: t.offsetX, y: t.offsetY },
+      box: { width: 0, height: 0 },
+    };
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    } catch {
+      dragRef.current = null;
+    }
+  }, []);
+
+  /** Tirer un coin : zoome. */
+  const startPosterZoom = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0 || !e.isPrimary) return;
+    e.stopPropagation();
+    const rect = previewRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0) return;
+    if (dragRef.current) return;
+    const t = posterTransformRef.current;
+    // Distance au centre au moment de la prise : le zoom suivra son evolution,
+    // ce qui evite un saut des le premier pixel.
+    const dx = e.clientX - (rect.left + rect.width / 2);
+    const dy = e.clientY - (rect.top + rect.height / 2);
+    dragRef.current = {
+      el: 'poster-zoom',
+      pointerId: e.pointerId,
+      startX: Math.max(1, Math.hypot(dx, dy)),
+      startY: 0,
+      grab: { x: t.scale, y: 0 },
+      box: { width: 0, height: 0 },
+    };
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    } catch {
+      dragRef.current = null;
+    }
+  }, []);
+
   const startElementResize = useCallback((id: string, e: React.PointerEvent) => {
     e.stopPropagation();
     if (e.button !== 0 || !e.isPrimary) return;
@@ -2589,6 +2796,25 @@ export default function AssistantWizard() {
     // `pointermove` se declenche aussi au simple survol : sans bouton appuye,
     // il n'y a pas de glissement (garde-fou anti « element collant »).
     if (e.buttons === 0 && e.pointerType === 'mouse') return;
+    if (drag.el === 'poster-pan') {
+      // Deplacement RELATIF au point de prise, en fraction du plateau.
+      const dx = (e.clientX - (drag.startX ?? e.clientX)) / rect.width;
+      const dy = (e.clientY - (drag.startY ?? e.clientY)) / rect.height;
+      setPosterTransform((prev) =>
+        clampPosterTransform({ ...prev, offsetX: drag.grab.x + dx, offsetY: drag.grab.y + dy }),
+      );
+      return;
+    }
+    if (drag.el === 'poster-zoom') {
+      const dx = e.clientX - (rect.left + rect.width / 2);
+      const dy = e.clientY - (rect.top + rect.height / 2);
+      const distance = Math.max(1, Math.hypot(dx, dy));
+      // Le zoom suit le RAPPORT des distances : eloigner le coin agrandit,
+      // le rapprocher retrecit, sans saut a la prise.
+      const facteur = distance / (drag.startX || 1);
+      setPosterTransform((prev) => clampPosterTransform({ ...prev, scale: drag.grab.x * facteur }));
+      return;
+    }
     if (drag.el === 'element-resize') {
       const id = drag.cardId as string;
       const current = freeElementsRef.current.find((x) => x.id === id);
@@ -2886,6 +3112,7 @@ export default function AssistantWizard() {
     cardGroups: cardGroups.length ? cardGroups : undefined,
     elements: freeElements.length ? freeElements : undefined,
     posterUrl: posterUrl ?? undefined,
+    posterTransform: posterTransformActive(posterTransform) ? posterTransform : undefined,
     imageSource,
     batchCount,
     batchPhotoUrls: batchPhotoUrls.length ? batchPhotoUrls : undefined,
@@ -2896,7 +3123,7 @@ export default function AssistantWizard() {
     sequences, introDuration, cardsDuration, videoDuration, ctaDuration,
     generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
     voiceVolume, rushUrl, rushName, rushIsClip, scheduledDate,
-    titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, imageSource, batchCount, batchPhotoUrls, batchPhotoMode,
+    titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, posterTransform, imageSource, batchCount, batchPhotoUrls, batchPhotoMode,
   ]);
 
   /** La derniere version connue, pour ecrire sans attendre un rendu. */
@@ -2974,6 +3201,7 @@ export default function AssistantWizard() {
     if (draft.cardGroups) setCardGroups(draft.cardGroups);
     if (draft.elements) setFreeElements(draft.elements);
     if (draft.posterUrl) setPosterUrl(draft.posterUrl);
+    if (draft.posterTransform) setPosterTransform(clampPosterTransform(draft.posterTransform));
     if (draft.imageSource) setImageSource(draft.imageSource);
     if (draft.batchCount) setBatchCount(draft.batchCount);
     if (draft.batchPhotoUrls) setBatchPhotoUrls(draft.batchPhotoUrls);
@@ -3855,6 +4083,8 @@ export default function AssistantWizard() {
     setSelectedElementId(null);
     setPosterUrl(null);
     setPosterPhotos([]);
+    setPosterTransform(POSTER_TRANSFORM_NEUTRAL);
+    setCropping(false);
     setBatchCount(1);
     setBatchPhotoUrls([]);
     setBatchPhotoMode('auto');
@@ -4495,6 +4725,36 @@ export default function AssistantWizard() {
                       />
                     </label>
 
+                    {posterUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setCropping((v) => !v)}
+                        data-poster-crop
+                        className={`w-full flex items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+                          cropping
+                            ? 'border-purple-500 text-white'
+                            : 'border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
+                        }`}
+                      >
+                        <Crop className="w-3.5 h-3.5" />
+                        {cropping ? 'Terminer le recadrage' : 'Recadrer'}
+                      </button>
+                    )}
+                    {cropping && (
+                      <p className="text-xs text-gray-500">
+                        Glissez la photo pour la repositionner, tirez un coin pour zoomer.
+                        {posterTransform.scale > 1 && ` Zoom ${posterTransform.scale.toFixed(1)}×.`}
+                        {' '}
+                        <button
+                          type="button"
+                          onClick={() => setPosterTransform(POSTER_TRANSFORM_NEUTRAL)}
+                          data-poster-crop-reset
+                          className="underline underline-offset-2 hover:text-white transition-colors"
+                        >
+                          Rétablir le cadrage d’origine
+                        </button>
+                      </p>
+                    )}
                     {posterUrl && (
                       <button
                         type="button"
@@ -5357,6 +5617,10 @@ export default function AssistantWizard() {
           onClearSelection={clearSelection}
           groupedCards={groupedByCard}
           posterUrl={posterUrl}
+          posterTransform={posterTransform}
+          cropping={cropping}
+          onPosterPanStart={startPosterPan}
+          onPosterZoomStart={startPosterZoom}
           elements={freeElements}
           selectedElementId={selectedElementId}
           onElementDragStart={startElementDrag}

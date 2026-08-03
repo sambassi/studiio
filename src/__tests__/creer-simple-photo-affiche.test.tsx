@@ -76,28 +76,36 @@ describe('Default-safe : sans photo, le fond ne change pas', () => {
 });
 
 describe('Avec une photo, l aperçu montre ce que la vidéo montrera', () => {
-  it('la photo est le fond, en couverture', () => {
-    const { container } = render(<Preview {...props} posterUrl={PHOTO} />);
-    const fond = plateau(container).style.background;
-    expect(fond).toContain(PHOTO);
-    expect(fond).toContain('cover');
+  it('la photo est un CALQUE, en couverture', () => {
+    // Deux calques distincts — photo puis voile — au lieu d'un seul fond CSS :
+    // c'est ce qui permet de recadrer la photo sans toucher au voile.
+    render(<Preview {...props} posterUrl={PHOTO} />);
+    const photo = document.querySelector<HTMLImageElement>('[data-poster-layer]')!;
+    expect(photo).not.toBeNull();
+    expect(photo.getAttribute('src')).toBe(PHOTO);
+    expect(photo.style.objectFit).toBe('cover');
   });
 
-  it('le VOILE du dégradé reste par-dessus, mais pas le dégradé plein', () => {
-    // Deux couches dans `backdropCSS` : le voile haut/bas, puis le dégradé
-    // plein. Avec une photo, seule la première subsiste — c'est ce que peint
-    // le compositeur.
+  it('le VOILE du dégradé est un calque AU-DESSUS de la photo', () => {
     const { container } = render(<Preview {...props} posterUrl={PHOTO} />);
-    const fond = plateau(container).style.background;
-    expect(fond).toContain('rgba(0, 0, 0, 0) 40%');
-    // Une seule couche de dégradé, celle du voile.
-    expect(fond.match(/linear-gradient/g)).toHaveLength(1);
+    const photo = container.querySelector('[data-poster-layer]')!;
+    const voile = photo.nextElementSibling as HTMLElement;
+    expect(voile.style.background).toContain('linear-gradient');
+    // Une seule couche : le voile haut/bas, pas le dégradé plein.
+    expect(voile.style.background.match(/linear-gradient/g)).toHaveLength(1);
+    expect(voile.style.background).toContain('rgba(0, 0, 0, 0) 40%');
   });
 
-  it("le voile précède la photo : c'est l'ordre de peinture", () => {
+  it('le plateau lui-même ne peint plus de dégradé sous la photo', () => {
     const { container } = render(<Preview {...props} posterUrl={PHOTO} />);
-    const fond = plateau(container).style.background;
-    expect(fond.indexOf('linear-gradient')).toBeLessThan(fond.indexOf('url('));
+    expect(plateau(container).style.background).not.toContain('linear-gradient');
+  });
+
+  it("la photo n'intercepte pas les clics hors du mode recadrage", () => {
+    // Sinon elle volerait les prises du titre, des cartes et des éléments.
+    render(<Preview {...props} posterUrl={PHOTO} />);
+    const photo = document.querySelector<HTMLImageElement>('[data-poster-layer]')!;
+    expect(photo.style.pointerEvents).toBe('none');
   });
 });
 
