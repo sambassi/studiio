@@ -3,7 +3,8 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import {
   BATCH_ANGLES, MAX_BATCH, angleForIndex, clampBatchCount, batchCost,
-  photoForIndex, batchDates, batchTopic, variationNonce,
+  distinctPhotoForIndex, distinctUrls, autoAssignPhotos, batchPhotosReady, photosToFetch,
+  batchDates, batchTopic, variationNonce,
 } from '@/lib/creer/batch';
 import { sanitizeDraft, DRAFT_VERSION, type SanitizeDeps } from '@/lib/creer/draft';
 
@@ -90,22 +91,90 @@ describe('variationNonce', () => {
   });
 });
 
-describe('photoForIndex — les affiches tournent', () => {
+describe('distinctPhotoForIndex — plus de recyclage', () => {
   const urls = ['a.jpg', 'b.jpg'];
 
-  it('donne l affiche du rang', () => {
-    expect(photoForIndex(urls, 0)).toBe('a.jpg');
-    expect(photoForIndex(urls, 1)).toBe('b.jpg');
+  it("donne l'affiche de l'emplacement", () => {
+    expect(distinctPhotoForIndex(urls, 0)).toBe('a.jpg');
+    expect(distinctPhotoForIndex(urls, 1)).toBe('b.jpg');
   });
 
-  it('reprend depuis le début quand il en manque', () => {
-    // Mieux vaut réutiliser une affiche que livrer un montage sans.
-    expect(photoForIndex(urls, 2)).toBe('a.jpg');
-    expect(photoForIndex(urls, 3)).toBe('b.jpg');
+  it("au-delà de la liste : RIEN, surtout pas un doublon", () => {
+    // L'ancienne version bouclait : trois vidéos et deux affiches donnaient
+    // deux montages identiques — l'inverse de ce que le lot cherche.
+    expect(distinctPhotoForIndex(urls, 2)).toBeUndefined();
+    expect(distinctPhotoForIndex(urls, 3)).toBeUndefined();
+    expect(distinctPhotoForIndex(urls, -1)).toBeUndefined();
   });
 
-  it('sans affiche, rien — le fond dégradé s applique', () => {
-    expect(photoForIndex([], 0)).toBeUndefined();
+  it('sans affiche, rien', () => {
+    expect(distinctPhotoForIndex([], 0)).toBeUndefined();
+  });
+
+  it('un emplacement vide ne vaut pas une affiche', () => {
+    expect(distinctPhotoForIndex(['', 'b.jpg'], 0)).toBeUndefined();
+  });
+});
+
+describe('distinctUrls', () => {
+  it('dédoublonne en gardant l ordre', () => {
+    expect(distinctUrls(['a', 'b', 'a', 'c'])).toEqual(['a', 'b', 'c']);
+  });
+
+  it('écarte les valeurs vides', () => {
+    expect(distinctUrls(['a', '', null, undefined, 'b'])).toEqual(['a', 'b']);
+  });
+});
+
+describe('autoAssignPhotos — une affiche distincte par vidéo', () => {
+  it('prend les N premières distinctes', () => {
+    expect(autoAssignPhotos(['a', 'b', 'c', 'd'], 3)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('ignore les doublons des résultats', () => {
+    // Pexels et Unsplash proposent parfois le même cliché.
+    expect(autoAssignPhotos(['a', 'a', 'b', 'b', 'c'], 3)).toEqual(['a', 'b', 'c']);
+  });
+
+  it("rend MOINS que demandé plutôt que d'inventer un doublon", () => {
+    expect(autoAssignPhotos(['a', 'b'], 4)).toEqual(['a', 'b']);
+  });
+
+  it('aucune candidate : liste vide', () => {
+    expect(autoAssignPhotos([], 3)).toEqual([]);
+  });
+});
+
+describe('batchPhotosReady — le garde-fou de l envoi', () => {
+  it('accepte une affiche par vidéo, toutes différentes', () => {
+    expect(batchPhotosReady(['a', 'b', 'c'], 3)).toBe(true);
+  });
+
+  it('refuse un lot incomplet', () => {
+    expect(batchPhotosReady(['a', 'b'], 3)).toBe(false);
+    expect(batchPhotosReady([], 3)).toBe(false);
+  });
+
+  it('refuse un doublon, même si le compte y est', () => {
+    expect(batchPhotosReady(['a', 'a', 'b'], 3)).toBe(false);
+  });
+
+  it('refuse un emplacement vide au milieu', () => {
+    expect(batchPhotosReady(['a', '', 'c'], 3)).toBe(false);
+  });
+
+  it("hors lot, il n'y a rien à garantir", () => {
+    // Une seule vidéo : la photo unique suffit, y compris aucune.
+    expect(batchPhotosReady([], 1)).toBe(true);
+  });
+});
+
+describe('photosToFetch — en demander assez pour couvrir le lot', () => {
+  it('le double du lot, au moins six', () => {
+    expect(photosToFetch(1)).toBe(6);
+    expect(photosToFetch(3)).toBe(6);
+    expect(photosToFetch(5)).toBe(10);
+    expect(photosToFetch(10)).toBe(20);
   });
 });
 
@@ -165,7 +234,7 @@ describe('Câblage du lot', () => {
 
   it('chaque montage reçoit sa date et son affiche', () => {
     expect(wizard).toContain('scheduled_date: dates[b],');
-    expect(wizard).toContain('const affiche = photoForIndex(batchPhotoUrls, b) ?? posterUrl ?? undefined;');
+    expect(wizard).toContain('? distinctPhotoForIndex(batchPhotoUrls, b)');
     expect(wizard).toContain('posterUrl: affiche,');
   });
 
@@ -243,5 +312,41 @@ describe('Persistance du lot', () => {
     const reset = wizard.slice(wizard.indexOf('const reset = ()'), wizard.indexOf('const reset = ()') + 1300);
     expect(reset).toContain('setBatchCount(1)');
     expect(reset).toContain('setBatchPhotoUrls([])');
+  });
+});
+
+describe('Attribution des affiches — auto ou manuel', () => {
+  it('le mode par défaut est automatique', () => {
+    // C'est l'intérêt du lot : N publications différentes sans rien cocher.
+    expect(wizard).toContain("useState<'auto' | 'manuel'>('auto')");
+  });
+
+  it("l'attribution auto se rejoue quand les résultats ou le lot changent", () => {
+    expect(wizard).toContain('setBatchPhotoUrls(autoAssignPhotos(posterPhotos.map((p) => p.url), batchCount));');
+    expect(wizard).toContain('}, [batchPhotoMode, batchCount, posterPhotos]);');
+  });
+
+  it("l'envoi est bloqué quand une vidéo n'a pas son affiche", () => {
+    expect(wizard).toContain('if (total > 1 && !batchPhotosReady(batchPhotoUrls, total)) {');
+    expect(wizard).toContain('ou repassez en mode automatique.');
+  });
+
+  it("remplacer une affiche déjà posée ailleurs ÉCHANGE au lieu de dupliquer", () => {
+    expect(wizard).toContain('const ailleurs = next.findIndex((u, i) => u === url && i !== slot);');
+    expect(wizard).toContain('if (ailleurs >= 0) next[ailleurs] = next[slot] ?? \'\';');
+  });
+
+  it('la recherche ramène de quoi couvrir le lot', () => {
+    expect(wizard).toContain('Math.max(POSTER_COUNT, photosToFetch(batchCountRef.current))');
+  });
+
+  it('le manque de photos distinctes est dit, pas contourné', () => {
+    expect(wizard).toContain('Pas assez de photos distinctes');
+  });
+
+  it('le mode est enregistré dans le brouillon', () => {
+    expect(lire({ batchPhotoMode: 'manuel' }).batchPhotoMode).toBe('manuel');
+    expect(lire({ batchPhotoMode: 'nawak' }).batchPhotoMode).toBeUndefined();
+    expect(lire({}).batchPhotoMode).toBeUndefined();
   });
 });

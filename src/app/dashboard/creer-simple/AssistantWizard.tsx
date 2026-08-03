@@ -51,7 +51,8 @@ import { ICON_LIBRARY, iconMatches } from '@/lib/icons/library';
 import ColorWheel from '@/components/ui/ColorWheel';
 import { uploadPosterFile } from '@/lib/creer/posterUpload';
 import {
-  MAX_BATCH, clampBatchCount, batchCost, photoForIndex, batchDates, batchTopic, variationNonce,
+  MAX_BATCH, clampBatchCount, batchCost, distinctPhotoForIndex, distinctUrls,
+  autoAssignPhotos, batchPhotosReady, photosToFetch, batchDates, batchTopic, variationNonce,
 } from '@/lib/creer/batch';
 // Catalogue de polices — LA source unique, partagee avec le compositeur.
 // Deux listes finiraient par diverger, et la video ne ressemblerait plus a
@@ -1995,13 +1996,29 @@ export default function AssistantWizard() {
   const [photosError, setPhotosError] = useState<string | null>(null);
   const [posterUploading, setPosterUploading] = useState(false);
   const posterPageRef = useRef(1);
+  // Lu par `searchPhotos`, memoise sans dependances : la taille du lot decide
+  // combien de photos ramener pour esperer en avoir assez de distinctes.
+  const batchCountRef = useRef(1);
 
   // ── Lot ────────────────────────────────────────────────────────────────
   // `1` par defaut : un lot d'une video, c'est le parcours d'avant, a
   // l'identique — pas de variation IA, pas de date decalee, un seul post.
   const [batchCount, setBatchCount] = useState(1);
-  /** URL des affiches retenues pour le lot, dans l'ordre de selection. */
+  /**
+   * Une affiche par video du lot, a l'indice de la video.
+   *
+   * Dans les DEUX modes : « auto » remplit cette liste, « manuel » la fait
+   * remplir par l'utilisateur, et chaque emplacement reste modifiable
+   * individuellement.
+   */
   const [batchPhotoUrls, setBatchPhotoUrls] = useState<string[]>([]);
+  /**
+   * Comment les affiches du lot sont attribuees. « auto » par defaut : c'est
+   * l'interet du lot — obtenir N publications differentes sans rien cocher.
+   */
+  const [batchPhotoMode, setBatchPhotoMode] = useState<'auto' | 'manuel'>('auto');
+  /** Emplacement en cours de remplacement, ou `null`. */
+  const [slotCible, setSlotCible] = useState<number | null>(null);
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [elementPickerOpen, setElementPickerOpen] = useState(false);
   const [elementQuery, setElementQuery] = useState('');
@@ -2030,7 +2047,7 @@ export default function AssistantWizard() {
     posterPageRef.current = page;
     const appel = async (p: number) => {
       const res = await fetch(
-        `/api/pexels?query=${encodeURIComponent(q)}&count=${POSTER_COUNT}&page=${p}&source=${source}`,
+        `/api/pexels?query=${encodeURIComponent(q)}&count=${Math.max(POSTER_COUNT, photosToFetch(batchCountRef.current))}&page=${p}&source=${source}`,
       );
       return res.json();
     };
@@ -2067,6 +2084,40 @@ export default function AssistantWizard() {
     setImageSource(source);
     searchPhotos(photoQuery.trim() || currentTopic, source);
   }, [photoQuery, currentTopic, searchPhotos]);
+
+  useEffect(() => { batchCountRef.current = batchCount; }, [batchCount]);
+
+  /**
+   * Attribution automatique des affiches du lot.
+   *
+   * Relancee quand les resultats de recherche ou la taille du lot changent :
+   * une modification manuelle d'un emplacement tient donc jusqu'a la
+   * prochaine recherche, ce qui est la lecture la plus previsible.
+   */
+  useEffect(() => {
+    if (batchPhotoMode !== 'auto' || batchCount < 2) return;
+    setBatchPhotoUrls(autoAssignPhotos(posterPhotos.map((p) => p.url), batchCount));
+  }, [batchPhotoMode, batchCount, posterPhotos]);
+
+  /** Affiches distinctes disponibles — ce qui borne l'attribution auto. */
+  const affichesDisponibles = distinctUrls(posterPhotos.map((p) => p.url)).length;
+
+  /** Le lot peut-il partir ? Une affiche par video, toutes differentes. */
+  const affichesCompletes = batchPhotosReady(batchPhotoUrls, batchCount);
+
+  /** Pose une affiche sur un emplacement precis, sans creer de doublon. */
+  const assignerAffiche = useCallback((slot: number, url: string) => {
+    setBatchPhotoUrls((prev) => {
+      const next = [...prev];
+      // Deja posee ailleurs : on echange les deux emplacements plutot que de
+      // laisser deux videos avec la meme affiche.
+      const ailleurs = next.findIndex((u, i) => u === url && i !== slot);
+      if (ailleurs >= 0) next[ailleurs] = next[slot] ?? '';
+      next[slot] = url;
+      return next;
+    });
+    setSlotCible(null);
+  }, []);
 
   const addElement = useCallback((iconName: string) => {
     const id = newElementId();
@@ -2695,13 +2746,14 @@ export default function AssistantWizard() {
     imageSource,
     batchCount,
     batchPhotoUrls: batchPhotoUrls.length ? batchPhotoUrls : undefined,
+    batchPhotoMode,
   }), [
     started, step, themeId, customTopic, toneId, format, colors,
     titleStyle, subtitleStyle, ctaStyle, watermarkOverride, watermarkEnabled,
     sequences, introDuration, cardsDuration, videoDuration, ctaDuration,
     generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
     voiceVolume, rushUrl, rushName, rushIsClip, scheduledDate,
-    titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, imageSource, batchCount, batchPhotoUrls,
+    titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, imageSource, batchCount, batchPhotoUrls, batchPhotoMode,
   ]);
 
   /** La derniere version connue, pour ecrire sans attendre un rendu. */
@@ -2782,6 +2834,7 @@ export default function AssistantWizard() {
     if (draft.imageSource) setImageSource(draft.imageSource);
     if (draft.batchCount) setBatchCount(draft.batchCount);
     if (draft.batchPhotoUrls) setBatchPhotoUrls(draft.batchPhotoUrls);
+    if (draft.batchPhotoMode) setBatchPhotoMode(draft.batchPhotoMode);
     // Le contenu a ete regenere s'il vient du brouillon : la signature evite
     // qu'il soit remplace par un autre texte des la premiere navigation.
     if (draft.generated) genSigRef.current = `${draft.customTopic?.trim() || (THEMES.find((t) => t.id === draft.themeId) ?? THEMES[0]).topic}|${draft.toneId}`;
@@ -3190,6 +3243,16 @@ export default function AssistantWizard() {
     const cost = format === '16:9' ? COST.tv : COST.reel;
     // Le lot : combien de montages, et a quelles dates.
     const total = clampBatchCount(batchCount);
+    // Un lot incomplet livrerait deux montages a l'affiche identique — ce que
+    // le lot existe precisement pour eviter. On refuse plutot que de dupliquer
+    // en silence.
+    if (total > 1 && !batchPhotosReady(batchPhotoUrls, total)) {
+      setError(
+        `Choisissez autant de photos que de vidéos (${batchPhotoUrls.filter(Boolean).length} sur ${total}), ou repassez en mode automatique.`,
+      );
+      setSending(false);
+      return;
+    }
     const coutTotal = batchCost(cost, total);
     const baseDate = scheduledDate ? new Date(`${scheduledDate}T12:00:00`) : new Date();
     const dates = batchDates(Number.isNaN(baseDate.getTime()) ? new Date() : baseDate, total);
@@ -3233,7 +3296,11 @@ export default function AssistantWizard() {
           // L'apercu EST la source de la photo des cartes : il doit porter le
           // contenu de cette iteration avant qu'on le photographie.
           if (contenu !== generated) flushSync(() => setGenerated(contenu));
-          const affiche = photoForIndex(batchPhotoUrls, b) ?? posterUrl ?? undefined;
+          // Plus de `% length` : l'affiche vient de l'emplacement de CETTE
+          // video. Hors lot, la photo unique fait office.
+          const affiche = total > 1
+            ? distinctPhotoForIndex(batchPhotoUrls, b)
+            : (posterUrl ?? undefined);
 
         // 2. Photo des cartes de l'aperçu (WYSIWYG). Le compositeur blitte cette
         //    image au lieu de redessiner les cartes lui-même — c'est ce qui rend
@@ -3647,6 +3714,8 @@ export default function AssistantWizard() {
     setPosterPhotos([]);
     setBatchCount(1);
     setBatchPhotoUrls([]);
+    setBatchPhotoMode('auto');
+    setSlotCible(null);
     setDuplicateNotice(null);
     setOpenSection('format');
     genSigRef.current = '';
@@ -4054,6 +4123,116 @@ export default function AssistantWizard() {
 
                     {photosError && <p className="text-xs text-gray-500">{photosError}</p>}
 
+                    {/* ── AFFICHES DU LOT ─────────────────────────────
+                        Une par video, toutes differentes. */}
+                    {batchCount > 1 && (
+                      <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-3 space-y-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] uppercase tracking-wide text-gray-500 flex-1">
+                            Affiches du lot
+                          </span>
+                          {(['auto', 'manuel'] as const).map((m) => (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => setBatchPhotoMode(m)}
+                              data-batch-photo-mode={m}
+                              className={`rounded-lg border px-2.5 py-1 text-xs capitalize transition-colors ${
+                                batchPhotoMode === m
+                                  ? 'border-purple-500 text-white'
+                                  : 'border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
+                              }`}
+                            >
+                              {m === 'auto' ? 'Auto' : 'Manuel'}
+                            </button>
+                          ))}
+                        </div>
+
+                        {batchPhotoMode === 'auto' && affichesDisponibles < batchCount && (
+                          <p className="text-xs text-gray-500">
+                            Pas assez de photos distinctes ({affichesDisponibles} pour {batchCount})
+                            — élargissez la recherche ou demandez d’autres photos.
+                          </p>
+                        )}
+
+                        {/* Un emplacement par video. Remplacable a l'unite,
+                            dans les deux modes. */}
+                        <div className="space-y-1.5">
+                          {Array.from({ length: batchCount }, (_, b) => {
+                            const url = batchPhotoUrls[b];
+                            const vise = slotCible === b;
+                            return (
+                              <div
+                                key={b}
+                                data-batch-slot={b}
+                                className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 ${
+                                  vise ? 'border-purple-500' : 'border-gray-800'
+                                }`}
+                              >
+                                <span className="w-5 text-center text-[11px] text-gray-500">{b + 1}</span>
+                                {url ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={url} alt="" data-batch-slot-photo={url} className="h-8 w-8 rounded object-cover" />
+                                ) : (
+                                  <span className="h-8 w-8 rounded border border-dashed border-gray-700" />
+                                )}
+                                <span className="flex-1 truncate text-xs text-gray-500">
+                                  {url ? 'Affiche choisie' : 'Aucune affiche'}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setSlotCible(vise ? null : b)}
+                                  data-batch-slot-pick={b}
+                                  className="rounded-lg border border-gray-800 px-2 py-1 text-[11px] text-gray-400 hover:text-white hover:border-gray-700 transition-colors"
+                                >
+                                  {vise ? 'Choisissez…' : 'Remplacer'}
+                                </button>
+                                <label className="rounded-lg border border-dashed border-gray-700 px-2 py-1 text-[11px] text-gray-400 cursor-pointer hover:border-purple-500 hover:text-white transition-colors">
+                                  <Upload className="w-3 h-3 inline" />
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    disabled={posterUploading}
+                                    data-batch-slot-upload={b}
+                                    onChange={async (e) => {
+                                      const file = e.target.files?.[0];
+                                      e.target.value = '';
+                                      if (!file) return;
+                                      setPosterUploading(true);
+                                      setPhotosError(null);
+                                      try {
+                                        const envoye = await uploadPosterFile(file);
+                                        if (!envoye.url) {
+                                          setPhotosError(`Photo non ajoutée : ${envoye.reason || 'envoi impossible'}`);
+                                          return;
+                                        }
+                                        assignerAffiche(b, envoye.url);
+                                        if (envoye.dataUrl) {
+                                          setPhotosError(
+                                            'Photo utilisée localement : l’envoi au stockage a échoué, elle ne survivra pas au rechargement.',
+                                          );
+                                        }
+                                      } finally {
+                                        setPosterUploading(false);
+                                      }
+                                    }}
+                                  />
+                                </label>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {!affichesCompletes && (
+                          <p className="text-xs text-gray-500">
+                            {batchPhotoUrls.filter(Boolean).length} / {batchCount} — l’envoi est
+                            bloqué tant que chaque vidéo n’a pas sa propre affiche.
+                          </p>
+                        )}
+                      </div>
+                    )}
+
                     {/* Grille */}
                     {posterPhotos.length > 0 && (
                       <>
@@ -4066,7 +4245,11 @@ export default function AssistantWizard() {
                                 key={`${photo.source ?? 'p'}-${photo.id}`}
                                 type="button"
                                 onClick={() => {
-                                  if (batchCount > 1) {
+                                  if (slotCible !== null) {
+                                    assignerAffiche(slotCible, photo.url);
+                                    return;
+                                  }
+                                  if (batchCount > 1 && batchPhotoMode === 'manuel') {
                                     // Lot : on retient plusieurs affiches, dans
                                     // l'ordre des clics. Au-dela du nombre de
                                     // videos, le clic ne fait rien — le dire par
@@ -4103,7 +4286,7 @@ export default function AssistantWizard() {
                             );
                           })}
                         </div>
-                        {batchCount > 1 && (
+                        {batchCount > 1 && batchPhotoMode === 'manuel' && (
                           <p className="text-xs text-gray-500">
                             {batchPhotoUrls.length} / {batchCount} affiche
                             {batchPhotoUrls.length > 1 ? 's' : ''} retenue
