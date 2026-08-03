@@ -105,7 +105,7 @@ export interface Draft {
    * Elements libres poses dans la zone des cartes. Absent = aucun element,
    * ce qui est le cas de tous les brouillons anterieurs.
    */
-  elements?: { id: string; iconName: string; x: number; y: number; size: number; color: string }[];
+  elements?: { id: string; iconName: string; x: number; y: number; sizePct: number; color: string }[];
 }
 
 /** Nombre d'emplacements et de groupes relus au maximum — garde-fou anti-brouillon abime. */
@@ -312,11 +312,13 @@ function sanitizeElements(raw: unknown): Draft['elements'] {
     if (x === null || y === null) continue;
     if (typeof e.id !== 'string' || !e.id) continue;
     if (typeof e.iconName !== 'string' || !e.iconName) continue;
-    // Taille en px du plateau video : bornee pour qu'un brouillon abime ne
-    // produise ni un element invisible ni un aplat qui couvre tout le cadre.
-    if (typeof e.size !== 'number' || !Number.isFinite(e.size) || e.size <= 0 || e.size > 1000) continue;
+    // Taille en % de la largeur du plateau, bornee : ni un element invisible,
+    // ni un aplat qui couvre tout le cadre. Le champ s'appelle `sizePct` et
+    // non `size` : un brouillon ecrit avec l'ancienne unite (des pixels) est
+    // ainsi ecarte plutot que rejoue a une echelle absurde.
+    if (typeof e.sizePct !== 'number' || !Number.isFinite(e.sizePct) || e.sizePct <= 0 || e.sizePct > 100) continue;
     const color = typeof e.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(e.color) ? e.color : '#FFFFFF';
-    out.push({ id: e.id, iconName: e.iconName, x, y, size: e.size, color });
+    out.push({ id: e.id, iconName: e.iconName, x, y, sizePct: e.sizePct, color });
   }
   return out.length ? out : undefined;
 }

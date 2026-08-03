@@ -741,16 +741,24 @@ function StyleSection({
 export interface FreeElement {
   id: string;
   iconName: string;
-  /** Centre de l'element, en % du conteneur des cartes. */
+  /** Centre de l'element, en % du PLATEAU — la composition entiere. */
   x: number;
   y: number;
-  /** Cote de l'icone, en px du plateau video. */
-  size: number;
+  /**
+   * Cote de l'icone, en % de la LARGEUR du plateau.
+   *
+   * En pourcentage et non en pixels : un montage change de format sans changer
+   * d'elements, et une taille en px vaudrait le double en 16:9. Le nom differe
+   * volontairement du `size` d'une version anterieure, qui etait en pixels :
+   * un brouillon ecrit avec l'ancienne unite est ainsi ecarte a la relecture
+   * plutot que rejoue a une echelle absurde.
+   */
+  sizePct: number;
   color: string;
 }
 
-/** Taille d'un element a la pose, en % de la largeur video. */
-const ELEMENT_SIZE_RATIO = 64 / 330;
+/** Taille d'un element a la pose, en % de la largeur du plateau. */
+const ELEMENT_SIZE_PCT = (64 / 330) * 100;
 
 /**
  * Mode libre des cartes : les emplacements ET le format dans lequel ils ont
@@ -1318,66 +1326,6 @@ export function Preview({
                 );
               })}
 
-              {/* ── ELEMENTS LIBRES ───────────────────────────────────────
-                  Rendus DANS ce conteneur, et non sur le plateau : c'est lui
-                  qui est photographie puis blitte dans la video. Pose ailleurs,
-                  un element serait a l'apercu et pas au montage. */}
-              {(elements ?? []).map((el) => (
-                <div
-                  key={el.id}
-                  data-free-element={el.id}
-                  onPointerDown={(e) => onElementDragStart?.(el.id, e)}
-                  onPointerMove={onDragMove}
-                  onPointerUp={onDragEnd}
-                  onPointerCancel={onDragEnd}
-                  onLostPointerCapture={onDragEnd}
-                  title={onElementDragStart ? 'Glisser pour déplacer l’élément' : undefined}
-                  style={{
-                    position: 'absolute',
-                    left: `${el.x}%`,
-                    top: `${el.y}%`,
-                    transform: 'translate(-50%, -50%)',
-                    lineHeight: 0,
-                    cursor: onElementDragStart ? 'grab' : undefined,
-                    touchAction: onElementDragStart ? 'none' : undefined,
-                    // Au-dessus des cartes : un element depose sur une carte
-                    // doit rester saisissable.
-                    zIndex: 3,
-                    // Aide d'edition : jamais photographiee.
-                    outline:
-                      !capturing && selectedElementId === el.id
-                        ? `${uiPx(2)}px solid #FFFFFF`
-                        : undefined,
-                    outlineOffset: uiPx(2),
-                  }}
-                >
-                  <CardIcon name={el.iconName} size={Math.round(el.size)} color={el.color} className="" />
-                  {!capturing && onElementDelete && selectedElementId === el.id && (
-                    <button
-                      type="button"
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => { e.stopPropagation(); onElementDelete(el.id); }}
-                      title="Supprimer l’élément"
-                      style={{
-                        position: 'absolute',
-                        top: -uiPx(10),
-                        right: -uiPx(10),
-                        width: uiPx(18),
-                        height: uiPx(18),
-                        borderRadius: '9999px',
-                        backgroundColor: '#DC2626',
-                        color: '#FFFFFF',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        lineHeight: 0,
-                      }}
-                    >
-                      <X style={{ width: uiPx(11), height: uiPx(11) }} />
-                    </button>
-                  )}
-                </div>
-              ))}
             </div>
 
             {shows('cta') && (
@@ -1445,6 +1393,73 @@ export function Preview({
               </div>
             </div>
             )}
+
+            {/* ── ELEMENTS LIBRES ─────────────────────────────────────────
+                Poses sur le PLATEAU entier, et non dans le conteneur des
+                cartes : le compositeur les peint desormais lui-meme sur les
+                quatre sequences, ils n'ont donc plus a entrer dans la photo
+                des cartes — ils y seraient meme dessines deux fois.
+                Rendus quel que soit l'onglet d'apercu, comme dans la video. */}
+            {(elements ?? []).map((el) => (
+              <div
+                key={el.id}
+                data-free-element={el.id}
+                onPointerDown={(e) => onElementDragStart?.(el.id, e)}
+                onPointerMove={onDragMove}
+                onPointerUp={onDragEnd}
+                onPointerCancel={onDragEnd}
+                onLostPointerCapture={onDragEnd}
+                title={onElementDragStart ? 'Glisser pour déplacer l’élément' : undefined}
+                style={{
+                  position: 'absolute',
+                  left: `${el.x}%`,
+                  top: `${el.y}%`,
+                  transform: 'translate(-50%, -50%)',
+                  lineHeight: 0,
+                  cursor: onElementDragStart ? 'grab' : undefined,
+                  touchAction: onElementDragStart ? 'none' : undefined,
+                  // Au-dessus du titre et du CTA (zIndex 2) : un element
+                  // depose sur eux doit rester saisissable.
+                  zIndex: 4,
+                  outline:
+                    !capturing && selectedElementId === el.id
+                      ? `${uiPx(2)}px solid #FFFFFF`
+                      : undefined,
+                  outlineOffset: uiPx(2),
+                }}
+              >
+                <CardIcon
+                  name={el.iconName}
+                  size={Math.round((el.sizePct / 100) * vw)}
+                  color={el.color}
+                  className=""
+                />
+                {!capturing && onElementDelete && selectedElementId === el.id && (
+                  <button
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); onElementDelete(el.id); }}
+                    title="Supprimer l’élément"
+                    style={{
+                      position: 'absolute',
+                      top: -uiPx(10),
+                      right: -uiPx(10),
+                      width: uiPx(18),
+                      height: uiPx(18),
+                      borderRadius: '9999px',
+                      backgroundColor: '#DC2626',
+                      color: '#FFFFFF',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      lineHeight: 0,
+                    }}
+                  >
+                    <X style={{ width: uiPx(11), height: uiPx(11) }} />
+                  </button>
+                )}
+              </div>
+            ))}
 
             {/* Filigrane — le compositeur le peint sur CHAQUE sequence, au
                 centre a 95 % de la hauteur. Mêmes police, graisse et opacite
@@ -1914,16 +1929,69 @@ export default function AssistantWizard() {
       {
         id,
         iconName,
-        // Pose au centre de la zone photographiee : l'endroit ou l'on est sur
-        // qu'il sera visible, et dans l'apercu et dans la video.
+        // Pose au centre du plateau : visible quel que soit l'onglet, et sur
+        // les quatre sequences de la video.
         x: 50,
         y: 50,
-        size: Math.round(VIDEO_SIZE[format].w * ELEMENT_SIZE_RATIO),
+        sizePct: ELEMENT_SIZE_PCT,
         color: accent,
       },
     ]);
     setSelectedElementId(id);
-  }, [format, accent]);
+  }, [accent]);
+
+  /**
+   * Prepare les elements pour le compositeur.
+   *
+   * Le canvas ne sait pas dessiner un composant React : on serialise le SVG
+   * lucide DEJA affiche dans l'apercu, ce qui garantit que la video montre
+   * exactement le meme glyphe. Une table nom -> chemin cote compositeur ferait
+   * une TROISIEME copie des icones (`ICON_MAP` et `CARD_ICON_MAP` existent
+   * deja), a tenir a jour a la main.
+   *
+   * Rasterise a la resolution de DESTINATION, pas a celle de l'apercu : le
+   * plateau est reduit a l'ecran, capturer sa taille affichee donnerait une
+   * icone floue dans la video.
+   */
+  const rasterizeElements = useCallback(async () => {
+    const list = freeElementsRef.current;
+    if (list.length === 0) return undefined;
+    const vw = VIDEO_SIZE[format].w;
+    const prepared = await Promise.all(
+      list.map(async (el) => {
+        try {
+          const host = document.querySelector(`[data-free-element="${el.id}"] svg`);
+          if (!host) return null;
+          const svg = host.cloneNode(true) as SVGElement;
+          const px = Math.max(1, Math.round((el.sizePct / 100) * vw));
+          // Taille intrinseque : sans elle l'image se decode en 0x0 dans
+          // Chrome et `drawImage` ne peint rien.
+          svg.setAttribute('width', String(px));
+          svg.setAttribute('height', String(px));
+          svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+          // `currentColor` n'a plus de contexte une fois le SVG detache.
+          svg.setAttribute('color', el.color);
+          svg.setAttribute('stroke', el.color);
+          const source = new XMLSerializer().serializeToString(svg);
+          const img = new Image();
+          img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(source)}`;
+          await new Promise<void>((resolve) => {
+            // Delai de garde : une image qui ne se decode pas laisserait la
+            // promesse pendante et l'envoi bloque.
+            const timer = setTimeout(resolve, 4000);
+            img.onload = () => { clearTimeout(timer); resolve(); };
+            img.onerror = () => { clearTimeout(timer); resolve(); };
+          });
+          if (!img.complete || img.naturalWidth === 0) return null;
+          return { x: el.x, y: el.y, sizePct: el.sizePct, img };
+        } catch {
+          return null;
+        }
+      }),
+    );
+    const kept = prepared.filter(Boolean) as { x: number; y: number; sizePct: number; img: HTMLImageElement }[];
+    return kept.length > 0 ? kept : undefined;
+  }, [format]);
 
   const deleteElement = useCallback((id: string) => {
     setFreeElements((prev) => prev.filter((el) => el.id !== id));
@@ -2005,7 +2073,8 @@ export default function AssistantWizard() {
     if (e.button !== 0 || !e.isPrimary) return;
     setSelectedElementId(id);
     setSelectedCards((prev) => (prev.size ? new Set() : prev));
-    const rect = cardsRef.current?.getBoundingClientRect();
+    // Le plateau, et non le conteneur des cartes : un element se pose partout.
+    const rect = previewRef.current?.getBoundingClientRect();
     if (!rect || rect.width <= 0) return;
     if (dragRef.current) return;
     const el = freeElementsRef.current.find((x) => x.id === id);
@@ -2101,8 +2170,7 @@ export default function AssistantWizard() {
     const drag = dragRef.current;
     // Une carte se borne a SON conteneur, pas au plateau entier — c'est la
     // zone photographiee et blittee par le compositeur.
-    const rect = (drag?.el === 'card' || drag?.el === 'element' ? cardsRef : previewRef)
-      .current?.getBoundingClientRect();
+    const rect = (drag?.el === 'card' ? cardsRef : previewRef).current?.getBoundingClientRect();
     if (!drag || !rect) return;
     // Seul le pointeur qui a commence le glissement le poursuit.
     if (drag.pointerId !== e.pointerId) return;
@@ -3026,6 +3094,9 @@ export default function AssistantWizard() {
           // ── Cartes : image de l'apercu, blittee telle quelle ──────────
           cardsSnapshot,
           cardsSnapshotRect,
+          // Couche d'elements : le compositeur la peint sur les quatre
+          // sequences. `undefined` sans element — rien ne change alors.
+          elements: await rasterizeElements(),
         },
         onProgress: (pct, stage) => {
           setRenderProgress(Math.max(0, Math.min(100, Math.round(pct))));
