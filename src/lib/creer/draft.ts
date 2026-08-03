@@ -82,7 +82,30 @@ export interface Draft {
   rushName?: string;
   rushIsClip?: boolean;
   scheduledDate?: string;
+  /**
+   * Placement fait a la main. ABSENT = « rien n'a ete deplace », et c'est le
+   * cas de tous les brouillons anterieurs : l'assistant garde alors ses
+   * positions d'origine, au pixel.
+   *
+   * Ces trois champs sont volontairement optionnels ET annulables sans repli :
+   * une valeur abimee doit rendre le placement PAR DEFAUT, pas une position
+   * approchee — un titre a demi hors cadre serait pire que le titre d'origine.
+   */
+  titlePos?: { x: number; y: number };
+  ctaPos?: { x: number; y: number };
+  /**
+   * Emplacements libres des cartes, avec le FORMAT dans lequel ils ont ete
+   * mesures : `h` est un % de la hauteur du conteneur, laquelle varie en sens
+   * inverse de la taille des cartes d'un format a l'autre.
+   */
+  cardBoxes?: { format: string; boxes: Record<string, { x: number; y: number; w: number; h: number }> };
+  /** Groupes d'edition. Sans effet sur le montage exporte. */
+  cardGroups?: { id: string; cardIds: string[] }[];
 }
+
+/** Nombre d'emplacements et de groupes relus au maximum — garde-fou anti-brouillon abime. */
+const MAX_BOXES = 24;
+const MAX_GROUPS = 12;
 
 /** URL conservable — jamais un `blob:`, qui meurt avec l'onglet. */
 export const persistableUrl = (url: string | null | undefined): string | undefined =>
@@ -152,6 +175,114 @@ export interface SanitizeDeps {
   };
   /** Dernière étape atteignable — on ne restaure jamais l'écran d'envoi. */
   maxStep: number;
+}
+
+/** Identifiants des cartes du contenu relu, ou `null` s'il n'y a pas de contenu. */
+function cardIdsOf(generated: unknown): string[] | null {
+  if (!isObj(generated) || !Array.isArray(generated.cards)) return null;
+  return generated.cards
+    .map((c) => (isObj(c) && typeof c.id === 'string' ? c.id : ''))
+    .filter(Boolean);
+}
+
+/** Un pourcentage de placement : fini, et dans le cadre. */
+const pct = (v: unknown): number | null =>
+  typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100 ? v : null;
+
+/**
+ * Position relue, ou `undefined`.
+ *
+ * Pas de repli sur une valeur approchee : une coordonnee abimee doit rendre le
+ * placement d'ORIGINE. Restaurer un `x` valide avec un `y` invente poserait le
+ * titre a un endroit que l'utilisateur n'a jamais choisi.
+ */
+function sanitizePos(raw: unknown): { x: number; y: number } | undefined {
+  if (!isObj(raw)) return undefined;
+  const x = pct(raw.x);
+  const y = pct(raw.y);
+  return x === null || y === null ? undefined : { x, y };
+}
+
+/**
+ * Emplacements libres relus.
+ *
+ * Tout ou rien : une seule boite abimee rend l'ensemble inutilisable, parce
+ * qu'une carte sans emplacement dans une disposition libre se rendrait sans
+ * position, empilee dans un coin avec les autres. Le format doit etre connu,
+ * sinon les hauteurs seraient rejouees a la mauvaise echelle.
+ */
+function sanitizeCardBoxes(
+  raw: unknown,
+  format: string,
+  cardIds: string[] | null,
+): Draft['cardBoxes'] {
+  // Sans contenu relu, il n'y a aucune carte a placer : des emplacements
+  // subsistants seraient effaces au premier rendu, en detruisant au passage le
+  // brouillon qui les portait.
+  if (!cardIds || cardIds.length === 0) return undefined;
+  // Le format de mesure doit etre CELUI du brouillon : `h` est un % de la
+  // hauteur du conteneur, laquelle varie en sens inverse de la taille des
+  // cartes d'un format a l'autre. Rejouer une mesure 9:16 en 16:9 ecrase les
+  // cartes les unes sur les autres, dans la video comprise.
+  if (!isObj(raw) || raw.format !== format) return undefined;
+  if (!isObj(raw.boxes)) return undefined;
+  const entries = Object.entries(raw.boxes);
+  if (entries.length === 0 || entries.length > MAX_BOXES) return undefined;
+  // Sans prototype : `boxes['__proto__'] = …` sur un litteral `{}` declenche
+  // l'accesseur d'`Object.prototype` et avale l'entree en silence, ce que le
+  // « tout ou rien » ci-dessous interdit precisement.
+  const boxes: Record<string, { x: number; y: number; w: number; h: number }> =
+    Object.create(null);
+  for (const [id, b] of entries) {
+    if (typeof id !== 'string' || !id || !isObj(b)) return undefined;
+    // Un emplacement qui ne designe aucune carte du contenu relu est le signe
+    // d'un brouillon incoherent : l'accepter ferait disparaitre la disposition
+    // au premier rendu, en detruisant au passage ce qui etait enregistre.
+    if (!cardIds.includes(id)) return undefined;
+    const x = pct(b.x); const y = pct(b.y);
+    const w = pct(b.w); const h = pct(b.h);
+    // Une carte de largeur ou de hauteur nulle serait invisible et
+    // insaisissable — irrattrapable sans repartir de zero.
+    if (x === null || y === null || w === null || h === null || w <= 0 || h <= 0) return undefined;
+    // La carte doit tenir ENTIEREMENT dans le conteneur. Borner x et y a
+    // [0,100] ne suffit pas : une carte a `x=95` large de 100 % sort de la
+    // zone photographiee, donc du montage. C'est l'invariant que le
+    // deplacement et la duplication maintiennent en permanence.
+    if (x + w > 100 || y + h > 100) return undefined;
+    boxes[id] = { x, y, w, h };
+  }
+  // Toutes les cartes doivent etre couvertes : une carte sans emplacement dans
+  // une disposition libre se rendrait sans position, empilee dans un coin.
+  if (cardIds.some((id) => !boxes[id])) return undefined;
+  return { format, boxes: { ...boxes } };
+}
+
+/**
+ * Groupes relus.
+ *
+ * Les invariants du mode edition sont retablis a la lecture : au moins deux
+ * cartes par groupe, et une carte dans UN seul groupe. Un brouillon abime
+ * pourrait sinon reintroduire des groupes fantomes qu'aucune action de l'ecran
+ * ne sait defaire.
+ */
+function sanitizeCardGroups(raw: unknown, connus: string[] | null): Draft['cardGroups'] {
+  if (!Array.isArray(raw) || !connus || connus.length === 0) return undefined;
+  const vus = new Set<string>();
+  const out: { id: string; cardIds: string[] }[] = [];
+  for (const g of raw.slice(0, MAX_GROUPS)) {
+    if (!isObj(g) || typeof g.id !== 'string' || !g.id || !Array.isArray(g.cardIds)) continue;
+    const cardIds: string[] = [];
+    for (const cid of g.cardIds) {
+      if (typeof cid !== 'string' || !cid || vus.has(cid)) continue;
+      // Un groupe qui designe une carte absente du contenu relu n'a plus
+      // d'objet ; le garder ferait rester un groupe qu'aucun bouton ne defait.
+      if (!connus.includes(cid)) continue;
+      vus.add(cid);
+      cardIds.push(cid);
+    }
+    if (cardIds.length >= 2) out.push({ id: g.id, cardIds });
+  }
+  return out.length ? out : undefined;
 }
 
 /**
@@ -261,7 +392,17 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
       typeof raw.scheduledDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.scheduledDate)
         ? raw.scheduledDate
         : undefined,
+    titlePos: sanitizePos(raw.titlePos),
+    ctaPos: sanitizePos(raw.ctaPos),
   };
+
+  // Le placement des cartes se relit APRES le contenu : sans ce croisement,
+  // un brouillon dont le contenu a ete rejete gardait des emplacements et des
+  // groupes orphelins, que l'ecran effacait ~400 ms plus tard en reecrivant le
+  // brouillon — le travail etait perdu sans que personne ait rien fait.
+  const cardIds = cardIdsOf(out.generated);
+  out.cardBoxes = sanitizeCardBoxes(raw.cardBoxes, out.format!, cardIds);
+  out.cardGroups = sanitizeCardGroups(raw.cardGroups, cardIds);
 
   // Sequence « Video » active mais rush disparu — URL `blob:` filtree a
   // l'ecriture, ou fichier expire depuis. La laisser active ferait sortir un

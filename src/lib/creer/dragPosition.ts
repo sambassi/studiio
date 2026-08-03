@@ -72,6 +72,17 @@ export function grabOffset(clientX: number, clientY: number, rect: Rect, anchor:
 }
 
 
+/**
+ * Deux positions designent-elles le meme point ?
+ *
+ * Compare les VALEURS : l'etat part de la constante `DESIGN`, mais tout
+ * `setState` en fabrique un nouvel objet. Une comparaison de references
+ * declarerait « deplace » un titre revenu exactement a sa place.
+ */
+export function samePos(a: Pos, b: Pos): boolean {
+  return a.x === b.x && a.y === b.y;
+}
+
 /** Ancrage d'un element : d'ou partent ses coordonnees. */
 export type Anchor = 'top-left' | 'bottom-center';
 
