@@ -50,6 +50,9 @@ import { CardIcon } from '@/components/ui/CardIcon';
 import { ICON_LIBRARY, iconMatches } from '@/lib/icons/library';
 import ColorWheel from '@/components/ui/ColorWheel';
 import { uploadPosterFile } from '@/lib/creer/posterUpload';
+import {
+  MAX_BATCH, clampBatchCount, batchCost, photoForIndex, batchDates, batchTopic, variationNonce,
+} from '@/lib/creer/batch';
 // Catalogue de polices — LA source unique, partagee avec le compositeur.
 // Deux listes finiraient par diverger, et la video ne ressemblerait plus a
 // l'apercu.
@@ -1992,6 +1995,14 @@ export default function AssistantWizard() {
   const [photosError, setPhotosError] = useState<string | null>(null);
   const [posterUploading, setPosterUploading] = useState(false);
   const posterPageRef = useRef(1);
+
+  // ── Lot ────────────────────────────────────────────────────────────────
+  // `1` par defaut : un lot d'une video, c'est le parcours d'avant, a
+  // l'identique — pas de variation IA, pas de date decalee, un seul post.
+  const [batchCount, setBatchCount] = useState(1);
+  /** URL des affiches retenues pour le lot, dans l'ordre de selection. */
+  const [batchPhotoUrls, setBatchPhotoUrls] = useState<string[]>([]);
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [elementPickerOpen, setElementPickerOpen] = useState(false);
   const [elementQuery, setElementQuery] = useState('');
   const freeElementsRef = useRef<FreeElement[]>(freeElements);
@@ -2682,13 +2693,15 @@ export default function AssistantWizard() {
     elements: freeElements.length ? freeElements : undefined,
     posterUrl: posterUrl ?? undefined,
     imageSource,
+    batchCount,
+    batchPhotoUrls: batchPhotoUrls.length ? batchPhotoUrls : undefined,
   }), [
     started, step, themeId, customTopic, toneId, format, colors,
     titleStyle, subtitleStyle, ctaStyle, watermarkOverride, watermarkEnabled,
     sequences, introDuration, cardsDuration, videoDuration, ctaDuration,
     generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
     voiceVolume, rushUrl, rushName, rushIsClip, scheduledDate,
-    titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, imageSource,
+    titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, imageSource, batchCount, batchPhotoUrls,
   ]);
 
   /** La derniere version connue, pour ecrire sans attendre un rendu. */
@@ -2767,6 +2780,8 @@ export default function AssistantWizard() {
     if (draft.elements) setFreeElements(draft.elements);
     if (draft.posterUrl) setPosterUrl(draft.posterUrl);
     if (draft.imageSource) setImageSource(draft.imageSource);
+    if (draft.batchCount) setBatchCount(draft.batchCount);
+    if (draft.batchPhotoUrls) setBatchPhotoUrls(draft.batchPhotoUrls);
     // Le contenu a ete regenere s'il vient du brouillon : la signature evite
     // qu'il soit remplace par un autre texte des la premiere navigation.
     if (draft.generated) genSigRef.current = `${draft.customTopic?.trim() || (THEMES.find((t) => t.id === draft.themeId) ?? THEMES[0]).topic}|${draft.toneId}`;
@@ -3094,6 +3109,63 @@ export default function AssistantWizard() {
    * orpheline — et invité à recommencer, donc à payer une seconde fois.
    * Un échec de composition ne débite rien non plus.
    */
+  /**
+   * Contenu de la n-ieme video du lot.
+   *
+   * Sans angle impose, l'IA rend le meme texte a chaque appel sur un meme
+   * sujet : un lot de cinq videos serait cinq fois la meme. On lui passe donc
+   * un angle tournant, un jeton de variation, et les titres deja produits pour
+   * qu'elle ne se repete pas.
+   *
+   * Rend `null` en cas d'echec : l'appelant garde alors le contenu courant.
+   * Mieux vaut une video de plus au meme texte qu'un lot interrompu.
+   */
+  const generateBatchVariation = useCallback(async (
+    index: number,
+    priorTitles: string[],
+  ): Promise<Generated | null> => {
+    const topic = customTopic.trim() || (THEMES.find((t) => t.id === themeId) ?? THEMES[0]).topic;
+    if (!topic) return null;
+    try {
+      const controller = new AbortController();
+      // 45 s : Claude Haiku repond en 3 a 12 s, mais un plafond serre
+      // renverrait au contenu courant avant meme l'arrivee de la variation.
+      const timer = setTimeout(() => controller.abort(), 45000);
+      const res = await fetch('/api/content/ai-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: batchTopic(topic, index),
+          locale: 'fr',
+          cardCount: generated?.cards.length ?? 5,
+          variationNonce: variationNonce(index, Date.now()),
+          existingTitles: priorTitles,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) return null;
+      const data = await res.json();
+      const c = data?.content;
+      if (!data?.success || !c || typeof c.title !== 'string' || !Array.isArray(c.cards)) return null;
+      return {
+        title: c.title,
+        subtitle: typeof c.subtitle === 'string' ? c.subtitle : '',
+        cta: typeof c.cta === 'string' && c.cta ? c.cta : (generated?.cta ?? ''),
+        ctaSub: typeof c.ctaSub === 'string' && c.ctaSub ? c.ctaSub : (generated?.ctaSub ?? ''),
+        cards: c.cards.slice(0, generated?.cards.length ?? 5).map((carte: Record<string, unknown>) => ({
+          id: newCardId(),
+          icon: typeof carte.icon === 'string' ? carte.icon : 'Sparkles',
+          title: typeof carte.label === 'string' ? carte.label : String(carte.title ?? ''),
+          description: typeof carte.description === 'string' ? carte.description : '',
+          value: typeof carte.value === 'string' ? carte.value : '',
+        })),
+      };
+    } catch {
+      return null;
+    }
+  }, [customTopic, themeId, generated]);
+
   const sendToCalendar = async () => {
     if (!generated || sending) return;
     setSending(true);
@@ -3116,6 +3188,11 @@ export default function AssistantWizard() {
     // Le carré est aussi large que le 9:16 et deux fois moins haut : le
     // facturer au tarif paysage ferait payer plus cher un rendu plus petit.
     const cost = format === '16:9' ? COST.tv : COST.reel;
+    // Le lot : combien de montages, et a quelles dates.
+    const total = clampBatchCount(batchCount);
+    const coutTotal = batchCost(cost, total);
+    const baseDate = scheduledDate ? new Date(`${scheduledDate}T12:00:00`) : new Date();
+    const dates = batchDates(Number.isNaN(baseDate.getTime()) ? new Date() : baseDate, total);
 
     try {
       // 1. Solde — non bloquant si l'endpoint est indisponible, comme l'éditeur.
@@ -3126,382 +3203,414 @@ export default function AssistantWizard() {
         // sur 401/500. Sans ce garde, une panne passagère afficherait
         // « Crédits insuffisants : 0 disponible » à un utilisateur qui en a.
         const readable = check?.success !== false && check?.ok !== false;
-        if (readable && typeof balance === 'number' && balance < cost) {
-          setError(`Crédits insuffisants : ${cost} requis, ${balance} disponible(s).`);
+        if (readable && typeof balance === 'number' && balance < coutTotal) {
+          setError(`Crédits insuffisants : ${coutTotal} requis, ${balance} disponible(s).`);
           return;
         }
       } catch {
         // On continue : un échec de lecture du solde ne doit pas bloquer.
       }
 
-      // 2. Photo des cartes de l'aperçu (WYSIWYG). Le compositeur blitte cette
-      //    image au lieu de redessiner les cartes lui-même — c'est ce qui rend
-      //    l'aperçu et la vidéo strictement identiques.
-      let cardsSnapshot: HTMLImageElement | undefined;
-      let cardsSnapshotRect: { x: number; y: number; width: number; height: number } | undefined;
-      // Les onglets de l'apercu n'affichent qu'un element a la fois. La photo,
-      // elle, doit TOUJOURS partir de la composition complete : prise depuis
-      // l'onglet « Titre », elle aurait fige des cartes vides dans la video.
-      // `flushSync` force le rendu AVANT la capture ; le `finally` restaure
-      // l'onglet de l'utilisateur meme si la capture echoue.
-      const focusBeforeCapture = previewFocus;
+      // ── Boucle du lot ──────────────────────────────────────────────
+      // Une seule video : le corps s'execute une fois, exactement comme avant.
+      // Le contenu courant sert TOUJOURS a la premiere — l'utilisateur vient
+      // de le relire dans l'apercu, le remplacer par une variation le
+      // surprendrait. Les suivantes sont variees.
+      const contenuInitial = generated;
+      const titresDejaVus = [generated.title].filter(Boolean);
       try {
-        // Les liseres — selection et glissement — sont des aides d'edition :
-        // photographies, ils seraient blittes dans la video.
-        //
-        // Ce drapeau tient pour TOUTE la duree de la capture, au lieu de vider
-        // puis restaurer la selection : entre le vidage et `domToCanvas` il y a
-        // un import dynamique et l'attente des polices, et l'apercu reste
-        // interactif. Un clic pendant l'envoi reposait la selection juste a
-        // temps pour qu'elle soit gravee dans le montage.
-        flushSync(() => setCapturing(true));
-        if (focusBeforeCapture !== 'all') {
-          flushSync(() => setPreviewFocus('all'));
-          // Une frame de peinture, bornee : `requestAnimationFrame` est GELE
-          // dans un onglet en arriere-plan. Sans ce delai de garde, lancer
-          // l'envoi puis changer d'onglet laissait la promesse pendante et le
-          // bouton desactive jusqu'au retour de l'utilisateur.
-          await new Promise<void>((r) => {
-            const done = () => { clearTimeout(timer); r(); };
-            const timer = setTimeout(r, 300);
-            requestAnimationFrame(() => requestAnimationFrame(done));
-          });
-        }
-        const cardsEl = cardsRef.current;
-        const previewEl = previewRef.current;
-        if (cardsEl && previewEl && cardsEl.offsetWidth > 0) {
-          setRenderStage('Capture de l’aperçu…');
-          const { domToCanvas } = await import('modern-screenshot');
-          // Les polices doivent être chargées, sinon la capture sérialise une
-          // police de repli et le rendu diverge de l'écran.
-          try { await (document as unknown as { fonts?: FontFaceSet }).fonts?.ready; } catch { /* ignore */ }
-          // Capture 1:1 a la resolution NATIVE du plateau.
-          //
-          // `width`/`height` sont OBLIGATOIRES ici. Sans eux, `resolveBoundingBox`
-          // (modern-screenshot) appelle `getBoundingClientRect()`, qui renvoie la
-          // boite APRES le `transform: scale` de l'ancetre : la lib capturerait
-          // 272x276 au lieu de 907x922, et forcerait cette taille sur le clone
-          // racine alors que ses enfants gardent leurs px natifs — contenu
-          // deborde et rogne. Les fournir court-circuite ce calcul et donne au
-          // clone ses dimensions de layout.
-          const canvas = await domToCanvas(cardsEl, {
-            backgroundColor: undefined,
-            scale: 1,
-            width: cardsEl.offsetWidth,
-            height: cardsEl.offsetHeight,
-          });
-          console.log(
-            `[Assistant] Capture cartes ${canvas.width}x${canvas.height} (1:1, resolution native)`,
-          );
-          const img = new Image();
-          img.src = canvas.toDataURL('image/png');
-          // onerror ET timeout : sans eux, une data URL qui ne se décode pas
-          // laisse la promesse pendante pour toujours — le bouton reste
-          // désactivé et l'utilisateur doit recharger la page.
-          await new Promise<void>((resolve) => {
-            const done = () => resolve();
-            const timer = setTimeout(done, 10000);
-            img.onload = () => { clearTimeout(timer); done(); };
-            img.onerror = () => { clearTimeout(timer); done(); };
-          });
-          if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-            cardsSnapshot = img;
-            const pRect = previewEl.getBoundingClientRect();
-            const cRect = cardsEl.getBoundingClientRect();
-            cardsSnapshotRect = {
-              x: ((cRect.left - pRect.left) / pRect.width) * 100,
-              y: ((cRect.top - pRect.top) / pRect.height) * 100,
-              width: (cRect.width / pRect.width) * 100,
-              height: (cRect.height / pRect.height) * 100,
-            };
+        for (let b = 0; b < total; b += 1) {
+          setBatchProgress({ done: b, total });
+          let contenu = contenuInitial;
+          if (total > 1 && b > 0) {
+            setRenderStage(`Variation ${b + 1}/${total}…`);
+            const variation = await generateBatchVariation(b, titresDejaVus);
+            if (variation) {
+              contenu = variation;
+              if (variation.title) titresDejaVus.push(variation.title);
+            }
           }
+          // L'apercu EST la source de la photo des cartes : il doit porter le
+          // contenu de cette iteration avant qu'on le photographie.
+          if (contenu !== generated) flushSync(() => setGenerated(contenu));
+          const affiche = photoForIndex(batchPhotoUrls, b) ?? posterUrl ?? undefined;
+
+        // 2. Photo des cartes de l'aperçu (WYSIWYG). Le compositeur blitte cette
+        //    image au lieu de redessiner les cartes lui-même — c'est ce qui rend
+        //    l'aperçu et la vidéo strictement identiques.
+        let cardsSnapshot: HTMLImageElement | undefined;
+        let cardsSnapshotRect: { x: number; y: number; width: number; height: number } | undefined;
+        // Les onglets de l'apercu n'affichent qu'un element a la fois. La photo,
+        // elle, doit TOUJOURS partir de la composition complete : prise depuis
+        // l'onglet « Titre », elle aurait fige des cartes vides dans la video.
+        // `flushSync` force le rendu AVANT la capture ; le `finally` restaure
+        // l'onglet de l'utilisateur meme si la capture echoue.
+        const focusBeforeCapture = previewFocus;
+        try {
+          // Les liseres — selection et glissement — sont des aides d'edition :
+          // photographies, ils seraient blittes dans la video.
+          //
+          // Ce drapeau tient pour TOUTE la duree de la capture, au lieu de vider
+          // puis restaurer la selection : entre le vidage et `domToCanvas` il y a
+          // un import dynamique et l'attente des polices, et l'apercu reste
+          // interactif. Un clic pendant l'envoi reposait la selection juste a
+          // temps pour qu'elle soit gravee dans le montage.
+          flushSync(() => setCapturing(true));
+          if (focusBeforeCapture !== 'all') {
+            flushSync(() => setPreviewFocus('all'));
+            // Une frame de peinture, bornee : `requestAnimationFrame` est GELE
+            // dans un onglet en arriere-plan. Sans ce delai de garde, lancer
+            // l'envoi puis changer d'onglet laissait la promesse pendante et le
+            // bouton desactive jusqu'au retour de l'utilisateur.
+            await new Promise<void>((r) => {
+              const done = () => { clearTimeout(timer); r(); };
+              const timer = setTimeout(r, 300);
+              requestAnimationFrame(() => requestAnimationFrame(done));
+            });
+          }
+          const cardsEl = cardsRef.current;
+          const previewEl = previewRef.current;
+          if (cardsEl && previewEl && cardsEl.offsetWidth > 0) {
+            setRenderStage('Capture de l’aperçu…');
+            const { domToCanvas } = await import('modern-screenshot');
+            // Les polices doivent être chargées, sinon la capture sérialise une
+            // police de repli et le rendu diverge de l'écran.
+            try { await (document as unknown as { fonts?: FontFaceSet }).fonts?.ready; } catch { /* ignore */ }
+            // Capture 1:1 a la resolution NATIVE du plateau.
+            //
+            // `width`/`height` sont OBLIGATOIRES ici. Sans eux, `resolveBoundingBox`
+            // (modern-screenshot) appelle `getBoundingClientRect()`, qui renvoie la
+            // boite APRES le `transform: scale` de l'ancetre : la lib capturerait
+            // 272x276 au lieu de 907x922, et forcerait cette taille sur le clone
+            // racine alors que ses enfants gardent leurs px natifs — contenu
+            // deborde et rogne. Les fournir court-circuite ce calcul et donne au
+            // clone ses dimensions de layout.
+            const canvas = await domToCanvas(cardsEl, {
+              backgroundColor: undefined,
+              scale: 1,
+              width: cardsEl.offsetWidth,
+              height: cardsEl.offsetHeight,
+            });
+            console.log(
+              `[Assistant] Capture cartes ${canvas.width}x${canvas.height} (1:1, resolution native)`,
+            );
+            const img = new Image();
+            img.src = canvas.toDataURL('image/png');
+            // onerror ET timeout : sans eux, une data URL qui ne se décode pas
+            // laisse la promesse pendante pour toujours — le bouton reste
+            // désactivé et l'utilisateur doit recharger la page.
+            await new Promise<void>((resolve) => {
+              const done = () => resolve();
+              const timer = setTimeout(done, 10000);
+              img.onload = () => { clearTimeout(timer); done(); };
+              img.onerror = () => { clearTimeout(timer); done(); };
+            });
+            if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+              cardsSnapshot = img;
+              const pRect = previewEl.getBoundingClientRect();
+              const cRect = cardsEl.getBoundingClientRect();
+              cardsSnapshotRect = {
+                x: ((cRect.left - pRect.left) / pRect.width) * 100,
+                y: ((cRect.top - pRect.top) / pRect.height) * 100,
+                width: (cRect.width / pRect.width) * 100,
+                height: (cRect.height / pRect.height) * 100,
+              };
+            }
+          }
+        } catch (err) {
+          // Non fatal : sans photo, le compositeur redessine les cartes lui-même
+          // (style Compact, qu'il connaît). Le rendu reste correct, simplement
+          // moins fidèle au pixel près.
+          console.warn('[Assistant] Capture des cartes impossible, rendu canvas de secours:', err);
+        } finally {
+          if (focusBeforeCapture !== 'all') setPreviewFocus(focusBeforeCapture);
+          setCapturing(false);
         }
-      } catch (err) {
-        // Non fatal : sans photo, le compositeur redessine les cartes lui-même
-        // (style Compact, qu'il connaît). Le rendu reste correct, simplement
-        // moins fidèle au pixel près.
-        console.warn('[Assistant] Capture des cartes impossible, rendu canvas de secours:', err);
-      } finally {
-        if (focusBeforeCapture !== 'all') setPreviewFocus(focusBeforeCapture);
-        setCapturing(false);
-      }
 
-      // 3. Composition + upload (composeAndUpload fait les deux et produit
-      //    aussi la vignette).
-      setRenderStage('Rendu du montage…');
-      // Cartes enrichies d'un `iconImage` : sans cela le repli canvas du
-      // compositeur ecrirait « Droplet » en toutes lettres.
-      const composerCards = await preRenderCardIcons(
-        generated.cards.map((c) => ({
-          emoji: c.icon,
-          label: c.title,
-          value: c.value,
-          description: c.description,
-          color: accent,
-        })),
-      );
-      const composed = await composeAndUpload({
-        width: size.w,
-        height: size.h,
-        fps: 30,
-        // Le compositeur ne met PAS le titre en majuscules (contrairement a
-        // l'apercu, qui applique `uppercase` en CSS) : on le fait ici.
-        title: (generated.title || 'Infographie').toUpperCase(),
-        subtitle: generated.subtitle || undefined,
-        cards: composerCards,
-        // Rush : `drawVideoSeq` le cadre en « cover » (echelle uniforme
-        // `max(w/srcW, h/srcH)`), donc il recadre mais n'etire JAMAIS — le
-        // ratio de la source est preserve quel que soit le format de sortie.
-        //
-        // Conditionne a la sequence : un rush transmis alors que la sequence
-        // « Video » est masquee etait quand meme telecharge et decode, et sa
-        // seule presence fait basculer le compositeur en rendu TEMPS REEL
-        // (`hasRushAudio = !!videoEl`) — dix fois plus lent, pour une video
-        // qui n'apparait nulle part dans le montage.
-        videoUrl: seqDuration('video') > 0 ? rushUrl || undefined : undefined,
-        // Une sequence desactivee a une duree nulle : c'est ainsi que le
-        // compositeur l'exclut (conditions d'inclusion), et le Calendrier la
-        // filtre pareil (`dur > 0`).
-        introDuration: seqDuration('intro'),
-        cardsDuration: seqDuration('cards'),
-        videoDuration: seqDuration('video'),
-        ctaDuration: seqDuration('cta'),
-        // Le compositeur bascule en mode « normal » (temps reel, audio mixe et
-        // embarque) des qu'une de ces deux URL est fournie ; sans elles il
-        // reste en mode « fast ».
-        musicUrl: musicUrl || undefined,
-        voiceUrl: voiceUrl || undefined,
-        musicVolume,
-        voiceVolume,
-        // Mixeur unifie : ces keyframes pilotent les trois bus audio du
-        // compositeur (musique, rush, voix). Absents tant que l'utilisateur
-        // n'a rien reglé — donc aucun changement pour les montages existants.
-        audioKeyframes: audioKeyframes.length > 0 ? audioKeyframes : undefined,
-        sequenceOrder: activeOrder,
-        accentColor: accent,
-        // drawCTA lit `design.ctaMainText || watermarkText || 'AFROBOOST'` :
-        // ces deux options seules ne suffisent pas, d'ou les champs `design`
-        // ci-dessous. Sans eux la video affichait « AFROBOOST » en gros.
-        ctaText: generated.ctaSub,
-        ctaSubText: generated.ctaSub,
-        watermarkText: generated.cta,
-        // Filigrane. `enabled: false` est la SEULE facon de l'eteindre : le
-        // compositeur allume le calque des qu'il n'est pas explicitement
-        // desactive, et se rabat alors sur « Afroboost.com ».
-        siteText: watermarkConfig,
-        // Photo d'affiche : le compositeur la peint en fond de TOUTES les
-        // sequences (`posterOnAllSequences` absent vaut « partout »), avec le
-        // voile de degrade par-dessus — exactement ce que montre l'apercu.
-        posterUrl: posterUrl || undefined,
-        design: {
-          cardStyle: CARD_STYLE,
-          // Sans ce champ : titre et CTA en Helvetica, cartes en Inter.
-          font: DESIGN.font,
-
-          // ── Fond ──────────────────────────────────────────────────────
-          gradientColor1: gradStart,
-          gradientColor2: gradEnd,
-          gradientOpacity,
-          // Aucune sequence en noir plein. Sans affiche, le backdrop degrade
-          // est peint partout ; avec une affiche, elle prend sa place et le
-          // degrade ne subsiste qu'en voile — dans les deux cas l'apercu et la
-          // video montrent la meme chose.
-          noColorSequences: [],
-
-          // ── Titre : haut-gauche ───────────────────────────────────────
-          titleAlign: 'left' as const,
-          titlePosition: { x: titlePos.x, y: titlePos.y },
-          titleSize: DESIGN.titleWidth,
-          // Typographie du titre — memes valeurs que l'apercu.
-          // `textScale` est le SEUL levier de taille que `drawIntro` connait ;
-          // il vaut aussi pour le sous-titre, que le compositeur dimensionne
-          // avec le meme facteur.
-          ...textDesign,
-
-          // ── CTA : bas-centre ──────────────────────────────────────────
-          // `ctaMainText` est lu EN PREMIER par drawCTA ; `ctaSubTextDesign`
-          // est le nom du champ cote design pour le sous-texte.
-          ctaMainText: generated.cta,
-          ctaSubTextDesign: generated.ctaSub,
-          watermarkPosition: { x: ctaPos.x, y: ctaPos.y },
-          watermarkSize: DESIGN.ctaWidth,
-
-          // ── Cartes : image de l'apercu, blittee telle quelle ──────────
-          cardsSnapshot,
-          cardsSnapshotRect,
-          // Couche d'elements : le compositeur la peint sur les quatre
-          // sequences. `undefined` sans element — rien ne change alors.
-          elements: await rasterizeElements(),
-        },
-        onProgress: (pct, stage) => {
-          setRenderProgress(Math.max(0, Math.min(100, Math.round(pct))));
-          if (stage) setRenderStage(stage);
-        },
-      });
-
-      if (!composed.url) {
-        setError("Le montage a été rendu mais son envoi a échoué. Réessayez.");
-        return;
-      }
-
-      // 4. Création du post AVANT le débit. Dans l'autre ordre, un échec de
-      //    /api/posts laissait l'utilisateur débité, sans post, avec une vidéo
-      //    orpheline — et le message l'invitait à recommencer, donc à payer
-      //    une seconde fois.
-      setRenderStage('Finalisation…');
-
-      // Le post, montage inclus. `renderedVideoUrl` +
-      //    `thumbnailUrl` + `composerVersion` à jour : le Calendrier lit la
-      //    vidéo directement et n'affiche même pas son bouton « Régénérer ».
-      const metadata = {
-        type: 'infographic',
-        source: 'assistant-simple',
-        subtitle: generated.subtitle,
-        theme: theme.id,
-        cards: generated.cards.map((c) => ({
-          emoji: c.icon,
-          label: c.title,
-          value: c.value,
-          description: c.description,
-          color: accent,
-        })),
-        // Le Calendrier detecte l'audio via `!!meta?.hasAudio` : le laisser a
-        // `false` alors qu'une piste est embarquee ferait afficher l'apercu en
-        // muet, avec le bouton de son masque.
-        //
-        // `hasAudio` reste vrai meme si l'URL n'est pas persistable : le son
-        // est de toute facon EMBARQUE dans le fichier rendu.
-        //
-        // Le rush compte lui aussi : il porte sa propre piste, que le
-        // compositeur route et embarque dans le fichier
-        // (`hasRushAudio = !!videoEl`). L'omettre faisait proposer par le
-        // Calendrier « Ajouter du son » sur un montage qui en avait deja.
-        hasAudio: !!(musicUrl || voiceUrl || (rushUrl && seqDuration('video') > 0)),
-        // Les URL `blob:` ne survivent pas au rechargement de la page. Le
-        // panneau audio televerse normalement les pistes et renvoie une URL
-        // publique, mais il retombe sur un blob local si le televersement de
-        // la voix de synthese echoue. Stocker cette URL-la laisserait une
-        // reference morte dans le post.
-        musicUrl: persistableUrl(musicUrl),
-        voiceUrl: persistableUrl(voiceUrl),
-        // Le rush est deja INCRUSTE dans le montage ; on le persiste quand
-        // meme sous `rushUrls` — c'est le champ que le Calendrier relit pour
-        // regenerer (`videoUrl: meta.rushUrls?.[0]`). Sans lui, une
-        // regeneration produirait le meme montage AMPUTE de sa sequence video.
-        // Meme condition que `videoUrl` ci-dessus : un rush persiste alors que
-        // sa sequence est masquee ferait re-telecharger et re-decoder le
-        // fichier a chaque regeneration depuis le Calendrier, en pure perte.
-        rushUrls:
-          seqDuration('video') > 0 && persistableUrl(rushUrl)
-            ? [persistableUrl(rushUrl)!]
-            : undefined,
-        renderedVideoUrl: composed.url,
-        thumbnailUrl: composed.thumbnailUrl || undefined,
-        composerVersion: composed.composerVersion || CURRENT_COMPOSER_VERSION,
-        // Dimensions REELLES du montage. `post.format` ne connait que
-        // « reel » et « tv » : sans ce champ, le Calendrier cadrerait un
-        // carre dans un conteneur 16:9 et en perdrait le haut et le bas,
-        // CTA compris.
-        videoSize: { w: size.w, h: size.h },
-        // Meme source que les durees passees au compositeur : l'apercu, la
-        // video et le Calendrier suivent donc strictement le meme ordre.
-        sequences: {
-          intro: seqDuration('intro'),
-          cards: seqDuration('cards'),
-          video: seqDuration('video'),
-          cta: seqDuration('cta'),
-          total: activeOrder.reduce((t, k) => t + seqDuration(k), 0),
-          order: activeOrder,
-        },
-        branding: {
-          accentColor: accent,
-          ctaText: generated.cta,
-          ctaSubText: generated.ctaSub,
-          watermarkText: generated.cta,
-          borderEnabled: false,
-          borderColor: null,
-        },
-        design: {
-          cardStyle: CARD_STYLE,
-          font: DESIGN.font,
-          // Persiste pour que le Calendrier (apercu HTML et regeneration)
-          // ancre le titre a GAUCHE comme la video, et non centre sur x=8%.
-          titleAlign: 'left',
-          // Memes champs typographiques que ceux passes au compositeur : une
-          // regeneration depuis le Calendrier repart donc du meme rendu.
-          ...textDesign,
-          ctaMainText: generated.cta,
-          ctaSubText: generated.ctaSub,
-          gradientColor1: gradStart,
-          gradientColor2: gradEnd,
-          gradientOpacity,
-          noColorSequences: [],
-          // Filigrane persiste : le Calendrier le relit pour sa
-          // reconstruction HTML (`design.siteText`) ET pour toute
-          // regeneration du montage. Sans lui, les deux se rabattent sur
-          // « Afroboost.com » — le post afficherait un filigrane que
-          // l'utilisateur n'a jamais choisi, et different de sa video.
-          siteText: watermarkConfig,
-          // Le Calendrier lit les positions sous `positions.*` (imbrique),
-          // la ou le compositeur attend des cles a plat. On ecrit la forme
-          // du Calendrier ici pour que sa reconstruction HTML de secours
-          // place le titre et le CTA au meme endroit que la video.
-          positions: {
-            title: { x: titlePos.x, y: titlePos.y },
-            watermark: { x: ctaPos.x, y: ctaPos.y },
-            // Elements libres, en % du conteneur des cartes. Lecteurs : defaut
-            // `[]` — les posts anterieurs n'ont pas ce champ.
-            elements: freeElements,
-          },
-          sizes: {
-            title: DESIGN.titleWidth,
-            watermark: DESIGN.ctaWidth,
-          },
-        },
-      };
-
-      const res = await fetch('/api/posts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          // Meme casse que le titre envoye au compositeur : une recomposition
-          // ulterieure repart de post.title et doit produire le meme rendu.
-          title: (generated.title || 'Infographie').toUpperCase(),
-          caption: generated.subtitle || '',
-          media_url: composed.url,
-          media_type: 'video',
-          format: renderFormat,
-          platforms: [],
-          scheduled_date: scheduledDate,
-          scheduled_time: '12:00',
-          status: 'draft',
-          metadata,
-        }),
-      });
-
-      const json = await res.json();
-      if (!json.success || !json.post?.id) {
-        setError(
-          res.status === 401
-            ? 'Votre session a expiré. Reconnectez-vous et réessayez.'
-            : "Le montage est prêt mais l'enregistrement du post a échoué.",
+        // 3. Composition + upload (composeAndUpload fait les deux et produit
+        //    aussi la vignette).
+        setRenderStage('Rendu du montage…');
+        // Cartes enrichies d'un `iconImage` : sans cela le repli canvas du
+        // compositeur ecrirait « Droplet » en toutes lettres.
+        const composerCards = await preRenderCardIcons(
+          contenu.cards.map((c) => ({
+            emoji: c.icon,
+            label: c.title,
+            value: c.value,
+            description: c.description,
+            color: accent,
+          })),
         );
-        return;
-      }
-      // 5. Débit — le post existe, la vidéo est en ligne. On lit le statut :
-      //    `/api/credits/deduct` répond 402 sur solde insuffisant, et un
-      //    `.catch()` seul n'attrape que les erreurs réseau, pas un 402.
-      try {
-        const deductRes = await fetch('/api/credits/deduct', {
+        const composed = await composeAndUpload({
+          width: size.w,
+          height: size.h,
+          fps: 30,
+          // Le compositeur ne met PAS le titre en majuscules (contrairement a
+          // l'apercu, qui applique `uppercase` en CSS) : on le fait ici.
+          title: (contenu.title || 'Infographie').toUpperCase(),
+          subtitle: contenu.subtitle || undefined,
+          cards: composerCards,
+          // Rush : `drawVideoSeq` le cadre en « cover » (echelle uniforme
+          // `max(w/srcW, h/srcH)`), donc il recadre mais n'etire JAMAIS — le
+          // ratio de la source est preserve quel que soit le format de sortie.
+          //
+          // Conditionne a la sequence : un rush transmis alors que la sequence
+          // « Video » est masquee etait quand meme telecharge et decode, et sa
+          // seule presence fait basculer le compositeur en rendu TEMPS REEL
+          // (`hasRushAudio = !!videoEl`) — dix fois plus lent, pour une video
+          // qui n'apparait nulle part dans le montage.
+          videoUrl: seqDuration('video') > 0 ? rushUrl || undefined : undefined,
+          // Une sequence desactivee a une duree nulle : c'est ainsi que le
+          // compositeur l'exclut (conditions d'inclusion), et le Calendrier la
+          // filtre pareil (`dur > 0`).
+          introDuration: seqDuration('intro'),
+          cardsDuration: seqDuration('cards'),
+          videoDuration: seqDuration('video'),
+          ctaDuration: seqDuration('cta'),
+          // Le compositeur bascule en mode « normal » (temps reel, audio mixe et
+          // embarque) des qu'une de ces deux URL est fournie ; sans elles il
+          // reste en mode « fast ».
+          musicUrl: musicUrl || undefined,
+          voiceUrl: voiceUrl || undefined,
+          musicVolume,
+          voiceVolume,
+          // Mixeur unifie : ces keyframes pilotent les trois bus audio du
+          // compositeur (musique, rush, voix). Absents tant que l'utilisateur
+          // n'a rien reglé — donc aucun changement pour les montages existants.
+          audioKeyframes: audioKeyframes.length > 0 ? audioKeyframes : undefined,
+          sequenceOrder: activeOrder,
+          accentColor: accent,
+          // drawCTA lit `design.ctaMainText || watermarkText || 'AFROBOOST'` :
+          // ces deux options seules ne suffisent pas, d'ou les champs `design`
+          // ci-dessous. Sans eux la video affichait « AFROBOOST » en gros.
+          ctaText: contenu.ctaSub,
+          ctaSubText: contenu.ctaSub,
+          watermarkText: contenu.cta,
+          // Filigrane. `enabled: false` est la SEULE facon de l'eteindre : le
+          // compositeur allume le calque des qu'il n'est pas explicitement
+          // desactive, et se rabat alors sur « Afroboost.com ».
+          siteText: watermarkConfig,
+          // Photo d'affiche : le compositeur la peint en fond de TOUTES les
+          // sequences (`posterOnAllSequences` absent vaut « partout »), avec le
+          // voile de degrade par-dessus — exactement ce que montre l'apercu.
+          posterUrl: affiche,
+          design: {
+            cardStyle: CARD_STYLE,
+            // Sans ce champ : titre et CTA en Helvetica, cartes en Inter.
+            font: DESIGN.font,
+
+            // ── Fond ──────────────────────────────────────────────────────
+            gradientColor1: gradStart,
+            gradientColor2: gradEnd,
+            gradientOpacity,
+            // Aucune sequence en noir plein. Sans affiche, le backdrop degrade
+            // est peint partout ; avec une affiche, elle prend sa place et le
+            // degrade ne subsiste qu'en voile — dans les deux cas l'apercu et la
+            // video montrent la meme chose.
+            noColorSequences: [],
+
+            // ── Titre : haut-gauche ───────────────────────────────────────
+            titleAlign: 'left' as const,
+            titlePosition: { x: titlePos.x, y: titlePos.y },
+            titleSize: DESIGN.titleWidth,
+            // Typographie du titre — memes valeurs que l'apercu.
+            // `textScale` est le SEUL levier de taille que `drawIntro` connait ;
+            // il vaut aussi pour le sous-titre, que le compositeur dimensionne
+            // avec le meme facteur.
+            ...textDesign,
+
+            // ── CTA : bas-centre ──────────────────────────────────────────
+            // `ctaMainText` est lu EN PREMIER par drawCTA ; `ctaSubTextDesign`
+            // est le nom du champ cote design pour le sous-texte.
+            ctaMainText: contenu.cta,
+            ctaSubTextDesign: contenu.ctaSub,
+            watermarkPosition: { x: ctaPos.x, y: ctaPos.y },
+            watermarkSize: DESIGN.ctaWidth,
+
+            // ── Cartes : image de l'apercu, blittee telle quelle ──────────
+            cardsSnapshot,
+            cardsSnapshotRect,
+            // Couche d'elements : le compositeur la peint sur les quatre
+            // sequences. `undefined` sans element — rien ne change alors.
+            elements: await rasterizeElements(),
+          },
+          onProgress: (pct, stage) => {
+            setRenderProgress(Math.max(0, Math.min(100, Math.round(pct))));
+            if (stage) setRenderStage(stage);
+          },
+        });
+
+        if (!composed.url) {
+          setError("Le montage a été rendu mais son envoi a échoué. Réessayez.");
+          return;
+        }
+
+        // 4. Création du post AVANT le débit. Dans l'autre ordre, un échec de
+        //    /api/posts laissait l'utilisateur débité, sans post, avec une vidéo
+        //    orpheline — et le message l'invitait à recommencer, donc à payer
+        //    une seconde fois.
+        setRenderStage('Finalisation…');
+
+        // Le post, montage inclus. `renderedVideoUrl` +
+        //    `thumbnailUrl` + `composerVersion` à jour : le Calendrier lit la
+        //    vidéo directement et n'affiche même pas son bouton « Régénérer ».
+        const metadata = {
+          type: 'infographic',
+          source: 'assistant-simple',
+          subtitle: contenu.subtitle,
+          theme: theme.id,
+          cards: contenu.cards.map((c) => ({
+            emoji: c.icon,
+            label: c.title,
+            value: c.value,
+            description: c.description,
+            color: accent,
+          })),
+          // Le Calendrier detecte l'audio via `!!meta?.hasAudio` : le laisser a
+          // `false` alors qu'une piste est embarquee ferait afficher l'apercu en
+          // muet, avec le bouton de son masque.
+          //
+          // `hasAudio` reste vrai meme si l'URL n'est pas persistable : le son
+          // est de toute facon EMBARQUE dans le fichier rendu.
+          //
+          // Le rush compte lui aussi : il porte sa propre piste, que le
+          // compositeur route et embarque dans le fichier
+          // (`hasRushAudio = !!videoEl`). L'omettre faisait proposer par le
+          // Calendrier « Ajouter du son » sur un montage qui en avait deja.
+          hasAudio: !!(musicUrl || voiceUrl || (rushUrl && seqDuration('video') > 0)),
+          // Les URL `blob:` ne survivent pas au rechargement de la page. Le
+          // panneau audio televerse normalement les pistes et renvoie une URL
+          // publique, mais il retombe sur un blob local si le televersement de
+          // la voix de synthese echoue. Stocker cette URL-la laisserait une
+          // reference morte dans le post.
+          musicUrl: persistableUrl(musicUrl),
+          voiceUrl: persistableUrl(voiceUrl),
+          // Le rush est deja INCRUSTE dans le montage ; on le persiste quand
+          // meme sous `rushUrls` — c'est le champ que le Calendrier relit pour
+          // regenerer (`videoUrl: meta.rushUrls?.[0]`). Sans lui, une
+          // regeneration produirait le meme montage AMPUTE de sa sequence video.
+          // Meme condition que `videoUrl` ci-dessus : un rush persiste alors que
+          // sa sequence est masquee ferait re-telecharger et re-decoder le
+          // fichier a chaque regeneration depuis le Calendrier, en pure perte.
+          rushUrls:
+            seqDuration('video') > 0 && persistableUrl(rushUrl)
+              ? [persistableUrl(rushUrl)!]
+              : undefined,
+          renderedVideoUrl: composed.url,
+          thumbnailUrl: composed.thumbnailUrl || undefined,
+          composerVersion: composed.composerVersion || CURRENT_COMPOSER_VERSION,
+          // Dimensions REELLES du montage. `post.format` ne connait que
+          // « reel » et « tv » : sans ce champ, le Calendrier cadrerait un
+          // carre dans un conteneur 16:9 et en perdrait le haut et le bas,
+          // CTA compris.
+          videoSize: { w: size.w, h: size.h },
+          // Meme source que les durees passees au compositeur : l'apercu, la
+          // video et le Calendrier suivent donc strictement le meme ordre.
+          sequences: {
+            intro: seqDuration('intro'),
+            cards: seqDuration('cards'),
+            video: seqDuration('video'),
+            cta: seqDuration('cta'),
+            total: activeOrder.reduce((t, k) => t + seqDuration(k), 0),
+            order: activeOrder,
+          },
+          branding: {
+            accentColor: accent,
+            ctaText: contenu.cta,
+            ctaSubText: contenu.ctaSub,
+            watermarkText: contenu.cta,
+            borderEnabled: false,
+            borderColor: null,
+          },
+          design: {
+            cardStyle: CARD_STYLE,
+            font: DESIGN.font,
+            // Persiste pour que le Calendrier (apercu HTML et regeneration)
+            // ancre le titre a GAUCHE comme la video, et non centre sur x=8%.
+            titleAlign: 'left',
+            // Memes champs typographiques que ceux passes au compositeur : une
+            // regeneration depuis le Calendrier repart donc du meme rendu.
+            ...textDesign,
+            ctaMainText: contenu.cta,
+            ctaSubText: contenu.ctaSub,
+            gradientColor1: gradStart,
+            gradientColor2: gradEnd,
+            gradientOpacity,
+            noColorSequences: [],
+            // Filigrane persiste : le Calendrier le relit pour sa
+            // reconstruction HTML (`design.siteText`) ET pour toute
+            // regeneration du montage. Sans lui, les deux se rabattent sur
+            // « Afroboost.com » — le post afficherait un filigrane que
+            // l'utilisateur n'a jamais choisi, et different de sa video.
+            siteText: watermarkConfig,
+            // Le Calendrier lit les positions sous `positions.*` (imbrique),
+            // la ou le compositeur attend des cles a plat. On ecrit la forme
+            // du Calendrier ici pour que sa reconstruction HTML de secours
+            // place le titre et le CTA au meme endroit que la video.
+            positions: {
+              title: { x: titlePos.x, y: titlePos.y },
+              watermark: { x: ctaPos.x, y: ctaPos.y },
+              // Elements libres, en % du conteneur des cartes. Lecteurs : defaut
+              // `[]` — les posts anterieurs n'ont pas ce champ.
+              elements: freeElements,
+            },
+            sizes: {
+              title: DESIGN.titleWidth,
+              watermark: DESIGN.ctaWidth,
+            },
+          },
+        };
+
+        const res = await fetch('/api/posts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cost, reason: 'render', format: renderFormat }),
+          body: JSON.stringify({
+            // Meme casse que le titre envoye au compositeur : une recomposition
+            // ulterieure repart de post.title et doit produire le meme rendu.
+            title: (contenu.title || 'Infographie').toUpperCase(),
+            caption: contenu.subtitle || '',
+            media_url: composed.url,
+            media_type: 'video',
+            format: renderFormat,
+            platforms: [],
+            scheduled_date: dates[b],
+            scheduled_time: '12:00',
+            status: 'draft',
+            metadata,
+          }),
         });
-        if (!deductRes.ok) {
-          console.warn(`[Assistant] Débit des crédits refusé (${deductRes.status}) — post ${json.post.id} conservé`);
+
+        const json = await res.json();
+        if (!json.success || !json.post?.id) {
+          setError(
+            res.status === 401
+              ? 'Votre session a expiré. Reconnectez-vous et réessayez.'
+              : "Le montage est prêt mais l'enregistrement du post a échoué.",
+          );
+          return;
         }
-      } catch (e) {
-        console.warn('[Assistant] Débit des crédits injoignable — post conservé:', e);
+        // 5. Débit — le post existe, la vidéo est en ligne. On lit le statut :
+        //    `/api/credits/deduct` répond 402 sur solde insuffisant, et un
+        //    `.catch()` seul n'attrape que les erreurs réseau, pas un 402.
+        try {
+          const deductRes = await fetch('/api/credits/deduct', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cost, reason: 'render', format: renderFormat }),
+          });
+          if (!deductRes.ok) {
+            console.warn(`[Assistant] Débit des crédits refusé (${deductRes.status}) — post ${json.post.id} conservé`);
+          }
+        } catch (e) {
+          console.warn('[Assistant] Débit des crédits injoignable — post conservé:', e);
+        }
+
+        }
+      } finally {
+        // L'ecran doit retrouver ce que l'utilisateur avait compose, quoi
+        // qu'il soit arrive au lot.
+        if (total > 1) setGenerated(contenuInitial);
+        setBatchProgress(null);
       }
 
       setRenderProgress(100);
@@ -3536,6 +3645,8 @@ export default function AssistantWizard() {
     setSelectedElementId(null);
     setPosterUrl(null);
     setPosterPhotos([]);
+    setBatchCount(1);
+    setBatchPhotoUrls([]);
     setDuplicateNotice(null);
     setOpenSection('format');
     genSigRef.current = '';
@@ -3948,12 +4059,29 @@ export default function AssistantWizard() {
                       <>
                         <div className="grid grid-cols-4 gap-1.5">
                           {posterPhotos.map((photo) => {
-                            const retenue = posterUrl === photo.url;
+                            const rang = batchPhotoUrls.indexOf(photo.url);
+                            const retenue = batchCount > 1 ? rang >= 0 : posterUrl === photo.url;
                             return (
                               <button
                                 key={`${photo.source ?? 'p'}-${photo.id}`}
                                 type="button"
-                                onClick={() => setPosterUrl(retenue ? null : photo.url)}
+                                onClick={() => {
+                                  if (batchCount > 1) {
+                                    // Lot : on retient plusieurs affiches, dans
+                                    // l'ordre des clics. Au-dela du nombre de
+                                    // videos, le clic ne fait rien — le dire par
+                                    // le compteur vaut mieux qu'ecraser un choix.
+                                    setBatchPhotoUrls((prev) => {
+                                      if (prev.includes(photo.url)) return prev.filter((u) => u !== photo.url);
+                                      if (prev.length >= batchCount) return prev;
+                                      return [...prev, photo.url];
+                                    });
+                                    // La premiere retenue sert aussi d'apercu.
+                                    setPosterUrl((cur) => (cur === photo.url ? null : cur ?? photo.url));
+                                    return;
+                                  }
+                                  setPosterUrl(retenue ? null : photo.url);
+                                }}
                                 data-poster-photo={photo.url}
                                 title={photo.photographer ? `Photo : ${photo.photographer}` : 'Choisir cette photo'}
                                 className={`relative overflow-hidden rounded-lg border transition-colors ${
@@ -3967,14 +4095,24 @@ export default function AssistantWizard() {
                                   className="aspect-[3/4] w-full object-cover"
                                 />
                                 {retenue && (
-                                  <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-purple-500">
-                                    <Check className="w-2.5 h-2.5" />
+                                  <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-purple-500 text-[9px] font-bold">
+                                    {batchCount > 1 ? rang + 1 : <Check className="w-2.5 h-2.5" />}
                                   </span>
                                 )}
                               </button>
                             );
                           })}
                         </div>
+                        {batchCount > 1 && (
+                          <p className="text-xs text-gray-500">
+                            {batchPhotoUrls.length} / {batchCount} affiche
+                            {batchPhotoUrls.length > 1 ? 's' : ''} retenue
+                            {batchPhotoUrls.length > 1 ? 's' : ''}
+                            {batchPhotoUrls.length > 0 && batchPhotoUrls.length < batchCount
+                              ? ' — les manquantes reprendront les précédentes.'
+                              : ''}
+                          </p>
+                        )}
                         <button
                           type="button"
                           onClick={() => searchPhotos(photoQuery.trim() || currentTopic, imageSource, true)}
@@ -4742,13 +4880,44 @@ export default function AssistantWizard() {
                     <div>
                       <h3 className="font-semibold mb-1">Envoyer au calendrier</h3>
                       <p className="text-sm text-gray-400">
-                        La vidéo est composée maintenant, exactement telle que l&apos;aperçu
-                        l&apos;affiche, puis enregistrée en brouillon.{' '}
+                        {batchCount > 1 ? 'Les vidéos sont composées' : 'La vidéo est composée'}{' '}
+                        maintenant, exactement telle que l&apos;aperçu l&apos;affiche, puis
+                        enregistrée{batchCount > 1 ? 's' : ''} en brouillon.{' '}
                         <span className="text-gray-300">
-                          {format === '9:16' ? COST.reel : COST.tv} crédits
+                          {batchCost(format === '9:16' ? COST.reel : COST.tv, batchCount)} crédits
                         </span>{' '}
                         seront débités une fois le rendu terminé.
                       </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium mb-2">Combien de vidéos ?</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {Array.from({ length: MAX_BATCH }, (_, i) => i + 1).map((n) => (
+                          <button
+                            key={n}
+                            type="button"
+                            onClick={() => setBatchCount(n)}
+                            data-batch-count={n}
+                            className={`w-9 h-9 rounded-lg border text-sm transition-colors ${
+                              batchCount === n
+                                ? 'border-purple-500 text-white'
+                                : 'border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
+                            }`}
+                          >
+                            {n}
+                          </button>
+                        ))}
+                      </div>
+                      {batchCount > 1 && (
+                        <p className="mt-2 text-xs text-gray-500">
+                          Chaque vidéo reçoit un angle différent et sa propre date, un jour après
+                          l’autre. La première garde le contenu affiché ci-contre.
+                          {batchPhotoUrls.length > 0
+                            ? ` ${batchPhotoUrls.length} affiche${batchPhotoUrls.length > 1 ? 's' : ''} retenue${batchPhotoUrls.length > 1 ? 's' : ''}, reprise${batchPhotoUrls.length > 1 ? 's' : ''} en boucle si besoin.`
+                            : ' Choisissez plusieurs photos dans « Photo d’affiche » pour les varier.'}
+                        </p>
+                      )}
                     </div>
 
                     <div>
@@ -4781,7 +4950,8 @@ export default function AssistantWizard() {
                             </>
                           ) : (
                             <>
-                              <CalendarPlus className="w-4 h-4" /> Composer et envoyer
+                              <CalendarPlus className="w-4 h-4" />{' '}
+                              {batchCount > 1 ? `Composer et envoyer ${batchCount} vidéos` : 'Composer et envoyer'}
                             </>
                           )}
                         </span>
@@ -4817,6 +4987,11 @@ export default function AssistantWizard() {
                             {renderProgress}%
                           </span>
                         </div>
+                        {batchProgress && batchProgress.total > 1 && (
+                          <p className="text-center text-xs text-gray-400">
+                            Vidéo {batchProgress.done + 1} / {batchProgress.total}
+                          </p>
+                        )}
                         {renderStage && (
                           <p className="text-center text-xs text-gray-500">{renderStage}</p>
                         )}

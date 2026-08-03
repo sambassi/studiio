@@ -113,6 +113,10 @@ export interface Draft {
   posterUrl?: string;
   /** Source de recherche preferee. */
   imageSource?: 'pexels' | 'unsplash';
+  /** Nombre de montages du lot. Absent ou 1 = un seul montage, comme avant. */
+  batchCount?: number;
+  /** Affiches retenues pour le lot, dans l'ordre. */
+  batchPhotoUrls?: string[];
 }
 
 /** Nombre d'emplacements et de groupes relus au maximum — garde-fou anti-brouillon abime. */
@@ -459,6 +463,16 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
       ? raw.posterUrl
       : undefined;
   out.imageSource = raw.imageSource === 'unsplash' ? 'unsplash' : raw.imageSource === 'pexels' ? 'pexels' : undefined;
+  // Un lot relu hors bornes debiterait des credits que l'ecran n'a jamais
+  // proposes : on le ramene dans la plage, ou on l'oublie.
+  out.batchCount =
+    typeof raw.batchCount === 'number' && Number.isFinite(raw.batchCount) && raw.batchCount >= 1
+      ? Math.min(10, Math.floor(raw.batchCount))
+      : undefined;
+  out.batchPhotoUrls = Array.isArray(raw.batchPhotoUrls)
+    ? raw.batchPhotoUrls.filter((u): u is string => typeof u === 'string' && /^https?:\/\//.test(u)).slice(0, 10)
+    : undefined;
+  if (out.batchPhotoUrls && out.batchPhotoUrls.length === 0) out.batchPhotoUrls = undefined;
 
   // Sequence « Video » active mais rush disparu — URL `blob:` filtree a
   // l'ecriture, ou fichier expire depuis. La laisser active ferait sortir un

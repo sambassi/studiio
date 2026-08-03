@@ -69,7 +69,12 @@ describe('Default-safe : sans photo, le fond ne change pas', () => {
   });
 
   it("l'export n'envoie rien quand aucune photo n'est retenue", () => {
-    expect(wizard).toContain('posterUrl: posterUrl || undefined,');
+    // Depuis le lot, l'affiche de chaque montage vient de `photoForIndex` et
+    // retombe sur la photo unique — `undefined` quand il n'y en a aucune.
+    expect(wizard).toContain(
+      'const affiche = photoForIndex(batchPhotoUrls, b) ?? posterUrl ?? undefined;',
+    );
+    expect(wizard).toContain('posterUrl: affiche,');
   });
 });
 
