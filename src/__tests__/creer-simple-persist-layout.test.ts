@@ -44,8 +44,17 @@ const DEPS: SanitizeDeps = {
   },
 };
 
+/** Contenu minimal : sans cartes relues, aucun emplacement n'a d'objet. */
+const contenuDe = (...ids: string[]) => ({
+  title: 'T', subtitle: 'S', cta: 'C', ctaSub: 'CS',
+  cards: ids.map((id) => ({ id, icon: 'Flame', title: id, description: '', value: '' })),
+});
+
 const lire = (extra: Record<string, unknown>) =>
-  sanitizeDraft({ version: DRAFT_VERSION, savedAt: 1, ...extra }, DEPS)!;
+  sanitizeDraft(
+    { version: DRAFT_VERSION, savedAt: 1, generated: contenuDe('a', 'b'), ...extra },
+    DEPS,
+  )!;
 
 const boite = (x = 10, y = 10, w = 40, h = 9) => ({ x, y, w, h });
 
@@ -100,8 +109,45 @@ describe('Positions du titre et du CTA', () => {
 
 describe('Emplacements libres des cartes — tout ou rien', () => {
   it('relit un ensemble valide, avec son format de mesure', () => {
-    const d = lire({ cardBoxes: { format: '16:9', boxes: { a: boite(), b: boite(50, 20) } } });
+    const d = lire({ format: '16:9', cardBoxes: { format: '16:9', boxes: { a: boite(), b: boite(50, 20) } } });
     expect(d.cardBoxes).toEqual({ format: '16:9', boxes: { a: boite(), b: boite(50, 20) } });
+  });
+
+  it('refuse un format de mesure DIFFÉRENT de celui du brouillon', () => {
+    // `h` est un % de la hauteur du conteneur, laquelle varie en sens inverse
+    // de la taille des cartes d'un format à l'autre : rejouer une mesure 9:16
+    // en 16:9 écrase les cartes les unes sur les autres, dans la vidéo comprise.
+    const d = lire({ format: '16:9', cardBoxes: { format: '9:16', boxes: { a: boite() } } });
+    expect(d.cardBoxes).toBeUndefined();
+  });
+
+  it('refuse une carte qui ne tient pas ENTIÈREMENT dans le conteneur', () => {
+    // Borner x et y à [0,100] ne suffit pas : une carte à x=95 large de 100 %
+    // sort de la zone photographiée, donc du montage. C'est l'invariant que le
+    // déplacement et la duplication maintiennent en permanence.
+    expect(lire({ cardBoxes: { format: '9:16', boxes: { a: boite(95, 10, 100, 9), b: boite(50, 20) } } }).cardBoxes).toBeUndefined();
+    expect(lire({ cardBoxes: { format: '9:16', boxes: { a: boite(10, 95, 40, 100), b: boite(50, 20) } } }).cardBoxes).toBeUndefined();
+    // Pile sur le bord : accepté.
+    expect(lire({ cardBoxes: { format: '9:16', boxes: { a: boite(60, 91, 40, 9), b: boite(0, 0, 40, 9) } } }).cardBoxes)
+      .toEqual({ format: '9:16', boxes: { a: boite(60, 91, 40, 9), b: boite(0, 0, 40, 9) } });
+  });
+
+  it('refuse un identifiant de carte vide', () => {
+    expect(lire({ cardBoxes: { format: '9:16', boxes: { '': boite(), a: boite(), b: boite(50, 20) } } }).cardBoxes).toBeUndefined();
+  });
+
+  it('la clé « __proto__ » n est pas avalée en silence', () => {
+    // Un littéral JS ne SAIT PAS créer cette clé — `{ __proto__: v }` fixe le
+    // prototype. Il faut passer par JSON, comme le fait la vraie relecture.
+    const boxes = JSON.parse('{"__proto__":{"x":1,"y":1,"w":1,"h":1},"a":{"x":10,"y":10,"w":40,"h":9},"b":{"x":50,"y":20,"w":40,"h":9}}');
+    const d = lire({ cardBoxes: { format: '9:16', boxes } });
+    // Elle ne correspond à aucune carte du contenu : l'ensemble est écarté.
+    expect(d.cardBoxes).toBeUndefined();
+  });
+
+  it('le résultat garde un prototype normal', () => {
+    const d = lire({ cardBoxes: { format: '9:16', boxes: { a: boite(), b: boite(50, 20) } } });
+    expect(Object.getPrototypeOf(d.cardBoxes!.boxes)).toBe(Object.prototype);
   });
 
   it('UNE boîte abîmée invalide TOUT l ensemble', () => {
@@ -113,13 +159,11 @@ describe('Emplacements libres des cartes — tout ou rien', () => {
 
   it('refuse une carte de largeur ou de hauteur nulle', () => {
     // Invisible et insaisissable : irrattrapable sans repartir de zéro.
-    expect(lire({ cardBoxes: { format: '9:16', boxes: { a: boite(10, 10, 0, 9) } } }).cardBoxes).toBeUndefined();
-    expect(lire({ cardBoxes: { format: '9:16', boxes: { a: boite(10, 10, 40, 0) } } }).cardBoxes).toBeUndefined();
+    expect(lire({ cardBoxes: { format: '9:16', boxes: { a: boite(10, 10, 0, 9), b: boite(50, 20) } } }).cardBoxes).toBeUndefined();
+    expect(lire({ cardBoxes: { format: '9:16', boxes: { a: boite(10, 10, 40, 0), b: boite(50, 20) } } }).cardBoxes).toBeUndefined();
   });
 
-  it('refuse un format inconnu', () => {
-    // `h` est un % de la hauteur du conteneur : rejoué à la mauvaise échelle,
-    // il écrase les cartes les unes sur les autres, dans la vidéo comprise.
+  it('refuse un format inconnu ou absent', () => {
     expect(lire({ cardBoxes: { format: '4:5', boxes: { a: boite() } } }).cardBoxes).toBeUndefined();
     expect(lire({ cardBoxes: { boxes: { a: boite() } } }).cardBoxes).toBeUndefined();
   });
@@ -138,10 +182,56 @@ describe('Emplacements libres des cartes — tout ou rien', () => {
   });
 });
 
+describe('Croisement avec le contenu relu', () => {
+  const contenu = (...ids: string[]) => ({
+    title: 'T', subtitle: 'S', cta: 'C', ctaSub: 'CS',
+    cards: ids.map((id) => ({ id, icon: 'Flame', title: id, description: '', value: '' })),
+  });
+
+  it('les emplacements doivent couvrir EXACTEMENT les cartes du contenu', () => {
+    // Sans ce croisement, l'écran effaçait la disposition ~400 ms après le
+    // chargement en réécrivant le brouillon — le travail était perdu sans que
+    // personne ait rien fait.
+    const bon = lire({ generated: contenu('a', 'b'), cardBoxes: { format: '9:16', boxes: { a: boite(), b: boite(50, 20) } } });
+    expect(bon.cardBoxes).toBeDefined();
+
+    const orphelin = lire({ generated: contenu('a'), cardBoxes: { format: '9:16', boxes: { a: boite(), z: boite(50, 20) } } });
+    expect(orphelin.cardBoxes).toBeUndefined();
+
+    const incomplet = lire({ generated: contenu('a', 'b'), cardBoxes: { format: '9:16', boxes: { a: boite() } } });
+    expect(incomplet.cardBoxes).toBeUndefined();
+  });
+
+  it('un contenu rejeté fait tomber emplacements et groupes avec lui', () => {
+    const d = lire({
+      generated: { title: 42 },  // rejeté par `sanitizeGenerated`
+      cardBoxes: { format: '9:16', boxes: { a: boite() } },
+      cardGroups: [{ id: 'g1', cardIds: ['a', 'b'] }],
+    });
+    expect(d.generated).toBeNull();
+    expect(d.cardBoxes).toBeUndefined();
+    expect(d.cardGroups).toBeUndefined();
+  });
+
+  it('les groupes oublient les cartes absentes du contenu', () => {
+    const d = lire({ generated: contenu('a', 'b'), cardGroups: [{ id: 'g1', cardIds: ['a', 'b', 'z'] }] });
+    expect(d.cardGroups).toEqual([{ id: 'g1', cardIds: ['a', 'b'] }]);
+  });
+
+  it('un groupe qui tombe sous le seuil après croisement disparaît', () => {
+    const d = lire({ generated: contenu('a'), cardGroups: [{ id: 'g1', cardIds: ['a', 'z'] }] });
+    expect(d.cardGroups).toBeUndefined();
+  });
+});
+
 describe('Groupes — les invariants sont rétablis à la lecture', () => {
   it('relit des groupes valides', () => {
     const d = lire({ cardGroups: [{ id: 'g1', cardIds: ['a', 'b'] }] });
     expect(d.cardGroups).toEqual([{ id: 'g1', cardIds: ['a', 'b'] }]);
+  });
+
+  it('refuse un identifiant de groupe vide', () => {
+    expect(lire({ cardGroups: [{ id: '', cardIds: ['a', 'b'] }] }).cardGroups).toBeUndefined();
   });
 
   it('jette un groupe de moins de deux cartes', () => {
@@ -169,14 +259,24 @@ describe('Groupes — les invariants sont rétablis à la lecture', () => {
 
   it('ignore les entrées mal formées sans jeter les bonnes', () => {
     const d = lire({
-      cardGroups: [null, { cardIds: ['a', 'b'] }, { id: 'g2', cardIds: ['x', 'y'] }, 'nope'],
+      generated: contenuDe('x', 'y'),
+      cardGroups: [null, { cardIds: ['x', 'y'] }, { id: 'g2', cardIds: ['x', 'y'] }, 'nope'],
     });
     expect(d.cardGroups).toEqual([{ id: 'g2', cardIds: ['x', 'y'] }]);
   });
 
-  it('borne le nombre de groupes relus', () => {
+  it('le nombre de groupes est borné par les cartes réellement relues', () => {
+    // `sanitizeGenerated` ne garde que 10 cartes : au plus 5 groupes de deux
+    // peuvent donc survivre, quelle qu'ait été l'ambition du brouillon. Le
+    // plafond `MAX_GROUPS` reste un garde-fou externe, jamais atteint tant que
+    // le croisement avec le contenu s'applique.
+    const cartes = Array.from({ length: 40 }, (_, i) => (i % 2 ? `b${(i - 1) / 2}` : `a${i / 2}`));
     const trop = Array.from({ length: 20 }, (_, i) => ({ id: `g${i}`, cardIds: [`a${i}`, `b${i}`] }));
-    expect(lire({ cardGroups: trop }).cardGroups).toHaveLength(12);
+    const d = lire({ generated: contenuDe(...cartes), cardGroups: trop });
+    expect(d.cardGroups).toHaveLength(5);
+    // Et jamais une carte que le contenu n'a pas retenue.
+    const connus = new Set((d.generated as { cards: { id: string }[] }).cards.map((c) => c.id));
+    for (const g of d.cardGroups!) for (const id of g.cardIds) expect(connus.has(id)).toBe(true);
   });
 
   it('refuse une forme qui n est pas une liste', () => {
@@ -186,9 +286,27 @@ describe('Groupes — les invariants sont rétablis à la lecture', () => {
   });
 });
 
+describe('La liste des formats vient des DEPS, pas d une constante figée', () => {
+  it('un format connu de l app mais absent des deps est refusé', () => {
+    const restreint: SanitizeDeps = { ...DEPS, formats: ['9:16'] };
+    const d = sanitizeDraft(
+      { version: DRAFT_VERSION, savedAt: 1, format: '16:9', cardBoxes: { format: '16:9', boxes: { a: boite() } } },
+      restreint,
+    )!;
+    // Le format du brouillon retombe sur le défaut, donc la mesure ne
+    // correspond plus : les emplacements sont écartés.
+    expect(d.format).toBe('9:16');
+    expect(d.cardBoxes).toBeUndefined();
+  });
+});
+
 describe('Aller-retour : ce qu on écrit est ce qu on relit', () => {
   it('un placement complet survit au passage par le stockage', () => {
     const ecrit = {
+      generated: {
+        title: 'T', subtitle: 'S', cta: 'C', ctaSub: 'CS',
+        cards: ['a', 'b'].map((id) => ({ id, icon: 'Flame', title: id, description: '', value: '' })),
+      },
       titlePos: { x: 22, y: 61 },
       ctaPos: { x: 44, y: 88 },
       cardBoxes: { format: '9:16', boxes: { a: boite(3, 4, 60, 9), b: boite(30, 40, 60, 9) } },
@@ -216,6 +334,13 @@ describe('samePos — « rien n a bougé » se juge sur les VALEURS', () => {
   it('distingue un écart sur chaque axe', () => {
     expect(samePos({ x: 8, y: 8 }, { x: 9, y: 8 })).toBe(false);
     expect(samePos({ x: 8, y: 8 }, { x: 8, y: 9 })).toBe(false);
+  });
+
+  it("aucune tolérance : un déplacement d'un dixième de pourcent compte", () => {
+    // Une tolérance ferait classer « rien n'a bougé » un déplacement réel, qui
+    // ne serait alors jamais enregistré.
+    expect(samePos({ x: 8, y: 8 }, { x: 8.1, y: 8 })).toBe(false);
+    expect(samePos({ x: 8, y: 8 }, { x: 8, y: 8.1 })).toBe(false);
   });
 });
 

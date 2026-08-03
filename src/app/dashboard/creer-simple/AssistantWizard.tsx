@@ -1041,6 +1041,7 @@ export function Preview({
               onPointerUp={onDragEnd}
               onPointerCancel={onDragEnd}
               onLostPointerCapture={onDragEnd}
+              data-title-block
               title={onDragStart ? "Glisser pour déplacer le titre" : undefined}
               style={{
                 position: 'absolute',
@@ -1209,6 +1210,7 @@ export function Preview({
               onPointerUp={onDragEnd}
               onPointerCancel={onDragEnd}
               onLostPointerCapture={onDragEnd}
+              data-cta-block
               title={onDragStart ? "Glisser pour déplacer le CTA" : undefined}
               style={{
                 position: 'absolute',
@@ -1755,7 +1757,7 @@ export default function AssistantWizard() {
     setSelectedCards((prev) => pruneSelection(prev, cardIds));
     // Un groupe qui designe des cartes disparues n'a plus d'objet.
     setCardGroups((prev) => pruneGroups(prev, cardIds));
-  }, [cardBoxes, cardIds, format]);
+  }, [cardBoxes, cardGroups, cardIds, format]);
 
   /**
    * Photographie la disposition en flux, en % du conteneur des cartes.
@@ -1932,6 +1934,7 @@ export default function AssistantWizard() {
    */
   const layoutTouched =
     !!effectiveCardBoxes ||
+    cardGroups.length > 0 ||
     titlePos.x !== DESIGN.titlePos.x || titlePos.y !== DESIGN.titlePos.y ||
     ctaPos.x !== DESIGN.ctaPos.x || ctaPos.y !== DESIGN.ctaPos.y;
 
@@ -1992,6 +1995,7 @@ export default function AssistantWizard() {
     setCtaPos(DESIGN.ctaPos);
     setCardBoxes(null);
     cardBoxesRef.current = null;
+    setCardGroups([]);
     setSelectedCards(new Set());
   }, []);
 
@@ -2020,6 +2024,44 @@ export default function AssistantWizard() {
     ro.observe(el);
     return () => ro.disconnect();
   }, [format]);
+
+  /**
+   * Ramene le titre et le CTA dans le cadre, sur leur encombrement REEL.
+   *
+   * Le glissement borne au `pointerdown`, avec la boite mesuree a cet instant.
+   * Rien ne re-bornait ensuite : agrandir le titre apres l'avoir pose en bas
+   * le faisait deborder, et le compositeur reproduit fidelement la position —
+   * l'apercu ET la video se retrouvaient sans titre. Un brouillon relu peut
+   * porter la meme position pour les memes raisons.
+   *
+   * Idempotent : une position deja valide n'est pas reecrite, donc pas de
+   * boucle de rendu.
+   */
+  useEffect(() => {
+    const host = previewRef.current;
+    if (!host) return;
+    const rect = host.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const recadre = (
+      selecteur: string,
+      anchor: 'top-left' | 'bottom-center',
+      pos: Pos,
+      set: (p: Pos) => void,
+    ) => {
+      const el = host.querySelector(selecteur);
+      if (!el) return;
+      const b = el.getBoundingClientRect();
+      if (b.width <= 0 || b.height <= 0) return;
+      const next = clampToBox(pos, anchor, {
+        width: (b.width / rect.width) * 100,
+        height: (b.height / rect.height) * 100,
+      });
+      if (!samePos(next, pos)) set(next);
+    };
+    recadre('[data-title-block]', 'top-left', titlePos, setTitlePos);
+    recadre('[data-cta-block]', 'bottom-center', ctaPos, setCtaPos);
+  }, [titlePos, ctaPos, format, textStyles, generated, displayScale]);
+
 
   // ── Brouillon : sauvegarde automatique ───────────────────────────────
   //
