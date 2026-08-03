@@ -659,15 +659,29 @@ const S = { sujet: 0, style: 1, audio: 2, contenu: 3, envoi: 4 } as const;
 const persistableUrl = (url: string | null): string | undefined =>
   url && !url.startsWith('blob:') ? url : undefined;
 
+/** Sequence mise en avant dans l'apercu, ou `'all'` pour la composition entiere. */
+type PreviewFocus = 'all' | 'intro' | 'cards' | 'video' | 'cta';
+
 /** Classes de désactivation : `Button` n'en fournit aucune (ui/Button.tsx). */
 const DISABLED = 'disabled:opacity-40 disabled:cursor-not-allowed';
 
-/** Onglets au-dessus de l'apercu. « Tout » d'abord : c'est l'etat par defaut. */
-const PREVIEW_TABS: Array<{ id: 'all' | 'intro' | 'cards' | 'cta'; label: string }> = [
-  { id: 'all', label: 'Tout' },
+/**
+ * Onglets au-dessus de l'apercu, dans l'ordre des sequences du montage.
+ *
+ * « Tout » ferme la marche : c'est la composition entiere, celle qu'on regarde
+ * juste avant d'envoyer — pas une entree en matiere. Il reste neanmoins la vue
+ * PAR DEFAUT (`previewFocus` demarre a `'all'`), sa place dans la rangee ne
+ * changeant que la lecture.
+ *
+ * « Video » se desactive tout seul sans rush : `activeOrder` ne contient
+ * `'video'` que lorsqu'un rush est present.
+ */
+const PREVIEW_TABS: Array<{ id: PreviewFocus; label: string }> = [
   { id: 'intro', label: 'Titre' },
   { id: 'cards', label: 'Cartes' },
+  { id: 'video', label: 'Vidéo' },
   { id: 'cta', label: 'CTA' },
+  { id: 'all', label: 'Tout' },
 ];
 
 /** Sections repliables de l'etape Style — l'ordre du panneau. */
@@ -866,7 +880,7 @@ export function Preview({
   onDragMove?: (e: React.PointerEvent) => void;
   onDragEnd?: () => void;
   /** Absent = pas d'onglets (l'apercu reste la composition complete). */
-  onFocusChange?: (focus: 'all' | 'intro' | 'cards' | 'cta') => void;
+  onFocusChange?: (focus: PreviewFocus) => void;
   /**
    * Element mis en avant par les onglets au-dessus de l'apercu.
    *
@@ -874,7 +888,7 @@ export function Preview({
    * autres valeurs n'isolent qu'un element pour le regler de pres : elles ne
    * changent RIEN au montage, seulement ce qui est montre.
    */
-  focus?: 'all' | 'intro' | 'cards' | 'cta';
+  focus?: PreviewFocus;
   /**
    * Reglages typographiques — la MEME valeur que celle envoyee au
    * compositeur. Une seule source : l'apercu ne peut pas deriver de l'export.
@@ -996,7 +1010,11 @@ export function Preview({
   // DOM dans un `onError`, qui survivrait aux rendus suivants.
   const [rushBroken, setRushBroken] = useState(false);
   useEffect(() => setRushBroken(false), [rushUrl]);
-  const showRush = !!rushUrl && !rushBroken && activeOrder.includes('video') && focus === 'all';
+  // Le rush se montre dans la composition entiere ET sur son propre onglet :
+  // l'isoler est tout l'interet de cet onglet.
+  const showRush =
+    !!rushUrl && !rushBroken && activeOrder.includes('video')
+    && (focus === 'all' || focus === 'video');
 
   /** Une sequence est visible si elle est active ET mise en avant. */
   const shows = (seq: 'intro' | 'cards' | 'cta') =>
@@ -1626,7 +1644,7 @@ export default function AssistantWizard() {
    * Element mis en avant dans l'apercu. Purement visuel : l'export force
    * `'all'` le temps de la photo des cartes (voir `sendToCalendar`).
    */
-  const [previewFocus, setPreviewFocus] = useState<'all' | 'intro' | 'cards' | 'cta'>('all');
+  const [previewFocus, setPreviewFocus] = useState<PreviewFocus>('all');
   const toggleSection = (id: SectionId) => setOpenSection((prev) => (prev === id ? null : id));
 
   /** Zone de texte en cours de reglage — purement local a l'interface. */
