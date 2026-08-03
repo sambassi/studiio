@@ -32,7 +32,7 @@ import { generateSmartContent } from '@/lib/smart-content';
 import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
 import { AudioStudioPanel } from '@/components/creer/AudioStudioPanel';
 import type { AudioKeyframe } from '@/lib/creer/audioDucking';
-import { pointToPct, grabOffset, clampToBox, type Pos, type CardBox, boxesFromRects } from '@/lib/creer/dragPosition';
+import { pointToPct, grabOffset, clampToBox, type Pos, type CardBox, boxesFromRects, samePos } from '@/lib/creer/dragPosition';
 import {
   nextSelection, pruneSelection, movingIds, groupBounds, clampGroupDelta, shiftBoxes,
   duplicateCards, duplicateBoxes, maxCards,
@@ -2085,12 +2085,19 @@ export default function AssistantWizard() {
     rushName,
     rushIsClip,
     scheduledDate,
+    // Placement fait a la main. `undefined` quand rien n'a bouge : un
+    // brouillon sans ces champs se relit exactement comme avant.
+    titlePos: samePos(titlePos, DESIGN.titlePos) ? undefined : titlePos,
+    ctaPos: samePos(ctaPos, DESIGN.ctaPos) ? undefined : ctaPos,
+    cardBoxes: cardBoxes ?? undefined,
+    cardGroups: cardGroups.length ? cardGroups : undefined,
   }), [
     started, step, themeId, customTopic, toneId, format, colors,
     titleStyle, subtitleStyle, ctaStyle, watermarkOverride, watermarkEnabled,
     sequences, introDuration, cardsDuration, videoDuration, ctaDuration,
     generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
     voiceVolume, rushUrl, rushName, rushIsClip, scheduledDate,
+    titlePos, ctaPos, cardBoxes, cardGroups,
   ]);
 
   /** La derniere version connue, pour ecrire sans attendre un rendu. */
@@ -2154,6 +2161,18 @@ export default function AssistantWizard() {
       setRushIsClip(!!draft.rushIsClip);
     }
     if (draft.scheduledDate) setScheduledDate(draft.scheduledDate);
+    // Placement : chaque champ absent laisse le defaut d'origine en place.
+    if (draft.titlePos) setTitlePos(draft.titlePos);
+    if (draft.ctaPos) setCtaPos(draft.ctaPos);
+    if (draft.cardBoxes) {
+      const free = draft.cardBoxes as FreeCards;
+      // La ref suit l'etat : c'est ELLE que lit le gestionnaire de glissement,
+      // memoise sans dependances. Sans cela, la premiere prise remesurerait la
+      // disposition et effacerait ce qu'on vient de restaurer.
+      cardBoxesRef.current = free;
+      setCardBoxes(free);
+    }
+    if (draft.cardGroups) setCardGroups(draft.cardGroups);
     // Le contenu a ete regenere s'il vient du brouillon : la signature evite
     // qu'il soit remplace par un autre texte des la premiere navigation.
     if (draft.generated) genSigRef.current = `${draft.customTopic?.trim() || (THEMES.find((t) => t.id === draft.themeId) ?? THEMES[0]).topic}|${draft.toneId}`;
@@ -2165,6 +2184,7 @@ export default function AssistantWizard() {
       draft.colors ? 'couleurs' : null,
       draft.rushUrl ? 'rush' : null,
       draft.musicUrl || draft.voiceUrl ? 'audio' : null,
+      draft.titlePos || draft.ctaPos || draft.cardBoxes || draft.cardGroups ? 'placement' : null,
     ].filter(Boolean);
     // Uniquement si le brouillon porte du travail : annoncer « Brouillon
     // restaure » sur un ecran vierge inquiete sans rien apprendre.

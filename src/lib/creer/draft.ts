@@ -82,7 +82,30 @@ export interface Draft {
   rushName?: string;
   rushIsClip?: boolean;
   scheduledDate?: string;
+  /**
+   * Placement fait a la main. ABSENT = « rien n'a ete deplace », et c'est le
+   * cas de tous les brouillons anterieurs : l'assistant garde alors ses
+   * positions d'origine, au pixel.
+   *
+   * Ces trois champs sont volontairement optionnels ET annulables sans repli :
+   * une valeur abimee doit rendre le placement PAR DEFAUT, pas une position
+   * approchee — un titre a demi hors cadre serait pire que le titre d'origine.
+   */
+  titlePos?: { x: number; y: number };
+  ctaPos?: { x: number; y: number };
+  /**
+   * Emplacements libres des cartes, avec le FORMAT dans lequel ils ont ete
+   * mesures : `h` est un % de la hauteur du conteneur, laquelle varie en sens
+   * inverse de la taille des cartes d'un format a l'autre.
+   */
+  cardBoxes?: { format: string; boxes: Record<string, { x: number; y: number; w: number; h: number }> };
+  /** Groupes d'edition. Sans effet sur le montage exporte. */
+  cardGroups?: { id: string; cardIds: string[] }[];
 }
+
+/** Nombre d'emplacements et de groupes relus au maximum — garde-fou anti-brouillon abime. */
+const MAX_BOXES = 24;
+const MAX_GROUPS = 12;
 
 /** URL conservable — jamais un `blob:`, qui meurt avec l'onglet. */
 export const persistableUrl = (url: string | null | undefined): string | undefined =>
@@ -152,6 +175,75 @@ export interface SanitizeDeps {
   };
   /** Dernière étape atteignable — on ne restaure jamais l'écran d'envoi. */
   maxStep: number;
+}
+
+/** Un pourcentage de placement : fini, et dans le cadre. */
+const pct = (v: unknown): number | null =>
+  typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100 ? v : null;
+
+/**
+ * Position relue, ou `undefined`.
+ *
+ * Pas de repli sur une valeur approchee : une coordonnee abimee doit rendre le
+ * placement d'ORIGINE. Restaurer un `x` valide avec un `y` invente poserait le
+ * titre a un endroit que l'utilisateur n'a jamais choisi.
+ */
+function sanitizePos(raw: unknown): { x: number; y: number } | undefined {
+  if (!isObj(raw)) return undefined;
+  const x = pct(raw.x);
+  const y = pct(raw.y);
+  return x === null || y === null ? undefined : { x, y };
+}
+
+/**
+ * Emplacements libres relus.
+ *
+ * Tout ou rien : une seule boite abimee rend l'ensemble inutilisable, parce
+ * qu'une carte sans emplacement dans une disposition libre se rendrait sans
+ * position, empilee dans un coin avec les autres. Le format doit etre connu,
+ * sinon les hauteurs seraient rejouees a la mauvaise echelle.
+ */
+function sanitizeCardBoxes(raw: unknown, formats: readonly string[]): Draft['cardBoxes'] {
+  if (!isObj(raw) || typeof raw.format !== 'string' || !formats.includes(raw.format)) return undefined;
+  if (!isObj(raw.boxes)) return undefined;
+  const entries = Object.entries(raw.boxes);
+  if (entries.length === 0 || entries.length > MAX_BOXES) return undefined;
+  const boxes: Record<string, { x: number; y: number; w: number; h: number }> = {};
+  for (const [id, b] of entries) {
+    if (typeof id !== 'string' || !id || !isObj(b)) return undefined;
+    const x = pct(b.x); const y = pct(b.y);
+    const w = pct(b.w); const h = pct(b.h);
+    // Une carte de largeur ou de hauteur nulle serait invisible et
+    // insaisissable — irrattrapable sans repartir de zero.
+    if (x === null || y === null || w === null || h === null || w <= 0 || h <= 0) return undefined;
+    boxes[id] = { x, y, w, h };
+  }
+  return { format: raw.format, boxes };
+}
+
+/**
+ * Groupes relus.
+ *
+ * Les invariants du mode edition sont retablis a la lecture : au moins deux
+ * cartes par groupe, et une carte dans UN seul groupe. Un brouillon abime
+ * pourrait sinon reintroduire des groupes fantomes qu'aucune action de l'ecran
+ * ne sait defaire.
+ */
+function sanitizeCardGroups(raw: unknown): Draft['cardGroups'] {
+  if (!Array.isArray(raw)) return undefined;
+  const vus = new Set<string>();
+  const out: { id: string; cardIds: string[] }[] = [];
+  for (const g of raw.slice(0, MAX_GROUPS)) {
+    if (!isObj(g) || typeof g.id !== 'string' || !g.id || !Array.isArray(g.cardIds)) continue;
+    const cardIds: string[] = [];
+    for (const cid of g.cardIds) {
+      if (typeof cid !== 'string' || !cid || vus.has(cid)) continue;
+      vus.add(cid);
+      cardIds.push(cid);
+    }
+    if (cardIds.length >= 2) out.push({ id: g.id, cardIds });
+  }
+  return out.length ? out : undefined;
 }
 
 /**
@@ -261,6 +353,10 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
       typeof raw.scheduledDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.scheduledDate)
         ? raw.scheduledDate
         : undefined,
+    titlePos: sanitizePos(raw.titlePos),
+    ctaPos: sanitizePos(raw.ctaPos),
+    cardBoxes: sanitizeCardBoxes(raw.cardBoxes, deps.formats),
+    cardGroups: sanitizeCardGroups(raw.cardGroups),
   };
 
   // Sequence « Video » active mais rush disparu — URL `blob:` filtree a
