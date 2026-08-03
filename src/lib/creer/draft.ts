@@ -106,6 +106,13 @@ export interface Draft {
    * ce qui est le cas de tous les brouillons anterieurs.
    */
   elements?: { id: string; iconName: string; x: number; y: number; sizePct: number; color: string }[];
+  /**
+   * Photo d'affiche retenue. Absente = fond degrade, le comportement de tous
+   * les brouillons anterieurs.
+   */
+  posterUrl?: string;
+  /** Source de recherche preferee. */
+  imageSource?: 'pexels' | 'unsplash';
 }
 
 /** Nombre d'emplacements et de groupes relus au maximum — garde-fou anti-brouillon abime. */
@@ -444,6 +451,14 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
   // Les elements ne dependent d'aucune carte : ils survivent a une
   // regeneration du contenu.
   out.elements = sanitizeElements(raw.elements);
+  // `persistableUrl` ecarte les `blob:`, qui meurent avec l'onglet. Les data
+  // URL sont ecartees ici en plus : une photo encodee en base64 pese plusieurs
+  // Mo et ferait sauter le quota du stockage local a la premiere sauvegarde.
+  out.posterUrl =
+    typeof raw.posterUrl === 'string' && /^https?:\/\//.test(raw.posterUrl)
+      ? raw.posterUrl
+      : undefined;
+  out.imageSource = raw.imageSource === 'unsplash' ? 'unsplash' : raw.imageSource === 'pexels' ? 'pexels' : undefined;
 
   // Sequence « Video » active mais rush disparu — URL `blob:` filtree a
   // l'ecriture, ou fichier expire depuis. La laisser active ferait sortir un
