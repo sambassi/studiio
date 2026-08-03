@@ -1954,6 +1954,7 @@ function InfographicPageInner() {
         if (cfg.watermarkPos) setWatermarkPos(cfg.watermarkPos);
         if (cfg.cardsPos) setCardsPos(cfg.cardsPos);
         if (cfg.overlayPos) setOverlayPos(cfg.overlayPos);
+        if (Array.isArray(cfg.freeElements)) setFreeElements(cfg.freeElements);
         // Tailles des éléments
         if (cfg.titleSize) setTitleSize(cfg.titleSize);
         if (cfg.cardsSize) setCardsSize(cfg.cardsSize);
@@ -2464,6 +2465,22 @@ function InfographicPageInner() {
   const [cardsPos, setCardsPos] = useState({ x: 50, y: 50 });
   const [dragging, setDragging] = useState<string | null>(null);
   const [resizing, setResizing] = useState<string | null>(null);
+  // ── Éléments libres (couche d'overlay Canva) ────────────────────
+  // Icônes lucide déposées librement sur l'aperçu. x/y en pourcentage
+  // (0–100) du conteneur d'aperçu. Défaut [] → 100% rétro-compat pour
+  // les configs/posts existants qui n'ont pas ce champ.
+  type FreeElement = { id: string; iconName: string; x: number; y: number; size: number; color: string };
+  const [freeElements, setFreeElements] = useState<FreeElement[]>([]);
+  const [selectedFreeElementId, setSelectedFreeElementId] = useState<string | null>(null);
+  // Recherche dans la bibliothèque d'éléments (onglet Éléments du rail).
+  const [elementSearch, setElementSearch] = useState('');
+  // Ajoute un élément centré, à la couleur d'accent courante.
+  const addFreeElement = (iconName: string) => {
+    const accent = COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent || customAccent || '#a855f7';
+    const id = `fe-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setFreeElements((prev) => [...prev, { id, iconName, x: 50, y: 50, size: 64, color: accent }]);
+    setSelectedFreeElementId(id);
+  };
   const previewRef = useRef<HTMLDivElement>(null);
   // Ref to the rush <video> in the preview so we can track currentTime
   // and gate overlay visibility on the user-configured start/end windows.
@@ -2658,6 +2675,7 @@ function InfographicPageInner() {
     if (c.watermarkPos) setWatermarkPos(c.watermarkPos);
     if (c.cardsPos) setCardsPos(c.cardsPos);
     if (c.overlayPos) setOverlayPos(c.overlayPos);
+    if (Array.isArray(c.freeElements)) setFreeElements(c.freeElements);
     if (typeof c.titleSize === 'number') setTitleSize(c.titleSize);
     if (typeof c.cardsSize === 'number') setCardsSize(c.cardsSize);
     if (typeof c.watermarkSize === 'number') setWatermarkSize(c.watermarkSize);
@@ -2886,6 +2904,8 @@ function InfographicPageInner() {
         exportFormat,
         // Per-sequence background overrides (Phase 1).
         sequenceBackgrounds,
+        // Éléments libres (couche overlay Canva).
+        freeElements,
     });
     const persistSnapshot = (snap: ReturnType<typeof buildSnapshot>) => {
       try {
@@ -2991,6 +3011,7 @@ function InfographicPageInner() {
     sequenceVoices, sequenceVoicesUserEdited,
     exportFormat,
     sequenceBackgrounds,
+    freeElements,
   ]);
 
   // (Typography states declared earlier for localStorage compatibility)
@@ -5286,6 +5307,8 @@ function InfographicPageInner() {
                     gradColor1: extraSubtitleGradColor1,
                     gradColor2: extraSubtitleGradColor2,
                   },
+                  // Éléments libres (couche overlay). Lecteurs : défaut [].
+                  elements: freeElements,
                 },
               },
             }),
@@ -6126,6 +6149,57 @@ function InfographicPageInner() {
                       </button>
                     </div>
                   )}
+                </div>
+
+                {/* ── Bibliothèque d'éléments (icônes SVG déplaçables) ── */}
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">
+                    Éléments
+                  </div>
+                  <p className="text-[11px] text-gray-500 mb-2">
+                    Cliquez pour ajouter un élément à l'aperçu. Déplacez-le ensuite librement.
+                  </p>
+                  <input
+                    type="text"
+                    placeholder="Rechercher un élément..."
+                    value={elementSearch}
+                    onChange={(e) => setElementSearch(e.target.value)}
+                    className="w-full rounded bg-gray-800 border border-gray-700 px-3 py-1.5 text-xs text-white placeholder-gray-500 mb-2"
+                  />
+                  <div className="max-h-[340px] overflow-y-auto rounded border border-gray-700 bg-gray-900/40 p-2 space-y-2">
+                    {Object.entries(ICON_LIBRARY).map(([category, names]) => {
+                      const q = elementSearch.toLowerCase().trim();
+                      const filteredNames = q ? names.filter((name) => {
+                        if (name.toLowerCase().includes(q)) return true;
+                        if (category.toLowerCase().includes(q)) return true;
+                        const kw = ICON_KEYWORDS[name];
+                        if (kw && kw.some(k => k.includes(q))) return true;
+                        return false;
+                      }) : names;
+                      if (filteredNames.length === 0) return null;
+                      return (
+                        <div key={category}>
+                          <div className="text-[9px] uppercase tracking-wider text-gray-500 mb-1">{category}</div>
+                          <div className="grid grid-cols-6 gap-1">
+                            {filteredNames.map((name) => {
+                              const Icon = ICON_MAP[name];
+                              if (!Icon) return null;
+                              return (
+                                <button
+                                  key={name}
+                                  onClick={() => addFreeElement(name)}
+                                  className="h-10 w-10 rounded-lg bg-gray-800 hover:bg-gray-700 hover:scale-110 transition flex items-center justify-center text-gray-200"
+                                  title={`Ajouter ${name}`}
+                                >
+                                  <Icon size={20} />
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </>
             )}
@@ -8731,6 +8805,11 @@ function InfographicPageInner() {
                   }
                 }
               }
+              else if (dragging?.startsWith('freeel:')) {
+                // Élément libre déplacé — x/y en pourcentage du conteneur.
+                const id = dragging.slice('freeel:'.length);
+                setFreeElements(prev => prev.map(el => el.id === id ? { ...el, x, y } : el));
+              }
             }}
             onMouseUp={() => {
               // Finalize drag-select rectangle: every card whose center
@@ -10002,6 +10081,40 @@ function InfographicPageInner() {
                   />
                 </div>
               )}
+
+            {/* ── ÉLÉMENTS LIBRES (couche overlay, déplaçables) ────────── */}
+            {freeElements.map((el) => (
+              <div
+                key={el.id}
+                className={`absolute z-20 cursor-grab active:cursor-grabbing group/freeel ${selectedFreeElementId === el.id ? 'ring-1 ring-green-400 ring-offset-1 ring-offset-transparent rounded' : ''}`}
+                style={{
+                  left: `${el.x}%`,
+                  top: `${el.y}%`,
+                  transform: 'translate(-50%, -50%)',
+                }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setDragging(`freeel:${el.id}`);
+                  setSelectedFreeElementId(el.id);
+                }}
+                onClick={(e) => { e.stopPropagation(); setSelectedFreeElementId(el.id); }}
+                title={el.iconName}
+              >
+                <div className="absolute inset-0 border border-dashed border-green-500/0 group-hover/freeel:border-green-500/40 rounded pointer-events-none transition-colors" />
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setFreeElements(prev => prev.filter(x => x.id !== el.id));
+                    if (selectedFreeElementId === el.id) setSelectedFreeElementId(null);
+                  }}
+                  className="absolute -top-2 -right-2 rounded-full bg-red-600 p-0.5 text-white opacity-0 group-hover/freeel:opacity-100 transition-opacity z-30"
+                  title="Supprimer l'élément"
+                >
+                  <Trash2 size={10} />
+                </button>
+                {renderLucideIcon(el.iconName, { size: el.size, color: el.color, style: 'outline' })}
+              </div>
+            ))}
 
             {/* Character Image — draggable + resizable */}
             {characterImage &&
