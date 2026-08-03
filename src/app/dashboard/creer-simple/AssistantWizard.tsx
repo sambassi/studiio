@@ -23,6 +23,7 @@ import {
   Film,
   Trash2,
   RotateCcw,
+  Copy,
   X,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
@@ -32,6 +33,7 @@ import type { AudioKeyframe } from '@/lib/creer/audioDucking';
 import { pointToPct, grabOffset, clampToBox, type Pos, type CardBox, boxesFromRects } from '@/lib/creer/dragPosition';
 import {
   nextSelection, pruneSelection, movingIds, groupBounds, clampGroupDelta, shiftBoxes,
+  duplicateCards, duplicateBoxes, maxCards,
 } from '@/lib/creer/selection';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import ClipDetectorModal, { type ClipSource } from '@/components/media/ClipDetectorModal';
@@ -1761,6 +1763,7 @@ export default function AssistantWizard() {
     if (e.button !== 0 || !e.isPrimary) return;
 
     setSelectedCards((prev) => nextSelection(prev, id, e.shiftKey || e.metaKey || e.ctrlKey));
+    setDuplicateNotice(null);
 
     const rect = cardsRef.current?.getBoundingClientRect();
     if (!rect || rect.width <= 0) return;
@@ -1896,6 +1899,39 @@ export default function AssistantWizard() {
     !!effectiveCardBoxes ||
     titlePos.x !== DESIGN.titlePos.x || titlePos.y !== DESIGN.titlePos.y ||
     ctaPos.x !== DESIGN.ctaPos.x || ctaPos.y !== DESIGN.ctaPos.y;
+
+  /**
+   * Duplique les cartes retenues.
+   *
+   * Les copies deviennent la nouvelle selection : on vient de les creer, c'est
+   * sur elles qu'on va agir. Et en mode libre elles sont posees en decale de
+   * leur original — superposees, on croirait qu'il ne s'est rien passe.
+   */
+  const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
+  const limiteCartes = maxCards(format);
+  const duplicateSelection = useCallback(() => {
+    if (!generated || selectedCards.size === 0) return;
+    const res = duplicateCards(generated.cards, selectedCards, newCardId, maxCards(format));
+    if (res.created.length === 0) {
+      setDuplicateNotice(`Maximum de ${maxCards(format)} cartes atteint dans ce format.`);
+      return;
+    }
+    setGenerated({ ...generated, cards: res.cards });
+    // Les emplacements suivent AVANT la selection : l'effet de purge tolere
+    // ainsi les nouveaux identifiants des le rendu suivant.
+    setCardBoxes((prev) => {
+      if (!prev) return prev;
+      const next = { format: prev.format, boxes: duplicateBoxes(prev.boxes, res.created) };
+      cardBoxesRef.current = next;
+      return next;
+    });
+    setSelectedCards(new Set(res.created.map((c) => c.id)));
+    setDuplicateNotice(
+      res.dropped > 0
+        ? `${res.created.length} copie${res.created.length > 1 ? 's' : ''} — ${res.dropped} refusée${res.dropped > 1 ? 's' : ''}, maximum de ${maxCards(format)} cartes atteint.`
+        : null,
+    );
+  }, [generated, selectedCards, format]);
 
   const resetLayout = useCallback(() => {
     setLayoutDropped(false);
@@ -2814,6 +2850,7 @@ export default function AssistantWizard() {
     setCtaPos(DESIGN.ctaPos);
     setCardBoxes(null);
     setSelectedCards(new Set());
+    setDuplicateNotice(null);
     setOpenSection('format');
     genSigRef.current = '';
     setGenerated(null);
@@ -3983,11 +4020,32 @@ export default function AssistantWizard() {
           onFocusChange={setPreviewFocus}
         />
         {selectedCards.size > 0 && cardsVisible && (
-          <p className="mt-2 text-center text-xs text-gray-400">
-            {selectedCards.size} carte{selectedCards.size > 1 ? 's' : ''} sélectionnée
-            {selectedCards.size > 1 ? 's' : ''}
-            <span className="text-gray-600"> — Maj+clic pour en ajouter, Échap pour désélectionner</span>
-          </p>
+          <div className="mt-2 flex flex-col items-center gap-1.5">
+            <p className="text-center text-xs text-gray-400">
+              {selectedCards.size} carte{selectedCards.size > 1 ? 's' : ''} sélectionnée
+              {selectedCards.size > 1 ? 's' : ''}
+              <span className="text-gray-600"> — Maj+clic pour en ajouter, Échap pour désélectionner</span>
+            </p>
+            <button
+              type="button"
+              onClick={duplicateSelection}
+              disabled={(generated?.cards.length ?? 0) >= limiteCartes}
+              // Un bouton grise sans raison est une impasse : la limite vient
+              // du compositeur, elle merite d'etre dite.
+              title={
+                (generated?.cards.length ?? 0) >= limiteCartes
+                  ? `Maximum de ${limiteCartes} cartes dans ce format`
+                  : 'Dupliquer la sélection'
+              }
+              className="flex items-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              Dupliquer
+            </button>
+            {duplicateNotice && (
+              <p className="text-center text-xs text-gray-500">{duplicateNotice}</p>
+            )}
+          </div>
         )}
         {layoutDropped && (
           <p className="mt-2 text-center text-xs text-gray-500">

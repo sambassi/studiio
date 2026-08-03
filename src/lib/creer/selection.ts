@@ -92,3 +92,84 @@ export function shiftBoxes(
   }
   return out;
 }
+
+/**
+ * Nombre maximal de cartes que le compositeur sait dessiner.
+ *
+ * `video-composer.ts` borne a `isReel ? 5 : 6`, et `isReel` s'y decide sur
+ * `hauteur > largeur` : le CARRE compte donc comme un paysage, 6 cartes. Les
+ * cartes au-dela seraient silencieusement absentes du montage de secours — et
+ * en flux, la colonne deborderait de son conteneur, donc de la photo.
+ */
+export function maxCards(format: string): number {
+  return format === '9:16' ? 5 : 6;
+}
+
+/** Une carte, vue par les regles de duplication : seul l'`id` compte ici. */
+export interface Identified {
+  id: string;
+}
+
+export interface Duplication<T extends Identified> {
+  /** Liste complete apres insertion. */
+  cards: T[];
+  /** Copies creees, dans l'ordre — elles deviennent la nouvelle selection. */
+  created: { sourceId: string; id: string }[];
+  /** Copies refusees faute de place. */
+  dropped: number;
+}
+
+/**
+ * Duplique les cartes retenues, chaque copie inseree JUSTE APRES son original.
+ *
+ * Inserer a la fin eloignerait la copie de ce qu'on vient de designer ; la
+ * placer juste apres garde la lecture du montage intacte. L'ordre du tableau
+ * fait foi, pas l'ordre de selection : deux copies restent dans le meme ordre
+ * que leurs sources.
+ */
+export function duplicateCards<T extends Identified>(
+  cards: T[],
+  selection: Set<string>,
+  newId: () => string,
+  max: number,
+): Duplication<T> {
+  const out: T[] = [];
+  const created: { sourceId: string; id: string }[] = [];
+  let dropped = 0;
+  let total = cards.length;
+  for (const card of cards) {
+    out.push(card);
+    if (!selection.has(card.id)) continue;
+    if (total >= max) { dropped += 1; continue; }
+    const id = newId();
+    out.push({ ...card, id });
+    created.push({ sourceId: card.id, id });
+    total += 1;
+  }
+  return { cards: out, created, dropped };
+}
+
+/**
+ * Emplacements des copies, decales de `offset` par rapport a leur source et
+ * bornes au conteneur.
+ *
+ * Sans decalage, une copie se poserait EXACTEMENT sur son original : on
+ * croirait que rien ne s'est passe, puis on deplacerait la mauvaise.
+ */
+export function duplicateBoxes(
+  boxes: Record<string, CardBox>,
+  created: { sourceId: string; id: string }[],
+  offset = 3,
+): Record<string, CardBox> {
+  const out = { ...boxes };
+  for (const { sourceId, id } of created) {
+    const src = boxes[sourceId];
+    if (!src) continue;
+    out[id] = {
+      ...src,
+      x: Math.min(Math.max(0, 100 - src.w), src.x + offset),
+      y: Math.min(Math.max(0, 100 - src.h), src.y + offset),
+    };
+  }
+  return out;
+}
