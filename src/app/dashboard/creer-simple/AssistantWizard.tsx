@@ -840,6 +840,25 @@ export function resolveBackground(
   return { url: posterUrl, transform: posterTransform };
 }
 
+/**
+ * Type d'echange du glisser-deposer d'une photo.
+ *
+ * Un type A NOUS, et non `text/plain` : le reordonnancement des sequences se
+ * sert deja de `text/plain`, et lire ce dernier faisait qu'un glissement de
+ * sequence passait pour un depot de photo.
+ */
+export const PHOTO_DND_TYPE = 'application/x-studiio-photo';
+
+/** URL d'une photo deposee, ou `null` si le depot ne vient pas de la grille. */
+export function readDroppedPhoto(dt: DataTransfer | null | undefined): string | null {
+  if (!dt) return null;
+  const propre = dt.getData(PHOTO_DND_TYPE);
+  if (propre) return propre;
+  // `text/uri-list` couvre le glisser d'une image depuis un autre onglet.
+  const uri = dt.getData('text/uri-list');
+  return /^https?:\/\//.test(uri) ? uri : null;
+}
+
 /** Sans recadrage : le « cover » centre d'aujourd'hui. */
 export const POSTER_TRANSFORM_NEUTRAL: PosterTransform = { scale: 1, offsetX: 0, offsetY: 0 };
 
@@ -939,6 +958,7 @@ export function Preview({
   onPosterPanStart,
   onPosterZoomStart,
   onPhotoDrop,
+  photoDragging = false,
   elements,
   selectedElementId = null,
   onElementDragStart,
@@ -1046,6 +1066,8 @@ export function Preview({
   onPosterPanStart?: (e: React.PointerEvent) => void;
   /** Photo deposee sur le plateau — devient le fond de la sequence affichee. */
   onPhotoDrop?: (url: string) => void;
+  /** Un glisser de photo est en cours : la surface de depot s'affiche. */
+  photoDragging?: boolean;
   onPosterZoomStart?: (e: React.PointerEvent) => void;
   elements?: FreeElement[];
   selectedElementId?: string | null;
@@ -1228,14 +1250,6 @@ export function Preview({
         // cartes arretent la propagation. C'est le geste universel « je
         // deselectionne ».
         onPointerDown={capturing ? undefined : onClearSelection}
-        // Depot d'une vignette : le geste le plus direct pour poser un fond
-        // sur la sequence qu'on regarde.
-        onDragOver={onPhotoDrop ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } : undefined}
-        onDrop={onPhotoDrop ? (e) => {
-          e.preventDefault();
-          const url = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain');
-          if (url) onPhotoDrop(url);
-        } : undefined}
         style={{
           position: 'absolute',
           top: 0,
@@ -1267,6 +1281,49 @@ export function Preview({
           fontFamily: 'var(--font-inter), Inter, sans-serif',
         }}
       >
+        {/* ── SURFACE DE DEPOT ────────────────────────────────────────
+            Le plateau est couvert d'enfants absolus — cartes, titre, CTA,
+            elements — qui recevaient l'evenement sans autoriser le depot :
+            `onDrop` ne se declenchait donc jamais. Cette surface se pose
+            au-dessus de tout pendant le glissement, et lui seul. */}
+        {photoDragging && onPhotoDrop && !capturing && (
+          <div
+            data-photo-drop
+            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
+            onDrop={(e) => {
+              e.preventDefault();
+              const url = readDroppedPhoto(e.dataTransfer);
+              if (url) onPhotoDrop(url);
+            }}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              zIndex: 20,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: uiPx(16),
+              border: `${uiPx(3)}px dashed rgba(255,255,255,0.85)`,
+              backgroundColor: 'rgba(0,0,0,0.45)',
+              textAlign: 'center',
+            }}
+          >
+            <span
+              style={{
+                color: '#FFFFFF',
+                fontWeight: 700,
+                fontSize: uiPx(13),
+                lineHeight: 1.4,
+                textShadow: '0 1px 4px rgba(0,0,0,0.6)',
+              }}
+            >
+              Déposez la photo ici
+              <br />
+              {focus === 'all' ? 'pour l’affiche globale' : 'pour la séquence affichée'}
+            </span>
+          </div>
+        )}
+
         {/* ── AFFICHE ─────────────────────────────────────────────────
             Deux calques : la photo, puis le voile du degrade. Le compositeur
             peint dans cet ordre ; l'apercu doit dire la meme chose.
@@ -2251,6 +2308,8 @@ export default function AssistantWizard() {
   const posterTransformRef = useRef<PosterTransform>(POSTER_TRANSFORM_NEUTRAL);
   useEffect(() => { posterTransformRef.current = posterTransform; }, [posterTransform]);
   const [cropping, setCropping] = useState(false);
+  /** Une vignette est en cours de glissement : la surface de depot s'affiche. */
+  const [photoDragging, setPhotoDragging] = useState(false);
   /**
    * Fonds propres a une sequence. Vide par defaut : chaque sequence herite
    * alors de l'affiche globale, exactement comme avant.
@@ -4731,7 +4790,11 @@ export default function AssistantWizard() {
                     {/* Grille */}
                     {posterPhotos.length > 0 && (
                       <>
-                        <div className="grid grid-cols-4 gap-1.5">
+                        {/* Ascenseur PROPRE : sans lui, parcourir la grille
+                            faisait defiler toute la page et l'apercu sortait
+                            de l'ecran — or c'est lui qu'on regarde en
+                            choisissant une photo. */}
+                        <div className="grid grid-cols-4 gap-1.5 max-h-64 overflow-y-auto pr-1">
                           {posterPhotos.map((photo) => {
                             const rang = batchPhotoUrls.indexOf(photo.url);
                             const retenue = batchCount > 1 ? rang >= 0 : posterUrl === photo.url;
@@ -4768,7 +4831,16 @@ export default function AssistantWizard() {
                                 }}
                                 data-poster-photo={photo.url}
                                 draggable
-                                onDragStart={(e) => e.dataTransfer.setData('text/uri-list', photo.url)}
+                                onDragStart={(e) => {
+                                  // Type a nous EN PREMIER : `text/plain` sert
+                                  // au reordonnancement des sequences, le lire
+                                  // ici confondait les deux gestes.
+                                  e.dataTransfer.setData(PHOTO_DND_TYPE, photo.url);
+                                  e.dataTransfer.setData('text/uri-list', photo.url);
+                                  e.dataTransfer.effectAllowed = 'copy';
+                                  setPhotoDragging(true);
+                                }}
+                                onDragEnd={() => setPhotoDragging(false)}
                                 title={photo.photographer ? `Photo : ${photo.photographer}` : 'Choisir cette photo'}
                                 className={`relative overflow-hidden rounded-lg border transition-colors ${
                                   retenue ? 'border-purple-500' : 'border-gray-800 hover:border-gray-600'
@@ -5805,7 +5877,8 @@ export default function AssistantWizard() {
           cropping={cropping}
           onPosterPanStart={startPosterPan}
           onPosterZoomStart={startPosterZoom}
-          onPhotoDrop={applyPhoto}
+          onPhotoDrop={(url) => { setPhotoDragging(false); applyPhoto(url); }}
+          photoDragging={photoDragging}
           elements={freeElements}
           selectedElementId={selectedElementId}
           onElementDragStart={startElementDrag}
