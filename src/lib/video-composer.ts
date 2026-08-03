@@ -396,6 +396,18 @@ export interface ComposerOptions {
   videoImageUrl?: string | null;
   /** Optional crop transform for the rush/background video (scale + fractional offsets). */
   rushTransform?: { scale?: number; offsetX?: number; offsetY?: number };
+  /**
+   * Recadrage de l'AFFICHE — meme forme que `rushTransform` : un zoom et des
+   * decalages en fraction de la composition.
+   *
+   * Applique UNE fois au chargement, en pre-recadrant l'affiche a la taille de
+   * la composition : toutes les sequences en heritent, et les fonds
+   * par-sequence, qui ont deja leur propre recadrage, n'y touchent pas.
+   *
+   * Defaut absent = `{ scale: 1, offsetX: 0, offsetY: 0 }`, c'est-a-dire le
+   * cadrage « cover » centre d'aujourd'hui.
+   */
+  posterTransform?: { scale?: number; offsetX?: number; offsetY?: number };
   logoUrl?: string | null;
   musicUrl?: string | null;
   voiceUrl?: string | null;
@@ -715,6 +727,54 @@ function drawFreeElements(
     if (!rect) continue;
     ctx.drawImage(img, rect.x, rect.y, rect.size, rect.size);
   }
+}
+
+/** Un recadrage d'affiche a-t-il un effet ? */
+export function posterTransformActive(
+  t: { scale?: number; offsetX?: number; offsetY?: number } | undefined | null,
+): boolean {
+  if (!t) return false;
+  return (t.scale ?? 1) !== 1 || (t.offsetX ?? 0) !== 0 || (t.offsetY ?? 0) !== 0;
+}
+
+/**
+ * Pre-recadre l'affiche aux dimensions de la composition.
+ *
+ * Le resultat est un canvas de `w x h` : les dessins ulterieurs, qui font tous
+ * un « cover » (`max(w/img.width, h/img.height)`), retombent alors sur un blit
+ * 1:1. Le recadrage vaut donc pour TOUTES les sequences sans toucher a leur
+ * code.
+ *
+ * Sans transform active, l'image d'origine est rendue telle quelle — aucun
+ * canvas intermediaire, aucun changement pour les montages existants.
+ */
+export function cropPosterToComposition(
+  img: HTMLImageElement | null,
+  w: number,
+  h: number,
+  transform: { scale?: number; offsetX?: number; offsetY?: number } | undefined | null,
+): HTMLImageElement | HTMLCanvasElement | null {
+  if (!img || !posterTransformActive(transform)) return img;
+  if (!img.width || !img.height || w <= 0 || h <= 0) return img;
+  const t = transform!;
+  // `max(1, ...)` : sous 1 le « cover » ne couvrirait plus, et une bande vide
+  // apparaitrait sur les bords.
+  const userScale = Math.max(1, t.scale ?? 1);
+  const base = Math.max(w / img.width, h / img.height);
+  const drawScale = base * userScale;
+  const dw = img.width * drawScale;
+  const dh = img.height * drawScale;
+  // Centre deplace par les decalages, exprimes en fraction de la composition —
+  // la meme convention que `rushTransform`.
+  const cx = w / 2 + (t.offsetX ?? 0) * w;
+  const cy = h / 2 + (t.offsetY ?? 0) * h;
+  const off = document.createElement('canvas');
+  off.width = w;
+  off.height = h;
+  const octx = off.getContext('2d');
+  if (!octx) return img;
+  octx.drawImage(img, cx - dw / 2, cy - dh / 2, dw, dh);
+  return off;
 }
 
 /** Get logo position for a specific sequence, with fallback to global logoPosition */
@@ -3219,6 +3279,17 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   ]);
   console.log(`[Composer] Media loaded in ${((performance.now() - mediaLoadStart) / 1000).toFixed(1)}s — poster:${!!posterImg} logo:${!!logoImg} video:${!!videoEl} videoImage:${!!videoImageEl}`);
 
+  // Recadrage de l'affiche, applique UNE fois : le resultat sert ensuite de
+  // source a toutes les sequences. `as HTMLImageElement` — le canvas rendu est
+  // une `CanvasImageSource` valide, mais les signatures de dessin declarent
+  // `HTMLImageElement` (meme cast que `getCroppedBg` plus bas).
+  const posterCropped = cropPosterToComposition(
+    posterImg, width, height, options.posterTransform,
+  ) as HTMLImageElement | null;
+  if (posterCropped !== posterImg) {
+    console.log('[Composer] Affiche recadree', JSON.stringify(options.posterTransform));
+  }
+
   // Per-sequence background overrides (Phase 1). Loaded in parallel; on
   // failure, the slot stays null and the draw call falls back to posterImg.
   const seqBgImages: Record<'titre' | 'cartes' | 'video' | 'cta', HTMLImageElement | null> = {
@@ -3274,7 +3345,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     // posterOnAllSequences: when false (default), only the intro sequence
     // gets the poster image — cards/CTA/video get null (black + gradient).
     const usePoster = normalizedDesign?.posterOnAllSequences !== false || type === 'intro';
-    return { img: usePoster ? posterImg : null, opacity: 1, canvasFilter: 'none', vignette: 0, objectPosition: '50% 50%', zoom: 1 };
+    return { img: usePoster ? posterCropped : null, opacity: 1, canvasFilter: 'none', vignette: 0, objectPosition: '50% 50%', zoom: 1 };
   };
 
   // Load audio — prefer pre-decoded AudioBuffers (batch mode), fallback to <audio> elements

@@ -111,6 +111,8 @@ export interface Draft {
    * les brouillons anterieurs.
    */
   posterUrl?: string;
+  /** Recadrage de l'affiche. Absent = cadrage « cover » centre. */
+  posterTransform?: { scale: number; offsetX: number; offsetY: number };
   /** Source de recherche preferee. */
   imageSource?: 'pexels' | 'unsplash';
   /** Nombre de montages du lot. Absent ou 1 = un seul montage, comme avant. */
@@ -463,6 +465,16 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
   out.posterUrl =
     typeof raw.posterUrl === 'string' && /^https?:\/\//.test(raw.posterUrl)
       ? raw.posterUrl
+      : undefined;
+  // Un recadrage abime rognerait la photo sur des reperes absurdes : on
+  // n'accepte que des nombres finis dans des bornes utiles.
+  const rt = raw.posterTransform;
+  out.posterTransform =
+    isObj(rt)
+    && typeof rt.scale === 'number' && Number.isFinite(rt.scale) && rt.scale >= 1 && rt.scale <= 3
+    && typeof rt.offsetX === 'number' && Number.isFinite(rt.offsetX) && Math.abs(rt.offsetX) <= 1
+    && typeof rt.offsetY === 'number' && Number.isFinite(rt.offsetY) && Math.abs(rt.offsetY) <= 1
+      ? { scale: rt.scale, offsetX: rt.offsetX, offsetY: rt.offsetY }
       : undefined;
   out.imageSource = raw.imageSource === 'unsplash' ? 'unsplash' : raw.imageSource === 'pexels' ? 'pexels' : undefined;
   // Un lot relu hors bornes debiterait des credits que l'ecran n'a jamais
