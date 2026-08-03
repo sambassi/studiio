@@ -173,3 +173,80 @@ export function duplicateBoxes(
   }
   return out;
 }
+
+/**
+ * Groupe de cartes : elles se selectionnent et se deplacent ensemble.
+ *
+ * Un groupe est une aide d'EDITION. Il ne change ni le montage, ni les
+ * metadonnees du post : deux cartes groupees s'exportent exactement comme deux
+ * cartes non groupees.
+ */
+export interface CardGroup {
+  id: string;
+  cardIds: string[];
+}
+
+/** Un groupe n'a de sens qu'a partir de deux cartes. */
+export const MIN_GROUP = 2;
+
+let groupSeq = 0;
+/**
+ * Identifiant de groupe. Compteur + horodatage, comme `newCardId` : deux
+ * groupes crees dans la meme milliseconde doivent rester distincts.
+ */
+export const newGroupId = () => `grp-${Date.now().toString(36)}-${(groupSeq++).toString(36)}`;
+
+export function groupOf(groups: CardGroup[], id: string): CardGroup | undefined {
+  return groups.find((g) => g.cardIds.includes(id));
+}
+
+/**
+ * Groupe les cartes retenues.
+ *
+ * Une carte n'appartient qu'a UN groupe : les nouvelles membres sont d'abord
+ * retirees de leur groupe precedent, et un groupe reduit a moins de deux
+ * cartes disparait — sinon il resterait des groupes fantomes d'une seule
+ * carte, invisibles et impossibles a defaire.
+ */
+export function groupCards(groups: CardGroup[], ids: string[], newId: () => string): CardGroup[] {
+  if (ids.length < MIN_GROUP) return groups;
+  const nettoyes = groups
+    .map((g) => ({ ...g, cardIds: g.cardIds.filter((cid) => !ids.includes(cid)) }))
+    .filter((g) => g.cardIds.length >= MIN_GROUP);
+  return [...nettoyes, { id: newId(), cardIds: [...ids] }];
+}
+
+/** Retire les cartes indiquees de leur groupe, et jette les groupes vides. */
+export function ungroupCards(groups: CardGroup[], ids: Set<string>): CardGroup[] {
+  const out = groups
+    .map((g) => ({ ...g, cardIds: g.cardIds.filter((cid) => !ids.has(cid)) }))
+    .filter((g) => g.cardIds.length >= MIN_GROUP);
+  return out.length === groups.length && out.every((g, i) => g.cardIds.length === groups[i].cardIds.length)
+    ? groups
+    : out;
+}
+
+/** Oublie les cartes qui n'existent plus, et les groupes trop petits. */
+export function pruneGroups(groups: CardGroup[], cardIds: string[]): CardGroup[] {
+  const out = groups
+    .map((g) => ({ ...g, cardIds: g.cardIds.filter((cid) => cardIds.includes(cid)) }))
+    .filter((g) => g.cardIds.length >= MIN_GROUP);
+  const inchange =
+    out.length === groups.length && out.every((g, i) => g.cardIds.length === groups[i].cardIds.length);
+  return inchange ? groups : out;
+}
+
+/**
+ * Etend une selection a tous les membres des groupes touches.
+ *
+ * C'est ce qui fait qu'un groupe se comporte comme un bloc : le designer une
+ * fois suffit a le prendre en entier.
+ */
+export function expandSelection(selection: Set<string>, groups: CardGroup[]): Set<string> {
+  if (selection.size === 0 || groups.length === 0) return selection;
+  const out = new Set(selection);
+  for (const g of groups) {
+    if (g.cardIds.some((id) => out.has(id))) g.cardIds.forEach((id) => out.add(id));
+  }
+  return out.size === selection.size ? selection : out;
+}
