@@ -491,3 +491,27 @@ describe('Couleur d un élément', () => {
     expect(lire({ elements: [bon] }).elements![0].color).toBe('#7C3AED');
   });
 });
+
+describe('La bibliothèque est accessible depuis toutes les séquences', () => {
+  it("le bouton ne dépend plus de l'onglet « Cartes »", () => {
+    // Un élément se pose n'importe où sur le plateau et le compositeur le
+    // peint sur les quatre séquences : réserver la bibliothèque à l'onglet des
+    // cartes la rendait introuvable pour qui réglait son titre ou son CTA.
+    const bloc = wizard.slice(
+      wizard.indexOf("BIBLIOTHEQUE D'ELEMENTS"),
+      wizard.indexOf('Ajouter un élément'),
+    );
+    expect(bloc).toContain('{generated && (');
+    expect(bloc).not.toContain('{cardsVisible && (');
+  });
+
+  it('la sélection de CARTES, elle, reste liée aux cartes', () => {
+    // Elle n'a pas d'objet sur un onglet où aucune carte n'est affichée.
+    expect(wizard).toContain('{selectedCards.size > 0 && cardsVisible && (');
+  });
+
+  it("`cardsVisible` ne sert plus qu'à ça", () => {
+    // Deux usages : sa définition, et la sélection de cartes.
+    expect(wizard.split('cardsVisible').length - 1).toBe(2);
+  });
+});

@@ -4906,8 +4906,14 @@ export default function AssistantWizard() {
         )}
 
         {/* ── BIBLIOTHEQUE D'ELEMENTS ─────────────────────────────────
-            Sous l'apercu : c'est la qu'on voit ou l'element se pose. */}
-        {cardsVisible && (
+            Sous l'apercu : c'est la qu'on voit ou l'element se pose.
+
+            Sur TOUS les onglets, et non les seuls « Cartes » et « Tout » : un
+            element se pose n'importe ou sur le plateau et le compositeur le
+            peint sur les quatre sequences. Le reserver a l'onglet des cartes
+            rendait la bibliotheque introuvable pour qui reglait son titre ou
+            son CTA. */}
+        {generated && (
           <div className="mt-2">
             <button
               type="button"
