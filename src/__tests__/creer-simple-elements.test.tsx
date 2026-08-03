@@ -438,3 +438,56 @@ describe('Câblage', () => {
     expect(reset).toContain('setFreeElements([])');
   });
 });
+
+describe('Couleur d un élément', () => {
+  it('un élément posé est BLANC par défaut, pas de la couleur d accent', () => {
+    // Le fond du plateau EST le dégradé de l'accent : un élément accent y
+    // était quasi invisible.
+    const bloc = wizard.slice(wizard.indexOf('const addElement'), wizard.indexOf('const selectedElement'));
+    expect(bloc).toContain("color: '#FFFFFF',");
+    expect(bloc).not.toContain('color: accent,');
+  });
+
+  it('la recoloration ne touche QUE l élément retenu', () => {
+    expect(wizard).toContain(
+      'prev.map((el) => (el.id === selectedElementId ? { ...el, color } : el))',
+    );
+  });
+
+  it('le nuancier n apparaît qu avec une cible', () => {
+    // Sans sélection, il ne saurait pas quoi teindre.
+    expect(wizard).toContain('{selectedElement && (');
+    expect(wizard).toContain(
+      "const selectedElement = freeElements.find((el) => el.id === selectedElementId) ?? null;",
+    );
+  });
+
+  it('trois pastilles en un clic, plus le nuancier complet', () => {
+    expect(wizard).toContain("{ valeur: '#FFFFFF', nom: 'Blanc' }");
+    expect(wizard).toContain("{ valeur: '#000000', nom: 'Noir' }");
+    expect(wizard).toContain("{ valeur: accent, nom: 'Accent' }");
+    expect(wizard).toContain('<ColorWheel\n                  color={selectedElement.color}');
+  });
+
+  it("la couleur choisie part telle quelle à l'export", () => {
+    // Rien à changer côté compositeur : la rasterisation lit déjà `el.color`.
+    expect(wizard).toContain("svg.setAttribute('color', el.color);");
+    expect(wizard).toContain("svg.setAttribute('stroke', el.color);");
+  });
+
+  it("l'aperçu peint l'élément avec sa propre couleur", () => {
+    render(<Preview {...props} elements={elements} />);
+    // `CardIcon` reçoit `el.color` — vérifié sur le DOM produit.
+    const svg = poses()[0].querySelector('svg')!;
+    const teinte = svg.getAttribute('stroke') || svg.style.color || getComputedStyle(svg).color;
+    expect(teinte).toBeTruthy();
+    expect(wizard).toContain('color={el.color}');
+  });
+
+  it('les éléments déjà posés gardent leur couleur', () => {
+    // Rétro-compat : le défaut ne s'applique qu'à la POSE, la relecture du
+    // brouillon ne réécrit rien.
+    const bon = { id: 'e1', iconName: 'Sparkles', x: 30, y: 40, sizePct: 19, color: '#7C3AED' };
+    expect(lire({ elements: [bon] }).elements![0].color).toBe('#7C3AED');
+  });
+});

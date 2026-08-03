@@ -1935,7 +1935,11 @@ export default function AssistantWizard() {
         x: 50,
         y: 50,
         sizePct: ELEMENT_SIZE_PCT,
-        color: accent,
+        // Blanc, et non l'accent : le fond du plateau EST le degrade de
+        // l'accent, un element accent y etait quasi invisible. Le blanc se lit
+        // sur ce degrade comme sur un rush. La couleur reste modifiable, et
+        // les elements deja poses gardent la leur.
+        color: '#FFFFFF',
       },
     ]);
     setSelectedElementId(id);
@@ -2069,6 +2073,15 @@ export default function AssistantWizard() {
       setPosterExporting(false);
     }
   }, [generated, posterExporting]);
+
+  /** Element retenu, s'il y en a un — la cible de la recoloration. */
+  const selectedElement = freeElements.find((el) => el.id === selectedElementId) ?? null;
+
+  const recolorElement = useCallback((color: string) => {
+    setFreeElements((prev) =>
+      prev.map((el) => (el.id === selectedElementId ? { ...el, color } : el)),
+    );
+  }, [selectedElementId]);
 
   const deleteElement = useCallback((id: string) => {
     setFreeElements((prev) => prev.filter((el) => el.id !== id));
@@ -4645,6 +4658,44 @@ export default function AssistantWizard() {
                 {freeElements.length > 1 ? 's' : ''}
                 <span className="text-gray-600"> — cliquer pour sélectionner, glisser pour déplacer</span>
               </p>
+            )}
+            {/* Couleur de l'élément retenu. N'apparaît qu'avec une cible :
+                un nuancier sans sélection ne saurait pas quoi teindre. */}
+            {selectedElement && (
+              <div className="mt-2 rounded-xl border border-gray-800 bg-gray-900/50 p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[11px] uppercase tracking-wide text-gray-500 flex-1">
+                    Couleur de l’élément
+                  </span>
+                  {/* Trois choix en un clic — le nuancier reste dessous pour
+                      tout le reste. */}
+                  {([
+                    { valeur: '#FFFFFF', nom: 'Blanc' },
+                    { valeur: '#000000', nom: 'Noir' },
+                    { valeur: accent, nom: 'Accent' },
+                  ] as const).map((pastille) => (
+                    <button
+                      key={pastille.nom}
+                      type="button"
+                      onClick={() => recolorElement(pastille.valeur)}
+                      title={pastille.nom}
+                      aria-label={pastille.nom}
+                      data-element-swatch={pastille.nom}
+                      className={`w-5 h-5 rounded-full border transition-colors ${
+                        selectedElement.color.toUpperCase() === pastille.valeur.toUpperCase()
+                          ? 'border-white'
+                          : 'border-gray-700 hover:border-gray-500'
+                      }`}
+                      style={{ backgroundColor: pastille.valeur }}
+                    />
+                  ))}
+                </div>
+                <ColorWheel
+                  color={selectedElement.color}
+                  onChange={recolorElement}
+                  label="Teinte"
+                />
+              </div>
             )}
           </div>
         )}
