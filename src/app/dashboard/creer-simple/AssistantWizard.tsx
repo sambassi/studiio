@@ -335,6 +335,30 @@ const FONT_RATIO = {
   '16:9': { title: 0.035, subtitle: 0.0215, cta: 0.031, ctaSub: 0.023 },
 } as const;
 
+/**
+ * Cartes en PAYSAGE — les ratios du compositeur, base 512 et non 330.
+ *
+ * `video-composer.ts` reproduit l'editeur avance, dont la fenetre de reference
+ * fait 320 px en portrait et 512 px en paysage (`editorViewportPx`). Garder la
+ * base 330 en 16:9 donnait des cartes presque deux fois trop grandes pour un
+ * conteneur presque deux fois plus court : la grille debordait encore.
+ *
+ * Avec ces valeurs, deux rangees de trois cartes mesurent ~511 px de haut pour
+ * un conteneur de 518 — c'est exactement le dimensionnement que le compositeur
+ * a ete ecrit pour tenir.
+ */
+const CARD_RATIO_LANDSCAPE = {
+  text: 7 / 512,        // labelSize = fontPx(7)
+  value: 9 / 512,       // valueSize = fontPx(9)
+  icon: 18 / 512,       // emojiSizeLocal = fixedFontPx(18)
+  gap: 6 / 512,         // gap-1.5
+  padX: 6 / 512,        // px-1.5
+  padY: 6 / 512,        // py-1.5
+  radius: 8 / 512,
+  /** Interlignes du compositeur : `lineMul` pour le texte, `emojiLineMul` pour l'icone. */
+  line: 1.5,
+} as const;
+
 const CARD_RATIO = {
   text: 9 / 330,
   icon: 13 / 330,
@@ -853,6 +877,31 @@ export function Preview({
   const vw = VIDEO_SIZE[format].w;
 
   /**
+   * Disposition des cartes en GRILLE plutot qu'en colonne.
+   *
+   * Reservee au paysage, et pour une raison de place : le conteneur des cartes
+   * occupe 48 % de la hauteur video, alors que la taille des cartes suit la
+   * LARGEUR. En 16:9 les cartes sont donc presque deux fois plus grandes pour
+   * un conteneur presque deux fois plus court — cinq cartes empilees en
+   * colonne debordaient de 33 px en haut comme en bas.
+   *
+   * Trois colonnes, comme le compositeur en paysage (`cols = isReel ? 2 : 3`).
+   * Le carre garde la colonne : il tient, et le changer modifierait des
+   * montages existants sans necessite.
+   */
+  const landscapeCards = format === '16:9';
+  /**
+   * Les METRIQUES suivent le format ; la DISPOSITION suit aussi le mode libre.
+   * Passer en mode libre ne doit pas changer la taille du texte des cartes.
+   */
+  const CR: { text: number; value: number; icon: number; gap: number; padX: number; padY: number; radius: number } =
+    landscapeCards
+      ? CARD_RATIO_LANDSCAPE
+      // En portrait, libelle et valeur partagent la meme taille — c'est le
+      // rendu d'origine, et il ne bouge pas.
+      : { ...CARD_RATIO, value: CARD_RATIO.text };
+
+  /**
    * Epaisseur en pixels ECRAN pour un trait peint DANS le plateau.
    *
    * Le plateau est reduit par `transform: scale(displayScale)` — autour de
@@ -1110,12 +1159,27 @@ export function Preview({
             <div
               ref={cardsRef}
               data-cards-grid
-              className={cardBoxes ? 'absolute' : 'absolute flex flex-col justify-center'}
+              className={
+                cardBoxes
+                  ? 'absolute'
+                  : landscapeCards
+                    ? 'absolute grid'
+                    : 'absolute flex flex-col justify-center'
+              }
               style={{
                 left: '8%', right: '8%', top: '30%', bottom: '22%',
                 // En mode libre chaque carte porte sa position : l'ecart du
                 // flux n'a plus lieu d'etre.
-                gap: cardBoxes ? undefined : vw * CARD_RATIO.gap,
+                gap: cardBoxes ? undefined : vw * CR.gap,
+                // Paysage : une GRILLE de trois colonnes. Empilees en colonne,
+                // cinq cartes formaient une pile deux fois plus haute que leur
+                // conteneur — et ce conteneur est photographie puis blitte,
+                // donc la video sortait avec des cartes rognees en haut et en
+                // bas. `gridTemplateColumns` en style en ligne : les valeurs
+                // arbitraires de Tailwind sont purgees en production.
+                ...(landscapeCards && !cardBoxes
+                  ? { gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', alignContent: 'center' as const }
+                  : null),
               }}
             >
               {(shows('cards') ? generated.cards : []).map((c) => {
@@ -1130,12 +1194,20 @@ export function Preview({
                   onPointerCancel={onDragEnd}
                   onLostPointerCapture={onDragEnd}
                   title={onCardDragStart ? 'Glisser pour déplacer la carte' : undefined}
-                  className="flex items-center"
+                  // En grille, la carte s'empile comme la carte « Compact » du
+                  // compositeur : icone, libelle, valeur. En ligne sur un
+                  // tiers de largeur, le libelle serait reduit a deux
+                  // caracteres et une ellipse.
+                  className={
+                    landscapeCards && !cardBoxes
+                      ? 'flex flex-col items-center justify-center text-center'
+                      : 'flex items-center'
+                  }
                   style={{
                     backgroundColor: 'rgba(255,255,255,0.08)',
-                    gap: vw * CARD_RATIO.gap,
-                    borderRadius: vw * CARD_RATIO.radius,
-                    padding: `${vw * CARD_RATIO.padY}px ${vw * CARD_RATIO.padX}px`,
+                    gap: vw * CR.gap,
+                    borderRadius: vw * CR.radius,
+                    padding: `${vw * CR.padY}px ${vw * CR.padX}px`,
                     ...(box
                       // La HAUTEUR mesuree est reappliquee : sans elle, une
                       // carte absolue se retrecirait a son contenu au moment
@@ -1177,20 +1249,31 @@ export function Preview({
                 >
                   <CardIcon
                     name={c.icon}
-                    size={Math.round(vw * CARD_RATIO.icon)}
+                    size={Math.round(vw * CR.icon)}
                     color="#FFFFFF"
                     className=""
                   />
                   <span
-                    className="font-semibold text-white truncate flex-1"
-                    style={{ fontSize: vw * CARD_RATIO.text }}
+                    className={
+                      landscapeCards && !cardBoxes
+                        ? 'font-semibold text-white truncate max-w-full'
+                        : 'font-semibold text-white truncate flex-1'
+                    }
+                    style={{
+                      fontSize: vw * CR.text,
+                      lineHeight: landscapeCards ? CARD_RATIO_LANDSCAPE.line : undefined,
+                    }}
                   >
                     {c.title}
                   </span>
                   {c.value && (
                     <span
-                      className="font-bold flex-shrink-0"
-                      style={{ fontSize: vw * CARD_RATIO.text, color: gradEnd }}
+                      className={landscapeCards && !cardBoxes ? 'font-bold' : 'font-bold flex-shrink-0'}
+                      style={{
+                        fontSize: vw * CR.value,
+                        lineHeight: landscapeCards ? CARD_RATIO_LANDSCAPE.line : undefined,
+                        color: gradEnd,
+                      }}
                     >
                       {c.value}
                     </span>
