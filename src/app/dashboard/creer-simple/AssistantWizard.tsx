@@ -24,6 +24,8 @@ import {
   Trash2,
   RotateCcw,
   Copy,
+  Combine,
+  Ungroup,
   X,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
@@ -34,6 +36,8 @@ import { pointToPct, grabOffset, clampToBox, type Pos, type CardBox, boxesFromRe
 import {
   nextSelection, pruneSelection, movingIds, groupBounds, clampGroupDelta, shiftBoxes,
   duplicateCards, duplicateBoxes, maxCards,
+  groupCards, ungroupCards, pruneGroups, expandSelection, groupOf, newGroupId, MIN_GROUP,
+  type CardGroup,
 } from '@/lib/creer/selection';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import ClipDetectorModal, { type ClipSource } from '@/components/media/ClipDetectorModal';
@@ -710,6 +714,9 @@ function StyleSection({
  */
 const DRAG_THRESHOLD_PX = 4;
 
+/** Filet des cartes groupees — assez lisible sans rivaliser avec la selection. */
+const GROUP_TINT = 'rgba(236,72,153,0.9)';
+
 interface FreeCards {
   format: Format;
   boxes: Record<string, CardBox>;
@@ -734,6 +741,7 @@ export function Preview({
   draggingCard = null,
   selectedCards,
   onClearSelection,
+  groupedCards,
   capturing = false,
   frameRef,
   displayScale,
@@ -815,6 +823,11 @@ export function Preview({
    */
   selectedCards?: Set<string>;
   onClearSelection?: () => void;
+  /**
+   * Cartes groupees, par identifiant de groupe. Aide d'edition : jamais
+   * photographiee, jamais exportee.
+   */
+  groupedCards?: Record<string, string>;
   /**
    * L'apercu est en train d'etre photographie : aucune aide d'edition n'est
    * peinte, et le plateau devient inerte. C'est ce qui empeche un clic
@@ -1148,10 +1161,16 @@ export function Preview({
                         : selectedCards?.has(c.id)
                           ? `${uiPx(2)}px solid #FFFFFF`
                           : undefined,
-                    boxShadow:
-                      !capturing && draggingCard !== c.id && selectedCards?.has(c.id)
+                    boxShadow: capturing
+                      ? undefined
+                      : draggingCard !== c.id && selectedCards?.has(c.id)
                         ? `0 0 0 ${uiPx(3)}px rgba(0,0,0,0.5)`
-                        : undefined,
+                        // Groupe : un filet lateral discret, du cote gauche.
+                        // Assez pour lire « ces cartes vont ensemble » sans
+                        // rivaliser avec le lisere de selection.
+                        : groupedCards?.[c.id]
+                          ? `inset ${uiPx(3)}px 0 0 0 ${GROUP_TINT}`
+                          : undefined,
                     outlineOffset: uiPx(2),
                   }}
                 >
@@ -1688,6 +1707,14 @@ export default function AssistantWizard() {
    * une intention d'edition, pas une propriete du montage.
    */
   const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
+  /**
+   * Groupes de cartes. Aide d'EDITION : deux cartes groupees s'exportent
+   * exactement comme deux cartes non groupees — le montage et les metadonnees
+   * n'en savent rien.
+   */
+  const [cardGroups, setCardGroups] = useState<CardGroup[]>([]);
+  const groupsRef = useRef<CardGroup[]>(cardGroups);
+  useEffect(() => { groupsRef.current = cardGroups; }, [cardGroups]);
   // Lue par `moveDrag`, memoise sans dependances.
   const selectionRef = useRef<Set<string>>(selectedCards);
   useEffect(() => { selectionRef.current = selectedCards; }, [selectedCards]);
@@ -1726,6 +1753,8 @@ export default function AssistantWizard() {
     // Une selection qui survit a la disparition de sa carte agirait sur du
     // vide : dupliquer ou regrouper porterait sur un identifiant fantome.
     setSelectedCards((prev) => pruneSelection(prev, cardIds));
+    // Un groupe qui designe des cartes disparues n'a plus d'objet.
+    setCardGroups((prev) => pruneGroups(prev, cardIds));
   }, [cardBoxes, cardIds, format]);
 
   /**
@@ -1762,7 +1791,13 @@ export default function AssistantWizard() {
     // Clic droit et pointeurs secondaires n'ouvrent pas de glissement.
     if (e.button !== 0 || !e.isPrimary) return;
 
-    setSelectedCards((prev) => nextSelection(prev, id, e.shiftKey || e.metaKey || e.ctrlKey));
+    setSelectedCards((prev) =>
+      // Un groupe se prend en bloc : designer un membre suffit.
+      expandSelection(
+        nextSelection(prev, id, e.shiftKey || e.metaKey || e.ctrlKey),
+        groupsRef.current,
+      ),
+    );
     setDuplicateNotice(null);
 
     const rect = cardsRef.current?.getBoundingClientRect();
@@ -1932,6 +1967,24 @@ export default function AssistantWizard() {
         : null,
     );
   }, [generated, selectedCards, format]);
+
+  const groupSelection = useCallback(() => {
+    if (selectedCards.size < MIN_GROUP) return;
+    setCardGroups((prev) => groupCards(prev, [...selectedCards], newGroupId));
+  }, [selectedCards]);
+
+  const ungroupSelection = useCallback(() => {
+    setCardGroups((prev) => ungroupCards(prev, selectedCards));
+  }, [selectedCards]);
+
+  /** La selection touche-t-elle un groupe existant ? */
+  const selectionGrouped = [...selectedCards].some((id) => !!groupOf(cardGroups, id));
+  /** Carte -> groupe, pour que l'apercu sache quoi marquer. */
+  const groupedByCard = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const g of cardGroups) for (const id of g.cardIds) out[id] = g.id;
+    return out;
+  }, [cardGroups]);
 
   const resetLayout = useCallback(() => {
     setLayoutDropped(false);
@@ -2850,6 +2903,7 @@ export default function AssistantWizard() {
     setCtaPos(DESIGN.ctaPos);
     setCardBoxes(null);
     setSelectedCards(new Set());
+    setCardGroups([]);
     setDuplicateNotice(null);
     setOpenSection('format');
     genSigRef.current = '';
@@ -4005,6 +4059,7 @@ export default function AssistantWizard() {
           draggingCard={draggingCard}
           selectedCards={selectedCards}
           onClearSelection={clearSelection}
+          groupedCards={groupedByCard}
           capturing={capturing}
           frameRef={frameRef}
           displayScale={displayScale}
@@ -4026,6 +4081,7 @@ export default function AssistantWizard() {
               {selectedCards.size > 1 ? 's' : ''}
               <span className="text-gray-600"> — Maj+clic pour en ajouter, Échap pour désélectionner</span>
             </p>
+            <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={duplicateSelection}
@@ -4042,6 +4098,34 @@ export default function AssistantWizard() {
               <Copy className="w-3.5 h-3.5" />
               Dupliquer
             </button>
+            {selectionGrouped ? (
+              <button
+                type="button"
+                onClick={ungroupSelection}
+                title="Séparer les cartes de leur groupe"
+                className="flex items-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 transition-colors"
+              >
+                <Ungroup className="w-3.5 h-3.5" />
+                Dégrouper
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={groupSelection}
+                disabled={selectedCards.size < MIN_GROUP}
+                // Grise sans raison, on ne sait pas quoi faire de plus.
+                title={
+                  selectedCards.size < MIN_GROUP
+                    ? 'Sélectionnez au moins deux cartes'
+                    : 'Les déplacer ensemble'
+                }
+                className="flex items-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <Combine className="w-3.5 h-3.5" />
+                Grouper
+              </button>
+            )}
+            </div>
             {duplicateNotice && (
               <p className="text-center text-xs text-gray-500">{duplicateNotice}</p>
             )}
