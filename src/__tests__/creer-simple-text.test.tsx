@@ -359,7 +359,11 @@ describe('Export — les mêmes valeurs partent au compositeur', () => {
     // `textDesign` dérive de `textStyles`, qui est aussi ce que reçoit
     // `Preview` : aucune dérive possible entre ce qui est validé à l'écran et
     // ce qui est rendu.
-    expect(wizardSource).toMatch(/text=\{textStyles\}/);
+    //
+    // La valeur transite par `previewShared`, l'objet que lisent l'aperçu de
+    // la colonne ET la fenêtre agrandie — l'indirection est justement ce qui
+    // empêche les deux instances de diverger.
+    expect(wizardSource).toMatch(/text: textStyles,/);
     expect(wizardSource).toMatch(/titleFont: textStyles\.title\.font/);
   });
 });

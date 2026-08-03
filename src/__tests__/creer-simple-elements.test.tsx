@@ -413,10 +413,12 @@ describe('Persistance des éléments', () => {
 
 describe('Câblage', () => {
   it("l'aperçu reçoit les éléments et leurs actions", () => {
-    expect(wizard).toContain('elements={freeElements}');
+    // Le câblage passe par `previewShared` — l'objet que lisent l'aperçu de
+    // la colonne ET la fenêtre agrandie.
+    expect(wizard).toContain('elements: freeElements,');
     expect(wizard).toContain('onElementDragStart={startElementDrag}');
     expect(wizard).toContain('onElementDelete={deleteElement}');
-    expect(wizard).toContain('selectedElementId={selectedElementId}');
+    expect(wizard).toContain('selectedElementId,');
   });
 
   it('le brouillon écrit et relit les éléments', () => {

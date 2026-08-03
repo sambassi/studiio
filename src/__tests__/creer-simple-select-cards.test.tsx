@@ -196,9 +196,9 @@ describe('Le câblage ne peut pas disparaître en silence', () => {
   it('les deux props de sélection sont bien passées à l aperçu', () => {
     // Remplacer `selectedCards={selectedCards}` par un Set vide rendait la
     // fonctionnalité entièrement morte sans un seul test rouge.
-    expect(wizard).toContain('selectedCards={selectedCards}');
+    expect(wizard).toContain('selectedCards,');
     expect(wizard).toContain('onClearSelection={clearSelection}');
-    expect(wizard).toContain('capturing={capturing}');
+    expect(wizard).toContain('capturing,');
   });
 
   it('le seuil de glissement est mesuré sur le VRAI déplacement', () => {

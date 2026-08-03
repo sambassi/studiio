@@ -34,6 +34,7 @@ import {
   ImagePlus,
   Upload,
   Crop,
+  Maximize2,
   X,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
@@ -512,6 +513,14 @@ const ASPECT_CSS: Record<Format, string> = {
 const WATERMARK_SEQUENCES = ['titre', 'cartes', 'video', 'cta'] as const;
 
 /**
+ * Position et taille de la fenetre d'apercu agrandi.
+ *
+ * `localStorage` et non `sessionStorage` : c'est un reglage d'ergonomie, il
+ * doit survivre a la fermeture de l'onglet.
+ */
+const ENLARGED_GEOMETRY_KEY = 'studiio.creer-simple.apercu-agrandi';
+
+/**
  * Reglages typographiques par zone.
  *
  * Chaque champ correspond a une lecture REELLE du compositeur
@@ -983,7 +992,14 @@ export function Preview({
   onDragStart,
   onDragMove,
   onDragEnd,
+  hideHeader = false,
 }: {
+  /**
+   * Masque l'en-tete « Aperçu ». Defaut `false` : l'apercu de la colonne de
+   * droite garde le sien. La fenetre agrandie, elle, porte deja ce titre dans
+   * sa barre — l'afficher deux fois volerait de la hauteur au plateau.
+   */
+  hideHeader?: boolean;
   /**
    * Position du titre et du CTA, en % du cadre. Optionnelles : sans elles,
    * l'apercu retombe sur les constantes `DESIGN` historiques — c'est ce qui
@@ -1190,12 +1206,14 @@ export function Preview({
 
   return (
     <div className="card-base p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <MonitorPlay className="w-4 h-4 text-gray-500" />
-        <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-          Aperçu
-        </span>
-      </div>
+      {!hideHeader && (
+        <div className="flex items-center gap-2 mb-3">
+          <MonitorPlay className="w-4 h-4 text-gray-500" />
+          <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+            Aperçu
+          </span>
+        </div>
+      )}
 
       {/* Onglets — isolent un element pour le regler de pres. « Tout » reste
           la composition complete, celle qui part a l'export : ces onglets ne
@@ -3166,6 +3184,81 @@ export default function AssistantWizard() {
     return () => ro.disconnect();
   }, [format]);
 
+  /* ── APERCU AGRANDI ──────────────────────────────────────────────────
+     Une fenetre flottante qui montre le MEME apercu, en plus grand, qu'on
+     deplace et redimensionne a volonte. Fermee par defaut : tant qu'on ne
+     l'ouvre pas, rien ne change.
+
+     Elle est un MIROIR, pas un second editeur. Les refs (`previewRef`,
+     `cardsRef`, `frameRef`) sont la plomberie de l'edition ET de l'export :
+     les partager ferait gagner le dernier monte, si bien que la photo des
+     cartes — celle que le compositeur blitte dans la video — capturerait la
+     fenetre au lieu du plateau. Elle recoit donc les memes ETATS (d'ou la
+     synchronisation) mais ses propres refs, et aucune poignee d'edition.
+     Ses onglets, eux, pilotent l'etat partage : ils marchent des deux cotes. */
+  const [enlargedOpen, setEnlargedOpen] = useState(false);
+  const enlargedFrameRef = useRef<HTMLDivElement>(null);
+  const enlargedBodyRef = useRef<HTMLDivElement>(null);
+  const [enlargedScale, setEnlargedScale] = useState(0);
+  const [enlargedWidth, setEnlargedWidth] = useState(0);
+
+  /** Geometrie de la fenetre, relue d'une session a l'autre. */
+  const [enlargedGeometry, setEnlargedGeometry] = useState(() => {
+    const repli = { x: 120, y: 90, w: 420, h: 640 };
+    if (typeof window === 'undefined') return repli;
+    try {
+      const brut = window.localStorage.getItem(ENLARGED_GEOMETRY_KEY);
+      return brut ? { ...repli, ...(JSON.parse(brut) as typeof repli) } : repli;
+    } catch {
+      return repli;
+    }
+  });
+
+  const rememberEnlargedGeometry = useCallback((g: { x: number; y: number; w: number; h: number }) => {
+    setEnlargedGeometry(g);
+    try {
+      window.localStorage.setItem(ENLARGED_GEOMETRY_KEY, JSON.stringify(g));
+    } catch {
+      // Quota plein ou stockage refuse : la fenetre marche, elle ne se
+      // souvient simplement pas de sa taille.
+    }
+  }, []);
+
+  /**
+   * Taille du plateau dans la fenetre.
+   *
+   * Le plateau doit tenir dans les DEUX dimensions : borner sur la seule
+   * largeur ferait deborder la hauteur en 9:16, et l'utilisateur elargirait
+   * la fenetre pour voir de moins en moins. Le « chrome » (onglets et marges
+   * de la carte) est MESURE — carte moins plateau — plutot que code en dur,
+   * qu'un changement de marge rendrait faux en silence.
+   */
+  useEffect(() => {
+    if (!enlargedOpen) return;
+    const body = enlargedBodyRef.current;
+    if (!body) return;
+    const apply = () => {
+      const frame = enlargedFrameRef.current;
+      const carte = frame?.closest('.card-base') as HTMLElement | null;
+      const chrome = carte && frame ? Math.max(0, carte.offsetHeight - frame.offsetHeight) : 0;
+      const ratio = VIDEO_SIZE[format].w / VIDEO_SIZE[format].h;
+      const large = Math.max(
+        120,
+        Math.min(body.clientWidth, Math.max(0, body.clientHeight - chrome) * ratio),
+      );
+      // Seuil de 1 px : sans lui, la mesure du chrome et la largeur qu'elle
+      // determine se relanceraient l'une l'autre sans jamais se poser.
+      setEnlargedWidth((prev) => (Math.abs(prev - large) > 1 ? large : prev));
+      const w = frame?.clientWidth ?? 0;
+      if (w > 0) setEnlargedScale(w / VIDEO_SIZE[format].w);
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(body);
+    if (enlargedFrameRef.current) ro.observe(enlargedFrameRef.current);
+    return () => ro.disconnect();
+  }, [enlargedOpen, format]);
+
   /**
    * Ramene le titre et le CTA dans le cadre, sur leur encombrement REEL.
    *
@@ -3487,6 +3580,40 @@ export default function AssistantWizard() {
 
   /** Ordre effectif : sequences activees, dans l'ordre choisi. */
   const activeOrder = sequences.filter((s) => s.enabled).map((s) => s.key);
+
+  /**
+   * Ce que l'apercu MONTRE — la seule source des deux instances.
+   *
+   * L'apercu de la colonne et la fenetre agrandie lisent cet objet : une
+   * valeur ajoutee ici arrive dans les deux, alors que deux listes de props
+   * recopiees divergeraient a la premiere evolution.
+   *
+   * N'y figurent que des VALEURS. Les refs et les poignees d'edition restent
+   * sur l'apercu principal : lui seul est mesure, edite et photographie.
+   */
+  const previewShared = {
+    generated,
+    format,
+    titlePos,
+    ctaPos,
+    cardBoxes: effectiveCardBoxes,
+    selectedCards,
+    groupedCards: groupedByCard,
+    posterUrl: fondAffiche.url,
+    posterTransform: fondAffiche.transform,
+    elements: freeElements,
+    selectedElementId,
+    capturing,
+    activeOrder,
+    gradStart,
+    gradEnd,
+    gradientOpacity,
+    rushUrl,
+    watermark: watermarkLabel,
+    accent,
+    text: textStyles,
+    focus: previewFocus,
+  };
   /**
    * Les cartes sont-elles a l'ecran ? La sequence peut etre desactivee, ou
    * l'onglet d'apercu filtrer sur le titre. Annoncer « 2 cartes
@@ -5856,48 +5983,75 @@ export default function AssistantWizard() {
           sous cette barre. */}
       <div className="lg:col-span-2 lg:sticky lg:top-20">
         <Preview
-          titlePos={titlePos}
-          ctaPos={ctaPos}
-          dragging={dragging}
+          {...previewShared}
+          previewRef={previewRef}
+          cardsRef={cardsRef}
+          frameRef={frameRef}
+          displayScale={displayScale}
           onDragStart={startDrag}
           onDragMove={moveDrag}
           onDragEnd={endDrag}
-          generated={generated}
-          format={format}
-          previewRef={previewRef}
-          cardsRef={cardsRef}
-          cardBoxes={effectiveCardBoxes}
+          dragging={dragging}
           onCardDragStart={startCardDrag}
           draggingCard={draggingCard}
-          selectedCards={selectedCards}
           onClearSelection={clearSelection}
-          groupedCards={groupedByCard}
-          posterUrl={fondAffiche.url}
-          posterTransform={fondAffiche.transform}
           cropping={cropping}
           onPosterPanStart={startPosterPan}
           onPosterZoomStart={startPosterZoom}
           onPhotoDrop={(url) => { setPhotoDragging(false); applyPhoto(url); }}
           photoDragging={photoDragging}
-          elements={freeElements}
-          selectedElementId={selectedElementId}
           onElementDragStart={startElementDrag}
           onElementResizeStart={startElementResize}
           onElementDelete={deleteElement}
-          capturing={capturing}
-          frameRef={frameRef}
-          displayScale={displayScale}
-          activeOrder={activeOrder}
-          gradStart={gradStart}
-          gradEnd={gradEnd}
-          gradientOpacity={gradientOpacity}
-          rushUrl={rushUrl}
-          watermark={watermarkLabel}
-          accent={accent}
-          text={textStyles}
-          focus={previewFocus}
           onFocusChange={setPreviewFocus}
         />
+
+        {/* ── APERÇU AGRANDI ──────────────────────────────────────────
+            Le même aperçu dans une fenêtre qu'on déplace et redimensionne. */}
+        {generated && (
+          <button
+            type="button"
+            onClick={() => setEnlargedOpen((v) => !v)}
+            title="Ouvrir l’aperçu dans une fenêtre déplaçable et redimensionnable"
+            aria-pressed={enlargedOpen}
+            className={`mt-2 w-full flex items-center justify-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+              enlargedOpen
+                ? 'border-purple-500/40 bg-gray-800 text-white'
+                : 'border-gray-800 text-gray-300 hover:text-white hover:border-gray-700'
+            }`}
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+            {enlargedOpen ? 'Fermer la fenêtre' : 'Agrandir'}
+          </button>
+        )}
+
+        <FloatingPanel
+          title="Aperçu"
+          isOpen={enlargedOpen && !!generated}
+          onClose={() => setEnlargedOpen(false)}
+          initialX={enlargedGeometry.x}
+          initialY={enlargedGeometry.y}
+          initialWidth={enlargedGeometry.w}
+          initialHeight={enlargedGeometry.h}
+          resizable
+          // Elle reste ouverte pendant qu'on regle les couleurs, les cartes ou
+          // les fonds a gauche : c'est tout son interet.
+          closeOnClickOutside={false}
+          onGeometryChange={rememberEnlargedGeometry}
+          accentColor={accent}
+        >
+          <div ref={enlargedBodyRef} className="h-full w-full flex items-start justify-center">
+            <div style={{ width: enlargedWidth || '100%' }}>
+              <Preview
+                {...previewShared}
+                hideHeader
+                frameRef={enlargedFrameRef}
+                displayScale={enlargedScale}
+                onFocusChange={setPreviewFocus}
+              />
+            </div>
+          </div>
+        </FloatingPanel>
         {/* ── AFFICHE ─────────────────────────────────────────────────
             Telechargement local de l'apercu tel qu'il est affiche. Ni credit,
             ni post : un `<a download>` sur un blob. */}
