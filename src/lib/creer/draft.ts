@@ -117,6 +117,8 @@ export interface Draft {
   batchCount?: number;
   /** Affiches retenues pour le lot, dans l'ordre. */
   batchPhotoUrls?: string[];
+  /** Comment les affiches du lot sont attribuees. Absent = automatique. */
+  batchPhotoMode?: 'auto' | 'manuel';
 }
 
 /** Nombre d'emplacements et de groupes relus au maximum — garde-fou anti-brouillon abime. */
@@ -473,6 +475,7 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
     ? raw.batchPhotoUrls.filter((u): u is string => typeof u === 'string' && /^https?:\/\//.test(u)).slice(0, 10)
     : undefined;
   if (out.batchPhotoUrls && out.batchPhotoUrls.length === 0) out.batchPhotoUrls = undefined;
+  out.batchPhotoMode = raw.batchPhotoMode === 'manuel' ? 'manuel' : raw.batchPhotoMode === 'auto' ? 'auto' : undefined;
 
   // Sequence « Video » active mais rush disparu — URL `blob:` filtree a
   // l'ecriture, ou fichier expire depuis. La laisser active ferait sortir un

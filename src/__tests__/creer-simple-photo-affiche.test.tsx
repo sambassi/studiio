@@ -69,11 +69,8 @@ describe('Default-safe : sans photo, le fond ne change pas', () => {
   });
 
   it("l'export n'envoie rien quand aucune photo n'est retenue", () => {
-    // Depuis le lot, l'affiche de chaque montage vient de `photoForIndex` et
-    // retombe sur la photo unique — `undefined` quand il n'y en a aucune.
-    expect(wizard).toContain(
-      'const affiche = photoForIndex(batchPhotoUrls, b) ?? posterUrl ?? undefined;',
-    );
+    // Hors lot, l'affiche est la photo unique — `undefined` sans photo.
+    expect(wizard).toContain('(posterUrl ?? undefined);');
     expect(wizard).toContain('posterUrl: affiche,');
   });
 });
@@ -133,9 +130,11 @@ describe('Le compositeur fait bien la même chose', () => {
 
 describe('La recherche', () => {
   it('interroge /api/pexels avec la source demandée', () => {
-    expect(wizard).toContain(
-      '`/api/pexels?query=${encodeURIComponent(q)}&count=${POSTER_COUNT}&page=${p}&source=${source}`',
-    );
+    // Le nombre demandé suit la taille du lot : il faut assez de photos
+    // distinctes pour en donner une par vidéo.
+    expect(wizard).toContain('`/api/pexels?query=${encodeURIComponent(q)}&count=${');
+    expect(wizard).toContain('Math.max(POSTER_COUNT, photosToFetch(batchCountRef.current))');
+    expect(wizard).toContain('&page=${p}&source=${source}`');
   });
 
   it('une page vide ramène à la première au lieu d afficher du vide', () => {
