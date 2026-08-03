@@ -29,6 +29,8 @@ import {
   Shapes,
   Search,
   ImageDown,
+  ImagePlus,
+  Upload,
   X,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
@@ -47,6 +49,7 @@ import ClipDetectorModal, { type ClipSource } from '@/components/media/ClipDetec
 import { CardIcon } from '@/components/ui/CardIcon';
 import { ICON_LIBRARY, iconMatches } from '@/lib/icons/library';
 import ColorWheel from '@/components/ui/ColorWheel';
+import { uploadPosterFile } from '@/lib/creer/posterUpload';
 // Catalogue de polices — LA source unique, partagee avec le compositeur.
 // Deux listes finiraient par diverger, et la video ne ressemblerait plus a
 // l'apercu.
@@ -423,15 +426,27 @@ function backdropCSS(
   gradEnd: string,
   gradientOpacity: number,
 ): string {
-  const a = gradientOpacity;
+  return [
+    backdropVeilCSS(gradStart, gradEnd, gradientOpacity),
+    `linear-gradient(${backdropAngle(format).toFixed(2)}deg, ${gradStart} 0%, ${gradEnd} 100%)`,
+  ].join(', ');
+}
+
+/**
+ * Voile de degrade, seul — sans le fond plein.
+ *
+ * C'est la couche que le compositeur peint PAR-DESSUS l'affiche
+ * (`paintSeqGradient`, position « both » par defaut : teinte en haut, teinte
+ * en bas, transparent au milieu). Quand une photo sert de fond, l'apercu doit
+ * garder ce voile et lui seul — sinon le degrade plein masquerait la photo a
+ * l'ecran alors que la video la montrerait.
+ */
+function backdropVeilCSS(gradStart: string, gradEnd: string, gradientOpacity: number): string {
   const rgba = (hex: string, alpha: number) => {
     const n = parseInt(hex.slice(1), 16);
     return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
   };
-  return [
-    `linear-gradient(180deg, ${rgba(gradStart, a)} 0%, rgba(0,0,0,0) 40%, rgba(0,0,0,0) 60%, ${rgba(gradEnd, a)} 100%)`,
-    `linear-gradient(${backdropAngle(format).toFixed(2)}deg, ${gradStart} 0%, ${gradEnd} 100%)`,
-  ].join(', ');
+  return `linear-gradient(180deg, ${rgba(gradStart, gradientOpacity)} 0%, rgba(0,0,0,0) 40%, rgba(0,0,0,0) 60%, ${rgba(gradEnd, gradientOpacity)} 100%)`;
 }
 
 /**
@@ -656,7 +671,20 @@ const PREVIEW_TABS: Array<{ id: 'all' | 'intro' | 'cards' | 'cta'; label: string
 ];
 
 /** Sections repliables de l'etape Style — l'ordre du panneau. */
-type SectionId = 'format' | 'couleurs' | 'texte' | 'sequences';
+type SectionId = 'format' | 'couleurs' | 'affiche' | 'texte' | 'sequences';
+
+/** Photo proposee par `/api/pexels` — Pexels comme Unsplash. */
+interface PosterPhoto {
+  id: string | number;
+  url: string;
+  medium?: string;
+  small?: string;
+  photographer?: string;
+  source?: string;
+}
+
+/** Nombre de vignettes ramenees par recherche. */
+const POSTER_COUNT = 12;
 
 /**
  * Une section repliable.
@@ -799,6 +827,7 @@ export function Preview({
   selectedCards,
   onClearSelection,
   groupedCards,
+  posterUrl = null,
   elements,
   selectedElementId = null,
   onElementDragStart,
@@ -893,6 +922,11 @@ export function Preview({
    * Elements libres poses dans la zone des cartes. Defaut `[]` : un montage
    * sans element se rend exactement comme avant.
    */
+  /**
+   * Photo d'affiche : fond de la composition, a la place du degrade plein.
+   * Absente — le cas de tous les montages existants — le fond ne change pas.
+   */
+  posterUrl?: string | null;
   elements?: FreeElement[];
   selectedElementId?: string | null;
   onElementDragStart?: (id: string, e: React.PointerEvent) => void;
@@ -1080,7 +1114,16 @@ export function Preview({
           transform: `scale(${displayScale})`,
           transformOrigin: 'top left',
           // Fond STRICTEMENT identique a celui peint par le compositeur.
-          background: generated ? backdropCSS(format, gradStart, gradEnd, gradientOpacity) : DARK,
+          //
+          // Avec une affiche : la photo en `cover`, et par-dessus le seul
+          // VOILE du degrade — c'est ce que fait `drawIntro` (photo, puis
+          // `paintSeqGradient`). Y laisser le degrade plein cacherait la photo
+          // a l'ecran alors que la video la montrerait.
+          background: !generated
+            ? DARK
+            : posterUrl
+              ? `${backdropVeilCSS(gradStart, gradEnd, gradientOpacity)}, url("${posterUrl}") center / cover no-repeat`
+              : backdropCSS(format, gradStart, gradEnd, gradientOpacity),
           // `var(--font-inter)` est la SEULE reference valide : Next charge la
           // police via next/font, il n'existe aucune @font-face nommee 'Inter'.
           fontFamily: 'var(--font-inter), Inter, sans-serif',
@@ -1918,10 +1961,83 @@ export default function AssistantWizard() {
    */
   const [freeElements, setFreeElements] = useState<FreeElement[]>([]);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
+
+  // ── Photo d'affiche ─────────────────────────────────────────────────────
+  // `posterUrl` est l'URL RETENUE, et c'est elle qu'on enregistre — pas un
+  // index dans la grille. La grille est transitoire : elle disparait au
+  // rechargement, le choix non.
+  const [posterPhotos, setPosterPhotos] = useState<PosterPhoto[]>([]);
+  const [posterUrl, setPosterUrl] = useState<string | null>(null);
+  const [imageSource, setImageSource] = useState<'pexels' | 'unsplash'>('pexels');
+  const [photoQuery, setPhotoQuery] = useState('');
+  const [photosLoading, setPhotosLoading] = useState(false);
+  const [photosError, setPhotosError] = useState<string | null>(null);
+  const [posterUploading, setPosterUploading] = useState(false);
+  const posterPageRef = useRef(1);
   const [elementPickerOpen, setElementPickerOpen] = useState(false);
   const [elementQuery, setElementQuery] = useState('');
   const freeElementsRef = useRef<FreeElement[]>(freeElements);
   useEffect(() => { freeElementsRef.current = freeElements; }, [freeElements]);
+
+  /** Sujet courant — la requete par defaut de la recherche de photos. */
+  const currentTopic = customTopic.trim() || (THEMES.find((t) => t.id === themeId) ?? THEMES[0]).topic;
+
+  /**
+   * Cherche des photos d'affiche.
+   *
+   * `page` s'incremente a chaque « Autres photos » pour proposer autre chose ;
+   * une page vide ramene a la premiere plutot que de laisser une grille vide.
+   */
+  const searchPhotos = useCallback(async (
+    query: string,
+    source: 'pexels' | 'unsplash',
+    nextPage = false,
+  ) => {
+    const q = query.trim();
+    if (!q) return;
+    setPhotosLoading(true);
+    setPhotosError(null);
+    const page = nextPage ? posterPageRef.current + 1 : 1;
+    posterPageRef.current = page;
+    const appel = async (p: number) => {
+      const res = await fetch(
+        `/api/pexels?query=${encodeURIComponent(q)}&count=${POSTER_COUNT}&page=${p}&source=${source}`,
+      );
+      return res.json();
+    };
+    try {
+      let data = await appel(page);
+      if ((!data?.success || !data.photos?.length) && page > 1) {
+        // Plus de resultats : on revient au debut au lieu d'afficher du vide.
+        posterPageRef.current = 1;
+        data = await appel(1);
+      }
+      if (data?.success && Array.isArray(data.photos) && data.photos.length > 0) {
+        setPosterPhotos(data.photos);
+      } else {
+        setPosterPhotos([]);
+        // L'API dit si la source n'a pas de cle configuree. Sans cette
+        // distinction, une source absente du serveur passait pour une
+        // recherche infructueuse — et l'utilisateur reformulait sans fin.
+        setPhotosError(
+          data?.configured === false
+            ? `${source === 'unsplash' ? 'Unsplash' : 'Pexels'} n’est pas configuré sur ce serveur.`
+            : 'Aucune photo pour cette recherche.',
+        );
+      }
+    } catch {
+      setPosterPhotos([]);
+      setPhotosError('Recherche de photos indisponible.');
+    } finally {
+      setPhotosLoading(false);
+    }
+  }, []);
+
+  /** Bascule de source : on relance aussitot, sinon la grille ment. */
+  const changeImageSource = useCallback((source: 'pexels' | 'unsplash') => {
+    setImageSource(source);
+    searchPhotos(photoQuery.trim() || currentTopic, source);
+  }, [photoQuery, currentTopic, searchPhotos]);
 
   const addElement = useCallback((iconName: string) => {
     const id = newElementId();
@@ -2546,13 +2662,15 @@ export default function AssistantWizard() {
     cardBoxes: cardBoxes ?? undefined,
     cardGroups: cardGroups.length ? cardGroups : undefined,
     elements: freeElements.length ? freeElements : undefined,
+    posterUrl: posterUrl ?? undefined,
+    imageSource,
   }), [
     started, step, themeId, customTopic, toneId, format, colors,
     titleStyle, subtitleStyle, ctaStyle, watermarkOverride, watermarkEnabled,
     sequences, introDuration, cardsDuration, videoDuration, ctaDuration,
     generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
     voiceVolume, rushUrl, rushName, rushIsClip, scheduledDate,
-    titlePos, ctaPos, cardBoxes, cardGroups, freeElements,
+    titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, imageSource,
   ]);
 
   /** La derniere version connue, pour ecrire sans attendre un rendu. */
@@ -2629,6 +2747,8 @@ export default function AssistantWizard() {
     }
     if (draft.cardGroups) setCardGroups(draft.cardGroups);
     if (draft.elements) setFreeElements(draft.elements);
+    if (draft.posterUrl) setPosterUrl(draft.posterUrl);
+    if (draft.imageSource) setImageSource(draft.imageSource);
     // Le contenu a ete regenere s'il vient du brouillon : la signature evite
     // qu'il soit remplace par un autre texte des la premiere navigation.
     if (draft.generated) genSigRef.current = `${draft.customTopic?.trim() || (THEMES.find((t) => t.id === draft.themeId) ?? THEMES[0]).topic}|${draft.toneId}`;
@@ -2642,6 +2762,7 @@ export default function AssistantWizard() {
       draft.musicUrl || draft.voiceUrl ? 'audio' : null,
       draft.titlePos || draft.ctaPos || draft.cardBoxes || draft.cardGroups ? 'placement' : null,
       draft.elements ? 'éléments' : null,
+      draft.posterUrl ? 'affiche' : null,
     ].filter(Boolean);
     // Uniquement si le brouillon porte du travail : annoncer « Brouillon
     // restaure » sur un ecran vierge inquiete sans rien apprendre.
@@ -3150,6 +3271,10 @@ export default function AssistantWizard() {
         // compositeur allume le calque des qu'il n'est pas explicitement
         // desactive, et se rabat alors sur « Afroboost.com ».
         siteText: watermarkConfig,
+        // Photo d'affiche : le compositeur la peint en fond de TOUTES les
+        // sequences (`posterOnAllSequences` absent vaut « partout »), avec le
+        // voile de degrade par-dessus — exactement ce que montre l'apercu.
+        posterUrl: posterUrl || undefined,
         design: {
           cardStyle: CARD_STYLE,
           // Sans ce champ : titre et CTA en Helvetica, cartes en Inter.
@@ -3159,8 +3284,10 @@ export default function AssistantWizard() {
           gradientColor1: gradStart,
           gradientColor2: gradEnd,
           gradientOpacity,
-          // Aucune sequence en noir plein, et pas d'affiche : le backdrop
-          // degrade est peint partout, exactement comme dans l'apercu.
+          // Aucune sequence en noir plein. Sans affiche, le backdrop degrade
+          // est peint partout ; avec une affiche, elle prend sa place et le
+          // degrade ne subsiste qu'en voile — dans les deux cas l'apercu et la
+          // video montrent la meme chose.
           noColorSequences: [],
 
           // ── Titre : haut-gauche ───────────────────────────────────────
@@ -3389,6 +3516,8 @@ export default function AssistantWizard() {
     setCardGroups([]);
     setFreeElements([]);
     setSelectedElementId(null);
+    setPosterUrl(null);
+    setPosterPhotos([]);
     setDuplicateNotice(null);
     setOpenSection('format');
     genSigRef.current = '';
@@ -3732,6 +3861,169 @@ export default function AssistantWizard() {
                         </span>
                       </div>
                     </div>
+                </StyleSection>
+
+                <StyleSection
+                  id="affiche"
+                  title="Photo d’affiche"
+                  hint={posterUrl ? 'Photo choisie' : 'Dégradé'}
+                  open={openSection === 'affiche'}
+                  onToggle={toggleSection}
+                >
+                  <div className="space-y-3">
+                    <p className="text-xs text-gray-500">
+                      Sans photo, le fond reste le dégradé de vos couleurs.
+                    </p>
+
+                    {/* Source */}
+                    <div className="flex items-center gap-1.5">
+                      {(['pexels', 'unsplash'] as const).map((src) => (
+                        <button
+                          key={src}
+                          type="button"
+                          onClick={() => changeImageSource(src)}
+                          data-poster-source={src}
+                          className={`flex-1 rounded-lg border px-3 py-1.5 text-xs capitalize transition-colors ${
+                            imageSource === src
+                              ? 'border-purple-500 text-white'
+                              : 'border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
+                          }`}
+                        >
+                          {src}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Recherche */}
+                    <div className="flex items-center gap-1.5">
+                      <div className="relative flex-1">
+                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                        <input
+                          type="text"
+                          value={photoQuery}
+                          onChange={(e) => setPhotoQuery(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              searchPhotos(photoQuery.trim() || currentTopic, imageSource);
+                            }
+                          }}
+                          placeholder={`Rechercher des photos… (ex : ${currentTopic})`}
+                          className="w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none pl-8 pr-2.5 py-2 text-sm"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => searchPhotos(photoQuery.trim() || currentTopic, imageSource)}
+                        disabled={photosLoading}
+                        data-poster-search
+                        className="rounded-lg border border-gray-800 px-3 py-2 text-xs text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 transition-colors"
+                      >
+                        {photosLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Chercher'}
+                      </button>
+                    </div>
+
+                    {photosError && <p className="text-xs text-gray-500">{photosError}</p>}
+
+                    {/* Grille */}
+                    {posterPhotos.length > 0 && (
+                      <>
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {posterPhotos.map((photo) => {
+                            const retenue = posterUrl === photo.url;
+                            return (
+                              <button
+                                key={`${photo.source ?? 'p'}-${photo.id}`}
+                                type="button"
+                                onClick={() => setPosterUrl(retenue ? null : photo.url)}
+                                data-poster-photo={photo.url}
+                                title={photo.photographer ? `Photo : ${photo.photographer}` : 'Choisir cette photo'}
+                                className={`relative overflow-hidden rounded-lg border transition-colors ${
+                                  retenue ? 'border-purple-500' : 'border-gray-800 hover:border-gray-600'
+                                }`}
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={photo.small || photo.medium || photo.url}
+                                  alt=""
+                                  className="aspect-[3/4] w-full object-cover"
+                                />
+                                {retenue && (
+                                  <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-purple-500">
+                                    <Check className="w-2.5 h-2.5" />
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => searchPhotos(photoQuery.trim() || currentTopic, imageSource, true)}
+                          disabled={photosLoading}
+                          className="w-full rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:border-gray-700 disabled:opacity-40 transition-colors"
+                        >
+                          Autres photos
+                        </button>
+                      </>
+                    )}
+
+                    {/* Ma photo */}
+                    <label className="flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-700 px-3 py-2 text-xs text-gray-400 cursor-pointer hover:border-purple-500 hover:text-white transition-colors">
+                      {posterUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                      {posterUploading ? 'Envoi…' : 'Ma photo'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={posterUploading}
+                        data-poster-upload
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = '';
+                          if (!file) return;
+                          setPosterUploading(true);
+                          setPhotosError(null);
+                          try {
+                            // Passe par le stockage : un data URL ferait
+                            // exploser le quota localStorage du brouillon.
+                            const envoye = await uploadPosterFile(file);
+                            if (!envoye.url) {
+                              setPhotosError(`Photo non ajoutée : ${envoye.reason || 'envoi impossible'}`);
+                              return;
+                            }
+                            const perso: PosterPhoto = {
+                              id: `perso-${file.name}`,
+                              url: envoye.url,
+                              small: envoye.url,
+                              photographer: 'Ma photo',
+                              source: 'upload',
+                            };
+                            setPosterPhotos((prev) => [perso, ...prev]);
+                            setPosterUrl(envoye.url);
+                            if (envoye.dataUrl) {
+                              setPhotosError(
+                                'Photo utilisée localement : l’envoi au stockage a échoué, elle ne survivra pas au rechargement.',
+                              );
+                            }
+                          } finally {
+                            setPosterUploading(false);
+                          }
+                        }}
+                      />
+                    </label>
+
+                    {posterUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setPosterUrl(null)}
+                        className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:border-gray-700 transition-colors"
+                      >
+                        <ImagePlus className="w-3.5 h-3.5" />
+                        Revenir au fond dégradé
+                      </button>
+                    )}
+                  </div>
                 </StyleSection>
 
                 <StyleSection
@@ -4545,6 +4837,7 @@ export default function AssistantWizard() {
           selectedCards={selectedCards}
           onClearSelection={clearSelection}
           groupedCards={groupedByCard}
+          posterUrl={posterUrl}
           elements={freeElements}
           selectedElementId={selectedElementId}
           onElementDragStart={startElementDrag}
