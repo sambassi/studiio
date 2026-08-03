@@ -28,6 +28,7 @@ import {
   Ungroup,
   Shapes,
   Search,
+  ImageDown,
   X,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
@@ -1992,6 +1993,82 @@ export default function AssistantWizard() {
     const kept = prepared.filter(Boolean) as { x: number; y: number; sizePct: number; img: HTMLImageElement }[];
     return kept.length > 0 ? kept : undefined;
   }, [format]);
+
+  /**
+   * Telecharge l'apercu courant en image, sur le poste de l'utilisateur.
+   *
+   * Aucun credit debite, aucun post cree : c'est un `<a download>` sur un blob
+   * local. Ce qui est capture est l'ONGLET AFFICHE — « Tout » donne l'affiche
+   * complete, « Cartes » la seule planche de cartes. WYSIWYG, et l'utilisateur
+   * choisit en changeant d'onglet.
+   */
+  const [posterExporting, setPosterExporting] = useState(false);
+  const downloadPoster = useCallback(async (fmt: 'png' | 'jpeg') => {
+    const stage = previewRef.current;
+    if (!stage || !generated || posterExporting) return;
+    setPosterExporting(true);
+    try {
+      // Les aides d'edition — lisere de selection, croix de suppression,
+      // pointille de glissement — ne doivent pas etre gravees dans l'affiche.
+      // Meme drapeau que la photo des cartes, et il tient pour TOUTE la duree
+      // de la capture : celle-ci est asynchrone, un clic entre-temps les
+      // reposerait juste a temps pour qu'elles y figurent.
+      flushSync(() => setCapturing(true));
+      const { domToCanvas } = await import('modern-screenshot');
+      // Polices chargees : sinon la capture serialise une police de repli et
+      // l'affiche ne ressemble pas a l'apercu.
+      try { await (document as unknown as { fonts?: FontFaceSet }).fonts?.ready; } catch { /* ignore */ }
+      // Une frame de peinture, bornee : `requestAnimationFrame` est GELE dans
+      // un onglet en arriere-plan.
+      await new Promise<void>((r) => {
+        const done = () => { clearTimeout(timer); r(); };
+        const timer = setTimeout(r, 300);
+        requestAnimationFrame(() => requestAnimationFrame(done));
+      });
+
+      // `width`/`height` sont OBLIGATOIRES : le plateau porte un
+      // `transform: scale(displayScale)`, et `resolveBoundingBox` de
+      // modern-screenshot lit `getBoundingClientRect()` — c'est-a-dire la
+      // boite APRES reduction. Sans eux la capture ferait ~270 px de large au
+      // lieu de la resolution native.
+      const canvas = await domToCanvas(stage, {
+        backgroundColor: undefined,
+        scale: 1,
+        width: stage.offsetWidth,
+        height: stage.offsetHeight,
+        // `transform: none` sur le clone : le plateau porte lui-meme un
+        // `scale(displayScale)` pour tenir dans le panneau, et
+        // modern-screenshot l'applique au clone. Les dimensions ci-dessus
+        // donnaient alors une toile de 1080x1920 dans laquelle l'affiche
+        // n'occupait qu'une bande centrale au quart de sa taille, le reste
+        // transparent.
+        style: { transform: 'none', transformOrigin: 'top left' },
+      });
+      const mime = fmt === 'png' ? 'image/png' : 'image/jpeg';
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, mime, fmt === 'jpeg' ? 0.92 : undefined),
+      );
+      if (!blob) throw new Error('canvas.toBlob a renvoyé null');
+      const base = (generated.title || 'studiio').replace(/[^a-zA-Z0-9-_]+/g, '_');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${base}-affiche.${fmt === 'png' ? 'png' : 'jpg'}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Revocation differee : Safari lit le blob APRES le clic.
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      setError(null);
+    } catch (err) {
+      setError(
+        `Téléchargement de l’affiche impossible : ${err instanceof Error ? err.message : 'erreur inconnue'}`,
+      );
+    } finally {
+      setCapturing(false);
+      setPosterExporting(false);
+    }
+  }, [generated, posterExporting]);
 
   const deleteElement = useCallback((id: string) => {
     setFreeElements((prev) => prev.filter((el) => el.id !== id));
@@ -4473,6 +4550,37 @@ export default function AssistantWizard() {
           focus={previewFocus}
           onFocusChange={setPreviewFocus}
         />
+        {/* ── AFFICHE ─────────────────────────────────────────────────
+            Telechargement local de l'apercu tel qu'il est affiche. Ni credit,
+            ni post : un `<a download>` sur un blob. */}
+        {generated && (
+          <div className="mt-2 flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => downloadPoster('png')}
+              disabled={posterExporting}
+              title="Enregistrer l’aperçu affiché en image, sans débiter de crédit"
+              className="flex-1 flex items-center justify-center gap-2 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {posterExporting ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <ImageDown className="w-3.5 h-3.5" />
+              )}
+              {posterExporting ? 'Capture…' : 'Télécharger l’affiche'}
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadPoster('jpeg')}
+              disabled={posterExporting}
+              title="Même image, au format JPG"
+              className="rounded-lg border border-gray-800 px-2.5 py-1.5 text-xs text-gray-500 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              JPG
+            </button>
+          </div>
+        )}
+
         {/* ── BIBLIOTHEQUE D'ELEMENTS ─────────────────────────────────
             Sous l'apercu : c'est la qu'on voit ou l'element se pose. */}
         {cardsVisible && (
