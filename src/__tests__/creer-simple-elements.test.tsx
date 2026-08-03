@@ -569,3 +569,74 @@ describe('Taille d un élément', () => {
     expect(wizard).toContain('sizePct: el.sizePct,');
   });
 });
+
+describe('Édition façon Canva : panneau flottant et poignées', () => {
+  it('les réglages vivent dans un panneau flottant, plus au bas de la colonne', () => {
+    // Il fallait descendre pour changer une couleur, et on perdait l'aperçu
+    // de vue — c'était tout le problème.
+    expect(wizard).toContain('<FloatingPanel');
+    expect(wizard).toContain('isOpen={!!selectedElement}');
+    expect(wizard).toContain('onClose={closeElementPanel}');
+  });
+
+  it("le panneau s'ancre sur le cadre de l'aperçu, sans le masquer", () => {
+    expect(wizard).toContain('const cadre = frameRef.current?.getBoundingClientRect();');
+    expect(wizard).toContain('initialX={panelPos.x}');
+  });
+
+  it("saisir l'élément ne referme pas le panneau", () => {
+    // `FloatingPanel` ferme au clic extérieur — or prendre l'élément EST un
+    // clic extérieur. Sans délai de grâce, le déplacer le désélectionnait.
+    expect(wizard).toContain('if (Date.now() - selectionTouchedAt.current < 300) return;');
+    expect(wizard).toContain('selectionTouchedAt.current = Date.now();');
+  });
+
+  it('quatre poignées de coin, seulement sur l élément retenu', () => {
+    const withHandle = [{ id: 'e1', iconName: 'Sparkles', x: 50, y: 50, sizePct: 19, color: '#FFFFFF' }];
+    render(
+      <Preview {...props} elements={withHandle} selectedElementId="e1" onElementResizeStart={() => {}} />,
+    );
+    expect(document.querySelectorAll('[data-element-handle]')).toHaveLength(4);
+  });
+
+  it('aucune poignée sans sélection, ni pendant la capture', () => {
+    const els = [{ id: 'e1', iconName: 'Sparkles', x: 50, y: 50, sizePct: 19, color: '#FFFFFF' }];
+    render(<Preview {...props} elements={els} onElementResizeStart={() => {}} />);
+    expect(document.querySelectorAll('[data-element-handle]')).toHaveLength(0);
+    cleanup();
+    render(
+      <Preview {...props} elements={els} selectedElementId="e1" onElementResizeStart={() => {}} capturing />,
+    );
+    expect(document.querySelectorAll('[data-element-handle]')).toHaveLength(0);
+  });
+
+  it('la poignée redimensionne, elle ne déplace pas', () => {
+    // Sans `stopPropagation`, la prise lancerait aussi le déplacement.
+    const vus: string[] = [];
+    const els = [{ id: 'e1', iconName: 'Sparkles', x: 50, y: 50, sizePct: 19, color: '#FFFFFF' }];
+    render(
+      <Preview
+        {...props}
+        elements={els}
+        selectedElementId="e1"
+        onElementResizeStart={() => vus.push('resize')}
+        onElementDragStart={() => vus.push('drag')}
+      />,
+    );
+    document.querySelector('[data-element-handle]')!
+      .dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    expect(vus).toEqual(['resize']);
+  });
+
+  it('la taille suit la distance au CENTRE, doublée et bornée', () => {
+    // L'élément est carré et ancré par son centre : les quatre coins donnent
+    // donc le même geste, sans avoir à savoir lequel a été saisi.
+    expect(wizard).toContain('const demi = Math.max(dx, dy);');
+    expect(wizard).toContain('const taille = clampElementSize((demi * 2 / rect.width) * 100);');
+  });
+
+  it('le curseur du panneau et les poignées pilotent le même sizePct', () => {
+    expect(wizard).toContain('data-element-size');
+    expect(wizard).toContain("if (drag.el === 'element-resize') {");
+  });
+});

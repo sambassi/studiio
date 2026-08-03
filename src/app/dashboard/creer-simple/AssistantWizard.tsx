@@ -51,6 +51,7 @@ import ClipDetectorModal, { type ClipSource } from '@/components/media/ClipDetec
 import { CardIcon } from '@/components/ui/CardIcon';
 import { ICON_LIBRARY, iconMatches } from '@/lib/icons/library';
 import ColorWheel from '@/components/ui/ColorWheel';
+import FloatingPanel from '@/components/ui/FloatingPanel';
 import { uploadPosterFile } from '@/lib/creer/posterUpload';
 import {
   MAX_BATCH, clampBatchCount, batchCost, distinctPhotoForIndex, distinctUrls,
@@ -868,6 +869,7 @@ export function Preview({
   elements,
   selectedElementId = null,
   onElementDragStart,
+  onElementResizeStart,
   onElementDelete,
   capturing = false,
   frameRef,
@@ -967,6 +969,8 @@ export function Preview({
   elements?: FreeElement[];
   selectedElementId?: string | null;
   onElementDragStart?: (id: string, e: React.PointerEvent) => void;
+  /** Prise d'une poignee de coin — redimensionne au lieu de deplacer. */
+  onElementResizeStart?: (id: string, e: React.PointerEvent) => void;
   onElementDelete?: (id: string) => void;
   /**
    * L'apercu est en train d'etre photographie : aucune aide d'edition n'est
@@ -1519,6 +1523,42 @@ export function Preview({
                   color={el.color}
                   className=""
                 />
+                {/* Poignees de coin — redimensionnement a la souris.
+                    Elles arretent la propagation : sans cela, la prise
+                    deplacerait l'element au lieu de le redimensionner. */}
+                {!capturing && onElementResizeStart && selectedElementId === el.id
+                  && ([
+                    { coin: 'nw', top: 0, left: 0 },
+                    { coin: 'ne', top: 0, left: '100%' },
+                    { coin: 'sw', top: '100%', left: 0 },
+                    { coin: 'se', top: '100%', left: '100%' },
+                  ] as const).map((p) => (
+                    <span
+                      key={p.coin}
+                      data-element-handle={p.coin}
+                      onPointerDown={(e) => { e.stopPropagation(); onElementResizeStart(el.id, e); }}
+                      onPointerMove={onDragMove}
+                      onPointerUp={onDragEnd}
+                      onPointerCancel={onDragEnd}
+                      onLostPointerCapture={onDragEnd}
+                      title="Tirer pour redimensionner"
+                      style={{
+                        position: 'absolute',
+                        top: p.top,
+                        left: p.left,
+                        width: uiPx(9),
+                        height: uiPx(9),
+                        marginTop: -uiPx(4.5),
+                        marginLeft: -uiPx(4.5),
+                        backgroundColor: '#FFFFFF',
+                        border: `${uiPx(1)}px solid rgba(0,0,0,0.5)`,
+                        borderRadius: uiPx(2),
+                        cursor: p.coin === 'nw' || p.coin === 'se' ? 'nwse-resize' : 'nesw-resize',
+                        touchAction: 'none',
+                        zIndex: 5,
+                      }}
+                    />
+                  ))}
                 {!capturing && onElementDelete && selectedElementId === el.id && (
                   <button
                     type="button"
@@ -1915,7 +1955,7 @@ export default function AssistantWizard() {
   const [ctaPos, setCtaPos] = useState<Pos>(DESIGN.ctaPos);
   /** Element en cours de glissement, et ecart de saisie fige au pointerdown. */
   const dragRef = useRef<{
-    el: 'title' | 'cta' | 'card' | 'element';
+    el: 'title' | 'cta' | 'card' | 'element' | 'element-resize';
     /** Carte glissee, quand `el === 'card'` — son repere est le conteneur. */
     cardId?: string;
     pointerId: number;
@@ -2038,6 +2078,35 @@ export default function AssistantWizard() {
   const [batchPhotoMode, setBatchPhotoMode] = useState<'auto' | 'manuel'>('auto');
   /** Emplacement en cours de remplacement, ou `null`. */
   const [slotCible, setSlotCible] = useState<number | null>(null);
+  /**
+   * Instant de la derniere prise d'un element.
+   *
+   * `FloatingPanel` se ferme au clic exterieur — or saisir l'element pour le
+   * deplacer EST un clic exterieur. Sans ce delai de grace, prendre un element
+   * le deselectionnait aussitot.
+   */
+  const selectionTouchedAt = useRef(0);
+  /** Coin ou s'ouvre le panneau — a cote de l'apercu, jamais dessus. */
+  const [panelPos, setPanelPos] = useState({ x: 120, y: 140 });
+  useEffect(() => {
+    if (!selectedElementId) return;
+    const cadre = frameRef.current?.getBoundingClientRect();
+    if (!cadre) return;
+    // A gauche du cadre s'il y a la place, sinon juste dessous : le panneau ne
+    // doit pas masquer ce qu'on est en train de regler.
+    const largeur = 260;
+    const x = cadre.left - largeur - 16 > 8 ? cadre.left - largeur - 16 : Math.max(8, cadre.left);
+    setPanelPos({ x, y: Math.max(72, cadre.top) });
+  }, [selectedElementId]);
+
+  /**
+   * Fermeture du panneau. `FloatingPanel` la declenche au clic exterieur — or
+   * saisir l'element pour le deplacer EST un clic exterieur.
+   */
+  const closeElementPanel = useCallback(() => {
+    if (Date.now() - selectionTouchedAt.current < 300) return;
+    setSelectedElementId(null);
+  }, []);
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [elementPickerOpen, setElementPickerOpen] = useState(false);
   const [elementQuery, setElementQuery] = useState('');
@@ -2384,6 +2453,7 @@ export default function AssistantWizard() {
     // la prise echoue ensuite.
     e.stopPropagation();
     if (e.button !== 0 || !e.isPrimary) return;
+    selectionTouchedAt.current = Date.now();
     setSelectedElementId(id);
     setSelectedCards((prev) => (prev.size ? new Set() : prev));
     // Le plateau, et non le conteneur des cartes : un element se pose partout.
@@ -2399,6 +2469,35 @@ export default function AssistantWizard() {
       pointerId: e.pointerId,
       grab: grabOffset(e.clientX, e.clientY, rect, { x: el.x, y: el.y }),
       box: { width: (box.width / rect.width) * 100, height: (box.height / rect.height) * 100 },
+    };
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    } catch {
+      dragRef.current = null;
+    }
+  }, []);
+
+  /**
+   * Prise d'une poignee de coin.
+   *
+   * L'element est carre et ancre par son CENTRE : sa taille suit donc la
+   * distance du pointeur au centre, doublee. Pas besoin de savoir quel coin a
+   * ete saisi — les quatre donnent le meme geste.
+   */
+  const startElementResize = useCallback((id: string, e: React.PointerEvent) => {
+    e.stopPropagation();
+    if (e.button !== 0 || !e.isPrimary) return;
+    selectionTouchedAt.current = Date.now();
+    setSelectedElementId(id);
+    const rect = previewRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0) return;
+    if (dragRef.current) return;
+    dragRef.current = {
+      el: 'element-resize',
+      cardId: id,
+      pointerId: e.pointerId,
+      grab: { x: 0, y: 0 },
+      box: { width: 0, height: 0 },
     };
     try {
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -2490,6 +2589,23 @@ export default function AssistantWizard() {
     // `pointermove` se declenche aussi au simple survol : sans bouton appuye,
     // il n'y a pas de glissement (garde-fou anti « element collant »).
     if (e.buttons === 0 && e.pointerType === 'mouse') return;
+    if (drag.el === 'element-resize') {
+      const id = drag.cardId as string;
+      const current = freeElementsRef.current.find((x) => x.id === id);
+      if (!current) return;
+      // Ecart au centre, en % de la LARGEUR du plateau — la meme unite que
+      // `sizePct`. Le plus grand des deux axes commande : c'est ce qui donne
+      // au geste la reponse attendue quel que soit le coin tire.
+      const cx = rect.left + (current.x / 100) * rect.width;
+      const cy = rect.top + (current.y / 100) * rect.height;
+      const dx = Math.abs(e.clientX - cx);
+      const dy = Math.abs(e.clientY - cy);
+      const demi = Math.max(dx, dy);
+      const taille = clampElementSize((demi * 2 / rect.width) * 100);
+      if (taille === current.sizePct) return;
+      setFreeElements((prev) => prev.map((x) => (x.id === id ? { ...x, sizePct: taille } : x)));
+      return;
+    }
     if (drag.el === 'element') {
       const id = drag.cardId as string;
       const current = freeElementsRef.current.find((x) => x.id === id);
@@ -5244,6 +5360,7 @@ export default function AssistantWizard() {
           elements={freeElements}
           selectedElementId={selectedElementId}
           onElementDragStart={startElementDrag}
+          onElementResizeStart={startElementResize}
           onElementDelete={deleteElement}
           capturing={capturing}
           frameRef={frameRef}
@@ -5361,10 +5478,97 @@ export default function AssistantWizard() {
                 <span className="text-gray-600"> — cliquer pour sélectionner, glisser pour déplacer</span>
               </p>
             )}
-            {/* Couleur de l'élément retenu. N'apparaît qu'avec une cible :
-                un nuancier sans sélection ne saurait pas quoi teindre. */}
-            {selectedElement && (
-              <div className="mt-2 rounded-xl border border-gray-800 bg-gray-900/50 p-3">
+          </div>
+        )}
+        {selectedCards.size > 0 && cardsVisible && (
+          <div className="mt-2 flex flex-col items-center gap-1.5">
+            <p className="text-center text-xs text-gray-400">
+              {selectedCards.size} carte{selectedCards.size > 1 ? 's' : ''} sélectionnée
+              {selectedCards.size > 1 ? 's' : ''}
+              <span className="text-gray-600"> — Maj+clic pour en ajouter, Échap pour désélectionner</span>
+            </p>
+            <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={duplicateSelection}
+              disabled={(generated?.cards.length ?? 0) >= limiteCartes}
+              // Un bouton grise sans raison est une impasse : la limite vient
+              // du compositeur, elle merite d'etre dite.
+              title={
+                (generated?.cards.length ?? 0) >= limiteCartes
+                  ? `Maximum de ${limiteCartes} cartes dans ce format`
+                  : 'Dupliquer la sélection'
+              }
+              className="flex items-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              Dupliquer
+            </button>
+            {selectionGrouped ? (
+              <button
+                type="button"
+                onClick={ungroupSelection}
+                title="Séparer les cartes de leur groupe"
+                className="flex items-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 transition-colors"
+              >
+                <Ungroup className="w-3.5 h-3.5" />
+                Dégrouper
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={groupSelection}
+                disabled={selectedCards.size < MIN_GROUP}
+                // Grise sans raison, on ne sait pas quoi faire de plus.
+                title={
+                  selectedCards.size < MIN_GROUP
+                    ? 'Sélectionnez au moins deux cartes'
+                    : 'Les déplacer ensemble'
+                }
+                className="flex items-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <Combine className="w-3.5 h-3.5" />
+                Grouper
+              </button>
+            )}
+            </div>
+            {duplicateNotice && (
+              <p className="text-center text-xs text-gray-500">{duplicateNotice}</p>
+            )}
+          </div>
+        )}
+        {layoutDropped && (
+          <p className="mt-2 text-center text-xs text-gray-500">
+            Disposition des cartes réinitialisée : le contenu ou le format a changé.
+          </p>
+        )}
+        {layoutTouched && (
+          <button
+            type="button"
+            onClick={resetLayout}
+            className="mt-2 w-full flex items-center justify-center gap-2 text-xs text-gray-400 hover:text-white transition-colors py-2"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            Rétablir la disposition d&apos;origine
+          </button>
+        )}
+      </div>
+
+      {/* ── PANNEAU FLOTTANT DE L'ELEMENT ─────────────────────────────
+          Les reglages vivaient tout en bas de la colonne : il fallait
+          descendre pour changer une couleur, et on perdait l'apercu de vue.
+          Ici ils flottent par-dessus, sans pousser la mise en page. */}
+      <FloatingPanel
+        title="Élément"
+        icon="✦"
+        isOpen={!!selectedElement}
+        onClose={closeElementPanel}
+        initialX={panelPos.x}
+        initialY={panelPos.y}
+        accentColor={accent}
+      >
+        {selectedElement && (
+          <div className="space-y-3">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-[11px] uppercase tracking-wide text-gray-500 flex-1">
                     Couleur
@@ -5445,83 +5649,9 @@ export default function AssistantWizard() {
                     </button>
                   </div>
                 </div>
-              </div>
-            )}
           </div>
         )}
-        {selectedCards.size > 0 && cardsVisible && (
-          <div className="mt-2 flex flex-col items-center gap-1.5">
-            <p className="text-center text-xs text-gray-400">
-              {selectedCards.size} carte{selectedCards.size > 1 ? 's' : ''} sélectionnée
-              {selectedCards.size > 1 ? 's' : ''}
-              <span className="text-gray-600"> — Maj+clic pour en ajouter, Échap pour désélectionner</span>
-            </p>
-            <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={duplicateSelection}
-              disabled={(generated?.cards.length ?? 0) >= limiteCartes}
-              // Un bouton grise sans raison est une impasse : la limite vient
-              // du compositeur, elle merite d'etre dite.
-              title={
-                (generated?.cards.length ?? 0) >= limiteCartes
-                  ? `Maximum de ${limiteCartes} cartes dans ce format`
-                  : 'Dupliquer la sélection'
-              }
-              className="flex items-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              <Copy className="w-3.5 h-3.5" />
-              Dupliquer
-            </button>
-            {selectionGrouped ? (
-              <button
-                type="button"
-                onClick={ungroupSelection}
-                title="Séparer les cartes de leur groupe"
-                className="flex items-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 transition-colors"
-              >
-                <Ungroup className="w-3.5 h-3.5" />
-                Dégrouper
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={groupSelection}
-                disabled={selectedCards.size < MIN_GROUP}
-                // Grise sans raison, on ne sait pas quoi faire de plus.
-                title={
-                  selectedCards.size < MIN_GROUP
-                    ? 'Sélectionnez au moins deux cartes'
-                    : 'Les déplacer ensemble'
-                }
-                className="flex items-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                <Combine className="w-3.5 h-3.5" />
-                Grouper
-              </button>
-            )}
-            </div>
-            {duplicateNotice && (
-              <p className="text-center text-xs text-gray-500">{duplicateNotice}</p>
-            )}
-          </div>
-        )}
-        {layoutDropped && (
-          <p className="mt-2 text-center text-xs text-gray-500">
-            Disposition des cartes réinitialisée : le contenu ou le format a changé.
-          </p>
-        )}
-        {layoutTouched && (
-          <button
-            type="button"
-            onClick={resetLayout}
-            className="mt-2 w-full flex items-center justify-center gap-2 text-xs text-gray-400 hover:text-white transition-colors py-2"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            Rétablir la disposition d&apos;origine
-          </button>
-        )}
-      </div>
+      </FloatingPanel>
 
       {/* Temps forts — le modal est reutilise TEL QUEL depuis /dashboard/media.
           Il decoupe, televerse, puis rend les clips ; on retient le premier
