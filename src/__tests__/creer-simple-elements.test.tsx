@@ -515,3 +515,57 @@ describe('La bibliothèque est accessible depuis toutes les séquences', () => {
     expect(wizard.split('cardsVisible').length - 1).toBe(2);
   });
 });
+
+describe('Taille d un élément', () => {
+  it('la taille bornée refuse l illisible comme l envahissant', async () => {
+    const { clampElementSize } = await import('@/app/dashboard/creer-simple/AssistantWizard');
+    // Sous 8 % l'icône ne se lit plus dans la vidéo ; au-delà de 60 % elle
+    // couvre le titre et les cartes.
+    expect(clampElementSize(2)).toBe(8);
+    expect(clampElementSize(99)).toBe(60);
+    expect(clampElementSize(20)).toBe(20);
+  });
+
+  it('une taille absurde retombe sur celle de la pose', async () => {
+    const { clampElementSize } = await import('@/app/dashboard/creer-simple/AssistantWizard');
+    expect(clampElementSize(Number.NaN)).toBeCloseTo((64 / 330) * 100, 5);
+  });
+
+  it('le redimensionnement ne touche QUE l élément retenu', () => {
+    expect(wizard).toContain(
+      'prev.map((el) => (el.id === selectedElementId ? { ...el, sizePct: taille } : el))',
+    );
+    expect(wizard).toContain('if (!selectedElementId) return;');
+  });
+
+  it('la valeur passe par le bornage avant d atteindre l état', () => {
+    expect(wizard).toContain('const taille = clampElementSize(sizePct);');
+  });
+
+  it('curseur et boutons, tous bornés', () => {
+    expect(wizard).toContain('min={ELEMENT_SIZE_MIN}');
+    expect(wizard).toContain('max={ELEMENT_SIZE_MAX}');
+    expect(wizard).toContain('disabled={selectedElement.sizePct <= ELEMENT_SIZE_MIN}');
+    expect(wizard).toContain('disabled={selectedElement.sizePct >= ELEMENT_SIZE_MAX}');
+  });
+
+  it('des icônes lucide, jamais des caractères', () => {
+    expect(wizard).toContain('<Minus className="w-3.5 h-3.5" />');
+    expect(wizard).toContain('<Plus className="w-3.5 h-3.5" />');
+  });
+
+  it("l'aperçu peint l'élément à sa taille", () => {
+    const grand = [{ id: 'e1', iconName: 'Sparkles', x: 50, y: 50, sizePct: 40, color: '#FFFFFF' }];
+    render(<Preview {...props} elements={grand} />);
+    const svg = poses()[0].querySelector('svg')!;
+    // 40 % de 1080 = 432 px sur le plateau natif.
+    expect(svg.getAttribute('width')).toBe('432');
+  });
+
+  it('la taille choisie part telle quelle à l export', () => {
+    // La rasterisation calcule ses pixels depuis `sizePct` — rien d'autre à
+    // changer côté compositeur.
+    expect(wizard).toContain('const px = Math.max(1, Math.round((el.sizePct / 100) * vw));');
+    expect(wizard).toContain('sizePct: el.sizePct,');
+  });
+});
