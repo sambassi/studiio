@@ -29,7 +29,10 @@ import { generateSmartContent } from '@/lib/smart-content';
 import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
 import { AudioStudioPanel } from '@/components/creer/AudioStudioPanel';
 import type { AudioKeyframe } from '@/lib/creer/audioDucking';
-import { pointToPct, grabOffset, clampToBox, type Pos, type CardBox, boxesFromRects, coversAll } from '@/lib/creer/dragPosition';
+import { pointToPct, grabOffset, clampToBox, type Pos, type CardBox, boxesFromRects } from '@/lib/creer/dragPosition';
+import {
+  nextSelection, pruneSelection, movingIds, groupBounds, clampGroupDelta, shiftBoxes,
+} from '@/lib/creer/selection';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import ClipDetectorModal, { type ClipSource } from '@/components/media/ClipDetectorModal';
 import { CardIcon } from '@/components/ui/CardIcon';
@@ -699,9 +702,24 @@ function StyleSection({
  * Mode libre des cartes : les emplacements ET le format dans lequel ils ont
  * ete mesures. Les separer laisserait rejouer une mesure 9:16 en 16:9.
  */
+/**
+ * Distance au-dela de laquelle un appui devient un glissement. En deca, c'est
+ * un clic : il selectionne, il ne restructure pas la disposition.
+ */
+const DRAG_THRESHOLD_PX = 4;
+
 interface FreeCards {
   format: Format;
   boxes: Record<string, CardBox>;
+}
+
+/**
+ * Le mode libre vaut-il encore ? Il lui faut le MEME format que celui de la
+ * mesure, et un emplacement pour chaque carte affichee.
+ */
+function validFree(f: FreeCards | null | undefined, ids: string[], fmt: Format): boolean {
+  if (!f || f.format !== fmt) return false;
+  return ids.length > 0 && ids.every((id) => !!f.boxes[id]);
 }
 
 export function Preview({
@@ -712,6 +730,9 @@ export function Preview({
   cardBoxes = null,
   onCardDragStart,
   draggingCard = null,
+  selectedCards,
+  onClearSelection,
+  capturing = false,
   frameRef,
   displayScale,
   activeOrder,
@@ -785,6 +806,19 @@ export function Preview({
   cardBoxes?: Record<string, CardBox> | null;
   onCardDragStart?: (id: string, e: React.PointerEvent) => void;
   draggingCard?: string | null;
+  /**
+   * Cartes selectionnees. Defaut : aucune — et surtout, ce liserе n'existe
+   * QUE dans l'apercu : la selection est videe avant la photo des cartes,
+   * sinon elle serait blittee dans la video.
+   */
+  selectedCards?: Set<string>;
+  onClearSelection?: () => void;
+  /**
+   * L'apercu est en train d'etre photographie : aucune aide d'edition n'est
+   * peinte, et le plateau devient inerte. C'est ce qui empeche un clic
+   * concurrent de graver un lisere dans la video.
+   */
+  capturing?: boolean;
   /** Cadre visible, mesure pour calculer la reduction. */
   frameRef?: React.RefObject<HTMLDivElement>;
   /** Facteur de reduction du plateau : largeurCadre / largeurVideo. */
@@ -802,6 +836,16 @@ export function Preview({
   activeOrder: string[];
 }) {
   const vw = VIDEO_SIZE[format].w;
+
+  /**
+   * Epaisseur en pixels ECRAN pour un trait peint DANS le plateau.
+   *
+   * Le plateau est reduit par `transform: scale(displayScale)` — autour de
+   * 0,25. Un `outline: 2px` y devient donc un demi-pixel a l'ecran, soit un
+   * lisere de selection quasi invisible. Ces traits sont des aides d'edition,
+   * jamais photographiees : les grossir ne change rien a l'export.
+   */
+  const uiPx = (n: number) => n / (displayScale > 0 ? displayScale : 1);
 
   // Rush illisible (fichier expire, format refuse par le navigateur) : on le
   // retire de l'apercu plutot que de laisser un rectangle noir. L'etat est
@@ -911,10 +955,17 @@ export function Preview({
       >
       <div
         ref={previewRef}
+        // Appui qui atteint le plateau = appui dans le vide : titre, CTA et
+        // cartes arretent la propagation. C'est le geste universel « je
+        // deselectionne ».
+        onPointerDown={capturing ? undefined : onClearSelection}
         style={{
           position: 'absolute',
           top: 0,
           left: 0,
+          // Inerte pendant la photo : la capture est asynchrone, et un clic
+          // dans cet intervalle se retrouverait dans le montage.
+          pointerEvents: capturing ? 'none' : undefined,
           width: VIDEO_SIZE[format].w,
           height: VIDEO_SIZE[format].h,
           transform: `scale(${displayScale})`,
@@ -988,8 +1039,8 @@ export function Preview({
                 // la grille couvre le cadre meme quand elle est vide.
                 zIndex: onDragStart ? 2 : undefined,
                 touchAction: onDragStart ? 'none' : undefined,
-                outline: dragging === 'title' ? '1px dashed rgba(255,255,255,0.5)' : undefined,
-                outlineOffset: 2,
+                outline: !capturing && dragging === 'title' ? `${uiPx(1)}px dashed rgba(255,255,255,0.7)` : undefined,
+                outlineOffset: uiPx(2),
               }}
             >
               <div
@@ -1081,8 +1132,25 @@ export function Preview({
                     // Meme retour visuel que le titre et le CTA : sans lui, on
                     // ne sait pas quelle carte on tient quand elles se
                     // recouvrent.
-                    outline: draggingCard === c.id ? '1px dashed rgba(255,255,255,0.5)' : undefined,
-                    outlineOffset: 2,
+                    // Glissement : pointille, comme le titre et le CTA.
+                    // Selection : trait plein a l'accent, pour ne pas confondre
+                    // « je tiens cette carte » et « elle est retenue ».
+                    outline: capturing
+                      ? undefined
+                      : draggingCard === c.id
+                        ? `${uiPx(1)}px dashed rgba(255,255,255,0.7)`
+                        // Blanc, et non l'accent : le fond du plateau EST le
+                        // degrade d'accent par defaut — un lisere accent y
+                        // serait invisible. L'ombre portee sombre garantit le
+                        // contraste sur un fond clair.
+                        : selectedCards?.has(c.id)
+                          ? `${uiPx(2)}px solid #FFFFFF`
+                          : undefined,
+                    boxShadow:
+                      !capturing && draggingCard !== c.id && selectedCards?.has(c.id)
+                        ? `0 0 0 ${uiPx(3)}px rgba(0,0,0,0.5)`
+                        : undefined,
+                    outlineOffset: uiPx(2),
                   }}
                 >
                   <CardIcon
@@ -1131,8 +1199,8 @@ export function Preview({
                 cursor: onDragStart ? (dragging === 'cta' ? 'grabbing' : 'grab') : undefined,
                 zIndex: onDragStart ? 2 : undefined,
                 touchAction: onDragStart ? 'none' : undefined,
-                outline: dragging === 'cta' ? '1px dashed rgba(255,255,255,0.5)' : undefined,
-                outlineOffset: 2,
+                outline: !capturing && dragging === 'cta' ? `${uiPx(1)}px dashed rgba(255,255,255,0.7)` : undefined,
+                outlineOffset: uiPx(2),
               }}
             >
               {/* `drawCTA` lit desormais `ctaTypography.bold/italic` — il
@@ -1548,6 +1616,19 @@ export default function AssistantWizard() {
     /** Carte glissee, quand `el === 'card'` — son repere est le conteneur. */
     cardId?: string;
     pointerId: number;
+    /**
+     * Point d'appui, et « le glissement a-t-il vraiment commence ? ».
+     *
+     * Une carte se SELECTIONNE au clic et se DEPLACE au glissement : basculer
+     * en mode libre des l'appui ferait retrecir toutes les cartes a chaque
+     * simple clic. Le mode libre n'est donc arme qu'au premier mouvement
+     * franc.
+     */
+    startX?: number;
+    startY?: number;
+    armed?: boolean;
+    /** Cartes qui suivent le glissement — le lot, ou la seule carte saisie. */
+    ids?: string[];
     grab: Pos;
     box: { width: number; height: number };
   } | null>(null);
@@ -1585,9 +1666,7 @@ export default function AssistantWizard() {
    * en flux — previsible, et c'est celle qu'on sait exacte.
    */
   const cardIds = useMemo(() => generated?.cards.map((c) => c.id) ?? [], [generated]);
-  const valid = (f: FreeCards | null | undefined, ids: string[], fmt: Format) =>
-    !!f && f.format === fmt && coversAll(f.boxes, ids);
-  const effectiveCardBoxes = valid(cardBoxes, cardIds, format) ? cardBoxes!.boxes : null;
+  const effectiveCardBoxes = validFree(cardBoxes, cardIds, format) ? cardBoxes!.boxes : null;
   // Lus par `startCardDrag`, memoise sans dependances.
   const cardIdsRef = useRef<string[]>(cardIds);
   const formatRef = useRef<Format>(format);
@@ -1602,13 +1681,49 @@ export default function AssistantWizard() {
    * cartes, donne l'impression d'un bug — et l'etat perime resterait en
    * memoire, a fusionner indefiniment des identifiants disparus.
    */
+  /**
+   * Cartes selectionnees. Etat de SESSION : ni enregistre, ni exporte — c'est
+   * une intention d'edition, pas une propriete du montage.
+   */
+  const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
+  // Lue par `moveDrag`, memoise sans dependances.
+  const selectionRef = useRef<Set<string>>(selectedCards);
+  useEffect(() => { selectionRef.current = selectedCards; }, [selectedCards]);
+  const clearSelection = useCallback(
+    () => setSelectedCards((prev) => (prev.size ? new Set() : prev)),
+    [],
+  );
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // Echap dans un champ de saisie appartient au champ : il ferme une liste
+      // deroulante, annule une saisie. Le detourner viderait la selection au
+      // milieu d'une frappe.
+      const cible = e.target as HTMLElement | null;
+      if (cible?.isContentEditable) return;
+      if (cible && /^(INPUT|TEXTAREA|SELECT)$/.test(cible.tagName)) return;
+      clearSelection();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [clearSelection]);
+
+  /**
+   * Capture en cours : l'apercu est photographie. Aucune aide d'edition ne
+   * doit y paraitre, et rien ne doit pouvoir en modifier l'etat.
+   */
+  const [capturing, setCapturing] = useState(false);
+
   const [layoutDropped, setLayoutDropped] = useState(false);
   useEffect(() => {
-    if (cardBoxes && !valid(cardBoxes, cardIds, format)) {
+    if (cardBoxes && !validFree(cardBoxes, cardIds, format)) {
       cardBoxesRef.current = null;
       setCardBoxes(null);
       setLayoutDropped(true);
     }
+    // Une selection qui survit a la disparition de sa carte agirait sur du
+    // vide : dupliquer ou regrouper porterait sur un identifiant fantome.
+    setSelectedCards((prev) => pruneSelection(prev, cardIds));
   }, [cardBoxes, cardIds, format]);
 
   /**
@@ -1637,43 +1752,42 @@ export default function AssistantWizard() {
   }, []);
 
   const startCardDrag = useCallback((id: string, e: React.PointerEvent) => {
+    // EN TETE, avant tout `return` : un appui sur une carte n'est jamais « un
+    // appui dans le vide », meme quand la prise echoue. Sinon le second doigt
+    // d'un multi-touch, ou une capture refusee, videraient la selection —
+    // y compris la carte en cours de glissement.
+    e.stopPropagation();
+    // Clic droit et pointeurs secondaires n'ouvrent pas de glissement.
+    if (e.button !== 0 || !e.isPrimary) return;
+
+    setSelectedCards((prev) => nextSelection(prev, id, e.shiftKey || e.metaKey || e.ctrlKey));
+
     const rect = cardsRef.current?.getBoundingClientRect();
     if (!rect || rect.width <= 0) return;
     if (dragRef.current) return;
-    // Bascule en mode libre a la premiere prise, en figeant la disposition
-    // actuelle : sans cette mesure, la carte saisie sauterait en haut a gauche
-    // et les autres se recentreraient.
-    // Mesure a neuf si le mode libre ne vaut plus pour ces cartes ou ce format.
-    const known = cardBoxesRef.current;
-    const reusable = valid(known, cardIdsRef.current, formatRef.current);
-    const boxes = reusable ? known!.boxes : measureCards();
-    const box = boxes?.[id];
-    if (!boxes || !box) return;
-    if (!reusable) {
-      const free = { format: formatRef.current, boxes };
-      cardBoxesRef.current = free;
-      setCardBoxes(free);
-    }
     dragRef.current = {
       el: 'card',
       cardId: id,
       pointerId: e.pointerId,
-      grab: grabOffset(e.clientX, e.clientY, rect, { x: box.x, y: box.y }),
-      box: { width: box.w, height: box.h },
+      startX: e.clientX,
+      startY: e.clientY,
+      armed: false,
+      grab: { x: 0, y: 0 },
+      box: { width: 0, height: 0 },
     };
-    setDraggingCard(id);
-    setLayoutDropped(false);
     try {
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     } catch {
       dragRef.current = null;
       setDraggingCard(null);
-      return;
     }
-    e.stopPropagation();
-  }, [measureCards]);
+  }, []);
 
   const startDrag = useCallback((el: 'title' | 'cta', e: React.PointerEvent) => {
+    // Meme raison que pour les cartes : l'appui appartient a l'element, quelle
+    // que soit l'issue de la prise.
+    e.stopPropagation();
+    if (e.button !== 0 || !e.isPrimary) return;
     const rect = previewRef.current?.getBoundingClientRect();
     if (!rect) return;
     // Un seul glissement a la fois : le second doigt d'un multi-touch ne doit
@@ -1699,9 +1813,7 @@ export default function AssistantWizard() {
       // resterait bloque en etat « glissement ».
       dragRef.current = null;
       setDragging(null);
-      return;
     }
-    e.stopPropagation();
   }, [titlePos, ctaPos]);
 
   const moveDrag = useCallback((e: React.PointerEvent) => {
@@ -1717,16 +1829,53 @@ export default function AssistantWizard() {
     if (e.buttons === 0 && e.pointerType === 'mouse') return;
     if (drag.el === 'card') {
       const id = drag.cardId as string;
+      if (!drag.armed) {
+        // Seuil : en dessous, c'est un clic (ou un tremblement de main), pas un
+        // glissement — et le mode libre ne doit pas s'activer pour un clic.
+        const dx = e.clientX - (drag.startX ?? e.clientX);
+        const dy = e.clientY - (drag.startY ?? e.clientY);
+        if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+        const known = cardBoxesRef.current;
+        const reusable = validFree(known, cardIdsRef.current, formatRef.current);
+        const measured = reusable ? known!.boxes : measureCards();
+        const start = measured?.[id];
+        if (!measured || !start) {
+          // La capture reste sinon accrochee a une carte qui ne bougera pas,
+          // et le pointeur ne rend la main qu'au `pointerup`.
+          try { (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId); } catch { /* deja relachee */ }
+          dragRef.current = null;
+          return;
+        }
+        if (!reusable) {
+          const free = { format: formatRef.current, boxes: measured };
+          cardBoxesRef.current = free;
+          setCardBoxes(free);
+        }
+        // L'ecart de saisie se calcule depuis le point d'APPUI, pas depuis la
+        // position courante : sinon la carte saute du seuil franchi.
+        drag.grab = grabOffset(drag.startX!, drag.startY!, rect, { x: start.x, y: start.y });
+        // Le lot qui suivra : toute la selection si la carte en fait partie.
+        drag.ids = movingIds(selectionRef.current, id);
+        drag.armed = true;
+        setDraggingCard(id);
+        setLayoutDropped(false);
+      }
       const free = cardBoxesRef.current;
       const boxes = free?.boxes;
       const box = boxes?.[id];
       // Le glissement a commence : `boxes` couvre forcement `id`. Le garde
       // ci-dessous couvre le cas ou le contenu change EN COURS de glissement.
       if (!boxes || !box) return;
+      const ids = (drag.ids ?? [id]).filter((k) => !!boxes[k]);
       const raw = pointToPct(e.clientX, e.clientY, rect, drag.grab, { x: box.x, y: box.y });
-      const next = clampToBox(raw, 'top-left', { width: box.w, height: box.h });
-      if (next.x === box.x && next.y === box.y) return;
-      const merged = { ...free!, boxes: { ...boxes, [id]: { ...box, x: next.x, y: next.y } } };
+      // Un seul ecart pour tout le lot, borne sur son rectangle englobant :
+      // borner chaque carte separement arreterait celles qui touchent le bord
+      // pendant que les autres continuent, et deformerait l'agencement.
+      const bounds = groupBounds(boxes, ids);
+      if (!bounds) return;
+      const delta = clampGroupDelta(bounds, { x: raw.x - box.x, y: raw.y - box.y });
+      if (delta.x === 0 && delta.y === 0) return;
+      const merged = { ...free!, boxes: shiftBoxes(boxes, ids, delta) };
       cardBoxesRef.current = merged;
       setCardBoxes(merged);
       return;
@@ -1754,6 +1903,7 @@ export default function AssistantWizard() {
     setCtaPos(DESIGN.ctaPos);
     setCardBoxes(null);
     cardBoxesRef.current = null;
+    setSelectedCards(new Set());
   }, []);
 
   const endDrag = useCallback(() => {
@@ -2027,6 +2177,14 @@ export default function AssistantWizard() {
 
   /** Ordre effectif : sequences activees, dans l'ordre choisi. */
   const activeOrder = sequences.filter((s) => s.enabled).map((s) => s.key);
+  /**
+   * Les cartes sont-elles a l'ecran ? La sequence peut etre desactivee, ou
+   * l'onglet d'apercu filtrer sur le titre. Annoncer « 2 cartes
+   * selectionnees » sous un apercu ou rien n'est cercle ni cliquable serait
+   * un message sans objet.
+   */
+  const cardsVisible =
+    activeOrder.includes('cards') && (previewFocus === 'all' || previewFocus === 'cards');
 
   /**
    * Un onglet braque sur une sequence masquee ne montrerait qu'un plateau
@@ -2283,6 +2441,15 @@ export default function AssistantWizard() {
       // l'onglet de l'utilisateur meme si la capture echoue.
       const focusBeforeCapture = previewFocus;
       try {
+        // Les liseres — selection et glissement — sont des aides d'edition :
+        // photographies, ils seraient blittes dans la video.
+        //
+        // Ce drapeau tient pour TOUTE la duree de la capture, au lieu de vider
+        // puis restaurer la selection : entre le vidage et `domToCanvas` il y a
+        // un import dynamique et l'attente des polices, et l'apercu reste
+        // interactif. Un clic pendant l'envoi reposait la selection juste a
+        // temps pour qu'elle soit gravee dans le montage.
+        flushSync(() => setCapturing(true));
         if (focusBeforeCapture !== 'all') {
           flushSync(() => setPreviewFocus('all'));
           // Une frame de peinture, bornee : `requestAnimationFrame` est GELE
@@ -2351,6 +2518,7 @@ export default function AssistantWizard() {
         console.warn('[Assistant] Capture des cartes impossible, rendu canvas de secours:', err);
       } finally {
         if (focusBeforeCapture !== 'all') setPreviewFocus(focusBeforeCapture);
+        setCapturing(false);
       }
 
       // 3. Composition + upload (composeAndUpload fait les deux et produit
@@ -2645,6 +2813,7 @@ export default function AssistantWizard() {
     setTitlePos(DESIGN.titlePos);
     setCtaPos(DESIGN.ctaPos);
     setCardBoxes(null);
+    setSelectedCards(new Set());
     setOpenSection('format');
     genSigRef.current = '';
     setGenerated(null);
@@ -3797,6 +3966,9 @@ export default function AssistantWizard() {
           cardBoxes={effectiveCardBoxes}
           onCardDragStart={startCardDrag}
           draggingCard={draggingCard}
+          selectedCards={selectedCards}
+          onClearSelection={clearSelection}
+          capturing={capturing}
           frameRef={frameRef}
           displayScale={displayScale}
           activeOrder={activeOrder}
@@ -3810,6 +3982,13 @@ export default function AssistantWizard() {
           focus={previewFocus}
           onFocusChange={setPreviewFocus}
         />
+        {selectedCards.size > 0 && cardsVisible && (
+          <p className="mt-2 text-center text-xs text-gray-400">
+            {selectedCards.size} carte{selectedCards.size > 1 ? 's' : ''} sélectionnée
+            {selectedCards.size > 1 ? 's' : ''}
+            <span className="text-gray-600"> — Maj+clic pour en ajouter, Échap pour désélectionner</span>
+          </p>
+        )}
         {layoutDropped && (
           <p className="mt-2 text-center text-xs text-gray-500">
             Disposition des cartes réinitialisée : le contenu ou le format a changé.
