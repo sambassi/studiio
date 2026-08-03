@@ -26,6 +26,8 @@ import {
   Copy,
   Combine,
   Ungroup,
+  Shapes,
+  Search,
   X,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
@@ -36,12 +38,13 @@ import { pointToPct, grabOffset, clampToBox, type Pos, type CardBox, boxesFromRe
 import {
   nextSelection, pruneSelection, movingIds, groupBounds, clampGroupDelta, shiftBoxes,
   duplicateCards, duplicateBoxes, maxCards,
-  groupCards, ungroupCards, pruneGroups, expandSelection, groupOf, newGroupId, MIN_GROUP,
+  groupCards, ungroupCards, pruneGroups, expandSelection, groupOf, newGroupId, newElementId, MIN_GROUP,
   type CardGroup,
 } from '@/lib/creer/selection';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import ClipDetectorModal, { type ClipSource } from '@/components/media/ClipDetectorModal';
 import { CardIcon } from '@/components/ui/CardIcon';
+import { ICON_LIBRARY, iconMatches } from '@/lib/icons/library';
 import ColorWheel from '@/components/ui/ColorWheel';
 // Catalogue de polices — LA source unique, partagee avec le compositeur.
 // Deux listes finiraient par diverger, et la video ne ressemblerait plus a
@@ -729,6 +732,35 @@ function StyleSection({
  * lecture du source.
  */
 /**
+ * Element libre pose sur l'apercu.
+ *
+ * `x`/`y` sont en % du CONTENEUR DES CARTES, et non du plateau : c'est ce
+ * conteneur qui est photographie puis blitte dans la video. Un element pose
+ * ailleurs serait visible a l'apercu et absent du montage.
+ */
+export interface FreeElement {
+  id: string;
+  iconName: string;
+  /** Centre de l'element, en % du PLATEAU — la composition entiere. */
+  x: number;
+  y: number;
+  /**
+   * Cote de l'icone, en % de la LARGEUR du plateau.
+   *
+   * En pourcentage et non en pixels : un montage change de format sans changer
+   * d'elements, et une taille en px vaudrait le double en 16:9. Le nom differe
+   * volontairement du `size` d'une version anterieure, qui etait en pixels :
+   * un brouillon ecrit avec l'ancienne unite est ainsi ecarte a la relecture
+   * plutot que rejoue a une echelle absurde.
+   */
+  sizePct: number;
+  color: string;
+}
+
+/** Taille d'un element a la pose, en % de la largeur du plateau. */
+const ELEMENT_SIZE_PCT = (64 / 330) * 100;
+
+/**
  * Mode libre des cartes : les emplacements ET le format dans lequel ils ont
  * ete mesures. Les separer laisserait rejouer une mesure 9:16 en 16:9.
  */
@@ -766,6 +798,10 @@ export function Preview({
   selectedCards,
   onClearSelection,
   groupedCards,
+  elements,
+  selectedElementId = null,
+  onElementDragStart,
+  onElementDelete,
   capturing = false,
   frameRef,
   displayScale,
@@ -852,6 +888,14 @@ export function Preview({
    * photographiee, jamais exportee.
    */
   groupedCards?: Record<string, string>;
+  /**
+   * Elements libres poses dans la zone des cartes. Defaut `[]` : un montage
+   * sans element se rend exactement comme avant.
+   */
+  elements?: FreeElement[];
+  selectedElementId?: string | null;
+  onElementDragStart?: (id: string, e: React.PointerEvent) => void;
+  onElementDelete?: (id: string) => void;
   /**
    * L'apercu est en train d'etre photographie : aucune aide d'edition n'est
    * peinte, et le plateau devient inerte. C'est ce qui empeche un clic
@@ -1281,6 +1325,7 @@ export function Preview({
                 </div>
                 );
               })}
+
             </div>
 
             {shows('cta') && (
@@ -1348,6 +1393,73 @@ export function Preview({
               </div>
             </div>
             )}
+
+            {/* ── ELEMENTS LIBRES ─────────────────────────────────────────
+                Poses sur le PLATEAU entier, et non dans le conteneur des
+                cartes : le compositeur les peint desormais lui-meme sur les
+                quatre sequences, ils n'ont donc plus a entrer dans la photo
+                des cartes — ils y seraient meme dessines deux fois.
+                Rendus quel que soit l'onglet d'apercu, comme dans la video. */}
+            {(elements ?? []).map((el) => (
+              <div
+                key={el.id}
+                data-free-element={el.id}
+                onPointerDown={(e) => onElementDragStart?.(el.id, e)}
+                onPointerMove={onDragMove}
+                onPointerUp={onDragEnd}
+                onPointerCancel={onDragEnd}
+                onLostPointerCapture={onDragEnd}
+                title={onElementDragStart ? 'Glisser pour déplacer l’élément' : undefined}
+                style={{
+                  position: 'absolute',
+                  left: `${el.x}%`,
+                  top: `${el.y}%`,
+                  transform: 'translate(-50%, -50%)',
+                  lineHeight: 0,
+                  cursor: onElementDragStart ? 'grab' : undefined,
+                  touchAction: onElementDragStart ? 'none' : undefined,
+                  // Au-dessus du titre et du CTA (zIndex 2) : un element
+                  // depose sur eux doit rester saisissable.
+                  zIndex: 4,
+                  outline:
+                    !capturing && selectedElementId === el.id
+                      ? `${uiPx(2)}px solid #FFFFFF`
+                      : undefined,
+                  outlineOffset: uiPx(2),
+                }}
+              >
+                <CardIcon
+                  name={el.iconName}
+                  size={Math.round((el.sizePct / 100) * vw)}
+                  color={el.color}
+                  className=""
+                />
+                {!capturing && onElementDelete && selectedElementId === el.id && (
+                  <button
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); onElementDelete(el.id); }}
+                    title="Supprimer l’élément"
+                    style={{
+                      position: 'absolute',
+                      top: -uiPx(10),
+                      right: -uiPx(10),
+                      width: uiPx(18),
+                      height: uiPx(18),
+                      borderRadius: '9999px',
+                      backgroundColor: '#DC2626',
+                      color: '#FFFFFF',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      lineHeight: 0,
+                    }}
+                  >
+                    <X style={{ width: uiPx(11), height: uiPx(11) }} />
+                  </button>
+                )}
+              </div>
+            ))}
 
             {/* Filigrane — le compositeur le peint sur CHAQUE sequence, au
                 centre a 95 % de la hauteur. Mêmes police, graisse et opacite
@@ -1718,7 +1830,7 @@ export default function AssistantWizard() {
   const [ctaPos, setCtaPos] = useState<Pos>(DESIGN.ctaPos);
   /** Element en cours de glissement, et ecart de saisie fige au pointerdown. */
   const dragRef = useRef<{
-    el: 'title' | 'cta' | 'card';
+    el: 'title' | 'cta' | 'card' | 'element';
     /** Carte glissee, quand `el === 'card'` — son repere est le conteneur. */
     cardId?: string;
     pointerId: number;
@@ -1798,6 +1910,93 @@ export default function AssistantWizard() {
    * n'en savent rien.
    */
   const [cardGroups, setCardGroups] = useState<CardGroup[]>([]);
+
+  /**
+   * Elements libres. Defaut `[]` : un montage sans element se compose
+   * exactement comme avant, et tout brouillon anterieur se relit tel quel.
+   */
+  const [freeElements, setFreeElements] = useState<FreeElement[]>([]);
+  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
+  const [elementPickerOpen, setElementPickerOpen] = useState(false);
+  const [elementQuery, setElementQuery] = useState('');
+  const freeElementsRef = useRef<FreeElement[]>(freeElements);
+  useEffect(() => { freeElementsRef.current = freeElements; }, [freeElements]);
+
+  const addElement = useCallback((iconName: string) => {
+    const id = newElementId();
+    setFreeElements((prev) => [
+      ...prev,
+      {
+        id,
+        iconName,
+        // Pose au centre du plateau : visible quel que soit l'onglet, et sur
+        // les quatre sequences de la video.
+        x: 50,
+        y: 50,
+        sizePct: ELEMENT_SIZE_PCT,
+        color: accent,
+      },
+    ]);
+    setSelectedElementId(id);
+  }, [accent]);
+
+  /**
+   * Prepare les elements pour le compositeur.
+   *
+   * Le canvas ne sait pas dessiner un composant React : on serialise le SVG
+   * lucide DEJA affiche dans l'apercu, ce qui garantit que la video montre
+   * exactement le meme glyphe. Une table nom -> chemin cote compositeur ferait
+   * une TROISIEME copie des icones (`ICON_MAP` et `CARD_ICON_MAP` existent
+   * deja), a tenir a jour a la main.
+   *
+   * Rasterise a la resolution de DESTINATION, pas a celle de l'apercu : le
+   * plateau est reduit a l'ecran, capturer sa taille affichee donnerait une
+   * icone floue dans la video.
+   */
+  const rasterizeElements = useCallback(async () => {
+    const list = freeElementsRef.current;
+    if (list.length === 0) return undefined;
+    const vw = VIDEO_SIZE[format].w;
+    const prepared = await Promise.all(
+      list.map(async (el) => {
+        try {
+          const host = document.querySelector(`[data-free-element="${el.id}"] svg`);
+          if (!host) return null;
+          const svg = host.cloneNode(true) as SVGElement;
+          const px = Math.max(1, Math.round((el.sizePct / 100) * vw));
+          // Taille intrinseque : sans elle l'image se decode en 0x0 dans
+          // Chrome et `drawImage` ne peint rien.
+          svg.setAttribute('width', String(px));
+          svg.setAttribute('height', String(px));
+          svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+          // `currentColor` n'a plus de contexte une fois le SVG detache.
+          svg.setAttribute('color', el.color);
+          svg.setAttribute('stroke', el.color);
+          const source = new XMLSerializer().serializeToString(svg);
+          const img = new Image();
+          img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(source)}`;
+          await new Promise<void>((resolve) => {
+            // Delai de garde : une image qui ne se decode pas laisserait la
+            // promesse pendante et l'envoi bloque.
+            const timer = setTimeout(resolve, 4000);
+            img.onload = () => { clearTimeout(timer); resolve(); };
+            img.onerror = () => { clearTimeout(timer); resolve(); };
+          });
+          if (!img.complete || img.naturalWidth === 0) return null;
+          return { x: el.x, y: el.y, sizePct: el.sizePct, img };
+        } catch {
+          return null;
+        }
+      }),
+    );
+    const kept = prepared.filter(Boolean) as { x: number; y: number; sizePct: number; img: HTMLImageElement }[];
+    return kept.length > 0 ? kept : undefined;
+  }, [format]);
+
+  const deleteElement = useCallback((id: string) => {
+    setFreeElements((prev) => prev.filter((el) => el.id !== id));
+    setSelectedElementId((cur) => (cur === id ? null : cur));
+  }, []);
   const groupsRef = useRef<CardGroup[]>(cardGroups);
   useEffect(() => { groupsRef.current = cardGroups; }, [cardGroups]);
   // Lue par `moveDrag`, memoise sans dependances.
@@ -1865,6 +2064,34 @@ export default function AssistantWizard() {
       hostRect,
       els.map((el, i) => ({ id: el.dataset.cardId ?? '', rect: rects[i], naturalWidth: naturals[i] })),
     );
+  }, []);
+
+  const startElementDrag = useCallback((id: string, e: React.PointerEvent) => {
+    // En tete, comme pour les cartes : l'appui appartient a l'element, meme si
+    // la prise echoue ensuite.
+    e.stopPropagation();
+    if (e.button !== 0 || !e.isPrimary) return;
+    setSelectedElementId(id);
+    setSelectedCards((prev) => (prev.size ? new Set() : prev));
+    // Le plateau, et non le conteneur des cartes : un element se pose partout.
+    const rect = previewRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0) return;
+    if (dragRef.current) return;
+    const el = freeElementsRef.current.find((x) => x.id === id);
+    if (!el) return;
+    const box = e.currentTarget.getBoundingClientRect();
+    dragRef.current = {
+      el: 'element',
+      cardId: id,
+      pointerId: e.pointerId,
+      grab: grabOffset(e.clientX, e.clientY, rect, { x: el.x, y: el.y }),
+      box: { width: (box.width / rect.width) * 100, height: (box.height / rect.height) * 100 },
+    };
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    } catch {
+      dragRef.current = null;
+    }
   }, []);
 
   const startCardDrag = useCallback((id: string, e: React.PointerEvent) => {
@@ -1950,6 +2177,18 @@ export default function AssistantWizard() {
     // `pointermove` se declenche aussi au simple survol : sans bouton appuye,
     // il n'y a pas de glissement (garde-fou anti « element collant »).
     if (e.buttons === 0 && e.pointerType === 'mouse') return;
+    if (drag.el === 'element') {
+      const id = drag.cardId as string;
+      const current = freeElementsRef.current.find((x) => x.id === id);
+      if (!current) return;
+      const raw = pointToPct(e.clientX, e.clientY, rect, drag.grab, { x: current.x, y: current.y });
+      // Ancre au CENTRE, comme le `translate(-50%, -50%)` du rendu : sans quoi
+      // l'element sortirait de moitie de la zone photographiee.
+      const next = clampToBox(raw, 'center', drag.box);
+      if (next.x === current.x && next.y === current.y) return;
+      setFreeElements((prev) => prev.map((x) => (x.id === id ? { ...x, x: next.x, y: next.y } : x)));
+      return;
+    }
     if (drag.el === 'card') {
       const id = drag.cardId as string;
       if (!drag.armed) {
@@ -2216,13 +2455,14 @@ export default function AssistantWizard() {
     ctaPos: samePos(ctaPos, DESIGN.ctaPos) ? undefined : ctaPos,
     cardBoxes: cardBoxes ?? undefined,
     cardGroups: cardGroups.length ? cardGroups : undefined,
+    elements: freeElements.length ? freeElements : undefined,
   }), [
     started, step, themeId, customTopic, toneId, format, colors,
     titleStyle, subtitleStyle, ctaStyle, watermarkOverride, watermarkEnabled,
     sequences, introDuration, cardsDuration, videoDuration, ctaDuration,
     generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
     voiceVolume, rushUrl, rushName, rushIsClip, scheduledDate,
-    titlePos, ctaPos, cardBoxes, cardGroups,
+    titlePos, ctaPos, cardBoxes, cardGroups, freeElements,
   ]);
 
   /** La derniere version connue, pour ecrire sans attendre un rendu. */
@@ -2298,6 +2538,7 @@ export default function AssistantWizard() {
       setCardBoxes(free);
     }
     if (draft.cardGroups) setCardGroups(draft.cardGroups);
+    if (draft.elements) setFreeElements(draft.elements);
     // Le contenu a ete regenere s'il vient du brouillon : la signature evite
     // qu'il soit remplace par un autre texte des la premiere navigation.
     if (draft.generated) genSigRef.current = `${draft.customTopic?.trim() || (THEMES.find((t) => t.id === draft.themeId) ?? THEMES[0]).topic}|${draft.toneId}`;
@@ -2310,6 +2551,7 @@ export default function AssistantWizard() {
       draft.rushUrl ? 'rush' : null,
       draft.musicUrl || draft.voiceUrl ? 'audio' : null,
       draft.titlePos || draft.ctaPos || draft.cardBoxes || draft.cardGroups ? 'placement' : null,
+      draft.elements ? 'éléments' : null,
     ].filter(Boolean);
     // Uniquement si le brouillon porte du travail : annoncer « Brouillon
     // restaure » sur un ecran vierge inquiete sans rien apprendre.
@@ -2852,6 +3094,9 @@ export default function AssistantWizard() {
           // ── Cartes : image de l'apercu, blittee telle quelle ──────────
           cardsSnapshot,
           cardsSnapshotRect,
+          // Couche d'elements : le compositeur la peint sur les quatre
+          // sequences. `undefined` sans element — rien ne change alors.
+          elements: await rasterizeElements(),
         },
         onProgress: (pct, stage) => {
           setRenderProgress(Math.max(0, Math.min(100, Math.round(pct))));
@@ -2969,6 +3214,9 @@ export default function AssistantWizard() {
           positions: {
             title: { x: titlePos.x, y: titlePos.y },
             watermark: { x: ctaPos.x, y: ctaPos.y },
+            // Elements libres, en % du conteneur des cartes. Lecteurs : defaut
+            // `[]` — les posts anterieurs n'ont pas ce champ.
+            elements: freeElements,
           },
           sizes: {
             title: DESIGN.titleWidth,
@@ -3049,6 +3297,8 @@ export default function AssistantWizard() {
     setCardBoxes(null);
     setSelectedCards(new Set());
     setCardGroups([]);
+    setFreeElements([]);
+    setSelectedElementId(null);
     setDuplicateNotice(null);
     setOpenSection('format');
     genSigRef.current = '';
@@ -4205,6 +4455,10 @@ export default function AssistantWizard() {
           selectedCards={selectedCards}
           onClearSelection={clearSelection}
           groupedCards={groupedByCard}
+          elements={freeElements}
+          selectedElementId={selectedElementId}
+          onElementDragStart={startElementDrag}
+          onElementDelete={deleteElement}
           capturing={capturing}
           frameRef={frameRef}
           displayScale={displayScale}
@@ -4219,6 +4473,73 @@ export default function AssistantWizard() {
           focus={previewFocus}
           onFocusChange={setPreviewFocus}
         />
+        {/* ── BIBLIOTHEQUE D'ELEMENTS ─────────────────────────────────
+            Sous l'apercu : c'est la qu'on voit ou l'element se pose. */}
+        {cardsVisible && (
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={() => setElementPickerOpen((v) => !v)}
+              className="w-full flex items-center justify-center gap-2 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 transition-colors"
+            >
+              <Shapes className="w-3.5 h-3.5" />
+              {elementPickerOpen ? 'Masquer les éléments' : 'Ajouter un élément'}
+            </button>
+            {elementPickerOpen && (
+              <div className="mt-2 rounded-xl border border-gray-800 bg-gray-900/50 p-3">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input
+                    type="text"
+                    value={elementQuery}
+                    onChange={(e) => setElementQuery(e.target.value)}
+                    placeholder="Rechercher une icône…"
+                    className="w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none pl-8 pr-2.5 py-2 text-sm"
+                  />
+                </div>
+                <div className="mt-3 max-h-64 overflow-y-auto space-y-3">
+                  {Object.entries(ICON_LIBRARY).map(([categorie, noms]) => {
+                    // Une categorie dont aucune icone ne correspond disparait :
+                    // laisser un titre seul ferait croire a un panneau casse.
+                    const retenues = noms.filter((n) => iconMatches(n, elementQuery));
+                    if (retenues.length === 0) return null;
+                    return (
+                      <div key={categorie}>
+                        <p className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5">
+                          {categorie}
+                        </p>
+                        <div className="grid grid-cols-8 gap-1">
+                          {retenues.map((nom) => (
+                            <button
+                              key={nom}
+                              type="button"
+                              onClick={() => addElement(nom)}
+                              data-element-pick={nom}
+                              title={nom}
+                              className="flex items-center justify-center rounded-lg border border-gray-800 py-2 text-gray-300 hover:text-white hover:border-purple-500 transition-colors"
+                            >
+                              <CardIcon name={nom} size={16} color="currentColor" className="" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {Object.values(ICON_LIBRARY).flat().every((n) => !iconMatches(n, elementQuery)) && (
+                    <p className="text-xs text-gray-500 text-center py-4">Aucune icône pour « {elementQuery} ».</p>
+                  )}
+                </div>
+              </div>
+            )}
+            {freeElements.length > 0 && (
+              <p className="mt-2 text-center text-xs text-gray-400">
+                {freeElements.length} élément{freeElements.length > 1 ? 's' : ''} posé
+                {freeElements.length > 1 ? 's' : ''}
+                <span className="text-gray-600"> — cliquer pour sélectionner, glisser pour déplacer</span>
+              </p>
+            )}
+          </div>
+        )}
         {selectedCards.size > 0 && cardsVisible && (
           <div className="mt-2 flex flex-col items-center gap-1.5">
             <p className="text-center text-xs text-gray-400">

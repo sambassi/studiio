@@ -196,6 +196,10 @@ let groupSeq = 0;
  */
 export const newGroupId = () => `grp-${Date.now().toString(36)}-${(groupSeq++).toString(36)}`;
 
+let elementSeq = 0;
+/** Identifiant d'element libre — meme forme que les cartes et les groupes. */
+export const newElementId = () => `el-${Date.now().toString(36)}-${(elementSeq++).toString(36)}`;
+
 export function groupOf(groups: CardGroup[], id: string): CardGroup | undefined {
   return groups.find((g) => g.cardIds.includes(id));
 }
