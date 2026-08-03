@@ -89,31 +89,41 @@ describe('Glisser-déposer', () => {
   };
   afterEach(cleanup);
 
-  it('une photo déposée sur le plateau remonte son URL', () => {
+  it('une photo déposée sur la SURFACE remonte son URL', () => {
+    // Le dépôt passe par une surface dédiée, affichée pendant le glissement :
+    // les enfants absolus du plateau interceptaient l'événement sans
+    // autoriser le dépôt.
     const recus: string[] = [];
-    const { container } = render(<Preview {...props} onPhotoDrop={(u) => recus.push(u)} />);
-    const plateau = container.querySelector('[style*="scale"]') as HTMLElement;
+    render(<Preview {...props} photoDragging onPhotoDrop={(u) => recus.push(u)} />);
+    const surface = document.querySelector('[data-photo-drop]') as HTMLElement;
+    expect(surface).not.toBeNull();
     const evt = new Event('drop', { bubbles: true }) as Event & { dataTransfer: unknown };
     (evt as { dataTransfer: unknown }).dataTransfer = {
-      getData: (type: string) => (type === 'text/uri-list' ? TITRE : ''),
+      getData: (type: string) => (type === 'application/x-studiio-photo' ? TITRE : ''),
     };
-    plateau.dispatchEvent(evt);
+    surface.dispatchEvent(evt);
     expect(recus).toEqual([TITRE]);
   });
 
   it('les vignettes de la grille sont glissables', () => {
     expect(wizard).toContain('draggable');
-    expect(wizard).toContain("e.dataTransfer.setData('text/uri-list', photo.url)");
+    expect(wizard).toContain('e.dataTransfer.setData(PHOTO_DND_TYPE, photo.url);');
+    expect(wizard).toContain("e.dataTransfer.setData('text/uri-list', photo.url);");
   });
 
   it('un dépôt sans URL ne fait rien', () => {
     const recus: string[] = [];
-    const { container } = render(<Preview {...props} onPhotoDrop={(u) => recus.push(u)} />);
-    const plateau = container.querySelector('[style*="scale"]') as HTMLElement;
+    render(<Preview {...props} photoDragging onPhotoDrop={(u) => recus.push(u)} />);
+    const surface = document.querySelector('[data-photo-drop]') as HTMLElement;
     const evt = new Event('drop', { bubbles: true }) as Event & { dataTransfer: unknown };
     (evt as { dataTransfer: unknown }).dataTransfer = { getData: () => '' };
-    plateau.dispatchEvent(evt);
+    surface.dispatchEvent(evt);
     expect(recus).toEqual([]);
+  });
+
+  it("la surface n'existe pas hors glissement — elle bloquerait l'édition", () => {
+    render(<Preview {...props} onPhotoDrop={() => {}} />);
+    expect(document.querySelector('[data-photo-drop]')).toBeNull();
   });
 });
 
