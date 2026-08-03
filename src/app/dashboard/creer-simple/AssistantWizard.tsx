@@ -28,6 +28,8 @@ import {
   Ungroup,
   Shapes,
   Search,
+  Minus,
+  Plus,
   ImageDown,
   ImagePlus,
   Upload,
@@ -806,6 +808,23 @@ export interface FreeElement {
 
 /** Taille d'un element a la pose, en % de la largeur du plateau. */
 const ELEMENT_SIZE_PCT = (64 / 330) * 100;
+
+/**
+ * Bornes de redimensionnement, en % de la largeur du plateau.
+ *
+ * En deca de 8 %, l'icone n'est plus lisible dans la video ; au-dela de 60 %,
+ * elle couvre le titre et les cartes. Le pas de 4 donne une douzaine de crans
+ * entre les deux — assez pour ajuster, pas assez pour s'y perdre.
+ */
+const ELEMENT_SIZE_MIN = 8;
+const ELEMENT_SIZE_MAX = 60;
+const ELEMENT_SIZE_STEP = 4;
+
+/** Taille bornee — une valeur hors bornes rend l'element illisible ou envahissant. */
+export function clampElementSize(sizePct: number): number {
+  if (!Number.isFinite(sizePct)) return ELEMENT_SIZE_PCT;
+  return Math.min(ELEMENT_SIZE_MAX, Math.max(ELEMENT_SIZE_MIN, sizePct));
+}
 
 /**
  * Mode libre des cartes : les emplacements ET le format dans lequel ils ont
@@ -2276,6 +2295,14 @@ export default function AssistantWizard() {
   const recolorElement = useCallback((color: string) => {
     setFreeElements((prev) =>
       prev.map((el) => (el.id === selectedElementId ? { ...el, color } : el)),
+    );
+  }, [selectedElementId]);
+
+  const resizeElement = useCallback((sizePct: number) => {
+    if (!selectedElementId) return;
+    const taille = clampElementSize(sizePct);
+    setFreeElements((prev) =>
+      prev.map((el) => (el.id === selectedElementId ? { ...el, sizePct: taille } : el)),
     );
   }, [selectedElementId]);
 
@@ -5340,7 +5367,7 @@ export default function AssistantWizard() {
               <div className="mt-2 rounded-xl border border-gray-800 bg-gray-900/50 p-3">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-[11px] uppercase tracking-wide text-gray-500 flex-1">
-                    Couleur de l’élément
+                    Couleur
                   </span>
                   {/* Trois choix en un clic — le nuancier reste dessous pour
                       tout le reste. */}
@@ -5370,6 +5397,54 @@ export default function AssistantWizard() {
                   onChange={recolorElement}
                   label="Teinte"
                 />
+
+                {/* Taille — le meme `sizePct` sert a l'apercu, a l'affiche et
+                    a la video : le regler ici suffit. */}
+                <div className="mt-3 border-t border-gray-800 pt-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[11px] uppercase tracking-wide text-gray-500 flex-1">
+                      Taille
+                    </span>
+                    <span className="text-[11px] text-gray-500 tabular-nums">
+                      {Math.round(selectedElement.sizePct)} %
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => resizeElement(selectedElement.sizePct - ELEMENT_SIZE_STEP)}
+                      disabled={selectedElement.sizePct <= ELEMENT_SIZE_MIN}
+                      data-element-smaller
+                      title="Rétrécir"
+                      aria-label="Rétrécir l’élément"
+                      className="flex h-7 w-7 items-center justify-center rounded-lg border border-gray-800 text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <Minus className="w-3.5 h-3.5" />
+                    </button>
+                    <input
+                      type="range"
+                      min={ELEMENT_SIZE_MIN}
+                      max={ELEMENT_SIZE_MAX}
+                      step={1}
+                      value={Math.round(selectedElement.sizePct)}
+                      onChange={(e) => resizeElement(Number(e.target.value))}
+                      data-element-size
+                      aria-label="Taille de l’élément"
+                      className="flex-1 accent-purple-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => resizeElement(selectedElement.sizePct + ELEMENT_SIZE_STEP)}
+                      disabled={selectedElement.sizePct >= ELEMENT_SIZE_MAX}
+                      data-element-bigger
+                      title="Agrandir"
+                      aria-label="Agrandir l’élément"
+                      className="flex h-7 w-7 items-center justify-center rounded-lg border border-gray-800 text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
