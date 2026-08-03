@@ -92,6 +92,18 @@ export interface DesignOptions {
   logoPosition?: { x?: number; y?: number };
   /** Per-sequence logo positions {intro: {x,y}, cards: {x,y}, video: {x,y}, cta: {x,y}} */
   logoPositions?: Record<string, { x?: number; y?: number }>;
+  /**
+   * Elements libres poses sur l'apercu — couche superposee a TOUTES les
+   * sequences, comme le logo.
+   *
+   * `img` porte l'icone deja rasterisee : l'editeur serialise le SVG lucide
+   * qu'il affiche deja, ce qui garantit que la video montre exactement le
+   * meme glyphe, sans dupliquer ici une troisieme copie des chemins d'icones
+   * (le depot en compte deja deux, `ICON_MAP` et `CARD_ICON_MAP`).
+   *
+   * Defaut `[]` : un montage sans element se compose exactement comme avant.
+   */
+  elements?: FreeElementRender[];
   /** Video overlay text */
   overlayText?: string;
   /** Video overlay color */
@@ -638,6 +650,69 @@ function drawRoundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: n
   ctx.lineTo(x, y + r);
   ctx.quadraticCurveTo(x, y, x + r, y);
   ctx.closePath();
+}
+
+/**
+ * Element libre, pret a etre dessine.
+ *
+ * `size` est en pixels de l'APERCU de l'editeur, dont la largeur de reference
+ * est 320 px — la meme base que le logo (`60/320 * canvasW`). Sans `img`,
+ * l'element est ignore : mieux vaut une video sans l'element qu'un plantage en
+ * plein rendu.
+ */
+export interface FreeElementRender {
+  x: number;
+  y: number;
+  size: number;
+  img?: HTMLImageElement | null;
+}
+
+/** Largeur de l'apercu de l'editeur, en px — base de toutes ses tailles. */
+const EDITOR_PREVIEW_W = 320;
+
+/**
+ * Rectangle de destination d'un element libre, en pixels video.
+ *
+ * Sorti de la fonction de dessin pour etre verifiable sur des valeurs : c'est
+ * la regle de placement, pas un detail de rendu.
+ */
+export function freeElementRect(
+  el: { x: number; y: number; size: number },
+  w: number,
+  h: number,
+): { x: number; y: number; size: number } | null {
+  // `size` est en px de l'apercu (320 px de large) : la meme conversion que le
+  // logo. Une taille non finie ou nulle ne donnerait rien a peindre.
+  const size = (el.size / EDITOR_PREVIEW_W) * w;
+  if (!Number.isFinite(size) || size <= 0) return null;
+  if (!Number.isFinite(el.x) || !Number.isFinite(el.y)) return null;
+  // x/y designent le CENTRE, comme dans l'apercu (`translate(-50%, -50%)`).
+  return { x: Math.round((el.x / 100) * w - size / 2), y: Math.round((el.y / 100) * h - size / 2), size };
+}
+
+/**
+ * Dessine la couche d'elements libres, centres sur leur position en %.
+ *
+ * Appelee a la fin de chaque sequence, apres le logo : ces elements sont une
+ * decoration posee PAR-DESSUS, exactement comme l'apercu les empile.
+ */
+function drawFreeElements(
+  ctx: CanvasRenderingContext2D,
+  design: DesignOptions | undefined,
+  w: number,
+  h: number,
+): void {
+  const elements = design?.elements;
+  if (!elements || elements.length === 0) return;
+  for (const el of elements) {
+    const img = el?.img;
+    // Image absente ou non decodee : on omet l'element plutot que de faire
+    // echouer un rendu deja lance.
+    if (!img || !img.complete || img.naturalWidth === 0) continue;
+    const rect = freeElementRect(el, w, h);
+    if (!rect) continue;
+    ctx.drawImage(img, rect.x, rect.y, rect.size, rect.size);
+  }
 }
 
 /** Get logo position for a specific sequence, with fallback to global logoPosition */
@@ -1473,6 +1548,10 @@ function drawIntro(
     drawLogoAccurate(ctx, logoImg, w, h, pos, logoScale);
   }
 
+  // Elements libres : la meme couche sur toutes les sequences, posee APRES le
+  // logo — c'est l'ordre d'empilement de l'apercu.
+  drawFreeElements(ctx, design, w, h);
+
   // Bottom accent bar removed — not present in editor
 
   ctx.restore();
@@ -2201,6 +2280,10 @@ function drawCards(
     const pos = getLogoPos(design, 'cards');
     drawLogoAccurate(ctx, logoImg, w, h, pos, logoScale);
   }
+
+  // Elements libres : la meme couche sur toutes les sequences, posee APRES le
+  // logo — c'est l'ordre d'empilement de l'apercu.
+  drawFreeElements(ctx, design, w, h);
 }
 
 /**
@@ -2422,6 +2505,10 @@ function drawVideoSeq(
     const pos = getLogoPos(design, 'video');
     drawLogoAccurate(ctx, logoImg, w, h, pos, logoScale);
   }
+
+  // Elements libres : la meme couche sur toutes les sequences, posee APRES le
+  // logo — c'est l'ordre d'empilement de l'apercu.
+  drawFreeElements(ctx, design, w, h);
 }
 
 function drawCTA(
@@ -2642,6 +2729,10 @@ function drawCTA(
     const pos = getLogoPos(design, 'cta');
     drawLogoAccurate(ctx, logoImg, w, h, pos, logoScale);
   }
+
+  // Elements libres : la meme couche sur toutes les sequences, posee APRES le
+  // logo — c'est l'ordre d'empilement de l'apercu.
+  drawFreeElements(ctx, design, w, h);
   ctx.restore();
 }
 

@@ -2475,6 +2475,55 @@ function InfographicPageInner() {
   // Recherche dans la bibliothèque d'éléments (onglet Éléments du rail).
   const [elementSearch, setElementSearch] = useState('');
   // Ajoute un élément centré, à la couleur d'accent courante.
+  /**
+   * Prepare les elements libres pour le compositeur.
+   *
+   * Le canvas ne sait pas dessiner un composant React : on serialise le SVG
+   * lucide DEJA affiche dans l'apercu, ce qui garantit que la video montre
+   * exactement le meme glyphe. L'alternative — une table nom -> chemin cote
+   * compositeur — ferait une TROISIEME copie des icones (`ICON_MAP` et
+   * `CARD_ICON_MAP` existent deja), qu'il faudrait tenir a jour a la main.
+   *
+   * Un element dont le SVG est introuvable ou illisible est simplement omis :
+   * mieux vaut une video sans lui qu'un rendu qui echoue.
+   */
+  const rasterizeFreeElements = useCallback(async () => {
+    if (freeElements.length === 0) return undefined;
+    const prepared = await Promise.all(
+      freeElements.map(async (el) => {
+        try {
+          const host = document.querySelector(`[data-free-element="${el.id}"] svg`);
+          if (!host) return null;
+          const svg = host.cloneNode(true) as SVGElement;
+          // Taille intrinseque : sans elle, l'image se decode a 0x0 dans
+          // Chrome et `drawImage` ne peint rien.
+          svg.setAttribute('width', String(el.size));
+          svg.setAttribute('height', String(el.size));
+          svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+          // `currentColor` n'a plus de contexte une fois le SVG detache.
+          svg.setAttribute('color', el.color);
+          svg.setAttribute('stroke', el.color);
+          const source = new XMLSerializer().serializeToString(svg);
+          const img = new Image();
+          img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(source)}`;
+          await new Promise<void>((resolve) => {
+            // Delai de garde : une image qui ne se decode pas laisserait la
+            // promesse pendante et l'export bloque.
+            const timer = setTimeout(resolve, 4000);
+            img.onload = () => { clearTimeout(timer); resolve(); };
+            img.onerror = () => { clearTimeout(timer); resolve(); };
+          });
+          if (!img.complete || img.naturalWidth === 0) return null;
+          return { x: el.x, y: el.y, size: el.size, img };
+        } catch {
+          return null;
+        }
+      }),
+    );
+    const kept = prepared.filter(Boolean) as { x: number; y: number; size: number; img: HTMLImageElement }[];
+    return kept.length > 0 ? kept : undefined;
+  }, [freeElements]);
+
   const addFreeElement = (iconName: string) => {
     const accent = COLOR_THEMES.find((ct) => ct.id === colorTheme)?.accent || customAccent || '#a855f7';
     const id = `fe-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -4996,6 +5045,9 @@ function InfographicPageInner() {
                 borderColor: branding.borderColor,
                 cardsSnapshot,
                 cardsSnapshotRect,
+                // Couche d'elements libres. `undefined` quand il n'y en a
+                // aucun : un montage sans element se compose comme avant.
+                elements: await rasterizeFreeElements(),
                 logoPosition: getActiveLogoPos(),
                 logoPositions, cardsSize,
                 logoScale, logoSequences,
@@ -5592,6 +5644,7 @@ function InfographicPageInner() {
               cardsPosition: cardsPos || undefined,
               cardsSize: cardsSize || undefined,
               logoSequences: logoSequences || undefined,
+              elements: await rasterizeFreeElements(),
               logoPosition: getActiveLogoPos() || undefined,
               logoPositions: logoPositions || undefined,
               logoScale: logoScale || undefined,
@@ -10086,6 +10139,7 @@ function InfographicPageInner() {
             {freeElements.map((el) => (
               <div
                 key={el.id}
+                data-free-element={el.id}
                 className={`absolute z-20 cursor-grab active:cursor-grabbing group/freeel ${selectedFreeElementId === el.id ? 'ring-1 ring-green-400 ring-offset-1 ring-offset-transparent rounded' : ''}`}
                 style={{
                   left: `${el.x}%`,
