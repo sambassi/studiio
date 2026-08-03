@@ -71,10 +71,16 @@ describe('Le liseré ne paraît que si on le demande', () => {
     for (const el of cartes()) expect(el.style.outline).toBe('');
   });
 
-  it('une carte sélectionnée porte un trait plein à l accent', () => {
+  it('une carte sélectionnée porte un trait plein contrasté', () => {
+    // Blanc, et non l'accent : le fond du plateau EST le dégradé d'accent par
+    // défaut, un liseré accent y serait invisible.
     render(<Preview {...previewProps} selectedCards={new Set(['b'])} />);
     const [a, b] = cartes();
-    expect(b.style.outline).toBe(`2px solid ${ACCENT}`);
+    // Epaisseur exprimee en pixels ECRAN : le plateau est reduit a 25 %, un
+    // « 2px » nu y deviendrait un demi-pixel.
+    expect(b.style.outline).toBe('8px solid #FFFFFF');
+    expect(b.style.boxShadow).toContain('rgba(0,0,0,0.5)');
+    expect(b.style.outline).not.toContain(ACCENT);
     expect(a.style.outline).toBe('');
   });
 
@@ -107,52 +113,98 @@ describe('Désélectionner', () => {
     expect(vides).toBe(1);
   });
 
-  it('un appui sur une carte ne compte pas comme un appui dans le vide', () => {
-    // Les cartes arrêtent la propagation ; sans cela, sélectionner
-    // déclencherait aussitôt la désélection.
-    let vides = 0;
-    render(
-      <Preview
-        {...previewProps}
-        selectedCards={new Set(['a'])}
-        onCardDragStart={(_id, e) => e.stopPropagation()}
-        onClearSelection={() => { vides += 1; }}
-      />,
+  it('le vrai gestionnaire arrête la propagation AVANT tout retour anticipé', () => {
+    // Un test qui fournirait son propre `onCardDragStart` avec un
+    // `stopPropagation()` testerait son propre bouchon. Ce qui compte est que
+    // le gestionnaire de production le fasse en TÊTE : sinon un multi-touch,
+    // une capture refusée ou un aperçu non mesuré videraient la sélection —
+    // y compris la carte en cours de glissement.
+    const corps = wizard.slice(
+      wizard.indexOf('const startCardDrag'),
+      wizard.indexOf('const startDrag'),
     );
-    cartes()[0].dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
-    expect(vides).toBe(0);
+    const stop = corps.indexOf('e.stopPropagation();');
+    expect(stop).toBeGreaterThan(0);
+    expect(stop).toBeLessThan(corps.indexOf('return;'));
+    // Même exigence pour le titre et le CTA.
+    const titre = wizard.slice(wizard.indexOf('const startDrag'), wizard.indexOf('const moveDrag'));
+    expect(titre.indexOf('e.stopPropagation();')).toBeLessThan(titre.indexOf('return;'));
   });
 
-  it('la touche Échap est écoutée', () => {
-    expect(wizard).toContain("if (e.key === 'Escape') clearSelection();");
+  it('la touche Échap est écoutée, mais pas au détriment des champs de saisie', () => {
+    // Échap dans un champ appartient au champ : il ferme une liste déroulante,
+    // annule une saisie. Le détourner viderait la sélection en pleine frappe.
+    expect(wizard).toContain("if (e.key !== 'Escape') return;");
+    expect(wizard).toContain("if (cible?.isContentEditable) return;");
+    expect(wizard).toContain("/^(INPUT|TEXTAREA|SELECT)$/.test(cible.tagName)");
     expect(wizard).toContain("window.addEventListener('keydown', onKey)");
     expect(wizard).toContain("window.removeEventListener('keydown', onKey)");
   });
 });
 
-describe('La sélection n atteint JAMAIS la vidéo', () => {
-  it('elle est vidée avant la photo des cartes, avec flushSync', () => {
-    // `flushSync` et non un `setState` ordinaire : la capture part dans la
-    // même tâche, le rendu doit donc être déjà appliqué.
-    expect(wizard).toContain('const selectionBeforeCapture = selectedCards;');
-    expect(wizard).toContain(
-      'if (selectionBeforeCapture.size > 0) flushSync(() => setSelectedCards(new Set()));',
+describe('Les liserés n atteignent JAMAIS la vidéo', () => {
+  it('aucune aide d édition n est peinte pendant la capture', () => {
+    render(
+      <Preview
+        {...previewProps}
+        selectedCards={new Set(['a', 'b'])}
+        draggingCard="a"
+        capturing
+      />,
     );
+    for (const el of cartes()) {
+      expect(el.style.outline).toBe('');
+      expect(el.style.boxShadow).toBe('');
+    }
+  });
+
+  it('le plateau devient inerte pendant la capture', () => {
+    // Un vidage d'état ne suffisait pas : entre lui et `domToCanvas` il y a un
+    // import dynamique et l'attente des polices, pendant lesquels l'aperçu
+    // restait cliquable — un clic y reposait la sélection juste à temps pour
+    // qu'elle soit gravée dans le montage.
+    let vides = 0;
+    const { container } = render(
+      <Preview {...previewProps} selectedCards={new Set(['a'])} capturing onClearSelection={() => { vides += 1; }} />,
+    );
+    const plateau = container.querySelector('[style*="scale"]') as HTMLElement;
+    expect(plateau.style.pointerEvents).toBe('none');
+    plateau.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    expect(vides).toBe(0);
+  });
+
+  it('le drapeau tient pour TOUTE la durée de la capture', () => {
+    const debut = wizard.indexOf('flushSync(() => setCapturing(true))');
     const capture = wizard.indexOf('const canvas = await domToCanvas');
-    const vidage = wizard.indexOf('flushSync(() => setSelectedCards(new Set()))');
-    expect(vidage).toBeGreaterThan(0);
-    expect(vidage).toBeLessThan(capture);
+    const fin = wizard.indexOf('setCapturing(false)');
+    expect(debut).toBeGreaterThan(0);
+    expect(debut).toBeLessThan(capture);
+    expect(fin).toBeGreaterThan(capture);
+    // Dans le `finally` : rendu même si la capture échoue.
+    const finallyBloc = wizard.slice(wizard.indexOf('} finally {', capture));
+    expect(finallyBloc.slice(0, 400)).toContain('setCapturing(false)');
   });
 
-  it('elle est rendue à l utilisateur même si la capture échoue', () => {
-    const finallyBloc = wizard.slice(wizard.indexOf('} finally {', wizard.indexOf('domToCanvas')));
-    expect(finallyBloc.slice(0, 400)).toContain('setSelectedCards(selectionBeforeCapture)');
-  });
-
-  it("elle n'est ni enregistrée dans le brouillon ni écrite dans les métadonnées", () => {
+  it("la sélection n'est ni enregistrée dans le brouillon ni écrite dans les métadonnées", () => {
     // C'est une intention d'édition, pas une propriété du montage.
     expect(wizard).not.toContain('selectedCards:');
     expect(wizard).not.toContain('selection:');
+  });
+});
+
+describe('Le câblage ne peut pas disparaître en silence', () => {
+  it('les deux props de sélection sont bien passées à l aperçu', () => {
+    // Remplacer `selectedCards={selectedCards}` par un Set vide rendait la
+    // fonctionnalité entièrement morte sans un seul test rouge.
+    expect(wizard).toContain('selectedCards={selectedCards}');
+    expect(wizard).toContain('onClearSelection={clearSelection}');
+    expect(wizard).toContain('capturing={capturing}');
+  });
+
+  it('le seuil de glissement est mesuré sur le VRAI déplacement', () => {
+    // `const dx = 0` figeait le seuil et le glissement ne démarrait jamais.
+    expect(wizard).toContain('const dx = e.clientX - (drag.startX ?? e.clientX);');
+    expect(wizard).toContain('const dy = e.clientY - (drag.startY ?? e.clientY);');
   });
 });
 
@@ -189,25 +241,24 @@ describe('Cliquer sélectionne, glisser déplace', () => {
     );
   });
 
-  it('Maj, Cmd et Ctrl ajoutent ou retirent de la sélection', () => {
-    expect(startCardDrag).toContain('e.shiftKey || e.metaKey || e.ctrlKey');
-    expect(startCardDrag).toContain('if (next.has(id)) next.delete(id);');
+  it('Maj, Cmd et Ctrl passent la règle en mode additif', () => {
+    // La règle elle-même est testée sur valeurs dans
+    // `creer-simple-selection-rules.test.ts` ; ici on vérifie seulement quels
+    // modificateurs l'activent.
+    expect(startCardDrag).toContain(
+      'nextSelection(prev, id, e.shiftKey || e.metaKey || e.ctrlKey)',
+    );
   });
 
-  it('un clic simple sur une carte déjà retenue conserve le lot', () => {
-    // Sans cela, saisir une carte d'un ensemble le déferait dès l'appui — et
-    // déplacer un groupe deviendrait impossible.
-    expect(startCardDrag).toContain('if (prev.has(id)) return prev;');
-    expect(startCardDrag).toContain('return new Set([id]);');
+  it('un clic droit ne sélectionne ni ne saisit', () => {
+    expect(startCardDrag).toContain('if (e.button !== 0 || !e.isPrimary) return;');
   });
 });
 
 describe('Une sélection ne survit pas à son objet', () => {
   it('les cartes disparues sont retirées de la sélection', () => {
-    expect(wizard).toContain('const kept = new Set([...prev].filter((id) => cardIds.includes(id)));');
-    // Référence conservée si rien ne change : sinon l'effet se redéclencherait
-    // en boucle à chaque rendu.
-    expect(wizard).toContain('return kept.size === prev.size ? prev : kept;');
+    // La règle est testée sur valeurs dans `creer-simple-selection-rules`.
+    expect(wizard).toContain('setSelectedCards((prev) => pruneSelection(prev, cardIds));');
   });
 
   it('un nouveau montage et un rétablissement repartent sans sélection', () => {

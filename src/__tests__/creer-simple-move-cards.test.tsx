@@ -259,12 +259,13 @@ describe('Le format fait partie de l état — sinon l export est écrasé', () 
     // en 16:9 écrase les cartes les unes sur les autres, à l'écran comme dans
     // la vidéo puisque ce bloc est photographié puis blitté.
     expect(wizard).toContain('interface FreeCards {');
-    expect(wizard).toContain('f.format === fmt && coversAll(f.boxes, ids)');
-    expect(wizard).toContain('valid(cardBoxes, cardIds, format)');
+    expect(wizard).toContain('function validFree(');
+    expect(wizard).toContain("if (!f || f.format !== fmt) return false;");
+    expect(wizard).toContain('validFree(cardBoxes, cardIds, format)');
   });
 
   it('un changement de format ou de contenu purge l état et le dit', () => {
-    expect(wizard).toContain('if (cardBoxes && !valid(cardBoxes, cardIds, format))');
+    expect(wizard).toContain('if (cardBoxes && !validFree(cardBoxes, cardIds, format))');
     expect(wizard).toContain('setLayoutDropped(true)');
     expect(wizard).toContain('Disposition des cartes réinitialisée');
   });
@@ -311,7 +312,8 @@ describe('Invariants du gestionnaire de glissement', () => {
   });
 
   it('une carte inconnue interrompt la prise au lieu de produire des NaN', () => {
-    expect(brancheCarte).toContain('if (!measured || !start) { dragRef.current = null; return; }');
+    expect(brancheCarte).toContain('if (!measured || !start) {');
+    expect(brancheCarte).toContain('releasePointerCapture');
     expect(brancheCarte).toContain('if (!boxes || !box) return;');
   });
 
