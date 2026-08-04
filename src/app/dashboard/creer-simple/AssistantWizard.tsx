@@ -2133,6 +2133,19 @@ export default function AssistantWizard() {
   const [started, setStarted] = useState(false);
   const [step, setStep] = useState(0);
 
+  /**
+   * Etape la plus AVANCEE atteinte, et non l'etape courante.
+   *
+   * Sans ce reperage, revenir sur « Sujet » ramenerait `step` a 0 et
+   * interdirait de repartir vers « Contenu » — soit exactement la navigation
+   * que ces puces existent pour offrir.
+   */
+  const [maxStepReached, setMaxStepReached] = useState(0);
+  useEffect(() => {
+    setMaxStepReached((m) => (step > m ? step : m));
+  }, [step]);
+
+
   const [themeId, setThemeId] = useState(THEMES[0].id);
   const [customTopic, setCustomTopic] = useState('');
   const [toneId, setToneId] = useState(TONES[0].id);
@@ -4527,6 +4540,9 @@ export default function AssistantWizard() {
   const reset = () => {
     setStarted(false);
     setStep(S.sujet);
+    // Sans cela, le montage suivant garderait les puces du precedent
+    // ouvertes jusqu'a « Envoi ».
+    setMaxStepReached(0);
     // Sans cela, le montage suivant naitrait filtre sur l'onglet du precedent.
     setPreviewFocus('all');
     // Meme raison pour le placement : sans remise a zero, le montage suivant
@@ -4562,6 +4578,26 @@ export default function AssistantWizard() {
   };
 
   // ── Rendu ───────────────────────────────────────────────────────────
+  /**
+   * Une etape est-elle atteignable d'un clic ?
+   *
+   * Deux conditions, et pas une de plus :
+   *
+   * 1. **Elle a deja ete atteinte.** Sauter vers une etape jamais visitee
+   *    court-circuiterait ce que la precedente declenche — passer de
+   *    « Sujet » a « Contenu » sauterait `ensureGenerated()`, et l'ecran
+   *    s'afficherait vide, sans contenu ni generation en cours.
+   * 2. **« Envoi » exige un contenu genere**, exactement comme le bouton
+   *    « Continuer » qui y mene (`disabled={generating || !generated}`).
+   *    Une seule regle pour les deux chemins : sinon les puces ouvriraient
+   *    une porte que le bouton tient fermee.
+   */
+  const stepReachable = (i: number): boolean => {
+    if (i > maxStepReached) return false;
+    if (i === S.envoi) return !!generated && !generating;
+    return true;
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
       <div className="lg:col-span-3 space-y-4">
@@ -4664,9 +4700,40 @@ export default function AssistantWizard() {
           <Card>
             {/* Fil d'étapes */}
             <div className="flex items-center gap-2 mb-6">
-              {STEPS.map((label, i) => (
+              {STEPS.map((label, i) => {
+                const atteignable = stepReachable(i);
+                // Aller sur l'etape courante ne ferait rien : on n'annonce pas
+                // un bouton qui n'a aucun effet.
+                const cliquable = atteignable && i !== step;
+                const aller = () => { if (cliquable) setStep(i); };
+                return (
                 <div key={label} className="flex items-center gap-2 flex-1 last:flex-none">
-                  <div className="flex items-center gap-1.5 min-w-0">
+                  {/* Puce cliquable — l'apparence ne change pas, seule
+                      l'interactivite est ajoutee. */}
+                  <div
+                    className={`flex items-center gap-1.5 min-w-0 rounded transition ${
+                      cliquable
+                        ? 'cursor-pointer hover:brightness-125 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400'
+                        : 'cursor-not-allowed'
+                    }`}
+                    {...(cliquable
+                      ? {
+                          role: 'button',
+                          tabIndex: 0,
+                          'aria-label': `Aller à l’étape ${label}`,
+                          onClick: aller,
+                          onKeyDown: (e: React.KeyboardEvent) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              // Espace fait defiler la page par defaut.
+                              e.preventDefault();
+                              aller();
+                            }
+                          },
+                        }
+                      : { 'aria-disabled': true })}
+                    data-step={i}
+                    data-step-reachable={atteignable ? 'oui' : 'non'}
+                  >
                     <span
                       className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
                       style={
@@ -4690,7 +4757,8 @@ export default function AssistantWizard() {
                     />
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Étape 1 — sujet */}
