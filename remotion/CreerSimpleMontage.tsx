@@ -4,9 +4,10 @@ import {
 } from 'remotion';
 import {
   buildSequences, sequenceFrameOffsets, isReelFormat, editorViewportPx,
-  maxVisibleCards, gradientOverlayCss, DEFAULT_COLORS,
+  gradientOverlayCss, DEFAULT_COLORS,
   type PlannedSequence,
 } from '../src/lib/creer/designSpec';
+import SequenceCards from '../src/components/creer/SequenceCards';
 
 /**
  * Montage « Créer (simple) » — rendu SERVEUR.
@@ -64,6 +65,8 @@ export interface CreerSimpleMontageProps {
   videoDuration: number;
   ctaDuration: number;
   sequenceOrder?: string[];
+  /** Positions libres des cartes, ou absent pour la disposition en flux. */
+  cardBoxes?: Record<string, { x: number; y: number; w: number; h: number }> | null;
   /** Durée totale, en images — calculée par `calculateMetadata`. */
   totalDurationFrames?: number;
   // ── Phases suivantes : acceptés, non rendus ────────────────────────────
@@ -205,37 +208,21 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
               )}
 
               {seq.type === 'cards' && (
-                <AbsoluteFill
-                  style={{
-                    justifyContent: 'center', padding: 20 * echelle, gap: 6 * echelle,
-                    display: 'flex', flexDirection: 'column', fontFamily: 'Inter, sans-serif',
-                  }}
-                >
-                  {props.cards.slice(0, maxVisibleCards(isReel)).map((c, k) => (
-                    <div
-                      key={k}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 8 * echelle,
-                        background: 'rgba(255,255,255,0.10)', borderRadius: 8 * echelle,
-                        padding: `${8 * echelle}px ${10 * echelle}px`,
-                      }}
-                    >
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ color: '#FFF', fontWeight: 700, fontSize: 7 * echelle }}>
-                          {c.title || c.label}
-                        </div>
-                        {c.description && (
-                          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 6 * echelle, marginTop: 2 * echelle }}>
-                            {c.description}
-                          </div>
-                        )}
-                      </div>
-                      {c.value && (
-                        <div style={{ color: '#FFF', fontWeight: 800, fontSize: 9 * echelle }}>{c.value}</div>
-                      )}
-                    </div>
-                  ))}
-                </AbsoluteFill>
+                // Le MEME composant que l'apercu, a la resolution de la
+                // composition. C'est ce qui rend la parite structurelle :
+                // aucune seconde implementation a recaler.
+                <SequenceCards
+                  cards={(props.cards ?? []).map((c, i) => ({
+                    id: (c as { id?: string }).id ?? `c${i}`,
+                    icon: c.icon ?? 'Sparkles',
+                    title: c.title ?? c.label ?? '',
+                    value: c.value,
+                  }))}
+                  cardBoxes={props.cardBoxes ?? null}
+                  containerWidth={width}
+                  landscape={!isReel}
+                  valueColor={props.gradientEnd || DEFAULT_COLORS.gradientEnd}
+                />
               )}
 
               {seq.type === 'cta' && (

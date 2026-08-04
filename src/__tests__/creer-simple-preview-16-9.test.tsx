@@ -22,6 +22,13 @@ import { Preview } from '@/app/dashboard/creer-simple/AssistantWizard';
  * L'aperçu s'y aligne ici — et **le portrait ne bouge pas d'un pixel**.
  */
 
+// Les ratios de carte vivent depuis la Phase 2 dans la spec PARTAGEE : la
+// composition Remotion dessine les memes cartes et lit les memes mesures.
+// Depuis la Phase 2, les cartes sont rendues par le composant PARTAGE
+// `SequenceCards`, en styles EN LIGNE et non en classes Tailwind : Remotion a
+// son propre bundle, sans la feuille CSS de l'application, et les classes n'y
+// produisaient rien. Les assertions visent donc le style calcule.
+const spec = readFileSync(resolve(__dirname, '../lib/creer/designSpec.ts'), 'utf-8');
 const wizard = readFileSync(
   resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
   'utf-8',
@@ -68,15 +75,18 @@ describe('Le portrait ne change pas', () => {
   it('garde sa colonne centrée', () => {
     render(<Preview {...props('9:16')} />);
     const host = grille();
-    expect(host.className).toContain('flex flex-col justify-center');
+    expect(host.style.display).toBe('flex');
+    expect(host.style.flexDirection).toBe('column');
+    expect(host.style.justifyContent).toBe('center');
     expect(host.style.gridTemplateColumns).toBe('');
   });
 
   it('garde ses cartes en ligne : icône, libellé, valeur', () => {
     render(<Preview {...props('9:16')} />);
     for (const el of cartes()) {
-      expect(el.className).toContain('flex items-center');
-      expect(el.className).not.toContain('flex-col');
+      expect(el.style.display).toBe('flex');
+      expect(el.style.alignItems).toBe('center');
+      expect(el.style.flexDirection).not.toBe('column');
     }
   });
 
@@ -93,7 +103,7 @@ describe('Le portrait ne change pas', () => {
     // colonne tient — le basculer changerait des montages existants sans
     // nécessité.
     render(<Preview {...props('1:1')} />);
-    expect(grille().className).toContain('flex flex-col justify-center');
+    expect(grille().style.flexDirection).toBe('column');
     expect(grille().style.gridTemplateColumns).toBe('');
   });
 });
@@ -102,8 +112,8 @@ describe('Le paysage passe en grille', () => {
   it('trois colonnes, contenu centré verticalement', () => {
     render(<Preview {...props('16:9')} />);
     const host = grille();
-    expect(host.className).toContain('grid');
-    expect(host.className).not.toContain('flex-col');
+    expect(host.style.display).toBe('grid');
+    expect(host.style.flexDirection).toBe('');
     expect(host.style.gridTemplateColumns).toBe('repeat(3, minmax(0, 1fr))');
     expect(host.style.alignContent).toBe('center');
   });
@@ -113,8 +123,8 @@ describe('Le paysage passe en grille', () => {
     // caractères et une ellipse.
     render(<Preview {...props('16:9')} />);
     for (const el of cartes()) {
-      expect(el.className).toContain('flex-col');
-      expect(el.className).toContain('text-center');
+      expect(el.style.flexDirection).toBe('column');
+      expect(el.style.textAlign).toBe('center');
     }
   });
 
@@ -134,7 +144,10 @@ describe('Le paysage passe en grille', () => {
   it('le libellé tient sur une ligne, comme la troncature du compositeur', () => {
     render(<Preview {...props('16:9')} />);
     const libelle = cartes()[0].querySelector('span')!;
-    expect(libelle.className).toContain('truncate');
+    // `truncate` de Tailwind = ces trois propriétés, désormais en ligne.
+    expect(libelle.style.overflow).toBe('hidden');
+    expect(libelle.style.textOverflow).toBe('ellipsis');
+    expect(libelle.style.whiteSpace).toBe('nowrap');
     expect(libelle.style.lineHeight).toBe('1.5');
   });
 });
@@ -153,14 +166,14 @@ describe('Les dimensions sont celles du compositeur, pas des valeurs inventées'
     expect(composer).toContain('const labelSize = fontPx(7);');
     expect(composer).toContain('const valueSize = fontPx(9);');
     expect(composer).toContain('const emojiSizeLocal = fixedFontPx(isReel ? 14 : 18);');
-    expect(wizard).toContain('text: 7 / 512,');
-    expect(wizard).toContain('value: 9 / 512,');
-    expect(wizard).toContain('icon: 18 / 512,');
+    expect(spec).toContain('text: 7 / 512,');
+    expect(spec).toContain('value: 9 / 512,');
+    expect(spec).toContain('icon: 18 / 512,');
   });
 
   it("l'interligne du texte est celui du compositeur", () => {
     expect(composer).toContain('const lineMul = 1.5;');
-    expect(wizard).toContain('line: 1.5,');
+    expect(spec).toContain('line: 1.5,');
   });
 });
 
@@ -177,7 +190,7 @@ describe('Le mode libre reste le mode libre', () => {
     render(<Preview {...props('16:9')} cardBoxes={boxes} />);
     const host = grille();
     expect(host.style.gridTemplateColumns).toBe('');
-    expect(host.className).not.toContain('grid');
+    expect(host.style.display).not.toBe('grid');
     expect(cartes()[0].style.left).toBe('5%');
   });
 

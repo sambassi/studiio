@@ -148,7 +148,18 @@ describe('Plus aucune carte n’est rendue par son index', () => {
     // Grep-avant-modif : les cartes sont rendues à DEUX endroits — l'aperçu
     // et le récapitulatif de l'étape Contenu. N'en corriger qu'un laisserait
     // la moitié du bug en place.
-    const byId = wizardSource.match(/key=\{c\.id\}/g) ?? [];
+    //
+    // Depuis la Phase 2 du rendu serveur, l'aperçu délègue sa grille au
+    // composant PARTAGÉ `SequenceCards` : la clé y vit désormais, et c'est
+    // aussi celle qu'utilise la composition Remotion.
+    const cardsSource = readFileSync(
+      resolve(__dirname, '../components/creer/SequenceCards.tsx'),
+      'utf-8',
+    );
+    const byId = [
+      ...(wizardSource.match(/key=\{c\.id\}/g) ?? []),
+      ...(cardsSource.match(/key=\{c\.id\}/g) ?? []),
+    ];
     expect(byId).toHaveLength(2);
   });
 
