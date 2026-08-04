@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  AbsoluteFill, Audio, OffthreadVideo, Img, useVideoConfig,
+  AbsoluteFill, Audio, OffthreadVideo, Img, useVideoConfig, useCurrentFrame,
 } from 'remotion';
 import {
   buildSequences, sequenceFrameOffsets, totalDurationFrames, isReelFormat, editorViewportPx,
@@ -11,6 +11,10 @@ import SequenceCards from '../src/components/creer/SequenceCards';
 import SequenceTitle, { titleFrameStyle } from '../src/components/creer/SequenceTitle';
 import SequenceCta, { ctaFrameStyle } from '../src/components/creer/SequenceCta';
 import FreeElementsLayer, { type FreeElement } from '../src/components/creer/FreeElementsLayer';
+import TextAnimationLayer from '../src/components/creer/TextAnimationLayer';
+import {
+  textAnimationState, TEXT_ANIMATION_KEYS, DEFAULT_TEXT_ANIMATION, type TextAnimation,
+} from '../src/lib/creer/textAnimation';
 import { TransitionSeries } from '@remotion/transitions';
 // Type SEUL : effacé à la compilation, donc le compositeur navigateur —
 // et ses appels au DOM — n'entrent pas dans le bundle Remotion.
@@ -106,7 +110,12 @@ export interface CreerSimpleMontageProps {
   /** Durée totale, en images — calculée par `calculateMetadata`. */
   totalDurationFrames?: number;
   // ── Phases suivantes : acceptés, non rendus ────────────────────────────
-  /** Non rendu en Phase 1. */
+  /**
+   * Animation d'apparition du texte — rendue depuis la Phase 7.
+   *
+   * Une valeur inconnue vaut « aucune », comme `textAnimationState` qui rend
+   * l'etat neutre des que le style n'est pas dans `TEXT_ANIMATION_KEYS`.
+   */
   textAnimation?: string;
   /**
    * Style joue entre deux sequences — rendu depuis la Phase 6.
@@ -158,6 +167,53 @@ function resolveStyle(demande: string | undefined): TransitionStyle {
     ? (demande as TransitionStyle)
     : DEFAULT_TRANSITION_STYLE;
 }
+
+/** Animation demandée, ou aucune — même repli que `textAnimationState`. */
+function resolveAnimation(demande: string | undefined): TextAnimation {
+  return demande && (TEXT_ANIMATION_KEYS as readonly string[]).includes(demande)
+    ? (demande as TextAnimation)
+    : DEFAULT_TEXT_ANIMATION;
+}
+
+/** Ce qu'une séquence doit appliquer à son texte à l'image courante. */
+export interface AnimationCourante {
+  /** Avancement de la SÉQUENCE, de 0 à 1. */
+  progress: number;
+  /** Part du texte déjà écrite — 1 hors machine à écrire. */
+  reveal: number;
+}
+
+/**
+ * Calcule l'avancement de la séquence à l'image courante, et rend son
+ * contenu.
+ *
+ * ⚠️ L'AVANCEMENT PART DU DÉBUT **NOMINAL** DE LA SÉQUENCE, pas de sa
+ * première image.
+ *
+ * Depuis la Phase 6, une séquence autre que la première commence
+ * `prefixFrames` images plus tôt : c'est le chevauchement qui porte la
+ * transition. Compter l'animation depuis là ferait apparaître le texte
+ * PENDANT la transition, puis rester immobile ensuite.
+ *
+ * C'est aussi le seul endroit où le rendu serveur s'écarte volontairement du
+ * canvas : celui-ci dessine la séquence entrante à `t × 0,3` pendant la
+ * transition, si bien que l'apparition se joue une première fois pendant le
+ * raccord, puis **recommence à zéro** quand la séquence prend la main. Le
+ * texte apparaît donc deux fois. Ici, il apparaît une fois, une fois le
+ * raccord posé.
+ */
+const SequenceAnimee: React.FC<{
+  style: TextAnimation;
+  baseFrames: number;
+  prefixFrames: number;
+  rendu: (anim: AnimationCourante) => React.ReactNode;
+}> = ({ style, baseFrames, prefixFrames, rendu }) => {
+  const frame = useCurrentFrame();
+  const progress = baseFrames > 0
+    ? Math.max(0, frame - prefixFrames) / baseFrames
+    : 1;
+  return <>{rendu({ progress, reveal: textAnimationState(style, progress).charRatio })}</>;
+};
 
 /** Fond effectif d'une séquence : le sien, sinon l'affiche globale. */
 function backgroundFor(props: CreerSimpleMontageProps, type: string): string | null {
@@ -231,7 +287,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
       {/* Le contenu d'une sequence, isole : la serie et un rendu direct
           montent ainsi EXACTEMENT le meme arbre. */}
       {(() => {
-        const contenu = (type: string) => (
+        const contenu = (type: string, anim: AnimationCourante) => (
           <AbsoluteFill>
             {type === 'video' && props.videoUrl ? (
               <OffthreadVideo
@@ -244,8 +300,13 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
             )}
 
             {type === 'intro' && (
-              // Le MEME composant que l'apercu, et le MEME cadre : la
-              // position vient de `titlePos`, comme a l'ecran.
+              // L'animation enveloppe le TEXTE, jamais le fond : un fond en
+              // fondu laisserait voir le noir, un fond qui glisse
+              // decouvrirait une bande vide. Meme place que
+              // `applyTextAnimation` dans `drawIntro`.
+              <TextAnimationLayer style={animation} progress={anim.progress}>
+              {/* Le MEME composant que l'apercu, et le MEME cadre : la
+                  position vient de `titlePos`, comme a l'ecran. */}
               <div style={titleFrameStyle(props.titlePos ?? TEXT_LAYOUT.titlePos)}>
                 <SequenceTitle
                   title={props.title}
@@ -266,14 +327,23 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                   }}
                   format={format}
                   containerWidth={width}
+                  reveal={anim.reveal}
                 />
               </div>
+              </TextAnimationLayer>
             )}
 
             {type === 'cards' && (
-              // Le MEME composant que l'apercu, a la resolution de la
-              // composition. C'est ce qui rend la parite structurelle :
-              // aucune seconde implementation a recaler.
+              // Fondu, glissement et pop s'appliquent aux cartes ; la machine
+              // a ecrire, NON. Cote navigateur les cartes sont une PHOTO du
+              // conteneur, sur laquelle une frappe lettre a lettre ne peut
+              // rien : `drawCards` le dit, et le rendu serveur s'aligne
+              // dessus plutot que d'offrir un effet que l'autre moteur n'a
+              // pas.
+              <TextAnimationLayer style={animation} progress={anim.progress}>
+              {/* Le MEME composant que l'apercu, a la resolution de la
+                  composition. C'est ce qui rend la parite structurelle :
+                  aucune seconde implementation a recaler. */}
               <SequenceCards
                 cards={(props.cards ?? []).map((c, i) => ({
                   id: (c as { id?: string }).id ?? `c${i}`,
@@ -286,9 +356,11 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                 landscape={!isReel}
                 valueColor={props.gradientEnd || DEFAULT_COLORS.gradientEnd}
               />
+              </TextAnimationLayer>
             )}
 
             {type === 'cta' && (
+              <TextAnimationLayer style={animation} progress={anim.progress}>
               <div style={ctaFrameStyle(props.ctaPos ?? TEXT_LAYOUT.ctaPos)}>
                 <SequenceCta
                   text={props.ctaText ?? ''}
@@ -305,8 +377,10 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                   }}
                   format={format}
                   containerWidth={width}
+                  reveal={anim.reveal}
                 />
               </div>
+              </TextAnimationLayer>
             )}
 
             {/* Elements libres — le MEME composant que l'apercu, sur les
@@ -333,6 +407,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
         const tFrames = transitionFrames(base, fps);
         const durees = seriesSequenceFrames(base, tFrames);
         const style = resolveStyle(props.transition);
+        const animation = resolveAnimation(props.textAnimation);
 
         return (
           <TransitionSeries>
@@ -345,7 +420,14 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                   />
                 )}
                 <TransitionSeries.Sequence durationInFrames={durees[i]} name={seq.type}>
-                  {contenu(seq.type)}
+                  {/* L'avancement se mesure DANS la sequence : il faut donc
+                      un composant, `useCurrentFrame` etant relatif a elle. */}
+                  <SequenceAnimee
+                    style={animation}
+                    baseFrames={base[i]}
+                    prefixFrames={i === 0 ? 0 : tFrames}
+                    rendu={(anim) => contenu(seq.type, anim)}
+                  />
                 </TransitionSeries.Sequence>
               </React.Fragment>
             ))}

@@ -1,6 +1,8 @@
 import { renderVideo } from '@/lib/render/worker';
 import { buildSequences, totalDurationFrames } from '@/lib/creer/designSpec';
 import type { FreeElement } from '@/components/creer/FreeElementsLayer';
+import type { TextAnimation } from '@/lib/creer/textAnimation';
+import type { TransitionStyle } from '@/lib/video-composer';
 
 /**
  * Entree du rendu SERVEUR d'un montage « Créer (simple) ».
@@ -9,10 +11,10 @@ import type { FreeElement } from '@/components/creer/FreeElementsLayer';
  * confie a Remotion. Rien ne remplace le rendu navigateur : c'est un second
  * chemin, ajoute a cote.
  *
- * ⚠️ La composition ne rend pas encore les animations de texte, les
- * transitions ni les voix par sequence. Les champs sont acceptes et transmis —
- * la phase suivante n'aura pas a changer cette signature. Les elements libres,
- * eux, sont rendus depuis la Phase 5.
+ * ⚠️ La composition ne rend pas encore les voix par sequence. Le champ est
+ * accepte et transmis — la phase suivante n'aura pas a changer cette
+ * signature. Les elements libres sont rendus depuis la Phase 5, les
+ * transitions depuis la Phase 6, les animations de texte depuis la Phase 7.
  */
 
 /** Sous-ensemble du design qui suffit au rendu serveur de Phase 1. */
@@ -39,6 +41,10 @@ export interface CreerSimpleRenderInput {
   format?: '9:16' | '1:1' | '16:9';
   /** Elements libres, peints sur toutes les sequences. */
   elements?: FreeElement[];
+  /** Style joue entre deux sequences — defaut : fondu enchaine. */
+  transition?: TransitionStyle;
+  /** Animation d'apparition du texte — defaut : aucune. */
+  textAnimation?: TextAnimation;
 }
 
 /** Identifiant de la composition, tel qu'enregistre dans `remotion/index`. */
