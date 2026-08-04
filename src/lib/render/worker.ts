@@ -5,6 +5,7 @@
  */
 
 import { bundle } from '@remotion/bundler';
+import { remotionWebpackOverride } from '@/lib/render/webpackOverride';
 import { renderMedia, selectComposition } from '@remotion/renderer';
 import path from 'path';
 import fs from 'fs';
@@ -35,7 +36,13 @@ export async function getOrCreateBundle(): Promise<string> {
   }
 
   const bundleLocation = await bundle({
+    // ⚠️ INDISPENSABLE : `bundle()` ne lit PAS `remotion.config.ts` — ce
+    // fichier n'est charge que par le CLI. Sans cet override, l'alias `@/`
+    // n'existe pas cote serveur et le bundling echoue sur
+    // `Can't resolve '@/components/ui/CardIcon'`, alors que le meme montage
+    // se rend parfaitement avec `npx remotion render`.
     entryPoint,
+    webpackOverride: remotionWebpackOverride,
     onProgress: (_progress) => {
       // Bundle progress (0-100)
     },
