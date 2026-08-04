@@ -155,6 +155,57 @@ export function googleFontsUrl(family: string, weights: number[]): string {
   return `https://fonts.googleapis.com/css2?family=${name}:wght@${list}&display=swap`;
 }
 
+/**
+ * Déclarations CSS des variables de police, pour un moteur qui n'a PAS
+ * `next/font`.
+ *
+ * ⚠️ Sans elles, `fontStack()` ne rend rien du tout côté serveur — et c'est
+ * bien pire qu'une police manquante.
+ *
+ * `fontStack('Anton')` produit `var(--font-anton), 'Anton', sans-serif`. Or
+ * une variable CSS **indéfinie** rend la déclaration entière invalide au
+ * moment du calcul : le navigateur n'essaie même pas le repli `'Anton'`, il
+ * retombe sur `sans-serif`. Vérifié dans Chromium — `getComputedStyle` rend
+ * `sans-serif`, et `'Anton'` a disparu.
+ *
+ * Charger la police n'aurait donc servi à rien : la famille n'atteignait
+ * jamais le moteur de rendu. Définir les variables est la première moitié du
+ * correctif ; charger les fichiers est la seconde.
+ *
+ * Rendre ces variables ici — et non dans la composition — garde `fontStack()`
+ * comme source unique : la même pile CSS fonctionne verbatim des deux côtés.
+ */
+export function fontVariablesCss(): string {
+  const lignes = FONT_CATALOG
+    .filter((f) => f.cssVar)
+    .map((f) => `  ${f.cssVar}: '${f.family}';`);
+  return `:root {\n${lignes.join('\n')}\n}`;
+}
+
+/**
+ * Feuille Google Fonts couvrant PLUSIEURS familles en une requête.
+ *
+ * Une balise par famille multiplierait les allers-retours réseau au démarrage
+ * de chaque rendu — et un rendu serveur en fait un par image jusqu'à ce que
+ * les polices soient prêtes.
+ *
+ * Les familles inconnues du catalogue sont ignorées : demander une famille
+ * inexistante fait répondre 400 à l'API, et la feuille entière échoue — donc
+ * TOUTES les polices, pas seulement la fautive.
+ */
+export function googleFontsUrlMany(families: Array<string | undefined | null>): string | null {
+  const defs = [...new Set(families.filter((f): f is string => !!f))]
+    .map((f) => findFont(f))
+    .filter((d): d is FontDef => !!d);
+  if (defs.length === 0) return null;
+  const parts = defs.map((d) => {
+    const nom = d.family.trim().replace(/\s+/g, '+');
+    const poids = [...new Set(d.weights)].sort((a, b) => a - b).join(';');
+    return `family=${nom}:wght@${poids}`;
+  });
+  return `https://fonts.googleapis.com/css2?${parts.join('&')}&display=swap`;
+}
+
 /** Familles deja servies par une feuille complete — une balise par famille. */
 const injected = new Map<string, Promise<boolean>>();
 /** Chargements REUSSIS, memorises. Les echecs, eux, doivent pouvoir etre rejoues. */

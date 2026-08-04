@@ -8,6 +8,8 @@ import {
   type PlannedSequence,
 } from '../src/lib/creer/designSpec';
 import SequenceCards from '../src/components/creer/SequenceCards';
+import { fontStack } from '../src/lib/fonts/catalog';
+import { useMontageFonts } from './useMontageFonts';
 
 /**
  * Montage « Créer (simple) » — rendu SERVEUR.
@@ -59,6 +61,10 @@ export interface CreerSimpleMontageProps {
   gradientEnd?: string;
   gradientOpacity?: number;
   titleColor?: string;
+  /** Polices du design — memes noms que le selecteur de l'ecran. */
+  titleFont?: string;
+  subtitleFont?: string;
+  ctaFont?: string;
   watermark?: string;
   introDuration: number;
   cardsDuration: number;
@@ -151,12 +157,20 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
   const echelle = width / editorViewportPx(isReel);
   const titleColor = props.titleColor || DEFAULT_COLORS.title;
 
+  // Les polices du montage, plus Inter — celle des cartes et du filigrane.
+  // Le rendu attend leur chargement : voir `useMontageFonts`.
+  useMontageFonts(['Inter', props.titleFont, props.subtitleFont, props.ctaFont]);
+  const pileTitre = fontStack(props.titleFont || 'Inter');
+  const pileSousTitre = fontStack(props.subtitleFont || props.titleFont || 'Inter');
+  const pileCta = fontStack(props.ctaFont || 'Inter');
+
   return (
     // La famille de police est posee A LA RACINE : sans elle, tout element
     // qui n'en declare pas retombe sur le serif par defaut de Chromium — le
     // filigrane sortait en Times. La police WEB elle-meme (Inter) n'est pas
     // encore embarquee dans le bundle : c'est un point de Phase 2.
-    <AbsoluteFill style={{ backgroundColor: DEFAULT_COLORS.dark, fontFamily: 'Inter, Helvetica, Arial, sans-serif' }}>
+    // La pile de police vient de `fontStack` — la MEME fonction que l'ecran.
+    <AbsoluteFill style={{ backgroundColor: DEFAULT_COLORS.dark, fontFamily: fontStack('Inter') }}>
       {props.musicUrl && <Audio src={props.musicUrl} />}
 
       {sequences.map((seq, i) => {
@@ -183,13 +197,13 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                 <AbsoluteFill
                   style={{
                     justifyContent: 'center', padding: 24 * echelle,
-                    fontFamily: 'Inter, sans-serif',
                   }}
                 >
                   <div
                     style={{
                       color: titleColor, fontWeight: 800, lineHeight: 1.1,
                       fontSize: 34 * echelle, textTransform: 'uppercase',
+                      fontFamily: pileTitre,
                     }}
                   >
                     {props.title}
@@ -199,6 +213,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                       style={{
                         color: 'rgba(255,255,255,0.85)', marginTop: 8 * echelle,
                         fontSize: 12 * echelle, lineHeight: 1.3,
+                        fontFamily: pileSousTitre,
                       }}
                     >
                       {props.subtitle}
@@ -229,7 +244,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                 <AbsoluteFill
                   style={{
                     justifyContent: 'flex-end', alignItems: 'center',
-                    paddingBottom: 60 * echelle, fontFamily: 'Inter, sans-serif',
+                    paddingBottom: 60 * echelle, fontFamily: pileCta,
                   }}
                 >
                   <div style={{ color: '#FFF', fontWeight: 800, fontSize: 12 * echelle, textTransform: 'uppercase' }}>
