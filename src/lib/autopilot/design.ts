@@ -1,7 +1,7 @@
 import {
   DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS, DEFAULT_COLORS, VIDEO_SIZE,
 } from '@/lib/creer/designSpec';
-import { DEFAULT_TRANSITION } from '@/lib/video-composer';
+import { DEFAULT_TRANSITION, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
 import { DEFAULT_TEXT_ANIMATION } from '@/lib/creer/textAnimation';
 import type { CreerSimpleRenderInput } from '@/lib/render/creerSimple';
 import type { PreparedPost } from '@/lib/autopilot/engine';
@@ -96,9 +96,10 @@ export function buildAutopilotMetadata(input: {
   post: PreparedPost;
   design: CreerSimpleRenderInput;
   videoUrl: string;
+  thumbnailUrl?: string | null;
   mode: string;
 }): Record<string, unknown> {
-  const { post, design, videoUrl, mode } = input;
+  const { post, design, videoUrl, thumbnailUrl, mode } = input;
   const taille = VIDEO_SIZE[AUTOPILOT_FORMAT];
   const total = (design.introDuration ?? 0) + (design.cardsDuration ?? 0)
     + (design.videoDuration ?? 0) + (design.ctaDuration ?? 0);
@@ -114,6 +115,26 @@ export function buildAutopilotMetadata(input: {
     // retrouver le montage.
     videoUrl,
     renderedVideoUrl: videoUrl,
+    /**
+     * ⚠️ CES TROIS CHAMPS EMPÊCHENT UNE RECOMPOSITION DESTRUCTRICE.
+     *
+     * Le Calendrier propose « Régénérer le montage » dès qu'un post n'a pas
+     * de `thumbnailUrl`, ou dont le `composerVersion` n'est pas le courant.
+     * Cette régénération recompose DANS LE NAVIGATEUR, en mode rapide — donc
+     * un WebM aux métadonnées temporelles cassées — puis ÉCRASE `media_url`,
+     * `videoUrl` et `renderedVideoUrl`. Un montage serveur parfaitement
+     * lisible se retrouvait remplacé par un fichier illisible, et c'est
+     * exactement ce qui a été observé en production.
+     *
+     * `serverRendered` dit la vérité que les deux autres ne disent pas : ce
+     * montage ne vient pas du compositeur navigateur. Le Calendrier s'en sert
+     * pour ne jamais proposer de le refaire, même après une montée de
+     * version du compositeur.
+     */
+    thumbnailUrl: thumbnailUrl || undefined,
+    posterUrl: thumbnailUrl || undefined,
+    composerVersion: CURRENT_COMPOSER_VERSION,
+    serverRendered: true,
     hasAudio: false,
     videoSize: { w: taille.w, h: taille.h },
     cards: post.content.cards,

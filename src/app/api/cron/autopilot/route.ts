@@ -200,10 +200,10 @@ export async function GET(req: NextRequest) {
         try {
           const design = buildAutopilotDesign(post);
           const jobId = `autopilote-${userId}-${post.scheduledDate}-${Date.now()}`;
-          const { videoUrl, durationFrames } = await renderAndUpload({ userId, jobId, design });
+          const { videoUrl, thumbnailUrl, durationFrames } = await renderAndUpload({ userId, jobId, design });
 
           const metadata = buildAutopilotMetadata({
-            post, design, videoUrl, mode: config.mode,
+            post, design, videoUrl, thumbnailUrl, mode: config.mode,
           });
           const { error: insertError } = await supabaseAdmin
             .from('scheduled_posts')

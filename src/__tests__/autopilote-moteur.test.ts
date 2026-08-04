@@ -98,7 +98,7 @@ describe('La contrainte qui commandait tout', () => {
 
   it('le débit vient APRÈS le rendu et l insertion', () => {
     // Débiter avant ferait payer un rendu qui peut encore échouer.
-    const bloc = route.slice(route.indexOf('const { videoUrl, durationFrames }'));
+    const bloc = route.slice(route.indexOf('const { videoUrl, thumbnailUrl, durationFrames }'));
     expect(bloc.indexOf('.insert(toPostRow(')).toBeLessThan(bloc.indexOf('deductCredits('));
   });
 

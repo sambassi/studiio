@@ -3380,7 +3380,14 @@ export default function CalendarPage() {
               Le bouton n'est JAMAIS proposé pour un post sans source visuelle
               (assistant simple) : il n'y a rien à recomposer, l'aperçu HTML
               léger est le rendu final. */}
-          {postHasVisualSource(fullPreviewPost) && (regenerating
+          {/* ⚠️ JAMAIS sur un montage RENDU CÔTÉ SERVEUR. Cette régénération
+              recompose dans le NAVIGATEUR, en mode rapide : elle produit un
+              WebM aux métadonnées temporelles cassées, puis écrase
+              `media_url`, `videoUrl` et `renderedVideoUrl`. Proposée sur un
+              montage serveur — lisible, en mp4 — elle le remplaçait par un
+              fichier que le navigateur ne sait pas lire. C'est ce qui a été
+              observé sur les brouillons de l'Autopilote. */}
+          {postHasVisualSource(fullPreviewPost) && !meta?.serverRendered && (regenerating
             || !meta?.renderedVideoUrl
             || !meta?.thumbnailUrl
             || meta?.composerVersion !== CURRENT_COMPOSER_VERSION) && (
