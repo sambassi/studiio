@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Search, Upload, Loader2, Music, X, Clock, ShieldCheck, Trash2 } from 'lucide-react';
 import { getExpiresAt, formatRemaining, getRetentionColor, getRetentionBgColor } from '@/lib/storage/retention';
+import { uploadFile } from '@/lib/storage/uploadFile';
 
 type MediaType = 'image' | 'video' | 'audio' | 'all';
 
@@ -113,6 +114,14 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibr
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<MediaType>(mediaType === 'all' ? 'all' : mediaType);
   const [uploading, setUploading] = useState(false);
+  /**
+   * Avancement de l'envoi, de 0 a 100.
+   *
+   * Sur un rush de 75 Mo, un simple « Uploader… » laisse une minute d'ecran
+   * fige : impossible de distinguer un envoi lent d'un envoi mort. C'est
+   * exactement la plainte qui a mene a ce correctif.
+   */
+  const [progress, setProgress] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
 
@@ -169,25 +178,14 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibr
     if (!file) return;
 
     setUploading(true);
+    setProgress(0);
     try {
-      const res = await fetch('/api/upload/signed-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          filename: file.name,
-          contentType: file.type,
-          purpose: 'library',
-        }),
+      // Helper PARTAGE : il choisit tout seul entre l'envoi direct a MinIO
+      // (URL presignee) et le relais applicatif, et rapporte l'avancement.
+      const { publicUrl, mode } = await uploadFile(file, {
+        purpose: 'library',
+        onProgress: setProgress,
       });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error);
-
-      const putRes = await fetch(data.signedUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': file.type },
-        body: file,
-      });
-      if (!putRes.ok) throw new Error(`Supabase PUT ${putRes.status}`);
 
       const uploadType: 'image' | 'video' | 'audio' | undefined = file.type.startsWith('image/')
         ? 'image'
@@ -196,13 +194,15 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibr
           : file.type.startsWith('audio/')
             ? 'audio'
             : undefined;
-      onSelect(data.publicUrl, file.name, uploadType);
+      console.log(`[MediaLibrary] Upload ${mode} termine : ${file.name}`);
+      onSelect(publicUrl, file.name, uploadType);
       onClose();
     } catch (err) {
       console.error('[MediaLibrary] Upload error:', err);
-      alert(`Upload échoué : ${err instanceof Error ? err.message : 'erreur inconnue'}`);
+      alert(err instanceof Error ? err.message : 'Upload échoué');
     } finally {
       setUploading(false);
+      setProgress(0);
       e.target.value = '';
     }
   };
@@ -278,9 +278,21 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibr
               {selected.size === filtered.length ? 'Désélectionner' : 'Tout sélectionner'}
             </button>
           )}
-          <label className={`flex items-center gap-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 px-3 py-2 text-xs font-semibold text-white cursor-pointer transition ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
-            {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-            Uploader
+          <label className={`relative flex items-center gap-1.5 overflow-hidden rounded-lg bg-purple-600 hover:bg-purple-500 px-3 py-2 text-xs font-semibold text-white cursor-pointer transition ${uploading ? 'pointer-events-none' : ''}`}>
+            {/* Barre de progression : une teinte plus claire qui remplit le
+                bouton de gauche a droite. Elle reste DERRIERE le libelle —
+                le pourcentage doit rester lisible pendant tout l'envoi. */}
+            {uploading && (
+              <span
+                aria-hidden
+                className="absolute inset-y-0 left-0 bg-purple-400/60 transition-[width] duration-200"
+                style={{ width: `${progress}%` }}
+              />
+            )}
+            <span className="relative flex items-center gap-1.5">
+              {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+              {uploading ? `Envoi ${progress} %` : 'Uploader'}
+            </span>
             <input type="file" accept={acceptType} onChange={handleUpload} className="hidden" disabled={uploading} />
           </label>
         </div>
