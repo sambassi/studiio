@@ -290,7 +290,10 @@ describe('Bornage : ancrage au CENTRE', () => {
   it('le glissement se borne au PLATEAU, pas au conteneur des cartes', () => {
     // Un element doit pouvoir se poser pres du titre ou du CTA.
     expect(wizard).toContain("(drag?.el === 'card' ? cardsRef : previewRef)");
-    expect(wizard).toContain("clampToBox(raw, 'center', drag.box)");
+    // La position passe désormais par l'aimantation avant d'être bornée —
+    // l'ancre et la boîte de bornage, elles, n'ont pas changé.
+    expect(wizard).toContain("clampToBox(aimante, 'center', drag.box)");
+    expect(wizard).toContain("snapAndGuide(raw, 'center', drag.box, id, rect)");
   });
 });
 
