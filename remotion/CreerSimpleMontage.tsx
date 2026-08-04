@@ -1,0 +1,266 @@
+import React from 'react';
+import {
+  AbsoluteFill, Sequence, Audio, OffthreadVideo, Img, useVideoConfig,
+} from 'remotion';
+import {
+  buildSequences, sequenceFrameOffsets, isReelFormat, editorViewportPx,
+  maxVisibleCards, gradientOverlayCss, DEFAULT_COLORS,
+  type PlannedSequence,
+} from '../src/lib/creer/designSpec';
+
+/**
+ * Montage « Créer (simple) » — rendu SERVEUR.
+ *
+ * Phase 1 : le cœur du montage — ordre et durées des séquences, fonds
+ * (affiche globale, fond par séquence, dégradé), titre, cartes, CTA, musique.
+ *
+ * ⚠️ LA PARITÉ AVEC LE RENDU NAVIGATEUR EST L'ENJEU, pas la beauté du code.
+ * L'ordre et les durées viennent de `buildSequences` — la MÊME fonction
+ * qu'appelle `video-composer.ts`. Deux assemblages indépendants divergeraient
+ * au premier réglage ajouté d'un seul côté, et l'écart ne se verrait qu'en
+ * comparant deux vidéos image par image.
+ *
+ * Ce qui est APPROXIMÉ en Phase 1, et documenté comme tel :
+ *
+ * - Les cartes sont redessinées en HTML/CSS. Le navigateur, lui, blitte une
+ *   PHOTOGRAPHIE du conteneur de l'aperçu (`cardsSnapshot`) : la parité y sera
+ *   toujours une ressemblance, jamais une identité, tant qu'on ne photographie
+ *   pas aussi côté serveur.
+ * - Les transitions entre séquences sont des coupes franches. Le fondu de
+ *   0,8 s du navigateur arrive en phase suivante.
+ * - Animations de texte, éléments libres, voix par séquence et recadrage
+ *   d'affiche ne sont PAS rendus. Ils sont câblés « sans effet » — les props
+ *   existent, le rendu les ignore — pour que la phase suivante n'ait pas à
+ *   changer la signature.
+ */
+
+export interface CreerSimpleCard {
+  icon?: string;
+  title?: string;
+  label?: string;
+  description?: string;
+  value?: string;
+}
+
+export interface CreerSimpleMontageProps {
+  title: string;
+  subtitle?: string;
+  cards: CreerSimpleCard[];
+  ctaText?: string;
+  ctaSubText?: string;
+  /** Affiche globale. */
+  posterUrl?: string | null;
+  /** Fond propre à une séquence — prioritaire sur l'affiche. */
+  sequenceBackgrounds?: Partial<Record<'titre' | 'cartes' | 'video' | 'cta', string | null>>;
+  videoUrl?: string | null;
+  musicUrl?: string | null;
+  gradientStart?: string;
+  gradientEnd?: string;
+  gradientOpacity?: number;
+  titleColor?: string;
+  watermark?: string;
+  introDuration: number;
+  cardsDuration: number;
+  videoDuration: number;
+  ctaDuration: number;
+  sequenceOrder?: string[];
+  /** Durée totale, en images — calculée par `calculateMetadata`. */
+  totalDurationFrames?: number;
+  // ── Phases suivantes : acceptés, non rendus ────────────────────────────
+  /** Non rendu en Phase 1. */
+  textAnimation?: string;
+  /** Non rendu en Phase 1. */
+  transition?: string;
+  /** Non rendu en Phase 1. */
+  elements?: unknown[];
+  /** Non rendu en Phase 1. */
+  sequenceVoiceUrls?: Record<string, string | null>;
+}
+
+/** Séquences du montage, à partir des props. */
+export function planFromProps(props: CreerSimpleMontageProps): PlannedSequence[] {
+  return buildSequences({
+    introDuration: props.introDuration ?? 0,
+    cardsDuration: props.cardsDuration ?? 0,
+    videoDuration: props.videoDuration ?? 0,
+    ctaDuration: props.ctaDuration ?? 0,
+    cardCount: props.cards?.length ?? 0,
+    // Côté serveur, un rush fourni est réputé jouable : Chromium le décode
+    // avec `OffthreadVideo`. Un fichier illisible fera échouer le rendu, ce
+    // qui vaut mieux qu'un montage silencieusement amputé.
+    hasVideoBackground: !!props.videoUrl,
+    videoRequested: !!props.videoUrl,
+    sequenceOrder: props.sequenceOrder ?? null,
+  });
+}
+
+/** Fond effectif d'une séquence : le sien, sinon l'affiche globale. */
+function backgroundFor(props: CreerSimpleMontageProps, type: string): string | null {
+  const cle = ({ intro: 'titre', cards: 'cartes', video: 'video', cta: 'cta' } as const)[
+    type as 'intro' | 'cards' | 'video' | 'cta'
+  ];
+  const propre = cle ? props.sequenceBackgrounds?.[cle] : null;
+  return propre || props.posterUrl || null;
+}
+
+/** Fond + voile, communs à toutes les séquences. */
+const Fond: React.FC<{ props: CreerSimpleMontageProps; type: string }> = ({ props, type }) => {
+  const url = backgroundFor(props, type);
+  const start = props.gradientStart || DEFAULT_COLORS.gradientStart;
+  const end = props.gradientEnd || DEFAULT_COLORS.gradientEnd;
+  return (
+    <>
+      {url ? (
+        <Img src={url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      ) : (
+        // Sans affiche, le dégradé PLEIN tient lieu de fond — c'est ce que
+        // fait le navigateur.
+        <AbsoluteFill style={{ background: `linear-gradient(160deg, ${start} 0%, ${end} 100%)` }} />
+      )}
+      <AbsoluteFill
+        style={{ background: gradientOverlayCss(start, end, props.gradientOpacity ?? 0.3) }}
+      />
+    </>
+  );
+};
+
+/** Filigrane, en bas de cadre. */
+const Filigrane: React.FC<{ texte?: string; echelle: number }> = ({ texte, echelle }) =>
+  texte ? (
+    <div
+      style={{
+        position: 'absolute', bottom: 24 * echelle, left: 0, right: 0,
+        textAlign: 'center', color: 'rgba(255,255,255,0.75)',
+        fontSize: 11 * echelle, letterSpacing: 1 * echelle, fontWeight: 600,
+      }}
+    >
+      {texte}
+    </div>
+  ) : null;
+
+export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => {
+  const { fps, width, height } = useVideoConfig();
+  const sequences = planFromProps(props);
+  const offsets = sequenceFrameOffsets(sequences, fps);
+  const isReel = isReelFormat(width, height);
+  // Même règle d'échelle que le compositeur Canvas : les tailles de l'éditeur
+  // sont des pixels CSS fixes, remises à l'échelle de la vidéo.
+  const echelle = width / editorViewportPx(isReel);
+  const titleColor = props.titleColor || DEFAULT_COLORS.title;
+
+  return (
+    // La famille de police est posee A LA RACINE : sans elle, tout element
+    // qui n'en declare pas retombe sur le serif par defaut de Chromium — le
+    // filigrane sortait en Times. La police WEB elle-meme (Inter) n'est pas
+    // encore embarquee dans le bundle : c'est un point de Phase 2.
+    <AbsoluteFill style={{ backgroundColor: DEFAULT_COLORS.dark, fontFamily: 'Inter, Helvetica, Arial, sans-serif' }}>
+      {props.musicUrl && <Audio src={props.musicUrl} />}
+
+      {sequences.map((seq, i) => {
+        const durationInFrames = Math.max(1, Math.round(seq.duration * fps));
+        return (
+          <Sequence
+            key={`${seq.type}-${i}`}
+            from={offsets[i]}
+            durationInFrames={durationInFrames}
+            name={seq.type}
+          >
+            <AbsoluteFill>
+              {seq.type === 'video' && props.videoUrl ? (
+                <OffthreadVideo
+                  src={props.videoUrl}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  muted
+                />
+              ) : (
+                <Fond props={props} type={seq.type} />
+              )}
+
+              {seq.type === 'intro' && (
+                <AbsoluteFill
+                  style={{
+                    justifyContent: 'center', padding: 24 * echelle,
+                    fontFamily: 'Inter, sans-serif',
+                  }}
+                >
+                  <div
+                    style={{
+                      color: titleColor, fontWeight: 800, lineHeight: 1.1,
+                      fontSize: 34 * echelle, textTransform: 'uppercase',
+                    }}
+                  >
+                    {props.title}
+                  </div>
+                  {props.subtitle && (
+                    <div
+                      style={{
+                        color: 'rgba(255,255,255,0.85)', marginTop: 8 * echelle,
+                        fontSize: 12 * echelle, lineHeight: 1.3,
+                      }}
+                    >
+                      {props.subtitle}
+                    </div>
+                  )}
+                </AbsoluteFill>
+              )}
+
+              {seq.type === 'cards' && (
+                <AbsoluteFill
+                  style={{
+                    justifyContent: 'center', padding: 20 * echelle, gap: 6 * echelle,
+                    display: 'flex', flexDirection: 'column', fontFamily: 'Inter, sans-serif',
+                  }}
+                >
+                  {props.cards.slice(0, maxVisibleCards(isReel)).map((c, k) => (
+                    <div
+                      key={k}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8 * echelle,
+                        background: 'rgba(255,255,255,0.10)', borderRadius: 8 * echelle,
+                        padding: `${8 * echelle}px ${10 * echelle}px`,
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ color: '#FFF', fontWeight: 700, fontSize: 7 * echelle }}>
+                          {c.title || c.label}
+                        </div>
+                        {c.description && (
+                          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 6 * echelle, marginTop: 2 * echelle }}>
+                            {c.description}
+                          </div>
+                        )}
+                      </div>
+                      {c.value && (
+                        <div style={{ color: '#FFF', fontWeight: 800, fontSize: 9 * echelle }}>{c.value}</div>
+                      )}
+                    </div>
+                  ))}
+                </AbsoluteFill>
+              )}
+
+              {seq.type === 'cta' && (
+                <AbsoluteFill
+                  style={{
+                    justifyContent: 'flex-end', alignItems: 'center',
+                    paddingBottom: 60 * echelle, fontFamily: 'Inter, sans-serif',
+                  }}
+                >
+                  <div style={{ color: '#FFF', fontWeight: 800, fontSize: 12 * echelle, textTransform: 'uppercase' }}>
+                    {props.ctaText}
+                  </div>
+                  {props.ctaSubText && (
+                    <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 9 * echelle, marginTop: 4 * echelle }}>
+                      {props.ctaSubText}
+                    </div>
+                  )}
+                </AbsoluteFill>
+              )}
+
+              <Filigrane texte={props.watermark} echelle={echelle} />
+            </AbsoluteFill>
+          </Sequence>
+        );
+      })}
+    </AbsoluteFill>
+  );
+};
