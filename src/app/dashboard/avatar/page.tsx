@@ -13,6 +13,7 @@ import {
   Image as ImageIcon,
   Clapperboard,
 } from 'lucide-react';
+import VoiceCloneRecorder from '@/components/voice/VoiceCloneRecorder';
 
 const AVATAR_VIDEO_COST = 40;
 const MAX_SCRIPT_CHARS = 1200;
@@ -693,6 +694,13 @@ export default function AvatarPage() {
           )}
         </div>
       )}
+
+      {/* ── MA VOIX ──────────────────────────────────────────────────
+          Le clonage vocal est independant de l'avatar : il alimente le
+          selecteur de voix de TOUS les montages, pas seulement cette page.
+          Il est donc affiche des la premiere visite, avant meme qu'un avatar
+          existe. */}
+      <VoiceCloneRecorder />
 
       {/* Aperçu du résultat */}
       {videoUrl && (
