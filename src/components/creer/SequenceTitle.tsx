@@ -1,5 +1,6 @@
 import React from 'react';
 import { fontStack } from '@/lib/fonts/catalog';
+import { revealText } from '@/lib/creer/textAnimation';
 import {
   FONT_RATIO, TEXT_LAYOUT, GAP_RATIO, titleShadow, subtitleShadow,
   leadingTrim, letterSpacingPx, type DesignFormat,
@@ -47,6 +48,7 @@ export default function SequenceTitle({
   subtitleTypography,
   format,
   containerWidth,
+  reveal = 1,
 }: {
   title: string;
   subtitle?: string;
@@ -55,6 +57,16 @@ export default function SequenceTitle({
   format: DesignFormat;
   /** Largeur VIDEO — la meme des deux cotes. */
   containerWidth: number;
+  /**
+   * Part du texte deja ecrite, de 0 a 1 — la machine a ecrire.
+   *
+   * La troncature se fait AVANT la mise en lignes : le retour a la ligne suit
+   * donc la frappe, comme une vraie saisie. C'est ce que fait `drawIntro`, et
+   * le sous-titre s'ecrit avec le titre.
+   *
+   * Defaut 1 : le texte entier, soit le rendu d'aujourd'hui.
+   */
+  reveal?: number;
 }) {
   const vw = containerWidth;
   const weight = typography.bold ? 900 : 400;
@@ -81,7 +93,7 @@ export default function SequenceTitle({
           filter: titleShadow(vw),
         }}
       >
-        {title}
+        {revealText(title, reveal)}
       </div>
       {subtitle && (
         <div
@@ -100,7 +112,7 @@ export default function SequenceTitle({
             filter: subtitleShadow(vw),
           }}
         >
-          {subtitle}
+          {revealText(subtitle, reveal)}
         </div>
       )}
     </>

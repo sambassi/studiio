@@ -1,5 +1,6 @@
 import React from 'react';
 import { fontStack } from '@/lib/fonts/catalog';
+import { revealText } from '@/lib/creer/textAnimation';
 import {
   FONT_RATIO, TEXT_LAYOUT, GAP_RATIO, leadingTrim, letterSpacingPx,
   type DesignFormat,
@@ -33,12 +34,22 @@ export default function SequenceCta({
   typography,
   format,
   containerWidth,
+  reveal = 1,
 }: {
   text: string;
   subText?: string;
   typography: CtaTypography;
   format: DesignFormat;
   containerWidth: number;
+  /**
+   * Part du texte deja ecrite, de 0 a 1 — la machine a ecrire.
+   *
+   * Le SOUS-TEXTE n'est PAS tronque : `drawCTA` n'applique `revealText` qu'a
+   * l'appel principal. Le sous-texte est une mention courte (« lien en bio »)
+   * qui, ecrite lettre a lettre sous un titre qui se tape deja, faisait deux
+   * frappes concurrentes a l'ecran.
+   */
+  reveal?: number;
 }) {
   const vw = containerWidth;
   const weight = typography.bold ? 900 : 400;
@@ -62,7 +73,7 @@ export default function SequenceCta({
           textShadow: `0 0 ${vw * 0.02}px ${typography.color}66`,
         }}
       >
-        {text}
+        {revealText(text, reveal)}
       </div>
       {subText && (
         <div
