@@ -73,6 +73,7 @@ import AutopilotPanel from '@/components/creer/AutopilotPanel';
 import SequenceCards from '@/components/creer/SequenceCards';
 import SequenceTitle, { titleFrameStyle } from '@/components/creer/SequenceTitle';
 import SequenceCta, { ctaFrameStyle } from '@/components/creer/SequenceCta';
+import FreeElementsLayer, { type FreeElement } from '@/components/creer/FreeElementsLayer';
 import { renderSignature, signatureMatches } from '@/lib/creer/renderSignature';
 
 import {
@@ -893,24 +894,16 @@ export function clampPosterTransform(t: Partial<PosterTransform> | undefined): P
   return { scale, offsetX: borne(Number(t?.offsetX) || 0), offsetY: borne(Number(t?.offsetY) || 0) };
 }
 
-export interface FreeElement {
-  id: string;
-  iconName: string;
-  /** Centre de l'element, en % du PLATEAU — la composition entiere. */
-  x: number;
-  y: number;
-  /**
-   * Cote de l'icone, en % de la LARGEUR du plateau.
-   *
-   * En pourcentage et non en pixels : un montage change de format sans changer
-   * d'elements, et une taille en px vaudrait le double en 16:9. Le nom differe
-   * volontairement du `size` d'une version anterieure, qui etait en pixels :
-   * un brouillon ecrit avec l'ancienne unite est ainsi ecarte a la relecture
-   * plutot que rejoue a une echelle absurde.
-   */
-  sizePct: number;
-  color: string;
-}
+/**
+ * Element libre — defini avec le composant PARTAGE qui le rend.
+ *
+ * Re-exporte ici : le type etait ne dans cette page, et plusieurs modules
+ * l'importent encore de la. Le nom `sizePct` differe volontairement du `size`
+ * d'une version anterieure, qui etait en pixels : un brouillon ecrit avec
+ * l'ancienne unite est ainsi ecarte a la relecture plutot que rejoue a une
+ * echelle absurde.
+ */
+export type { FreeElement };
 
 /** Taille d'un element a la pose, en % de la largeur du plateau. */
 const ELEMENT_SIZE_PCT = (64 / 330) * 100;
@@ -1600,103 +1593,92 @@ export function Preview({
                 cartes : le compositeur les peint desormais lui-meme sur les
                 quatre sequences, ils n'ont donc plus a entrer dans la photo
                 des cartes — ils y seraient meme dessines deux fois.
-                Rendus quel que soit l'onglet d'apercu, comme dans la video. */}
-            {(elements ?? []).map((el) => (
-              <div
-                key={el.id}
-                data-free-element={el.id}
-                onPointerDown={(e) => onElementDragStart?.(el.id, e)}
-                onPointerMove={onDragMove}
-                onPointerUp={onDragEnd}
-                onPointerCancel={onDragEnd}
-                onLostPointerCapture={onDragEnd}
-                title={onElementDragStart ? 'Glisser pour déplacer l’élément' : undefined}
-                style={{
-                  position: 'absolute',
-                  left: `${el.x}%`,
-                  top: `${el.y}%`,
-                  transform: 'translate(-50%, -50%)',
-                  lineHeight: 0,
-                  cursor: onElementDragStart ? 'grab' : undefined,
-                  touchAction: onElementDragStart ? 'none' : undefined,
-                  // Au-dessus du titre et du CTA (zIndex 2) : un element
-                  // depose sur eux doit rester saisissable.
-                  zIndex: 4,
-                  outline:
-                    !capturing && selectedElementId === el.id
-                      ? `${uiPx(2)}px solid #FFFFFF`
-                      : undefined,
-                  outlineOffset: uiPx(2),
-                }}
-              >
-                <CardIcon
-                  name={el.iconName}
-                  size={Math.round((el.sizePct / 100) * vw)}
-                  color={el.color}
-                  className=""
-                />
-                {/* Poignees de coin — redimensionnement a la souris.
-                    Elles arretent la propagation : sans cela, la prise
-                    deplacerait l'element au lieu de le redimensionner. */}
-                {!capturing && onElementResizeStart && selectedElementId === el.id
-                  && ([
-                    { coin: 'nw', top: 0, left: 0 },
-                    { coin: 'ne', top: 0, left: '100%' },
-                    { coin: 'sw', top: '100%', left: 0 },
-                    { coin: 'se', top: '100%', left: '100%' },
-                  ] as const).map((p) => (
-                    <span
-                      key={p.coin}
-                      data-element-handle={p.coin}
-                      onPointerDown={(e) => { e.stopPropagation(); onElementResizeStart(el.id, e); }}
-                      onPointerMove={onDragMove}
-                      onPointerUp={onDragEnd}
-                      onPointerCancel={onDragEnd}
-                      onLostPointerCapture={onDragEnd}
-                      title="Tirer pour redimensionner"
-                      style={{
-                        position: 'absolute',
-                        top: p.top,
-                        left: p.left,
-                        width: uiPx(9),
-                        height: uiPx(9),
-                        marginTop: -uiPx(4.5),
-                        marginLeft: -uiPx(4.5),
-                        backgroundColor: '#FFFFFF',
-                        border: `${uiPx(1)}px solid rgba(0,0,0,0.5)`,
-                        borderRadius: uiPx(2),
-                        cursor: p.coin === 'nw' || p.coin === 'se' ? 'nwse-resize' : 'nesw-resize',
-                        touchAction: 'none',
-                        zIndex: 5,
-                      }}
-                    />
-                  ))}
-                {!capturing && onElementDelete && selectedElementId === el.id && (
-                  <button
-                    type="button"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => { e.stopPropagation(); onElementDelete(el.id); }}
-                    title="Supprimer l’élément"
-                    style={{
-                      position: 'absolute',
-                      top: -uiPx(10),
-                      right: -uiPx(10),
-                      width: uiPx(18),
-                      height: uiPx(18),
-                      borderRadius: '9999px',
-                      backgroundColor: '#DC2626',
-                      color: '#FFFFFF',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      lineHeight: 0,
-                    }}
-                  >
-                    <X style={{ width: uiPx(11), height: uiPx(11) }} />
-                  </button>
-                )}
-              </div>
-            ))}
+                Rendus quel que soit l'onglet d'apercu, comme dans la video.
+
+                Depuis la Phase 5 du rendu serveur, le rendu lui-meme vit dans
+                `FreeElementsLayer`, partage avec la composition Remotion : le
+                MEME composant produit la meme image des deux cotes. Les aides
+                d'edition passent par `interaction`, absent cote serveur. */}
+            <FreeElementsLayer
+              elements={elements ?? []}
+              containerWidth={vw}
+              interaction={{
+                onElementDragStart,
+                onDragMove,
+                onDragEnd,
+                selectedElementId,
+                capturing,
+                uiPx,
+                // Poignees et bouton de suppression : ils vivent dans le
+                // repere de l'element, mais restent ECRITS ici — cote
+                // serveur, `interaction` est absent et rien de tout cela
+                // n'existe.
+                renderChrome: (el) => (
+                  <>
+                    {/* Poignees de coin — redimensionnement a la souris.
+                        Elles arretent la propagation : sans cela, la prise
+                        deplacerait l'element au lieu de le redimensionner. */}
+                    {!capturing && onElementResizeStart && selectedElementId === el.id
+                      && ([
+                        { coin: 'nw', top: 0, left: 0 },
+                        { coin: 'ne', top: 0, left: '100%' },
+                        { coin: 'sw', top: '100%', left: 0 },
+                        { coin: 'se', top: '100%', left: '100%' },
+                      ] as const).map((p) => (
+                        <span
+                          key={p.coin}
+                          data-element-handle={p.coin}
+                          onPointerDown={(e) => { e.stopPropagation(); onElementResizeStart(el.id, e); }}
+                          onPointerMove={onDragMove}
+                          onPointerUp={onDragEnd}
+                          onPointerCancel={onDragEnd}
+                          onLostPointerCapture={onDragEnd}
+                          title="Tirer pour redimensionner"
+                          style={{
+                            position: 'absolute',
+                            top: p.top,
+                            left: p.left,
+                            width: uiPx(9),
+                            height: uiPx(9),
+                            marginTop: -uiPx(4.5),
+                            marginLeft: -uiPx(4.5),
+                            backgroundColor: '#FFFFFF',
+                            border: `${uiPx(1)}px solid rgba(0,0,0,0.5)`,
+                            borderRadius: uiPx(2),
+                            cursor: p.coin === 'nw' || p.coin === 'se' ? 'nwse-resize' : 'nesw-resize',
+                            touchAction: 'none',
+                            zIndex: 5,
+                          }}
+                        />
+                      ))}
+                    {!capturing && onElementDelete && selectedElementId === el.id && (
+                      <button
+                        type="button"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => { e.stopPropagation(); onElementDelete(el.id); }}
+                        title="Supprimer l’élément"
+                        style={{
+                          position: 'absolute',
+                          top: -uiPx(10),
+                          right: -uiPx(10),
+                          width: uiPx(18),
+                          height: uiPx(18),
+                          borderRadius: '9999px',
+                          backgroundColor: '#DC2626',
+                          color: '#FFFFFF',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          lineHeight: 0,
+                        }}
+                      >
+                        <X style={{ width: uiPx(11), height: uiPx(11) }} />
+                      </button>
+                    )}
+                  </>
+                ),
+              }}
+            />
 
             {/* Filigrane — le compositeur le peint sur CHAQUE sequence, au
                 centre a 95 % de la hauteur. Mêmes police, graisse et opacite
