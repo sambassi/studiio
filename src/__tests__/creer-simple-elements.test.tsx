@@ -28,6 +28,15 @@ const wizard = readFileSync(
   resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
   'utf-8',
 );
+/**
+ * Depuis la Phase 5 du rendu serveur, le rendu d'un element vit dans un
+ * composant PARTAGE avec la composition Remotion. Le DOM verifie ci-dessous
+ * ne bouge pas ; seule l'origine du code change.
+ */
+const couche = readFileSync(
+  resolve(__dirname, '../components/creer/FreeElementsLayer.tsx'),
+  'utf-8',
+);
 
 const generated = {
   title: 'Routine matin',
@@ -105,7 +114,7 @@ describe('Les éléments vivent sur le PLATEAU, hors du cliché des cartes', () 
   it('chaque élément rend une icône lucide, jamais un emoji', () => {
     render(<Preview {...props} elements={elements} />);
     for (const el of poses()) expect(el.querySelector('svg')).not.toBeNull();
-    expect(wizard).toContain('name={el.iconName}');
+    expect(couche).toContain('name={el.iconName}');
   });
 
 
@@ -486,7 +495,7 @@ describe('Couleur d un élément', () => {
     const svg = poses()[0].querySelector('svg')!;
     const teinte = svg.getAttribute('stroke') || svg.style.color || getComputedStyle(svg).color;
     expect(teinte).toBeTruthy();
-    expect(wizard).toContain('color={el.color}');
+    expect(couche).toContain('color={el.color}');
   });
 
   it('les éléments déjà posés gardent leur couleur', () => {

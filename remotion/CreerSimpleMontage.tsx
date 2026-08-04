@@ -10,6 +10,7 @@ import {
 import SequenceCards from '../src/components/creer/SequenceCards';
 import SequenceTitle, { titleFrameStyle } from '../src/components/creer/SequenceTitle';
 import SequenceCta, { ctaFrameStyle } from '../src/components/creer/SequenceCta';
+import FreeElementsLayer, { type FreeElement } from '../src/components/creer/FreeElementsLayer';
 import { TEXT_LAYOUT } from '../src/lib/creer/designSpec';
 import { fontStack } from '../src/lib/fonts/catalog';
 import { useMontageFonts } from './useMontageFonts';
@@ -102,8 +103,13 @@ export interface CreerSimpleMontageProps {
   textAnimation?: string;
   /** Non rendu en Phase 1. */
   transition?: string;
-  /** Non rendu en Phase 1. */
-  elements?: unknown[];
+  /**
+   * Elements libres — rendus depuis la Phase 5, par le composant PARTAGE.
+   *
+   * Sur TOUTES les sequences, comme le compositeur canvas qui appelle
+   * `drawFreeElements` a la fin de chacune d'elles.
+   */
+  elements?: FreeElement[];
   /** Non rendu en Phase 1. */
   sequenceVoiceUrls?: Record<string, string | null>;
 }
@@ -280,6 +286,14 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                   />
                 </div>
               )}
+
+              {/* Elements libres — le MEME composant que l'apercu, sur les
+                  quatre sequences. Places AVANT le filigrane : le compositeur
+                  canvas peint le texte de site apres eux, donc par-dessus. */}
+              <FreeElementsLayer
+                elements={props.elements ?? []}
+                containerWidth={width}
+              />
 
               <Filigrane texte={props.watermark} echelle={echelle} />
             </AbsoluteFill>
