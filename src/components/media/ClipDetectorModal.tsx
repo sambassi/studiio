@@ -24,6 +24,7 @@ import {
   X,
 } from 'lucide-react';
 import { detectClips, extractClip, type DetectedClip } from '@/lib/clip-detector';
+import { uploadFile } from '@/lib/storage/uploadFile';
 import {
   clampBounds, effectiveBounds, isTrimmed, timeToRatio, ratioToTime, boundsLabel,
   type Bounds,
@@ -106,35 +107,17 @@ function clipFilename(sourceName: string, index: number): string {
  * Une erreur réseau/CORS sur le HEAD est tolérée (on ne peut pas conclure),
  * mais un statut explicite d'échec (404, 403…) fait échouer l'étape.
  */
-async function uploadClip(file: File): Promise<ExtractedClip> {
-  const res = await fetch('/api/upload/signed-url', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      filename: file.name,
-      contentType: file.type || 'video/webm',
-      purpose: 'clip',
-    }),
-  });
-  const data = await res.json();
-  if (!res.ok || !data?.success) {
-    throw new Error(data?.error || `signed-url ${res.status}`);
-  }
-
-  // Pas de `credentials: 'include'` — même contrat que MediaLibrary.tsx. En s3
-  // le signedUrl est relatif (le cookie de session part déjà en same-origin) ;
-  // sur le chemin Supabase legacy il est cross-origin, et `include` y ferait
-  // échouer le CORS faute de `Access-Control-Allow-Credentials`.
-  const put = await fetch(data.signedUrl, {
-    method: 'PUT',
-    headers: { 'Content-Type': file.type || 'video/webm' },
-    body: file,
-  });
-  if (!put.ok) throw new Error(`upload ${put.status}`);
+async function uploadClip(file: File, onProgress?: (p: number) => void): Promise<ExtractedClip> {
+  // Le helper partage decide seul entre l'envoi direct (URL presignee) et le
+  // relais applicatif, et n'envoie les identifiants de session QUE sur le
+  // relais : sur le chemin Supabase historique l'URL est cross-origin, et
+  // `withCredentials` y ferait echouer le CORS faute de
+  // `Access-Control-Allow-Credentials`.
+  const { publicUrl } = await uploadFile(file, { purpose: 'clip', onProgress });
 
   let head: Response | null = null;
   try {
-    head = await fetch(data.publicUrl, { method: 'HEAD' });
+    head = await fetch(publicUrl, { method: 'HEAD' });
   } catch {
     head = null; // réseau/CORS : on ne peut pas conclure, on n'échoue pas
   }
@@ -142,7 +125,7 @@ async function uploadClip(file: File): Promise<ExtractedClip> {
     throw new Error(`fichier introuvable après upload (${head.status})`);
   }
 
-  return { url: data.publicUrl as string, name: file.name };
+  return { url: publicUrl, name: file.name };
 }
 
 export default function ClipDetectorModal({
@@ -395,7 +378,8 @@ export default function ClipDetectorModal({
           type: 'video/webm',
         });
         setStage(`Envoi ${i + 1}/${chosen.length}…`);
-        const uploaded = await uploadClip(named);
+        const uploaded = await uploadClip(named, (p) =>
+          setStage(`Envoi ${i + 1}/${chosen.length} — ${p} %`));
         if (aborted()) break;
         done.push(uploaded);
         doneIds.push(clip.id);

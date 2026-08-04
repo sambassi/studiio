@@ -20,6 +20,7 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react';
+import { uploadFile } from '@/lib/storage/uploadFile';
 import ClipDetectorModal, {
   type ClipSource,
 } from '@/components/media/ClipDetectorModal';
@@ -122,27 +123,16 @@ export default function MediaPage() {
     try {
       for (let i = 0; i < picked.length; i++) {
         const file = picked[i];
+        // Le pourcentage du fichier COURANT, en plus du rang dans le lot :
+        // sur des rushes de plusieurs dizaines de mégaoctets, « 3/5 » seul
+        // laisse croire a un blocage pendant toute la duree d'un envoi.
         setUploadStage(`Envoi ${i + 1}/${picked.length} — ${file.name}`);
-        const res = await fetch('/api/upload/signed-url', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            filename: file.name,
-            contentType: file.type || 'video/mp4',
-            purpose: 'rush',
-          }),
+        await uploadFile(file, {
+          purpose: 'rush',
+          onProgress: (p) => setUploadStage(
+            `Envoi ${i + 1}/${picked.length} — ${file.name} (${p} %)`,
+          ),
         });
-        const data = await res.json();
-        if (!res.ok || !data?.success) throw new Error(data?.error || `signed-url ${res.status}`);
-
-        // Pas de `credentials: 'include'` — même contrat que MediaLibrary.tsx
-        // (cf. commentaire dans ClipDetectorModal.uploadClip).
-        const put = await fetch(data.signedUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': file.type || 'video/mp4' },
-          body: file,
-        });
-        if (!put.ok) throw new Error(`upload ${put.status}`);
         ok++;
       }
       setNotice({
