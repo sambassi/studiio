@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Mic, Square, Sparkles, Loader2, Trash2, Play, Pause, AlertTriangle, Info, Check } from 'lucide-react';
 import { TTS_VOICES, synthesize, type TtsVoice } from '@/lib/tts/edge-tts-client';
-import { compareVoiceToSequence, voiceFitMessage } from '@/lib/creer/voiceFit';
+import { compareVoiceToSequence, voiceFitMessage, estimateLabel } from '@/lib/creer/voiceFit';
 import {
   fetchCustomVoices,
   isHeyGenVoiceId,
@@ -512,6 +512,15 @@ export function SequenceVoicesPanel({
                   overrun ? 'text-orange-300' : fit?.status === 'ok' ? 'text-emerald-300' : 'text-gray-400'
                 }`}>
                   {seqDur}s {sv.audioUrl && `/ ${audioDur.toFixed(1)}s audio`}
+                  {/* Estimation AVANT generation : elle previent qu'un texte
+                      est trop long sans avoir a depenser un appel TTS. Elle
+                      s'efface des que la duree reelle est connue, qui seule
+                      fait foi. */}
+                  {!sv.audioUrl && estimateLabel(sv.text) && (
+                    <span data-testid={`voice-estimate-${key}`} className="text-gray-500">
+                      {' '}· {estimateLabel(sv.text)}
+                    </span>
+                  )}
                 </span>
               </div>
 

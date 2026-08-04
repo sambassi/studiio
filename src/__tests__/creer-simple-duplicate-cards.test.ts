@@ -180,7 +180,10 @@ describe('Câblage', () => {
   });
 
   it('un nouveau montage efface la notice', () => {
-    const reset = wizard.slice(wizard.indexOf('const reset = ()'), wizard.indexOf('const reset = ()') + 900);
+    // Fenetre large : `reset` s'allonge a chaque etat nouveau, et une borne
+    // en dur finissait par tronquer la ligne cherchee.
+    const debut = wizard.indexOf('const reset = ()');
+    const reset = wizard.slice(debut, wizard.indexOf('\n  };', debut));
     expect(reset).toContain('setDuplicateNotice(null)');
   });
 });
