@@ -21,6 +21,8 @@ const wizardSource = readFileSync(
 );
 
 const composerSource = readFileSync(resolve(__dirname, '../lib/video-composer.ts'), 'utf-8');
+/** Les durees par defaut vivent dans la specification partagee. */
+const spec = readFileSync(resolve(__dirname, '../lib/creer/designSpec.ts'), 'utf-8');
 
 describe('Créer (simple) — import d’un rush', () => {
   it('passe le rush au compositeur via `videoUrl`', () => {
@@ -76,7 +78,10 @@ describe('Créer (simple) — import d’un rush', () => {
   it('borne la durée de la séquence vidéo entre 1 et 10 s', () => {
     // Un rush d'une minute ne doit pas transformer un reel de 14 s en montage
     // d'une minute.
-    expect(wizardSource).toMatch(/RUSH_SECONDS\s*=\s*\{[^}]*min:\s*1[^}]*max:\s*10/s);
+    // Les bornes vivent desormais dans `designSpec`, partagees avec
+    // l'Autopilote qui compose sans ecran.
+    expect(spec).toMatch(/RUSH_SEQUENCE_SECONDS\s*=\s*\{[^}]*min:\s*1[^}]*max:\s*10/s);
+    expect(wizardSource).toContain('const RUSH_SECONDS = RUSH_SEQUENCE_SECONDS;');
     expect(wizardSource).toMatch(
       /Math\.min\(Math\.max\(Math\.round\(probed\), RUSH_SECONDS\.min\), RUSH_SECONDS\.max\)/,
     );
@@ -101,7 +106,8 @@ describe('Créer (simple) — import d’un rush', () => {
   it('reste STRICTEMENT inchangé tant qu’aucun rush n’est importé', () => {
     // Rétro-compat : la séquence vidéo part masquée, à durée nulle, et
     // `videoUrl` vaut `undefined` — exactement l'état d'avant cet ajout.
-    expect(wizardSource).toMatch(/video:\s*0,\s*cta/);
+    expect(spec).toMatch(/DEFAULT_SEQUENCE_SECONDS\s*=\s*\{[^}]*video:\s*0,\s*cta/s);
+    expect(wizardSource).toContain('const SEQ = DEFAULT_SEQUENCE_SECONDS;');
     expect(wizardSource).toMatch(/\{ key: 'video', enabled: false \}/);
     expect(wizardSource).toMatch(/const \[rushUrl, setRushUrl\] = useState<string \| null>\(null\)/);
   });

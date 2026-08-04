@@ -5,28 +5,30 @@ import {
   preparePosts, toPostRow, slotDate, contentSeed, DEFAULT_SLOT_TIME,
 } from '@/lib/autopilot/engine';
 import { DEFAULT_CONFIG, type AutopilotConfig } from '@/lib/autopilot/rules';
+import { buildAutopilotDesign, buildAutopilotMetadata } from '@/lib/autopilot/design';
 
 /**
  * Moteur de l'Autopilote.
  *
- * ⚠️ **Il ne compose pas la vidéo, et ce n'est pas un choix.**
+ * ⚠️ **LA CONTRAINTE QUI COMMANDAIT TOUT A ÉTÉ LEVÉE.**
  *
- * `composeVideo` est un compositeur de NAVIGATEUR — Canvas, `MediaRecorder`,
- * `document.createElement`. Une route Next tourne dans Node : elle ne peut
- * pas l'exécuter. Et les cartes du Mode simple sont une **photographie du
- * DOM** de l'aperçu, qui n'existe pas dans un cron.
+ * Ce fichier verrouillait deux règles — statut toujours `draft`, aucun crédit
+ * débité — parce que le moteur ne pouvait pas rendre : `composeVideo` est un
+ * compositeur de NAVIGATEUR (Canvas, `MediaRecorder`, `document`) qu'une
+ * route Next ne peut pas exécuter, et les cartes du Mode simple étaient une
+ * photographie du DOM de l'aperçu.
  *
- * Deux conséquences que ces tests verrouillent, parce qu'elles seraient
- * autrement corrigées « à l'envers » par quelqu'un qui n'aurait pas la
- * contrainte en tête :
+ * La composition Remotion `creer-simple-montage` rend désormais le même
+ * montage sous Chromium sans tête. Les deux règles tombent **ensemble**, et
+ * pour la même raison :
  *
- * 1. Le statut est **toujours `draft`**, même en mode « publier
- *    automatiquement » : `/api/cron/publish` refuse un post sans média sur
- *    une plateforme sociale (`if (!videoUrl && requiresSocialAccount(…))`).
- *    Programmer une publication vouée à échouer serait pire que d'annoncer
- *    qu'il reste une étape.
- * 2. **Aucun crédit n'est débité** : rien n'a été rendu, et la composition
- *    débitera à son tour.
+ * 1. Le statut suit enfin le MODE. Il était forcé à `draft` parce que
+ *    `/api/cron/publish` refuse un post sans média — le post en a un.
+ * 2. Les crédits sont débités, comme pour un rendu manuel.
+ *
+ * Ce que les tests continuent de verrouiller : le compositeur NAVIGATEUR
+ * n'est toujours pas appelé depuis le cron. Ce chemin-là reste impossible ;
+ * seule la route par Remotion a été ouverte.
  */
 
 const engine = readFileSync(resolve(__dirname, '../lib/autopilot/engine.ts'), 'utf-8');
@@ -42,16 +44,39 @@ const cfg = (p: Partial<AutopilotConfig> = {}): AutopilotConfig => ({
   ...p,
 });
 
-describe('La contrainte qui commande tout', () => {
-  it('le compositeur est bien un compositeur de NAVIGATEUR', () => {
+/** Une ligne de post complète, montage réputé rendu. */
+const ligne = (c: AutopilotConfig, index = 0) => {
+  const post = preparePosts({ config: c, topic: 'yoga', count: index + 1, now: T0 })[index];
+  const design = buildAutopilotDesign(post);
+  const videoUrl = 'https://cdn.test/rendu.mp4';
+  return toPostRow({
+    userId: 'u1',
+    post,
+    config: c,
+    videoUrl,
+    metadata: buildAutopilotMetadata({ post, design, videoUrl, mode: c.mode }),
+  });
+};
+
+describe('La contrainte qui commandait tout', () => {
+  it('le compositeur navigateur reste un compositeur de NAVIGATEUR', () => {
     const composer = readFileSync(resolve(__dirname, '../lib/video-composer.ts'), 'utf-8');
     expect(composer).toContain('Client-side video composer using Canvas + MediaRecorder');
     expect(composer).toContain("document.createElement('video')");
   });
 
-  it('le cron de publication REFUSE un post sans média', () => {
-    // C'est ce qui interdit de programmer une publication ici.
+  it('le cron de publication REFUSE toujours un post sans média', () => {
+    // C'est ce qui interdisait de programmer une publication. La règle n'a
+    // pas bougé : c'est le post qui porte désormais son média.
     expect(publish).toContain('if (!videoUrl && requiresSocialAccount(post.platforms))');
+  });
+
+  it('le rendu passe par REMOTION, pas par le navigateur', () => {
+    const rendu = readFileSync(resolve(__dirname, '../lib/autopilot/render.ts'), 'utf-8');
+    expect(rendu).toContain("await import('@/lib/render/creerSimple')");
+    // Imports DYNAMIQUES : `@remotion/bundler` est externalisé dans
+    // `next.config.js`, un import en tête de module casse le build.
+    expect(rendu).not.toContain("from '@remotion/");
   });
 
   it('le moteur n appelle donc jamais le compositeur', () => {
@@ -65,37 +90,50 @@ describe('La contrainte qui commande tout', () => {
     }
   });
 
-  it('et il ne débite AUCUN crédit', () => {
-    // Débiter un brouillon que l'utilisateur doit encore composer le ferait
-    // payer deux fois.
-    expect(route).not.toContain('deductCredits');
-    expect(route).toContain('sert au calcul du plancher, pas a debiter');
+  it('et il débite MAINTENANT, comme un rendu manuel', () => {
+    // Le montage est rendu et en ligne : il se paie, au même tarif.
+    expect(route).toContain('deductCredits(userId, COST_PER_VIDEO');
+    expect(route).toContain("getVideoRenderCost('reel')");
+  });
+
+  it('le débit vient APRÈS le rendu et l insertion', () => {
+    // Débiter avant ferait payer un rendu qui peut encore échouer.
+    const bloc = route.slice(route.indexOf('const { videoUrl, durationFrames }'));
+    expect(bloc.indexOf('.insert(toPostRow(')).toBeLessThan(bloc.indexOf('deductCredits('));
+  });
+
+  it('un débit manqué ne retire pas le montage livré', () => {
+    expect(route).toContain('debit manque pour');
   });
 });
 
-describe('Le statut est toujours « brouillon »', () => {
-  it('en mode « me laisser valider »', () => {
-    const p = preparePosts({ config: cfg({ mode: 'review' }), topic: 'yoga', count: 1, now: T0 });
-    expect(toPostRow('u1', p[0], cfg({ mode: 'review' })).status).toBe('draft');
+describe('Le statut suit enfin le MODE', () => {
+  it('« me laisser valider » dépose un brouillon — et reste le défaut', () => {
+    expect(DEFAULT_CONFIG.mode).toBe('review');
+    expect(ligne(cfg({ mode: 'review' })).status).toBe('draft');
   });
 
-  it('ET en mode « publier automatiquement »', () => {
-    const c = cfg({ mode: 'auto' });
-    const p = preparePosts({ config: c, topic: 'yoga', count: 1, now: T0 });
-    expect(toPostRow('u1', p[0], c).status).toBe('draft');
+  it('« publier automatiquement » programme', () => {
+    expect(ligne(cfg({ mode: 'auto' })).status).toBe('scheduled');
   });
 
-  it('mais le mode voulu est conservé pour l après-composition', () => {
-    const c = cfg({ mode: 'auto' });
-    const row = toPostRow('u1', preparePosts({ config: c, topic: 'yoga', count: 1, now: T0 })[0], c);
-    expect(row.metadata.autopilotMode).toBe('auto');
-    expect(row.metadata.pendingRender).toBe(true);
+  it('le post porte son média des DEUX côtés', () => {
+    // Le Calendrier lit `media_url` ou `metadata.videoUrl` selon l'écran :
+    // n'en renseigner qu'un donne un post visible à un endroit seulement.
+    const row = ligne(cfg());
+    expect(row.media_url).toBe('https://cdn.test/rendu.mp4');
+    expect(row.metadata.videoUrl).toBe('https://cdn.test/rendu.mp4');
+    expect(row.metadata.renderedVideoUrl).toBe('https://cdn.test/rendu.mp4');
+  });
+
+  it('plus rien n attend le navigateur', () => {
+    expect(ligne(cfg()).metadata.pendingRender).toBe(false);
   });
 
   it('le post se reconnaît comme venant de l Autopilote', () => {
-    const c = cfg();
-    const row = toPostRow('u1', preparePosts({ config: c, topic: 'yoga', count: 1, now: T0 })[0], c);
+    const row = ligne(cfg());
     expect(row.metadata.source).toBe('autopilote');
+    expect(row.metadata.autopilotMode).toBe('review');
     expect(row.agent_generated).toBe(true);
   });
 });
@@ -148,7 +186,7 @@ describe('La rotation des rushes dans un cycle', () => {
 
   it('le rush choisi devient la séquence Vidéo à la composition', () => {
     const c = cfg();
-    const row = toPostRow('u1', preparePosts({ config: c, topic: 'yoga', count: 1, now: T0 })[0], c);
+    const row = ligne(c);
     // Aucun rush precedent : la rotation demarre sur le PREMIER.
     expect(row.metadata.rushUrls).toEqual([c.rushUrls[0]]);
     expect(row.metadata.rawVideoUrl).toBe(c.rushUrls[0]);
@@ -158,7 +196,7 @@ describe('La rotation des rushes dans un cycle', () => {
     // `decideRun` refuse déjà ce cas ; le moteur ne doit pas produire de
     // référence morte s'il est appelé autrement.
     const c = cfg({ rushUrls: [] });
-    const row = toPostRow('u1', preparePosts({ config: c, topic: 'yoga', count: 1, now: T0 })[0], c);
+    const row = ligne(c);
     expect(row.metadata.rushUrls).toEqual([]);
     expect(row.metadata.rawVideoUrl).toBeUndefined();
   });
@@ -188,18 +226,32 @@ describe('La route', () => {
     expect(route).toContain('sendEmailSilent({');
   });
 
-  it('un échec d écriture NE fait PAS avancer la cadence', () => {
+  it('un cycle ENTIÈREMENT raté ne fait PAS avancer la cadence', () => {
     // Sinon l'utilisateur perdrait un cycle entier sur une panne passagère.
-    const debut = route.indexOf('if (insertError) {');
-    const bloc = route.slice(debut, route.indexOf('continue;', debut) + 10);
-    expect(bloc).toContain('continue;');
-    // Le bloc d'echec ne touche pas a la cadence.
-    expect(bloc).not.toContain('last_run_at:');
+    expect(route).toContain('if (reussis > 0) {');
+    const bloc = route.slice(route.indexOf('if (reussis > 0) {'));
+    expect(bloc).toContain('last_run_at:');
   });
 
   it('la cadence avance après un passage réussi, et la rotation se souvient', () => {
     expect(route).toContain('last_run_at: new Date(now).toISOString(),');
-    expect(route).toContain('last_rush_url: posts[posts.length - 1]?.rushUrl ?? config.lastRushUrl,');
+    // Le dernier rush RÉELLEMENT utilisé : un rush dont le rendu a échoué ne
+    // doit pas faire avancer la rotation.
+    expect(route).toContain('last_rush_url: dernierRush,');
+    expect(route).toContain('dernierRush = post.rushUrl ?? dernierRush;');
+  });
+
+  it('chaque montage est isolé — un échec n emporte pas le cycle', () => {
+    const bloc = route.slice(route.indexOf('for (const post of posts) {'));
+    expect(bloc).toContain('} catch (err) {');
+    expect(bloc).toContain('echecs += 1;');
+  });
+
+  it('un créneau déjà produit n est pas refait', () => {
+    // La cadence ne protège de rien si `last_run_at` n'a pas pu être écrit
+    // APRÈS l'insertion — et c'est l'ordre réel des opérations.
+    expect(route).toContain('if (dejaFaits.has(jeton)) {');
+    expect(route).toContain('doublons += 1;');
   });
 
   it('sans la table, elle le dit en 503 plutôt que de planter', () => {
@@ -208,7 +260,8 @@ describe('La route', () => {
 
   it('elle rend un rapport par compte', () => {
     expect(route).toContain('rapport.push({ userId, prepares: 0, saute: decision.reason });');
-    expect(route).toContain('pendingRender: total > 0');
+    expect(route).toContain('rendus: total,');
+    expect(route).toContain('echecs: rates,');
   });
 
   it('elle valide la configuration relue avec le MÊME code que l écran', () => {
