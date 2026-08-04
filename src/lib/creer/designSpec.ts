@@ -38,6 +38,26 @@ export const DEFAULT_DURATIONS = { intro: 4, cards: 6, video: 10, cta: 4 } as co
 export const TRANSITION_SECONDS = 0.8;
 
 /**
+ * Durées de séquence par défaut du Mode simple, en secondes.
+ *
+ * Partagées parce que l'Autopilote compose sans écran : il n'a personne pour
+ * régler les curseurs, et doit produire le MÊME montage que celui qu'un
+ * utilisateur obtiendrait en ouvrant l'assistant sans rien toucher. Les
+ * redire de son côté aurait fait deux montages « par défaut » différents.
+ */
+export const DEFAULT_SEQUENCE_SECONDS = { intro: 4, cards: 6, video: 0, cta: 4 } as const;
+
+/**
+ * Durée de la séquence vidéo, en secondes.
+ *
+ * `fallback` sert quand la durée du rush est illisible — et c'est le cas de
+ * l'Autopilote, qui ne décode pas le fichier. `min`/`max` bornent ce qu'on
+ * accepte d'un rush sondé : une source d'une heure ne doit pas devenir une
+ * séquence d'une heure.
+ */
+export const RUSH_SEQUENCE_SECONDS = { fallback: 6, min: 1, max: 10 } as const;
+
+/**
  * Largeur de l'aperçu de l'éditeur, en pixels CSS.
  *
  * L'éditeur pose ses tailles de police et ses marges en pixels Tailwind FIXES,

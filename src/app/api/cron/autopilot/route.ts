@@ -3,7 +3,10 @@ import { supabaseAdmin } from '@/lib/db/supabase';
 import { getUserCredits } from '@/lib/credits/system';
 import { sendEmailSilent } from '@/lib/email/resend';
 import { sanitizeConfig, decideRun, type SkipReason } from '@/lib/autopilot/rules';
-import { preparePosts, toPostRow } from '@/lib/autopilot/engine';
+import { preparePosts, toPostRow, slotKey } from '@/lib/autopilot/engine';
+import { buildAutopilotDesign, buildAutopilotMetadata, AUTOPILOT_FORMAT } from '@/lib/autopilot/design';
+import { renderAndUpload } from '@/lib/autopilot/render';
+import { deductCredits, getVideoRenderCost } from '@/lib/credits/system';
 
 /**
  * Moteur de l'Autopilote — un passage par appel.
@@ -11,21 +14,31 @@ import { preparePosts, toPostRow } from '@/lib/autopilot/engine';
  * Calque sur `/api/cron/publish` : meme authentification par
  * `Authorization: Bearer $CRON_SECRET`, meme forme de rapport.
  *
- * ⚠️ IL NE COMPOSE PAS LA VIDEO. Voir l'en-tete de `lib/autopilot/engine` :
- * le compositeur est un compositeur de NAVIGATEUR, et les cartes sont une
- * photographie du DOM de l'apercu. Le moteur prepare tout le reste et depose
- * le post en brouillon ; la composition se fait a l'ouverture.
+ * ⚠️ IL REND LA VIDEO, depuis que la composition Remotion existe. Chaque
+ * montage est rendu sous Chromium sans tete, televerse, puis depose avec son
+ * media. Le statut suit le mode : `review` -> brouillon, `auto` -> programme.
  *
- * Il ne debite donc AUCUN credit : rien n'a ete rendu, et la composition
- * debitera a son tour.
+ * ⚠️ CHAQUE MONTAGE EST ISOLE. Un rendu peut echouer — Chromium qui ne
+ * demarre pas, un rush illisible, un televersement refuse. Un echec ne doit
+ * emporter ni les autres montages du cycle, ni les autres comptes : chaque
+ * item a son `try`, et le cycle continue.
+ *
+ * ⚠️ CE PASSAGE NE PUBLIE RIEN. Il prepare des posts ; c'est
+ * `/api/cron/publish` qui publie, et seulement ceux qui sont `scheduled`.
  */
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-/** Cout indicatif d'un montage — sert au calcul du plancher, pas a debiter. */
-const COST_PER_VIDEO = 10;
+/**
+ * Cout d'un montage, en credits.
+ *
+ * L'Autopilote produit du vertical : c'est donc le tarif « reel », le meme
+ * que celui d'un rendu manuel. Il sert a DEUX choses — borner le nombre de
+ * montages du cycle, et debiter apres chaque rendu reussi.
+ */
+const COST_PER_VIDEO = getVideoRenderCost('reel');
 
 function verifyCronSecret(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
@@ -61,8 +74,42 @@ function notifier(email: string | null | undefined, reason: SkipReason): void {
 
 interface RapportUtilisateur {
   userId: string;
+  /** Montages rendus, televerses et deposes. */
   prepares: number;
+  /** Montages perdus en route — le detail est dans les journaux. */
+  echecs?: number;
+  /** Creneaux deja produits, ignores pour ne pas doubler. */
+  doublons?: number;
   saute?: SkipReason;
+}
+
+/**
+ * Creneaux deja produits pour cet utilisateur.
+ *
+ * IDEMPOTENCE : la cadence empeche deja deux cycles rapproches, mais elle ne
+ * protege de rien si `last_run_at` n'a pas pu etre ecrit APRES l'insertion
+ * des posts — et c'est l'ordre reel des operations. On relit donc les
+ * creneaux existants avant d'inserer.
+ */
+async function creneauxExistants(userId: string): Promise<Set<string>> {
+  const { data } = await supabaseAdmin
+    .from('scheduled_posts')
+    .select('scheduled_date, scheduled_time, metadata')
+    .eq('user_id', userId)
+    .eq('agent_generated', true);
+  const out = new Set<string>();
+  for (const ligne of (data ?? []) as Array<Record<string, unknown>>) {
+    const meta = (ligne.metadata ?? {}) as Record<string, unknown>;
+    if (meta.source !== 'autopilote') continue;
+    // Le jeton s'il existe ; sinon on le reconstruit, pour couvrir les posts
+    // deposes avant son introduction.
+    out.add(
+      typeof meta.slotKey === 'string'
+        ? meta.slotKey
+        : slotKey(userId, String(ligne.scheduled_date ?? ''), String(ligne.scheduled_time ?? '')),
+    );
+  }
+  return out;
 }
 
 export async function GET(req: NextRequest) {
@@ -131,38 +178,103 @@ export async function GET(req: NextRequest) {
       );
 
       const posts = preparePosts({ config, topic, count: decision.count, now });
-      const lignesPost = posts.map((p) => toPostRow(userId, p, config));
+      const dejaFaits = await creneauxExistants(userId);
 
-      const { error: insertError } = await supabaseAdmin.from('scheduled_posts').insert(lignesPost);
-      if (insertError) {
-        console.error('[Autopilote/Cron] insertion des posts :', insertError.message);
-        // `last_run_at` n'est PAS avance : un echec d'ecriture doit pouvoir
-        // etre rattrape au passage suivant, pas saute d'un cycle entier.
-        rapport.push({ userId, prepares: 0 });
-        continue;
+      let reussis = 0;
+      let echecs = 0;
+      let doublons = 0;
+      let dernierRush = config.lastRushUrl;
+
+      for (const post of posts) {
+        const jeton = slotKey(userId, post.scheduledDate, post.scheduledTime);
+        if (dejaFaits.has(jeton)) {
+          // Creneau deja produit : ni rendu, ni credit, ni post.
+          doublons += 1;
+          continue;
+        }
+
+        // ── Un montage, isole ────────────────────────────────────────────
+        // Chromium peut refuser de demarrer, un rush etre illisible, un
+        // televersement echouer. Rien de tout cela ne doit emporter le reste
+        // du cycle.
+        try {
+          const design = buildAutopilotDesign(post);
+          const jobId = `autopilote-${userId}-${post.scheduledDate}-${Date.now()}`;
+          const { videoUrl, durationFrames } = await renderAndUpload({ userId, jobId, design });
+
+          const metadata = buildAutopilotMetadata({
+            post, design, videoUrl, mode: config.mode,
+          });
+          const { error: insertError } = await supabaseAdmin
+            .from('scheduled_posts')
+            .insert(toPostRow({ userId, post, config, videoUrl, metadata }));
+          if (insertError) throw new Error(`insertion du post : ${insertError.message}`);
+
+          // Debit APRES coup, comme le chemin manuel : la video est en ligne
+          // et le post existe. Debiter avant ferait payer un rendu qui peut
+          // encore echouer.
+          try {
+            await deductCredits(userId, COST_PER_VIDEO, 'render');
+          } catch (e) {
+            // Le montage est livre : on ne le retire pas pour un debit
+            // manque. On le dit fort, c'est tout.
+            console.error(
+              `[Autopilote/Cron] debit manque pour ${userId} (${COST_PER_VIDEO} credits) :`,
+              e instanceof Error ? e.message : e,
+            );
+          }
+
+          dejaFaits.add(jeton);
+          dernierRush = post.rushUrl ?? dernierRush;
+          reussis += 1;
+          console.log(
+            `[Autopilote/Cron] ${userId} — montage ${post.scheduledDate} rendu `
+            + `(${durationFrames} images, ${AUTOPILOT_FORMAT}) : ${videoUrl}`,
+          );
+        } catch (err) {
+          echecs += 1;
+          console.error(
+            `[Autopilote/Cron] ${userId} — montage ${post.scheduledDate} echoue :`,
+            err instanceof Error ? err.message : err,
+          );
+        }
       }
 
-      await supabaseAdmin
-        .from('autopilot_config')
-        .update({
-          last_run_at: new Date(now).toISOString(),
-          // Le dernier rush du cycle : la rotation repartira du suivant.
-          last_rush_url: posts[posts.length - 1]?.rushUrl ?? config.lastRushUrl,
-          updated_at: new Date(now).toISOString(),
-        })
-        .eq('user_id', userId);
+      // `last_run_at` n'avance que si QUELQUE CHOSE a ete produit : un cycle
+      // entierement rate doit pouvoir etre rattrape au passage suivant,
+      // plutot que saute d'une cadence entiere.
+      if (reussis > 0) {
+        await supabaseAdmin
+          .from('autopilot_config')
+          .update({
+            last_run_at: new Date(now).toISOString(),
+            // Le dernier rush reellement utilise : la rotation repartira du
+            // suivant. Un rush dont le rendu a echoue ne compte pas.
+            last_rush_url: dernierRush,
+            updated_at: new Date(now).toISOString(),
+          })
+          .eq('user_id', userId);
+      }
 
-      rapport.push({ userId, prepares: posts.length });
+      rapport.push({
+        userId,
+        prepares: reussis,
+        ...(echecs ? { echecs } : null),
+        ...(doublons ? { doublons } : null),
+      });
     }
 
     const total = rapport.reduce((n, r) => n + r.prepares, 0);
-    console.log(`[Autopilote/Cron] ${rapport.length} compte(s) examine(s), ${total} montage(s) prepare(s)`);
+    const rates = rapport.reduce((n, r) => n + (r.echecs ?? 0), 0);
+    console.log(
+      `[Autopilote/Cron] ${rapport.length} compte(s) examine(s), `
+      + `${total} montage(s) rendu(s), ${rates} echec(s)`,
+    );
     return NextResponse.json({
       success: true,
       comptes: rapport.length,
-      prepares: total,
-      // Les montages attendent leur composition, faite au navigateur.
-      pendingRender: total > 0,
+      rendus: total,
+      echecs: rates,
       rapport,
     });
   } catch (err) {

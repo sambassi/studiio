@@ -74,6 +74,7 @@ import SequenceCards from '@/components/creer/SequenceCards';
 import SequenceTitle, { titleFrameStyle } from '@/components/creer/SequenceTitle';
 import SequenceCta, { ctaFrameStyle } from '@/components/creer/SequenceCta';
 import FreeElementsLayer, { type FreeElement } from '@/components/creer/FreeElementsLayer';
+import { DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS } from '@/lib/creer/designSpec';
 import { renderSignature, signatureMatches } from '@/lib/creer/renderSignature';
 
 import {
@@ -218,7 +219,9 @@ const DARK = '#0A0A0F';
  * sequence video est masquee et sa duree nulle. L'import d'un rush la fixe
  * (voir `applyRush`).
  */
-const SEQ = { intro: 4, cards: 6, video: 0, cta: 4 } as const;
+// Durées par défaut : partagées avec l'Autopilote, qui compose sans écran et
+// doit produire le même montage qu'un assistant ouvert sans rien régler.
+const SEQ = DEFAULT_SEQUENCE_SECONDS;
 
 /**
  * Duree de la sequence video, en secondes, quand un rush vient d'etre importe.
@@ -230,7 +233,7 @@ const SEQ = { intro: 4, cards: 6, video: 0, cta: 4 } as const;
  * Ce n'est qu'une valeur de depart : le champ « Video » du panneau audio
  * permet ensuite de monter jusqu'a 30 s.
  */
-const RUSH_SECONDS = { fallback: 6, min: 1, max: 10 } as const;
+const RUSH_SECONDS = RUSH_SEQUENCE_SECONDS;
 
 /**
  * Duree d'un rush, lue dans ses metadonnees — `null` si elle est illisible.
