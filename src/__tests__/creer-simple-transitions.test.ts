@@ -104,7 +104,7 @@ describe('La liste vient du compositeur, jamais d une copie', () => {
 
 describe('L export', () => {
   it('le style part au compositeur', () => {
-    const appel = wizard.slice(wizard.indexOf('const composed = await composeAndUpload({'));
+    const appel = wizard.slice(wizard.indexOf('const optionsRendu: ComposerOptions = {'));
     expect(appel.slice(0, 3000)).toContain('transition,');
   });
 

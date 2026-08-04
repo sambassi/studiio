@@ -31,6 +31,7 @@ import {
   Minus,
   Plus,
   ImageDown,
+  Download,
   ImagePlus,
   Upload,
   Crop,
@@ -39,7 +40,8 @@ import {
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
 import {
-  composeAndUpload, CURRENT_COMPOSER_VERSION, posterTransformActive,
+  composeAndUpload, composeVideo, downloadBlob, CURRENT_COMPOSER_VERSION, posterTransformActive,
+  type ComposerOptions,
   TRANSITION_KEYS, TRANSITION_LABELS, DEFAULT_TRANSITION, type TransitionStyle,
   TEXT_ANIMATION_KEYS, TEXT_ANIMATION_LABELS, TEXT_ANIMATION_HINTS,
   DEFAULT_TEXT_ANIMATION, type TextAnimation,
@@ -4091,7 +4093,48 @@ export default function AssistantWizard() {
     }
   }, [customTopic, themeId, generated]);
 
-  const sendToCalendar = async () => {
+  /**
+   * Rend le montage — vers le CALENDRIER, ou vers le disque de l'utilisateur.
+   *
+   * Un seul chemin pour les deux destinations : variation du lot, photo des
+   * cartes, options du compositeur, credits. Deux copies auraient diverge des
+   * la premiere option ajoutee d'un cote seulement, et la video telechargee
+   * n'aurait plus ressemble a celle du Calendrier.
+   *
+   * Ne changent que la FIN de chaque tour : le Calendrier televerse puis cree
+   * un post ; le bureau garde le blob et ne cree RIEN.
+   */
+  /**
+   * Debite le rendu. Jamais bloquant : le montage est deja fait, le refuser
+   * a posteriori ne le rendrait pas moins livre.
+   *
+   * `/api/credits/deduct` repond 402 sur solde insuffisant, et un `.catch()`
+   * seul n'attrape que les erreurs reseau, pas un 402 — d'ou la lecture
+   * explicite du statut.
+   */
+  /** Nom de fichier tire du titre : ni espace, ni accent, ni signe. */
+  const slugTitre = (titre: string): string =>
+    (titre || 'studiio').replace(/[^a-zA-Z0-9-_]+/g, '_').slice(0, 60) || 'studiio';
+
+  const debiterRendu = async (cost: number, renderFormat: 'reel' | 'tv', postId?: string) => {
+    try {
+      const res = await fetch('/api/credits/deduct', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cost, reason: 'render', format: renderFormat }),
+      });
+      if (!res.ok) {
+        console.warn(
+          `[Assistant] Débit des crédits refusé (${res.status})`
+          + (postId ? ` — post ${postId} conservé` : ' — montage conservé'),
+        );
+      }
+    } catch (e) {
+      console.warn('[Assistant] Débit des crédits injoignable — montage conservé:', e);
+    }
+  };
+
+  const runRender = async (destination: 'calendrier' | 'bureau') => {
     if (!generated || sending) return;
     setSending(true);
     setError(null);
@@ -4153,6 +4196,8 @@ export default function AssistantWizard() {
       // surprendrait. Les suivantes sont variees.
       const contenuInitial = generated;
       const titresDejaVus = [generated.title].filter(Boolean);
+      /** Montages a telecharger — uniquement en destination « bureau ». */
+      const blobsBureau: Array<{ blob: Blob; titre: string }> = [];
       try {
         for (let b = 0; b < total; b += 1) {
           setBatchProgress({ done: b, total });
@@ -4280,7 +4325,7 @@ export default function AssistantWizard() {
             color: accent,
           })),
         );
-        const composed = await composeAndUpload({
+        const optionsRendu: ComposerOptions = {
           width: size.w,
           height: size.h,
           fps: 30,
@@ -4402,7 +4447,32 @@ export default function AssistantWizard() {
             setRenderProgress(Math.max(0, Math.min(100, Math.round(pct))));
             if (stage) setRenderStage(stage);
           },
-        });
+        };
+
+        // Meme objet d'options pour les deux destinations — seule change la
+        // fonction appelee. `composeVideo` compose SANS televerser : un
+        // telechargement local n'a aucune raison de passer par le stockage.
+        // La branche « bureau » sort avant d'atteindre `thumbnailUrl` : on
+        // garde donc le type du Calendrier, complete d'un montage local.
+        const composed: { blob: Blob; url: string | null; thumbnailUrl: string | null; composerVersion: string } =
+          destination === 'bureau'
+            ? {
+                blob: (await composeVideo(optionsRendu)).video,
+                url: null,
+                thumbnailUrl: null,
+                composerVersion: CURRENT_COMPOSER_VERSION,
+              }
+            : await composeAndUpload(optionsRendu);
+
+        // ── Destination « bureau » ─────────────────────────────────────
+        // On garde le montage et on debite ; aucun post n'est cree. Le
+        // telechargement se fait APRES la boucle, pour n'ouvrir qu'une seule
+        // fenetre d'enregistrement meme sur un lot.
+        if (destination === 'bureau') {
+          blobsBureau.push({ blob: composed.blob, titre: contenu.title });
+          await debiterRendu(cost, renderFormat);
+          continue;
+        }
 
         if (!composed.url) {
           setError("Le montage a été rendu mais son envoi a échoué. Réessayez.");
@@ -4558,18 +4628,7 @@ export default function AssistantWizard() {
         // 5. Débit — le post existe, la vidéo est en ligne. On lit le statut :
         //    `/api/credits/deduct` répond 402 sur solde insuffisant, et un
         //    `.catch()` seul n'attrape que les erreurs réseau, pas un 402.
-        try {
-          const deductRes = await fetch('/api/credits/deduct', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cost, reason: 'render', format: renderFormat }),
-          });
-          if (!deductRes.ok) {
-            console.warn(`[Assistant] Débit des crédits refusé (${deductRes.status}) — post ${json.post.id} conservé`);
-          }
-        } catch (e) {
-          console.warn('[Assistant] Débit des crédits injoignable — post conservé:', e);
-        }
+        await debiterRendu(cost, renderFormat, json.post.id);
 
         }
       } finally {
@@ -4577,6 +4636,51 @@ export default function AssistantWizard() {
         // qu'il soit arrive au lot.
         if (total > 1) setGenerated(contenuInitial);
         setBatchProgress(null);
+      }
+
+      // ── Telechargement ────────────────────────────────────────────
+      // Apres la boucle, et une seule fois : un lot de cinq videos ouvrirait
+      // sinon cinq fenetres d'enregistrement.
+      if (destination === 'bureau') {
+        if (blobsBureau.length === 0) {
+          setError('Aucun montage à télécharger.');
+          return;
+        }
+        setRenderStage('Préparation du téléchargement…');
+        if (blobsBureau.length === 1) {
+          await downloadBlob(
+            blobsBureau[0].blob,
+            `${slugTitre(blobsBureau[0].titre)}.webm`,
+            (pct, stage) => {
+              setRenderProgress(Math.max(0, Math.min(100, Math.round(pct))));
+              if (stage) setRenderStage(stage);
+            },
+          );
+        } else {
+          // Un lot part en UN dossier compresse : `downloadBlob` convertit le
+          // WebM en MP4 au passage, ce qu'on ne veut pas faire N fois — les
+          // videos entrent donc telles quelles dans le zip.
+          setRenderStage('Compression…');
+          const JSZip = (await import('jszip')).default;
+          const zip = new JSZip();
+          blobsBureau.forEach((v, i) => {
+            zip.file(`${slugTitre(v.titre)}-${i + 1}.webm`, v.blob);
+          });
+          const archive = await zip.generateAsync({ type: 'blob' });
+          const lien = document.createElement('a');
+          const url = URL.createObjectURL(archive);
+          lien.href = url;
+          lien.download = `${slugTitre(contenuInitial.title)}-videos.zip`;
+          document.body.appendChild(lien);
+          lien.click();
+          document.body.removeChild(lien);
+          // Safari lit le blob APRES le clic : revoquer tout de suite
+          // annulerait le telechargement.
+          setTimeout(() => { URL.revokeObjectURL(url); document.body.contains(lien) && lien.remove(); }, 5000);
+        }
+        setRenderProgress(100);
+        setRenderStage('Téléchargé.');
+        return;
       }
 
       setRenderProgress(100);
@@ -6305,6 +6409,24 @@ export default function AssistantWizard() {
                       />
                     </div>
 
+                    {/* ── TÉLÉCHARGER SUR L'ORDINATEUR ────────────────────
+                        Rendu local : aucun post n'est créé. Les crédits sont
+                        débités comme pour le Calendrier — c'est le même
+                        rendu, au même coût. */}
+                    <button
+                      type="button"
+                      onClick={() => runRender('bureau')}
+                      disabled={sending}
+                      data-export-bureau
+                      title="Composer le montage et l’enregistrer sur votre ordinateur, sans créer de post"
+                      className="w-full flex items-center justify-center gap-2 rounded-lg border border-gray-800 px-3 py-2 text-xs text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      {batchCount > 1
+                        ? `Télécharger les ${batchCount} vidéos (.zip)`
+                        : 'Télécharger la vidéo'}
+                    </button>
+
                     <div className="flex justify-between pt-2">
                       <Button variant="ghost" size="sm" onClick={() => setStep(S.contenu)}>
                         <span className="flex items-center gap-2">
@@ -6314,7 +6436,7 @@ export default function AssistantWizard() {
                       <Button
                         variant="primary"
                         size="sm"
-                        onClick={sendToCalendar}
+                        onClick={() => runRender('calendrier')}
                         disabled={sending || !scheduledDate}
                         className={DISABLED}
                       >

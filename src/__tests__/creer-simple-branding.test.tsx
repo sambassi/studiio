@@ -69,7 +69,7 @@ describe('Filigrane — pourquoi ce réglage existe', () => {
 
   it('l’assistant transmet donc `siteText` explicitement au compositeur', () => {
     const call = wizardSource.slice(
-      wizardSource.indexOf('const composed = await composeAndUpload({'),
+      wizardSource.indexOf('const optionsRendu: ComposerOptions = {'),
       wizardSource.indexOf('onProgress: (pct, stage)'),
     );
     expect(call).toMatch(/siteText: watermarkConfig/);
@@ -204,7 +204,7 @@ describe('Couleurs — réglables, et effectivement propagées', () => {
 
   it('les couleurs réglées alimentent le compositeur', () => {
     const call = wizardSource.slice(
-      wizardSource.indexOf('const composed = await composeAndUpload({'),
+      wizardSource.indexOf('const optionsRendu: ComposerOptions = {'),
       wizardSource.indexOf('onProgress: (pct, stage)'),
     );
     expect(call).toMatch(/accentColor: accent/);
