@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Mic, Square, Loader2, Trash2, AlertTriangle, Check } from 'lucide-react';
+import AudioPlayer from '@/components/ui/AudioPlayer';
 import {
   pickRecorderMimeType,
   formatDuration,
@@ -289,18 +290,10 @@ export default function VoiceCloneRecorder({
         )}
 
         {audioUrl && !recording && (
-          <div className="flex items-center gap-2">
-            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-            <audio src={audioUrl} controls className="w-full" />
-            <button
-              type="button"
-              onClick={discard}
-              title="Supprimer cet enregistrement"
-              className="text-gray-500 hover:text-red-400 transition-colors"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </div>
+          // Le lecteur natif portait l'apparence du navigateur, pas celle du
+          // produit. `AudioPlayer` embarque sa propre corbeille : plus besoin
+          // du bouton qui l'accompagnait.
+          <AudioPlayer src={audioUrl} onDelete={discard} />
         )}
       </div>
 

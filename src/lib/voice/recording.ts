@@ -54,13 +54,13 @@ export function pickRecorderMimeType(
   });
 }
 
-/** Chrono `m:ss`, jamais negatif. */
-export function formatDuration(seconds: number): string {
-  const total = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
+/**
+ * Chrono `m:ss`, jamais negatif.
+ *
+ * Une seule implementation, partagee avec le lecteur audio : deux copies d'un
+ * meme formatage finissent toujours par diverger d'un cas limite.
+ */
+export { formatTime as formatDuration } from '@/lib/audio/waveform';
 
 export type RecordingQuality = 'trop-court' | 'acceptable' | 'bon';
 
