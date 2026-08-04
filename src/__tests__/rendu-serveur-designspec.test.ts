@@ -210,13 +210,15 @@ describe('Le voile de dégradé', () => {
   });
 });
 
-describe('Ce que la Phase 1 ne rend PAS — dit explicitement', () => {
-  it('la composition accepte les champs des phases suivantes sans les rendre', () => {
-    // Leur signature existe déjà : la phase suivante n'aura pas à la changer.
-    for (const champ of ['textAnimation', 'sequenceVoiceUrls']) {
+describe('Ce que la Phase 1 ne rendait PAS — et qui l est depuis', () => {
+  it('plus un seul champ n est « accepté sans être rendu »', () => {
+    // La Phase 1 câblait ces champs « sans effet » pour que les phases
+    // suivantes n'aient pas à changer la signature. Elles sont passées : la
+    // mention ne doit plus exister, sinon elle décrirait un état faux.
+    for (const champ of ['textAnimation', 'sequenceVoiceUrls', 'transition', 'elements']) {
       expect(composition, champ).toContain(`${champ}?:`);
     }
-    expect(composition).toContain('Non rendu en Phase 1');
+    expect(composition).not.toContain('Non rendu en Phase 1');
   });
 
   it('l approximation des cartes est documentée', () => {

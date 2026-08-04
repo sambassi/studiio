@@ -2,6 +2,7 @@ import { renderVideo } from '@/lib/render/worker';
 import { buildSequences, totalDurationFrames } from '@/lib/creer/designSpec';
 import type { FreeElement } from '@/components/creer/FreeElementsLayer';
 import type { TextAnimation } from '@/lib/creer/textAnimation';
+import type { AudioKeyframe } from '@/lib/creer/audioDucking';
 import type { TransitionStyle } from '@/lib/video-composer';
 
 /**
@@ -11,10 +12,15 @@ import type { TransitionStyle } from '@/lib/video-composer';
  * confie a Remotion. Rien ne remplace le rendu navigateur : c'est un second
  * chemin, ajoute a cote.
  *
- * ⚠️ La composition ne rend pas encore les voix par sequence. Le champ est
- * accepte et transmis — la phase suivante n'aura pas a changer cette
- * signature. Les elements libres sont rendus depuis la Phase 5, les
- * transitions depuis la Phase 6, les animations de texte depuis la Phase 7.
+ * Les elements libres sont rendus depuis la Phase 5, les transitions depuis
+ * la Phase 6, les animations de texte depuis la Phase 7, l'audio — musique,
+ * voix par sequence, son du rush — depuis la Phase 8.
+ *
+ * ⚠️ LES DUREES NE SE RECALCULENT PAS ICI. L'allongement d'une sequence a la
+ * duree de sa voix est un effet de l'EDITEUR : il ECRIT la duree dans le
+ * design quand la voix est attachee, et l'utilisateur peut la corriger
+ * ensuite. Les durees recues sont donc DEJA calees ; les recalculer
+ * ecraserait ce reglage manuel et allongerait la video serveur.
  */
 
 /** Sous-ensemble du design qui suffit au rendu serveur de Phase 1. */
@@ -45,6 +51,18 @@ export interface CreerSimpleRenderInput {
   transition?: TransitionStyle;
   /** Animation d'apparition du texte — defaut : aucune. */
   textAnimation?: TextAnimation;
+  /**
+   * Voix par sequence, par cle d'editeur (`titre`, `cartes`, `video`, `cta`).
+   * Prioritaire sur `voiceUrl` : le repli ne joue que si aucune n'est fournie.
+   */
+  sequenceVoiceUrls?: Record<string, string | null>;
+  /** Voix unique — repli historique. */
+  voiceUrl?: string | null;
+  /** Volumes du mixage. Absents : les defauts du compositeur (0,5 / 0,8 / 1). */
+  musicVolume?: number;
+  voiceVolume?: number;
+  /** Attenuations posees a la main dans le mixeur. */
+  audioKeyframes?: AudioKeyframe[];
 }
 
 /** Identifiant de la composition, tel qu'enregistre dans `remotion/index`. */
