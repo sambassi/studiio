@@ -24,6 +24,10 @@ import {
   X,
 } from 'lucide-react';
 import { detectClips, extractClip, type DetectedClip } from '@/lib/clip-detector';
+import {
+  clampBounds, effectiveBounds, isTrimmed, timeToRatio, ratioToTime, boundsLabel,
+  type Bounds,
+} from '@/lib/creer/clipTrim';
 
 export interface ExtractedClip {
   url: string;
@@ -157,6 +161,16 @@ export default function ClipDetectorModal({
   const [error, setError] = useState<string | null>(null);
   const [extracted, setExtracted] = useState<ExtractedClip[]>([]);
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  /**
+   * Bornes reglees a la main, par sequence. ABSENCE = bornes detectees : qui
+   * ne touche a rien retrouve exactement le comportement d'hier.
+   */
+  const [trims, setTrims] = useState<Record<string, Bounds>>({});
+  /** Duree du rush — l'echelle de la mini-timeline. */
+  const [sourceDuration, setSourceDuration] = useState(0);
+  /** Poignee en cours de glissement. */
+  const [dragHandle, setDragHandle] = useState<'start' | 'end' | null>(null);
+  const timelineRef = useRef<HTMLDivElement | null>(null);
 
   const sourceFileRef = useRef<File | null>(null);
   const previewUrlRef = useRef<string | null>(null);
@@ -232,6 +246,9 @@ export default function ClipDetectorModal({
         if (isStale()) return;
 
         setClips(result.clips);
+        setSourceDuration(result.totalDuration);
+        // Les bornes reglees appartiennent a l'analyse precedente.
+        setTrims({});
         setSelectedIds(new Set(result.clips.map((c) => c.id)));
         setPreviewId(result.clips[0]?.id ?? null);
         setPhase('review');
@@ -272,13 +289,39 @@ export default function ClipDetectorModal({
     });
   };
 
+  /** Bornes reellement utilisees pour une sequence. */
+  const bornesDe = useCallback(
+    (clip: DetectedClip): Bounds => effectiveBounds(clip, trims[clip.id]),
+    [trims],
+  );
+
+  /** Deplace une poignee, en bornant sur la source. */
+  const reglerBorne = useCallback((clip: DetectedClip, poignee: 'start' | 'end', temps: number) => {
+    setTrims((prev) => {
+      const courant = effectiveBounds(clip, prev[clip.id]);
+      const propose = poignee === 'start' ? { ...courant, start: temps } : { ...courant, end: temps };
+      return { ...prev, [clip.id]: clampBounds(propose, sourceDuration, poignee) };
+    });
+  }, [sourceDuration]);
+
+  /** Rend la sequence a ses bornes detectees. */
+  const reinitialiserBornes = useCallback((clipId: string) => {
+    setTrims((prev) => {
+      if (!prev[clipId]) return prev;
+      const next = { ...prev };
+      delete next[clipId];
+      return next;
+    });
+  }, []);
+
   const playClip = (clip: DetectedClip) => {
     const vid = previewVideoRef.current;
     if (!vid) return;
     stopPreview();
     setPreviewId(clip.id);
+    const bornes = bornesDe(clip);
     try {
-      vid.currentTime = clip.startTime;
+      vid.currentTime = bornes.start;
       vid.play().catch(() => {
         /* autoplay refusé : l'utilisateur peut relancer */
       });
@@ -295,7 +338,7 @@ export default function ClipDetectorModal({
       // `endTime` est arrondi au dixième par le détecteur et peut dépasser la
       // durée réelle : sans les gardes `ended`/`paused`, la boucle tournerait
       // indéfiniment sur la dernière séquence.
-      if (v.ended || v.paused || v.currentTime >= clip.endTime) {
+      if (v.ended || v.paused || v.currentTime >= bornes.end) {
         if (!v.paused) v.pause();
         rafRef.current = null;
         setPlaying(false);
@@ -331,15 +374,18 @@ export default function ClipDetectorModal({
       for (let i = 0; i < chosen.length; i++) {
         if (aborted()) break;
         const clip = chosen[i];
+        const bornesExtraction = bornesDe(clip);
         setStage(`Extraction ${i + 1}/${chosen.length} — ${clip.label}`);
         setProgress(0);
         // L'extraction se fait en temps réel : budget = 3× la durée du clip,
         // plus une marge fixe pour l'ouverture et le seek initial.
         const raw = await withTimeout(
-          extractClip(file, clip.startTime, clip.endTime, (p) =>
+          // Les bornes REGLEES, pas celles detectees : c'est tout l'objet du
+          // rognage. Sans trim, `bornesDe` rend les bornes automatiques.
+          extractClip(file, bornesExtraction.start, bornesExtraction.end, (p) =>
             setProgress(Math.max(0, Math.min(100, p))),
           ),
-          clip.duration * 3000 + 30_000,
+          (bornesExtraction.end - bornesExtraction.start) * 3000 + 30_000,
           `extraction trop longue sur « ${clip.label} » — la vidéo est peut-être mal indexée`,
         );
         if (aborted()) break;
@@ -534,10 +580,79 @@ export default function ClipDetectorModal({
                     className="mx-auto max-h-56 w-auto"
                   />
                   {previewClip && (
-                    <div className="flex items-center justify-between gap-3 border-t border-gray-800 px-3 py-2">
-                      <span className="truncate text-[11px] text-gray-400">
-                        {previewClip.label} · {formatTime(previewClip.startTime)} →{' '}
-                        {formatTime(previewClip.endTime)}
+                    <>
+                    {/* ── ROGNAGE ────────────────────────────────────────
+                        Mini-timeline de la SOURCE : les deux poignees
+                        recadrent la sequence sans relancer la detection. */}
+                    <div className="border-t border-gray-800 px-3 pt-2.5 pb-1">
+                      <div
+                        ref={timelineRef}
+                        data-clip-timeline
+                        className="relative h-7 rounded-md bg-gray-900 cursor-pointer select-none touch-none"
+                        onPointerDown={(e) => {
+                          const zone = timelineRef.current;
+                          if (!zone || !sourceDuration) return;
+                          const t = ratioToTime(e.clientX, zone.getBoundingClientRect(), sourceDuration);
+                          const b = bornesDe(previewClip);
+                          // On saisit la poignee la PLUS PROCHE : viser la
+                          // bonne a deux pixels pres serait impraticable.
+                          const poignee = Math.abs(t - b.start) <= Math.abs(t - b.end) ? 'start' : 'end';
+                          e.currentTarget.setPointerCapture(e.pointerId);
+                          setDragHandle(poignee);
+                          reglerBorne(previewClip, poignee, t);
+                        }}
+                        onPointerMove={(e) => {
+                          if (!dragHandle) return;
+                          const zone = timelineRef.current;
+                          if (!zone || !sourceDuration) return;
+                          reglerBorne(
+                            previewClip,
+                            dragHandle,
+                            ratioToTime(e.clientX, zone.getBoundingClientRect(), sourceDuration),
+                          );
+                        }}
+                        onPointerUp={() => setDragHandle(null)}
+                        onLostPointerCapture={() => setDragHandle(null)}
+                      >
+                        {(() => {
+                          const b = bornesDe(previewClip);
+                          const g = timeToRatio(b.start, sourceDuration) * 100;
+                          const d = timeToRatio(b.end, sourceDuration) * 100;
+                          return (
+                            <>
+                              <div
+                                className="absolute inset-y-0 rounded-md"
+                                style={{ left: `${g}%`, width: `${Math.max(0, d - g)}%`, backgroundColor: '#7C3AED55' }}
+                              />
+                              {(['start', 'end'] as const).map((h) => (
+                                <span
+                                  key={h}
+                                  data-clip-handle={h}
+                                  className="absolute inset-y-0 w-1.5 rounded-full"
+                                  style={{
+                                    left: `calc(${h === 'start' ? g : d}% - 3px)`,
+                                    backgroundColor: '#D91CD2',
+                                  }}
+                                />
+                              ))}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 px-3 pb-2">
+                      <span className="truncate text-[11px] text-gray-400" data-clip-bounds>
+                        {previewClip.label} · {boundsLabel(bornesDe(previewClip))}
+                        {isTrimmed(previewClip, trims[previewClip.id]) && (
+                          <button
+                            type="button"
+                            onClick={() => reinitialiserBornes(previewClip.id)}
+                            data-clip-reset
+                            className="ml-2 underline underline-offset-2 hover:text-white transition-colors"
+                          >
+                            rétablir
+                          </button>
+                        )}
                       </span>
                       <button
                         onClick={() => (playing ? stopPreview() : playClip(previewClip))}
@@ -547,6 +662,7 @@ export default function ClipDetectorModal({
                         {playing ? 'Pause' : 'Aperçu'}
                       </button>
                     </div>
+                    </>
                   )}
                 </div>
               )}
