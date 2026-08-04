@@ -56,6 +56,46 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# ── Rendu serveur (Remotion) ──────────────────────────────────────────────
+# Le bundler Remotion compile la composition AU RUNTIME, depuis
+# `process.cwd()/remotion/index.tsx` — soit `/app/remotion/index.tsx` ici.
+#
+# L'output standalone de Next ne contient que ce que le SERVEUR importe. La
+# composition, elle, n'est jamais importee par du code serveur : elle est
+# bundlee a la demande. Rien de ce qu'elle touche n'est donc trace, et il faut
+# le copier a la main. Sans ces lignes, tout rendu serveur echoue — et
+# seulement lui : la creation manuelle passe par le compositeur du navigateur,
+# ce qui explique que la panne soit restee invisible.
+COPY --from=builder --chown=nextjs:nodejs /app/remotion ./remotion
+COPY --from=builder --chown=nextjs:nodejs /app/remotion.config.ts ./remotion.config.ts
+# `src/` EN ENTIER. Next en trace bien quelques fichiers, mais seulement ceux
+# que le serveur importe : sur les composants PARTAGES avec la composition
+# (`SequenceCards`, `SequenceTitle`, `CardIcon`, `designSpec`…), un seul
+# arrivait. Un `src/` a moitie present est le pire des cas — le bundling
+# echoue sur un fichier different a chaque changement de code.
+COPY --from=builder --chown=nextjs:nodejs /app/src ./src
+# Lu par le chargeur TypeScript du bundler.
+COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./tsconfig.json
+# ⚠️ TOUT LE SCOPE `@remotion`, ET PAS SEULEMENT LES PAQUETS IMPORTES.
+#
+# Deux raisons, dont la seconde ne se devine pas :
+#
+# 1. `@remotion/transitions`, `shapes`, `paths` ne sont importes QUE par la
+#    composition. Aucun code serveur ne les importe, donc le tracage de Next
+#    ne les voit pas et ne les embarque pas.
+# 2. Le tracage MUTILE les paquets qu'il garde : de
+#    `@remotion/compositor-*`, il ne conserve que `index.js` et
+#    `package.json` — les BINAIRES natifs (`remotion`, `ffmpeg`, `ffprobe`,
+#    ~34 Mo) sont supprimes. Le dossier existe donc dans l'image, ce qui
+#    donne l'illusion que la dependance est la, et le rendu echoue plus tard
+#    sur `ENOENT … /compositor-linux-x64-gnu/remotion`.
+#
+# Copier le scope entier (~55 Mo) couvre les deux cas, et couvrira aussi les
+# paquets ajoutes plus tard sans qu'il faille y repenser.
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@remotion ./node_modules/@remotion
+# Les icones des cartes. Importe par `CardIcon`, cote composition seulement.
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules/lucide-react ./node_modules/lucide-react
+
 USER nextjs
 
 EXPOSE 3000

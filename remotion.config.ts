@@ -1,24 +1,16 @@
 import { Config } from '@remotion/cli/config';
-import path from 'path';
+import { remotionWebpackOverride } from './src/lib/render/webpackOverride';
 
 /**
- * Configuration du bundler Remotion.
+ * Configuration du bundler Remotion — chemin CLI uniquement.
  *
- * ⚠️ Remotion a SON PROPRE webpack : il ne lit ni `tsconfig.paths` ni la
- * configuration de Next. Sans cet alias, tout composant partage entre
- * l'apercu et une composition echoue au bundling des qu'il importe en `@/` —
- * et c'est precisement ce que fait `SequenceCards`, la piece qui garantit la
- * parite des cartes.
+ * ⚠️ CE FICHIER N'EST LU QUE PAR LE CLI. `@remotion/cli` le charge
+ * (`load-config.js`) ; `@remotion/bundler` ne le regarde jamais. Le rendu
+ * SERVEUR passe par `bundle()` en API Node et doit donc recevoir le même
+ * réglage explicitement — c'est ce que fait `src/lib/render/worker.ts`.
  *
- * L'alias est donc la condition pour qu'un composant puisse etre PARTAGE.
+ * Le réglage lui-même vit dans `webpackOverride`, partagé par les deux :
+ * l'écrire ici seulement le réservait au CLI, et faisait échouer tout rendu
+ * serveur sur `Can't resolve '@/…'`.
  */
-Config.overrideWebpackConfig((config) => ({
-  ...config,
-  resolve: {
-    ...config.resolve,
-    alias: {
-      ...(config.resolve?.alias ?? {}),
-      '@': path.resolve(process.cwd(), 'src'),
-    },
-  },
-}));
+Config.overrideWebpackConfig(remotionWebpackOverride);
