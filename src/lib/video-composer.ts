@@ -8,6 +8,11 @@ import type { AudioKeyframe } from './creer/audioDucking';
 import {
   textAnimationState, revealText, isTypewriter, type TextAnimation,
 } from '@/lib/creer/textAnimation';
+import {
+  buildSequences,
+  SEQ_NAME_MAP as SPEC_SEQ_NAME_MAP,
+  SEQ_NAME_REVERSE as SPEC_SEQ_NAME_REVERSE,
+} from '@/lib/creer/designSpec';
 
 const COMPOSER_VERSION = 'v38-fix-first-frame-blank-2026-04-30';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
@@ -1141,8 +1146,10 @@ function drawLogoAccurate(
 // but the draw functions think in English ('intro','cards','video','cta').
 // Keep a single source of truth for both directions.
 
-const SEQ_NAME_MAP: Record<string, string> = { titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' };
-const SEQ_NAME_REVERSE: Record<string, string> = { intro: 'titre', cards: 'cartes', video: 'video', cta: 'cta' };
+// Tables de correspondance : desormais lues dans la spec PARTAGEE, pour que
+// le rendu serveur et le rendu navigateur nomment les sequences pareil.
+const SEQ_NAME_MAP = SPEC_SEQ_NAME_MAP;
+const SEQ_NAME_REVERSE = SPEC_SEQ_NAME_REVERSE;
 
 /**
  * Look up a per-sequence gradient override with FR-key fallback.
@@ -3510,48 +3517,27 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // INTO sequences[seqIdx + 1] even when that next sequence has
   // duration 0 — which leaks the hidden sequence into the final frame.
   const hasVideoBackground = !!videoEl || !!videoImageEl;
-  const sequences: Array<{ type: string; duration: number }> = [];
-  if (introDuration > 0) sequences.push({ type: 'intro', duration: introDuration });
-  if (cards.length > 0 && cardsDuration > 0) sequences.push({ type: 'cards', duration: cardsDuration });
-  if (hasVideoBackground && videoDuration > 0) {
-    sequences.push({ type: 'video', duration: videoDuration });
-  } else if ((videoUrl || effectiveVideoImageUrl) && videoDuration > 0) {
-    // Video was requested but failed to load — redistribute its duration to intro/CTA
+  // ── Assemblage des sequences ──────────────────────────────────────────
+  // Delegue a la spec PARTAGEE : le rendu serveur (Remotion) construit son
+  // montage avec la MEME fonction. Deux assemblages independants
+  // divergeraient au premier reglage ajoute d'un seul cote, et l'ecart ne se
+  // verrait qu'en comparant deux videos image par image.
+  const videoRequested = !!(videoUrl || effectiveVideoImageUrl);
+  if (!hasVideoBackground && videoRequested && videoDuration > 0) {
     console.warn('[Composer] ⚠️ Video requested but failed to load — extending intro/CTA to fill duration');
-    if (sequences[0]) sequences[0].duration += Math.floor(videoDuration / 2);
   }
-  const ctaExtraFromDeadVideo = (!hasVideoBackground && (videoUrl || effectiveVideoImageUrl) && videoDuration > 0)
-    ? Math.ceil(videoDuration / 2)
-    : 0;
-  if (ctaDuration + ctaExtraFromDeadVideo > 0) {
-    sequences.push({ type: 'cta', duration: ctaDuration + ctaExtraFromDeadVideo });
-  }
-
-  // ── Reordonnancement optionnel ────────────────────────────────────────
-  // Applique APRES la construction : les conditions d'inclusion et la
-  // redistribution de duree ci-dessus raisonnent sur l'ordre canonique
-  // (`sequences[0]` recoit le bonus d'une video morte). Reordonner avant
-  // enverrait ce bonus a la mauvaise sequence.
-  // Tri STABLE (ES2019+) : les types absents de `order` restent a la fin,
-  // dans leur ordre naturel. Le tri ne peut qu'echanger, jamais inserer une
-  // sequence exclue par les conditions.
-  const normalizedOrder = sequenceOrder?.length
-    ? sequenceOrder.map((s2) => SEQ_NAME_MAP[String(s2).toLowerCase()] || s2)
-    : null;
-  if (normalizedOrder) {
-    const rank = (t: string) => {
-      const i = normalizedOrder.indexOf(t);
-      return i === -1 ? Number.MAX_SAFE_INTEGER : i;
-    };
-    sequences.sort((a, b) => rank(a.type) - rank(b.type));
+  const sequences = buildSequences({
+    introDuration,
+    cardsDuration,
+    videoDuration,
+    ctaDuration,
+    cardCount: cards.length,
+    hasVideoBackground,
+    videoRequested,
+    sequenceOrder,
+  });
+  if (sequenceOrder?.length) {
     console.log('[Composer] Ordre des sequences:', sequences.map((x) => x.type).join(' -> '));
-  }
-
-  if (sequences.length === 0) {
-    // Every sequence was hidden — fall back to a 1-frame intro so the
-    // recorder produces a valid (if trivial) output rather than hanging.
-    console.warn('[Composer] ⚠️ All sequences hidden — falling back to 1s intro');
-    sequences.push({ type: 'intro', duration: 1 });
   }
 
   const totalDuration = sequences.reduce((s, seq) => s + seq.duration, 0);
@@ -4373,7 +4359,10 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       // sequence est masquee, mais c'est le comportement existant).
       // Avec un ordre personnalise : offsets DERIVES de seqStarts, sinon les
       // voix se joueraient au mauvais moment.
-      const offsets: Record<SeqVoiceKey, { start: number; end: number }> = normalizedOrder
+      // Un ordre personnalise a-t-il ete demande ? Meme test qu'avant
+      // l'extraction de l'assemblage vers la spec partagee.
+      const hasCustomOrder = !!sequenceOrder?.length;
+      const offsets: Record<SeqVoiceKey, { start: number; end: number }> = hasCustomOrder
         ? (() => {
             const derived = {} as Record<SeqVoiceKey, { start: number; end: number }>;
             for (const k of SEQ_VOICE_KEYS) {

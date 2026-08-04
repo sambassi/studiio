@@ -3,11 +3,50 @@ import { registerRoot, Composition } from "remotion";
 import { AfroboostComposition } from "./AfroboostComposition";
 import { InfographicComposition } from "./InfographicComposition";
 import { AiMontageComposition } from "./AiMontageComposition";
+import { CreerSimpleMontage, planFromProps } from "./CreerSimpleMontage";
+import { totalDurationFrames, VIDEO_SIZE } from "../src/lib/creer/designSpec";
 import type { AfroboostProps, InfographicProps } from "./types";
 
 const RemotionRoot: React.FC = () => {
   return (
     <>
+      {/* Montage « Créer (simple) » — rendu serveur, Phase 1.
+          Durée et dimensions viennent des MÊMES règles que le compositeur
+          navigateur : `buildSequences` decide de l'ordre et des durees. */}
+      <Composition
+        id="creer-simple-montage"
+        component={CreerSimpleMontage as any}
+        durationInFrames={420}
+        fps={30}
+        width={VIDEO_SIZE['9:16'].w}
+        height={VIDEO_SIZE['9:16'].h}
+        defaultProps={{
+          title: 'MON TITRE',
+          subtitle: '',
+          cards: [],
+          ctaText: 'JE ME LANCE',
+          ctaSubText: 'LIEN EN BIO',
+          posterUrl: null,
+          musicUrl: null,
+          introDuration: 4,
+          cardsDuration: 6,
+          videoDuration: 0,
+          ctaDuration: 4,
+        } as any}
+        calculateMetadata={({ props }: { props: any }) => {
+          const sequences = planFromProps(props);
+          const format = props.format === '16:9' ? '16:9' : props.format === '1:1' ? '1:1' : '9:16';
+          const taille = VIDEO_SIZE[format as keyof typeof VIDEO_SIZE];
+          return {
+            // La duree est DERIVEE des sequences, jamais passee a la main :
+            // une valeur transmise finirait par ne plus correspondre.
+            durationInFrames: totalDurationFrames(sequences, 30),
+            width: taille.w,
+            height: taille.h,
+          };
+        }}
+      />
+
       {/* AI Montage — dynamic duration from props */}
       <Composition
         id="AiMontage"
