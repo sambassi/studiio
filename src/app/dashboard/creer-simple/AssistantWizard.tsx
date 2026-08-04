@@ -70,6 +70,9 @@ import {
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import AiImageTools from '@/components/creer/AiImageTools';
 import { renderSignature, signatureMatches } from '@/lib/creer/renderSignature';
+import {
+  sanitizePhotos, vignetteAffichable, photoUtilisable, urlUtilisable,
+} from '@/lib/creer/posterPhotos';
 import ClipDetectorModal, { type ClipSource } from '@/components/media/ClipDetectorModal';
 import { CardIcon } from '@/components/ui/CardIcon';
 import { ICON_LIBRARY, iconMatches } from '@/lib/icons/library';
@@ -2541,7 +2544,9 @@ export default function AssistantWizard() {
         data = await appel(1);
       }
       if (data?.success && Array.isArray(data.photos) && data.photos.length > 0) {
-        setPosterPhotos(data.photos);
+        // Une entree sans URL exploitable arrivait telle quelle : vignette
+        // cassee, et depot qui posait « undefined » comme affiche.
+        setPosterPhotos(sanitizePhotos(data.photos));
       } else {
         setPosterPhotos([]);
         // L'API dit si la source n'a pas de cle configuree. Sans cette
@@ -2639,6 +2644,17 @@ export default function AssistantWizard() {
   }, []);
 
   /** Dernier retour des outils IA — efface au traitement suivant. */
+  /**
+   * Vignettes dont le chargement a echoue.
+   *
+   * Une URL peut etre bien formee et le fichier avoir disparu : le filtre a
+   * la reception ne suffit pas, il faut aussi ecouter l'echec reel.
+   */
+  const [brokenPhotos, setBrokenPhotos] = useState<Set<string>>(() => new Set());
+  const marquerCassee = useCallback((url: string) => {
+    setBrokenPhotos((prev) => (prev.has(url) ? prev : new Set(prev).add(url)));
+  }, []);
+
   const [aiNotice, setAiNotice] = useState<string | null>(null);
 
   const applyPhoto = useCallback((url: string) => {
@@ -5487,6 +5503,12 @@ export default function AssistantWizard() {
                           {posterPhotos.map((photo) => {
                             const rang = batchPhotoUrls.indexOf(photo.url);
                             const retenue = batchCount > 1 ? rang >= 0 : posterUrl === photo.url;
+                            // Une photo dont toutes les tailles ont echoue —
+                            // ou dont l'affiche elle-meme est morte — n'est
+                            // pas proposable : elle disparait de la grille
+                            // plutot que d'y laisser une image brisee.
+                            if (!photoUtilisable(photo, brokenPhotos)) return null;
+                            const vignette = vignetteAffichable(photo, brokenPhotos)!;
                             return (
                               <button
                                 key={`${photo.source ?? 'p'}-${photo.id}`}
@@ -5521,6 +5543,15 @@ export default function AssistantWizard() {
                                 data-poster-photo={photo.url}
                                 draggable
                                 onDragStart={(e) => {
+                                  // Second filet : une URL inexploitable ne
+                                  // part pas du tout. Sans lui, le depot
+                                  // posait la chaine « undefined » comme
+                                  // affiche — l'apercu ne changeait pas, et
+                                  // on concluait que le glisser avait echoue.
+                                  if (!urlUtilisable(photo.url)) {
+                                    e.preventDefault();
+                                    return;
+                                  }
                                   // Type a nous EN PREMIER : `text/plain` sert
                                   // au reordonnancement des sequences, le lire
                                   // ici confondait les deux gestes.
@@ -5537,8 +5568,17 @@ export default function AssistantWizard() {
                               >
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
-                                  src={photo.small || photo.medium || photo.url}
+                                  src={vignette}
                                   alt=""
+                                  onError={() => {
+                                    // La taille courante est marquee cassee ;
+                                    // le rendu suivant essaie la suivante, et
+                                    // masque la photo quand il n'en reste
+                                    // aucune. Sans ce repli, une miniature
+                                    // absente condamnerait une photo dont la
+                                    // pleine resolution est parfaite.
+                                    marquerCassee(vignette);
+                                  }}
                                   className="aspect-[3/4] w-full object-cover"
                                 />
                                 {retenue && (
