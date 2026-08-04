@@ -1,6 +1,7 @@
 'use client';
 
 import { findFont } from '@/lib/fonts/catalog';
+import { TRANSITION_KEYS } from '@/lib/video-composer';
 
 /**
  * Brouillon de « Créer (simple) » — écriture, relecture, validation.
@@ -66,6 +67,11 @@ export interface Draft {
   watermarkOverride?: string | null;
   watermarkEnabled?: boolean;
   sequences?: DraftSequence[];
+  /**
+   * Style de transition entre sequences. Absent = le fondu enchaine, que le
+   * compositeur applique de toute facon a un montage qui ne demande rien.
+   */
+  transition?: string;
   introDuration?: number;
   cardsDuration?: number;
   videoDuration?: number;
@@ -476,6 +482,11 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
       typeof raw.watermarkOverride === 'string' ? raw.watermarkOverride.slice(0, 60) : null,
     watermarkEnabled: raw.watermarkEnabled !== false,
     sequences: sanitizeSequences(raw.sequences, d.sequences),
+    // Valide contre la liste du compositeur, jamais contre une copie : un
+    // style retire la-bas doit cesser d'etre relu ici.
+    transition: TRANSITION_KEYS.includes(raw.transition as never)
+      ? (raw.transition as string)
+      : undefined,
     introDuration: num(raw.introDuration, 0, 60, d.durations.intro),
     cardsDuration: num(raw.cardsDuration, 0, 60, d.durations.cards),
     videoDuration: num(raw.videoDuration, 0, 60, d.durations.video),

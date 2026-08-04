@@ -38,7 +38,10 @@ import {
   X,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
-import { composeAndUpload, CURRENT_COMPOSER_VERSION, posterTransformActive } from '@/lib/video-composer';
+import {
+  composeAndUpload, CURRENT_COMPOSER_VERSION, posterTransformActive,
+  TRANSITION_KEYS, TRANSITION_LABELS, DEFAULT_TRANSITION, type TransitionStyle,
+} from '@/lib/video-composer';
 import { AudioStudioPanel } from '@/components/creer/AudioStudioPanel';
 import { SequenceVoicesPanel } from '@/components/creer/SequenceVoicesPanel';
 import { voiceSequenceSeconds } from '@/lib/creer/voiceFit';
@@ -515,6 +518,25 @@ const ASPECT_CSS: Record<Format, string> = {
   '16:9': '16 / 9',
 };
 
+/**
+ * Une phrase par style — ce qu'on VERRA, pas le nom du style.
+ *
+ * Les cles viennent du compositeur (`TransitionStyle`) : ajouter un style
+ * la-bas sans l'expliquer ici casserait la compilation, plutot que d'afficher
+ * un vide a l'ecran.
+ */
+const TRANSITION_HINTS: Record<TransitionStyle, string> = {
+  'crossfade': 'Les deux séquences se superposent en fondu. Le plus discret.',
+  'slide': 'La nouvelle séquence entre par le côté.',
+  'wipe': 'Un bord balaie l’écran et découvre la suite.',
+  'zoom': 'La séquence sortante s’éloigne pendant que la suivante avance.',
+  'fade-to-black': 'Passage par le noir. Marque une rupture.',
+  'push': 'La nouvelle séquence pousse l’ancienne vers le haut.',
+  'iris': 'Un cercle s’ouvre sur la séquence suivante.',
+  'blur-dissolve': 'Fondu avec un flou : plus doux que le fondu simple.',
+  'whip-pan': 'Balayage rapide et flou, comme un mouvement de caméra.',
+};
+
 /** Sequences ou le filigrane est visible — noms cote editeur, comme le Calendrier les attend. */
 const WATERMARK_SEQUENCES = ['titre', 'cartes', 'video', 'cta'] as const;
 
@@ -708,7 +730,7 @@ const PREVIEW_TABS: Array<{ id: PreviewFocus; label: string }> = [
 ];
 
 /** Sections repliables de l'etape Style — l'ordre du panneau. */
-type SectionId = 'format' | 'couleurs' | 'affiche' | 'texte' | 'sequences';
+type SectionId = 'format' | 'couleurs' | 'affiche' | 'texte' | 'sequences' | 'transition';
 
 /** Photo proposee par `/api/pexels` — Pexels comme Unsplash. */
 interface PosterPhoto {
@@ -2220,6 +2242,17 @@ export default function AssistantWizard() {
   const [videoDuration, setVideoDuration] = useState<number>(SEQ.video);
   const [ctaDuration, setCtaDuration] = useState<number>(SEQ.cta);
 
+  /**
+   * Style de transition joue entre deux sequences consecutives.
+   *
+   * Defaut `DEFAULT_TRANSITION` — c'est-a-dire le fondu enchaine — et non
+   * « aucune » : le compositeur applique DEJA ce fondu a tout montage qui ne
+   * demande rien (`drawTransition` y retombe pour tout style inconnu).
+   * Prendre « aucune » comme defaut changerait donc le rendu de l'existant,
+   * soit l'inverse de ce qu'on cherche.
+   */
+  const [transition, setTransition] = useState<TransitionStyle>(DEFAULT_TRANSITION);
+
   /* ── VOIX PAR SEQUENCE ───────────────────────────────────────────────
      Chaque sequence porte son propre texte et sa propre voix, et sa DUREE
      se cale sur celle de son audio — c'est ce qui garantit qu'un texte
@@ -3374,6 +3407,7 @@ export default function AssistantWizard() {
     watermarkOverride,
     watermarkEnabled,
     sequences,
+    transition,
     introDuration,
     cardsDuration,
     videoDuration,
@@ -3422,6 +3456,7 @@ export default function AssistantWizard() {
     started, step, themeId, customTopic, toneId, format, colors,
     titleStyle, subtitleStyle, ctaStyle, watermarkOverride, watermarkEnabled,
     sequences, introDuration, cardsDuration, videoDuration, ctaDuration,
+    transition,
     generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
     sequenceVoices, sequenceVoicesUserEdited,
     voiceVolume, rushUrl, rushName, rushIsClip, scheduledDate,
@@ -3473,6 +3508,9 @@ export default function AssistantWizard() {
     setWatermarkOverride(draft.watermarkOverride ?? null);
     setWatermarkEnabled(draft.watermarkEnabled !== false);
     setSequences(draft.sequences as typeof DEFAULT_SEQUENCES);
+    // `sanitizeDraft` a deja valide la valeur contre la liste du
+    // compositeur : un style inconnu est arrive ici a `undefined`.
+    if (draft.transition) setTransition(draft.transition as TransitionStyle);
     setIntroDuration(draft.introDuration!);
     setCardsDuration(draft.cardsDuration!);
     setVideoDuration(draft.videoDuration!);
@@ -4253,6 +4291,10 @@ export default function AssistantWizard() {
           // Une sequence desactivee a une duree nulle : c'est ainsi que le
           // compositeur l'exclut (conditions d'inclusion), et le Calendrier la
           // filtre pareil (`dur > 0`).
+          // Style joue entre deux sequences consecutives. Toujours envoye :
+          // le compositeur retombe de toute facon sur le fondu, autant lui
+          // dire explicitement ce que l'ecran annonce.
+          transition,
           introDuration: seqDuration('intro'),
           cardsDuration: seqDuration('cards'),
           videoDuration: seqDuration('video'),
@@ -4543,6 +4585,7 @@ export default function AssistantWizard() {
     // Sans cela, le montage suivant garderait les puces du precedent
     // ouvertes jusqu'a « Envoi ».
     setMaxStepReached(0);
+    setTransition(DEFAULT_TRANSITION);
     // Sans cela, le montage suivant naitrait filtre sur l'onglet du precedent.
     setPreviewFocus('all');
     // Meme raison pour le placement : sans remise a zero, le montage suivant
@@ -5863,6 +5906,50 @@ export default function AssistantWizard() {
                         mediaType="video"
                         onSelect={(url, name) => { void applyRush(url, name); }}
                       />
+                    </div>
+                </StyleSection>
+
+                <StyleSection
+                  id="transition"
+                  title="Transition"
+                  hint={TRANSITION_LABELS[transition]}
+                  open={openSection === 'transition'}
+                  onToggle={toggleSection}
+                >
+                    <div>
+                      <label className="block text-sm font-medium mb-2">
+                        Entre chaque séquence
+                      </label>
+                      <p className="text-xs text-gray-500 mb-2">
+                        Un seul style pour tout le montage.
+                      </p>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {/* La liste vient du compositeur : recopiée ici, elle
+                            proposerait un jour un style qu'il ne sait plus
+                            jouer — ou tairait ceux qu'il a gagnés. */}
+                        {TRANSITION_KEYS.map((style) => {
+                          const choisi = style === transition;
+                          return (
+                            <button
+                              key={style}
+                              type="button"
+                              onClick={() => setTransition(style)}
+                              aria-pressed={choisi}
+                              data-transition={style}
+                              className={`rounded-lg px-2.5 py-2 text-[11px] font-medium transition text-left ${
+                                choisi
+                                  ? 'bg-gray-800 text-white ring-1 ring-purple-500/40'
+                                  : 'bg-gray-900 text-gray-400 hover:text-white hover:bg-gray-800/60'
+                              }`}
+                            >
+                              {TRANSITION_LABELS[style]}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-2">
+                        {TRANSITION_HINTS[transition]}
+                      </p>
                     </div>
                 </StyleSection>
 
