@@ -69,6 +69,7 @@ import {
 } from '@/lib/creer/selection';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import AiImageTools from '@/components/creer/AiImageTools';
+import AutopilotPanel from '@/components/creer/AutopilotPanel';
 import { renderSignature, signatureMatches } from '@/lib/creer/renderSignature';
 import {
   sanitizePhotos, vignetteAffichable, photoUtilisable, urlUtilisable,
@@ -5038,10 +5039,11 @@ export default function AssistantWizard() {
                   <CardContent className="mt-1 text-sm text-gray-400">
                     Studiio produit et planifie vos contenus en continu à partir de vos objectifs.
                   </CardContent>
+                  {/* Le bouton « Activer » était désarmé : la carte annonçait
+                      une fonctionnalité qui n'existait pas. Elle porte
+                      désormais son propre réglage. */}
                   <div className="mt-4">
-                    <Button variant="secondary" size="sm" disabled aria-disabled="true" className={DISABLED}>
-                      Activer
-                    </Button>
+                    <AutopilotPanel accent={accent} />
                   </div>
                 </div>
               </div>
