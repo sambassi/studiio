@@ -121,7 +121,9 @@ describe('L export', () => {
 
 describe('Le menu', () => {
   it('il a sa propre section, repliable comme les autres', () => {
-    expect(wizard).toContain("type SectionId = 'format' | 'couleurs' | 'affiche' | 'texte' | 'sequences' | 'transition';");
+    // La liste s'allonge a chaque section : on ne verifie que la presence
+    // de la nôtre, pas la liste entiere.
+    expect(wizard).toMatch(/type SectionId = .*\| 'transition'/);
     expect(wizard).toContain('id="transition"');
     expect(wizard).toContain('hint={TRANSITION_LABELS[transition]}');
   });
@@ -184,8 +186,8 @@ describe('Persistance', () => {
 
   it('le brouillon écrit et relit bien le champ', () => {
     expect(wizard).toContain('if (draft.transition) setTransition(draft.transition as TransitionStyle);');
-    const sauvegarde = wizard.slice(wizard.indexOf('    transition,\n    introDuration,'));
-    expect(sauvegarde.slice(0, 40)).toContain('transition,');
+    // Le champ part dans le brouillon, au milieu des durees de sequence.
+    expect(wizard).toMatch(/\n {4}transition,\n/);
   });
 
   it('un nouveau montage repart sur le fondu', () => {

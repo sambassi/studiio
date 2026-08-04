@@ -309,7 +309,10 @@ describe('Persistance du lot', () => {
   });
 
   it('un nouveau montage repart à un seul montage', () => {
-    const reset = wizard.slice(wizard.indexOf('const reset = ()'), wizard.indexOf('const reset = ()') + 1300);
+    // Fenetre large : `reset` s'allonge a chaque etat nouveau, et une borne
+    // en dur finissait par tronquer la ligne cherchee.
+    const debutReset = wizard.indexOf('const reset = ()');
+    const reset = wizard.slice(debutReset, wizard.indexOf('\n  };', debutReset));
     expect(reset).toContain('setBatchCount(1)');
     expect(reset).toContain('setBatchPhotoUrls([])');
   });

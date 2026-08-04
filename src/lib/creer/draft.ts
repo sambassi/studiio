@@ -2,6 +2,7 @@
 
 import { findFont } from '@/lib/fonts/catalog';
 import { TRANSITION_KEYS } from '@/lib/video-composer';
+import { TEXT_ANIMATION_KEYS } from '@/lib/creer/textAnimation';
 
 /**
  * Brouillon de « Créer (simple) » — écriture, relecture, validation.
@@ -72,6 +73,8 @@ export interface Draft {
    * compositeur applique de toute facon a un montage qui ne demande rien.
    */
   transition?: string;
+  /** Animation d'apparition du texte. Absente = aucune, le rendu d'hier. */
+  textAnimation?: string;
   introDuration?: number;
   cardsDuration?: number;
   videoDuration?: number;
@@ -486,6 +489,9 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
     // style retire la-bas doit cesser d'etre relu ici.
     transition: TRANSITION_KEYS.includes(raw.transition as never)
       ? (raw.transition as string)
+      : undefined,
+    textAnimation: TEXT_ANIMATION_KEYS.includes(raw.textAnimation as never)
+      ? (raw.textAnimation as string)
       : undefined,
     introDuration: num(raw.introDuration, 0, 60, d.durations.intro),
     cardsDuration: num(raw.cardsDuration, 0, 60, d.durations.cards),
