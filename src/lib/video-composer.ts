@@ -4564,8 +4564,32 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
 // UPLOAD + DOWNLOAD
 // ═══════════════════════════════════════════════════════════
 
+/**
+ * Televerse un montage DEJA compose.
+ *
+ * Extrait de `composeAndUpload`, qui l'appelle desormais : l'apercu du Mode
+ * simple garde son montage en memoire et doit pouvoir l'envoyer sans le
+ * recomposer — donc sans le refacturer. Reecrire le televersement ailleurs
+ * aurait duplique la strategie d'URL signee et ses replis.
+ */
+export async function uploadRendu(
+  blob: Blob,
+  thumbnailBlob: Blob | null,
+  options: ComposerOptions,
+): Promise<{ blob: Blob; url: string | null; thumbnailUrl: string | null; composerVersion: string }> {
+  return composeAndUploadInterne(blob, thumbnailBlob, options);
+}
+
 export async function composeAndUpload(options: ComposerOptions): Promise<{ blob: Blob; url: string | null; thumbnailUrl: string | null; composerVersion: string }> {
   const { video: blob, thumbnail: thumbnailBlob } = await composeVideo(options);
+  return composeAndUploadInterne(blob, thumbnailBlob, options);
+}
+
+async function composeAndUploadInterne(
+  blob: Blob,
+  thumbnailBlob: Blob | null,
+  options: ComposerOptions,
+): Promise<{ blob: Blob; url: string | null; thumbnailUrl: string | null; composerVersion: string }> {
   if (blob.size === 0) {
     console.error('[Composer] ❌ composeVideo produced an EMPTY blob (0 bytes). MediaRecorder likely failed to capture frames.');
     throw new Error('Le rendu vidéo a produit un fichier vide (0 octets). Votre navigateur ne supporte peut-être pas le codec vidéo requis. Essayez avec Chrome ou Edge.');

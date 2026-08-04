@@ -36,11 +36,12 @@ import {
   Upload,
   Crop,
   Maximize2,
+  Play,
   X,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
 import {
-  composeAndUpload, composeVideo, downloadBlob, CURRENT_COMPOSER_VERSION, posterTransformActive,
+  composeAndUpload, composeVideo, uploadRendu, downloadBlob, CURRENT_COMPOSER_VERSION, posterTransformActive,
   type ComposerOptions,
   TRANSITION_KEYS, TRANSITION_LABELS, DEFAULT_TRANSITION, type TransitionStyle,
   TEXT_ANIMATION_KEYS, TEXT_ANIMATION_LABELS, TEXT_ANIMATION_HINTS,
@@ -68,6 +69,7 @@ import {
 } from '@/lib/creer/selection';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import AiImageTools from '@/components/creer/AiImageTools';
+import { renderSignature, signatureMatches } from '@/lib/creer/renderSignature';
 import ClipDetectorModal, { type ClipSource } from '@/components/media/ClipDetectorModal';
 import { CardIcon } from '@/components/ui/CardIcon';
 import { ICON_LIBRARY, iconMatches } from '@/lib/icons/library';
@@ -2605,6 +2607,37 @@ export default function AssistantWizard() {
   const fondAffiche = resolveBackground(previewFocus, seqBackgrounds, posterUrl, posterTransform);
 
   /** Pose une photo : sur la sequence affichee, ou sur l'affiche globale. */
+  /* ── APERÇU DU VRAI RENDU ────────────────────────────────────────────
+     Le bouton Play compose la vidéo pour de bon — animations, transitions,
+     voix comprises — puis la joue. Le montage est GARDÉ : l'export le
+     réutilise tant que rien n'a bougé, pour ne débiter qu'une fois.
+
+     La signature est dérivée des options envoyées au compositeur, pas d'une
+     liste écrite à la main : une liste serait fausse au premier réglage
+     ajouté sans y penser, et son échec est silencieux — l'export livrerait
+     un montage périmé. */
+  const previewThumbRef = useRef<Blob | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const previewUrlRef = useRef<string | null>(null);
+  /** Signature du montage en cache — lue dans le rendu, sans le refaire dépendre. */
+  const previewSignatureRef = useRef<string | null>(null);
+  const previewBlobRef = useRef<Blob | null>(null);
+
+  /** Remplace le montage en cache, et libère l'URL du précédent. */
+  const setPreviewRender = useCallback((blob: Blob | null, signature: string | null, thumbnail: Blob | null = null) => {
+    previewThumbRef.current = thumbnail;
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    previewUrlRef.current = blob ? URL.createObjectURL(blob) : null;
+    previewBlobRef.current = blob;
+    previewSignatureRef.current = signature;
+    setPreviewUrl(previewUrlRef.current);
+  }, []);
+
+  // Un démontage laisserait l'URL du blob — donc la vidéo entière — en mémoire.
+  useEffect(() => () => {
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+  }, []);
+
   /** Dernier retour des outils IA — efface au traitement suivant. */
   const [aiNotice, setAiNotice] = useState<string | null>(null);
 
@@ -4230,7 +4263,7 @@ export default function AssistantWizard() {
     }
   };
 
-  const runRender = async (destination: 'calendrier' | 'bureau') => {
+  const runRender = async (destination: 'calendrier' | 'bureau' | 'apercu') => {
     if (!generated || sending) return;
     setSending(true);
     setError(null);
@@ -4253,7 +4286,9 @@ export default function AssistantWizard() {
     // facturer au tarif paysage ferait payer plus cher un rendu plus petit.
     const cost = format === '16:9' ? COST.tv : COST.reel;
     // Le lot : combien de montages, et a quelles dates.
-    const total = clampBatchCount(batchCount);
+    // Un apercu ne rend qu'UNE video : en jouer cinq a la suite n'apprendrait
+    // rien de plus, et couterait cinq rendus.
+    const total = destination === 'apercu' ? 1 : clampBatchCount(batchCount);
     // Un lot incomplet livrerait deux montages a l'affiche identique — ce que
     // le lot existe precisement pour eviter. On refuse plutot que de dupliquer
     // en silence.
@@ -4550,15 +4585,57 @@ export default function AssistantWizard() {
         // telechargement local n'a aucune raison de passer par le stockage.
         // La branche « bureau » sort avant d'atteindre `thumbnailUrl` : on
         // garde donc le type du Calendrier, complete d'un montage local.
-        const composed: { blob: Blob; url: string | null; thumbnailUrl: string | null; composerVersion: string } =
-          destination === 'bureau'
-            ? {
-                blob: (await composeVideo(optionsRendu)).video,
-                url: null,
-                thumbnailUrl: null,
-                composerVersion: CURRENT_COMPOSER_VERSION,
-              }
-            : await composeAndUpload(optionsRendu);
+        // ── Le montage de l'aperçu est-il encore valable ? ────────────
+        // La signature couvre TOUT ce qui part au compositeur. Identique =
+        // recomposer rendrait le même fichier, et débiterait une seconde fois
+        // ce que l'utilisateur a déjà payé en cliquant sur Play.
+        //
+        // Le lot est exclu : ses vidéos 2..N ont un contenu VARIÉ, que le
+        // montage de l'aperçu ne représente pas.
+        const signature = renderSignature(optionsRendu);
+        let vignetteApercu: Blob | null = null;
+        const reutilisable =
+          total === 1
+          && destination !== 'apercu'
+          && !!previewBlobRef.current
+          && signatureMatches(previewSignatureRef.current, signature);
+
+        let composed: { blob: Blob; url: string | null; thumbnailUrl: string | null; composerVersion: string };
+        if (reutilisable) {
+          setRenderStage('Montage déjà prêt — réutilisé.');
+          setRenderProgress(60);
+          const dejaFait = previewBlobRef.current!;
+          composed = destination === 'bureau'
+            ? { blob: dejaFait, url: null, thumbnailUrl: null, composerVersion: CURRENT_COMPOSER_VERSION }
+            // Le Calendrier a besoin d'une URL : on téléverse le blob déjà
+            // composé au lieu de refaire tout le rendu.
+            : await uploadRendu(dejaFait, previewThumbRef.current, optionsRendu);
+        } else if (destination === 'calendrier') {
+          composed = await composeAndUpload(optionsRendu);
+        } else {
+          // Aperçu et bureau composent sans téléverser. La vignette est
+          // gardée pour l'aperçu : un montage réutilisé par le Calendrier
+          // arriverait sinon sans miniature.
+          const rendu = await composeVideo(optionsRendu);
+          composed = {
+            blob: rendu.video,
+            url: null,
+            thumbnailUrl: null,
+            composerVersion: CURRENT_COMPOSER_VERSION,
+          };
+          if (destination === 'apercu') vignetteApercu = rendu.thumbnail;
+        }
+
+        // ── Destination « aperçu » ─────────────────────────────────────
+        // On garde le montage, on débite une fois, et on le joue. Aucun post,
+        // aucun téléversement.
+        if (destination === 'apercu') {
+          setPreviewRender(composed.blob, signature, vignetteApercu);
+          await debiterRendu(cost, renderFormat);
+          setRenderProgress(100);
+          setRenderStage('Prêt.');
+          return;
+        }
 
         // ── Destination « bureau » ─────────────────────────────────────
         // On garde le montage et on debite ; aucun post n'est cree. Le
@@ -4566,7 +4643,9 @@ export default function AssistantWizard() {
         // fenetre d'enregistrement meme sur un lot.
         if (destination === 'bureau') {
           blobsBureau.push({ blob: composed.blob, titre: contenu.title });
-          await debiterRendu(cost, renderFormat);
+          // Un montage réutilisé a DÉJÀ été payé au moment du Play : le
+          // débiter à nouveau ferait payer deux fois le même rendu.
+          if (!reutilisable) await debiterRendu(cost, renderFormat);
           continue;
         }
 
@@ -4724,7 +4803,7 @@ export default function AssistantWizard() {
         // 5. Débit — le post existe, la vidéo est en ligne. On lit le statut :
         //    `/api/credits/deduct` répond 402 sur solde insuffisant, et un
         //    `.catch()` seul n'attrape que les erreurs réseau, pas un 402.
-        await debiterRendu(cost, renderFormat, json.post.id);
+        if (!reutilisable) await debiterRendu(cost, renderFormat, json.post.id);
 
         }
       } finally {
@@ -6663,6 +6742,54 @@ export default function AssistantWizard() {
 
         {/* ── APERÇU AGRANDI ──────────────────────────────────────────
             Le même aperçu dans une fenêtre qu'on déplace et redimensionne. */}
+        {/* ── VOIR LE VRAI RENDU ──────────────────────────────────────
+            L'onglet « Tout » est une image figée : ni animations, ni
+            transitions. Ce bouton compose la vraie vidéo et la joue. */}
+        {generated && (
+          <button
+            type="button"
+            onClick={() => runRender('apercu')}
+            disabled={sending}
+            data-play-rendu
+            title="Composer la vidéo et la regarder — animations et transitions comprises"
+            className="mt-2 w-full flex items-center justify-center gap-2 rounded-lg border border-purple-500/40 bg-purple-600/15 px-3 py-1.5 text-xs text-purple-100 hover:bg-purple-600/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {sending ? (
+              <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Rendu…</>
+            ) : (
+              <><Play className="w-3.5 h-3.5" /> Voir le rendu</>
+            )}
+          </button>
+        )}
+
+        {/* Lecteur du montage rendu — superposé à l'aperçu. */}
+        {previewUrl && (
+          <div className="mt-2 rounded-xl border border-gray-800 bg-black p-2 space-y-2" data-play-lecteur>
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+            <video
+              src={previewUrl}
+              controls
+              autoPlay
+              playsInline
+              className="w-full rounded-lg"
+              style={{ maxHeight: '60vh' }}
+            />
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] text-gray-500">
+                Ce montage sera réutilisé à l’envoi tant que rien ne change —
+                un seul rendu débité.
+              </span>
+              <button
+                type="button"
+                onClick={() => setPreviewRender(null, null)}
+                className="rounded-lg border border-gray-800 px-2 py-1 text-[11px] text-gray-400 hover:text-white transition-colors"
+              >
+                Fermer
+              </button>
+            </div>
+          </div>
+        )}
+
         {generated && (
           <button
             type="button"
