@@ -87,12 +87,12 @@ describe('Sur TOUTES les séquences — comme le compositeur', () => {
     // chaque `TransitionSeries.Sequence` monte.
     const bloc = composition.slice(
       composition.indexOf('const contenu = (type: string'),
-      composition.indexOf('const base = baseSequenceFrames('),
+      composition.indexOf('<TransitionSeries>'),
     );
     expect(bloc).toContain('<FreeElementsLayer');
     // Depuis la Phase 7, le contenu passe par `SequenceAnimee`, qui mesure
     // l'avancement de la sequence avant de l'appeler.
-    expect(composition).toContain('rendu={(anim) => contenu(seq.type, anim)}');
+    expect(composition).toContain('rendu={(anim) => contenu(seq.type, anim, departSerie(i))}');
   });
 
   it('sous le filigrane, comme sur le canvas', () => {

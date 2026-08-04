@@ -12,6 +12,8 @@ import SequenceTitle, { titleFrameStyle } from '../src/components/creer/Sequence
 import SequenceCta, { ctaFrameStyle } from '../src/components/creer/SequenceCta';
 import FreeElementsLayer, { type FreeElement } from '../src/components/creer/FreeElementsLayer';
 import TextAnimationLayer from '../src/components/creer/TextAnimationLayer';
+import { MusiqueEnBoucle, VoixDeSequence, mixAt } from './audio';
+import type { AudioKeyframe } from '../src/lib/creer/audioDucking';
 import {
   textAnimationState, TEXT_ANIMATION_KEYS, DEFAULT_TEXT_ANIMATION, type TextAnimation,
 } from '../src/lib/creer/textAnimation';
@@ -132,8 +134,21 @@ export interface CreerSimpleMontageProps {
    * `drawFreeElements` a la fin de chacune d'elles.
    */
   elements?: FreeElement[];
-  /** Non rendu en Phase 1. */
+  /**
+   * Voix par sequence — rendues depuis la Phase 8.
+   *
+   * Les cles sont celles de l'editeur (`titre`, `cartes`, `video`, `cta`),
+   * comme cote compositeur : c'est une carte d'URL, pas les objets
+   * `SequenceVoices` du panneau.
+   */
   sequenceVoiceUrls?: Record<string, string | null>;
+  /** Voix unique — repli quand aucune voix par sequence n'est fournie. */
+  voiceUrl?: string | null;
+  /** Volumes du mixage. Absents : les defauts du compositeur. */
+  musicVolume?: number;
+  voiceVolume?: number;
+  /** Attenuations posees a la main dans le mixeur. */
+  audioKeyframes?: AudioKeyframe[];
 }
 
 /** Séquences du montage, à partir des props. */
@@ -215,6 +230,14 @@ const SequenceAnimee: React.FC<{
   return <>{rendu({ progress, reveal: textAnimationState(style, progress).charRatio })}</>;
 };
 
+/** Clés des voix, côté éditeur — les mêmes que `SEQ_VOICE_KEYS` du compositeur. */
+const SEQ_VOICE_KEYS = ['titre', 'cartes', 'video', 'cta'] as const;
+
+/** Type de séquence → clé de l'éditeur. L'inverse de `SEQ_NAME_MAP`. */
+const SEQ_TO_EDITOR: Record<string, string | undefined> = {
+  intro: 'titre', cards: 'cartes', video: 'video', cta: 'cta',
+};
+
 /** Fond effectif d'une séquence : le sien, sinon l'affiche globale. */
 function backgroundFor(props: CreerSimpleMontageProps, type: string): string | null {
   const cle = ({ intro: 'titre', cards: 'cartes', video: 'video', cta: 'cta' } as const)[
@@ -275,6 +298,28 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
   // prop separee pourrait le contredire.
   const format = isReel ? '9:16' : width === height ? '1:1' : '16:9';
 
+  // ── Repères temporels, calculés UNE fois ────────────────────────────────
+  // L'audio et l'image les lisent tous les deux : deux calculs séparés
+  // finiraient par se désynchroniser d'une image, et un décalage son/image
+  // ne se voit qu'à l'oreille.
+  const offsets = sequenceFrameOffsets(sequences, fps);
+  const totalFrames = totalDurationFrames(sequences, fps);
+  const base = baseSequenceFrames(offsets, totalFrames);
+  const tFrames = transitionFrames(base, fps);
+
+  // Une voix PAR SÉQUENCE l'emporte sur la voix unique, comme côté
+  // compositeur : le repli historique ne joue que si aucune n'est fournie.
+  const voixParSequence = SEQ_VOICE_KEYS.some((cle) => !!props.sequenceVoiceUrls?.[cle]);
+  const voixUnique = !voixParSequence && props.voiceUrl ? props.voiceUrl : null;
+  const aDeLaVoix = voixParSequence || !!voixUnique;
+  const mixOptions = {
+    musicVolume: props.musicVolume,
+    voiceVolume: props.voiceVolume,
+    keyframes: props.audioKeyframes,
+    hasVoice: aDeLaVoix,
+    hasMixAudio: aDeLaVoix || !!props.musicUrl,
+  };
+
   return (
     // La famille de police est posee A LA RACINE : sans elle, tout element
     // qui n'en declare pas retombe sur le serif par defaut de Chromium — le
@@ -282,18 +327,65 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
     // encore embarquee dans le bundle : c'est un point de Phase 2.
     // La pile de police vient de `fontStack` — la MEME fonction que l'ecran.
     <AbsoluteFill style={{ backgroundColor: DEFAULT_COLORS.dark, fontFamily: fontStack('Inter') }}>
-      {props.musicUrl && <Audio src={props.musicUrl} />}
+      {/* ── AUDIO ────────────────────────────────────────────────────────
+          Musique et voix vivent a la RACINE, pas dans les
+          `TransitionSeries.Sequence` : depuis la Phase 6, une sequence autre
+          que la premiere demarre `tFrames` plus tot pour porter le raccord.
+          Une voix posee dedans partirait 0,8 s trop tot, et le decalage
+          s'accumulerait a chaque transition. Ici, `sequenceFrameOffsets`
+          donne le debut NOMINAL, celui que le canvas utilise aussi. */}
+      {props.musicUrl && (
+        <MusiqueEnBoucle
+          src={props.musicUrl}
+          fps={fps}
+          totalFrames={totalFrames}
+          volume={(f) => mixAt(f / fps, mixOptions).music}
+        />
+      )}
+      {voixParSequence && sequences.map((seq, i) => {
+        const cle = SEQ_TO_EDITOR[seq.type];
+        const url = cle ? props.sequenceVoiceUrls?.[cle] : null;
+        if (!url) return null;
+        return (
+          <VoixDeSequence
+            key={`voix-${seq.type}-${i}`}
+            src={url}
+            from={offsets[i]}
+            durationInFrames={base[i]}
+            // La frame reçue est relative à la séquence : on la ramène à
+            // l'absolu, sans quoi une atténuation posée à la trentième
+            // seconde du montage tomberait au début de chaque voix.
+            volume={(f) => mixAt((offsets[i] + f) / fps, mixOptions).voice}
+          />
+        );
+      })}
+      {voixUnique && (
+        // Repli historique : une seule voix, dès la première image.
+        <Audio src={voixUnique} volume={(f) => mixAt(f / fps, mixOptions).voice} />
+      )}
 
       {/* Le contenu d'une sequence, isole : la serie et un rendu direct
           montent ainsi EXACTEMENT le meme arbre. */}
       {(() => {
-        const contenu = (type: string, anim: AnimationCourante) => (
+        // Debut ABSOLU de la sequence dans la serie : `offsets[i]` moins le
+        // chevauchement qui la fait demarrer plus tot. Sert au volume du
+        // rush, dont la fonction recoit une frame relative a sa sequence.
+        const departSerie = (i: number) => (i === 0 ? 0 : offsets[i] - tFrames);
+
+        const contenu = (type: string, anim: AnimationCourante, depart: number) => (
           <AbsoluteFill>
             {type === 'video' && props.videoUrl ? (
               <OffthreadVideo
                 src={props.videoUrl}
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                muted
+                // Le rush garde SON son. Le canvas le route lui aussi — à la
+                // moitié du volume dès qu'il y a un autre audio, à plein
+                // sinon. Le couper ici aurait fait une vidéo serveur muette
+                // là où celle du navigateur parle.
+                //
+                // La frame reçue est relative à la séquence de la série, qui
+                // démarre `tFrames` plus tôt : `depart` la ramène à l'absolu.
+                volume={(f) => mixAt((depart + f) / fps, mixOptions).rush}
               />
             ) : (
               <Fond props={props} type={type} />
@@ -400,11 +492,6 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
         // deux sequences, chaque sequence sauf la premiere porte la duree de
         // transition en plus : le chevauchement la consomme, et le total
         // retombe sur la somme des durees voulues.
-        const base = baseSequenceFrames(
-          sequenceFrameOffsets(sequences, fps),
-          totalDurationFrames(sequences, fps),
-        );
-        const tFrames = transitionFrames(base, fps);
         const durees = seriesSequenceFrames(base, tFrames);
         const style = resolveStyle(props.transition);
         const animation = resolveAnimation(props.textAnimation);
@@ -426,7 +513,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                     style={animation}
                     baseFrames={base[i]}
                     prefixFrames={i === 0 ? 0 : tFrames}
-                    rendu={(anim) => contenu(seq.type, anim)}
+                    rendu={(anim) => contenu(seq.type, anim, departSerie(i))}
                   />
                 </TransitionSeries.Sequence>
               </React.Fragment>
