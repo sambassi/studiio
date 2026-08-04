@@ -2,9 +2,12 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  AI_TOOLS, STYLE_PRESETS, type AiAction, type AiToolDef,
+} from '@/components/creer/AiImageTools';
+import {
   Sun, Contrast, Palette, Thermometer, Sparkles, CircleOff,
-  Upload, Link2, Trash2, Image as ImageIcon, Wand2, Eraser,
-  Maximize, Video, Paintbrush, Layers, ArrowUpCircle, Move,
+  Upload, Link2, Trash2, Move,
+  // Les icones des outils IA sont portees par leur catalogue partage.
   ScanText, Copy, Check, X,
 } from 'lucide-react';
 
@@ -125,49 +128,10 @@ const FILTER_SLIDERS: FilterSliderDef[] = [
 ];
 
 // ── AI tools config ──
-
-type AiAction = 'remove-bg' | 'magic-eraser' | 'magic-edit' | 'upscale' | 'image-to-video' | 'generate-bg' | 'magic-layers' | 'style-transfer' | 'ocr';
-
-interface AiToolDef {
-  action: AiAction;
-  label: string;
-  icon: React.ReactNode;
-  /** Does this tool need the current image URL? */
-  needsImage: boolean;
-  /** Does this tool need a text prompt? */
-  needsPrompt: boolean;
-  /** Placeholder for prompt input */
-  promptPlaceholder?: string;
-  /** Does this tool need a style selection? */
-  needsStyle?: boolean;
-  /** Credit cost */
-  credits: number;
-}
-
-const AI_TOOLS: AiToolDef[] = [
-  { action: 'remove-bg', label: 'Effacer arrière-plan', icon: <Eraser size={11} />, needsImage: true, needsPrompt: false, credits: 2 },
-  { action: 'magic-eraser', label: 'Gomme magique', icon: <Wand2 size={11} />, needsImage: true, needsPrompt: true, promptPlaceholder: 'Que voulez-vous effacer ? (ex: la personne, le texte…)', credits: 3 },
-  { action: 'magic-edit', label: 'Édition magique', icon: <Paintbrush size={11} />, needsImage: true, needsPrompt: true, promptPlaceholder: 'Décrivez la modification (ex: changer le ciel en coucher de soleil)', credits: 5 },
-  { action: 'upscale', label: 'Augmenter résolution', icon: <ArrowUpCircle size={11} />, needsImage: true, needsPrompt: false, credits: 3 },
-  { action: 'image-to-video', label: "D'image à vidéo", icon: <Video size={11} />, needsImage: true, needsPrompt: false, credits: 15 },
-  { action: 'generate-bg', label: 'Générer arrière-plan', icon: <ImageIcon size={11} />, needsImage: false, needsPrompt: true, promptPlaceholder: 'Décrivez le fond (ex: gym moderne sombre avec néons violets)', credits: 5 },
-  { action: 'magic-layers', label: 'Calques magiques', icon: <Layers size={11} />, needsImage: true, needsPrompt: false, credits: 3 },
-  { action: 'style-transfer', label: 'Transfert de style', icon: <Maximize size={11} />, needsImage: true, needsPrompt: false, needsStyle: true, credits: 5 },
-  // Seul outil dont le resultat est du TEXTE : il ne remplace pas l'image,
-  // il affiche ce qu'elle contient (voir le bloc « Texte reconnu »).
-  { action: 'ocr', label: 'Capture de texte', icon: <ScanText size={11} />, needsImage: true, needsPrompt: false, credits: 1 },
-];
-
-const STYLE_PRESETS = [
-  { value: 'anime', label: 'Anime' },
-  { value: 'oil painting', label: 'Peinture' },
-  { value: 'watercolor', label: 'Aquarelle' },
-  { value: 'neon cyberpunk', label: 'Cyberpunk' },
-  { value: 'pencil sketch', label: 'Croquis' },
-  { value: 'pop art', label: 'Pop Art' },
-  { value: 'vintage retro film', label: 'Vintage' },
-  { value: 'minimalist flat design', label: 'Minimaliste' },
-];
+//
+// Le catalogue et son COUT EN CREDITS vivent desormais dans
+// `AiImageTools` : deux copies finiraient par annoncer des tarifs
+// differents selon l'ecran, et l'un des deux mentirait.
 
 // ── Helper: build CSS filter string from ImageFilters ──
 

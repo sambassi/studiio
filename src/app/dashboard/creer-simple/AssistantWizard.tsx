@@ -67,6 +67,7 @@ import {
   type CardGroup,
 } from '@/lib/creer/selection';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
+import AiImageTools from '@/components/creer/AiImageTools';
 import ClipDetectorModal, { type ClipSource } from '@/components/media/ClipDetectorModal';
 import { CardIcon } from '@/components/ui/CardIcon';
 import { ICON_LIBRARY, iconMatches } from '@/lib/icons/library';
@@ -2604,6 +2605,9 @@ export default function AssistantWizard() {
   const fondAffiche = resolveBackground(previewFocus, seqBackgrounds, posterUrl, posterTransform);
 
   /** Pose une photo : sur la sequence affichee, ou sur l'affiche globale. */
+  /** Dernier retour des outils IA — efface au traitement suivant. */
+  const [aiNotice, setAiNotice] = useState<string | null>(null);
+
   const applyPhoto = useCallback((url: string) => {
     const cle = seqBgKeyForFocus(previewFocusRef.current);
     if (!cle) {
@@ -5627,6 +5631,35 @@ export default function AssistantWizard() {
                         Revenir au fond dégradé
                       </button>
                     )}
+
+                    {/* ── OUTILS IA ────────────────────────────────────────
+                        Ils travaillent sur le fond EFFECTIF — celui de la
+                        séquence affichée, ou l'affiche globale sur « Tout ».
+                        Le résultat repart par `applyPhoto`, donc au même
+                        endroit : traiter le fond du Titre et voir l'affiche
+                        globale changer serait incompréhensible. */}
+                    <div className="pt-1 border-t border-gray-800/60 space-y-2">
+                      <p className="text-xs font-medium text-gray-300">Retouche IA</p>
+                      <p className="text-xs text-gray-500">
+                        Le résultat remplace {seqBgKeyForFocus(previewFocus)
+                          ? 'le fond de la séquence affichée'
+                          : 'l’affiche globale'} et reste recadrable.
+                      </p>
+                      <AiImageTools
+                        imageUrl={fondAffiche.url}
+                        onImageResult={(url) => {
+                          applyPhoto(url);
+                          setError(null);
+                        }}
+                        showToast={(msg, type) => {
+                          if (type === 'error') { setAiNotice(null); setError(msg); }
+                          else { setError(null); setAiNotice(msg); }
+                        }}
+                      />
+                      {aiNotice && (
+                        <p className="text-xs text-emerald-400">{aiNotice}</p>
+                      )}
+                    </div>
                   </div>
                 </StyleSection>
 
