@@ -71,8 +71,10 @@ import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import AiImageTools from '@/components/creer/AiImageTools';
 import AutopilotPanel from '@/components/creer/AutopilotPanel';
 import SequenceCards from '@/components/creer/SequenceCards';
+import SequenceTitle, { titleFrameStyle } from '@/components/creer/SequenceTitle';
+import SequenceCta, { ctaFrameStyle } from '@/components/creer/SequenceCta';
 import { renderSignature, signatureMatches } from '@/lib/creer/renderSignature';
-import { GAP_RATIO } from '@/lib/creer/designSpec';
+
 import {
   sanitizePhotos, vignetteAffichable, photoUtilisable, urlUtilisable,
 } from '@/lib/creer/posterPhotos';
@@ -363,20 +365,8 @@ const VIDEO_SIZE = {
  * titre, etc.) ; celles des cartes reprennent l'ancien rendu (9 px de texte
  * sur un panneau de 330 px, soit 9/330 de la largeur).
  */
-const FONT_RATIO = {
-  '9:16': { title: 0.04375, subtitle: 0.028, cta: 0.0375, ctaSub: 0.028 },
-  /**
-   * ⚠️ Le carre reprend les ratios du 16:9, et ce n'est pas un choix
-   * esthetique : le compositeur ne connait pas les formats, il teste
-   * `isReel = h > w` (video-composer.ts). Pour un canvas 1080x1080 cette
-   * condition est FAUSSE — il applique donc, du titre au CTA en passant par
-   * les cartes, exactement les metriques du paysage. Y mettre des valeurs
-   * « mieux adaptees au carre » ferait diverger l'apercu de l'export : ce
-   * serait plus joli a l'ecran et faux dans la video.
-   */
-  '1:1': { title: 0.035, subtitle: 0.0215, cta: 0.031, ctaSub: 0.023 },
-  '16:9': { title: 0.035, subtitle: 0.0215, cta: 0.031, ctaSub: 0.023 },
-} as const;
+// FONT_RATIO vit desormais dans `designSpec` — partage avec la composition.
+
 
 /**
  * Cartes en PAYSAGE — les ratios du compositeur, base 512 et non 330.
@@ -400,14 +390,6 @@ const FONT_RATIO = {
  * Ombres du compositeur, en fraction de la largeur video.
  * `dropShadowLgFilter` vaut 4/320 et 10/320 ; `dropShadowBaseFilter` 2.5/320.
  */
-function titleShadow(w: number): string {
-  const px = (r: number) => Math.max(1, Math.round(w * r));
-  return `drop-shadow(0 ${px(4 / 320)}px ${px(3 / 320)}px rgba(0,0,0,0.1)) drop-shadow(0 ${px(10 / 320)}px ${px(8 / 320)}px rgba(0,0,0,0.04))`;
-}
-function subtitleShadow(w: number): string {
-  const px = (r: number) => Math.max(1, Math.round(w * r));
-  return `drop-shadow(0 ${px(2.5 / 320)}px ${px(2 / 320)}px rgba(0,0,0,0.1))`;
-}
 
 /**
  * Angle CSS reproduisant `createLinearGradient(0, 0, w, h)` du compositeur.
@@ -1202,10 +1184,6 @@ export function Preview({
   const shows = (seq: 'intro' | 'cards' | 'cta') =>
     activeOrder.includes(seq) && (focus === 'all' || focus === seq);
 
-  const titleWeight = text.title.bold ? 900 : 400;
-  const titleStyle = text.title.italic ? 'italic' : 'normal';
-  const ctaWeight = text.cta.bold ? 900 : 400;
-  const ctaFontStyle = text.cta.italic ? 'italic' : 'normal';
 
   /**
    * Interlettrage : le compositeur multiplie la valeur saisie par `w / 320`
@@ -1213,15 +1191,11 @@ export function Preview({
    * native, on applique le meme facteur — sinon 2 px saisis donneraient 2 px
    * a l'ecran et 6,75 px dans la video.
    */
-  const spacingPx = (value: number) => (value * vw) / 320;
 
   // Sous-titre : chaque champ non renseigne suit le titre, exactement comme
   // `drawIntro` le fait en l'absence du champ correspondant.
-  const subFamily = text.subtitle.font || text.title.font;
-  const subSizePx = vw * FONT_RATIO[format].subtitle * text.title.scale * text.subtitle.scale;
   // Sans couleur choisie : celle du titre a 80 % (le `CC` du compositeur).
   // Avec : peinte a plein, ce que l'utilisateur choisit est ce qu'il voit.
-  const subColor = text.subtitle.color || `${text.title.color}CC`;
 
   /**
    * Suppression du demi-interligne CSS.
@@ -1235,10 +1209,8 @@ export function Preview({
    * sous-titre. Les marges negatives rendent la boite au ras des glyphes,
    * comme le canvas.
    */
-  const leadingTrim = (fontSizePx: number, lineHeight: number) => {
-    const half = ((lineHeight - 1) * fontSizePx) / 2;
-    return { marginTop: -half, marginBottom: -half };
-  };
+  // `leadingTrim` vit desormais dans `designSpec`.
+
 
   return (
     <div className="card-base p-4">
@@ -1534,11 +1506,10 @@ export function Preview({
               data-title-block
               title={onDragStart ? "Glisser pour déplacer le titre" : undefined}
               style={{
-                position: 'absolute',
-                left: `${titlePos.x}%`,
-                top: `${titlePos.y}%`,
-                width: `${DESIGN.titleWidth}%`,
-                textAlign: 'left',
+                // Cadre PARTAGE avec la composition Remotion : la position et
+                // la largeur viennent du meme helper, les aides d'edition
+                // s'ajoutent par-dessus.
+                ...titleFrameStyle(titlePos),
                 cursor: onDragStart ? (dragging === 'title' ? 'grabbing' : 'grab') : undefined,
                 // Au-dessus de la grille de cartes : sans cela, un titre
                 // depose sur la zone des cartes n'etait plus saisissable —
@@ -1549,47 +1520,17 @@ export function Preview({
                 outlineOffset: uiPx(2),
               }}
             >
-              <div
-                className="uppercase"
-                style={{
-                  fontFamily: fontStack(text.title.font),
-                  fontSize: vw * FONT_RATIO[format].title * text.title.scale,
-                  fontWeight: titleWeight,
-                  fontStyle: titleStyle,
-                  letterSpacing: spacingPx(text.title.letterSpacing),
-                  color: text.title.color,
-                  lineHeight: text.title.lineHeight,
-                  ...leadingTrim(vw * FONT_RATIO[format].title * text.title.scale, text.title.lineHeight),
-                  filter: titleShadow(vw),
-                }}
-              >
-                {generated.title}
-              </div>
-              {/* Sous-titre : `drawIntro` lui impose la police, la graisse,
-                  l'italique et l'interligne du TITRE, et sa couleur a 80 %.
-                  Il n'a aucun reglage propre — en lui en donnant un ici,
-                  l'apercu promettrait ce que la video ne rendrait pas. */}
-              <div
-                style={{
-                  fontFamily: fontStack(subFamily),
-                  fontSize: subSizePx,
-                  // Graisse, italique et interligne restent ceux du titre :
-                  // `drawIntro` les lui impose, lui donner des controles
-                  // afficherait des reglages sans effet sur la video.
-                  fontWeight: titleWeight,
-                  fontStyle: titleStyle,
-                  color: subColor,
-                  lineHeight: text.title.lineHeight,
-                  ...leadingTrim(subSizePx, text.title.lineHeight),
-                  // `mt1` du compositeur, mesure depuis le BAS des glyphes du
-                  // titre — d'ou le retrait du demi-interligne ci-dessus.
-                  marginTop:
-                    vw * GAP_RATIO - ((text.title.lineHeight - 1) * subSizePx) / 2,
-                  filter: subtitleShadow(vw),
-                }}
-              >
-                {generated.subtitle}
-              </div>
+              {/* Titre et sous-titre : composant PARTAGE avec la composition
+                  Remotion (Phase 4). Le cadre et les aides d'edition restent
+                  ici — cote serveur, il n'y a ni pointeur ni glissement. */}
+              <SequenceTitle
+                title={generated.title}
+                subtitle={generated.subtitle}
+                typography={text.title}
+                subtitleTypography={text.subtitle}
+                format={format}
+                containerWidth={vw}
+              />
             </div>
             )}
 
@@ -1635,12 +1576,7 @@ export function Preview({
               data-cta-block
               title={onDragStart ? "Glisser pour déplacer le CTA" : undefined}
               style={{
-                position: 'absolute',
-                left: `${ctaPos.x}%`,
-                top: `${ctaPos.y}%`,
-                transform: 'translate(-50%, -100%)',
-                width: `${DESIGN.ctaWidth}%`,
-                textAlign: 'center',
+                ...ctaFrameStyle(ctaPos),
                 cursor: onDragStart ? (dragging === 'cta' ? 'grabbing' : 'grab') : undefined,
                 zIndex: onDragStart ? 2 : undefined,
                 touchAction: onDragStart ? 'none' : undefined,
@@ -1648,43 +1584,14 @@ export function Preview({
                 outlineOffset: uiPx(2),
               }}
             >
-              {/* `drawCTA` lit desormais `ctaTypography.bold/italic` — il
-                  ecrivait `900` en dur, ce qui rendait ces deux champs
-                  inertes bien qu'ils existent dans le type depuis toujours. */}
-              <div
-                className="uppercase"
-                style={{
-                  fontFamily: fontStack(text.cta.font),
-                  fontSize: vw * FONT_RATIO[format].cta * text.cta.scale,
-                  fontWeight: ctaWeight,
-                  fontStyle: ctaFontStyle,
-                  letterSpacing: spacingPx(text.cta.letterSpacing),
-                  color: text.cta.color,
-                  lineHeight: text.cta.lineHeight,
-                  ...leadingTrim(vw * FONT_RATIO[format].cta * text.cta.scale, text.cta.lineHeight),
-                  textShadow: `0 0 ${vw * 0.02}px ${text.cta.color}66`,
-                }}
-              >
-                {generated.cta}
-              </div>
-              <div
-                className="uppercase"
-                style={{
-                  fontFamily: fontStack(text.cta.font),
-                  fontSize: vw * FONT_RATIO[format].ctaSub * text.cta.scale,
-                  fontWeight: ctaWeight,
-                  fontStyle: ctaFontStyle,
-                  letterSpacing: spacingPx(text.cta.letterSpacing),
-                  color: text.cta.subColor,
-                  lineHeight: text.cta.lineHeight,
-                  ...leadingTrim(vw * FONT_RATIO[format].ctaSub * text.cta.scale, text.cta.lineHeight),
-                  marginTop:
-                    vw * GAP_RATIO
-                    - ((text.cta.lineHeight - 1) * vw * FONT_RATIO[format].ctaSub * text.cta.scale) / 2,
-                }}
-              >
-                {generated.ctaSub}
-              </div>
+              {/* CTA : composant PARTAGE avec la composition Remotion. */}
+              <SequenceCta
+                text={generated.cta}
+                subText={generated.ctaSub}
+                typography={text.cta}
+                format={format}
+                containerWidth={vw}
+              />
             </div>
             )}
 

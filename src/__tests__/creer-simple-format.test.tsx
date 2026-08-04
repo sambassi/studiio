@@ -133,10 +133,10 @@ describe('Aperçu — les métriques du carré sont celles que rendra la vidéo'
   it('la table du carré est identique à celle du paysage', () => {
     // Si quelqu'un « améliore » ces valeurs pour le carré, l'aperçu et
     // l'export divergent aussitôt. Ce test le rendra visible.
-    const table = wizardSource.slice(
-      wizardSource.indexOf('const FONT_RATIO = {'),
-      wizardSource.indexOf('const CARD_RATIO'),
-    );
+    // `FONT_RATIO` vit depuis la Phase 4 dans la spec PARTAGEE : la
+    // composition Remotion lit les memes ratios que l'apercu.
+    const spec = readFileSync(resolve(__dirname, '../lib/creer/designSpec.ts'), 'utf-8');
+    const table = spec.slice(spec.indexOf('export const FONT_RATIO = {'));
     const carre = /'1:1': \{ title: ([\d.]+), subtitle: ([\d.]+), cta: ([\d.]+), ctaSub: ([\d.]+) \}/.exec(table);
     const paysage = /'16:9': \{ title: ([\d.]+), subtitle: ([\d.]+), cta: ([\d.]+), ctaSub: ([\d.]+) \}/.exec(table);
     expect(carre).not.toBeNull();
