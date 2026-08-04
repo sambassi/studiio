@@ -70,7 +70,9 @@ import {
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import AiImageTools from '@/components/creer/AiImageTools';
 import AutopilotPanel from '@/components/creer/AutopilotPanel';
+import SequenceCards from '@/components/creer/SequenceCards';
 import { renderSignature, signatureMatches } from '@/lib/creer/renderSignature';
+import { GAP_RATIO } from '@/lib/creer/designSpec';
 import {
   sanitizePhotos, vignetteAffichable, photoUtilisable, urlUtilisable,
 } from '@/lib/creer/posterPhotos';
@@ -388,29 +390,10 @@ const FONT_RATIO = {
  * un conteneur de 518 — c'est exactement le dimensionnement que le compositeur
  * a ete ecrit pour tenir.
  */
-const CARD_RATIO_LANDSCAPE = {
-  text: 7 / 512,        // labelSize = fontPx(7)
-  value: 9 / 512,       // valueSize = fontPx(9)
-  icon: 18 / 512,       // emojiSizeLocal = fixedFontPx(18)
-  gap: 6 / 512,         // gap-1.5
-  padX: 6 / 512,        // px-1.5
-  padY: 6 / 512,        // py-1.5
-  radius: 8 / 512,
-  /** Interlignes du compositeur : `lineMul` pour le texte, `emojiLineMul` pour l'icone. */
-  line: 1.5,
-} as const;
+// Ratios de carte : lus dans la spec PARTAGEE depuis la Phase 2 — la
+// composition Remotion dessine les MEMES cartes, elle doit lire les memes
+// mesures.
 
-const CARD_RATIO = {
-  text: 9 / 330,
-  icon: 13 / 330,
-  gap: 6 / 330,
-  padX: 8 / 330,
-  padY: 6 / 330,
-  radius: 8 / 330,
-} as const;
-
-/** Marge titre/sous-titre et CTA : le compositeur utilise w * 4/320. */
-const GAP_RATIO = 4 / 320;
 
 
 /**
@@ -1190,12 +1173,8 @@ export function Preview({
    * Les METRIQUES suivent le format ; la DISPOSITION suit aussi le mode libre.
    * Passer en mode libre ne doit pas changer la taille du texte des cartes.
    */
-  const CR: { text: number; value: number; icon: number; gap: number; padX: number; padY: number; radius: number } =
-    landscapeCards
-      ? CARD_RATIO_LANDSCAPE
-      // En portrait, libelle et valeur partagent la meme taille — c'est le
-      // rendu d'origine, et il ne bouge pas.
-      : { ...CARD_RATIO, value: CARD_RATIO.text };
+  // Les ratios de carte vivent desormais dans `SequenceCards`, qui les lit
+  // dans la spec partagee — l'apercu n'a plus a les connaitre.
 
   /**
    * Epaisseur en pixels ECRAN pour un trait peint DANS le plateau.
@@ -1617,134 +1596,31 @@ export function Preview({
             {/* Cartes — ce conteneur est PHOTOGRAPHIÉ (modern-screenshot) et
                 l'image est blittée telle quelle dans la vidéo par le
                 compositeur. C'est ce qui garantit que les cartes de l'aperçu
-                et celles du montage sont pixel pour pixel identiques. */}
-            <div
-              ref={cardsRef}
-              data-cards-grid
-              className={
-                cardBoxes
-                  ? 'absolute'
-                  : landscapeCards
-                    ? 'absolute grid'
-                    : 'absolute flex flex-col justify-center'
-              }
-              style={{
-                left: '8%', right: '8%', top: '30%', bottom: '22%',
-                // En mode libre chaque carte porte sa position : l'ecart du
-                // flux n'a plus lieu d'etre.
-                gap: cardBoxes ? undefined : vw * CR.gap,
-                // Paysage : une GRILLE de trois colonnes. Empilees en colonne,
-                // cinq cartes formaient une pile deux fois plus haute que leur
-                // conteneur — et ce conteneur est photographie puis blitte,
-                // donc la video sortait avec des cartes rognees en haut et en
-                // bas. `gridTemplateColumns` en style en ligne : les valeurs
-                // arbitraires de Tailwind sont purgees en production.
-                ...(landscapeCards && !cardBoxes
-                  ? { gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', alignContent: 'center' as const }
-                  : null),
-              }}
-            >
-              {(shows('cards') ? generated.cards : []).map((c) => {
-                const box = cardBoxes?.[c.id];
-                return (
-                <div
-                  key={c.id}
-                  data-card-id={c.id}
-                  onPointerDown={(e) => onCardDragStart?.(c.id, e)}
-                  onPointerMove={onDragMove}
-                  onPointerUp={onDragEnd}
-                  onPointerCancel={onDragEnd}
-                  onLostPointerCapture={onDragEnd}
-                  title={onCardDragStart ? 'Glisser pour déplacer la carte' : undefined}
-                  // En grille, la carte s'empile comme la carte « Compact » du
-                  // compositeur : icone, libelle, valeur. En ligne sur un
-                  // tiers de largeur, le libelle serait reduit a deux
-                  // caracteres et une ellipse.
-                  className={
-                    landscapeCards && !cardBoxes
-                      ? 'flex flex-col items-center justify-center text-center'
-                      : 'flex items-center'
-                  }
-                  style={{
-                    backgroundColor: 'rgba(255,255,255,0.08)',
-                    gap: vw * CR.gap,
-                    borderRadius: vw * CR.radius,
-                    padding: `${vw * CR.padY}px ${vw * CR.padX}px`,
-                    ...(box
-                      // La HAUTEUR mesuree est reappliquee : sans elle, une
-                      // carte absolue se retrecirait a son contenu au moment
-                      // meme de la bascule.
-                      ? { position: 'absolute' as const, left: `${box.x}%`, top: `${box.y}%`, width: `${box.w}%`, height: `${box.h}%` }
-                      : null),
-                    cursor: onCardDragStart ? (draggingCard === c.id ? 'grabbing' : 'grab') : undefined,
-                    touchAction: onCardDragStart ? 'none' : undefined,
-                    zIndex: draggingCard === c.id ? 1 : undefined,
-                    // Meme retour visuel que le titre et le CTA : sans lui, on
-                    // ne sait pas quelle carte on tient quand elles se
-                    // recouvrent.
-                    // Glissement : pointille, comme le titre et le CTA.
-                    // Selection : trait plein a l'accent, pour ne pas confondre
-                    // « je tiens cette carte » et « elle est retenue ».
-                    outline: capturing
-                      ? undefined
-                      : draggingCard === c.id
-                        ? `${uiPx(1)}px dashed rgba(255,255,255,0.7)`
-                        // Blanc, et non l'accent : le fond du plateau EST le
-                        // degrade d'accent par defaut — un lisere accent y
-                        // serait invisible. L'ombre portee sombre garantit le
-                        // contraste sur un fond clair.
-                        : selectedCards?.has(c.id)
-                          ? `${uiPx(2)}px solid #FFFFFF`
-                          : undefined,
-                    boxShadow: capturing
-                      ? undefined
-                      : draggingCard !== c.id && selectedCards?.has(c.id)
-                        ? `0 0 0 ${uiPx(3)}px rgba(0,0,0,0.5)`
-                        // Groupe : un filet lateral discret, du cote gauche.
-                        // Assez pour lire « ces cartes vont ensemble » sans
-                        // rivaliser avec le lisere de selection.
-                        : groupedCards?.[c.id]
-                          ? `inset ${uiPx(3)}px 0 0 0 ${GROUP_TINT}`
-                          : undefined,
-                    outlineOffset: uiPx(2),
-                  }}
-                >
-                  <CardIcon
-                    name={c.icon}
-                    size={Math.round(vw * CR.icon)}
-                    color="#FFFFFF"
-                    className=""
-                  />
-                  <span
-                    className={
-                      landscapeCards && !cardBoxes
-                        ? 'font-semibold text-white truncate max-w-full'
-                        : 'font-semibold text-white truncate flex-1'
-                    }
-                    style={{
-                      fontSize: vw * CR.text,
-                      lineHeight: landscapeCards ? CARD_RATIO_LANDSCAPE.line : undefined,
-                    }}
-                  >
-                    {c.title}
-                  </span>
-                  {c.value && (
-                    <span
-                      className={landscapeCards && !cardBoxes ? 'font-bold' : 'font-bold flex-shrink-0'}
-                      style={{
-                        fontSize: vw * CR.value,
-                        lineHeight: landscapeCards ? CARD_RATIO_LANDSCAPE.line : undefined,
-                        color: gradEnd,
-                      }}
-                    >
-                      {c.value}
-                    </span>
-                  )}
-                </div>
-                );
-              })}
+                et celles du montage sont pixel pour pixel identiques.
 
-            </div>
+                Depuis la Phase 2 du rendu serveur, le rendu lui-même vit dans
+                `SequenceCards`, partagé avec la composition Remotion : le MÊME
+                composant produit la même image des deux côtés. Les aides
+                d'édition passent par `interaction`, absent côté serveur. */}
+            <SequenceCards
+              containerRef={cardsRef}
+              cards={shows('cards') ? generated.cards : []}
+              cardBoxes={cardBoxes}
+              containerWidth={vw}
+              landscape={landscapeCards}
+              valueColor={gradEnd}
+              interaction={{
+                onCardDragStart,
+                onDragMove,
+                onDragEnd,
+                draggingCard,
+                selectedCards,
+                groupedCards,
+                capturing,
+                uiPx,
+                groupTint: GROUP_TINT,
+              }}
+            />
 
             {shows('cta') && (
             /* CTA — ancre par le BAS a ctaPos.y, centre horizontalement :

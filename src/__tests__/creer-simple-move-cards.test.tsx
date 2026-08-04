@@ -84,7 +84,8 @@ describe('Le rendu par défaut est exactement celui d avant', () => {
   it('le conteneur garde sa colonne centrée tant que rien n est déplacé', () => {
     render(<Preview {...previewProps} />);
     const host = document.querySelector('[data-cards-grid]') as HTMLElement;
-    expect(host.className).toContain('flex flex-col justify-center');
+    expect(host.style.flexDirection).toBe('column');
+    expect(host.style.justifyContent).toBe('center');
     expect(host.style.gap).not.toBe('');
   });
 
@@ -123,7 +124,7 @@ describe('Avec des emplacements, chaque carte est posée où on le demande', () 
   it('le conteneur abandonne la colonne et son écart', () => {
     render(<Preview {...previewProps} cardBoxes={boxes} />);
     const host = document.querySelector('[data-cards-grid]') as HTMLElement;
-    expect(host.className).not.toContain('flex flex-col');
+    expect(host.style.flexDirection).not.toBe('column');
     expect(host.style.gap).toBe('');
   });
 

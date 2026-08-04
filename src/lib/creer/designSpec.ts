@@ -195,3 +195,51 @@ export function hexToRgba(hex: string, alpha: number): string {
   const n = parseInt(m[1], 16);
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
+
+/**
+ * Ratios de carte — mesures de l'éditeur, exprimées en fraction de la largeur
+ * vidéo. Elles vivaient dans l'écran ; elles sont ici parce que la
+ * composition Remotion doit dessiner les MÊMES cartes.
+ *
+ * Les dénominateurs (512, 330, 320) ne sont pas interchangeables : ce sont les
+ * largeurs de référence sur lesquelles chaque mesure a été calée face au
+ * compositeur Canvas. Les uniformiser décalerait le rendu.
+ */
+export const CARD_RATIO_LANDSCAPE = {
+  text: 7 / 512,        // labelSize = fontPx(7)
+  value: 9 / 512,       // valueSize = fontPx(9)
+  icon: 18 / 512,       // emojiSizeLocal = fixedFontPx(18)
+  gap: 6 / 512,         // gap-1.5
+  padX: 6 / 512,        // px-1.5
+  padY: 6 / 512,        // py-1.5
+  radius: 8 / 512,
+  /** Interlignes du compositeur : `lineMul` pour le texte, `emojiLineMul` pour l'icone. */
+  line: 1.5,
+} as const;
+
+export const CARD_RATIO = {
+  text: 9 / 330,
+  icon: 13 / 330,
+  gap: 6 / 330,
+  padX: 8 / 330,
+  padY: 6 / 330,
+  radius: 8 / 330,
+} as const;
+
+/** Marge titre/sous-titre et CTA : le compositeur utilise w * 4/320. */
+export const GAP_RATIO = 4 / 320;
+
+/**
+ * Cadre occupé par les cartes dans le plateau, en pourcentages.
+ *
+ * C'est ce cadre qui est PHOTOGRAPHIÉ côté navigateur puis blitté dans la
+ * vidéo : le rendu serveur doit occuper exactement le même.
+ */
+export const CARDS_FRAME = { left: '8%', right: '8%', top: '30%', bottom: '22%' } as const;
+
+/** Ratios effectifs selon le format. Le paysage a sa propre table. */
+export function cardRatios(landscape: boolean) {
+  return landscape
+    ? CARD_RATIO_LANDSCAPE
+    : { ...CARD_RATIO, value: CARD_RATIO.text };
+}
