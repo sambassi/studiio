@@ -1,9 +1,9 @@
 import React from 'react';
 import {
-  AbsoluteFill, Sequence, Audio, OffthreadVideo, Img, useVideoConfig,
+  AbsoluteFill, Audio, OffthreadVideo, Img, useVideoConfig,
 } from 'remotion';
 import {
-  buildSequences, sequenceFrameOffsets, isReelFormat, editorViewportPx,
+  buildSequences, sequenceFrameOffsets, totalDurationFrames, isReelFormat, editorViewportPx,
   gradientOverlayCss, DEFAULT_COLORS,
   type PlannedSequence,
 } from '../src/lib/creer/designSpec';
@@ -11,6 +11,15 @@ import SequenceCards from '../src/components/creer/SequenceCards';
 import SequenceTitle, { titleFrameStyle } from '../src/components/creer/SequenceTitle';
 import SequenceCta, { ctaFrameStyle } from '../src/components/creer/SequenceCta';
 import FreeElementsLayer, { type FreeElement } from '../src/components/creer/FreeElementsLayer';
+import { TransitionSeries } from '@remotion/transitions';
+// Type SEUL : effacé à la compilation, donc le compositeur navigateur —
+// et ses appels au DOM — n'entrent pas dans le bundle Remotion.
+import type { TransitionStyle } from '../src/lib/video-composer';
+import {
+  transitionPresentation, transitionTiming, transitionFrames, seriesSequenceFrames,
+  baseSequenceFrames,
+  TRANSITION_STYLE_KEYS, DEFAULT_TRANSITION_STYLE,
+} from './transitions';
 import { TEXT_LAYOUT } from '../src/lib/creer/designSpec';
 import { fontStack } from '../src/lib/fonts/catalog';
 import { useMontageFonts } from './useMontageFonts';
@@ -33,10 +42,8 @@ import { useMontageFonts } from './useMontageFonts';
  *   PHOTOGRAPHIE du conteneur de l'aperçu (`cardsSnapshot`) : la parité y sera
  *   toujours une ressemblance, jamais une identité, tant qu'on ne photographie
  *   pas aussi côté serveur.
- * - Les transitions entre séquences sont des coupes franches. Le fondu de
- *   0,8 s du navigateur arrive en phase suivante.
- * - Animations de texte, éléments libres, voix par séquence et recadrage
- *   d'affiche ne sont PAS rendus. Ils sont câblés « sans effet » — les props
+ * - Animations de texte, voix par séquence et recadrage d'affiche ne sont
+ *   PAS rendus. Ils sont câblés « sans effet » — les props
  *   existent, le rendu les ignore — pour que la phase suivante n'ait pas à
  *   changer la signature.
  */
@@ -101,7 +108,13 @@ export interface CreerSimpleMontageProps {
   // ── Phases suivantes : acceptés, non rendus ────────────────────────────
   /** Non rendu en Phase 1. */
   textAnimation?: string;
-  /** Non rendu en Phase 1. */
+  /**
+   * Style joue entre deux sequences — rendu depuis la Phase 6.
+   *
+   * Une valeur inconnue retombe sur le fondu enchaine, comme
+   * `drawTransition` qui teste `TRANSITION_STYLES.includes(style)` avant de
+   * peindre quoi que ce soit.
+   */
   transition?: string;
   /**
    * Elements libres — rendus depuis la Phase 5, par le composant PARTAGE.
@@ -129,6 +142,21 @@ export function planFromProps(props: CreerSimpleMontageProps): PlannedSequence[]
     videoRequested: !!props.videoUrl,
     sequenceOrder: props.sequenceOrder ?? null,
   });
+}
+
+/**
+ * Style de transition demandé, ou le fondu enchaîné.
+ *
+ * Un style inconnu ne coupe pas franc : `drawTransition` teste
+ * `TRANSITION_STYLES.includes(style)` et retombe sur le fondu **avant** de
+ * peindre. Le rendu serveur fait la même chose, sinon un design venu d'une
+ * version plus récente de l'éditeur perdrait ses transitions ici et les
+ * garderait là.
+ */
+function resolveStyle(demande: string | undefined): TransitionStyle {
+  return demande && (TRANSITION_STYLE_KEYS as readonly string[]).includes(demande)
+    ? (demande as TransitionStyle)
+    : DEFAULT_TRANSITION_STYLE;
 }
 
 /** Fond effectif d'une séquence : le sien, sinon l'affiche globale. */
@@ -178,7 +206,6 @@ const Filigrane: React.FC<{ texte?: string; echelle: number }> = ({ texte, echel
 export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => {
   const { fps, width, height } = useVideoConfig();
   const sequences = planFromProps(props);
-  const offsets = sequenceFrameOffsets(sequences, fps);
   const isReel = isReelFormat(width, height);
   // Même règle d'échelle que le compositeur Canvas : les tailles de l'éditeur
   // sont des pixels CSS fixes, remises à l'échelle de la vidéo.
@@ -201,105 +228,131 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
     <AbsoluteFill style={{ backgroundColor: DEFAULT_COLORS.dark, fontFamily: fontStack('Inter') }}>
       {props.musicUrl && <Audio src={props.musicUrl} />}
 
-      {sequences.map((seq, i) => {
-        const durationInFrames = Math.max(1, Math.round(seq.duration * fps));
-        return (
-          <Sequence
-            key={`${seq.type}-${i}`}
-            from={offsets[i]}
-            durationInFrames={durationInFrames}
-            name={seq.type}
-          >
-            <AbsoluteFill>
-              {seq.type === 'video' && props.videoUrl ? (
-                <OffthreadVideo
-                  src={props.videoUrl}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  muted
-                />
-              ) : (
-                <Fond props={props} type={seq.type} />
-              )}
-
-              {seq.type === 'intro' && (
-                // Le MEME composant que l'apercu, et le MEME cadre : la
-                // position vient de `titlePos`, comme a l'ecran.
-                <div style={titleFrameStyle(props.titlePos ?? TEXT_LAYOUT.titlePos)}>
-                  <SequenceTitle
-                    title={props.title}
-                    subtitle={props.subtitle}
-                    typography={{
-                      font: props.titleFont || 'Inter',
-                      color: titleColor,
-                      scale: props.titleScale ?? 1,
-                      bold: props.titleBold ?? true,
-                      italic: props.titleItalic ?? false,
-                      letterSpacing: props.titleLetterSpacing ?? 0,
-                      lineHeight: props.titleLineHeight ?? 1.1,
-                    }}
-                    subtitleTypography={{
-                      font: props.subtitleFont ?? null,
-                      color: props.subtitleColor ?? null,
-                      scale: props.subtitleScale ?? 1,
-                    }}
-                    format={format}
-                    containerWidth={width}
-                  />
-                </div>
-              )}
-
-              {seq.type === 'cards' && (
-                // Le MEME composant que l'apercu, a la resolution de la
-                // composition. C'est ce qui rend la parite structurelle :
-                // aucune seconde implementation a recaler.
-                <SequenceCards
-                  cards={(props.cards ?? []).map((c, i) => ({
-                    id: (c as { id?: string }).id ?? `c${i}`,
-                    icon: c.icon ?? 'Sparkles',
-                    title: c.title ?? c.label ?? '',
-                    value: c.value,
-                  }))}
-                  cardBoxes={props.cardBoxes ?? null}
-                  containerWidth={width}
-                  landscape={!isReel}
-                  valueColor={props.gradientEnd || DEFAULT_COLORS.gradientEnd}
-                />
-              )}
-
-              {seq.type === 'cta' && (
-                <div style={ctaFrameStyle(props.ctaPos ?? TEXT_LAYOUT.ctaPos)}>
-                  <SequenceCta
-                    text={props.ctaText ?? ''}
-                    subText={props.ctaSubText}
-                    typography={{
-                      font: props.ctaFont || 'Inter',
-                      color: props.ctaColor ?? '#FFFFFF',
-                      subColor: props.ctaSubColor ?? '#EC4899',
-                      scale: props.ctaScale ?? 1,
-                      bold: props.ctaBold ?? true,
-                      italic: props.ctaItalic ?? false,
-                      letterSpacing: props.ctaLetterSpacing ?? 0,
-                      lineHeight: props.ctaLineHeight ?? 1.2,
-                    }}
-                    format={format}
-                    containerWidth={width}
-                  />
-                </div>
-              )}
-
-              {/* Elements libres — le MEME composant que l'apercu, sur les
-                  quatre sequences. Places AVANT le filigrane : le compositeur
-                  canvas peint le texte de site apres eux, donc par-dessus. */}
-              <FreeElementsLayer
-                elements={props.elements ?? []}
-                containerWidth={width}
+      {/* Le contenu d'une sequence, isole : la serie et un rendu direct
+          montent ainsi EXACTEMENT le meme arbre. */}
+      {(() => {
+        const contenu = (type: string) => (
+          <AbsoluteFill>
+            {type === 'video' && props.videoUrl ? (
+              <OffthreadVideo
+                src={props.videoUrl}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                muted
               />
+            ) : (
+              <Fond props={props} type={type} />
+            )}
 
-              <Filigrane texte={props.watermark} echelle={echelle} />
-            </AbsoluteFill>
-          </Sequence>
+            {type === 'intro' && (
+              // Le MEME composant que l'apercu, et le MEME cadre : la
+              // position vient de `titlePos`, comme a l'ecran.
+              <div style={titleFrameStyle(props.titlePos ?? TEXT_LAYOUT.titlePos)}>
+                <SequenceTitle
+                  title={props.title}
+                  subtitle={props.subtitle}
+                  typography={{
+                    font: props.titleFont || 'Inter',
+                    color: titleColor,
+                    scale: props.titleScale ?? 1,
+                    bold: props.titleBold ?? true,
+                    italic: props.titleItalic ?? false,
+                    letterSpacing: props.titleLetterSpacing ?? 0,
+                    lineHeight: props.titleLineHeight ?? 1.1,
+                  }}
+                  subtitleTypography={{
+                    font: props.subtitleFont ?? null,
+                    color: props.subtitleColor ?? null,
+                    scale: props.subtitleScale ?? 1,
+                  }}
+                  format={format}
+                  containerWidth={width}
+                />
+              </div>
+            )}
+
+            {type === 'cards' && (
+              // Le MEME composant que l'apercu, a la resolution de la
+              // composition. C'est ce qui rend la parite structurelle :
+              // aucune seconde implementation a recaler.
+              <SequenceCards
+                cards={(props.cards ?? []).map((c, i) => ({
+                  id: (c as { id?: string }).id ?? `c${i}`,
+                  icon: c.icon ?? 'Sparkles',
+                  title: c.title ?? c.label ?? '',
+                  value: c.value,
+                }))}
+                cardBoxes={props.cardBoxes ?? null}
+                containerWidth={width}
+                landscape={!isReel}
+                valueColor={props.gradientEnd || DEFAULT_COLORS.gradientEnd}
+              />
+            )}
+
+            {type === 'cta' && (
+              <div style={ctaFrameStyle(props.ctaPos ?? TEXT_LAYOUT.ctaPos)}>
+                <SequenceCta
+                  text={props.ctaText ?? ''}
+                  subText={props.ctaSubText}
+                  typography={{
+                    font: props.ctaFont || 'Inter',
+                    color: props.ctaColor ?? '#FFFFFF',
+                    subColor: props.ctaSubColor ?? '#EC4899',
+                    scale: props.ctaScale ?? 1,
+                    bold: props.ctaBold ?? true,
+                    italic: props.ctaItalic ?? false,
+                    letterSpacing: props.ctaLetterSpacing ?? 0,
+                    lineHeight: props.ctaLineHeight ?? 1.2,
+                  }}
+                  format={format}
+                  containerWidth={width}
+                />
+              </div>
+            )}
+
+            {/* Elements libres — le MEME composant que l'apercu, sur les
+                quatre sequences. Places AVANT le filigrane : le compositeur
+                canvas peint le texte de site apres eux, donc par-dessus. */}
+            <FreeElementsLayer
+              elements={props.elements ?? []}
+              containerWidth={width}
+            />
+
+            <Filigrane texte={props.watermark} echelle={echelle} />
+          </AbsoluteFill>
         );
-      })}
+
+        // La transition se joue dans les DERNIERES images de la sequence
+        // sortante, comme sur le canvas. `TransitionSeries` chevauchant les
+        // deux sequences, chaque sequence sauf la premiere porte la duree de
+        // transition en plus : le chevauchement la consomme, et le total
+        // retombe sur la somme des durees voulues.
+        const base = baseSequenceFrames(
+          sequenceFrameOffsets(sequences, fps),
+          totalDurationFrames(sequences, fps),
+        );
+        const tFrames = transitionFrames(base, fps);
+        const durees = seriesSequenceFrames(base, tFrames);
+        const style = resolveStyle(props.transition);
+
+        return (
+          <TransitionSeries>
+            {sequences.map((seq, i) => (
+              <React.Fragment key={`${seq.type}-${i}`}>
+                {i > 0 && (
+                  <TransitionSeries.Transition
+                    presentation={transitionPresentation(style, { width, height })}
+                    timing={transitionTiming(style, tFrames)}
+                  />
+                )}
+                <TransitionSeries.Sequence durationInFrames={durees[i]} name={seq.type}>
+                  {contenu(seq.type)}
+                </TransitionSeries.Sequence>
+              </React.Fragment>
+            ))}
+          </TransitionSeries>
+        );
+      })()}
+
     </AbsoluteFill>
   );
 };

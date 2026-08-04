@@ -79,14 +79,18 @@ describe('Les DEUX moteurs montent le MÊME composant', () => {
 describe('Sur TOUTES les séquences — comme le compositeur', () => {
   it('la couche est DANS la séquence, pas à côté', () => {
     // `drawFreeElements` est appelée a la fin de CHACUNE des quatre
-    // sequences. Poser la couche hors de la boucle la rendrait bien sur toute
+    // sequences. Poser la couche hors du contenu la rendrait bien sur toute
     // la duree, mais sous un autre parent : une seule regression de z-index
     // separerait alors les deux moteurs.
-    const boucle = composition.slice(
-      composition.indexOf('{sequences.map((seq, i) => {'),
-      composition.indexOf('</Sequence>'),
+    //
+    // Depuis la Phase 6, ce contenu est la fonction `contenu(type)` que
+    // chaque `TransitionSeries.Sequence` monte.
+    const bloc = composition.slice(
+      composition.indexOf('const contenu = (type: string) => ('),
+      composition.indexOf('const base = baseSequenceFrames('),
     );
-    expect(boucle).toContain('<FreeElementsLayer');
+    expect(bloc).toContain('<FreeElementsLayer');
+    expect(composition).toContain('{contenu(seq.type)}');
   });
 
   it('sous le filigrane, comme sur le canvas', () => {

@@ -213,7 +213,7 @@ describe('Le voile de dégradé', () => {
 describe('Ce que la Phase 1 ne rend PAS — dit explicitement', () => {
   it('la composition accepte les champs des phases suivantes sans les rendre', () => {
     // Leur signature existe déjà : la phase suivante n'aura pas à la changer.
-    for (const champ of ['textAnimation', 'transition', 'elements', 'sequenceVoiceUrls']) {
+    for (const champ of ['textAnimation', 'sequenceVoiceUrls']) {
       expect(composition, champ).toContain(`${champ}?:`);
     }
     expect(composition).toContain('Non rendu en Phase 1');
@@ -225,7 +225,10 @@ describe('Ce que la Phase 1 ne rend PAS — dit explicitement', () => {
     expect(composition).toContain('PHOTOGRAPHIE du conteneur');
   });
 
-  it('l absence de transition l est aussi', () => {
-    expect(composition).toContain('coupes franches');
+  it('les transitions, elles, sont RENDUES depuis la Phase 6', () => {
+    // La Phase 1 assumait des coupes franches et le disait. Ce n'est plus
+    // vrai : la composition monte une serie de transitions.
+    expect(composition).not.toContain('coupes franches');
+    expect(composition).toContain('<TransitionSeries.Transition');
   });
 });
