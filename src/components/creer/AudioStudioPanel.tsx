@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Music, Mic, Upload, Trash2, Volume2, VolumeX, Loader2, Play, Pause, Square, Sparkles, Image as ImageIcon, LayoutGrid, Film, Megaphone, SlidersHorizontal, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import { TTS_VOICES, synthesize, type TtsVoice } from '@/lib/tts/edge-tts-client';
-import { fetchHeyGenVoices, isHeyGenVoiceId } from '@/lib/types/voice';
+import { fetchCustomVoices, isHeyGenVoiceId } from '@/lib/types/voice';
 import AudioDuckingTimeline from '@/components/creer/AudioDuckingTimeline';
 import AudioMixPreview from '@/components/creer/AudioMixPreview';
 import { analyseRushForDucking, detectVoiceSpeech, applyVoiceDucking, type AudioKeyframe } from '@/lib/creer/audioDucking';
@@ -162,17 +162,17 @@ export function AudioStudioPanel({
   const [ttsLoading, setTtsLoading] = useState(false);
   const [ttsError, setTtsError] = useState('');
   const [ttsSuggestLoading, setTtsSuggestLoading] = useState(false);
-  // Voix HeyGen du compte (voix clonee comprise), chargees a la volee.
-  // Echec ou compte sans HeyGen → liste vide, le selecteur ne change pas.
-  const [heygenVoices, setHeygenVoices] = useState<TtsVoice[]>([]);
+  // Voix listees a la volee — HeyGen et ElevenLabs, voix clonee comprise.
+  // Echec ou fournisseur non configure → liste vide, le selecteur ne change pas.
+  const [customVoices, setCustomVoices] = useState<TtsVoice[]>([]);
   useEffect(() => {
     let cancelled = false;
-    fetchHeyGenVoices().then((voices) => {
-      if (!cancelled) setHeygenVoices(voices);
+    fetchCustomVoices().then((voices) => {
+      if (!cancelled) setCustomVoices(voices);
     });
     return () => { cancelled = true; };
   }, []);
-  const allVoices: TtsVoice[] = [...heygenVoices, ...TTS_VOICES];
+  const allVoices: TtsVoice[] = [...customVoices, ...TTS_VOICES];
   useEffect(() => {
     try { window.localStorage.setItem(VOICE_STORAGE_KEY, selectedVoiceId); } catch { /* ignore */ }
   }, [selectedVoiceId]);

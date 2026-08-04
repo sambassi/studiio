@@ -5,7 +5,7 @@ import { Mic, Square, Sparkles, Loader2, Trash2, Play, Pause, AlertTriangle, Inf
 import { TTS_VOICES, synthesize, type TtsVoice } from '@/lib/tts/edge-tts-client';
 import { compareVoiceToSequence, voiceFitMessage } from '@/lib/creer/voiceFit';
 import {
-  fetchHeyGenVoices,
+  fetchCustomVoices,
   isHeyGenVoiceId,
   SEQUENCE_KEYS,
   type SequenceKey,
@@ -198,17 +198,17 @@ export function SequenceVoicesPanel({
     try { window.localStorage.setItem(VOICE_STORAGE_KEY, selectedTtsVoiceId); } catch { /* ignore */ }
   }, [selectedTtsVoiceId]);
 
-  // Voix HeyGen du compte (voix clonee comprise), chargees a la volee.
-  // Echec ou compte sans HeyGen → liste vide, le selecteur ne change pas.
-  const [heygenVoices, setHeygenVoices] = useState<TtsVoice[]>([]);
+  // Voix listees a la volee — HeyGen et ElevenLabs, voix clonee comprise.
+  // Echec ou fournisseur non configure → liste vide, le selecteur ne change pas.
+  const [customVoices, setCustomVoices] = useState<TtsVoice[]>([]);
   useEffect(() => {
     let cancelled = false;
-    fetchHeyGenVoices().then((voices) => {
-      if (!cancelled) setHeygenVoices(voices);
+    fetchCustomVoices().then((voices) => {
+      if (!cancelled) setCustomVoices(voices);
     });
     return () => { cancelled = true; };
   }, []);
-  const allVoices: TtsVoice[] = [...heygenVoices, ...TTS_VOICES];
+  const allVoices: TtsVoice[] = [...customVoices, ...TTS_VOICES];
 
   // Per-sequence loading + recording state
   const [busy, setBusy] = useState<Record<SequenceKey, boolean>>({ titre: false, cartes: false, video: false, cta: false });
