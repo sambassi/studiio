@@ -56,6 +56,11 @@ import {
 import type { AudioKeyframe } from '@/lib/creer/audioDucking';
 import { pointToPct, grabOffset, clampToBox, type Pos, type CardBox, boxesFromRects, samePos } from '@/lib/creer/dragPosition';
 import {
+  snapPosition, computeDistanceBadges, anchorToCenter, centerToAnchor,
+  type ActiveGuide, type DistanceBadge, type ElementPos, type Anchor,
+} from '@/lib/creer/smartGuides';
+import SmartGuides from '@/components/creer/SmartGuides';
+import {
   nextSelection, pruneSelection, movingIds, groupBounds, clampGroupDelta, shiftBoxes,
   duplicateCards, duplicateBoxes, maxCards,
   groupCards, ungroupCards, pruneGroups, expandSelection, groupOf, newGroupId, newElementId, MIN_GROUP,
@@ -982,6 +987,10 @@ function validFree(f: FreeCards | null | undefined, ids: string[], fmt: Format):
   return ids.length > 0 && ids.every((id) => !!f.boxes[id]);
 }
 
+/** Tableaux vides STABLES : un litteral par rendu relancerait le calque. */
+const EMPTY_GUIDES: ActiveGuide[] = [];
+const EMPTY_BADGES: DistanceBadge[] = [];
+
 export function Preview({
   generated,
   format,
@@ -1000,6 +1009,8 @@ export function Preview({
   onPosterZoomStart,
   onPhotoDrop,
   photoDragging = false,
+  guides = EMPTY_GUIDES,
+  distanceBadges = EMPTY_BADGES,
   elements,
   selectedElementId = null,
   onElementDragStart,
@@ -1116,6 +1127,13 @@ export function Preview({
   onPhotoDrop?: (url: string) => void;
   /** Un glisser de photo est en cours : la surface de depot s'affiche. */
   photoDragging?: boolean;
+  /**
+   * Guides d'alignement et badges d'ecart, PENDANT un glissement. Vides par
+   * defaut : un apercu monte nu — dans les tests, dans le Calendrier — rend
+   * exactement ce qu'il rendait avant.
+   */
+  guides?: ActiveGuide[];
+  distanceBadges?: DistanceBadge[];
   onPosterZoomStart?: (e: React.PointerEvent) => void;
   elements?: FreeElement[];
   selectedElementId?: string | null;
@@ -1336,6 +1354,14 @@ export function Preview({
             elements — qui recevaient l'evenement sans autoriser le depot :
             `onDrop` ne se declenchait donc jamais. Cette surface se pose
             au-dessus de tout pendant le glissement, et lui seul. */}
+        {/* Guides d'alignement — aides d'ECRAN, jamais du contenu.
+            `capturing` les efface pendant la photo des cartes et pendant le
+            telechargement de l'affiche : un guide grave dans la video ne se
+            rattrape pas. */}
+        {!capturing && (guides.length > 0 || distanceBadges.length > 0) && (
+          <SmartGuides guides={guides} distanceBadges={distanceBadges} showGrid={false} />
+        )}
+
         {photoDragging && onPhotoDrop && !capturing && (
           <div
             data-photo-drop
@@ -3041,6 +3067,64 @@ export default function AssistantWizard() {
     }
   }, [titlePos, ctaPos]);
 
+  /* ── GUIDES D'ALIGNEMENT ─────────────────────────────────────────────
+     Lignes de centrage et badges d'ecart, affiches PENDANT un glissement.
+     Vides au repos : ils n'existent que le temps du geste, et le drapeau
+     `capturing` les efface en plus pendant la photo — deux verrous plutot
+     qu'un, parce qu'un guide grave dans la video ne se rattrape pas. */
+  const [dragGuides, setDragGuides] = useState<ActiveGuide[]>([]);
+  const [dragBadges, setDragBadges] = useState<DistanceBadge[]>([]);
+
+  /**
+   * Reperes d'alignement : le centre des AUTRES elements de l'apercu.
+   *
+   * `exclure` retire l'element en cours de deplacement — il s'aimanterait
+   * sinon a sa propre position, et ne bougerait plus.
+   */
+  const alignmentTargets = useCallback((exclure: string): ElementPos[] => {
+    const out: ElementPos[] = [];
+    if (exclure !== 'title') {
+      out.push({ key: 'title', x: titlePosRef.current.x, y: titlePosRef.current.y, label: 'Titre' });
+    }
+    if (exclure !== 'cta') {
+      out.push({ key: 'cta', x: ctaPosRef.current.x, y: ctaPosRef.current.y, label: 'CTA' });
+    }
+    for (const el of freeElementsRef.current) {
+      if (el.id === exclure) continue;
+      out.push({ key: 'element', x: el.x, y: el.y, label: 'Élément' });
+    }
+    return out;
+  }, []);
+
+  /**
+   * Aimante une position d'ancre et met a jour les guides.
+   *
+   * Le calcul passe par le CENTRE : aimanter l'ancre reviendrait a centrer le
+   * bord gauche du titre sur l'axe, visiblement decale de la moitie de sa
+   * largeur.
+   */
+  const snapAndGuide = useCallback((
+    pos: Pos,
+    anchor: Anchor,
+    box: { width: number; height: number },
+    exclure: string,
+    rect: { width: number; height: number },
+  ): Pos => {
+    const autres = alignmentTargets(exclure);
+    const centre = anchorToCenter(pos, anchor, box);
+    const snap = snapPosition(centre.x, centre.y, autres);
+    setDragGuides(snap.guides);
+    setDragBadges(
+      computeDistanceBadges(
+        { key: 'element', x: snap.x, y: snap.y, label: 'En cours' },
+        autres,
+        rect.width,
+        rect.height,
+      ),
+    );
+    return centerToAnchor({ x: snap.x, y: snap.y }, anchor, box);
+  }, [alignmentTargets]);
+
   const moveDrag = useCallback((e: React.PointerEvent) => {
     const drag = dragRef.current;
     // Une carte se borne a SON conteneur, pas au plateau entier — c'est la
@@ -3093,9 +3177,12 @@ export default function AssistantWizard() {
       const current = freeElementsRef.current.find((x) => x.id === id);
       if (!current) return;
       const raw = pointToPct(e.clientX, e.clientY, rect, drag.grab, { x: current.x, y: current.y });
+      // Aimantation AVANT bornage : l'inverse laisserait le bornage defaire
+      // l'aimantation sur un element pose au ras du cadre.
+      const aimante = snapAndGuide(raw, 'center', drag.box, id, rect);
       // Ancre au CENTRE, comme le `translate(-50%, -50%)` du rendu : sans quoi
       // l'element sortirait de moitie de la zone photographiee.
-      const next = clampToBox(raw, 'center', drag.box);
+      const next = clampToBox(aimante, 'center', drag.box);
       if (next.x === current.x && next.y === current.y) return;
       setFreeElements((prev) => prev.map((x) => (x.id === id ? { ...x, x: next.x, y: next.y } : x)));
       return;
@@ -3155,10 +3242,12 @@ export default function AssistantWizard() {
     }
     const current = drag.el === 'title' ? titlePosRef.current : ctaPosRef.current;
     const raw = pointToPct(e.clientX, e.clientY, rect, drag.grab, current);
-    const next = clampToBox(raw, drag.el === 'title' ? 'top-left' : 'bottom-center', drag.box);
+    const ancre: Anchor = drag.el === 'title' ? 'top-left' : 'bottom-center';
+    const aimante = snapAndGuide(raw, ancre, drag.box, drag.el, rect);
+    const next = clampToBox(aimante, ancre, drag.box);
     if (drag.el === 'title') setTitlePos(next);
     else setCtaPos(next);
-  }, []);
+  }, [snapAndGuide]);
 
   /**
    * Le placement a-t-il ete touche ? Sans cette question, une carte deplacee
@@ -3236,6 +3325,9 @@ export default function AssistantWizard() {
     dragRef.current = null;
     setDragging(null);
     setDraggingCard(null);
+    // Les guides n'existent que le temps du geste.
+    setDragGuides([]);
+    setDragBadges([]);
   }, []);
   const frameRef = useRef<HTMLDivElement>(null);
 
@@ -6528,6 +6620,8 @@ export default function AssistantWizard() {
           onPosterZoomStart={startPosterZoom}
           onPhotoDrop={(url) => { setPhotoDragging(false); applyPhoto(url); }}
           photoDragging={photoDragging}
+          guides={dragGuides}
+          distanceBadges={dragBadges}
           onElementDragStart={startElementDrag}
           onElementResizeStart={startElementResize}
           onElementDelete={deleteElement}

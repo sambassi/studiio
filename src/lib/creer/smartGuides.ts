@@ -24,7 +24,12 @@ export type ElementKey =
   | 'overlay'
   | 'logo'
   | 'sitetext'
-  | 'character';
+  | 'character'
+  // Ajoutes par le Mode simple. L'union s'elargit, elle ne se restreint
+  // jamais : l'editeur avance ne voit aucune difference.
+  | 'cta'
+  | 'element'
+  | 'card';
 
 export interface ElementPos {
   key: ElementKey;
@@ -156,4 +161,60 @@ export function computeDistanceBadges(
   pushBadge(left, 'x');
   pushBadge(right, 'x');
   return out;
+}
+
+/**
+ * Conversion ancre ↔ centre.
+ *
+ * Les elements de l'apercu ne sont pas ancres au meme endroit : le titre par
+ * son coin haut-gauche, le CTA par le milieu de son bas, un element libre par
+ * son centre. Or un guide de centrage parle du CENTRE.
+ *
+ * Aimanter la position d'ancre reviendrait a centrer le BORD GAUCHE du titre
+ * sur l'axe — visiblement decale de la moitie de sa largeur. On convertit
+ * donc vers le centre, on aimante la, puis on revient a l'ancre.
+ */
+export type Anchor = 'top-left' | 'bottom-center' | 'center';
+
+export interface Box {
+  /** Largeur en % du conteneur. */
+  width: number;
+  /** Hauteur en % du conteneur. */
+  height: number;
+}
+
+/** Centre d'un element, depuis sa position d'ancre. */
+export function anchorToCenter(
+  pos: { x: number; y: number },
+  anchor: Anchor,
+  box: Box,
+): { x: number; y: number } {
+  const w = Number.isFinite(box?.width) ? box.width : 0;
+  const h = Number.isFinite(box?.height) ? box.height : 0;
+  switch (anchor) {
+    case 'top-left':
+      return { x: pos.x + w / 2, y: pos.y + h / 2 };
+    case 'bottom-center':
+      return { x: pos.x, y: pos.y - h / 2 };
+    default:
+      return { x: pos.x, y: pos.y };
+  }
+}
+
+/** Position d'ancre, depuis un centre — l'exacte reciproque. */
+export function centerToAnchor(
+  center: { x: number; y: number },
+  anchor: Anchor,
+  box: Box,
+): { x: number; y: number } {
+  const w = Number.isFinite(box?.width) ? box.width : 0;
+  const h = Number.isFinite(box?.height) ? box.height : 0;
+  switch (anchor) {
+    case 'top-left':
+      return { x: center.x - w / 2, y: center.y - h / 2 };
+    case 'bottom-center':
+      return { x: center.x, y: center.y + h / 2 };
+    default:
+      return { x: center.x, y: center.y };
+  }
 }
