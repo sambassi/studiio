@@ -23,20 +23,21 @@ const wizard = readFileSync(
 
 /** Le corps du rendu, isolé de la fin du fichier. */
 const rendu = wizard.slice(
-  wizard.indexOf("const runRender = async (destination: 'calendrier' | 'bureau')"),
+  wizard.indexOf('const runRender = async (destination:'),
   wizard.indexOf('const reset = ()'),
 );
 
 describe('Un seul chemin pour les deux destinations', () => {
   it('le rendu est paramétré, pas dupliqué', () => {
-    expect(wizard).toContain("const runRender = async (destination: 'calendrier' | 'bureau') => {");
+    // La destination « apercu » s'est ajoutee : le chemin reste unique.
+    expect(wizard).toContain("const runRender = async (destination: 'calendrier' | 'bureau' | 'apercu') => {");
     // Une seule construction d'options : c'est elle qui garantit que les deux
     // vidéos sont identiques.
     expect(wizard.split('const optionsRendu: ComposerOptions = {').length - 1).toBe(1);
   });
 
   it('les deux destinations composent sur le MÊME objet d options', () => {
-    expect(rendu).toContain('(await composeVideo(optionsRendu)).video');
+    expect(rendu).toContain('await composeVideo(optionsRendu)');
     expect(rendu).toContain('await composeAndUpload(optionsRendu)');
   });
 
@@ -47,15 +48,11 @@ describe('Un seul chemin pour les deux destinations', () => {
 
   it('« bureau » compose SANS téléverser', () => {
     // `composeAndUpload` enverrait le fichier au stockage : un téléchargement
-    // local n'a aucune raison d'y passer. C'est l'ORDRE des deux branches du
-    // ternaire qui le décide — `composeVideo` du côté « bureau ».
-    const ternaire = rendu.slice(
-      rendu.indexOf("destination === 'bureau'\n            ? {"),
-      rendu.indexOf('// ── Destination'),
-    );
-    expect(ternaire.indexOf('composeVideo(optionsRendu)'))
-      .toBeLessThan(ternaire.indexOf('composeAndUpload(optionsRendu)'));
-    expect(ternaire).toContain(': await composeAndUpload(optionsRendu);');
+    // local n'a aucune raison d'y passer. Seul le Calendrier l'appelle.
+    expect(rendu).toContain("} else if (destination === 'calendrier') {");
+    expect(rendu).toContain('composed = await composeAndUpload(optionsRendu);');
+    // L'autre branche — aperçu et bureau — compose sans téléverser.
+    expect(rendu).toContain('const rendu = await composeVideo(optionsRendu);');
   });
 });
 
@@ -82,13 +79,15 @@ describe('Les crédits', () => {
     expect(wizard).toContain('const debiterRendu = async (cost: number, renderFormat:');
     expect(rendu).toContain('await debiterRendu(cost, renderFormat);');
     expect(rendu).toContain('await debiterRendu(cost, renderFormat, json.post.id);');
+    // Un montage reutilise a deja ete paye au moment du Play.
+    expect(rendu).toContain('if (!reutilisable) await debiterRendu(cost, renderFormat);');
   });
 
   it('il est débité PAR VIDÉO, dans la boucle', () => {
     // Un lot de trois coûte trois rendus, comme au Calendrier.
     const i = rendu.indexOf("if (destination === 'bureau') {");
-    const bloc = rendu.slice(i, i + 400);
-    expect(bloc).toContain('await debiterRendu(cost, renderFormat);');
+    const bloc = rendu.slice(i, i + 500);
+    expect(bloc).toContain('debiterRendu(cost, renderFormat);');
     expect(bloc).toContain('continue;');
   });
 
@@ -96,7 +95,7 @@ describe('Les crédits', () => {
     // Le débit vient APRÈS la composition : une exception sort de la boucle
     // par le `catch` sans jamais l'atteindre.
     const compose = rendu.indexOf('await composeVideo(optionsRendu)');
-    const debit = rendu.indexOf('await debiterRendu(cost, renderFormat);');
+    const debit = rendu.indexOf('debiterRendu(cost, renderFormat);');
     expect(debit).toBeGreaterThan(compose);
   });
 
