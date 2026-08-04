@@ -132,9 +132,14 @@ describe('Le chargement retient le rendu', () => {
 });
 
 describe('Les deux moteurs lisent la MÊME pile', () => {
-  it('la composition passe par `fontStack`, jamais par une famille en dur', () => {
-    expect(composition).toContain("from '../src/lib/fonts/catalog'");
-    expect(composition).toContain('fontStack(props.titleFont');
+  it('les piles passent par `fontStack`, jamais par une famille en dur', () => {
+    // Depuis la Phase 4, titre et CTA sont des composants PARTAGES : c'est
+    // eux qui appellent `fontStack`, et l'appel vaut donc pour les deux
+    // moteurs a la fois.
+    const titre = readFileSync(resolve(__dirname, '../components/creer/SequenceTitle.tsx'), 'utf-8');
+    const cta = readFileSync(resolve(__dirname, '../components/creer/SequenceCta.tsx'), 'utf-8');
+    expect(titre).toContain('fontStack(typography.font)');
+    expect(cta).toContain('fontStack(typography.font)');
     expect(composition).toContain("fontFamily: fontStack('Inter')");
     // Plus aucune pile écrite à la main.
     expect(composition).not.toContain("fontFamily: 'Inter, sans-serif'");
@@ -142,7 +147,8 @@ describe('Les deux moteurs lisent la MÊME pile', () => {
   });
 
   it('le sous-titre retombe sur la police du titre, pas sur le système', () => {
-    expect(composition).toContain('fontStack(props.subtitleFont || props.titleFont || \'Inter\')');
+    const titre = readFileSync(resolve(__dirname, '../components/creer/SequenceTitle.tsx'), 'utf-8');
+    expect(titre).toContain('subtitleTypography.font || typography.font');
   });
 
   it('`fontStack` reste inchangée — le chemin navigateur ne bouge pas', () => {

@@ -8,6 +8,9 @@ import {
   type PlannedSequence,
 } from '../src/lib/creer/designSpec';
 import SequenceCards from '../src/components/creer/SequenceCards';
+import SequenceTitle, { titleFrameStyle } from '../src/components/creer/SequenceTitle';
+import SequenceCta, { ctaFrameStyle } from '../src/components/creer/SequenceCta';
+import { TEXT_LAYOUT } from '../src/lib/creer/designSpec';
 import { fontStack } from '../src/lib/fonts/catalog';
 import { useMontageFonts } from './useMontageFonts';
 
@@ -65,6 +68,25 @@ export interface CreerSimpleMontageProps {
   titleFont?: string;
   subtitleFont?: string;
   ctaFont?: string;
+  /** Typographie du titre — memes champs que `text.title` de l'ecran. */
+  titleScale?: number;
+  titleBold?: boolean;
+  titleItalic?: boolean;
+  titleLetterSpacing?: number;
+  titleLineHeight?: number;
+  subtitleColor?: string | null;
+  subtitleScale?: number;
+  /** Typographie du CTA. */
+  ctaColor?: string;
+  ctaSubColor?: string;
+  ctaScale?: number;
+  ctaBold?: boolean;
+  ctaItalic?: boolean;
+  ctaLetterSpacing?: number;
+  ctaLineHeight?: number;
+  /** Positions, en % du plateau — les memes qu'a l'ecran. */
+  titlePos?: { x: number; y: number };
+  ctaPos?: { x: number; y: number };
   watermark?: string;
   introDuration: number;
   cardsDuration: number;
@@ -160,9 +182,9 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
   // Les polices du montage, plus Inter — celle des cartes et du filigrane.
   // Le rendu attend leur chargement : voir `useMontageFonts`.
   useMontageFonts(['Inter', props.titleFont, props.subtitleFont, props.ctaFont]);
-  const pileTitre = fontStack(props.titleFont || 'Inter');
-  const pileSousTitre = fontStack(props.subtitleFont || props.titleFont || 'Inter');
-  const pileCta = fontStack(props.ctaFont || 'Inter');
+  // Le format se DEDUIT des dimensions : le compositeur fait de meme, et une
+  // prop separee pourrait le contredire.
+  const format = isReel ? '9:16' : width === height ? '1:1' : '16:9';
 
   return (
     // La famille de police est posee A LA RACINE : sans elle, tout element
@@ -194,32 +216,30 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
               )}
 
               {seq.type === 'intro' && (
-                <AbsoluteFill
-                  style={{
-                    justifyContent: 'center', padding: 24 * echelle,
-                  }}
-                >
-                  <div
-                    style={{
-                      color: titleColor, fontWeight: 800, lineHeight: 1.1,
-                      fontSize: 34 * echelle, textTransform: 'uppercase',
-                      fontFamily: pileTitre,
+                // Le MEME composant que l'apercu, et le MEME cadre : la
+                // position vient de `titlePos`, comme a l'ecran.
+                <div style={titleFrameStyle(props.titlePos ?? TEXT_LAYOUT.titlePos)}>
+                  <SequenceTitle
+                    title={props.title}
+                    subtitle={props.subtitle}
+                    typography={{
+                      font: props.titleFont || 'Inter',
+                      color: titleColor,
+                      scale: props.titleScale ?? 1,
+                      bold: props.titleBold ?? true,
+                      italic: props.titleItalic ?? false,
+                      letterSpacing: props.titleLetterSpacing ?? 0,
+                      lineHeight: props.titleLineHeight ?? 1.1,
                     }}
-                  >
-                    {props.title}
-                  </div>
-                  {props.subtitle && (
-                    <div
-                      style={{
-                        color: 'rgba(255,255,255,0.85)', marginTop: 8 * echelle,
-                        fontSize: 12 * echelle, lineHeight: 1.3,
-                        fontFamily: pileSousTitre,
-                      }}
-                    >
-                      {props.subtitle}
-                    </div>
-                  )}
-                </AbsoluteFill>
+                    subtitleTypography={{
+                      font: props.subtitleFont ?? null,
+                      color: props.subtitleColor ?? null,
+                      scale: props.subtitleScale ?? 1,
+                    }}
+                    format={format}
+                    containerWidth={width}
+                  />
+                </div>
               )}
 
               {seq.type === 'cards' && (
@@ -241,21 +261,24 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
               )}
 
               {seq.type === 'cta' && (
-                <AbsoluteFill
-                  style={{
-                    justifyContent: 'flex-end', alignItems: 'center',
-                    paddingBottom: 60 * echelle, fontFamily: pileCta,
-                  }}
-                >
-                  <div style={{ color: '#FFF', fontWeight: 800, fontSize: 12 * echelle, textTransform: 'uppercase' }}>
-                    {props.ctaText}
-                  </div>
-                  {props.ctaSubText && (
-                    <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 9 * echelle, marginTop: 4 * echelle }}>
-                      {props.ctaSubText}
-                    </div>
-                  )}
-                </AbsoluteFill>
+                <div style={ctaFrameStyle(props.ctaPos ?? TEXT_LAYOUT.ctaPos)}>
+                  <SequenceCta
+                    text={props.ctaText ?? ''}
+                    subText={props.ctaSubText}
+                    typography={{
+                      font: props.ctaFont || 'Inter',
+                      color: props.ctaColor ?? '#FFFFFF',
+                      subColor: props.ctaSubColor ?? '#EC4899',
+                      scale: props.ctaScale ?? 1,
+                      bold: props.ctaBold ?? true,
+                      italic: props.ctaItalic ?? false,
+                      letterSpacing: props.ctaLetterSpacing ?? 0,
+                      lineHeight: props.ctaLineHeight ?? 1.2,
+                    }}
+                    format={format}
+                    containerWidth={width}
+                  />
+                </div>
               )}
 
               <Filigrane texte={props.watermark} echelle={echelle} />

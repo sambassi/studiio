@@ -243,3 +243,62 @@ export function cardRatios(landscape: boolean) {
     ? CARD_RATIO_LANDSCAPE
     : { ...CARD_RATIO, value: CARD_RATIO.text };
 }
+
+/**
+ * Tailles de police, en fraction de la largeur vidéo.
+ *
+ * ⚠️ Le carré reprend les ratios du 16:9, et ce n'est pas un choix
+ * esthétique : le compositeur ne connaît pas les formats, il teste
+ * `isReel = h > w`. Pour un canvas 1080×1080 cette condition est FAUSSE — il
+ * applique donc les métriques du paysage. Y mettre des valeurs « mieux
+ * adaptées au carré » ferait diverger l'aperçu de l'export : ce serait plus
+ * joli à l'écran et faux dans la vidéo.
+ */
+export const FONT_RATIO = {
+  '9:16': { title: 0.04375, subtitle: 0.028, cta: 0.0375, ctaSub: 0.028 },
+  '1:1': { title: 0.035, subtitle: 0.0215, cta: 0.031, ctaSub: 0.023 },
+  '16:9': { title: 0.035, subtitle: 0.0215, cta: 0.031, ctaSub: 0.023 },
+} as const;
+
+/** Placement et largeurs par défaut du titre et du CTA. */
+export const TEXT_LAYOUT = {
+  /** Titre : bord gauche à 8 %, haut à 8 %. Nécessite `titleAlign: 'left'`. */
+  titlePos: { x: 8, y: 8 },
+  titleWidth: 84,
+  /** CTA : bas-centre. Le défaut du compositeur est y=97 ; on fixe 92. */
+  ctaPos: { x: 50, y: 92 },
+  ctaWidth: 70,
+} as const;
+
+/**
+ * Ombres du compositeur, en fraction de la largeur vidéo.
+ * `dropShadowLgFilter` vaut 4/320 et 10/320 ; `dropShadowBaseFilter` 2.5/320.
+ */
+export function titleShadow(w: number): string {
+  const px = (r: number) => Math.max(1, Math.round(w * r));
+  return `drop-shadow(0 ${px(4 / 320)}px ${px(3 / 320)}px rgba(0,0,0,0.1)) drop-shadow(0 ${px(10 / 320)}px ${px(8 / 320)}px rgba(0,0,0,0.04))`;
+}
+
+export function subtitleShadow(w: number): string {
+  const px = (r: number) => Math.max(1, Math.round(w * r));
+  return `drop-shadow(0 ${px(2.5 / 320)}px ${px(2 / 320)}px rgba(0,0,0,0.1))`;
+}
+
+/**
+ * Compense l'interligne pour que la boîte du texte colle aux glyphes.
+ *
+ * Le canvas dessine à partir de la LIGNE DE BASE ; le DOM, lui, centre le
+ * glyphe dans sa boîte de ligne et ajoute donc `(L-1)·F/2` en haut comme en
+ * bas. À l'interligne par défaut l'écart est de deux pixels ; à 2,0 il atteint
+ * 24 px sur le titre. Les marges négatives rendent la boîte au ras des
+ * glyphes, comme le canvas.
+ */
+export function leadingTrim(fontSizePx: number, lineHeight: number): { marginTop: number; marginBottom: number } {
+  const half = ((lineHeight - 1) * fontSizePx) / 2;
+  return { marginTop: -half, marginBottom: -half };
+}
+
+/** Espacement des lettres : l'éditeur le donne en pixels d'une base 320. */
+export function letterSpacingPx(value: number, vw: number): number {
+  return (value * vw) / 320;
+}
