@@ -105,7 +105,7 @@ describe('Le compositeur reçoit ce qu il attend VRAIMENT', () => {
     expect(composer).toContain('sequenceVoiceUrls?: {');
     expect(composer).toContain('if (options.sequenceVoiceUrls) {');
     expect(wizard).toContain('const sequenceVoiceUrls = useMemo(');
-    const appel = wizard.slice(wizard.indexOf('const composed = await composeAndUpload({'));
+    const appel = wizard.slice(wizard.indexOf('const optionsRendu: ComposerOptions = {'));
     expect(appel.slice(0, 3000)).toContain('sequenceVoiceUrls,');
   });
 
