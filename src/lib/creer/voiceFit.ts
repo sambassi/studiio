@@ -70,6 +70,65 @@ export function compareVoiceToSequence(
 }
 
 /**
+ * Debit de lecture retenu pour l'estimation, en caracteres par seconde.
+ *
+ * Ordre de grandeur d'une voix de synthese en francais a vitesse normale. Ce
+ * n'est qu'une ESTIMATION : la valeur reelle depend de la voix, de la
+ * ponctuation et des nombres. Elle sert a prevenir avant de generer, pas a
+ * caler la sequence — pour ca, seule la duree mesuree de l'audio fait foi.
+ */
+export const SPEECH_CHARS_PER_SECOND = 14;
+
+/**
+ * Duree approximative de lecture d'un texte, en secondes.
+ *
+ * Rend 0 sur un texte vide : l'appelant n'affiche alors rien, plutot qu'un
+ * « ≈ 0 s » qui n'apprend rien.
+ */
+export function estimateSpeechSeconds(
+  text: string | null | undefined,
+  charsPerSecond: number = SPEECH_CHARS_PER_SECOND,
+): number {
+  const propre = typeof text === 'string' ? text.trim() : '';
+  if (!propre) return 0;
+  const debit = Number.isFinite(charsPerSecond) && charsPerSecond > 0
+    ? charsPerSecond
+    : SPEECH_CHARS_PER_SECOND;
+  return round1(propre.length / debit);
+}
+
+/**
+ * Marge ajoutee a la voix pour fixer la duree de sa sequence.
+ *
+ * Sans elle, la sequence changerait a l'instant precis ou le dernier mot se
+ * termine : la coupure s'entend. Un tiers de seconde suffit a la rendre
+ * naturelle sans creer de silence percu.
+ */
+export const VOICE_SEQUENCE_MARGIN_S = 0.3;
+
+/**
+ * Duree de sequence pour une voix donnee.
+ *
+ * Arrondie a la seconde SUPERIEURE : les durees se reglent en secondes
+ * entieres dans l'editeur, et arrondir au plus proche pourrait retomber sous
+ * la voix — la fin du texte serait coupee, ce que toute cette mecanique
+ * cherche justement a eviter.
+ */
+export function voiceSequenceSeconds(
+  audioSec: number,
+  margin: number = VOICE_SEQUENCE_MARGIN_S,
+): number {
+  if (!Number.isFinite(audioSec) || audioSec <= 0) return 0;
+  return Math.max(1, Math.ceil(audioSec + Math.max(0, margin)));
+}
+
+/** Etiquette « ≈ 4,3 s », ou chaine vide si le texte ne dit rien. */
+export function estimateLabel(text: string | null | undefined): string {
+  const s = estimateSpeechSeconds(text);
+  return s > 0 ? `≈ ${s.toString().replace('.', ',')} s` : '';
+}
+
+/**
  * Phrase affichee sous la sequence. Dit ce qu'il faut FAIRE, avec l'ecart
  * chiffre — « la voix est trop longue » n'aide pas, « +2,2 s » si.
  */

@@ -40,6 +40,12 @@ import {
 import { generateSmartContent } from '@/lib/smart-content';
 import { composeAndUpload, CURRENT_COMPOSER_VERSION, posterTransformActive } from '@/lib/video-composer';
 import { AudioStudioPanel } from '@/components/creer/AudioStudioPanel';
+import { SequenceVoicesPanel } from '@/components/creer/SequenceVoicesPanel';
+import { voiceSequenceSeconds } from '@/lib/creer/voiceFit';
+import {
+  SEQUENCE_KEYS, emptySequenceVoices, emptySequenceVoicesUserEdited, buildAutoFillText,
+  type SequenceVoices, type SequenceVoicesUserEdited, type SequenceKey,
+} from '@/lib/types/voice';
 import type { AudioKeyframe } from '@/lib/creer/audioDucking';
 import { pointToPct, grabOffset, clampToBox, type Pos, type CardBox, boxesFromRects, samePos } from '@/lib/creer/dragPosition';
 import {
@@ -2201,6 +2207,18 @@ export default function AssistantWizard() {
   const [videoDuration, setVideoDuration] = useState<number>(SEQ.video);
   const [ctaDuration, setCtaDuration] = useState<number>(SEQ.cta);
 
+  /* ── VOIX PAR SEQUENCE ───────────────────────────────────────────────
+     Chaque sequence porte son propre texte et sa propre voix, et sa DUREE
+     se cale sur celle de son audio — c'est ce qui garantit qu'un texte
+     rentre exactement dans sa sequence.
+
+     Vide par defaut : sans voix par sequence, les durees restent celles
+     que l'utilisateur a reglees et le montage garde la voix unique
+     `voiceUrl`, exactement comme avant. */
+  const [sequenceVoices, setSequenceVoices] = useState<SequenceVoices>(() => emptySequenceVoices());
+  const [sequenceVoicesUserEdited, setSequenceVoicesUserEdited] =
+    useState<SequenceVoicesUserEdited>(() => emptySequenceVoicesUserEdited());
+
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState<Generated | null>(null);
 
@@ -3354,6 +3372,18 @@ export default function AssistantWizard() {
     musicUrl: persistableDraftUrl(musicUrl),
     musicName,
     voiceUrl: persistableDraftUrl(voiceUrl),
+    // Voix par sequence : le TEXTE et l'URL, jamais la duree — elle est
+    // remesuree sur l'audio au chargement, et une valeur relue pourrait ne
+    // plus correspondre au fichier.
+    sequenceVoices: Object.fromEntries(
+      SEQUENCE_KEYS.map((k) => [k, {
+        text: sequenceVoices[k].text,
+        audioUrl: persistableDraftUrl(sequenceVoices[k].audioUrl),
+        source: sequenceVoices[k].source ?? undefined,
+        ttsVoice: sequenceVoices[k].ttsVoice,
+      }]),
+    ),
+    sequenceVoicesUserEdited,
     voiceName,
     musicVolume,
     voiceVolume,
@@ -3380,6 +3410,7 @@ export default function AssistantWizard() {
     titleStyle, subtitleStyle, ctaStyle, watermarkOverride, watermarkEnabled,
     sequences, introDuration, cardsDuration, videoDuration, ctaDuration,
     generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
+    sequenceVoices, sequenceVoicesUserEdited,
     voiceVolume, rushUrl, rushName, rushIsClip, scheduledDate,
     titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, posterTransform, seqBackgrounds, imageSource, batchCount, batchPhotoUrls, batchPhotoMode,
   ]);
@@ -3437,6 +3468,27 @@ export default function AssistantWizard() {
     if (draft.audioKeyframes) setAudioKeyframes(draft.audioKeyframes as AudioKeyframe[]);
     if (draft.musicUrl) { setMusicUrl(draft.musicUrl); setMusicName(draft.musicName ?? ''); }
     if (draft.voiceUrl) { setVoiceUrl(draft.voiceUrl); setVoiceName(draft.voiceName ?? ''); }
+    if (draft.sequenceVoices) {
+      setSequenceVoices((prev) => {
+        const next = { ...prev };
+        for (const k of SEQUENCE_KEYS) {
+          const v = draft.sequenceVoices?.[k];
+          if (!v) continue;
+          next[k] = {
+            text: v.text ?? '',
+            audioUrl: v.audioUrl ?? null,
+            // Sans audio, pas de source : les deux vont ensemble.
+            source: v.audioUrl ? ((v.source as 'tts' | 'record') ?? 'tts') : null,
+            ttsVoice: v.ttsVoice,
+            // Duree volontairement absente : elle sera remesuree.
+          };
+        }
+        return next;
+      });
+    }
+    if (draft.sequenceVoicesUserEdited) {
+      setSequenceVoicesUserEdited((prev) => ({ ...prev, ...draft.sequenceVoicesUserEdited }));
+    }
     setMusicVolume(draft.musicVolume!);
     setVoiceVolume(draft.voiceVolume!);
     if (draft.rushUrl) {
@@ -3643,6 +3695,100 @@ export default function AssistantWizard() {
     if (!activeOrder.includes(k)) return 0;
     return { intro: introDuration, cards: cardsDuration, video: videoDuration, cta: ctaDuration }[k];
   };
+
+  /**
+   * Pre-remplissage des textes de voix depuis le contenu genere.
+   *
+   * Le Mode simple genere son contenu APRES l'etape Audio : il n'y a rien a
+   * lire tant que `generated` est vide, et le panneau n'est donc propose
+   * qu'a l'etape Contenu, une fois le texte connu.
+   *
+   * `userEdited` bloque la reecriture : une regeneration du contenu ne doit
+   * pas effacer un texte que l'utilisateur a repris a la main.
+   */
+  useEffect(() => {
+    if (!generated) return;
+    const auto = buildAutoFillText({
+      title: generated.title,
+      subtitle: generated.subtitle,
+      // Les cartes du Mode simple nomment leur intitule `title` la ou
+      // `buildAutoFillText` attend `label`.
+      cards: generated.cards.map((c) => ({
+        label: c.title,
+        value: c.value,
+        description: c.description,
+      })),
+      ctaMainText: generated.cta,
+      ctaSubText: generated.ctaSub,
+    });
+    setSequenceVoices((prev) => {
+      let change = false;
+      const next: SequenceVoices = { ...prev };
+      for (const key of SEQUENCE_KEYS) {
+        if (sequenceVoicesUserEdited[key]) continue;
+        if (prev[key].text !== auto[key]) {
+          next[key] = { ...prev[key], text: auto[key] };
+          change = true;
+        }
+      }
+      return change ? next : prev;
+    });
+  }, [generated, sequenceVoicesUserEdited]);
+
+  /**
+   * Duree de chaque sequence calee sur la duree REELLE de sa voix.
+   *
+   * Le panneau sonde l'audio genere et range sa duree dans
+   * `sequenceVoices[k].duration` : on s'en sert plutot que de re-mesurer, ce
+   * qui donnerait deux sources pour une meme valeur.
+   *
+   * Applique UNE FOIS par duree de voix, grace au registre ci-dessous. Sans
+   * lui, l'effet se redeclencherait sur son propre changement de duree et
+   * ecraserait tout reglage manuel a chaque rendu — l'utilisateur ne pourrait
+   * plus toucher au curseur.
+   */
+  /**
+   * URL des voix par sequence, dans la forme attendue par le compositeur.
+   *
+   * ⚠️ Le champ s'appelle `sequenceVoiceUrls` cote compositeur — une carte
+   * d'URL, pas les objets `SequenceVoices`. Lui passer l'etat tel quel serait
+   * ignore en silence, et le montage sortirait sans voix.
+   *
+   * Rend `undefined` quand aucune sequence n'a d'audio : le compositeur
+   * retombe alors sur la voix unique `voiceUrl`, comme avant.
+   */
+  const sequenceVoiceUrls = useMemo(() => {
+    const out: { titre?: string; cartes?: string; video?: string; cta?: string } = {};
+    let une = false;
+    for (const key of SEQUENCE_KEYS) {
+      const url = sequenceVoices[key]?.audioUrl;
+      if (url) { out[key] = url; une = true; }
+    }
+    return une ? out : undefined;
+  }, [sequenceVoices]);
+
+  const appliedVoiceDurations = useRef<Partial<Record<SequenceKey, number>>>({});
+  useEffect(() => {
+    const setters: Record<SequenceKey, (n: number) => void> = {
+      titre: setIntroDuration,
+      cartes: setCardsDuration,
+      video: setVideoDuration,
+      cta: setCtaDuration,
+    };
+    for (const key of SEQUENCE_KEYS) {
+      const sv = sequenceVoices[key];
+      const dur = sv.audioUrl ? sv.duration : undefined;
+      if (typeof dur !== 'number' || !Number.isFinite(dur) || dur <= 0) {
+        // Voix retiree : on oublie la valeur appliquee, sans toucher a la
+        // duree — l'utilisateur garde ce qu'il avait.
+        delete appliedVoiceDurations.current[key];
+        continue;
+      }
+      if (appliedVoiceDurations.current[key] === dur) continue;
+      appliedVoiceDurations.current[key] = dur;
+      setters[key](voiceSequenceSeconds(dur));
+    }
+  }, [sequenceVoices]);
 
   /**
    * Geometrie du montage pour le mixeur audio : elle doit etre calculee sur
@@ -4103,6 +4249,10 @@ export default function AssistantWizard() {
           // reste en mode « fast ».
           musicUrl: musicUrl || undefined,
           voiceUrl: voiceUrl || undefined,
+          // Voix PAR SEQUENCE : chaque clip est joue au debut de sa sequence
+          // et coupe a sa fin. `voiceUrl` reste le repli quand il n'y en a
+          // aucune — c'est le cas de tous les montages anterieurs.
+          sequenceVoiceUrls,
           musicVolume,
           voiceVolume,
           // Mixeur unifie : ces keyframes pilotent les trois bus audio du
@@ -4222,7 +4372,7 @@ export default function AssistantWizard() {
           // compositeur route et embarque dans le fichier
           // (`hasRushAudio = !!videoEl`). L'omettre faisait proposer par le
           // Calendrier « Ajouter du son » sur un montage qui en avait deja.
-          hasAudio: !!(musicUrl || voiceUrl || (rushUrl && seqDuration('video') > 0)),
+          hasAudio: !!(musicUrl || voiceUrl || sequenceVoiceUrls || (rushUrl && seqDuration('video') > 0)),
           // Les URL `blob:` ne survivent pas au rechargement de la page. Le
           // panneau audio televerse normalement les pistes et renvoie une URL
           // publique, mais il retombe sur un blob local si le televersement de
@@ -4230,6 +4380,7 @@ export default function AssistantWizard() {
           // reference morte dans le post.
           musicUrl: persistableUrl(musicUrl),
           voiceUrl: persistableUrl(voiceUrl),
+          sequenceVoiceUrls,
           // Le rush est deja INCRUSTE dans le montage ; on le persiste quand
           // meme sous `rushUrls` — c'est le champ que le Calendrier relit pour
           // regenerer (`videoUrl: meta.rushUrls?.[0]`). Sans lui, une
@@ -4392,6 +4543,11 @@ export default function AssistantWizard() {
     setPosterPhotos([]);
     setPosterTransform(POSTER_TRANSFORM_NEUTRAL);
     setSeqBackgrounds({});
+    // Sans cette remise a zero, le montage suivant heriterait des textes ET
+    // des audios du precedent — et de ses durees calees dessus.
+    setSequenceVoices(emptySequenceVoices());
+    setSequenceVoicesUserEdited(emptySequenceVoicesUserEdited());
+    appliedVoiceDurations.current = {};
     setCropping(false);
     setBatchCount(1);
     setBatchPhotoUrls([]);
@@ -5781,6 +5937,37 @@ export default function AssistantWizard() {
                       </div>
                     </div>
                   </div>
+                )}
+
+                {/* ── VOIX PAR SÉQUENCE ────────────────────────────────────
+                    Chaque séquence a son texte et sa voix, et sa durée se cale
+                    sur celle de son audio. Ici et non à l'étape Audio : les
+                    textes sont pré-remplis depuis le contenu, qui n'existe pas
+                    encore à ce moment-là du parcours. */}
+                {!generating && generated && (
+                  <SequenceVoicesPanel
+                    sequenceVoices={sequenceVoices}
+                    userEdited={sequenceVoicesUserEdited}
+                    onChange={(key, patch) => {
+                      setSequenceVoices((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
+                    }}
+                    onUserEditedChange={(key, edited) => {
+                      setSequenceVoicesUserEdited((prev) => ({ ...prev, [key]: edited }));
+                    }}
+                    onResetText={(key) => {
+                      // Le drapeau retombe → le pré-remplissage réécrit le
+                      // texte depuis le contenu courant.
+                      setSequenceVoicesUserEdited((prev) => ({ ...prev, [key]: false }));
+                    }}
+                    introDuration={introDuration}
+                    cardsDuration={cardsDuration}
+                    videoDuration={videoDuration}
+                    ctaDuration={ctaDuration}
+                    hasCardsContent={generated.cards.length > 0}
+                    hasVideoOverlay={!!rushUrl}
+                    batchCount={batchCount}
+                    onAudioError={(msg) => setError(msg)}
+                  />
                 )}
 
                 <div className="flex justify-between pt-2 gap-2 flex-wrap">

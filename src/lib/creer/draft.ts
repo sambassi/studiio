@@ -76,6 +76,19 @@ export interface Draft {
   musicName?: string;
   voiceUrl?: string;
   voiceName?: string;
+  /**
+   * Voix off PAR SEQUENCE. Absent = aucune, ce qui est le cas de tous les
+   * brouillons anterieurs : le montage retombe alors sur la voix unique
+   * `voiceUrl`, exactement comme avant.
+   *
+   * Seuls le TEXTE et l'URL sont relus. La duree ne l'est PAS : elle est
+   * mesuree sur l'audio a chaque chargement, et une valeur relue d'un
+   * brouillon pourrait ne plus correspondre au fichier — ce qui calerait la
+   * sequence sur une duree fausse.
+   */
+  sequenceVoices?: Record<string, { text: string; audioUrl?: string; source?: string; ttsVoice?: string }>;
+  /** Textes que l'utilisateur a repris a la main : le pre-remplissage les respecte. */
+  sequenceVoicesUserEdited?: Record<string, boolean>;
   musicVolume?: number;
   voiceVolume?: number;
   rushUrl?: string;
@@ -325,6 +338,47 @@ function sanitizeCardGroups(raw: unknown, connus: string[] | null): Draft['cardG
  * deja sur une icone par defaut pour un nom inconnu, et refuser ici ferait
  * disparaitre un element au moindre renommage cote lucide.
  */
+/** Cles de sequence acceptees dans le brouillon des voix. */
+const VOICE_KEYS = ['titre', 'cartes', 'video', 'cta'] as const;
+
+/**
+ * Voix par sequence relues d'un brouillon.
+ *
+ * Une entree dont l'URL est inexploitable garde son TEXTE : le travail de
+ * redaction survit, seul l'audio est a regenerer. C'est le contraire qui
+ * serait penible — reecrire un texte parce qu'un fichier a expire.
+ */
+function sanitizeSequenceVoices(raw: unknown): Draft['sequenceVoices'] {
+  if (!isObj(raw)) return undefined;
+  const out: NonNullable<Draft['sequenceVoices']> = {};
+  for (const key of VOICE_KEYS) {
+    const v = (raw as Record<string, unknown>)[key];
+    if (!isObj(v)) continue;
+    const text = typeof v.text === 'string' ? v.text.slice(0, 2000) : '';
+    const audioUrl = persistableUrl(v.audioUrl as string);
+    // Ni texte ni audio : l'entree ne dit rien, on ne l'ecrit pas.
+    if (!text && !audioUrl) continue;
+    const source = v.source === 'tts' || v.source === 'record' ? v.source : undefined;
+    out[key] = {
+      text,
+      // `source` sans `audioUrl` n'aurait aucun sens : l'un ne va pas sans l'autre.
+      ...(audioUrl ? { audioUrl, source: source ?? 'tts' } : {}),
+      ...(typeof v.ttsVoice === 'string' && v.ttsVoice ? { ttsVoice: v.ttsVoice } : {}),
+    };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** Marqueurs « texte repris a la main », par sequence. */
+function sanitizeVoicesUserEdited(raw: unknown): Draft['sequenceVoicesUserEdited'] {
+  if (!isObj(raw)) return undefined;
+  const out: Record<string, boolean> = {};
+  for (const key of VOICE_KEYS) {
+    if ((raw as Record<string, unknown>)[key] === true) out[key] = true;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function sanitizeElements(raw: unknown): Draft['elements'] {
   if (!Array.isArray(raw)) return undefined;
   const out: NonNullable<Draft['elements']> = [];
@@ -444,6 +498,8 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
     musicName: typeof raw.musicName === 'string' ? raw.musicName : '',
     voiceUrl: persistableUrl(raw.voiceUrl as string),
     voiceName: typeof raw.voiceName === 'string' ? raw.voiceName : '',
+    sequenceVoices: sanitizeSequenceVoices(raw.sequenceVoices),
+    sequenceVoicesUserEdited: sanitizeVoicesUserEdited(raw.sequenceVoicesUserEdited),
     musicVolume: num(raw.musicVolume, 0, 1, 0.5),
     voiceVolume: num(raw.voiceVolume, 0, 1, 1),
     rushUrl: persistableUrl(raw.rushUrl as string),
