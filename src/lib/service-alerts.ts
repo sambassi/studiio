@@ -22,7 +22,8 @@ export type ServiceName =
   | 'pexels'
   | 'resend'
   | 'supabase'
-  | 'stripe';
+  | 'stripe'
+  | 'elevenlabs';
 
 export type AlertSeverity = 'warning' | 'critical';
 
@@ -255,6 +256,7 @@ function serviceLabel(service: ServiceName): string {
     resend: 'Resend (Emails)',
     supabase: 'Supabase (Base de données)',
     stripe: 'Stripe (Paiements)',
+    elevenlabs: 'ElevenLabs (Voix clonée)',
   };
   return labels[service] || service;
 }

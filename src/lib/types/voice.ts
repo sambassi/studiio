@@ -67,6 +67,127 @@ export async function fetchHeyGenVoices(): Promise<HeyGenTtsVoice[]> {
   }
 }
 
+// ── Voix ElevenLabs ───────────────────────────────────────────────────────
+//
+// Meme principe que HeyGen : les voix sont listees a la volee par
+// `GET /api/tts/elevenlabs` (la cle ne quitte jamais le serveur) et l'id porte
+// un prefixe qui, seul, route la synthese vers /api/tts/elevenlabs.
+
+/** Prefixe des identifiants de voix ElevenLabs cote Studiio. */
+export const ELEVENLABS_VOICE_PREFIX = 'elevenlabs-';
+
+/** Une voix ElevenLabs exploitable en TTS, au format attendu par le selecteur. */
+export interface ElevenLabsTtsVoice {
+  /** Identifiant prefixe (`elevenlabs-...`) — c'est lui qui route la synthese. */
+  id: string;
+  name: string;
+  lang: string;
+  gender: 'Female' | 'Male';
+  flag: string;
+  provider: 'elevenlabs';
+  /** true = voix clonee, par opposition au catalogue. */
+  cloned: boolean;
+}
+
+/** true si cet identifiant de voix doit passer par ElevenLabs. */
+export function isElevenLabsVoiceId(voiceId: string | undefined | null): boolean {
+  return typeof voiceId === 'string' && voiceId.startsWith(ELEVENLABS_VOICE_PREFIX);
+}
+
+/** Drapeau du code langue court, ou un micro quand la langue est inconnue. */
+const ELEVENLABS_LANG_FLAGS: Record<string, string> = {
+  FR: '\u{1F1EB}\u{1F1F7}',
+  EN: '\u{1F1FA}\u{1F1F8}',
+  ES: '\u{1F1EA}\u{1F1F8}',
+  PT: '\u{1F1E7}\u{1F1F7}',
+  DE: '\u{1F1E9}\u{1F1EA}',
+  IT: '\u{1F1EE}\u{1F1F9}',
+  NL: '\u{1F1F3}\u{1F1F1}',
+};
+
+/** Libelle ElevenLabs ("french", "fr-FR") → code court du selecteur ("FR"). */
+const ELEVENLABS_LANG_CODES: Record<string, string> = {
+  french: 'FR',
+  english: 'EN',
+  spanish: 'ES',
+  portuguese: 'PT',
+  german: 'DE',
+  italian: 'IT',
+  dutch: 'NL',
+};
+
+/**
+ * Une voix brute d'ElevenLabs, mise a la forme du selecteur.
+ *
+ * Vit ici et non dans `route.ts` : un fichier de route Next ne doit exporter
+ * que ses handlers et sa config. C'est aussi ce qui la rend verifiable sur des
+ * valeurs — la forme des `labels` varie d'une voix a l'autre, certaines n'en
+ * ont aucun, et une lecture du source ne prouverait rien de tout cela.
+ */
+export function mapElevenLabsVoice(
+  raw: Record<string, unknown> | null | undefined,
+): ElevenLabsTtsVoice | null {
+  if (!raw) return null;
+  const voiceId = String(raw.voice_id ?? '').trim();
+  if (!voiceId) return null;
+  const labels = (raw.labels ?? {}) as Record<string, unknown>;
+  const brut = String(labels.language ?? '').trim();
+  const lang = !brut
+    ? 'EN'
+    : ELEVENLABS_LANG_CODES[brut.toLowerCase()] ?? brut.slice(0, 2).toUpperCase();
+  const gender = String(labels.gender ?? '').toLowerCase() === 'male' ? 'Male' : 'Female';
+  const category = String(raw.category ?? '');
+  // `professional` designe une voix clonee en haute fidelite : elle appartient
+  // a quelqu'un, au meme titre qu'une voix `cloned`.
+  const cloned = category === 'cloned' || category === 'professional';
+  const baseName = String(raw.name ?? '').trim() || 'Voix';
+  return {
+    id: `${ELEVENLABS_VOICE_PREFIX}${voiceId}`,
+    name: cloned ? `${baseName} (ma voix)` : `${baseName} (ElevenLabs)`,
+    lang,
+    gender,
+    flag: ELEVENLABS_LANG_FLAGS[lang] ?? '\u{1F3A4}',
+    provider: 'elevenlabs',
+    cloned,
+  };
+}
+
+/**
+ * Voix ElevenLabs du compte, pour alimenter le selecteur.
+ *
+ * Ne leve jamais, pour la meme raison que son equivalent HeyGen : le
+ * fournisseur est optionnel, et son absence ne doit rien retirer au selecteur.
+ */
+export async function fetchElevenLabsVoices(): Promise<ElevenLabsTtsVoice[]> {
+  try {
+    const res = await fetch('/api/tts/elevenlabs', { method: 'GET' });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { voices?: ElevenLabsTtsVoice[] };
+    return Array.isArray(data?.voices) ? data.voices : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Toutes les voix listees a la volee — HeyGen puis ElevenLabs.
+ *
+ * Un seul point d'entree pour les selecteurs : ajouter un fournisseur ici le
+ * rend disponible partout, alors que deux panneaux qui appelleraient chacun
+ * leurs fournisseurs finiraient par ne pas proposer les memes voix.
+ *
+ * `Promise.all` et non une sequence : les deux appels sont independants, et le
+ * selecteur ne doit pas attendre la somme des deux latences. Ni l'un ni
+ * l'autre ne rejette — un fournisseur en panne rend simplement une liste vide.
+ */
+export async function fetchCustomVoices(): Promise<Array<HeyGenTtsVoice | ElevenLabsTtsVoice>> {
+  const [heygen, elevenlabs] = await Promise.all([
+    fetchHeyGenVoices(),
+    fetchElevenLabsVoices(),
+  ]);
+  return [...heygen, ...elevenlabs];
+}
+
 export type VoiceSource = 'tts' | 'record' | null;
 
 export interface SequenceVoice {

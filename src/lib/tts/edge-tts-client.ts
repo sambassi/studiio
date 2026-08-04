@@ -3,7 +3,7 @@
  * Tries server-side Edge TTS first, falls back to browser voices if server fails.
  */
 
-import { isHeyGenVoiceId } from '@/lib/types/voice';
+import { isHeyGenVoiceId, isElevenLabsVoiceId } from '@/lib/types/voice';
 
 export interface TtsVoice {
   id: string;
@@ -13,9 +13,10 @@ export interface TtsVoice {
   flag: string;
   /**
    * Optional. Absent = legacy Edge TTS (default).
-   * 'openai' routes to /api/tts/openai, 'heygen' to /api/tts/heygen.
+   * 'openai' routes to /api/tts/openai, 'heygen' to /api/tts/heygen,
+   * 'elevenlabs' to /api/tts/elevenlabs.
    */
-  provider?: 'edge' | 'openai' | 'heygen';
+  provider?: 'edge' | 'openai' | 'heygen' | 'elevenlabs';
 }
 
 export const TTS_VOICES: TtsVoice[] = [
@@ -96,6 +97,43 @@ async function tryServerSynthesize(
       return blob;
     } catch (err) {
       console.warn('[TTS] HeyGen exception:', err instanceof Error ? err.message : err);
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // ── ElevenLabs provider branch ─────────────────────────────────────────
+  // Comme HeyGen, les voix ElevenLabs sont listees a la volee — voix clonee
+  // comprise — et n'existent donc pas dans TTS_VOICES : le routage se fait sur
+  // le PREFIXE de l'id, pas sur une recherche dans la liste statique.
+  //
+  // On renvoie null plutot que de retomber sur Edge : Edge rejetterait un id
+  // `elevenlabs-*`, et synthesize() enchaine de toute facon sur ses replis.
+  if (isElevenLabsVoiceId(voiceId)) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 50_000);
+    try {
+      const res = await fetch('/api/tts/elevenlabs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, voice: voiceId }),
+        signal: ctl.signal,
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        console.warn('[TTS] ElevenLabs failed:', data.error || res.status);
+        return null;
+      }
+      const blob = await res.blob();
+      if (blob.size === 0) {
+        console.warn('[TTS] ElevenLabs returned empty audio');
+        return null;
+      }
+      console.log('[TTS] ElevenLabs success:', (blob.size / 1024).toFixed(1), 'KB');
+      return blob;
+    } catch (err) {
+      console.warn('[TTS] ElevenLabs exception:', err instanceof Error ? err.message : err);
       return null;
     } finally {
       clearTimeout(timer);
