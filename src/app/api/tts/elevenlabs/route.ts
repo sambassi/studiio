@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { detectAndReportServiceError } from '@/lib/service-alerts';
 import { mapElevenLabsVoice, ELEVENLABS_VOICE_PREFIX, type ElevenLabsTtsVoice } from '@/lib/types/voice';
+import { listUserVoices } from '@/lib/voice/store';
 
 /**
  * TTS ElevenLabs — synthese vocale, et liste des voix du compte.
@@ -19,13 +20,12 @@ import { mapElevenLabsVoice, ELEVENLABS_VOICE_PREFIX, type ElevenLabsTtsVoice } 
  * `/api/tts/openai` — audio brut, `Content-Type: audio/*` — pour que le client
  * TTS n'ait aucune branche de deballage a gerer.
  *
- * ⚠️ **Les voix CLONEES ne sont pas listees ici.** La cle API designe UN compte
- * ElevenLabs, partage par tous les utilisateurs de Studiio : renvoyer les voix
- * de categorie `cloned` ferait apparaitre la voix d'un utilisateur dans le
- * selecteur de tous les autres. Seules les voix du catalogue (`premade` et
- * assimilees) sortent d'ici. Le rattachement d'une voix clonee a son
- * proprietaire demande une table dediee — c'est l'objet du clonage, livre
- * separement.
+ * ⚠️ **Les voix clonees ne viennent PAS de `GET /v2/voices`.** La cle API
+ * designe UN compte ElevenLabs, partage par tous les utilisateurs de Studiio :
+ * le catalogue distant renverrait les voix clonees de TOUT LE MONDE, sans
+ * notion de proprietaire. Les categories clonees y sont donc filtrees, et les
+ * voix clonees de l'utilisateur sont relues dans `user_voices`, qui seule dit
+ * a qui appartient quoi.
  */
 
 export const dynamic = 'force-dynamic';
@@ -97,7 +97,17 @@ async function listCatalogVoices(): Promise<ElevenLabsTtsVoice[]> {
   }
 }
 
-/** GET /api/tts/elevenlabs — voix du catalogue, au format du selecteur. */
+/**
+ * GET /api/tts/elevenlabs — voix de CET utilisateur, puis le catalogue.
+ *
+ * Les voix clonees d'abord : c'est celle que l'utilisateur cherche en premier,
+ * et le selecteur affiche la liste dans l'ordre recu.
+ *
+ * Le catalogue est mis en cache globalement — il est le meme pour tous. Les
+ * voix clonees, elles, ne le sont JAMAIS : un cache partage les ferait fuiter
+ * d'un utilisateur a l'autre, ce que tout le reste de ce fichier s'emploie a
+ * empecher.
+ */
 export async function GET() {
   try {
     const session = await auth();
@@ -109,7 +119,20 @@ export async function GET() {
       // voix Edge, OpenAI et HeyGen.
       return NextResponse.json({ voices: [], configured: false });
     }
-    return NextResponse.json({ voices: await listCatalogVoices(), configured: true });
+    const [mine, catalogue] = await Promise.all([
+      listUserVoices(session.user.id),
+      listCatalogVoices(),
+    ]);
+    const clonees: ElevenLabsTtsVoice[] = mine.map((v) => ({
+      id: `${ELEVENLABS_VOICE_PREFIX}${v.provider_voice_id}`,
+      name: `${v.name} (ma voix)`,
+      lang: v.lang || 'FR',
+      gender: 'Female',
+      flag: '\u{1F3A4}',
+      provider: 'elevenlabs',
+      cloned: true,
+    }));
+    return NextResponse.json({ voices: [...clonees, ...catalogue], configured: true });
   } catch (err) {
     console.error('[TTS/ElevenLabs] list error:', err instanceof Error ? err.message : err);
     return NextResponse.json({ voices: [], configured: true }, { status: 200 });
