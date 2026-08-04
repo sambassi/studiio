@@ -41,6 +41,8 @@ import { generateSmartContent } from '@/lib/smart-content';
 import {
   composeAndUpload, CURRENT_COMPOSER_VERSION, posterTransformActive,
   TRANSITION_KEYS, TRANSITION_LABELS, DEFAULT_TRANSITION, type TransitionStyle,
+  TEXT_ANIMATION_KEYS, TEXT_ANIMATION_LABELS, TEXT_ANIMATION_HINTS,
+  DEFAULT_TEXT_ANIMATION, type TextAnimation,
 } from '@/lib/video-composer';
 import { AudioStudioPanel } from '@/components/creer/AudioStudioPanel';
 import { SequenceVoicesPanel } from '@/components/creer/SequenceVoicesPanel';
@@ -730,7 +732,7 @@ const PREVIEW_TABS: Array<{ id: PreviewFocus; label: string }> = [
 ];
 
 /** Sections repliables de l'etape Style — l'ordre du panneau. */
-type SectionId = 'format' | 'couleurs' | 'affiche' | 'texte' | 'sequences' | 'transition';
+type SectionId = 'format' | 'couleurs' | 'affiche' | 'texte' | 'sequences' | 'transition' | 'animation';
 
 /** Photo proposee par `/api/pexels` — Pexels comme Unsplash. */
 interface PosterPhoto {
@@ -2253,6 +2255,12 @@ export default function AssistantWizard() {
    */
   const [transition, setTransition] = useState<TransitionStyle>(DEFAULT_TRANSITION);
 
+  /**
+   * Animation d'apparition du texte, jouee sur le debut de chaque sequence.
+   * Defaut « Aucune » : le rendu de tous les montages existants.
+   */
+  const [textAnimation, setTextAnimation] = useState<TextAnimation>(DEFAULT_TEXT_ANIMATION);
+
   /* ── VOIX PAR SEQUENCE ───────────────────────────────────────────────
      Chaque sequence porte son propre texte et sa propre voix, et sa DUREE
      se cale sur celle de son audio — c'est ce qui garantit qu'un texte
@@ -3408,6 +3416,7 @@ export default function AssistantWizard() {
     watermarkEnabled,
     sequences,
     transition,
+    textAnimation,
     introDuration,
     cardsDuration,
     videoDuration,
@@ -3457,6 +3466,7 @@ export default function AssistantWizard() {
     titleStyle, subtitleStyle, ctaStyle, watermarkOverride, watermarkEnabled,
     sequences, introDuration, cardsDuration, videoDuration, ctaDuration,
     transition,
+    textAnimation,
     generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
     sequenceVoices, sequenceVoicesUserEdited,
     voiceVolume, rushUrl, rushName, rushIsClip, scheduledDate,
@@ -3511,6 +3521,7 @@ export default function AssistantWizard() {
     // `sanitizeDraft` a deja valide la valeur contre la liste du
     // compositeur : un style inconnu est arrive ici a `undefined`.
     if (draft.transition) setTransition(draft.transition as TransitionStyle);
+    if (draft.textAnimation) setTextAnimation(draft.textAnimation as TextAnimation);
     setIntroDuration(draft.introDuration!);
     setCardsDuration(draft.cardsDuration!);
     setVideoDuration(draft.videoDuration!);
@@ -4345,6 +4356,9 @@ export default function AssistantWizard() {
               }
             : undefined,
           design: {
+            // Animation d'apparition du texte, jouee sur le debut de chaque
+            // sequence. `'none'` = le rendu d'hier, au pixel.
+            textAnimation,
             cardStyle: CARD_STYLE,
             // Sans ce champ : titre et CTA en Helvetica, cartes en Inter.
             font: DESIGN.font,
@@ -4474,6 +4488,7 @@ export default function AssistantWizard() {
             borderColor: null,
           },
           design: {
+            textAnimation,
             cardStyle: CARD_STYLE,
             font: DESIGN.font,
             // Persiste pour que le Calendrier (apercu HTML et regeneration)
@@ -4586,6 +4601,7 @@ export default function AssistantWizard() {
     // ouvertes jusqu'a « Envoi ».
     setMaxStepReached(0);
     setTransition(DEFAULT_TRANSITION);
+    setTextAnimation(DEFAULT_TEXT_ANIMATION);
     // Sans cela, le montage suivant naitrait filtre sur l'onglet du precedent.
     setPreviewFocus('all');
     // Meme raison pour le placement : sans remise a zero, le montage suivant
@@ -5950,6 +5966,54 @@ export default function AssistantWizard() {
                       <p className="text-xs text-gray-500 mt-2">
                         {TRANSITION_HINTS[transition]}
                       </p>
+                    </div>
+                </StyleSection>
+
+                <StyleSection
+                  id="animation"
+                  title="Animation du texte"
+                  hint={TEXT_ANIMATION_LABELS[textAnimation]}
+                  open={openSection === 'animation'}
+                  onToggle={toggleSection}
+                >
+                    <div>
+                      <label className="block text-sm font-medium mb-2">
+                        Apparition du texte
+                      </label>
+                      <p className="text-xs text-gray-500 mb-2">
+                        Jouée au début de chaque séquence. Visible à l&apos;export, pas dans
+                        l&apos;aperçu.
+                      </p>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {TEXT_ANIMATION_KEYS.map((style) => {
+                          const choisi = style === textAnimation;
+                          return (
+                            <button
+                              key={style}
+                              type="button"
+                              onClick={() => setTextAnimation(style)}
+                              aria-pressed={choisi}
+                              data-text-animation={style}
+                              className={`rounded-lg px-2.5 py-2 text-[11px] font-medium transition text-left ${
+                                choisi
+                                  ? 'bg-gray-800 text-white ring-1 ring-purple-500/40'
+                                  : 'bg-gray-900 text-gray-400 hover:text-white hover:bg-gray-800/60'
+                              }`}
+                            >
+                              {TEXT_ANIMATION_LABELS[style]}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-2">
+                        {TEXT_ANIMATION_HINTS[textAnimation]}
+                      </p>
+                      {textAnimation === 'typewriter' && (
+                        <p className="text-xs text-amber-400 mt-1.5">
+                          Les cartes sont photographiées : elles apparaissent d’un bloc, sans
+                          frappe lettre par lettre.
+                        </p>
+                      )}
                     </div>
                 </StyleSection>
 

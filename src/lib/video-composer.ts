@@ -5,6 +5,9 @@
  * Outputs MP4 if supported, otherwise WebM.
  */
 import type { AudioKeyframe } from './creer/audioDucking';
+import {
+  textAnimationState, revealText, isTypewriter, type TextAnimation,
+} from '@/lib/creer/textAnimation';
 
 const COMPOSER_VERSION = 'v38-fix-first-frame-blank-2026-04-30';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
@@ -65,6 +68,11 @@ export interface DesignOptions {
    * deux cotes, on garde le fondu historique.
    */
   transition?: TransitionStyle;
+  /**
+   * Animation d'apparition du texte, jouee sur le DEBUT de chaque sequence.
+   * Absente ou `'none'` = le rendu d'aujourd'hui, au pixel.
+   */
+  textAnimation?: TextAnimation;
   /** Title text color (default: #FFFFFF) */
   titleColor?: string;
   /**
@@ -1291,14 +1299,54 @@ function paintSeqBackdrop(
 // SEQUENCE RENDERERS
 // ═══════════════════════════════════════════════════════════
 
+/**
+ * Applique l'animation d'apparition au CONTEXTE.
+ *
+ * A appeler juste apres le `ctx.save()` qui ouvre le bloc de TEXTE — jamais
+ * avant le fond : un fond qui apparaitrait en fondu laisserait voir le noir
+ * du canvas, et un fond qui glisserait decouvrirait une bande vide.
+ *
+ * Ne restaure rien : le `ctx.restore()` deja present au bout du bloc s'en
+ * charge. C'est ce qui rend l'ajout sur trois fonctions tenable.
+ */
+function applyTextAnimation(
+  ctx: CanvasRenderingContext2D, w: number, h: number,
+  style: TextAnimation | undefined, progress: number,
+): void {
+  const a = textAnimationState(style, progress);
+  if (a.alpha === 1 && a.translateY === 0 && a.scale === 1) return;
+  ctx.globalAlpha *= a.alpha;
+  if (a.translateY !== 0) ctx.translate(0, a.translateY * h);
+  if (a.scale !== 1) {
+    // Mise a l'echelle autour du CENTRE du cadre : autour de l'origine, le
+    // texte partirait du coin haut-gauche.
+    ctx.translate(w / 2, h / 2);
+    ctx.scale(a.scale, a.scale);
+    ctx.translate(-w / 2, -h / 2);
+  }
+}
+
+/** Part du texte a ecrire a cet instant — 1 hors machine a ecrire. */
+function textRevealRatio(style: TextAnimation | undefined, progress: number): number {
+  return isTypewriter(style) ? textAnimationState(style, progress).charRatio : 1;
+}
+
 function drawIntro(
   ctx: CanvasRenderingContext2D, w: number, h: number,
   posterImg: HTMLImageElement | null, logoImg: HTMLImageElement | null,
-  title: string, subtitle: string | undefined, _accent: string, _progress: number,
+  title: string, subtitle: string | undefined, _accent: string, progress: number,
   design?: DesignOptions,
   /** Per-sequence background opacity (Phase 1). Applied to posterImg only. */
   bgOpacity: number = 1,
 ) {
+  // Machine a ecrire : le texte est TRONQUE avant la mise en lignes, si bien
+  // que le retour a la ligne suit la frappe — c'est ce que fait une vraie
+  // saisie. Les autres styles n'y touchent pas.
+  const revealRatio = textRevealRatio(design?.textAnimation, progress);
+  if (revealRatio < 1) {
+    title = revealText(title, revealRatio);
+    subtitle = subtitle ? revealText(subtitle, revealRatio) : subtitle;
+  }
   const fontFamily = design?.titleFont || design?.font || 'sans-serif';
   const titleColor = design?.titleColor || '#FFFFFF';
 
@@ -1400,6 +1448,8 @@ function drawIntro(
   }
 
   ctx.save();
+  // Animation d'apparition — apres le fond, avant le texte.
+  applyTextAnimation(ctx, w, h, design?.textAnimation, progress);
   // Alignement horizontal du titre. Opt-in : la valeur par defaut 'center'
   // reproduit exactement le comportement historique, donc aucun contenu
   // existant ne bouge d'un pixel. Avec 'left', titlePosX designe le bord
@@ -1633,7 +1683,7 @@ function drawIntro(
 
 function drawCards(
   ctx: CanvasRenderingContext2D, w: number, h: number,
-  cards: CardData[], logoImg: HTMLImageElement | null, accent: string, _progress: number,
+  cards: CardData[], logoImg: HTMLImageElement | null, accent: string, progress: number,
   design?: DesignOptions,
   /** Per-sequence background image override (Phase 1). Null = no override. */
   seqBgImg: HTMLImageElement | null = null,
@@ -1685,6 +1735,14 @@ function drawCards(
     paintSeqBackdrop(ctx, w, h, 'cards', design, accent);
   }
   paintSeqGradient(ctx, w, h, 'cards', design);
+
+  // Animation d'apparition des cartes. L'enveloppe couvre TOUT ce qui suit —
+  // photo des cartes comprise. En Mode simple, les cartes sont justement une
+  // PHOTO du conteneur : fondu, glissement et pop s'y appliquent, mais la
+  // machine a ecrire ne peut rien sur une image, et s'y comporte donc comme
+  // une absence d'animation.
+  ctx.save();
+  applyTextAnimation(ctx, w, h, design?.textAnimation, progress);
 
   // Snapshot override : if a pre-rendered cards PNG is provided, draw
   // it directly for pixel-perfect parity with the editor. Falls back
@@ -2348,6 +2406,11 @@ function drawCards(
     });
   }
 
+  // Ferme l'enveloppe d'animation : le logo n'en fait pas partie. C'est une
+  // marque, pas du contenu — la voir glisser ou grossir a chaque sequence
+  // trahirait le kit de marque.
+  ctx.restore();
+
   // Logo on cards if configured — uses per-sequence position
   if (logoImg && design?.logoSequences?.includes('cards')) {
     const logoScale = design?.logoScale || 1.0;
@@ -2589,13 +2652,15 @@ function drawCTA(
   ctx: CanvasRenderingContext2D, w: number, h: number,
   accent: string, ctaText: string, ctaSubTextParam: string,
   salesPhrase: string | undefined, watermark: string | undefined,
-  logoImg: HTMLImageElement | null, _progress: number,
+  logoImg: HTMLImageElement | null, progress: number,
   design?: DesignOptions,
   /** Per-sequence background image override (Phase 1). */
   seqBgImg: HTMLImageElement | null = null,
   /** Per-sequence background opacity (0-1). */
   seqBgOpacity: number = 1,
 ) {
+  const revealRatio = textRevealRatio(design?.textAnimation, progress);
+  if (revealRatio < 1) ctaText = revealText(ctaText, revealRatio);
   // ctaSubTextParam kept for backward compat but design.ctaSubTextDesign takes priority
   void ctaSubTextParam;
   // BIG text (watermark) uses watermarkFont; sub-text uses ctaFont. Fall back to global font.
@@ -2643,8 +2708,10 @@ function drawCTA(
     paintSeqBackdrop(ctx, w, h, 'cta', design, accent);
   }
   paintSeqGradient(ctx, w, h, 'cta', design);
-  // NO animation — editor is static, no scale bounce
+  // Statique par defaut — l'apercu l'est. L'animation n'entre en jeu que si
+  // elle a ete demandee, et seulement sur le DEBUT de la sequence.
   ctx.save();
+  applyTextAnimation(ctx, w, h, design?.textAnimation, progress);
 
   // Font sizes matched to editor CSS:
   //   Editor (9:16): ctaMainText = 12px, ctaSubText = 9px, salesPhrase = 8px on 320px wide
@@ -2875,6 +2942,13 @@ export const TRANSITION_STYLES: TransitionStyle[] = [...TRANSITION_KEYS];
 
 /** Style applique quand rien n'est demande — ne jamais changer sans casser la retro-compat. */
 export const DEFAULT_TRANSITION: TransitionStyle = 'crossfade';
+
+// Vocabulaire des animations de texte — re-exporte pour que l'editeur n'ait
+// qu'une seule porte d'entree vers le compositeur.
+export {
+  TEXT_ANIMATION_KEYS, TEXT_ANIMATION_LABELS, TEXT_ANIMATION_HINTS,
+  DEFAULT_TEXT_ANIMATION, textAnimationState, type TextAnimation,
+} from '@/lib/creer/textAnimation';
 
 /**
  * Calques hors-ecran utilises par les transitions geometriques.
