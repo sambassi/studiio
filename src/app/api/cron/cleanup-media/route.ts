@@ -11,8 +11,45 @@ function verifyCronSecret(req: NextRequest): boolean {
   return authHeader === `Bearer ${process.env.CRON_SECRET}`;
 }
 
+/**
+ * Fichiers que le nettoyage ne doit JAMAIS supprimer.
+ *
+ * Deux sources, et la seconde est arrivée après coup :
+ *
+ * 1. Les médias référencés par un post — le mécanisme d'origine.
+ * 2. **La banque de rushes des Autopilotes ACTIFS.** Ces fichiers vivent
+ *    dans `media/`, donc sous la rétention de 24 h, mais aucun post ne les
+ *    référence tant qu'un cycle n'a pas tourné. Ils étaient donc supprimés
+ *    au bout d'un jour, et le cycle suivant échouait en 404 au
+ *    téléchargement du rush : l'Autopilote se vidait tout seul et ne
+ *    produisait plus rien.
+ *
+ * Retirer un rush de la banque le rend de nouveau éligible : la protection
+ * suit la référence, elle ne marque pas le fichier.
+ */
 async function getProtectedUrls(): Promise<Set<string>> {
   const urls = new Set<string>();
+
+  // ── Banque de rushes des Autopilotes actifs ────────────────────────────
+  // Lue AVANT les posts, et sans `return` anticipé : un compte sans aucun
+  // post programmé doit quand même garder ses rushes.
+  const { data: autopilotes, error: autopiloteError } = await supabaseAdmin
+    .from('autopilot_config')
+    .select('rush_urls')
+    .eq('enabled', true);
+  if (autopiloteError) {
+    // On préfère ne RIEN supprimer plutôt que de supprimer des rushes qu'on
+    // n'a pas pu lire : un nettoyage manqué se rattrape au passage suivant,
+    // un rush supprimé ne revient pas.
+    throw new Error(`autopilot_config illisible : ${autopiloteError.message}`);
+  }
+  for (const ligne of autopilotes ?? []) {
+    const rushes = (ligne as { rush_urls?: unknown }).rush_urls;
+    if (!Array.isArray(rushes)) continue;
+    for (const u of rushes) {
+      if (typeof u === 'string' && u) urls.add(u);
+    }
+  }
 
   const { data: posts } = await supabaseAdmin
     .from('scheduled_posts')

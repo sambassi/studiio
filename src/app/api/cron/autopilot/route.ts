@@ -6,6 +6,7 @@ import { sanitizeConfig, decideRun, type SkipReason } from '@/lib/autopilot/rule
 import { preparePosts, toPostRow, slotKey } from '@/lib/autopilot/engine';
 import { buildAutopilotDesign, buildAutopilotMetadata, AUTOPILOT_FORMAT } from '@/lib/autopilot/design';
 import { renderAndUpload } from '@/lib/autopilot/render';
+import { pickPosterUrl, probeRushSeconds } from '@/lib/autopilot/poster';
 import { deductCredits, getVideoRenderCost } from '@/lib/credits/system';
 
 /**
@@ -198,7 +199,14 @@ export async function GET(req: NextRequest) {
         // televersement echouer. Rien de tout cela ne doit emporter le reste
         // du cycle.
         try {
-          const design = buildAutopilotDesign(post);
+          // Les deux sondages RESEAU, avant la fabrique de design qui reste
+          // pure. Aucun des deux ne peut faire echouer le cycle : ils rendent
+          // `null` et le montage sort comme avant.
+          const [posterUrl, rushSeconds] = await Promise.all([
+            pickPosterUrl(topic),
+            post.rushUrl ? probeRushSeconds(post.rushUrl) : Promise.resolve(null),
+          ]);
+          const design = buildAutopilotDesign(post, { posterUrl, rushSeconds });
           const jobId = `autopilote-${userId}-${post.scheduledDate}-${Date.now()}`;
           const { videoUrl, thumbnailUrl, durationFrames } = await renderAndUpload({ userId, jobId, design });
 
@@ -229,7 +237,10 @@ export async function GET(req: NextRequest) {
           reussis += 1;
           console.log(
             `[Autopilote/Cron] ${userId} — montage ${post.scheduledDate} rendu `
-            + `(${durationFrames} images, ${AUTOPILOT_FORMAT}) : ${videoUrl}`,
+            + `(${durationFrames} images, ${AUTOPILOT_FORMAT}`
+            + `, affiche ${posterUrl ? 'oui' : 'non'}`
+            + `, rush ${rushSeconds ? `${rushSeconds.toFixed(1)}s` : 'non sonde'}`
+            + `) : ${videoUrl}`,
           );
         } catch (err) {
           echecs += 1;
