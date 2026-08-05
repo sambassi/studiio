@@ -5,6 +5,7 @@ import { DEFAULT_TRANSITION, CURRENT_COMPOSER_VERSION } from '@/lib/video-compos
 import { DEFAULT_TEXT_ANIMATION } from '@/lib/creer/textAnimation';
 import type { CreerSimpleRenderInput } from '@/lib/render/creerSimple';
 import type { PreparedPost } from '@/lib/autopilot/engine';
+import { sequenceSecondsWithVoice, voiceUrls, type VoixParSequence } from '@/lib/autopilot/voice';
 
 /**
  * Le design que l'Autopilote confie au rendu serveur.
@@ -76,9 +77,16 @@ export function buildAutopilotDesign(
     posterUrl?: string | null;
     /** Durée RÉELLE du rush, si elle a pu être sondée. */
     rushSeconds?: number | null;
+    /** Voix off par séquence, si elles ont pu être générées. */
+    voices?: VoixParSequence;
   } = {},
 ): CreerSimpleRenderInput {
-  const video = autopilotVideoSeconds(post.rushUrl, options.rushSeconds);
+  const voix = options.voices ?? {};
+  // La séquence vidéo suit le rush ; si elle est narrée, elle suit aussi sa
+  // voix — la plus longue des deux gagne, pour ne couper ni l'un ni l'autre.
+  const video = sequenceSecondsWithVoice(
+    voix, 'video', autopilotVideoSeconds(post.rushUrl, options.rushSeconds),
+  );
   return {
     title: post.title.toUpperCase(),
     subtitle: post.content.subtitle,
@@ -95,10 +103,17 @@ export function buildAutopilotDesign(
     // sous le titre, les cartes et le CTA. Absente, le dégradé reprend sa
     // place, comme avant.
     posterUrl: options.posterUrl ?? null,
-    introDuration: DEFAULT_SEQUENCE_SECONDS.intro,
-    cardsDuration: DEFAULT_SEQUENCE_SECONDS.cards,
+    // ⚠️ LE CALAGE A LA VOIX SE FAIT ICI. La Phase 8 avait etabli que cette
+    // regle est un effet de l'EDITEUR, qui ecrit la duree dans le design ;
+    // l'Autopilote n'a pas d'editeur, personne d'autre ne l'ecrira. La regle
+    // (`voiceSequenceSeconds`) est la meme, seul l'endroit change.
+    introDuration: sequenceSecondsWithVoice(voix, 'titre', DEFAULT_SEQUENCE_SECONDS.intro),
+    cardsDuration: sequenceSecondsWithVoice(voix, 'cartes', DEFAULT_SEQUENCE_SECONDS.cards),
     videoDuration: video,
-    ctaDuration: DEFAULT_SEQUENCE_SECONDS.cta,
+    ctaDuration: sequenceSecondsWithVoice(voix, 'cta', DEFAULT_SEQUENCE_SECONDS.cta),
+    // Voix par sequence : le rendu serveur les joue depuis la Phase 8, au
+    // debut NOMINAL de chaque sequence.
+    sequenceVoiceUrls: voiceUrls(voix),
     gradientStart: DEFAULT_COLORS.gradientStart,
     gradientEnd: DEFAULT_COLORS.gradientEnd,
     titleColor: DEFAULT_COLORS.title,
