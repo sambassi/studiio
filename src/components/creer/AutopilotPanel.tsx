@@ -152,6 +152,50 @@ export default function AutopilotPanel({ accent }: { accent: string }) {
         </div>
       </div>
 
+      {/* ── Voix off ─────────────────────────────────────────────────
+          OPTION PAYANTE, donc EXPLICITE et desactivee par defaut. La
+          narration passe par ElevenLabs, facture a l'usage : l'activer
+          d'office ferait payer une voix que personne n'a demandee. Le cout
+          est ecrit dans l'etiquette, pas cache dans une aide au survol. */}
+      <div>
+        <p className="text-xs font-medium text-gray-300 mb-2">Narration</p>
+        <button
+          type="button"
+          onClick={() => enregistrer({ voiceEnabled: !config.voiceEnabled })}
+          disabled={!ready || saving}
+          aria-pressed={config.voiceEnabled}
+          data-autopilot-voice
+          className={`w-full flex items-start gap-3 text-left rounded-lg border px-3 py-2 transition disabled:opacity-40 ${
+            config.voiceEnabled
+              ? 'border-purple-500/50 bg-gray-800'
+              : 'border-gray-800 hover:border-gray-700'
+          }`}
+        >
+          <span
+            aria-hidden
+            className={`mt-0.5 flex h-4 w-7 shrink-0 items-center rounded-full transition ${
+              config.voiceEnabled ? 'bg-purple-500' : 'bg-gray-700'
+            }`}
+          >
+            <span
+              className={`h-3 w-3 rounded-full bg-white transition-transform ${
+                config.voiceEnabled ? 'translate-x-3.5' : 'translate-x-0.5'
+              }`}
+            />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-xs font-medium">
+              Voix off — <span className="text-amber-400">option payante</span>
+            </span>
+            <span className="block text-[11px] text-gray-500 mt-0.5">
+              {config.voiceEnabled
+                ? 'Chaque montage est narré par une voix IA (crédits ElevenLabs).'
+                : 'Aucune narration, aucun coût. Les vidéos sortent avec la musique seule.'}
+            </span>
+          </span>
+        </button>
+      </div>
+
       {/* ── Cadence et nombre ────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3">
         <div>
