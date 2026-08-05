@@ -98,6 +98,19 @@ export async function renderVideo(options: {
     encodingMaxRate: '12M',
     encodingBufferSize: '16M',
     pixelFormat: 'yuv420p',
+    // ⚠️ SANS CECI, LA SORTIE EST EN `yuvj420p` — PLEINE ECHELLE.
+    //
+    // `pixelFormat: 'yuv420p'` fixe le sous-echantillonnage (4:2:0, celui que
+    // les navigateurs savent decoder) mais PAS la plage de couleur. Les
+    // images viennent d'un Chromium en RGB pleine echelle, et x264 etiquette
+    // alors le flux `yuvj420p(pc, bt470bg/unknown/unknown)` : 4:2:0 correct,
+    // mais plage PC et matrice non renseignee — un etiquetage que la video
+    // web n'utilise pas, et que les decodeurs materiels traitent
+    // diversement.
+    //
+    // `bt709` produit `yuv420p(tv, bt709)`, la signalisation standard.
+    // Verifie par ffprobe sur un rendu reel : c'est la seule difference.
+    colorSpace: 'bt709',
     chromiumOptions: {
       disableWebSecurity: true,
       gl: 'angle',
