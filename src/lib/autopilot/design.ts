@@ -36,12 +36,30 @@ export const AUTOPILOT_FORMAT = '9:16' as const;
 /**
  * Durée de la séquence vidéo pour un rush donné.
  *
- * L'Autopilote ne décode pas le fichier — un cron n'a pas de lecteur vidéo.
- * Il prend donc le repli du Mode simple, celui qu'applique l'assistant quand
- * la durée du rush est illisible.
+ * ⚠️ `probedSeconds` SUPPRIME LE GEL DE FIN DE MONTAGE. Sans elle, la
+ * séquence durait une valeur FIXE de repli : un rush plus court laissait
+ * `OffthreadVideo` figé sur sa dernière image le temps restant — l'image se
+ * bloquait une seconde ou deux, puis le CTA arrivait. C'est exactement ce
+ * qui a été observé.
+ *
+ * Bornée comme dans le Mode simple : une source d'une heure ne doit pas
+ * devenir une séquence d'une heure, et une source d'un dixième de seconde ne
+ * doit pas produire un clignotement.
  */
-export function autopilotVideoSeconds(rushUrl: string | null): number {
-  return rushUrl ? RUSH_SEQUENCE_SECONDS.fallback : DEFAULT_SEQUENCE_SECONDS.video;
+export function autopilotVideoSeconds(
+  rushUrl: string | null,
+  probedSeconds?: number | null,
+): number {
+  if (!rushUrl) return DEFAULT_SEQUENCE_SECONDS.video;
+  if (typeof probedSeconds === 'number' && Number.isFinite(probedSeconds) && probedSeconds > 0) {
+    return Math.min(
+      RUSH_SEQUENCE_SECONDS.max,
+      Math.max(RUSH_SEQUENCE_SECONDS.min, Math.floor(probedSeconds)),
+    );
+  }
+  // Durée illisible : le repli du Mode simple, celui qu'applique l'assistant
+  // dans le même cas.
+  return RUSH_SEQUENCE_SECONDS.fallback;
 }
 
 /**
@@ -51,8 +69,16 @@ export function autopilotVideoSeconds(rushUrl: string | null): number {
  * `SequenceTitle` applique de toute façon (`textTransform: 'uppercase'`), et
  * l'écrire ici garde le post et la vidéo d'accord sur la même chaîne.
  */
-export function buildAutopilotDesign(post: PreparedPost): CreerSimpleRenderInput {
-  const video = autopilotVideoSeconds(post.rushUrl);
+export function buildAutopilotDesign(
+  post: PreparedPost,
+  options: {
+    /** Photo de fond, ou `null` : le dégradé tient alors lieu de fond. */
+    posterUrl?: string | null;
+    /** Durée RÉELLE du rush, si elle a pu être sondée. */
+    rushSeconds?: number | null;
+  } = {},
+): CreerSimpleRenderInput {
+  const video = autopilotVideoSeconds(post.rushUrl, options.rushSeconds);
   return {
     title: post.title.toUpperCase(),
     subtitle: post.content.subtitle,
@@ -64,6 +90,11 @@ export function buildAutopilotDesign(post: PreparedPost): CreerSimpleRenderInput
     })),
     ctaText: post.content.tagLine,
     videoUrl: post.rushUrl,
+    // La photo d'affiche du Mode simple : le MÊME champ, rendu au même
+    // endroit par `CreerSimpleMontage` — un `<Img>` en fond de séquence,
+    // sous le titre, les cartes et le CTA. Absente, le dégradé reprend sa
+    // place, comme avant.
+    posterUrl: options.posterUrl ?? null,
     introDuration: DEFAULT_SEQUENCE_SECONDS.intro,
     cardsDuration: DEFAULT_SEQUENCE_SECONDS.cards,
     videoDuration: video,
@@ -132,7 +163,9 @@ export function buildAutopilotMetadata(input: {
      * version du compositeur.
      */
     thumbnailUrl: thumbnailUrl || undefined,
-    posterUrl: thumbnailUrl || undefined,
+    // L'affiche du montage si elle existe, sinon la vignette : c'est ce que
+    // le Calendrier montre en aperçu statique.
+    posterUrl: design.posterUrl || thumbnailUrl || undefined,
     composerVersion: CURRENT_COMPOSER_VERSION,
     serverRendered: true,
     hasAudio: false,
