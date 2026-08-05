@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
-import { collectStorageUrlsFromPost, deleteStorageFiles } from '@/lib/storage/cleanup';
+import {
+  collectStorageUrlsFromPost, deleteStorageFiles, autopilotRushKeys, storageKey,
+} from '@/lib/storage/cleanup';
 
 // GET /api/posts?month=2026-03
 export async function GET(req: NextRequest) {
@@ -146,7 +148,29 @@ export async function DELETE(req: NextRequest) {
     // the response goes back to the client without waiting on the storage
     // round-trips. Errors land in the server logs.
     if (postRow?.metadata) {
-      const urls = collectStorageUrlsFromPost(postRow.metadata as Record<string, unknown>);
+      const toutes = collectStorageUrlsFromPost(postRow.metadata as Record<string, unknown>);
+      // ⚠️ LE RUSH N'APPARTIENT PAS AU POST. Chaque montage de l'Autopilote
+      // porte dans ses metadonnees le rush de la BANQUE, partage par tous les
+      // cycles. Supprimer un brouillon emportait donc le rush, et
+      // l'Autopilote se retrouvait sans source — 404 au cycle suivant. C'est
+      // ce qui a vide la mediatheque.
+      // `null` = banque illisible : on épargne TOUS les rushes du post
+      // plutôt que de risquer d'emporter celui de la banque.
+      const banque = await autopilotRushKeys();
+      const rushesDuPost = new Set(
+        (Array.isArray((postRow.metadata as Record<string, unknown>)?.rushUrls)
+          ? ((postRow.metadata as Record<string, unknown>).rushUrls as unknown[])
+          : []
+        ).map((u) => storageKey(typeof u === 'string' ? u : null)).filter(Boolean) as string[],
+      );
+      const urls = toutes.filter((u) => {
+        const k = storageKey(u);
+        if (k && (banque ? banque.has(k) : rushesDuPost.has(k))) {
+          console.log(`[POST DELETE id=${id}] rush de la banque Autopilote conserve : ${k}`);
+          return false;
+        }
+        return true;
+      });
       if (urls.length > 0) {
         deleteStorageFiles(urls, `[POST DELETE id=${id}]`)
           .then(({ removed, failed }) => {

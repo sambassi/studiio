@@ -23,6 +23,60 @@ export function extractStoragePath(url: string | null | undefined): { bucket: st
 }
 
 /**
+ * Clé de stockage d'une URL — `<bucket>/<chemin>`, ou `null`.
+ *
+ * ⚠️ COMPARER DES URL BRUTES NE MARCHE PAS DE FAÇON FIABLE. La même
+ * ressource s'écrit de plusieurs façons selon qui l'a produite :
+ * `https://studiio.pro/storage/v1/object/public/media/u/library/x.mp4`,
+ * la même sans hôte, ou une variante signée `/sign/…?token=`. Deux formes
+ * différentes du MÊME fichier ne se reconnaissent pas, et une exemption
+ * fondée sur l'égalité de chaînes laisse alors passer la suppression.
+ *
+ * La clé, elle, est unique : c'est ce que MinIO indexe.
+ */
+export function storageKey(url: string | null | undefined): string | null {
+  const p = extractStoragePath(url);
+  return p ? `${p.bucket}/${p.path}` : null;
+}
+
+/**
+ * Clés des rushes appartenant à un Autopilote ACTIF.
+ *
+ * ⚠️ CES FICHIERS SONT PARTAGÉS. Un même rush sert à tous les montages d'un
+ * cycle, et il est référencé à la fois par la banque (`rush_urls`) et par le
+ * `metadata.rushUrls` de chaque post produit. Supprimer un post ne doit donc
+ * PAS emporter le rush : il appartient à la banque, pas au post.
+ */
+export async function autopilotRushKeys(): Promise<Set<string> | null> {
+  const out = new Set<string>();
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('autopilot_config')
+      .select('rush_urls')
+      .eq('enabled', true);
+    // ⚠️ `null` ET NON UN ENSEMBLE VIDE. Un ensemble vide se lit « aucun rush
+    // à protéger » et laisserait l'appelant supprimer. Un nettoyage manqué se
+    // rattrape au passage suivant ; un rush supprimé ne revient pas.
+    if (error) {
+      console.error('[Storage] banque de rushes illisible :', error.message);
+      return null;
+    }
+    for (const ligne of data ?? []) {
+      const rushes = (ligne as { rush_urls?: unknown }).rush_urls;
+      if (!Array.isArray(rushes)) continue;
+      for (const u of rushes) {
+        const k = storageKey(typeof u === 'string' ? u : null);
+        if (k) out.add(k);
+      }
+    }
+  } catch (err) {
+    console.error('[Storage] banque de rushes illisible :', err);
+    return null;
+  }
+  return out;
+}
+
+/**
  * Pull every URL out of a post's metadata that points to Supabase Storage.
  * Order: video assets first (largest), then audio, then images. Logo URLs
  * are intentionally NOT included — a logo is typically reused across many
