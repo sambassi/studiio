@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { getFileType, getExpiresAt } from '@/lib/storage/retention';
+import { storageKey, autopilotRushKeys } from '@/lib/storage/cleanup';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -29,27 +30,6 @@ function verifyCronSecret(req: NextRequest): boolean {
  */
 async function getProtectedUrls(): Promise<Set<string>> {
   const urls = new Set<string>();
-
-  // ── Banque de rushes des Autopilotes actifs ────────────────────────────
-  // Lue AVANT les posts, et sans `return` anticipé : un compte sans aucun
-  // post programmé doit quand même garder ses rushes.
-  const { data: autopilotes, error: autopiloteError } = await supabaseAdmin
-    .from('autopilot_config')
-    .select('rush_urls')
-    .eq('enabled', true);
-  if (autopiloteError) {
-    // On préfère ne RIEN supprimer plutôt que de supprimer des rushes qu'on
-    // n'a pas pu lire : un nettoyage manqué se rattrape au passage suivant,
-    // un rush supprimé ne revient pas.
-    throw new Error(`autopilot_config illisible : ${autopiloteError.message}`);
-  }
-  for (const ligne of autopilotes ?? []) {
-    const rushes = (ligne as { rush_urls?: unknown }).rush_urls;
-    if (!Array.isArray(rushes)) continue;
-    for (const u of rushes) {
-      if (typeof u === 'string' && u) urls.add(u);
-    }
-  }
 
   const { data: posts } = await supabaseAdmin
     .from('scheduled_posts')
@@ -81,6 +61,24 @@ async function getProtectedUrls(): Promise<Set<string>> {
   return urls;
 }
 
+/**
+ * Le fichier est-il protégé, et par quoi ?
+ *
+ * ⚠️ LA COMPARAISON SE FAIT SUR LA CLÉ, PAS SUR L'URL. Une URL s'écrit de
+ * plusieurs façons pour le même objet — avec ou sans hôte, `/public/` ou
+ * `/sign/…?token=` — et deux formes différentes ne se reconnaissent pas. La
+ * clé `<bucket>/<chemin>` est ce que MinIO indexe : elle est unique.
+ */
+function protection(
+  publicUrl: string,
+  protectedUrls: Set<string>,
+  rushKeys: Set<string>,
+): 'post' | 'rush' | null {
+  const cle = storageKey(publicUrl);
+  if (cle && rushKeys.has(cle)) return 'rush';
+  return isProtected(publicUrl, protectedUrls) ? 'post' : null;
+}
+
 function isProtected(publicUrl: string, protectedUrls: Set<string>): boolean {
   for (const pUrl of protectedUrls) {
     if (publicUrl === pUrl || pUrl.includes(publicUrl) || publicUrl.includes(pUrl)) {
@@ -96,7 +94,21 @@ export async function GET(req: NextRequest) {
   }
 
   const protectedUrls = await getProtectedUrls();
+  // Les rushes des Autopilotes actifs, en CLÉS de stockage. `null` = lecture
+  // impossible : on ne supprime alors RIEN, plutôt que de supprimer ce qu'on
+  // n'a pas pu protéger.
+  const banqueLue = await autopilotRushKeys();
+  if (!banqueLue) {
+    return NextResponse.json(
+      { success: false, error: 'Banque de rushes illisible — aucune suppression tentée.' },
+      { status: 503 },
+    );
+  }
+  const rushKeys: Set<string> = banqueLue;
   const now = new Date();
+  let exemptesPosts = 0;
+  let exemptesRushes = 0;
+  let candidats = 0;
   const buckets = ['media', 'audio'];
   const breakdown = { video: 0, audio: 0, image: 0 };
   let deleted = 0;
@@ -153,8 +165,19 @@ export async function GET(req: NextRequest) {
   ) {
     const { data: urlData } = supabaseAdmin.storage.from(bucket).getPublicUrl(path);
     const publicUrl = urlData.publicUrl;
+    candidats++;
 
-    if (isProtected(publicUrl, protectedUrls)) {
+    // La clé est reconstruite depuis le bucket et le chemin, PAS depuis
+    // l'URL publique : `getPublicUrl` dépend de variables d'environnement et
+    // peut rendre une forme relative selon le contexte d'exécution.
+    const cle = `${bucket}/${path}`;
+    if (rushKeys.has(cle)) {
+      exemptesRushes++;
+      preserved++;
+      return;
+    }
+    if (protection(publicUrl, protectedUrls, rushKeys)) {
+      exemptesPosts++;
       preserved++;
       return;
     }
@@ -178,15 +201,24 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Le detail des exemptions, pour qu'on puisse VERIFIER en production que
+  // les rushes sont protegés — et non le deviner. `exemptesRushes: 0` alors
+  // qu'une banque est garnie signale que le rapprochement ne prend pas.
   console.log(
-    `[CLEANUP-MEDIA] Deleted ${deleted} (video=${breakdown.video}, audio=${breakdown.audio}, image=${breakdown.image}), kept ${kept}, preserved ${preserved}`,
+    `[CLEANUP-MEDIA] candidats=${candidats} supprimes=${deleted} `
+    + `(video=${breakdown.video}, audio=${breakdown.audio}, image=${breakdown.image}) `
+    + `conserves=${kept} exemptes=${preserved} `
+    + `(posts=${exemptesPosts}, rushes-autopilote=${exemptesRushes}) `
+    + `| banque=${rushKeys.size} cles`,
   );
 
   return NextResponse.json({
     success: true,
+    candidats,
     deleted,
     kept,
     preserved,
+    exemptes: { posts: exemptesPosts, rushesAutopilote: exemptesRushes, banque: rushKeys.size },
     breakdown,
     errors: errors.length > 0 ? errors : undefined,
   });

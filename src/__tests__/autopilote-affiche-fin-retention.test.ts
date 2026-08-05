@@ -111,31 +111,34 @@ describe('C — le gel de fin de montage', () => {
 
 describe('D — la banque de rushes survit à la rétention', () => {
   it('les rushes des Autopilotes ACTIFS sont protégés', () => {
-    expect(nettoyage).toContain(".from('autopilot_config')");
-    expect(nettoyage).toContain(".eq('enabled', true)");
+    // La lecture vit desormais dans `autopilotRushKeys`, partagee avec la
+    // cascade de suppression d'un post — l'autre porte par laquelle ils
+    // disparaissaient.
+    const cleanup = readFileSync(resolve(__dirname, '../lib/storage/cleanup.ts'), 'utf-8');
+    expect(cleanup).toContain(".from('autopilot_config')");
+    expect(cleanup).toContain(".eq('enabled', true)");
+    expect(nettoyage).toContain('await autopilotRushKeys()');
   });
 
-  it('ils passent par la MÊME liste que les médias des posts', () => {
-    // Donc par la même normalisation d'URL — pas un second mécanisme.
-    const bloc = nettoyage.slice(
-      nettoyage.indexOf('async function getProtectedUrls'),
-      nettoyage.indexOf('function isProtected'),
-    );
-    expect(bloc).toContain('urls.add(u)');
-    expect(bloc).toContain("from('scheduled_posts')");
+  it('ils sont compares par CLE, pas par URL', () => {
+    // Deux ecritures de la meme URL ne se reconnaissaient pas ; la cle est
+    // ce que MinIO indexe.
+    expect(nettoyage).toContain('const cle = `${bucket}/${path}`;');
+    expect(nettoyage).toContain('rushKeys.has(cle)');
   });
 
   it('un compte sans post garde quand même ses rushes', () => {
-    // La lecture des rushes précède le `return` anticipé qui suit la requête
-    // des posts.
-    const bloc = nettoyage.slice(nettoyage.indexOf('async function getProtectedUrls'));
-    expect(bloc.indexOf("from('autopilot_config')")).toBeLessThan(bloc.indexOf('if (!posts) return urls;'));
+    // Les rushes sont lus a part, pas au fil des posts.
+    expect(nettoyage).toContain('const banqueLue = await autopilotRushKeys();');
   });
 
   it('une lecture ratée ne supprime RIEN', () => {
     // Un nettoyage manqué se rattrape au passage suivant ; un rush supprimé
-    // ne revient pas.
-    expect(nettoyage).toContain('autopilot_config illisible');
+    // ne revient pas. `null` (et non un ensemble vide) porte cette
+    // distinction jusqu'a l'appelant.
+    expect(nettoyage).toContain('aucune suppression tentée');
+    const cleanup = readFileSync(resolve(__dirname, '../lib/storage/cleanup.ts'), 'utf-8');
+    expect(cleanup).toContain('`null` ET NON UN ENSEMBLE VIDE');
   });
 
   it('un rush retiré de la banque redevient supprimable', () => {
