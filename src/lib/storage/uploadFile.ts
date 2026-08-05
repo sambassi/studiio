@@ -25,7 +25,60 @@
  * savoir lequel il utilise.
  */
 
-export type UploadMode = 'direct' | 'proxy';
+export type UploadMode = 'direct' | 'proxy' | 'multipart';
+
+/**
+ * Taille d'un morceau, et seuil de bascule.
+ *
+ * 8 Mio : le minimum imposé par S3 est de 5 Mio pour tout morceau sauf le
+ * dernier. En dessous du seuil, découper coûterait trois allers-retours de
+ * signature pour un fichier qui part en une fois.
+ */
+export const PART_SIZE = 8 * 1024 * 1024;
+export const MULTIPART_THRESHOLD = 8 * 1024 * 1024;
+
+/** Tentatives par morceau — et pour l'envoi en un bloc. */
+export const MAX_TENTATIVES = 3;
+
+/**
+ * Découpage d'un fichier en morceaux.
+ *
+ * Fonction PURE, pour que le calcul soit vérifiable sur des valeurs plutôt
+ * que sur un transfert réel : une erreur d'un octet aux bornes produit un
+ * fichier corrompu que seul un visionnage révélerait.
+ */
+export function planParts(taille: number, partSize: number = PART_SIZE): Array<{
+  partNumber: number; start: number; end: number;
+}> {
+  const out: Array<{ partNumber: number; start: number; end: number }> = [];
+  if (!Number.isFinite(taille) || taille <= 0) return out;
+  const p = Math.max(1, Math.floor(partSize));
+  for (let debut = 0, n = 1; debut < taille; debut += p, n += 1) {
+    out.push({ partNumber: n, start: debut, end: Math.min(debut + p, taille) });
+  }
+  return out;
+}
+
+/**
+ * Avancement global, morceaux terminés + morceau en cours.
+ *
+ * Sans le morceau en cours, la barre resterait figée pendant l'envoi de
+ * 8 Mio puis sauterait d'un cran — exactement ce qu'on cherche à éviter.
+ */
+export function aggregateProgress(
+  octetsTermines: number,
+  octetsDuMorceauEnCours: number,
+  total: number,
+): number {
+  if (!Number.isFinite(total) || total <= 0) return 0;
+  const envoyes = Math.max(0, octetsTermines) + Math.max(0, octetsDuMorceauEnCours);
+  return Math.min(100, Math.round((envoyes / total) * 100));
+}
+
+/** Pause croissante entre deux tentatives — 0,5 s, 1 s, 2 s… */
+export function backoffMs(tentative: number): number {
+  return Math.min(8000, 500 * 2 ** Math.max(0, tentative - 1));
+}
 
 export interface UploadResult {
   publicUrl: string;
@@ -109,6 +162,134 @@ function putAvecProgression(
   });
 }
 
+/** Ré-essaie une opération, avec attente croissante. */
+async function avecReprise<T>(
+  operation: (tentative: number) => Promise<T>,
+  quoi: string,
+): Promise<T> {
+  let derniere: unknown;
+  for (let t = 1; t <= MAX_TENTATIVES; t += 1) {
+    try {
+      return await operation(t);
+    } catch (err) {
+      derniere = err;
+      // ⚠️ C'EST TOUT L'OBJET DU CORRECTIF. Une coupure du réseau de
+      // l'utilisateur — quelques secondes de Wi-Fi, un basculement 4G —
+      // annulait la totalité d'un envoi sans point de reprise. Ici, elle ne
+      // coûte que la tentative en cours.
+      if (t < MAX_TENTATIVES) {
+        console.warn(`[upload] ${quoi} — tentative ${t}/${MAX_TENTATIVES} échouée, nouvel essai`);
+        await new Promise((r) => setTimeout(r, backoffMs(t)));
+      }
+    }
+  }
+  throw derniere instanceof Error ? derniere : new Error(`${quoi} : échec`);
+}
+
+/** Un appel à la route multipart. */
+async function multipart(corps: Record<string, unknown>): Promise<Record<string, any>> {
+  const res = await fetch('/api/upload/multipart', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(corps),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.success) {
+    const e = new Error(data?.error || `multipart ${res.status}`);
+    (e as Error & { unsupported?: boolean }).unsupported = res.status === 501;
+    throw e;
+  }
+  return data;
+}
+
+/**
+ * Envoi découpé, chaque morceau ré-essayable.
+ *
+ * ⚠️ L'`ETag` DE CHAQUE MORCEAU EST INDISPENSABLE : `completeMultipartUpload`
+ * le réclame pour recoller le fichier. Le navigateur ne peut le lire que si
+ * MinIO l'expose (`Access-Control-Expose-Headers: ETag`) — sans quoi
+ * l'assemblage échoue alors que tous les octets sont arrivés.
+ */
+async function uploadMultipart(
+  file: File, options: UploadOptions, contentType: string,
+): Promise<UploadResult> {
+  const init = await multipart({
+    action: 'initiate', filename: file.name, contentType,
+    purpose: options.purpose || 'rush',
+  });
+  const { uploadId, key, bucket, publicUrl } = init;
+  const morceaux = planParts(file.size);
+  const faits: Array<{ PartNumber: number; ETag: string }> = [];
+  let octetsTermines = 0;
+
+  try {
+    for (const m of morceaux) {
+      const etag = await avecReprise(async () => {
+        const { url } = await multipart({
+          action: 'sign-part', uploadId, key, bucket, partNumber: m.partNumber,
+        });
+        return await putPart(url, file.slice(m.start, m.end), contentType, (envoyes) => {
+          options.onProgress?.(aggregateProgress(octetsTermines, envoyes, file.size));
+        }, options.signal);
+      }, `morceau ${m.partNumber}/${morceaux.length}`);
+      faits.push({ PartNumber: m.partNumber, ETag: etag });
+      octetsTermines += m.end - m.start;
+      options.onProgress?.(aggregateProgress(octetsTermines, 0, file.size));
+    }
+
+    const fin = await multipart({ action: 'complete', uploadId, key, bucket, parts: faits });
+    options.onProgress?.(100);
+    return { publicUrl: fin.publicUrl || publicUrl, path: key, bucket, mode: 'multipart' };
+  } catch (err) {
+    // Les morceaux déposés n'appartiennent à aucun objet tant que l'envoi
+    // n'est ni terminé ni abandonné : sans cet appel, ils resteraient
+    // facturés et invisibles.
+    try { await multipart({ action: 'abort', uploadId, key, bucket }); } catch { /* best-effort */ }
+    throw err;
+  }
+}
+
+/** `PUT` d'un morceau, avec progression et lecture de l'`ETag`. */
+function putPart(
+  url: string, blob: Blob, contentType: string,
+  onBytes: (envoyes: number) => void, signal?: AbortSignal,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url, true);
+    // Une URL présignée porte sa signature : y ajouter un cookie la ferait
+    // rejeter.
+    xhr.withCredentials = false;
+    xhr.setRequestHeader('Content-Type', contentType);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onBytes(e.loaded); };
+    xhr.onload = () => {
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(new Error(messageEchec(xhr.status)));
+        return;
+      }
+      const etag = xhr.getResponseHeader('ETag');
+      if (!etag) {
+        // Diagnostic explicite : tous les octets sont arrivés, mais on ne
+        // peut pas recoller le fichier.
+        reject(new Error(
+          'ETag illisible — MinIO doit exposer l’en-tête ETag '
+          + '(Access-Control-Expose-Headers) pour cette origine',
+        ));
+        return;
+      }
+      resolve(etag.replace(/"/g, ''));
+    };
+    xhr.onerror = () => reject(new Error(messageEchec(0)));
+    xhr.ontimeout = () => reject(new Error('Morceau : délai dépassé'));
+    if (signal) {
+      if (signal.aborted) { xhr.abort(); reject(new Error('Upload annulé')); return; }
+      signal.addEventListener('abort', () => xhr.abort(), { once: true });
+      xhr.onabort = () => reject(new Error('Upload annulé'));
+    }
+    xhr.send(blob);
+  });
+}
+
 /**
  * Demande une URL d'envoi, puis y dépose le fichier.
  *
@@ -119,6 +300,21 @@ export async function uploadFile(
   file: File,
   options: UploadOptions = {},
 ): Promise<UploadResult> {
+  const contentTypeFichier = file.type || 'application/octet-stream';
+
+  // ── Gros fichier : envoi découpé, chaque morceau ré-essayable ──────────
+  if (file.size > MULTIPART_THRESHOLD) {
+    try {
+      return await uploadMultipart(file, options, contentTypeFichier);
+    } catch (err) {
+      // `unsupported` = l'endpoint public n'est pas déployé : on retombe sur
+      // l'envoi en un bloc, qui garde sa propre reprise. Toute autre erreur
+      // remonte : la masquer ferait recommencer 300 Mo en un seul PUT.
+      if (!(err as { unsupported?: boolean })?.unsupported) throw err;
+      console.warn('[upload] multipart indisponible — envoi en un bloc');
+    }
+  }
+
   const res = await fetch('/api/upload/signed-url', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -136,13 +332,14 @@ export async function uploadFile(
   }
 
   const mode: UploadMode = data.mode === 'direct' ? 'direct' : 'proxy';
-  const contentType = file.type || 'application/octet-stream';
 
-  await putAvecProgression(data.signedUrl, file, contentType, {
+  // Même en un bloc, on ré-essaie : une micro-coupure ne doit pas annuler un
+  // envoi qui allait aboutir.
+  await avecReprise(() => putAvecProgression(data.signedUrl, file, contentTypeFichier, {
     withCredentials: mode === 'proxy',
     onProgress: options.onProgress,
     signal: options.signal,
-  });
+  }), 'envoi');
 
   return {
     publicUrl: data.publicUrl,
