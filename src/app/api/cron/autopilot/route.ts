@@ -7,6 +7,7 @@ import { preparePosts, toPostRow, slotKey } from '@/lib/autopilot/engine';
 import { buildAutopilotDesign, buildAutopilotMetadata, AUTOPILOT_FORMAT } from '@/lib/autopilot/design';
 import { renderAndUpload } from '@/lib/autopilot/render';
 import { pickPosterUrl, probeRushSeconds } from '@/lib/autopilot/poster';
+import { buildAutopilotVoices } from '@/lib/autopilot/voice';
 import { deductCredits, getVideoRenderCost } from '@/lib/credits/system';
 
 /**
@@ -206,8 +207,11 @@ export async function GET(req: NextRequest) {
             pickPosterUrl(topic),
             post.rushUrl ? probeRushSeconds(post.rushUrl) : Promise.resolve(null),
           ]);
-          const design = buildAutopilotDesign(post, { posterUrl, rushSeconds });
           const jobId = `autopilote-${userId}-${post.scheduledDate}-${Date.now()}`;
+          // La voix AVANT le design : ce sont ses durees qui calent les
+          // sequences. Un echec de TTS rend `{}` et le montage sort muet.
+          const voices = await buildAutopilotVoices({ userId, jobId, post });
+          const design = buildAutopilotDesign(post, { posterUrl, rushSeconds, voices });
           const { videoUrl, thumbnailUrl, durationFrames } = await renderAndUpload({ userId, jobId, design });
 
           const metadata = buildAutopilotMetadata({
@@ -240,6 +244,7 @@ export async function GET(req: NextRequest) {
             + `(${durationFrames} images, ${AUTOPILOT_FORMAT}`
             + `, affiche ${posterUrl ? 'oui' : 'non'}`
             + `, rush ${rushSeconds ? `${rushSeconds.toFixed(1)}s` : 'non sonde'}`
+            + `, voix ${Object.keys(voices).length}/4`
             + `) : ${videoUrl}`,
           );
         } catch (err) {

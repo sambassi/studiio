@@ -103,7 +103,9 @@ describe('C — le gel de fin de montage', () => {
 
   it('les deux sondages précèdent la fabrique, qui reste pure', () => {
     expect(cron).toContain('await Promise.all([');
-    expect(cron).toContain('buildAutopilotDesign(post, { posterUrl, rushSeconds })');
+    // La voix s'est ajoutee depuis : les durees qu'elle impose entrent au
+    // meme endroit.
+    expect(cron).toContain('buildAutopilotDesign(post, { posterUrl, rushSeconds, voices })');
   });
 });
 
