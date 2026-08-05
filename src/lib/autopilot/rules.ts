@@ -67,6 +67,15 @@ export interface AutopilotConfig {
   lastRunAt: string | null;
   /** Dernier rush utilisé — pour ne pas le reprendre deux fois de suite. */
   lastRushUrl: string | null;
+  /**
+   * Narration IA sur les montages produits.
+   *
+   * ⚠️ FAUX PAR DÉFAUT, ET CE N'EST PAS UNE PRUDENCE DE PRINCIPE. La voix
+   * passe par ElevenLabs, facturé à l'usage : l'activer d'office ferait payer
+   * une narration que personne n'a demandée, sur chaque montage, sans que
+   * l'utilisateur ait rien changé.
+   */
+  voiceEnabled: boolean;
 }
 
 export const DEFAULT_CONFIG: AutopilotConfig = {
@@ -79,6 +88,7 @@ export const DEFAULT_CONFIG: AutopilotConfig = {
   rushUrls: [],
   lastRunAt: null,
   lastRushUrl: null,
+  voiceEnabled: false,
 };
 
 /** Statut du post créé, selon le mode choisi. */
@@ -225,5 +235,9 @@ export function sanitizeConfig(raw: unknown): AutopilotConfig {
       : [],
     lastRunAt: typeof o.lastRunAt === 'string' ? o.lastRunAt : null,
     lastRushUrl: typeof o.lastRushUrl === 'string' ? o.lastRushUrl : null,
+    // `=== true` et non un test de véracité : une colonne absente (migration
+    // pas encore appliquée) vaut `undefined`, donc « pas de voix », donc
+    // aucun appel facturé.
+    voiceEnabled: o.voiceEnabled === true,
   };
 }

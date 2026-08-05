@@ -153,6 +153,7 @@ export async function GET(req: NextRequest) {
         rushUrls: ligne.rush_urls,
         lastRunAt: ligne.last_run_at,
         lastRushUrl: ligne.last_rush_url,
+        voiceEnabled: ligne.voice_enabled,
       });
 
       const credits = await getUserCredits(userId).catch(() => 0);
@@ -210,7 +211,13 @@ export async function GET(req: NextRequest) {
           const jobId = `autopilote-${userId}-${post.scheduledDate}-${Date.now()}`;
           // La voix AVANT le design : ce sont ses durees qui calent les
           // sequences. Un echec de TTS rend `{}` et le montage sort muet.
-          const voices = await buildAutopilotVoices({ userId, jobId, post });
+          //
+          // ⚠️ ET SEULEMENT SI ELLE A ETE DEMANDEE. ElevenLabs facture a
+          // l'usage : sans ce garde, chaque montage declencherait quatre
+          // syntheses payantes chez des utilisateurs qui n'ont rien demande.
+          const voices = config.voiceEnabled
+            ? await buildAutopilotVoices({ userId, jobId, post })
+            : {};
           const design = buildAutopilotDesign(post, { posterUrl, rushSeconds, voices });
           const { videoUrl, thumbnailUrl, durationFrames } = await renderAndUpload({ userId, jobId, design });
 
@@ -244,7 +251,7 @@ export async function GET(req: NextRequest) {
             + `(${durationFrames} images, ${AUTOPILOT_FORMAT}`
             + `, affiche ${posterUrl ? 'oui' : 'non'}`
             + `, rush ${rushSeconds ? `${rushSeconds.toFixed(1)}s` : 'non sonde'}`
-            + `, voix ${Object.keys(voices).length}/4`
+            + `, voix ${config.voiceEnabled ? `${Object.keys(voices).length}/4` : 'desactivee'}`
             + `) : ${videoUrl}`,
           );
         } catch (err) {

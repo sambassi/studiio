@@ -117,10 +117,11 @@ describe('Rien ne peut faire échouer un cycle', () => {
     expect(voix).toContain('duree illisible pour');
   });
 
-  it('le flux a deux délais de garde', () => {
-    // Un flux qui s'arrête au milieu ne doit pas laisser le cycle pendu.
-    expect(voix).toContain("new Error('aucune donnee')");
-    expect(voix).toContain("new Error('flux interrompu')");
+  it('un délai DUR enveloppe toute la synthèse', () => {
+    // Les deux délais posés sur les événements du flux ne protégeaient que de
+    // ce qui vient APRÈS l'ouverture du WebSocket — or c'est elle qui pendait.
+    // Un seul délai, autour du tout, remplace les deux.
+    expect(voix).toContain('await withTimeout(travail, TTS_TIMEOUT_MS');
   });
 
   it('la voix est générée AVANT le design — ce sont ses durées qui calent', () => {
