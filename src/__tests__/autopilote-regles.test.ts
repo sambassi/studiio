@@ -39,10 +39,20 @@ const wizard = readFileSync(
 const JOUR = 24 * 60 * 60 * 1000;
 const T0 = Date.parse('2026-08-04T09:00:00.000Z');
 
+/**
+ * ⚠️ `runHour` EST CALÉE SUR `T0`. Depuis que le déclencheur passe toutes les
+ * heures, `decideRun` refuse hors de l'heure choisie (`pas-l-heure`). Ces
+ * tests portent sur les crédits, le plancher et la cadence : sans ce calage,
+ * ils échoueraient sur une jauge qu'ils n'examinent pas. `T0` vaut 09:00 UTC,
+ * soit 11:00 à Paris.
+ */
+const HEURE_DE_T0 = 11;
+
 const cfg = (p: Partial<AutopilotConfig> = {}): AutopilotConfig => ({
   ...DEFAULT_CONFIG,
   enabled: true,
   rushUrls: ['https://cdn.test/a.mp4'],
+  runHour: HEURE_DE_T0,
   ...p,
 });
 

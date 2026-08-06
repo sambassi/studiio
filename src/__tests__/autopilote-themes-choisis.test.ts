@@ -145,11 +145,11 @@ describe('Le wizard', () => {
     expect(panneau).toContain("'Tous (12 thèmes)'");
   });
 
-  it('et annonce le prochain départ, calculé en UTC', () => {
-    // Annoncer une heure fixe se décalerait d'une heure à chaque changement
-    // d'heure : on calcule le prochain 06:00 UTC et on l'affiche à Paris.
-    expect(panneau).toContain('d.setUTCHours(6, 0, 0, 0);');
-    expect(panneau).toContain("timeZone: 'Europe/Paris'");
+  it('et annonce le prochain départ, à l heure CHOISIE', () => {
+    // L'heure est devenue réglable : le prochain départ se cherche dans le
+    // fuseau de l'utilisateur, pas sur un 06:00 UTC en dur.
+    expect(panneau).toContain('function prochainDepart(');
+    expect(panneau).toContain('timeZone: timezone,');
     expect(panneau).toContain('Prochain départ');
     // L'ancienne notice ne dit plus vrai : le déclencheur est configuré.
     expect(panneau).not.toContain('démarre une fois le déclencheur planifié');

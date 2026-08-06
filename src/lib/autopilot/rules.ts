@@ -53,6 +53,42 @@ export const DEFAULT_CREDIT_FLOOR = 50;
 /** Nombre de montages par cycle, borné. */
 export const MAX_PER_CYCLE = 5;
 
+/** Heure de départ par défaut — celle du cron quotidien actuel. */
+export const DEFAULT_RUN_HOUR = 8;
+
+/** Fuseau par défaut, et repli de tout fuseau illisible. */
+export const DEFAULT_TIMEZONE = 'Europe/Paris';
+
+/**
+ * Heure qu'il est chez l'utilisateur, de 0 à 23.
+ *
+ * ⚠️ UN FUSEAU INVALIDE NE DOIT PAS INTERROMPRE LE CYCLE. `Intl` lève sur un
+ * identifiant inconnu, et la valeur vient de la base : une saisie fautive
+ * — ou une colonne encore absente — bloquerait la production de TOUS les
+ * comptes traités après elle. On retombe donc sur Paris.
+ */
+export function localHour(now: number, timezone: string): number {
+  const lire = (tz: string) => Number(
+    new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hour12: false, timeZone: tz })
+      .format(new Date(now)),
+  );
+  try {
+    const h = lire(timezone || DEFAULT_TIMEZONE);
+    if (Number.isInteger(h) && h >= 0 && h <= 23) return h;
+  } catch { /* fuseau illisible : repli ci-dessous */ }
+  try {
+    return lire(DEFAULT_TIMEZONE);
+  } catch {
+    // `Intl` sans données de fuseau : on rend une heure UTC plutôt que rien.
+    return new Date(now).getUTCHours();
+  }
+}
+
+/** Est-ce l'heure de produire, chez cet utilisateur ? */
+export function isRunHour(config: AutopilotConfig, now: number): boolean {
+  return localHour(now, config.runTimezone) === config.runHour;
+}
+
 export interface AutopilotConfig {
   enabled: boolean;
   mode: AutopilotMode;
@@ -80,6 +116,17 @@ export interface AutopilotConfig {
   /** Dernier rush utilisé — pour ne pas le reprendre deux fois de suite. */
   lastRushUrl: string | null;
   /**
+   * Heure de départ, dans le fuseau de l'utilisateur (0–23).
+   *
+   * Le déclencheur passe TOUTES LES HEURES ; c'est cette valeur qui décide
+   * pour qui il produit. La cadence, elle, continue de gérer l'espacement
+   * entre deux cycles — les deux jauges répondent à des questions
+   * différentes : « à quelle heure » et « tous les combien ».
+   */
+  runHour: number;
+  /** Fuseau dans lequel `runHour` se lit. */
+  runTimezone: string;
+  /**
    * Narration IA sur les montages produits.
    *
    * ⚠️ FAUX PAR DÉFAUT, ET CE N'EST PAS UNE PRUDENCE DE PRINCIPE. La voix
@@ -101,6 +148,10 @@ export const DEFAULT_CONFIG: AutopilotConfig = {
   topics: [],
   lastRunAt: null,
   lastRushUrl: null,
+  // 8 h à Paris : ce que fait le cron quotidien aujourd'hui. Une
+  // configuration existante ne change donc pas d'horaire.
+  runHour: DEFAULT_RUN_HOUR,
+  runTimezone: DEFAULT_TIMEZONE,
   voiceEnabled: false,
 };
 
@@ -137,6 +188,8 @@ export function isDue(
 export type SkipReason =
   | 'desactive'
   | 'pas-encore'
+  /** Ce n'est pas l'heure choisie — cas NORMAL, silencieux comme `pas-encore`. */
+  | 'pas-l-heure'
   | 'credits'
   | 'sans-rush';
 
@@ -174,6 +227,14 @@ export function decideRun(input: {
 
   if (!config.rushUrls.length && !input.allowWithoutRush) {
     return { run: false, reason: 'sans-rush' };
+  }
+
+  // ⚠️ DEUX JAUGES, DEUX QUESTIONS. `isRunHour` répond « est-ce l'heure ? »,
+  // `isDue` répond « a-t-on assez attendu ? ». Le déclencheur passant toutes
+  // les heures, sans la première un compte quotidien produirait vingt-quatre
+  // fois par jour dès que la cadence le permettrait.
+  if (!isRunHour(config, now)) {
+    return { run: false, reason: 'pas-l-heure' };
   }
 
   if (!isDue(config.cadence, config.lastRunAt, now)) {
@@ -258,6 +319,14 @@ export function sanitizeConfig(raw: unknown): AutopilotConfig {
       : [],
     lastRunAt: typeof o.lastRunAt === 'string' ? o.lastRunAt : null,
     lastRushUrl: typeof o.lastRushUrl === 'string' ? o.lastRushUrl : null,
+    // Bornée 0–23 : une valeur hors plage ne correspondrait à aucune heure et
+    // l'Autopilote ne partirait jamais, sans rien dire.
+    runHour: Number.isFinite(Number(o.runHour))
+      ? Math.min(23, Math.max(0, Math.floor(Number(o.runHour))))
+      : DEFAULT_RUN_HOUR,
+    runTimezone: typeof o.runTimezone === 'string' && o.runTimezone.trim()
+      ? o.runTimezone.trim()
+      : DEFAULT_TIMEZONE,
     // `=== true` et non un test de véracité : une colonne absente (migration
     // pas encore appliquée) vaut `undefined`, donc « pas de voix », donc
     // aucun appel facturé.
