@@ -5035,8 +5035,24 @@ function InfographicPageInner() {
             throw err;
           }
 
-          const postRes = await fetch("/api/posts", {
-            method: "POST",
+          /**
+           * ⚠️ RE-EDITION : ON MET A JOUR, ON NE DUPLIQUE PAS.
+           *
+           * `editingPostId` est pose par le deeplink `?postId=` du
+           * Calendrier, mais l'export l'ignorait : re-exporter un brouillon
+           * rouvert creait un SECOND post, et l'utilisateur se retrouvait
+           * avec deux versions du meme montage sans comprendre laquelle
+           * partirait.
+           *
+           * Seul le PREMIER element d'un lot vise le post d'origine : les
+           * suivants sont de nouvelles videos, ils meritent leurs propres
+           * entrees.
+           */
+          const cibleEdition = b === 0 ? editingPostId : null;
+          const postRes = await fetch(
+            cibleEdition ? `/api/posts/${cibleEdition}` : "/api/posts",
+            {
+            method: cibleEdition ? "PATCH" : "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               title: bTitle || "Infographie",
@@ -5257,9 +5273,12 @@ function InfographicPageInner() {
           let createdPostId: string | null = null;
           try {
             const postData = await postRes.json();
-            if (postData.success && postData.post?.id) {
-              createdPostIds.push(postData.post.id);
-              createdPostId = postData.post.id;
+            // `POST` rend `{ post }`, `PATCH` rend `{ data }` : sans les deux,
+            // une mise a jour reussie passerait pour un echec.
+            const ligne = postData.post || postData.data;
+            if (postData.success && ligne?.id) {
+              createdPostIds.push(ligne.id);
+              createdPostId = ligne.id;
             } else if (!postData.success) {
               showToast(`Erreur lors de la programmation : ${postData.error || 'réponse inattendue du serveur'}`);
               console.error('[Export→Calendar] POST /api/posts non-success:', postData);

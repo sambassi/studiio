@@ -7,6 +7,9 @@ import {
   Plus,
   Upload,
   Edit2,
+  // Ré-ouverture du montage dans l'éditeur — distincte du crayon `Edit2`,
+  // qui n'édite que le texte et la programmation.
+  Wand2,
   Copy,
   FileVideo,
   Eye,
@@ -887,6 +890,31 @@ export default function CalendarPage() {
     } else {
       setShowPreviewModal(true);
     }
+  };
+
+  /**
+   * Rouvre le montage dans l'éditeur, prêt à être modifié.
+   *
+   * ⚠️ SANS `&tab=audio`. La seule entrée existante vers ce deeplink était le
+   * bouton audio, qui atterrissait sur l'étape du son : pour changer une
+   * carte ou un titre, il fallait deviner qu'on passait par « ajouter de
+   * l'audio », puis revenir en arrière.
+   *
+   * L'éditeur restaure le design complet (titre, sous-titre, cartes, affiche,
+   * rush, audio) et retient `editingPostId` : ré-exporter met à jour CE
+   * post — plus de doublon.
+   */
+  const rouvrirDansEditeur = (post: Post) => {
+    // Un post déjà publié : le média en ligne ne changera pas. Le dire avant,
+    // plutôt que de laisser croire qu'on corrige ce qui est parti.
+    if (post.status === 'published') {
+      const suite = window.confirm(
+        'Ce post est déjà publié. Le modifier ne changera pas la vidéo déjà en ligne : '
+        + 'il faudra republier pour diffuser la nouvelle version. Continuer ?',
+      );
+      if (!suite) return;
+    }
+    window.location.href = `/dashboard/creer?postId=${post.id}`;
   };
 
   const handleEditPost = (post?: Post) => {
@@ -2925,7 +2953,14 @@ export default function CalendarPage() {
 
                             <div className="flex gap-1">
                               <button onClick={() => handlePostClick(post)} className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition" title={t('actions.preview')}><Eye className="w-3 h-3" /></button>
-                              <button onClick={() => handleEditPost(post)} className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition" title={t('actions.edit')}><Edit2 className="w-3 h-3" /></button>
+                              <button onClick={() => handleEditPost(post)} className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition" title="Modifier le texte et la programmation"><Edit2 className="w-3 h-3" /></button>
+                              {/* ⚠️ DEUX CRAYONS, DEUX GESTES. Celui de
+                                  gauche ouvre la modale texte/date ; celui-ci
+                                  rouvre le MONTAGE dans l'éditeur. Sans
+                                  libellés distincts, le second passerait pour
+                                  un doublon muet — le dépôt en compte déjà
+                                  assez. */}
+                              <button onClick={() => rouvrirDansEditeur(post)} className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition" title="Modifier le montage dans l’éditeur" data-post-remodifier><Wand2 className="w-3 h-3" /></button>
                               <button onClick={() => handleDuplicatePost(post)} className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition" title={t('actions.duplicate')}><Copy className="w-3 h-3" /></button>
                               {(post.media_url || post.metadata?.characterUrl) && (
                                 <button onClick={() => handleExportPost(post)} className="p-1 rounded bg-gray-700 hover:bg-blue-600 text-gray-300 hover:text-white transition" title={t('actions.export')}><Download className="w-3 h-3" /></button>
@@ -4352,6 +4387,13 @@ export default function CalendarPage() {
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm font-medium transition"
                 >
                   <Edit2 size={14} /> {t('fullPreview.edit')}
+                </button>
+                <button
+                  onClick={() => rouvrirDansEditeur(fullPreviewPost)}
+                  data-post-remodifier
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm font-medium transition"
+                >
+                  <Wand2 size={14} /> Modifier le montage
                 </button>
                 {(fullPreviewPost.media_url || meta?.characterUrl) && (
                   <button
