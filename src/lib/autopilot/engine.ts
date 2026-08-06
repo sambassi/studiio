@@ -83,14 +83,26 @@ export function contentSeed(now: number, index: number): number {
  */
 export function preparePosts(input: {
   config: AutopilotConfig;
-  topic: string;
+  /**
+   * Sujet de chaque montage.
+   *
+   * ⚠️ UN PAR MONTAGE, ET NON UN POUR TOUS. Un sujet unique produisait des
+   * vidéos identiques : titre, cartes, CTA et jusqu'à la photo d'affiche en
+   * découlent. Une chaîne reste acceptée — elle vaut alors pour tous, ce que
+   * faisait l'ancien appel.
+   */
+  topic: string | string[];
   count: number;
   now: number;
 }): PreparedPost[] {
-  const { config, topic, count, now } = input;
+  const { config, count, now } = input;
+  const sujets = Array.isArray(input.topic) ? input.topic : [input.topic];
   const base = new Date(now);
   const out: PreparedPost[] = [];
   for (let i = 0; i < count; i += 1) {
+    // Le sujet du rang, ou le dernier disponible : jamais `undefined`, qui
+    // ferait générer un contenu vide.
+    const topic = sujets[i % Math.max(1, sujets.length)] || sujets[0] || 'motivation';
     const content = generateSmartContent(topic, contentSeed(now, i));
     // `generateSmartContent` rend `subtitle`, `tagLine` et `cards` — pas de
     // titre : c'est le sujet lui-meme qui en tient lieu, comme dans le Mode

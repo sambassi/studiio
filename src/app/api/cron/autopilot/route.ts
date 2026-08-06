@@ -8,6 +8,7 @@ import { buildAutopilotDesign, buildAutopilotMetadata, AUTOPILOT_FORMAT } from '
 import { renderAndUpload } from '@/lib/autopilot/render';
 import { pickPosterUrl, probeRushSeconds } from '@/lib/autopilot/poster';
 import { buildAutopilotVoices } from '@/lib/autopilot/voice';
+import { pickTopics } from '@/lib/autopilot/topics';
 import { deductCredits, getVideoRenderCost } from '@/lib/credits/system';
 
 /**
@@ -83,6 +84,29 @@ interface RapportUtilisateur {
   /** Creneaux deja produits, ignores pour ne pas doubler. */
   doublons?: number;
   saute?: SkipReason;
+}
+
+/**
+ * Sujets des derniers montages de l'Autopilote.
+ *
+ * Sert a ne pas reproposer un theme dont un brouillon traine encore : deux
+ * vidéos sur le meme sujet dans le meme Calendrier se remarquent.
+ */
+async function sujetsRecents(userId: string): Promise<string[]> {
+  const { data } = await supabaseAdmin
+    .from('scheduled_posts')
+    .select('title, metadata')
+    .eq('user_id', userId)
+    .eq('agent_generated', true)
+    .order('created_at', { ascending: false })
+    .limit(12);
+  const out: string[] = [];
+  for (const ligne of (data ?? []) as Array<Record<string, unknown>>) {
+    const meta = (ligne.metadata ?? {}) as Record<string, unknown>;
+    if (meta.source !== 'autopilote') continue;
+    if (typeof ligne.title === 'string' && ligne.title) out.push(ligne.title);
+  }
+  return out;
 }
 
 /**
@@ -171,16 +195,21 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      // Le sujet vient des objectifs de l'utilisateur, sinon d'un repli.
-      const { data: objectifs } = await supabaseAdmin
-        .from('objectives').select('*').eq('user_id', userId).limit(1);
-      const topic = String(
-        (objectifs?.[0] as Record<string, unknown> | undefined)?.target_audience
-        || (objectifs?.[0] as Record<string, unknown> | undefined)?.platform
-        || 'motivation quotidienne',
-      );
+      // ⚠️ UN SUJET PAR MONTAGE, ET DIFFERENT DES DERNIERS. L'ancien code
+      // lisait `objectives.target_audience` — une seule valeur par compte —
+      // et produisait donc toujours la meme video : le titre, les cartes, le
+      // CTA et jusqu'a la photo d'affiche en decoulent.
+      const recents = await sujetsRecents(userId);
+      const topics = pickTopics({
+        count: decision.count,
+        exclude: recents,
+        // La graine tourne avec le jour : deux cycles qui trouvent les memes
+        // exclusions ne repartent pas sur le meme sujet.
+        seed: Math.floor(now / 86_400_000),
+      });
+      console.log(`[Autopilote/Cron] ${userId} — sujets : ${topics.join(', ')}`);
 
-      const posts = preparePosts({ config, topic, count: decision.count, now });
+      const posts = preparePosts({ config, topic: topics, count: decision.count, now });
       const dejaFaits = await creneauxExistants(userId);
 
       let reussis = 0;
@@ -205,7 +234,9 @@ export async function GET(req: NextRequest) {
           // pure. Aucun des deux ne peut faire echouer le cycle : ils rendent
           // `null` et le montage sort comme avant.
           const [posterUrl, rushSeconds] = await Promise.all([
-            pickPosterUrl(topic),
+            // La variante fait tourner le tirage : deux montages du meme
+            // theme n'ont pas la meme affiche.
+            pickPosterUrl(post.title, posts.indexOf(post) + Math.floor(now / 3_600_000)),
             post.rushUrl ? probeRushSeconds(post.rushUrl) : Promise.resolve(null),
           ]);
           const jobId = `autopilote-${userId}-${post.scheduledDate}-${Date.now()}`;
