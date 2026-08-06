@@ -176,6 +176,8 @@ export async function GET(req: NextRequest) {
         creditFloor: ligne.credit_floor,
         rushUrls: ligne.rush_urls,
         topics: ligne.topics,
+        runHour: ligne.run_hour,
+        runTimezone: ligne.run_timezone,
         lastRunAt: ligne.last_run_at,
         lastRushUrl: ligne.last_rush_url,
         voiceEnabled: ligne.voice_enabled,

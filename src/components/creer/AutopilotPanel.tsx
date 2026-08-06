@@ -37,23 +37,55 @@ const ETAPES = [
   { titre: 'Récapitulatif', aide: 'Vérifier, puis activer' },
 ] as const;
 
+/** « 08:00 » — l'heure telle que l'utilisateur la lit. */
+function heureLisible(h: number): string {
+  return `${String(h).padStart(2, '0')}:00`;
+}
+
 /**
- * Prochain depart du declencheur planifie.
+ * Prochain depart, dans le fuseau de l'utilisateur.
  *
- * Il tourne a 06:00 UTC, soit 08:00 a Paris en heure d'ete. On calcule le
- * prochain passage en UTC puis on l'affiche dans le fuseau de l'utilisateur —
- * annoncer une heure fixe se serait decale d'une heure a chaque changement
- * d'heure.
+ * ⚠️ ON CHERCHE L'INSTANT, PAS L'HEURE. Ajouter « runHour heures » a minuit
+ * local supposerait des journees de 24 h : les jours de changement d'heure
+ * elles en font 23 ou 25, et l'annonce se decalerait. On avance donc heure
+ * par heure jusqu'a ce que l'horloge du fuseau affiche l'heure voulue — au
+ * plus 48 essais, ce qui couvre tous les cas.
  */
-function prochainDepart(maintenant: Date = new Date()): string {
+function prochainDepart(
+  runHour: number,
+  timezone: string,
+  maintenant: Date = new Date(),
+): string {
+  const heureLocale = (d: Date) => {
+    try {
+      return Number(new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit', hour12: false, timeZone: timezone,
+      }).format(d));
+    } catch {
+      return d.getUTCHours();
+    }
+  };
   const d = new Date(maintenant);
-  d.setUTCHours(6, 0, 0, 0);
-  if (d.getTime() <= maintenant.getTime()) d.setUTCDate(d.getUTCDate() + 1);
-  return d.toLocaleString('fr-FR', {
-    timeZone: 'Europe/Paris',
-    weekday: 'long', day: 'numeric', month: 'long',
-    hour: '2-digit', minute: '2-digit',
-  });
+  d.setMinutes(0, 0, 0);
+  // Toujours STRICTEMENT dans le futur : a l'heure pile, le passage courant
+  // est deja fait ou en cours.
+  d.setHours(d.getHours() + 1);
+  for (let i = 0; i < 48 && heureLocale(d) !== runHour; i += 1) {
+    d.setHours(d.getHours() + 1);
+  }
+  try {
+    return d.toLocaleString('fr-FR', {
+      timeZone: timezone,
+      weekday: 'long', day: 'numeric', month: 'long',
+      hour: '2-digit', minute: '2-digit',
+    });
+  } catch {
+    return d.toLocaleString('fr-FR', {
+      timeZone: 'Europe/Paris',
+      weekday: 'long', day: 'numeric', month: 'long',
+      hour: '2-digit', minute: '2-digit',
+    });
+  }
 }
 
 /** Ce que l'utilisateur doit pouvoir relire d'un coup d'oeil avant d'activer. */
@@ -64,6 +96,7 @@ function RECAP(config: AutopilotConfig): Array<[string, string]> {
       ? 'Tous (12 thèmes)'
       : config.topics.map(themeLabel).join(', ')],
     ['Rythme', CADENCE_LABELS[config.cadence]],
+    ['Heure de départ', `${heureLisible(config.runHour)} (${config.runTimezone})`],
     ['Par cycle', `${config.countPerCycle} vidéo${config.countPerCycle > 1 ? 's' : ''}`],
     ['Diffusion', MODE_LABELS[config.mode]],
     ['Plateformes', config.platforms.length
@@ -368,6 +401,28 @@ export default function AutopilotPanel({ accent }: { accent: string }) {
       {/* ── Étape 3 · Rythme & diffusion ─────────────────────────────── */}
       {etape === 2 && (
         <div className="space-y-4">
+          <div>
+            <label htmlFor="autopilot-hour" className="block text-xs font-medium text-gray-300 mb-1.5">
+              Heure de départ
+            </label>
+            <select
+              id="autopilot-hour"
+              value={config.runHour}
+              onChange={(e) => enregistrer({ runHour: Number(e.target.value) })}
+              disabled={!ready || saving}
+              data-autopilot-hour
+              className="w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2 text-xs disabled:opacity-40"
+            >
+              {Array.from({ length: 24 }, (_, h) => (
+                <option key={h} value={h}>{heureLisible(h)}</option>
+              ))}
+            </select>
+            <p className="text-[11px] text-gray-500 mt-1">
+              Heure de {config.runTimezone.replace('_', ' ')}. La fréquence
+              ci-dessous décide de l’espacement ; celle-ci, du moment.
+            </p>
+          </div>
+
 {/* ── Cadence et nombre ────────────────────────────────────────── */}
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -569,8 +624,9 @@ export default function AutopilotPanel({ accent }: { accent: string }) {
           {config.enabled && (
             <p className="flex items-start gap-1.5 text-[11px] text-gray-400" data-autopilot-depart>
               <Rocket className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-              Départ automatique chaque jour à 08:00 (heure de Paris).
-              Prochain départ : {prochainDepart()}.
+              Départ à {heureLisible(config.runHour)} ({config.runTimezone}),
+              {' '}{CADENCE_LABELS[config.cadence].toLowerCase()}.
+              Prochain départ : {prochainDepart(config.runHour, config.runTimezone)}.
             </p>
           )}
         </div>

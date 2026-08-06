@@ -33,6 +33,8 @@ function fromRow(row: Record<string, unknown> | null): AutopilotConfig {
     lastRushUrl: row.last_rush_url,
     voiceEnabled: row.voice_enabled,
     topics: row.topics,
+    runHour: row.run_hour,
+    runTimezone: row.run_timezone,
   });
 }
 
@@ -119,6 +121,8 @@ export async function PUT(req: NextRequest) {
           credit_floor: propre.creditFloor,
           voice_enabled: propre.voiceEnabled,
           topics: propre.topics,
+          run_hour: propre.runHour,
+          run_timezone: propre.runTimezone,
           rush_urls: propre.rushUrls,
           // `last_run_at` et `last_rush_url` appartiennent au MOTEUR : les
           // laisser ecrire par l'ecran permettrait de relancer une generation
