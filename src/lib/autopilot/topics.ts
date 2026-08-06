@@ -39,16 +39,22 @@ export function pickTopics(input: {
   /** Sujets déjà employés récemment — évités en priorité. */
   exclude?: string[];
   seed?: number;
+  /**
+   * Thèmes parmi lesquels piocher.
+   *
+   * Absent ou vide : toute la liste. C'est ce qui rend le choix de
+   * l'utilisateur additif — ne rien choisir revient à tout garder.
+   */
+  pool?: readonly string[];
 }): string[] {
   const combien = Math.max(1, Math.floor(input.count) || 1);
   const exclus = new Set((input.exclude ?? []).map(normalizeTopic).filter(Boolean));
-  const depart = Math.abs(Math.floor(input.seed ?? 0)) % AUTOPILOT_TOPICS.length;
+  const source0 = input.pool && input.pool.length > 0 ? input.pool : AUTOPILOT_TOPICS;
+  const depart = Math.abs(Math.floor(input.seed ?? 0)) % source0.length;
 
   // Parcours circulaire depuis `depart` : l'ordre reste stable et lisible,
   // seul le point d'entrée bouge.
-  const ordonnes = AUTOPILOT_TOPICS.map(
-    (_, i) => AUTOPILOT_TOPICS[(depart + i) % AUTOPILOT_TOPICS.length],
-  );
+  const ordonnes = source0.map((_, i) => source0[(depart + i) % source0.length]);
   const frais = ordonnes.filter((t) => !exclus.has(normalizeTopic(t)));
   const source = frais.length >= combien ? frais : [...frais, ...ordonnes];
 
