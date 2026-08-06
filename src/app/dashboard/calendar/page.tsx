@@ -30,6 +30,10 @@ import {
   Film,
   RefreshCw,
   AlertTriangle,
+  // Croix de fermeture de l'apercu d'un montage rendu serveur (#320). Elle
+  // etait utilisee sans etre importee : `ignoreBuildErrors` laissait passer
+  // le build, et la page entiere tombait au premier clic sur l'oeil.
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
