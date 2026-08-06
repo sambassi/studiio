@@ -175,6 +175,7 @@ export async function GET(req: NextRequest) {
         platforms: ligne.platforms,
         creditFloor: ligne.credit_floor,
         rushUrls: ligne.rush_urls,
+        topics: ligne.topics,
         lastRunAt: ligne.last_run_at,
         lastRushUrl: ligne.last_rush_url,
         voiceEnabled: ligne.voice_enabled,
@@ -206,6 +207,8 @@ export async function GET(req: NextRequest) {
         // La graine tourne avec le jour : deux cycles qui trouvent les memes
         // exclusions ne repartent pas sur le meme sujet.
         seed: Math.floor(now / 86_400_000),
+        // Les themes choisis par l'utilisateur, ou tous s'il n'a rien choisi.
+        pool: config.topics.length ? config.topics : undefined,
       });
       console.log(`[Autopilote/Cron] ${userId} — sujets : ${topics.join(', ')}`);
 

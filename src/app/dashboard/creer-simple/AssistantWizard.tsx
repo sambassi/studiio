@@ -75,6 +75,7 @@ import SequenceTitle, { titleFrameStyle } from '@/components/creer/SequenceTitle
 import SequenceCta, { ctaFrameStyle } from '@/components/creer/SequenceCta';
 import FreeElementsLayer, { type FreeElement } from '@/components/creer/FreeElementsLayer';
 import { DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS } from '@/lib/creer/designSpec';
+import { THEMES as SHARED_THEMES } from '@/lib/themes';
 import { renderSignature, signatureMatches } from '@/lib/creer/renderSignature';
 
 import {
@@ -139,20 +140,9 @@ import { Button } from '@/components/ui/Button';
 // pas être modifié. On redéclare donc une liste locale dont les libellés sont
 // choisis pour tomber sur les bonnes entrées de la base de connaissances
 // (le matching se fait sur du texte libre, pas sur un slug).
-const THEMES: Array<{ id: string; label: string; icon: string; topic: string }> = [
-  { id: 'sommeil', label: 'Sommeil & récupération', icon: 'Moon', topic: 'sommeil' },
-  { id: 'nutrition', label: 'Nutrition', icon: 'Salad', topic: 'nutrition' },
-  { id: 'energie', label: 'Énergie & cardio', icon: 'Zap', topic: 'energie' },
-  { id: 'stress', label: 'Stress & mental', icon: 'Brain', topic: 'stress' },
-  { id: 'danse', label: 'Danse', icon: 'PersonStanding', topic: 'danse' },
-  { id: 'motivation', label: 'Motivation', icon: 'Flame', topic: 'motivation' },
-  { id: 'eau', label: 'Hydratation', icon: 'Droplet', topic: 'eau' },
-  { id: 'beauty', label: 'Beauté', icon: 'Sparkles', topic: 'beauty' },
-  { id: 'finance', label: 'Finance', icon: 'Wallet', topic: 'finance' },
-  { id: 'productivity', label: 'Productivité', icon: 'Target', topic: 'productivity' },
-  { id: 'food', label: 'Cuisine', icon: 'Utensils', topic: 'food' },
-  { id: 'travel', label: 'Voyage', icon: 'Plane', topic: 'travel' },
-];
+// La liste vit dans `@/lib/themes` : l'Autopilote propose EXACTEMENT les
+// memes thèmes, et deux copies auraient fini par diverger.
+const THEMES = SHARED_THEMES;
 
 // ── Tons ──────────────────────────────────────────────────────────────────
 // Le ton pilote le CTA (que smart-content ne fournit pas) et le décalage de

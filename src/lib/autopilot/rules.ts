@@ -63,6 +63,18 @@ export interface AutopilotConfig {
   creditFloor: number;
   /** Rushes dans lesquels piocher, dans l'ordre d'ajout. */
   rushUrls: string[];
+  /**
+   * Thèmes que l'Autopilote fait tourner.
+   *
+   * ⚠️ VIDE = TOUS LES THÈMES, et c'est ce qui rend l'ajout rétro-compatible :
+   * une configuration qui n'a jamais choisi continue de parcourir les douze
+   * thèmes du Mode simple, exactement comme avant.
+   *
+   * Accepte des thèmes PERSONNALISÉS, écrits à la main : ils ne figurent dans
+   * aucune liste, et les filtrer sur les thèmes connus les jetterait
+   * silencieusement.
+   */
+  topics: string[];
   /** Dernier passage réellement effectué, ISO. */
   lastRunAt: string | null;
   /** Dernier rush utilisé — pour ne pas le reprendre deux fois de suite. */
@@ -86,6 +98,7 @@ export const DEFAULT_CONFIG: AutopilotConfig = {
   platforms: [],
   creditFloor: DEFAULT_CREDIT_FLOOR,
   rushUrls: [],
+  topics: [],
   lastRunAt: null,
   lastRushUrl: null,
   voiceEnabled: false,
@@ -232,6 +245,16 @@ export function sanitizeConfig(raw: unknown): AutopilotConfig {
       : DEFAULT_CREDIT_FLOOR,
     rushUrls: Array.isArray(o.rushUrls)
       ? Array.from(new Set(o.rushUrls.filter((u): u is string => typeof u === 'string' && /^https?:\/\//.test(u))))
+      : [],
+    // Chaînes non vides, rognées, dédoublonnées et bornées : un thème de
+    // 4 000 caractères ou répété vingt fois ne rendrait service à personne.
+    topics: Array.isArray(o.topics)
+      ? Array.from(new Set(
+        o.topics
+          .filter((t): t is string => typeof t === 'string')
+          .map((t) => t.trim().slice(0, 40))
+          .filter((t) => t.length > 0),
+      )).slice(0, 20)
       : [],
     lastRunAt: typeof o.lastRunAt === 'string' ? o.lastRunAt : null,
     lastRushUrl: typeof o.lastRushUrl === 'string' ? o.lastRushUrl : null,
