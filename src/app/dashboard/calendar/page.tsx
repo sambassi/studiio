@@ -3204,6 +3204,54 @@ export default function CalendarPage() {
       {/* Full Preview Modal — Rich Montage Preview Before Publication */}
       {showFullPreview && fullPreviewPost && (() => {
         const meta = fullPreviewPost.metadata;
+
+        // ── Montage RENDU SERVEUR : on le lit, on ne le rejoue pas ────────
+        //
+        // ⚠️ L'APERÇU CI-DESSOUS N'EST PAS UN LECTEUR, C'EST UN REMONTAGE.
+        // Il rejoue les séquences une à une (intro → cartes → vidéo → CTA) à
+        // partir des métadonnées, parce que les anciens posts n'avaient pas
+        // de fichier complet à montrer. Un montage rendu serveur, lui, EST
+        // déjà ce fichier : le rejouer revenait à reconstruire une vidéo qui
+        // existe, et le lecteur restait bloqué faute des morceaux attendus.
+        //
+        // Pour ces posts, l'aperçu se réduit donc à ce qu'il aurait toujours
+        // dû être : lire le mp4.
+        const urlServeur = meta?.serverRendered
+          ? (fullPreviewPost.media_url || meta?.renderedVideoUrl || meta?.videoUrl)
+          : null;
+        if (urlServeur) {
+          return (
+            <div
+              className="fixed inset-0 z-[55] bg-black/90 flex items-center justify-center p-4"
+              onClick={() => setShowFullPreview(false)}
+            >
+              <button
+                type="button"
+                onClick={() => setShowFullPreview(false)}
+                className="fixed top-4 right-4 z-[60] rounded-full bg-gray-900/80 p-2 text-white border border-white/20"
+                title="Fermer"
+              >
+                <X size={18} />
+              </button>
+              <video
+                src={urlServeur}
+                controls
+                playsInline
+                // `muted` en dur : sans lui, Chrome refuse le démarrage
+                // automatique et l'aperçu resterait sur une image fixe. Les
+                // contrôles permettent de rétablir le son.
+                muted
+                autoPlay
+                loop
+                onClick={(e) => e.stopPropagation()}
+                onError={() => console.warn('[Calendrier] montage serveur illisible :', urlServeur)}
+                className="max-h-[90vh] max-w-full rounded-xl shadow-2xl"
+                style={{ aspectRatio: '9 / 16' }}
+              />
+            </div>
+          );
+        }
+
         const metaBranding = meta?.branding;
         const brd = metaBranding || branding;
         const accent = brd?.accentColor || branding.accentColor || '#D91CD2';

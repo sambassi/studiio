@@ -48,7 +48,7 @@ export function posterQuery(topic: string): string {
  * On interroge Pexels directement plutôt que la route `/api/pexels` : celle-ci
  * exige une session, et un cron n'en a pas. C'est la MÊME clé et la même API.
  */
-export async function pickPosterUrl(topic: string): Promise<string | null> {
+export async function pickPosterUrl(topic: string, variante = 0): Promise<string | null> {
   const cle = process.env.PEXELS_API_KEY;
   if (!cle) return null;
   try {
@@ -61,11 +61,12 @@ export async function pickPosterUrl(topic: string): Promise<string | null> {
     const data = await res.json() as { photos?: Array<{ src?: Record<string, string> }> };
     const photos = (data.photos ?? []).map((p) => p.src?.large2x || p.src?.large).filter(Boolean);
     if (photos.length === 0) return null;
-    // Une photo au hasard dans les résultats : prendre systématiquement la
-    // première donnerait le même fond à tous les montages d'un même thème.
-    // La graine vient du sujet, pas d'un aléa — deux cycles sur des sujets
-    // différents ne retombent pas dessus.
-    const graine = [...topic].reduce((n, c) => n + c.charCodeAt(0), 0);
+    // ⚠️ LA GRAINE INCLUT LA VARIANTE. Dérivée du seul sujet, elle rendait la
+    // MÊME photo à chaque cycle d'un même thème : l'affiche ne changeait
+    // jamais. `variante` — le rang du montage et l'instant du cycle — la fait
+    // tourner, tout en restant reproductible.
+    const graine = [...topic].reduce((n, c) => n + c.charCodeAt(0), 0)
+      + Math.abs(Math.floor(variante));
     return photos[graine % photos.length] as string;
   } catch {
     return null;
