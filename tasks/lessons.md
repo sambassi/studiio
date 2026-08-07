@@ -256,3 +256,55 @@ les deux reste à faire.
 6. **Pour tout pipeline async** (TTS, upload, snapshot) : try/finally avec restore d'état dans le finally
 
 Si je casse cette checklist et qu'une régression remonte → ajouter une nouvelle leçon ci-dessus avec la cause racine.
+
+## [2026-08-07] Une notification qui part à chaque passage d'un cron horaire est du harcèlement
+
+**Ce qui a mal tourné** — En branchant la notification « ajoutez des rushes »,
+j'ai failli la câbler comme l'email existant : un envoi par refus. Or
+`decideRun` rend `sans-rush` **avant** le test d'heure de départ, et le
+déclencheur passe **toutes les heures** depuis la fonctionnalité « heure de
+départ réglable ». L'email existant partait donc déjà **vingt-quatre fois par
+jour** chez tout compte à la banque vide — un défaut livré, jamais constaté,
+parce qu'aucun test ne compte les envois.
+
+**Règle** — Avant de brancher un canal d'alerte sur un cron, compter combien de
+fois par jour la condition est vraie, pas combien de fois l'évènement se
+produit. Les deux diffèrent dès que le refus est rendu avant la porte
+temporelle. Poser l'anti-doublon dans le STORE (une fenêtre par
+`(utilisateur, famille)`), et faire dépendre TOUS les canaux de sa décision —
+`if (!created) return;` — jamais deux conditions parallèles : c'est le même
+piège que le désabonnement du 2026-07-29, où l'en-tête était protégé et le lien
+du corps ne l'était pas.
+
+**Corollaire — vérifier qu'un « mécanisme existant » existe.** La consigne
+disait « grep le mécanisme de notifications existant, réutiliser, ne pas créer
+un 2ᵉ système ». Il n'y en avait aucun : la cloche de `Navbar.tsx` était un
+`<button>` sans `onClick`, avec une pastille rouge en dur, et
+`/api/admin/notifications` ne règle que les alertes email de l'admin. Une
+prémisse de tâche est une hypothèse ; le dire et livrer le socle vaut mieux que
+brancher sur du vide.
+
+## [2026-08-07] Un test qui compare une ligne d'appel au caractère près casse à chaque retour à la ligne
+
+**Ce qui a mal tourné** — Trois tests de l'Autopilote ont échoué sur cette PR
+sans qu'aucun comportement ait bougé : ils comparaient des lignes de source
+entières (`buildAutopilotDesign(post, { posterUrl, rushSeconds, voices })`,
+`last_rush_url: dernierRush,`, une `NextResponse.json({...})` complète).
+Ajouter un argument ou couper une ligne trop longue suffit à les faire tomber.
+Le signal était donc du bruit, et un test qui crie pour rien finit par être
+réparé sans être lu.
+
+**Règle** — Quand une vérification doit porter sur du source (route de cron non
+montable, migration SQL), viser l'INVARIANT et non la mise en page : extraire
+le bloc d'appel puis vérifier la présence de chaque argument, plutôt que
+comparer la ligne. Et préférer, chaque fois que le composant est montable,
+`@testing-library/react` + `fireEvent` : le test de l'étape « Style & médias »
+vérifie ce que le serveur REÇOIT au clic, ce qu'aucune lecture de source ne
+peut prouver.
+
+**Corollaire — prouver que les nouveaux tests peuvent échouer.** Six mutations
+ont été injectées puis restaurées (`git checkout HEAD --`, sur un arbre
+préalablement **commité**, cf. leçon du 2026-07-30) : portée de l'affiche
+ignorée, `rushMuted` figé à faux, `rushVolume` ignoré par `mixAt`, anti-doublon
+retiré, curseur du rush jamais grisé, mixeur envoyant des pour-cent au lieu de
+réels. Les six ont bien fait tomber au moins un test.
