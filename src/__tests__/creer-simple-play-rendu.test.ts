@@ -122,7 +122,11 @@ describe('Le Play passe par le MÊME chemin que l export', () => {
     // Un chemin séparé aurait divergé des options de l'export, et la vidéo
     // prévisualisée n'aurait plus été celle envoyée.
     expect(wizard).toContain("const runRender = async (destination: 'calendrier' | 'bureau' | 'apercu') => {");
-    expect(wizard).toContain("onClick={() => runRender('apercu')}");
+    // ⚠️ ON VERIFIE L'APPEL, PAS SA MISE EN PAGE. Le bouton porte desormais
+    // trois etats (voir / revoir / recomposer) et l'appel vit dans l'un
+    // d'eux : comparer la ligne entiere faisait tomber ce test a chaque
+    // remaniement de l'ecran, alors qu'aucun chemin de rendu n'avait bouge.
+    expect(wizard).toContain("runRender('apercu')");
   });
 
   it('il compose sans téléverser et ne crée AUCUN post', () => {
@@ -186,8 +190,19 @@ describe('Le téléversement a été EXTRAIT, pas recopié', () => {
 describe('Le lecteur', () => {
   it('joue le montage, avec les commandes', () => {
     expect(wizard).toContain('data-play-lecteur');
-    expect(wizard).toContain('src={previewUrl}');
+    // `previewUrl!` depuis que le lecteur vit dans un calque construit hors
+    // du JSX, ou TypeScript ne peut plus deduire le retrecissement.
+    expect(wizard).toMatch(/src=\{previewUrl!?\}/);
     expect(wizard).toContain('controls');
+  });
+
+  it('le bouton « Fermer » qui JETAIT un rendu payé a disparu', () => {
+    // ⚠️ IL APPELAIT `setPreviewRender(null, null)`, ce qui effaçait le blob
+    // ET sa signature : le montage déjà débité était perdu, et l'envoi au
+    // calendrier en recomposait — donc en redébitait — un second. Revenir à
+    // l'édition ne change plus que d'onglet.
+    expect(wizard).toContain('data-play-retour-edition');
+    expect(wizard).toContain("onClick={() => setPreviewFocus('intro')}");
   });
 
   it('l URL du blob est libérée quand on la remplace', () => {
