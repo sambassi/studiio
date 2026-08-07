@@ -38,6 +38,7 @@ import {
   Maximize2,
   Play,
   Info,
+  MousePointerClick,
   X,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
@@ -85,6 +86,7 @@ import {
 import TextFormatToolbar from '@/components/creer/TextFormatToolbar';
 import { DEFAULT_TEXT_CASE, type TextCase, type TextAlign } from '@/lib/creer/textFormat';
 import { CARD_STYLES, DEFAULT_CARD_STYLE } from '@/lib/creer/cardStyles';
+import { useFrameScale } from '@/lib/hooks/useFrameScale';
 import SequenceCards from '@/components/creer/SequenceCards';
 import SequenceTitle, { titleFrameStyle } from '@/components/creer/SequenceTitle';
 import SequenceCta, { ctaFrameStyle } from '@/components/creer/SequenceCta';
@@ -1255,7 +1257,14 @@ export function Preview({
    */
   capturing?: boolean;
   /** Cadre visible, mesure pour calculer la reduction. */
-  frameRef?: React.RefObject<HTMLDivElement>;
+  /**
+   * Cadre visible, mesure pour calculer la reduction.
+   *
+   * ⚠️ `React.Ref` ET NON `RefObject` : les appelants passent desormais une
+   * ref de RAPPEL, seule facon d'etre prevenu au moment ou le noeud
+   * s'attache. Voir `useFrameScale` — c'est la cause de l'apercu vide.
+   */
+  frameRef?: React.Ref<HTMLDivElement>;
   /** Facteur de reduction du plateau : largeurCadre / largeurVideo. */
   displayScale: number;
   /** Couleurs issues du kit de marque, ou repli neutre. */
@@ -2069,8 +2078,11 @@ function AutopilotPreview({ config, accent, onPatch }: {
    */
   onPatch?: (patch: Partial<AutopilotConfig>) => void;
 }) {
-  const frameRef = useRef<HTMLDivElement>(null);
-  const [displayScale, setDisplayScale] = useState(0);
+  // La MEME regle que l'assistant : mesurer au moment ou le noeud s'attache.
+  // Cet apercu-ci n'etait pas touche — il se monte en meme temps que son
+  // cadre — mais laisser deux mesures dont une seule est robuste, c'est
+  // garder le piege arme pour le prochain montage conditionnel.
+  const { setFrame, displayScale } = useFrameScale(VIDEO_SIZE['9:16'].w);
   const [focus, setFocus] = useState<PreviewFocus>('all');
   const [posterUrl, setPosterUrl] = useState<string | null>(null);
 
@@ -2090,18 +2102,6 @@ function AutopilotPreview({ config, accent, onPatch }: {
   useEffect(() => { setStyle(JSON.parse(styleSignature)); }, [styleSignature]);
 
 
-  useEffect(() => {
-    const el = frameRef.current;
-    if (!el) return;
-    const apply = () => {
-      const w = el.clientWidth;
-      if (w > 0) setDisplayScale(w / VIDEO_SIZE[format].w);
-    };
-    apply();
-    const ro = new ResizeObserver(apply);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [format]);
 
   /**
    * Le contenu d'exemple.
@@ -2392,7 +2392,7 @@ function AutopilotPreview({ config, accent, onPatch }: {
       <Preview
         generated={generated}
         format={format}
-        frameRef={frameRef}
+        frameRef={setFrame}
         previewRef={previewRef}
         displayScale={displayScale}
         titlePos={titlePos}
@@ -2444,16 +2444,29 @@ function AutopilotPreview({ config, accent, onPatch }: {
         </span>
       </p>
 
-      {/* ── LE MODE D'EMPLOI, EN UNE LIGNE ───────────────────────────────
-          ⚠️ C'EST CE QUI REMPLACE UNE ÉTAPE ENTIÈRE. Police, taille,
-          position et icônes se règlent SUR l'aperçu : rien de tout cela
-          n'ajoute un champ dans la colonne de gauche, et le wizard reste à
-          six étapes. Encore faut-il le dire — un geste qu'on ignore n'existe
-          pas. */}
-      <p className="mt-1.5 text-[11px] text-gray-600 leading-relaxed" data-autopilot-apercu-aide>
-        Double-cliquez un élément pour sa police et sa taille (ou l’icône d’une
-        carte) · glissez pour déplacer · tirez les coins pour agrandir.
-      </p>
+      {/* ── LE MODE D'EMPLOI ─────────────────────────────────────────────
+          ⚠️ IL REMPLACE UNE ÉTAPE ENTIÈRE, ET IL ÉTAIT INVISIBLE. Police,
+          taille, position et icônes se règlent SUR l'aperçu : rien de tout
+          cela n'ajoute un champ dans la colonne de gauche, et le wizard reste
+          à six étapes. Mais la première version de cette phrase était écrite
+          en `text-gray-600` sous un autre paragraphe gris — personne ne la
+          lisait, donc personne ne découvrait le double-clic, donc la
+          fonctionnalité n'existait pas.
+
+          Un ENCART, et non une ligne de plus : bordure, icône de curseur et
+          contraste lisible. C'est le minimum pour qu'un geste caché se
+          découvre. */}
+      <div
+        className="mt-2 flex items-start gap-2 rounded-lg border border-purple-500/30 bg-purple-600/10 px-2.5 py-2"
+        data-autopilot-apercu-aide
+      >
+        <MousePointerClick className="w-3.5 h-3.5 mt-0.5 shrink-0 text-purple-300" />
+        <p className="text-[11px] text-gray-300 leading-relaxed">
+          <span className="font-medium text-white">Double-cliquez un élément</span>
+          {' '}— titre, CTA ou carte — pour régler sa police, sa taille et son icône.
+          Glissez pour le déplacer, tirez les coins pour l’agrandir.
+        </p>
+      </div>
 
       {/* ── RÉGLAGES DU TEXTE ─────────────────────────────────────────── */}
       <FloatingPanel
@@ -4007,26 +4020,19 @@ export default function AssistantWizard() {
     setDragGuides([]);
     setDragBadges([]);
   }, []);
-  const frameRef = useRef<HTMLDivElement>(null);
-
-  // Facteur de reduction du plateau : largeur affichee / largeur video.
-  // Mesure par ResizeObserver — le panneau est fluide, et le plateau doit le
-  // remplir exactement quelle que soit la largeur de la fenetre.
-  // Initialise a 0 : le plateau reste invisible jusqu'a la premiere mesure,
-  // plutot que de flasher a une echelle arbitraire (0.3 debordait en 16:9).
-  const [displayScale, setDisplayScale] = useState(0);
-  useEffect(() => {
-    const el = frameRef.current;
-    if (!el) return;
-    const apply = () => {
-      const w = el.clientWidth;
-      if (w > 0) setDisplayScale(w / VIDEO_SIZE[format].w);
-    };
-    apply();
-    const ro = new ResizeObserver(apply);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [format]);
+  /**
+   * Facteur de reduction du plateau : largeur affichee / largeur video.
+   *
+   * ⚠️ LA MESURE PASSE PAR UNE REF DE RAPPEL, ET C'EST LE CORRECTIF DE
+   * L'APERCU VIDE. L'effet qui vivait ici tournait au montage de l'ECRAN,
+   * alors que le cadre n'est monte qu'apres « Commencer »
+   * (`{!started ? … : …}`, PR #326) : `frameRef.current` valait `null`,
+   * l'effet sortait aussitot, et ses dependances `[format]` ne changeant
+   * jamais il ne repassait PLUS. `displayScale` restait a 0, le plateau
+   * recevait `transform: scale(0)`, et tout son contenu mesurait 0 x 0 —
+   * present dans le DOM, correctement style, et invisible.
+   */
+  const { frameRef, setFrame, displayScale } = useFrameScale(VIDEO_SIZE[format].w);
 
   /* ── APERCU AGRANDI ──────────────────────────────────────────────────
      Une fenetre flottante qui montre le MEME apercu, en plus grand, qu'on
@@ -7513,7 +7519,7 @@ export default function AssistantWizard() {
           {...previewShared}
           previewRef={previewRef}
           cardsRef={cardsRef}
-          frameRef={frameRef}
+          frameRef={setFrame}
           displayScale={displayScale}
           onDragStart={startDrag}
           onDragMove={moveDrag}

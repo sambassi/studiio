@@ -563,3 +563,10 @@ canvas (`video-composer.ts`), qui sert l'export de « Créer simple ».
 - [x] E. `cardStyle` sélectionnable, dont « Sans cadre »
 - [x] F. Autopilote : `design_style` étendu (pas de migration)
 - [x] G. Tests de parité + tsc + build
+
+## 2026-08-07 — HOTFIX : aperçu de l'assistant vide (plateau à `scale(0)`)
+
+- [x] Cause : effet de mesure exécuté avant le montage du cadre (#326), jamais rejoué
+- [x] Correctif : `useFrameScale` — ref de RAPPEL + nœud en état, partagé par les deux aperçus
+- [x] Test qui échoue sur `d7a9aa0` : l'échelle du plateau doit être NON NULLE
+- [x] Indice « double-clic » de l'Autopilote rendu visible (encart + icône lucide)

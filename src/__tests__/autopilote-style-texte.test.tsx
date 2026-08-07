@@ -385,9 +385,12 @@ describe('C — l aperçu de l Autopilote est ÉDITABLE', () => {
   it('l écran DIT comment régler — un geste qu on ignore n existe pas', async () => {
     await monter();
     const aide = document.querySelector('[data-autopilot-apercu-aide]') as HTMLElement;
-    expect(aide.textContent).toContain('Double-cliquez');
-    expect(aide.textContent).toContain('glissez');
-    expect(aide.textContent).toContain('tirez les coins');
+    // Insensible a la casse : l'indice est devenu un encart et la phrase a
+    // ete recoupee — ce qui compte est que les trois gestes y soient nommes.
+    const texte = (aide.textContent ?? '').toLowerCase();
+    expect(texte).toContain('double-cliquez');
+    expect(texte).toContain('glissez');
+    expect(texte).toContain('coins');
   });
 });
 
