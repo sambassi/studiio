@@ -497,3 +497,15 @@ Le déclencheur passe TOUTES LES HEURES et `decideRun` refuse `sans-rush`
 AVANT le test d'heure : un compte sans rush reçoit donc **24 emails par jour**.
 La notification est écrite avec un anti-doublon de 24 h, et l'email n'est
 envoyé que quand la notification a réellement été créée.
+
+## 2026-08-07 — Autopilote : aperçu d'exemple dans le wizard
+
+Branche `feat/autopilote-apercu`.
+
+- [x] Contenu d'exemple pur et testable (`src/lib/autopilot/sample.ts`)
+- [x] Pont `onConfigChange` du panneau vers le wizard (aperçu live)
+- [x] `AutopilotPreview` réutilise `Preview` — aucun rendu parallèle
+- [x] Portée de l'affiche alignée sur `backgroundFor` du montage
+- [x] Libellé « exemple » + suppression de la note trompeuse de l'assistant
+- [x] Constantes de marque déplacées dans un module feuille (build client)
+- [x] 23 tests neufs, 7 mutations validées, tsc + build + suite complète

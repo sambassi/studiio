@@ -175,7 +175,21 @@ const PLATEFORMES = [
   { id: 'youtube', label: 'YouTube' },
 ];
 
-export default function AutopilotPanel({ accent }: { accent: string }) {
+export default function AutopilotPanel({ accent, onConfigChange }: {
+  accent: string;
+  /**
+   * Remonte la configuration à chaque changement — c'est ce qui alimente
+   * l'aperçu de la colonne de droite.
+   *
+   * ⚠️ APPELÉ SUR L'ÉTAT LOCAL, PAS APRÈS L'ENREGISTREMENT. L'aperçu doit
+   * suivre la roue chromatique PENDANT qu'on la tourne ; les couleurs, elles,
+   * ne partent au serveur qu'au relâchement. Attendre la réponse aurait figé
+   * l'aperçu pendant tout le réglage — exactement le moment où il sert.
+   *
+   * Absent, le panneau se comporte exactement comme avant.
+   */
+  onConfigChange?: (config: AutopilotConfig) => void;
+}) {
   const [config, setConfig] = useState<AutopilotConfig>(DEFAULT_CONFIG);
   const [ready, setReady] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -195,6 +209,13 @@ export default function AutopilotPanel({ accent }: { accent: string }) {
   /** Les colonnes d'identité existent-elles en base ? Voir `brandingReady`. */
   const [identiteReady, setIdentiteReady] = useState(true);
   const [voixClonees, setVoixClonees] = useState<VoixClonee[]>([]);
+
+  // ⚠️ UN SEUL POINT DE REMONTÉE, sur l'état lui-même. Le panneau écrit
+  // `config` par une demi-douzaine de chemins — `enregistrer`, les roues
+  // chromatiques, les curseurs du mixeur, la relecture au montage. Appeler le
+  // parent depuis chacun d'eux aurait garanti qu'on en oublie un, et l'aperçu
+  // aurait cessé de suivre ce réglage-là sans que rien ne le signale.
+  useEffect(() => { onConfigChange?.(config); }, [config, onConfigChange]);
 
   useEffect(() => {
     let cancelled = false;

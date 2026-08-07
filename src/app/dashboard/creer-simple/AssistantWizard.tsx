@@ -37,6 +37,7 @@ import {
   Crop,
   Maximize2,
   Play,
+  Info,
   X,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
@@ -70,12 +71,18 @@ import {
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import AiImageTools from '@/components/creer/AiImageTools';
 import AutopilotPanel from '@/components/creer/AutopilotPanel';
+import { buildAutopilotSample, samplePosterVisible } from '@/lib/autopilot/sample';
+// ⚠️ DEPUIS `brand.ts`, PAS `design.ts`. Ce dernier entraîne toute la chaîne
+// serveur de l'Autopilote (`voice` → `storage/upload` → `minio`) dans le
+// paquet du navigateur, et le build échoue sur « Can't resolve 'fs/promises' ».
+import { AUTOPILOT_WATERMARK, AUTOPILOT_GRADIENT_OPACITY } from '@/lib/autopilot/brand';
+import { DEFAULT_CONFIG as AUTOPILOT_DEFAULT_CONFIG, type AutopilotConfig } from '@/lib/autopilot/rules';
 import SequenceCards from '@/components/creer/SequenceCards';
 import SequenceTitle, { titleFrameStyle } from '@/components/creer/SequenceTitle';
 import SequenceCta, { ctaFrameStyle } from '@/components/creer/SequenceCta';
 import FreeElementsLayer, { type FreeElement } from '@/components/creer/FreeElementsLayer';
 import { DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS } from '@/lib/creer/designSpec';
-import { THEMES as SHARED_THEMES } from '@/lib/themes';
+import { THEMES as SHARED_THEMES, themeLabel } from '@/lib/themes';
 import { renderSignature, signatureMatches } from '@/lib/creer/renderSignature';
 
 import {
@@ -994,7 +1001,20 @@ export function Preview({
   onDragMove,
   onDragEnd,
   hideHeader = false,
+  hideFootnote = false,
 }: {
+  /**
+   * Masque la note « les cartes de la vidéo seront exactement celles-ci ».
+   *
+   * ⚠️ ELLE EST VRAIE POUR L'ASSISTANT, FAUSSE POUR L'AUTOPILOTE. L'assistant
+   * montre le contenu qui partira au compositeur ; l'aperçu de l'Autopilote
+   * montre un ÉCHANTILLON, dont ni les cartes ni le titre ne seront repris —
+   * seul le style l'est. Laisser cette phrase sous un échantillon aurait
+   * promis exactement ce que l'Autopilote ne tient pas.
+   *
+   * Defaut `false` : l'assistant garde sa note, mot pour mot.
+   */
+  hideFootnote?: boolean;
   /**
    * Masque l'en-tete « Aperçu ». Defaut `false` : l'apercu de la colonne de
    * droite garde le sien. La fenetre agrandie, elle, porte deja ce titre dans
@@ -1716,12 +1736,167 @@ export function Preview({
 
       </div>
 
-      {generated && (
+      {generated && !hideFootnote && (
         <p className="mt-3 text-[10px] text-gray-600 leading-relaxed">
           Les cartes de la vidéo seront exactement celles-ci. Le titre et le CTA, eux, apparaissent en séquences successives dans le montage.
           {showRush && ' Le rush occupe seul sa séquence, cadré comme ici.'}
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * Aperçu de l'Autopilote — un ÉCHANTILLON, pas la prochaine vidéo.
+ *
+ * ⚠️ LA COLONNE DE DROITE ÉTAIT VIDE SUR CET ÉCRAN. Elle sert l'assistant
+ * « Créer simple », qui n'a rien généré tant qu'on n'a pas commencé : on
+ * réglait donc les couleurs, le fond des cartes et les thèmes de l'Autopilote
+ * devant un cadre en pointillés. C'était le seul endroit du produit où l'on
+ * choisit un style sans jamais le voir.
+ *
+ * ⚠️ ET C'EST LE MÊME COMPOSANT `Preview` QUE L'ASSISTANT, à dessein. Un
+ * second rendu écrit ici aurait fini par montrer une mise en page que le
+ * moteur ne produit pas — et l'écart ne se serait vu qu'en comparant une
+ * vraie vidéo à l'aperçu, c'est-à-dire trop tard. Ce composant n'ajoute donc
+ * rien au rendu : il l'ALIMENTE, à partir de la configuration.
+ */
+function AutopilotPreview({ config, accent }: { config: AutopilotConfig; accent: string }) {
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [displayScale, setDisplayScale] = useState(0);
+  const [focus, setFocus] = useState<PreviewFocus>('all');
+  const [posterUrl, setPosterUrl] = useState<string | null>(null);
+
+  // L'Autopilote ne produit que du vertical (`AUTOPILOT_FORMAT`).
+  const format: Format = '9:16';
+
+  useEffect(() => {
+    const el = frameRef.current;
+    if (!el) return;
+    const apply = () => {
+      const w = el.clientWidth;
+      if (w > 0) setDisplayScale(w / VIDEO_SIZE[format].w);
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [format]);
+
+  /**
+   * Le contenu d'exemple.
+   *
+   * ⚠️ MÉMOÏSÉ SUR LES SEULS THÈMES. `generateSmartContent` est synchrone mais
+   * pas gratuit, et le relancer à chaque mouvement de roue chromatique
+   * réécrirait tout le texte sous les yeux de l'utilisateur — impossible de
+   * comparer deux couleurs si les mots changent entre les deux.
+   */
+  const topicsKey = config.topics.join('|');
+  const sample = useMemo(
+    () => buildAutopilotSample({ topics: topicsKey ? topicsKey.split('|') : [] }),
+    [topicsKey],
+  );
+
+  const generated: Generated = useMemo(() => ({
+    title: sample.title,
+    subtitle: sample.subtitle,
+    cards: sample.cards.map((c, i) => ({ ...c, id: `apercu-${i}` })),
+    cta: sample.cta,
+    ctaSub: sample.ctaSub,
+  }), [sample]);
+
+  /**
+   * Affiche d'exemple, cherchée dans la même banque que le moteur.
+   *
+   * ⚠️ AUCUN ÉCHEC NE DOIT SE VOIR. Sans clé Pexels, hors ligne, ou sur un
+   * thème sans résultat, on rend `null` et le dégradé reprend sa place — ce
+   * que fait exactement `buildAutopilotDesign` quand `pickPosterUrl` ne trouve
+   * rien. Un cadre d'erreur à la place d'une photo décorative ferait croire à
+   * une panne de l'Autopilote.
+   */
+  useEffect(() => {
+    let annule = false;
+    setPosterUrl(null);
+    fetch(`/api/pexels?query=${encodeURIComponent(sample.posterQuery)}&count=1`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (annule || !d?.success || !Array.isArray(d.photos)) return;
+        const p = d.photos[0];
+        const url = p?.medium || p?.url || p?.small;
+        if (typeof url === 'string' && url) setPosterUrl(url);
+      })
+      .catch(() => {});
+    return () => { annule = true; };
+  }, [sample.posterQuery]);
+
+  /**
+   * La typographie de l'échantillon : les défauts partagés, plus la seule
+   * couleur de texte que l'Autopilote fait régler. Le sous-texte du CTA suit
+   * la fin du dégradé, comme dans l'assistant.
+   */
+  const text: TextStyles = useMemo(() => ({
+    ...DEFAULT_TEXT_STYLES,
+    title: { ...DEFAULT_TEXT_STYLES.title, color: config.titleColor },
+    cta: { ...DEFAULT_TEXT_STYLES.cta, subColor: config.cardGradientEnd },
+  }), [config.titleColor, config.cardGradientEnd]);
+
+  /**
+   * Séquences de l'échantillon.
+   *
+   * La séquence vidéo n'y figure que si l'utilisateur a des rushes : sans
+   * banque, le moteur produit un montage titre → cartes → CTA
+   * (`buildSequences` retire une séquence de durée nulle), et annoncer un
+   * onglet « Vidéo » vide serait une promesse que le montage ne tient pas.
+   */
+  const activeOrder = useMemo(
+    () => (config.rushUrls.length > 0
+      ? ['intro', 'cards', 'video', 'cta']
+      : ['intro', 'cards', 'cta']),
+    [config.rushUrls.length],
+  );
+
+  return (
+    <div data-autopilot-apercu>
+      <Preview
+        generated={generated}
+        format={format}
+        frameRef={frameRef}
+        displayScale={displayScale}
+        // ⚠️ LA PORTÉE DE L'AFFICHE SUIT LA RÈGLE DU RENDU. Avec « cartes sur
+        // les couleurs », l'onglet Cartes ne doit PAS montrer la photo :
+        // `samplePosterVisible` est la même règle que `backgroundFor` côté
+        // Remotion, et c'est ce qui rend cet aperçu digne de confiance.
+        posterUrl={samplePosterVisible(focus, config.cardsShowPoster) ? posterUrl : null}
+        gradStart={config.cardGradientStart}
+        gradEnd={config.cardGradientEnd}
+        gradientOpacity={AUTOPILOT_GRADIENT_OPACITY}
+        accent={accent}
+        text={text}
+        activeOrder={activeOrder}
+        watermark={AUTOPILOT_WATERMARK}
+        focus={focus}
+        onFocusChange={setFocus}
+        // « Les cartes de la vidéo seront exactement celles-ci » est vrai pour
+        // l'assistant et FAUX ici : ce sont celles d'un échantillon. La note
+        // honnête de l'Autopilote la remplace, juste en dessous.
+        hideFootnote
+      />
+
+      {/* ── LE LIBELLÉ HONNÊTE ───────────────────────────────────────────
+          Sans lui, l'utilisateur lit cet aperçu comme la prochaine vidéo et
+          s'étonne d'en recevoir une autre. Ce qu'il regarde prouve le style,
+          rien d'autre. */}
+      <p
+        className="mt-2 flex items-start gap-1.5 text-[11px] text-gray-500 leading-relaxed"
+        data-autopilot-apercu-mention
+      >
+        <Info className="w-3 h-3 mt-0.5 shrink-0" />
+        <span>
+          Aperçu — <span className="text-gray-400">exemple</span> sur le thème
+          {' '}«&nbsp;{themeLabel(sample.topic)}&nbsp;». Le sujet, l’affiche et les textes
+          changent à chaque vidéo ; les couleurs et le fond des cartes, non.
+        </span>
+      </p>
     </div>
   );
 }
@@ -1949,6 +2124,16 @@ export default function AssistantWizard() {
 
   const [started, setStarted] = useState(false);
   const [step, setStep] = useState(0);
+
+  /**
+   * Configuration de l'Autopilote, remontée par son panneau.
+   *
+   * Elle n'existe ici QUE pour alimenter l'aperçu de la colonne de droite :
+   * l'écriture reste entièrement chez `AutopilotPanel`, qui possède son état
+   * et son enregistrement. Deux propriétaires pour un même réglage auraient
+   * fini par se contredire.
+   */
+  const [autopilotConfig, setAutopilotConfig] = useState<AutopilotConfig>(AUTOPILOT_DEFAULT_CONFIG);
 
   /**
    * Etape la plus AVANCEE atteinte, et non l'etape courante.
@@ -4801,7 +4986,7 @@ export default function AssistantWizard() {
                       une fonctionnalité qui n'existait pas. Elle porte
                       désormais son propre réglage. */}
                   <div className="mt-4">
-                    <AutopilotPanel accent={accent} />
+                    <AutopilotPanel accent={accent} onConfigChange={setAutopilotConfig} />
                   </div>
                 </div>
               </div>
@@ -6514,6 +6699,20 @@ export default function AssistantWizard() {
           plus court glissait 48 px de la carte — en-tete et onglets compris —
           sous cette barre. */}
       <div className="lg:col-span-2 lg:sticky lg:top-20">
+        {/* ── AVANT DE COMMENCER : L'APERÇU DE L'AUTOPILOTE ─────────────
+            L'assistant n'a rien généré tant qu'on n'a pas cliqué
+            « Commencer » : sa colonne d'aperçu n'affichait donc qu'un cadre
+            en pointillés — juste à côté du panneau où l'on règle les
+            couleurs et le fond des cartes de l'Autopilote.
+
+            ⚠️ LE BASCULEMENT SE FAIT SUR `started`, ET SUR RIEN D'AUTRE. Dès
+            que l'assistant démarre, c'est SON aperçu qui revient, avec ses
+            poignées d'édition, ses refs d'export et son bouton de rendu :
+            rien de ce qui suit n'est modifié. */}
+        {!started ? (
+          <AutopilotPreview config={autopilotConfig} accent={accent} />
+        ) : (
+        <>
         <Preview
           {...previewShared}
           previewRef={previewRef}
@@ -6809,6 +7008,8 @@ export default function AssistantWizard() {
             <RotateCcw className="w-3.5 h-3.5" />
             Rétablir la disposition d&apos;origine
           </button>
+        )}
+        </>
         )}
       </div>
 

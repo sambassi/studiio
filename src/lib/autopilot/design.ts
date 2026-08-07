@@ -29,11 +29,17 @@ import { sequenceSecondsWithVoice, voiceUrls, type VoixParSequence } from '@/lib
  * n'aurait rien vu arriver sans savoir pourquoi.
  */
 
-/** Filigrane par défaut, comme le Mode simple. */
-export const AUTOPILOT_WATERMARK = 'Studiio.pro';
-
-/** Format produit par l'Autopilote : le vertical, celui des réseaux. */
-export const AUTOPILOT_FORMAT = '9:16' as const;
+/**
+ * Filigrane et format — RÉ-EXPORTÉS depuis `brand.ts`.
+ *
+ * ⚠️ ILS ONT DÛ DÉMÉNAGER. L'aperçu du wizard les lit côté NAVIGATEUR, et
+ * importer ce fichier-ci y entraîne toute sa chaîne serveur (`voice` →
+ * `storage/upload` → `db/supabase` → `minio`) : le build échouait sur
+ * « Can't resolve 'fs/promises' ». Ils vivent donc dans un module FEUILLE,
+ * qui n'importe rien. Le ré-export garde tous les appelants inchangés.
+ */
+export { AUTOPILOT_WATERMARK, AUTOPILOT_FORMAT } from '@/lib/autopilot/brand';
+import { AUTOPILOT_WATERMARK, AUTOPILOT_FORMAT } from '@/lib/autopilot/brand';
 
 /**
  * Durée de la séquence vidéo pour un rush donné.

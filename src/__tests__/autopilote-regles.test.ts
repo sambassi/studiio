@@ -297,7 +297,11 @@ describe('La route de configuration', () => {
 
 describe('L écran', () => {
   it('la carte n annonce plus un bouton mort', () => {
-    expect(wizard).toContain('<AutopilotPanel accent={accent} />');
+    // Le panneau est monté ; ses props ont grandi depuis (`onConfigChange`,
+    // qui alimente l'aperçu). On vérifie donc le MONTAGE, pas la liste exacte
+    // des props — sinon toute prop ajoutée fait échouer un test qui ne parle
+    // pas d'elle.
+    expect(wizard).toMatch(/<AutopilotPanel\s+accent=\{accent\}/);
     expect(wizard).not.toContain('<Button variant="secondary" size="sm" disabled aria-disabled="true" className={DISABLED}>\n                      Activer');
   });
 
