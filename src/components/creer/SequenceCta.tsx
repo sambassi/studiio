@@ -5,6 +5,11 @@ import {
   FONT_RATIO, TEXT_LAYOUT, GAP_RATIO, leadingTrim, letterSpacingPx,
   type DesignFormat,
 } from '@/lib/creer/designSpec';
+import {
+  cssTextTransform, cssTextDecoration, DEFAULT_TEXT_CASE,
+  DECORATION_THICKNESS_RATIO, UNDERLINE_OFFSET_RATIO,
+  type TextCase, type TextAlign,
+} from '@/lib/creer/textFormat';
 
 /**
  * Appel a l'action — composant PARTAGE par les deux moteurs de rendu.
@@ -26,6 +31,17 @@ export interface CtaTypography {
   italic: boolean;
   letterSpacing: number;
   lineHeight: number;
+  /**
+   * Casse, alignement et decoration — tous optionnels.
+   *
+   * ⚠️ LE REPLI DE LA CASSE EST `'uppercase'` : le CTA etait ecrit en
+   * capitales EN DUR des deux cotes. Retomber sur `'none'` mettrait tous les
+   * montages existants en minuscules.
+   */
+  textCase?: TextCase;
+  align?: TextAlign;
+  underline?: boolean;
+  strike?: boolean;
 }
 
 export default function SequenceCta({
@@ -56,12 +72,23 @@ export default function SequenceCta({
   const style = typography.italic ? 'italic' : 'normal';
   const mainSize = vw * FONT_RATIO[format].cta * typography.scale;
   const subSize = vw * FONT_RATIO[format].ctaSub * typography.scale;
+  const casse = cssTextTransform(typography.textCase ?? DEFAULT_TEXT_CASE);
+  const align = typography.align ?? 'center';
+  const trait = cssTextDecoration(typography.underline, typography.strike);
+  // Memes ratios que le compositeur canvas — voir `textFormat.ts`.
+  const decoration = (size: number) => ({
+    textDecorationThickness: Math.max(1, size * DECORATION_THICKNESS_RATIO),
+    textUnderlineOffset: size * UNDERLINE_OFFSET_RATIO,
+  });
 
   return (
     <>
       <div
         style={{
-          textTransform: 'uppercase',
+          // `text-transform` agit AVANT la mise en lignes : le navigateur
+          // coupe donc comme le compositeur canvas, qui transforme la chaine
+          // avant `wrapText`. Le texte du DOM reste intact.
+          textTransform: casse,
           fontFamily: fontStack(typography.font),
           fontSize: mainSize,
           fontWeight: weight,
@@ -69,6 +96,9 @@ export default function SequenceCta({
           letterSpacing: letterSpacingPx(typography.letterSpacing, vw),
           color: typography.color,
           lineHeight: typography.lineHeight,
+          textAlign: align,
+          textDecoration: trait,
+          ...decoration(mainSize),
           ...leadingTrim(mainSize, typography.lineHeight),
           textShadow: `0 0 ${vw * 0.02}px ${typography.color}66`,
         }}
@@ -78,7 +108,7 @@ export default function SequenceCta({
       {subText && (
         <div
           style={{
-            textTransform: 'uppercase',
+            textTransform: casse,
             fontFamily: fontStack(typography.font),
             fontSize: subSize,
             fontWeight: weight,
@@ -86,6 +116,9 @@ export default function SequenceCta({
             letterSpacing: letterSpacingPx(typography.letterSpacing, vw),
             color: typography.subColor,
             lineHeight: typography.lineHeight,
+            textAlign: align,
+            textDecoration: trait,
+            ...decoration(subSize),
             ...leadingTrim(subSize, typography.lineHeight),
             marginTop: vw * GAP_RATIO - ((typography.lineHeight - 1) * subSize) / 2,
           }}

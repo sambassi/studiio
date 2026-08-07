@@ -5,6 +5,11 @@ import {
   FONT_RATIO, TEXT_LAYOUT, GAP_RATIO, titleShadow, subtitleShadow,
   leadingTrim, letterSpacingPx, type DesignFormat,
 } from '@/lib/creer/designSpec';
+import {
+  cssTextTransform, cssTextDecoration, DEFAULT_TEXT_CASE,
+  DECORATION_THICKNESS_RATIO, UNDERLINE_OFFSET_RATIO,
+  type TextCase, type TextAlign,
+} from '@/lib/creer/textFormat';
 
 /**
  * Titre et sous-titre — composant PARTAGE par les deux moteurs de rendu.
@@ -19,10 +24,10 @@ import {
  *    l'application : `uppercase` n'y produirait rien et le titre sortirait en
  *    minuscules. Tout est en style en ligne.
  *
- * Le sous-titre n'a AUCUN reglage propre : `drawIntro` lui impose la police,
- * la graisse, l'italique et l'interligne du titre, et sa couleur a 80 %. Lui
- * donner des controles ferait promettre a l'apercu ce que la video ne rendrait
- * pas.
+ * Le sous-titre herite de la police, de la graisse, de l'italique et de
+ * l'interligne du titre — c'est ce que fait `drawIntro`. Il porte en revanche
+ * SA casse, SON alignement et SA decoration : le compositeur canvas les
+ * applique lui aussi, donc l'apercu ne promet rien que la video ne rende.
  */
 
 export interface TitleTypography {
@@ -33,12 +38,29 @@ export interface TitleTypography {
   italic: boolean;
   letterSpacing: number;
   lineHeight: number;
+  /**
+   * Casse, alignement et decoration.
+   *
+   * ⚠️ TOUS OPTIONNELS, ET LE REPLI DE LA CASSE EST `'uppercase'`. Le titre
+   * etait ecrit en capitales EN DUR (`textTransform: 'uppercase'`) des deux
+   * cotes : retomber sur `'none'` mettrait tous les montages existants en
+   * minuscules d'un coup.
+   */
+  textCase?: TextCase;
+  align?: TextAlign;
+  underline?: boolean;
+  strike?: boolean;
 }
 
 export interface SubtitleTypography {
   font: string | null;
   color: string | null;
   scale: number;
+  /** Le sous-titre n'etait PAS en capitales : son repli est `'none'`. */
+  textCase?: TextCase;
+  align?: TextAlign;
+  underline?: boolean;
+  strike?: boolean;
 }
 
 export default function SequenceTitle({
@@ -75,13 +97,22 @@ export default function SequenceTitle({
   const subSize = vw * FONT_RATIO[format].subtitle * typography.scale * subtitleTypography.scale;
   const subFamily = subtitleTypography.font || typography.font;
   const subColor = subtitleTypography.color || `${typography.color}CC`;
+  // Le trait de decoration suit la taille du texte, par les MEMES ratios que
+  // le compositeur canvas — c'est ce qui les garde accordes a toute echelle.
+  const decoration = (size: number) => ({
+    textDecorationThickness: Math.max(1, size * DECORATION_THICKNESS_RATIO),
+    textUnderlineOffset: size * UNDERLINE_OFFSET_RATIO,
+  });
 
   return (
     <>
       <div
         style={{
-          // `uppercase` de Tailwind — inutilisable hors de l'application.
-          textTransform: 'uppercase',
+          // `text-transform` agit AVANT la mise en lignes : le navigateur
+          // coupe donc sur les glyphes transformes, comme le compositeur
+          // canvas qui transforme la chaine avant `wrapText`. Le texte du DOM
+          // reste intact — selectionnable et lisible par un lecteur d'ecran.
+          textTransform: cssTextTransform(typography.textCase ?? DEFAULT_TEXT_CASE),
           fontFamily: fontStack(typography.font),
           fontSize: titleSize,
           fontWeight: weight,
@@ -89,6 +120,9 @@ export default function SequenceTitle({
           letterSpacing: letterSpacingPx(typography.letterSpacing, vw),
           color: typography.color,
           lineHeight: typography.lineHeight,
+          textAlign: typography.align ?? 'left',
+          textDecoration: cssTextDecoration(typography.underline, typography.strike),
+          ...decoration(titleSize),
           ...leadingTrim(titleSize, typography.lineHeight),
           filter: titleShadow(vw),
         }}
@@ -105,6 +139,10 @@ export default function SequenceTitle({
             fontStyle: style,
             color: subColor,
             lineHeight: typography.lineHeight,
+            textTransform: cssTextTransform(subtitleTypography.textCase),
+            textAlign: subtitleTypography.align ?? typography.align ?? 'left',
+            textDecoration: cssTextDecoration(subtitleTypography.underline, subtitleTypography.strike),
+            ...decoration(subSize),
             ...leadingTrim(subSize, typography.lineHeight),
             // `mt1` du compositeur, mesure depuis le BAS des glyphes du titre —
             // d'ou le retrait du demi-interligne.
@@ -126,6 +164,8 @@ export function titleFrameStyle(position: { x: number; y: number }): React.CSSPr
     left: `${position.x}%`,
     top: `${position.y}%`,
     width: `${TEXT_LAYOUT.titleWidth}%`,
-    textAlign: 'left',
+    // ⚠️ PLUS D'ALIGNEMENT ICI. Il etait fige a gauche pour tout le bloc ;
+    // titre et sous-titre portent desormais le leur, et un `textAlign` sur le
+    // cadre les empecherait de differer. Le defaut de chacun reste 'left'.
   };
 }

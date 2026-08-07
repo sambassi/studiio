@@ -6,6 +6,10 @@
  */
 import type { AudioKeyframe } from './creer/audioDucking';
 import {
+  applyTextCase, decorationLines, textLeftEdge, sanitizeTextAlign,
+  DEFAULT_TEXT_CASE, type TextCase, type TextAlign,
+} from '@/lib/creer/textFormat';
+import {
   textAnimationState, revealText, isTypewriter, type TextAnimation,
 } from '@/lib/creer/textAnimation';
 import {
@@ -88,7 +92,26 @@ export interface DesignOptions {
    * block instead of its centre (standard ctx.textAlign semantics).
    * Opt-in only: the editor never sets it.
    */
-  titleAlign?: 'left' | 'center';
+  titleAlign?: TextAlign;
+  /**
+   * Casse, soulignement et barre — par element.
+   *
+   * ⚠️ TOUS OPTIONNELS, ET LE REPLI DE LA CASSE EST `'uppercase'` POUR LE
+   * TITRE ET LE CTA. Les deux etaient ecrits en capitales — par l'appelant
+   * cote canvas, par `textTransform` cote apercu. Retomber sur `'none'`
+   * mettrait tous les montages existants en minuscules.
+   */
+  titleCase?: TextCase;
+  titleUnderline?: boolean;
+  titleStrike?: boolean;
+  subtitleCase?: TextCase;
+  subtitleAlign?: TextAlign;
+  subtitleUnderline?: boolean;
+  subtitleStrike?: boolean;
+  ctaCase?: TextCase;
+  ctaAlign?: TextAlign;
+  ctaUnderline?: boolean;
+  ctaStrike?: boolean;
   /** Primary gradient color (default: accentColor) */
   gradientColor1?: string;
   /** Secondary gradient color (default: accentColor lighter) */
@@ -946,6 +969,39 @@ function fillTextWithSpacing(
   ctx.textAlign = savedAlign;
 }
 
+/**
+ * Trace le souligne et le barre d'une ligne de texte.
+ *
+ * ⚠️ LE CANVAS N'A PAS DE `text-decoration`. CSS pose le trait tout seul, a
+ * partir d'une metrique de la police ; ici il faut le dessiner. Les deux
+ * chemins derivent leur epaisseur et leur decalage des MEMES ratios
+ * (`textFormat.ts`) : la parite est proportionnelle, pas au pixel — et c'est
+ * la seule qu'on puisse promettre.
+ *
+ * A appeler APRES le texte, avec le meme `ctx.textAlign`, le meme point
+ * d'ancrage et la meme ligne de base ('top' comme 'alphabetic' : `baselineY`
+ * est la ligne de base reelle du glyphe, calculee par l'appelant).
+ */
+function drawTextDecoration(
+  ctx: CanvasRenderingContext2D,
+  texte: string,
+  anchorX: number,
+  baselineY: number,
+  fontSize: number,
+  spacing: number,
+  options: { underline?: boolean; strike?: boolean } | undefined,
+): void {
+  const traits = decorationLines(fontSize, options?.underline, options?.strike);
+  if (traits.length === 0) return;
+  const largeur = spacing ? measureSpacedText(ctx, texte, spacing) : ctx.measureText(texte).width;
+  const gauche = textLeftEdge(anchorX, largeur, ctx.textAlign as TextAlign);
+  for (const trait of traits) {
+    // `fillRect` et non `lineTo` : un trait de 1,5 px trace au stylo tombe
+    // entre deux pixels et sort gris. Un rectangle reste franc.
+    ctx.fillRect(gauche, baselineY + trait.offset, largeur, trait.thickness);
+  }
+}
+
 function hexToRgba(hex: string, alpha: number): string {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
@@ -1354,6 +1410,15 @@ function drawIntro(
     title = revealText(title, revealRatio);
     subtitle = subtitle ? revealText(subtitle, revealRatio) : subtitle;
   }
+  // ⚠️ LA CASSE S'APPLIQUE A LA CHAINE, AVANT LA MISE EN LIGNES. Une
+  // majuscule n'a pas la largeur de sa minuscule : transformer apres le
+  // `wrapText` ferait couper les lignes ailleurs que dans l'apercu, qui
+  // applique la MEME fonction sur la MEME chaine (`SequenceTitle`).
+  //
+  // Idempotent : l'appelant met deja le titre en capitales, et le
+  // re-majusculer ne change rien.
+  title = applyTextCase(title, design?.titleCase ?? DEFAULT_TEXT_CASE);
+  subtitle = subtitle ? applyTextCase(subtitle, design?.subtitleCase ?? 'none') : subtitle;
   const fontFamily = design?.titleFont || design?.font || 'sans-serif';
   const titleColor = design?.titleColor || '#FFFFFF';
 
@@ -1461,7 +1526,9 @@ function drawIntro(
   // reproduit exactement le comportement historique, donc aucun contenu
   // existant ne bouge d'un pixel. Avec 'left', titlePosX designe le bord
   // GAUCHE du bloc au lieu de son centre (convention de ctx.textAlign).
-  const titleAlign: CanvasTextAlign = design?.titleAlign === 'left' ? 'left' : 'center';
+  // `sanitizeTextAlign` plutot qu'un ternaire : « right » s'ajoute sans que le
+  // defaut historique ('center') ne bouge, et une valeur inconnue y retombe.
+  const titleAlign: CanvasTextAlign = sanitizeTextAlign(design?.titleAlign, 'center');
   // Use 'top' baseline so Y coordinate = top edge of text (matches CSS top: Y%)
   ctx.textBaseline = 'top';
   ctx.font = `${fontStyle}${fontWeight} ${fontSize}px "${fontFamily}", sans-serif`; ctx.textAlign = titleAlign;
@@ -1553,6 +1620,20 @@ function drawIntro(
     ctx.filter = 'none';
   }
 
+  // Souligne / barre du titre. APRES le texte, et sans le filtre d'ombre :
+  // un trait plein re-ombre paraitrait deux fois plus epais que dans
+  // l'apercu. `textBaseline` vaut 'top' ici, d'ou le `+ fontSize` qui ramene
+  // a la ligne de base reelle.
+  if (design?.titleUnderline || design?.titleStrike) {
+    for (let i = 0; i < titleLines.length; i++) {
+      drawTextDecoration(
+        ctx, titleLines[i], titlePosX, titleDrawY + i * lineSpacing + fontSize,
+        fontSize, titleLetterSpacing,
+        { underline: design.titleUnderline, strike: design.titleStrike },
+      );
+    }
+  }
+
   const titleBlockBottom = titleDrawY + (titleLines.length - 1) * lineSpacing + fontSize;
 
   // Subtitle below title — no animation, static like editor
@@ -1577,9 +1658,25 @@ function drawIntro(
     const mt1 = Math.round(w * (4 / 320));
     const subLines = wrapText(ctx, subtitle, titleWidth);
     const subLineSpacing = subSize * (design?.titleTypography?.lineHeight || 1.1);
+    // Alignement PROPRE au sous-titre, celui du titre a defaut — la meme
+    // regle que `SequenceTitle`, qui retombe lui aussi sur celui du titre.
+    const subAlign: CanvasTextAlign = sanitizeTextAlign(design?.subtitleAlign, titleAlign);
+    const savedAlign = ctx.textAlign;
+    ctx.textAlign = subAlign;
     for (let i = 0; i < subLines.length; i++) {
       ctx.fillText(subLines[i], titlePosX, titleBlockBottom + mt1 + i * subLineSpacing);
     }
+    if (design?.subtitleUnderline || design?.subtitleStrike) {
+      ctx.filter = 'none';
+      for (let i = 0; i < subLines.length; i++) {
+        drawTextDecoration(
+          ctx, subLines[i], titlePosX, titleBlockBottom + mt1 + i * subLineSpacing + subSize,
+          subSize, 0,
+          { underline: design.subtitleUnderline, strike: design.subtitleStrike },
+        );
+      }
+    }
+    ctx.textAlign = savedAlign;
     lastTextBottom = titleBlockBottom + mt1 + (subLines.length - 1) * subLineSpacing + subSize;
     ctx.filter = 'none';
   }
@@ -2737,7 +2834,12 @@ function drawCTA(
 
   // Word-wrap CTA text within container width
   ctx.font = ctaFontStr(ctaFontSize, fontFamily);
-  const ctaWords = effectiveCtaText.toUpperCase().split(' ');
+  // ⚠️ LA REGLE PARTAGEE, PLUS `toUpperCase()` EN DUR. La casse s'applique
+  // AVANT la mise en lignes — une majuscule n'a pas la largeur de sa
+  // minuscule — et `SequenceCta` applique la MEME fonction a la MEME chaine.
+  const ctaCase = design?.ctaCase ?? DEFAULT_TEXT_CASE;
+  const ctaAlign: CanvasTextAlign = sanitizeTextAlign(design?.ctaAlign, 'center');
+  const ctaWords = applyTextCase(effectiveCtaText, ctaCase).split(' ');
   let ctaLines: string[] = [];
   let currentLine = '';
   for (const word of ctaWords) {
@@ -2772,7 +2874,7 @@ function drawCTA(
   ctx.font = ctaFontStr(salesFontSize, fontFamily);
   const salesLines: string[] = salesPhrase ? wrapText(ctx, salesPhrase, ctaContainerW, ctaLetterSpacing) : [];
   ctx.font = ctaFontStr(subFontSize, fontFamily);
-  const subLines: string[] = wrapText(ctx, effectiveSubText.toUpperCase(), ctaContainerW, ctaLetterSpacing);
+  const subLines: string[] = wrapText(ctx, applyTextCase(effectiveSubText, ctaCase), ctaContainerW, ctaLetterSpacing);
 
   const salesLineH = salesFontSize * lineMul;
   const ctaLineH = ctaFontSize * lineMul;
@@ -2825,7 +2927,7 @@ function drawCTA(
 
   // Sales phrase (multi-line)
   if (salesLines.length > 0) {
-    ctx.font = ctaFontStr(salesFontSize, fontFamily); ctx.textAlign = 'center';
+    ctx.font = ctaFontStr(salesFontSize, fontFamily); ctx.textAlign = ctaAlign;
     ctx.fillStyle = hexToRgba(ctaColor, 0.93);
     salesLines.forEach((line, i) => {
       fillTextWithSpacing(ctx, line, ctaPosX, curY + i * salesLineH, ctaLetterSpacing);
@@ -2834,7 +2936,7 @@ function drawCTA(
   }
 
   // Main CTA text (multi-line) — uses watermarkFont + optional gradient.
-  ctx.font = ctaFontStr(ctaFontSize, watermarkFontFamily); ctx.textAlign = 'center';
+  ctx.font = ctaFontStr(ctaFontSize, watermarkFontFamily); ctx.textAlign = ctaAlign;
   if (design?.watermarkTextGradient && design?.watermarkGradColor1 && design?.watermarkGradColor2) {
     const grad = ctx.createLinearGradient(
       ctaPosX - ctaContainerW / 2, curY,
@@ -2851,10 +2953,22 @@ function drawCTA(
     fillTextWithSpacing(ctx, line, ctaPosX, curY + i * ctaLineH, ctaLetterSpacing);
   });
   ctx.shadowBlur = 0;
+  // Souligne / barre — apres le texte et SANS l'ombre portee : un trait plein
+  // re-ombre paraitrait deux fois plus epais qu'a l'apercu. `textBaseline`
+  // vaut 'top', d'ou le `+ ctaFontSize` qui ramene a la ligne de base.
+  if (design?.ctaUnderline || design?.ctaStrike) {
+    ctaLines.forEach((line, i) => {
+      drawTextDecoration(
+        ctx, line, ctaPosX, curY + i * ctaLineH + ctaFontSize,
+        ctaFontSize, ctaLetterSpacing,
+        { underline: design.ctaUnderline, strike: design.ctaStrike },
+      );
+    });
+  }
   curY += ctaBlockH + mt1;
 
   // Sub-text (multi-line) — user-configured color, 900 weight, uppercase, optional gradient.
-  ctx.font = ctaFontStr(subFontSize, fontFamily); ctx.textAlign = 'center';
+  ctx.font = ctaFontStr(subFontSize, fontFamily); ctx.textAlign = ctaAlign;
   if (design?.ctaTypography?.textGradient && design?.ctaTypography?.gradColor1 && design?.ctaTypography?.gradColor2) {
     const grad = ctx.createLinearGradient(
       ctaPosX - ctaContainerW / 2, curY,
@@ -2869,6 +2983,15 @@ function drawCTA(
   subLines.forEach((line, i) => {
     fillTextWithSpacing(ctx, line, ctaPosX, curY + i * subLineH, ctaLetterSpacing);
   });
+  if (design?.ctaUnderline || design?.ctaStrike) {
+    subLines.forEach((line, i) => {
+      drawTextDecoration(
+        ctx, line, ctaPosX, curY + i * subLineH + subFontSize,
+        subFontSize, ctaLetterSpacing,
+        { underline: design.ctaUnderline, strike: design.ctaStrike },
+      );
+    });
+  }
   ctx.textBaseline = 'alphabetic';
 
   // Logo on CTA if configured — uses per-sequence position

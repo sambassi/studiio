@@ -231,8 +231,10 @@ describe('Aucun réglage perdu', () => {
       'FONT_GROUPS.map',                 // police
       'Interlettrage',                   // typo
       'Interligne',
-      'aria-label={`Gras — ${zoneLabel}`}',
-      'aria-label={`Italique — ${zoneLabel}`}',
+      '<TextFormatToolbar',
+      // Gras et italique vivent desormais dans la barre partagee, avec
+    // souligne, barre, casse et alignement.
+    'showBoldItalic',
       'aria-label={`Taille du texte — ${zoneLabel}`}',
       'aria-label={`Couleur — ${zoneLabel}`}',
       'Couleur du sous-texte du CTA',    // sous-couleur CTA

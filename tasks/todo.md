@@ -539,3 +539,27 @@ Branche `feat/autopilote-style-texte-interactif`.
 Le sous-titre n'a **pas** de position propre : `SequenceTitle` le rend dans le
 cadre du titre et `CreerSimpleMontage` n'expose aucun `subtitlePos`. Accepter un
 x/y aurait écrit un réglage que le rendu ignore. Police et taille seulement.
+
+## 2026-08-07 — Formatage de texte complet + cartes sans cadre
+
+Branche `feat/texte-formatage-et-cartes-sans-cadre`.
+
+### Fait structurant (grep) — il n'y a que DEUX chemins de rendu, pas trois
+`SequenceTitle`, `SequenceCta` et `SequenceCards` sont PARTAGES par l'aperçu
+(`Preview`) et par la composition Remotion (`CreerSimpleMontage`). Les toucher
+une fois couvre les deux. Le seul chemin à mettre en parité est le compositeur
+canvas (`video-composer.ts`), qui sert l'export de « Créer simple ».
+
+### Déjà là (à ne pas réécrire)
+- `video-composer.ts` implémente DÉJÀ `cardStyle === 'Text Only'` (~1926).
+  Ce qui manque : le style est figé à `'Compact'` dans l'écran, et
+  `SequenceCards` ignore complètement `cardStyle`.
+- `drawIntro` a déjà `titleAlign` (gauche/centre) — reste `'right'`.
+
+- [ ] A. Contrat partagé `src/lib/creer/textFormat.ts` (casse, alignement, décoration)
+- [ ] B. Composants partagés : titre, sous-titre, CTA, cartes
+- [ ] C. Compositeur canvas — parité
+- [ ] D. Barre d'outils partagée (Créer simple + Autopilote)
+- [ ] E. `cardStyle` sélectionnable, dont « Sans cadre »
+- [ ] F. Autopilote : `design_style` étendu (pas de migration)
+- [ ] G. Tests de parité + tsc + build

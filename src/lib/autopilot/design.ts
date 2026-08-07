@@ -93,6 +93,13 @@ function typographie(
   if (zone.italic !== undefined) out[`${prefixe}Italic`] = zone.italic;
   if (zone.letterSpacing !== undefined) out[`${prefixe}LetterSpacing`] = zone.letterSpacing;
   if (zone.lineHeight !== undefined) out[`${prefixe}LineHeight`] = zone.lineHeight;
+  // Casse, alignement et decoration — valables pour les TROIS zones, y
+  // compris le sous-titre : `SequenceTitle` et le compositeur canvas les
+  // appliquent tous deux.
+  if (zone.textCase !== undefined) out[`${prefixe}Case`] = zone.textCase;
+  if (zone.align !== undefined) out[`${prefixe}Align`] = zone.align;
+  if (zone.underline !== undefined) out[`${prefixe}Underline`] = zone.underline;
+  if (zone.strike !== undefined) out[`${prefixe}Strike`] = zone.strike;
   // La position n'existe que pour le titre et le CTA — voir `textStyle.ts`.
   if (prefixe !== 'subtitle' && zone.x !== undefined && zone.y !== undefined) {
     out[`${prefixe}Pos`] = { x: zone.x, y: zone.y };
@@ -169,6 +176,9 @@ export function buildAutopilotDesign(
     ...typographie(style.title, 'title'),
     ...typographie(style.subtitle, 'subtitle'),
     ...typographie(style.cta, 'cta'),
+    // Style de carte — « Text Only » retire le cadre. Absent : le rectangle,
+    // comme depuis toujours.
+    ...(style.cardStyle !== undefined ? { cardStyle: style.cardStyle } : null),
     ctaText: post.content.tagLine,
     videoUrl: post.rushUrl,
     // La photo d'affiche du Mode simple : le MÊME champ, rendu au même
