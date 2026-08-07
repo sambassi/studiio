@@ -509,3 +509,15 @@ Branche `feat/autopilote-apercu`.
 - [x] Libellé « exemple » + suppression de la note trompeuse de l'assistant
 - [x] Constantes de marque déplacées dans un module feuille (build client)
 - [x] 23 tests neufs, 7 mutations validées, tsc + build + suite complète
+
+## 2026-08-07 — Créer simple : le rendu joue dans le cadre d'aperçu
+
+Branche `feat/creer-simple-rendu-inline`.
+
+- [x] Prop `overlay` sur `Preview` — calque posé DANS le cadre, hors du plateau
+- [x] Lecteur déplacé dans le cadre ; second bloc `data-play-lecteur` supprimé
+- [x] État de chargement dans le cadre, pour la seule destination « aperçu »
+- [x] Retour à l'édition NON destructif (l'ancien « Fermer » jetait un rendu payé)
+- [x] Bouton unique à trois états : voir / revoir (gratuit) / recomposer
+- [x] Non-régression `AutopilotPreview` et fenêtre agrandie (défaut `null`)
+- [x] 12 tests neufs, 6 mutations validées, tsc + build + suite complète

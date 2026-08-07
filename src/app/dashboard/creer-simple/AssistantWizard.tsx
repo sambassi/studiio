@@ -1002,7 +1002,25 @@ export function Preview({
   onDragEnd,
   hideHeader = false,
   hideFootnote = false,
+  overlay = null,
 }: {
+  /**
+   * Calque posé DANS le cadre, par-dessus le plateau.
+   *
+   * ⚠️ C'EST CE QUI MET FIN AU DEUXIÈME ÉCRAN. Le montage rendu s'affichait
+   * dans un bloc `<video>` SOUS l'aperçu : l'utilisateur se retrouvait avec
+   * deux images du même montage empilées — l'aperçu figé, puis la vidéo, avec
+   * ses propres bordures, sa légende et son bouton « Fermer ». Le lecteur vit
+   * désormais ICI, à la place exacte du plateau, dans le même cadre et au
+   * même ratio.
+   *
+   * Un `ReactNode` plutôt qu'une prop `videoUrl` : le cadre n'a pas à savoir
+   * ce qu'on y pose. `Preview` reste un rendu, pas un lecteur.
+   *
+   * Défaut `null` : l'aperçu de l'Autopilote et la fenêtre agrandie, qui n'en
+   * passent pas, rendent exactement ce qu'ils rendaient avant.
+   */
+  overlay?: React.ReactNode;
   /**
    * Masque la note « les cartes de la vidéo seront exactement celles-ci ».
    *
@@ -1734,6 +1752,21 @@ export function Preview({
         )}
       </div>
 
+      {/* ── CALQUE DU CADRE ──────────────────────────────────────────
+          Posé APRÈS le plateau et DANS le cadre : il en hérite le ratio, les
+          coins arrondis et le `overflow-hidden`, sans qu'aucune taille ne
+          soit recalculée. C'est ce qui fait que le montage rendu occupe
+          exactement la place de l'aperçu figé.
+
+          ⚠️ HORS DU PLATEAU, PAS DEDANS. Le plateau (`previewRef`) est ce que
+          `modern-screenshot` photographie pour l'export : un lecteur vidéo
+          posé à l'intérieur finirait blitté dans le montage. */}
+      {overlay && (
+        <div className="absolute inset-0" data-preview-overlay>
+          {overlay}
+        </div>
+      )}
+
       </div>
 
       {generated && !hideFootnote && (
@@ -2256,6 +2289,16 @@ export default function AssistantWizard() {
 
   const [scheduledDate, setScheduledDate] = useState('');
   const [sending, setSending] = useState(false);
+  /**
+   * Ce que `runRender` est en train de produire, ou `null`.
+   *
+   * ⚠️ `sending` NE SUFFIT PLUS. Il vaut `true` pour les trois destinations —
+   * calendrier, bureau, aperçu — alors que l'état de chargement doit
+   * s'afficher DANS le cadre pour le seul aperçu. Sans cette distinction, un
+   * envoi au calendrier recouvrirait le plateau d'un voile « Composition du
+   * montage… » qui ne le concerne pas.
+   */
+  const [renderTarget, setRenderTarget] = useState<'calendrier' | 'bureau' | 'apercu' | null>(null);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -3819,6 +3862,78 @@ export default function AssistantWizard() {
     text: textStyles,
     focus: previewFocus,
   };
+
+  /* ── LE RENDU JOUE DANS LE CADRE ──────────────────────────────────────
+     Le montage composé s'affichait dans un bloc `<video>` SOUS l'aperçu :
+     l'utilisateur avait donc deux images du même montage empilées — l'aperçu
+     figé avec ses onglets, puis un second panneau avec sa bordure, sa légende
+     et son bouton « Fermer ». Le lecteur vit maintenant DANS le cadre, à la
+     place exacte du plateau.
+
+     ⚠️ SUR L'ONGLET « TOUT », ET LUI SEUL. Les autres onglets — Titre,
+     Cartes, Vidéo, CTA — isolent un élément pour le régler de près : y
+     substituer la vidéo entière retirerait à l'utilisateur la seule vue qui
+     lui sert à travailler. « Tout » était déjà l'image figée du montage
+     complet ; c'est exactement ce que la vidéo remplace. */
+  const rendPourApercu = sending && renderTarget === 'apercu';
+  const renduJoue = !!previewUrl && previewFocus === 'all';
+
+  const renduDansLeCadre = !generated ? null : rendPourApercu ? (
+    // ── Composition en cours, DANS le cadre ────────────────────────────
+    // L'attente se passait sous l'aperçu, dans un bouton qui disait
+    // « Rendu… » : rien n'indiquait où le résultat allait apparaître.
+    <div
+      className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/80 backdrop-blur-sm"
+      data-play-chargement
+    >
+      <Loader2 className="w-6 h-6 animate-spin text-purple-300" />
+      <p className="text-xs text-gray-300">Composition du montage…</p>
+      <div className="w-2/3 h-1 rounded-full bg-gray-800 overflow-hidden">
+        <div
+          className="h-full rounded-full"
+          style={{
+            width: `${renderProgress}%`,
+            background: `linear-gradient(90deg, ${accent} 0%, ${gradEnd} 100%)`,
+            transition: 'width 300ms ease-out',
+          }}
+        />
+      </div>
+      {renderStage && <p className="text-[11px] text-gray-500">{renderStage}</p>}
+    </div>
+  ) : renduJoue ? (
+    <div className="absolute inset-0 bg-black" data-play-lecteur>
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+      <video
+        src={previewUrl!}
+        controls
+        autoPlay
+        playsInline
+        className="w-full h-full"
+        // `contain` et non `cover` : le montage a EXACTEMENT le ratio du
+        // cadre, mais un recadrage rognerait le CTA le jour où ce ne serait
+        // plus vrai. Mieux vaut une bande noire qu'un texte coupé.
+        style={{ objectFit: 'contain' }}
+      />
+      {/* ── RETOUR À L'ÉDITION ───────────────────────────────────────
+          ⚠️ IL NE JETTE PAS LE MONTAGE. L'ancien bouton « Fermer » appelait
+          `setPreviewRender(null, null)`, ce qui effaçait le blob ET sa
+          signature : le rendu déjà PAYÉ était perdu, et l'envoi au calendrier
+          en recomposait — donc en débitait — un second. Revenir à l'édition
+          ne fait que changer d'onglet ; le montage reste en cache et sera
+          réutilisé. */}
+      <button
+        type="button"
+        onClick={() => setPreviewFocus('intro')}
+        data-play-retour-edition
+        title="Revenir à l’aperçu d’édition — le montage reste en mémoire"
+        className="absolute top-2 right-2 flex items-center gap-1.5 rounded-lg border border-gray-700 bg-black/70 px-2 py-1 text-[11px] text-gray-200 hover:text-white hover:border-gray-500 backdrop-blur-sm transition-colors"
+      >
+        <X className="w-3 h-3" />
+        Revenir à l’édition
+      </button>
+    </div>
+  ) : null;
+
   /**
    * Les cartes sont-elles a l'ecran ? La sequence peut etre desactivee, ou
    * l'onglet d'apercu filtrer sur le titre. Annoncer « 2 cartes
@@ -4226,6 +4341,10 @@ export default function AssistantWizard() {
   const runRender = async (destination: 'calendrier' | 'bureau' | 'apercu') => {
     if (!generated || sending) return;
     setSending(true);
+    // Sert UNIQUEMENT a placer l'etat de chargement au bon endroit — dans le
+    // cadre pour l'apercu, dans l'etape Envoi pour les deux autres. La
+    // composition et la facturation ne le lisent nulle part.
+    setRenderTarget(destination);
     setError(null);
     setRenderProgress(0);
     setRenderStage('Préparation…');
@@ -4257,6 +4376,10 @@ export default function AssistantWizard() {
         `Choisissez autant de photos que de vidéos (${batchPhotoUrls.filter(Boolean).length} sur ${total}), ou repassez en mode automatique.`,
       );
       setSending(false);
+      // ⚠️ CE RETOUR EST HORS DU `try`, donc hors du `finally` qui remet
+      // l'indicateur a zero. L'oublier ici laisserait le cadre bloque sur
+      // « Composition du montage… » sans que rien ne tourne.
+      setRenderTarget(null);
       return;
     }
     const coutTotal = batchCost(cost, total);
@@ -4829,6 +4952,7 @@ export default function AssistantWizard() {
       );
     } finally {
       setSending(false);
+      setRenderTarget(null);
     }
   };
 
@@ -6737,56 +6861,57 @@ export default function AssistantWizard() {
           onElementResizeStart={startElementResize}
           onElementDelete={deleteElement}
           onFocusChange={setPreviewFocus}
+          overlay={renduDansLeCadre}
         />
 
-        {/* ── APERÇU AGRANDI ──────────────────────────────────────────
-            Le même aperçu dans une fenêtre qu'on déplace et redimensionne. */}
-        {/* ── VOIR LE VRAI RENDU ──────────────────────────────────────
-            L'onglet « Tout » est une image figée : ni animations, ni
-            transitions. Ce bouton compose la vraie vidéo et la joue. */}
-        {generated && (
-          <button
-            type="button"
-            onClick={() => runRender('apercu')}
-            disabled={sending}
-            data-play-rendu
-            title="Composer la vidéo et la regarder — animations et transitions comprises"
-            className="mt-2 w-full flex items-center justify-center gap-2 rounded-lg border border-purple-500/40 bg-purple-600/15 px-3 py-1.5 text-xs text-purple-100 hover:bg-purple-600/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            {sending ? (
-              <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Rendu…</>
-            ) : (
-              <><Play className="w-3.5 h-3.5" /> Voir le rendu</>
-            )}
-          </button>
-        )}
+        {/* ── LE BOUTON DU RENDU — TROIS ÉTATS, UN SEUL BOUTON ─────────
+            Il y en avait deux, à deux endroits : « Voir le rendu » sous
+            l'aperçu, et « Fermer » dans le panneau du bas. Ils disent
+            maintenant la même chose au même endroit.
 
-        {/* Lecteur du montage rendu — superposé à l'aperçu. */}
+            ⚠️ « REVOIR » NE RECOMPOSE PAS, ET C'EST LE POINT. Le montage est
+            déjà payé : quand il existe mais qu'on regarde un autre onglet,
+            le bouton se contente de revenir sur « Tout ». Seul
+            « Recomposer », explicite, redéclenche un rendu — et donc un
+            débit. */}
+        {generated && (() => {
+          const recomposer = () => { setPreviewRender(null, null); runRender('apercu'); };
+          const etat = !previewUrl
+            ? { onClick: () => runRender('apercu'), icone: <Play className="w-3.5 h-3.5" />, label: 'Voir le rendu',
+                titre: 'Composer la vidéo et la regarder — animations et transitions comprises' }
+            : renduJoue
+              ? { onClick: recomposer, icone: <RefreshCw className="w-3.5 h-3.5" />, label: 'Recomposer le rendu',
+                  titre: 'Refaire le montage avec les réglages actuels — un nouveau rendu est débité' }
+              : { onClick: () => setPreviewFocus('all'), icone: <Play className="w-3.5 h-3.5" />, label: 'Revoir le rendu',
+                  titre: 'Rejouer le montage déjà composé — aucun nouveau débit' };
+          return (
+            <button
+              type="button"
+              onClick={etat.onClick}
+              disabled={sending}
+              data-play-rendu
+              title={etat.titre}
+              className="mt-2 w-full flex items-center justify-center gap-2 rounded-lg border border-purple-500/40 bg-purple-600/15 px-3 py-1.5 text-xs text-purple-100 hover:bg-purple-600/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {sending ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Rendu…</>
+              ) : (
+                <>{etat.icone} {etat.label}</>
+              )}
+            </button>
+          );
+        })()}
+
+        {/* ── LÉGENDE DU RENDU ─────────────────────────────────────────
+            La mention de facturation était noyée dans le second panneau, à
+            côté du bouton « Fermer ». Elle devient une légende COMPACTE sous
+            le cadre, et n'apparaît que quand un montage existe réellement —
+            sinon elle parlait d'un rendu que personne n'avait demandé. */}
         {previewUrl && (
-          <div className="mt-2 rounded-xl border border-gray-800 bg-black p-2 space-y-2" data-play-lecteur>
-            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-            <video
-              src={previewUrl}
-              controls
-              autoPlay
-              playsInline
-              className="w-full rounded-lg"
-              style={{ maxHeight: '60vh' }}
-            />
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] text-gray-500">
-                Ce montage sera réutilisé à l’envoi tant que rien ne change —
-                un seul rendu débité.
-              </span>
-              <button
-                type="button"
-                onClick={() => setPreviewRender(null, null)}
-                className="rounded-lg border border-gray-800 px-2 py-1 text-[11px] text-gray-400 hover:text-white transition-colors"
-              >
-                Fermer
-              </button>
-            </div>
-          </div>
+          <p className="mt-2 text-[11px] text-gray-500" data-play-legende>
+            Ce montage sera réutilisé à l’envoi tant que rien ne change —
+            un seul rendu débité.
+          </p>
         )}
 
         {generated && (

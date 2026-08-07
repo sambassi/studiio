@@ -344,3 +344,40 @@ devenue vide et le test a échoué sur un fichier parfaitement correct.
 cela, le test échoue sur du code sain — et, plus grave, une tranche vide
 comparée à du vide PASSERAIT sur du code cassé. Même famille que la leçon du
 2026-08-07 sur les comparaisons de lignes au caractère près.
+
+## [2026-08-07] Un bouton « Fermer » qui jetait un rendu déjà payé
+
+**Ce qui a mal tourné** — En déplaçant le lecteur du montage dans le cadre
+d'aperçu, j'ai voulu conserver le bouton « Fermer » du panneau supprimé. En
+lisant ce qu'il faisait, il appelait `setPreviewRender(null, null)` : cela
+efface le blob ET sa signature. Or c'est exactement ce couple que l'envoi au
+calendrier relit (`signatureMatches`) pour réutiliser le montage au lieu d'en
+recomposer un. Fermer l'aperçu **faisait donc payer deux fois** le même
+montage, dans une fonctionnalité dont l'argument affiché est « un seul rendu
+débité ». Le défaut existait avant ce lot et n'avait jamais été remarqué.
+
+**Règle** — Avant de reconduire un bouton dans une refonte d'interface, lire ce
+qu'il appelle, pas ce que son libellé promet. Un « Fermer » qui vide un cache
+n'est pas un « Fermer » : c'est un « Jeter ». Ici, revenir à l'édition ne
+change plus que d'onglet — le montage reste en mémoire et sera réutilisé.
+
+**Corollaire** — Quand une fonctionnalité affiche une promesse de facturation
+(« un seul rendu débité »), tout chemin qui invalide le cache doit être traité
+comme un chemin de facturation : nommé, testé, et jamais déclenché par une
+action dont l'utilisateur attend qu'elle soit gratuite.
+
+## [2026-08-07] « L'élément est présent » ne distingue pas un bug de sa correction
+
+**Ce qui a mal tourné** — Le montage rendu s'affichait dans un bloc SOUS
+l'aperçu ; il devait jouer DANS le cadre. Le test existant vérifiait
+`expect(wizard).toContain('data-play-lecteur')` — vrai avant comme après. Un
+test formulé ainsi n'aurait rien signalé si le correctif n'avait jamais été
+appliqué.
+
+**Règle** — Quand le défaut est une POSITION et non une absence, l'assertion
+doit porter sur la relation, pas sur la présence : `calque.contains(video)`,
+`plateau.contains(video) === false`, et le compte des occurrences
+(`split(marqueur).length - 1 === 1`) pour prouver qu'il n'en reste pas un
+second ailleurs. La question à se poser devant chaque assertion : « qu'est-ce
+qui, cassé, la ferait tomber ? » Si la réponse est « rien de ce qu'on vient de
+corriger », l'assertion est décorative.
