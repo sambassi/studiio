@@ -134,6 +134,32 @@ describe('Bug 1 — les cartes ont des poignées de coin', () => {
     expect(document.querySelector('[data-card-handle="c2-se"]')).toBeNull();
   });
 
+  it('la poignée SURVIT au pointeur qui quitte la carte pendant le geste', () => {
+    // ⚠️ LE CAS QUI CASSE LE REDIMENSIONNEMENT. Le pointeur est CAPTURE par
+    // la poignee : en tirant, il sort forcement de la carte. Si la poignee
+    // n'etait montee qu'au survol, `pointerleave` la demonterait, la capture
+    // tomberait, et le geste s'arreterait au milieu — precisement quand
+    // l'utilisateur agrandit vraiment.
+    render(
+      <SequenceCards
+        cards={CARTES} containerWidth={1080} landscape={false} valueColor="#EC4899"
+        interaction={{ onCardResizeStart: () => {}, uiPx: (n) => n }}
+      />,
+    );
+    const c1 = document.querySelector('[data-card-id="c1"]') as HTMLElement;
+    fireEvent.pointerEnter(c1);
+    const poignee = document.querySelector('[data-card-handle="c1-se"]') as HTMLElement;
+    expect(poignee).toBeTruthy();
+
+    fireEvent.pointerDown(poignee, { button: 0, isPrimary: true, pointerId: 1 });
+    fireEvent.pointerLeave(c1);
+    expect(document.querySelector('[data-card-handle="c1-se"]')).toBeTruthy();
+
+    // Relachee, elle disparait — le survol a ete perdu entre-temps.
+    fireEvent.pointerUp(poignee, { pointerId: 1 });
+    expect(document.querySelector('[data-card-handle="c1-se"]')).toBeNull();
+  });
+
   it('une carte SELECTIONNEE garde ses poignées sans survol', () => {
     render(
       <SequenceCards

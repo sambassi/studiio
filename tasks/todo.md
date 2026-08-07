@@ -584,3 +584,11 @@ canvas (`video-composer.ts`), qui sert l'export de « Créer simple ».
 psql -U studiio -d studiio -f migrations/2026-08-07-autopilot-posters.sql
 docker kill -s SIGUSR1 studiio-postgrest
 ```
+
+## 2026-08-07 — Poignées au survol + réglages sur toutes les séquences
+
+- [x] Poignées (cartes ET titre/CTA) au survol / sélection / geste en cours
+- [x] Double-clic sur les quatre zones, dans les deux écrans
+- [x] Sous-titre : panneau propre, `stopPropagation` pour ne pas ouvrir celui du titre
+- [x] Créer simple : édition du CONTENU ; Autopilote : style seul, et il le dit
+- [x] 13 tests neufs montés sur l'aperçu, 7 mutations validées (une a d'abord survécu)
