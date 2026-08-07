@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import {
   sanitizeDesignStyle, designStyleIsEmpty,
   SCALE_MIN, SCALE_MAX, LETTER_SPACING_MAX, LINE_HEIGHT_MAX,
@@ -144,7 +144,7 @@ describe('B — le moteur applique le style à CHAQUE vidéo', () => {
   it('SANS style, le design est celui d avant — au champ près', () => {
     // ⚠️ C'EST LA RETRO-COMPATIBILITE. Une propriete absente ne doit pas etre
     // ECRITE `undefined` : un design « vide » passerait pour un design regle.
-    const d = buildAutopilotDesign(POST, { config: config({}) }) as Record<string, unknown>;
+    const d = buildAutopilotDesign(POST, { config: config({}) }) as unknown as Record<string, unknown>;
     for (const champ of ['titleFont', 'titleScale', 'titlePos', 'ctaFont', 'ctaPos', 'subtitleFont']) {
       expect(champ in d, champ).toBe(false);
     }
@@ -168,14 +168,14 @@ describe('B — le moteur applique le style à CHAQUE vidéo', () => {
 
   it('une position INCOMPLÈTE n en écrit aucune', () => {
     // Un `x` sans `y` donnerait un cadre a moitie place — pire qu'aucun.
-    const d = buildAutopilotDesign(POST, { config: config({ title: { x: 20 } }) }) as Record<string, unknown>;
+    const d = buildAutopilotDesign(POST, { config: config({ title: { x: 20 } }) }) as unknown as Record<string, unknown>;
     expect('titlePos' in d).toBe(false);
   });
 
   it('le sous-titre reçoit police et taille, jamais de position', () => {
     const d = buildAutopilotDesign(POST, {
       config: config({ subtitle: { font: POLICE, scale: 0.8 } }),
-    }) as Record<string, unknown>;
+    }) as unknown as Record<string, unknown>;
     expect(d.subtitleFont).toBe(POLICE);
     expect(d.subtitleScale).toBe(0.8);
     expect('subtitlePos' in d).toBe(false);
@@ -203,7 +203,7 @@ describe('B — le moteur applique le style à CHAQUE vidéo', () => {
   it('« false » est un réglage, pas une absence', () => {
     // `bold: false` doit ETRE ecrit : le confondre avec « non regle »
     // rendrait impossible de retirer la graisse par defaut.
-    const d = buildAutopilotDesign(POST, { config: config({ title: { bold: false } }) }) as Record<string, unknown>;
+    const d = buildAutopilotDesign(POST, { config: config({ title: { bold: false } }) }) as unknown as Record<string, unknown>;
     expect('titleBold' in d).toBe(true);
     expect(d.titleBold).toBe(false);
   });
