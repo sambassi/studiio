@@ -4,7 +4,7 @@ import { resolve } from 'path';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import SequenceCards from '@/components/creer/SequenceCards';
 import { sanitizeDesignStyle } from '@/lib/autopilot/textStyle';
-import { sanitizeConfig, DEFAULT_CONFIG, type AutopilotConfig } from '@/lib/autopilot/rules';
+import { sanitizeConfig, DEFAULT_CONFIG } from '@/lib/autopilot/rules';
 import { buildAutopilotDesign } from '@/lib/autopilot/design';
 import { pickCustomPoster } from '@/lib/autopilot/poster';
 import { FONT_CATALOG } from '@/lib/fonts/catalog';
