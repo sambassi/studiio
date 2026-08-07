@@ -308,3 +308,39 @@ préalablement **commité**, cf. leçon du 2026-07-30) : portée de l'affiche
 ignorée, `rushMuted` figé à faux, `rushVolume` ignoré par `mixAt`, anti-doublon
 retiré, curseur du rush jamais grisé, mixeur envoyant des pour-cent au lieu de
 réels. Les six ont bien fait tomber au moins un test.
+
+## [2026-08-07] Les tests passent, le build casse : un import client qui traîne toute la chaîne serveur
+
+**Ce qui a mal tourné** — Pour l'aperçu de l'Autopilote j'ai importé
+`AUTOPILOT_WATERMARK` depuis `@/lib/autopilot/design`. Les 2009 tests sont
+passés et `tsc` n'a rien dit — Vitest résout tout, TypeScript ne connaît pas la
+frontière client/serveur. Le `npm run build` a échoué :
+`design` → `voice` → `storage/upload` → `db/supabase` → `minio`, et webpack ne
+résout ni `fs` ni `fs/promises` dans un paquet navigateur.
+
+**Règle** — Avant d'importer une VALEUR dans un composant `'use client'`,
+remonter sa chaîne d'imports jusqu'aux feuilles. Une constante d'une ligne
+peut entraîner un client S3 entier. La correction n'est pas de dupliquer la
+constante — c'est de la déplacer dans un module FEUILLE (`brand.ts`, qui
+n'importe rien) et de la ré-exporter depuis son ancien domicile : aucun
+appelant ne change, et la frontière est portée par le graphe d'imports plutôt
+que par la discipline de chacun. `import type` ne suffit pas quand c'est une
+valeur qu'on lit.
+
+**Corollaire** — `npm run build` n'est pas une formalité de fin de course :
+c'est la SEULE vérification de ce dépôt qui traverse la frontière
+client/serveur. Le lancer après coup, pas seulement avant le commit final.
+
+## [2026-08-07] Une borne de tranche cherchée sans point de départ
+
+**Ce qui a mal tourné** — `creer-simple-guides.test.ts` découpait le source
+ainsi : `wizard.slice(wizard.indexOf('const endDrag'), wizard.indexOf('const frameRef'))`.
+En ajoutant un composant qui déclare son propre `const frameRef` PLUS HAUT dans
+le fichier, la borne de fin est passée avant la borne de début : la tranche est
+devenue vide et le test a échoué sur un fichier parfaitement correct.
+
+**Règle** — Une tranche de source se prend avec un point de départ explicite
+(`indexOf(fin, debut)`) et se vérifie non vide avant d'être assertée. Sans
+cela, le test échoue sur du code sain — et, plus grave, une tranche vide
+comparée à du vide PASSERAIT sur du code cassé. Même famille que la leçon du
+2026-08-07 sur les comparaisons de lignes au caractère près.
