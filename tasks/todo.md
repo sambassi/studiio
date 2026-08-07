@@ -521,3 +521,21 @@ Branche `feat/creer-simple-rendu-inline`.
 - [x] Bouton unique à trois états : voir / revoir (gratuit) / recomposer
 - [x] Non-régression `AutopilotPreview` et fenêtre agrandie (défaut `null`)
 - [x] 12 tests neufs, 6 mutations validées, tsc + build + suite complète
+
+## 2026-08-07 — Autopilote : style de texte réglé sur l'aperçu
+
+Branche `feat/autopilote-style-texte-interactif`.
+
+- [x] Migration `design_style` (JSONB, `{}` = rendu actuel) + `sanitizeDesignStyle`
+- [x] Route config : lecture/écriture, sonde de colonne factorisée
+- [x] Moteur : police, taille, graisse, interlettrage, interligne, positions, icônes
+- [x] `Preview` : 3 props optionnelles (poignées de texte, double-clic texte/carte)
+- [x] `IconPicker` extrait et partagé avec l'assistant
+- [x] Aperçu Autopilote interactif : glisser, poignées, panneaux flottants
+- [x] Toujours 6 étapes, aucun champ ajouté dans la colonne de gauche
+- [x] 35 tests neufs, 9 mutations validées, tsc + build + suite complète
+
+### Limite assumée
+Le sous-titre n'a **pas** de position propre : `SequenceTitle` le rend dans le
+cadre du titre et `CreerSimpleMontage` n'expose aucun `subtitlePos`. Accepter un
+x/y aurait écrit un réglage que le rendu ignore. Police et taille seulement.
