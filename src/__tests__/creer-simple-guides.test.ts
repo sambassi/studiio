@@ -173,7 +173,16 @@ describe('Le câblage dans le Mode simple', () => {
 
 describe('Les guides ne se gravent JAMAIS dans l export', () => {
   it('ils disparaissent au relâchement', () => {
-    const fin = wizard.slice(wizard.indexOf('const endDrag = useCallback'), wizard.indexOf('const frameRef'));
+    // ⚠️ LA BORNE DE FIN SE CHERCHE **APRÈS** LA BORNE DE DÉBUT. `indexOf`
+    // sans point de départ rendait la PREMIÈRE occurrence de `const frameRef`
+    // du fichier : depuis qu'un autre composant en déclare une plus haut, elle
+    // tombait AVANT `endDrag` et la tranche était vide. Le test échouait alors
+    // sur un fichier parfaitement correct — et, symétriquement, aurait passé
+    // sur un fichier cassé si la tranche vide avait été comparée à du vide.
+    const debut = wizard.indexOf('const endDrag = useCallback');
+    expect(debut).toBeGreaterThan(0);
+    const fin = wizard.slice(debut, wizard.indexOf('const frameRef', debut));
+    expect(fin.length).toBeGreaterThan(0);
     expect(fin).toContain('setDragGuides([]);');
     expect(fin).toContain('setDragBadges([]);');
   });
