@@ -280,7 +280,13 @@ describe('La route de configuration', () => {
   });
 
   it('sans migration, la lecture reste utilisable et l écriture refuse', () => {
-    expect(route).toContain('return NextResponse.json({ success: true, ready: false, config: DEFAULT_CONFIG });');
+    // ⚠️ ON VERIFIE LA REPONSE, PAS SA MISE EN PAGE. `brandingReady` s'y est
+    // ajoute et la ligne a ete coupee : l'ancienne comparaison au caractere
+    // pres tombait sans qu'aucun comportement n'ait change.
+    const lectureDegradee = route.slice(route.indexOf('if (!(await storeReady()))'));
+    expect(lectureDegradee).toContain('success: true');
+    expect(lectureDegradee).toContain('ready: false');
+    expect(lectureDegradee).toContain('config: DEFAULT_CONFIG');
     expect(route).toContain('la migration autopilot_config n’a pas été appliquée');
   });
 

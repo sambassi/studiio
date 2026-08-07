@@ -36,6 +36,15 @@ export function defaultRushVolume(hasMixAudio: boolean): number {
 export interface MixOptions {
   musicVolume?: number;
   voiceVolume?: number;
+  /**
+   * Niveau du son du rush, quand il est reglé explicitement.
+   *
+   * ⚠️ ABSENT = LE DEFAUT DU COMPOSITEUR, pas zero. Le montage manuel ne
+   * transmettait rien ici et comptait sur `defaultRushVolume` ; poser un
+   * niveau par defaut de 0 aurait rendu muets tous les montages existants.
+   * Seul l'Autopilote le renseigne aujourd'hui, depuis son mixeur.
+   */
+  rushVolume?: number;
   keyframes?: AudioKeyframe[];
   hasVoice: boolean;
   hasMixAudio: boolean;
@@ -55,7 +64,7 @@ export function mixAt(t: number, o: MixOptions): { music: number; voice: number;
   return {
     music: kf ? kf.musicVolume : (o.musicVolume ?? defaultMusicVolume(o.hasVoice)),
     voice: voiceBase * (kf ? kf.voiceVolume : 1),
-    rush: kf ? kf.rushVolume : defaultRushVolume(o.hasMixAudio),
+    rush: kf ? kf.rushVolume : (o.rushVolume ?? defaultRushVolume(o.hasMixAudio)),
   };
 }
 

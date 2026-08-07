@@ -1,6 +1,7 @@
 import {
   DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS, DEFAULT_COLORS, VIDEO_SIZE,
 } from '@/lib/creer/designSpec';
+import { DEFAULT_CONFIG, type AutopilotConfig } from '@/lib/autopilot/rules';
 import { DEFAULT_TRANSITION, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
 import { DEFAULT_TEXT_ANIMATION } from '@/lib/creer/textAnimation';
 import type { CreerSimpleRenderInput } from '@/lib/render/creerSimple';
@@ -79,9 +80,18 @@ export function buildAutopilotDesign(
     rushSeconds?: number | null;
     /** Voix off par séquence, si elles ont pu être générées. */
     voices?: VoixParSequence;
+    /**
+     * L'identité CONSTANTE du compte.
+     *
+     * ⚠️ ABSENTE = LES DÉFAUTS, qui sont exactement les valeurs jusqu'ici en
+     * dur ici même. Un appelant qui ne la passe pas — un test, un chemin plus
+     * ancien — obtient donc le montage d'avant, à l'octet près.
+     */
+    config?: AutopilotConfig;
   } = {},
 ): CreerSimpleRenderInput {
   const voix = options.voices ?? {};
+  const identite = options.config ?? DEFAULT_CONFIG;
   // La séquence vidéo suit le rush ; si elle est narrée, elle suit aussi sa
   // voix — la plus longue des deux gagne, pour ne couper ni l'un ni l'autre.
   const video = sequenceSecondsWithVoice(
@@ -102,7 +112,16 @@ export function buildAutopilotDesign(
     // endroit par `CreerSimpleMontage` — un `<Img>` en fond de séquence,
     // sous le titre, les cartes et le CTA. Absente, le dégradé reprend sa
     // place, comme avant.
+    //
+    // ⚠️ ELLE VARIE D'UNE VIDÉO À L'AUTRE — c'est la partie mobile de
+    // l'Autopilote, tirée du thème par `pickPosterUrl`.
     posterUrl: options.posterUrl ?? null,
+    // ⚠️ ET ELLE NE COUVRE PAS FORCÉMENT TOUT. `cardsShowPoster` décide si
+    // les CARTES (et le CTA) s'affichent par-dessus cette photo ou sur les
+    // couleurs du compte. Faux par défaut : les cartes se lisent mal sur une
+    // photo, et l'identité du compte est ce qui doit rester reconnaissable.
+    // La séquence titre garde l'affiche dans tous les cas.
+    posterOnAllSequences: identite.cardsShowPoster,
     // ⚠️ LE CALAGE A LA VOIX SE FAIT ICI. La Phase 8 avait etabli que cette
     // regle est un effet de l'EDITEUR, qui ecrit la duree dans le design ;
     // l'Autopilote n'a pas d'editeur, personne d'autre ne l'ecrira. La regle
@@ -114,9 +133,26 @@ export function buildAutopilotDesign(
     // Voix par sequence : le rendu serveur les joue depuis la Phase 8, au
     // debut NOMINAL de chaque sequence.
     sequenceVoiceUrls: voiceUrls(voix),
-    gradientStart: DEFAULT_COLORS.gradientStart,
-    gradientEnd: DEFAULT_COLORS.gradientEnd,
-    titleColor: DEFAULT_COLORS.title,
+
+    // ── L'IDENTITÉ CONSTANTE ────────────────────────────────────────────
+    // Réglée une fois, héritée par toutes les vidéos suivantes. C'est ce qui
+    // fait qu'une chaîne produite en pilote automatique se reconnaît d'un
+    // post à l'autre, alors même que l'affiche, les textes et le rush
+    // changent à chaque fois.
+    gradientStart: identite.cardGradientStart,
+    gradientEnd: identite.cardGradientEnd,
+    titleColor: identite.titleColor,
+    // La musique du compte, sur tous les montages.
+    musicUrl: identite.musicUrl,
+    // Les trois niveaux du mixeur, indépendants.
+    musicVolume: identite.musicVolume,
+    voiceVolume: identite.voiceVolume,
+    rushVolume: identite.rushVolume,
+    // ⚠️ LA COUPURE EST EXPLICITE, PAS UN VOLUME À ZÉRO. `rushVolume` reste
+    // transmis même quand le son est coupé : rallumer « garder le son du
+    // rush » doit rendre le niveau que l'utilisateur avait réglé, pas un
+    // niveau perdu en route.
+    rushMuted: !identite.keepRushAudio,
     watermark: AUTOPILOT_WATERMARK,
     transition: DEFAULT_TRANSITION,
     textAnimation: DEFAULT_TEXT_ANIMATION,
@@ -183,7 +219,17 @@ export function buildAutopilotMetadata(input: {
     posterUrl: design.posterUrl || thumbnailUrl || undefined,
     composerVersion: CURRENT_COMPOSER_VERSION,
     serverRendered: true,
-    hasAudio: false,
+    // ⚠️ CE CHAMP ÉTAIT ÉCRIT `false` EN DUR, ce qui était vrai tant que
+    // l'Autopilote ne posait ni musique ni voix. Il en pose maintenant : le
+    // laisser à `false` ferait annoncer au Calendrier une vidéo muette qui
+    // parle, et son bouton « ajouter du son » proposerait de corriger un
+    // défaut qui n'existe pas.
+    hasAudio: !!design.musicUrl
+      || Object.values(design.sequenceVoiceUrls ?? {}).some(Boolean)
+      || (!!design.videoUrl && design.rushMuted !== true),
+    // La musique du compte, relue par une régénération depuis le Calendrier.
+    // Sans elle, le montage regénéré sortirait muet.
+    musicUrl: design.musicUrl ?? undefined,
     videoSize: { w: taille.w, h: taille.h },
     cards: post.content.cards,
     subtitle: design.subtitle,
@@ -202,7 +248,10 @@ export function buildAutopilotMetadata(input: {
       order: ['intro', 'cards', 'video', 'cta'],
     },
     branding: {
-      accentColor: DEFAULT_COLORS.gradientStart,
+      // La couleur du COMPTE, plus celle du dépôt. Écrire `DEFAULT_COLORS`
+      // ici faisait diverger l'aperçu du Calendrier de la vidéo réellement
+      // rendue dès que l'utilisateur choisissait ses couleurs.
+      accentColor: design.gradientStart ?? DEFAULT_COLORS.gradientStart,
       ctaText: design.ctaText,
       watermarkText: design.ctaText,
       borderEnabled: false,
@@ -217,6 +266,16 @@ export function buildAutopilotMetadata(input: {
       gradientColor2: design.gradientEnd,
       ctaMainText: design.ctaText,
       siteText: { enabled: true, text: AUTOPILOT_WATERMARK },
+      // ⚠️ CES CINQ CHAMPS SONT CE QU'UNE RÉGÉNÉRATION DOIT RETROUVER. Le
+      // Calendrier reconstruit le design à partir d'ici ; sans eux, un
+      // montage regénéré remettrait la photo derrière les cartes, rallumerait
+      // le son du rush et perdrait les niveaux du mixeur — l'identité du
+      // compte s'effacerait au premier clic sur « Régénérer ».
+      posterOnAllSequences: design.posterOnAllSequences,
+      musicUrl: design.musicUrl ?? null,
+      audioMusicVolume: design.musicVolume,
+      audioVoiceVolume: design.voiceVolume,
+      audioRushVolume: design.rushMuted ? 0 : design.rushVolume,
     },
   };
 }

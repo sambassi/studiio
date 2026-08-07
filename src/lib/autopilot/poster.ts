@@ -74,6 +74,32 @@ export async function pickPosterUrl(topic: string, variante = 0): Promise<string
 }
 
 /**
+ * Le rush est-il TOUJOURS là ?
+ *
+ * ⚠️ ON NE RÉPOND « NON » QUE SUR UN 404 OU UN 410. Un 500, un délai dépassé,
+ * une coupure réseau ne prouvent RIEN sur l'existence du fichier — et traiter
+ * ces cas comme une disparition retirerait de la banque, définitivement, un
+ * rush parfaitement valide dont le stockage a hoqueté cinq secondes. Le doute
+ * profite au rush : on rend `true`, et le rendu échouera de son côté si le
+ * fichier manque vraiment — ce qui coûte un montage, pas la banque.
+ *
+ * Un 405 (HEAD refusé par le stockage) ne dit rien non plus : il passe.
+ */
+export async function rushEncorePresent(url: string, timeoutMs = 8_000): Promise<boolean> {
+  const controleur = new AbortController();
+  const minuteur = setTimeout(() => controleur.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { method: 'HEAD', signal: controleur.signal, cache: 'no-store' });
+    return !(res.status === 404 || res.status === 410);
+  } catch {
+    // Réseau, délai, hôte injoignable : aucune conclusion possible.
+    return true;
+  } finally {
+    clearTimeout(minuteur);
+  }
+}
+
+/**
  * Durée réelle d'un rush, en secondes, ou `null` si elle est illisible.
  *
  * ⚠️ C'EST CE QUI SUPPRIME LE GEL DE FIN DE MONTAGE. La séquence vidéo durait

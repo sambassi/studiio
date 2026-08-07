@@ -475,3 +475,25 @@ seule ligne à ajouter à l'étape 2. Persister dans le brouillon **et** dans
 - 2026-04-13 — Composer v19 : emoji cartes à taille fixe (pas scalé par textScale)
 - 2026-04-13 — Calendar : miniature se met à jour quand on change de date (`ee3328b`)
 - 2026-04-13 — Batch x10 : 9 angles différents pour générer du contenu unique (`60346d6`)
+
+## 2026-08-07 — Autopilote : identité constante + notification rushes manquants
+
+Branche `feat/autopilote-branding-constant`.
+
+- [ ] A. Migration `2026-08-07-autopilot-branding.sql` + types/`sanitizeConfig` + route config
+- [ ] B. Moteur : couleurs, fond des cartes, musique, voix clonée, son du rush + mixeur, rotation des rushes
+- [ ] C. Notification « rushes manquants » — in-app (la cloche) + email best-effort
+- [ ] D. UI wizard : étape « Style & médias »
+- [ ] E. Tests + tsc + build
+
+### Écart constaté sur la demande (partie C)
+Il n'existe AUCUN système de notifications in-app : la cloche de `Navbar.tsx`
+est un bouton décoratif (pas de `onClick`, pastille rouge en dur), et
+`/api/admin/notifications` ne règle que les alertes **email** de l'admin.
+Il faut donc créer le socle (table + route + cloche), pas « réutiliser ».
+
+### Défaut trouvé au passage
+Le déclencheur passe TOUTES LES HEURES et `decideRun` refuse `sans-rush`
+AVANT le test d'heure : un compte sans rush reçoit donc **24 emails par jour**.
+La notification est écrite avec un anti-doublon de 24 h, et l'email n'est
+envoyé que quand la notification a réellement été créée.

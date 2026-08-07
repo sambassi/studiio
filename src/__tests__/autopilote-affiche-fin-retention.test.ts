@@ -104,8 +104,17 @@ describe('C — le gel de fin de montage', () => {
   it('les deux sondages précèdent la fabrique, qui reste pure', () => {
     expect(cron).toContain('await Promise.all([');
     // La voix s'est ajoutee depuis : les durees qu'elle impose entrent au
-    // meme endroit.
-    expect(cron).toContain('buildAutopilotDesign(post, { posterUrl, rushSeconds, voices })');
+    // meme endroit. Puis l'identite constante du compte (`config`).
+    //
+    // ⚠️ ON VERIFIE LES ARGUMENTS, PAS LEUR MISE EN PAGE. La version
+    // precedente comparait la ligne d'appel entiere, au caractere pres : elle
+    // tombait au premier retour a la ligne, sans qu'aucun comportement n'ait
+    // bouge.
+    const appel = cron.slice(cron.indexOf('buildAutopilotDesign('));
+    const args = appel.slice(0, appel.indexOf(');'));
+    for (const attendu of ['posterUrl', 'rushSeconds', 'voices', 'config']) {
+      expect(args).toContain(attendu);
+    }
   });
 });
 

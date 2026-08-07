@@ -236,9 +236,12 @@ describe('La route', () => {
   it('la cadence avance après un passage réussi, et la rotation se souvient', () => {
     expect(route).toContain('last_run_at: new Date(now).toISOString(),');
     // Le dernier rush RÉELLEMENT utilisé : un rush dont le rendu a échoué ne
-    // doit pas faire avancer la rotation.
-    expect(route).toContain('last_rush_url: dernierRush,');
-    expect(route).toContain('dernierRush = post.rushUrl ?? dernierRush;');
+    // doit pas faire avancer la rotation. Un rush retiré de la banque parce
+    // qu'il a disparu du stockage non plus — le mémoriser ferait repartir
+    // `pickRush` d'un `indexOf` à -1, donc toujours du premier.
+    expect(route).toContain('last_rush_url: dernierRush');
+    expect(route).toContain('rushesMorts.has(dernierRush)');
+    expect(route).toContain('dernierRush = rushUrl ?? dernierRush;');
   });
 
   it('chaque montage est isolé — un échec n emporte pas le cycle', () => {

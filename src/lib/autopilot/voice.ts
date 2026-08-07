@@ -1,4 +1,6 @@
-import { buildAutoFillText, SEQUENCE_KEYS, type SequenceKey } from '@/lib/types/voice';
+import {
+  buildAutoFillText, SEQUENCE_KEYS, ELEVENLABS_VOICE_PREFIX, type SequenceKey,
+} from '@/lib/types/voice';
 import { voiceSequenceSeconds } from '@/lib/creer/voiceFit';
 import type { PreparedPost } from '@/lib/autopilot/engine';
 
@@ -54,11 +56,23 @@ const ELEVENLABS_OUTPUT = 'mp3_44100_128';
 /**
  * Voix ElevenLabs utilisée par l'Autopilote.
  *
- * Surchargeable par l'environnement : le compte de chacun n'expose pas les
- * mêmes voix, et une valeur en dur ferait échouer la synthèse chez qui ne
- * l'aurait pas.
+ * ⚠️ L'ORDRE EST CELUI DE LA SPÉCIFICITÉ : la voix CLONÉE de l'utilisateur
+ * d'abord, puis la voix du serveur, puis un repli du catalogue. C'est ce qui
+ * rend la voix off constante d'une vidéo à l'autre — toutes les séquences de
+ * tous les montages d'un compte sont dites par la même personne.
+ *
+ * ⚠️ ET L'IDENTIFIANT EST DÉPRÉFIXÉ ICI. Côté Studiio, une voix ElevenLabs
+ * porte un `elevenlabs-…` qui sert à ROUTER la synthèse ; ElevenLabs, lui,
+ * ne connaît que l'identifiant nu. L'envoyer préfixé produit un 404 chez le
+ * fournisseur — donc un montage muet, sans que rien n'explique pourquoi.
  */
-function elevenLabsVoiceId(): string {
+export function elevenLabsVoiceId(voiceId?: string | null): string {
+  const choisie = (voiceId ?? '').trim();
+  if (choisie) {
+    return choisie.startsWith(ELEVENLABS_VOICE_PREFIX)
+      ? choisie.slice(ELEVENLABS_VOICE_PREFIX.length)
+      : choisie;
+  }
   return process.env.ELEVENLABS_VOICE_ID?.trim() || '21m00Tcm4TlvDq8ikWAM';
 }
 
@@ -145,7 +159,7 @@ export function voiceTexts(post: PreparedPost): Partial<Record<SequenceKey, stri
 }
 
 /** Synthèse ElevenLabs — HTTPS simple, ce qui passe depuis le serveur. */
-async function synthetiserElevenLabs(texte: string): Promise<Buffer | null> {
+async function synthetiserElevenLabs(texte: string, voiceId?: string | null): Promise<Buffer | null> {
   const cle = process.env.ELEVENLABS_API_KEY?.trim();
   if (!cle) {
     console.warn('[Autopilote/Voix] ELEVENLABS_API_KEY absente — montage sans voix');
@@ -154,7 +168,7 @@ async function synthetiserElevenLabs(texte: string): Promise<Buffer | null> {
   const controleur = new AbortController();
   const res = await withTimeout(
     fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${elevenLabsVoiceId()}`
+      `https://api.elevenlabs.io/v1/text-to-speech/${elevenLabsVoiceId(voiceId)}`
       + `?output_format=${ELEVENLABS_OUTPUT}`,
       {
         method: 'POST',
@@ -206,10 +220,14 @@ async function synthetiserEdge(texte: string): Promise<Buffer | null> {
 }
 
 /** Synthétise un texte et rend le MP3, ou `null` — jamais d'exception. */
-async function synthetiser(texte: string, provider: TtsProvider): Promise<Buffer | null> {
+async function synthetiser(
+  texte: string,
+  provider: TtsProvider,
+  voiceId?: string | null,
+): Promise<Buffer | null> {
   try {
     return provider === 'elevenlabs'
-      ? await synthetiserElevenLabs(texte)
+      ? await synthetiserElevenLabs(texte, voiceId)
       : await synthetiserEdge(texte);
   } catch (err) {
     console.error('[Autopilote/Voix] synthese echouee :', err instanceof Error ? err.message : err);
@@ -246,6 +264,14 @@ export async function buildAutopilotVoices(input: {
   post: PreparedPost;
   /** Fournisseur — `elevenlabs` cote serveur, seul a repondre. */
   provider?: TtsProvider;
+  /**
+   * Voix clonée du compte, identifiant préfixé ou nu.
+   *
+   * ⚠️ ABSENTE OU EN ÉCHEC = MONTAGE SANS VOIX, JAMAIS DE CYCLE INTERROMPU.
+   * `synthetiser` avale déjà toute erreur et rend `null` ; une voix supprimée
+   * chez ElevenLabs produit donc un montage muet, pas un rendu perdu.
+   */
+  voiceId?: string | null;
 }): Promise<VoixParSequence> {
   const provider = input.provider ?? SERVER_TTS_PROVIDER;
   const { writeFile, unlink } = await import('fs/promises');
@@ -259,7 +285,7 @@ export async function buildAutopilotVoices(input: {
   for (const cle of SEQUENCE_KEYS) {
     const texte = textes[cle];
     if (!texte) continue;
-    const mp3 = await synthetiser(texte, provider);
+    const mp3 = await synthetiser(texte, provider, input.voiceId);
     if (!mp3) continue;
 
     const local = path.join(os.tmpdir(), `studiio-voix-${input.jobId}-${cle}.mp3`);
