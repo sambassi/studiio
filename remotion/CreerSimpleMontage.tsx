@@ -70,6 +70,20 @@ export interface CreerSimpleMontageProps {
   ctaSubText?: string;
   /** Affiche globale. */
   posterUrl?: string | null;
+  /**
+   * L'affiche couvre-t-elle TOUTES les séquences, ou seulement l'intro ?
+   *
+   * ⚠️ ABSENT = TOUTES, ET C'EST CE QUI GARDE LES MONTAGES EXISTANTS INTACTS.
+   * Le rendu serveur peignait l'affiche partout, sans que rien ne permette de
+   * l'en empêcher. Un design déjà enregistré ne porte donc pas ce champ : il
+   * doit continuer à sortir exactement comme avant.
+   *
+   * `false` restreint l'affiche à l'intro ; cartes, vidéo et CTA retombent sur
+   * le dégradé. C'est la MÊME règle que le compositeur canvas
+   * (`posterOnAllSequences !== false || type === 'intro'`), et un fond propre à
+   * une séquence (`sequenceBackgrounds`) reste prioritaire dans les deux cas.
+   */
+  posterOnAllSequences?: boolean;
   /** Fond propre à une séquence — prioritaire sur l'affiche. */
   sequenceBackgrounds?: Partial<Record<'titre' | 'cartes' | 'video' | 'cta', string | null>>;
   videoUrl?: string | null;
@@ -147,6 +161,16 @@ export interface CreerSimpleMontageProps {
   /** Volumes du mixage. Absents : les defauts du compositeur. */
   musicVolume?: number;
   voiceVolume?: number;
+  /** Niveau du son du rush. Absent : le defaut du compositeur. */
+  rushVolume?: number;
+  /**
+   * Couper la piste audio du rush ?
+   *
+   * ⚠️ ABSENT = LE RUSH GARDE SON SON, comme depuis la Phase 8. Le couper par
+   * defaut aurait rendu muette la sequence video de tous les montages deja
+   * enregistres.
+   */
+  rushMuted?: boolean;
   /** Attenuations posees a la main dans le mixeur. */
   audioKeyframes?: AudioKeyframe[];
 }
@@ -238,13 +262,23 @@ const SEQ_TO_EDITOR: Record<string, string | undefined> = {
   intro: 'titre', cards: 'cartes', video: 'video', cta: 'cta',
 };
 
-/** Fond effectif d'une séquence : le sien, sinon l'affiche globale. */
-function backgroundFor(props: CreerSimpleMontageProps, type: string): string | null {
+/**
+ * Fond effectif d'une séquence : le sien, sinon l'affiche globale.
+ *
+ * Le fond PROPRE à une séquence l'emporte toujours — c'est un choix explicite,
+ * que `posterOnAllSequences` n'a pas à défaire. Ce drapeau ne décide que de la
+ * portée de l'affiche GLOBALE, et suit la règle du compositeur canvas :
+ * `!== false` (donc absent = partout), sauf l'intro qui la garde en toutes
+ * circonstances.
+ */
+export function backgroundFor(props: CreerSimpleMontageProps, type: string): string | null {
   const cle = ({ intro: 'titre', cards: 'cartes', video: 'video', cta: 'cta' } as const)[
     type as 'intro' | 'cards' | 'video' | 'cta'
   ];
   const propre = cle ? props.sequenceBackgrounds?.[cle] : null;
-  return propre || props.posterUrl || null;
+  if (propre) return propre;
+  const afficheIci = props.posterOnAllSequences !== false || type === 'intro';
+  return afficheIci ? (props.posterUrl || null) : null;
 }
 
 /** Fond + voile, communs à toutes les séquences. */
@@ -315,6 +349,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
   const mixOptions = {
     musicVolume: props.musicVolume,
     voiceVolume: props.voiceVolume,
+    rushVolume: props.rushVolume,
     keyframes: props.audioKeyframes,
     hasVoice: aDeLaVoix,
     hasMixAudio: aDeLaVoix || !!props.musicUrl,
@@ -378,14 +413,21 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
               <OffthreadVideo
                 src={props.videoUrl}
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                // Le rush garde SON son. Le canvas le route lui aussi — à la
-                // moitié du volume dès qu'il y a un autre audio, à plein
-                // sinon. Le couper ici aurait fait une vidéo serveur muette
-                // là où celle du navigateur parle.
+                // Le rush garde SON son PAR DÉFAUT. Le canvas le route lui
+                // aussi — à la moitié du volume dès qu'il y a un autre audio,
+                // à plein sinon. Le couper d'office aurait fait une vidéo
+                // serveur muette là où celle du navigateur parle.
+                //
+                // `rushMuted` est la coupure EXPLICITE : l'Autopilote la pose
+                // quand l'utilisateur a décidé de ne garder que la musique et
+                // la voix. Elle passe par la fonction de volume, et non par
+                // `muted`, pour que la règle de mixage reste au même endroit.
                 //
                 // La frame reçue est relative à la séquence de la série, qui
                 // démarre `tFrames` plus tôt : `depart` la ramène à l'absolu.
-                volume={(f) => mixAt((depart + f) / fps, mixOptions).rush}
+                volume={(f) => (
+                  props.rushMuted ? 0 : mixAt((depart + f) / fps, mixOptions).rush
+                )}
               />
             ) : (
               <Fond props={props} type={type} />

@@ -60,6 +60,58 @@ export const DEFAULT_RUN_HOUR = 8;
 export const DEFAULT_TIMEZONE = 'Europe/Paris';
 
 /**
+ * L'identité constante par défaut.
+ *
+ * ⚠️ CES COULEURS SONT CELLES QUI ÉTAIENT EN DUR dans `buildAutopilotDesign`
+ * (`DEFAULT_COLORS` de `designSpec`). Les recopier ici plutôt que les importer
+ * garde ce module PUR — il est relu par l'écran comme par le cron, et ne doit
+ * dépendre d'aucun module de rendu. Un test vérifie qu'elles n'ont pas dérivé.
+ */
+export const DEFAULT_BRANDING = Object.freeze({
+  cardGradientStart: '#7C3AED',
+  cardGradientEnd: '#EC4899',
+  titleColor: '#FFFFFF',
+});
+
+/** Niveaux par défaut du mixeur — les mêmes valeurs que le compositeur. */
+export const DEFAULT_VOLUMES = Object.freeze({
+  music: 0.8,
+  voice: 1.0,
+  rush: 0.5,
+});
+
+/** `#ABC` ou `#AABBCC`, rien d'autre. */
+const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+/**
+ * Couleur relue, ou son défaut.
+ *
+ * Une couleur illisible ne doit pas produire un montage transparent ou un
+ * `linear-gradient` invalide qui ferait tomber le fond en noir : on retombe
+ * sur la couleur d'origine, que l'utilisateur reconnaît.
+ */
+export function sanitizeHexColor(raw: unknown, parDefaut: string): string {
+  return typeof raw === 'string' && HEX.test(raw.trim()) ? raw.trim() : parDefaut;
+}
+
+/**
+ * Niveau du mixeur, borné à 0–1.
+ *
+ * Un gain supérieur à 1 sature le montage, un gain négatif inverse la phase :
+ * ni l'un ni l'autre n'est un réglage, ce sont des accidents de saisie.
+ */
+export function sanitizeVolume(raw: unknown, parDefaut: number): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return parDefaut;
+  return Math.min(1, Math.max(0, n));
+}
+
+/** URL http(s) exploitable, ou `null`. */
+function sanitizeUrl(raw: unknown): string | null {
+  return typeof raw === 'string' && /^https?:\/\//.test(raw.trim()) ? raw.trim() : null;
+}
+
+/**
  * Heure qu'il est chez l'utilisateur, de 0 à 23.
  *
  * ⚠️ UN FUSEAU INVALIDE NE DOIT PAS INTERROMPRE LE CYCLE. `Intl` lève sur un
@@ -135,6 +187,52 @@ export interface AutopilotConfig {
    * l'utilisateur ait rien changé.
    */
   voiceEnabled: boolean;
+
+  // ── L'identité CONSTANTE ────────────────────────────────────────────────
+  //
+  // ⚠️ CE BLOC EST CE QUI NE VARIE PAS. L'affiche, les textes et le rush
+  // changent à chaque vidéo — c'est le propre de l'Autopilote. Ces réglages-là
+  // sont posés UNE fois et TOUTES les vidéos suivantes en héritent : sans eux,
+  // une chaîne produite en pilote automatique n'aurait aucune identité
+  // reconnaissable d'un post à l'autre.
+
+  /** Début du dégradé des cartes et du montage. */
+  cardGradientStart: string;
+  /** Fin du dégradé. */
+  cardGradientEnd: string;
+  /** Couleur du titre. */
+  titleColor: string;
+  /**
+   * L'affiche est-elle peinte derrière les CARTES (et le CTA) ?
+   *
+   * ⚠️ FAUX PAR DÉFAUT, ET C'EST UN CHANGEMENT ASSUMÉ. Jusqu'ici l'affiche
+   * couvrait toutes les séquences. Les cartes se lisent mal sur une photo, et
+   * l'utilisateur a demandé qu'elles s'affichent sur SES couleurs. La séquence
+   * titre, elle, garde l'affiche — c'est là que la variété se voit.
+   */
+  cardsShowPoster: boolean;
+  /** Musique de fond, commune à toutes les vidéos. `null` = aucune. */
+  musicUrl: string | null;
+  /**
+   * Voix clonée de l'utilisateur (`user_voices`), identifiant préfixé.
+   *
+   * `null` = la voix par défaut du serveur. Ne sert que si `voiceEnabled`.
+   */
+  voiceId: string | null;
+  /**
+   * Garder la piste audio du rush ?
+   *
+   * ⚠️ FAUX PAR DÉFAUT. Le montage porte déjà une musique et, en option, une
+   * voix off : y ajouter d'office l'ambiance du rush fait trois pistes
+   * concurrentes que personne n'a demandées.
+   */
+  keepRushAudio: boolean;
+  /** Mixeur — niveau de la musique, 0 à 1. */
+  musicVolume: number;
+  /** Mixeur — niveau de la voix off, 0 à 1. */
+  voiceVolume: number;
+  /** Mixeur — niveau du son du rush, 0 à 1. Sans effet si `keepRushAudio` est faux. */
+  rushVolume: number;
 }
 
 export const DEFAULT_CONFIG: AutopilotConfig = {
@@ -153,6 +251,18 @@ export const DEFAULT_CONFIG: AutopilotConfig = {
   runHour: DEFAULT_RUN_HOUR,
   runTimezone: DEFAULT_TIMEZONE,
   voiceEnabled: false,
+  cardGradientStart: DEFAULT_BRANDING.cardGradientStart,
+  cardGradientEnd: DEFAULT_BRANDING.cardGradientEnd,
+  titleColor: DEFAULT_BRANDING.titleColor,
+  // Cartes sur les couleurs, pas sur la photo — la demande explicite.
+  cardsShowPoster: false,
+  musicUrl: null,
+  voiceId: null,
+  // Son du rush coupé : la musique et la voix off suffisent.
+  keepRushAudio: false,
+  musicVolume: DEFAULT_VOLUMES.music,
+  voiceVolume: DEFAULT_VOLUMES.voice,
+  rushVolume: DEFAULT_VOLUMES.rush,
 };
 
 /** Statut du post créé, selon le mode choisi. */
@@ -249,20 +359,38 @@ export function decideRun(input: {
  * Rush à utiliser, en rotation.
  *
  * On évite celui du passage précédent : deux montages d'affilée sur la même
- * image, c'est exactement ce que la banque de rushes existe pour éviter. Avec
- * un seul rush, on le reprend — mieux vaut le même qu'aucun.
+ * image, c'est exactement ce que la banque de rushes existe pour éviter.
+ *
+ * ⚠️ LA LISTE EST DÉDOUBLONNÉE ICI AUSSI, pas seulement dans
+ * `sanitizeConfig`. Une même adresse présente deux fois — une banque
+ * constituée à la main, une configuration écrite avant le dédoublonnage —
+ * ferait tomber deux rangs différents de la rotation sur le MÊME fichier :
+ * l'utilisateur verrait « deux rushes » et recevrait deux fois la même vidéo,
+ * sans qu'aucune erreur ne le signale.
+ *
+ * ⚠️ AVEC UN SEUL RUSH, IL EST FORCÉMENT RÉPÉTÉ. Toutes les vidéos partagent
+ * alors la même séquence vidéo ; seuls l'affiche et les textes varient. C'est
+ * la limite de la banque, pas de la rotation — d'où l'invitation à en ajouter
+ * dans l'écran de configuration.
  */
 export function pickRush(
   rushUrls: string[],
   lastRushUrl: string | null | undefined,
   index = 0,
 ): string | null {
-  const propres = rushUrls.filter((u) => typeof u === 'string' && u);
+  const propres = Array.from(
+    new Set(rushUrls.filter((u): u is string => typeof u === 'string' && !!u)),
+  );
   if (propres.length === 0) return null;
   if (propres.length === 1) return propres[0];
+  // `indexOf` rend -1 quand le dernier rush a été retiré de la banque : le
+  // `+ 1` ramène alors au premier, ce qui est le comportement voulu.
   const depart = lastRushUrl ? propres.indexOf(lastRushUrl) : -1;
   // Le suivant de celui d'avant, puis on avance d'un cran par montage du cycle.
-  return propres[(depart + 1 + index) % propres.length];
+  // `index` peut dépasser la taille de la banque (cycle de 5 sur 2 rushes) :
+  // le modulo boucle, et deux montages VOISINS restent toujours différents.
+  const rang = (depart + 1 + Math.max(0, Math.floor(index))) % propres.length;
+  return propres[rang];
 }
 
 /** Message d'état affiché sous l'interrupteur. */
@@ -331,5 +459,25 @@ export function sanitizeConfig(raw: unknown): AutopilotConfig {
     // pas encore appliquée) vaut `undefined`, donc « pas de voix », donc
     // aucun appel facturé.
     voiceEnabled: o.voiceEnabled === true,
+
+    // ── L'identité constante ─────────────────────────────────────────────
+    cardGradientStart: sanitizeHexColor(o.cardGradientStart, DEFAULT_BRANDING.cardGradientStart),
+    cardGradientEnd: sanitizeHexColor(o.cardGradientEnd, DEFAULT_BRANDING.cardGradientEnd),
+    titleColor: sanitizeHexColor(o.titleColor, DEFAULT_BRANDING.titleColor),
+    // `=== true` et non un test de véracité : une colonne absente (migration
+    // pas encore appliquée) vaut `undefined`, donc « pas de photo derrière les
+    // cartes » — le défaut demandé, pas un accident de lecture.
+    cardsShowPoster: o.cardsShowPoster === true,
+    musicUrl: sanitizeUrl(o.musicUrl),
+    // Pas de contrainte de forme sur l'identifiant : il vient du fournisseur,
+    // et une liste fermée écrite ici rejetterait toute voix future. Seule la
+    // longueur est bornée, contre une valeur aberrante.
+    voiceId: typeof o.voiceId === 'string' && o.voiceId.trim()
+      ? o.voiceId.trim().slice(0, 120)
+      : null,
+    keepRushAudio: o.keepRushAudio === true,
+    musicVolume: sanitizeVolume(o.musicVolume, DEFAULT_VOLUMES.music),
+    voiceVolume: sanitizeVolume(o.voiceVolume, DEFAULT_VOLUMES.voice),
+    rushVolume: sanitizeVolume(o.rushVolume, DEFAULT_VOLUMES.rush),
   };
 }

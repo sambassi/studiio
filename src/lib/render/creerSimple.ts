@@ -31,6 +31,14 @@ export interface CreerSimpleRenderInput {
   ctaText?: string;
   ctaSubText?: string;
   posterUrl?: string | null;
+  /**
+   * L'affiche couvre-t-elle toutes les séquences, ou seulement l'intro ?
+   *
+   * Absent = toutes, comme avant. `false` la restreint à l'intro : cartes,
+   * vidéo et CTA retombent sur le dégradé. Même règle que le compositeur
+   * canvas (`posterOnAllSequences`).
+   */
+  posterOnAllSequences?: boolean;
   sequenceBackgrounds?: Record<string, string | null>;
   videoUrl?: string | null;
   musicUrl?: string | null;
@@ -61,6 +69,10 @@ export interface CreerSimpleRenderInput {
   /** Volumes du mixage. Absents : les defauts du compositeur (0,5 / 0,8 / 1). */
   musicVolume?: number;
   voiceVolume?: number;
+  /** Niveau du son du rush. Absent : le defaut du compositeur. */
+  rushVolume?: number;
+  /** Couper la piste audio du rush. Absent = il garde son son, comme avant. */
+  rushMuted?: boolean;
   /** Attenuations posees a la main dans le mixeur. */
   audioKeyframes?: AudioKeyframe[];
 }

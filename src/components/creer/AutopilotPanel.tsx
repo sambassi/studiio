@@ -1,15 +1,34 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Rocket, Loader2, Check, AlertTriangle, Film, Trash2, Plus } from 'lucide-react';
+import {
+  Rocket, Loader2, Check, AlertTriangle, Film, Trash2, Plus, Music, Mic, ImageIcon,
+} from 'lucide-react';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import { CardIcon } from '@/components/ui/CardIcon';
+import ColorWheel from '@/components/ui/ColorWheel';
 import { THEMES, themeLabel, isCustomTopic } from '@/lib/themes';
 import {
   sanitizeConfig, statusMessage, DEFAULT_CONFIG, MAX_PER_CYCLE,
   CADENCES, CADENCE_LABELS, MODES, MODE_LABELS, MODE_HINTS,
   type AutopilotConfig, type AutopilotCadence, type AutopilotMode,
 } from '@/lib/autopilot/rules';
+
+/** Une voix clonée, telle que la rend `GET /api/voice/clone`. */
+interface VoixClonee {
+  id: string;
+  name: string;
+  lang: string | null;
+}
+
+/** Le nom d'un fichier, à partir de son adresse — pour ne pas afficher l'URL. */
+function nomDeFichier(url: string): string {
+  try {
+    return decodeURIComponent(new URL(url).pathname.split('/').pop() || url);
+  } catch {
+    return url.split('/').pop() || url;
+  }
+}
 
 /**
  * Configuration de l'Autopilote.
@@ -32,10 +51,19 @@ import {
 const ETAPES = [
   { titre: 'Thèmes', aide: 'Sur quoi parler' },
   { titre: 'Vos rushes', aide: 'Les images à réutiliser' },
+  // ⚠️ CETTE ETAPE EST CELLE DE CE QUI NE CHANGE PAS. Les trois autres
+  // reglent ce que l'Autopilote fait VARIER ; celle-ci, l'identite que
+  // toutes les videos partagent.
+  { titre: 'Style & médias', aide: 'Ce qui ne change jamais' },
   { titre: 'Rythme & diffusion', aide: 'Quand et où' },
   { titre: 'Options', aide: 'Voix et garde-fous' },
   { titre: 'Récapitulatif', aide: 'Vérifier, puis activer' },
 ] as const;
+
+/** « 80 % » — un niveau du mixeur, tel que l'utilisateur le lit. */
+function pourcent(v: number): string {
+  return `${Math.round(v * 100)} %`;
+}
 
 /** « 08:00 » — l'heure telle que l'utilisateur la lit. */
 function heureLisible(h: number): string {
@@ -88,13 +116,47 @@ function prochainDepart(
   }
 }
 
-/** Ce que l'utilisateur doit pouvoir relire d'un coup d'oeil avant d'activer. */
-function RECAP(config: AutopilotConfig): Array<[string, string]> {
+/**
+ * Ce que l'utilisateur doit pouvoir relire d'un coup d'oeil avant d'activer.
+ *
+ * ⚠️ LE RECAP EST COUPE EN DEUX, ET C'EST LE POINT. « Ce qui change » et « ce
+ * qui ne change jamais » repondent a la seule question qu'on se pose avant
+ * d'activer un pilote automatique : qu'est-ce qui va se ressembler d'une
+ * video a l'autre ? Une liste unique de quinze lignes ne repondait pas.
+ */
+function RECAP_VARIABLE(config: AutopilotConfig): Array<[string, string]> {
   const n = config.rushUrls.length;
   return [
     ['Thèmes', config.topics.length === 0
       ? 'Tous (12 thèmes)'
       : config.topics.map(themeLabel).join(', ')],
+    ['Affiche & textes', 'Différents à chaque vidéo'],
+    ['Rushes', n === 0
+      ? 'Aucun — rien ne sera produit'
+      : n === 1
+        ? '1 seul — il sera répété sur toutes les vidéos'
+        : `${n} en rotation — jamais deux fois de suite le même`],
+  ];
+}
+
+function RECAP_CONSTANT(
+  config: AutopilotConfig,
+  voix: VoixClonee[],
+): Array<[string, string]> {
+  const choisie = voix.find((v) => v.id === config.voiceId);
+  return [
+    ['Couleurs', `${config.cardGradientStart} → ${config.cardGradientEnd}, titre ${config.titleColor}`],
+    ['Fond des cartes', config.cardsShowPoster ? 'L’affiche' : 'Les couleurs choisies'],
+    ['Musique', config.musicUrl ? `${nomDeFichier(config.musicUrl)} · ${pourcent(config.musicVolume)}` : 'Aucune'],
+    ['Voix off', config.voiceEnabled
+      ? `${choisie ? choisie.name : 'Voix par défaut'} · ${pourcent(config.voiceVolume)} (payante)`
+      : 'Désactivée'],
+    ['Son du rush', config.keepRushAudio ? `Gardé · ${pourcent(config.rushVolume)}` : 'Coupé'],
+  ];
+}
+
+function RECAP_DIFFUSION(config: AutopilotConfig): Array<[string, string]> {
+  return [
     ['Rythme', CADENCE_LABELS[config.cadence]],
     ['Heure de départ', `${heureLisible(config.runHour)} (${config.runTimezone})`],
     ['Par cycle', `${config.countPerCycle} vidéo${config.countPerCycle > 1 ? 's' : ''}`],
@@ -102,8 +164,6 @@ function RECAP(config: AutopilotConfig): Array<[string, string]> {
     ['Plateformes', config.platforms.length
       ? config.platforms.join(', ')
       : 'Aucune — les vidéos restent dans le Calendrier'],
-    ['Voix off', config.voiceEnabled ? 'Activée (payante)' : 'Désactivée'],
-    ['Rushes', `${n} disponible${n > 1 ? 's' : ''}`],
     ['Seuil de crédits', `${config.creditFloor} crédits`],
   ];
 }
@@ -122,9 +182,19 @@ export default function AutopilotPanel({ accent }: { accent: string }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [libOpen, setLibOpen] = useState(false);
+  /**
+   * Quelle médiathèque est ouverte, et pour quoi.
+   *
+   * ⚠️ PAS UN BOOLEEN. Il y a maintenant DEUX points d'ouverture — les rushes
+   * (vidéo) et la musique (audio) — et un seul drapeau les ferait s'ouvrir
+   * ensemble, l'un filtré par le type de l'autre.
+   */
+  const [libOpen, setLibOpen] = useState<null | 'rush' | 'musique'>(null);
   const [etape, setEtape] = useState(0);
   const [themePerso, setThemePerso] = useState('');
+  /** Les colonnes d'identité existent-elles en base ? Voir `brandingReady`. */
+  const [identiteReady, setIdentiteReady] = useState(true);
+  const [voixClonees, setVoixClonees] = useState<VoixClonee[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -134,6 +204,7 @@ export default function AutopilotPanel({ accent }: { accent: string }) {
         const data = await res.json();
         if (cancelled) return;
         setReady(data?.ready !== false);
+        setIdentiteReady(data?.brandingReady !== false);
         if (data?.config) setConfig(sanitizeConfig(data.config));
       } catch {
         if (!cancelled) setReady(false);
@@ -141,6 +212,21 @@ export default function AutopilotPanel({ accent }: { accent: string }) {
         if (!cancelled) setLoading(false);
       }
     })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Les voix clonées du compte. Silencieux en cas d'échec : le sélecteur
+  // reste vide et l'Autopilote retombe sur la voix par défaut du serveur —
+  // une liste indisponible ne doit pas empêcher de régler le reste.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/voice/clone')
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled || !d?.success || !Array.isArray(d.voices)) return;
+        setVoixClonees(d.voices as VoixClonee[]);
+      })
+      .catch(() => {});
     return () => { cancelled = true; };
   }, []);
 
@@ -218,6 +304,17 @@ export default function AutopilotPanel({ accent }: { accent: string }) {
           <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
           L’Autopilote n’est pas encore disponible sur ce serveur : la migration
           <code className="mx-1">autopilot_config</code> n’a pas été appliquée.
+        </p>
+      )}
+      {/* Le DIRE plutôt que de laisser croire que c'est enregistré : sans les
+          colonnes, l'écran accepte les réglages de style et le serveur les
+          jette. Un formulaire silencieusement sans effet est pire qu'un
+          formulaire absent. */}
+      {ready && !identiteReady && (
+        <p className="flex items-start gap-1.5 text-xs text-amber-400" data-autopilot-identite-absente>
+          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          Couleurs, musique, voix et mixeur ne seront pas conservés : la migration
+          <code className="mx-1">2026-08-07-autopilot-branding</code> n’a pas été appliquée.
         </p>
       )}
 
@@ -349,7 +446,7 @@ export default function AutopilotPanel({ accent }: { accent: string }) {
               </p>
               <button
                 type="button"
-                onClick={() => setLibOpen(true)}
+                onClick={() => setLibOpen('rush')}
                 disabled={!ready || saving}
                 data-autopilot-add-rush
                 className="flex items-center gap-1 rounded-lg border border-gray-800 px-2 py-1 text-[11px] text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 transition-colors"
@@ -361,6 +458,18 @@ export default function AutopilotPanel({ accent }: { accent: string }) {
               L’Autopilote y pioche à tour de rôle. Sans rush, il ne produit rien —
               il vous le dira plutôt que de générer des montages sans image.
             </p>
+            {/* ⚠️ LA LIMITE DU RUSH UNIQUE, DITE AVANT QU'ELLE SURPRENNE.
+                Avec un seul rush, la rotation n'a pas le choix : toutes les
+                vidéos partagent la même séquence vidéo. L'utilisateur qui
+                attendait « des rushes différents » doit l'apprendre ici, pas
+                en découvrant deux montages identiques dans son Calendrier. */}
+            {config.rushUrls.length === 1 && (
+              <p className="flex items-start gap-1.5 text-[11px] text-amber-400 mb-2" data-autopilot-rush-unique>
+                <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
+                Un seul rush : il sera repris sur toutes les vidéos. Ajoutez-en un
+                second pour qu’ils alternent.
+              </p>
+            )}
             {config.rushUrls.length > 0 && (
               <ul className="space-y-1">
                 {config.rushUrls.map((url) => (
@@ -386,11 +495,11 @@ export default function AutopilotPanel({ accent }: { accent: string }) {
               </ul>
             )}
             <MediaLibrary
-              isOpen={libOpen}
-              onClose={() => setLibOpen(false)}
+              isOpen={libOpen === 'rush'}
+              onClose={() => setLibOpen(null)}
               mediaType="video"
               onSelect={(url) => {
-                setLibOpen(false);
+                setLibOpen(null);
                 if (url) enregistrer({ rushUrls: [...config.rushUrls, url] });
               }}
             />
@@ -398,8 +507,285 @@ export default function AutopilotPanel({ accent }: { accent: string }) {
         </div>
       )}
 
-      {/* ── Étape 3 · Rythme & diffusion ─────────────────────────────── */}
+      {/* ── Étape 3 · Style & médias — L'IDENTITÉ CONSTANTE ───────────
+          Tout ce qui est réglé ici vaut pour TOUTES les futures vidéos. Le
+          reste du wizard décrit ce qui varie ; cette étape, ce qui reste. */}
       {etape === 2 && (
+        <div className="space-y-4">
+          <p className="rounded-lg border border-gray-800 bg-gray-900/60 px-3 py-2 text-[11px] text-gray-400">
+            Ces réglages s’appliquent à <span className="text-gray-200 font-medium">toutes
+            les futures vidéos</span>. L’affiche, les textes et le rush, eux, changent
+            à chaque fois.
+          </p>
+
+{/* ── Couleurs ─────────────────────────────────────────────────── */}
+          <div>
+            <p className="text-xs font-medium text-gray-300 mb-2">Couleurs des cartes</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div data-autopilot-color-start>
+                <ColorWheel
+                  color={config.cardGradientStart}
+                  onChange={(c) => setConfig((x) => ({ ...x, cardGradientStart: c }))}
+                  label="Dégradé — début"
+                />
+              </div>
+              <div data-autopilot-color-end>
+                <ColorWheel
+                  color={config.cardGradientEnd}
+                  onChange={(c) => setConfig((x) => ({ ...x, cardGradientEnd: c }))}
+                  label="Dégradé — fin"
+                />
+              </div>
+            </div>
+            <div className="mt-3" data-autopilot-color-title>
+              <ColorWheel
+                color={config.titleColor}
+                onChange={(c) => setConfig((x) => ({ ...x, titleColor: c }))}
+                label="Couleur du titre"
+              />
+            </div>
+            {/* ⚠️ ENREGISTREMENT AU RELACHEMENT, PAS A CHAQUE PIXEL. Une roue
+                chromatique émet une couleur par mouvement de souris :
+                enregistrer sur `onChange` enverrait des centaines de requêtes
+                pour un seul choix. L'état bouge en direct, la base au
+                relâchement — comme le seuil de crédits juste à côté. */}
+            <button
+              type="button"
+              onClick={() => enregistrer({
+                cardGradientStart: config.cardGradientStart,
+                cardGradientEnd: config.cardGradientEnd,
+                titleColor: config.titleColor,
+              })}
+              disabled={!ready || saving}
+              data-autopilot-colors-save
+              className="mt-3 w-full rounded-lg border border-gray-800 px-3 py-1.5 text-[11px] text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 transition-colors"
+            >
+              {saving ? 'Enregistrement…' : 'Enregistrer les couleurs'}
+            </button>
+          </div>
+
+{/* ── Fond des cartes ──────────────────────────────────────────── */}
+          <div>
+            <p className="text-xs font-medium text-gray-300 mb-2">Fond des cartes</p>
+            <button
+              type="button"
+              onClick={() => enregistrer({ cardsShowPoster: !config.cardsShowPoster })}
+              disabled={!ready || saving}
+              aria-pressed={config.cardsShowPoster}
+              data-autopilot-cards-poster
+              className={`w-full flex items-start gap-3 text-left rounded-lg border px-3 py-2 transition disabled:opacity-40 ${
+                config.cardsShowPoster ? 'border-purple-500/50 bg-gray-800' : 'border-gray-800 hover:border-gray-700'
+              }`}
+            >
+              <span
+                aria-hidden
+                className={`mt-0.5 flex h-4 w-7 shrink-0 items-center rounded-full transition ${
+                  config.cardsShowPoster ? 'bg-purple-500' : 'bg-gray-700'
+                }`}
+              >
+                <span
+                  className={`h-3 w-3 rounded-full bg-white transition-transform ${
+                    config.cardsShowPoster ? 'translate-x-3.5' : 'translate-x-0.5'
+                  }`}
+                />
+              </span>
+              <span className="min-w-0">
+                <span className="flex items-center gap-1.5 text-xs font-medium">
+                  <ImageIcon className="w-3.5 h-3.5" />
+                  Afficher l’affiche derrière les cartes
+                </span>
+                <span className="block text-[11px] text-gray-500 mt-0.5">
+                  {config.cardsShowPoster
+                    ? 'Les cartes se posent sur la photo d’affiche.'
+                    : 'Les cartes se posent sur vos couleurs. L’affiche reste sur la séquence titre.'}
+                </span>
+              </span>
+            </button>
+          </div>
+
+{/* ── Musique ──────────────────────────────────────────────────── */}
+          <div>
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <p className="text-xs font-medium text-gray-300">Musique</p>
+              <button
+                type="button"
+                onClick={() => setLibOpen('musique')}
+                disabled={!ready || saving}
+                data-autopilot-add-music
+                className="flex items-center gap-1 rounded-lg border border-gray-800 px-2 py-1 text-[11px] text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 transition-colors"
+              >
+                <Plus className="w-3 h-3" /> {config.musicUrl ? 'Changer' : 'Choisir'}
+              </button>
+            </div>
+            {config.musicUrl ? (
+              <div className="flex items-center justify-between gap-2 rounded-lg bg-gray-900 border border-gray-800 px-2 py-1.5">
+                <span className="flex items-center gap-1.5 min-w-0 text-[11px] text-gray-300">
+                  <Music className="w-3 h-3 shrink-0" />
+                  <span className="truncate">{nomDeFichier(config.musicUrl)}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => enregistrer({ musicUrl: null })}
+                  disabled={saving}
+                  aria-label="Retirer la musique"
+                  data-autopilot-remove-music
+                  className="text-gray-500 hover:text-red-400 transition-colors shrink-0"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <p className="text-[11px] text-gray-500">
+                Aucune musique — les vidéos sortiront sans fond sonore.
+              </p>
+            )}
+            <MediaLibrary
+              isOpen={libOpen === 'musique'}
+              onClose={() => setLibOpen(null)}
+              mediaType="audio"
+              onSelect={(url) => {
+                setLibOpen(null);
+                if (url) enregistrer({ musicUrl: url });
+              }}
+            />
+          </div>
+
+{/* ── Voix off clonée ──────────────────────────────────────────── */}
+          <div>
+            <p className="text-xs font-medium text-gray-300 mb-2">Voix off clonée</p>
+            {voixClonees.length === 0 ? (
+              <p className="text-[11px] text-gray-500">
+                Aucune voix clonée. Rendez-vous dans <span className="text-gray-300">Mon avatar</span> pour
+                en enregistrer une — sans elle, la narration utilise la voix par défaut.
+              </p>
+            ) : (
+              <>
+                <select
+                  id="autopilot-voice-id"
+                  value={config.voiceId ?? ''}
+                  onChange={(e) => enregistrer({ voiceId: e.target.value || null })}
+                  disabled={!ready || saving}
+                  data-autopilot-voice-id
+                  className="w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2 text-xs disabled:opacity-40"
+                >
+                  <option value="">Voix par défaut</option>
+                  {voixClonees.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name}{v.lang ? ` (${v.lang})` : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-gray-500 mt-1">
+                  La même voix sur toutes les séquences de toutes les vidéos.
+                </p>
+              </>
+            )}
+            {!config.voiceEnabled && (
+              <p className="flex items-start gap-1.5 text-[11px] text-gray-500 mt-1.5">
+                <Mic className="w-3 h-3 mt-0.5 shrink-0" />
+                La narration est désactivée : activez-la à l’étape <span className="text-gray-300">Options</span> pour
+                que ce choix serve.
+              </p>
+            )}
+          </div>
+
+{/* ── Son du rush ──────────────────────────────────────────────── */}
+          <div>
+            <p className="text-xs font-medium text-gray-300 mb-2">Son du rush</p>
+            <button
+              type="button"
+              onClick={() => enregistrer({ keepRushAudio: !config.keepRushAudio })}
+              disabled={!ready || saving}
+              aria-pressed={config.keepRushAudio}
+              data-autopilot-keep-rush-audio
+              className={`w-full flex items-start gap-3 text-left rounded-lg border px-3 py-2 transition disabled:opacity-40 ${
+                config.keepRushAudio ? 'border-purple-500/50 bg-gray-800' : 'border-gray-800 hover:border-gray-700'
+              }`}
+            >
+              <span
+                aria-hidden
+                className={`mt-0.5 flex h-4 w-7 shrink-0 items-center rounded-full transition ${
+                  config.keepRushAudio ? 'bg-purple-500' : 'bg-gray-700'
+                }`}
+              >
+                <span
+                  className={`h-3 w-3 rounded-full bg-white transition-transform ${
+                    config.keepRushAudio ? 'translate-x-3.5' : 'translate-x-0.5'
+                  }`}
+                />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-xs font-medium">Garder le son du rush</span>
+                <span className="block text-[11px] text-gray-500 mt-0.5">
+                  {config.keepRushAudio
+                    ? 'L’ambiance du rush se mélange à la musique et à la voix.'
+                    : 'La séquence vidéo est muette : seules la musique et la voix s’entendent.'}
+                </span>
+              </span>
+            </button>
+          </div>
+
+{/* ── Mixeur ───────────────────────────────────────────────────── */}
+          <div>
+            <p className="text-xs font-medium text-gray-300 mb-1">Mixeur</p>
+            <p className="text-[11px] text-gray-500 mb-2">
+              Ces niveaux valent pour toutes les vidéos.
+            </p>
+            <div className="space-y-3">
+              {/* ⚠️ L'ICONE EST RENDUE ICI, PAS PASSEE DANS LA TABLE. Un
+                  composant destructure sous un nom local (`icone: Icone`) est
+                  invisible au garde-fou « aucun composant employé sans être
+                  défini » : il le lit comme un identifiant jamais importé.
+                  Le garde a raison de ne pas savoir — c'est à ce code de
+                  rester lisible pour lui. */}
+              {([
+                { cle: 'musicVolume', label: 'Musique', actif: true },
+                { cle: 'voiceVolume', label: 'Voix off', actif: true },
+                // ⚠️ GRISE, PAS CACHE. Le niveau du rush reste visible quand
+                // le son est coupé : le masquer ferait croire qu'il n'existe
+                // pas, et le réglage serait perdu de vue en le rallumant.
+                { cle: 'rushVolume', label: 'Son du rush', actif: config.keepRushAudio },
+              ] as const).map(({ cle, label, actif }) => (
+                <div key={cle}>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <label
+                      htmlFor={`autopilot-${cle}`}
+                      className={`flex items-center gap-1.5 text-[11px] ${actif ? 'text-gray-300' : 'text-gray-600'}`}
+                    >
+                      {cle === 'musicVolume' && <Music className="w-3 h-3" />}
+                      {cle === 'voiceVolume' && <Mic className="w-3 h-3" />}
+                      {cle === 'rushVolume' && <Film className="w-3 h-3" />}
+                      {label}
+                    </label>
+                    <span className={`text-[11px] tabular-nums ${actif ? 'text-gray-400' : 'text-gray-600'}`}>
+                      {pourcent(config[cle])}
+                    </span>
+                  </div>
+                  <input
+                    id={`autopilot-${cle}`}
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={Math.round(config[cle] * 100)}
+                    onChange={(e) => setConfig((x) => ({ ...x, [cle]: Number(e.target.value) / 100 }))}
+                    // Le relâchement enregistre — pas chaque pas du curseur.
+                    onMouseUp={() => enregistrer({ [cle]: config[cle] })}
+                    onTouchEnd={() => enregistrer({ [cle]: config[cle] })}
+                    onKeyUp={() => enregistrer({ [cle]: config[cle] })}
+                    disabled={!ready || saving || !actif}
+                    data-autopilot-volume={cle}
+                    className="w-full accent-purple-500 disabled:opacity-40"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Étape 4 · Rythme & diffusion ─────────────────────────────── */}
+      {etape === 3 && (
         <div className="space-y-4">
           <div>
             <label htmlFor="autopilot-hour" className="block text-xs font-medium text-gray-300 mb-1.5">
@@ -513,8 +899,8 @@ export default function AutopilotPanel({ accent }: { accent: string }) {
         </div>
       )}
 
-      {/* ── Étape 4 · Options & garde-fous ───────────────────────────── */}
-      {etape === 3 && (
+      {/* ── Étape 5 · Options & garde-fous ───────────────────────────── */}
+      {etape === 4 && (
         <div className="space-y-4">
 {/* ── Voix off ─────────────────────────────────────────────────
               OPTION PAYANTE, donc EXPLICITE et desactivee par defaut. La
@@ -586,17 +972,30 @@ export default function AutopilotPanel({ accent }: { accent: string }) {
         </div>
       )}
 
-      {/* ── Étape 5 · Récapitulatif & activation ─────────────────────── */}
-      {etape === 4 && (
+      {/* ── Étape 6 · Récapitulatif & activation ─────────────────────── */}
+      {etape === 5 && (
         <div className="space-y-3">
-          <dl className="rounded-xl border border-gray-800 bg-gray-900/60 p-3 space-y-1.5 text-[11px]">
-            {RECAP(config).map(([cle, valeur]) => (
-              <div key={cle} className="flex items-baseline justify-between gap-3">
-                <dt className="text-gray-500 shrink-0">{cle}</dt>
-                <dd className="text-right text-gray-200">{valeur}</dd>
-              </div>
-            ))}
-          </dl>
+          {([
+            ['Ce qui change à chaque vidéo', RECAP_VARIABLE(config), 'variable'],
+            ['Ce qui ne change jamais', RECAP_CONSTANT(config, voixClonees), 'constant'],
+            ['Rythme & diffusion', RECAP_DIFFUSION(config), 'diffusion'],
+          ] as Array<[string, Array<[string, string]>, string]>).map(([titre, lignes, jeton]) => (
+            <dl
+              key={jeton}
+              data-autopilot-recap={jeton}
+              className="rounded-xl border border-gray-800 bg-gray-900/60 p-3 space-y-1.5 text-[11px]"
+            >
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">
+                {titre}
+              </p>
+              {lignes.map(([cle, valeur]) => (
+                <div key={cle} className="flex items-baseline justify-between gap-3">
+                  <dt className="text-gray-500 shrink-0">{cle}</dt>
+                  <dd className="text-right text-gray-200">{valeur}</dd>
+                </div>
+              ))}
+            </dl>
+          ))}
 
 {/* ── Interrupteur ─────────────────────────────────────────────── */}
           <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-800 bg-gray-900/60 p-3">

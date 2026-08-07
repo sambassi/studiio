@@ -6,7 +6,8 @@ import { sanitizeConfig, decideRun, type SkipReason } from '@/lib/autopilot/rule
 import { preparePosts, toPostRow, slotKey } from '@/lib/autopilot/engine';
 import { buildAutopilotDesign, buildAutopilotMetadata, AUTOPILOT_FORMAT } from '@/lib/autopilot/design';
 import { renderAndUpload } from '@/lib/autopilot/render';
-import { pickPosterUrl, probeRushSeconds } from '@/lib/autopilot/poster';
+import { pickPosterUrl, probeRushSeconds, rushEncorePresent } from '@/lib/autopilot/poster';
+import { notifyOnce, NOTIFICATION_KINDS } from '@/lib/notifications/store';
 import { buildAutopilotVoices } from '@/lib/autopilot/voice';
 import { pickTopics } from '@/lib/autopilot/topics';
 import { deductCredits, getVideoRenderCost } from '@/lib/credits/system';
@@ -49,23 +50,61 @@ function verifyCronSecret(req: NextRequest): boolean {
   return req.headers.get('authorization') === `Bearer ${secret}`;
 }
 
-/** Previent l'utilisateur quand le moteur s'arrete pour une raison qu'il peut lever. */
-function notifier(email: string | null | undefined, reason: SkipReason): void {
-  if (!email) return;
-  const messages: Partial<Record<SkipReason, { subject: string; body: string }>> = {
-    credits: {
-      subject: 'Autopilote en pause — crédits insuffisants',
-      body: 'Votre Autopilote s’est arrêté : votre solde est descendu au seuil que vous avez fixé. '
-        + 'Rechargez vos crédits ou abaissez le seuil pour qu’il reprenne.',
-    },
-    'sans-rush': {
-      subject: 'Autopilote en attente — ajoutez des rushes',
-      body: 'Votre Autopilote est actif mais sa banque de rushes est vide. '
-        + 'Ajoutez-y au moins une vidéo pour qu’il puisse produire.',
-    },
-  };
-  const m = messages[reason];
+/** Où l'utilisateur va regler ce qui bloque. */
+const LIEN_AUTOPILOTE = '/dashboard/creer-simple?panneau=autopilote';
+
+/** Ce qu'on annonce, par cause. Un seul texte pour la cloche ET pour l'email. */
+const MESSAGES: Partial<Record<SkipReason, {
+  kind: string;
+  subject: string;
+  title: string;
+  body: string;
+}>> = {
+  credits: {
+    kind: NOTIFICATION_KINDS.autopiloteCredits,
+    subject: 'Autopilote en pause — crédits insuffisants',
+    title: 'Autopilote en pause : crédits insuffisants',
+    body: 'Votre solde est descendu au seuil que vous avez fixé. '
+      + 'Rechargez vos crédits ou abaissez le seuil pour qu’il reprenne.',
+  },
+  'sans-rush': {
+    kind: NOTIFICATION_KINDS.autopiloteSansRush,
+    subject: 'Autopilote en attente — ajoutez des rushes',
+    title: 'Autopilote en pause : ajoutez des rushes',
+    body: 'Votre Autopilote est actif mais sa banque de rushes est vide. '
+      + 'Ajoutez-y au moins une vidéo pour qu’il puisse produire.',
+  },
+};
+
+/**
+ * Previent l'utilisateur — dans l'application ET par email.
+ *
+ * ⚠️ L'ANTI-DOUBLON EST CE QUI REND CETTE FONCTION UTILISABLE, et il corrige
+ * un defaut qui existait deja. Le declencheur passe TOUTES LES HEURES, et
+ * `decideRun` rend `sans-rush` AVANT le test d'heure de depart : un compte a
+ * la banque vide recevait donc VINGT-QUATRE emails par jour. L'email ne part
+ * plus que quand la notification a reellement ete creee — une seule decision,
+ * un seul anti-doublon. Deux conditions paralleles auraient fini par ne plus
+ * dire la meme chose.
+ *
+ * L'email reste best-effort et vient EN PLUS de la cloche : tous les
+ * utilisateurs ne rouvrent pas l'application tous les jours.
+ */
+async function prevenir(
+  userId: string,
+  email: string | null | undefined,
+  reason: SkipReason,
+): Promise<void> {
+  const m = MESSAGES[reason];
   if (!m) return;
+  const { created } = await notifyOnce({
+    userId,
+    kind: m.kind,
+    title: m.title,
+    body: m.body,
+    href: LIEN_AUTOPILOTE,
+  });
+  if (!created || !email) return;
   // Fire-and-forget : un envoi d'email ne doit jamais retarder le passage
   // suivant, ni le faire echouer.
   sendEmailSilent({
@@ -83,6 +122,8 @@ interface RapportUtilisateur {
   echecs?: number;
   /** Creneaux deja produits, ignores pour ne pas doubler. */
   doublons?: number;
+  /** Rushes introuvables au stockage, retires de la banque. */
+  rushesRetires?: number;
   saute?: SkipReason;
 }
 
@@ -181,6 +222,20 @@ export async function GET(req: NextRequest) {
         lastRunAt: ligne.last_run_at,
         lastRushUrl: ligne.last_rush_url,
         voiceEnabled: ligne.voice_enabled,
+        // ── L'identite CONSTANTE du compte ────────────────────────────
+        // Colonnes absentes tant que la migration du 7 aout n'est pas
+        // appliquee : `sanitizeConfig` retombe alors sur les defauts, qui
+        // sont les valeurs jusqu'ici en dur dans `buildAutopilotDesign`.
+        cardGradientStart: ligne.card_gradient_start,
+        cardGradientEnd: ligne.card_gradient_end,
+        titleColor: ligne.title_color,
+        cardsShowPoster: ligne.cards_show_poster,
+        musicUrl: ligne.music_url,
+        voiceId: ligne.voice_id,
+        keepRushAudio: ligne.keep_rush_audio,
+        musicVolume: ligne.music_volume,
+        voiceVolume: ligne.voice_volume,
+        rushVolume: ligne.rush_volume,
       });
 
       const credits = await getUserCredits(userId).catch(() => 0);
@@ -192,7 +247,7 @@ export async function GET(req: NextRequest) {
         if (decision.reason === 'credits' || decision.reason === 'sans-rush') {
           const { data: u } = await supabaseAdmin
             .from('users').select('email').eq('id', userId).limit(1);
-          notifier((u?.[0] as { email?: string } | undefined)?.email, decision.reason);
+          await prevenir(userId, (u?.[0] as { email?: string } | undefined)?.email, decision.reason);
         }
         rapport.push({ userId, prepares: 0, saute: decision.reason });
         continue;
@@ -221,6 +276,16 @@ export async function GET(req: NextRequest) {
       let echecs = 0;
       let doublons = 0;
       let dernierRush = config.lastRushUrl;
+      /**
+       * Rushes reference dans la banque mais introuvables au stockage.
+       *
+       * ⚠️ ILS SONT RETIRES A LA FIN DU CYCLE, PAS SUR PLACE. Modifier
+       * `rush_urls` en pleine boucle ferait diverger la banque de celle qui a
+       * servi a repartir les montages (`preparePosts` a deja pioche), et la
+       * rotation du cycle suivant repartirait d'un etat que personne n'a
+       * calcule. On collecte, on retire une fois, a la fin.
+       */
+      const rushesMorts = new Set<string>();
 
       for (const post of posts) {
         const jeton = slotKey(userId, post.scheduledDate, post.scheduledTime);
@@ -235,6 +300,21 @@ export async function GET(req: NextRequest) {
         // televersement echouer. Rien de tout cela ne doit emporter le reste
         // du cycle.
         try {
+          // ── Le rush existe-t-il encore ? ───────────────────────────────
+          // Un rush supprime — retention du stockage, menage de
+          // l'utilisateur — reste ecrit dans `rush_urls`. Sans ce controle,
+          // le rendu echoue trois minutes plus tard sur une erreur de
+          // Chromium, et l'adresse morte ressort au cycle suivant. Le rush
+          // est LACHE pour ce montage (qui sort en titre/cartes/CTA, un
+          // montage valide) et l'adresse est mise de cote pour etre retiree.
+          let rushUrl = post.rushUrl;
+          if (rushUrl && !(await rushEncorePresent(rushUrl))) {
+            console.warn(`[Autopilote/Cron] ${userId} — rush introuvable, ignore : ${rushUrl}`);
+            rushesMorts.add(rushUrl);
+            rushUrl = null;
+          }
+          const postUtilise = rushUrl === post.rushUrl ? post : { ...post, rushUrl };
+
           // Les deux sondages RESEAU, avant la fabrique de design qui reste
           // pure. Aucun des deux ne peut faire echouer le cycle : ils rendent
           // `null` et le montage sort comme avant.
@@ -242,7 +322,7 @@ export async function GET(req: NextRequest) {
             // La variante fait tourner le tirage : deux montages du meme
             // theme n'ont pas la meme affiche.
             pickPosterUrl(post.title, posts.indexOf(post) + Math.floor(now / 3_600_000)),
-            post.rushUrl ? probeRushSeconds(post.rushUrl) : Promise.resolve(null),
+            rushUrl ? probeRushSeconds(rushUrl) : Promise.resolve(null),
           ]);
           const jobId = `autopilote-${userId}-${post.scheduledDate}-${Date.now()}`;
           // La voix AVANT le design : ce sont ses durees qui calent les
@@ -251,18 +331,27 @@ export async function GET(req: NextRequest) {
           // ⚠️ ET SEULEMENT SI ELLE A ETE DEMANDEE. ElevenLabs facture a
           // l'usage : sans ce garde, chaque montage declencherait quatre
           // syntheses payantes chez des utilisateurs qui n'ont rien demande.
+          //
+          // La voix CLONEE du compte, la meme sur toutes les sequences de
+          // toutes les videos : c'est le point de l'identite constante. Sans
+          // choix, la voix par defaut du serveur.
           const voices = config.voiceEnabled
-            ? await buildAutopilotVoices({ userId, jobId, post })
+            ? await buildAutopilotVoices({ userId, jobId, post: postUtilise, voiceId: config.voiceId })
             : {};
-          const design = buildAutopilotDesign(post, { posterUrl, rushSeconds, voices });
+          // `config` porte l'identite CONSTANTE — couleurs, fond des cartes,
+          // musique, niveaux du mixeur, son du rush. L'affiche, les textes et
+          // le rush, eux, varient et arrivent par `post` et `posterUrl`.
+          const design = buildAutopilotDesign(postUtilise, {
+            posterUrl, rushSeconds, voices, config,
+          });
           const { videoUrl, thumbnailUrl, durationFrames } = await renderAndUpload({ userId, jobId, design });
 
           const metadata = buildAutopilotMetadata({
-            post, design, videoUrl, thumbnailUrl, mode: config.mode,
+            post: postUtilise, design, videoUrl, thumbnailUrl, mode: config.mode,
           });
           const { error: insertError } = await supabaseAdmin
             .from('scheduled_posts')
-            .insert(toPostRow({ userId, post, config, videoUrl, metadata }));
+            .insert(toPostRow({ userId, post: postUtilise, config, videoUrl, metadata }));
           if (insertError) throw new Error(`insertion du post : ${insertError.message}`);
 
           // Debit APRES coup, comme le chemin manuel : la video est en ligne
@@ -280,13 +369,16 @@ export async function GET(req: NextRequest) {
           }
 
           dejaFaits.add(jeton);
-          dernierRush = post.rushUrl ?? dernierRush;
+          dernierRush = rushUrl ?? dernierRush;
           reussis += 1;
           console.log(
             `[Autopilote/Cron] ${userId} — montage ${post.scheduledDate} rendu `
             + `(${durationFrames} images, ${AUTOPILOT_FORMAT}`
             + `, affiche ${posterUrl ? 'oui' : 'non'}`
+            + `, cartes ${config.cardsShowPoster ? 'sur affiche' : 'sur couleurs'}`
             + `, rush ${rushSeconds ? `${rushSeconds.toFixed(1)}s` : 'non sonde'}`
+            + `, son du rush ${config.keepRushAudio ? `${Math.round(config.rushVolume * 100)}%` : 'coupe'}`
+            + `, musique ${config.musicUrl ? `${Math.round(config.musicVolume * 100)}%` : 'aucune'}`
             + `, voix ${config.voiceEnabled ? `${Object.keys(voices).length}/4` : 'desactivee'}`
             + `) : ${videoUrl}`,
           );
@@ -299,6 +391,51 @@ export async function GET(req: NextRequest) {
         }
       }
 
+      // ── Rushes introuvables : on retire, et on le DIT ──────────────────
+      // Laisser une adresse morte dans la banque ferait retomber dessus a
+      // chaque cycle, et l'utilisateur verrait des montages amputes de leur
+      // sequence video sans jamais savoir pourquoi.
+      const banquePropre = config.rushUrls.filter((u) => !rushesMorts.has(u));
+      if (rushesMorts.size > 0) {
+        const { error: nettoyageError } = await supabaseAdmin
+          .from('autopilot_config')
+          .update({ rush_urls: banquePropre, updated_at: new Date(now).toISOString() })
+          .eq('user_id', userId);
+        if (nettoyageError) {
+          console.error(
+            `[Autopilote/Cron] ${userId} — retrait des rushes morts impossible :`,
+            nettoyageError.message,
+          );
+        }
+        const { data: u } = await supabaseAdmin
+          .from('users').select('email').eq('id', userId).limit(1);
+        const email = (u?.[0] as { email?: string } | undefined)?.email;
+        const n = rushesMorts.size;
+        const { created } = await notifyOnce({
+          userId,
+          kind: NOTIFICATION_KINDS.autopiloteRushIntrouvable,
+          title: `${n} rush${n > 1 ? 'es' : ''} introuvable${n > 1 ? 's' : ''}`,
+          body: banquePropre.length === 0
+            ? 'Votre banque est maintenant vide : ajoutez au moins une vidéo pour que l’Autopilote reprenne.'
+            : `${n} vidéo${n > 1 ? 's ont' : ' a'} disparu du stockage et ${n > 1 ? 'ont' : 'a'} été retirée${n > 1 ? 's' : ''} de votre banque.`,
+          href: LIEN_AUTOPILOTE,
+        });
+        if (created && email) {
+          sendEmailSilent({
+            to: email,
+            subject: 'Autopilote — des rushes ont disparu',
+            html: `<p>${n} vidéo${n > 1 ? 's de votre banque de rushes ne sont plus disponibles et ont' : ' de votre banque de rushes n’est plus disponible et a'} été retirée${n > 1 ? 's' : ''}.`
+              + (banquePropre.length === 0
+                ? ' Votre banque est maintenant vide : l’Autopilote ne produira plus tant que vous n’aurez pas ajouté une vidéo.</p>'
+                : '</p>'),
+          });
+        }
+        console.warn(
+          `[Autopilote/Cron] ${userId} — ${n} rush(es) retire(s) de la banque `
+          + `(${banquePropre.length} restant(s))`,
+        );
+      }
+
       // `last_run_at` n'avance que si QUELQUE CHOSE a ete produit : un cycle
       // entierement rate doit pouvoir etre rattrape au passage suivant,
       // plutot que saute d'une cadence entiere.
@@ -308,8 +445,10 @@ export async function GET(req: NextRequest) {
           .update({
             last_run_at: new Date(now).toISOString(),
             // Le dernier rush reellement utilise : la rotation repartira du
-            // suivant. Un rush dont le rendu a echoue ne compte pas.
-            last_rush_url: dernierRush,
+            // suivant. Un rush dont le rendu a echoue ne compte pas — et un
+            // rush retire de la banque non plus, sinon `pickRush` repartirait
+            // d'un `indexOf` a -1, donc toujours du premier.
+            last_rush_url: dernierRush && !rushesMorts.has(dernierRush) ? dernierRush : null,
             updated_at: new Date(now).toISOString(),
           })
           .eq('user_id', userId);
@@ -320,6 +459,7 @@ export async function GET(req: NextRequest) {
         prepares: reussis,
         ...(echecs ? { echecs } : null),
         ...(doublons ? { doublons } : null),
+        ...(rushesMorts.size ? { rushesRetires: rushesMorts.size } : null),
       });
     }
 
