@@ -690,6 +690,14 @@ interface Generated {
   ctaSub: string;
 }
 
+/** Libelle de chaque zone reglable — l'ordre du montage. */
+const ZONE_LABELS: Record<'title' | 'subtitle' | 'cta' | 'cards', string> = {
+  title: 'Titre',
+  subtitle: 'Sous-titre',
+  cards: 'Cartes',
+  cta: 'CTA',
+};
+
 const STEPS = ['Sujet', 'Style', 'Audio', 'Contenu', 'Envoi'] as const;
 
 /**
@@ -996,8 +1004,15 @@ const TextResizeHandles: React.FC<{
   capturing?: boolean;
   onDragMove?: (e: React.PointerEvent) => void;
   onDragEnd?: () => void;
-}> = ({ el, onStart, uiPx, capturing, onDragMove, onDragEnd }) => {
-  if (!onStart || capturing) return null;
+  /**
+   * La poignee est-elle visible ?
+   *
+   * ⚠️ ELLES ETAIENT PERMANENTES, comme celles des cartes. Un outil
+   * d'edition affiche en continu encombre l'apercu qu'il sert a regler.
+   */
+  visible?: boolean;
+}> = ({ el, onStart, uiPx, capturing, visible, onDragMove, onDragEnd }) => {
+  if (!onStart || capturing || !visible) return null;
   return (
     <>
       {([
@@ -1108,7 +1123,7 @@ export function Preview({
    */
   onTextResizeStart?: (el: 'title' | 'cta', e: React.PointerEvent) => void;
   /** Double-clic sur le titre ou le CTA — ouvre son panneau de reglages. */
-  onTextDoubleClick?: (el: 'title' | 'cta') => void;
+  onTextDoubleClick?: (el: 'title' | 'subtitle' | 'cta') => void;
   /** Double-clic sur une carte — ouvre le choix de son icone. */
   onCardDoubleClick?: (id: string) => void;
   /**
@@ -1323,6 +1338,16 @@ export function Preview({
    * jamais photographiees : les grossir ne change rien a l'export.
    */
   const uiPx = (n: number) => n / (displayScale > 0 ? displayScale : 1);
+
+  /**
+   * Bloc de texte survole — c'est lui qui montre ses poignees.
+   *
+   * ⚠️ ON LES GARDE PENDANT LE GESTE (`dragging`). Le pointeur est CAPTURE
+   * par la poignee : s'il sort du bloc, `pointerleave` tombe, la poignee se
+   * demonte et le redimensionnement s'interrompt au milieu.
+   */
+  const [survolTexte, setSurvolTexte] = useState<'title' | 'cta' | null>(null);
+  const poigneesVisibles = (el: 'title' | 'cta') => survolTexte === el || dragging === el;
 
   // Rush illisible (fichier expire, format refuse par le navigateur) : on le
   // retire de l'apercu plutot que de laisser un rectangle noir. L'etat est
@@ -1660,6 +1685,8 @@ export function Preview({
               onPointerCancel={onDragEnd}
               onLostPointerCapture={onDragEnd}
               onDoubleClick={onTextDoubleClick ? () => onTextDoubleClick('title') : undefined}
+              onPointerEnter={onTextResizeStart ? () => setSurvolTexte('title') : undefined}
+              onPointerLeave={onTextResizeStart ? () => setSurvolTexte((v) => (v === 'title' ? null : v)) : undefined}
               data-title-block
               title={
                 onTextDoubleClick
@@ -1687,6 +1714,7 @@ export function Preview({
               <SequenceTitle
                 title={generated.title}
                 subtitle={generated.subtitle}
+                onSubtitleDoubleClick={onTextDoubleClick ? () => onTextDoubleClick('subtitle') : undefined}
                 typography={text.title}
                 subtitleTypography={text.subtitle}
                 format={format}
@@ -1696,6 +1724,7 @@ export function Preview({
                   propagation : sans cela, la prise deplacerait le bloc au
                   lieu de le redimensionner. */}
               <TextResizeHandles el="title" onStart={onTextResizeStart} uiPx={uiPx} capturing={capturing}
+                visible={poigneesVisibles('title')}
                 onDragMove={onDragMove} onDragEnd={onDragEnd} />
             </div>
             )}
@@ -1744,6 +1773,8 @@ export function Preview({
               onPointerCancel={onDragEnd}
               onLostPointerCapture={onDragEnd}
               onDoubleClick={onTextDoubleClick ? () => onTextDoubleClick('cta') : undefined}
+              onPointerEnter={onTextResizeStart ? () => setSurvolTexte('cta') : undefined}
+              onPointerLeave={onTextResizeStart ? () => setSurvolTexte((v) => (v === 'cta' ? null : v)) : undefined}
               data-cta-block
               title={
                 onTextDoubleClick
@@ -1768,6 +1799,7 @@ export function Preview({
                 containerWidth={vw}
               />
               <TextResizeHandles el="cta" onStart={onTextResizeStart} uiPx={uiPx} capturing={capturing}
+                visible={poigneesVisibles('cta')}
                 onDragMove={onDragMove} onDragEnd={onDragEnd} />
             </div>
             )}
@@ -1947,21 +1979,33 @@ export function Preview({
  * choisi », et donc ce qui garde le montage rétro-compatible.
  */
 const TextZonePanel: React.FC<{
-  zone: 'title' | 'cta';
+  zone: 'title' | 'subtitle' | 'cta';
   valeurs: AutopilotTextZone;
   onChange: (patch: Partial<AutopilotTextZone>) => void;
 }> = ({ zone, valeurs, onChange }) => {
-  const defauts = zone === 'title' ? DEFAULT_TEXT_STYLES.title : DEFAULT_TEXT_STYLES.cta;
+  const defauts = zone === 'cta'
+    ? DEFAULT_TEXT_STYLES.cta
+    // Le sous-titre herite de la graisse et de l'interligne du titre : ce
+    // sont donc les defauts du TITRE qu'il faut afficher, pas des siens.
+    : DEFAULT_TEXT_STYLES.title;
   const police = valeurs.font ?? defauts.font;
   const echelle = valeurs.scale ?? defauts.scale;
   const interlettrage = valeurs.letterSpacing ?? defauts.letterSpacing;
   const interligne = valeurs.lineHeight ?? defauts.lineHeight;
-  const libelle = zone === 'title' ? 'Titre' : 'CTA';
+  const libelle = zone === 'title' ? 'Titre' : zone === 'subtitle' ? 'Sous-titre' : 'CTA';
 
   return (
     <div className="space-y-3" data-autopilot-texte-panneau={zone}>
       <p className="text-[11px] text-gray-500">
-        Ces réglages valent pour <span className="text-gray-300">toutes les vidéos</span>.
+        {libelle} — ces réglages valent pour
+        {' '}<span className="text-gray-300">toutes les vidéos</span>.
+      </p>
+      {/* ⚠️ LE CONTENU N'EST PAS EDITABLE ICI, ET C'EST VOULU. L'Autopilote
+          genere un texte DIFFERENT a chaque video : y figer une phrase
+          detruirait la variete qui fait tout son interet. Le dire, plutot que
+          de laisser l'utilisateur chercher un champ qui n'existe pas. */}
+      <p className="text-[11px] text-gray-600">
+        Le texte, lui, change à chaque vidéo — seul le style est constant.
       </p>
 
       <div>
@@ -2057,7 +2101,18 @@ const TextZonePanel: React.FC<{
       <TextFormatToolbar
         zone={zone}
         valeurs={valeurs}
-        defauts={{ textCase: DEFAULT_TEXT_CASE, align: zone === 'cta' ? 'center' : 'left', bold: defauts.bold, italic: defauts.italic }}
+        defauts={{
+          // Le sous-titre n'etait PAS en capitales, contrairement au titre et
+          // au CTA : son repli de casse est « Normal ».
+          textCase: zone === 'subtitle' ? 'none' : DEFAULT_TEXT_CASE,
+          align: zone === 'cta' ? 'center' : 'left',
+          bold: defauts.bold,
+          italic: defauts.italic,
+        }}
+        // Graisse et italique du sous-titre sont ceux du TITRE — `drawIntro`
+        // et `SequenceTitle` les lui imposent. Les proposer ici promettrait
+        // un reglage sans effet.
+        showBoldItalic={zone !== 'subtitle'}
         onChange={onChange}
       />
     </div>
@@ -2430,7 +2485,7 @@ function AutopilotPreview({ config, accent, onPatch }: {
      de tout regler SUR l'apercu, sans ajouter un seul champ dans la colonne
      de gauche — donc sans allonger la page ni ajouter d'etape. */
   const [panneau, setPanneau] = useState<
-    { type: 'texte'; zone: 'title' | 'cta' } | { type: 'icone'; rang: number } | null
+    { type: 'texte'; zone: 'title' | 'subtitle' | 'cta' } | { type: 'icone'; rang: number } | null
   >(null);
   const [panneauPos, setPanneauPos] = useState({ x: 0, y: 0 });
 
@@ -2532,7 +2587,9 @@ function AutopilotPreview({ config, accent, onPatch }: {
 
       {/* ── RÉGLAGES DU TEXTE ─────────────────────────────────────────── */}
       <FloatingPanel
-        title={panneau?.type === 'texte' && panneau.zone === 'cta' ? 'CTA' : 'Titre'}
+        title={panneau?.type === 'texte'
+          ? (panneau.zone === 'cta' ? 'CTA' : panneau.zone === 'subtitle' ? 'Sous-titre' : 'Titre')
+          : 'Titre'}
         isOpen={panneau?.type === 'texte'}
         onClose={() => setPanneau(null)}
         initialX={panneauPos.x}
@@ -3107,6 +3164,25 @@ export default function AssistantWizard() {
 
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState<Generated | null>(null);
+  /**
+   * Zone ouverte au double-clic sur l'apercu — assistant.
+   *
+   * ⚠️ ICI LE CONTENU EST EDITABLE, contrairement a l'Autopilote. L'assistant
+   * produit UN montage, dont l'utilisateur relit le texte avant de l'envoyer ;
+   * l'Autopilote en produit un different a chaque cycle, et y figer une phrase
+   * detruirait la variete qui fait tout son interet.
+   */
+  const [zoneOuverte, setZoneOuverte] = useState<
+    'title' | 'subtitle' | 'cta' | 'cards' | null
+  >(null);
+  const [zonePos, setZonePos] = useState({ x: 0, y: 0 });
+  const ouvrirZone = useCallback((zone: 'title' | 'subtitle' | 'cta' | 'cards') => {
+    setZonePos({
+      x: Math.min(Math.max(12, window.innerWidth / 2), window.innerWidth - 340),
+      y: Math.max(80, window.innerHeight / 2 - 220),
+    });
+    setZoneOuverte(zone);
+  }, []);
 
   const [scheduledDate, setScheduledDate] = useState('');
   const [sending, setSending] = useState(false);
@@ -7800,8 +7876,105 @@ export default function AssistantWizard() {
           onElementResizeStart={startElementResize}
           onElementDelete={deleteElement}
           onFocusChange={setPreviewFocus}
+          // ⚠️ TOUTES LES SEQUENCES, PAS SEULEMENT CERTAINES. Titre,
+          // sous-titre, cartes et CTA ouvrent chacun leur panneau — c'est ce
+          // que l'utilisateur attend d'un double-clic sur un element.
+          onTextDoubleClick={ouvrirZone}
+          onCardDoubleClick={() => ouvrirZone('cards')}
           overlay={renduDansLeCadre}
         />
+
+        {/* ── RÉGLAGES D'UNE SÉQUENCE, AU DOUBLE-CLIC ──────────────────
+            Le MÊME `FloatingPanel` et la MÊME `TextFormatToolbar` que
+            l'Autopilote — extraits, jamais recopiés. La différence tient en
+            une chose : ici le CONTENU s'édite aussi. */}
+        <FloatingPanel
+          title={ZONE_LABELS[zoneOuverte ?? 'title']}
+          isOpen={zoneOuverte !== null}
+          onClose={() => setZoneOuverte(null)}
+          initialX={zonePos.x}
+          initialY={zonePos.y}
+          accentColor={accent}
+          // Relâcher un curseur hors du panneau le fermerait : c'est
+          // exactement le geste qu'on fait en réglant une taille.
+          closeOnClickOutside={false}
+        >
+          {zoneOuverte && generated && (
+            <div className="space-y-3" data-zone-panneau={zoneOuverte}>
+              {/* ── LE TEXTE ────────────────────────────────────────────
+                  ⚠️ LES CARTES N'ONT PAS UN TEXTE MAIS N : leur contenu se
+                  règle à l'étape « Contenu », carte par carte, avec son
+                  libellé et sa valeur. Y remettre un champ ici donnerait
+                  deux endroits pour la même chose — et deux endroits pour un
+                  même réglage finissent toujours par se contredire. */}
+              {zoneOuverte !== 'cards' && (
+                <div>
+                  <label
+                    htmlFor={`zone-texte-${zoneOuverte}`}
+                    className="block text-[10px] uppercase tracking-wider text-gray-500 mb-1"
+                  >
+                    Texte
+                  </label>
+                  <textarea
+                    id={`zone-texte-${zoneOuverte}`}
+                    rows={2}
+                    value={
+                      zoneOuverte === 'title' ? generated.title
+                        : zoneOuverte === 'subtitle' ? generated.subtitle
+                          : generated.cta
+                    }
+                    onChange={(e) => setGenerated((g) => (g ? {
+                      ...g,
+                      ...(zoneOuverte === 'title' ? { title: e.target.value }
+                        : zoneOuverte === 'subtitle' ? { subtitle: e.target.value }
+                          : { cta: e.target.value }),
+                    } : g))}
+                    data-zone-texte={zoneOuverte}
+                    style={{ resize: 'vertical' }}
+                    className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none px-2 py-1.5 text-sm"
+                  />
+                </div>
+              )}
+              {zoneOuverte === 'cards' && (
+                <p className="text-[11px] text-gray-500">
+                  Le texte des cartes se règle à l’étape
+                  {' '}<span className="text-gray-300">Contenu</span>, carte par carte.
+                  Ici, leur mise en forme.
+                </p>
+              )}
+
+              {/* ── LE STYLE ────────────────────────────────────────────
+                  La MÊME barre que l'Autopilote, sur les quatre zones. */}
+              <TextFormatToolbar
+                zone={zoneOuverte}
+                valeurs={
+                  zoneOuverte === 'cards' ? cardsTypography
+                    : zoneOuverte === 'title' ? textStyles.title
+                      : zoneOuverte === 'subtitle' ? textStyles.subtitle
+                        : textStyles.cta
+                }
+                defauts={{
+                  // Titre et CTA sortent en capitales quand rien n'est
+                  // choisi ; le sous-titre et les cartes, non.
+                  textCase: zoneOuverte === 'title' || zoneOuverte === 'cta'
+                    ? DEFAULT_TEXT_CASE : 'none',
+                  align: zoneOuverte === 'cta' ? 'center' : 'left',
+                  bold: true,
+                  italic: false,
+                }}
+                // Le sous-titre hérite de la graisse et de l'italique du
+                // titre : les proposer promettrait un réglage sans effet.
+                showBoldItalic={zoneOuverte !== 'subtitle'}
+                onChange={(patch) => {
+                  if (zoneOuverte === 'cards') patchCards(patch);
+                  else if (zoneOuverte === 'title') setTitleStyle((v) => ({ ...v, ...patch }));
+                  else if (zoneOuverte === 'subtitle') setSubtitleStyle((v) => ({ ...v, ...patch }));
+                  else setCtaStyle((v) => ({ ...v, ...patch }));
+                }}
+              />
+            </div>
+          )}
+        </FloatingPanel>
 
         {/* ── LE BOUTON DU RENDU — TROIS ÉTATS, UN SEUL BOUTON ─────────
             Il y en avait deux, à deux endroits : « Voir le rendu » sous

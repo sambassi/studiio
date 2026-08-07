@@ -71,9 +71,21 @@ export default function SequenceTitle({
   format,
   containerWidth,
   reveal = 1,
+  onSubtitleDoubleClick,
 }: {
   title: string;
   subtitle?: string;
+  /**
+   * Double-clic sur le SOUS-TITRE — ouvre ses reglages.
+   *
+   * ⚠️ IL FAUT QU'IL SOIT DISTINCT DU TITRE. Les deux vivent dans le meme
+   * cadre : sans gestionnaire propre, un double-clic sur le sous-titre
+   * remontait au bloc de titre et ouvrait le panneau du TITRE. L'utilisateur
+   * reglait alors une zone sans comprendre pourquoi l'autre changeait.
+   *
+   * Absent cote serveur : Remotion n'a ni pointeur ni double-clic.
+   */
+  onSubtitleDoubleClick?: () => void;
   typography: TitleTypography;
   subtitleTypography: SubtitleTypography;
   format: DesignFormat;
@@ -131,6 +143,11 @@ export default function SequenceTitle({
       </div>
       {subtitle && (
         <div
+          onDoubleClick={onSubtitleDoubleClick
+            ? (e) => { e.stopPropagation(); onSubtitleDoubleClick(); }
+            : undefined}
+          data-subtitle-block
+          title={onSubtitleDoubleClick ? 'Double-clic pour régler le sous-titre' : undefined}
           style={{
             fontFamily: fontStack(subFamily),
             fontSize: subSize,
