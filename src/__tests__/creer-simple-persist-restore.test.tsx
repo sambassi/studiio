@@ -149,7 +149,12 @@ describe('Default-safe : sans placement enregistré, rien ne change', () => {
     poser({});
     await monter();
     for (const el of cartesDom()) {
-      expect(el.style.position).toBe('');
+      // ⚠️ L'INVARIANT EST « PAS PLACEE PAR DES COORDONNEES », pas « aucune
+      // propriete `position` ». Les cartes portent desormais un
+      // `position: relative` — sans decalage, donc neutre pour la mise en
+      // page — qui sert de contexte aux poignees de coin. Ce qui trahirait
+      // un placement libre, c'est `absolute` et un `left`.
+      expect(el.style.position).not.toBe('absolute');
       expect(el.style.left).toBe('');
       expect(el.style.boxShadow).toBe('');
     }
@@ -163,7 +168,7 @@ describe('Un brouillon incohérent retombe sur le placement d origine', () => {
     // laissait passer des emplacements orphelins.
     poser({ cardBoxes: { format: '9:16', boxes: { a: { x: 5, y: 10, w: 50, h: 9 } } } });
     await monter();
-    for (const el of cartesDom()) expect(el.style.position).toBe('');
+    for (const el of cartesDom()) expect(el.style.position).not.toBe('absolute');
   });
 
   it('une carte hors du conteneur fait écarter tout l ensemble', async () => {
@@ -174,7 +179,7 @@ describe('Un brouillon incohérent retombe sur le placement d origine', () => {
       },
     });
     await monter();
-    for (const el of cartesDom()) expect(el.style.position).toBe('');
+    for (const el of cartesDom()) expect(el.style.position).not.toBe('absolute');
   });
 
   it('un groupe désignant une carte absente ne marque personne', async () => {

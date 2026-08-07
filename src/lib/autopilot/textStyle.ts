@@ -68,6 +68,17 @@ export interface AutopilotDesignStyle {
     'font' | 'scale' | 'textCase' | 'align' | 'underline' | 'strike'
   >;
   cta?: AutopilotTextZone;
+  /**
+   * Texte des CARTES — police, taille, graisse, casse, alignement.
+   *
+   * ⚠️ PAS DE POSITION : les cartes se placent en flux ou par
+   * `cardBoxes`, jamais par une ancre en pourcentage. Accepter un x/y
+   * écrirait un réglage que le rendu ignore.
+   */
+  cards?: Pick<
+    AutopilotTextZone,
+    'font' | 'scale' | 'bold' | 'italic' | 'textCase' | 'align' | 'underline' | 'strike'
+  >;
   /** Icône lucide imposée à la carte de rang N, par index (`"0"`, `"1"`…). */
   cardIcons?: Record<string, string>;
   /**
@@ -157,6 +168,29 @@ function zone(brut: unknown, avecPosition: boolean): AutopilotTextZone | undefin
 }
 
 /**
+ * Réglages du texte des cartes.
+ *
+ * ⚠️ COMME UNE ZONE, MOINS LA POSITION — mais AVEC la graisse et l'italique.
+ * `zone(…, false)` les retire aussi, parce que le sous-titre les hérite du
+ * titre ; les cartes, elles, portent les leurs. D'où cette fabrique propre
+ * plutôt qu'un drapeau de plus dans la première.
+ */
+function zoneCartes(brut: unknown): AutopilotDesignStyle['cards'] {
+  if (!brut || typeof brut !== 'object') return undefined;
+  const o = brut as Record<string, unknown>;
+  return compacter({
+    font: police(o.font),
+    scale: nombreBorne(o.scale, SCALE_MIN, SCALE_MAX),
+    bold: booleen(o.bold),
+    italic: booleen(o.italic),
+    textCase: TEXT_CASES.includes(o.textCase as TextCase) ? (o.textCase as TextCase) : undefined,
+    align: TEXT_ALIGNS.includes(o.align as TextAlign) ? (o.align as TextAlign) : undefined,
+    underline: booleen(o.underline),
+    strike: booleen(o.strike),
+  }) as AutopilotDesignStyle['cards'];
+}
+
+/**
  * Icônes de cartes retenues.
  *
  * ⚠️ RESTREINTES À `ICON_LIBRARY`. Un nom inconnu rend une icône VIDE —
@@ -188,6 +222,9 @@ export function sanitizeDesignStyle(brut: unknown): AutopilotDesignStyle {
     // commentaire du champ.
     subtitle: sousTitre as AutopilotDesignStyle['subtitle'],
     cta: zone(o.cta, true),
+    // `false` : pas de position — voir le commentaire du champ. Graisse et
+    // italique, eux, passent bien (le drapeau ne gouverne que x/y).
+    cards: zoneCartes(o.cards),
     cardIcons: icones(o.cardIcons),
     // ⚠️ RESTREINT AUX LIBELLES DE L'ECRAN. Un libelle inconnu ne
     // correspondrait a aucune branche du compositeur, qui retomberait sur son

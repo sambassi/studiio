@@ -1,5 +1,11 @@
 import React from 'react';
 import { isFrameless } from '@/lib/creer/cardStyles';
+import { fontStack } from '@/lib/fonts/catalog';
+import {
+  cssTextTransform, cssTextDecoration,
+  DECORATION_THICKNESS_RATIO, UNDERLINE_OFFSET_RATIO,
+  type TextCase, type TextAlign,
+} from '@/lib/creer/textFormat';
 import { CardIcon } from '@/components/ui/CardIcon';
 import { cardRatios, CARDS_FRAME, CARD_RATIO_LANDSCAPE } from '@/lib/creer/designSpec';
 
@@ -45,8 +51,39 @@ export interface SequenceCard {
 export interface CardBox { x: number; y: number; w: number; h: number }
 
 /** Aides d'édition — présentes dans l'aperçu, ABSENTES du rendu serveur. */
+/**
+ * Typographie du texte des cartes.
+ *
+ * ⚠️ TOUT EST OPTIONNEL, ET L'ABSENCE EST LE RENDU D'AUJOURD'HUI. Les cartes
+ * n'avaient aucun reglage : libelle en 600, valeur en 700, taille derivee du
+ * seul format. Une propriete absente ne doit donc rien changer.
+ *
+ * ⚠️ ET CE COMPOSANT SUFFIT A LA PARITE. « Creer simple » PHOTOGRAPHIE ce
+ * conteneur (`cardsSnapshot`) et le compositeur blitte l'image telle quelle ;
+ * l'Autopilote, lui, rend ce meme composant sous Remotion. Les deux moteurs
+ * lisent donc le meme JSX — il n'y a pas de seconde implementation a recaler.
+ */
+export interface CardsTypography {
+  font?: string;
+  /** Echelle du texte ET de l'icone. 1 = la taille d'aujourd'hui. */
+  scale?: number;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
+  textCase?: TextCase;
+  align?: TextAlign;
+}
+
 export interface CardsInteraction {
   onCardDragStart?: (id: string, e: React.PointerEvent) => void;
+  /**
+   * Prise d'une poignee de coin sur une carte — agrandir SON texte.
+   *
+   * ⚠️ ABSENT = AUCUNE POIGNEE. Les poignees n'existaient que pour le titre
+   * et le CTA : sur une carte, tirer un coin ne faisait rien.
+   */
+  onCardResizeStart?: (id: string, e: React.PointerEvent) => void;
   /**
    * Double-clic sur une carte — ouvre le choix de son icône.
    *
@@ -100,6 +137,8 @@ export interface SequenceCardsProps {
   landscape: boolean;
   /** Couleur de la valeur — la fin du dégradé de marque. */
   valueColor: string;
+  /** Typographie du texte des cartes. Absente = le rendu d'aujourd'hui. */
+  typography?: CardsTypography;
   interaction?: CardsInteraction;
   containerRef?: React.RefObject<HTMLDivElement>;
 }
@@ -111,6 +150,7 @@ export default function SequenceCards({
   landscape,
   valueColor,
   cardStyle,
+  typography,
   interaction,
   containerRef,
 }: SequenceCardsProps) {
@@ -127,6 +167,23 @@ export default function SequenceCards({
    * des autres, alors que le compositeur canvas, lui, colle le texte au bord.
    */
   const sansCadre = isFrameless(cardStyle);
+
+  // ── Typographie des cartes ────────────────────────────────────────────
+  // `??` et non `||` : une echelle de 0 serait un reglage, pas une absence.
+  const echelle = typography?.scale ?? 1;
+  const casse = cssTextTransform(typography?.textCase);
+  const trait = cssTextDecoration(typography?.underline, typography?.strike);
+  /** Style commun au libelle et a la valeur — une seule source. */
+  const styleTexte = (taille: number): React.CSSProperties => ({
+    fontFamily: typography?.font ? fontStack(typography.font) : undefined,
+    fontStyle: typography?.italic ? 'italic' : undefined,
+    textTransform: casse,
+    textDecoration: trait,
+    // Memes ratios que le titre et le CTA — voir `textFormat.ts`.
+    textDecorationThickness: trait ? Math.max(1, taille * DECORATION_THICKNESS_RATIO) : undefined,
+    textUnderlineOffset: trait ? taille * UNDERLINE_OFFSET_RATIO : undefined,
+    textAlign: typography?.align,
+  });
 
   return (
     <div
@@ -196,7 +253,11 @@ export default function SequenceCards({
                     left: `${box.x}%`, top: `${box.y}%`,
                     width: `${box.w}%`, height: `${box.h}%`,
                   }
-                : null),
+                // ⚠️ CONTEXTE DE POSITIONNEMENT POUR LES POIGNEES. Sans lui,
+                // elles se placeraient sur le plus proche ancetre positionne
+                // — la GRILLE — et les quatre coins de chaque carte se
+                // retrouveraient empiles aux quatre coins du bloc.
+                : it?.onCardResizeStart ? { position: 'relative' as const } : null),
               // ── Aides d'edition ────────────────────────────────────────
               // Toutes conditionnees a `interaction` : cote serveur, aucune
               // ne peut se retrouver dans la video.
@@ -227,7 +288,9 @@ export default function SequenceCards({
           >
             <CardIcon
               name={c.icon}
-              size={Math.round(vw * CR.icon)}
+              // L'icone suit l'echelle du texte : l'agrandir seul donnerait
+              // une carte au pictogramme minuscule a cote d'un texte enorme.
+              size={Math.round(vw * CR.icon * echelle)}
               color="#FFFFFF"
               className=""
             />
@@ -237,11 +300,14 @@ export default function SequenceCards({
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
-                fontWeight: 600,
+                // `?? 600` : la graisse d'aujourd'hui tant que rien n'est
+                // choisi. `bold: false` reste un reglage, pas une absence.
+                fontWeight: typography?.bold === undefined ? 600 : (typography.bold ? 900 : 400),
                 color: '#FFFFFF',
                 ...(landscape && !cardBoxes ? { maxWidth: '100%' } : { flex: '1 1 0%' }),
-                fontSize: vw * CR.text,
+                fontSize: vw * CR.text * echelle,
                 lineHeight: landscape ? CARD_RATIO_LANDSCAPE.line : undefined,
+                ...styleTexte(vw * CR.text * echelle),
               }}
             >
               {c.title}
@@ -249,16 +315,58 @@ export default function SequenceCards({
             {c.value && (
               <span
                 style={{
-                  fontWeight: 700,
+                  fontWeight: typography?.bold === undefined ? 700 : (typography.bold ? 900 : 400),
                   ...(landscape && !cardBoxes ? null : { flexShrink: 0 }),
-                  fontSize: vw * CR.value,
+                  fontSize: vw * CR.value * echelle,
                   lineHeight: landscape ? CARD_RATIO_LANDSCAPE.line : undefined,
                   color: valueColor,
+                  ...styleTexte(vw * CR.value * echelle),
                 }}
               >
                 {c.value}
               </span>
             )}
+            {/* ── POIGNEES DE COIN ────────────────────────────────────
+                ⚠️ ELLES N'EXISTAIENT QUE POUR LE TITRE ET LE CTA : sur une
+                carte, tirer un coin ne faisait rien. Elles agrandissent le
+                TEXTE de la carte, pas sa boite — c'est ce que l'utilisateur
+                demande quand il tire sur un mot.
+
+                Absentes sans `onCardResizeStart`, et effacees pendant la
+                photo : le conteneur des cartes est justement ce que
+                `modern-screenshot` capture pour la video. */}
+            {it?.onCardResizeStart && !it.capturing && ([
+              { coin: 'nw', top: 0, left: 0 },
+              { coin: 'ne', top: 0, left: '100%' },
+              { coin: 'sw', top: '100%', left: 0 },
+              { coin: 'se', top: '100%', left: '100%' },
+            ] as const).map((p) => (
+              <span
+                key={p.coin}
+                data-card-handle={`${c.id}-${p.coin}`}
+                onPointerDown={(e) => { e.stopPropagation(); it.onCardResizeStart!(c.id, e); }}
+                onPointerMove={it.onDragMove}
+                onPointerUp={it.onDragEnd}
+                onPointerCancel={it.onDragEnd}
+                onLostPointerCapture={it.onDragEnd}
+                title="Tirer pour agrandir le texte de la carte"
+                style={{
+                  position: 'absolute',
+                  top: p.top,
+                  left: p.left,
+                  width: uiPx(9),
+                  height: uiPx(9),
+                  marginTop: -uiPx(4.5),
+                  marginLeft: -uiPx(4.5),
+                  backgroundColor: '#FFFFFF',
+                  border: `${uiPx(1)}px solid rgba(0,0,0,0.5)`,
+                  borderRadius: uiPx(2),
+                  cursor: p.coin === 'nw' || p.coin === 'se' ? 'nwse-resize' : 'nesw-resize',
+                  touchAction: 'none',
+                  zIndex: 5,
+                }}
+              />
+            ))}
           </div>
         );
       })}

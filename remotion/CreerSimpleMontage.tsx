@@ -7,7 +7,7 @@ import {
   gradientOverlayCss, DEFAULT_COLORS,
   type PlannedSequence,
 } from '../src/lib/creer/designSpec';
-import SequenceCards from '../src/components/creer/SequenceCards';
+import SequenceCards, { type CardsTypography } from '../src/components/creer/SequenceCards';
 import SequenceTitle, { titleFrameStyle } from '../src/components/creer/SequenceTitle';
 import SequenceCta, { ctaFrameStyle } from '../src/components/creer/SequenceCta';
 import FreeElementsLayer, { type FreeElement } from '../src/components/creer/FreeElementsLayer';
@@ -134,6 +134,8 @@ export interface CreerSimpleMontageProps {
   ctaStrike?: boolean;
   /** Style de carte. Absent = le cadre. « Text Only » le retire. */
   cardStyle?: string;
+  /** Typographie du texte des cartes. Absente = le rendu d'aujourd'hui. */
+  cardsTypography?: CardsTypography;
   /** Positions, en % du plateau — les memes qu'a l'ecran. */
   titlePos?: { x: number; y: number };
   ctaPos?: { x: number; y: number };
@@ -523,6 +525,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                 valueColor={props.gradientEnd || DEFAULT_COLORS.gradientEnd}
                 // Absent = le cadre, comme depuis toujours.
                 cardStyle={props.cardStyle}
+                typography={props.cardsTypography}
               />
               </TextAnimationLayer>
             )}

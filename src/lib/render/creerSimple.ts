@@ -5,6 +5,7 @@ import type { TextAnimation } from '@/lib/creer/textAnimation';
 import type { AudioKeyframe } from '@/lib/creer/audioDucking';
 import type { TransitionStyle } from '@/lib/video-composer';
 import type { TextCase, TextAlign } from '@/lib/creer/textFormat';
+import type { CardsTypography } from '@/components/creer/SequenceCards';
 
 /**
  * Entree du rendu SERVEUR d'un montage « Créer (simple) ».
@@ -92,6 +93,8 @@ export interface CreerSimpleRenderInput {
   ctaStrike?: boolean;
   /** Style de carte. Absent = le cadre ; « Text Only » le retire. */
   cardStyle?: string;
+  /** Typographie du texte des cartes. Absente = le rendu d'aujourd'hui. */
+  cardsTypography?: CardsTypography;
   /** Positions de l'ancre, en % du plateau — les memes qu'a l'ecran. */
   titlePos?: { x: number; y: number };
   ctaPos?: { x: number; y: number };
