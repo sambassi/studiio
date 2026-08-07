@@ -283,14 +283,19 @@ describe('Invariants du gestionnaire de glissement', () => {
     resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
     'utf-8',
   );
-  const startCardDrag = wizard.slice(
-    wizard.indexOf('const startCardDrag'),
-    wizard.indexOf('const moveDrag'),
-  );
+  // ⚠️ LES TRANCHES PARTENT DU CORPS DU WIZARD. Le fichier porte desormais
+  // plusieurs composants — l'apercu de l'Autopilote declare son propre
+  // `moveDrag`, PLUS HAUT. Un `indexOf` sans point de depart trouvait le
+  // sien, la tranche devenait vide, et le test echouait sur un fichier
+  // correct.
+  const DEBUT_WIZARD = wizard.indexOf('export default function AssistantWizard()');
+  const debutCarte = wizard.indexOf('const startCardDrag', DEBUT_WIZARD);
+  const startCardDrag = wizard.slice(debutCarte, wizard.indexOf('const moveDrag', debutCarte));
   const brancheCarte = wizard.slice(
-    wizard.indexOf("if (drag.el === 'card')"),
-    wizard.indexOf("const current = drag.el === 'title'"),
+    wizard.indexOf("if (drag.el === 'card')", DEBUT_WIZARD),
+    wizard.indexOf("const current = drag.el === 'title'", DEBUT_WIZARD),
   );
+  expect(startCardDrag.length).toBeGreaterThan(0);
 
   /*
    * Ces quatre invariants vivent dans les gestionnaires du composant parent,

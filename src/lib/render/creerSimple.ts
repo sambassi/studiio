@@ -46,6 +46,34 @@ export interface CreerSimpleRenderInput {
   gradientEnd?: string;
   gradientOpacity?: number;
   titleColor?: string;
+  /**
+   * Typographie du titre, du sous-titre et du CTA — et leurs positions.
+   *
+   * ⚠️ CES CHAMPS EXISTAIENT DEJA COTE COMPOSITION (`CreerSimpleMontageProps`)
+   * mais PAS dans cette entree : `renderCreerSimple` etale le design (`...d`)
+   * dans les `inputProps`, si bien qu'ils passaient sans etre declares. Les
+   * ecrire ici, c'est laisser TypeScript verifier ce que l'Autopilote
+   * transmet, au lieu de s'en remettre a un etalement non type.
+   *
+   * Tous OPTIONNELS : absent = le defaut du montage, donc le rendu d'avant.
+   */
+  titleFont?: string;
+  titleScale?: number;
+  titleBold?: boolean;
+  titleItalic?: boolean;
+  titleLetterSpacing?: number;
+  titleLineHeight?: number;
+  subtitleFont?: string;
+  subtitleScale?: number;
+  ctaFont?: string;
+  ctaScale?: number;
+  ctaBold?: boolean;
+  ctaItalic?: boolean;
+  ctaLetterSpacing?: number;
+  ctaLineHeight?: number;
+  /** Positions de l'ancre, en % du plateau — les memes qu'a l'ecran. */
+  titlePos?: { x: number; y: number };
+  ctaPos?: { x: number; y: number };
   watermark?: string;
   introDuration?: number;
   cardsDuration?: number;

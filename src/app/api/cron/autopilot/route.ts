@@ -236,6 +236,10 @@ export async function GET(req: NextRequest) {
         musicVolume: ligne.music_volume,
         voiceVolume: ligne.voice_volume,
         rushVolume: ligne.rush_volume,
+        // Police, taille, positions et icones — regles sur l'apercu, herites
+        // par toutes les videos. Colonne absente : `sanitizeDesignStyle` rend
+        // `{}` et le montage garde les defauts du Mode simple.
+        designStyle: ligne.design_style,
       });
 
       const credits = await getUserCredits(userId).catch(() => 0);

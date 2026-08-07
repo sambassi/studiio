@@ -10,6 +10,10 @@
  * prochaine génération.
  */
 
+import {
+  sanitizeDesignStyle, type AutopilotDesignStyle,
+} from '@/lib/autopilot/textStyle';
+
 export type AutopilotMode = 'auto' | 'review';
 
 export type AutopilotCadence = 'daily' | 'every_2_days' | 'weekly';
@@ -233,6 +237,15 @@ export interface AutopilotConfig {
   voiceVolume: number;
   /** Mixeur — niveau du son du rush, 0 à 1. Sans effet si `keepRushAudio` est faux. */
   rushVolume: number;
+  /**
+   * Police, taille, position et icônes — réglées sur l'aperçu, une fois.
+   *
+   * ⚠️ `{}` EST LE COMPORTEMENT ACTUEL. Une propriété absente laisse
+   * `buildAutopilotDesign` poser son défaut ; c'est ce qui rend l'ajout
+   * rétro-compatible pour toute configuration existante, et pour toute
+   * configuration relue avant que la migration ne soit appliquée.
+   */
+  designStyle: AutopilotDesignStyle;
 }
 
 export const DEFAULT_CONFIG: AutopilotConfig = {
@@ -263,6 +276,8 @@ export const DEFAULT_CONFIG: AutopilotConfig = {
   musicVolume: DEFAULT_VOLUMES.music,
   voiceVolume: DEFAULT_VOLUMES.voice,
   rushVolume: DEFAULT_VOLUMES.rush,
+  // Rien d'imposé : le montage garde les défauts du Mode simple.
+  designStyle: {},
 };
 
 /** Statut du post créé, selon le mode choisi. */
@@ -479,5 +494,8 @@ export function sanitizeConfig(raw: unknown): AutopilotConfig {
     musicVolume: sanitizeVolume(o.musicVolume, DEFAULT_VOLUMES.music),
     voiceVolume: sanitizeVolume(o.voiceVolume, DEFAULT_VOLUMES.voice),
     rushVolume: sanitizeVolume(o.rushVolume, DEFAULT_VOLUMES.rush),
+    // Polices restreintes au catalogue, echelles et positions bornees, icones
+    // restreintes aux noms lucide connus — voir `textStyle.ts`.
+    designStyle: sanitizeDesignStyle(o.designStyle),
   };
 }

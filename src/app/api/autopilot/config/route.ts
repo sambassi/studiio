@@ -49,6 +49,7 @@ function fromRow(row: Record<string, unknown> | null): AutopilotConfig {
     musicVolume: row.music_volume,
     voiceVolume: row.voice_volume,
     rushVolume: row.rush_volume,
+    designStyle: row.design_style,
   });
 }
 
@@ -78,46 +79,61 @@ async function storeReady(): Promise<boolean> {
   return ready;
 }
 
-let brandingProbe: { ready: boolean; at: number } | null = null;
+const colonneProbes = new Map<string, { ready: boolean; at: number }>();
 
 /**
- * Les colonnes d'identite constante existent-elles ?
+ * Une colonne existe-t-elle ? Memoise, par colonne.
  *
  * ⚠️ SONDE DISTINCTE DE CELLE DE LA TABLE, et ce n'est pas du zele. La table
  * `autopilot_config` existe depuis le 4 aout ; les colonnes de branding
- * arrivent le 7. Entre les deux deploiements — ou si l'exploitant applique une
- * migration et pas l'autre — ecrire `card_gradient_start` ferait echouer
- * l'upsert ENTIER : l'utilisateur ne pourrait plus rien enregistrer, pas meme
- * sa cadence, pour une colonne qu'il n'a peut-etre jamais touchee.
+ * arrivent le 7, celles du style de texte plus tard encore. Entre deux
+ * deploiements — ou si l'exploitant applique une migration et pas l'autre —
+ * ecrire une colonne absente ferait echouer l'upsert ENTIER : l'utilisateur ne
+ * pourrait plus rien enregistrer, pas meme sa cadence, pour une colonne qu'il
+ * n'a peut-etre jamais touchee.
  *
- * Tant qu'elles manquent, on ecrit le reste et on le DIT (`brandingReady`),
- * plutot que de refuser ou de faire croire que c'est enregistre.
+ * Tant qu'elle manque, on ecrit le reste et on le DIT a l'ecran, plutot que de
+ * refuser ou de faire croire que c'est enregistre.
+ *
+ * ⚠️ UNE FONCTION, PAS TROIS COPIES. La deuxieme migration a montre que le
+ * dispositif se repete ; la recopier une troisieme fois aurait garanti qu'une
+ * des copies finisse par dire autre chose que les autres.
  */
-async function brandingReady(): Promise<boolean> {
+async function colonneReady(colonne: string, aide: string): Promise<boolean> {
   const now = Date.now();
-  if (brandingProbe?.ready) return true;
-  if (brandingProbe && now - brandingProbe.at < STORE_PROBE_TTL_MS) return false;
+  const sonde = colonneProbes.get(colonne);
+  if (sonde?.ready) return true;
+  if (sonde && now - sonde.at < STORE_PROBE_TTL_MS) return false;
   let ready = false;
   try {
-    const { error } = await supabaseAdmin
-      .from('autopilot_config')
-      .select('card_gradient_start')
-      .limit(1);
+    const { error } = await supabaseAdmin.from('autopilot_config').select(colonne).limit(1);
     ready = !error;
     if (error) {
       console.error(
-        `[Autopilote] Colonnes d'identite absentes (${error.message}) — couleurs, musique, `
-        + 'voix et mixeur NON enregistres. Appliquer '
-        + 'migrations/2026-08-07-autopilot-branding.sql puis '
-        + '`docker kill -s SIGUSR1 studiio-postgrest`.',
+        `[Autopilote] Colonne ${colonne} absente (${error.message}) — ${aide} `
+        + 'puis `docker kill -s SIGUSR1 studiio-postgrest`.',
       );
     }
   } catch (err) {
-    console.error('[Autopilote] Sonde des colonnes d\'identite impossible :', err);
+    console.error(`[Autopilote] Sonde de ${colonne} impossible :`, err);
   }
-  brandingProbe = { ready, at: now };
+  colonneProbes.set(colonne, { ready, at: now });
   return ready;
 }
+
+/** Couleurs, musique, voix et mixeur sont-ils enregistrables ? */
+const brandingReady = () => colonneReady(
+  'card_gradient_start',
+  'couleurs, musique, voix et mixeur NON enregistres. Appliquer '
+  + 'migrations/2026-08-07-autopilot-branding.sql',
+);
+
+/** Police, taille, positions et icônes sont-ils enregistrables ? */
+const styleReady = () => colonneReady(
+  'design_style',
+  'police, taille, positions et icones NON enregistrees. Appliquer '
+  + 'migrations/2026-08-07-autopilot-text-style.sql',
+);
 
 export async function GET() {
   try {
@@ -129,7 +145,7 @@ export async function GET() {
       // Pas une erreur : l'ecran s'affiche en lecture seule et dit ce qui
       // manque, au lieu de laisser un formulaire qui n'enregistrerait rien.
       return NextResponse.json({
-        success: true, ready: false, brandingReady: false, config: DEFAULT_CONFIG,
+        success: true, ready: false, brandingReady: false, styleReady: false, config: DEFAULT_CONFIG,
       });
     }
     const { data } = await supabaseAdmin
@@ -141,12 +157,13 @@ export async function GET() {
       success: true,
       ready: true,
       brandingReady: await brandingReady(),
+      styleReady: await styleReady(),
       config: fromRow((data?.[0] as Record<string, unknown>) ?? null),
     });
   } catch (err) {
     console.error('[Autopilote] lecture :', err instanceof Error ? err.message : err);
     return NextResponse.json({
-      success: true, ready: false, brandingReady: false, config: DEFAULT_CONFIG,
+      success: true, ready: false, brandingReady: false, styleReady: false, config: DEFAULT_CONFIG,
     });
   }
 }
@@ -169,6 +186,7 @@ export async function PUT(req: NextRequest) {
 
     const propre = sanitizeConfig(await req.json().catch(() => ({})));
     const avecIdentite = await brandingReady();
+    const avecStyle = await styleReady();
     const { error } = await supabaseAdmin
       .from('autopilot_config')
       .upsert(
@@ -200,6 +218,12 @@ export async function PUT(req: NextRequest) {
             voice_volume: propre.voiceVolume,
             rush_volume: propre.rushVolume,
           } : null),
+          // ⚠️ SONDEE A PART. `design_style` arrive avec une migration
+          // POSTERIEURE a celle de l'identite : les deux peuvent etre
+          // appliquees separement, et ecrire une colonne absente ferait
+          // echouer l'upsert ENTIER — l'utilisateur ne pourrait plus rien
+          // enregistrer, pas meme sa cadence.
+          ...(avecStyle ? { design_style: propre.designStyle } : null),
           // `last_run_at` et `last_rush_url` appartiennent au MOTEUR : les
           // laisser ecrire par l'ecran permettrait de relancer une generation
           // en boucle en remettant la date a zero.
@@ -211,7 +235,9 @@ export async function PUT(req: NextRequest) {
       console.error('[Autopilote] ecriture :', error.message);
       return NextResponse.json({ success: false, error: 'Enregistrement impossible.' }, { status: 500 });
     }
-    return NextResponse.json({ success: true, brandingReady: avecIdentite, config: propre });
+    return NextResponse.json({
+      success: true, brandingReady: avecIdentite, styleReady: avecStyle, config: propre,
+    });
   } catch (err) {
     console.error('[Autopilote] ecriture :', err instanceof Error ? err.message : err);
     return NextResponse.json({ success: false, error: 'Enregistrement impossible.' }, { status: 500 });

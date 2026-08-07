@@ -23,6 +23,19 @@ const wizard = readFileSync(
   'utf-8',
 );
 
+/**
+ * ⚠️ LES TRANCHES DE SOURCE PARTENT DU CORPS DU WIZARD.
+ *
+ * `AssistantWizard.tsx` porte desormais PLUSIEURS composants — l'apercu de
+ * l'Autopilote y declare ses propres `startDrag`, `moveDrag` et
+ * `<FloatingPanel>`, PLUS HAUT dans le fichier. Un `indexOf` sans point de
+ * depart trouvait donc les siens, la tranche devenait vide, et le test
+ * echouait sur un fichier parfaitement correct. Pire : une tranche vide
+ * comparee a du vide serait passee sur un fichier casse.
+ */
+const DEBUT_WIZARD = wizard.indexOf('export default function AssistantWizard()');
+
+
 const generated = {
   title: 'Routine matin',
   subtitle: 'Quand s entraîner ?',
@@ -120,14 +133,16 @@ describe('Désélectionner', () => {
     // une capture refusée ou un aperçu non mesuré videraient la sélection —
     // y compris la carte en cours de glissement.
     const corps = wizard.slice(
-      wizard.indexOf('const startCardDrag'),
-      wizard.indexOf('const startDrag'),
+      wizard.indexOf('const startCardDrag', DEBUT_WIZARD),
+      wizard.indexOf('const startDrag', wizard.indexOf('const startCardDrag', DEBUT_WIZARD)),
     );
     const stop = corps.indexOf('e.stopPropagation();');
     expect(stop).toBeGreaterThan(0);
     expect(stop).toBeLessThan(corps.indexOf('return;'));
     // Même exigence pour le titre et le CTA.
-    const titre = wizard.slice(wizard.indexOf('const startDrag'), wizard.indexOf('const moveDrag'));
+    const debutTitre = wizard.indexOf('const startDrag', DEBUT_WIZARD);
+    const titre = wizard.slice(debutTitre, wizard.indexOf('const moveDrag', debutTitre));
+    expect(titre.length).toBeGreaterThan(0);
     expect(titre.indexOf('e.stopPropagation();')).toBeLessThan(titre.indexOf('return;'));
   });
 
@@ -209,14 +224,23 @@ describe('Le câblage ne peut pas disparaître en silence', () => {
 });
 
 describe('Cliquer sélectionne, glisser déplace', () => {
+  const debutCarte = wizard.indexOf('const startCardDrag', DEBUT_WIZARD);
   const startCardDrag = wizard.slice(
-    wizard.indexOf('const startCardDrag'),
-    wizard.indexOf('const startDrag'),
+    debutCarte,
+    wizard.indexOf('const startDrag', debutCarte),
   );
   const moveCarte = wizard.slice(
-    wizard.indexOf("if (drag.el === 'card')"),
-    wizard.indexOf("const current = drag.el === 'title'"),
+    wizard.indexOf("if (drag.el === 'card')", DEBUT_WIZARD),
+    wizard.indexOf("const current = drag.el === 'title'", DEBUT_WIZARD),
   );
+
+  it('les tranches de source ne sont pas vides', () => {
+    // Sans ce garde, une tranche vide comparee a du vide PASSERAIT sur un
+    // fichier casse — c'est ce qui a failli arriver quand un second composant
+    // du fichier a declare ses propres `startDrag` / `moveDrag`.
+    expect(startCardDrag.length).toBeGreaterThan(0);
+    expect(moveCarte.length).toBeGreaterThan(0);
+  });
 
   it('un simple appui ne bascule PAS en mode libre', () => {
     // Le mode libre fait rétrécir les cartes à leur largeur naturelle : le

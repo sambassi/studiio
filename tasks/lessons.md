@@ -381,3 +381,56 @@ doit porter sur la relation, pas sur la présence : `calque.contains(video)`,
 second ailleurs. La question à se poser devant chaque assertion : « qu'est-ce
 qui, cassé, la ferait tomber ? » Si la réponse est « rien de ce qu'on vient de
 corriger », l'assertion est décorative.
+
+## [2026-08-07] Un fichier à plusieurs composants casse toutes les tranches de source
+
+**Ce qui a mal tourné** — Ajouter un second composant interactif dans
+`AssistantWizard.tsx` (l'aperçu de l'Autopilote, avec ses propres `startDrag`,
+`moveDrag`, `dragRef` et `<FloatingPanel>`) a fait échouer **douze** tests d'un
+coup. Aucun ne portait sur la fonctionnalité ajoutée : tous découpaient le
+source par `indexOf('const moveDrag')` sans point de départ, trouvaient
+désormais le mien — déclaré plus haut — et comparaient une tranche VIDE.
+
+Le plus grave n'est pas l'échec : c'est qu'une tranche vide comparée à du vide
+**passerait** sur un fichier cassé. Douze tests étaient à un renommage près de
+devenir décoratifs sans que rien ne le signale.
+
+**Règle** — Toute tranche de source prise dans un fichier multi-composants doit
+(1) partir d'une ancre explicite — ici `indexOf('export default function
+AssistantWizard()')` — passée en `fromIndex` à chaque `indexOf` suivant, et
+(2) affirmer que la tranche n'est PAS vide avant toute autre assertion. La
+seconde condition est celle qui manque presque toujours, et c'est la seule qui
+transforme un faux positif silencieux en échec bruyant.
+
+**Corollaire** — Quand un test interdit une écriture (`not.toContain(
+'DESIGN.titlePos.x')`), le respecter ne suffit pas : mon **commentaire**
+citait la forme interdite et faisait échouer le test. Écrire l'invariant dans
+la prose sans le citer littéralement, ou scoper l'interdiction au bloc
+concerné.
+
+## [2026-08-07] Régler sur l'aperçu plutôt qu'empiler des champs
+
+**Ce qui a été demandé** — Police, taille, icônes, position et
+redimensionnement du texte, sans passer de six à sept étapes ni allonger la
+colonne de réglages.
+
+**Ce qui marche** — Sept réglages fois trois zones ne rentrent pas dans une
+colonne ; ils rentrent sur l'aperçu, qui est déjà à l'écran et déjà à la bonne
+échelle. Double-clic → panneau flottant, glisser → position, poignées de coin →
+taille. Coût au repos : **zéro pixel**. Le composant `Preview` savait déjà le
+faire pour l'éditeur manuel — il a suffi d'ouvrir trois props OPTIONNELLES
+(`onTextResizeStart`, `onTextDoubleClick`, `onCardDoubleClick`), absentes chez
+l'appelant historique donc sans effet sur lui.
+
+**Règle** — Devant une contrainte « ne pas allonger la page », chercher la
+surface déjà présente avant d'inventer une étape. Et quand deux écrans
+partagent un composant, étendre par props optionnelles à défaut sûr plutôt que
+par branches internes : le non-régressé se prouve alors en une ligne
+(« l'appelant historique ne passe rien »).
+
+**Corollaire — un seul écrivain.** L'aperçu vit dans une colonne, le panneau
+qui possède la configuration dans une autre. Lui donner son propre `fetch`
+aurait fait deux sources de vérité. Le panneau REMONTE sa fonction
+d'enregistrement (`onPatchReady`), rappelée à chaque changement puisqu'elle se
+referme sur la configuration — une référence gardée trop longtemps aurait
+réenvoyé un état périmé.

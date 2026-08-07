@@ -46,6 +46,14 @@ export interface CardBox { x: number; y: number; w: number; h: number }
 /** Aides d'édition — présentes dans l'aperçu, ABSENTES du rendu serveur. */
 export interface CardsInteraction {
   onCardDragStart?: (id: string, e: React.PointerEvent) => void;
+  /**
+   * Double-clic sur une carte — ouvre le choix de son icône.
+   *
+   * ⚠️ ABSENT = AUCUN GESTIONNAIRE, donc l'assistant manuel est inchangé : il
+   * n'a pas d'icône à choisir par carte, son contenu venant du générateur.
+   * L'Autopilote, lui, fige l'icône du rang N pour toutes ses vidéos.
+   */
+  onCardDoubleClick?: (id: string) => void;
   onDragMove?: (e: React.PointerEvent) => void;
   onDragEnd?: () => void;
   draggingCard?: string | null;
@@ -128,7 +136,12 @@ export default function SequenceCards({
             onPointerUp={it?.onDragEnd}
             onPointerCancel={it?.onDragEnd}
             onLostPointerCapture={it?.onDragEnd}
-            title={editable ? 'Glisser pour déplacer la carte' : undefined}
+            onDoubleClick={it?.onCardDoubleClick ? () => it.onCardDoubleClick!(c.id) : undefined}
+            title={
+              it?.onCardDoubleClick
+                ? 'Double-clic pour changer l’icône'
+                : editable ? 'Glisser pour déplacer la carte' : undefined
+            }
             // En grille, la carte s'empile comme la carte « Compact » du
             // compositeur : icone, libelle, valeur. En ligne sur un tiers de
             // largeur, le libelle serait reduit a deux caracteres et une

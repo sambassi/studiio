@@ -184,7 +184,11 @@ describe('Glissement durci', () => {
   });
 
   it('un aperçu en lecture seule n annonce pas un glissement impossible', () => {
-    expect(wizard).toContain('title={onDragStart ? "Glisser pour déplacer le titre" : undefined}');
+    // ⚠️ ON VERIFIE L'INVARIANT, PAS LA LIGNE. Le libelle a gagne une branche
+    // (double-clic pour la police, cote Autopilote) ; ce qui compte reste que
+    // le REPLI soit `undefined` quand aucun glissement n'est possible.
+    expect(wizard).toContain("onDragStart ? 'Glisser pour déplacer le titre' : undefined");
+    expect(wizard).toContain("onDragStart ? 'Glisser pour déplacer le CTA' : undefined");
     expect(wizard).toContain("touchAction: onDragStart ? 'none' : undefined");
   });
 });
