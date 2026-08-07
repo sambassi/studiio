@@ -434,3 +434,50 @@ aurait fait deux sources de vérité. Le panneau REMONTE sa fonction
 d'enregistrement (`onPatchReady`), rappelée à chaque changement puisqu'elle se
 referme sur la configuration — une référence gardée trop longtemps aurait
 réenvoyé un état périmé.
+
+## [2026-08-07] Une fonctionnalité « manquante » qui existait déjà à moitié
+
+**Ce qui a mal tourné** — La demande décrivait deux manques. Le second — « les
+cartes ont toujours un cadre » — n'était pas une fonctionnalité à écrire : le
+compositeur canvas implémentait `cardStyle === 'Text Only'` **depuis toujours**,
+et « Sans cadre » figurait déjà dans la liste des styles. Ce qui manquait était
+d'un tout autre ordre : `const CARD_STYLE = 'Compact'` figé dans l'écran, et
+`SequenceCards` qui ignorait complètement `cardStyle`. Écrire le rendu aurait
+produit une deuxième implémentation à côté d'une qui marchait.
+
+**Règle** — Devant « la fonctionnalité X n'existe pas », grep le nom de X dans
+le moteur AVANT de l'écrire. Ici `grep -n "cardStyle" video-composer.ts`
+répondait en dix secondes, et la réponse changeait entièrement la forme du
+correctif : rendre un choix à l'utilisateur, pas coder un rendu.
+
+**Corollaire** — Le vrai travail était alors de faire suivre le SECOND moteur.
+Le dépôt en a deux — les composants React partagés (aperçu + Remotion) et le
+compositeur canvas — et c'est toujours celui qu'on n'a pas ouvert qui reste en
+arrière.
+
+## [2026-08-07] Transformer la chaîne quand CSS suffisait
+
+**Ce qui a mal tourné** — Pour que la casse soit identique des deux côtés, j'ai
+d'abord transformé la CHAÎNE dans les composants React
+(`applyTextCase(title, …)`), en remplacement de `textTransform`. Dix-sept tests
+sont tombés d'un coup : ils cherchaient « Mon titre » dans le DOM, qui
+contenait désormais « MON TITRE ».
+
+Le signal était juste, et pas seulement mécanique. `text-transform` agit **avant
+la mise en lignes** : le navigateur coupe déjà sur les glyphes transformés,
+exactement comme le canvas qui transforme avant `wrapText`. La parité était
+donc acquise sans toucher au texte — et y toucher retirait au DOM un contenu
+sélectionnable et lisible par un lecteur d'écran, sans rien apporter au rendu.
+
+**Règle** — Avant de dupliquer en JavaScript ce que CSS fait déjà, vérifier à
+quel moment du rendu CSS l'applique. Ce qui agit avant la mise en page
+(`text-transform`, `letter-spacing`, `font-*`) est déjà pris en compte par le
+moteur de coupe : l'imiter côté modèle n'améliore pas la parité, ça déplace le
+problème dans le DOM.
+
+**Corollaire** — La parité qu'on promet doit être celle qu'on peut tenir. Casse
+et alignement sont identiques : les deux moteurs lisent la même fonction. Le
+souligné et le barré ne le seront jamais au pixel — CSS place son trait sur une
+métrique de police à laquelle le canvas n'a pas accès. Ils dérivent des mêmes
+ratios, c'est tout, et c'est ce que le test vérifie. Promettre l'identité aurait
+été un mensonge testé vert.

@@ -480,11 +480,11 @@ seule ligne à ajouter à l'étape 2. Persister dans le brouillon **et** dans
 
 Branche `feat/autopilote-branding-constant`.
 
-- [ ] A. Migration `2026-08-07-autopilot-branding.sql` + types/`sanitizeConfig` + route config
-- [ ] B. Moteur : couleurs, fond des cartes, musique, voix clonée, son du rush + mixeur, rotation des rushes
-- [ ] C. Notification « rushes manquants » — in-app (la cloche) + email best-effort
-- [ ] D. UI wizard : étape « Style & médias »
-- [ ] E. Tests + tsc + build
+- [x] A. Migration `2026-08-07-autopilot-branding.sql` + types/`sanitizeConfig` + route config
+- [x] B. Moteur : couleurs, fond des cartes, musique, voix clonée, son du rush + mixeur, rotation des rushes
+- [x] C. Notification « rushes manquants » — in-app (la cloche) + email best-effort
+- [x] D. UI wizard : étape « Style & médias »
+- [x] E. Tests + tsc + build
 
 ### Écart constaté sur la demande (partie C)
 Il n'existe AUCUN système de notifications in-app : la cloche de `Navbar.tsx`
@@ -556,10 +556,10 @@ canvas (`video-composer.ts`), qui sert l'export de « Créer simple ».
   `SequenceCards` ignore complètement `cardStyle`.
 - `drawIntro` a déjà `titleAlign` (gauche/centre) — reste `'right'`.
 
-- [ ] A. Contrat partagé `src/lib/creer/textFormat.ts` (casse, alignement, décoration)
-- [ ] B. Composants partagés : titre, sous-titre, CTA, cartes
-- [ ] C. Compositeur canvas — parité
-- [ ] D. Barre d'outils partagée (Créer simple + Autopilote)
-- [ ] E. `cardStyle` sélectionnable, dont « Sans cadre »
-- [ ] F. Autopilote : `design_style` étendu (pas de migration)
-- [ ] G. Tests de parité + tsc + build
+- [x] A. Contrat partagé `src/lib/creer/textFormat.ts` (casse, alignement, décoration)
+- [x] B. Composants partagés : titre, sous-titre, CTA, cartes
+- [x] C. Compositeur canvas — parité
+- [x] D. Barre d'outils partagée (Créer simple + Autopilote)
+- [x] E. `cardStyle` sélectionnable, dont « Sans cadre »
+- [x] F. Autopilote : `design_style` étendu (pas de migration)
+- [x] G. Tests de parité + tsc + build

@@ -351,6 +351,21 @@ describe('E — l Autopilote hérite du formatage, sans migration', () => {
     }
   });
 
+  it('une zone PARTIELLEMENT réglée n écrit que ce qu on a touché', () => {
+    // ⚠️ LE CAS QUE « aucun style du tout » NE COUVRE PAS. Quand la zone est
+    // entierement absente, la fabrique rend `{}` sans rien examiner ; c'est
+    // quand elle EXISTE avec une seule propriete que le risque apparait —
+    // ecrire `titleCase: undefined` a cote ferait passer un reglage jamais
+    // touche pour un reglage choisi, et le rendu perdrait son defaut.
+    const d = buildAutopilotDesign(POST, {
+      config: config({ title: { font: 'Inter' } }),
+    }) as unknown as Record<string, unknown>;
+    expect('titleFont' in d).toBe(true);
+    for (const champ of ['titleCase', 'titleAlign', 'titleUnderline', 'titleStrike']) {
+      expect(champ in d, champ).toBe(false);
+    }
+  });
+
   it('« false » est un réglage, pas une absence', () => {
     const d = buildAutopilotDesign(POST, {
       config: config({ title: { underline: false } }),
