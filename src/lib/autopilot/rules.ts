@@ -18,6 +18,21 @@ export type AutopilotMode = 'auto' | 'review';
 
 export type AutopilotCadence = 'daily' | 'every_2_days' | 'weekly';
 
+/** D'où vient la photo d'affiche d'un montage. */
+export type AutopilotPosterMode = 'auto' | 'custom';
+
+export const POSTER_MODES: readonly AutopilotPosterMode[] = Object.freeze(['auto', 'custom']);
+
+export const POSTER_MODE_LABELS: Record<AutopilotPosterMode, string> = {
+  auto: 'Automatique',
+  custom: 'Mes photos',
+};
+
+export const POSTER_MODE_HINTS: Record<AutopilotPosterMode, string> = {
+  auto: 'Studiio cherche une photo qui colle au thème de chaque vidéo.',
+  custom: 'Vos photos, en rotation — comme la banque de rushes.',
+};
+
 /** Combien de jours séparent deux générations. */
 export const CADENCE_DAYS: Record<AutopilotCadence, number> = {
   daily: 1,
@@ -246,6 +261,21 @@ export interface AutopilotConfig {
    * configuration relue avant que la migration ne soit appliquée.
    */
   designStyle: AutopilotDesignStyle;
+  /**
+   * Affiches fournies par l'utilisateur, dans l'ordre d'ajout.
+   *
+   * Elles ne servent QUE si `posterMode === 'custom'` — et si elles existent :
+   * un mode « mes photos » sur une banque vide retombe sur la recherche
+   * automatique plutôt que de produire un montage sans affiche.
+   */
+  posterUrls: string[];
+  /**
+   * D'où vient l'affiche : de la banque de l'utilisateur, ou de la recherche
+   * par thème.
+   *
+   * ⚠️ `'auto'` PAR DÉFAUT — le comportement actuel, à l'identique.
+   */
+  posterMode: AutopilotPosterMode;
 }
 
 export const DEFAULT_CONFIG: AutopilotConfig = {
@@ -278,6 +308,9 @@ export const DEFAULT_CONFIG: AutopilotConfig = {
   rushVolume: DEFAULT_VOLUMES.rush,
   // Rien d'imposé : le montage garde les défauts du Mode simple.
   designStyle: {},
+  posterUrls: [],
+  // Le comportement actuel : Studiio cherche l'affiche par thème.
+  posterMode: 'auto',
 };
 
 /** Statut du post créé, selon le mode choisi. */
@@ -497,5 +530,16 @@ export function sanitizeConfig(raw: unknown): AutopilotConfig {
     // Polices restreintes au catalogue, echelles et positions bornees, icones
     // restreintes aux noms lucide connus — voir `textStyle.ts`.
     designStyle: sanitizeDesignStyle(o.designStyle),
+    // Memes regles que la banque de rushes : http(s), dedoublonnee, bornee.
+    posterUrls: Array.isArray(o.posterUrls)
+      ? Array.from(new Set(
+        o.posterUrls.filter((u): u is string => typeof u === 'string' && /^https?:\/\//.test(u)),
+      )).slice(0, 50)
+      : [],
+    // Un mode inconnu vaut `auto` : c'est le seul repli qui produise
+    // toujours une affiche.
+    posterMode: POSTER_MODES.includes(o.posterMode as AutopilotPosterMode)
+      ? (o.posterMode as AutopilotPosterMode)
+      : 'auto',
   };
 }

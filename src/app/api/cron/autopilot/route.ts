@@ -6,7 +6,9 @@ import { sanitizeConfig, decideRun, type SkipReason } from '@/lib/autopilot/rule
 import { preparePosts, toPostRow, slotKey } from '@/lib/autopilot/engine';
 import { buildAutopilotDesign, buildAutopilotMetadata, AUTOPILOT_FORMAT } from '@/lib/autopilot/design';
 import { renderAndUpload } from '@/lib/autopilot/render';
-import { pickPosterUrl, probeRushSeconds, rushEncorePresent } from '@/lib/autopilot/poster';
+import {
+  pickPosterUrl, pickCustomPoster, probeRushSeconds, rushEncorePresent,
+} from '@/lib/autopilot/poster';
 import { notifyOnce, NOTIFICATION_KINDS } from '@/lib/notifications/store';
 import { buildAutopilotVoices } from '@/lib/autopilot/voice';
 import { pickTopics } from '@/lib/autopilot/topics';
@@ -240,6 +242,11 @@ export async function GET(req: NextRequest) {
         // par toutes les videos. Colonne absente : `sanitizeDesignStyle` rend
         // `{}` et le montage garde les defauts du Mode simple.
         designStyle: ligne.design_style,
+        // Affiches de l'utilisateur. Colonnes absentes : `sanitizeConfig`
+        // rend `[]` et `'auto'`, donc la recherche par theme — le
+        // comportement d'avant.
+        posterUrls: ligne.poster_urls,
+        posterMode: ligne.poster_mode,
       });
 
       const credits = await getUserCredits(userId).catch(() => 0);
@@ -280,6 +287,15 @@ export async function GET(req: NextRequest) {
       let echecs = 0;
       let doublons = 0;
       let dernierRush = config.lastRushUrl;
+      /**
+       * Derniere affiche piochee dans la banque de l'utilisateur.
+       *
+       * Locale au cycle, et non persistee : `autopilot_config` memorise deja
+       * le dernier RUSH, et ajouter une colonne pour l'affiche demanderait
+       * une migration de plus pour un gain marginal — dans un cycle, la
+       * rotation suffit a ne pas repeter deux vidéos d'affilee.
+       */
+      let dernierePosterUrl: string | null = null;
       /**
        * Rushes reference dans la banque mais introuvables au stockage.
        *
@@ -322,12 +338,23 @@ export async function GET(req: NextRequest) {
           // Les deux sondages RESEAU, avant la fabrique de design qui reste
           // pure. Aucun des deux ne peut faire echouer le cycle : ils rendent
           // `null` et le montage sort comme avant.
+          // ⚠️ LA BANQUE DE L'UTILISATEUR PASSE AVANT PEXELS — mais SEULEMENT
+          // si elle contient quelque chose. Un mode « mes photos » sur une
+          // banque vide retomberait sinon sur un montage sans affiche, alors
+          // que la recherche par theme, elle, en produit toujours une.
+          const rang = posts.indexOf(post);
+          const afficheCustom: string | null = config.posterMode === 'custom' && config.posterUrls.length > 0
+            ? pickCustomPoster(config.posterUrls, dernierePosterUrl, rang)
+            : null;
           const [posterUrl, rushSeconds] = await Promise.all([
             // La variante fait tourner le tirage : deux montages du meme
             // theme n'ont pas la meme affiche.
-            pickPosterUrl(post.title, posts.indexOf(post) + Math.floor(now / 3_600_000)),
+            afficheCustom
+              ? Promise.resolve(afficheCustom)
+              : pickPosterUrl(post.title, rang + Math.floor(now / 3_600_000)),
             rushUrl ? probeRushSeconds(rushUrl) : Promise.resolve(null),
           ]);
+          if (afficheCustom) dernierePosterUrl = afficheCustom;
           const jobId = `autopilote-${userId}-${post.scheduledDate}-${Date.now()}`;
           // La voix AVANT le design : ce sont ses durees qui calent les
           // sequences. Un echec de TTS rend `{}` et le montage sort muet.

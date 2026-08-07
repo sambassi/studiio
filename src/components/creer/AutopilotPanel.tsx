@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Rocket, Loader2, Check, AlertTriangle, Film, Trash2, Plus, Music, Mic, ImageIcon,
+  Sparkles,
 } from 'lucide-react';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import { CardIcon } from '@/components/ui/CardIcon';
@@ -11,6 +12,7 @@ import { THEMES, themeLabel, isCustomTopic } from '@/lib/themes';
 import {
   sanitizeConfig, statusMessage, DEFAULT_CONFIG, MAX_PER_CYCLE,
   CADENCES, CADENCE_LABELS, MODES, MODE_LABELS, MODE_HINTS,
+  POSTER_MODES, POSTER_MODE_LABELS, POSTER_MODE_HINTS, type AutopilotPosterMode,
   type AutopilotConfig, type AutopilotCadence, type AutopilotMode,
 } from '@/lib/autopilot/rules';
 
@@ -130,7 +132,10 @@ function RECAP_VARIABLE(config: AutopilotConfig): Array<[string, string]> {
     ['Thèmes', config.topics.length === 0
       ? 'Tous (12 thèmes)'
       : config.topics.map(themeLabel).join(', ')],
-    ['Affiche & textes', 'Différents à chaque vidéo'],
+    ['Affiche', config.posterMode === 'custom' && config.posterUrls.length > 0
+      ? `Vos ${config.posterUrls.length} photo${config.posterUrls.length > 1 ? 's' : ''}, en rotation`
+      : 'Choisie par Studiio selon le thème'],
+    ['Textes', 'Différents à chaque vidéo'],
     ['Rushes', n === 0
       ? 'Aucun — rien ne sera produit'
       : n === 1
@@ -218,7 +223,7 @@ export default function AutopilotPanel({ accent, onConfigChange, onPatchReady }:
    * (vidéo) et la musique (audio) — et un seul drapeau les ferait s'ouvrir
    * ensemble, l'un filtré par le type de l'autre.
    */
-  const [libOpen, setLibOpen] = useState<null | 'rush' | 'musique'>(null);
+  const [libOpen, setLibOpen] = useState<null | 'rush' | 'musique' | 'affiche'>(null);
   const [etape, setEtape] = useState(0);
   const [themePerso, setThemePerso] = useState('');
   /** Les colonnes d'identité existent-elles en base ? Voir `brandingReady`. */
@@ -545,6 +550,116 @@ export default function AutopilotPanel({ accent, onConfigChange, onPatchReady }:
                 if (url) enregistrer({ rushUrls: [...config.rushUrls, url] });
               }}
             />
+          </div>
+
+{/* ── VOS AFFICHES ─────────────────────────────────────────────
+              ⚠️ L'AUTOPILOTE CHOISISSAIT SEUL. Il cherche une photo chez
+              Pexels a partir du theme — un bon defaut, et ce n'en est qu'un :
+              une marque qui a ses propres visuels veut les siens.
+
+              Ici, et non dans une etape de plus : c'est la meme idee que la
+              banque de rushes, au meme endroit. Le wizard reste a six
+              etapes. */}
+          <div className="pt-3 border-t border-gray-800">
+            <p className="text-xs font-medium text-gray-300 mb-2">Affiches</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {POSTER_MODES.map((m: AutopilotPosterMode) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => enregistrer({ posterMode: m })}
+                  disabled={!ready || saving}
+                  aria-pressed={config.posterMode === m}
+                  data-autopilot-poster-mode={m}
+                  className={`rounded-lg border px-2.5 py-2 text-left transition disabled:opacity-40 ${
+                    config.posterMode === m
+                      ? 'border-purple-500/50 bg-gray-800'
+                      : 'border-gray-800 hover:border-gray-700'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5 text-[11px] font-medium">
+                    {m === 'auto'
+                      ? <Sparkles className="w-3 h-3" />
+                      : <ImageIcon className="w-3 h-3" />}
+                    {POSTER_MODE_LABELS[m]}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-gray-500 mt-1.5">
+              {POSTER_MODE_HINTS[config.posterMode]}
+            </p>
+
+            {config.posterMode === 'custom' && (
+              <div className="mt-2">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <p className="text-[11px] text-gray-400">
+                    Vos affiches <span className="text-gray-500">({config.posterUrls.length})</span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setLibOpen('affiche')}
+                    disabled={!ready || saving}
+                    data-autopilot-add-poster
+                    className="flex items-center gap-1 rounded-lg border border-gray-800 px-2 py-1 text-[11px] text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 transition-colors"
+                  >
+                    <Plus className="w-3 h-3" /> Ajouter
+                  </button>
+                </div>
+                {config.posterUrls.length === 0 ? (
+                  // ⚠️ ON LE DIT PLUTOT QUE DE PRODUIRE UN MONTAGE SANS
+                  // AFFICHE : le moteur retombe sur la recherche par theme
+                  // tant que la banque est vide.
+                  <p className="flex items-start gap-1.5 text-[11px] text-amber-400">
+                    <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
+                    Aucune affiche : Studiio continue de les chercher par thème
+                    tant que vous n’en ajoutez pas.
+                  </p>
+                ) : (
+                  <>
+                    <ul className="space-y-1">
+                      {config.posterUrls.map((url) => (
+                        <li
+                          key={url}
+                          className="flex items-center justify-between gap-2 rounded-lg bg-gray-900 border border-gray-800 px-2 py-1.5"
+                        >
+                          <span className="flex items-center gap-1.5 min-w-0 text-[11px] text-gray-300">
+                            <ImageIcon className="w-3 h-3 shrink-0" />
+                            <span className="truncate">{nomDeFichier(url)}</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => enregistrer({
+                              posterUrls: config.posterUrls.filter((u) => u !== url),
+                            })}
+                            disabled={saving}
+                            aria-label="Retirer cette affiche"
+                            className="text-gray-500 hover:text-red-400 transition-colors shrink-0"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    {config.posterUrls.length === 1 && (
+                      <p className="flex items-start gap-1.5 text-[11px] text-amber-400 mt-2">
+                        <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
+                        Une seule affiche : elle sera reprise sur toutes les vidéos.
+                      </p>
+                    )}
+                  </>
+                )}
+                <MediaLibrary
+                  isOpen={libOpen === 'affiche'}
+                  onClose={() => setLibOpen(null)}
+                  mediaType="image"
+                  onSelect={(url) => {
+                    setLibOpen(null);
+                    if (url) enregistrer({ posterUrls: [...config.posterUrls, url] });
+                  }}
+                />
+              </div>
+            )}
           </div>
         </div>
       )}

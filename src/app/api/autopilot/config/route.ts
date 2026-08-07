@@ -50,6 +50,8 @@ function fromRow(row: Record<string, unknown> | null): AutopilotConfig {
     voiceVolume: row.voice_volume,
     rushVolume: row.rush_volume,
     designStyle: row.design_style,
+    posterUrls: row.poster_urls,
+    posterMode: row.poster_mode,
   });
 }
 
@@ -128,6 +130,13 @@ const brandingReady = () => colonneReady(
   + 'migrations/2026-08-07-autopilot-branding.sql',
 );
 
+/** La banque d'affiches est-elle enregistrable ? */
+const postersReady = () => colonneReady(
+  'poster_mode',
+  'affiches personnalisees NON enregistrees. Appliquer '
+  + 'migrations/2026-08-07-autopilot-posters.sql',
+);
+
 /** Police, taille, positions et icônes sont-ils enregistrables ? */
 const styleReady = () => colonneReady(
   'design_style',
@@ -158,6 +167,7 @@ export async function GET() {
       ready: true,
       brandingReady: await brandingReady(),
       styleReady: await styleReady(),
+      postersReady: await postersReady(),
       config: fromRow((data?.[0] as Record<string, unknown>) ?? null),
     });
   } catch (err) {
@@ -187,6 +197,7 @@ export async function PUT(req: NextRequest) {
     const propre = sanitizeConfig(await req.json().catch(() => ({})));
     const avecIdentite = await brandingReady();
     const avecStyle = await styleReady();
+    const avecAffiches = await postersReady();
     const { error } = await supabaseAdmin
       .from('autopilot_config')
       .upsert(
@@ -224,6 +235,13 @@ export async function PUT(req: NextRequest) {
           // echouer l'upsert ENTIER — l'utilisateur ne pourrait plus rien
           // enregistrer, pas meme sa cadence.
           ...(avecStyle ? { design_style: propre.designStyle } : null),
+          // Sondee a part, comme les autres : la migration des affiches peut
+          // etre appliquee separement, et ecrire une colonne absente ferait
+          // echouer l'upsert ENTIER.
+          ...(avecAffiches ? {
+            poster_urls: propre.posterUrls,
+            poster_mode: propre.posterMode,
+          } : null),
           // `last_run_at` et `last_rush_url` appartiennent au MOTEUR : les
           // laisser ecrire par l'ecran permettrait de relancer une generation
           // en boucle en remettant la date a zero.
@@ -236,7 +254,11 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Enregistrement impossible.' }, { status: 500 });
     }
     return NextResponse.json({
-      success: true, brandingReady: avecIdentite, styleReady: avecStyle, config: propre,
+      success: true,
+      brandingReady: avecIdentite,
+      styleReady: avecStyle,
+      postersReady: avecAffiches,
+      config: propre,
     });
   } catch (err) {
     console.error('[Autopilote] ecriture :', err instanceof Error ? err.message : err);
