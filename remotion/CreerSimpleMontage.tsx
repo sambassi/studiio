@@ -14,6 +14,7 @@ import FreeElementsLayer, { type FreeElement } from '../src/components/creer/Fre
 import TextAnimationLayer from '../src/components/creer/TextAnimationLayer';
 import { MusiqueEnBoucle, VoixDeSequence, mixAt } from './audio';
 import type { AudioKeyframe } from '../src/lib/creer/audioDucking';
+import type { TextCase, TextAlign } from '../src/lib/creer/textFormat';
 import {
   textAnimationState, TEXT_ANIMATION_KEYS, DEFAULT_TEXT_ANIMATION, type TextAnimation,
 } from '../src/lib/creer/textAnimation';
@@ -112,6 +113,27 @@ export interface CreerSimpleMontageProps {
   ctaItalic?: boolean;
   ctaLetterSpacing?: number;
   ctaLineHeight?: number;
+  /**
+   * Casse, alignement et decoration — par element.
+   *
+   * ⚠️ TOUS OPTIONNELS. Absents, les composants partages retombent sur le
+   * rendu d'avant : titre et CTA en capitales, alignes comme avant, sans
+   * decoration. Aucun montage deja enregistre ne bouge.
+   */
+  titleCase?: TextCase;
+  titleAlign?: TextAlign;
+  titleUnderline?: boolean;
+  titleStrike?: boolean;
+  subtitleCase?: TextCase;
+  subtitleAlign?: TextAlign;
+  subtitleUnderline?: boolean;
+  subtitleStrike?: boolean;
+  ctaCase?: TextCase;
+  ctaAlign?: TextAlign;
+  ctaUnderline?: boolean;
+  ctaStrike?: boolean;
+  /** Style de carte. Absent = le cadre. « Text Only » le retire. */
+  cardStyle?: string;
   /** Positions, en % du plateau — les memes qu'a l'ecran. */
   titlePos?: { x: number; y: number };
   ctaPos?: { x: number; y: number };
@@ -453,11 +475,21 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                     italic: props.titleItalic ?? false,
                     letterSpacing: props.titleLetterSpacing ?? 0,
                     lineHeight: props.titleLineHeight ?? 1.1,
+                    // Absents = le rendu d'avant : capitales, aligne a
+                    // gauche, sans decoration.
+                    textCase: props.titleCase,
+                    align: props.titleAlign,
+                    underline: props.titleUnderline,
+                    strike: props.titleStrike,
                   }}
                   subtitleTypography={{
                     font: props.subtitleFont ?? null,
                     color: props.subtitleColor ?? null,
                     scale: props.subtitleScale ?? 1,
+                    textCase: props.subtitleCase,
+                    align: props.subtitleAlign,
+                    underline: props.subtitleUnderline,
+                    strike: props.subtitleStrike,
                   }}
                   format={format}
                   containerWidth={width}
@@ -489,6 +521,8 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                 containerWidth={width}
                 landscape={!isReel}
                 valueColor={props.gradientEnd || DEFAULT_COLORS.gradientEnd}
+                // Absent = le cadre, comme depuis toujours.
+                cardStyle={props.cardStyle}
               />
               </TextAnimationLayer>
             )}
@@ -508,6 +542,10 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                     italic: props.ctaItalic ?? false,
                     letterSpacing: props.ctaLetterSpacing ?? 0,
                     lineHeight: props.ctaLineHeight ?? 1.2,
+                    textCase: props.ctaCase,
+                    align: props.ctaAlign,
+                    underline: props.ctaUnderline,
+                    strike: props.ctaStrike,
                   }}
                   format={format}
                   containerWidth={width}

@@ -28,10 +28,17 @@ const wizard = readFileSync(
 const composition = readFileSync(resolve(__dirname, '../../remotion/CreerSimpleMontage.tsx'), 'utf-8');
 
 describe('Aucune classe Tailwind — la leçon de la Phase 2', () => {
-  it('`uppercase` est un style en ligne, des deux côtés', () => {
-    // En classe, le titre sortirait en minuscules côté serveur.
-    expect(titre).toContain("textTransform: 'uppercase'");
-    expect(cta).toContain("textTransform: 'uppercase'");
+  it('la casse est un style en ligne, des deux côtés', () => {
+    // En classe Tailwind, le titre sortirait en minuscules côté serveur : le
+    // bundle Remotion n'a pas la feuille de l'application.
+    //
+    // ⚠️ ELLE EST DESORMAIS REGLABLE, et non plus `'uppercase'` en dur. Le
+    // repli reste `DEFAULT_TEXT_CASE` — c'est-a-dire capitales — donc tout
+    // montage existant sort a l'identique.
+    expect(titre).toContain('textTransform: cssTextTransform(');
+    expect(cta).toContain('textTransform: casse');
+    expect(titre).toContain('DEFAULT_TEXT_CASE');
+    expect(cta).toContain('DEFAULT_TEXT_CASE');
     expect(titre).not.toContain('className="uppercase"');
     expect(cta).not.toContain('className="uppercase"');
   });
@@ -95,7 +102,11 @@ describe('Les ancrages', () => {
     // Comme `drawIntro` avec `titleAlign: 'left'` et `textBaseline: 'top'`.
     expect(titre).toContain("left: `${position.x}%`");
     expect(titre).toContain("top: `${position.y}%`");
-    expect(titre).toContain("textAlign: 'left'");
+    // ⚠️ L'ALIGNEMENT A QUITTE LE CADRE POUR LE BLOC. Il y etait fige a
+    // gauche pour titre ET sous-titre ; chacun porte desormais le sien, avec
+    // 'left' pour repli — le rendu d'avant, a l'identique.
+    expect(titre).toContain("typography.align ?? 'left'");
+    expect(titre).toContain("subtitleTypography.align ?? typography.align ?? 'left'");
     expect(titre).not.toContain('translate(');
   });
 

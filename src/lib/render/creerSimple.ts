@@ -4,6 +4,7 @@ import type { FreeElement } from '@/components/creer/FreeElementsLayer';
 import type { TextAnimation } from '@/lib/creer/textAnimation';
 import type { AudioKeyframe } from '@/lib/creer/audioDucking';
 import type { TransitionStyle } from '@/lib/video-composer';
+import type { TextCase, TextAlign } from '@/lib/creer/textFormat';
 
 /**
  * Entree du rendu SERVEUR d'un montage « Créer (simple) ».
@@ -71,6 +72,26 @@ export interface CreerSimpleRenderInput {
   ctaItalic?: boolean;
   ctaLetterSpacing?: number;
   ctaLineHeight?: number;
+  /**
+   * Casse, alignement, souligne et barre — par element.
+   *
+   * Absents = le rendu d'avant : capitales pour le titre et le CTA, aucune
+   * decoration, alignement historique.
+   */
+  titleCase?: TextCase;
+  titleAlign?: TextAlign;
+  titleUnderline?: boolean;
+  titleStrike?: boolean;
+  subtitleCase?: TextCase;
+  subtitleAlign?: TextAlign;
+  subtitleUnderline?: boolean;
+  subtitleStrike?: boolean;
+  ctaCase?: TextCase;
+  ctaAlign?: TextAlign;
+  ctaUnderline?: boolean;
+  ctaStrike?: boolean;
+  /** Style de carte. Absent = le cadre ; « Text Only » le retire. */
+  cardStyle?: string;
   /** Positions de l'ancre, en % du plateau — les memes qu'a l'ecran. */
   titlePos?: { x: number; y: number };
   ctaPos?: { x: number; y: number };

@@ -480,11 +480,11 @@ seule ligne à ajouter à l'étape 2. Persister dans le brouillon **et** dans
 
 Branche `feat/autopilote-branding-constant`.
 
-- [ ] A. Migration `2026-08-07-autopilot-branding.sql` + types/`sanitizeConfig` + route config
-- [ ] B. Moteur : couleurs, fond des cartes, musique, voix clonée, son du rush + mixeur, rotation des rushes
-- [ ] C. Notification « rushes manquants » — in-app (la cloche) + email best-effort
-- [ ] D. UI wizard : étape « Style & médias »
-- [ ] E. Tests + tsc + build
+- [x] A. Migration `2026-08-07-autopilot-branding.sql` + types/`sanitizeConfig` + route config
+- [x] B. Moteur : couleurs, fond des cartes, musique, voix clonée, son du rush + mixeur, rotation des rushes
+- [x] C. Notification « rushes manquants » — in-app (la cloche) + email best-effort
+- [x] D. UI wizard : étape « Style & médias »
+- [x] E. Tests + tsc + build
 
 ### Écart constaté sur la demande (partie C)
 Il n'existe AUCUN système de notifications in-app : la cloche de `Navbar.tsx`
@@ -539,3 +539,27 @@ Branche `feat/autopilote-style-texte-interactif`.
 Le sous-titre n'a **pas** de position propre : `SequenceTitle` le rend dans le
 cadre du titre et `CreerSimpleMontage` n'expose aucun `subtitlePos`. Accepter un
 x/y aurait écrit un réglage que le rendu ignore. Police et taille seulement.
+
+## 2026-08-07 — Formatage de texte complet + cartes sans cadre
+
+Branche `feat/texte-formatage-et-cartes-sans-cadre`.
+
+### Fait structurant (grep) — il n'y a que DEUX chemins de rendu, pas trois
+`SequenceTitle`, `SequenceCta` et `SequenceCards` sont PARTAGES par l'aperçu
+(`Preview`) et par la composition Remotion (`CreerSimpleMontage`). Les toucher
+une fois couvre les deux. Le seul chemin à mettre en parité est le compositeur
+canvas (`video-composer.ts`), qui sert l'export de « Créer simple ».
+
+### Déjà là (à ne pas réécrire)
+- `video-composer.ts` implémente DÉJÀ `cardStyle === 'Text Only'` (~1926).
+  Ce qui manque : le style est figé à `'Compact'` dans l'écran, et
+  `SequenceCards` ignore complètement `cardStyle`.
+- `drawIntro` a déjà `titleAlign` (gauche/centre) — reste `'right'`.
+
+- [x] A. Contrat partagé `src/lib/creer/textFormat.ts` (casse, alignement, décoration)
+- [x] B. Composants partagés : titre, sous-titre, CTA, cartes
+- [x] C. Compositeur canvas — parité
+- [x] D. Barre d'outils partagée (Créer simple + Autopilote)
+- [x] E. `cardStyle` sélectionnable, dont « Sans cadre »
+- [x] F. Autopilote : `design_style` étendu (pas de migration)
+- [x] G. Tests de parité + tsc + build

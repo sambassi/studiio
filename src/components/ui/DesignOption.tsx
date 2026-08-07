@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { CARD_STYLES } from '@/lib/creer/cardStyles';
 
 // ─── SVG PATHS for design option icons ───
 const DESIGN_ICON_PATHS: Record<string, string> = {
@@ -170,13 +171,12 @@ export const FILTER_OPTIONS = [
   { icon: 'filter_cool', label: 'Cool Frost', sublabel: 'Frais', accentColor: '#7C3AED', iconColor: '#64B4FF' },
 ];
 
-export const CARD_STYLE_OPTIONS = [
-  { icon: 'card_compact', label: 'Compact', sublabel: 'Par defaut' },
-  { icon: 'card_compact', label: 'Educatif', sublabel: 'Detaille' },
-  { icon: 'card_stats', label: 'Stats Bold', sublabel: 'Chiffres' },
-  { icon: 'card_minimal', label: 'Minimal Line', sublabel: 'Epure' },
-  { icon: 'card_fullwidth', label: 'Full Width', sublabel: 'Large' },
-  { icon: 'card_minimal', label: 'Text Only', sublabel: 'Sans cadre' },
-];
+/**
+ * ⚠️ DERIVE, PLUS DECLARE. La liste vit dans `@/lib/creer/cardStyles`, un
+ * module FEUILLE : le validateur de l'Autopilote en a besoin cote serveur, et
+ * importer ce composant `'use client'` depuis le cron entrainerait React pour
+ * trois chaines de caracteres.
+ */
+export const CARD_STYLE_OPTIONS = CARD_STYLES;
 
 export default DesignOption;

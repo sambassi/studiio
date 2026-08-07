@@ -1,5 +1,9 @@
 import { findFont } from '@/lib/fonts/catalog';
 import { ALL_LUCIDE_NAMES } from '@/lib/icons/library';
+import {
+  TEXT_CASES, TEXT_ALIGNS, type TextCase, type TextAlign,
+} from '@/lib/creer/textFormat';
+import { CARD_STYLE_NAMES } from '@/lib/creer/cardStyles';
 
 /**
  * Le style de texte CONSTANT de l'Autopilote — police, taille, position,
@@ -35,6 +39,17 @@ export interface AutopilotTextZone {
   italic?: boolean;
   letterSpacing?: number;
   lineHeight?: number;
+  /**
+   * Casse, alignement, souligné et barré.
+   *
+   * ⚠️ ABSENTS = LE RENDU D'AVANT. Les composants partagés retombent alors sur
+   * capitales pour le titre et le CTA, aucune décoration, alignement
+   * historique. Ne rien écrire est donc bien un état, pas un trou.
+   */
+  textCase?: TextCase;
+  align?: TextAlign;
+  underline?: boolean;
+  strike?: boolean;
 }
 
 export interface AutopilotDesignStyle {
@@ -48,11 +63,23 @@ export interface AutopilotDesignStyle {
    * ignore : l'utilisateur déplacerait son sous-titre à l'écran et le
    * retrouverait au même endroit dans la vidéo.
    */
-  subtitle?: Pick<AutopilotTextZone, 'font' | 'scale'>;
+  subtitle?: Pick<
+    AutopilotTextZone,
+    'font' | 'scale' | 'textCase' | 'align' | 'underline' | 'strike'
+  >;
   cta?: AutopilotTextZone;
   /** Icône lucide imposée à la carte de rang N, par index (`"0"`, `"1"`…). */
   cardIcons?: Record<string, string>;
+  /**
+   * Style de carte — l'un des libellés de `CARD_STYLE_OPTIONS`.
+   *
+   * ⚠️ « Text Only » RETIRE LE CADRE, c'est le réglage demandé. Absent = le
+   * rectangle, comme depuis toujours.
+   */
+  cardStyle?: string;
 }
+
+
 
 /** Bornes de l'échelle — les mêmes que le curseur de l'éditeur manuel (60–180 %). */
 export const SCALE_MIN = 0.5;
@@ -117,6 +144,15 @@ function zone(brut: unknown, avecPosition: boolean): AutopilotTextZone | undefin
     lineHeight: avecPosition
       ? nombreBorne(o.lineHeight, LINE_HEIGHT_MIN, LINE_HEIGHT_MAX)
       : undefined,
+    // ⚠️ CASSE, ALIGNEMENT ET DECORATION VALENT AUSSI POUR LE SOUS-TITRE.
+    // Contrairement a la POSITION, que le rendu n'expose pas pour lui, ces
+    // quatre-la sont bien appliques par `SequenceTitle` et par le
+    // compositeur canvas — les lui refuser serait un manque, pas une
+    // prudence.
+    textCase: TEXT_CASES.includes(o.textCase as TextCase) ? (o.textCase as TextCase) : undefined,
+    align: TEXT_ALIGNS.includes(o.align as TextAlign) ? (o.align as TextAlign) : undefined,
+    underline: booleen(o.underline),
+    strike: booleen(o.strike),
   });
 }
 
@@ -153,6 +189,13 @@ export function sanitizeDesignStyle(brut: unknown): AutopilotDesignStyle {
     subtitle: sousTitre as AutopilotDesignStyle['subtitle'],
     cta: zone(o.cta, true),
     cardIcons: icones(o.cardIcons),
+    // ⚠️ RESTREINT AUX LIBELLES DE L'ECRAN. Un libelle inconnu ne
+    // correspondrait a aucune branche du compositeur, qui retomberait sur son
+    // defaut — un style choisi et sans effet, ce qui est pire qu'un style
+    // refuse.
+    cardStyle: typeof o.cardStyle === 'string' && CARD_STYLE_NAMES.includes(o.cardStyle)
+      ? o.cardStyle
+      : undefined,
   }) ?? {};
 }
 

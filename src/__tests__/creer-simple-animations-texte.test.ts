@@ -315,7 +315,9 @@ describe('Persistance et export', () => {
 
   it('l effet part au compositeur ET dans les métadonnées du post', () => {
     // Deux blocs `design` : celui du rendu, celui que le Calendrier relit.
-    expect(wizard.split('textAnimation,\n            cardStyle: CARD_STYLE,').length - 1).toBe(2);
+    // `cardStyle` est devenu un ETAT — il etait fige a « Compact » — d'ou la
+    // disparition de la constante dans les deux blocs.
+    expect(wizard.split('textAnimation,\n            cardStyle,').length - 1).toBe(2);
   });
 
   it('un nouveau montage repart sans animation', () => {

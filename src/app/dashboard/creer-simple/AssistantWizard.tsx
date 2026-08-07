@@ -82,6 +82,9 @@ import {
   LINE_HEIGHT_MIN, LINE_HEIGHT_MAX,
   type AutopilotDesignStyle, type AutopilotTextZone,
 } from '@/lib/autopilot/textStyle';
+import TextFormatToolbar from '@/components/creer/TextFormatToolbar';
+import { DEFAULT_TEXT_CASE, type TextCase, type TextAlign } from '@/lib/creer/textFormat';
+import { CARD_STYLES, DEFAULT_CARD_STYLE } from '@/lib/creer/cardStyles';
 import SequenceCards from '@/components/creer/SequenceCards';
 import SequenceTitle, { titleFrameStyle } from '@/components/creer/SequenceTitle';
 import SequenceCta, { ctaFrameStyle } from '@/components/creer/SequenceCta';
@@ -559,6 +562,24 @@ const ENLARGED_GEOMETRY_KEY = 'studiio.creer-simple.apercu-agrandi';
  * le sous-titre n'a ni graisse ni italique propres (`drawIntro` lui impose
  * ceux du titre), ni interlettrage (il est trace par `fillText` nu).
  */
+/**
+ * Formatage commun aux trois zones — souligne, barre, casse, alignement.
+ *
+ * ⚠️ TOUS OPTIONNELS, ET C'EST CE QUI PORTE LA RETRO-COMPATIBILITE. Absents,
+ * les deux moteurs retombent sur leur rendu d'avant : capitales pour le titre
+ * et le CTA, aucune decoration, alignement historique.
+ */
+// ⚠️ `type` ET NON `interface`. Ces styles sont ranges dans le brouillon,
+// type `Record<string, unknown>` : TypeScript n'accorde une signature d'index
+// IMPLICITE qu'aux alias de type, jamais aux interfaces. En interface, la
+// simple intersection cassait l'enregistrement du brouillon.
+type TextFormatFields = {
+  textCase?: TextCase;
+  align?: TextAlign;
+  underline?: boolean;
+  strike?: boolean;
+};
+
 interface TextStyles {
   title: {
     font: string;
@@ -568,7 +589,7 @@ interface TextStyles {
     italic: boolean;
     letterSpacing: number;
     lineHeight: number;
-  };
+  } & TextFormatFields;
   /**
    * Sous-titre. `null` = « suit le titre » — c'est ce que fait le
    * compositeur en l'absence de champ, donc l'etat par defaut ne transmet
@@ -578,7 +599,7 @@ interface TextStyles {
     font: string | null;
     color: string | null;
     scale: number;
-  };
+  } & TextFormatFields;
   cta: {
     font: string;
     color: string;
@@ -588,7 +609,7 @@ interface TextStyles {
     italic: boolean;
     letterSpacing: number;
     lineHeight: number;
-  };
+  } & TextFormatFields;
 }
 
 /**
@@ -633,9 +654,6 @@ const DEFAULT_TEXT_STYLES: {
     lineHeight: 1.2,
   },
 };
-
-/** Style de cartes utilisé partout : aperçu, compositeur, metadata. */
-const CARD_STYLE = 'Compact';
 
 /** Coût du rendu, aligné sur l'éditeur (RENDER_COSTS). */
 const COST = { reel: 10, tv: 15 } as const;
@@ -1067,6 +1085,7 @@ export function Preview({
   hideHeader = false,
   hideFootnote = false,
   overlay = null,
+  cardStyle,
   onTextResizeStart,
   onTextDoubleClick,
   onCardDoubleClick,
@@ -1105,6 +1124,14 @@ export function Preview({
    * passent pas, rendent exactement ce qu'ils rendaient avant.
    */
   overlay?: React.ReactNode;
+  /**
+   * Style de carte. Absent = le cadre, comme depuis toujours.
+   *
+   * ⚠️ IL DOIT SUIVRE LE COMPOSITEUR. « Text Only » y retire deja le
+   * rectangle ; sans ce passage, l'apercu montrerait un cadre que la video
+   * n'a pas.
+   */
+  cardStyle?: string;
   /**
    * Masque la note « les cartes de la vidéo seront exactement celles-ci ».
    *
@@ -1680,6 +1707,7 @@ export function Preview({
                 groupTint: GROUP_TINT,
                 onCardDoubleClick,
               }}
+              cardStyle={cardStyle}
             />
 
             {shows('cta') && (
@@ -1905,8 +1933,6 @@ const TextZonePanel: React.FC<{
   const echelle = valeurs.scale ?? defauts.scale;
   const interlettrage = valeurs.letterSpacing ?? defauts.letterSpacing;
   const interligne = valeurs.lineHeight ?? defauts.lineHeight;
-  const gras = valeurs.bold ?? defauts.bold;
-  const italique = valeurs.italic ?? defauts.italic;
   const libelle = zone === 'title' ? 'Titre' : 'CTA';
 
   return (
@@ -2001,30 +2027,16 @@ const TextZonePanel: React.FC<{
         </span>
       </div>
 
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => onChange({ bold: !gras })}
-          aria-pressed={gras}
-          data-autopilot-bold={zone}
-          className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-bold transition-colors ${
-            gras ? 'border-purple-500 bg-gray-800 text-white' : 'border-gray-800 text-gray-400 hover:text-white'
-          }`}
-        >
-          Gras
-        </button>
-        <button
-          type="button"
-          onClick={() => onChange({ italic: !italique })}
-          aria-pressed={italique}
-          data-autopilot-italic={zone}
-          className={`flex-1 rounded-lg border px-2 py-1.5 text-xs italic transition-colors ${
-            italique ? 'border-purple-500 bg-gray-800 text-white' : 'border-gray-800 text-gray-400 hover:text-white'
-          }`}
-        >
-          Italique
-        </button>
-      </div>
+      {/* La MEME barre que « Créer simple » — extraite plutot que recopiee.
+          Le défaut de casse est `'uppercase'` : titre et CTA sont en
+          capitales depuis toujours, et afficher « Normal » tant que rien
+          n'est choisi annoncerait l'inverse de ce que la vidéo produit. */}
+      <TextFormatToolbar
+        zone={zone}
+        valeurs={valeurs}
+        defauts={{ textCase: DEFAULT_TEXT_CASE, align: zone === 'cta' ? 'center' : 'left', bold: defauts.bold, italic: defauts.italic }}
+        onChange={onChange}
+      />
     </div>
   );
 };
@@ -2161,11 +2173,20 @@ function AutopilotPreview({ config, accent, onPatch }: {
       italic: style.title?.italic ?? DEFAULT_TEXT_STYLES.title.italic,
       letterSpacing: style.title?.letterSpacing ?? DEFAULT_TEXT_STYLES.title.letterSpacing,
       lineHeight: style.title?.lineHeight ?? DEFAULT_TEXT_STYLES.title.lineHeight,
+      // Absents = le rendu d'avant, decide par les composants partages.
+      textCase: style.title?.textCase,
+      align: style.title?.align,
+      underline: style.title?.underline,
+      strike: style.title?.strike,
     },
     subtitle: {
       ...DEFAULT_TEXT_STYLES.subtitle,
       font: style.subtitle?.font ?? DEFAULT_TEXT_STYLES.subtitle.font,
       scale: style.subtitle?.scale ?? DEFAULT_TEXT_STYLES.subtitle.scale,
+      textCase: style.subtitle?.textCase,
+      align: style.subtitle?.align,
+      underline: style.subtitle?.underline,
+      strike: style.subtitle?.strike,
     },
     cta: {
       ...DEFAULT_TEXT_STYLES.cta,
@@ -2176,6 +2197,10 @@ function AutopilotPreview({ config, accent, onPatch }: {
       italic: style.cta?.italic ?? DEFAULT_TEXT_STYLES.cta.italic,
       letterSpacing: style.cta?.letterSpacing ?? DEFAULT_TEXT_STYLES.cta.letterSpacing,
       lineHeight: style.cta?.lineHeight ?? DEFAULT_TEXT_STYLES.cta.lineHeight,
+      textCase: style.cta?.textCase,
+      align: style.cta?.align,
+      underline: style.cta?.underline,
+      strike: style.cta?.strike,
     },
   }), [config.titleColor, config.cardGradientEnd, style]);
 
@@ -2462,7 +2487,30 @@ function AutopilotPreview({ config, accent, onPatch }: {
         closeOnClickOutside={false}
       >
         {panneau?.type === 'icone' && (
-          <div className="space-y-2" data-autopilot-icone-panneau>
+          <div className="space-y-3" data-autopilot-icone-panneau>
+            {/* ── STYLE DE CARTE ────────────────────────────────────────
+                Il valait `'Compact'` EN DUR, alors que « Sans cadre »
+                existait deja dans `CARD_STYLES`. Il vaut pour TOUTES les
+                cartes, pas seulement celle qu'on a double-cliquee — d'ou sa
+                place en haut du panneau, avant l'icone qui, elle, ne
+                concerne que ce rang. */}
+            <div>
+              <p className="text-xs font-medium text-gray-300 mb-1.5">Style des cartes</p>
+              <select
+                value={style.cardStyle ?? DEFAULT_CARD_STYLE}
+                onChange={(e) => poser({ ...style, cardStyle: e.target.value })}
+                data-autopilot-card-style
+                className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none px-2 py-1.5 text-sm"
+              >
+                {CARD_STYLES.map((c) => (
+                  <option key={c.label} value={c.label}>{c.label} — {c.sublabel}</option>
+                ))}
+              </select>
+              <p className="text-[11px] text-gray-500 mt-1">
+                « Sans cadre » affiche le texte seul, sans rectangle de fond.
+              </p>
+            </div>
+
             <p className="text-[11px] text-gray-500">
               L’icône choisie vaut pour cette carte sur <span className="text-gray-300">toutes
               les vidéos</span>. Le texte de la carte, lui, change à chaque fois.
@@ -2850,6 +2898,18 @@ export default function AssistantWizard() {
    * Defaut « Aucune » : le rendu de tous les montages existants.
    */
   const [textAnimation, setTextAnimation] = useState<TextAnimation>(DEFAULT_TEXT_ANIMATION);
+  /**
+   * Style des cartes.
+   *
+   * ⚠️ IL ETAIT FIGE A `'Compact'`, alors que « Sans cadre » existait deja
+   * dans la liste des styles et que le compositeur savait deja le dessiner
+   * (`if (cardStyle === 'Text Only')`). Ce n'etait donc pas une
+   * fonctionnalite a ecrire, mais un choix a rendre a l'utilisateur.
+   *
+   * Le defaut reste `'Compact'` : c'est ce que tous les montages existants
+   * ont recu.
+   */
+  const [cardStyle, setCardStyle] = useState<string>(DEFAULT_CARD_STYLE);
 
   /* ── VOIX PAR SEQUENCE ───────────────────────────────────────────────
      Chaque sequence porte son propre texte et sa propre voix, et sa DUREE
@@ -4439,6 +4499,9 @@ export default function AssistantWizard() {
     accent,
     text: textStyles,
     focus: previewFocus,
+    // Le MEME champ que le compositeur : l'apercu retire son cadre en meme
+    // temps que la video.
+    cardStyle,
   };
 
   /* ── LE RENDU JOUE DANS LE CADRE ──────────────────────────────────────
@@ -5196,7 +5259,7 @@ export default function AssistantWizard() {
             // Animation d'apparition du texte, jouee sur le debut de chaque
             // sequence. `'none'` = le rendu d'hier, au pixel.
             textAnimation,
-            cardStyle: CARD_STYLE,
+            cardStyle,
             // Sans ce champ : titre et CTA en Helvetica, cartes en Inter.
             font: DESIGN.font,
 
@@ -5395,7 +5458,7 @@ export default function AssistantWizard() {
           },
           design: {
             textAnimation,
-            cardStyle: CARD_STYLE,
+            cardStyle,
             font: DESIGN.font,
             // Persiste pour que le Calendrier (apercu HTML et regeneration)
             // ancre le titre a GAUCHE comme la video, et non centre sur x=8%.
@@ -6440,6 +6503,32 @@ export default function AssistantWizard() {
                   open={openSection === 'texte'}
                   onToggle={toggleSection}
                 >
+                    {/* ── STYLE DES CARTES ──────────────────────────────
+                        ⚠️ IL ETAIT FIGE A « Compact », alors que « Sans
+                        cadre » figurait deja dans la liste et que le
+                        compositeur savait deja le dessiner. Ce n'etait pas
+                        une fonctionnalite a ecrire, mais un choix a rendre
+                        a l'utilisateur. */}
+                    <div className="mb-4">
+                      <label htmlFor="card-style" className="block text-sm font-medium mb-2">
+                        Style des cartes
+                      </label>
+                      <select
+                        id="card-style"
+                        value={cardStyle}
+                        onChange={(e) => setCardStyle(e.target.value)}
+                        data-card-style
+                        className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none px-2 py-1.5 text-sm"
+                      >
+                        {CARD_STYLES.map((c) => (
+                          <option key={c.label} value={c.label}>{c.label} — {c.sublabel}</option>
+                        ))}
+                      </select>
+                      <p className="text-[11px] text-gray-500 mt-1">
+                        « Sans cadre » affiche le texte seul, sans rectangle de fond.
+                      </p>
+                    </div>
+
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <label className="block text-sm font-medium">Texte</label>
@@ -6589,42 +6678,39 @@ export default function AssistantWizard() {
                             </div>
                             )}
 
-                            {/* Gras / italique — titre ET CTA. `drawCTA` lit
-                                desormais `ctaTypography.bold/italic` ; le
-                                sous-titre, lui, reste sur ceux du titre, que
-                                `drawIntro` lui impose. */}
-                            {!isSubtitle && (() => {
-                              const st = isTitle ? textStyles.title : textStyles.cta;
+                            {/* ── BARRE DE FORMATAGE ───────────────────
+                                Gras et italique y sont rejoints par souligne,
+                                barre, casse et alignement. C'est la MEME barre
+                                que l'Autopilote — extraite plutot que recopiee.
+
+                                ⚠️ ELLE VAUT AUSSI POUR LE SOUS-TITRE, alors
+                                que gras et italique lui restaient imposes par
+                                le titre : `drawIntro` et `SequenceTitle`
+                                appliquent bien SA casse, SON alignement et SA
+                                decoration. Les lui refuser aurait ete un
+                                manque, pas une prudence — d'ou `showBoldItalic`
+                                qui masque les deux seuls reglages qu'il
+                                n'a effectivement pas. */}
+                            {(() => {
+                              const st = isSubtitle
+                                ? textStyles.subtitle
+                                : isTitle ? textStyles.title : textStyles.cta;
                               return (
-                              <div className="flex items-center gap-2">
-                                <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Style</span>
-                                <button
-                                  type="button"
-                                  onClick={() => patch({ bold: !st.bold })}
-                                  aria-pressed={st.bold}
-                                  aria-label={`Gras — ${zoneLabel}`}
-                                  className={`rounded-lg px-3 py-1 text-xs font-bold transition ${
-                                    st.bold
-                                      ? 'bg-purple-600/30 text-white ring-1 ring-purple-500/50'
-                                      : 'bg-gray-800 text-gray-400 hover:text-white'
-                                  }`}
-                                >
-                                  G
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => patch({ italic: !st.italic })}
-                                  aria-pressed={st.italic}
-                                  aria-label={`Italique — ${zoneLabel}`}
-                                  className={`rounded-lg px-3 py-1 text-xs italic transition ${
-                                    st.italic
-                                      ? 'bg-purple-600/30 text-white ring-1 ring-purple-500/50'
-                                      : 'bg-gray-800 text-gray-400 hover:text-white'
-                                  }`}
-                                >
-                                  I
-                                </button>
-                              </div>
+                                <TextFormatToolbar
+                                  zone={isSubtitle ? 'subtitle' : isTitle ? 'title' : 'cta'}
+                                  valeurs={st}
+                                  defauts={{
+                                    // Le rendu met titre et CTA en capitales
+                                    // quand rien n'est choisi ; pas le
+                                    // sous-titre.
+                                    textCase: isSubtitle ? 'none' : DEFAULT_TEXT_CASE,
+                                    align: isTitle || isSubtitle ? 'left' : 'center',
+                                    bold: 'bold' in st ? (st.bold as boolean) : undefined,
+                                    italic: 'italic' in st ? (st.italic as boolean) : undefined,
+                                  }}
+                                  showBoldItalic={!isSubtitle}
+                                  onChange={(p) => patch(p as Record<string, unknown>)}
+                                />
                               );
                             })()}
 

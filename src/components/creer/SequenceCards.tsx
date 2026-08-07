@@ -1,4 +1,5 @@
 import React from 'react';
+import { isFrameless } from '@/lib/creer/cardStyles';
 import { CardIcon } from '@/components/ui/CardIcon';
 import { cardRatios, CARDS_FRAME, CARD_RATIO_LANDSCAPE } from '@/lib/creer/designSpec';
 
@@ -67,8 +68,25 @@ export interface CardsInteraction {
   groupTint?: string;
 }
 
+/**
+ * Style de carte — les memes libelles que `CARD_STYLE_OPTIONS`.
+ *
+ * ⚠️ SEUL « Text Only » CHANGE QUELQUE CHOSE ICI, et c'est assume. Le
+ * compositeur canvas dessine cinq mises en page distinctes ; ce composant
+ * n'en rend qu'une — celle qui est a l'ecran depuis toujours. Ce que
+ * l'utilisateur demandait, c'est de pouvoir RETIRER le cadre : c'est
+ * exactement ce que fait « Text Only », des deux cotes. Les autres libelles
+ * sont acceptes et rendus comme aujourd'hui, plutot que refuses.
+ */
 export interface SequenceCardsProps {
   cards: SequenceCard[];
+  /**
+   * Style de carte. Absent = le cadre, comme depuis toujours.
+   *
+   * ⚠️ LE DEFAUT PORTE LA RETRO-COMPATIBILITE : tout montage deja enregistre
+   * n'a pas ce champ et doit continuer a sortir avec son rectangle.
+   */
+  cardStyle?: string;
   /** Positions libres, ou `null` pour la disposition en flux. */
   cardBoxes?: Record<string, CardBox> | null;
   /**
@@ -92,6 +110,7 @@ export default function SequenceCards({
   containerWidth,
   landscape,
   valueColor,
+  cardStyle,
   interaction,
   containerRef,
 }: SequenceCardsProps) {
@@ -100,6 +119,14 @@ export default function SequenceCards({
   const it = interaction;
   const uiPx = it?.uiPx ?? ((n: number) => n);
   const editable = !!it?.onCardDragStart;
+  /**
+   * « Sans cadre » : ni fond, ni arrondi, ni rembourrage.
+   *
+   * ⚠️ LE REMBOURRAGE PART AVEC LE FOND. Le garder laisserait un espacement
+   * qui n'entoure plus rien : les cartes paraitraient flotter loin les unes
+   * des autres, alors que le compositeur canvas, lui, colle le texte au bord.
+   */
+  const sansCadre = isFrameless(cardStyle);
 
   return (
     <div
@@ -156,10 +183,10 @@ export default function SequenceCards({
                     textAlign: 'center' as const,
                   }
                 : { alignItems: 'center' }),
-              backgroundColor: 'rgba(255,255,255,0.08)',
+              backgroundColor: sansCadre ? undefined : 'rgba(255,255,255,0.08)',
               gap: vw * CR.gap,
-              borderRadius: vw * CR.radius,
-              padding: `${vw * CR.padY}px ${vw * CR.padX}px`,
+              borderRadius: sansCadre ? undefined : vw * CR.radius,
+              padding: sansCadre ? `${vw * CR.padY}px 0` : `${vw * CR.padY}px ${vw * CR.padX}px`,
               ...(box
                 // La HAUTEUR mesuree est reappliquee : sans elle, une carte
                 // absolue se retrecirait a son contenu au moment meme de la
