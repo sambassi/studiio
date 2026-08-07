@@ -239,8 +239,22 @@ describe('Preview — l en-tête est masquable', () => {
   });
 });
 
+
+/**
+ * ⚠️ LES TRANCHES DE SOURCE PARTENT DU CORPS DU WIZARD.
+ *
+ * `AssistantWizard.tsx` porte desormais PLUSIEURS composants — l'apercu de
+ * l'Autopilote y declare ses propres `startDrag`, `moveDrag` et
+ * `<FloatingPanel>`, PLUS HAUT dans le fichier. Un `indexOf` sans point de
+ * depart trouvait donc les siens, la tranche devenait vide, et le test
+ * echouait sur un fichier parfaitement correct. Pire : une tranche vide
+ * comparee a du vide serait passee sur un fichier casse.
+ */
+const DEBUT_WIZARD = wizard.indexOf('export default function AssistantWizard()');
+
 /** Le bloc JSX de la fenêtre flottante, isolé du reste du fichier. */
-const fenetre = wizard.slice(wizard.indexOf('<FloatingPanel'), wizard.indexOf('</FloatingPanel>'));
+const debutFenetre = wizard.indexOf('<FloatingPanel', DEBUT_WIZARD);
+const fenetre = wizard.slice(debutFenetre, wizard.indexOf('</FloatingPanel>', debutFenetre));
 
 describe('La fenêtre est un MIROIR, pas un second éditeur', () => {
   it('elle ne reçoit AUCUNE des refs de l aperçu principal', () => {
@@ -282,7 +296,7 @@ describe('La fenêtre est un MIROIR, pas un second éditeur', () => {
   });
 
   it('l aperçu principal garde toutes ses refs', () => {
-    const principal = wizard.slice(wizard.indexOf('<Preview\n          {...previewShared}'));
+    const principal = wizard.slice(wizard.indexOf('<Preview\n          {...previewShared}', DEBUT_WIZARD));
     expect(principal.slice(0, 900)).toContain('previewRef={previewRef}');
     expect(principal.slice(0, 900)).toContain('cardsRef={cardsRef}');
     expect(principal.slice(0, 900)).toContain('frameRef={frameRef}');

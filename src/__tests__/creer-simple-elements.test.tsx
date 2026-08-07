@@ -312,7 +312,14 @@ describe('La bibliothèque est partagée, pas dupliquée', () => {
     // compte déjà deux pour les icônes (`ICON_MAP` et `CARD_ICON_MAP`).
     expect(Object.keys(ICON_LIBRARY).length).toBeGreaterThanOrEqual(20);
     expect(ALL_LUCIDE_NAMES.length).toBeGreaterThan(150);
-    expect(wizard).toContain("from '@/lib/icons/library'");
+    // ⚠️ LA GRILLE ELLE-MEME A ETE EXTRAITE. L'assistant l'affichait en dur ;
+    // l'Autopilote en a besoin pour l'icone d'une carte, et une seconde copie
+    // se serait desynchronisee. Le wizard monte donc `IconPicker`, et c'est
+    // LUI qui importe le module commun.
+    const picker = readFileSync(
+      resolve(__dirname, '../components/creer/IconPicker.tsx'), 'utf-8');
+    expect(picker).toContain("from '@/lib/icons/library'");
+    expect(wizard).toContain("from '@/components/creer/IconPicker'");
   });
 
   it("l'éditeur avancé importe le même module au lieu de sa copie", () => {

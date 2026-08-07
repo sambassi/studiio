@@ -175,7 +175,7 @@ const PLATEFORMES = [
   { id: 'youtube', label: 'YouTube' },
 ];
 
-export default function AutopilotPanel({ accent, onConfigChange }: {
+export default function AutopilotPanel({ accent, onConfigChange, onPatchReady }: {
   accent: string;
   /**
    * Remonte la configuration à chaque changement — c'est ce qui alimente
@@ -189,6 +189,21 @@ export default function AutopilotPanel({ accent, onConfigChange }: {
    * Absent, le panneau se comporte exactement comme avant.
    */
   onConfigChange?: (config: AutopilotConfig) => void;
+  /**
+   * Remonte la fonction d'enregistrement — c'est elle que l'aperçu appelle
+   * pour écrire police, taille, positions et icônes.
+   *
+   * ⚠️ UN SEUL ÉCRIVAIN, ET C'EST CELUI-CI. L'aperçu vit dans une autre
+   * colonne de l'écran ; lui donner son propre `fetch` aurait fait deux
+   * sources de vérité pour la même configuration, et le dernier à écrire
+   * aurait gagné au hasard des rendus. Il emprunte donc CETTE fonction —
+   * celle qui possède déjà l'état, la fusion et l'appel réseau.
+   *
+   * Rappelé à chaque changement de `config` : `enregistrer` se referme
+   * dessus, et une référence gardée trop longtemps enverrait une
+   * configuration périmée.
+   */
+  onPatchReady?: (patch: (p: Partial<AutopilotConfig>) => void) => void;
 }) {
   const [config, setConfig] = useState<AutopilotConfig>(DEFAULT_CONFIG);
   const [ready, setReady] = useState(true);
@@ -280,6 +295,12 @@ export default function AutopilotPanel({ accent, onConfigChange }: {
       setSaving(false);
     }
   }, [config]);
+
+  // ⚠️ APRES `enregistrer`, ET A CHAQUE CHANGEMENT. La fonction se referme sur
+  // `config` : la publier une seule fois au montage aurait fige la
+  // configuration de depart, et l'apercu aurait ecrase tous les reglages faits
+  // entre-temps a chaque geste.
+  useEffect(() => { onPatchReady?.(enregistrer); }, [enregistrer, onPatchReady]);
 
   const etat = statusMessage(config, Date.now(), (d) =>
     d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }));

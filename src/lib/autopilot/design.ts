@@ -2,6 +2,7 @@ import {
   DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS, DEFAULT_COLORS, VIDEO_SIZE,
 } from '@/lib/creer/designSpec';
 import { DEFAULT_CONFIG, type AutopilotConfig } from '@/lib/autopilot/rules';
+import type { AutopilotDesignStyle, AutopilotTextZone } from '@/lib/autopilot/textStyle';
 import { DEFAULT_TRANSITION, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
 import { DEFAULT_TEXT_ANIMATION } from '@/lib/creer/textAnimation';
 import type { CreerSimpleRenderInput } from '@/lib/render/creerSimple';
@@ -71,6 +72,51 @@ export function autopilotVideoSeconds(
 }
 
 /**
+ * Les champs de typographie imposés par le style constant.
+ *
+ * ⚠️ UNE PROPRIÉTÉ ABSENTE N'EST PAS ÉCRITE. C'est toute la rétro-compatibilité
+ * de cette fonctionnalité : `{ titleFont: undefined }` et « pas de clé
+ * `titleFont` » se comportent pareil pour le rendu, mais pas pour un lecteur
+ * qui teste l'existence de la clé — et surtout, écrire `undefined` partout
+ * ferait passer un design « vide » pour un design réglé. On ne pose donc que
+ * ce que l'utilisateur a réellement choisi.
+ */
+function typographie(
+  zone: AutopilotTextZone | undefined,
+  prefixe: 'title' | 'subtitle' | 'cta',
+): Record<string, unknown> {
+  if (!zone) return {};
+  const out: Record<string, unknown> = {};
+  if (zone.font !== undefined) out[`${prefixe}Font`] = zone.font;
+  if (zone.scale !== undefined) out[`${prefixe}Scale`] = zone.scale;
+  if (zone.bold !== undefined) out[`${prefixe}Bold`] = zone.bold;
+  if (zone.italic !== undefined) out[`${prefixe}Italic`] = zone.italic;
+  if (zone.letterSpacing !== undefined) out[`${prefixe}LetterSpacing`] = zone.letterSpacing;
+  if (zone.lineHeight !== undefined) out[`${prefixe}LineHeight`] = zone.lineHeight;
+  // La position n'existe que pour le titre et le CTA — voir `textStyle.ts`.
+  if (prefixe !== 'subtitle' && zone.x !== undefined && zone.y !== undefined) {
+    out[`${prefixe}Pos`] = { x: zone.x, y: zone.y };
+  }
+  return out;
+}
+
+/**
+ * Icône imposée à la carte de rang N, ou celle du contenu généré.
+ *
+ * ⚠️ LE CONTENU VARIE, L'ICÔNE NON. C'est exactement le partage que
+ * l'Autopilote promet : `generateSmartContent` propose une icône par carte à
+ * chaque cycle, mais si l'utilisateur en a choisi une pour ce rang, c'est la
+ * sienne qui gagne — sur toutes les vidéos.
+ */
+function iconeDeCarte(
+  style: AutopilotDesignStyle,
+  rang: number,
+  parDefaut: string,
+): string {
+  return style.cardIcons?.[String(rang)] ?? parDefaut;
+}
+
+/**
  * Design de rendu serveur, à partir d'un contenu préparé.
  *
  * Le titre passe en MAJUSCULES comme dans le Mode simple : c'est ce que
@@ -98,6 +144,7 @@ export function buildAutopilotDesign(
 ): CreerSimpleRenderInput {
   const voix = options.voices ?? {};
   const identite = options.config ?? DEFAULT_CONFIG;
+  const style = identite.designStyle ?? {};
   // La séquence vidéo suit le rush ; si elle est narrée, elle suit aussi sa
   // voix — la plus longue des deux gagne, pour ne couper ni l'un ni l'autre.
   const video = sequenceSecondsWithVoice(
@@ -106,12 +153,22 @@ export function buildAutopilotDesign(
   return {
     title: post.title.toUpperCase(),
     subtitle: post.content.subtitle,
-    cards: post.content.cards.map((c) => ({
-      icon: c.icon,
+    cards: post.content.cards.map((c, rang) => ({
+      // L'icône du compte si l'utilisateur en a choisi une pour ce rang,
+      // sinon celle que le générateur propose pour ce contenu-ci.
+      icon: iconeDeCarte(style, rang, c.icon),
       title: c.title,
       description: c.description,
       value: c.value,
     })),
+    // ── LE STYLE DE TEXTE CONSTANT ──────────────────────────────────────
+    // Police, taille, graisse, interlettrage, interligne et positions,
+    // réglés UNE fois sur l'aperçu et hérités par toutes les vidéos. Rien
+    // n'est écrit pour ce que l'utilisateur n'a pas touché : le montage garde
+    // alors les défauts du Mode simple, à l'identique.
+    ...typographie(style.title, 'title'),
+    ...typographie(style.subtitle, 'subtitle'),
+    ...typographie(style.cta, 'cta'),
     ctaText: post.content.tagLine,
     videoUrl: post.rushUrl,
     // La photo d'affiche du Mode simple : le MÊME champ, rendu au même

@@ -56,7 +56,7 @@ import {
   type SequenceVoices, type SequenceVoicesUserEdited, type SequenceKey,
 } from '@/lib/types/voice';
 import type { AudioKeyframe } from '@/lib/creer/audioDucking';
-import { pointToPct, grabOffset, clampToBox, type Pos, type CardBox, boxesFromRects, samePos } from '@/lib/creer/dragPosition';
+import { pointToPct, grabOffset, clampToBox, type Pos, type BoxPct, type CardBox, boxesFromRects, samePos } from '@/lib/creer/dragPosition';
 import {
   snapPosition, computeDistanceBadges, anchorToCenter, centerToAnchor,
   type ActiveGuide, type DistanceBadge, type ElementPos, type Anchor,
@@ -77,6 +77,11 @@ import { buildAutopilotSample, samplePosterVisible } from '@/lib/autopilot/sampl
 // paquet du navigateur, et le build échoue sur « Can't resolve 'fs/promises' ».
 import { AUTOPILOT_WATERMARK, AUTOPILOT_GRADIENT_OPACITY } from '@/lib/autopilot/brand';
 import { DEFAULT_CONFIG as AUTOPILOT_DEFAULT_CONFIG, type AutopilotConfig } from '@/lib/autopilot/rules';
+import {
+  SCALE_MIN, SCALE_MAX, LETTER_SPACING_MIN, LETTER_SPACING_MAX,
+  LINE_HEIGHT_MIN, LINE_HEIGHT_MAX,
+  type AutopilotDesignStyle, type AutopilotTextZone,
+} from '@/lib/autopilot/textStyle';
 import SequenceCards from '@/components/creer/SequenceCards';
 import SequenceTitle, { titleFrameStyle } from '@/components/creer/SequenceTitle';
 import SequenceCta, { ctaFrameStyle } from '@/components/creer/SequenceCta';
@@ -90,7 +95,7 @@ import {
 } from '@/lib/creer/posterPhotos';
 import ClipDetectorModal, { type ClipSource } from '@/components/media/ClipDetectorModal';
 import { CardIcon } from '@/components/ui/CardIcon';
-import { ICON_LIBRARY, iconMatches } from '@/lib/icons/library';
+import IconPicker from '@/components/creer/IconPicker';
 import ColorWheel from '@/components/ui/ColorWheel';
 import FloatingPanel from '@/components/ui/FloatingPanel';
 import { uploadPosterFile } from '@/lib/creer/posterUpload';
@@ -952,6 +957,65 @@ function validFree(f: FreeCards | null | undefined, ids: string[], fmt: Format):
   return ids.length > 0 && ids.every((id) => !!f.boxes[id]);
 }
 
+/**
+ * Poignees de coin d'un bloc de TEXTE — agrandir le titre ou le CTA.
+ *
+ * ⚠️ ELLES N'EXISTENT QUE SI `onStart` EST FOURNI. L'assistant manuel n'en
+ * passe pas : son ergonomie — un curseur de taille dans le panneau de gauche —
+ * ne change pas d'un pixel. L'Autopilote, lui, doit tout regler sur l'apercu
+ * pour ne pas allonger sa colonne, d'ou ces poignees.
+ *
+ * ⚠️ ET ELLES DISPARAISSENT PENDANT LA PHOTO. `capturing` les efface, comme
+ * les autres aides d'edition : une poignee gravee dans la video ne se
+ * rattrape pas (cf. `tasks/lessons.md`, 2026-05-01).
+ */
+const TextResizeHandles: React.FC<{
+  el: 'title' | 'cta';
+  onStart?: (el: 'title' | 'cta', e: React.PointerEvent) => void;
+  uiPx: (n: number) => number;
+  capturing?: boolean;
+  onDragMove?: (e: React.PointerEvent) => void;
+  onDragEnd?: () => void;
+}> = ({ el, onStart, uiPx, capturing, onDragMove, onDragEnd }) => {
+  if (!onStart || capturing) return null;
+  return (
+    <>
+      {([
+        { coin: 'nw', top: 0, left: 0 },
+        { coin: 'ne', top: 0, left: '100%' },
+        { coin: 'sw', top: '100%', left: 0 },
+        { coin: 'se', top: '100%', left: '100%' },
+      ] as const).map((p) => (
+        <span
+          key={p.coin}
+          data-text-handle={`${el}-${p.coin}`}
+          onPointerDown={(e) => { e.stopPropagation(); onStart(el, e); }}
+          onPointerMove={onDragMove}
+          onPointerUp={onDragEnd}
+          onPointerCancel={onDragEnd}
+          onLostPointerCapture={onDragEnd}
+          title="Tirer pour agrandir le texte"
+          style={{
+            position: 'absolute',
+            top: p.top,
+            left: p.left,
+            width: uiPx(9),
+            height: uiPx(9),
+            marginTop: -uiPx(4.5),
+            marginLeft: -uiPx(4.5),
+            backgroundColor: '#FFFFFF',
+            border: `${uiPx(1)}px solid rgba(0,0,0,0.5)`,
+            borderRadius: uiPx(2),
+            cursor: p.coin === 'nw' || p.coin === 'se' ? 'nwse-resize' : 'nesw-resize',
+            touchAction: 'none',
+            zIndex: 5,
+          }}
+        />
+      ))}
+    </>
+  );
+};
+
 /** Tableaux vides STABLES : un litteral par rendu relancerait le calque. */
 const EMPTY_GUIDES: ActiveGuide[] = [];
 const EMPTY_BADGES: DistanceBadge[] = [];
@@ -1003,7 +1067,27 @@ export function Preview({
   hideHeader = false,
   hideFootnote = false,
   overlay = null,
+  onTextResizeStart,
+  onTextDoubleClick,
+  onCardDoubleClick,
 }: {
+  /**
+   * Prise d'une poignee de coin sur le TITRE ou le CTA — agrandir le texte.
+   *
+   * ⚠️ ABSENT = AUCUNE POIGNEE, donc l'assistant manuel est inchange. Il
+   * regle deja sa taille de texte par un curseur dans le panneau de gauche ;
+   * lui ajouter des poignees changerait son ergonomie sans qu'on l'ait
+   * demande. L'Autopilote, lui, n'a pas de place pour un curseur de plus —
+   * c'est toute la raison de ces poignees.
+   *
+   * Les elements libres ont deja les leurs (`onElementResizeStart`) : celles-ci
+   * sont pour le texte, qui n'a pas de boite propre a redimensionner.
+   */
+  onTextResizeStart?: (el: 'title' | 'cta', e: React.PointerEvent) => void;
+  /** Double-clic sur le titre ou le CTA — ouvre son panneau de reglages. */
+  onTextDoubleClick?: (el: 'title' | 'cta') => void;
+  /** Double-clic sur une carte — ouvre le choix de son icone. */
+  onCardDoubleClick?: (id: string) => void;
   /**
    * Calque posé DANS le cadre, par-dessus le plateau.
    *
@@ -1527,8 +1611,13 @@ export function Preview({
               onPointerUp={onDragEnd}
               onPointerCancel={onDragEnd}
               onLostPointerCapture={onDragEnd}
+              onDoubleClick={onTextDoubleClick ? () => onTextDoubleClick('title') : undefined}
               data-title-block
-              title={onDragStart ? "Glisser pour déplacer le titre" : undefined}
+              title={
+                onTextDoubleClick
+                  ? 'Glisser pour déplacer · double-clic pour la police et la taille'
+                  : onDragStart ? 'Glisser pour déplacer le titre' : undefined
+              }
               style={{
                 // Cadre PARTAGE avec la composition Remotion : la position et
                 // la largeur viennent du meme helper, les aides d'edition
@@ -1555,6 +1644,11 @@ export function Preview({
                 format={format}
                 containerWidth={vw}
               />
+              {/* Poignees de coin — agrandir le TEXTE. Elles arretent la
+                  propagation : sans cela, la prise deplacerait le bloc au
+                  lieu de le redimensionner. */}
+              <TextResizeHandles el="title" onStart={onTextResizeStart} uiPx={uiPx} capturing={capturing}
+                onDragMove={onDragMove} onDragEnd={onDragEnd} />
             </div>
             )}
 
@@ -1584,6 +1678,7 @@ export function Preview({
                 capturing,
                 uiPx,
                 groupTint: GROUP_TINT,
+                onCardDoubleClick,
               }}
             />
 
@@ -1597,8 +1692,13 @@ export function Preview({
               onPointerUp={onDragEnd}
               onPointerCancel={onDragEnd}
               onLostPointerCapture={onDragEnd}
+              onDoubleClick={onTextDoubleClick ? () => onTextDoubleClick('cta') : undefined}
               data-cta-block
-              title={onDragStart ? "Glisser pour déplacer le CTA" : undefined}
+              title={
+                onTextDoubleClick
+                  ? 'Glisser pour déplacer · double-clic pour la police et la taille'
+                  : onDragStart ? 'Glisser pour déplacer le CTA' : undefined
+              }
               style={{
                 ...ctaFrameStyle(ctaPos),
                 cursor: onDragStart ? (dragging === 'cta' ? 'grabbing' : 'grab') : undefined,
@@ -1616,6 +1716,8 @@ export function Preview({
                 format={format}
                 containerWidth={vw}
               />
+              <TextResizeHandles el="cta" onStart={onTextResizeStart} uiPx={uiPx} capturing={capturing}
+                onDragMove={onDragMove} onDragEnd={onDragEnd} />
             </div>
             )}
 
@@ -1780,6 +1882,154 @@ export function Preview({
 }
 
 /**
+ * Réglages d'une zone de texte de l'Autopilote — police, taille, graisse.
+ *
+ * ⚠️ IL VIT DANS UN PANNEAU FLOTTANT, PAS DANS LA COLONNE DE GAUCHE. C'est
+ * toute la réponse à la contrainte « rester à six étapes sans allonger la
+ * page » : ces sept réglages, empilés sous les couleurs, auraient doublé la
+ * hauteur de l'étape « Style & médias ». Ouverts au double-clic sur
+ * l'élément visé, ils n'occupent aucune place au repos.
+ *
+ * ⚠️ AUCUNE VALEUR N'EST ÉCRITE TANT QU'ON N'Y TOUCHE PAS. Les curseurs
+ * affichent le défaut du Mode simple, mais `valeurs` reste vide : c'est ce
+ * qui distingue « l'utilisateur a choisi 100 % » de « l'utilisateur n'a rien
+ * choisi », et donc ce qui garde le montage rétro-compatible.
+ */
+const TextZonePanel: React.FC<{
+  zone: 'title' | 'cta';
+  valeurs: AutopilotTextZone;
+  onChange: (patch: Partial<AutopilotTextZone>) => void;
+}> = ({ zone, valeurs, onChange }) => {
+  const defauts = zone === 'title' ? DEFAULT_TEXT_STYLES.title : DEFAULT_TEXT_STYLES.cta;
+  const police = valeurs.font ?? defauts.font;
+  const echelle = valeurs.scale ?? defauts.scale;
+  const interlettrage = valeurs.letterSpacing ?? defauts.letterSpacing;
+  const interligne = valeurs.lineHeight ?? defauts.lineHeight;
+  const gras = valeurs.bold ?? defauts.bold;
+  const italique = valeurs.italic ?? defauts.italic;
+  const libelle = zone === 'title' ? 'Titre' : 'CTA';
+
+  return (
+    <div className="space-y-3" data-autopilot-texte-panneau={zone}>
+      <p className="text-[11px] text-gray-500">
+        Ces réglages valent pour <span className="text-gray-300">toutes les vidéos</span>.
+      </p>
+
+      <div>
+        <label htmlFor={`ap-font-${zone}`} className="block text-[10px] uppercase tracking-wider text-gray-500 mb-1">
+          Police
+        </label>
+        <select
+          id={`ap-font-${zone}`}
+          value={police}
+          onChange={(e) => {
+            const f = e.target.value;
+            // Sans chargement, l'apercu rendrait le nom dans la police
+            // systeme — et l'utilisateur jugerait un rendu qui n'est pas le
+            // sien.
+            void ensureFontLoaded(f);
+            onChange({ font: f });
+          }}
+          // Sans feuille chargee, les cinquante et quelques noms s'affichent
+          // tous dans la meme police. On charge donc le 400 de TOUT le
+          // catalogue — une seule requete — des qu'on s'approche du selecteur.
+          onFocus={() => { void preloadCatalogPreview(); }}
+          onPointerEnter={() => { void preloadCatalogPreview(); }}
+          style={{ fontFamily: fontStack(police) }}
+          data-autopilot-font={zone}
+          className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none px-2 py-1.5 text-sm"
+        >
+          {FONT_GROUPS.map((g) => (
+            <optgroup key={g.group} label={g.label}>
+              {g.fonts.map((f) => (
+                <option key={f} value={f} style={{ fontFamily: fontStack(f) }}>{f}</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] text-gray-500 w-20 flex-shrink-0">Taille</span>
+        <input
+          type="range"
+          min={Math.round(SCALE_MIN * 100)}
+          max={Math.round(SCALE_MAX * 100)}
+          step={5}
+          value={Math.round(echelle * 100)}
+          onChange={(e) => onChange({ scale: Number(e.target.value) / 100 })}
+          aria-label={`Taille — ${libelle}`}
+          data-autopilot-scale={zone}
+          className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
+        />
+        <span className="text-[11px] text-gray-400 w-11 text-right tabular-nums">
+          {Math.round(echelle * 100)}%
+        </span>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] text-gray-500 w-20 flex-shrink-0">Interligne</span>
+        <input
+          type="range"
+          min={LINE_HEIGHT_MIN}
+          max={LINE_HEIGHT_MAX}
+          step={0.05}
+          value={interligne}
+          onChange={(e) => onChange({ lineHeight: Number(e.target.value) })}
+          aria-label={`Interligne — ${libelle}`}
+          className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
+        />
+        <span className="text-[11px] text-gray-400 w-11 text-right tabular-nums">
+          {interligne.toFixed(2)}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] text-gray-500 w-20 flex-shrink-0">Interlettrage</span>
+        <input
+          type="range"
+          min={LETTER_SPACING_MIN}
+          max={LETTER_SPACING_MAX}
+          step={0.5}
+          value={interlettrage}
+          onChange={(e) => onChange({ letterSpacing: Number(e.target.value) })}
+          aria-label={`Interlettrage — ${libelle}`}
+          className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
+        />
+        <span className="text-[11px] text-gray-400 w-11 text-right tabular-nums">
+          {interlettrage.toFixed(1)}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onChange({ bold: !gras })}
+          aria-pressed={gras}
+          data-autopilot-bold={zone}
+          className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-bold transition-colors ${
+            gras ? 'border-purple-500 bg-gray-800 text-white' : 'border-gray-800 text-gray-400 hover:text-white'
+          }`}
+        >
+          Gras
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange({ italic: !italique })}
+          aria-pressed={italique}
+          data-autopilot-italic={zone}
+          className={`flex-1 rounded-lg border px-2 py-1.5 text-xs italic transition-colors ${
+            italique ? 'border-purple-500 bg-gray-800 text-white' : 'border-gray-800 text-gray-400 hover:text-white'
+          }`}
+        >
+          Italique
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/**
  * Aperçu de l'Autopilote — un ÉCHANTILLON, pas la prochaine vidéo.
  *
  * ⚠️ LA COLONNE DE DROITE ÉTAIT VIDE SUR CET ÉCRAN. Elle sert l'assistant
@@ -1794,7 +2044,19 @@ export function Preview({
  * vraie vidéo à l'aperçu, c'est-à-dire trop tard. Ce composant n'ajoute donc
  * rien au rendu : il l'ALIMENTE, à partir de la configuration.
  */
-function AutopilotPreview({ config, accent }: { config: AutopilotConfig; accent: string }) {
+function AutopilotPreview({ config, accent, onPatch }: {
+  config: AutopilotConfig;
+  accent: string;
+  /**
+   * Enregistre un reglage — c'est `enregistrer` du panneau, remonte.
+   *
+   * ⚠️ UN SEUL ECRIVAIN. Le panneau possede l'etat ET l'enregistrement ; lui
+   * en ajouter un second ici aurait donne deux sources de verite pour la meme
+   * configuration, et le dernier a ecrire aurait gagne au hasard des rendus.
+   * L'apercu ne fait donc que rendre — et demander.
+   */
+  onPatch?: (patch: Partial<AutopilotConfig>) => void;
+}) {
   const frameRef = useRef<HTMLDivElement>(null);
   const [displayScale, setDisplayScale] = useState(0);
   const [focus, setFocus] = useState<PreviewFocus>('all');
@@ -1802,6 +2064,19 @@ function AutopilotPreview({ config, accent }: { config: AutopilotConfig; accent:
 
   // L'Autopilote ne produit que du vertical (`AUTOPILOT_FORMAT`).
   const format: Format = '9:16';
+
+  /* ── LE STYLE, EN BROUILLON LOCAL ────────────────────────────────────
+     Un glissement emet des dizaines de positions par seconde : les envoyer
+     toutes au serveur inonderait la route de configuration pour un seul
+     geste. Le brouillon suit le doigt ; l'enregistrement part au
+     RELACHEMENT. */
+  const [style, setStyle] = useState<AutopilotDesignStyle>(config.designStyle);
+  // Resynchronisation sur la valeur SERIALISEE : `config.designStyle` est un
+  // objet neuf a chaque assainissement, et comparer les references relancerait
+  // cet effet a chaque rendu — il ecraserait le geste en cours.
+  const styleSignature = JSON.stringify(config.designStyle ?? {});
+  useEffect(() => { setStyle(JSON.parse(styleSignature)); }, [styleSignature]);
+
 
   useEffect(() => {
     const el = frameRef.current;
@@ -1833,10 +2108,17 @@ function AutopilotPreview({ config, accent }: { config: AutopilotConfig; accent:
   const generated: Generated = useMemo(() => ({
     title: sample.title,
     subtitle: sample.subtitle,
-    cards: sample.cards.map((c, i) => ({ ...c, id: `apercu-${i}` })),
+    // L'icone du compte si l'utilisateur en a choisi une pour ce rang — la
+    // MEME regle que `buildAutopilotDesign`, pour que l'apercu montre ce que
+    // la video produira.
+    cards: sample.cards.map((c, i) => ({
+      ...c,
+      icon: style.cardIcons?.[String(i)] ?? c.icon,
+      id: `apercu-${i}`,
+    })),
     cta: sample.cta,
     ctaSub: sample.ctaSub,
-  }), [sample]);
+  }), [sample, style.cardIcons]);
 
   /**
    * Affiche d'exemple, cherchée dans la même banque que le moteur.
@@ -1868,10 +2150,34 @@ function AutopilotPreview({ config, accent }: { config: AutopilotConfig; accent:
    * la fin du dégradé, comme dans l'assistant.
    */
   const text: TextStyles = useMemo(() => ({
-    ...DEFAULT_TEXT_STYLES,
-    title: { ...DEFAULT_TEXT_STYLES.title, color: config.titleColor },
-    cta: { ...DEFAULT_TEXT_STYLES.cta, subColor: config.cardGradientEnd },
-  }), [config.titleColor, config.cardGradientEnd]);
+    title: {
+      ...DEFAULT_TEXT_STYLES.title,
+      color: config.titleColor,
+      // ⚠️ `??` ET NON `||` : une echelle de 0 ou un interlettrage de 0 sont
+      // des reglages legitimes, que `||` remplacerait par le defaut.
+      font: style.title?.font ?? DEFAULT_TEXT_STYLES.title.font,
+      scale: style.title?.scale ?? DEFAULT_TEXT_STYLES.title.scale,
+      bold: style.title?.bold ?? DEFAULT_TEXT_STYLES.title.bold,
+      italic: style.title?.italic ?? DEFAULT_TEXT_STYLES.title.italic,
+      letterSpacing: style.title?.letterSpacing ?? DEFAULT_TEXT_STYLES.title.letterSpacing,
+      lineHeight: style.title?.lineHeight ?? DEFAULT_TEXT_STYLES.title.lineHeight,
+    },
+    subtitle: {
+      ...DEFAULT_TEXT_STYLES.subtitle,
+      font: style.subtitle?.font ?? DEFAULT_TEXT_STYLES.subtitle.font,
+      scale: style.subtitle?.scale ?? DEFAULT_TEXT_STYLES.subtitle.scale,
+    },
+    cta: {
+      ...DEFAULT_TEXT_STYLES.cta,
+      subColor: config.cardGradientEnd,
+      font: style.cta?.font ?? DEFAULT_TEXT_STYLES.cta.font,
+      scale: style.cta?.scale ?? DEFAULT_TEXT_STYLES.cta.scale,
+      bold: style.cta?.bold ?? DEFAULT_TEXT_STYLES.cta.bold,
+      italic: style.cta?.italic ?? DEFAULT_TEXT_STYLES.cta.italic,
+      letterSpacing: style.cta?.letterSpacing ?? DEFAULT_TEXT_STYLES.cta.letterSpacing,
+      lineHeight: style.cta?.lineHeight ?? DEFAULT_TEXT_STYLES.cta.lineHeight,
+    },
+  }), [config.titleColor, config.cardGradientEnd, style]);
 
   /**
    * Séquences de l'échantillon.
@@ -1888,13 +2194,195 @@ function AutopilotPreview({ config, accent }: { config: AutopilotConfig; accent:
     [config.rushUrls.length],
   );
 
+  /** Ecrit un reglage : brouillon tout de suite, base ensuite. */
+  const poser = useCallback((suivant: AutopilotDesignStyle) => {
+    setStyle(suivant);
+    onPatch?.({ designStyle: suivant });
+  }, [onPatch]);
+
+  /** Modifie UNE zone, sans toucher aux autres. */
+  const poserZone = useCallback((
+    zone: 'title' | 'subtitle' | 'cta',
+    patch: Partial<AutopilotTextZone>,
+  ) => {
+    setStyle((prev) => {
+      const suivant = { ...prev, [zone]: { ...(prev[zone] ?? {}), ...patch } };
+      onPatch?.({ designStyle: suivant });
+      return suivant;
+    });
+  }, [onPatch]);
+
+  // Positions effectives : celles du compte, sinon les constantes partagees.
+  // ⚠️ L'OBJET ENTIER, JAMAIS SES COMPOSANTES. Lire la constante
+  // composante par composante est precisement ce que l'editeur manuel s'est
+  // INTERDIT (`creer-simple-move-title-cta`) : c'est ainsi que son apercu
+  // bougeait pendant que son export restait fige. Ici la constante n'est
+  // qu'un DEFAUT, repris en bloc quand le compte n'a rien pose.
+  const titlePos: Pos = style.title?.x !== undefined && style.title?.y !== undefined
+    ? { x: style.title.x, y: style.title.y }
+    : DESIGN.titlePos;
+  const ctaPos: Pos = style.cta?.x !== undefined && style.cta?.y !== undefined
+    ? { x: style.cta.x, y: style.cta.y }
+    : DESIGN.ctaPos;
+  const titlePosRef = useRef(titlePos);
+  const ctaPosRef = useRef(ctaPos);
+  useEffect(() => { titlePosRef.current = titlePos; }, [titlePos.x, titlePos.y]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { ctaPosRef.current = ctaPos; }, [ctaPos.x, ctaPos.y]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── GESTES SUR L'APERCU ─────────────────────────────────────────────
+     Glisser pour deplacer, tirer un coin pour agrandir. Les helpers sont
+     ceux de l'editeur manuel (`dragPosition`, `smartGuides`) : ses closures,
+     elles, sont liees a son propre etat et ne se partagent pas. */
+  const previewRef = useRef<HTMLDivElement>(null);
+  const gesteRef = useRef<
+    | { type: 'move'; el: 'title' | 'cta'; pointerId: number; grab: Pos; box: BoxPct }
+    | { type: 'resize'; el: 'title' | 'cta'; pointerId: number; distance: number; echelle: number }
+    | null
+  >(null);
+  const [dragging, setDragging] = useState<'title' | 'cta' | null>(null);
+  const [guides, setGuides] = useState<ActiveGuide[]>([]);
+
+  /** Ancre d'un bloc : le titre par son coin haut-gauche, le CTA par son bas. */
+  const ancreDe = (el: 'title' | 'cta'): Anchor => (el === 'title' ? 'top-left' : 'bottom-center');
+
+  const startDrag = useCallback((el: 'title' | 'cta', e: React.PointerEvent) => {
+    e.stopPropagation();
+    if (e.button !== 0 || !e.isPrimary || gesteRef.current) return;
+    const rect = previewRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const ancre = el === 'title' ? titlePosRef.current : ctaPosRef.current;
+    const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    gesteRef.current = {
+      type: 'move',
+      el,
+      pointerId: e.pointerId,
+      grab: grabOffset(e.clientX, e.clientY, rect, ancre),
+      box: { width: (box.width / rect.width) * 100, height: (box.height / rect.height) * 100 },
+    };
+    setDragging(el);
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    } catch {
+      // Pointeur deja relache : sans ce garde on resterait en « glissement ».
+      gesteRef.current = null;
+      setDragging(null);
+    }
+  }, []);
+
+  const startResize = useCallback((el: 'title' | 'cta', e: React.PointerEvent) => {
+    e.stopPropagation();
+    if (e.button !== 0 || !e.isPrimary || gesteRef.current) return;
+    const cible = (e.currentTarget as HTMLElement).parentElement;
+    const box = cible?.getBoundingClientRect();
+    if (!box) return;
+    // Le facteur suit le RAPPORT des distances au centre du bloc : eloigner le
+    // coin agrandit, le rapprocher retrecit, sans saut a la prise.
+    const cx = box.left + box.width / 2;
+    const cy = box.top + box.height / 2;
+    gesteRef.current = {
+      type: 'resize',
+      el,
+      pointerId: e.pointerId,
+      distance: Math.max(1, Math.hypot(e.clientX - cx, e.clientY - cy)),
+      echelle: (el === 'title' ? style.title?.scale : style.cta?.scale) ?? 1,
+    };
+    setDragging(el);
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    } catch {
+      gesteRef.current = null;
+      setDragging(null);
+    }
+  }, [style.title?.scale, style.cta?.scale]);
+
+  const moveDrag = useCallback((e: React.PointerEvent) => {
+    const geste = gesteRef.current;
+    const rect = previewRef.current?.getBoundingClientRect();
+    if (!geste || !rect || geste.pointerId !== e.pointerId) return;
+    // `pointermove` se declenche aussi au survol : sans bouton appuye, il n'y
+    // a pas de geste (garde-fou anti « element collant »).
+    if (e.buttons === 0 && e.pointerType === 'mouse') return;
+
+    if (geste.type === 'resize') {
+      const cible = (e.currentTarget as HTMLElement).parentElement;
+      const box = cible?.getBoundingClientRect();
+      if (!box) return;
+      const cx = box.left + box.width / 2;
+      const cy = box.top + box.height / 2;
+      const distance = Math.max(1, Math.hypot(e.clientX - cx, e.clientY - cy));
+      const brut = geste.echelle * (distance / geste.distance);
+      const echelle = Math.min(SCALE_MAX, Math.max(SCALE_MIN, brut));
+      setStyle((prev) => ({ ...prev, [geste.el]: { ...(prev[geste.el] ?? {}), scale: echelle } }));
+      return;
+    }
+
+    const ancre = ancreDe(geste.el);
+    const brut = pointToPct(e.clientX, e.clientY, rect, geste.grab);
+    // Aimantation sur le centre de l'AUTRE bloc — le calcul passe par le
+    // centre, sinon on centrerait le bord gauche du titre sur l'axe.
+    const autres: ElementPos[] = geste.el === 'title'
+      ? [{ key: 'cta', x: ctaPosRef.current.x, y: ctaPosRef.current.y, label: 'CTA' }]
+      : [{ key: 'title', x: titlePosRef.current.x, y: titlePosRef.current.y, label: 'Titre' }];
+    const centre = anchorToCenter(brut, ancre, geste.box);
+    const snap = snapPosition(centre.x, centre.y, autres);
+    setGuides(snap.guides);
+    const pos = clampToBox(centerToAnchor({ x: snap.x, y: snap.y }, ancre, geste.box), ancre, geste.box);
+    setStyle((prev) => ({ ...prev, [geste.el]: { ...(prev[geste.el] ?? {}), x: pos.x, y: pos.y } }));
+  }, []);
+
+  /**
+   * Fin du geste — c'est ICI qu'on enregistre.
+   *
+   * ⚠️ ET SEULEMENT ICI. Enregistrer a chaque `pointermove` enverrait des
+   * dizaines de requetes par seconde pour un seul deplacement.
+   */
+  const endDrag = useCallback(() => {
+    const geste = gesteRef.current;
+    gesteRef.current = null;
+    setDragging(null);
+    setGuides([]);
+    if (!geste) return;
+    setStyle((courant) => { onPatch?.({ designStyle: courant }); return courant; });
+  }, [onPatch]);
+
+  /* ── PANNEAUX FLOTTANTS ──────────────────────────────────────────────
+     Le double-clic ouvre les reglages de l'element vise. C'est ce qui permet
+     de tout regler SUR l'apercu, sans ajouter un seul champ dans la colonne
+     de gauche — donc sans allonger la page ni ajouter d'etape. */
+  const [panneau, setPanneau] = useState<
+    { type: 'texte'; zone: 'title' | 'cta' } | { type: 'icone'; rang: number } | null
+  >(null);
+  const [panneauPos, setPanneauPos] = useState({ x: 0, y: 0 });
+
+  const ouvrirPanneau = useCallback((suivant: typeof panneau) => {
+    // Sous le curseur, borne a la fenetre : un panneau ouvert hors de l'ecran
+    // est un panneau qu'on croit casse.
+    const x = Math.min(Math.max(12, window.innerWidth / 2), window.innerWidth - 320);
+    setPanneauPos({ x, y: Math.max(80, window.innerHeight / 2 - 200) });
+    setPanneau(suivant);
+  }, []);
+
   return (
     <div data-autopilot-apercu>
       <Preview
         generated={generated}
         format={format}
         frameRef={frameRef}
+        previewRef={previewRef}
         displayScale={displayScale}
+        titlePos={titlePos}
+        ctaPos={ctaPos}
+        dragging={dragging}
+        guides={guides}
+        onDragStart={startDrag}
+        onDragMove={moveDrag}
+        onDragEnd={endDrag}
+        onTextResizeStart={startResize}
+        onTextDoubleClick={(zone) => ouvrirPanneau({ type: 'texte', zone })}
+        onCardDoubleClick={(id) => {
+          const rang = Number(String(id).replace('apercu-', ''));
+          if (Number.isInteger(rang)) ouvrirPanneau({ type: 'icone', rang });
+        }}
         // ⚠️ LA PORTÉE DE L'AFFICHE SUIT LA RÈGLE DU RENDU. Avec « cartes sur
         // les couleurs », l'onglet Cartes ne doit PAS montrer la photo :
         // `samplePosterVisible` est la même règle que `backgroundFor` côté
@@ -1927,9 +2415,89 @@ function AutopilotPreview({ config, accent }: { config: AutopilotConfig; accent:
         <span>
           Aperçu — <span className="text-gray-400">exemple</span> sur le thème
           {' '}«&nbsp;{themeLabel(sample.topic)}&nbsp;». Le sujet, l’affiche et les textes
-          changent à chaque vidéo ; les couleurs et le fond des cartes, non.
+          changent à chaque vidéo ; le style, non.
         </span>
       </p>
+
+      {/* ── LE MODE D'EMPLOI, EN UNE LIGNE ───────────────────────────────
+          ⚠️ C'EST CE QUI REMPLACE UNE ÉTAPE ENTIÈRE. Police, taille,
+          position et icônes se règlent SUR l'aperçu : rien de tout cela
+          n'ajoute un champ dans la colonne de gauche, et le wizard reste à
+          six étapes. Encore faut-il le dire — un geste qu'on ignore n'existe
+          pas. */}
+      <p className="mt-1.5 text-[11px] text-gray-600 leading-relaxed" data-autopilot-apercu-aide>
+        Double-cliquez un élément pour sa police et sa taille (ou l’icône d’une
+        carte) · glissez pour déplacer · tirez les coins pour agrandir.
+      </p>
+
+      {/* ── RÉGLAGES DU TEXTE ─────────────────────────────────────────── */}
+      <FloatingPanel
+        title={panneau?.type === 'texte' && panneau.zone === 'cta' ? 'CTA' : 'Titre'}
+        isOpen={panneau?.type === 'texte'}
+        onClose={() => setPanneau(null)}
+        initialX={panneauPos.x}
+        initialY={panneauPos.y}
+        accentColor={accent}
+        // Un curseur qu'on relache HORS du panneau le fermerait : c'est
+        // exactement le geste qu'on fait en reglant une taille.
+        closeOnClickOutside={false}
+      >
+        {panneau?.type === 'texte' && (
+          <TextZonePanel
+            zone={panneau.zone}
+            valeurs={style[panneau.zone] ?? {}}
+            onChange={(patch) => poserZone(panneau.zone, patch)}
+          />
+        )}
+      </FloatingPanel>
+
+      {/* ── ICÔNE D'UNE CARTE ─────────────────────────────────────────── */}
+      <FloatingPanel
+        title={`Icône de la carte ${(panneau?.type === 'icone' ? panneau.rang : 0) + 1}`}
+        isOpen={panneau?.type === 'icone'}
+        onClose={() => setPanneau(null)}
+        initialX={panneauPos.x}
+        initialY={panneauPos.y}
+        accentColor={accent}
+        closeOnClickOutside={false}
+      >
+        {panneau?.type === 'icone' && (
+          <div className="space-y-2" data-autopilot-icone-panneau>
+            <p className="text-[11px] text-gray-500">
+              L’icône choisie vaut pour cette carte sur <span className="text-gray-300">toutes
+              les vidéos</span>. Le texte de la carte, lui, change à chaque fois.
+            </p>
+            {/* La MEME grille que « Ajouter un element » de l'assistant. */}
+            <IconPicker
+              dense
+              autoFocus
+              selected={style.cardIcons?.[String(panneau.rang)] ?? null}
+              onPick={(nom) => {
+                poser({
+                  ...style,
+                  cardIcons: { ...(style.cardIcons ?? {}), [String(panneau.rang)]: nom },
+                });
+                setPanneau(null);
+              }}
+            />
+            {style.cardIcons?.[String(panneau.rang)] && (
+              <button
+                type="button"
+                onClick={() => {
+                  const suivant = { ...(style.cardIcons ?? {}) };
+                  delete suivant[String(panneau.rang)];
+                  poser({ ...style, cardIcons: suivant });
+                  setPanneau(null);
+                }}
+                data-autopilot-icone-reset
+                className="w-full rounded-lg border border-gray-800 px-2 py-1.5 text-[11px] text-gray-400 hover:text-white transition-colors"
+              >
+                Laisser l’icône du contenu généré
+              </button>
+            )}
+          </div>
+        )}
+      </FloatingPanel>
     </div>
   );
 }
@@ -2167,6 +2735,17 @@ export default function AssistantWizard() {
    * fini par se contredire.
    */
   const [autopilotConfig, setAutopilotConfig] = useState<AutopilotConfig>(AUTOPILOT_DEFAULT_CONFIG);
+  /**
+   * L'enregistrement du panneau, emprunte par l'apercu.
+   *
+   * Dans une `ref` et non un `useState` : la fonction change a chaque
+   * changement de configuration, et la ranger dans l'etat provoquerait un
+   * rendu de tout l'ecran a chaque frappe.
+   */
+  const autopilotPatchRef = useRef<((p: Partial<AutopilotConfig>) => void) | null>(null);
+  const autopilotPatch = useCallback((p: Partial<AutopilotConfig>) => {
+    autopilotPatchRef.current?.(p);
+  }, []);
 
   /**
    * Etape la plus AVANCEE atteinte, et non l'etape courante.
@@ -2493,7 +3072,6 @@ export default function AssistantWizard() {
   }, []);
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [elementPickerOpen, setElementPickerOpen] = useState(false);
-  const [elementQuery, setElementQuery] = useState('');
   const freeElementsRef = useRef<FreeElement[]>(freeElements);
   useEffect(() => { freeElementsRef.current = freeElements; }, [freeElements]);
 
@@ -5110,7 +5688,11 @@ export default function AssistantWizard() {
                       une fonctionnalité qui n'existait pas. Elle porte
                       désormais son propre réglage. */}
                   <div className="mt-4">
-                    <AutopilotPanel accent={accent} onConfigChange={setAutopilotConfig} />
+                    <AutopilotPanel
+                      accent={accent}
+                      onConfigChange={setAutopilotConfig}
+                      onPatchReady={(patch) => { autopilotPatchRef.current = patch; }}
+                    />
                   </div>
                 </div>
               </div>
@@ -6834,7 +7416,11 @@ export default function AssistantWizard() {
             poignées d'édition, ses refs d'export et son bouton de rendu :
             rien de ce qui suit n'est modifié. */}
         {!started ? (
-          <AutopilotPreview config={autopilotConfig} accent={accent} />
+          <AutopilotPreview
+            config={autopilotConfig}
+            accent={accent}
+            onPatch={autopilotPatch}
+          />
         ) : (
         <>
         <Preview
@@ -7009,48 +7595,12 @@ export default function AssistantWizard() {
             </button>
             {elementPickerOpen && (
               <div className="mt-2 rounded-xl border border-gray-800 bg-gray-900/50 p-3">
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
-                  <input
-                    type="text"
-                    value={elementQuery}
-                    onChange={(e) => setElementQuery(e.target.value)}
-                    placeholder="Rechercher une icône…"
-                    className="w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none pl-8 pr-2.5 py-2 text-sm"
-                  />
-                </div>
-                <div className="mt-3 max-h-64 overflow-y-auto space-y-3">
-                  {Object.entries(ICON_LIBRARY).map(([categorie, noms]) => {
-                    // Une categorie dont aucune icone ne correspond disparait :
-                    // laisser un titre seul ferait croire a un panneau casse.
-                    const retenues = noms.filter((n) => iconMatches(n, elementQuery));
-                    if (retenues.length === 0) return null;
-                    return (
-                      <div key={categorie}>
-                        <p className="text-[11px] uppercase tracking-wide text-gray-500 mb-1.5">
-                          {categorie}
-                        </p>
-                        <div className="grid grid-cols-8 gap-1">
-                          {retenues.map((nom) => (
-                            <button
-                              key={nom}
-                              type="button"
-                              onClick={() => addElement(nom)}
-                              data-element-pick={nom}
-                              title={nom}
-                              className="flex items-center justify-center rounded-lg border border-gray-800 py-2 text-gray-300 hover:text-white hover:border-purple-500 transition-colors"
-                            >
-                              <CardIcon name={nom} size={16} color="currentColor" className="" />
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {Object.values(ICON_LIBRARY).flat().every((n) => !iconMatches(n, elementQuery)) && (
-                    <p className="text-xs text-gray-500 text-center py-4">Aucune icône pour « {elementQuery} ».</p>
-                  )}
-                </div>
+                {/* La MEME grille que le choix d'icone de carte de
+                    l'Autopilote — extraite dans `IconPicker` plutot que
+                    recopiee. Deux grilles finissent par se desynchroniser :
+                    le depot l'a deja paye avec les deux selecteurs de photos
+                    de `/creer`. */}
+                <IconPicker onPick={addElement} />
               </div>
             )}
             {freeElements.length > 0 && (
