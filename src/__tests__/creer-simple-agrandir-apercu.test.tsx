@@ -261,7 +261,7 @@ describe('La fenêtre est un MIROIR, pas un second éditeur', () => {
     // C'est l'invariant central : `previewRef` désigne le nœud photographié
     // par « Télécharger l'affiche », `cardsRef` celui dont la photo part dans
     // la vidéo. Partagés, le dernier monté gagnerait — donc la fenêtre.
-    for (const ref of ['previewRef={previewRef}', 'cardsRef={cardsRef}', 'frameRef={frameRef}']) {
+    for (const ref of ['previewRef={previewRef}', 'cardsRef={cardsRef}', 'frameRef={setFrame}']) {
       expect(fenetre, ref).not.toContain(ref);
     }
   });
@@ -299,7 +299,11 @@ describe('La fenêtre est un MIROIR, pas un second éditeur', () => {
     const principal = wizard.slice(wizard.indexOf('<Preview\n          {...previewShared}', DEBUT_WIZARD));
     expect(principal.slice(0, 900)).toContain('previewRef={previewRef}');
     expect(principal.slice(0, 900)).toContain('cardsRef={cardsRef}');
-    expect(principal.slice(0, 900)).toContain('frameRef={frameRef}');
+    // ⚠️ `setFrame` DEPUIS LE CORRECTIF DE L'APERCU VIDE : le cadre recoit une
+    // ref de RAPPEL, seule facon d'etre prevenu quand le noeud s'attache
+    // (`useFrameScale`). L'invariant teste ne bouge pas — l'apercu principal
+    // garde SA mesure, la fenetre agrandie la sienne.
+    expect(principal.slice(0, 900)).toContain('frameRef={setFrame}');
   });
 });
 

@@ -481,3 +481,41 @@ souligné et le barré ne le seront jamais au pixel — CSS place son trait sur 
 métrique de police à laquelle le canvas n'a pas accès. Ils dérivent des mêmes
 ratios, c'est tout, et c'est ce que le test vérifie. Promettre l'identité aurait
 été un mensonge testé vert.
+
+## [2026-08-07] Un aperçu VIDE, present dans le DOM, stylé — et invisible
+
+**Ce qui a mal tourné** — L'aperçu de « Créer simple » était noir en
+production. Le titre, le sous-titre et les cartes étaient bien dans le DOM,
+avec la bonne police et la bonne couleur ; aucune erreur en console. Le plateau
+recevait `transform: scale(0)`, donc tout son contenu mesurait 0 × 0.
+
+La cause : l'effet qui MESURE le cadre (`frameRef.current.clientWidth` →
+`displayScale`) tournait au montage de l'ÉCRAN, alors que le cadre n'est monté
+qu'après « Commencer » — PR #326 l'avait placé dans une branche
+`{!started ? <AutopilotPreview/> : <Preview/>}`. `frameRef.current` valait
+`null`, l'effet sortait aussitôt, et ses dépendances `[format]` ne changeant
+jamais **il ne repassait plus**. La régression date donc de **#326**, pas de la
+PR suivante à laquelle elle a été attribuée.
+
+**Règle** — Un effet qui lit `ref.current` au montage suppose que le nœud est
+déjà là. Dès qu'un composant devient MONTÉ CONDITIONNELLEMENT, cette hypothèse
+tombe et rien ne le signale : une `useRef` mutée ne déclenche aucun rendu, donc
+aucun effet. Mesurer un nœud passe par une **ref de rappel** — React l'appelle
+au moment exact où le nœud s'attache — et le nœud va en ÉTAT, pas seulement en
+`ref`, pour que l'effet de mesure se relance. Extrait ici en `useFrameScale`,
+partagé par les deux aperçus : laisser deux mesures dont une seule est robuste,
+c'est garder le piège armé.
+
+**Corollaire — « présent » n'est pas « visible ».** Tous les tests d'aperçu du
+dépôt vérifiaient la PRÉSENCE : le titre est dans le DOM, sa police est la
+bonne. Tous passaient pendant que l'écran était noir. jsdom n'a pas de moteur
+de mise en page, donc `getBoundingClientRect` y rend toujours 0 — mais on peut
+stuber `clientWidth` (la seule mesure que le code lit) et vérifier **l'échelle
+réellement appliquée au plateau**. C'est exactement la valeur qui valait 0. Le
+test écrit ici échoue sur `d7a9aa0` et passe après le correctif.
+
+**Corollaire 2 — un indice qu'on n'a pas vu n'existe pas.** L'indice
+« double-clic » de l'Autopilote était déjà là depuis #328, en `text-gray-600`
+sous un autre paragraphe gris. Personne ne le lisait, donc personne ne
+découvrait le geste, donc la fonctionnalité n'existait pas. Un encart avec
+bordure, icône et contraste lisible — pas une ligne de plus.
