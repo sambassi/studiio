@@ -87,7 +87,7 @@ import TextFormatToolbar from '@/components/creer/TextFormatToolbar';
 import { DEFAULT_TEXT_CASE, type TextCase, type TextAlign } from '@/lib/creer/textFormat';
 import { CARD_STYLES, DEFAULT_CARD_STYLE } from '@/lib/creer/cardStyles';
 import { useFrameScale } from '@/lib/hooks/useFrameScale';
-import SequenceCards from '@/components/creer/SequenceCards';
+import SequenceCards, { type CardsTypography } from '@/components/creer/SequenceCards';
 import SequenceTitle, { titleFrameStyle } from '@/components/creer/SequenceTitle';
 import SequenceCta, { ctaFrameStyle } from '@/components/creer/SequenceCta';
 import FreeElementsLayer, { type FreeElement } from '@/components/creer/FreeElementsLayer';
@@ -1088,6 +1088,8 @@ export function Preview({
   hideFootnote = false,
   overlay = null,
   cardStyle,
+  cardsTypography,
+  onCardResizeStart,
   onTextResizeStart,
   onTextDoubleClick,
   onCardDoubleClick,
@@ -1134,6 +1136,16 @@ export function Preview({
    * n'a pas.
    */
   cardStyle?: string;
+  /**
+   * Typographie du texte des cartes. Absente = le rendu d'aujourd'hui.
+   *
+   * ⚠️ ELLE SUFFIT A LA PARITE. « Creer simple » PHOTOGRAPHIE le conteneur
+   * des cartes et le compositeur blitte l'image ; l'Autopilote rend le meme
+   * composant sous Remotion. Les deux moteurs lisent donc ce meme JSX.
+   */
+  cardsTypography?: CardsTypography;
+  /** Prise d'une poignee de coin sur une carte — agrandit SON texte. */
+  onCardResizeStart?: (id: string, e: React.PointerEvent) => void;
   /**
    * Masque la note « les cartes de la vidéo seront exactement celles-ci ».
    *
@@ -1715,8 +1727,10 @@ export function Preview({
                 uiPx,
                 groupTint: GROUP_TINT,
                 onCardDoubleClick,
+                onCardResizeStart,
               }}
               cardStyle={cardStyle}
+              typography={cardsTypography}
             />
 
             {shows('cta') && (
@@ -2225,6 +2239,15 @@ function AutopilotPreview({ config, accent, onPatch }: {
     onPatch?.({ designStyle: suivant });
   }, [onPatch]);
 
+  /** Modifie le texte des CARTES, sans toucher au reste. */
+  const poserZoneCartes = useCallback((patch: Partial<AutopilotTextZone>) => {
+    setStyle((prev) => {
+      const suivant = { ...prev, cards: { ...(prev.cards ?? {}), ...patch } };
+      onPatch?.({ designStyle: suivant });
+      return suivant;
+    });
+  }, [onPatch]);
+
   /** Modifie UNE zone, sans toucher aux autres. */
   const poserZone = useCallback((
     zone: 'title' | 'subtitle' | 'cta',
@@ -2261,7 +2284,7 @@ function AutopilotPreview({ config, accent, onPatch }: {
   const previewRef = useRef<HTMLDivElement>(null);
   const gesteRef = useRef<
     | { type: 'move'; el: 'title' | 'cta'; pointerId: number; grab: Pos; box: BoxPct }
-    | { type: 'resize'; el: 'title' | 'cta'; pointerId: number; distance: number; echelle: number }
+    | { type: 'resize'; el: 'title' | 'cta' | 'cards'; pointerId: number; distance: number; echelle: number }
     | null
   >(null);
   const [dragging, setDragging] = useState<'title' | 'cta' | null>(null);
@@ -2293,6 +2316,38 @@ function AutopilotPreview({ config, accent, onPatch }: {
       setDragging(null);
     }
   }, []);
+
+  /**
+   * Prise d'une poignee de coin sur une CARTE — agrandit son texte.
+   *
+   * ⚠️ LES CARTES N'EN AVAIENT PAS. Les poignees n'existaient que pour le
+   * titre et le CTA : tirer un coin de carte ne faisait rien. Le geste est le
+   * meme — rapport des distances au centre — mais il ecrit l'echelle des
+   * CARTES, commune a toutes : une carte deux fois plus grosse que sa voisine
+   * ne serait pas un reglage, ce serait un defaut.
+   */
+  const startCardResize = useCallback((_id: string, e: React.PointerEvent) => {
+    e.stopPropagation();
+    if (e.button !== 0 || !e.isPrimary || gesteRef.current) return;
+    const cible = (e.currentTarget as HTMLElement).parentElement;
+    const box = cible?.getBoundingClientRect();
+    if (!box) return;
+    const cx = box.left + box.width / 2;
+    const cy = box.top + box.height / 2;
+    gesteRef.current = {
+      type: 'resize',
+      el: 'cards',
+      pointerId: e.pointerId,
+      distance: Math.max(1, Math.hypot(e.clientX - cx, e.clientY - cy)),
+      echelle: style.cards?.scale ?? 1,
+    };
+    setDragging(null);
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    } catch {
+      gesteRef.current = null;
+    }
+  }, [style.cards?.scale]);
 
   const startResize = useCallback((el: 'title' | 'cta', e: React.PointerEvent) => {
     e.stopPropagation();
@@ -2422,6 +2477,13 @@ function AutopilotPreview({ config, accent, onPatch }: {
         watermark={AUTOPILOT_WATERMARK}
         focus={focus}
         onFocusChange={setFocus}
+        // ⚠️ BUG 2 : CES DEUX LIGNES MANQUAIENT. Le selecteur ecrivait bien
+        // `design_style.cardStyle`, le rendu video l'honorait — mais l'apercu
+        // ne le recevait pas. Choisir « Sans cadre » ne changeait donc rien a
+        // l'ecran, et seule la video produite montrait le resultat.
+        cardStyle={style.cardStyle}
+        cardsTypography={style.cards}
+        onCardResizeStart={startCardResize}
         // « Les cartes de la vidéo seront exactement celles-ci » est vrai pour
         // l'assistant et FAUX ici : ce sont celles d'un échantillon. La note
         // honnête de l'Autopilote la remplace, juste en dessous.
@@ -2522,6 +2584,65 @@ function AutopilotPreview({ config, accent, onPatch }: {
               <p className="text-[11px] text-gray-500 mt-1">
                 « Sans cadre » affiche le texte seul, sans rectangle de fond.
               </p>
+            </div>
+
+            {/* ── TEXTE DES CARTES ──────────────────────────────────────
+                ⚠️ CES REGLAGES MANQUAIENT. Le panneau ne proposait que
+                l'icone et le style : police, taille et format n'etaient
+                disponibles que pour le titre et le CTA. La MEME barre que
+                celles-ci — extraite, pas recopiee — et elle vaut pour toutes
+                les cartes, pas seulement celle qu'on a double-cliquee. */}
+            <div>
+              <p className="text-xs font-medium text-gray-300 mb-1.5">Texte des cartes</p>
+              <select
+                value={style.cards?.font ?? DEFAULT_TEXT_STYLES.title.font}
+                onChange={(e) => {
+                  void ensureFontLoaded(e.target.value);
+                  poserZoneCartes({ font: e.target.value });
+                }}
+                onFocus={() => { void preloadCatalogPreview(); }}
+                onPointerEnter={() => { void preloadCatalogPreview(); }}
+                style={{ fontFamily: fontStack(style.cards?.font ?? DEFAULT_TEXT_STYLES.title.font) }}
+                data-autopilot-font="cards"
+                className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none px-2 py-1.5 text-sm"
+              >
+                {FONT_GROUPS.map((g) => (
+                  <optgroup key={g.group} label={g.label}>
+                    {g.fonts.map((f) => (
+                      <option key={f} value={f} style={{ fontFamily: fontStack(f) }}>{f}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-[11px] text-gray-500 w-20 flex-shrink-0">Taille</span>
+                <input
+                  type="range"
+                  min={Math.round(SCALE_MIN * 100)}
+                  max={Math.round(SCALE_MAX * 100)}
+                  step={5}
+                  value={Math.round((style.cards?.scale ?? 1) * 100)}
+                  onChange={(e) => poserZoneCartes({ scale: Number(e.target.value) / 100 })}
+                  aria-label="Taille du texte des cartes"
+                  data-autopilot-scale="cards"
+                  className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
+                />
+                <span className="text-[11px] text-gray-400 w-11 text-right tabular-nums">
+                  {Math.round((style.cards?.scale ?? 1) * 100)}%
+                </span>
+              </div>
+
+              <div className="mt-2">
+                {/* Le texte des cartes n'etait ni en capitales ni aligne :
+                    ses replis sont donc « Normal » et « gauche ». */}
+                <TextFormatToolbar
+                  zone="cards"
+                  valeurs={style.cards ?? {}}
+                  defauts={{ textCase: 'none', align: 'left', bold: true, italic: false }}
+                  onChange={poserZoneCartes}
+                />
+              </div>
             </div>
 
             <p className="text-[11px] text-gray-500">
@@ -2923,6 +3044,54 @@ export default function AssistantWizard() {
    * ont recu.
    */
   const [cardStyle, setCardStyle] = useState<string>(DEFAULT_CARD_STYLE);
+  /**
+   * Typographie du texte des cartes.
+   *
+   * ⚠️ VIDE PAR DEFAUT : les cartes n'avaient aucun reglage, et l'absence
+   * doit rendre exactement ce qu'elles rendaient. `SequenceCards` est
+   * PHOTOGRAPHIE puis blitte dans la video — regler ici suffit donc a la
+   * parite, sans toucher au compositeur.
+   */
+  const [cardsTypography, setCardsTypography] = useState<CardsTypography>({});
+  const patchCards = useCallback((patch: Partial<CardsTypography>) => {
+    setCardsTypography((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  /**
+   * Prise d'une poignee de coin sur une carte — agrandit son TEXTE.
+   *
+   * Le rapport des distances au centre, comme les elements libres : eloigner
+   * le coin agrandit, le rapprocher retrecit, sans saut a la prise. Un
+   * `pointermove` natif suffit — inutile d'entrer dans la machine de
+   * glissement du plateau, qui borne des positions dont il n'est pas
+   * question ici.
+   */
+  const startCardTextResize = useCallback((_id: string, e: React.PointerEvent) => {
+    e.stopPropagation();
+    if (e.button !== 0 || !e.isPrimary) return;
+    const carte = (e.currentTarget as HTMLElement).parentElement;
+    const box = carte?.getBoundingClientRect();
+    if (!box) return;
+    const cx = box.left + box.width / 2;
+    const cy = box.top + box.height / 2;
+    const depart = Math.max(1, Math.hypot(e.clientX - cx, e.clientY - cy));
+    const echelleDepart = cardsTypography.scale ?? 1;
+    const cible = e.currentTarget as HTMLElement;
+    const bouger = (ev: PointerEvent) => {
+      const d = Math.max(1, Math.hypot(ev.clientX - cx, ev.clientY - cy));
+      const brut = echelleDepart * (d / depart);
+      patchCards({ scale: Math.min(SCALE_MAX, Math.max(SCALE_MIN, brut)) });
+    };
+    const finir = () => {
+      cible.removeEventListener('pointermove', bouger);
+      cible.removeEventListener('pointerup', finir);
+      cible.removeEventListener('pointercancel', finir);
+    };
+    try { cible.setPointerCapture?.(e.pointerId); } catch { /* pointeur deja relache */ }
+    cible.addEventListener('pointermove', bouger);
+    cible.addEventListener('pointerup', finir);
+    cible.addEventListener('pointercancel', finir);
+  }, [cardsTypography.scale, patchCards]);
 
   /* ── VOIX PAR SEQUENCE ───────────────────────────────────────────────
      Chaque sequence porte son propre texte et sa propre voix, et sa DUREE
@@ -4508,6 +4677,7 @@ export default function AssistantWizard() {
     // Le MEME champ que le compositeur : l'apercu retire son cadre en meme
     // temps que la video.
     cardStyle,
+    cardsTypography,
   };
 
   /* ── LE RENDU JOUE DANS LE CADRE ──────────────────────────────────────
@@ -5266,6 +5436,20 @@ export default function AssistantWizard() {
             // sequence. `'none'` = le rendu d'hier, au pixel.
             textAnimation,
             cardStyle,
+            // ⚠️ LA PHOTO DES CARTES PORTE DEJA CES REGLAGES : le conteneur
+            // est capture puis blitte, donc le rendu est acquis. On les ecrit
+            // quand meme sur les champs QUE LE COMPOSITEUR CONNAIT DEJA
+            // (`cardsFont`, `cardsTextScale` en pour-cent), pour qu'une
+            // regeneration depuis le Calendrier — qui recompose SANS photo —
+            // rende la meme chose.
+            //
+            // Le nom `cardsTypography` est deja pris cote compositeur par les
+            // drapeaux de degrade : l'objet complet vit donc sous
+            // `cardsTextStyle`.
+            ...(cardsTypography.font ? { cardsFont: cardsTypography.font } : null),
+            ...(cardsTypography.scale !== undefined
+              ? { cardsTextScale: cardsTypography.scale * 100 } : null),
+            cardsTextStyle: { ...cardsTypography },
             // Sans ce champ : titre et CTA en Helvetica, cartes en Inter.
             font: DESIGN.font,
 
@@ -5465,6 +5649,20 @@ export default function AssistantWizard() {
           design: {
             textAnimation,
             cardStyle,
+            // ⚠️ LA PHOTO DES CARTES PORTE DEJA CES REGLAGES : le conteneur
+            // est capture puis blitte, donc le rendu est acquis. On les ecrit
+            // quand meme sur les champs QUE LE COMPOSITEUR CONNAIT DEJA
+            // (`cardsFont`, `cardsTextScale` en pour-cent), pour qu'une
+            // regeneration depuis le Calendrier — qui recompose SANS photo —
+            // rende la meme chose.
+            //
+            // Le nom `cardsTypography` est deja pris cote compositeur par les
+            // drapeaux de degrade : l'objet complet vit donc sous
+            // `cardsTextStyle`.
+            ...(cardsTypography.font ? { cardsFont: cardsTypography.font } : null),
+            ...(cardsTypography.scale !== undefined
+              ? { cardsTextScale: cardsTypography.scale * 100 } : null),
+            cardsTextStyle: { ...cardsTypography },
             font: DESIGN.font,
             // Persiste pour que le Calendrier (apercu HTML et regeneration)
             // ancre le titre a GAUCHE comme la video, et non centre sur x=8%.
@@ -6509,6 +6707,64 @@ export default function AssistantWizard() {
                   open={openSection === 'texte'}
                   onToggle={toggleSection}
                 >
+                    {/* ── TEXTE DES CARTES ──────────────────────────────
+                        ⚠️ CES REGLAGES N'EXISTAIENT NULLE PART. Police,
+                        taille et format n'etaient proposes que pour le titre
+                        et le CTA ; les cartes n'avaient rien. La MEME barre
+                        que les autres zones — extraite, pas recopiee. */}
+                    <div className="mb-4">
+                      <label htmlFor="cards-font" className="block text-sm font-medium mb-2">
+                        Texte des cartes
+                      </label>
+                      <select
+                        id="cards-font"
+                        value={cardsTypography.font ?? DEFAULT_TEXT_STYLES.title.font}
+                        onChange={(e) => {
+                          void ensureFontLoaded(e.target.value);
+                          patchCards({ font: e.target.value });
+                        }}
+                        onFocus={() => { void preloadCatalogPreview(); }}
+                        style={{ fontFamily: fontStack(cardsTypography.font ?? DEFAULT_TEXT_STYLES.title.font) }}
+                        data-cards-font
+                        className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none px-2 py-1.5 text-sm"
+                      >
+                        {FONT_GROUPS.map((g) => (
+                          <optgroup key={g.group} label={g.label}>
+                            {g.fonts.map((f) => (
+                              <option key={f} value={f} style={{ fontFamily: fontStack(f) }}>{f}</option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Taille</span>
+                        <input
+                          type="range"
+                          min={Math.round(SCALE_MIN * 100)}
+                          max={Math.round(SCALE_MAX * 100)}
+                          step={5}
+                          value={Math.round((cardsTypography.scale ?? 1) * 100)}
+                          onChange={(e) => patchCards({ scale: Number(e.target.value) / 100 })}
+                          aria-label="Taille du texte des cartes"
+                          data-cards-scale
+                          className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
+                        />
+                        <span className="text-[11px] text-gray-400 w-11 text-right tabular-nums">
+                          {Math.round((cardsTypography.scale ?? 1) * 100)}%
+                        </span>
+                      </div>
+                      <div className="mt-2">
+                        {/* Le texte des cartes n'etait ni en capitales ni
+                            aligne : ses replis sont « Normal » et « gauche ». */}
+                        <TextFormatToolbar
+                          zone="cards"
+                          valeurs={cardsTypography}
+                          defauts={{ textCase: 'none', align: 'left', bold: true, italic: false }}
+                          onChange={patchCards}
+                        />
+                      </div>
+                    </div>
+
                     {/* ── STYLE DES CARTES ──────────────────────────────
                         ⚠️ IL ETAIT FIGE A « Compact », alors que « Sans
                         cadre » figurait deja dans la liste et que le
@@ -7526,6 +7782,11 @@ export default function AssistantWizard() {
           onDragEnd={endDrag}
           dragging={dragging}
           onCardDragStart={startCardDrag}
+          // ⚠️ LES CARTES N'AVAIENT PAS DE POIGNEES. Tirer un coin de carte
+          // ne faisait rien — elles n'existaient que pour le titre et le CTA.
+          // Le geste agrandit le TEXTE de toutes les cartes : une carte deux
+          // fois plus grosse que sa voisine ne serait pas un reglage.
+          onCardResizeStart={startCardTextResize}
           draggingCard={draggingCard}
           onClearSelection={clearSelection}
           cropping={cropping}

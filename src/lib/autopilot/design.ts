@@ -179,6 +179,9 @@ export function buildAutopilotDesign(
     // Style de carte — « Text Only » retire le cadre. Absent : le rectangle,
     // comme depuis toujours.
     ...(style.cardStyle !== undefined ? { cardStyle: style.cardStyle } : null),
+    // Texte des cartes — police, taille, graisse, casse, alignement. Absent :
+    // le rendu d'aujourd'hui.
+    ...(style.cards ? { cardsTypography: style.cards } : null),
     ctaText: post.content.tagLine,
     videoUrl: post.rushUrl,
     // La photo d'affiche du Mode simple : le MÊME champ, rendu au même

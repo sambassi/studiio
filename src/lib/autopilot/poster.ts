@@ -1,3 +1,5 @@
+import { pickRush } from '@/lib/autopilot/rules';
+
 /**
  * La photo d'affiche et la durée du rush, pour l'Autopilote.
  *
@@ -40,6 +42,25 @@ export function posterQuery(topic: string): string {
   }
   // Repli : le même que la route `/api/pexels` quand elle ne reconnaît rien.
   return 'fitness dance workout';
+}
+
+/**
+ * Affiche prise dans la banque de l'utilisateur, en rotation.
+ *
+ * ⚠️ MÊME RÈGLE QUE LES RUSHES, ET POUR LA MÊME RAISON : deux vidéos d'affilée
+ * sur la même image, c'est ce que la banque existe pour éviter. On réutilise
+ * donc `pickRush` plutôt que d'en réécrire une variante — une seconde rotation
+ * aurait fini par tourner autrement.
+ *
+ * ⚠️ AVEC UNE SEULE AFFICHE, ELLE EST FORCÉMENT RÉPÉTÉE. C'est la limite de la
+ * banque, pas de la rotation : l'écran invite à en ajouter une seconde.
+ */
+export function pickCustomPoster(
+  posterUrls: string[],
+  lastPosterUrl: string | null | undefined,
+  index = 0,
+): string | null {
+  return pickRush(posterUrls, lastPosterUrl, index);
 }
 
 /**

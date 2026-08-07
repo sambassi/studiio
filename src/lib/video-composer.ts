@@ -151,6 +151,20 @@ export interface DesignOptions {
   /** Cards-only text scale in percent (default 100). Independent of textScale
    *  so the card fonts can be grown/shrunk without touching title/CTA. */
   cardsTextScale?: number;
+  /**
+   * Typographie complete du texte des cartes — police, echelle, graisse,
+   * casse, alignement, decoration.
+   *
+   * ⚠️ LE COMPOSITEUR NE LA LIT PAS, ET C'EST VOULU. En « Creer simple », le
+   * conteneur des cartes est PHOTOGRAPHIE (`cardsSnapshot`) puis blitte tel
+   * quel : le rendu vient de `SequenceCards`, qui porte deja ces reglages.
+   * Ce champ existe pour que le Calendrier et une REGENERATION les
+   * retrouvent — sans lui, un montage recompose perdrait la mise en forme de
+   * ses cartes.
+   *
+   * Le nom `cardsTypography` etait deja pris par les drapeaux de degrade.
+   */
+  cardsTextStyle?: Record<string, unknown>;
   /** Card style: 'Compact' | 'Educatif' | 'Stats Bold' | 'Minimal Line' | 'Full Width' */
   cardStyle?: string;
   /** Title position {x: 0-100, y: 0-100} (default: {x:50, y:75}) */
