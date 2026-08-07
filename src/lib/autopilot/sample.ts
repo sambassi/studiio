@@ -90,17 +90,6 @@ export function buildAutopilotSample(config: Pick<AutopilotConfig, 'topics'>): A
 }
 
 /**
- * Opacité du voile de dégradé, dans un montage d'Autopilote.
- *
- * ⚠️ 0,3 ET NON LES 0,5 DE L'ASSISTANT. `buildAutopilotDesign` ne transmet
- * pas `gradientOpacity`, et `CreerSimpleMontage` retombe alors sur `?? 0.3` :
- * c'est donc bien 0,3 que la vidéo produit. Reprendre le `DESIGN.gradientOpacity`
- * de l'assistant aurait donné un aperçu plus voilé que le montage — l'écart
- * exact que cet aperçu existe pour éviter. Un test garde les deux d'accord.
- */
-export const AUTOPILOT_GRADIENT_OPACITY = 0.3;
-
-/**
  * L'affiche doit-elle être peinte sur la séquence affichée ?
  *
  * ⚠️ C'EST LA MÊME RÈGLE QUE LE RENDU (`backgroundFor` dans

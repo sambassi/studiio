@@ -4,8 +4,8 @@ import { resolve } from 'path';
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
 import {
   buildAutopilotSample, sampleTopic, sampleSeed, samplePosterVisible,
-  AUTOPILOT_GRADIENT_OPACITY,
 } from '@/lib/autopilot/sample';
+import { AUTOPILOT_GRADIENT_OPACITY } from '@/lib/autopilot/brand';
 import { THEMES } from '@/lib/themes';
 import { DEFAULT_CONFIG, sanitizeConfig, type AutopilotConfig } from '@/lib/autopilot/rules';
 

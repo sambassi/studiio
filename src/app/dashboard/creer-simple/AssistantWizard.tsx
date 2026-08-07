@@ -71,10 +71,11 @@ import {
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import AiImageTools from '@/components/creer/AiImageTools';
 import AutopilotPanel from '@/components/creer/AutopilotPanel';
-import {
-  buildAutopilotSample, samplePosterVisible, AUTOPILOT_GRADIENT_OPACITY,
-} from '@/lib/autopilot/sample';
-import { AUTOPILOT_WATERMARK } from '@/lib/autopilot/design';
+import { buildAutopilotSample, samplePosterVisible } from '@/lib/autopilot/sample';
+// ⚠️ DEPUIS `brand.ts`, PAS `design.ts`. Ce dernier entraîne toute la chaîne
+// serveur de l'Autopilote (`voice` → `storage/upload` → `minio`) dans le
+// paquet du navigateur, et le build échoue sur « Can't resolve 'fs/promises' ».
+import { AUTOPILOT_WATERMARK, AUTOPILOT_GRADIENT_OPACITY } from '@/lib/autopilot/brand';
 import { DEFAULT_CONFIG as AUTOPILOT_DEFAULT_CONFIG, type AutopilotConfig } from '@/lib/autopilot/rules';
 import SequenceCards from '@/components/creer/SequenceCards';
 import SequenceTitle, { titleFrameStyle } from '@/components/creer/SequenceTitle';
