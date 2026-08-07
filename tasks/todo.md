@@ -570,3 +570,17 @@ canvas (`video-composer.ts`), qui sert l'export de « Créer simple ».
 - [x] Correctif : `useFrameScale` — ref de RAPPEL + nœud en état, partagé par les deux aperçus
 - [x] Test qui échoue sur `d7a9aa0` : l'échelle du plateau doit être NON NULLE
 - [x] Indice « double-clic » de l'Autopilote rendu visible (encart + icône lucide)
+
+## 2026-08-07 — Cartes : poignées, « sans cadre », formatage + affiches perso
+
+- [x] Bug 1 : poignées de coin sur les cartes → échelle du texte (les deux écrans)
+- [x] Bug 2 : `cardStyle` câblé jusqu'à l'aperçu de l'Autopilote (deux lignes manquantes)
+- [x] Bug 3 : `TextFormatToolbar` + police + taille sur les cartes (les deux écrans)
+- [x] Affiches personnalisées : migration `poster_urls`/`poster_mode`, sanitize, route, moteur, UI
+- [x] 22 tests neufs montés sur l'aperçu, 7 mutations validées
+
+### À lancer sur le serveur
+```
+psql -U studiio -d studiio -f migrations/2026-08-07-autopilot-posters.sql
+docker kill -s SIGUSR1 studiio-postgrest
+```

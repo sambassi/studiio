@@ -519,3 +519,48 @@ test écrit ici échoue sur `d7a9aa0` et passe après le correctif.
 sous un autre paragraphe gris. Personne ne le lisait, donc personne ne
 découvrait le geste, donc la fonctionnalité n'existait pas. Un encart avec
 bordure, icône et contraste lisible — pas une ligne de plus.
+
+## [2026-08-07] Un réglage qui atteint le rendu mais pas l'aperçu
+
+**Ce qui a mal tourné** — « Text Only / Sans cadre » ne retirait pas le cadre à
+l'écran. Le composant savait le faire (`isFrameless` → pas de fond, pas
+d'arrondi), le rendu vidéo le faisait, le sélecteur écrivait bien
+`design_style.cardStyle` — et l'aperçu montrait quand même un rectangle. Il
+manquait **deux lignes** : `AutopilotPreview` ne passait pas `cardStyle` à
+`Preview`. Chaque maillon était correct ; la chaîne ne l'était pas.
+
+**Règle** — Quand un réglage doit se voir à DEUX endroits (l'écran et le
+fichier produit), le tester à un seul endroit ne prouve rien. Le test qui
+compte part de l'action utilisateur — cliquer le sélecteur — et vérifie le DOM
+de l'aperçu. C'est la troisième fois de la journée que le même angle mort se
+paie : #329 vérifiait des fonctions, #330 vérifiait la présence, et ici la
+chaîne de props n'était vérifiée nulle part.
+
+**Corollaire — chercher le rendu AVANT d'en écrire un.** Les trois défauts
+signalés comme « manquants » existaient déjà à moitié : le compositeur
+implémentait « Text Only », `SequenceCards` savait retirer le cadre, et le
+compositeur portait déjà `cardsFont` / `cardsTextScale`. Le travail réel était
+de câbler et d'exposer, pas d'implémenter. `grep` d'abord — c'est la deuxième
+leçon de la journée sur ce point.
+
+**Corollaire 2 — la parité peut être structurelle.** « Créer simple »
+PHOTOGRAPHIE le conteneur des cartes (`cardsSnapshot`) et le compositeur blitte
+l'image ; l'Autopilote rend le même composant sous Remotion. Les deux moteurs
+lisent donc le même JSX : ajouter la typographie dans `SequenceCards` donne la
+parité sans toucher au canvas. Vérifier COMMENT un chemin produit son image
+change l'ampleur du travail — ici, d'un facteur dix.
+
+## [2026-08-07] Une poignée absolue sans contexte de positionnement
+
+**Ce qui a mal tourné** — Les poignées de coin ajoutées aux cartes sont en
+`position: absolute`. Les cartes, en disposition de flux, n'ont aucune
+propriété `position` : les quatre coins se seraient donc placés sur le plus
+proche ancêtre positionné — la GRILLE — et toutes les poignées de toutes les
+cartes se seraient empilées aux quatre coins du bloc.
+
+**Règle** — Tout enfant `absolute` exige que son parent soit `relative`.
+L'ajouter conditionnellement (`onCardResizeStart ? relative : null`) garde le
+défaut inchangé. Et le test doit viser l'invariant réel : deux tests
+existants comparaient `style.position` à `''` alors que ce qu'ils protègent est
+« pas placée par des coordonnées » — donc `not.toBe('absolute')`, pas l'absence
+de toute propriété.
