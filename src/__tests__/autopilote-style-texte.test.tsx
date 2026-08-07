@@ -248,14 +248,22 @@ describe('C — l aperçu de l Autopilote est ÉDITABLE', () => {
     expect(titre.getAttribute('title')).toContain('double-clic');
   });
 
-  it('les poignées de coin existent sur le titre ET le CTA', async () => {
-    // ⚠️ ELLES N'EXISTENT QUE LA. C'est ce qui remplace un curseur de taille
-    // dans la colonne de gauche — donc ce qui garde la page a sa hauteur.
+  it('les poignées de coin apparaissent AU SURVOL, pas en permanence', async () => {
+    // ⚠️ ELLES ETAIENT PERMANENTES. Quatre petits carres autour de chaque
+    // bloc, en continu : l'apercu ressemblait a une planche de montage.
     const apercu = await monter();
+    expect(apercu.querySelector('[data-text-handle]')).toBeNull();
+
+    fireEvent.pointerEnter(apercu.querySelector('[data-title-block]') as Element);
     for (const coin of ['nw', 'ne', 'sw', 'se']) {
       expect(apercu.querySelector(`[data-text-handle="title-${coin}"]`)).toBeTruthy();
-      expect(apercu.querySelector(`[data-text-handle="cta-${coin}"]`)).toBeTruthy();
     }
+    // Et celles du CTA restent absentes : une seule zone a la fois.
+    expect(apercu.querySelector('[data-text-handle="cta-se"]')).toBeNull();
+
+    fireEvent.pointerLeave(apercu.querySelector('[data-title-block]') as Element);
+    fireEvent.pointerEnter(apercu.querySelector('[data-cta-block]') as Element);
+    expect(apercu.querySelector('[data-text-handle="cta-se"]')).toBeTruthy();
   });
 
   it('double-cliquer le titre ouvre son panneau de police et de taille', async () => {
@@ -357,6 +365,8 @@ describe('C — l aperçu de l Autopilote est ÉDITABLE', () => {
 
   it('TIRER un coin écrit une échelle bornée', async () => {
     const apercu = await monter();
+    // Les poignees n'apparaissent qu'au survol.
+    fireEvent.pointerEnter(apercu.querySelector('[data-title-block]') as Element);
     const poignee = apercu.querySelector('[data-text-handle="title-se"]') as HTMLElement;
     avecGeometrie(() => {
       fireEvent.pointerDown(poignee, { button: 0, isPrimary: true, pointerId: 2, clientX: 210, clientY: 360 });
@@ -432,18 +442,21 @@ describe('E — l assistant manuel n est PAS modifié', () => {
     resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'), 'utf-8');
   const corpsWizard = wizard.slice(wizard.indexOf('export default function AssistantWizard()'));
 
-  it('son aperçu ne reçoit ni poignées de texte ni double-clic', () => {
-    // ⚠️ IL REGLE DEJA SA TAILLE PAR UN CURSEUR dans la colonne de gauche.
-    // Lui ajouter des poignees changerait son ergonomie sans qu'on l'ait
-    // demande — et son panneau de texte existe deja.
+  it('son aperçu ouvre lui aussi les réglages au double-clic', () => {
+    // ⚠️ CE TEST DISAIT L'INVERSE, ET C'ETAIT JUSTE A L'EPOQUE : l'assistant
+    // reglait tout depuis sa colonne de gauche. L'utilisateur a demande
+    // depuis a pouvoir regler CHAQUE sequence en double-cliquant dessus, des
+    // deux cotes. Ce qui reste vrai, c'est qu'il n'a pas de poignees de
+    // TEXTE : sa taille se regle au curseur, et lui en ajouter changerait son
+    // ergonomie sans qu'on l'ait demande.
     const principal = corpsWizard.slice(
       corpsWizard.indexOf('<Preview\n          {...previewShared}'),
       corpsWizard.indexOf('/>', corpsWizard.indexOf('<Preview\n          {...previewShared}')),
     );
     expect(principal.length).toBeGreaterThan(0);
     expect(principal).not.toContain('onTextResizeStart');
-    expect(principal).not.toContain('onTextDoubleClick');
-    expect(principal).not.toContain('onCardDoubleClick');
+    expect(principal).toContain('onTextDoubleClick={ouvrirZone}');
+    expect(principal).toContain('onCardDoubleClick');
   });
 
   it('les nouvelles props de `Preview` sont TOUTES optionnelles', () => {

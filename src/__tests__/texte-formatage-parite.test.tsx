@@ -385,11 +385,15 @@ describe('F — une seule barre d outils, deux écrans', () => {
   it('elle est montée par « Créer simple » ET par l Autopilote', () => {
     // ⚠️ DEUX BARRES RECOPIEES auraient fini par proposer des options
     // differentes, et l'utilisateur aurait attribue l'ecart a un bug.
-    // Quatre montages depuis que les CARTES ont elles aussi leur barre :
-    // panneau de texte de l'assistant, texte des cartes de l'assistant,
-    // panneau de texte de l'Autopilote, panneau de carte de l'Autopilote.
-    // Ce qui compte est qu'AUCUN ne soit une barre recopiee.
-    expect(wizard.split('<TextFormatToolbar').length - 1).toBe(4);
+    // ⚠️ CE QUI COMPTE N'EST PAS LE NOMBRE, C'EST QU'AUCUNE NE SOIT RECOPIEE.
+    // Il grandit a chaque zone rendue reglable — cinq aujourd'hui : panneau de
+    // texte de l'assistant, texte des cartes de l'assistant, panneau ouvert au
+    // double-clic de l'assistant, panneau de texte de l'Autopilote, panneau de
+    // carte de l'Autopilote. Compter une valeur exacte faisait tomber ce test
+    // a chaque zone ajoutee, pour une raison qu'il ne verifie pas.
+    expect(wizard.split('<TextFormatToolbar').length - 1).toBeGreaterThanOrEqual(4);
+    // Et la barre elle-meme n'existe qu'a UN endroit.
+    expect(wizard).not.toContain('aria-label={`Gras');
   });
 
   it('elle porte les six contrôles, en icônes lucide', () => {

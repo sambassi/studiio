@@ -108,18 +108,67 @@ describe('Bug 1 — les cartes ont des poignées de coin', () => {
     expect(document.querySelector('[data-card-handle]')).toBeNull();
   });
 
-  it('AVEC gestionnaire, les quatre coins de CHAQUE carte', () => {
+  it('AU REPOS, aucune poignée — même avec un gestionnaire', () => {
+    // ⚠️ ELLES ETAIENT PERMANENTES : quatre petits carres autour de CHAQUE
+    // carte, en continu. L'apercu ressemblait a une planche de montage.
     render(
       <SequenceCards
         cards={CARTES} containerWidth={1080} landscape={false} valueColor="#EC4899"
         interaction={{ onCardResizeStart: () => {}, uiPx: (n) => n }}
       />,
     );
-    for (const id of ['c1', 'c2']) {
-      for (const coin of ['nw', 'ne', 'sw', 'se']) {
-        expect(document.querySelector(`[data-card-handle="${id}-${coin}"]`)).toBeTruthy();
-      }
+    expect(document.querySelector('[data-card-handle]')).toBeNull();
+  });
+
+  it('AU SURVOL, les quatre coins de CETTE carte, et d elle seule', () => {
+    render(
+      <SequenceCards
+        cards={CARTES} containerWidth={1080} landscape={false} valueColor="#EC4899"
+        interaction={{ onCardResizeStart: () => {}, uiPx: (n) => n }}
+      />,
+    );
+    fireEvent.pointerEnter(document.querySelector('[data-card-id="c1"]') as Element);
+    for (const coin of ['nw', 'ne', 'sw', 'se']) {
+      expect(document.querySelector(`[data-card-handle="c1-${coin}"]`)).toBeTruthy();
     }
+    expect(document.querySelector('[data-card-handle="c2-se"]')).toBeNull();
+  });
+
+  it('la poignée SURVIT au pointeur qui quitte la carte pendant le geste', () => {
+    // ⚠️ LE CAS QUI CASSE LE REDIMENSIONNEMENT. Le pointeur est CAPTURE par
+    // la poignee : en tirant, il sort forcement de la carte. Si la poignee
+    // n'etait montee qu'au survol, `pointerleave` la demonterait, la capture
+    // tomberait, et le geste s'arreterait au milieu — precisement quand
+    // l'utilisateur agrandit vraiment.
+    render(
+      <SequenceCards
+        cards={CARTES} containerWidth={1080} landscape={false} valueColor="#EC4899"
+        interaction={{ onCardResizeStart: () => {}, uiPx: (n) => n }}
+      />,
+    );
+    const c1 = document.querySelector('[data-card-id="c1"]') as HTMLElement;
+    fireEvent.pointerEnter(c1);
+    const poignee = document.querySelector('[data-card-handle="c1-se"]') as HTMLElement;
+    expect(poignee).toBeTruthy();
+
+    fireEvent.pointerDown(poignee, { button: 0, isPrimary: true, pointerId: 1 });
+    fireEvent.pointerLeave(c1);
+    expect(document.querySelector('[data-card-handle="c1-se"]')).toBeTruthy();
+
+    // Relachee, elle disparait — le survol a ete perdu entre-temps.
+    fireEvent.pointerUp(poignee, { pointerId: 1 });
+    expect(document.querySelector('[data-card-handle="c1-se"]')).toBeNull();
+  });
+
+  it('une carte SELECTIONNEE garde ses poignées sans survol', () => {
+    render(
+      <SequenceCards
+        cards={CARTES} containerWidth={1080} landscape={false} valueColor="#EC4899"
+        interaction={{ onCardResizeStart: () => {}, uiPx: (n) => n, selectedCards: new Set(['c2']) }}
+      />,
+    );
+    expect(document.querySelector('[data-card-handle="c2-se"]')).toBeTruthy();
+    expect(document.querySelector('[data-card-handle="c1-se"]')).toBeNull();
   });
 
   it('la carte devient un contexte de positionnement', () => {
@@ -132,6 +181,7 @@ describe('Bug 1 — les cartes ont des poignées de coin', () => {
       />,
     );
     expect(carte().style.position).toBe('relative');
+    void 0;
   });
 
   it('les poignées disparaissent pendant la PHOTO', () => {
@@ -143,12 +193,16 @@ describe('Bug 1 — les cartes ont des poignées de coin', () => {
         interaction={{ onCardResizeStart: () => {}, capturing: true, uiPx: (n) => n }}
       />,
     );
+    // Meme survolee : la photo ne doit jamais contenir d'aide d'edition.
+    fireEvent.pointerEnter(carte());
     expect(document.querySelector('[data-card-handle]')).toBeNull();
   });
 
   it('tirer un coin agrandit le texte — dans l aperçu de l assistant', async () => {
     await ouvrirStyle();
     const avant = libelle().style.fontSize;
+    // Les poignees n'apparaissent qu'au survol de la carte.
+    fireEvent.pointerEnter(carte());
     const poignee = document.querySelector('[data-card-handle$="-se"]') as HTMLElement;
     expect(poignee).toBeTruthy();
 

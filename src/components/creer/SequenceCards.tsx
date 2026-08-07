@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { isFrameless } from '@/lib/creer/cardStyles';
 import { fontStack } from '@/lib/fonts/catalog';
 import {
@@ -168,6 +168,22 @@ export default function SequenceCards({
    */
   const sansCadre = isFrameless(cardStyle);
 
+  /**
+   * Carte survolee, et carte en cours de redimensionnement.
+   *
+   * ⚠️ LES POIGNEES ETAIENT PERMANENTES. Quatre petits carres autour de
+   * CHAQUE carte, en permanence : l'apercu ressemblait a une planche de
+   * montage, et l'utilisateur ne voyait plus son montage. Elles n'apparaissent
+   * desormais qu'au survol — comme n'importe quel outil d'edition.
+   *
+   * ⚠️ ET `enCours` N'EST PAS DU CONFORT. Le pointeur est CAPTURE par la
+   * poignee pendant le geste : s'il sort de la carte, `pointerleave` tombe, la
+   * poignee se demonte, et le redimensionnement s'interrompt au milieu. Il
+   * faut donc la garder montee tant que le geste dure.
+   */
+  const [survolee, setSurvolee] = useState<string | null>(null);
+  const [enCours, setEnCours] = useState<string | null>(null);
+
   // ── Typographie des cartes ────────────────────────────────────────────
   // `??` et non `||` : une echelle de 0 serait un reglage, pas une absence.
   const echelle = typography?.scale ?? 1;
@@ -221,6 +237,8 @@ export default function SequenceCards({
             onPointerCancel={it?.onDragEnd}
             onLostPointerCapture={it?.onDragEnd}
             onDoubleClick={it?.onCardDoubleClick ? () => it.onCardDoubleClick!(c.id) : undefined}
+            onPointerEnter={it?.onCardResizeStart ? () => setSurvolee(c.id) : undefined}
+            onPointerLeave={it?.onCardResizeStart ? () => setSurvolee((v) => (v === c.id ? null : v)) : undefined}
             title={
               it?.onCardDoubleClick
                 ? 'Double-clic pour changer l’icône'
@@ -335,7 +353,8 @@ export default function SequenceCards({
                 Absentes sans `onCardResizeStart`, et effacees pendant la
                 photo : le conteneur des cartes est justement ce que
                 `modern-screenshot` capture pour la video. */}
-            {it?.onCardResizeStart && !it.capturing && ([
+            {it?.onCardResizeStart && !it.capturing
+              && (survolee === c.id || enCours === c.id || it.selectedCards?.has(c.id)) && ([
               { coin: 'nw', top: 0, left: 0 },
               { coin: 'ne', top: 0, left: '100%' },
               { coin: 'sw', top: '100%', left: 0 },
@@ -344,11 +363,15 @@ export default function SequenceCards({
               <span
                 key={p.coin}
                 data-card-handle={`${c.id}-${p.coin}`}
-                onPointerDown={(e) => { e.stopPropagation(); it.onCardResizeStart!(c.id, e); }}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  setEnCours(c.id);
+                  it.onCardResizeStart!(c.id, e);
+                }}
                 onPointerMove={it.onDragMove}
-                onPointerUp={it.onDragEnd}
-                onPointerCancel={it.onDragEnd}
-                onLostPointerCapture={it.onDragEnd}
+                onPointerUp={(e) => { setEnCours(null); it.onDragEnd?.(); void e; }}
+                onPointerCancel={() => { setEnCours(null); it.onDragEnd?.(); }}
+                onLostPointerCapture={() => { setEnCours(null); it.onDragEnd?.(); }}
                 title="Tirer pour agrandir le texte de la carte"
                 style={{
                   position: 'absolute',

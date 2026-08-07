@@ -564,3 +564,42 @@ défaut inchangé. Et le test doit viser l'invariant réel : deux tests
 existants comparaient `style.position` à `''` alors que ce qu'ils protègent est
 « pas placée par des coordonnées » — donc `not.toBe('absolute')`, pas l'absence
 de toute propriété.
+
+## [2026-08-07] Un outil d'édition affiché en permanence encombre ce qu'il sert à régler
+
+**Ce qui a mal tourné** — Les poignées de coin ajoutées en #331 étaient rendues
+dès que le gestionnaire existait : quatre petits carrés autour de **chaque**
+carte, en continu. L'aperçu ressemblait à une planche de montage, et
+l'utilisateur ne voyait plus son montage. Les poignées du titre et du CTA
+avaient le même défaut depuis #328 — moins visible, donc jamais signalé.
+
+**Règle** — Une aide d'édition se montre **quand on s'en approche** : au survol,
+à la sélection, pendant le geste. Jamais au repos. Et le corollaire technique
+n'est pas optionnel : le pointeur étant **capturé** par la poignée, il sort de
+l'élément dès qu'on tire — `pointerleave` démonterait la poignée et
+interromprait le geste au milieu. Il faut donc un état « geste en cours » en
+plus du survol.
+
+**Corollaire — la mutation qui survit désigne le test manquant.** Retirer ce
+garde-là n'a fait tomber aucun test : mes tests hoveraient puis tiraient, sans
+jamais simuler le pointeur QUITTANT la carte — c'est-à-dire le seul cas où le
+garde sert. Test ajouté, mutation rejouée, elle tombe.
+
+## [2026-08-07] « Ça marche sur trois éléments sur quatre » se lit comme un bug
+
+**Ce qui a mal tourné** — Le double-clic ouvrait un panneau pour le titre, le
+CTA et les cartes, mais pas pour le sous-titre — et pas du tout dans
+l'assistant. Un geste qui répond sur certains éléments et pas sur d'autres
+n'est pas perçu comme une limite : il est perçu comme cassé, et l'utilisateur
+cesse de l'essayer.
+
+**Règle** — Quand on rend un geste disponible sur une zone, faire le tour des
+zones sœurs dans le même lot. Ici : titre, sous-titre, cartes, CTA — et des
+deux côtés. Le coût du quatrième est marginal ; le coût de son absence est que
+les trois premiers passent pour un hasard.
+
+**Corollaire — deux écrans, deux promesses.** L'assistant produit UN montage :
+son texte s'édite. L'Autopilote en produit un différent à chaque cycle : y
+figer une phrase détruirait la variété qui fait tout son intérêt. Le panneau ne
+propose donc que le style — **et le dit**, sinon l'utilisateur cherche un champ
+absent et conclut que la fonctionnalité est incomplète.

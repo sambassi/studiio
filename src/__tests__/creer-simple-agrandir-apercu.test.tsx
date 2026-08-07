@@ -253,7 +253,11 @@ describe('Preview — l en-tête est masquable', () => {
 const DEBUT_WIZARD = wizard.indexOf('export default function AssistantWizard()');
 
 /** Le bloc JSX de la fenêtre flottante, isolé du reste du fichier. */
-const debutFenetre = wizard.indexOf('<FloatingPanel', DEBUT_WIZARD);
+// ⚠️ ANCRE SUR LA FENETRE ELLE-MEME, pas sur le premier `<FloatingPanel>` du
+// corps : l'assistant en porte desormais un AUTRE, celui des reglages d'une
+// sequence ouvert au double-clic, declare plus haut. Sans cette ancre, la
+// tranche decrivait le mauvais panneau.
+const debutFenetre = wizard.lastIndexOf('<FloatingPanel', wizard.indexOf('title="Aperçu"', DEBUT_WIZARD));
 const fenetre = wizard.slice(debutFenetre, wizard.indexOf('</FloatingPanel>', debutFenetre));
 
 describe('La fenêtre est un MIROIR, pas un second éditeur', () => {
