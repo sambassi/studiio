@@ -592,3 +592,21 @@ docker kill -s SIGUSR1 studiio-postgrest
 - [x] Sous-titre : panneau propre, `stopPropagation` pour ne pas ouvrir celui du titre
 - [x] Créer simple : édition du CONTENU ; Autopilote : style seul, et il le dit
 - [x] 13 tests neufs montés sur l'aperçu, 7 mutations validées (une a d'abord survécu)
+
+## 2026-08-08 — Zernio : publication réseaux des utilisateurs
+
+- [x] Migration `2026-08-08-zernio.sql` (profil, drapeau, comptes, coupe-circuit)
+- [x] Client `zernio.ts` — profils, connexion, comptes, presign+upload, posts
+- [x] Provisionnement idempotent (le profil est facturé)
+- [x] Connexion marque blanche + page de retour + section « Mes réseaux »
+- [x] Publication via le cron, sans toucher au chemin direct de l'admin
+- [x] Webhook signé (HMAC-SHA256), refus si aucun secret configuré
+- [x] Gating 2 drapeaux + coupe-circuit admin
+- [ ] **Stripe NON branché** — le drapeau `publishing_enabled` reste piloté à la main
+
+### À lancer sur le serveur
+```
+psql -U studiio -d studiio -f migrations/2026-08-08-zernio.sql
+docker kill -s SIGUSR1 studiio-postgrest
+```
+Variables Coolify : `ZERNIO_API_KEY` (sk_…) et `ZERNIO_WEBHOOK_SECRET`.
