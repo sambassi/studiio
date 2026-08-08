@@ -144,7 +144,13 @@ describe('B — jamais un WebM sur les réseaux', () => {
     // CLAUDE.md) : WebM « mode rapide », metadonnees temporelles cassees.
     const r = mediaPubliable('https://x.test/montage.webm');
     expect(r.ok).toBe(false);
-    expect(r.motif).toContain('MP4');
+    // ⚠️ LE MESSAGE SPECIFIQUE, PAS LE REFUS GENERIQUE. « format non
+    // accepte » laisse l'utilisateur sans recours ; « finalisez le montage en
+    // video avec audio » lui dit quoi faire — c'est le Studio Son.
+    expect(r.motif).toContain('finalisé');
+    expect(r.motif).toContain('audio');
+    // Et il DIFFERE du refus d'un format inconnu.
+    expect(r.motif).not.toBe(mediaPubliable('https://x.test/a.gif').motif);
   });
 
   it('le MP4 passe', () => {
@@ -251,8 +257,13 @@ describe('E — le webhook est public : la signature fait foi', () => {
   });
 
   it('la comparaison est à temps constant', () => {
-    // Une comparaison naive fuit la signature octet par octet.
-    expect(src).toContain('timingSafeEqual');
+    // ⚠️ ON VERIFIE QU'ELLE EST *UTILISEE*, pas seulement importee. Une
+    // comparaison naive (`a === b`) fuit la signature octet par octet, et le
+    // simple import laisse croire au contraire.
+    expect(src).toContain('return timingSafeEqual(');
+    const corps = src.slice(src.indexOf('function signatureValide'), src.indexOf('\n}', src.indexOf('function signatureValide')));
+    expect(corps).toContain('timingSafeEqual');
+    expect(corps).not.toMatch(/return\s+attendu\s*===/);
   });
 
   it('la signature calculée est bien un HMAC-SHA256 du corps brut', () => {
