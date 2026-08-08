@@ -603,3 +603,49 @@ son texte s'édite. L'Autopilote en produit un différent à chaque cycle : y
 figer une phrase détruirait la variété qui fait tout son intérêt. Le panneau ne
 propose donc que le style — **et le dit**, sinon l'utilisateur cherche un champ
 absent et conclut que la fonctionnalité est incomplète.
+
+## [2026-08-08] Sur un chemin de sécurité, grepper le source ne prouve rien
+
+**Ce qui a mal tourné** — Trois mutations ont survécu au premier passage, et
+toutes portaient sur de la sécurité :
+
+- Remplacer `if (!droit.autorise)` par `if (false)` dans la route de connexion
+  laissait passer un test qui cherchait `droitDePublier` et `status: 403` dans
+  le fichier — **les deux chaînes restaient présentes ailleurs**. Le garde
+  d'accès était donc supprimable sans qu'aucun test ne bronche.
+- Remplacer `timingSafeEqual(a, b)` par `attendu === recu` passait, parce que
+  le test cherchait `timingSafeEqual` — qui restait dans l'**import**.
+- Retirer la branche WebM passait, parce que le refus générique disait aussi
+  « MP4 » : le message qui explique QUOI FAIRE était perdu sans que rien ne le
+  voie.
+
+**Règle** — Un contrôle d'accès se teste en **appelant la route** avec une
+session mockée, jamais en cherchant son nom dans le fichier. Et quand un test
+de source est inévitable, viser l'**usage** dans la fonction concernée
+(`return timingSafeEqual(`), pas la présence du symbole quelque part.
+
+**Corollaire — vérifier aussi ce qui NE DOIT PAS se produire.** Le test du
+refus 403 assert désormais qu'**aucun appel n'est parti chez Zernio** : chaque
+profil créé est facturé, et un appel émis malgré le refus coûterait de l'argent
+sans que le code paraisse fautif.
+
+## [2026-08-08] Lire la spécification plutôt que la reformulation
+
+**Ce qui a mal tourné (évité de justesse)** — La consigne décrivait la
+publication Zernio avec « le MP4 rendu, accessible via URL publique ». La
+spécification OpenAPI dit l'inverse : une URL arbitraire est **refusée**, il
+faut demander une URL présignée (`POST /media/presign`), y déposer le fichier
+en `PUT`, puis référencer le `publicUrl` rendu. Implémenter la reformulation
+aurait produit des posts refusés par Zernio, avec un message qui n'aurait pas
+dit pourquoi.
+
+De même, le retour de connexion porte déjà `accountId` et `username` en
+paramètres d'URL — on peut donc enregistrer le compte **sans attendre le
+webhook**, ce que la consigne ne mentionnait pas et qui évite une liste vide
+pendant plusieurs secondes.
+
+**Règle** — Pour toute intégration externe, aller chercher la spécification
+machine (OpenAPI, JSON Schema) plutôt que la prose, et la lire aux endroits
+qui ne se devinent pas : format du média, signature des webhooks, forme exacte
+des identifiants. Une consigne humaine est un résumé ; un résumé se trompe sur
+les détails, et ce sont eux qui cassent en production.
