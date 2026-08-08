@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { useTranslations } from '@/i18n/client';
+import MesReseaux from '@/components/social/MesReseaux';
 import {
   Instagram,
   Music2,
@@ -388,6 +389,15 @@ export default function SocialPage() {
 
   return (
     <div className="space-y-8">
+      {/* ── MES RESEAUX (publication) ────────────────────────────────────
+          Les comptes que l'UTILISATEUR connecte lui-meme, via Zernio. A ne
+          pas confondre avec la section ci-dessous, qui gere les comptes que
+          Studiio detient en propre (chemin direct, historique) : les deux
+          coexistent, et l'administrateur choisit le sien. */}
+      <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
+        <MesReseaux />
+      </div>
+
       {/* Toast Notifications */}
       <div className="fixed top-4 right-4 z-50 space-y-2 max-w-md">
         {toasts.map((toast) => (

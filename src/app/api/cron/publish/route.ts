@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { comptesConnectes, droitDePublier } from '@/lib/social/publishing';
+import { publierViaZernio } from '@/lib/social/publishViaZernio';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { execFile } from 'child_process';
 import { readFile, unlink, access } from 'fs/promises';
@@ -359,6 +361,49 @@ export async function GET(req: NextRequest) {
       }
 
       try {
+        // ── CHEMIN ZERNIO — les reseaux DE L'UTILISATEUR ──────────────
+        //
+        // ⚠️ IL PASSE AVANT, ET IL NE REMPLACE RIEN. Les comptes
+        // `social_accounts` sont ceux que Studiio detient EN PROPRE : c'est le
+        // chemin historique de l'administrateur, et il reste intact juste en
+        // dessous. Zernio, lui, publie sur les comptes que l'utilisateur a
+        // connectes lui-meme.
+        //
+        // Un utilisateur sans droit ou sans compte Zernio retombe donc sur le
+        // comportement d'avant, a la ligne pres.
+        const zernioComptes = await comptesConnectes(post.user_id);
+        const zernioCibles = zernioComptes.filter((c) => (post.platforms || []).includes(c.platform));
+        if (zernioCibles.length > 0) {
+          const droit = await droitDePublier(post.user_id, undefined);
+          if (droit.autorise) {
+            const media = post.media_url || (post.metadata as any)?.renderedVideoUrl || null;
+            const resultat = await publierViaZernio({
+              id: post.id,
+              userId: post.user_id,
+              caption: post.caption || post.title || '',
+              mediaUrl: media,
+              platforms: post.platforms || [],
+              // Le cron ne traite que des posts DUS : on publie maintenant.
+              scheduledFor: null,
+            });
+            await supabase
+              .from('scheduled_posts')
+              .update(resultat.ok
+                // ⚠️ `publishing` ET NON `published` : c'est le webhook
+                // `post.published` de Zernio qui confirmera. Marquer publie
+                // ici annoncerait un succes qu'on ne connait pas encore.
+                ? { status: 'publishing' }
+                : { status: 'failed', metadata: { ...post.metadata, error: resultat.motif } })
+              .eq('id', post.id);
+            console.log(`[CRON] Zernio post ${post.id} : ${resultat.ok ? `remis a ${resultat.comptes} compte(s)` : `refus — ${resultat.motif}`}`);
+            results.push({
+              postId: post.id, title: post.title, platforms: post.platforms,
+              success: resultat.ok, details: resultat.ok ? 'Zernio' : resultat.motif,
+            });
+            continue;
+          }
+        }
+
         // Get the user's social accounts
         const { data: accounts, error: accountsError } = await supabase
           .from('social_accounts')
