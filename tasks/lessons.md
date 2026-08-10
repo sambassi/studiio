@@ -649,3 +649,39 @@ machine (OpenAPI, JSON Schema) plutôt que la prose, et la lire aux endroits
 qui ne se devinent pas : format du média, signature des webhooks, forme exacte
 des identifiants. Une consigne humaine est un résumé ; un résumé se trompe sur
 les détails, et ce sont eux qui cassent en production.
+
+## 2026-08-10 — Repères d'alignement : trois défauts, une seule cause
+
+- **2026-08-10** | Le calque de repères dessinait dans un
+  `<svg viewBox="0 0 100 100" preserveAspectRatio="none">` : un repère CARRÉ
+  étiré au format du cadre. En 9:16 toutes les hauteurs y étaient multipliées
+  par 1,78 — croix de centre aplatie, pastilles de mesure étirées, texte
+  illisible. | **Règle** : un calque posé sur un cadre au ratio variable ne
+  doit jamais être dessiné dans un repère normalisé étiré. Positionner en
+  **pourcentage** (valable dans tous les ratios) et exprimer épaisseurs et
+  polices en **pixels d'écran** (jamais déformés). `preserveAspectRatio="none"`
+  est un signal d'alerte : il dit explicitement « déforme-moi ».
+
+- **2026-08-10** | Les écarts se mesuraient de CENTRE à CENTRE
+  (`computeDistanceBadges`). Le chiffre affiché ne décrivait aucun vide
+  visible : entre deux blocs de 20 % séparés de 10 % de vide, il annonçait
+  30 %. | **Règle** : ce que l'utilisateur veut lire est le **vide**, donc la
+  distance **bord à bord**. Cela impose de mesurer les **boîtes englobantes
+  réelles** (`getBoundingClientRect`) et non les positions d'état : les
+  éléments n'ont pas la même ancre (titre en haut-gauche, CTA en bas-centre)
+  et leur taille dépend du texte saisi — aucun état ne connaît cette emprise.
+
+- **2026-08-10** | Les distances étaient converties en pixels d'ÉCRAN
+  (`rect.width` / `rect.height` de l'aperçu). Le même montage annonçait « 64 px »
+  sur un grand écran et « 31 px » sur un petit. | **Règle** : toute mesure
+  montrée à l'utilisateur doit être exprimée dans l'unité du **livrable**
+  (ici le pixel du format d'export : 1080×1920, 1080×1080 ou 1920×1080), avec
+  **un diviseur par axe**. Utiliser la même dimension pour X et Y revient à
+  supposer un cadre carré — et c'est faux dans les trois formats sauf un.
+
+- **2026-08-10** | Le DOM a toujours **un rendu de retard** sur le pointeur :
+  la boîte mesurée pendant un `mousemove` est celle de la position précédente.
+  | **Règle** : mesurer la boîte rendue puis la **translater** du déplacement.
+  Sa taille, elle, ne change pas pendant un glissement — seule sa position
+  bouge. Re-mesurer après `setState` coûterait un rendu supplémentaire par
+  frame.

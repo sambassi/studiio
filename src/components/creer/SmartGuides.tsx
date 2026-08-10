@@ -1,116 +1,196 @@
 'use client';
 
 import React from 'react';
-import type { ActiveGuide, DistanceBadge } from '@/lib/creer/smartGuides';
+import { Equal, Plus } from 'lucide-react';
+import type { ActiveGuide, GapBadge, FrameFormat } from '@/lib/creer/smartGuides';
 
 interface Props {
-  guides: ActiveGuide[];
-  distanceBadges: DistanceBadge[];
-  /** Whether to draw the 8×8 grid overlay */
-  showGrid: boolean;
+  /** Lignes magnetiques, affichees pendant un glissement. */
+  guides?: ActiveGuide[];
+  /** Ecarts bord-a-bord de l'element mis en avant. */
+  gaps?: GapBadge[];
+  /** Grille de reperage 8 × 8. */
+  showGrid?: boolean;
+  /** Croix de centre — le VRAI milieu du format actif. */
+  showCenter?: boolean;
+  /** Lignes des tiers (33 % / 66 %). */
+  showThirds?: boolean;
+  /** Format actif : sert au libelle, jamais aux positions. */
+  format?: FrameFormat;
+  /** Pastille « 9:16 » / « 16:9 » en haut a gauche. */
+  showRatioLabel?: boolean;
 }
 
 const MAGENTA = '#D91CD2';
+const EQUAL_GREEN = '#34D399';
+const CENTER_LINE = 'rgba(168,85,247,0.45)';
+const THIRDS_LINE = 'rgba(168,85,247,0.22)';
+const GRID_LINE = 'rgba(255,255,255,0.10)';
+
+const EMPTY_GUIDES: ActiveGuide[] = [];
+const EMPTY_GAPS: GapBadge[] = [];
 
 /**
- * SVG overlay layered over the /creer preview. Renders the magnetic
- * alignment lines (magenta) when the user is dragging an element close
- * to an alignment target, plus the distance badges between the dragged
- * element and its nearest neighbours. Also renders an optional 8×8
- * alignment grid (light white lines at 0.1 opacity) when `showGrid`.
+ * Calque de reperes pose sur l'apercu — partage par Creer avance et
+ * Creer simple.
  *
- * Positioned with `absolute inset-0 pointer-events-none` so it never
- * interferes with the underlying drag handlers.
+ * ⚠️ EN HTML, PAS EN SVG ETIRE. La version precedente dessinait tout dans un
+ * `viewBox="0 0 100 100"` avec `preserveAspectRatio="none"` : un carre etire
+ * au format du cadre. En 9:16 cela multipliait les hauteurs par 1,78 — la
+ * croix de centre devenait un « x » aplati, les pastilles de mesure des
+ * rectangles etires et le texte illisible. Ici chaque repere est un bloc
+ * positionne en POURCENTAGE (donc juste dans les deux formats) dont les
+ * epaisseurs et la police sont en PIXELS D'ECRAN (donc jamais deformees).
+ *
+ * `absolute inset-0 pointer-events-none` : le calque ne recoit aucun geste,
+ * les poignees dessous restent saisissables.
  */
-export default function SmartGuides({ guides, distanceBadges, showGrid }: Props) {
+export default function SmartGuides({
+  guides = EMPTY_GUIDES,
+  gaps = EMPTY_GAPS,
+  showGrid = false,
+  showCenter = false,
+  showThirds = false,
+  format = '9:16',
+  showRatioLabel = false,
+}: Props) {
   return (
-    <svg
-      className="pointer-events-none absolute inset-0 z-30"
-      width="100%"
-      height="100%"
-      viewBox="0 0 100 100"
-      preserveAspectRatio="none"
-      aria-hidden
-    >
-      {showGrid && (
-        <g stroke="rgba(255,255,255,0.1)" strokeWidth="0.08" vectorEffect="non-scaling-stroke">
-          {Array.from({ length: 7 }, (_, i) => {
-            const p = (100 / 8) * (i + 1);
-            return <line key={`gx-${i}`} x1={p} y1="0" x2={p} y2="100" />;
-          })}
-          {Array.from({ length: 7 }, (_, i) => {
-            const p = (100 / 8) * (i + 1);
-            return <line key={`gy-${i}`} x1="0" y1={p} x2="100" y2={p} />;
-          })}
-        </g>
+    <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden" aria-hidden>
+      {showGrid &&
+        Array.from({ length: 7 }, (_, i) => {
+          const p = (100 / 8) * (i + 1);
+          return (
+            <React.Fragment key={`grid-${i}`}>
+              <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${p}%`, borderLeft: `1px solid ${GRID_LINE}` }} />
+              <div style={{ position: 'absolute', left: 0, right: 0, top: `${p}%`, borderTop: `1px solid ${GRID_LINE}` }} />
+            </React.Fragment>
+          );
+        })}
+
+      {showThirds &&
+        [100 / 3, 200 / 3].map((p, i) => (
+          <React.Fragment key={`thirds-${i}`}>
+            <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${p}%`, borderLeft: `1px dashed ${THIRDS_LINE}` }} />
+            <div style={{ position: 'absolute', left: 0, right: 0, top: `${p}%`, borderTop: `1px dashed ${THIRDS_LINE}` }} />
+          </React.Fragment>
+        ))}
+
+      {/* Croix de centre — 50 % de la largeur et 50 % de la hauteur du cadre
+          REEL, donc le vrai milieu en 9:16 comme en 16:9. Le marqueur central
+          leve l'ambiguite quand une autre ligne passe au meme endroit. */}
+      {showCenter && (
+        <>
+          <div data-guide-center-x style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', borderLeft: `1px dashed ${CENTER_LINE}` }} />
+          <div data-guide-center-y style={{ position: 'absolute', left: 0, right: 0, top: '50%', borderTop: `1px dashed ${CENTER_LINE}` }} />
+          <div
+            data-guide-center-mark
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
+              color: CENTER_LINE,
+              lineHeight: 0,
+            }}
+          >
+            <Plus size={14} strokeWidth={2} />
+          </div>
+        </>
       )}
 
-      {guides.map((g, i) =>
-        g.axis === 'x' ? (
-          <line
-            key={`guide-x-${i}`}
-            x1={g.pos}
-            y1="0"
-            x2={g.pos}
-            y2="100"
-            stroke={MAGENTA}
-            strokeWidth="0.4"
-            strokeDasharray="1.5 1"
-            vectorEffect="non-scaling-stroke"
-          />
-        ) : (
-          <line
-            key={`guide-y-${i}`}
-            x1="0"
-            y1={g.pos}
-            x2="100"
-            y2={g.pos}
-            stroke={MAGENTA}
-            strokeWidth="0.4"
-            strokeDasharray="1.5 1"
-            vectorEffect="non-scaling-stroke"
-          />
-        ),
+      {showRatioLabel && (
+        <div
+          data-guide-ratio
+          style={{
+            position: 'absolute',
+            left: 6,
+            top: 6,
+            padding: '2px 6px',
+            borderRadius: 6,
+            fontSize: 10,
+            fontWeight: 700,
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            color: '#E9D5FF',
+            background: 'rgba(17,17,24,0.75)',
+            border: '1px solid rgba(168,85,247,0.35)',
+          }}
+        >
+          {format}
+        </div>
       )}
 
-      {distanceBadges.map((b, i) => (
-        <DistanceLabel key={`dist-${i}`} badge={b} />
+      {guides.map((g, i) => (
+        <div
+          key={`guide-${g.axis}-${i}`}
+          style={
+            g.axis === 'x'
+              ? { position: 'absolute', top: 0, bottom: 0, left: `${g.pos}%`, borderLeft: `1px dashed ${g.source === 'equal-gap' ? EQUAL_GREEN : MAGENTA}` }
+              : { position: 'absolute', left: 0, right: 0, top: `${g.pos}%`, borderTop: `1px dashed ${g.source === 'equal-gap' ? EQUAL_GREEN : MAGENTA}` }
+          }
+        />
       ))}
-    </svg>
+
+      {gaps.map((b, i) => (
+        <GapMeasure key={`gap-${b.side}-${i}`} badge={b} />
+      ))}
+    </div>
   );
 }
 
-function DistanceLabel({ badge }: { badge: DistanceBadge }) {
-  // SVG-native text sits in the viewBox coordinate system (0..100).
-  // Keep the text big enough to read (~3.5 viewBox units high), white on
-  // a semi-opaque black chip.
-  const text = `${badge.distancePx} px`;
-  const width = text.length * 1.5 + 2;
-  const height = 3.4;
-  const x = Math.max(1, Math.min(100 - width - 1, badge.midX - width / 2));
-  const y = Math.max(1, Math.min(100 - height - 1, badge.midY - height / 2));
+/**
+ * Un ecart : le trait qui couvre EXACTEMENT le vide mesure, et sa pastille.
+ *
+ * La pastille est un bloc HTML a police fixe : elle garde la meme forme quel
+ * que soit le format du cadre. Vert avec un signe « egal » lorsque l'ecart
+ * oppose vaut le meme — c'est la confirmation visuelle du centrage.
+ */
+function GapMeasure({ badge }: { badge: GapBadge }) {
+  const color = badge.equal ? EQUAL_GREEN : MAGENTA;
+  const half = Math.abs(badge.gapPct) / 2;
+  const line: React.CSSProperties =
+    badge.axis === 'y'
+      ? {
+          position: 'absolute',
+          left: `${badge.midXPct}%`,
+          top: `${badge.midYPct - half}%`,
+          height: `${Math.abs(badge.gapPct)}%`,
+          borderLeft: `1px solid ${color}`,
+        }
+      : {
+          position: 'absolute',
+          top: `${badge.midYPct}%`,
+          left: `${badge.midXPct - half}%`,
+          width: `${Math.abs(badge.gapPct)}%`,
+          borderTop: `1px solid ${color}`,
+        };
+
   return (
-    <g>
-      <rect
-        x={x}
-        y={y}
-        width={width}
-        height={height}
-        rx={0.8}
-        ry={0.8}
-        fill="rgba(217, 28, 210, 0.85)"
-      />
-      <text
-        x={x + width / 2}
-        y={y + height * 0.72}
-        textAnchor="middle"
-        fontFamily="monospace"
-        fontSize="2.3"
-        fill="#fff"
-        fontWeight="700"
+    <>
+      <div style={line} />
+      <div
+        data-guide-gap={badge.side}
+        style={{
+          position: 'absolute',
+          left: `${badge.midXPct}%`,
+          top: `${badge.midYPct}%`,
+          transform: 'translate(-50%, -50%)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 3,
+          padding: '1px 5px',
+          borderRadius: 5,
+          background: color,
+          color: '#0A0A0F',
+          fontSize: 10,
+          fontWeight: 700,
+          lineHeight: '14px',
+          whiteSpace: 'nowrap',
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        }}
       >
-        {text}
-      </text>
-    </g>
+        {badge.equal && <Equal size={10} strokeWidth={3} />}
+        {`${badge.gapPx} px`}
+      </div>
+    </>
   );
 }

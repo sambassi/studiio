@@ -205,6 +205,13 @@ export default function SequenceCards({
     <div
       ref={containerRef}
       data-cards-grid
+      // Repere d'alignement — `union` mesure les CARTES, pas ce conteneur :
+      // il occupe une bande fixe du cadre alors que les cartes n'en
+      // remplissent que le milieu. Pose uniquement quand l'apercu est
+      // editable : le rendu serveur (Remotion) doit rester identique.
+      {...(editable
+        ? { 'data-guide-key': 'cards', 'data-guide-label': 'Cartes', 'data-guide-union': '' }
+        : null)}
       style={{
         position: 'absolute',
         ...(cardBoxes

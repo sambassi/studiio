@@ -14,6 +14,8 @@ import {
   CalendarPlus,
   RefreshCw,
   MonitorPlay,
+  Crosshair,
+  Grid3x3,
   GripVertical,
   Eye,
   EyeOff,
@@ -59,8 +61,9 @@ import {
 import type { AudioKeyframe } from '@/lib/creer/audioDucking';
 import { pointToPct, grabOffset, clampToBox, type Pos, type BoxPct, type CardBox, boxesFromRects, samePos } from '@/lib/creer/dragPosition';
 import {
-  snapPosition, computeDistanceBadges, anchorToCenter, centerToAnchor,
-  type ActiveGuide, type DistanceBadge, type ElementPos, type Anchor,
+  snapPosition, computeGapBadges, collectGuideBoxes, shiftBox, boxCenter,
+  anchorToCenter, centerToAnchor,
+  type ActiveGuide, type GapBadge, type ElementPos, type Anchor,
 } from '@/lib/creer/smartGuides';
 import SmartGuides from '@/components/creer/SmartGuides';
 import {
@@ -1053,7 +1056,7 @@ const TextResizeHandles: React.FC<{
 
 /** Tableaux vides STABLES : un litteral par rendu relancerait le calque. */
 const EMPTY_GUIDES: ActiveGuide[] = [];
-const EMPTY_BADGES: DistanceBadge[] = [];
+const EMPTY_GAPS: GapBadge[] = [];
 
 export function Preview({
   generated,
@@ -1074,7 +1077,7 @@ export function Preview({
   onPhotoDrop,
   photoDragging = false,
   guides = EMPTY_GUIDES,
-  distanceBadges = EMPTY_BADGES,
+  gaps = EMPTY_GAPS,
   elements,
   selectedElementId = null,
   onElementDragStart,
@@ -1269,7 +1272,8 @@ export function Preview({
    * exactement ce qu'il rendait avant.
    */
   guides?: ActiveGuide[];
-  distanceBadges?: DistanceBadge[];
+  /** Ecarts BORD-A-BORD, en pixels du format d'export. */
+  gaps?: GapBadge[];
   onPosterZoomStart?: (e: React.PointerEvent) => void;
   elements?: FreeElement[];
   selectedElementId?: string | null;
@@ -1355,6 +1359,17 @@ export function Preview({
   // DOM dans un `onError`, qui survivrait aux rendus suivants.
   const [rushBroken, setRushBroken] = useState(false);
   useEffect(() => setRushBroken(false), [rushUrl]);
+
+  /**
+   * Reperes d'alignement — un reglage d'ECRAN, donc local a l'apercu.
+   *
+   * Rien a persister ni a transmettre au compositeur : ces lignes n'existent
+   * que sous les yeux de l'utilisateur. Les garder ici plutot que dans l'etat
+   * du wizard evite d'ajouter un champ a la sauvegarde, donc un champ de plus
+   * a oublier dans un des payloads de design.
+   */
+  const [reperesCentre, setReperesCentre] = useState(false);
+  const [reperesGrille, setReperesGrille] = useState(false);
   // Le rush se montre dans la composition entiere ET sur son propre onglet :
   // l'isoler est tout l'interet de cet onglet.
   const showRush =
@@ -1493,14 +1508,6 @@ export function Preview({
             elements — qui recevaient l'evenement sans autoriser le depot :
             `onDrop` ne se declenchait donc jamais. Cette surface se pose
             au-dessus de tout pendant le glissement, et lui seul. */}
-        {/* Guides d'alignement — aides d'ECRAN, jamais du contenu.
-            `capturing` les efface pendant la photo des cartes et pendant le
-            telechargement de l'affiche : un guide grave dans la video ne se
-            rattrape pas. */}
-        {!capturing && (guides.length > 0 || distanceBadges.length > 0) && (
-          <SmartGuides guides={guides} distanceBadges={distanceBadges} showGrid={false} />
-        )}
-
         {photoDragging && onPhotoDrop && !capturing && (
           <div
             data-photo-drop
@@ -1679,6 +1686,8 @@ export function Preview({
                 drawIntro avec titleAlign:'left' et textBaseline:'top'.
                 L'ombre est appliquee en dur par le compositeur. */
             <div
+              data-guide-key="title"
+              data-guide-label="Titre"
               onPointerDown={(e) => onDragStart?.('title', e)}
               onPointerMove={onDragMove}
               onPointerUp={onDragEnd}
@@ -1767,6 +1776,8 @@ export function Preview({
                 drawCTA fait `curY = ctaPosY - blockH`, donc y designe le bas
                 du bloc. Graisse 900 en dur cote compositeur. */
             <div
+              data-guide-key="cta"
+              data-guide-label="CTA"
               onPointerDown={(e) => onDragStart?.('cta', e)}
               onPointerMove={onDragMove}
               onPointerUp={onDragEnd}
@@ -1949,6 +1960,61 @@ export function Preview({
       {overlay && (
         <div className="absolute inset-0" data-preview-overlay>
           {overlay}
+        </div>
+      )}
+
+      {/* ── REPERES D'ALIGNEMENT ─────────────────────────────────────
+          Le MEME calque que Creer avance — memes regles, memes unites.
+
+          ⚠️ DANS LE CADRE, PAS DANS LE PLATEAU. Le plateau (`previewRef`) est
+          ce que `modern-screenshot` photographie : un repere pose dedans
+          finirait grave dans le montage. Le cadre a exactement la taille et
+          le ratio du plateau reduit, donc les pourcentages y sont les memes —
+          et la police des pastilles reste a sa taille d'ecran au lieu d'etre
+          reduite avec le plateau.
+          `capturing` est un second verrou, pour l'affiche telechargee. */}
+      {!capturing && (
+        <SmartGuides
+          guides={guides}
+          gaps={gaps}
+          showGrid={reperesGrille}
+          showCenter={reperesCentre}
+          showThirds={reperesCentre}
+          format={format}
+          showRatioLabel={reperesCentre || reperesGrille}
+        />
+      )}
+
+      {/* Bascules — posees DANS le cadre, en haut a droite : aucun pixel de
+          hauteur ajoute a la page, donc aucune etape rallongee. */}
+      {generated && !capturing && (
+        <div className="absolute top-2 right-2 z-40 flex gap-1">
+          <button
+            type="button"
+            onClick={() => setReperesCentre((v) => !v)}
+            aria-pressed={reperesCentre}
+            title={reperesCentre ? 'Masquer les repères' : 'Afficher les repères (centre + tiers)'}
+            className={`flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition ${
+              reperesCentre
+                ? 'bg-purple-600/40 text-purple-200 ring-1 ring-purple-400/50'
+                : 'bg-gray-900/60 text-gray-400 hover:text-white'
+            }`}
+          >
+            <Crosshair size={13} strokeWidth={2} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setReperesGrille((v) => !v)}
+            aria-pressed={reperesGrille}
+            title={reperesGrille ? 'Masquer la grille' : 'Afficher la grille'}
+            className={`flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition ${
+              reperesGrille
+                ? 'bg-cyan-600/40 text-cyan-200 ring-1 ring-cyan-400/50'
+                : 'bg-gray-900/60 text-gray-400 hover:text-white'
+            }`}
+          >
+            <Grid3x3 size={13} strokeWidth={2} />
+          </button>
         </div>
       )}
 
@@ -2344,6 +2410,7 @@ function AutopilotPreview({ config, accent, onPatch }: {
   >(null);
   const [dragging, setDragging] = useState<'title' | 'cta' | null>(null);
   const [guides, setGuides] = useState<ActiveGuide[]>([]);
+  const [gaps, setGaps] = useState<GapBadge[]>([]);
 
   /** Ancre d'un bloc : le titre par son coin haut-gauche, le CTA par son bas. */
   const ancreDe = (el: 'title' | 'cta'): Anchor => (el === 'title' ? 'top-left' : 'bottom-center');
@@ -2459,11 +2526,22 @@ function AutopilotPreview({ config, accent, onPatch }: {
       ? [{ key: 'cta', x: ctaPosRef.current.x, y: ctaPosRef.current.y, label: 'CTA' }]
       : [{ key: 'title', x: titlePosRef.current.x, y: titlePosRef.current.y, label: 'Titre' }];
     const centre = anchorToCenter(brut, ancre, geste.box);
-    const snap = snapPosition(centre.x, centre.y, autres);
+    // Memes regles que le Mode simple et que l'editeur avance : centre, tiers,
+    // centres des autres blocs et milieux des espaces libres.
+    const boites = collectGuideBoxes(previewRef.current);
+    const rendue = boites.find((b) => b.key === geste.el) ?? null;
+    const autresBoites = boites.filter((b) => b.key !== geste.el);
+    const snap = snapPosition(centre.x, centre.y, autres, { thirds: true, boxes: autresBoites });
     setGuides(snap.guides);
+    if (rendue) {
+      const c = boxCenter(rendue);
+      setGaps(computeGapBadges(shiftBox(rendue, snap.x - c.x, snap.y - c.y), autresBoites, format));
+    } else {
+      setGaps([]);
+    }
     const pos = clampToBox(centerToAnchor({ x: snap.x, y: snap.y }, ancre, geste.box), ancre, geste.box);
     setStyle((prev) => ({ ...prev, [geste.el]: { ...(prev[geste.el] ?? {}), x: pos.x, y: pos.y } }));
-  }, []);
+  }, [format]);
 
   /**
    * Fin du geste — c'est ICI qu'on enregistre.
@@ -2476,6 +2554,7 @@ function AutopilotPreview({ config, accent, onPatch }: {
     gesteRef.current = null;
     setDragging(null);
     setGuides([]);
+    setGaps([]);
     if (!geste) return;
     setStyle((courant) => { onPatch?.({ designStyle: courant }); return courant; });
   }, [onPatch]);
@@ -2509,6 +2588,7 @@ function AutopilotPreview({ config, accent, onPatch }: {
         ctaPos={ctaPos}
         dragging={dragging}
         guides={guides}
+        gaps={gaps}
         onDragStart={startDrag}
         onDragMove={moveDrag}
         onDragEnd={endDrag}
@@ -4009,7 +4089,7 @@ export default function AssistantWizard() {
      `capturing` les efface en plus pendant la photo — deux verrous plutot
      qu'un, parce qu'un guide grave dans la video ne se rattrape pas. */
   const [dragGuides, setDragGuides] = useState<ActiveGuide[]>([]);
-  const [dragBadges, setDragBadges] = useState<DistanceBadge[]>([]);
+  const [dragGaps, setDragGaps] = useState<GapBadge[]>([]);
 
   /**
    * Reperes d'alignement : le centre des AUTRES elements de l'apercu.
@@ -4033,33 +4113,41 @@ export default function AssistantWizard() {
   }, []);
 
   /**
-   * Aimante une position d'ancre et met a jour les guides.
+   * Aimante une position d'ancre, trace les guides et mesure les ecarts.
    *
    * Le calcul passe par le CENTRE : aimanter l'ancre reviendrait a centrer le
    * bord gauche du titre sur l'axe, visiblement decale de la moitie de sa
    * largeur.
+   *
+   * Les ecarts, eux, sont mesures BORD A BORD sur la boite reellement rendue
+   * — `exclure` est aussi le `data-guide-key` de l'element deplace. Le DOM
+   * ayant un rendu de retard, la boite est translatee de l'ecart entre son
+   * centre rendu et le centre aimante ; sa taille, elle, ne bouge pas.
    */
   const snapAndGuide = useCallback((
     pos: Pos,
     anchor: Anchor,
     box: { width: number; height: number },
     exclure: string,
-    rect: { width: number; height: number },
   ): Pos => {
     const autres = alignmentTargets(exclure);
+    const boites = collectGuideBoxes(previewRef.current);
+    const rendue = boites.find((b) => b.key === exclure) ?? null;
+    const autresBoites = boites.filter((b) => b.key !== exclure);
     const centre = anchorToCenter(pos, anchor, box);
-    const snap = snapPosition(centre.x, centre.y, autres);
+    // `centre` est deja un centre : aucun `anchorOffset` a corriger.
+    const snap = snapPosition(centre.x, centre.y, autres, { thirds: true, boxes: autresBoites });
     setDragGuides(snap.guides);
-    setDragBadges(
-      computeDistanceBadges(
-        { key: 'element', x: snap.x, y: snap.y, label: 'En cours' },
-        autres,
-        rect.width,
-        rect.height,
-      ),
-    );
+    if (rendue) {
+      const c = boxCenter(rendue);
+      setDragGaps(
+        computeGapBadges(shiftBox(rendue, snap.x - c.x, snap.y - c.y), autresBoites, format),
+      );
+    } else {
+      setDragGaps([]);
+    }
     return centerToAnchor({ x: snap.x, y: snap.y }, anchor, box);
-  }, [alignmentTargets]);
+  }, [alignmentTargets, format]);
 
   const moveDrag = useCallback((e: React.PointerEvent) => {
     const drag = dragRef.current;
@@ -4115,7 +4203,7 @@ export default function AssistantWizard() {
       const raw = pointToPct(e.clientX, e.clientY, rect, drag.grab, { x: current.x, y: current.y });
       // Aimantation AVANT bornage : l'inverse laisserait le bornage defaire
       // l'aimantation sur un element pose au ras du cadre.
-      const aimante = snapAndGuide(raw, 'center', drag.box, id, rect);
+      const aimante = snapAndGuide(raw, 'center', drag.box, id);
       // Ancre au CENTRE, comme le `translate(-50%, -50%)` du rendu : sans quoi
       // l'element sortirait de moitie de la zone photographiee.
       const next = clampToBox(aimante, 'center', drag.box);
@@ -4179,7 +4267,7 @@ export default function AssistantWizard() {
     const current = drag.el === 'title' ? titlePosRef.current : ctaPosRef.current;
     const raw = pointToPct(e.clientX, e.clientY, rect, drag.grab, current);
     const ancre: Anchor = drag.el === 'title' ? 'top-left' : 'bottom-center';
-    const aimante = snapAndGuide(raw, ancre, drag.box, drag.el, rect);
+    const aimante = snapAndGuide(raw, ancre, drag.box, drag.el);
     const next = clampToBox(aimante, ancre, drag.box);
     if (drag.el === 'title') setTitlePos(next);
     else setCtaPos(next);
@@ -4263,7 +4351,7 @@ export default function AssistantWizard() {
     setDraggingCard(null);
     // Les guides n'existent que le temps du geste.
     setDragGuides([]);
-    setDragBadges([]);
+    setDragGaps([]);
   }, []);
   /**
    * Facteur de reduction du plateau : largeur affichee / largeur video.
@@ -7871,7 +7959,7 @@ export default function AssistantWizard() {
           onPhotoDrop={(url) => { setPhotoDragging(false); applyPhoto(url); }}
           photoDragging={photoDragging}
           guides={dragGuides}
-          distanceBadges={dragBadges}
+          gaps={dragGaps}
           onElementDragStart={startElementDrag}
           onElementResizeStart={startElementResize}
           onElementDelete={deleteElement}

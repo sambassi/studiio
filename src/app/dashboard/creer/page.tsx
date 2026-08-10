@@ -145,9 +145,12 @@ import SmartGuides from "@/components/creer/SmartGuides";
 import ImageEditorPanel, { buildCssFilter } from "@/components/creer/ImageEditorPanel";
 import {
   snapPosition,
-  computeDistanceBadges,
+  computeGapBadges,
+  collectGuideBoxes,
+  shiftBox,
+  boxCenter,
   type ActiveGuide,
-  type DistanceBadge,
+  type GapBadge,
   type ElementPos,
 } from "@/lib/creer/smartGuides";
 import { useDesignHistory } from "@/lib/creer/useDesignHistory";
@@ -2314,7 +2317,8 @@ function InfographicPageInner() {
   const [smartGuidesEnabled, setSmartGuidesEnabled] = useState(true);
   const [showGridOverlay, setShowGridOverlay] = useState(false);
   const [activeGuides, setActiveGuides] = useState<ActiveGuide[]>([]);
-  const [activeDistanceBadges, setActiveDistanceBadges] = useState<DistanceBadge[]>([]);
+  // Ecarts BORD-A-BORD de l'element deplace, en pixels du format d'export.
+  const [activeGaps, setActiveGaps] = useState<GapBadge[]>([]);
 
   // ── Card position mode: 'grid' (default) uses the grid layout, 'free'
   // allows each card to be dragged independently using its `position` field.
@@ -2428,6 +2432,58 @@ function InfographicPageInner() {
   const [dragging, setDragging] = useState<string | null>(null);
   const [resizing, setResizing] = useState<string | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Aimantation + mesure des ecarts, pour un element en cours de glissement.
+   *
+   * Un seul point d'entree pour les deux : l'aimantation a besoin de la boite
+   * de l'element (les cibles « ecart egal » visent un CENTRE, pas une ancre),
+   * et la mesure a besoin de la position aimantee. Les separer imposerait de
+   * relire le DOM deux fois par `mousemove`.
+   *
+   * ⚠️ LE DOM A UN RENDU DE RETARD sur le pointeur : la boite mesuree est
+   * celle de `from`. On la TRANSLATE du deplacement — sa taille, elle, ne
+   * change pas pendant un glissement, seule sa position bouge.
+   *
+   * `guideKey` doit correspondre au `data-guide-key` porte par l'element.
+   * Sans correspondance, l'aimantation historique fonctionne toujours et les
+   * badges restent simplement vides — jamais faux.
+   */
+  const guideDrag = useCallback(
+    (
+      guideKey: string,
+      from: { x: number; y: number },
+      raw: { x: number; y: number },
+      others: ElementPos[],
+    ): { x: number; y: number } => {
+      const boxes = collectGuideBoxes(previewRef.current);
+      const rendered = boxes.find((b) => b.key === guideKey) ?? null;
+      const otherBoxes = boxes.filter((b) => b.key !== guideKey);
+      const centre = rendered ? boxCenter(rendered) : null;
+      const snap = snapPosition(raw.x, raw.y, others, {
+        // Les tiers sont toujours des cibles, meme lignes masquees. Les gater
+        // sur l'affichage ferait dependre le placement d'un reglage d'ecran —
+        // et le Mode simple, qui n'a pas ce reglage, cesserait d'obeir aux
+        // memes regles que l'editeur avance.
+        thirds: true,
+        boxes: otherBoxes,
+        anchorOffset: centre ? { x: centre.x - from.x, y: centre.y - from.y } : undefined,
+      });
+      setActiveGuides(snap.guides);
+      setActiveGaps(
+        rendered
+          ? computeGapBadges(
+              shiftBox(rendered, snap.x - from.x, snap.y - from.y),
+              otherBoxes,
+              format,
+            )
+          : [],
+      );
+      return { x: snap.x, y: snap.y };
+    },
+    [format],
+  );
+
   // Ref to the rush <video> in the preview so we can track currentTime
   // and gate overlay visibility on the user-configured start/end windows.
   const rushVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -8568,12 +8624,10 @@ function InfographicPageInner() {
                     .map((c, i) => ({ i, p: c.position }))
                     .filter((x) => x.i !== dragCardIdx && x.p)
                     .map(({ i, p }) => ({ key: 'cards' as const, x: p!.x, y: p!.y, label: `Carte ${i + 1}` }));
-                  const snap = snapPosition(cx, cy, otherCards);
-                  cx = snap.x;
-                  cy = snap.y;
-                  setActiveGuides(snap.guides);
-                  const active: ElementPos = { key: 'cards', x: cx, y: cy, label: 'Carte' };
-                  setActiveDistanceBadges(computeDistanceBadges(active, otherCards, rect.width, rect.height));
+                  const avant = cards[dragCardIdx]?.position ?? { x: cx, y: cy };
+                  const aimante = guideDrag(`card:${dragCardIdx}`, avant, { x: cx, y: cy }, otherCards);
+                  cx = aimante.x;
+                  cy = aimante.y;
                 }
                 setCards((prev) => {
                   if (dragCardIdx >= prev.length) return prev;
@@ -8662,12 +8716,14 @@ function InfographicPageInner() {
                   { key: 'sitetext', x: siteTextPos.x, y: siteTextPos.y, label: 'Site' },
                 ];
                 const others = allPositions.filter((p) => p.key !== dragging);
-                const snap = snapPosition(rawX, rawY, others);
-                rawX = snap.x;
-                rawY = snap.y;
-                setActiveGuides(snap.guides);
-                const active: ElementPos = { key: dragging as ElementPos['key'], x: rawX, y: rawY, label: 'Actif' };
-                setActiveDistanceBadges(computeDistanceBadges(active, others, rect.width, rect.height));
+                // Position AVANT ce mouvement — celle que le DOM rend encore.
+                // Absente pour les cibles secondaires (icone de titre, calques
+                // « overlay:N », elements libres) : le deplacement vaut alors
+                // zero, les badges restent vides et l'aimantation est intacte.
+                const avant = allPositions.find((p) => p.key === dragging) ?? { x: rawX, y: rawY };
+                const aimante = guideDrag(dragging, { x: avant.x, y: avant.y }, { x: rawX, y: rawY }, others);
+                rawX = aimante.x;
+                rawY = aimante.y;
               }
 
               const x = Math.round(rawX);
@@ -8744,7 +8800,7 @@ function InfographicPageInner() {
               setDragCardIdx(null);
               resizeStart.current = null;
               setActiveGuides([]);
-              setActiveDistanceBadges([]);
+              setActiveGaps([]);
             }}
             onMouseLeave={() => {
               dragSelectStartRef.current = null;
@@ -8754,7 +8810,7 @@ function InfographicPageInner() {
               setDragCardIdx(null);
               resizeStart.current = null;
               setActiveGuides([]);
-              setActiveDistanceBadges([]);
+              setActiveGaps([]);
             }}
             onTouchMove={(e) => {
               if (dragCardIdx === null || !previewRef.current) return;
@@ -8783,23 +8839,10 @@ function InfographicPageInner() {
               setDragCardIdx(null);
             }}
           >
-            {/* Center guides — vertical + horizontal dashed lines through the preview center */}
-            {/* Center + thirds guide lines */}
-            {showCenterGuides && (
-              <>
-                <div className="pointer-events-none absolute inset-y-0 left-1/2 border-l border-dashed z-20" style={{ borderColor: 'rgba(168,85,247,0.3)' }} />
-                <div className="pointer-events-none absolute inset-x-0 top-1/2 border-t border-dashed z-20" style={{ borderColor: 'rgba(168,85,247,0.3)' }} />
-              </>
-            )}
-            {showThirdsGuides && (
-              <>
-                <div className="pointer-events-none absolute inset-y-0 z-20" style={{ left: '33.33%', borderLeft: '1px dashed rgba(168,85,247,0.2)' }} />
-                <div className="pointer-events-none absolute inset-y-0 z-20" style={{ left: '66.66%', borderLeft: '1px dashed rgba(168,85,247,0.2)' }} />
-                <div className="pointer-events-none absolute inset-x-0 z-20" style={{ top: '33.33%', borderTop: '1px dashed rgba(168,85,247,0.2)' }} />
-                <div className="pointer-events-none absolute inset-x-0 z-20" style={{ top: '66.66%', borderTop: '1px dashed rgba(168,85,247,0.2)' }} />
-              </>
-            )}
-
+            {/* Croix de centre, tiers, grille et badges : un SEUL calque, le
+                meme que celui du Mode simple. Ils vivaient ici en `div`
+                inline et la, dans un SVG etire — deux geometries pour un
+                seul concept. */}
             {/* Background Photo — global Pexels/poster (hidden when a per-sequence bg overrides it) */}
             {/* Shown on titre always. On cartes/cta only when posterOnAllSequences is ON. */}
             {/* Hide quand un per-seq bg s'affiche : (a) en vue spécifique avec bg
@@ -8960,12 +9003,20 @@ function InfographicPageInner() {
                 )
               )}
 
-            {/* Smart alignment guides + optional grid overlay (pointer-events:none) */}
-            <SmartGuides
-              guides={smartGuidesEnabled ? activeGuides : []}
-              distanceBadges={smartGuidesEnabled ? activeDistanceBadges : []}
-              showGrid={showGridOverlay}
-            />
+            {/* Reperes d'alignement — aides d'ECRAN, jamais du contenu.
+                `isCapturingSnapshot` les efface pendant la photo de l'apercu :
+                un repere grave dans la video ne se rattrape pas. */}
+            {!isCapturingSnapshot && (
+              <SmartGuides
+                guides={smartGuidesEnabled ? activeGuides : []}
+                gaps={smartGuidesEnabled ? activeGaps : []}
+                showGrid={showGridOverlay}
+                showCenter={showCenterGuides}
+                showThirds={showThirdsGuides}
+                format={format}
+                showRatioLabel={showCenterGuides || showGridOverlay}
+              />
+            )}
 
             {/* Drag-select rectangle (free-mode cards only) */}
             {dragSelectRect && (
@@ -9080,6 +9131,8 @@ function InfographicPageInner() {
                   transform: "translate(-50%, 0)",
                   width: `${titleSize}%`,
                 }}
+                data-guide-key="title"
+                data-guide-label="Titre"
                 onMouseDown={(e) => {
                   e.preventDefault();
                   setDragging("title");
@@ -9296,6 +9349,8 @@ function InfographicPageInner() {
                       : 0,
                     transition: 'opacity 300ms ease',
                   }}
+                  data-guide-key="overlay"
+                  data-guide-label="Overlay"
                   onMouseDown={(e) => {
                     e.preventDefault();
                     setDragging("overlay");
@@ -9660,6 +9715,8 @@ function InfographicPageInner() {
                         return (
                           <div
                             key={card.id}
+                            data-guide-key={`card:${i}`}
+                            data-guide-label={`Carte ${i + 1}`}
                             onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setDragOverIconCardIdx(i); }}
                             onDragLeave={() => setDragOverIconCardIdx((cur) => cur === i ? null : cur)}
                             onDrop={handleIconDrop(i)}
@@ -9737,6 +9794,8 @@ function InfographicPageInner() {
                       transform: "translate(-50%, -50%)",
                       width: `${cardsSize}%`,
                     }}
+                    data-guide-key="cards"
+                    data-guide-label="Cartes"
                     onMouseDown={(e) => {
                       e.preventDefault();
                       setDragging("cards");
@@ -9807,6 +9866,8 @@ function InfographicPageInner() {
                   transform: "translate(-50%, -100%)",
                   width: `${watermarkSize}%`,
                 }}
+                data-guide-key="watermark"
+                data-guide-label="CTA"
                 onMouseDown={(e) => {
                   e.preventDefault();
                   setDragging("watermark");
@@ -9934,6 +9995,8 @@ function InfographicPageInner() {
                     top: `${logoPos.y}%`,
                     transform: `translate(-50%, -50%) scale(${logoScale})`,
                   }}
+                  data-guide-key="logo"
+                  data-guide-label="Logo"
                   onMouseDown={(e) => {
                     e.preventDefault();
                     setDragging("logo");
@@ -10046,6 +10109,8 @@ function InfographicPageInner() {
                   top: `${siteTextPos.y}%`,
                   transform: "translate(-50%, -50%)",
                 }}
+                data-guide-key="sitetext"
+                data-guide-label="Site"
                 onMouseDown={(e) => {
                   e.preventDefault();
                   setDragging("sitetext");
