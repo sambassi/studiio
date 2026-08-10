@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Equal, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import type { ActiveGuide, GapBadge, ElementBox, FrameFormat } from '@/lib/creer/smartGuides';
 
 interface Props {
@@ -246,15 +246,12 @@ const chipBase: React.CSSProperties = {
  * Un ecart : le trait qui couvre EXACTEMENT le vide, ses deux reperes
  * d'extremite, et la pastille qui porte le NOMBRE — rien d'autre.
  *
- * Le signe « = » n'apparait que sur une vraie egalite : les deux vides
- * opposes portent alors la meme valeur, et c'est cela qui dit « reparti
- * egalement ». Le doubler d'un signe le rend lisible sans distinguer les
- * teintes.
+ * ⚠️ PLUS DE SIGNE « = ». Un badge n'existe desormais QUE dans une paire
+ * d'ecarts egaux : le signe serait sur tous, donc ne distinguerait plus rien.
+ * Ce qui dit « reparti egalement », c'est la repetition du MEME NOMBRE de
+ * part et d'autre — la seule chose que l'oeil ait besoin de comparer.
  */
 function GapMeasure({ badge }: { badge: GapBadge }) {
-  // Pointilles quand rien ne se trouve en vis-a-vis. Le chiffre reste un vrai
-  // ecart bord-a-bord, mais il ne doit pas se lire comme un alignement.
-  const trait = badge.aligned ? 'solid' : 'dashed';
   const span = Math.abs(badge.gapPct);
   const half = span / 2;
   const vertical = badge.axis === 'y';
@@ -265,7 +262,7 @@ function GapMeasure({ badge }: { badge: GapBadge }) {
         left: `${badge.midXPct}%`,
         top: `${badge.midYPct - half}%`,
         height: `${span}%`,
-        borderLeft: `1px ${trait} ${MAGENTA}`,
+        borderLeft: `1px solid ${MAGENTA}`,
         boxShadow: HALO,
       }
     : {
@@ -273,7 +270,7 @@ function GapMeasure({ badge }: { badge: GapBadge }) {
         top: `${badge.midYPct}%`,
         left: `${badge.midXPct - half}%`,
         width: `${span}%`,
-        borderTop: `1px ${trait} ${MAGENTA}`,
+        borderTop: `1px solid ${MAGENTA}`,
         boxShadow: HALO,
       };
 
@@ -310,21 +307,13 @@ function GapMeasure({ badge }: { badge: GapBadge }) {
         data-guide-gap={badge.side}
         // Diagnostic seulement : le nom du voisin ne s'ecrit plus a l'ecran.
         data-guide-target={badge.targetKey ?? 'frame'}
-        data-guide-source={badge.sourceLabel}
         style={{
           ...chipBase,
           left: `${clampPct(badge.midXPct)}%`,
           top: `${clampPct(badge.midYPct)}%`,
           transform: 'translate(-50%, -50%)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 2,
-          ...(badge.equal ? { outline: `1px solid ${WHITE}`, outlineOffset: -2 } : null),
         }}
       >
-        {badge.equal && (
-          <Equal size={9} strokeWidth={3} aria-label="même espace" />
-        )}
         {badge.gapPx}
       </div>
     </>

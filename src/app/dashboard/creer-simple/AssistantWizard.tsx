@@ -62,7 +62,7 @@ import type { AudioKeyframe } from '@/lib/creer/audioDucking';
 import { pointToPct, grabOffset, clampToBox, type Pos, type BoxPct, type CardBox, boxesFromRects, samePos } from '@/lib/creer/dragPosition';
 import {
   snapPosition, computeGapBadges, collectGuideBoxes, shiftBox, boxCenter, sameGaps,
-  sameGuides, sameBox, mergeGuides, computeAlignmentLines,
+  sameGuides, sameBox, mergeGuides, onePerAxis, computeAlignmentLines,
   anchorToCenter, centerToAnchor,
   type ActiveGuide, type GapBadge, type ElementBox, type ElementPos, type Anchor,
 } from '@/lib/creer/smartGuides';
@@ -1081,7 +1081,6 @@ export function Preview({
   gaps = EMPTY_GAPS,
   selection = null,
   onMeasure,
-  onHover,
   elements,
   selectedElementId = null,
   onElementDragStart,
@@ -1285,8 +1284,6 @@ export function Preview({
    * `null` quand le clic ne vise aucun bloc mesurable.
    */
   onMeasure?: (key: string | null) => void;
-  /** Bloc survole — permet de mesurer la paire choisie par l'utilisateur. */
-  onHover?: (key: string | null) => void;
   onPosterZoomStart?: (e: React.PointerEvent) => void;
   elements?: FreeElement[];
   selectedElementId?: string | null;
@@ -1492,11 +1489,6 @@ export function Preview({
           const bloc = (e.target as HTMLElement).closest('[data-guide-key]');
           onMeasure?.(bloc ? bloc.getAttribute('data-guide-key') : null);
         }}
-        onMouseOver={capturing ? undefined : (e) => {
-          const bloc = (e.target as HTMLElement).closest('[data-guide-key]');
-          onHover?.(bloc ? bloc.getAttribute('data-guide-key') : null);
-        }}
-        onMouseLeave={capturing ? undefined : () => onHover?.(null)}
         style={{
           position: 'absolute',
           top: 0,
@@ -2442,7 +2434,6 @@ function AutopilotPreview({ config, accent, onPatch }: {
   const [gaps, setGaps] = useState<GapBadge[]>([]);
   /** Bloc mesure et bloc survole — memes regles que le Mode simple. */
   const [measuredKey, setMeasuredKey] = useState<string | null>(null);
-  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [selection, setSelection] = useState<ElementBox | null>(null);
 
   /**
@@ -2461,10 +2452,8 @@ function AutopilotPreview({ config, accent, onPatch }: {
     const active = boites.find((b) => b.key === measuredKey) ?? null;
     if (!active) return vide();
     const autres = boites.filter((b) => b.key !== measuredKey);
-    const suivant = computeGapBadges(active, autres, format, {
-      pairWith: hoveredKey && hoveredKey !== measuredKey ? hoveredKey : null,
-    });
-    const lignes = computeAlignmentLines(active, autres, format);
+    const suivant = computeGapBadges(active, autres, format);
+    const lignes = onePerAxis(computeAlignmentLines(active, autres, format));
     setGaps((prev) => (sameGaps(prev, suivant) ? prev : suivant));
     setGuides((prev) => (sameGuides(prev, lignes) ? prev : lignes));
     setSelection((prev) => (sameBox(prev, active) ? prev : active));
@@ -2596,8 +2585,10 @@ function AutopilotPreview({ config, accent, onPatch }: {
       : null;
     setGuides(
       boiteActive
-        ? mergeGuides(snap.guides, computeAlignmentLines(boiteActive, autresBoites, format))
-        : snap.guides,
+        // La cible AIMANTEE d'abord : elle a la priorite quand plusieurs
+        // coincidences tombent sur le meme axe.
+        ? onePerAxis(mergeGuides(snap.guides, computeAlignmentLines(boiteActive, autresBoites, format)))
+        : onePerAxis(snap.guides),
     );
     setSelection(boiteActive);
     setGaps(boiteActive ? computeGapBadges(boiteActive, autresBoites, format) : []);
@@ -2654,7 +2645,6 @@ function AutopilotPreview({ config, accent, onPatch }: {
         gaps={gaps}
         selection={selection}
         onMeasure={setMeasuredKey}
-        onHover={setHoveredKey}
         onDragStart={startDrag}
         onDragMove={moveDrag}
         onDragEnd={endDrag}
@@ -4164,8 +4154,6 @@ export default function AssistantWizard() {
    * deux blocs deja poses etait impossible.
    */
   const [measuredKey, setMeasuredKey] = useState<string | null>(null);
-  /** Bloc survole — mesure la paire choisie, pas seulement la plus proche. */
-  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   /** Emprise du bloc mesure — dessine son cadre de selection magenta. */
   const [dragSelection, setDragSelection] = useState<ElementBox | null>(null);
 
@@ -4194,10 +4182,8 @@ export default function AssistantWizard() {
     const active = boites.find((b) => b.key === measuredKey) ?? null;
     if (!active) return vide();
     const autres = boites.filter((b) => b.key !== measuredKey);
-    const suivant = computeGapBadges(active, autres, format, {
-      pairWith: hoveredKey && hoveredKey !== measuredKey ? hoveredKey : null,
-    });
-    const lignes = computeAlignmentLines(active, autres, format);
+    const suivant = computeGapBadges(active, autres, format);
+    const lignes = onePerAxis(computeAlignmentLines(active, autres, format));
     setDragGaps((prev) => (sameGaps(prev, suivant) ? prev : suivant));
     setDragGuides((prev) => (sameGuides(prev, lignes) ? prev : lignes));
     setDragSelection((prev) => (sameBox(prev, active) ? prev : active));
@@ -4258,8 +4244,10 @@ export default function AssistantWizard() {
       : null;
     setDragGuides(
       boiteActive
-        ? mergeGuides(snap.guides, computeAlignmentLines(boiteActive, autresBoites, format))
-        : snap.guides,
+        // La cible AIMANTEE d'abord : elle a la priorite quand plusieurs
+        // coincidences tombent sur le meme axe.
+        ? onePerAxis(mergeGuides(snap.guides, computeAlignmentLines(boiteActive, autresBoites, format)))
+        : onePerAxis(snap.guides),
     );
     setDragSelection(boiteActive);
     setDragGaps(boiteActive ? computeGapBadges(boiteActive, autresBoites, format) : []);
@@ -8081,8 +8069,7 @@ export default function AssistantWizard() {
           gaps={dragGaps}
           selection={dragSelection}
           onMeasure={setMeasuredKey}
-          onHover={setHoveredKey}
-          onElementDragStart={startElementDrag}
+            onElementDragStart={startElementDrag}
           onElementResizeStart={startElementResize}
           onElementDelete={deleteElement}
           onFocusChange={setPreviewFocus}

@@ -4,9 +4,9 @@ import { resolve } from 'path';
 import {
   computeGapBadges,
   collectGuideBoxes,
-  boxDistancePx,
   sameGaps,
   pctToFormatPx,
+  EQUAL_GAP_TOLERANCE_PX,
   type ElementBox,
   type GapBadge,
 } from '@/lib/creer/smartGuides';
@@ -49,78 +49,60 @@ const cadre = (...enfants: HTMLElement[]) => {
   return f;
 };
 
-describe('Cause 3 — deux éléments NON alignés donnent quand même un chiffre', () => {
-  // Deux blocs en biais : aucun ne se fait face, ni horizontalement ni
-  // verticalement. C'est le cas « deux titres décalés ».
+describe('Rien ne s affiche tant que les écarts ne sont pas ÉGAUX', () => {
+  // ⚠️ RENVERSEMENT ASSUMÉ. Une étape précédente affichait un chiffre vers le
+  // voisin le plus proche « quoi qu'il arrive ». À l'usage, c'était le nuage :
+  // « 157 » au-dessus de « 109 », quatre nombres qui ne répondent à aucune
+  // question. L'utilisateur ne cherche pas à LIRE des distances, il cherche à
+  // les ÉGALISER — et deux nombres identiques sont la seule réponse utile.
   const actif = box('actif', 10, 10, 30, 20);
-  const enBiais = box('autre', 60, 50, 80, 60, 'Titre 2');
 
-  it('avant, aucun badge ne le mesurait — désormais si', () => {
-    const gaps = computeGapBadges(actif, [enBiais], '9:16');
-    const vers = gaps.filter((g) => g.targetKey === 'autre');
-    expect(vers.length).toBeGreaterThan(0);
-    for (const g of vers) expect(g.gapPx).toBeGreaterThan(0);
+  it('un bloc posé de travers ne montre rien', () => {
+    const enBiais = box('autre', 60, 50, 80, 60, 'Titre 2');
+    expect(computeGapBadges(actif, [enBiais], '9:16')).toEqual([]);
   });
 
-  it('deux chiffres, un par axe — jamais une diagonale qui mélange les unités', () => {
-    const vers = computeGapBadges(actif, [enBiais], '9:16').filter((g) => g.targetKey === 'autre');
-    expect(vers.map((g) => g.axis).sort()).toEqual(['x', 'y']);
-    // Horizontal : 60 − 30 = 30 % de 1080 px. Vertical : 50 − 20 = 30 % de
-    // 1920 px. Le MÊME écart en % donne deux chiffres différents — c'est
-    // précisément pourquoi une longueur diagonale unique n'aurait aucun sens.
-    expect(vers.find((g) => g.axis === 'x')!.gapPx).toBe(pctToFormatPx(30, 'x', '9:16'));
-    expect(vers.find((g) => g.axis === 'y')!.gapPx).toBe(pctToFormatPx(30, 'y', '9:16'));
+  it('un écart non égal n est JAMAIS affiché seul', () => {
+    // Écart haut = 10 %, écart bas = 80 % : rien à égaliser, rien à l'écran.
+    expect(computeGapBadges(box('a', 10, 10, 30, 20), [], '9:16')
+      .filter((g) => g.axis === 'y')).toEqual([]);
   });
 
-  it('ces mesures-là sont marquées NON alignées — le calque les trace autrement', () => {
-    const vers = computeGapBadges(actif, [enBiais], '9:16').filter((g) => g.targetKey === 'autre');
-    for (const g of vers) expect(g.aligned).toBe(false);
-    // Les quatre côtés, eux, restent des mesures franches.
-    const cotes = computeGapBadges(actif, [enBiais], '9:16').filter((g) => g.target === 'frame');
-    for (const g of cotes) expect(g.aligned).toBe(true);
+  it('centré sur un axe, la paire apparaît — et porte deux fois le même nombre', () => {
+    const centreY = box('a', 10, 45, 30, 55);
+    const gaps = computeGapBadges(centreY, [], '9:16');
+    expect(gaps.map((g) => g.side).sort()).toEqual(['bottom', 'top']);
+    expect(gaps[0].gapPx).toBe(gaps[1].gapPx);
   });
 
-  it('un axe qui se recouvre ne produit rien à mesurer sur cet axe', () => {
-    // Même bande horizontale : il n'y a de vide qu'à la verticale.
-    const dessous = box('autre', 10, 60, 30, 70);
-    const vers = computeGapBadges(actif, [dessous], '9:16').filter((g) => g.targetKey === 'autre');
-    expect(vers.map((g) => g.axis)).toEqual(['y']);
-    // Et comme ils se font face, la mesure passe par les quatre côtés : elle
-    // est franche, pas « en biais ».
-    expect(vers[0].aligned).toBe(true);
+  it('les deux axes sont indépendants', () => {
+    const centreLesDeux = box('a', 45, 45, 55, 55);
+    expect(computeGapBadges(centreLesDeux, [], '9:16')).toHaveLength(4);
   });
 
-  it('les quatre côtés ne perdent PAS le bord du cadre au profit d un voisin lointain', () => {
-    // Régression à éviter : mesurer le voisin en biais ne doit pas remplacer
-    // la marge au cadre, qui est ce qui permet de juger un centrage.
-    const gaps = computeGapBadges(actif, [enBiais], '9:16');
-    expect(gaps.filter((g) => g.target === 'frame')).toHaveLength(4);
+  it('à égale distance de deux VOISINS aussi, pas seulement des bords', () => {
+    // C'est la recette : une carte glissée entre deux autres.
+    const carte = box('c', 10, 45, 30, 55, 'Carte');
+    const haut = box('h', 10, 20, 30, 35, 'Haut');
+    const bas = box('b', 10, 65, 30, 80, 'Bas');
+    const gaps = computeGapBadges(carte, [haut, bas], '9:16');
+    expect(gaps).toHaveLength(2);
+    expect(gaps[0].gapPx).toBe(gaps[1].gapPx);
+    expect(gaps.map((g) => g.targetKey).sort()).toEqual(['b', 'h']);
   });
 
-  it('le voisin retenu est le plus proche, distance bord-à-bord', () => {
-    const proche = box('proche', 40, 12, 50, 18, 'Proche');
-    const loin = box('loin', 90, 90, 95, 95, 'Loin');
-    expect(boxDistancePx(actif, proche, '9:16')).toBeLessThan(boxDistancePx(actif, loin, '9:16'));
-    const gaps = computeGapBadges(actif, [proche, loin], '9:16');
-    expect(gaps.some((g) => g.targetKey === 'proche')).toBe(true);
-    expect(gaps.some((g) => g.targetKey === 'loin')).toBe(false);
+  it('un cran plus haut, tout disparaît', () => {
+    const decalee = box('c', 10, 40, 30, 50, 'Carte');
+    const haut = box('h', 10, 20, 30, 35, 'Haut');
+    const bas = box('b', 10, 65, 30, 80, 'Bas');
+    expect(computeGapBadges(decalee, [haut, bas], '9:16')).toEqual([]);
   });
 
-  it('au survol, c est l utilisateur qui choisit la paire', () => {
-    const proche = box('proche', 40, 12, 50, 18, 'Proche');
-    const loin = box('loin', 90, 90, 95, 95, 'Loin');
-    const gaps = computeGapBadges(actif, [proche, loin], '9:16', { pairWith: 'loin' });
-    expect(gaps.some((g) => g.targetKey === 'loin')).toBe(true);
-  });
-
-  it('un voisin déjà mesuré par un des quatre côtés n est pas mesuré deux fois', () => {
-    const dessous = box('autre', 10, 60, 30, 70);
-    const gaps = computeGapBadges(actif, [dessous], '9:16');
-    expect(gaps.filter((g) => g.targetKey === 'autre')).toHaveLength(1);
-  });
-
-  it('sans aucun voisin, on garde exactement les quatre côtés', () => {
-    expect(computeGapBadges(actif, [], '9:16')).toHaveLength(4);
+  it('la tolérance laisse une marge atteignable à la souris', () => {
+    // Sans tolérance, l'égalité serait un point unique — donc inatteignable.
+    expect(EQUAL_GAP_TOLERANCE_PX).toBeGreaterThan(0);
+    const presque = box('a', 10, 45, 30, 54.8, 'Presque');
+    expect(computeGapBadges(presque, [], '9:16').length).toBe(2);
   });
 });
 
@@ -151,24 +133,27 @@ describe('Cause 1 — chaque bloc déplaçable est mesurable, et une seule fois'
     expect(new Set(cles).size).toBe(cles.length);
   });
 
-  it('et l on mesure bien de l une à l autre', () => {
+  it('et l on mesure bien de l une à l autre, dès qu il y a égalité', () => {
+    // Carte du milieu à 45→55 : 10 % de vide au-dessus comme au-dessous.
     const f = cadre(
-      noeud({ left: 0, top: 0, width: 10, height: 10 }, { 'data-guide-key': 'card:a', 'data-guide-label': 'A' }),
-      noeud({ left: 0, top: 30, width: 10, height: 10 }, { 'data-guide-key': 'card:b', 'data-guide-label': 'B' }),
+      noeud({ left: 0, top: 25, width: 10, height: 10 }, { 'data-guide-key': 'card:a', 'data-guide-label': 'A' }),
+      noeud({ left: 0, top: 45, width: 10, height: 10 }, { 'data-guide-key': 'card:b', 'data-guide-label': 'B' }),
+      noeud({ left: 0, top: 65, width: 10, height: 10 }, { 'data-guide-key': 'card:c', 'data-guide-label': 'C' }),
     );
     const boxes = collectGuideBoxes(f);
-    const a = boxes.find((b) => b.key === 'card:a')!;
-    const gaps = computeGapBadges(a, boxes.filter((b) => b.key !== 'card:a'), '9:16');
-    const versB = gaps.find((g) => g.targetKey === 'card:b')!;
-    expect(versB.gapPct).toBeCloseTo(20); // 30 − 10
-    expect(versB.gapPx).toBe(pctToFormatPx(20, 'y', '9:16'));
+    const b = boxes.find((x) => x.key === 'card:b')!;
+    const gaps = computeGapBadges(b, boxes.filter((x) => x.key !== 'card:b'), '9:16');
+    expect(gaps.map((g) => g.targetKey).sort()).toEqual(['card:a', 'card:c']);
+    expect(gaps[0].gapPct).toBeCloseTo(10);
+    expect(gaps[0].gapPx).toBe(pctToFormatPx(10, 'y', '9:16'));
+    expect(gaps[0].gapPx).toBe(gaps[1].gapPx);
   });
 });
 
 describe('Cause 2 — la comparaison qui rend la mesure persistante possible', () => {
   const g = (over: Partial<GapBadge> = {}): GapBadge => ({
     axis: 'y', side: 'top', midXPct: 50, midYPct: 20, gapPct: 40, gapPx: 768,
-    target: 'frame', targetLabel: 'Cadre', sourceLabel: 'Actif', equal: false, aligned: true, ...over,
+    target: 'frame', targetLabel: 'Cadre', equal: true, ...over,
   });
 
   it('deux séries identiques sont reconnues — sinon la boucle de rendu ne s arrête jamais', () => {
@@ -178,8 +163,6 @@ describe('Cause 2 — la comparaison qui rend la mesure persistante possible', (
 
   it('le moindre changement utile est vu', () => {
     expect(sameGaps([g()], [g({ gapPx: 769 })])).toBe(false);
-    expect(sameGaps([g()], [g({ equal: true })])).toBe(false);
-    expect(sameGaps([g()], [g({ aligned: false })])).toBe(false);
     expect(sameGaps([g()], [g({ targetKey: 'x' })])).toBe(false);
     expect(sameGaps([g()], [g({ midYPct: 21 })])).toBe(false);
     expect(sameGaps([g()], [])).toBe(false);
@@ -261,13 +244,13 @@ describe('Le câblage des deux éditeurs', () => {
     }
   });
 
-  it('les deux éditeurs savent mesurer la paire survolée', () => {
+  it('la mesure « au survol » a été retirée avec le reste du nuage', () => {
+    // Elle affichait un écart NON égal vers le bloc survolé : le même bruit,
+    // déclenché au passage de la souris. La règle ne montre plus qu'une
+    // égalité, il n'y avait plus rien à désigner.
     for (const [nom, src] of [['avancé', avance], ['simple', simple]] as const) {
-      expect(src.includes('hoveredKey'), nom).toBe(true);
-      expect(
-        src.includes('pairWith: hoveredKey && hoveredKey !== measuredKey ? hoveredKey : null'),
-        nom,
-      ).toBe(true);
+      expect(src.includes('hoveredKey'), nom).toBe(false);
+      expect(src.includes('pairWith'), nom).toBe(false);
     }
   });
 });

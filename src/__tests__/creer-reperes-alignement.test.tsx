@@ -71,7 +71,10 @@ describe('Les écarts sont mesurés BORD À BORD, pas de centre à centre', () =
   const actif = box('actif', 40, 40, 60, 60);
 
   it('le vide mesuré est celui qui SE VOIT entre les deux bords', () => {
+    // Voisin au-dessus à 10 % de vide ; le bas du cadre est aussi à 10 %,
+    // donc la paire est égale et les deux badges sont émis.
     const voisin = box('voisin', 40, 10, 60, 30);
+    const actif = box('actif', 40, 40, 60, 90);
     const gaps = computeGapBadges(actif, [voisin], '9:16');
     const haut = gaps.find((g) => g.side === 'top')!;
     // Bord bas du voisin = 30 %, bord haut de l'actif = 40 % → 10 % de vide.
@@ -102,9 +105,14 @@ describe('Les écarts sont mesurés BORD À BORD, pas de centre à centre', () =
   });
 
   it('le voisin retenu est le PLUS PROCHE', () => {
+    // Actif 40→60 ; voisin proche à 35 (5 % de vide) et voisin lointain à 10.
+    // Le bas est mesuré au cadre depuis 60, à 40 % — inégal, donc seul l'axe
+    // horizontal sortirait ; on lit ici la valeur retenue côté haut.
     const proche = box('proche', 40, 20, 60, 35);
     const loin = box('loin', 40, 0, 60, 10);
-    const haut = computeGapBadges(actif, [loin, proche], '9:16').find((g) => g.side === 'top')!;
+    const bas = box('bas', 40, 65, 60, 80);
+    const haut = computeGapBadges(actif, [loin, proche, bas], '9:16')
+      .find((g) => g.side === 'top')!;
     expect(haut.targetLabel).toBe('proche');
     expect(haut.gapPct).toBeCloseTo(5);
   });
@@ -132,22 +140,21 @@ describe('L égalité des espaces — la confirmation du centrage', () => {
     expect(gaps.find((g) => g.side === 'right')!.equal).toBe(true);
   });
 
-  it('décentré, l égalité tombe — sinon l indicateur ne dirait rien', () => {
+  it('décentré, l axe disparaît — c est ainsi que le nuage de chiffres s éteint', () => {
     const decentre = box('actif', 10, 45, 30, 55);
     const gaps = computeGapBadges(decentre, [], '9:16');
-    expect(gaps.find((g) => g.side === 'left')!.equal).toBe(false);
-    expect(gaps.find((g) => g.side === 'right')!.equal).toBe(false);
+    expect(gaps.some((g) => g.axis === 'x')).toBe(false);
     // L'axe vertical, lui, reste centré : les deux axes sont indépendants.
-    expect(gaps.find((g) => g.side === 'top')!.equal).toBe(true);
+    expect(gaps.filter((g) => g.axis === 'y')).toHaveLength(2);
   });
 
   it('la tolérance est exprimée en pixels du format, pas en %', () => {
     // 0,1 % de 1920 px = ~2 px : sous la tolérance, donc encore « égal ».
     const presque = box('actif', 40, 45, 60, 54.9);
-    expect(computeGapBadges(presque, [], '9:16').find((g) => g.side === 'top')!.equal).toBe(true);
+    expect(computeGapBadges(presque, [], '9:16').some((g) => g.axis === 'y')).toBe(true);
     // 1 % de 1920 px = ~19 px : au-dessus, donc plus égal.
     const non = box('actif', 40, 45, 60, 54);
-    expect(computeGapBadges(non, [], '9:16').find((g) => g.side === 'top')!.equal).toBe(false);
+    expect(computeGapBadges(non, [], '9:16').some((g) => g.axis === 'y')).toBe(false);
     expect(EQUAL_GAP_TOLERANCE_PX).toBeGreaterThan(0);
   });
 
@@ -303,7 +310,7 @@ describe('Le calque n est plus déformé', () => {
         format="9:16"
         gaps={[{
           axis: 'y', side: 'top', midXPct: 50, midYPct: 20, gapPct: 40,
-          gapPx: 768, target: 'frame', targetLabel: 'Cadre', sourceLabel: 'Actif', equal: false, aligned: true,
+          gapPx: 768, target: 'frame', targetLabel: 'Cadre', equal: true,
         }]}
       />,
     );
@@ -315,28 +322,23 @@ describe('Le calque n est plus déformé', () => {
     expect(puce.style.top).toBe('20%');
   });
 
-  it('un écart égal se distingue visuellement de son voisin inégal', () => {
-    const commun = { axis: 'y' as const, midXPct: 50, gapPct: 40, target: 'frame' as const, targetLabel: 'Cadre', sourceLabel: 'Actif', aligned: true };
+  it('les deux badges d une paire sont identiques — c est le message', () => {
+    const commun = { axis: 'y' as const, midXPct: 50, gapPct: 40, target: 'frame' as const, targetLabel: 'Cadre', equal: true as const, gapPx: 768 };
     const { container } = render(
       <SmartGuides
         format="9:16"
         gaps={[
-          { ...commun, side: 'top', midYPct: 20, gapPx: 768, equal: true },
-          { ...commun, side: 'bottom', midYPct: 80, gapPx: 100, equal: false },
+          { ...commun, side: 'top', midYPct: 20 },
+          { ...commun, side: 'bottom', midYPct: 80 },
         ]}
       />,
     );
-    const egal = container.querySelector('[data-guide-gap="top"]') as HTMLElement;
-    const inegal = container.querySelector('[data-guide-gap="bottom"]') as HTMLElement;
-    // ⚠️ LE FOND EST LE MÊME POUR LES DEUX, ET C'EST VOULU : magenta, la
-    // couleur de marque. Ce qui distingue l'égalité est un LISERÉ et un
-    // signe « = » — la couleur seule resterait invisible à qui ne la
-    // distingue pas.
-    expect(egal.style.background).toBe(inegal.style.background);
-    expect(egal.style.outline).not.toBe(inegal.style.outline);
-    // Signe « égal » en SVG lucide — jamais un emoji (règle du projet).
-    expect(egal.querySelector('[aria-label="même espace"]')).not.toBeNull();
-    expect(inegal.querySelector('[aria-label="même espace"]')).toBeNull();
+    const haut = container.querySelector('[data-guide-gap="top"]') as HTMLElement;
+    const bas = container.querySelector('[data-guide-gap="bottom"]') as HTMLElement;
+    // Même fond, même valeur : la répétition EST l'information. Rien ne les
+    // distingue, et c'est précisément ce qui se lit d'un coup d'œil.
+    expect(haut.style.background).toBe(bas.style.background);
+    expect(haut.textContent).toBe(bas.textContent);
   });
 
   it('monté nu, il ne rend rien du tout', () => {
