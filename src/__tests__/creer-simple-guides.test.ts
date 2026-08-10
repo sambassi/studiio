@@ -3,11 +3,13 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import {
   snapPosition,
-  computeDistanceBadges,
+  computeGapBadges,
   anchorToCenter,
   centerToAnchor,
+  pctToFormatPx,
   SNAP_THRESHOLD_PERCENT,
   type ElementPos,
+  type ElementBox,
 } from '@/lib/creer/smartGuides';
 
 /**
@@ -110,32 +112,47 @@ describe('Ancre ↔ centre — la conversion qui décide de tout', () => {
 });
 
 describe('Les badges d écart', () => {
-  const actif = { key: 'element' as const, x: 50, y: 50, label: 'En cours' };
+  // ⚠️ CE SONT DES BORDS, PAS DES CENTRES. Un actif de 20 % × 20 %, centré.
+  const actif: ElementBox = { key: 'element', label: 'En cours', left: 40, top: 40, right: 60, bottom: 60 };
+  const voisin = (left: number, top: number, right: number, bottom: number): ElementBox =>
+    ({ key: 'element', label: 'Autre', left, top, right, bottom });
 
-  it('un badge par voisin, sur les quatre côtés', () => {
-    const b = computeDistanceBadges(actif, [autre(50, 20), autre(50, 80), autre(20, 50), autre(80, 50)], 400, 800);
-    expect(b).toHaveLength(4);
+  it('quatre badges, toujours — voisin s il y en a un, bord du cadre sinon', () => {
+    expect(computeGapBadges(actif, [], '9:16')).toHaveLength(4);
+    expect(computeGapBadges(actif, [voisin(40, 10, 60, 30)], '9:16')).toHaveLength(4);
   });
 
-  it('la distance est convertie en pixels de l aperçu', () => {
-    const b = computeDistanceBadges(actif, [autre(50, 25)], 400, 800);
-    // 25 % de 800 px = 200 px.
-    expect(b[0].distancePx).toBe(200);
+  it('l écart est le VIDE entre les deux bords, pas la distance des centres', () => {
+    const b = computeGapBadges(actif, [voisin(40, 10, 60, 30)], '9:16');
+    const haut = b.find((g) => g.side === 'top')!;
+    // Bords : 40 − 30 = 10 %. Centres : 50 − 20 = 30 %, trois fois plus.
+    expect(haut.gapPct).toBeCloseTo(10);
+  });
+
+  it('la distance est convertie en pixels du FORMAT, pas de l écran', () => {
+    const b = computeGapBadges(actif, [], '9:16');
+    // 40 % de 1920 px de haut = 768 px.
+    expect(b.find((g) => g.side === 'top')!.gapPx).toBe(pctToFormatPx(40, 'y', '9:16'));
+    expect(b.find((g) => g.side === 'top')!.gapPx).toBe(768);
   });
 
   it('les deux axes n ont pas le même diviseur', () => {
-    const vertical = computeDistanceBadges(actif, [autre(50, 25)], 400, 800)[0];
-    const horizontal = computeDistanceBadges(actif, [autre(25, 50)], 400, 800)[0];
-    expect(vertical.distancePx).not.toBe(horizontal.distancePx);
+    const b = computeGapBadges(actif, [], '9:16');
+    expect(b.find((g) => g.side === 'top')!.gapPx).not.toBe(b.find((g) => g.side === 'left')!.gapPx);
   });
 
-  it('des écarts ÉGAUX donnent des distances égales — c est tout l intérêt', () => {
-    const b = computeDistanceBadges(actif, [autre(50, 30), autre(50, 70)], 400, 800);
-    expect(b[0].distancePx).toBe(b[1].distancePx);
+  it('des écarts ÉGAUX sont signalés — c est tout l intérêt', () => {
+    const b = computeGapBadges(actif, [voisin(40, 20, 60, 30), voisin(40, 70, 60, 80)], '9:16');
+    const haut = b.find((g) => g.side === 'top')!;
+    const bas = b.find((g) => g.side === 'bottom')!;
+    expect(haut.gapPx).toBe(bas.gapPx);
+    expect(haut.equal).toBe(true);
+    expect(bas.equal).toBe(true);
   });
 
-  it('sans voisin, aucun badge', () => {
-    expect(computeDistanceBadges(actif, [], 400, 800)).toEqual([]);
+  it('sans voisin, la mesure va au cadre — jamais rien du tout', () => {
+    const b = computeGapBadges(actif, [], '9:16');
+    expect(b.every((g) => g.target === 'frame')).toBe(true);
   });
 });
 
@@ -147,11 +164,11 @@ describe('Le câblage dans le Mode simple', () => {
 
   it('le titre et le CTA gardent CHACUN leur ancre', () => {
     expect(wizard).toContain("const ancre: Anchor = drag.el === 'title' ? 'top-left' : 'bottom-center';");
-    expect(wizard).toContain('snapAndGuide(raw, ancre, drag.box, drag.el, rect)');
+    expect(wizard).toContain('snapAndGuide(raw, ancre, drag.box, drag.el)');
   });
 
   it('un élément s aimante sur son centre', () => {
-    expect(wizard).toContain("snapAndGuide(raw, 'center', drag.box, id, rect)");
+    expect(wizard).toContain("snapAndGuide(raw, 'center', drag.box, id)");
   });
 
   it('l élément déplacé est EXCLU de ses propres repères', () => {
@@ -184,24 +201,30 @@ describe('Les guides ne se gravent JAMAIS dans l export', () => {
     const fin = wizard.slice(debut, wizard.indexOf('const frameRef', debut));
     expect(fin.length).toBeGreaterThan(0);
     expect(fin).toContain('setDragGuides([]);');
-    expect(fin).toContain('setDragBadges([]);');
+    expect(fin).toContain('setDragGaps([]);');
   });
 
   it('le drapeau de capture les efface AUSSI — deux verrous, pas un', () => {
     // La photo des cartes part dans la vidéo : un guide gravé ne se
     // rattrape pas.
-    expect(wizard).toContain('{!capturing && (guides.length > 0 || distanceBadges.length > 0) && (');
+    expect(wizard).toContain('{!capturing && (\n        <SmartGuides');
+  });
+
+  it('le calque vit HORS du plateau photographié', () => {
+    // ⚠️ C'EST LA GARANTIE STRUCTURELLE. Le plateau (`previewRef`) est ce que
+    // `modern-screenshot` photographie : un repère posé dedans finirait
+    // gravé dans le montage, quel que soit l'état des drapeaux.
+    const plateau = wizard.indexOf('ref={previewRef}');
+    const calque = wizard.indexOf('<SmartGuides', plateau);
+    const finPlateau = wizard.indexOf('data-preview-overlay', plateau);
+    expect(finPlateau).toBeGreaterThan(0);
+    expect(calque).toBeGreaterThan(finPlateau);
   });
 
   it('le calque n intercepte aucun geste', () => {
-    const svg = readFileSync(resolve(__dirname, '../components/creer/SmartGuides.tsx'), 'utf-8');
-    expect(svg).toContain('pointer-events-none');
-    expect(svg).toContain('aria-hidden');
-  });
-
-  it('la grille de fond n est pas activée ici', () => {
-    // Elle serait photographiée avec les cartes.
-    expect(wizard).toContain('showGrid={false}');
+    const calque = readFileSync(resolve(__dirname, '../components/creer/SmartGuides.tsx'), 'utf-8');
+    expect(calque).toContain('pointer-events-none');
+    expect(calque).toContain('aria-hidden');
   });
 });
 
@@ -209,14 +232,14 @@ describe('Default-safe', () => {
   it('un aperçu monté nu ne rend aucun guide', () => {
     // C'est le cas des tests et de tout appelant qui ne les passe pas.
     expect(wizard).toContain('guides = EMPTY_GUIDES,');
-    expect(wizard).toContain('distanceBadges = EMPTY_BADGES,');
+    expect(wizard).toContain('gaps = EMPTY_GAPS,');
   });
 
   it('les tableaux vides sont STABLES entre deux rendus', () => {
     // Un littéral par rendu relancerait le calque à chaque frame de
     // glissement, soit soixante fois par seconde.
     expect(wizard).toContain('const EMPTY_GUIDES: ActiveGuide[] = [];');
-    expect(wizard).toContain('const EMPTY_BADGES: DistanceBadge[] = [];');
+    expect(wizard).toContain('const EMPTY_GAPS: GapBadge[] = [];');
   });
 
   it('l union des clés s est ÉLARGIE, jamais restreinte', () => {

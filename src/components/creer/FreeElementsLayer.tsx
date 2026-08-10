@@ -105,6 +105,11 @@ export default function FreeElementsLayer({
           key={el.id}
           // ⚠️ Contrat de l'export navigateur — voir l'en-tete.
           data-free-element={el.id}
+          // Repere d'alignement, cote editeur uniquement : le rendu serveur
+          // (Remotion) doit produire exactement le meme DOM qu'avant.
+          {...(editable
+            ? { 'data-guide-key': el.id, 'data-guide-label': 'Élément' }
+            : null)}
           onPointerDown={it?.onElementDragStart ? (e) => it.onElementDragStart!(el.id, e) : undefined}
           onPointerMove={it?.onDragMove}
           onPointerUp={it?.onDragEnd}
