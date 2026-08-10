@@ -149,6 +149,7 @@ import {
   collectGuideBoxes,
   shiftBox,
   boxCenter,
+  sameGaps,
   type ActiveGuide,
   type GapBadge,
   type ElementPos,
@@ -2317,8 +2318,19 @@ function InfographicPageInner() {
   const [smartGuidesEnabled, setSmartGuidesEnabled] = useState(true);
   const [showGridOverlay, setShowGridOverlay] = useState(false);
   const [activeGuides, setActiveGuides] = useState<ActiveGuide[]>([]);
-  // Ecarts BORD-A-BORD de l'element deplace, en pixels du format d'export.
+  // Ecarts BORD-A-BORD de l'element mesure, en pixels du format d'export.
   const [activeGaps, setActiveGaps] = useState<GapBadge[]>([]);
+  /**
+   * Bloc dont la regle est affichee — `data-guide-key`, ou `null`.
+   *
+   * ⚠️ IL SURVIT AU GESTE. Les ecarts n'existaient que PENDANT un glissement :
+   * des qu'on lachait l'element, ils disparaissaient, et lire la distance
+   * entre deux blocs deja poses etait impossible. C'est cet etat qui les
+   * garde a l'ecran jusqu'a ce qu'on clique ailleurs.
+   */
+  const [measuredKey, setMeasuredKey] = useState<string | null>(null);
+  /** Bloc survole — permet de mesurer une paire choisie, pas seulement la plus proche. */
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 
   // ── Card position mode: 'grid' (default) uses the grid layout, 'free'
   // allows each card to be dragged independently using its `position` field.
@@ -2470,6 +2482,9 @@ function InfographicPageInner() {
         anchorOffset: centre ? { x: centre.x - from.x, y: centre.y - from.y } : undefined,
       });
       setActiveGuides(snap.guides);
+      // Le bloc deplace devient le bloc MESURE : au relachement, sa regle
+      // reste affichee au lieu de disparaitre avec le geste.
+      setMeasuredKey(guideKey);
       setActiveGaps(
         rendered
           ? computeGapBadges(
@@ -2483,6 +2498,41 @@ function InfographicPageInner() {
     },
     [format],
   );
+
+  /**
+   * Mesure PERSISTANTE du bloc selectionne.
+   *
+   * ⚠️ SANS TABLEAU DE DEPENDANCES, ET C'EST VOULU. L'emprise d'un bloc
+   * depend de son texte, de sa police, de sa taille, du format, de la
+   * sequence affichee — une trentaine d'etats. Les enumerer garantirait d'en
+   * oublier un (et de laisser une mesure perimee a l'ecran), alors que
+   * l'apercu, lui, se re-rend deja a chaque changement. On mesure donc apres
+   * CHAQUE rendu, et `sameGaps` coupe la boucle : sans changement, aucun
+   * `setState`, donc aucun rendu supplementaire.
+   *
+   * Pendant un glissement, c'est `guideDrag` qui pilote — il connait la
+   * position aimantee, que le DOM n'a pas encore rendue.
+   */
+  useEffect(() => {
+    if (dragging || dragCardIdx !== null) return;
+    if (!smartGuidesEnabled || !measuredKey) {
+      setActiveGaps((prev) => (prev.length ? [] : prev));
+      return;
+    }
+    const boxes = collectGuideBoxes(previewRef.current);
+    const active = boxes.find((b) => b.key === measuredKey) ?? null;
+    if (!active) {
+      setActiveGaps((prev) => (prev.length ? [] : prev));
+      return;
+    }
+    const next = computeGapBadges(
+      active,
+      boxes.filter((b) => b.key !== measuredKey),
+      format,
+      { pairWith: hoveredKey && hoveredKey !== measuredKey ? hoveredKey : null },
+    );
+    setActiveGaps((prev) => (sameGaps(prev, next) ? prev : next));
+  });
 
   // Ref to the rush <video> in the preview so we can track currentTime
   // and gate overlay visibility on the user-configured start/end windows.
@@ -8525,7 +8575,18 @@ function InfographicPageInner() {
             if (target === previewRef.current || target.closest('[data-preview-bg]') === previewRef.current) {
               setSelectedEl(null);
             }
+            // Bloc mesure — lu depuis le DOM plutot que depuis `selectedEl`,
+            // qui ne connait que cinq types sur la douzaine de blocs
+            // deplacables. Un clic hors de tout bloc marque range la regle.
+            const bloc = target.closest('[data-guide-key]');
+            setMeasuredKey(bloc ? bloc.getAttribute('data-guide-key') : null);
           }}
+          onMouseOver={(e) => {
+            const bloc = (e.target as HTMLElement).closest('[data-guide-key]');
+            const cle = bloc ? bloc.getAttribute('data-guide-key') : null;
+            setHoveredKey((prev) => (prev === cle ? prev : cle));
+          }}
+          onMouseLeave={() => setHoveredKey(null)}
         >
           <div
             ref={previewRef}
@@ -8707,6 +8768,12 @@ function InfographicPageInner() {
               // ── Smart guides: snap + alignment hints ───────────────
               if (smartGuidesEnabled) {
                 const activeLogoPos = getActiveLogoPos();
+                // ⚠️ TOUS LES BLOCS DEPLACABLES, PAS SEULEMENT LES SIX
+                // PRINCIPAUX. Icone du titre, second titre, second sous-titre
+                // et calques de texte supplementaires etaient deplacables sans
+                // figurer ici : ils n'etaient donc ni cibles d'aimantation ni
+                // reperables comme « position d'avant » — d'ou l'absence de
+                // toute mesure des qu'on en deplacait un.
                 const allPositions: ElementPos[] = [
                   { key: 'title', x: titlePos.x, y: titlePos.y, label: 'Titre' },
                   { key: 'cards', x: cardsPos.x, y: cardsPos.y, label: 'Cartes' },
@@ -8714,12 +8781,22 @@ function InfographicPageInner() {
                   { key: 'overlay', x: overlayPos.x, y: overlayPos.y, label: 'Overlay' },
                   { key: 'logo', x: activeLogoPos.x, y: activeLogoPos.y, label: 'Logo' },
                   { key: 'sitetext', x: siteTextPos.x, y: siteTextPos.y, label: 'Site' },
+                  { key: 'titleIcon', x: titleIconPos.x, y: titleIconPos.y, label: 'Icône du titre' },
+                  ...(extraTitle
+                    ? [{ key: 'extraTitle' as const, x: extraTitlePosition.x, y: extraTitlePosition.y, label: 'Titre 2' }]
+                    : []),
+                  ...(extraSubtitle
+                    ? [{ key: 'extraSubtitle' as const, x: extraSubtitlePosition.x, y: extraSubtitlePosition.y, label: 'Sous-titre 2' }]
+                    : []),
+                  ...extraOverlays.map((o, i) => ({
+                    key: `overlay:${i}` as const,
+                    x: o.position.x,
+                    y: o.position.y,
+                    label: `Texte ${i + 2}`,
+                  })),
                 ];
                 const others = allPositions.filter((p) => p.key !== dragging);
                 // Position AVANT ce mouvement — celle que le DOM rend encore.
-                // Absente pour les cibles secondaires (icone de titre, calques
-                // « overlay:N », elements libres) : le deplacement vaut alors
-                // zero, les badges restent vides et l'aimantation est intacte.
                 const avant = allPositions.find((p) => p.key === dragging) ?? { x: rawX, y: rawY };
                 const aimante = guideDrag(dragging, { x: avant.x, y: avant.y }, { x: rawX, y: rawY }, others);
                 rawX = aimante.x;
@@ -9246,6 +9323,8 @@ function InfographicPageInner() {
                     top: `${titleIconPos.y}%`,
                     transform: 'translate(-50%, -50%)',
                   }}
+                  data-guide-key="titleIcon"
+                  data-guide-label="Icône du titre"
                   onMouseDown={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -9287,6 +9366,8 @@ function InfographicPageInner() {
                       display: 'inline-block',
                     } : { color: titleColor }),
                   }}
+                  data-guide-key="extraTitle"
+                  data-guide-label="Titre 2"
                   onMouseDown={(e) => { e.preventDefault(); setDragging("extraTitle"); }}
                 >
                   {extraTitle}
@@ -9316,6 +9397,8 @@ function InfographicPageInner() {
                       display: 'inline-block',
                     } : { color: titleColor, opacity: 0.8 }),
                   }}
+                  data-guide-key="extraSubtitle"
+                  data-guide-label="Sous-titre 2"
                   onMouseDown={(e) => { e.preventDefault(); setDragging("extraSubtitle"); }}
                 >
                   {extraSubtitle}
@@ -9415,6 +9498,8 @@ function InfographicPageInner() {
                       : 0,
                     transition: 'opacity 300ms ease',
                   }}
+                  data-guide-key={`overlay:${i}`}
+                  data-guide-label={`Texte ${i + 2}`}
                   onMouseDown={(e) => {
                     e.preventDefault();
                     setActiveOverlayIdx(i + 1);

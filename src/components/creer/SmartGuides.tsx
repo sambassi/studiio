@@ -146,6 +146,9 @@ export default function SmartGuides({
  */
 function GapMeasure({ badge }: { badge: GapBadge }) {
   const color = badge.equal ? EQUAL_GREEN : MAGENTA;
+  // Pointilles quand rien ne se trouve en vis-a-vis. Le chiffre reste un vrai
+  // ecart bord-a-bord, mais il ne doit pas se lire comme un alignement.
+  const trait = badge.aligned ? 'solid' : 'dashed';
   const half = Math.abs(badge.gapPct) / 2;
   const line: React.CSSProperties =
     badge.axis === 'y'
@@ -154,14 +157,14 @@ function GapMeasure({ badge }: { badge: GapBadge }) {
           left: `${badge.midXPct}%`,
           top: `${badge.midYPct - half}%`,
           height: `${Math.abs(badge.gapPct)}%`,
-          borderLeft: `1px solid ${color}`,
+          borderLeft: `1px ${trait} ${color}`,
         }
       : {
           position: 'absolute',
           top: `${badge.midYPct}%`,
           left: `${badge.midXPct - half}%`,
           width: `${Math.abs(badge.gapPct)}%`,
-          borderTop: `1px solid ${color}`,
+          borderTop: `1px ${trait} ${color}`,
         };
 
   return (
@@ -169,6 +172,7 @@ function GapMeasure({ badge }: { badge: GapBadge }) {
       <div style={line} />
       <div
         data-guide-gap={badge.side}
+        data-guide-target={badge.targetKey ?? 'frame'}
         style={{
           position: 'absolute',
           left: `${badge.midXPct}%`,

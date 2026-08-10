@@ -302,7 +302,7 @@ describe('Bornage : ancrage au CENTRE', () => {
     // La position passe désormais par l'aimantation avant d'être bornée —
     // l'ancre et la boîte de bornage, elles, n'ont pas changé.
     expect(wizard).toContain("clampToBox(aimante, 'center', drag.box)");
-    expect(wizard).toContain("snapAndGuide(raw, 'center', drag.box, id)");
+    expect(wizard).toContain("snapAndGuide(raw, 'center', drag.box, id, `element:${id}`)");
   });
 });
 

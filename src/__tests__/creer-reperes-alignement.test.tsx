@@ -303,7 +303,7 @@ describe('Le calque n est plus déformé', () => {
         format="9:16"
         gaps={[{
           axis: 'y', side: 'top', midXPct: 50, midYPct: 20, gapPct: 40,
-          gapPx: 768, target: 'frame', targetLabel: 'Cadre', equal: false,
+          gapPx: 768, target: 'frame', targetLabel: 'Cadre', equal: false, aligned: true,
         }]}
       />,
     );
@@ -316,7 +316,7 @@ describe('Le calque n est plus déformé', () => {
   });
 
   it('un écart égal se distingue visuellement de son voisin inégal', () => {
-    const commun = { axis: 'y' as const, midXPct: 50, gapPct: 40, target: 'frame' as const, targetLabel: 'Cadre' };
+    const commun = { axis: 'y' as const, midXPct: 50, gapPct: 40, target: 'frame' as const, targetLabel: 'Cadre', aligned: true };
     const { container } = render(
       <SmartGuides
         format="9:16"

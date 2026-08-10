@@ -205,13 +205,11 @@ export default function SequenceCards({
     <div
       ref={containerRef}
       data-cards-grid
-      // Repere d'alignement — `union` mesure les CARTES, pas ce conteneur :
-      // il occupe une bande fixe du cadre alors que les cartes n'en
-      // remplissent que le milieu. Pose uniquement quand l'apercu est
-      // editable : le rendu serveur (Remotion) doit rester identique.
-      {...(editable
-        ? { 'data-guide-key': 'cards', 'data-guide-label': 'Cartes', 'data-guide-union': '' }
-        : null)}
+      // ⚠️ CE CONTENEUR N'EST PLUS MESURE, CHAQUE CARTE L'EST.
+      // Mesurer la bande entiere ne repondait pas a la question posee : ce
+      // qu'on veut lire, c'est l'ecart jusqu'a LA carte la plus proche, et
+      // l'ecart d'une carte a sa voisine — impossible tant qu'elles n'avaient
+      // pas chacune leur cle. Voir la boucle ci-dessous.
       style={{
         position: 'absolute',
         ...(cardBoxes
@@ -238,6 +236,13 @@ export default function SequenceCards({
           <div
             key={c.id}
             data-card-id={c.id}
+            // Repere d'alignement, cote editeur uniquement : le rendu serveur
+            // (Remotion) doit produire exactement le meme DOM qu'avant. La
+            // cle porte l'identifiant de la carte — deux cartes qui la
+            // partageraient se confondraient dans `collectGuideBoxes`.
+            {...(editable
+              ? { 'data-guide-key': `card:${c.id}`, 'data-guide-label': c.title || 'Carte' }
+              : null)}
             onPointerDown={it?.onCardDragStart ? (e) => it.onCardDragStart!(c.id, e) : undefined}
             onPointerMove={it?.onDragMove}
             onPointerUp={it?.onDragEnd}
