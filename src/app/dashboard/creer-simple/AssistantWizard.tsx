@@ -1999,10 +1999,13 @@ export function Preview({
           guides={guides}
           gaps={gaps}
           showGrid={reperesGrille}
-          showCenter={reperesCentre}
+          // ⚠️ LE MILIEU S'AFFICHE DES QU'UN BLOC EST MESURE, sans attendre la
+          // bascule : c'est pendant le placement qu'on a besoin de voir le
+          // vrai centre du format. Rien de selectionne : retour au reglage.
+          showCenter={reperesCentre || gaps.length > 0}
           showThirds={reperesCentre}
           format={format}
-          showRatioLabel={reperesCentre || reperesGrille}
+          showRatioLabel={reperesCentre || reperesGrille || gaps.length > 0}
         />
       )}
 

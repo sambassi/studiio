@@ -726,3 +726,38 @@ les détails, et ce sont eux qui cassent en production.
   hauteur du format ne sont pas à la même échelle (1080 vs 1920), donc une
   diagonale mélangerait deux unités et n'indiquerait ni de combien décaler à
   droite, ni de combien décaler en bas.
+
+## 2026-08-10 — Une mesure juste mais illisible est une mesure absente
+
+- **2026-08-10** | L'utilisateur signalait « je n'ai pas la mesure entre ces
+  deux éléments » alors que sa capture d'écran la MONTRAIT : le calcul, le
+  déclenchement à la sélection et le placement étaient corrects. Le texte de
+  la pastille était en `#0A0A0F` (quasi-noir) sur fond magenta : sur un aperçu
+  coloré, le chiffre se lisait comme une tache. | **Règle** : quand un
+  utilisateur dit qu'une fonctionnalité « ne marche pas », vérifier d'abord si
+  elle est simplement ILLISIBLE avant de retoucher la logique. Un instrument
+  de mesure se lit sur n'importe quel fond : trait clair + halo sombre,
+  pastille sombre + texte clair. La couleur accentue, elle ne porte jamais
+  seule l'information — le vert d'égalité reste doublé d'un signe « = ».
+
+- **2026-08-10** | Un chiffre posé au milieu de l'aperçu ne dit pas ce qu'il
+  relie : « 64 px » se lisait comme une étiquette collée au bloc, pas comme le
+  vide entre deux blocs. | **Règle** : une mesure doit se dessiner comme un
+  PIED À COULISSE — le trait couvre exactement le vide, deux repères
+  d'extrémité se posent sur les bords en regard, et l'étiquette nomme les deux
+  extrémités. Les trois ensemble ; le trait seul ne suffit pas.
+
+- **2026-08-10** | Le repère du vrai milieu du format dépendait d'un réglage à
+  cocher À L'AVANCE (`showCenterGuides`, défaut `false`) : il était donc absent
+  au seul moment où il sert, pendant le placement. | **Règle** : une aide qui
+  ne sert que pendant une manipulation doit s'afficher d'elle-même pendant
+  cette manipulation, et rendre la main au réglage utilisateur en dehors. Un
+  toggle par défaut à `false` sur une aide contextuelle équivaut à ne pas
+  l'avoir écrite.
+
+- **2026-08-10** | « Être à égale distance de deux voisins » et « être au
+  milieu du cadre » sont deux choses différentes, et le second seul mérite le
+  libellé « centré ». Le calque le déduit des mesures elles-mêmes (égalité
+  contre le CADRE sur les deux côtés) plutôt que d'un état séparé. | **Règle** :
+  quand un indicateur peut se DÉDUIRE d'un état déjà présent, le déduire — un
+  état parallèle finit toujours par diverger de celui qu'il double.

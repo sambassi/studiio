@@ -303,7 +303,7 @@ describe('Le calque n est plus déformé', () => {
         format="9:16"
         gaps={[{
           axis: 'y', side: 'top', midXPct: 50, midYPct: 20, gapPct: 40,
-          gapPx: 768, target: 'frame', targetLabel: 'Cadre', equal: false, aligned: true,
+          gapPx: 768, target: 'frame', targetLabel: 'Cadre', sourceLabel: 'Actif', equal: false, aligned: true,
         }]}
       />,
     );
@@ -316,7 +316,7 @@ describe('Le calque n est plus déformé', () => {
   });
 
   it('un écart égal se distingue visuellement de son voisin inégal', () => {
-    const commun = { axis: 'y' as const, midXPct: 50, gapPct: 40, target: 'frame' as const, targetLabel: 'Cadre', aligned: true };
+    const commun = { axis: 'y' as const, midXPct: 50, gapPct: 40, target: 'frame' as const, targetLabel: 'Cadre', sourceLabel: 'Actif', aligned: true };
     const { container } = render(
       <SmartGuides
         format="9:16"
@@ -328,10 +328,14 @@ describe('Le calque n est plus déformé', () => {
     );
     const egal = container.querySelector('[data-guide-gap="top"]') as HTMLElement;
     const inegal = container.querySelector('[data-guide-gap="bottom"]') as HTMLElement;
-    expect(egal.style.background).not.toBe(inegal.style.background);
+    // ⚠️ LE FOND EST LE MÊME POUR LES DEUX, ET C'EST VOULU : sombre, pour que
+    // le chiffre blanc se lise sur n'importe quel aperçu. C'est la BORDURE
+    // qui porte l'accent — la couleur ne remplace plus la lisibilité.
+    expect(egal.style.background).toBe(inegal.style.background);
+    expect(egal.style.borderColor).not.toBe(inegal.style.borderColor);
     // Signe « égal » en SVG lucide — jamais un emoji (règle du projet).
-    expect(egal.querySelector('svg')).not.toBeNull();
-    expect(inegal.querySelector('svg')).toBeNull();
+    expect(egal.querySelector('[aria-label="même espace"]')).not.toBeNull();
+    expect(inegal.querySelector('[aria-label="même espace"]')).toBeNull();
   });
 
   it('monté nu, il ne rend rien du tout', () => {
