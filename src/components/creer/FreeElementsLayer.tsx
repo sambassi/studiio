@@ -106,9 +106,11 @@ export default function FreeElementsLayer({
           // ⚠️ Contrat de l'export navigateur — voir l'en-tete.
           data-free-element={el.id}
           // Repere d'alignement, cote editeur uniquement : le rendu serveur
-          // (Remotion) doit produire exactement le meme DOM qu'avant.
+          // (Remotion) doit produire exactement le meme DOM qu'avant. La cle
+          // est PREFIXEE : un element dont l'identifiant vaudrait « title »
+          // se confondrait sinon avec le bloc titre.
           {...(editable
-            ? { 'data-guide-key': el.id, 'data-guide-label': 'Élément' }
+            ? { 'data-guide-key': `element:${el.id}`, 'data-guide-label': 'Élément' }
             : null)}
           onPointerDown={it?.onElementDragStart ? (e) => it.onElementDragStart!(el.id, e) : undefined}
           onPointerMove={it?.onDragMove}

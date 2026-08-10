@@ -61,7 +61,7 @@ import {
 import type { AudioKeyframe } from '@/lib/creer/audioDucking';
 import { pointToPct, grabOffset, clampToBox, type Pos, type BoxPct, type CardBox, boxesFromRects, samePos } from '@/lib/creer/dragPosition';
 import {
-  snapPosition, computeGapBadges, collectGuideBoxes, shiftBox, boxCenter,
+  snapPosition, computeGapBadges, collectGuideBoxes, shiftBox, boxCenter, sameGaps,
   anchorToCenter, centerToAnchor,
   type ActiveGuide, type GapBadge, type ElementPos, type Anchor,
 } from '@/lib/creer/smartGuides';
@@ -1078,6 +1078,8 @@ export function Preview({
   photoDragging = false,
   guides = EMPTY_GUIDES,
   gaps = EMPTY_GAPS,
+  onMeasure,
+  onHover,
   elements,
   selectedElementId = null,
   onElementDragStart,
@@ -1274,6 +1276,13 @@ export function Preview({
   guides?: ActiveGuide[];
   /** Ecarts BORD-A-BORD, en pixels du format d'export. */
   gaps?: GapBadge[];
+  /**
+   * Bloc clique — sa regle reste affichee jusqu'au prochain clic ailleurs.
+   * `null` quand le clic ne vise aucun bloc mesurable.
+   */
+  onMeasure?: (key: string | null) => void;
+  /** Bloc survole — permet de mesurer la paire choisie par l'utilisateur. */
+  onHover?: (key: string | null) => void;
   onPosterZoomStart?: (e: React.PointerEvent) => void;
   elements?: FreeElement[];
   selectedElementId?: string | null;
@@ -1472,6 +1481,18 @@ export function Preview({
         // cartes arretent la propagation. C'est le geste universel « je
         // deselectionne ».
         onPointerDown={capturing ? undefined : onClearSelection}
+        // Bloc dont la regle s'affiche — lu dans le DOM, donc valable pour
+        // TOUT bloc marque, y compris ceux qu'aucun etat de selection ne
+        // connait. Un clic hors de tout bloc marque range la regle.
+        onClick={capturing ? undefined : (e) => {
+          const bloc = (e.target as HTMLElement).closest('[data-guide-key]');
+          onMeasure?.(bloc ? bloc.getAttribute('data-guide-key') : null);
+        }}
+        onMouseOver={capturing ? undefined : (e) => {
+          const bloc = (e.target as HTMLElement).closest('[data-guide-key]');
+          onHover?.(bloc ? bloc.getAttribute('data-guide-key') : null);
+        }}
+        onMouseLeave={capturing ? undefined : () => onHover?.(null)}
         style={{
           position: 'absolute',
           top: 0,
@@ -2411,6 +2432,34 @@ function AutopilotPreview({ config, accent, onPatch }: {
   const [dragging, setDragging] = useState<'title' | 'cta' | null>(null);
   const [guides, setGuides] = useState<ActiveGuide[]>([]);
   const [gaps, setGaps] = useState<GapBadge[]>([]);
+  /** Bloc mesure et bloc survole — memes regles que le Mode simple. */
+  const [measuredKey, setMeasuredKey] = useState<string | null>(null);
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+
+  /**
+   * Mesure PERSISTANTE — voir le commentaire du meme effet dans le wizard :
+   * sans tableau de dependances, avec `sameGaps` pour couper la boucle.
+   */
+  useEffect(() => {
+    if (gesteRef.current) return;
+    if (!measuredKey) {
+      setGaps((prev) => (prev.length ? [] : prev));
+      return;
+    }
+    const boites = collectGuideBoxes(previewRef.current);
+    const active = boites.find((b) => b.key === measuredKey) ?? null;
+    if (!active) {
+      setGaps((prev) => (prev.length ? [] : prev));
+      return;
+    }
+    const suivant = computeGapBadges(
+      active,
+      boites.filter((b) => b.key !== measuredKey),
+      format,
+      { pairWith: hoveredKey && hoveredKey !== measuredKey ? hoveredKey : null },
+    );
+    setGaps((prev) => (sameGaps(prev, suivant) ? prev : suivant));
+  });
 
   /** Ancre d'un bloc : le titre par son coin haut-gauche, le CTA par son bas. */
   const ancreDe = (el: 'title' | 'cta'): Anchor => (el === 'title' ? 'top-left' : 'bottom-center');
@@ -2533,6 +2582,7 @@ function AutopilotPreview({ config, accent, onPatch }: {
     const autresBoites = boites.filter((b) => b.key !== geste.el);
     const snap = snapPosition(centre.x, centre.y, autres, { thirds: true, boxes: autresBoites });
     setGuides(snap.guides);
+    setMeasuredKey(geste.el);
     if (rendue) {
       const c = boxCenter(rendue);
       setGaps(computeGapBadges(shiftBox(rendue, snap.x - c.x, snap.y - c.y), autresBoites, format));
@@ -2553,8 +2603,9 @@ function AutopilotPreview({ config, accent, onPatch }: {
     const geste = gesteRef.current;
     gesteRef.current = null;
     setDragging(null);
+    // Seules les LIGNES magnetiques meurent avec le geste ; les ECARTS
+    // restent, repris par l'effet de mesure persistante.
     setGuides([]);
-    setGaps([]);
     if (!geste) return;
     setStyle((courant) => { onPatch?.({ designStyle: courant }); return courant; });
   }, [onPatch]);
@@ -2589,6 +2640,8 @@ function AutopilotPreview({ config, accent, onPatch }: {
         dragging={dragging}
         guides={guides}
         gaps={gaps}
+        onMeasure={setMeasuredKey}
+        onHover={setHoveredKey}
         onDragStart={startDrag}
         onDragMove={moveDrag}
         onDragEnd={endDrag}
@@ -4090,6 +4143,50 @@ export default function AssistantWizard() {
      qu'un, parce qu'un guide grave dans la video ne se rattrape pas. */
   const [dragGuides, setDragGuides] = useState<ActiveGuide[]>([]);
   const [dragGaps, setDragGaps] = useState<GapBadge[]>([]);
+  /**
+   * Bloc dont la regle est affichee — `data-guide-key`, ou `null`.
+   *
+   * ⚠️ IL SURVIT AU GESTE. Les ecarts n'existaient que PENDANT un glissement :
+   * des qu'on lachait le bloc, ils disparaissaient, et lire la distance entre
+   * deux blocs deja poses etait impossible.
+   */
+  const [measuredKey, setMeasuredKey] = useState<string | null>(null);
+  /** Bloc survole — mesure la paire choisie, pas seulement la plus proche. */
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+
+  /**
+   * Mesure PERSISTANTE du bloc selectionne.
+   *
+   * ⚠️ SANS TABLEAU DE DEPENDANCES, ET C'EST VOULU. L'emprise d'un bloc
+   * depend de son texte, de sa police, de son echelle, du format, de la
+   * sequence affichee — trop d'etats pour une liste qu'on tiendrait a jour
+   * sans en oublier un (et une mesure perimee a l'ecran ne se voit pas).
+   * L'apercu se re-rend deja a chaque changement : on mesure apres CHAQUE
+   * rendu, et `sameGaps` coupe la boucle — sans changement, aucun `setState`.
+   *
+   * Pendant un glissement, c'est `snapAndGuide` qui pilote : lui connait la
+   * position aimantee, que le DOM n'a pas encore rendue.
+   */
+  useEffect(() => {
+    if (dragRef.current) return;
+    if (!measuredKey || capturing) {
+      setDragGaps((prev) => (prev.length ? [] : prev));
+      return;
+    }
+    const boites = collectGuideBoxes(previewRef.current);
+    const active = boites.find((b) => b.key === measuredKey) ?? null;
+    if (!active) {
+      setDragGaps((prev) => (prev.length ? [] : prev));
+      return;
+    }
+    const suivant = computeGapBadges(
+      active,
+      boites.filter((b) => b.key !== measuredKey),
+      format,
+      { pairWith: hoveredKey && hoveredKey !== measuredKey ? hoveredKey : null },
+    );
+    setDragGaps((prev) => (sameGaps(prev, suivant) ? prev : suivant));
+  });
 
   /**
    * Reperes d'alignement : le centre des AUTRES elements de l'apercu.
@@ -4129,15 +4226,19 @@ export default function AssistantWizard() {
     anchor: Anchor,
     box: { width: number; height: number },
     exclure: string,
+    guideKey: string = exclure,
   ): Pos => {
     const autres = alignmentTargets(exclure);
     const boites = collectGuideBoxes(previewRef.current);
-    const rendue = boites.find((b) => b.key === exclure) ?? null;
-    const autresBoites = boites.filter((b) => b.key !== exclure);
+    const rendue = boites.find((b) => b.key === guideKey) ?? null;
+    const autresBoites = boites.filter((b) => b.key !== guideKey);
     const centre = anchorToCenter(pos, anchor, box);
     // `centre` est deja un centre : aucun `anchorOffset` a corriger.
     const snap = snapPosition(centre.x, centre.y, autres, { thirds: true, boxes: autresBoites });
     setDragGuides(snap.guides);
+    // Le bloc deplace devient le bloc MESURE : au relachement, sa regle reste
+    // affichee au lieu de disparaitre avec le geste.
+    setMeasuredKey(guideKey);
     if (rendue) {
       const c = boxCenter(rendue);
       setDragGaps(
@@ -4203,7 +4304,7 @@ export default function AssistantWizard() {
       const raw = pointToPct(e.clientX, e.clientY, rect, drag.grab, { x: current.x, y: current.y });
       // Aimantation AVANT bornage : l'inverse laisserait le bornage defaire
       // l'aimantation sur un element pose au ras du cadre.
-      const aimante = snapAndGuide(raw, 'center', drag.box, id);
+      const aimante = snapAndGuide(raw, 'center', drag.box, id, `element:${id}`);
       // Ancre au CENTRE, comme le `translate(-50%, -50%)` du rendu : sans quoi
       // l'element sortirait de moitie de la zone photographiee.
       const next = clampToBox(aimante, 'center', drag.box);
@@ -4349,9 +4450,11 @@ export default function AssistantWizard() {
     dragRef.current = null;
     setDragging(null);
     setDraggingCard(null);
-    // Les guides n'existent que le temps du geste.
+    // Les LIGNES magnetiques n'existent que le temps du geste — elles disent
+    // « ca s'aligne en ce moment ». Les ECARTS, eux, restent : ils repondent a
+    // « quelle distance entre ces deux blocs », question qui survit au geste.
+    // C'est l'effet de mesure persistante qui les reprend au rendu suivant.
     setDragGuides([]);
-    setDragGaps([]);
   }, []);
   /**
    * Facteur de reduction du plateau : largeur affichee / largeur video.
@@ -7960,6 +8063,8 @@ export default function AssistantWizard() {
           photoDragging={photoDragging}
           guides={dragGuides}
           gaps={dragGaps}
+          onMeasure={setMeasuredKey}
+          onHover={setHoveredKey}
           onElementDragStart={startElementDrag}
           onElementResizeStart={startElementResize}
           onElementDelete={deleteElement}

@@ -685,3 +685,44 @@ les détails, et ce sont eux qui cassent en production.
   Sa taille, elle, ne change pas pendant un glissement — seule sa position
   bouge. Re-mesurer après `setState` coûterait un rendu supplémentaire par
   frame.
+
+## 2026-08-10 — La règle mesurait, mais ne voyait presque rien
+
+- **2026-08-10** | Le moteur de mesure (`computeGapBadges`) était juste, et
+  pourtant « entre deux éléments on n'arrive pas à calculer la distance ». La
+  cause n'était pas dans le calcul mais dans son ENTRÉE : `collectGuideBoxes`
+  ne voit que les éléments portant `data-guide-key`, et seuls 7 blocs sur la
+  douzaine de blocs déplaçables le portaient. | **Règle** : quand un mécanisme
+  repose sur un attribut de marquage posé à la main, le marquage EST la
+  fonctionnalité — pas un détail de câblage. Ajouter un test qui dérive la
+  liste attendue du code lui-même (ici : tout `setDragging("x")` doit avoir son
+  `data-guide-key="x"`), sinon le prochain bloc déplaçable ajouté sera muet et
+  personne ne le verra.
+
+- **2026-08-10** | Les écarts n'étaient calculés que dans le gestionnaire de
+  glissement. Ils répondaient donc à « de combien je déplace », alors que la
+  question posée était « quelle distance entre ces deux blocs » — laquelle
+  survit au geste. Au relâchement, le chiffre disparaissait. | **Règle** :
+  distinguer les aides qui décrivent le GESTE (lignes magnétiques : elles
+  meurent avec lui) de celles qui décrivent l'ÉTAT (mesures : elles doivent
+  rester). Les effacer ensemble dans `endDrag` est le réflexe qui rend l'outil
+  inutilisable pour sa fonction principale.
+
+- **2026-08-10** | Une mesure qui dépend de l'emprise rendue dépend d'une
+  trentaine d'états (texte, police, échelle, format, séquence affichée). Un
+  `useEffect` avec liste de dépendances en oublierait forcément un, et une
+  mesure périmée à l'écran ne se voit pas. | **Règle** : pour un calcul dérivé
+  du DOM rendu, un `useEffect` SANS tableau de dépendances + une comparaison
+  d'égalité avant `setState` est plus sûr qu'une liste tenue à la main : le
+  composant se re-rend déjà à chaque changement, et l'égalité coupe la boucle.
+  (Contre-indication : si le calcul est coûteux, ou si l'égalité est difficile
+  à définir — ce n'est alors plus applicable.)
+
+- **2026-08-10** | Deux blocs posés en biais ne se recouvrent sur aucun axe :
+  le filtre « ne mesurer qu'un voisin qui SE FAIT FACE » les excluait tous les
+  deux. Un filtre qui exprime une préférence ne doit pas être écrit comme une
+  condition d'existence. | **Règle** : et pour mesurer une paire en biais, DEUX
+  chiffres (un par axe), jamais une longueur diagonale : la largeur et la
+  hauteur du format ne sont pas à la même échelle (1080 vs 1920), donc une
+  diagonale mélangerait deux unités et n'indiquerait ni de combien décaler à
+  droite, ni de combien décaler en bas.

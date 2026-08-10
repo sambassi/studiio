@@ -168,7 +168,7 @@ describe('Le câblage dans le Mode simple', () => {
   });
 
   it('un élément s aimante sur son centre', () => {
-    expect(wizard).toContain("snapAndGuide(raw, 'center', drag.box, id)");
+    expect(wizard).toContain("snapAndGuide(raw, 'center', drag.box, id, `element:${id}`)");
   });
 
   it('l élément déplacé est EXCLU de ses propres repères', () => {
@@ -189,19 +189,20 @@ describe('Le câblage dans le Mode simple', () => {
 });
 
 describe('Les guides ne se gravent JAMAIS dans l export', () => {
-  it('ils disparaissent au relâchement', () => {
-    // ⚠️ LA BORNE DE FIN SE CHERCHE **APRÈS** LA BORNE DE DÉBUT. `indexOf`
-    // sans point de départ rendait la PREMIÈRE occurrence de `const frameRef`
-    // du fichier : depuis qu'un autre composant en déclare une plus haut, elle
-    // tombait AVANT `endDrag` et la tranche était vide. Le test échouait alors
-    // sur un fichier parfaitement correct — et, symétriquement, aurait passé
-    // sur un fichier cassé si la tranche vide avait été comparée à du vide.
-    const debut = wizard.indexOf('const endDrag = useCallback');
+  it('les LIGNES disparaissent au relâchement — les ÉCARTS, non', () => {
+    // ⚠️ L'ANCRE EST CELLE DU WIZARD, PAS LA PREMIÈRE DU FICHIER. Un autre
+    // composant déclare un `endDrag` plus haut : chercher le motif court
+    // découpait SA tranche à lui, et le test répondait sur le mauvais code.
+    const debut = wizard.indexOf('const endDrag = useCallback(() => {\n    dragRef.current = null;');
     expect(debut).toBeGreaterThan(0);
-    const fin = wizard.slice(debut, wizard.indexOf('const frameRef', debut));
-    expect(fin.length).toBeGreaterThan(0);
-    expect(fin).toContain('setDragGuides([]);');
-    expect(fin).toContain('setDragGaps([]);');
+    const corps = wizard.slice(debut, wizard.indexOf('}, []);', debut));
+    expect(corps.length).toBeGreaterThan(0);
+    expect(corps).toContain('setDragGuides([]);');
+    // Les lignes magnétiques disent « ça s'aligne EN CE MOMENT » : elles
+    // meurent avec le geste. Les écarts répondent à « quelle distance entre
+    // ces deux blocs », question qui lui survit — les effacer ici est
+    // exactement ce qui rendait la mesure illisible dès le bloc posé.
+    expect(corps).not.toContain('setDragGaps([]);');
   });
 
   it('le drapeau de capture les efface AUSSI — deux verrous, pas un', () => {

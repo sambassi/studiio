@@ -36,7 +36,18 @@ export type ElementKey =
   // jamais : l'editeur avance ne voit aucune difference.
   | 'cta'
   | 'element'
-  | 'card';
+  | 'card'
+  // Blocs de texte secondaires de l'editeur avance. Ils etaient deplacables
+  // sans etre mesurables : la regle ne les voyait pas, donc « entre deux
+  // titres » ne donnait aucun chiffre.
+  | 'titleIcon'
+  | 'extraTitle'
+  | 'extraSubtitle'
+  // Instances multiples — la cle porte l'index ou l'identifiant, sinon deux
+  // exemplaires du meme type se confondraient dans `collectGuideBoxes`.
+  | `overlay:${number}`
+  | `card:${number}`
+  | `element:${string}`;
 
 export interface ElementPos {
   key: ElementKey;
@@ -319,8 +330,19 @@ export interface GapBadge {
   /** Mesure contre un voisin, ou contre le bord du cadre a defaut. */
   target: 'frame' | 'element';
   targetLabel: string;
+  /** Cle du voisin mesure — sert a ne pas le mesurer deux fois. */
+  targetKey?: string;
   /** Vrai quand l'ecart oppose vaut le meme, a la tolerance pres. */
   equal: boolean;
+  /**
+   * Les deux boites SE FONT FACE sur l'autre axe.
+   *
+   * Faux = mesure « en diagonale » : l'ecart reste un vrai bord-a-bord sur
+   * cet axe, mais rien ne se trouve reellement en vis-a-vis. Le calque le
+   * trace en pointilles pour que le chiffre ne se lise pas comme un
+   * alignement.
+   */
+  aligned: boolean;
 }
 
 /**
@@ -331,19 +353,116 @@ export interface GapBadge {
  */
 export const EQUAL_GAP_TOLERANCE_PX = 6;
 
+/** Ecart bord-a-bord entre deux boites sur un axe ; 0 si elles se recouvrent. */
+function axisGap(aMin: number, aMax: number, bMin: number, bMax: number): number {
+  if (bMin >= aMax) return bMin - aMax;
+  if (aMin >= bMax) return aMin - bMax;
+  return 0;
+}
+
 /**
- * Les quatre vides autour de l'element deplace.
+ * Distance bord-a-bord entre deux boites, en pixels du format.
  *
- * De chaque cote : le voisin le plus proche QUI SE FAIT FACE (leurs emprises
- * se recouvrent sur l'autre axe — deux blocs cote a cote ne mesurent pas un
- * ecart vertical), ou a defaut le bord du cadre. Toujours quatre badges :
- * c'est ce qui permet de detecter « haut = bas » meme quand l'element est
- * seul dans le cadre, cas le plus courant du centrage.
+ * Chaque axe est converti avec SA dimension avant d'etre combine : melanger
+ * des % de largeur et des % de hauteur donnerait un nombre sans signification
+ * des que le cadre n'est pas carre.
+ */
+export function boxDistancePx(a: ElementBox, b: ElementBox, format: FrameFormat): number {
+  const dx = pctToFormatPx(axisGap(a.left, a.right, b.left, b.right), 'x', format);
+  const dy = pctToFormatPx(axisGap(a.top, a.bottom, b.top, b.bottom), 'y', format);
+  return Math.round(Math.hypot(dx, dy));
+}
+
+/**
+ * Ecarts vers UN voisin designe, sur chaque axe qui les separe reellement.
+ *
+ * ⚠️ DEUX CHIFFRES PLUTOT QU'UNE DIAGONALE. Deux blocs poses en biais sont
+ * separes horizontalement ET verticalement ; une seule longueur diagonale
+ * melangerait les deux unites (la largeur du format et sa hauteur ne sont pas
+ * la meme echelle) et ne dirait a l'utilisateur ni de combien deplacer a
+ * droite, ni de combien deplacer en bas. Un axe qui se recouvre ne produit
+ * aucun badge : il n'y a rien a mesurer.
+ */
+function pairBadges(
+  active: ElementBox,
+  partner: ElementBox,
+  format: FrameFormat,
+): GapBadge[] {
+  const out: GapBadge[] = [];
+  const midX = ((active.left + active.right) / 2 + (partner.left + partner.right) / 2) / 2;
+  const midY = ((active.top + active.bottom) / 2 + (partner.top + partner.bottom) / 2) / 2;
+
+  const dy = axisGap(active.top, active.bottom, partner.top, partner.bottom);
+  if (dy > 0) {
+    const dessus = partner.bottom <= active.top;
+    const from = dessus ? partner.bottom : active.bottom;
+    out.push({
+      axis: 'y',
+      side: dessus ? 'top' : 'bottom',
+      midXPct: midX,
+      midYPct: from + dy / 2,
+      gapPct: dy,
+      gapPx: pctToFormatPx(dy, 'y', format),
+      target: 'element',
+      targetLabel: partner.label,
+      targetKey: partner.key,
+      equal: false,
+      aligned: false,
+    });
+  }
+
+  const dx = axisGap(active.left, active.right, partner.left, partner.right);
+  if (dx > 0) {
+    const gauche = partner.right <= active.left;
+    const from = gauche ? partner.right : active.right;
+    out.push({
+      axis: 'x',
+      side: gauche ? 'left' : 'right',
+      midXPct: from + dx / 2,
+      midYPct: midY,
+      gapPct: dx,
+      gapPx: pctToFormatPx(dx, 'x', format),
+      target: 'element',
+      targetLabel: partner.label,
+      targetKey: partner.key,
+      equal: false,
+      aligned: false,
+    });
+  }
+  return out;
+}
+
+export interface GapOptions {
+  /**
+   * Voisin a mesurer explicitement — celui que le pointeur survole.
+   *
+   * Sans lui, c'est le voisin le PLUS PROCHE qui est mesure. Avec lui,
+   * l'utilisateur choisit la paire : « quelle distance entre ces deux-la ».
+   */
+  pairWith?: string | null;
+}
+
+/**
+ * Les vides autour de l'element mis en avant.
+ *
+ * Deux familles, et c'est la correction du defaut « aucune mesure entre deux
+ * elements » :
+ *
+ *   1. LES QUATRE COTES. De chaque cote : le voisin le plus proche QUI SE
+ *      FAIT FACE, ou a defaut le bord du cadre. Toujours quatre badges —
+ *      c'est ce qui permet de detecter « haut = bas » meme quand l'element
+ *      est seul, cas le plus courant du centrage.
+ *
+ *   2. LE VOISIN LE PLUS PROCHE. Deux blocs poses en biais ne se font face
+ *      sur aucun axe : la premiere famille ne les mesurait donc jamais, et
+ *      deux titres decales ne donnaient aucun chiffre. Celui-ci est mesure
+ *      quoi qu'il arrive, sauf s'il figure deja parmi les quatre.
  */
 export function computeGapBadges(
   active: ElementBox,
   others: ElementBox[],
   format: FrameFormat,
+  options: GapOptions = {},
 ): GapBadge[] {
   const facesX = (o: ElementBox) => o.right > active.left && o.left < active.right;
   const facesY = (o: ElementBox) => o.bottom > active.top && o.top < active.bottom;
@@ -372,7 +491,9 @@ export function computeGapBadges(
     gapPx: pctToFormatPx(to - from, 'y', format),
     target: partner ? 'element' : 'frame',
     targetLabel: partner ? partner.label : 'Cadre',
+    targetKey: partner?.key,
     equal: false,
+    aligned: true,
   });
   const horizontal = (side: GapSide, from: number, to: number, partner?: ElementBox): GapBadge => ({
     axis: 'x',
@@ -383,7 +504,9 @@ export function computeGapBadges(
     gapPx: pctToFormatPx(to - from, 'x', format),
     target: partner ? 'element' : 'frame',
     targetLabel: partner ? partner.label : 'Cadre',
+    targetKey: partner?.key,
     equal: false,
+    aligned: true,
   });
 
   const badges: GapBadge[] = [
@@ -407,7 +530,42 @@ export function computeGapBadges(
   markEqual('top', 'bottom');
   markEqual('left', 'right');
 
+  // ── Le voisin le plus proche ───────────────────────────────────────
+  // Survole, l'utilisateur designe lui-meme la paire ; sinon on prend le plus
+  // proche. Deja mesure par un des quatre cotes, on ne le repete pas.
+  const designe = options.pairWith
+    ? others.find((o) => o.key === options.pairWith) ?? null
+    : null;
+  const proche = designe
+    ?? others.slice().sort(
+      (a, b) => boxDistancePx(active, a, format) - boxDistancePx(active, b, format),
+    )[0]
+    ?? null;
+  if (proche && !badges.some((g) => g.targetKey === proche.key)) {
+    badges.push(...pairBadges(active, proche, format));
+  }
+
   return badges;
+}
+
+/**
+ * Deux series de mesures sont-elles identiques ?
+ *
+ * Le calcul tourne apres CHAQUE rendu — sans cette comparaison, poser le
+ * resultat dans l'etat declencherait un rendu, donc un calcul, sans fin.
+ */
+export function sameGaps(a: GapBadge[], b: GapBadge[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((g, i) => {
+    const o = b[i];
+    return g.side === o.side
+      && g.gapPx === o.gapPx
+      && g.equal === o.equal
+      && g.aligned === o.aligned
+      && g.targetKey === o.targetKey
+      && Math.abs(g.midXPct - o.midXPct) < 0.01
+      && Math.abs(g.midYPct - o.midYPct) < 0.01;
+  });
 }
 
 /**
