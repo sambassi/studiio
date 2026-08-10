@@ -150,8 +150,13 @@ import {
   shiftBox,
   boxCenter,
   sameGaps,
+  sameGuides,
+  sameBox,
+  mergeGuides,
+  computeAlignmentLines,
   type ActiveGuide,
   type GapBadge,
+  type ElementBox,
   type ElementPos,
 } from "@/lib/creer/smartGuides";
 import { useDesignHistory } from "@/lib/creer/useDesignHistory";
@@ -2331,6 +2336,8 @@ function InfographicPageInner() {
   const [measuredKey, setMeasuredKey] = useState<string | null>(null);
   /** Bloc survole — permet de mesurer une paire choisie, pas seulement la plus proche. */
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  /** Emprise du bloc mesure — dessine son cadre de selection magenta. */
+  const [activeSelection, setActiveSelection] = useState<ElementBox | null>(null);
 
   // ── Card position mode: 'grid' (default) uses the grid layout, 'free'
   // allows each card to be dragged independently using its `position` field.
@@ -2481,19 +2488,22 @@ function InfographicPageInner() {
         boxes: otherBoxes,
         anchorOffset: centre ? { x: centre.x - from.x, y: centre.y - from.y } : undefined,
       });
-      setActiveGuides(snap.guides);
+      // Emprise apres aimantation — le DOM ne l'a pas encore rendue, mais
+      // c'est elle qui doit etre mesuree, sinon le chiffre affiche est celui
+      // de la frame precedente.
+      const boiteActive = rendered
+        ? shiftBox(rendered, snap.x - from.x, snap.y - from.y)
+        : null;
+      setActiveGuides(
+        boiteActive
+          ? mergeGuides(snap.guides, computeAlignmentLines(boiteActive, otherBoxes, format))
+          : snap.guides,
+      );
+      setActiveSelection(boiteActive);
       // Le bloc deplace devient le bloc MESURE : au relachement, sa regle
       // reste affichee au lieu de disparaitre avec le geste.
       setMeasuredKey(guideKey);
-      setActiveGaps(
-        rendered
-          ? computeGapBadges(
-              shiftBox(rendered, snap.x - from.x, snap.y - from.y),
-              otherBoxes,
-              format,
-            )
-          : [],
-      );
+      setActiveGaps(boiteActive ? computeGapBadges(boiteActive, otherBoxes, format) : []);
       return { x: snap.x, y: snap.y };
     },
     [format],
@@ -2515,23 +2525,23 @@ function InfographicPageInner() {
    */
   useEffect(() => {
     if (dragging || dragCardIdx !== null) return;
-    if (!smartGuidesEnabled || !measuredKey) {
+    const vide = () => {
       setActiveGaps((prev) => (prev.length ? [] : prev));
-      return;
-    }
+      setActiveGuides((prev) => (prev.length ? [] : prev));
+      setActiveSelection((prev) => (prev ? null : prev));
+    };
+    if (!smartGuidesEnabled || !measuredKey) return vide();
     const boxes = collectGuideBoxes(previewRef.current);
     const active = boxes.find((b) => b.key === measuredKey) ?? null;
-    if (!active) {
-      setActiveGaps((prev) => (prev.length ? [] : prev));
-      return;
-    }
-    const next = computeGapBadges(
-      active,
-      boxes.filter((b) => b.key !== measuredKey),
-      format,
-      { pairWith: hoveredKey && hoveredKey !== measuredKey ? hoveredKey : null },
-    );
+    if (!active) return vide();
+    const autres = boxes.filter((b) => b.key !== measuredKey);
+    const next = computeGapBadges(active, autres, format, {
+      pairWith: hoveredKey && hoveredKey !== measuredKey ? hoveredKey : null,
+    });
+    const lignes = computeAlignmentLines(active, autres, format);
     setActiveGaps((prev) => (sameGaps(prev, next) ? prev : next));
+    setActiveGuides((prev) => (sameGuides(prev, lignes) ? prev : lignes));
+    setActiveSelection((prev) => (sameBox(prev, active) ? prev : active));
   });
 
   // Ref to the rush <video> in the preview so we can track currentTime
@@ -9089,6 +9099,7 @@ function InfographicPageInner() {
               <SmartGuides
                 guides={smartGuidesEnabled ? activeGuides : []}
                 gaps={smartGuidesEnabled ? activeGaps : []}
+                selection={smartGuidesEnabled ? activeSelection : null}
                 showGrid={showGridOverlay}
                 // ⚠️ LE MILIEU S'AFFICHE DES QU'ON MANIPULE, sans attendre le
                 // reglage. C'est pendant le placement qu'on a besoin de voir

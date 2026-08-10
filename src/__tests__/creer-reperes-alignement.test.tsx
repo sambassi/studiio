@@ -308,7 +308,7 @@ describe('Le calque n est plus déformé', () => {
       />,
     );
     const puce = container.querySelector('[data-guide-gap="top"]') as HTMLElement;
-    expect(puce.textContent).toContain('768 px');
+    expect(puce.textContent).toBe('768');
     // En pixels d'écran : la forme de la puce ne dépend pas du ratio du cadre.
     expect(puce.style.fontSize).toBe('10px');
     expect(puce.style.left).toBe('50%');
@@ -328,11 +328,12 @@ describe('Le calque n est plus déformé', () => {
     );
     const egal = container.querySelector('[data-guide-gap="top"]') as HTMLElement;
     const inegal = container.querySelector('[data-guide-gap="bottom"]') as HTMLElement;
-    // ⚠️ LE FOND EST LE MÊME POUR LES DEUX, ET C'EST VOULU : sombre, pour que
-    // le chiffre blanc se lise sur n'importe quel aperçu. C'est la BORDURE
-    // qui porte l'accent — la couleur ne remplace plus la lisibilité.
+    // ⚠️ LE FOND EST LE MÊME POUR LES DEUX, ET C'EST VOULU : magenta, la
+    // couleur de marque. Ce qui distingue l'égalité est un LISERÉ et un
+    // signe « = » — la couleur seule resterait invisible à qui ne la
+    // distingue pas.
     expect(egal.style.background).toBe(inegal.style.background);
-    expect(egal.style.borderColor).not.toBe(inegal.style.borderColor);
+    expect(egal.style.outline).not.toBe(inegal.style.outline);
     // Signe « égal » en SVG lucide — jamais un emoji (règle du projet).
     expect(egal.querySelector('[aria-label="même espace"]')).not.toBeNull();
     expect(inegal.querySelector('[aria-label="même espace"]')).toBeNull();
