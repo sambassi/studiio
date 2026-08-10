@@ -761,3 +761,33 @@ les détails, et ce sont eux qui cassent en production.
   contre le CADRE sur les deux côtés) plutôt que d'un état séparé. | **Règle** :
   quand un indicateur peut se DÉDUIRE d'un état déjà présent, le déduire — un
   état parallèle finit toujours par diverger de celui qu'il double.
+
+## 2026-08-10 — Une aide qui commente cesse d'aider
+
+- **2026-08-10** | Pour lever une ambiguïté (« ce chiffre, il mesure quoi ? »),
+  on avait écrit sous chaque mesure le nom des deux blocs — « APRÈS: PROTÉINES
+  ↕ BANANE », « = Cadre ». Quatre mesures autour d'un bloc, c'étaient quatre
+  phrases posées sur l'aperçu : la solution était pire que le problème. Pire,
+  le « = » d'un NOM se confondait avec le « = » d'une ÉGALITÉ. | **Règle** :
+  un instrument de mesure ne commente pas, il chiffre. Lever une ambiguïté
+  passe par la GÉOMÉTRIE (le trait couvre exactement le vide, deux repères
+  d'extrémité le bornent), pas par du texte. Garder le nom en attribut de
+  données pour le diagnostic, jamais à l'écran.
+
+- **2026-08-10** | Quand un utilisateur cite un produit de référence (« comme
+  Canva »), la spécification utile n'est pas « fais joli » mais la liste des
+  choix que ce produit a faits : badge = nombre seul, couleur de marque,
+  espacement égal montré par DEUX valeurs identiques plutôt que par un
+  libellé, lignes d'alignement le temps de la coïncidence seulement. | **Règle** :
+  décomposer la référence en décisions vérifiables avant de coder, et écrire
+  un test par décision — sinon on reproduit une impression, pas un
+  comportement.
+
+- **2026-08-10** | Les lignes d'alignement de bords (bord gauche contre bord
+  gauche, bord contre bord du cadre) sont VISUELLES et ne doivent pas devenir
+  des cibles d'aimantation : ajouter des cibles change la sensation du
+  placement, ce qu'un lot d'affichage ne doit jamais faire. Un test lit le
+  corps de `snapPosition` pour vérifier qu'il n'appelle pas
+  `computeAlignmentLines`. | **Règle** : quand deux mécanismes voisins peuvent
+  se contaminer (montrer vs aimanter, décrire vs agir), écrire le test qui
+  garde la frontière — un commentaire ne survit pas à la prochaine refonte.

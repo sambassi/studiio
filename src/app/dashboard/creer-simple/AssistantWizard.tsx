@@ -62,8 +62,9 @@ import type { AudioKeyframe } from '@/lib/creer/audioDucking';
 import { pointToPct, grabOffset, clampToBox, type Pos, type BoxPct, type CardBox, boxesFromRects, samePos } from '@/lib/creer/dragPosition';
 import {
   snapPosition, computeGapBadges, collectGuideBoxes, shiftBox, boxCenter, sameGaps,
+  sameGuides, sameBox, mergeGuides, computeAlignmentLines,
   anchorToCenter, centerToAnchor,
-  type ActiveGuide, type GapBadge, type ElementPos, type Anchor,
+  type ActiveGuide, type GapBadge, type ElementBox, type ElementPos, type Anchor,
 } from '@/lib/creer/smartGuides';
 import SmartGuides from '@/components/creer/SmartGuides';
 import {
@@ -1078,6 +1079,7 @@ export function Preview({
   photoDragging = false,
   guides = EMPTY_GUIDES,
   gaps = EMPTY_GAPS,
+  selection = null,
   onMeasure,
   onHover,
   elements,
@@ -1276,6 +1278,8 @@ export function Preview({
   guides?: ActiveGuide[];
   /** Ecarts BORD-A-BORD, en pixels du format d'export. */
   gaps?: GapBadge[];
+  /** Emprise du bloc mesure — dessine son cadre de selection magenta. */
+  selection?: ElementBox | null;
   /**
    * Bloc clique — sa regle reste affichee jusqu'au prochain clic ailleurs.
    * `null` quand le clic ne vise aucun bloc mesurable.
@@ -1998,6 +2002,7 @@ export function Preview({
         <SmartGuides
           guides={guides}
           gaps={gaps}
+          selection={selection}
           showGrid={reperesGrille}
           // ⚠️ LE MILIEU S'AFFICHE DES QU'UN BLOC EST MESURE, sans attendre la
           // bascule : c'est pendant le placement qu'on a besoin de voir le
@@ -2438,6 +2443,7 @@ function AutopilotPreview({ config, accent, onPatch }: {
   /** Bloc mesure et bloc survole — memes regles que le Mode simple. */
   const [measuredKey, setMeasuredKey] = useState<string | null>(null);
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  const [selection, setSelection] = useState<ElementBox | null>(null);
 
   /**
    * Mesure PERSISTANTE — voir le commentaire du meme effet dans le wizard :
@@ -2445,23 +2451,23 @@ function AutopilotPreview({ config, accent, onPatch }: {
    */
   useEffect(() => {
     if (gesteRef.current) return;
-    if (!measuredKey) {
+    const vide = () => {
       setGaps((prev) => (prev.length ? [] : prev));
-      return;
-    }
+      setGuides((prev) => (prev.length ? [] : prev));
+      setSelection((prev) => (prev ? null : prev));
+    };
+    if (!measuredKey) return vide();
     const boites = collectGuideBoxes(previewRef.current);
     const active = boites.find((b) => b.key === measuredKey) ?? null;
-    if (!active) {
-      setGaps((prev) => (prev.length ? [] : prev));
-      return;
-    }
-    const suivant = computeGapBadges(
-      active,
-      boites.filter((b) => b.key !== measuredKey),
-      format,
-      { pairWith: hoveredKey && hoveredKey !== measuredKey ? hoveredKey : null },
-    );
+    if (!active) return vide();
+    const autres = boites.filter((b) => b.key !== measuredKey);
+    const suivant = computeGapBadges(active, autres, format, {
+      pairWith: hoveredKey && hoveredKey !== measuredKey ? hoveredKey : null,
+    });
+    const lignes = computeAlignmentLines(active, autres, format);
     setGaps((prev) => (sameGaps(prev, suivant) ? prev : suivant));
+    setGuides((prev) => (sameGuides(prev, lignes) ? prev : lignes));
+    setSelection((prev) => (sameBox(prev, active) ? prev : active));
   });
 
   /** Ancre d'un bloc : le titre par son coin haut-gauche, le CTA par son bas. */
@@ -2584,14 +2590,17 @@ function AutopilotPreview({ config, accent, onPatch }: {
     const rendue = boites.find((b) => b.key === geste.el) ?? null;
     const autresBoites = boites.filter((b) => b.key !== geste.el);
     const snap = snapPosition(centre.x, centre.y, autres, { thirds: true, boxes: autresBoites });
-    setGuides(snap.guides);
     setMeasuredKey(geste.el);
-    if (rendue) {
-      const c = boxCenter(rendue);
-      setGaps(computeGapBadges(shiftBox(rendue, snap.x - c.x, snap.y - c.y), autresBoites, format));
-    } else {
-      setGaps([]);
-    }
+    const boiteActive = rendue
+      ? shiftBox(rendue, snap.x - boxCenter(rendue).x, snap.y - boxCenter(rendue).y)
+      : null;
+    setGuides(
+      boiteActive
+        ? mergeGuides(snap.guides, computeAlignmentLines(boiteActive, autresBoites, format))
+        : snap.guides,
+    );
+    setSelection(boiteActive);
+    setGaps(boiteActive ? computeGapBadges(boiteActive, autresBoites, format) : []);
     const pos = clampToBox(centerToAnchor({ x: snap.x, y: snap.y }, ancre, geste.box), ancre, geste.box);
     setStyle((prev) => ({ ...prev, [geste.el]: { ...(prev[geste.el] ?? {}), x: pos.x, y: pos.y } }));
   }, [format]);
@@ -2643,6 +2652,7 @@ function AutopilotPreview({ config, accent, onPatch }: {
         dragging={dragging}
         guides={guides}
         gaps={gaps}
+        selection={selection}
         onMeasure={setMeasuredKey}
         onHover={setHoveredKey}
         onDragStart={startDrag}
@@ -4156,6 +4166,8 @@ export default function AssistantWizard() {
   const [measuredKey, setMeasuredKey] = useState<string | null>(null);
   /** Bloc survole — mesure la paire choisie, pas seulement la plus proche. */
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  /** Emprise du bloc mesure — dessine son cadre de selection magenta. */
+  const [dragSelection, setDragSelection] = useState<ElementBox | null>(null);
 
   /**
    * Mesure PERSISTANTE du bloc selectionne.
@@ -4172,23 +4184,23 @@ export default function AssistantWizard() {
    */
   useEffect(() => {
     if (dragRef.current) return;
-    if (!measuredKey || capturing) {
+    const vide = () => {
       setDragGaps((prev) => (prev.length ? [] : prev));
-      return;
-    }
+      setDragGuides((prev) => (prev.length ? [] : prev));
+      setDragSelection((prev) => (prev ? null : prev));
+    };
+    if (!measuredKey || capturing) return vide();
     const boites = collectGuideBoxes(previewRef.current);
     const active = boites.find((b) => b.key === measuredKey) ?? null;
-    if (!active) {
-      setDragGaps((prev) => (prev.length ? [] : prev));
-      return;
-    }
-    const suivant = computeGapBadges(
-      active,
-      boites.filter((b) => b.key !== measuredKey),
-      format,
-      { pairWith: hoveredKey && hoveredKey !== measuredKey ? hoveredKey : null },
-    );
+    if (!active) return vide();
+    const autres = boites.filter((b) => b.key !== measuredKey);
+    const suivant = computeGapBadges(active, autres, format, {
+      pairWith: hoveredKey && hoveredKey !== measuredKey ? hoveredKey : null,
+    });
+    const lignes = computeAlignmentLines(active, autres, format);
     setDragGaps((prev) => (sameGaps(prev, suivant) ? prev : suivant));
+    setDragGuides((prev) => (sameGuides(prev, lignes) ? prev : lignes));
+    setDragSelection((prev) => (sameBox(prev, active) ? prev : active));
   });
 
   /**
@@ -4238,18 +4250,19 @@ export default function AssistantWizard() {
     const centre = anchorToCenter(pos, anchor, box);
     // `centre` est deja un centre : aucun `anchorOffset` a corriger.
     const snap = snapPosition(centre.x, centre.y, autres, { thirds: true, boxes: autresBoites });
-    setDragGuides(snap.guides);
     // Le bloc deplace devient le bloc MESURE : au relachement, sa regle reste
     // affichee au lieu de disparaitre avec le geste.
     setMeasuredKey(guideKey);
-    if (rendue) {
-      const c = boxCenter(rendue);
-      setDragGaps(
-        computeGapBadges(shiftBox(rendue, snap.x - c.x, snap.y - c.y), autresBoites, format),
-      );
-    } else {
-      setDragGaps([]);
-    }
+    const boiteActive = rendue
+      ? shiftBox(rendue, snap.x - boxCenter(rendue).x, snap.y - boxCenter(rendue).y)
+      : null;
+    setDragGuides(
+      boiteActive
+        ? mergeGuides(snap.guides, computeAlignmentLines(boiteActive, autresBoites, format))
+        : snap.guides,
+    );
+    setDragSelection(boiteActive);
+    setDragGaps(boiteActive ? computeGapBadges(boiteActive, autresBoites, format) : []);
     return centerToAnchor({ x: snap.x, y: snap.y }, anchor, box);
   }, [alignmentTargets, format]);
 
@@ -8066,6 +8079,7 @@ export default function AssistantWizard() {
           photoDragging={photoDragging}
           guides={dragGuides}
           gaps={dragGaps}
+          selection={dragSelection}
           onMeasure={setMeasuredKey}
           onHover={setHoveredKey}
           onElementDragStart={startElementDrag}

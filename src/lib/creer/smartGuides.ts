@@ -64,7 +64,16 @@ export interface ActiveGuide {
   /** Position in 0..100 */
   pos: number;
   /** Where this guide came from (for debugging / future "snapping to X" copy) */
-  source: 'preview-center' | 'element-center' | 'preview-thirds' | 'equal-gap';
+  source:
+    | 'preview-center'
+    | 'element-center'
+    | 'preview-thirds'
+    | 'equal-gap'
+    // Alignements de BORDS. Purement visuels : ils signalent une coincidence
+    // deja atteinte, sans ajouter de cible d'aimantation — le placement ne
+    // change donc pas de comportement.
+    | 'frame-edge'
+    | 'element-edge';
 }
 
 export interface SnapResult {
@@ -559,6 +568,128 @@ export function computeGapBadges(
   }
 
   return badges;
+}
+
+/* ── Lignes d'alignement ──────────────────────────────────────────────── */
+
+/**
+ * Tolerance d'un alignement visible, en pixels du format d'export.
+ *
+ * Plus serree que l'aimantation : une ligne d'alignement AFFIRME que deux
+ * bords coincident. L'afficher pour un ecart d'un demi-pourcent serait un
+ * mensonge que l'utilisateur decouvrirait a l'export.
+ */
+export const ALIGN_TOLERANCE_PX = 3;
+
+/**
+ * Les coincidences de bords et de centres, entre le bloc actif et le reste.
+ *
+ * ⚠️ AUCUNE CIBLE D'AIMANTATION N'EST AJOUTEE ICI. `snapPosition` aimante sur
+ * les CENTRES et sur les milieux d'espaces libres ; y ajouter les bords
+ * changerait la sensation du placement, que ce lot ne doit pas toucher. Ces
+ * lignes ne font que RENDRE VISIBLE un alignement deja atteint — bord gauche
+ * contre bord gauche, centre contre centre, bord contre bord du cadre.
+ */
+export function computeAlignmentLines(
+  active: ElementBox,
+  others: ElementBox[],
+  format: FrameFormat,
+): ActiveGuide[] {
+  const out: ActiveGuide[] = [];
+  const vus = new Set<string>();
+
+  const ajoute = (axis: 'x' | 'y', pos: number, source: ActiveGuide['source']) => {
+    const cle = `${axis}:${pos.toFixed(2)}`;
+    if (vus.has(cle)) return;
+    vus.add(cle);
+    out.push({ axis, pos, source });
+  };
+
+  const proche = (a: number, b: number, axis: 'x' | 'y') =>
+    Math.abs(pctToFormatPx(a - b, axis, format)) <= ALIGN_TOLERANCE_PX;
+
+  const bordsX = [active.left, (active.left + active.right) / 2, active.right];
+  const bordsY = [active.top, (active.top + active.bottom) / 2, active.bottom];
+
+  // Contre le cadre : ses deux bords et son milieu.
+  for (const a of bordsX) {
+    for (const cible of [0, 50, 100]) {
+      if (proche(a, cible, 'x')) {
+        ajoute('x', cible, cible === 50 ? 'preview-center' : 'frame-edge');
+      }
+    }
+  }
+  for (const a of bordsY) {
+    for (const cible of [0, 50, 100]) {
+      if (proche(a, cible, 'y')) {
+        ajoute('y', cible, cible === 50 ? 'preview-center' : 'frame-edge');
+      }
+    }
+  }
+
+  // Contre les autres blocs : bords et centres.
+  for (const o of others) {
+    const ciblesX: Array<[number, ActiveGuide['source']]> = [
+      [o.left, 'element-edge'],
+      [(o.left + o.right) / 2, 'element-center'],
+      [o.right, 'element-edge'],
+    ];
+    for (const a of bordsX) {
+      for (const [cible, source] of ciblesX) {
+        if (proche(a, cible, 'x')) ajoute('x', cible, source);
+      }
+    }
+    const ciblesY: Array<[number, ActiveGuide['source']]> = [
+      [o.top, 'element-edge'],
+      [(o.top + o.bottom) / 2, 'element-center'],
+      [o.bottom, 'element-edge'],
+    ];
+    for (const a of bordsY) {
+      for (const [cible, source] of ciblesY) {
+        if (proche(a, cible, 'y')) ajoute('y', cible, source);
+      }
+    }
+  }
+
+  return out;
+}
+
+/** Deux series de lignes sont-elles identiques ? Meme role que `sameGaps`. */
+export function sameGuides(a: ActiveGuide[], b: ActiveGuide[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((g, i) =>
+    g.axis === b[i].axis && g.source === b[i].source && Math.abs(g.pos - b[i].pos) < 0.01);
+}
+
+/**
+ * Reunit les lignes d'aimantation et celles d'alignement, sans doublon.
+ *
+ * Les deux tombent souvent au meme endroit — aimanter sur un centre, c'est
+ * aussi s'y aligner. Deux traits superposes donneraient un trait deux fois
+ * plus opaque a cet endroit precis, donc une hierarchie visuelle fausse.
+ */
+export function mergeGuides(...series: ActiveGuide[][]): ActiveGuide[] {
+  const vus = new Set<string>();
+  const out: ActiveGuide[] = [];
+  for (const serie of series) {
+    for (const g of serie) {
+      const cle = `${g.axis}:${g.pos.toFixed(2)}`;
+      if (vus.has(cle)) continue;
+      vus.add(cle);
+      out.push(g);
+    }
+  }
+  return out;
+}
+
+/** Deux emprises sont-elles identiques ? Meme role que `sameGaps`. */
+export function sameBox(a: ElementBox | null, b: ElementBox | null): boolean {
+  if (!a || !b) return a === b;
+  return a.key === b.key
+    && Math.abs(a.left - b.left) < 0.01
+    && Math.abs(a.top - b.top) < 0.01
+    && Math.abs(a.right - b.right) < 0.01
+    && Math.abs(a.bottom - b.bottom) < 0.01;
 }
 
 /**
