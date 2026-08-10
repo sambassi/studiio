@@ -153,6 +153,7 @@ import {
   sameGuides,
   sameBox,
   mergeGuides,
+  onePerAxis,
   computeAlignmentLines,
   type ActiveGuide,
   type GapBadge,
@@ -2334,8 +2335,6 @@ function InfographicPageInner() {
    * garde a l'ecran jusqu'a ce qu'on clique ailleurs.
    */
   const [measuredKey, setMeasuredKey] = useState<string | null>(null);
-  /** Bloc survole — permet de mesurer une paire choisie, pas seulement la plus proche. */
-  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   /** Emprise du bloc mesure — dessine son cadre de selection magenta. */
   const [activeSelection, setActiveSelection] = useState<ElementBox | null>(null);
 
@@ -2496,8 +2495,10 @@ function InfographicPageInner() {
         : null;
       setActiveGuides(
         boiteActive
-          ? mergeGuides(snap.guides, computeAlignmentLines(boiteActive, otherBoxes, format))
-          : snap.guides,
+          // La cible AIMANTEE d'abord : c'est elle qui a la priorite quand
+          // plusieurs coincidences tombent sur le meme axe.
+          ? onePerAxis(mergeGuides(snap.guides, computeAlignmentLines(boiteActive, otherBoxes, format)))
+          : onePerAxis(snap.guides),
       );
       setActiveSelection(boiteActive);
       // Le bloc deplace devient le bloc MESURE : au relachement, sa regle
@@ -2535,10 +2536,8 @@ function InfographicPageInner() {
     const active = boxes.find((b) => b.key === measuredKey) ?? null;
     if (!active) return vide();
     const autres = boxes.filter((b) => b.key !== measuredKey);
-    const next = computeGapBadges(active, autres, format, {
-      pairWith: hoveredKey && hoveredKey !== measuredKey ? hoveredKey : null,
-    });
-    const lignes = computeAlignmentLines(active, autres, format);
+    const next = computeGapBadges(active, autres, format);
+    const lignes = onePerAxis(computeAlignmentLines(active, autres, format));
     setActiveGaps((prev) => (sameGaps(prev, next) ? prev : next));
     setActiveGuides((prev) => (sameGuides(prev, lignes) ? prev : lignes));
     setActiveSelection((prev) => (sameBox(prev, active) ? prev : active));
@@ -8591,12 +8590,6 @@ function InfographicPageInner() {
             const bloc = target.closest('[data-guide-key]');
             setMeasuredKey(bloc ? bloc.getAttribute('data-guide-key') : null);
           }}
-          onMouseOver={(e) => {
-            const bloc = (e.target as HTMLElement).closest('[data-guide-key]');
-            const cle = bloc ? bloc.getAttribute('data-guide-key') : null;
-            setHoveredKey((prev) => (prev === cle ? prev : cle));
-          }}
-          onMouseLeave={() => setHoveredKey(null)}
         >
           <div
             ref={previewRef}

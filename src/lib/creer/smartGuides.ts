@@ -339,28 +339,16 @@ export interface GapBadge {
   /** Mesure contre un voisin, ou contre le bord du cadre a defaut. */
   target: 'frame' | 'element';
   targetLabel: string;
-  /**
-   * Nom du bloc MESURE, celui qui est selectionne.
-   *
-   * Avec `targetLabel`, il permet a la pastille de nommer les deux extremites
-   * — « Hydrate-toi ↔ Banane ». Sans cela, « 64 px » flotte au milieu de
-   * l'apercu sans dire ce qu'il relie : c'est exactement ce que l'utilisateur
-   * lisait comme « je n'ai pas la mesure entre ces deux-la ».
-   */
-  sourceLabel: string;
-  /** Cle du voisin mesure — sert a ne pas le mesurer deux fois. */
+  /** Cle du voisin mesure — diagnostic seulement, jamais affichee. */
   targetKey?: string;
-  /** Vrai quand l'ecart oppose vaut le meme, a la tolerance pres. */
-  equal: boolean;
   /**
-   * Les deux boites SE FONT FACE sur l'autre axe.
+   * Toujours vrai.
    *
-   * Faux = mesure « en diagonale » : l'ecart reste un vrai bord-a-bord sur
-   * cet axe, mais rien ne se trouve reellement en vis-a-vis. Le calque le
-   * trace en pointilles pour que le chiffre ne se lise pas comme un
-   * alignement.
+   * Le champ subsiste parce que la notion porte le sens de l'affichage : un
+   * badge n'existe QUE dans une paire d'ecarts egaux. Il n'y a plus de badge
+   * « non egal » a distinguer — c'etait le nuage de chiffres qu'on retire.
    */
-  aligned: boolean;
+  equal: true;
 }
 
 /**
@@ -371,118 +359,27 @@ export interface GapBadge {
  */
 export const EQUAL_GAP_TOLERANCE_PX = 6;
 
-/** Ecart bord-a-bord entre deux boites sur un axe ; 0 si elles se recouvrent. */
-function axisGap(aMin: number, aMax: number, bMin: number, bMax: number): number {
-  if (bMin >= aMax) return bMin - aMax;
-  if (aMin >= bMax) return aMin - bMax;
-  return 0;
-}
-
 /**
- * Distance bord-a-bord entre deux boites, en pixels du format.
+ * Les vides autour du bloc, UNIQUEMENT lorsqu'ils sont egaux deux a deux.
  *
- * Chaque axe est converti avec SA dimension avant d'etre combine : melanger
- * des % de largeur et des % de hauteur donnerait un nombre sans signification
- * des que le cadre n'est pas carre.
- */
-export function boxDistancePx(a: ElementBox, b: ElementBox, format: FrameFormat): number {
-  const dx = pctToFormatPx(axisGap(a.left, a.right, b.left, b.right), 'x', format);
-  const dy = pctToFormatPx(axisGap(a.top, a.bottom, b.top, b.bottom), 'y', format);
-  return Math.round(Math.hypot(dx, dy));
-}
-
-/**
- * Ecarts vers UN voisin designe, sur chaque axe qui les separe reellement.
+ * ⚠️ ON N'AFFICHE PLUS UN ECART SEUL, ET C'EST TOUT LE SUJET. Quatre chiffres
+ * en permanence autour d'un bloc — « 157 » au-dessus, « 109 » en dessous —
+ * ne repondent a aucune question : l'utilisateur ne cherche pas a lire des
+ * distances, il cherche a les EGALISER. Un chiffre isole est du bruit ; deux
+ * chiffres IDENTIQUES de part et d'autre sont une reponse.
  *
- * ⚠️ DEUX CHIFFRES PLUTOT QU'UNE DIAGONALE. Deux blocs poses en biais sont
- * separes horizontalement ET verticalement ; une seule longueur diagonale
- * melangerait les deux unites (la largeur du format et sa hauteur ne sont pas
- * la meme echelle) et ne dirait a l'utilisateur ni de combien deplacer a
- * droite, ni de combien deplacer en bas. Un axe qui se recouvre ne produit
- * aucun badge : il n'y a rien a mesurer.
- */
-function pairBadges(
-  active: ElementBox,
-  partner: ElementBox,
-  format: FrameFormat,
-): GapBadge[] {
-  const out: GapBadge[] = [];
-  const midX = ((active.left + active.right) / 2 + (partner.left + partner.right) / 2) / 2;
-  const midY = ((active.top + active.bottom) / 2 + (partner.top + partner.bottom) / 2) / 2;
-
-  const dy = axisGap(active.top, active.bottom, partner.top, partner.bottom);
-  if (dy > 0) {
-    const dessus = partner.bottom <= active.top;
-    const from = dessus ? partner.bottom : active.bottom;
-    out.push({
-      axis: 'y',
-      side: dessus ? 'top' : 'bottom',
-      midXPct: midX,
-      midYPct: from + dy / 2,
-      gapPct: dy,
-      gapPx: pctToFormatPx(dy, 'y', format),
-      target: 'element',
-      targetLabel: partner.label,
-      sourceLabel: active.label,
-      targetKey: partner.key,
-      equal: false,
-      aligned: false,
-    });
-  }
-
-  const dx = axisGap(active.left, active.right, partner.left, partner.right);
-  if (dx > 0) {
-    const gauche = partner.right <= active.left;
-    const from = gauche ? partner.right : active.right;
-    out.push({
-      axis: 'x',
-      side: gauche ? 'left' : 'right',
-      midXPct: from + dx / 2,
-      midYPct: midY,
-      gapPct: dx,
-      gapPx: pctToFormatPx(dx, 'x', format),
-      target: 'element',
-      targetLabel: partner.label,
-      sourceLabel: active.label,
-      targetKey: partner.key,
-      equal: false,
-      aligned: false,
-    });
-  }
-  return out;
-}
-
-export interface GapOptions {
-  /**
-   * Voisin a mesurer explicitement — celui que le pointeur survole.
-   *
-   * Sans lui, c'est le voisin le PLUS PROCHE qui est mesure. Avec lui,
-   * l'utilisateur choisit la paire : « quelle distance entre ces deux-la ».
-   */
-  pairWith?: string | null;
-}
-
-/**
- * Les vides autour de l'element mis en avant.
+ * On mesure donc toujours les quatre cotes — le voisin le plus proche qui SE
+ * FAIT FACE, ou le bord du cadre a defaut — mais on ne rend que les axes dont
+ * les deux vides se valent, a `EQUAL_GAP_TOLERANCE_PX` pres. Rien a egaliser,
+ * rien a l'ecran.
  *
- * Deux familles, et c'est la correction du defaut « aucune mesure entre deux
- * elements » :
- *
- *   1. LES QUATRE COTES. De chaque cote : le voisin le plus proche QUI SE
- *      FAIT FACE, ou a defaut le bord du cadre. Toujours quatre badges —
- *      c'est ce qui permet de detecter « haut = bas » meme quand l'element
- *      est seul, cas le plus courant du centrage.
- *
- *   2. LE VOISIN LE PLUS PROCHE. Deux blocs poses en biais ne se font face
- *      sur aucun axe : la premiere famille ne les mesurait donc jamais, et
- *      deux titres decales ne donnaient aucun chiffre. Celui-ci est mesure
- *      quoi qu'il arrive, sauf s'il figure deja parmi les quatre.
+ * Consequence voulue : un bloc seul dans le cadre et centre verticalement
+ * montre sa paire haut/bas ; le meme bloc pose de travers ne montre rien.
  */
 export function computeGapBadges(
   active: ElementBox,
   others: ElementBox[],
   format: FrameFormat,
-  options: GapOptions = {},
 ): GapBadge[] {
   const facesX = (o: ElementBox) => o.right > active.left && o.left < active.right;
   const facesY = (o: ElementBox) => o.bottom > active.top && o.top < active.bottom;
@@ -511,10 +408,8 @@ export function computeGapBadges(
     gapPx: pctToFormatPx(to - from, 'y', format),
     target: partner ? 'element' : 'frame',
     targetLabel: partner ? partner.label : 'Cadre',
-    sourceLabel: active.label,
     targetKey: partner?.key,
-    equal: false,
-    aligned: true,
+    equal: true,
   });
   const horizontal = (side: GapSide, from: number, to: number, partner?: ElementBox): GapBadge => ({
     axis: 'x',
@@ -525,49 +420,21 @@ export function computeGapBadges(
     gapPx: pctToFormatPx(to - from, 'x', format),
     target: partner ? 'element' : 'frame',
     targetLabel: partner ? partner.label : 'Cadre',
-    sourceLabel: active.label,
     targetKey: partner?.key,
-    equal: false,
-    aligned: true,
+    equal: true,
   });
 
-  const badges: GapBadge[] = [
-    vertical('top', above ? above.bottom : 0, active.top, above),
-    vertical('bottom', active.bottom, below ? below.top : 100, below),
-    horizontal('left', left ? left.right : 0, active.left, left),
-    horizontal('right', active.right, right ? right.left : 100, right),
-  ];
+  const out: GapBadge[] = [];
 
-  // Espaces EGAUX — l'indicateur de symetrie. Limite volontairement aux deux
-  // cotes opposes de l'element deplace : la distribution d'une serie de trois
-  // elements ou plus demanderait un autre calcul, et n'est pas couverte ici.
-  const markEqual = (a: GapSide, b: GapSide) => {
-    const x = badges.find((g) => g.side === a)!;
-    const y = badges.find((g) => g.side === b)!;
-    if (Math.abs(x.gapPx - y.gapPx) <= EQUAL_GAP_TOLERANCE_PX) {
-      x.equal = true;
-      y.equal = true;
-    }
-  };
-  markEqual('top', 'bottom');
-  markEqual('left', 'right');
+  const haut = vertical('top', above ? above.bottom : 0, active.top, above);
+  const bas = vertical('bottom', active.bottom, below ? below.top : 100, below);
+  if (Math.abs(haut.gapPx - bas.gapPx) <= EQUAL_GAP_TOLERANCE_PX) out.push(haut, bas);
 
-  // ── Le voisin le plus proche ───────────────────────────────────────
-  // Survole, l'utilisateur designe lui-meme la paire ; sinon on prend le plus
-  // proche. Deja mesure par un des quatre cotes, on ne le repete pas.
-  const designe = options.pairWith
-    ? others.find((o) => o.key === options.pairWith) ?? null
-    : null;
-  const proche = designe
-    ?? others.slice().sort(
-      (a, b) => boxDistancePx(active, a, format) - boxDistancePx(active, b, format),
-    )[0]
-    ?? null;
-  if (proche && !badges.some((g) => g.targetKey === proche.key)) {
-    badges.push(...pairBadges(active, proche, format));
-  }
+  const gauche = horizontal('left', left ? left.right : 0, active.left, left);
+  const droite = horizontal('right', active.right, right ? right.left : 100, right);
+  if (Math.abs(gauche.gapPx - droite.gapPx) <= EQUAL_GAP_TOLERANCE_PX) out.push(gauche, droite);
 
-  return badges;
+  return out;
 }
 
 /* ── Lignes d'alignement ──────────────────────────────────────────────── */
@@ -682,6 +549,24 @@ export function mergeGuides(...series: ActiveGuide[][]): ActiveGuide[] {
   return out;
 }
 
+/**
+ * Au plus UNE ligne par axe.
+ *
+ * ⚠️ SANS CETTE COUPE, UN TRAIT PAR VOISIN. Un bloc pose au milieu de cinq
+ * autres declenche cinq coincidences simultanees : cinq traits en travers de
+ * l'apercu, qui ne designent plus rien. L'ordre d'entree porte la priorite —
+ * les appelants passent d'abord la cible reellement AIMANTEE, puis les
+ * alignements simplement constates.
+ */
+export function onePerAxis(guides: ActiveGuide[]): ActiveGuide[] {
+  const out: ActiveGuide[] = [];
+  for (const axis of ['x', 'y'] as const) {
+    const premier = guides.find((g) => g.axis === axis);
+    if (premier) out.push(premier);
+  }
+  return out;
+}
+
 /** Deux emprises sont-elles identiques ? Meme role que `sameGaps`. */
 export function sameBox(a: ElementBox | null, b: ElementBox | null): boolean {
   if (!a || !b) return a === b;
@@ -704,8 +589,6 @@ export function sameGaps(a: GapBadge[], b: GapBadge[]): boolean {
     const o = b[i];
     return g.side === o.side
       && g.gapPx === o.gapPx
-      && g.equal === o.equal
-      && g.aligned === o.aligned
       && g.targetKey === o.targetKey
       && Math.abs(g.midXPct - o.midXPct) < 0.01
       && Math.abs(g.midYPct - o.midYPct) < 0.01;

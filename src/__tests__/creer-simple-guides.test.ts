@@ -117,15 +117,21 @@ describe('Les badges d écart', () => {
   const voisin = (left: number, top: number, right: number, bottom: number): ElementBox =>
     ({ key: 'element', label: 'Autre', left, top, right, bottom });
 
-  it('quatre badges, toujours — voisin s il y en a un, bord du cadre sinon', () => {
+  it('rien tant que les écarts ne sont pas égaux — quatre badges quand ils le sont', () => {
+    // L'actif est centré dans le cadre : les deux axes s'affichent.
     expect(computeGapBadges(actif, [], '9:16')).toHaveLength(4);
-    expect(computeGapBadges(actif, [voisin(40, 10, 60, 30)], '9:16')).toHaveLength(4);
+    // Un voisin au-dessus casse l'égalité verticale : cet axe s'éteint.
+    expect(computeGapBadges(actif, [voisin(40, 10, 60, 30)], '9:16')
+      .every((g) => g.axis === 'x')).toBe(true);
   });
 
   it('l écart est le VIDE entre les deux bords, pas la distance des centres', () => {
-    const b = computeGapBadges(actif, [voisin(40, 10, 60, 30)], '9:16');
+    // Actif 40→90, voisin au-dessus finissant à 30 : 10 % de vide en haut,
+    // 10 % jusqu'au bas du cadre — donc égalité, donc affichage.
+    const grand = { key: 'element' as const, label: 'En cours', left: 40, top: 40, right: 60, bottom: 90 };
+    const b = computeGapBadges(grand, [voisin(40, 10, 60, 30)], '9:16');
     const haut = b.find((g) => g.side === 'top')!;
-    // Bords : 40 − 30 = 10 %. Centres : 50 − 20 = 30 %, trois fois plus.
+    // Bords : 40 − 30 = 10 %. Centres : 65 − 20 = 45 %, plus de quatre fois plus.
     expect(haut.gapPct).toBeCloseTo(10);
   });
 

@@ -7,6 +7,7 @@ import {
   computeGapBadges,
   computeAlignmentLines,
   mergeGuides,
+  onePerAxis,
   sameGuides,
   sameBox,
   ALIGN_TOLERANCE_PX,
@@ -26,8 +27,7 @@ import {
 
 const gap = (over: Partial<GapBadge> = {}): GapBadge => ({
   axis: 'y', side: 'top', midXPct: 50, midYPct: 20, gapPct: 40, gapPx: 768,
-  target: 'frame', targetLabel: 'Cadre', sourceLabel: 'Titre',
-  equal: false, aligned: true, ...over,
+  target: 'frame', targetLabel: 'Cadre', equal: true, ...over,
 });
 
 const box = (key: string, left: number, top: number, right: number, bottom: number, label = key): ElementBox =>
@@ -38,14 +38,13 @@ const MAGENTA_RGB = 'rgb(217, 28, 210)';
 describe('Des badges magenta ÉPURÉS — le nombre, et rien d autre', () => {
   it('la pastille ne contient QUE le nombre', () => {
     const { container } = render(
-      <SmartGuides format="9:16" gaps={[gap({ sourceLabel: 'Hydrate-toi', targetLabel: 'Banane' })]} />,
+      <SmartGuides format="9:16" gaps={[gap({ targetLabel: 'Banane', targetKey: 'b', target: 'element' })]} />,
     );
     const puce = container.querySelector('[data-guide-gap="top"]') as HTMLElement;
     expect(puce.textContent).toBe('768');
-    // Les noms restent disponibles pour le diagnostic, jamais a l'ecran.
-    expect(puce.textContent).not.toContain('Hydrate-toi');
     expect(puce.textContent).not.toContain('Banane');
-    expect(puce.getAttribute('data-guide-source')).toBe('Hydrate-toi');
+    // La cible reste disponible pour le diagnostic, jamais a l'ecran.
+    expect(puce.getAttribute('data-guide-target')).toBe('b');
   });
 
   it('plus aucun libellé de noms n est rendu', () => {
@@ -54,8 +53,8 @@ describe('Des badges magenta ÉPURÉS — le nombre, et rien d autre', () => {
       <SmartGuides
         format="9:16"
         gaps={[
-          gap({ sourceLabel: 'Titre', targetLabel: 'Cadre' }),
-          gap({ side: 'bottom', midYPct: 80, sourceLabel: 'Titre', targetLabel: 'Banane', target: 'element', targetKey: 'b' }),
+          gap({ targetLabel: 'Cadre' }),
+          gap({ side: 'bottom', midYPct: 80, targetLabel: 'Banane', target: 'element', targetKey: 'b' }),
         ]}
       />,
     );
@@ -126,18 +125,16 @@ describe('Espacement ÉGAL — la signature Canva', () => {
     expect(valeurs[0]).toBe(valeurs[1]);
   });
 
-  it('l égalité se voit sans distinguer les teintes — un signe « = » la double', () => {
+  it('plus de signe « = » : il serait sur TOUS les badges, donc muet', () => {
+    // Un badge n'existe désormais que dans une paire d'écarts égaux. Le signe
+    // ne distinguerait plus rien ; ce qui parle, c'est le nombre répété.
     const { container } = render(
-      <SmartGuides format="9:16" gaps={[gap({ equal: true }), gap({ side: 'bottom', midYPct: 80 })]} />,
+      <SmartGuides format="9:16" gaps={[gap(), gap({ side: 'bottom', midYPct: 80 })]} />,
     );
-    const egal = container.querySelector('[data-guide-gap="top"]') as HTMLElement;
-    const inegal = container.querySelector('[data-guide-gap="bottom"]') as HTMLElement;
-    expect(egal.querySelector('[aria-label="même espace"]')).not.toBeNull();
-    expect(inegal.querySelector('[aria-label="même espace"]')).toBeNull();
-    // Le fond reste magenta des deux côtés : la couleur ne porte pas seule
-    // l'information, elle resterait invisible à qui ne la distingue pas.
-    expect(egal.style.background).toBe(inegal.style.background);
-    expect(egal.style.outline).not.toBe(inegal.style.outline);
+    expect(container.querySelector('[aria-label="même espace"]')).toBeNull();
+    for (const p of Array.from(container.querySelectorAll('[data-guide-gap]'))) {
+      expect(p.textContent).toMatch(/^\d+$/);
+    }
   });
 });
 
@@ -205,6 +202,48 @@ describe('Lignes d alignement — visibles le temps de la coïncidence', () => {
     );
     const ligne = container.querySelector('[data-guide-line="preview-center"]') as HTMLElement;
     expect(ligne.style.borderLeft).toContain(MAGENTA_RGB);
+  });
+});
+
+describe('Au plus UNE ligne par axe', () => {
+  it('la cible aimantée l emporte sur les alignements simplement constatés', () => {
+    // ⚠️ L'ORDRE PORTE LA PRIORITÉ. Les appelants passent d'abord la cible
+    // réellement snappée : c'est elle qui doit rester quand plusieurs
+    // coïncidences tombent sur le même axe.
+    const retenu = onePerAxis(mergeGuides(
+      [{ axis: 'x', pos: 50, source: 'preview-center' }],
+      [{ axis: 'x', pos: 12, source: 'element-edge' }, { axis: 'x', pos: 30, source: 'element-edge' }],
+    ));
+    expect(retenu).toHaveLength(1);
+    expect(retenu[0]).toMatchObject({ pos: 50, source: 'preview-center' });
+  });
+
+  it('un trait par voisin, c est un aperçu barré de traits', () => {
+    // Cinq blocs alignés déclenchaient cinq coïncidences simultanées.
+    const cinq = Array.from({ length: 5 }, (_, i) => ({
+      axis: 'y' as const, pos: 10 + i, source: 'element-edge' as const,
+    }));
+    expect(onePerAxis(cinq)).toHaveLength(1);
+  });
+
+  it('les deux axes restent possibles en même temps', () => {
+    const retenu = onePerAxis([
+      { axis: 'x', pos: 50, source: 'preview-center' },
+      { axis: 'y', pos: 25, source: 'frame-edge' },
+      { axis: 'y', pos: 80, source: 'element-edge' },
+    ]);
+    expect(retenu.map((g) => g.axis)).toEqual(['x', 'y']);
+    expect(retenu[1].pos).toBe(25);
+  });
+
+  it('les deux éditeurs appliquent la coupe', () => {
+    for (const [nom, src] of [
+      ['avancé', readFileSync(resolve(__dirname, '../app/dashboard/creer/page.tsx'), 'utf-8')],
+      ['simple', readFileSync(resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'), 'utf-8')],
+    ] as const) {
+      expect(src.includes('onePerAxis(mergeGuides('), nom).toBe(true);
+      expect(src.includes('onePerAxis(computeAlignmentLines('), nom).toBe(true);
+    }
   });
 });
 

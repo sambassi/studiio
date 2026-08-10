@@ -791,3 +791,31 @@ les détails, et ce sont eux qui cassent en production.
   `computeAlignmentLines`. | **Règle** : quand deux mécanismes voisins peuvent
   se contaminer (montrer vs aimanter, décrire vs agir), écrire le test qui
   garde la frontière — un commentaire ne survit pas à la prochaine refonte.
+
+## 2026-08-10 — Un chiffre isolé est du bruit ; deux chiffres égaux sont une réponse
+
+- **2026-08-10** | On avait empilé les mesures : quatre écarts en permanence
+  autour du bloc, plus l'écart vers le voisin le plus proche, plus l'écart
+  vers le bloc survolé. Chacune répondait à une demande réelle ; ensemble,
+  elles formaient un nuage de chiffres illisible (« 157 » au-dessus de
+  « 109 »). | **Règle** : avant d'ajouter une information à un affichage,
+  demander ce qu'elle permet de DÉCIDER. L'utilisateur d'une règle
+  d'alignement ne cherche pas à lire des distances, il cherche à les
+  ÉGALISER : seul un écart qui égale son opposé mérite d'être affiché. Une
+  fonctionnalité utile prise isolément peut être du bruit une fois posée à
+  côté des autres.
+
+- **2026-08-10** | Ce lot RETIRE deux features demandées explicitement peu
+  avant (mesure vers le voisin non aligné, mesure au survol). Ce n'est pas
+  une erreur de spécification : c'est ce qu'on apprend en voyant l'écran, et
+  qu'aucune revue de code ne pouvait dire. | **Règle** : quand une demande
+  contredit une demande antérieure du même utilisateur, l'appliquer — mais le
+  DIRE dans le rapport de PR, avec le nom de ce qui disparaît. Sans cela,
+  personne ne saura si la disparition est un choix ou une régression.
+
+- **2026-08-10** | Une aide contextuelle doit avoir un état VIDE. Tant que
+  chaque coïncidence traçait sa ligne, un bloc entouré de cinq voisins barrait
+  l'aperçu de cinq traits — qui ne désignent plus rien. | **Règle** : borner
+  toute aide visuelle à un exemplaire par axe (ou par catégorie), et donner la
+  priorité à ce qui est réellement ACTIF (la cible aimantée) sur ce qui est
+  simplement constaté.
