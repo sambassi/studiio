@@ -330,6 +330,15 @@ export interface GapBadge {
   /** Mesure contre un voisin, ou contre le bord du cadre a defaut. */
   target: 'frame' | 'element';
   targetLabel: string;
+  /**
+   * Nom du bloc MESURE, celui qui est selectionne.
+   *
+   * Avec `targetLabel`, il permet a la pastille de nommer les deux extremites
+   * — « Hydrate-toi ↔ Banane ». Sans cela, « 64 px » flotte au milieu de
+   * l'apercu sans dire ce qu'il relie : c'est exactement ce que l'utilisateur
+   * lisait comme « je n'ai pas la mesure entre ces deux-la ».
+   */
+  sourceLabel: string;
   /** Cle du voisin mesure — sert a ne pas le mesurer deux fois. */
   targetKey?: string;
   /** Vrai quand l'ecart oppose vaut le meme, a la tolerance pres. */
@@ -405,6 +414,7 @@ function pairBadges(
       gapPx: pctToFormatPx(dy, 'y', format),
       target: 'element',
       targetLabel: partner.label,
+      sourceLabel: active.label,
       targetKey: partner.key,
       equal: false,
       aligned: false,
@@ -424,6 +434,7 @@ function pairBadges(
       gapPx: pctToFormatPx(dx, 'x', format),
       target: 'element',
       targetLabel: partner.label,
+      sourceLabel: active.label,
       targetKey: partner.key,
       equal: false,
       aligned: false,
@@ -491,6 +502,7 @@ export function computeGapBadges(
     gapPx: pctToFormatPx(to - from, 'y', format),
     target: partner ? 'element' : 'frame',
     targetLabel: partner ? partner.label : 'Cadre',
+    sourceLabel: active.label,
     targetKey: partner?.key,
     equal: false,
     aligned: true,
@@ -504,6 +516,7 @@ export function computeGapBadges(
     gapPx: pctToFormatPx(to - from, 'x', format),
     target: partner ? 'element' : 'frame',
     targetLabel: partner ? partner.label : 'Cadre',
+    sourceLabel: active.label,
     targetKey: partner?.key,
     equal: false,
     aligned: true,

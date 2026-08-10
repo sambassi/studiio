@@ -8876,8 +8876,11 @@ function InfographicPageInner() {
               setResizing(null);
               setDragCardIdx(null);
               resizeStart.current = null;
+              // ⚠️ SEULES LES LIGNES MAGNETIQUES MEURENT AVEC LE GESTE.
+              // Vider aussi les ecarts, c'etait rendre la regle illisible au
+              // moment meme ou l'utilisateur veut la lire : une fois le bloc
+              // pose. Ils restent, et l'effet de mesure les tient a jour.
               setActiveGuides([]);
-              setActiveGaps([]);
             }}
             onMouseLeave={() => {
               dragSelectStartRef.current = null;
@@ -8887,7 +8890,6 @@ function InfographicPageInner() {
               setDragCardIdx(null);
               resizeStart.current = null;
               setActiveGuides([]);
-              setActiveGaps([]);
             }}
             onTouchMove={(e) => {
               if (dragCardIdx === null || !previewRef.current) return;
@@ -9088,10 +9090,15 @@ function InfographicPageInner() {
                 guides={smartGuidesEnabled ? activeGuides : []}
                 gaps={smartGuidesEnabled ? activeGaps : []}
                 showGrid={showGridOverlay}
-                showCenter={showCenterGuides}
+                // ⚠️ LE MILIEU S'AFFICHE DES QU'ON MANIPULE, sans attendre le
+                // reglage. C'est pendant le placement qu'on a besoin de voir
+                // le vrai centre du format — l'exiger d'un bouton coche a
+                // l'avance, c'est le rendre absent au seul moment utile. Rien
+                // de selectionne : on revient au choix de l'utilisateur.
+                showCenter={showCenterGuides || activeGaps.length > 0}
                 showThirds={showThirdsGuides}
                 format={format}
-                showRatioLabel={showCenterGuides || showGridOverlay}
+                showRatioLabel={showCenterGuides || showGridOverlay || activeGaps.length > 0}
               />
             )}
 

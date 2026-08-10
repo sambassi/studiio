@@ -168,7 +168,7 @@ describe('Cause 1 — chaque bloc déplaçable est mesurable, et une seule fois'
 describe('Cause 2 — la comparaison qui rend la mesure persistante possible', () => {
   const g = (over: Partial<GapBadge> = {}): GapBadge => ({
     axis: 'y', side: 'top', midXPct: 50, midYPct: 20, gapPct: 40, gapPx: 768,
-    target: 'frame', targetLabel: 'Cadre', equal: false, aligned: true, ...over,
+    target: 'frame', targetLabel: 'Cadre', sourceLabel: 'Actif', equal: false, aligned: true, ...over,
   });
 
   it('deux séries identiques sont reconnues — sinon la boucle de rendu ne s arrête jamais', () => {
