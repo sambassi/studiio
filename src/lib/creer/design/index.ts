@@ -1,9 +1,14 @@
 /**
  * Contrat de design canonique — point d'entree unique.
  *
- * Phase 1A : le contrat existe et est teste, mais AUCUN consommateur ne
- * l'utilise encore. Aucune page, aucun composant, aucune route n'a ete
- * modifie. C'est deliberé : le contrat doit etre prouve avant d'etre branche.
+ * Consommateurs actuels — la mecanique de FUSION uniquement, jamais
+ * l'interpretation du design :
+ *
+ *   - `PUT /api/posts` et `PATCH /api/posts/[id]` via `mergePostMetadata` ;
+ *   - `PUT /api/videos/[id]`, indirectement, via `@/lib/videos/metadata`.
+ *
+ * Aucune page ni composant ne l'utilise encore : le contrat a d'abord ete
+ * prouve seul, puis branche la ou une mise a jour partielle ecrasait tout.
  */
 
 export {
