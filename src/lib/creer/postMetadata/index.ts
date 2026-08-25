@@ -16,8 +16,14 @@
  * `autopilot/design.ts`, `DesignOptions` et la cle `metadata.design`. Un
  * cinquieme « design » aurait ete indechiffrable.
  *
- * AUCUN consommateur applicatif ne l'utilise encore. C'est deliberé : le
- * contrat doit etre prouve avant d'etre branche.
+ * Consommateurs actuels — la mecanique de FUSION uniquement, jamais
+ * l'interpretation du design :
+ *
+ *   - `PUT /api/posts` et `PATCH /api/posts/[id]` via `mergePostMetadata` ;
+ *   - `PUT /api/videos/[id]`, indirectement, via `@/lib/videos/metadata`.
+ *
+ * Aucune page ni composant ne l'utilise encore : le contrat a d'abord ete
+ * prouve seul, puis branche la ou une mise a jour partielle ecrasait tout.
  *
  * ─────────────────────────────────────────────────────────────────────────
  * DETTE DOCUMENTEE — la traduction vers le compositeur, volontairement absente
