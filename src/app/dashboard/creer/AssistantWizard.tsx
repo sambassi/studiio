@@ -2455,8 +2455,11 @@ export default function AssistantWizard() {
                 <div className="min-w-0 flex-1">
                   <CardTitle className="text-lg">Créer avec l&apos;assistant</CardTitle>
                   <CardContent className="mt-1 text-sm text-gray-400">
-                    Quatre étapes — sujet, style, contenu, envoi. Le texte et les cartes sont
-                    générés pour vous.
+                    {/* Derive de `STEPS`, jamais reecrit a la main : la phrase
+                        annoncait « Quatre etapes » et avait oublie « Audio »,
+                        ajoutee depuis. Une liste unique, donc plus de derive. */}
+                    {STEPS.length} étapes — {STEPS.join(', ').toLowerCase()}. Le texte et les
+                    cartes sont générés pour vous.
                   </CardContent>
                   <div className="mt-4">
                     <Button variant="primary" size="sm" onClick={() => setStarted(true)}>
@@ -2508,33 +2511,64 @@ export default function AssistantWizard() {
           <Card>
             {/* Fil d'étapes */}
             <div className="flex items-center gap-2 mb-6">
-              {STEPS.map((label, i) => (
-                <div key={label} className="flex items-center gap-2 flex-1 last:flex-none">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span
-                      className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
-                      style={
-                        i <= step
-                          ? { backgroundColor: accent, color: '#fff' }
-                          : { backgroundColor: '#1F2937', color: '#6B7280' }
+              {STEPS.map((label, i) => {
+                /**
+                 * STRICTEMENT `i < step` : seule une etape DEJA franchie
+                 * ramene en arriere.
+                 *
+                 * L'etape courante et les suivantes restent inertes. Sauter en
+                 * avant afficherait un ecran dont le contenu n'a pas ete
+                 * prepare — cartes non generees a « Contenu », montage absent
+                 * a « Envoi », ou l'utilisateur trouverait un bouton d'envoi
+                 * sans rien a envoyer. `sanitizeDraft` applique deja la meme
+                 * prudence en plafonnant l'etape restauree a `S.contenu`.
+                 *
+                 * Un `<button disabled>` plutot qu'un `<div>` : le clavier ne
+                 * s'arrete que sur ce qui est reellement actionnable, et le
+                 * lecteur d'ecran annonce l'etat.
+                 */
+                const franchie = i < step;
+                return (
+                  <div key={label} className="flex items-center gap-2 flex-1 last:flex-none">
+                    <button
+                      type="button"
+                      disabled={!franchie}
+                      onClick={() => setStep(i)}
+                      aria-label={
+                        franchie
+                          ? `Revenir à l'étape ${i + 1} : ${label}`
+                          : `Étape ${i + 1} : ${label}`
                       }
+                      aria-current={i === step ? 'step' : undefined}
+                      className={`flex items-center gap-1.5 min-w-0 -mx-1 px-1 py-0.5 rounded-md text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 ${
+                        franchie ? 'cursor-pointer hover:bg-white/5' : 'cursor-default'
+                      }`}
                     >
-                      {i < step ? <Check className="w-3 h-3" /> : i + 1}
-                    </span>
-                    <span
-                      className={`text-[11px] truncate ${i === step ? 'text-white font-medium' : 'text-gray-500'}`}
-                    >
-                      {label}
-                    </span>
+                      <span
+                        className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
+                        style={
+                          i <= step
+                            ? { backgroundColor: accent, color: '#fff' }
+                            : { backgroundColor: '#1F2937', color: '#6B7280' }
+                        }
+                      >
+                        {i < step ? <Check className="w-3 h-3" /> : i + 1}
+                      </span>
+                      <span
+                        className={`text-[11px] truncate ${i === step ? 'text-white font-medium' : 'text-gray-500'}`}
+                      >
+                        {label}
+                      </span>
+                    </button>
+                    {i < STEPS.length - 1 && (
+                      <div
+                        className="h-px flex-1 min-w-2"
+                        style={{ backgroundColor: i < step ? accent : '#1F2937' }}
+                      />
+                    )}
                   </div>
-                  {i < STEPS.length - 1 && (
-                    <div
-                      className="h-px flex-1 min-w-2"
-                      style={{ backgroundColor: i < step ? accent : '#1F2937' }}
-                    />
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Étape 1 — sujet */}
