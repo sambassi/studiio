@@ -37,7 +37,14 @@ const nextConfig = {
   async headers() {
     return [
       {
-        source: '/dashboard/creer',
+        // `/dashboard/creer-avance` et non `/dashboard/creer` : ces en-tetes
+        // ont ete poses pour l'ANCIEN editeur (FFmpeg WASM charge depuis
+        // /ffmpeg). Le parcours guide, qui occupe desormais /dashboard/creer,
+        // a toujours tourne SANS eux sous /dashboard/creer-simple — les lui
+        // appliquer ferait de COEP `credentialless` une nouveaute non testee
+        // sur ses medias cross-origin (rushes MinIO, affiches, images).
+        // On preserve donc le comportement exact de chaque page.
+        source: '/dashboard/creer-avance',
         headers: [
           { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
           { key: 'Cross-Origin-Embedder-Policy', value: 'credentialless' },

@@ -6,7 +6,7 @@
  * Couche NON DESTRUCTIVE : ce composant est propre à la page /dashboard/media.
  * Il ne réutilise QUE `detectClips` / `extractClip` de `@/lib/clip-detector`
  * (inchangés) et le flux d'upload signed-url existant. Le modal équivalent de
- * `/dashboard/creer` reste intact — rien n'a été extrait ni partagé, pour
+ * `/dashboard/creer-avance` reste intact — rien n'a été extrait ni partagé, pour
  * qu'une évolution ici ne puisse pas régresser l'éditeur.
  *
  * Cycle de vie : téléchargement du rush → analyse (progression) → revue des

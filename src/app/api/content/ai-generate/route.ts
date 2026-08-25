@@ -248,7 +248,8 @@ Réponds UNIQUEMENT en JSON: {"videoOverlayText": "TON TEXTE ICI"}`;
     const count = Math.min(Math.max(cardCount, 1), 8);
 
     // Curated lucide-react icon names — must be kept in sync with ICON_MAP in
-    // src/app/dashboard/creer/page.tsx. Claude must pick one of these for each card.
+    // src/app/dashboard/creer-avance/page.tsx (et CARD_ICON_MAP dans
+    // src/components/ui/CardIcon.tsx). Claude must pick one of these for each card.
     const ICON_NAMES = [
       'Dumbbell','Flame','Zap','Trophy','Target','Activity','Bike',
       'Heart','Brain','Stethoscope','Pill','Cross','HeartPulse','Smile',

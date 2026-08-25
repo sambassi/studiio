@@ -34,7 +34,7 @@ interface Props {
    * pendant que la voix off parle, pas seulement pendant que le rush parle.
    *
    * `undefined` = interrupteur masque : un parent qui ne gere pas l'option
-   * ne voit rien de nouveau. C'est le cas de `/dashboard/creer`.
+   * ne voit rien de nouveau. C'est le cas de `/dashboard/creer-avance`.
    */
   duckOnVoice?: boolean;
   onDuckOnVoiceChange?: (next: boolean) => void;

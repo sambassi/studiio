@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
-import { Preview } from '../app/dashboard/creer-simple/AssistantWizard';
+import { Preview } from '../app/dashboard/creer/AssistantWizard';
 
 /**
  * Refonte de la disposition de l'étape Style.
@@ -16,7 +16,7 @@ import { Preview } from '../app/dashboard/creer-simple/AssistantWizard';
  */
 
 const wizardSource = readFileSync(
-  resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
+  resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
   'utf-8',
 );
 

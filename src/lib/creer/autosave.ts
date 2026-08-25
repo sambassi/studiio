@@ -1,7 +1,7 @@
 /**
  * Marqueur d'auto-sauvegarde de l'editeur.
  *
- * ⚠️ Ce module ne stocke PAS le montage : l'editeur `/dashboard/creer` le
+ * ⚠️ Ce module ne stocke PAS le montage : l'editeur avance `/dashboard/creer-avance` le
  * persiste deja integralement sous sa propre cle (`studiio-creer-design-prefs`)
  * — instantane complet, sauvegarde debounce a 500 ms ET synchrone sur
  * `beforeunload`, `pagehide`, `visibilitychange` et au demontage. Ce fichier
@@ -98,7 +98,7 @@ export function formatAutosaveAge(savedAt: number, now: number = Date.now()): st
 
 // ── Repartir de zéro ──────────────────────────────────────────────────────
 
-/** Cle de l'instantane de l'editeur `/dashboard/creer`. */
+/** Cle de l'instantane de l'editeur avance `/dashboard/creer-avance`. */
 export const CREER_PREFS_KEY = 'studiio-creer-design-prefs';
 
 /**

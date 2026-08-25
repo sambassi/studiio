@@ -16,7 +16,7 @@ import { resolve } from 'path';
  */
 
 const wizardSource = readFileSync(
-  resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
+  resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
   'utf-8',
 );
 

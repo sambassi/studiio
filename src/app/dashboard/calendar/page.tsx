@@ -195,7 +195,7 @@ interface Post {
 /**
  * Le post possède-t-il une source visuelle exploitable par le compositeur ?
  *
- * Un post créé par l'assistant (`/dashboard/creer-simple`) n'a AUCUNE de ces
+ * Un post créé par l'assistant (`/dashboard/creer`) n'a AUCUNE de ces
  * URLs : pas de montage rendu, pas de rush, pas d'affiche, pas de media_url.
  * Il ne doit donc jamais déclencher le compositeur vidéo tout seul — il reste
  * affiché en aperçu HTML léger (séquences intro → cartes → CTA sur dégradé).
@@ -2561,7 +2561,7 @@ export default function CalendarPage() {
 
   return (
     <div className="min-h-[calc(100vh-64px)] text-white">
-      {/* Agent IA modal — shared with /dashboard/creer */}
+      {/* Agent IA modal — partage avec /dashboard/creer-avance */}
       <AgentIAModal
         isOpen={showAIAgent}
         onClose={() => setShowAIAgent(false)}
@@ -2926,8 +2926,14 @@ export default function CalendarPage() {
                               {(post.media_url || post.metadata?.characterUrl) && (
                                 <button onClick={() => handleExportPost(post)} className="p-1 rounded bg-gray-700 hover:bg-blue-600 text-gray-300 hover:text-white transition" title={t('actions.export')}><Download className="w-3 h-3" /></button>
                               )}
+                              {/* `creer-avance` et non `creer` : le deeplink
+                                  `?postId=X&tab=audio` (recharger un post
+                                  existant pour lui ajouter du son) n'est
+                                  implemente QUE par l'ancien editeur. Le
+                                  parcours guide ne sait pas encore relire un
+                                  post ; pointer vers lui casserait ce bouton. */}
                               {!post.metadata?.hasAudio && post.media_type === 'video' && (
-                                <button onClick={() => { window.location.href = `/dashboard/creer?postId=${post.id}&tab=audio`; }} className="p-1 rounded bg-purple-600 hover:bg-purple-700 text-white transition" title={t('actions.addAudio')}><Volume2 className="w-3 h-3" /></button>
+                                <button onClick={() => { window.location.href = `/dashboard/creer-avance?postId=${post.id}&tab=audio`; }} className="p-1 rounded bg-purple-600 hover:bg-purple-700 text-white transition" title={t('actions.addAudio')}><Volume2 className="w-3 h-3" /></button>
                               )}
                               {post.status === 'failed' && (
                                 <button onClick={() => handleRetryPost(post)} className="p-1 rounded bg-orange-600 hover:bg-orange-700 text-white transition" title="Réessayer la publication"><RefreshCw className="w-3 h-3" /></button>
@@ -4304,7 +4310,7 @@ export default function CalendarPage() {
                 )}
                 {!meta?.hasAudio && fullPreviewPost.media_type === 'video' && (
                   <button
-                    onClick={() => { window.location.href = `/dashboard/creer?postId=${fullPreviewPost.id}&tab=audio`; }}
+                    onClick={() => { window.location.href = `/dashboard/creer-avance?postId=${fullPreviewPost.id}&tab=audio`; }}
                     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 border border-purple-500 rounded-lg text-sm font-medium text-white transition"
                   >
                     <Volume2 size={14} /> {t('actions.addAudio')}
