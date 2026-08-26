@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { flushSync } from 'react-dom';
+import { useSearchParams } from 'next/navigation';
 import {
   Wand2,
   Rocket,
@@ -128,6 +129,15 @@ import {
   newCardId,
   type Draft,
 } from '@/lib/creer/draft';
+import {
+  chargerPostAModifier,
+  type ChargementPost,
+  type PostAModifier,
+} from '@/lib/creer/loadPost';
+import { readEditTargetFromQuery } from '@/lib/creer/editTarget';
+import { toWizardDraft } from '@/lib/creer/postMetadata/to-wizard';
+import { metadataPourEnregistrement } from '@/lib/creer/postMetadata/from-wizard';
+import { enregistrerModification, type Enregistrement } from '@/lib/creer/savePost';
 import { useBranding, NEUTRAL_BRANDING } from '@/lib/hooks/useBranding';
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { Card, CardTitle, CardContent } from '@/components/ui/Card';
@@ -4605,6 +4615,65 @@ export default function AssistantWizard() {
    */
   const sessionReady = status !== 'loading';
   const storageKey = draftKey(session?.user?.email);
+
+  /**
+   * Identifiant du contenu a modifier, lu dans l'URL.
+   *
+   * Depuis l'URL et non depuis une propriete : la signature du composant est
+   * lue TELLE QUELLE par sept tests du depot, qui bornent le source sur
+   * `export default function AssistantWizard()`. Lui ajouter un parametre les
+   * fait tous porter sur la mauvaise tranche de fichier — un lot de
+   * modification n'a aucune raison de rendre fragiles les tests de l'apercu et
+   * des cartes. C'est aussi le chemin que suit deja l'editeur avance.
+   *
+   * Le triage lui-meme reste dans `editTarget`, partage avec la page serveur.
+   */
+  const urlParams = useSearchParams();
+  const cibleEdition = readEditTargetFromQuery(urlParams);
+  const editPostId = cibleEdition.kind === 'edit' ? cibleEdition.postId : undefined;
+
+  /**
+   * ─────────────────────────────────────────────────────────────────────
+   * MODIFICATION D'UN CONTENU EXISTANT
+   * ─────────────────────────────────────────────────────────────────────
+   *
+   * `editPostId` absent = creation : TOUT ce bloc reste inerte, et le parcours
+   * se comporte exactement comme avant ce lot.
+   *
+   * `chargement` decrit l'etat de la LECTURE seule. Rien n'est rendu, debite,
+   * publie ni programme ici : ouvrir un contenu pour le regarder ne doit rien
+   * couter. L'ecriture, elle, n'a lieu que sur une action explicite.
+   */
+  const [chargement, setChargement] = useState<
+    { etat: 'inactif' } | { etat: 'encours' } | { etat: 'charge' } | { etat: 'echec'; issue: ChargementPost['kind'] }
+  >(editPostId ? { etat: 'encours' } : { etat: 'inactif' });
+  /** Le post tel que le serveur l'a rendu. Sert de base a l'enregistrement. */
+  const postCharge = useRef<PostAModifier | null>(null);
+  /** Vrai une fois le chargement TENTE : il n'a lieu qu'une fois. */
+  const chargeRef = useRef(false);
+
+  /** Etat du dernier enregistrement demande. `repos` = rien en cours. */
+  const [enregistrement, setEnregistrement] = useState<
+    { etat: 'repos' } | { etat: 'encours' } | { etat: 'ok' }
+    | { etat: 'echec'; issue: Enregistrement['kind'] }
+  >({ etat: 'repos' });
+
+  useEffect(() => {
+    if (!editPostId || !sessionReady || chargeRef.current) return;
+    chargeRef.current = true;
+    let vivant = true;
+    (async () => {
+      const r = await chargerPostAModifier(editPostId, (u, i) => fetch(u, i));
+      if (!vivant) return;
+      if (r.kind === 'ok') {
+        postCharge.current = r.post;
+        setChargement({ etat: 'charge' });
+      } else {
+        setChargement({ etat: 'echec', issue: r.kind });
+      }
+    })();
+    return () => { vivant = false; };
+  }, [editPostId, sessionReady]);
   /** Vrai une fois la restauration tentee : on n'ecrit rien avant. */
   const restoredRef = useRef(false);
   const [restoredNotice, setRestoredNotice] = useState<string | null>(null);
@@ -4704,8 +4773,26 @@ export default function AssistantWizard() {
    */
   useEffect(() => {
     if (!sessionReady || restoredRef.current) return;
+    // MODIFICATION : on attend le contenu du serveur. Remplir depuis le
+    // brouillon local en attendant, puis le remplacer, ferait clignoter un
+    // autre montage a l'ecran — et si le chargement echouait, le brouillon
+    // d'une creation precedente prendrait la place du contenu demande.
+    if (editPostId && chargement.etat !== 'charge') return;
     restoredRef.current = true;
-    const draft = sanitizeDraft(readDraft(storageKey), {
+    // LA SOURCE, ET C'EST TOUT CE QUI CHANGE ICI.
+    //
+    // En modification, elle est le SERVEUR — le brouillon local n'est meme pas
+    // lu. C'est ce qui garantit qu'un brouillon d'hier n'ecrase jamais, sans un
+    // mot, le contenu qu'on vient d'ouvrir : les deux ne peuvent pas se
+    // disputer l'ecran, l'un des deux n'est pas dans la piece.
+    //
+    // Les deux sources passent ensuite par le MEME `sanitizeDraft` : une
+    // metadata abimee est bornee et ecartee exactement comme un brouillon
+    // abime, ce que le depot sait deja encaisser.
+    const source = editPostId
+      ? toWizardDraft(postCharge.current ?? {})
+      : readDraft(storageKey);
+    const draft = sanitizeDraft(source, {
       themeIds: THEMES.map((t) => t.id),
       toneIds: TONES.map((t) => t.id),
       formats: Object.keys(VIDEO_SIZE),
@@ -4814,13 +4901,20 @@ export default function AssistantWizard() {
     ].filter(Boolean);
     // Uniquement si le brouillon porte du travail : annoncer « Brouillon
     // restaure » sur un ecran vierge inquiete sans rien apprendre.
-    if (draft.started || draft.generated) {
+    if (editPostId) {
+      // « Brouillon restaure » serait faux ici : rien n'a ete retrouve, on a
+      // ouvert un contenu enregistre. Le dire exactement evite de faire croire
+      // a une reprise de travail perdu.
+      setRestoredNotice(
+        `Contenu chargé${bits.length ? ` (${bits.join(', ')})` : ''}. Vos modifications ne sont enregistrées que lorsque vous le demandez.`,
+      );
+    } else if (draft.started || draft.generated) {
       setRestoredNotice(`Brouillon restauré${bits.length ? ` (${bits.join(', ')})` : ''}.`);
     }
     // `restoredRef` garantit un seul passage : une fois la session resolue,
     // relancer la restauration ecraserait ce que l'utilisateur vient de regler.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionReady, storageKey]);
+  }, [sessionReady, storageKey, editPostId, chargement.etat]);
 
   /**
    * Sauvegarde : minuterie, PLUS trois filets.
@@ -4844,10 +4938,16 @@ export default function AssistantWizard() {
    */
   const flushDraft = useCallback(() => {
     if (!restoredRef.current || !sessionReady) return;
+    // MODIFICATION : aucun brouillon local n'est ecrit. Le contenu d'un post
+    // n'a rien a faire dans le brouillon des CREATIONS — il y prendrait la
+    // place du travail en cours, et la creation suivante rouvrirait le post
+    // qu'on vient de modifier en croyant reprendre son brouillon. Le contenu
+    // vit deja au serveur ; sa copie locale n'apporte rien et peut nuire.
+    if (editPostId) return;
     const draft = draftRef.current();
     if (!draft.started && !draft.generated) return;
     writeDraft(storageKey, draft);
-  }, [storageKey, sessionReady]);
+  }, [editPostId, storageKey, sessionReady]);
   const flushRef = useRef(flushDraft);
   flushRef.current = flushDraft;
 
@@ -6136,9 +6236,189 @@ export default function AssistantWizard() {
     return true;
   };
 
+  /**
+   * ─────────────────────────────────────────────────────────────────────
+   * ENREGISTRER LES MODIFICATIONS
+   * ─────────────────────────────────────────────────────────────────────
+   *
+   * Sur DEMANDE EXPLICITE, et sur elle seule : rien ne part au chargement, rien
+   * ne part sur une minuterie, rien ne part au demontage. C'est l'inverse exact
+   * du brouillon local, et c'est voulu — une ecriture serveur qui se declenche
+   * toute seule est une ecriture qu'on n'a pas choisie.
+   *
+   * Un enregistrement NE REND RIEN et NE DEBITE RIEN : le montage deja rendu
+   * (`renderedVideoUrl`, `thumbnailUrl`, `composerVersion`) n'est pas touche.
+   * Consequence a connaitre : apres avoir modifie des textes, la video en ligne
+   * reste celle d'avant tant qu'on n'a pas relance un rendu. C'est un choix, pas
+   * un oubli — rendre ici debiterait des credits sans que personne l'ait demande.
+   */
+  const enregistrer = useCallback(async () => {
+    if (!editPostId || enregistrement.etat === 'encours') return;
+    setEnregistrement({ etat: 'encours' });
+
+    const taille = VIDEO_SIZE[format];
+    const valeurs = {
+      subtitle: generated?.subtitle,
+      theme: themeId,
+      cards: generated?.cards.map((c) => ({
+        emoji: c.icon, label: c.title, value: c.value,
+        description: c.description, color: accent,
+      })),
+      accentColor: accent,
+      ctaText: generated?.cta,
+      ctaSubText: generated?.ctaSub,
+      textAnimation,
+      gradientColor1: gradStart,
+      gradientColor2: gradEnd,
+      gradientOpacity,
+      titlePos: { x: titlePos.x, y: titlePos.y },
+      ctaPos: { x: ctaPos.x, y: ctaPos.y },
+      elements: freeElements,
+      sequences: {
+        intro: seqDuration('intro'), cards: seqDuration('cards'),
+        video: seqDuration('video'), cta: seqDuration('cta'),
+        total: activeOrder.reduce((t, k) => t + seqDuration(k), 0),
+        order: activeOrder,
+      },
+      videoSize: { w: taille.w, h: taille.h },
+      // `?? undefined` et non `?? ''` : une valeur absente ne doit pas etre
+      // ENVOYEE, sinon elle effacerait ce que l'editeur avance y avait mis.
+      posterUrl: posterUrl ?? undefined,
+      musicUrl: musicUrl ?? undefined,
+      voiceUrl: voiceUrl ?? undefined,
+      musicVolume,
+      voiceVolume,
+      sequenceVoiceUrls,
+      rushUrls: rushUrl && seqDuration('video') > 0 ? [rushUrl] : undefined,
+      audioKeyframes,
+      cardGroups,
+      hasAudio: !!(musicUrl || voiceUrl || sequenceVoiceUrls
+                   || (rushUrl && seqDuration('video') > 0)),
+    };
+
+    const corps = {
+      ...(generated ? { title: generated.title, caption: generated.subtitle } : null),
+      ...(scheduledDate ? { scheduled_date: scheduledDate } : null),
+      metadata: metadataPourEnregistrement(postCharge.current?.metadata, valeurs),
+    };
+
+    const r = await enregistrerModification(editPostId, corps, (u, i) => fetch(u, i));
+    if (r.kind === 'ok') {
+      // La base fait foi pour la suite : le prochain enregistrement repart de
+      // ce que le serveur a REELLEMENT ecrit, pas de ce qu'on croyait avoir
+      // envoye. Sans cela, deux enregistrements de suite rejoueraient la
+      // metadata d'origine et pourraient defaire le premier.
+      if (r.post) postCharge.current = r.post as typeof postCharge.current;
+      setEnregistrement({ etat: 'ok' });
+    } else {
+      setEnregistrement({ etat: 'echec', issue: r.kind });
+    }
+  }, [editPostId, enregistrement.etat, format, generated, themeId, accent, textAnimation,
+      gradStart, gradEnd, gradientOpacity, titlePos, ctaPos, freeElements, activeOrder,
+      seqDuration, posterUrl, musicUrl, voiceUrl, musicVolume, voiceVolume,
+      sequenceVoiceUrls, rushUrl, audioKeyframes, cardGroups, scheduledDate]);
+
+  /**
+   * Ecran de chargement d'un contenu existant.
+   *
+   * Rendu A LA PLACE du parcours, jamais au-dessus : un wizard vierge affiche
+   * pendant qu'on charge — ou apres un echec — est exactement l'image d'un
+   * travail perdu. Tant que le contenu n'est pas la, l'ecran dit ou il en est.
+   *
+   * Chaque issue a son geste : se reconnecter, revenir au Calendrier, ou
+   * reessayer. « Une erreur est survenue » ne laisse aucun geste possible.
+   */
+  if (chargement.etat === 'encours') {
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-gray-800 bg-gray-900/50 px-4 py-6 text-sm text-gray-400">
+        <Loader2 className="w-5 h-5 animate-spin text-purple-300 flex-shrink-0" />
+        <span>Chargement de votre contenu…</span>
+      </div>
+    );
+  }
+
+  if (chargement.etat === 'echec') {
+    const message =
+      chargement.issue === 'session'
+        ? 'Votre session a expiré. Reconnectez-vous pour modifier ce contenu.'
+        : chargement.issue === 'refuse' || chargement.issue === 'introuvable'
+          ? 'Ce contenu est introuvable, ou ne vous appartient pas.'
+          : chargement.issue === 'reseau'
+            ? 'La connexion a été interrompue avant que le contenu n\'arrive.'
+            : "Le contenu n'a pas pu être chargé.";
+    // Reessayer n'a de sens que si la demande peut aboutir au coup suivant :
+    // une session expiree ou un contenu qui n'est pas le votre ne changeront
+    // pas d'avis, et proposer le bouton la ferait tourner en rond.
+    const reessayable = chargement.issue === 'reseau' || chargement.issue === 'erreur';
+    return (
+      <div
+        role="alert"
+        className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4"
+      >
+        <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+        <div className="min-w-0 space-y-2">
+          <p className="text-sm font-medium text-amber-200">{message}</p>
+          {reessayable && (
+            <button
+              type="button"
+              onClick={() => { chargeRef.current = false; setChargement({ etat: 'encours' }); }}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-1.5 text-[13px] text-gray-300 hover:bg-gray-800 transition"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Réessayer
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
       <div className="lg:col-span-3 space-y-4">
+        {/* MODIFICATION — la seule porte de sortie vers le serveur.
+            Visible uniquement quand on modifie : en creation, rien de tout ceci
+            n'existe, et le parcours se termine comme avant. */}
+        {editPostId && (
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-800 bg-gray-900/50 px-4 py-3">
+            <button
+              type="button"
+              onClick={enregistrer}
+              disabled={enregistrement.etat === 'encours'}
+              className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white transition disabled:opacity-60"
+              style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
+            >
+              {enregistrement.etat === 'encours'
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <Check className="w-4 h-4" />}
+              {enregistrement.etat === 'encours'
+                ? 'Enregistrement…'
+                : 'Enregistrer les modifications'}
+            </button>
+
+            {enregistrement.etat === 'ok' && (
+              <span className="text-[13px] text-emerald-300">Modifications enregistrées.</span>
+            )}
+
+            {enregistrement.etat === 'echec' && (
+              <span role="alert" className="text-[13px] text-amber-300">
+                {enregistrement.issue === 'conflit'
+                  // Le message DIT que rien n'a ete ecrit. « Une erreur est
+                  // survenue » laisserait croire a un enregistrement partiel,
+                  // et l'utilisateur repartirait en pensant son travail sauve.
+                  ? 'Ce contenu a été modifié ailleurs entre-temps. Rien n’a été enregistré : rechargez la page pour repartir de la dernière version.'
+                  : enregistrement.issue === 'reseau'
+                    ? 'La connexion a été interrompue. Rien n’a été enregistré ; vos modifications sont toujours à l’écran, réessayez.'
+                    : enregistrement.issue === 'session'
+                      ? 'Votre session a expiré. Reconnectez-vous, puis réessayez : rien n’est perdu.'
+                      : enregistrement.issue === 'refuse' || enregistrement.issue === 'introuvable'
+                        ? 'Ce contenu est introuvable, ou ne vous appartient pas.'
+                        : 'L’enregistrement a échoué. Vos modifications sont toujours à l’écran.'}
+              </span>
+            )}
+          </div>
+        )}
+
         {error && (
           <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
