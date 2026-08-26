@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { flushSync } from 'react-dom';
+import { useSearchParams } from 'next/navigation';
 import {
   Wand2,
   Rocket,
@@ -128,6 +129,17 @@ import {
   newCardId,
   type Draft,
 } from '@/lib/creer/draft';
+import {
+  chargerPostAModifier,
+  type ChargementPost,
+  type PostAModifier,
+} from '@/lib/creer/loadPost';
+import { readEditTargetFromQuery } from '@/lib/creer/editTarget';
+import { toWizardDraft } from '@/lib/creer/postMetadata/to-wizard';
+import {
+  metadataPourEnregistrement, type ValeursWizard,
+} from '@/lib/creer/postMetadata/from-wizard';
+import { enregistrerModification, type Enregistrement } from '@/lib/creer/savePost';
 import { useBranding, NEUTRAL_BRANDING } from '@/lib/hooks/useBranding';
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { Card, CardTitle, CardContent } from '@/components/ui/Card';
@@ -4605,6 +4617,94 @@ export default function AssistantWizard() {
    */
   const sessionReady = status !== 'loading';
   const storageKey = draftKey(session?.user?.email);
+
+  /**
+   * Identifiant du contenu a modifier, lu dans l'URL.
+   *
+   * Depuis l'URL et non depuis une propriete : la signature du composant est
+   * lue TELLE QUELLE par sept tests du depot, qui bornent le source sur
+   * `export default function AssistantWizard()`. Lui ajouter un parametre les
+   * fait tous porter sur la mauvaise tranche de fichier — un lot de
+   * modification n'a aucune raison de rendre fragiles les tests de l'apercu et
+   * des cartes. C'est aussi le chemin que suit deja l'editeur avance.
+   *
+   * Le triage lui-meme reste dans `editTarget`, partage avec la page serveur.
+   */
+  const urlParams = useSearchParams();
+  const cibleEdition = readEditTargetFromQuery(urlParams);
+  const editPostId = cibleEdition.kind === 'edit' ? cibleEdition.postId : undefined;
+
+  /**
+   * ─────────────────────────────────────────────────────────────────────
+   * MODIFICATION D'UN CONTENU EXISTANT
+   * ─────────────────────────────────────────────────────────────────────
+   *
+   * `editPostId` absent = creation : TOUT ce bloc reste inerte, et le parcours
+   * se comporte exactement comme avant ce lot.
+   *
+   * `chargement` decrit l'etat de la LECTURE seule. Rien n'est rendu, debite,
+   * publie ni programme ici : ouvrir un contenu pour le regarder ne doit rien
+   * couter. L'ecriture, elle, n'a lieu que sur une action explicite.
+   */
+  const [chargement, setChargement] = useState<
+    { etat: 'inactif' } | { etat: 'encours' } | { etat: 'charge' } | { etat: 'echec'; issue: ChargementPost['kind'] }
+  >(editPostId ? { etat: 'encours' } : { etat: 'inactif' });
+  /** Le post tel que le serveur l'a rendu. Sert de base a l'enregistrement. */
+  const postCharge = useRef<PostAModifier | null>(null);
+  /** Vrai une fois le chargement TENTE : il n'a lieu qu'une fois. */
+  const chargeRef = useRef(false);
+  /**
+   * Empreinte de l'ecran AU CHARGEMENT — la reference du « rien n'a change ».
+   *
+   * Sans elle, un enregistrement qui ne modifie rien reecrirait quand meme tout,
+   * et reecrire c'est risquer de perdre : c'est ainsi que le gros texte des
+   * posts venus de l'editeur avance disparaissait.
+   */
+  const valeursChargees = useRef<ValeursWizard | null>(null);
+  /** Leve a la fin de l'hydratation ; l'empreinte est prise au rendu suivant. */
+  const aCapturer = useRef(false);
+
+  /** Etat du dernier enregistrement demande. `repos` = rien en cours. */
+  const [enregistrement, setEnregistrement] = useState<
+    { etat: 'repos' } | { etat: 'encours' } | { etat: 'ok' }
+    | { etat: 'echec'; issue: Enregistrement['kind'] }
+  >({ etat: 'repos' });
+
+  /**
+   * Rechargement de la version en base, apres un conflit.
+   *
+   * `demande` est l'etape de CONFIRMATION, et elle n'est pas decorative :
+   * reprendre la version serveur remplace ce qui est a l'ecran. Le faire sur un
+   * seul clic effacerait, sans un mot, le travail que le conflit vient
+   * justement de sauver.
+   */
+  const [rechargement, setRechargement] = useState<
+    { etat: 'repos' } | { etat: 'demande' } | { etat: 'encours' }
+    | { etat: 'echec'; issue: ChargementPost['kind'] }
+  >({ etat: 'repos' });
+  /**
+   * Compteur d'hydratations. Il n'existe que pour RELANCER l'effet de
+   * remplissage : `chargement.etat` vaut deja « charge », et le remettre a la
+   * meme valeur ne declencherait rien.
+   */
+  const [hydratations, setHydratations] = useState(0);
+
+  useEffect(() => {
+    if (!editPostId || !sessionReady || chargeRef.current) return;
+    chargeRef.current = true;
+    let vivant = true;
+    (async () => {
+      const r = await chargerPostAModifier(editPostId, (u, i) => fetch(u, i));
+      if (!vivant) return;
+      if (r.kind === 'ok') {
+        postCharge.current = r.post;
+        setChargement({ etat: 'charge' });
+      } else {
+        setChargement({ etat: 'echec', issue: r.kind });
+      }
+    })();
+    return () => { vivant = false; };
+  }, [editPostId, sessionReady]);
   /** Vrai une fois la restauration tentee : on n'ecrit rien avant. */
   const restoredRef = useRef(false);
   const [restoredNotice, setRestoredNotice] = useState<string | null>(null);
@@ -4704,8 +4804,26 @@ export default function AssistantWizard() {
    */
   useEffect(() => {
     if (!sessionReady || restoredRef.current) return;
+    // MODIFICATION : on attend le contenu du serveur. Remplir depuis le
+    // brouillon local en attendant, puis le remplacer, ferait clignoter un
+    // autre montage a l'ecran — et si le chargement echouait, le brouillon
+    // d'une creation precedente prendrait la place du contenu demande.
+    if (editPostId && chargement.etat !== 'charge') return;
     restoredRef.current = true;
-    const draft = sanitizeDraft(readDraft(storageKey), {
+    // LA SOURCE, ET C'EST TOUT CE QUI CHANGE ICI.
+    //
+    // En modification, elle est le SERVEUR — le brouillon local n'est meme pas
+    // lu. C'est ce qui garantit qu'un brouillon d'hier n'ecrase jamais, sans un
+    // mot, le contenu qu'on vient d'ouvrir : les deux ne peuvent pas se
+    // disputer l'ecran, l'un des deux n'est pas dans la piece.
+    //
+    // Les deux sources passent ensuite par le MEME `sanitizeDraft` : une
+    // metadata abimee est bornee et ecartee exactement comme un brouillon
+    // abime, ce que le depot sait deja encaisser.
+    const source = editPostId
+      ? toWizardDraft(postCharge.current ?? {})
+      : readDraft(storageKey);
+    const draft = sanitizeDraft(source, {
       themeIds: THEMES.map((t) => t.id),
       toneIds: TONES.map((t) => t.id),
       formats: Object.keys(VIDEO_SIZE),
@@ -4814,13 +4932,23 @@ export default function AssistantWizard() {
     ].filter(Boolean);
     // Uniquement si le brouillon porte du travail : annoncer « Brouillon
     // restaure » sur un ecran vierge inquiete sans rien apprendre.
-    if (draft.started || draft.generated) {
+    if (editPostId) {
+      // Le prochain rendu portera le contenu du serveur : c'est LUI qu'il faut
+      // photographier pour savoir, plus tard, ce que l'utilisateur a change.
+      aCapturer.current = true;
+      // « Brouillon restaure » serait faux ici : rien n'a ete retrouve, on a
+      // ouvert un contenu enregistre. Le dire exactement evite de faire croire
+      // a une reprise de travail perdu.
+      setRestoredNotice(
+        `Contenu chargé${bits.length ? ` (${bits.join(', ')})` : ''}. Vos modifications ne sont enregistrées que lorsque vous le demandez.`,
+      );
+    } else if (draft.started || draft.generated) {
       setRestoredNotice(`Brouillon restauré${bits.length ? ` (${bits.join(', ')})` : ''}.`);
     }
     // `restoredRef` garantit un seul passage : une fois la session resolue,
     // relancer la restauration ecraserait ce que l'utilisateur vient de regler.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionReady, storageKey]);
+  }, [sessionReady, storageKey, editPostId, chargement.etat, hydratations]);
 
   /**
    * Sauvegarde : minuterie, PLUS trois filets.
@@ -4844,10 +4972,16 @@ export default function AssistantWizard() {
    */
   const flushDraft = useCallback(() => {
     if (!restoredRef.current || !sessionReady) return;
+    // MODIFICATION : aucun brouillon local n'est ecrit. Le contenu d'un post
+    // n'a rien a faire dans le brouillon des CREATIONS — il y prendrait la
+    // place du travail en cours, et la creation suivante rouvrirait le post
+    // qu'on vient de modifier en croyant reprendre son brouillon. Le contenu
+    // vit deja au serveur ; sa copie locale n'apporte rien et peut nuire.
+    if (editPostId) return;
     const draft = draftRef.current();
     if (!draft.started && !draft.generated) return;
     writeDraft(storageKey, draft);
-  }, [storageKey, sessionReady]);
+  }, [editPostId, storageKey, sessionReady]);
   const flushRef = useRef(flushDraft);
   flushRef.current = flushDraft;
 
@@ -5427,6 +5561,16 @@ export default function AssistantWizard() {
   };
 
   const runRender = async (destination: 'calendrier' | 'bureau' | 'apercu') => {
+    // ⚠️ MODIFICATION : ON NE COMPOSE PAS. Le garde est ICI, et pas seulement
+    // dans l'affichage : les trois destinations composent et debitent, et
+    // « calendrier » ferait en plus un `POST /api/posts` — donc un SECOND post,
+    // pendant qu'on croyait modifier le premier. Masquer les boutons suffirait
+    // aujourd'hui ; ce retour garantit qu'aucun chemin futur (raccourci, rappel,
+    // bouton ajoute ailleurs) ne puisse contourner la regle.
+    //
+    // Rendre a nouveau un contenu existant sera une action a part, avec son cout
+    // annonce avant confirmation. Elle n'existe pas encore.
+    if (editPostId) return;
     if (!generated || sending) return;
     setSending(true);
     // Sert UNIQUEMENT a placer l'etat de chargement au bon endroit — dans le
@@ -6136,9 +6280,295 @@ export default function AssistantWizard() {
     return true;
   };
 
+  /**
+   * ─────────────────────────────────────────────────────────────────────
+   * ENREGISTRER LES MODIFICATIONS
+   * ─────────────────────────────────────────────────────────────────────
+   *
+   * Sur DEMANDE EXPLICITE, et sur elle seule : rien ne part au chargement, rien
+   * ne part sur une minuterie, rien ne part au demontage. C'est l'inverse exact
+   * du brouillon local, et c'est voulu — une ecriture serveur qui se declenche
+   * toute seule est une ecriture qu'on n'a pas choisie.
+   *
+   * Un enregistrement NE REND RIEN et NE DEBITE RIEN : le montage deja rendu
+   * (`renderedVideoUrl`, `thumbnailUrl`, `composerVersion`) n'est pas touche.
+   * Consequence a connaitre : apres avoir modifie des textes, la video en ligne
+   * reste celle d'avant tant qu'on n'a pas relance un rendu. C'est un choix, pas
+   * un oubli — rendre ici debiterait des credits sans que personne l'ait demande.
+   */
+  /**
+   * Ce que l'ecran porte MAINTENANT, dans le vocabulaire de la metadata.
+   *
+   * Extrait de `enregistrer` pour une seule raison : il faut pouvoir en prendre
+   * une empreinte AU CHARGEMENT, afin de savoir ensuite ce que l'utilisateur a
+   * reellement change. Sans cette empreinte, un enregistrement qui ne modifie
+   * rien reecrirait quand meme tout — et reecrire, c'est risquer de perdre.
+   */
+  const construireValeurs = useCallback((): ValeursWizard => {
+    const taille = VIDEO_SIZE[format];
+    return {
+      subtitle: generated?.subtitle,
+      theme: themeId,
+      cards: generated?.cards.map((c) => ({
+        emoji: c.icon, label: c.title, value: c.value,
+        description: c.description, color: accent,
+      })),
+      accentColor: accent,
+      ctaText: generated?.cta,
+      ctaSubText: generated?.ctaSub,
+      textAnimation,
+      gradientColor1: gradStart,
+      gradientColor2: gradEnd,
+      gradientOpacity,
+      titlePos: { x: titlePos.x, y: titlePos.y },
+      ctaPos: { x: ctaPos.x, y: ctaPos.y },
+      elements: freeElements,
+      sequences: {
+        intro: seqDuration('intro'), cards: seqDuration('cards'),
+        video: seqDuration('video'), cta: seqDuration('cta'),
+        total: activeOrder.reduce((t, k) => t + seqDuration(k), 0),
+        order: activeOrder,
+      },
+      videoSize: { w: taille.w, h: taille.h },
+      // `?? undefined` et non `?? ''` : une valeur absente ne doit pas etre
+      // ENVOYEE, sinon elle effacerait ce que l'editeur avance y avait mis.
+      posterUrl: posterUrl ?? undefined,
+      musicUrl: musicUrl ?? undefined,
+      voiceUrl: voiceUrl ?? undefined,
+      musicVolume,
+      voiceVolume,
+      sequenceVoiceUrls,
+      rushUrls: rushUrl && seqDuration('video') > 0 ? [rushUrl] : undefined,
+      audioKeyframes,
+      cardGroups,
+      hasAudio: !!(musicUrl || voiceUrl || sequenceVoiceUrls
+                   || (rushUrl && seqDuration('video') > 0)),
+    };
+  }, [format, generated, themeId, accent, textAnimation, gradStart, gradEnd,
+      gradientOpacity, titlePos, ctaPos, freeElements, activeOrder, seqDuration,
+      posterUrl, musicUrl, voiceUrl, musicVolume, voiceVolume, sequenceVoiceUrls,
+      rushUrl, audioKeyframes, cardGroups]);
+
+  /**
+   * Prend l'empreinte sur le rendu qui SUIT l'hydratation : les `setState` de
+   * l'effet de remplissage ne sont pas visibles dans sa propre fermeture, et
+   * lire l'etat trop tot photographierait l'ecran d'avant.
+   */
+  useEffect(() => {
+    if (!aCapturer.current) return;
+    aCapturer.current = false;
+    valeursChargees.current = construireValeurs();
+  }, [construireValeurs]);
+
+  const enregistrer = useCallback(async () => {
+    if (!editPostId || enregistrement.etat === 'encours') return;
+    setEnregistrement({ etat: 'encours' });
+
+    const valeurs = construireValeurs();
+    const corps = {
+      ...(generated ? { title: generated.title, caption: generated.subtitle } : null),
+      ...(scheduledDate ? { scheduled_date: scheduledDate } : null),
+      // Troisieme argument : ce que l'ecran portait AU CHARGEMENT. Tout ce qui
+      // n'a pas bouge depuis est omis, donc preserve tel quel en base.
+      metadata: metadataPourEnregistrement(
+        postCharge.current?.metadata, valeurs, valeursChargees.current ?? valeurs,
+      ),
+    };
+
+    const r = await enregistrerModification(editPostId, corps, (u, i) => fetch(u, i));
+    if (r.kind === 'ok') {
+      // La base fait foi pour la suite : le prochain enregistrement repart de
+      // ce que le serveur a REELLEMENT ecrit, pas de ce qu'on croyait avoir
+      // envoye. Sans cela, deux enregistrements de suite rejoueraient la
+      // metadata d'origine et pourraient defaire le premier.
+      if (r.post) postCharge.current = r.post as typeof postCharge.current;
+      setEnregistrement({ etat: 'ok' });
+    } else {
+      setEnregistrement({ etat: 'echec', issue: r.kind });
+    }
+  }, [editPostId, enregistrement.etat, construireValeurs, generated, scheduledDate]);
+
+  /**
+   * Reprend la version en base — UNIQUEMENT apres confirmation.
+   *
+   * Ne passe PAS par l'ecran de chargement plein cadre : un echec y remplacerait
+   * le parcours par un message, et le travail affiche disparaitrait — l'inverse
+   * exact de ce qu'un conflit doit proteger. En cas d'echec, l'ecran ne bouge
+   * pas et l'erreur s'affiche a cote du bouton.
+   *
+   * Aucun rendu, aucun debit, aucune ecriture : c'est une LECTURE.
+   */
+  const rechargerVersionRecente = useCallback(async () => {
+    if (!editPostId || rechargement.etat === 'encours') return;
+    setRechargement({ etat: 'encours' });
+    const r = await chargerPostAModifier(editPostId, (u, i) => fetch(u, i));
+    if (r.kind !== 'ok') {
+      // Le formulaire reste tel quel : rien n'a ete remplace.
+      setRechargement({ etat: 'echec', issue: r.kind });
+      return;
+    }
+    postCharge.current = r.post;
+    // Rejoue le remplissage a partir de ce que le serveur vient de rendre.
+    restoredRef.current = false;
+    setHydratations((n) => n + 1);
+    setEnregistrement({ etat: 'repos' });
+    setRechargement({ etat: 'repos' });
+  }, [editPostId, rechargement.etat]);
+
+  /**
+   * Ecran de chargement d'un contenu existant.
+   *
+   * Rendu A LA PLACE du parcours, jamais au-dessus : un wizard vierge affiche
+   * pendant qu'on charge — ou apres un echec — est exactement l'image d'un
+   * travail perdu. Tant que le contenu n'est pas la, l'ecran dit ou il en est.
+   *
+   * Chaque issue a son geste : se reconnecter, revenir au Calendrier, ou
+   * reessayer. « Une erreur est survenue » ne laisse aucun geste possible.
+   */
+  if (chargement.etat === 'encours') {
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-gray-800 bg-gray-900/50 px-4 py-6 text-sm text-gray-400">
+        <Loader2 className="w-5 h-5 animate-spin text-purple-300 flex-shrink-0" />
+        <span>Chargement de votre contenu…</span>
+      </div>
+    );
+  }
+
+  if (chargement.etat === 'echec') {
+    const message =
+      chargement.issue === 'session'
+        ? 'Votre session a expiré. Reconnectez-vous pour modifier ce contenu.'
+        : chargement.issue === 'refuse' || chargement.issue === 'introuvable'
+          ? 'Ce contenu est introuvable, ou ne vous appartient pas.'
+          : chargement.issue === 'reseau'
+            ? 'La connexion a été interrompue avant que le contenu n\'arrive.'
+            : "Le contenu n'a pas pu être chargé.";
+    // Reessayer n'a de sens que si la demande peut aboutir au coup suivant :
+    // une session expiree ou un contenu qui n'est pas le votre ne changeront
+    // pas d'avis, et proposer le bouton la ferait tourner en rond.
+    const reessayable = chargement.issue === 'reseau' || chargement.issue === 'erreur';
+    return (
+      <div
+        role="alert"
+        className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4"
+      >
+        <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+        <div className="min-w-0 space-y-2">
+          <p className="text-sm font-medium text-amber-200">{message}</p>
+          {reessayable && (
+            <button
+              type="button"
+              onClick={() => { chargeRef.current = false; setChargement({ etat: 'encours' }); }}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-1.5 text-[13px] text-gray-300 hover:bg-gray-800 transition"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Réessayer
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
       <div className="lg:col-span-3 space-y-4">
+        {/* MODIFICATION — la seule porte de sortie vers le serveur.
+            Visible uniquement quand on modifie : en creation, rien de tout ceci
+            n'existe, et le parcours se termine comme avant. */}
+        {editPostId && (
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-800 bg-gray-900/50 px-4 py-3">
+            <button
+              type="button"
+              onClick={enregistrer}
+              disabled={enregistrement.etat === 'encours'}
+              className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white transition disabled:opacity-60"
+              style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
+            >
+              {enregistrement.etat === 'encours'
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <Check className="w-4 h-4" />}
+              {enregistrement.etat === 'encours'
+                ? 'Enregistrement…'
+                : 'Enregistrer les modifications'}
+            </button>
+
+            {enregistrement.etat === 'ok' && (
+              <span className="text-[13px] text-emerald-300">Modifications enregistrées.</span>
+            )}
+
+            {enregistrement.etat === 'echec' && (
+              <span role="alert" className="text-[13px] text-amber-300">
+                {enregistrement.issue === 'conflit'
+                  // Le message DIT que rien n'a ete ecrit. « Une erreur est
+                  // survenue » laisserait croire a un enregistrement partiel,
+                  // et l'utilisateur repartirait en pensant son travail sauve.
+                  ? 'Ce contenu a été modifié ailleurs entre-temps. Rien n’a été enregistré : vos modifications sont toujours à l’écran.'
+                  : enregistrement.issue === 'reseau'
+                    ? 'La connexion a été interrompue. Rien n’a été enregistré ; vos modifications sont toujours à l’écran, réessayez.'
+                    : enregistrement.issue === 'session'
+                      ? 'Votre session a expiré. Reconnectez-vous, puis réessayez : rien n’est perdu.'
+                      : enregistrement.issue === 'refuse' || enregistrement.issue === 'introuvable'
+                        ? 'Ce contenu est introuvable, ou ne vous appartient pas.'
+                        : 'L’enregistrement a échoué. Vos modifications sont toujours à l’écran.'}
+              </span>
+            )}
+
+            {/* ── REPRENDRE LA VERSION EN BASE ─────────────────────────
+                Propose UNIQUEMENT apres un conflit, et en deux temps. Le
+                premier clic ne va pas chercher le serveur : il annonce ce que
+                le rechargement va couter — les modifications a l'ecran. Un
+                seul clic les effacerait sans que personne l'ait demande. */}
+            {enregistrement.etat === 'echec' && enregistrement.issue === 'conflit'
+              && rechargement.etat !== 'demande' && (
+              <button
+                type="button"
+                onClick={() => setRechargement({ etat: 'demande' })}
+                disabled={rechargement.etat === 'encours'}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-1.5 text-[13px] text-gray-300 hover:bg-gray-800 disabled:opacity-60 transition"
+              >
+                {rechargement.etat === 'encours'
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <RotateCcw className="w-3.5 h-3.5" />}
+                Recharger la version récente
+              </button>
+            )}
+
+            {rechargement.etat === 'demande' && (
+              <div className="flex flex-wrap items-center gap-2 basis-full">
+                <span className="text-[13px] text-amber-200">
+                  Recharger remplacera ce qui est à l’écran par la version enregistrée.
+                  Vos modifications non enregistrées seront perdues.
+                </span>
+                <button
+                  type="button"
+                  onClick={rechargerVersionRecente}
+                  className="inline-flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-[13px] text-amber-100 hover:bg-amber-500/20 transition"
+                >
+                  Confirmer le rechargement
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRechargement({ etat: 'repos' })}
+                  className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-1.5 text-[13px] text-gray-300 hover:bg-gray-800 transition"
+                >
+                  Annuler
+                </button>
+              </div>
+            )}
+
+            {rechargement.etat === 'echec' && (
+              <span role="alert" className="text-[13px] text-amber-300 basis-full">
+                {rechargement.issue === 'reseau'
+                  ? 'Le rechargement a échoué : la connexion a été interrompue. Rien n’a changé à l’écran.'
+                  : rechargement.issue === 'session'
+                    ? 'Le rechargement a échoué : votre session a expiré. Rien n’a changé à l’écran.'
+                    : 'Le rechargement a échoué. Rien n’a changé à l’écran.'}
+              </span>
+            )}
+          </div>
+        )}
+
         {error && (
           <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
@@ -7926,7 +8356,11 @@ export default function AssistantWizard() {
                     {/* ── TÉLÉCHARGER SUR L'ORDINATEUR ────────────────────
                         Rendu local : aucun post n'est créé. Les crédits sont
                         débités comme pour le Calendrier — c'est le même
-                        rendu, au même coût. */}
+                        rendu, au même coût.
+
+                        Absent en modification : il compose et débite, comme
+                        l'envoi. */}
+                    {!editPostId && (
                     <button
                       type="button"
                       onClick={() => runRender('bureau')}
@@ -7940,6 +8374,7 @@ export default function AssistantWizard() {
                         ? `Télécharger les ${batchCount} vidéos (.zip)`
                         : 'Télécharger la vidéo'}
                     </button>
+                    )}
 
                     <div className="flex justify-between pt-2">
                       <Button variant="ghost" size="sm" onClick={() => setStep(S.contenu)}>
@@ -7947,6 +8382,10 @@ export default function AssistantWizard() {
                           <ArrowLeft className="w-4 h-4" /> Retour
                         </span>
                       </Button>
+                      {/* Absent en modification : il ferait un `POST /api/posts`,
+                          donc un SECOND post, et debiterait un rendu. La seule
+                          action y est « Enregistrer les modifications ». */}
+                      {!editPostId && (
                       <Button
                         variant="primary"
                         size="sm"
@@ -7967,6 +8406,7 @@ export default function AssistantWizard() {
                           )}
                         </span>
                       </Button>
+                      )}
                     </div>
 
                     {/* Progression du rendu — même barre fine que la page avatar */}
@@ -8183,7 +8623,7 @@ export default function AssistantWizard() {
             le bouton se contente de revenir sur « Tout ». Seul
             « Recomposer », explicite, redéclenche un rendu — et donc un
             débit. */}
-        {generated && (() => {
+        {generated && !editPostId && (() => {
           const recomposer = () => { setPreviewRender(null, null); runRender('apercu'); };
           const etat = !previewUrl
             ? { onClick: () => runRender('apercu'), icone: <Play className="w-3.5 h-3.5" />, label: 'Voir le rendu',
