@@ -6,7 +6,7 @@ import { resolve } from 'path';
  * Rouvrir un brouillon dans l'éditeur.
  *
  * ⚠️ LE MÉCANISME EXISTAIT, L'ENTRÉE MANQUAIT. Le deeplink
- * `/dashboard/creer?postId=` restaure déjà tout le design. Sa seule entrée
+ * `/dashboard/creer-avance?postId=` restaure déjà tout le design. Sa seule entrée
  * était le bouton **audio**, qui forçait `&tab=audio` : pour changer une
  * carte ou un titre, il fallait passer par « ajouter de l'audio » puis
  * revenir en arrière.
@@ -19,7 +19,7 @@ import { resolve } from 'path';
  */
 
 const calendrier = readFileSync(resolve(__dirname, '../app/dashboard/calendar/page.tsx'), 'utf-8');
-const editeur = readFileSync(resolve(__dirname, '../app/dashboard/creer/page.tsx'), 'utf-8');
+const editeur = readFileSync(resolve(__dirname, '../app/dashboard/creer-avance/page.tsx'), 'utf-8');
 
 describe('Ré-exporter MET À JOUR le post', () => {
   it('l export vise `editingPostId` quand il existe', () => {
@@ -51,7 +51,7 @@ describe('Le bouton, aux deux endroits', () => {
   });
 
   it('il ouvre l éditeur SANS forcer l étape audio', () => {
-    expect(calendrier).toContain('window.location.href = `/dashboard/creer?postId=${post.id}`;');
+    expect(calendrier).toContain('window.location.href = `/dashboard/creer-avance?postId=${post.id}`;');
   });
 
   it('le bouton audio existant est intact', () => {

@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { Preview } from '@/app/dashboard/creer-simple/AssistantWizard';
+import { Preview } from '@/app/dashboard/creer/AssistantWizard';
 import { freeElementRect } from '@/lib/video-composer';
 import { clampToBox } from '@/lib/creer/dragPosition';
 import { sanitizeDraft, DRAFT_VERSION, type SanitizeDeps } from '@/lib/creer/draft';
@@ -25,7 +25,7 @@ import { ICON_LIBRARY, ICON_KEYWORDS, iconMatches, ALL_LUCIDE_NAMES } from '@/li
  */
 
 const wizard = readFileSync(
-  resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
+  resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
   'utf-8',
 );
 /**
@@ -324,7 +324,7 @@ describe('La bibliothèque est partagée, pas dupliquée', () => {
 
   it("l'éditeur avancé importe le même module au lieu de sa copie", () => {
     const avance = readFileSync(
-      resolve(__dirname, '../app/dashboard/creer/page.tsx'),
+      resolve(__dirname, '../app/dashboard/creer-avance/page.tsx'),
       'utf-8',
     );
     expect(avance).toContain('from "@/lib/icons/library"');
@@ -539,7 +539,7 @@ describe('La bibliothèque est accessible depuis toutes les séquences', () => {
 
 describe('Taille d un élément', () => {
   it('la taille bornée refuse l illisible comme l envahissant', async () => {
-    const { clampElementSize } = await import('@/app/dashboard/creer-simple/AssistantWizard');
+    const { clampElementSize } = await import('@/app/dashboard/creer/AssistantWizard');
     // Sous 8 % l'icône ne se lit plus dans la vidéo ; au-delà de 60 % elle
     // couvre le titre et les cartes.
     expect(clampElementSize(2)).toBe(8);
@@ -548,7 +548,7 @@ describe('Taille d un élément', () => {
   });
 
   it('une taille absurde retombe sur celle de la pose', async () => {
-    const { clampElementSize } = await import('@/app/dashboard/creer-simple/AssistantWizard');
+    const { clampElementSize } = await import('@/app/dashboard/creer/AssistantWizard');
     expect(clampElementSize(Number.NaN)).toBeCloseTo((64 / 330) * 100, 5);
   });
 

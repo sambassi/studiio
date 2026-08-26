@@ -160,7 +160,7 @@ describe('Default-safe', () => {
     // rien voir de nouveau.
     expect(timeline).toMatch(/typeof duckOnVoice === 'boolean' && onDuckOnVoiceChange &&/);
     const creer = readFileSync(
-      resolve(__dirname, '../app/dashboard/creer/page.tsx'),
+      resolve(__dirname, '../app/dashboard/creer-avance/page.tsx'),
       'utf-8',
     );
     expect(creer).not.toMatch(/duckOnVoice/);

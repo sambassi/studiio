@@ -14,7 +14,7 @@ import { pointToPct, grabOffset, clampPct, clampToBox } from '@/lib/creer/dragPo
  */
 
 const wizard = readFileSync(
-  resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
+  resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
   'utf-8',
 );
 

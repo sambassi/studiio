@@ -140,7 +140,7 @@ describe('L’identité traverse le brouillon', () => {
 
 describe('Plus aucune carte n’est rendue par son index', () => {
   const wizardSource = readFileSync(
-    resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
+    resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
     'utf8',
   );
 

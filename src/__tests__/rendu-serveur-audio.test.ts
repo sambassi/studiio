@@ -36,7 +36,7 @@ const entree = readFileSync(resolve(__dirname, '../lib/render/creerSimple.ts'), 
 const sansCommentaires = (src: string) =>
   src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 const wizard = readFileSync(
-  resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
+  resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
   'utf-8',
 );
 

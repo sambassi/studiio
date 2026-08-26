@@ -3,7 +3,7 @@ import { render, cleanup, fireEvent, screen } from '@testing-library/react';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import FloatingPanel from '@/components/ui/FloatingPanel';
-import { Preview } from '@/app/dashboard/creer-simple/AssistantWizard';
+import { Preview } from '@/app/dashboard/creer/AssistantWizard';
 
 /**
  * « Agrandir » — l'aperçu dans une fenêtre déplaçable et redimensionnable.
@@ -25,7 +25,7 @@ import { Preview } from '@/app/dashboard/creer-simple/AssistantWizard';
  */
 
 const wizard = readFileSync(
-  resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
+  resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
   'utf-8',
 );
 const panel = readFileSync(resolve(__dirname, '../components/ui/FloatingPanel.tsx'), 'utf-8');

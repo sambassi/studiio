@@ -6,7 +6,7 @@ import {
   groupCards, ungroupCards, pruneGroups, expandSelection, groupOf, newGroupId, MIN_GROUP,
   type CardGroup,
 } from '@/lib/creer/selection';
-import { Preview } from '@/app/dashboard/creer-simple/AssistantWizard';
+import { Preview } from '@/app/dashboard/creer/AssistantWizard';
 
 /**
  * Groupes de cartes — Mode simple.
@@ -21,7 +21,7 @@ import { Preview } from '@/app/dashboard/creer-simple/AssistantWizard';
  */
 
 const wizard = readFileSync(
-  resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
+  resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
   'utf-8',
 );
 

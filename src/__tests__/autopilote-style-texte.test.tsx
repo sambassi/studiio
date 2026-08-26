@@ -46,7 +46,7 @@ vi.mock('@/lib/fonts/catalog', async () => {
   return { ...actual, ensureFontLoaded: async () => true, preloadCatalogPreview: async () => true };
 });
 
-import AssistantWizard from '@/app/dashboard/creer-simple/AssistantWizard';
+import AssistantWizard from '@/app/dashboard/creer/AssistantWizard';
 
 const POST: PreparedPost = {
   title: 'sommeil',
@@ -409,7 +409,7 @@ describe('D — la contrainte tenue : six étapes, colonne de gauche intacte', (
   const panneau = readFileSync(
     resolve(__dirname, '../components/creer/AutopilotPanel.tsx'), 'utf-8');
   const wizard = readFileSync(
-    resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'), 'utf-8');
+    resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'), 'utf-8');
 
   it('le wizard a toujours SIX étapes', () => {
     const liste = panneau.slice(panneau.indexOf('const ETAPES = ['), panneau.indexOf('] as const;'));
@@ -439,7 +439,7 @@ describe('D — la contrainte tenue : six étapes, colonne de gauche intacte', (
 // ─────────────────────────────────────────────────────────────────────────
 describe('E — l assistant manuel n est PAS modifié', () => {
   const wizard = readFileSync(
-    resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'), 'utf-8');
+    resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'), 'utf-8');
   const corpsWizard = wizard.slice(wizard.indexOf('export default function AssistantWizard()'));
 
   it('son aperçu ouvre lui aussi les réglages au double-clic', () => {

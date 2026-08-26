@@ -1,15 +1,24 @@
 /**
- * LEGACY /dashboard/creator route.
+ * Route historique `/dashboard/creator`.
  *
- * The unified "Créer" experience now lives at /dashboard/creer (formerly
- * /dashboard/infographie). This file exists only to redirect any existing
- * bookmark / external link that still points at the old URL.
+ * La création est unifiée sous `/dashboard/creer`. Cette page ne fait que
+ * rediriger, en transportant la query TELLE QUELLE : un lien porteur d'un
+ * identifiant arriverait sinon dépouillé, sans erreur, et le parcours
+ * repartirait de zéro.
  *
- * TODO: delete this file once we've confirmed no bookmarks rely on it
- * (~2 weeks after deploy).
+ * Le calcul de la cible — et notamment le fait qu'un lien portant `postId`
+ * ou `id` désigne un contenu EXISTANT et doit aller sur l'éditeur avancé —
+ * appartient à `legacy-redirect`, partagé par les trois routes.
+ *
+ * TODO: supprimer ce fichier une fois qu'aucun signet n'en dépend plus.
  */
 import { redirect } from 'next/navigation';
+import { creerRedirectTarget, type SearchParams } from '@/lib/routing/legacy-redirect';
 
-export default function CreatorLegacyRedirect() {
-  redirect('/dashboard/creer');
+export default function CreatorLegacyRedirect({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
+  redirect(creerRedirectTarget(searchParams));
 }

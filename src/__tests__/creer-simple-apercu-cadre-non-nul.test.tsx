@@ -40,7 +40,7 @@ vi.mock('@/lib/fonts/catalog', async () => {
   return { ...actual, ensureFontLoaded: async () => true, preloadCatalogPreview: async () => true };
 });
 
-import AssistantWizard from '@/app/dashboard/creer-simple/AssistantWizard';
+import AssistantWizard from '@/app/dashboard/creer/AssistantWizard';
 
 /** Largeur donnée à TOUT élément : la seule mesure que le code consulte. */
 const LARGEUR_CADRE = 400;
@@ -178,7 +178,7 @@ describe('L indice « double-clic » de l Autopilote se voit', () => {
 // ─────────────────────────────────────────────────────────────────────────
 describe('La mesure ne dépend plus de l ordre de montage', () => {
   const wizard = require('fs').readFileSync(
-    require('path').resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
+    require('path').resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
     'utf-8',
   ) as string;
 

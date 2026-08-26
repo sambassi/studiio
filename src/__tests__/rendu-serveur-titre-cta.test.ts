@@ -22,7 +22,7 @@ import {
 const titre = readFileSync(resolve(__dirname, '../components/creer/SequenceTitle.tsx'), 'utf-8');
 const cta = readFileSync(resolve(__dirname, '../components/creer/SequenceCta.tsx'), 'utf-8');
 const wizard = readFileSync(
-  resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
+  resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
   'utf-8',
 );
 const composition = readFileSync(resolve(__dirname, '../../remotion/CreerSimpleMontage.tsx'), 'utf-8');

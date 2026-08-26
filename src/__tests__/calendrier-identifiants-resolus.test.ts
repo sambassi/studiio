@@ -22,7 +22,7 @@ import { resolve } from 'path';
 
 const FICHIERS = [
   '../app/dashboard/calendar/page.tsx',
-  '../app/dashboard/creer-simple/AssistantWizard.tsx',
+  '../app/dashboard/creer/AssistantWizard.tsx',
   '../components/shared/MediaLibrary.tsx',
   '../components/creer/AutopilotPanel.tsx',
 ];

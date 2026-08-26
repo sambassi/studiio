@@ -19,7 +19,7 @@ import { THEMES, themeLabel, isCustomTopic } from '@/lib/themes';
 
 const panneau = readFileSync(resolve(__dirname, '../components/creer/AutopilotPanel.tsx'), 'utf-8');
 const wizard = readFileSync(
-  resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'), 'utf-8',
+  resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'), 'utf-8',
 );
 const migration = readFileSync(
   resolve(__dirname, '../../migrations/2026-08-06-autopilot-topics.sql'), 'utf-8',

@@ -33,7 +33,7 @@ type Resultat =
   | 'inconnu';
 
 function retour(resultat: Resultat): NextResponse {
-  const url = new URL('/dashboard/creer-simple', appUrl());
+  const url = new URL('/dashboard/creer', appUrl());
   url.searchParams.set('drive', resultat);
   return NextResponse.redirect(url);
 }

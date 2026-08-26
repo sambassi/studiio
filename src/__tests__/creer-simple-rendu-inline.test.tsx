@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
-import { Preview } from '@/app/dashboard/creer-simple/AssistantWizard';
+import { Preview } from '@/app/dashboard/creer/AssistantWizard';
 
 /**
  * Le rendu joue DANS le cadre d'aperçu — fin du deuxième écran.
@@ -170,7 +170,7 @@ describe('C — le câblage de l assistant', () => {
   // qu'aucun test d'interface n'a à exécuter. Le comportement du calque, lui,
   // est vérifié sur le DOM dans les sections A et B.
   const wizard = readFileSync(
-    resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'), 'utf-8');
+    resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'), 'utf-8');
 
   it('l aperçu de l assistant reçoit le calque', () => {
     expect(wizard).toContain('overlay={renduDansLeCadre}');

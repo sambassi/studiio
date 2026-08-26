@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { Preview } from '@/app/dashboard/creer-simple/AssistantWizard';
+import { Preview } from '@/app/dashboard/creer/AssistantWizard';
 import { sanitizeDraft, DRAFT_VERSION, type SanitizeDeps } from '@/lib/creer/draft';
 
 /**
@@ -20,7 +20,7 @@ import { sanitizeDraft, DRAFT_VERSION, type SanitizeDeps } from '@/lib/creer/dra
  */
 
 const wizard = readFileSync(
-  resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
+  resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
   'utf-8',
 );
 const composer = readFileSync(resolve(__dirname, '../lib/video-composer.ts'), 'utf-8');

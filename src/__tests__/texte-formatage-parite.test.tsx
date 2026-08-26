@@ -378,7 +378,7 @@ describe('E — l Autopilote hérite du formatage, sans migration', () => {
 // ─────────────────────────────────────────────────────────────────────────
 describe('F — une seule barre d outils, deux écrans', () => {
   const wizard = readFileSync(
-    resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'), 'utf-8');
+    resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'), 'utf-8');
   const barre = readFileSync(
     resolve(__dirname, '../components/creer/TextFormatToolbar.tsx'), 'utf-8');
 

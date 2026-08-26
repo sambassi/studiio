@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { PHOTO_DND_TYPE, readDroppedPhoto } from '@/app/dashboard/creer-simple/AssistantWizard';
+import { PHOTO_DND_TYPE, readDroppedPhoto } from '@/app/dashboard/creer/AssistantWizard';
 
 /**
  * Glisser-déposer d'une photo d'affiche — Mode simple.
@@ -16,7 +16,7 @@ import { PHOTO_DND_TYPE, readDroppedPhoto } from '@/app/dashboard/creer-simple/A
  */
 
 const wizard = readFileSync(
-  resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
+  resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
   'utf-8',
 );
 

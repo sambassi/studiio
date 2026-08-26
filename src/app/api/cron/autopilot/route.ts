@@ -53,7 +53,7 @@ function verifyCronSecret(req: NextRequest): boolean {
 }
 
 /** Où l'utilisateur va regler ce qui bloque. */
-const LIEN_AUTOPILOTE = '/dashboard/creer-simple?panneau=autopilote';
+const LIEN_AUTOPILOTE = '/dashboard/creer?panneau=autopilote';
 
 /** Ce qu'on annonce, par cause. Un seul texte pour la cloche ET pour l'email. */
 const MESSAGES: Partial<Record<SkipReason, {
