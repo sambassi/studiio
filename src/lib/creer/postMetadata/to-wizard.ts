@@ -36,6 +36,7 @@
  */
 
 import { DRAFT_VERSION, type Draft } from '../draft';
+import { resoudreTextes } from '../textesCanoniques';
 import { fromPostMetadata } from './from-post';
 import type { CanonicalDesign } from './types';
 
@@ -122,11 +123,25 @@ export function toWizardDraft(post: PostLu): Partial<Draft> {
   // toujours produit : un post SANS contenu affiché serait un montage vierge.
   const branding = estObjet(canonique.branding) ? canonique.branding : {};
   const cartesLues = presence(meta, 'cards');
+
+  // ── Les deux CTA passent par le RESOLVEUR CANONIQUE ─────────────────
+  //
+  // Lire `branding.ctaText` en direct etait faux une fois sur deux : cette cle
+  // ne porte le GROS texte que chez l'Assistant et l'Autopilote. Chez
+  // `creer-avance` (`page.tsx:5258`) et l'Agent IA (`api/agent/generate:216`)
+  // elle porte la PETITE ligne — et c'est ainsi que le compositeur la peint
+  // (`video-composer.ts:2807`). Le champ « CTA » affichait donc le sous-texte
+  // sur ces posts, et l'enregistrement le reecrivait a la place du gros.
+  //
+  // Le resolveur tranche par la FORME des cles, pas par leur nom. `valeur`
+  // vaut `null` seulement si rien ne la portait : `''` reste une extinction
+  // volontaire, jamais un defaut.
+  const textes = resoudreTextes(post?.metadata);
   draft.generated = {
     title: typeof post?.title === 'string' ? post.title : '',
     subtitle: typeof presence(meta, 'subtitle') === 'string' ? (meta.subtitle as string) : '',
-    cta: typeof branding.ctaText === 'string' ? branding.ctaText : '',
-    ctaSub: typeof branding.ctaSubText === 'string' ? branding.ctaSubText : '',
+    cta: textes.ctaPrincipal.valeur ?? '',
+    ctaSub: textes.ctaSecondaire.valeur ?? '',
     cards: Array.isArray(cartesLues)
       ? cartesLues.map((c, i) => {
           const carte = estObjet(c) ? c : {};
