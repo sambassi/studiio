@@ -4658,6 +4658,25 @@ export default function AssistantWizard() {
     | { etat: 'echec'; issue: Enregistrement['kind'] }
   >({ etat: 'repos' });
 
+  /**
+   * Rechargement de la version en base, apres un conflit.
+   *
+   * `demande` est l'etape de CONFIRMATION, et elle n'est pas decorative :
+   * reprendre la version serveur remplace ce qui est a l'ecran. Le faire sur un
+   * seul clic effacerait, sans un mot, le travail que le conflit vient
+   * justement de sauver.
+   */
+  const [rechargement, setRechargement] = useState<
+    { etat: 'repos' } | { etat: 'demande' } | { etat: 'encours' }
+    | { etat: 'echec'; issue: ChargementPost['kind'] }
+  >({ etat: 'repos' });
+  /**
+   * Compteur d'hydratations. Il n'existe que pour RELANCER l'effet de
+   * remplissage : `chargement.etat` vaut deja « charge », et le remettre a la
+   * meme valeur ne declencherait rien.
+   */
+  const [hydratations, setHydratations] = useState(0);
+
   useEffect(() => {
     if (!editPostId || !sessionReady || chargeRef.current) return;
     chargeRef.current = true;
@@ -4914,7 +4933,7 @@ export default function AssistantWizard() {
     // `restoredRef` garantit un seul passage : une fois la session resolue,
     // relancer la restauration ecraserait ce que l'utilisateur vient de regler.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionReady, storageKey, editPostId, chargement.etat]);
+  }, [sessionReady, storageKey, editPostId, chargement.etat, hydratations]);
 
   /**
    * Sauvegarde : minuterie, PLUS trois filets.
@@ -5527,6 +5546,16 @@ export default function AssistantWizard() {
   };
 
   const runRender = async (destination: 'calendrier' | 'bureau' | 'apercu') => {
+    // ⚠️ MODIFICATION : ON NE COMPOSE PAS. Le garde est ICI, et pas seulement
+    // dans l'affichage : les trois destinations composent et debitent, et
+    // « calendrier » ferait en plus un `POST /api/posts` — donc un SECOND post,
+    // pendant qu'on croyait modifier le premier. Masquer les boutons suffirait
+    // aujourd'hui ; ce retour garantit qu'aucun chemin futur (raccourci, rappel,
+    // bouton ajoute ailleurs) ne puisse contourner la regle.
+    //
+    // Rendre a nouveau un contenu existant sera une action a part, avec son cout
+    // annonce avant confirmation. Elle n'existe pas encore.
+    if (editPostId) return;
     if (!generated || sending) return;
     setSending(true);
     // Sert UNIQUEMENT a placer l'etat de chargement au bon endroit — dans le
@@ -6319,6 +6348,33 @@ export default function AssistantWizard() {
       sequenceVoiceUrls, rushUrl, audioKeyframes, cardGroups, scheduledDate]);
 
   /**
+   * Reprend la version en base — UNIQUEMENT apres confirmation.
+   *
+   * Ne passe PAS par l'ecran de chargement plein cadre : un echec y remplacerait
+   * le parcours par un message, et le travail affiche disparaitrait — l'inverse
+   * exact de ce qu'un conflit doit proteger. En cas d'echec, l'ecran ne bouge
+   * pas et l'erreur s'affiche a cote du bouton.
+   *
+   * Aucun rendu, aucun debit, aucune ecriture : c'est une LECTURE.
+   */
+  const rechargerVersionRecente = useCallback(async () => {
+    if (!editPostId || rechargement.etat === 'encours') return;
+    setRechargement({ etat: 'encours' });
+    const r = await chargerPostAModifier(editPostId, (u, i) => fetch(u, i));
+    if (r.kind !== 'ok') {
+      // Le formulaire reste tel quel : rien n'a ete remplace.
+      setRechargement({ etat: 'echec', issue: r.kind });
+      return;
+    }
+    postCharge.current = r.post;
+    // Rejoue le remplissage a partir de ce que le serveur vient de rendre.
+    restoredRef.current = false;
+    setHydratations((n) => n + 1);
+    setEnregistrement({ etat: 'repos' });
+    setRechargement({ etat: 'repos' });
+  }, [editPostId, rechargement.etat]);
+
+  /**
    * Ecran de chargement d'un contenu existant.
    *
    * Rendu A LA PLACE du parcours, jamais au-dessus : un wizard vierge affiche
@@ -6406,7 +6462,7 @@ export default function AssistantWizard() {
                   // Le message DIT que rien n'a ete ecrit. « Une erreur est
                   // survenue » laisserait croire a un enregistrement partiel,
                   // et l'utilisateur repartirait en pensant son travail sauve.
-                  ? 'Ce contenu a été modifié ailleurs entre-temps. Rien n’a été enregistré : rechargez la page pour repartir de la dernière version.'
+                  ? 'Ce contenu a été modifié ailleurs entre-temps. Rien n’a été enregistré : vos modifications sont toujours à l’écran.'
                   : enregistrement.issue === 'reseau'
                     ? 'La connexion a été interrompue. Rien n’a été enregistré ; vos modifications sont toujours à l’écran, réessayez.'
                     : enregistrement.issue === 'session'
@@ -6414,6 +6470,59 @@ export default function AssistantWizard() {
                       : enregistrement.issue === 'refuse' || enregistrement.issue === 'introuvable'
                         ? 'Ce contenu est introuvable, ou ne vous appartient pas.'
                         : 'L’enregistrement a échoué. Vos modifications sont toujours à l’écran.'}
+              </span>
+            )}
+
+            {/* ── REPRENDRE LA VERSION EN BASE ─────────────────────────
+                Propose UNIQUEMENT apres un conflit, et en deux temps. Le
+                premier clic ne va pas chercher le serveur : il annonce ce que
+                le rechargement va couter — les modifications a l'ecran. Un
+                seul clic les effacerait sans que personne l'ait demande. */}
+            {enregistrement.etat === 'echec' && enregistrement.issue === 'conflit'
+              && rechargement.etat !== 'demande' && (
+              <button
+                type="button"
+                onClick={() => setRechargement({ etat: 'demande' })}
+                disabled={rechargement.etat === 'encours'}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-1.5 text-[13px] text-gray-300 hover:bg-gray-800 disabled:opacity-60 transition"
+              >
+                {rechargement.etat === 'encours'
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <RotateCcw className="w-3.5 h-3.5" />}
+                Recharger la version récente
+              </button>
+            )}
+
+            {rechargement.etat === 'demande' && (
+              <div className="flex flex-wrap items-center gap-2 basis-full">
+                <span className="text-[13px] text-amber-200">
+                  Recharger remplacera ce qui est à l’écran par la version enregistrée.
+                  Vos modifications non enregistrées seront perdues.
+                </span>
+                <button
+                  type="button"
+                  onClick={rechargerVersionRecente}
+                  className="inline-flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-[13px] text-amber-100 hover:bg-amber-500/20 transition"
+                >
+                  Confirmer le rechargement
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRechargement({ etat: 'repos' })}
+                  className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-1.5 text-[13px] text-gray-300 hover:bg-gray-800 transition"
+                >
+                  Annuler
+                </button>
+              </div>
+            )}
+
+            {rechargement.etat === 'echec' && (
+              <span role="alert" className="text-[13px] text-amber-300 basis-full">
+                {rechargement.issue === 'reseau'
+                  ? 'Le rechargement a échoué : la connexion a été interrompue. Rien n’a changé à l’écran.'
+                  : rechargement.issue === 'session'
+                    ? 'Le rechargement a échoué : votre session a expiré. Rien n’a changé à l’écran.'
+                    : 'Le rechargement a échoué. Rien n’a changé à l’écran.'}
               </span>
             )}
           </div>
@@ -8206,7 +8315,11 @@ export default function AssistantWizard() {
                     {/* ── TÉLÉCHARGER SUR L'ORDINATEUR ────────────────────
                         Rendu local : aucun post n'est créé. Les crédits sont
                         débités comme pour le Calendrier — c'est le même
-                        rendu, au même coût. */}
+                        rendu, au même coût.
+
+                        Absent en modification : il compose et débite, comme
+                        l'envoi. */}
+                    {!editPostId && (
                     <button
                       type="button"
                       onClick={() => runRender('bureau')}
@@ -8220,6 +8333,7 @@ export default function AssistantWizard() {
                         ? `Télécharger les ${batchCount} vidéos (.zip)`
                         : 'Télécharger la vidéo'}
                     </button>
+                    )}
 
                     <div className="flex justify-between pt-2">
                       <Button variant="ghost" size="sm" onClick={() => setStep(S.contenu)}>
@@ -8227,6 +8341,10 @@ export default function AssistantWizard() {
                           <ArrowLeft className="w-4 h-4" /> Retour
                         </span>
                       </Button>
+                      {/* Absent en modification : il ferait un `POST /api/posts`,
+                          donc un SECOND post, et debiterait un rendu. La seule
+                          action y est « Enregistrer les modifications ». */}
+                      {!editPostId && (
                       <Button
                         variant="primary"
                         size="sm"
@@ -8247,6 +8365,7 @@ export default function AssistantWizard() {
                           )}
                         </span>
                       </Button>
+                      )}
                     </div>
 
                     {/* Progression du rendu — même barre fine que la page avatar */}
@@ -8463,7 +8582,7 @@ export default function AssistantWizard() {
             le bouton se contente de revenir sur « Tout ». Seul
             « Recomposer », explicite, redéclenche un rendu — et donc un
             débit. */}
-        {generated && (() => {
+        {generated && !editPostId && (() => {
           const recomposer = () => { setPreviewRender(null, null); runRender('apercu'); };
           const etat = !previewUrl
             ? { onClick: () => runRender('apercu'), icone: <Play className="w-3.5 h-3.5" />, label: 'Voir le rendu',
