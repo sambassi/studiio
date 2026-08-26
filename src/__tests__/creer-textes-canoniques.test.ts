@@ -225,6 +225,126 @@ describe('anciennes metadata', () => {
   });
 });
 
+describe('B1 — ecrire le CTA principal sur la forme avance-herite', () => {
+  /**
+   * Defaut signale par la revue independante de la PR #342.
+   *
+   * Sur ces posts, le GROS texte vit sous `branding.watermarkText` : c'est la
+   * provenance que la cascade relit. Ecrire ailleurs rendait la modification
+   * INVISIBLE — et, pire, la deposait sur `branding.ctaText`, qui porte le
+   * sous-texte de cette meme forme. Une ecriture detruisait donc l'autre.
+   */
+  it('B1. la nouvelle valeur est relue, et le sous-texte survit', () => {
+    const avant = resoudreTextes(AVANCE_HERITE);
+    expect(avant.ctaPrincipal.cle).toBe('branding.watermarkText');
+
+    const apres = resoudreTextes(ecrireTexte(AVANCE_HERITE, 'ctaPrincipal', 'SUIVEZ-NOUS'));
+    expect(apres.ctaPrincipal.valeur).toBe('SUIVEZ-NOUS');
+    expect(apres.ctaSecondaire.valeur).toBe(avant.ctaSecondaire.valeur);
+    expect(apres.filigrane.valeur).toBe(avant.filigrane.valeur);
+  });
+
+  it('B1bis. ecrire les DEUX CTA a la suite ne les fait pas se marcher dessus', () => {
+    const m1 = ecrireTexte(AVANCE_HERITE, 'ctaSecondaire', 'SECONDAIRE NEUF');
+    const m2 = ecrireTexte(m1, 'ctaPrincipal', 'PRINCIPAL NEUF');
+    const r = resoudreTextes(m2);
+    expect(r.ctaPrincipal.valeur).toBe('PRINCIPAL NEUF');
+    expect(r.ctaSecondaire.valeur).toBe('SECONDAIRE NEUF');
+  });
+
+  it('B1ter. aucune cle n\'est ajoutee, supprimee ni deplacee', () => {
+    const source = AVANCE_HERITE as { branding: Record<string, unknown> };
+    const apres = ecrireTexte(AVANCE_HERITE, 'ctaPrincipal', 'SUIVEZ-NOUS') as {
+      branding: Record<string, unknown>;
+    };
+    expect(Object.keys(apres).sort()).toEqual(Object.keys(AVANCE_HERITE).sort());
+    expect(Object.keys(apres.branding).sort()).toEqual(Object.keys(source.branding).sort());
+    // Aucun objet `design` invente au passage.
+    expect(Object.prototype.hasOwnProperty.call(apres, 'design')).toBe(false);
+  });
+});
+
+/**
+ * Les SIX formes que le contrat reconnait, croisees avec les TROIS textes.
+ *
+ * C'est cette matrice qui manquait : les tests d'independance ne couvraient
+ * que la forme `jumele`, et B1 vivait dans la case restee vide.
+ */
+const FORMES: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
+  ['ADVANCED', ADVANCED_METADATA],
+  ['ASSISTANT', ASSISTANT_METADATA],
+  ['LEGACY_PARTIAL', LEGACY_PARTIAL_METADATA],
+  ['EDGE', EDGE_METADATA],
+  ['AVANCE_HERITE', AVANCE_HERITE],
+  ['REGRESSION', REGRESSION_TROIS_TEXTES],
+];
+
+const CHAMPS: readonly ChampTexte[] = ['ctaPrincipal', 'ctaSecondaire', 'filigrane'];
+
+/** Relit la valeur brute rangee sous un chemin de provenance. */
+function lireChemin(m: Record<string, unknown>, cle: string): unknown {
+  const segments = cle.split('.');
+  let courant: unknown = m;
+  for (const s of segments) {
+    if (typeof courant !== 'object' || courant === null) return undefined;
+    courant = (courant as Record<string, unknown>)[s];
+  }
+  return courant;
+}
+
+describe('matrice — six formes x trois textes', () => {
+  for (const [nom, source] of FORMES) {
+    for (const champ of CHAMPS) {
+      it(`${nom} / ${champ} : ecrire puis relire rend la valeur ecrite`, () => {
+        const avant = resoudreTextes(source);
+        const empreinteAvant = empreinte(source);
+        const apres = ecrireTexte(source, champ, 'VALEUR_ECRITE');
+        const relu = resoudreTextes(apres);
+
+        // 1. L'invariant central.
+        expect(relu[champ].valeur).toBe('VALEUR_ECRITE');
+
+        // 2. Les DEUX autres textes ne bougent pas.
+        for (const autre of CHAMPS) {
+          if (autre === champ) continue;
+          expect(relu[autre].valeur).toBe(avant[autre].valeur);
+        }
+
+        // 3. La provenance retournee est bien la cle qui porte la valeur.
+        const cle = relu[champ].cle;
+        expect(cle).not.toBeNull();
+        expect(lireChemin(apres, cle as string)).toBe('VALEUR_ECRITE');
+
+        // 4. L'objet source n'a pas bouge d'un octet.
+        expect(empreinte(source)).toBe(empreinteAvant);
+      });
+
+      it(`${nom} / ${champ} : '' reste une extinction volontaire`, () => {
+        const apres = resoudreTextes(ecrireTexte(source, champ, ''));
+        expect(apres[champ].valeur).toBe('');
+        expect(apres[champ].present).toBe(true);
+        expect(apres[champ].parDefaut).toBe(false);
+        // Meme avec des defauts fournis, '' ne doit pas etre remplace.
+        const avecDefauts = resoudreTextes(ecrireTexte(source, champ, ''), {
+          defauts: DEFAUTS_COMPOSITEUR,
+        });
+        expect(avecDefauts[champ].valeur).toBe('');
+      });
+
+      it(`${nom} / ${champ} : les cles inconnues traversent intactes`, () => {
+        const apres = ecrireTexte(source, champ, 'VALEUR_ECRITE') as Record<string, unknown>;
+        for (const [k, v] of Object.entries(source)) {
+          if (k === 'branding' || k === 'design') continue;
+          expect(apres[k]).toBe(v); // meme reference : rien n'est recopie ni perdu
+        }
+        // Aucune cle de premier niveau ajoutee hors `branding` / `design`.
+        const ajoutees = Object.keys(apres).filter((k) => !(k in source));
+        expect(ajoutees.every((k) => k === 'branding' || k === 'design')).toBe(true);
+      });
+    }
+  }
+});
+
 describe('purete', () => {
   it('8. aucune mutation de l\'objet source, provenance exacte', () => {
     const sources = [ADVANCED_METADATA, ASSISTANT_METADATA, LEGACY_PARTIAL_METADATA, EDGE_METADATA, REGRESSION_TROIS_TEXTES];

@@ -296,10 +296,16 @@ function copieSurface(v: unknown): Record<string, unknown> {
  *   2. La cible est la cle d'ORIGINE quand la valeur en avait une — c'est ce
  *      qui garantit que l'ecriture gagne la relecture. Sinon, la cle
  *      canonique du concept.
- *   3. `branding.watermarkText` n'est JAMAIS une cible. Un CTA principal
- *      d'ancien post `avance-herite` migre vers `branding.ctaText`, et la cle
- *      ambigue est laissee telle quelle — ni reecrite, ni supprimee : la
- *      supprimer casserait la relecture par un build anterieur.
+ *   3. Le FILIGRANE n'est jamais atteint par une ecriture de CTA, et
+ *      reciproquement : `design.siteText.text` n'est la provenance d'aucun
+ *      CTA, et aucune cascade de CTA ne le traverse.
+ *
+ *      `branding.watermarkText` PEUT etre une cible — mais dans un seul cas :
+ *      quand c'est la provenance reellement relue du CTA principal, sur la
+ *      forme `avance-herite`. Cette cle y porte un CTA, jamais un filigrane
+ *      (voir l'en-tete du module), donc l'y ecrire ne detruit aucune
+ *      signature de marque. Detourner l'ecriture ailleurs, au contraire,
+ *      la rendait invisible et ecrasait le sous-texte.
  */
 export function ecrireTexte(
   metadata: unknown,
@@ -319,14 +325,38 @@ export function ecrireTexte(
 
   const resolus = resoudreTextes(metadata);
   const origine = resolus[champ].cle;
-  const cible: CleTexte =
-    origine === null || origine === 'branding.watermarkText' ? CLE_CANONIQUE[champ] : origine;
+  // La cible est la provenance, sans exception. Une version precedente
+  // detournait `branding.watermarkText` vers la cle canonique, au nom de
+  // « un CTA n'ecrit jamais dans watermarkText ». Cette regle etait trop
+  // large et se retournait contre elle-meme : sur la forme `avance-herite`,
+  // `watermarkText` EST la provenance relue du CTA principal, et la cible de
+  // repli — `branding.ctaText` — y porte le SOUS-TEXTE. Le detour rendait
+  // donc la modification invisible ET ecrasait l'autre texte.
+  //
+  // L'invariant reel n'a jamais ete « ne pas toucher a cette cle » mais
+  // « un CTA ne detruit jamais le filigrane ». Il tient toujours : le
+  // filigrane vit sous `design.siteText.text`, qu'aucun CTA ne peut viser,
+  // et sur ces posts `watermarkText` n'a jamais contenu de filigrane.
+  const cible: CleTexte = origine === null ? CLE_CANONIQUE[champ] : origine;
 
   const suivant = copieSurface(metadata);
 
-  if (cible === 'branding.ctaText' || cible === 'branding.ctaSubText') {
+  // Aiguillage EXHAUSTIF sur les sept cles du contrat. Pas de branche
+  // attrape-tout : une cle non traitee doit faire echouer la compilation
+  // (`never`), pas atterrir en silence sur le sous-texte — c'etait la
+  // seconde moitie du defaut B1.
+  if (
+    cible === 'branding.ctaText'
+    || cible === 'branding.ctaSubText'
+    || cible === 'branding.watermarkText'
+  ) {
     const branding = copieSurface(suivant.branding);
-    branding[cible === 'branding.ctaText' ? 'ctaText' : 'ctaSubText'] = valeur;
+    const nom = cible === 'branding.ctaText'
+      ? 'ctaText'
+      : cible === 'branding.ctaSubText'
+        ? 'ctaSubText'
+        : 'watermarkText';
+    branding[nom] = valeur;
     suivant.branding = branding;
     return suivant;
   }
@@ -341,8 +371,11 @@ export function ecrireTexte(
     design.ctaMainText = valeur;
   } else if (cible === 'design.ctaSubText') {
     design.ctaSubText = valeur;
-  } else {
+  } else if (cible === 'design.ctaSubTextDesign') {
     design.ctaSubTextDesign = valeur;
+  } else {
+    const jamais: never = cible;
+    throw new TypeError(`ecrireTexte : cible non traitee « ${String(jamais)} »`);
   }
 
   suivant.design = design;
