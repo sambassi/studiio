@@ -179,3 +179,82 @@ describe('Autopilote — le style est réglable, le contenu varie', () => {
     expect(document.querySelector('[data-format="underline-subtitle"]')).toBeTruthy();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+/**
+ * LE SOUS-TEXTE DU CTA — la petite ligne, enfin editable.
+ *
+ * `generated.ctaSub` existait, etait peint dans l'apercu et persiste dans la
+ * metadata, mais AUCUN champ ne permettait de le changer : seuls le selecteur
+ * de ton et l'assistant pouvaient l'ecrire. Ces tests verrouillent le champ,
+ * son isolement (il n'apparait que sur le CTA) et l'independance des deux
+ * textes.
+ */
+describe('Créer simple — le sous-texte du CTA est editable', () => {
+  async function ouvrirCta() {
+    await ouvrirStyle();
+    const cta = document.querySelector('[data-cta-block]');
+    expect(cta).toBeTruthy();
+    fireEvent.doubleClick(cta!);
+    await waitFor(() =>
+      expect(document.querySelector('[data-zone-panneau="cta"]')).toBeTruthy());
+  }
+
+  const champSous = () =>
+    document.querySelector('[data-zone-soustexte="cta"]') as HTMLInputElement | null;
+
+  it('le champ est affiche dans le panneau du CTA', async () => {
+    await ouvrirCta();
+    const champ = champSous();
+    expect(champ).toBeTruthy();
+    // Etiquete, donc atteignable au lecteur d'ecran et au clic sur le libelle.
+    expect(champ!.id).toBe('zone-soustexte-cta');
+    expect(document.querySelector('label[for="zone-soustexte-cta"]')?.textContent)
+      .toContain('Sous-texte');
+  });
+
+  it('il n\'apparait QUE sur le CTA, jamais sur le titre ni les cartes', async () => {
+    await ouvrirStyle();
+    for (const selecteur of ['[data-title-block]', '[data-subtitle-block]', '[data-card-id]']) {
+      const cible = document.querySelector(selecteur);
+      fireEvent.doubleClick(cible!);
+      await waitFor(() => expect(document.querySelector('[data-zone-panneau]')).toBeTruthy());
+      expect(champSous(), selecteur).toBeNull();
+    }
+  });
+
+  it('le CTA principal reste editable, et les deux champs sont distincts', async () => {
+    await ouvrirCta();
+    const principal = document.querySelector('[data-zone-texte="cta"]') as HTMLTextAreaElement;
+    expect(principal).toBeTruthy();
+    expect(principal).not.toBe(champSous());
+  });
+
+  it('la saisie atteint l\'apercu sans toucher au CTA principal', async () => {
+    await ouvrirCta();
+    const principal = document.querySelector('[data-zone-texte="cta"]') as HTMLTextAreaElement;
+    const avant = principal.value;
+
+    fireEvent.change(champSous()!, { target: { value: 'LIEN EN BIO' } });
+    await waitFor(() => expect(champSous()!.value).toBe('LIEN EN BIO'));
+    await waitFor(() =>
+      expect(document.querySelector('[data-cta-block]')!.textContent).toContain('LIEN EN BIO'));
+
+    // Le gros texte n'a pas bouge d'un caractere.
+    expect((document.querySelector('[data-zone-texte="cta"]') as HTMLTextAreaElement).value)
+      .toBe(avant);
+  });
+
+  it('vider le champ masque le sous-texte, et garde une chaine vide', async () => {
+    await ouvrirCta();
+    fireEvent.change(champSous()!, { target: { value: 'LIEN EN BIO' } });
+    await waitFor(() =>
+      expect(document.querySelector('[data-cta-block]')!.textContent).toContain('LIEN EN BIO'));
+
+    fireEvent.change(champSous()!, { target: { value: '' } });
+    await waitFor(() =>
+      expect(document.querySelector('[data-cta-block]')!.textContent).not.toContain('LIEN EN BIO'));
+    // `''` et non `undefined` : une extinction VOULUE, que le contrat relira.
+    expect(champSous()!.value).toBe('');
+  });
+});

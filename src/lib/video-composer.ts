@@ -2766,7 +2766,12 @@ function drawVideoSeq(
   drawFreeElements(ctx, design, w, h);
 }
 
-function drawCTA(
+/**
+ * Exportee — comme `drawTransition` — pour qu'un test puisse l'executer sur un
+ * faux contexte 2D. `composeVideo` n'est pas praticable en test : elle exige un
+ * vrai canvas, `captureStream`, `MediaRecorder` et un `AudioContext`.
+ */
+export function drawCTA(
   ctx: CanvasRenderingContext2D, w: number, h: number,
   accent: string, ctaText: string, ctaSubTextParam: string,
   salesPhrase: string | undefined, watermark: string | undefined,
@@ -2804,7 +2809,13 @@ function drawCTA(
   //   Sub text = ctaSubText state ("CHAT POUR PLUS D'INFOS") → saved in design.ctaSubTextDesign & branding.ctaText
   // Note: branding naming is confusing (ctaText = editor's ctaSubText, watermarkText = editor's ctaMainText)
   const effectiveCtaText = design?.ctaMainText || watermark || 'AFROBOOST';
-  const effectiveSubText = design?.ctaSubTextDesign || ctaText || "CHAT POUR PLUS D'INFOS";
+  // `??` et non `||` — POUR CE SEUL TEXTE. Une chaine vide est une EXTINCTION
+  // VOULUE : l'apercu (`SequenceCta.tsx`), le rendu Remotion et le resolveur
+  // canonique la respectent deja. `||` la confondait avec une cle absente et
+  // repeignait le litteral, si bien que la video affichait un texte que
+  // l'ecran, lui, n'affichait pas. Une cle ABSENTE vaut toujours `undefined`
+  // et retombe donc, echelon par echelon, sur le repli historique — inchange.
+  const effectiveSubText = design?.ctaSubTextDesign ?? ctaText ?? "CHAT POUR PLUS D'INFOS";
 
   // CTA background: color-theme gradient backdrop (matches editor's
   // bg-gradient-to-br) + seqGradient overlay. Dark-hardcoded previously made
@@ -2888,7 +2899,12 @@ function drawCTA(
   ctx.font = ctaFontStr(salesFontSize, fontFamily);
   const salesLines: string[] = salesPhrase ? wrapText(ctx, salesPhrase, ctaContainerW, ctaLetterSpacing) : [];
   ctx.font = ctaFontStr(subFontSize, fontFamily);
-  const subLines: string[] = wrapText(ctx, applyTextCase(effectiveSubText, ctaCase), ctaContainerW, ctaLetterSpacing);
+  // Meme garde que `salesLines` juste au-dessus : `wrapText(ctx, '')` renvoie
+  // `['']` et non `[]`. Sans ce ternaire, un texte eteint gardait une ligne
+  // fantome de hauteur pleine.
+  const subLines: string[] = effectiveSubText
+    ? wrapText(ctx, applyTextCase(effectiveSubText, ctaCase), ctaContainerW, ctaLetterSpacing)
+    : [];
 
   const salesLineH = salesFontSize * lineMul;
   const ctaLineH = ctaFontSize * lineMul;
@@ -2899,7 +2915,7 @@ function drawCTA(
   const blockH = salesBlockH
     + (salesPhrase ? mt05 : 0) // gap sales → main
     + ctaBlockH
-    + mt1                      // gap main → sub
+    + (subLines.length ? mt1 : 0) // gap main → sub, nul si la ligne est eteinte
     + subBlockH;
 
   // Editor uses translate(-50%, -100%) → the BOTTOM of the block sits at ctaPosY.
@@ -2979,7 +2995,7 @@ function drawCTA(
       );
     });
   }
-  curY += ctaBlockH + mt1;
+  curY += ctaBlockH + (subLines.length ? mt1 : 0);
 
   // Sub-text (multi-line) — user-configured color, 900 weight, uppercase, optional gradient.
   ctx.font = ctaFontStr(subFontSize, fontFamily); ctx.textAlign = ctaAlign;

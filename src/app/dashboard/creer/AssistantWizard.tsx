@@ -137,6 +137,9 @@ import {
 import { readEditTargetFromQuery } from '@/lib/creer/editTarget';
 import { toWizardDraft } from '@/lib/creer/postMetadata/to-wizard';
 import {
+  indexerCartesOrigine, cartesPourEnregistrement,
+} from '@/lib/creer/postMetadata/cartes';
+import {
   metadataPourEnregistrement, type ValeursWizard,
 } from '@/lib/creer/postMetadata/from-wizard';
 import { enregistrerModification, type Enregistrement } from '@/lib/creer/savePost';
@@ -4663,6 +4666,18 @@ export default function AssistantWizard() {
   const valeursChargees = useRef<ValeursWizard | null>(null);
   /** Leve a la fin de l'hydratation ; l'empreinte est prise au rendu suivant. */
   const aCapturer = useRef(false);
+  /**
+   * Les cartes D'ORIGINE, indexees par l'identifiant que l'ecran leur donne.
+   *
+   * L'ecran ne porte que cinq champs par carte ; la metadata en compte sept
+   * (`position`, `textOnly` et la couleur propre en plus). Reconstruire une
+   * carte a partir de ce qui est affiche revenait donc a supprimer ce que ce
+   * parcours ignore. On garde l'original sous la main pour n'y appliquer que
+   * ce que l'utilisateur regle vraiment.
+   */
+  const cartesOrigine = useRef<ReadonlyMap<string, Record<string, unknown>>>(new Map());
+  /** L'accent EN PLACE AU CHARGEMENT : il dit quelles cartes le suivaient. */
+  const accentCharge = useRef<string | undefined>(undefined);
 
   /** Etat du dernier enregistrement demande. `repos` = rien en cours. */
   const [enregistrement, setEnregistrement] = useState<
@@ -4936,6 +4951,15 @@ export default function AssistantWizard() {
       // Le prochain rendu portera le contenu du serveur : c'est LUI qu'il faut
       // photographier pour savoir, plus tard, ce que l'utilisateur a change.
       aCapturer.current = true;
+      // Meme instant, meme raison : l'index des cartes n'est fiable qu'ICI,
+      // ou leur rang correspond encore a celui de la metadata. Ensuite
+      // l'utilisateur peut en ajouter, en retirer ou les deplacer.
+      cartesOrigine.current = indexerCartesOrigine(postCharge.current?.metadata);
+      const brandingCharge = (postCharge.current?.metadata as
+        { branding?: { accentColor?: unknown } } | undefined)?.branding;
+      accentCharge.current = typeof brandingCharge?.accentColor === 'string'
+        ? brandingCharge.accentColor
+        : undefined;
       // « Brouillon restaure » serait faux ici : rien n'a ete retrouve, on a
       // ouvert un contenu enregistre. Le dire exactement evite de faire croire
       // a une reprise de travail perdu.
@@ -6309,10 +6333,11 @@ export default function AssistantWizard() {
     return {
       subtitle: generated?.subtitle,
       theme: themeId,
-      cards: generated?.cards.map((c) => ({
-        emoji: c.icon, label: c.title, value: c.value,
-        description: c.description, color: accent,
-      })),
+      // Les cartes partent de leur ORIGINAL : voir `postMetadata/cartes.ts`.
+      // En creation la table est vide, donc le comportement est celui d'avant.
+      cards: generated
+        ? cartesPourEnregistrement(generated.cards, cartesOrigine.current, accent, accentCharge.current)
+        : undefined,
       accentColor: accent,
       ctaText: generated?.cta,
       ctaSubText: generated?.ctaSub,
@@ -8550,7 +8575,7 @@ export default function AssistantWizard() {
                     htmlFor={`zone-texte-${zoneOuverte}`}
                     className="block text-[10px] uppercase tracking-wider text-gray-500 mb-1"
                   >
-                    Texte
+                    {zoneOuverte === 'cta' ? 'Texte principal' : 'Texte'}
                   </label>
                   <textarea
                     id={`zone-texte-${zoneOuverte}`}
@@ -8570,6 +8595,36 @@ export default function AssistantWizard() {
                     style={{ resize: 'vertical' }}
                     className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none px-2 py-1.5 text-sm"
                   />
+                </div>
+              )}
+              {/* ── LA PETITE LIGNE DU CTA ────────────────────────────────
+                  Le SOUS-TEXTE, pas le filigrane : celui-ci vit a l'etape
+                  Style et s'ecrit dans `design.siteText`. Ici, la ligne
+                  complementaire peinte juste sous l'appel a l'action.
+                  Elle existait dans l'etat et dans la metadata, sans aucun
+                  moyen de l'editer : seuls le selecteur de ton et l'assistant
+                  pouvaient la changer. */}
+              {zoneOuverte === 'cta' && (
+                <div>
+                  <label
+                    htmlFor="zone-soustexte-cta"
+                    className="block text-[10px] uppercase tracking-wider text-gray-500 mb-1"
+                  >
+                    Sous-texte
+                  </label>
+                  <input
+                    id="zone-soustexte-cta"
+                    type="text"
+                    value={generated.ctaSub}
+                    onChange={(e) => setGenerated((g) => (g ? { ...g, ctaSub: e.target.value } : g))}
+                    data-zone-soustexte="cta"
+                    placeholder="LIEN EN BIO"
+                    maxLength={40}
+                    className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none px-2 py-1.5 text-sm"
+                  />
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    Petite ligne sous l’appel à l’action. Champ vide : rien ne s’affiche.
+                  </p>
                 </div>
               )}
               {zoneOuverte === 'cards' && (
