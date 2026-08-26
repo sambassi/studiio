@@ -137,13 +137,32 @@ export const DEFAUTS_COMPOSITEUR: Required<Pick<Defauts, 'ctaPrincipal' | 'ctaSe
   ctaSecondaire: "CHAT POUR PLUS D'INFOS",
 });
 
-/** Cle d'ecriture quand AUCUNE cle ne portait encore la valeur. */
+/**
+ * Cle d'ecriture quand AUCUNE cle ne portait encore la valeur.
+ *
+ * Les deux CTA visent `design.*`, et non `branding.*`. Deux raisons, toutes
+ * deux verifiees sur le code reel :
+ *
+ *   1. ELLES GAGNENT LA RELECTURE, SUR TOUTES LES FORMES. `design.ctaMainText`
+ *      et `design.ctaSubText` sont les echelons 1 et 2 de leurs cascades, quel
+ *      que soit le producteur. Les anciennes cibles `branding.*` etaient, elles,
+ *      au DERNIER echelon — et sur la forme `avance-herite` la cascade du
+ *      secondaire lit `branding.ctaText`, jamais `branding.ctaSubText` : une
+ *      ecriture sans provenance y atterrissait dans une cle que personne ne
+ *      relit. Elle etait simplement perdue.
+ *   2. ELLES SONT LES SEULES QUE LE RENDU PEINT. `video-composer.ts:2806` lit
+ *      `design.ctaMainText || watermarkText` pour le gros texte, et `:2783`
+ *      neutralise explicitement le parametre `ctaSubText`
+ *      (`void ctaSubTextParam`). Une valeur ecrite dans `branding.ctaSubText`
+ *      ne produisait aucun pixel.
+ *
+ * Ces cles ne sont utilisees QUE lorsque la provenance est absente : une valeur
+ * qui vient deja d'une cle historique est reecrite dans cette cle-la, et aucune
+ * ancienne cle n'est jamais deplacee, synchronisee ni supprimee.
+ */
 const CLE_CANONIQUE: Readonly<Record<ChampTexte, CleTexte>> = Object.freeze({
-  // Choisies pour que l'ecriture GAGNE la relecture : la priorite de lecture
-  // ne les depasse que par des cles absentes, sinon la valeur ecrite serait
-  // invisible.
-  ctaPrincipal: 'branding.ctaText',
-  ctaSecondaire: 'branding.ctaSubText',
+  ctaPrincipal: 'design.ctaMainText',
+  ctaSecondaire: 'design.ctaSubText',
   filigrane: 'design.siteText.text',
 });
 
