@@ -148,7 +148,7 @@ describe('duplicateBoxes — la copie ne se cache pas sous son original', () => 
 
 describe('Câblage', () => {
   const wizard = readFileSync(
-    resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
+    resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
     'utf-8',
   );
 

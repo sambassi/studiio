@@ -27,7 +27,7 @@ import {
  */
 
 const wizard = readFileSync(
-  resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
+  resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
   'utf-8',
 );
 const routePexels = readFileSync(resolve(__dirname, '../app/api/pexels/route.ts'), 'utf-8');

@@ -238,8 +238,8 @@ describe('Au plus UNE ligne par axe', () => {
 
   it('les deux éditeurs appliquent la coupe', () => {
     for (const [nom, src] of [
-      ['avancé', readFileSync(resolve(__dirname, '../app/dashboard/creer/page.tsx'), 'utf-8')],
-      ['simple', readFileSync(resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'), 'utf-8')],
+      ['avancé', readFileSync(resolve(__dirname, '../app/dashboard/creer-avance/page.tsx'), 'utf-8')],
+      ['simple', readFileSync(resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'), 'utf-8')],
     ] as const) {
       expect(src.includes('onePerAxis(mergeGuides('), nom).toBe(true);
       expect(src.includes('onePerAxis(computeAlignmentLines('), nom).toBe(true);
@@ -313,9 +313,9 @@ describe('Le milieu du format, visible pendant la manipulation', () => {
 });
 
 describe('Le câblage des deux éditeurs', () => {
-  const avance = readFileSync(resolve(__dirname, '../app/dashboard/creer/page.tsx'), 'utf-8');
+  const avance = readFileSync(resolve(__dirname, '../app/dashboard/creer-avance/page.tsx'), 'utf-8');
   const simple = readFileSync(
-    resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
+    resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
     'utf-8',
   );
 

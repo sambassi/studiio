@@ -18,7 +18,7 @@ import { renderSignature, signatureMatches, VOLATILE_KEYS } from '@/lib/creer/re
  */
 
 const wizard = readFileSync(
-  resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
+  resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
   'utf-8',
 );
 const composer = readFileSync(resolve(__dirname, '../lib/video-composer.ts'), 'utf-8');

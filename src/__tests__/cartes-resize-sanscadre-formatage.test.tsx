@@ -41,7 +41,7 @@ vi.mock('@/lib/fonts/catalog', async () => {
   return { ...actual, ensureFontLoaded: async () => true, preloadCatalogPreview: async () => true };
 });
 
-import AssistantWizard from '@/app/dashboard/creer-simple/AssistantWizard';
+import AssistantWizard from '@/app/dashboard/creer/AssistantWizard';
 
 const CARTES = [
   { id: 'c1', icon: 'Zap', title: 'Carte une', value: '10' },
@@ -231,7 +231,7 @@ describe('Bug 2 — « Sans cadre » atteint enfin l aperçu', () => {
     // `design_style.cardStyle`, le rendu video l'honorait, et l'apercu ne le
     // recevait pas : choisir « Sans cadre » ne changeait rien a l'ecran.
     const wizard = readFileSync(
-      resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'), 'utf-8');
+      resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'), 'utf-8');
     const apercu = wizard.slice(
       wizard.indexOf('function AutopilotPreview('),
       wizard.indexOf('export default function AssistantWizard()'),

@@ -103,7 +103,7 @@ async function passage(t: number) {
     kind: NOTIFICATION_KINDS.autopiloteSansRush,
     title: 'Autopilote en pause : ajoutez des rushes',
     body: 'Ajoutez-y au moins une vidéo.',
-    href: '/dashboard/creer-simple',
+    href: '/dashboard/creer?panneau=autopilote',
     now: t,
   });
 }

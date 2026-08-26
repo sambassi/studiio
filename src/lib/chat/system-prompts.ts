@@ -1,7 +1,7 @@
 const STUDIIO_KNOWLEDGE = `
 === FONCTIONNALITÉS STUDIIO ===
 
-1. CRÉATION (/dashboard/creer)
+1. CRÉATION (/dashboard/creer — parcours guidé ; les réglages détaillés ci-dessous vivent sur /dashboard/creer-avance)
 - Barre du haut : Thème, Modèles, Éléments, Texte, Cartes, Médias, Audio, Paramètres
 - Thème du contenu : 20+ options (Sommeil&Sport, Nutrition&Danse, Énergie&Cardio, Beauté, Finance, Coding, Crypto, Gaming, Food, Animaux, Auto, Immobilier, Éducation, Astrologie, Motivation, Personnalisé)
 - IA génère 5 cartes d'info basées sur le thème choisi

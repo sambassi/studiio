@@ -348,9 +348,9 @@ describe('Le calque n est plus déformé', () => {
 });
 
 describe('Le câblage des deux éditeurs', () => {
-  const avance = readFileSync(resolve(__dirname, '../app/dashboard/creer/page.tsx'), 'utf-8');
+  const avance = readFileSync(resolve(__dirname, '../app/dashboard/creer-avance/page.tsx'), 'utf-8');
   const simple = readFileSync(
-    resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
+    resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
     'utf-8',
   );
 

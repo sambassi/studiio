@@ -30,7 +30,7 @@ vi.mock('@/lib/fonts/catalog', async () => {
   return { ...actual, ensureFontLoaded: async () => true, preloadCatalogPreview: async () => true };
 });
 
-import AssistantWizard from '@/app/dashboard/creer-simple/AssistantWizard';
+import AssistantWizard from '@/app/dashboard/creer/AssistantWizard';
 
 let clientWidthOriginal: PropertyDescriptor | undefined;
 

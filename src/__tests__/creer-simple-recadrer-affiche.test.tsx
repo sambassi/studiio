@@ -4,7 +4,7 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import {
   Preview, clampPosterTransform, POSTER_TRANSFORM_NEUTRAL, POSTER_ZOOM_MIN, POSTER_ZOOM_MAX,
-} from '@/app/dashboard/creer-simple/AssistantWizard';
+} from '@/app/dashboard/creer/AssistantWizard';
 import { posterTransformActive, cropPosterToComposition } from '@/lib/video-composer';
 import { sanitizeDraft, DRAFT_VERSION, type SanitizeDeps } from '@/lib/creer/draft';
 
@@ -19,7 +19,7 @@ import { sanitizeDraft, DRAFT_VERSION, type SanitizeDeps } from '@/lib/creer/dra
  */
 
 const wizard = readFileSync(
-  resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
+  resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
   'utf-8',
 );
 

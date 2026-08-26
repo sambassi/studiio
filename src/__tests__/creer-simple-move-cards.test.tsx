@@ -3,7 +3,7 @@ import { render, cleanup } from '@testing-library/react';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { boxesFromRects, coversAll, clampToBox, type CardBox } from '@/lib/creer/dragPosition';
-import { Preview } from '@/app/dashboard/creer-simple/AssistantWizard';
+import { Preview } from '@/app/dashboard/creer/AssistantWizard';
 
 /**
  * Déplacement libre des cartes — Mode simple.
@@ -250,7 +250,7 @@ describe('coversAll — le mode libre ne vaut que s il couvre tout', () => {
 
 describe('Le format fait partie de l état — sinon l export est écrasé', () => {
   const wizard = readFileSync(
-    resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
+    resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
     'utf-8',
   );
 
@@ -280,7 +280,7 @@ describe('Le format fait partie de l état — sinon l export est écrasé', () 
 
 describe('Invariants du gestionnaire de glissement', () => {
   const wizard = readFileSync(
-    resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
+    resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
     'utf-8',
   );
   // ⚠️ LES TRANCHES PARTENT DU CORPS DU WIZARD. Le fichier porte desormais

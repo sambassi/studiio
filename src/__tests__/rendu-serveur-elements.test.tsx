@@ -22,7 +22,7 @@ import { freeElementRect } from '@/lib/video-composer';
 
 const couche = readFileSync(resolve(__dirname, '../components/creer/FreeElementsLayer.tsx'), 'utf-8');
 const wizard = readFileSync(
-  resolve(__dirname, '../app/dashboard/creer-simple/AssistantWizard.tsx'),
+  resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
   'utf-8',
 );
 const composition = readFileSync(resolve(__dirname, '../../remotion/CreerSimpleMontage.tsx'), 'utf-8');
