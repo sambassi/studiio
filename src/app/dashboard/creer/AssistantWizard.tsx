@@ -135,6 +135,7 @@ import {
   type PostAModifier,
 } from '@/lib/creer/loadPost';
 import { readEditTargetFromQuery } from '@/lib/creer/editTarget';
+import { toWizardDraft } from '@/lib/creer/postMetadata/to-wizard';
 import { useBranding, NEUTRAL_BRANDING } from '@/lib/hooks/useBranding';
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { Card, CardTitle, CardContent } from '@/components/ui/Card';
@@ -4764,8 +4765,26 @@ export default function AssistantWizard() {
    */
   useEffect(() => {
     if (!sessionReady || restoredRef.current) return;
+    // MODIFICATION : on attend le contenu du serveur. Remplir depuis le
+    // brouillon local en attendant, puis le remplacer, ferait clignoter un
+    // autre montage a l'ecran — et si le chargement echouait, le brouillon
+    // d'une creation precedente prendrait la place du contenu demande.
+    if (editPostId && chargement.etat !== 'charge') return;
     restoredRef.current = true;
-    const draft = sanitizeDraft(readDraft(storageKey), {
+    // LA SOURCE, ET C'EST TOUT CE QUI CHANGE ICI.
+    //
+    // En modification, elle est le SERVEUR — le brouillon local n'est meme pas
+    // lu. C'est ce qui garantit qu'un brouillon d'hier n'ecrase jamais, sans un
+    // mot, le contenu qu'on vient d'ouvrir : les deux ne peuvent pas se
+    // disputer l'ecran, l'un des deux n'est pas dans la piece.
+    //
+    // Les deux sources passent ensuite par le MEME `sanitizeDraft` : une
+    // metadata abimee est bornee et ecartee exactement comme un brouillon
+    // abime, ce que le depot sait deja encaisser.
+    const source = editPostId
+      ? toWizardDraft(postCharge.current ?? {})
+      : readDraft(storageKey);
+    const draft = sanitizeDraft(source, {
       themeIds: THEMES.map((t) => t.id),
       toneIds: TONES.map((t) => t.id),
       formats: Object.keys(VIDEO_SIZE),
@@ -4874,13 +4893,20 @@ export default function AssistantWizard() {
     ].filter(Boolean);
     // Uniquement si le brouillon porte du travail : annoncer « Brouillon
     // restaure » sur un ecran vierge inquiete sans rien apprendre.
-    if (draft.started || draft.generated) {
+    if (editPostId) {
+      // « Brouillon restaure » serait faux ici : rien n'a ete retrouve, on a
+      // ouvert un contenu enregistre. Le dire exactement evite de faire croire
+      // a une reprise de travail perdu.
+      setRestoredNotice(
+        `Contenu chargé${bits.length ? ` (${bits.join(', ')})` : ''}. Vos modifications ne sont enregistrées que lorsque vous le demandez.`,
+      );
+    } else if (draft.started || draft.generated) {
       setRestoredNotice(`Brouillon restauré${bits.length ? ` (${bits.join(', ')})` : ''}.`);
     }
     // `restoredRef` garantit un seul passage : une fois la session resolue,
     // relancer la restauration ecraserait ce que l'utilisateur vient de regler.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionReady, storageKey]);
+  }, [sessionReady, storageKey, editPostId, chargement.etat]);
 
   /**
    * Sauvegarde : minuterie, PLUS trois filets.
@@ -4904,10 +4930,16 @@ export default function AssistantWizard() {
    */
   const flushDraft = useCallback(() => {
     if (!restoredRef.current || !sessionReady) return;
+    // MODIFICATION : aucun brouillon local n'est ecrit. Le contenu d'un post
+    // n'a rien a faire dans le brouillon des CREATIONS — il y prendrait la
+    // place du travail en cours, et la creation suivante rouvrirait le post
+    // qu'on vient de modifier en croyant reprendre son brouillon. Le contenu
+    // vit deja au serveur ; sa copie locale n'apporte rien et peut nuire.
+    if (editPostId) return;
     const draft = draftRef.current();
     if (!draft.started && !draft.generated) return;
     writeDraft(storageKey, draft);
-  }, [storageKey, sessionReady]);
+  }, [editPostId, storageKey, sessionReady]);
   const flushRef = useRef(flushDraft);
   flushRef.current = flushDraft;
 

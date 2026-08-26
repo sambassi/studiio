@@ -56,6 +56,7 @@ vi.mock('@/lib/fonts/catalog', async () => {
 });
 
 import AssistantWizard from '../app/dashboard/creer/AssistantWizard';
+import { draftKey, DRAFT_VERSION } from '../lib/creer/draft';
 
 const POST = {
   id: 'post-42',
@@ -218,5 +219,84 @@ describe('aucun effet de bord au chargement', () => {
     ouvrir();
     await laisserTourner();
     expect(appels.filter((a) => a.method !== 'GET')).toEqual([]);
+  });
+});
+
+/**
+ * Le contenu chargé, et le brouillon local qui ne doit pas s'y substituer.
+ *
+ * Ces deux-là sont la même exigence vue des deux côtés : un travail existant ne
+ * doit jamais être remplacé sans un mot. Le premier vérifie que le contenu du
+ * serveur arrive bien à l'écran ; le second, qu'un brouillon d'hier ne prend
+ * pas sa place — et ne se fait pas non plus écraser par lui.
+ */
+describe('le contenu du serveur remplit l\'écran', () => {
+  it('le titre et le sous-titre enregistrés sont affichés', async () => {
+    ouvrir('post-42');
+    await laisserTourner();
+    expect(document.body.textContent).toContain('MON TITRE');
+  });
+
+  it('l\'écran dit que le contenu est chargé, pas qu\'un brouillon est restauré', async () => {
+    // « Brouillon restauré » serait faux : rien n'a ete retrouve, on a ouvert
+    // un contenu enregistre.
+    ouvrir('post-42');
+    await laisserTourner();
+    expect(document.body.textContent).toContain('Contenu chargé');
+    expect(document.body.textContent).not.toContain('Brouillon restauré');
+  });
+
+  it('l\'écran annonce que rien ne partira sans une demande explicite', async () => {
+    ouvrir('post-42');
+    await laisserTourner();
+    expect(document.body.textContent)
+      .toContain('Vos modifications ne sont enregistrées que lorsque vous le demandez');
+  });
+});
+
+describe('le brouillon local n\'écrase jamais le contenu chargé', () => {
+  /** Un brouillon local d'une création précédente, bien rempli. */
+  function poserBrouillon() {
+    window.localStorage.setItem(
+      draftKey('a@b.c'),
+      JSON.stringify({
+        version: DRAFT_VERSION,
+        savedAt: 1,
+        started: true,
+        generated: {
+          title: 'TITRE DU BROUILLON',
+          subtitle: 'sous-titre du brouillon',
+          cards: [],
+          cta: '',
+          ctaSub: '',
+        },
+      }),
+    );
+  }
+
+  it('c\'est le contenu du serveur qui s\'affiche, pas le brouillon', async () => {
+    poserBrouillon();
+    ouvrir('post-42');
+    await laisserTourner();
+    expect(document.body.textContent).toContain('MON TITRE');
+    expect(document.body.textContent).not.toContain('TITRE DU BROUILLON');
+  });
+
+  it('le brouillon local n\'est pas détruit non plus — il reste pour la création', async () => {
+    // L'inverse serait tout aussi grave : ouvrir un post ne doit pas effacer le
+    // travail de creation en cours.
+    poserBrouillon();
+    ouvrir('post-42');
+    await laisserTourner();
+    const reste = window.localStorage.getItem(draftKey('a@b.c'));
+    expect(reste).not.toBeNull();
+    expect(String(reste)).toContain('TITRE DU BROUILLON');
+  });
+
+  it('en création, le brouillon reprend ses droits', async () => {
+    poserBrouillon();
+    ouvrir();
+    await laisserTourner();
+    expect(document.body.textContent).toContain('TITRE DU BROUILLON');
   });
 });
