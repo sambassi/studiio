@@ -24,6 +24,36 @@
  *      téléversé depuis l'éditeur avancé ne doit pas disparaître parce que le
  *      parcours guidé ne l'affiche pas.
  *
+ *   3. PROVENANCE : une valeur lue dans une clé n'est réécrite QUE dans cette
+ *      clé. Aucune synchronisation entre deux clés au prétexte qu'elles
+ *      porteraient « la même information ».
+ *
+ *   4. SEUL CE QUE L'UTILISATEUR A CHANGÉ PART. L'appelant fournit ce que
+ *      l'écran portait AU CHARGEMENT ; tout ce qui n'a pas bougé depuis est
+ *      omis. Ouvrir puis enregistrer sans rien toucher n'écrit donc rien.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * LE FILIGRANE NE SE DÉDUIT DE RIEN — ET VOICI POURQUOI
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Deux producteurs ne nomment pas pareil, et le compositeur le documente
+ * (`video-composer.ts`, « branding naming is confusing ») :
+ *
+ *   GROS texte  ->  `design.ctaMainText`      ET  `branding.watermarkText`
+ *   PETITE ligne -> `design.ctaSubTextDesign` ET  `branding.ctaText`
+ *
+ * `branding.ctaText` porte donc la PETITE ligne. L'assistant, lui, la lit et
+ * l'affiche comme CTA principal. Tant qu'il se contentait de lire, cela n'avait
+ * aucune conséquence. Une version précédente réécrivait `watermarkText` depuis
+ * cette valeur : sur un post de l'éditeur avancé, le GROS texte était alors
+ * remplacé par la petite ligne — sans affichage, sans erreur, et sans retour
+ * possible, la colonne `jsonb` n'ayant pas d'historique.
+ *
+ * `watermarkText`, `design.ctaMainText` et `design.ctaSubText` ne sont donc
+ * PLUS JAMAIS écrits ici. Le filigrane ne pourra changer que depuis un contrôle
+ * qui lui sera dédié ; il n'en existe pas dans ce parcours, sa valeur est donc
+ * préservée telle quelle.
+ *
  * Le montage déjà rendu (`renderedVideoUrl`, `thumbnailUrl`, `composerVersion`)
  * n'est JAMAIS touché : modifier des textes ne produit pas une nouvelle vidéo,
  * et y toucher ferait pointer le post vers un fichier qui ne lui correspond pas.
@@ -37,9 +67,44 @@ const estObjet = (v: unknown): v is Record<string, unknown> =>
 
 const copier = <T,>(v: T): T => (v === undefined ? v : (JSON.parse(JSON.stringify(v)) as T));
 
-/** Pose la clé seulement si la valeur existe. `null` compte comme une valeur. */
-function poserSiConnu(cible: Record<string, unknown>, cle: string, valeur: unknown): void {
-  if (valeur !== undefined) cible[cle] = copier(valeur);
+/**
+ * Egalite profonde, suffisante pour ce que le parcours porte : des valeurs
+ * JSON. `JSON.stringify` seul trahirait sur l'ordre des cles ; on compare donc
+ * structurellement.
+ */
+function memeValeur(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((v, i) => memeValeur(v, b[i]));
+  }
+  const oa = a as Record<string, unknown>;
+  const ob = b as Record<string, unknown>;
+  const ca = Object.keys(oa);
+  const cb = Object.keys(ob);
+  if (ca.length !== cb.length) return false;
+  return ca.every((k) => Object.prototype.hasOwnProperty.call(ob, k) && memeValeur(oa[k], ob[k]));
+}
+
+/**
+ * Pose la clé seulement si l'utilisateur l'a CHANGÉE.
+ *
+ * `null`, `0`, `false`, `''` et `[]` comptent comme des valeurs : seule
+ * `undefined` signifie « le parcours n'en porte pas ». Une valeur identique a
+ * celle du chargement est omise — ce qui la laisse intacte en base, la fusion
+ * ne touchant pas aux cles absentes.
+ */
+function poserSiChange(
+  cible: Record<string, unknown>,
+  cle: string,
+  valeur: unknown,
+  reference: unknown,
+): boolean {
+  if (valeur === undefined) return false;
+  if (memeValeur(valeur, reference)) return false;
+  cible[cle] = copier(valeur);
+  return true;
 }
 
 /** Ce que le parcours guidé sait produire sans rendre de vidéo. */
@@ -80,60 +145,82 @@ export interface ValeursWizard {
 export function metadataPourEnregistrement(
   existante: unknown,
   valeurs: ValeursWizard,
+  chargees: ValeursWizard = {},
 ): Record<string, unknown> {
   const base = estObjet(existante) ? existante : {};
   const envoi: Record<string, unknown> = {};
+  const ref = chargees ?? {};
 
   // ── Champs simples ──────────────────────────────────────────────────
-  poserSiConnu(envoi, 'subtitle', valeurs.subtitle);
-  poserSiConnu(envoi, 'theme', valeurs.theme);
-  poserSiConnu(envoi, 'cards', valeurs.cards);
-  poserSiConnu(envoi, 'videoSize', valeurs.videoSize);
-  poserSiConnu(envoi, 'posterUrl', valeurs.posterUrl);
-  poserSiConnu(envoi, 'musicUrl', valeurs.musicUrl);
-  poserSiConnu(envoi, 'voiceUrl', valeurs.voiceUrl);
-  poserSiConnu(envoi, 'musicVolume', valeurs.musicVolume);
-  poserSiConnu(envoi, 'voiceVolume', valeurs.voiceVolume);
-  poserSiConnu(envoi, 'sequenceVoiceUrls', valeurs.sequenceVoiceUrls);
-  poserSiConnu(envoi, 'rushUrls', valeurs.rushUrls);
-  poserSiConnu(envoi, 'audioKeyframes', valeurs.audioKeyframes);
-  poserSiConnu(envoi, 'cardGroups', valeurs.cardGroups);
-  poserSiConnu(envoi, 'hasAudio', valeurs.hasAudio);
-  poserSiConnu(envoi, 'sequences', valeurs.sequences);
+  poserSiChange(envoi, 'subtitle', valeurs.subtitle, ref.subtitle);
+  poserSiChange(envoi, 'theme', valeurs.theme, ref.theme);
+  poserSiChange(envoi, 'cards', valeurs.cards, ref.cards);
+  poserSiChange(envoi, 'videoSize', valeurs.videoSize, ref.videoSize);
+  poserSiChange(envoi, 'posterUrl', valeurs.posterUrl, ref.posterUrl);
+  poserSiChange(envoi, 'musicUrl', valeurs.musicUrl, ref.musicUrl);
+  poserSiChange(envoi, 'voiceUrl', valeurs.voiceUrl, ref.voiceUrl);
+  poserSiChange(envoi, 'musicVolume', valeurs.musicVolume, ref.musicVolume);
+  poserSiChange(envoi, 'voiceVolume', valeurs.voiceVolume, ref.voiceVolume);
+  poserSiChange(envoi, 'sequenceVoiceUrls', valeurs.sequenceVoiceUrls, ref.sequenceVoiceUrls);
+  poserSiChange(envoi, 'rushUrls', valeurs.rushUrls, ref.rushUrls);
+  poserSiChange(envoi, 'audioKeyframes', valeurs.audioKeyframes, ref.audioKeyframes);
+  poserSiChange(envoi, 'cardGroups', valeurs.cardGroups, ref.cardGroups);
+  poserSiChange(envoi, 'hasAudio', valeurs.hasAudio, ref.hasAudio);
+  poserSiChange(envoi, 'sequences', valeurs.sequences, ref.sequences);
 
-  // ── `branding` : recomposé SUR l'existant ───────────────────────────
+  // ── `branding` : recomposé SUR l'existant, et seulement s'il bouge ───
+  //
+  // `watermarkText` N'EST PAS ÉCRIT : le parcours ne l'affiche pas, donc il
+  // n'a rien à en dire. Le déduire du CTA détruisait le gros texte des posts
+  // venus de l'éditeur avancé.
   const brandingBase = estObjet(base.branding) ? copier(base.branding) : {};
   const branding: Record<string, unknown> = { ...brandingBase };
-  poserSiConnu(branding, 'accentColor', valeurs.accentColor);
-  poserSiConnu(branding, 'ctaText', valeurs.ctaText);
-  poserSiConnu(branding, 'ctaSubText', valeurs.ctaSubText);
-  // Le filigrane suit le CTA, comme a la creation : les deux portent le meme
-  // texte, et les desynchroniser ferait afficher un filigrane que
-  // l'utilisateur n'a jamais choisi.
-  poserSiConnu(branding, 'watermarkText', valeurs.ctaText);
-  if (Object.keys(branding).length > 0) envoi.branding = branding;
+  let brandingChange = false;
+  brandingChange = poserSiChange(branding, 'accentColor', valeurs.accentColor, ref.accentColor)
+    || brandingChange;
+  brandingChange = poserSiChange(branding, 'ctaText', valeurs.ctaText, ref.ctaText)
+    || brandingChange;
+  brandingChange = poserSiChange(branding, 'ctaSubText', valeurs.ctaSubText, ref.ctaSubText)
+    || brandingChange;
+  if (brandingChange) envoi.branding = branding;
 
-  // ── `design` : recomposé SUR l'existant ─────────────────────────────
+  // ── `design` : même règle ───────────────────────────────────────────
+  //
+  // `ctaMainText` et `ctaSubText` n'y sont PAS écrits non plus : le premier est
+  // le jumeau de `watermarkText`, le second celui de `branding.ctaText`. Les
+  // synchroniser depuis ce que l'écran affiche reviendrait à réintroduire la
+  // perte par une autre porte.
   const designBase = estObjet(base.design) ? copier(base.design) : {};
   const design: Record<string, unknown> = { ...designBase };
-  poserSiConnu(design, 'textAnimation', valeurs.textAnimation);
-  poserSiConnu(design, 'gradientColor1', valeurs.gradientColor1);
-  poserSiConnu(design, 'gradientColor2', valeurs.gradientColor2);
-  poserSiConnu(design, 'gradientOpacity', valeurs.gradientOpacity);
-  poserSiConnu(design, 'ctaMainText', valeurs.ctaText);
-  poserSiConnu(design, 'ctaSubText', valeurs.ctaSubText);
+  let designChange = false;
+  designChange = poserSiChange(design, 'textAnimation', valeurs.textAnimation, ref.textAnimation)
+    || designChange;
+  designChange = poserSiChange(design, 'gradientColor1', valeurs.gradientColor1, ref.gradientColor1)
+    || designChange;
+  designChange = poserSiChange(design, 'gradientColor2', valeurs.gradientColor2, ref.gradientColor2)
+    || designChange;
+  designChange = poserSiChange(design, 'gradientOpacity', valeurs.gradientOpacity, ref.gradientOpacity)
+    || designChange;
 
   // `positions` est lui-meme imbrique : meme regle, un cran plus bas. Ecraser
   // l'objet entier perdrait une cle que seul l'editeur avance y met.
   const positionsBase = estObjet(designBase.positions) ? copier(designBase.positions) : {};
   const positions: Record<string, unknown> = { ...positionsBase };
-  poserSiConnu(positions, 'title', valeurs.titlePos);
-  // Le wizard nomme `ctaPos` ce que la metadata range sous `watermark`.
-  poserSiConnu(positions, 'watermark', valeurs.ctaPos);
-  poserSiConnu(positions, 'elements', valeurs.elements);
-  if (Object.keys(positions).length > 0) design.positions = positions;
+  let positionsChange = false;
+  positionsChange = poserSiChange(positions, 'title', valeurs.titlePos, ref.titlePos)
+    || positionsChange;
+  // Le wizard nomme `ctaPos` ce que la metadata range sous `watermark` — c'est
+  // une POSITION, sans rapport avec le texte du filigrane.
+  positionsChange = poserSiChange(positions, 'watermark', valeurs.ctaPos, ref.ctaPos)
+    || positionsChange;
+  positionsChange = poserSiChange(positions, 'elements', valeurs.elements, ref.elements)
+    || positionsChange;
+  if (positionsChange) {
+    design.positions = positions;
+    designChange = true;
+  }
 
-  if (Object.keys(design).length > 0) envoi.design = design;
+  if (designChange) envoi.design = design;
 
   return envoi;
 }

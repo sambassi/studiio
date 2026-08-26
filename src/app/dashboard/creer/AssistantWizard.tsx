@@ -136,7 +136,9 @@ import {
 } from '@/lib/creer/loadPost';
 import { readEditTargetFromQuery } from '@/lib/creer/editTarget';
 import { toWizardDraft } from '@/lib/creer/postMetadata/to-wizard';
-import { metadataPourEnregistrement } from '@/lib/creer/postMetadata/from-wizard';
+import {
+  metadataPourEnregistrement, type ValeursWizard,
+} from '@/lib/creer/postMetadata/from-wizard';
 import { enregistrerModification, type Enregistrement } from '@/lib/creer/savePost';
 import { useBranding, NEUTRAL_BRANDING } from '@/lib/hooks/useBranding';
 import { preRenderCardIcons } from '@/lib/icons/prerender';
@@ -4651,6 +4653,16 @@ export default function AssistantWizard() {
   const postCharge = useRef<PostAModifier | null>(null);
   /** Vrai une fois le chargement TENTE : il n'a lieu qu'une fois. */
   const chargeRef = useRef(false);
+  /**
+   * Empreinte de l'ecran AU CHARGEMENT — la reference du « rien n'a change ».
+   *
+   * Sans elle, un enregistrement qui ne modifie rien reecrirait quand meme tout,
+   * et reecrire c'est risquer de perdre : c'est ainsi que le gros texte des
+   * posts venus de l'editeur avance disparaissait.
+   */
+  const valeursChargees = useRef<ValeursWizard | null>(null);
+  /** Leve a la fin de l'hydratation ; l'empreinte est prise au rendu suivant. */
+  const aCapturer = useRef(false);
 
   /** Etat du dernier enregistrement demande. `repos` = rien en cours. */
   const [enregistrement, setEnregistrement] = useState<
@@ -4921,6 +4933,9 @@ export default function AssistantWizard() {
     // Uniquement si le brouillon porte du travail : annoncer « Brouillon
     // restaure » sur un ecran vierge inquiete sans rien apprendre.
     if (editPostId) {
+      // Le prochain rendu portera le contenu du serveur : c'est LUI qu'il faut
+      // photographier pour savoir, plus tard, ce que l'utilisateur a change.
+      aCapturer.current = true;
       // « Brouillon restaure » serait faux ici : rien n'a ete retrouve, on a
       // ouvert un contenu enregistre. Le dire exactement evite de faire croire
       // a une reprise de travail perdu.
@@ -6281,12 +6296,17 @@ export default function AssistantWizard() {
    * reste celle d'avant tant qu'on n'a pas relance un rendu. C'est un choix, pas
    * un oubli — rendre ici debiterait des credits sans que personne l'ait demande.
    */
-  const enregistrer = useCallback(async () => {
-    if (!editPostId || enregistrement.etat === 'encours') return;
-    setEnregistrement({ etat: 'encours' });
-
+  /**
+   * Ce que l'ecran porte MAINTENANT, dans le vocabulaire de la metadata.
+   *
+   * Extrait de `enregistrer` pour une seule raison : il faut pouvoir en prendre
+   * une empreinte AU CHARGEMENT, afin de savoir ensuite ce que l'utilisateur a
+   * reellement change. Sans cette empreinte, un enregistrement qui ne modifie
+   * rien reecrirait quand meme tout — et reecrire, c'est risquer de perdre.
+   */
+  const construireValeurs = useCallback((): ValeursWizard => {
     const taille = VIDEO_SIZE[format];
-    const valeurs = {
+    return {
       subtitle: generated?.subtitle,
       theme: themeId,
       cards: generated?.cards.map((c) => ({
@@ -6324,11 +6344,35 @@ export default function AssistantWizard() {
       hasAudio: !!(musicUrl || voiceUrl || sequenceVoiceUrls
                    || (rushUrl && seqDuration('video') > 0)),
     };
+  }, [format, generated, themeId, accent, textAnimation, gradStart, gradEnd,
+      gradientOpacity, titlePos, ctaPos, freeElements, activeOrder, seqDuration,
+      posterUrl, musicUrl, voiceUrl, musicVolume, voiceVolume, sequenceVoiceUrls,
+      rushUrl, audioKeyframes, cardGroups]);
 
+  /**
+   * Prend l'empreinte sur le rendu qui SUIT l'hydratation : les `setState` de
+   * l'effet de remplissage ne sont pas visibles dans sa propre fermeture, et
+   * lire l'etat trop tot photographierait l'ecran d'avant.
+   */
+  useEffect(() => {
+    if (!aCapturer.current) return;
+    aCapturer.current = false;
+    valeursChargees.current = construireValeurs();
+  }, [construireValeurs]);
+
+  const enregistrer = useCallback(async () => {
+    if (!editPostId || enregistrement.etat === 'encours') return;
+    setEnregistrement({ etat: 'encours' });
+
+    const valeurs = construireValeurs();
     const corps = {
       ...(generated ? { title: generated.title, caption: generated.subtitle } : null),
       ...(scheduledDate ? { scheduled_date: scheduledDate } : null),
-      metadata: metadataPourEnregistrement(postCharge.current?.metadata, valeurs),
+      // Troisieme argument : ce que l'ecran portait AU CHARGEMENT. Tout ce qui
+      // n'a pas bouge depuis est omis, donc preserve tel quel en base.
+      metadata: metadataPourEnregistrement(
+        postCharge.current?.metadata, valeurs, valeursChargees.current ?? valeurs,
+      ),
     };
 
     const r = await enregistrerModification(editPostId, corps, (u, i) => fetch(u, i));
@@ -6342,10 +6386,7 @@ export default function AssistantWizard() {
     } else {
       setEnregistrement({ etat: 'echec', issue: r.kind });
     }
-  }, [editPostId, enregistrement.etat, format, generated, themeId, accent, textAnimation,
-      gradStart, gradEnd, gradientOpacity, titlePos, ctaPos, freeElements, activeOrder,
-      seqDuration, posterUrl, musicUrl, voiceUrl, musicVolume, voiceVolume,
-      sequenceVoiceUrls, rushUrl, audioKeyframes, cardGroups, scheduledDate]);
+  }, [editPostId, enregistrement.etat, construireValeurs, generated, scheduledDate]);
 
   /**
    * Reprend la version en base — UNIQUEMENT apres confirmation.
