@@ -57,6 +57,21 @@ const AVANCE_HERITE: Record<string, unknown> = {
   },
 };
 
+/**
+ * La forme `avance-herite` DEPOUILLEE : un `watermarkText` et rien d'autre.
+ *
+ * C'est la forme que produit `api/agent/generate/route.ts` et celle ou le trou
+ * du CTA secondaire se manifeste — la fixture `AVANCE_HERITE` porte un
+ * `ctaText`, ce qui masque le defaut.
+ */
+const AVANCE_HERITE_NU: Record<string, unknown> = {
+  type: 'infographic',
+  branding: { watermarkText: 'GROS TEXTE' },
+};
+
+/** Aucune cle de texte : le cas d'un post neuf. */
+const VIDE: Record<string, unknown> = { type: 'infographic' };
+
 /** Copie profonde de reference, pour prouver l'absence de mutation. */
 function empreinte(v: unknown): string {
   return JSON.stringify(v, (_k, val) => (val === undefined ? '__indefini__' : val));
@@ -276,6 +291,8 @@ const FORMES: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['LEGACY_PARTIAL', LEGACY_PARTIAL_METADATA],
   ['EDGE', EDGE_METADATA],
   ['AVANCE_HERITE', AVANCE_HERITE],
+  ['AVANCE_HERITE_NU', AVANCE_HERITE_NU],
+  ['VIDE', VIDE],
   ['REGRESSION', REGRESSION_TROIS_TEXTES],
 ];
 
@@ -414,6 +431,158 @@ describe('purete', () => {
       expect(r.ctaPrincipal.present).toBe(false);
       expect(r.filigrane.present).toBe(false);
       expect(detecterProducteur(mauvais)).toBe('canonique');
+    }
+  });
+});
+
+/**
+ * PHASE 1 — les cles canoniques d'ecriture passent sous `design.*`, et le trou
+ * du CTA secondaire de la forme `avance-herite` est ferme.
+ *
+ * ── LE DEFAUT ────────────────────────────────────────────────────────────
+ *
+ * Les cles canoniques etaient `branding.ctaText` et `branding.ctaSubText`.
+ * Deux consequences, prouvees par l'audit du code reel :
+ *
+ *   1. Sur `avance-herite`, la cascade du CTA secondaire lit `branding.ctaText`
+ *      au dernier echelon — JAMAIS `branding.ctaSubText`. Ecrire un sous-texte
+ *      sur un post depourvu de provenance le deposait donc dans une cle que la
+ *      relecture ne consulte pas : l'ecriture etait INVISIBLE.
+ *   2. Aucune des deux cles canoniques n'est peinte par le compositeur :
+ *      `video-composer.ts:2806` lit `design.ctaMainText || watermarkText` pour
+ *      le gros texte, et `:2783` NEUTRALISE explicitement `ctaSubText`
+ *      (`void ctaSubTextParam`). Une valeur canoniquement ecrite ne produisait
+ *      donc aucun pixel.
+ *
+ * `design.ctaMainText` et `design.ctaSubText` corrigent les deux : elles sont
+ * les echelons 1 et 2 de toutes les cascades, quelle que soit la forme, et ce
+ * sont celles que les lecteurs reels consultent en premier.
+ */
+describe('phase 1 — cles canoniques design.* et trou avance-herite', () => {
+  it('P1.1 avance-herite : le sous-texte est relu depuis branding.ctaText', () => {
+    // Preuves : `creer-avance/page.tsx:5258` ecrit `ctaText: ctaSubText` (la
+    // PETITE ligne) ; `video-composer.ts:2807` et `calendar/page.tsx:4028` la
+    // relisent toutes deux comme sous-texte.
+    const r = resoudreTextes(AVANCE_HERITE);
+    expect(r.producteur).toBe('avance-herite');
+    expect(r.ctaSecondaire.valeur).toBe('CHAT POUR PLUS D INFOS');
+    expect(r.ctaSecondaire.cle).toBe('branding.ctaText');
+  });
+
+  it('P1.2 avance-herite AVEC provenance : ecrire le sous-texte gagne la relecture', () => {
+    const avant = resoudreTextes(AVANCE_HERITE);
+    const apres = resoudreTextes(ecrireTexte(AVANCE_HERITE, 'ctaSecondaire', 'PETITE LIGNE'));
+    expect(apres.ctaSecondaire.valeur).toBe('PETITE LIGNE');
+    expect(apres.ctaPrincipal.valeur).toBe(avant.ctaPrincipal.valeur);
+    expect(apres.filigrane.valeur).toBe(avant.filigrane.valeur);
+  });
+
+  it('P1.3 LE TROU : avance-herite SANS provenance de sous-texte', () => {
+    const avant = resoudreTextes(AVANCE_HERITE_NU);
+    expect(avant.producteur).toBe('avance-herite');
+    expect(avant.ctaSecondaire.present).toBe(false);
+    expect(avant.ctaSecondaire.cle).toBeNull();
+
+    const ecrit = ecrireTexte(AVANCE_HERITE_NU, 'ctaSecondaire', 'PETITE LIGNE');
+    const apres = resoudreTextes(ecrit);
+
+    // L'ecriture doit etre RELUE — c'est tout le defaut.
+    expect(apres.ctaSecondaire.valeur).toBe('PETITE LIGNE');
+    expect(apres.ctaSecondaire.cle).toBe('design.ctaSubText');
+    // Et les deux autres concepts ne bougent pas.
+    expect(apres.ctaPrincipal.valeur).toBe(avant.ctaPrincipal.valeur);
+    expect(apres.ctaPrincipal.cle).toBe('branding.watermarkText');
+    expect(apres.filigrane.valeur).toBeNull();
+  });
+
+  it('P1.4 metadata vide + CTA principal : cree design.ctaMainText, et rien d\'autre', () => {
+    const m = ecrireTexte(VIDE, 'ctaPrincipal', 'RESERVEZ MAINTENANT') as Record<string, unknown>;
+    const design = m.design as Record<string, unknown>;
+    expect(design.ctaMainText).toBe('RESERVEZ MAINTENANT');
+    // Aucune des cinq autres cles du contrat n'est creee.
+    expect(Object.prototype.hasOwnProperty.call(design, 'ctaSubText')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(design, 'ctaSubTextDesign')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(design, 'siteText')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(m, 'branding')).toBe(false);
+    expect(resoudreTextes(m).ctaPrincipal.cle).toBe('design.ctaMainText');
+  });
+
+  it('P1.5 metadata vide + CTA secondaire : cree design.ctaSubText, et rien d\'autre', () => {
+    const m = ecrireTexte(VIDE, 'ctaSecondaire', 'Lien en bio') as Record<string, unknown>;
+    const design = m.design as Record<string, unknown>;
+    expect(design.ctaSubText).toBe('Lien en bio');
+    expect(Object.prototype.hasOwnProperty.call(design, 'ctaMainText')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(design, 'ctaSubTextDesign')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(design, 'siteText')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(m, 'branding')).toBe(false);
+    expect(resoudreTextes(m).ctaSecondaire.cle).toBe('design.ctaSubText');
+  });
+
+  it('P1.6 design.ctaMainText est relu comme CTA principal, et \'\' arrete la cascade', () => {
+    const avecTexte = { branding: { ctaText: 'IGNORE' }, design: { ctaMainText: 'GROS' } };
+    const r = resoudreTextes(avecTexte);
+    expect(r.ctaPrincipal).toMatchObject({ valeur: 'GROS', cle: 'design.ctaMainText' });
+
+    const eteint = { branding: { ctaText: 'NE DOIT PAS REMONTER' }, design: { ctaMainText: '' } };
+    const e = resoudreTextes(eteint, { defauts: DEFAUTS_COMPOSITEUR });
+    expect(e.ctaPrincipal).toMatchObject({
+      valeur: '', cle: 'design.ctaMainText', present: true, parDefaut: false,
+    });
+  });
+
+  it('P1.7 design.ctaSubText est relu comme CTA secondaire, et \'\' arrete la cascade', () => {
+    const avecTexte = { branding: { ctaSubText: 'IGNORE' }, design: { ctaSubText: 'PETITE' } };
+    const r = resoudreTextes(avecTexte);
+    expect(r.ctaSecondaire).toMatchObject({ valeur: 'PETITE', cle: 'design.ctaSubText' });
+
+    const eteint = { branding: { ctaSubText: 'NE DOIT PAS REMONTER' }, design: { ctaSubText: '' } };
+    const e = resoudreTextes(eteint, { defauts: DEFAUTS_COMPOSITEUR });
+    expect(e.ctaSecondaire).toMatchObject({
+      valeur: '', cle: 'design.ctaSubText', present: true, parDefaut: false,
+    });
+  });
+
+  it('P1.8 coexistence canonique + historique : la canonique gagne, l\'historique survit', () => {
+    const coexistence: Record<string, unknown> = {
+      branding: { ctaText: 'HISTORIQUE PRINCIPAL', ctaSubText: 'HISTORIQUE SECONDAIRE', watermarkText: 'GROS' },
+      design: { ctaMainText: 'GROS', ctaSubText: 'CANONIQUE SECONDAIRE' },
+    };
+    const avant = resoudreTextes(coexistence);
+    expect(avant.producteur).toBe('jumele');
+    expect(avant.ctaPrincipal.cle).toBe('design.ctaMainText');
+    expect(avant.ctaSecondaire.cle).toBe('design.ctaSubText');
+
+    const ecrit = ecrireTexte(coexistence, 'ctaSecondaire', 'NEUF') as {
+      branding: Record<string, unknown>;
+      design: Record<string, unknown>;
+    };
+    // L'ecriture gagne la relecture.
+    expect(resoudreTextes(ecrit).ctaSecondaire.valeur).toBe('NEUF');
+    // AUCUNE ancienne cle n'est supprimee ni synchronisee.
+    expect(ecrit.branding.ctaText).toBe('HISTORIQUE PRINCIPAL');
+    expect(ecrit.branding.ctaSubText).toBe('HISTORIQUE SECONDAIRE');
+    expect(ecrit.branding.watermarkText).toBe('GROS');
+    expect(ecrit.design.ctaMainText).toBe('GROS');
+  });
+
+  it('P1.9 round-trip : ecrire \'\' est une extinction relue, sans repli', () => {
+    for (const champ of ['ctaPrincipal', 'ctaSecondaire'] as const) {
+      const m = ecrireTexte(VIDE, champ, '');
+      const r = resoudreTextes(m, { defauts: DEFAUTS_COMPOSITEUR });
+      expect(r[champ].valeur).toBe('');
+      expect(r[champ].present).toBe(true);
+      expect(r[champ].parDefaut).toBe(false);
+    }
+  });
+
+  it('P1.10 aucune ecriture nouvelle ne touche le filigrane', () => {
+    for (const source of [VIDE, AVANCE_HERITE_NU]) {
+      for (const champ of ['ctaPrincipal', 'ctaSecondaire'] as const) {
+        const m = ecrireTexte(source, champ, 'X') as Record<string, unknown>;
+        const design = (m.design ?? {}) as Record<string, unknown>;
+        expect(Object.prototype.hasOwnProperty.call(design, 'siteText')).toBe(false);
+        expect(resoudreTextes(m).filigrane.valeur).toBeNull();
+      }
     }
   });
 });
