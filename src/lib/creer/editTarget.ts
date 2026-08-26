@@ -46,15 +46,27 @@ export type EditTarget =
   | { kind: 'invalid' };
 
 /**
- * Trie le lien d'entrée.
+ * Le coeur de la décision, appelé par les deux entrées.
  *
- * Règles, dans l'ordre :
- *   - `postId` absent -> création (le cas de tous les liens d'aujourd'hui) ;
- *   - `postId` répété (`?postId=a&postId=b`) -> lien ambigu, refusé : choisir le
- *     premier serait parier sur le contenu que l'utilisateur veut ouvrir, et le
- *     mauvais post s'ouvrirait sans que rien ne le signale ;
- *   - `postId` vide ou fait d'espaces -> lien abîmé, refusé ;
+ * `valeurs` est la liste des `postId` trouvés — vide s'il n'y en a pas, à
+ * plusieurs entrées si le paramètre est répété.
+ *
+ *   - aucune valeur -> création (le cas de tous les liens d'aujourd'hui) ;
+ *   - plusieurs valeurs -> lien ambigu, refusé : choisir la première serait
+ *     parier sur le contenu que l'utilisateur veut ouvrir, et le mauvais post
+ *     s'ouvrirait sans que rien ne le signale ;
+ *   - une valeur vide ou faite d'espaces -> lien abîmé, refusé ;
  *   - sinon -> modification, identifiant détouré de ses espaces.
+ */
+function trier(valeurs: string[]): EditTarget {
+  if (valeurs.length === 0) return { kind: 'create' };
+  if (valeurs.length !== 1) return { kind: 'invalid' };
+  const seul = (valeurs[0] ?? '').trim();
+  return seul ? { kind: 'edit', postId: seul } : { kind: 'invalid' };
+}
+
+/**
+ * Trie le lien d'entrée, tel que Next le passe à une page SERVEUR.
  *
  * La lecture est faite avec `Object.prototype.hasOwnProperty` : une query n'est
  * pas un objet de confiance, et une propriété héritée ne doit pas pouvoir se
@@ -64,17 +76,25 @@ export type EditTarget =
  */
 export function readEditTarget(searchParams?: SearchParams): EditTarget {
   if (!searchParams || !Object.prototype.hasOwnProperty.call(searchParams, 'postId')) {
-    return { kind: 'create' };
+    return trier([]);
   }
-
   const brut = searchParams.postId;
+  if (brut === undefined) return trier([]);
+  return trier(Array.isArray(brut) ? brut : [brut]);
+}
 
-  if (Array.isArray(brut)) {
-    if (brut.length !== 1) return { kind: 'invalid' };
-    const seul = (brut[0] ?? '').trim();
-    return seul ? { kind: 'edit', postId: seul } : { kind: 'invalid' };
-  }
-
-  const valeur = (brut ?? '').trim();
-  return valeur ? { kind: 'edit', postId: valeur } : { kind: 'invalid' };
+/**
+ * Même triage, depuis l'URL telle que la voit le NAVIGATEUR.
+ *
+ * `useSearchParams()` rend un `URLSearchParams` : `getAll` y remplace la lecture
+ * de propriété, et c'est lui qui révèle un paramètre répété.
+ *
+ * Deux entrées, une seule règle — celle de `trier`. Deux implémentations
+ * divergeraient, et l'écart ne se verrait que sur le chemin qu'on ne teste pas
+ * ce jour-là.
+ */
+export function readEditTargetFromQuery(
+  params?: { getAll(cle: string): string[] } | null,
+): EditTarget {
+  return trier(params ? params.getAll('postId') : []);
 }

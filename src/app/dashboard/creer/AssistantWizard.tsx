@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { flushSync } from 'react-dom';
+import { useSearchParams } from 'next/navigation';
 import {
   Wand2,
   Rocket,
@@ -128,6 +129,12 @@ import {
   newCardId,
   type Draft,
 } from '@/lib/creer/draft';
+import {
+  chargerPostAModifier,
+  type ChargementPost,
+  type PostAModifier,
+} from '@/lib/creer/loadPost';
+import { readEditTargetFromQuery } from '@/lib/creer/editTarget';
 import { useBranding, NEUTRAL_BRANDING } from '@/lib/hooks/useBranding';
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { Card, CardTitle, CardContent } from '@/components/ui/Card';
@@ -4605,6 +4612,59 @@ export default function AssistantWizard() {
    */
   const sessionReady = status !== 'loading';
   const storageKey = draftKey(session?.user?.email);
+
+  /**
+   * Identifiant du contenu a modifier, lu dans l'URL.
+   *
+   * Depuis l'URL et non depuis une propriete : la signature du composant est
+   * lue TELLE QUELLE par sept tests du depot, qui bornent le source sur
+   * `export default function AssistantWizard()`. Lui ajouter un parametre les
+   * fait tous porter sur la mauvaise tranche de fichier — un lot de
+   * modification n'a aucune raison de rendre fragiles les tests de l'apercu et
+   * des cartes. C'est aussi le chemin que suit deja l'editeur avance.
+   *
+   * Le triage lui-meme reste dans `editTarget`, partage avec la page serveur.
+   */
+  const urlParams = useSearchParams();
+  const cibleEdition = readEditTargetFromQuery(urlParams);
+  const editPostId = cibleEdition.kind === 'edit' ? cibleEdition.postId : undefined;
+
+  /**
+   * ─────────────────────────────────────────────────────────────────────
+   * MODIFICATION D'UN CONTENU EXISTANT
+   * ─────────────────────────────────────────────────────────────────────
+   *
+   * `editPostId` absent = creation : TOUT ce bloc reste inerte, et le parcours
+   * se comporte exactement comme avant ce lot.
+   *
+   * `chargement` decrit l'etat de la LECTURE seule. Rien n'est rendu, debite,
+   * publie ni programme ici : ouvrir un contenu pour le regarder ne doit rien
+   * couter. L'ecriture, elle, n'a lieu que sur une action explicite.
+   */
+  const [chargement, setChargement] = useState<
+    { etat: 'inactif' } | { etat: 'encours' } | { etat: 'charge' } | { etat: 'echec'; issue: ChargementPost['kind'] }
+  >(editPostId ? { etat: 'encours' } : { etat: 'inactif' });
+  /** Le post tel que le serveur l'a rendu. Sert de base a l'enregistrement. */
+  const postCharge = useRef<PostAModifier | null>(null);
+  /** Vrai une fois le chargement TENTE : il n'a lieu qu'une fois. */
+  const chargeRef = useRef(false);
+
+  useEffect(() => {
+    if (!editPostId || !sessionReady || chargeRef.current) return;
+    chargeRef.current = true;
+    let vivant = true;
+    (async () => {
+      const r = await chargerPostAModifier(editPostId, (u, i) => fetch(u, i));
+      if (!vivant) return;
+      if (r.kind === 'ok') {
+        postCharge.current = r.post;
+        setChargement({ etat: 'charge' });
+      } else {
+        setChargement({ etat: 'echec', issue: r.kind });
+      }
+    })();
+    return () => { vivant = false; };
+  }, [editPostId, sessionReady]);
   /** Vrai une fois la restauration tentee : on n'ecrit rien avant. */
   const restoredRef = useRef(false);
   const [restoredNotice, setRestoredNotice] = useState<string | null>(null);
@@ -6135,6 +6195,61 @@ export default function AssistantWizard() {
     if (i === S.envoi) return !!generated && !generating;
     return true;
   };
+
+  /**
+   * Ecran de chargement d'un contenu existant.
+   *
+   * Rendu A LA PLACE du parcours, jamais au-dessus : un wizard vierge affiche
+   * pendant qu'on charge — ou apres un echec — est exactement l'image d'un
+   * travail perdu. Tant que le contenu n'est pas la, l'ecran dit ou il en est.
+   *
+   * Chaque issue a son geste : se reconnecter, revenir au Calendrier, ou
+   * reessayer. « Une erreur est survenue » ne laisse aucun geste possible.
+   */
+  if (chargement.etat === 'encours') {
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-gray-800 bg-gray-900/50 px-4 py-6 text-sm text-gray-400">
+        <Loader2 className="w-5 h-5 animate-spin text-purple-300 flex-shrink-0" />
+        <span>Chargement de votre contenu…</span>
+      </div>
+    );
+  }
+
+  if (chargement.etat === 'echec') {
+    const message =
+      chargement.issue === 'session'
+        ? 'Votre session a expiré. Reconnectez-vous pour modifier ce contenu.'
+        : chargement.issue === 'refuse' || chargement.issue === 'introuvable'
+          ? 'Ce contenu est introuvable, ou ne vous appartient pas.'
+          : chargement.issue === 'reseau'
+            ? 'La connexion a été interrompue avant que le contenu n\'arrive.'
+            : "Le contenu n'a pas pu être chargé.";
+    // Reessayer n'a de sens que si la demande peut aboutir au coup suivant :
+    // une session expiree ou un contenu qui n'est pas le votre ne changeront
+    // pas d'avis, et proposer le bouton la ferait tourner en rond.
+    const reessayable = chargement.issue === 'reseau' || chargement.issue === 'erreur';
+    return (
+      <div
+        role="alert"
+        className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4"
+      >
+        <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+        <div className="min-w-0 space-y-2">
+          <p className="text-sm font-medium text-amber-200">{message}</p>
+          {reessayable && (
+            <button
+              type="button"
+              onClick={() => { chargeRef.current = false; setChargement({ etat: 'encours' }); }}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-1.5 text-[13px] text-gray-300 hover:bg-gray-800 transition"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Réessayer
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
