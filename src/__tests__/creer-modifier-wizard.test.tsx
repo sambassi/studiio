@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, act } from '@testing-library/react';
+import { render, screen, cleanup, act, fireEvent } from '@testing-library/react';
 
 /**
  * Modification d'un contenu existant — vérifiée sur le VRAI wizard.
@@ -298,5 +298,115 @@ describe('le brouillon local n\'écrase jamais le contenu chargé', () => {
     ouvrir();
     await laisserTourner();
     expect(document.body.textContent).toContain('TITRE DU BROUILLON');
+  });
+});
+
+/**
+ * L'enregistrement : sur demande, et seulement sur demande.
+ *
+ * Ces tests sont l'exigence « l'enregistrement serveur ne doit avoir lieu
+ * qu'après une action explicite » vue de tous les côtés : rien ne part sans
+ * clic ; ce qui part est un PATCH ; et chaque échec laisse le formulaire
+ * intact en disant ce qui s'est passé.
+ */
+describe('enregistrement explicite', () => {
+  const cliquerEnregistrer = async () => {
+    const bouton = screen.getByRole('button', { name: /Enregistrer les modifications/i });
+    await act(async () => { fireEvent.click(bouton); await Promise.resolve(); });
+  };
+
+  it('le bouton n\'existe pas en création', async () => {
+    ouvrir();
+    await laisserTourner();
+    expect(screen.queryByRole('button', { name: /Enregistrer les modifications/i })).toBeNull();
+  });
+
+  it('rien n\'est écrit tant qu\'on n\'a pas cliqué', async () => {
+    ouvrir('post-42');
+    await laisserTourner();
+    expect(appels.filter((a) => a.method !== 'GET')).toEqual([]);
+  });
+
+  it('le clic envoie un PATCH, et un seul', async () => {
+    ouvrir('post-42');
+    await laisserTourner();
+    await cliquerEnregistrer();
+    const ecritures = appels.filter((a) => a.method !== 'GET');
+    expect(ecritures).toEqual([{ url: '/api/posts/post-42', method: 'PATCH' }]);
+  });
+
+  it('l\'enregistrement ne rend rien et ne débite rien', async () => {
+    ouvrir('post-42');
+    await laisserTourner();
+    await cliquerEnregistrer();
+    for (const interdit of ['/api/credits/deduct', '/api/render', '/api/posts/publish']) {
+      expect(appels.some((a) => a.url.includes(interdit))).toBe(false);
+    }
+  });
+
+  it('une fois enregistré, l\'écran le dit', async () => {
+    ouvrir('post-42');
+    await laisserTourner();
+    await cliquerEnregistrer();
+    expect(document.body.textContent).toContain('Modifications enregistrées.');
+  });
+});
+
+describe('échecs d\'enregistrement — le formulaire ne bouge pas', () => {
+  const cliquerEnregistrer = async () => {
+    const bouton = screen.getByRole('button', { name: /Enregistrer les modifications/i });
+    await act(async () => { fireEvent.click(bouton); await Promise.resolve(); });
+  };
+
+  it('un conflit (409) dit que RIEN n\'a été enregistré', async () => {
+    // Le message doit lever l'ambiguite : sans lui, l'utilisateur repartirait
+    // en croyant son travail sauve alors que le serveur a tout refuse.
+    // Le CHARGEMENT reussit — sinon il n'y aurait pas de bouton a cliquer —
+    // et c'est l'ENREGISTREMENT qui se heurte au conflit.
+    ouvrir('post-42');
+    await laisserTourner();
+    installerFetch(() => ({ status: 409, corps: { success: false, error: 'Conflict' } }));
+    await cliquerEnregistrer();
+    const texte = document.body.textContent ?? '';
+    expect(texte).toContain('modifié ailleurs');
+    expect(texte).toContain('Rien n’a été enregistré');
+  });
+
+  it('une coupure réseau laisse les modifications à l\'écran', async () => {
+    ouvrir('post-42');
+    await laisserTourner();
+    // Le contenu chargé est affiché...
+    expect(document.body.textContent).toContain('MON TITRE');
+    globalThis.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch')) as unknown as typeof fetch;
+    await cliquerEnregistrer();
+    // ... et il y est toujours après l'échec.
+    expect(document.body.textContent).toContain('MON TITRE');
+    expect(document.body.textContent).toContain('La connexion a été interrompue');
+  });
+
+  it('une session expirée le dit, sans rien perdre', async () => {
+    ouvrir('post-42');
+    await laisserTourner();
+    installerFetch(() => ({ status: 401, corps: { success: false } }));
+    await cliquerEnregistrer();
+    expect(document.body.textContent).toContain('Votre session a expiré');
+    expect(document.body.textContent).toContain('MON TITRE');
+  });
+});
+
+describe('rechargement après enregistrement', () => {
+  it('rouvrir le contenu affiche ce que le serveur porte désormais', async () => {
+    // Premiere ouverture, enregistrement, puis on rouvre : le wizard doit
+    // repartir du serveur, pas d'un etat garde en memoire.
+    ouvrir('post-42');
+    await laisserTourner();
+    cleanup();
+
+    const APRES = { ...POST, title: 'TITRE APRÈS ENREGISTREMENT' };
+    installerFetch(() => ({ status: 200, corps: { success: true, data: APRES } }));
+    ouvrir('post-42');
+    await laisserTourner();
+    expect(document.body.textContent).toContain('TITRE APRÈS ENREGISTREMENT');
+    expect(document.body.textContent).not.toContain('MON TITRE');
   });
 });
