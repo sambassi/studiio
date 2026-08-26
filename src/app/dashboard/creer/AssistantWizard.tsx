@@ -8575,7 +8575,7 @@ export default function AssistantWizard() {
                     htmlFor={`zone-texte-${zoneOuverte}`}
                     className="block text-[10px] uppercase tracking-wider text-gray-500 mb-1"
                   >
-                    Texte
+                    {zoneOuverte === 'cta' ? 'Texte principal' : 'Texte'}
                   </label>
                   <textarea
                     id={`zone-texte-${zoneOuverte}`}
@@ -8595,6 +8595,36 @@ export default function AssistantWizard() {
                     style={{ resize: 'vertical' }}
                     className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none px-2 py-1.5 text-sm"
                   />
+                </div>
+              )}
+              {/* ── LA PETITE LIGNE DU CTA ────────────────────────────────
+                  Le SOUS-TEXTE, pas le filigrane : celui-ci vit a l'etape
+                  Style et s'ecrit dans `design.siteText`. Ici, la ligne
+                  complementaire peinte juste sous l'appel a l'action.
+                  Elle existait dans l'etat et dans la metadata, sans aucun
+                  moyen de l'editer : seuls le selecteur de ton et l'assistant
+                  pouvaient la changer. */}
+              {zoneOuverte === 'cta' && (
+                <div>
+                  <label
+                    htmlFor="zone-soustexte-cta"
+                    className="block text-[10px] uppercase tracking-wider text-gray-500 mb-1"
+                  >
+                    Sous-texte
+                  </label>
+                  <input
+                    id="zone-soustexte-cta"
+                    type="text"
+                    value={generated.ctaSub}
+                    onChange={(e) => setGenerated((g) => (g ? { ...g, ctaSub: e.target.value } : g))}
+                    data-zone-soustexte="cta"
+                    placeholder="LIEN EN BIO"
+                    maxLength={40}
+                    className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none px-2 py-1.5 text-sm"
+                  />
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    Petite ligne sous l’appel à l’action. Champ vide : rien ne s’affiche.
+                  </p>
                 </div>
               )}
               {zoneOuverte === 'cards' && (
