@@ -33,26 +33,44 @@
  *      omis. Ouvrir puis enregistrer sans rien toucher n'écrit donc rien.
  *
  * ─────────────────────────────────────────────────────────────────────────
- * LE FILIGRANE NE SE DÉDUIT DE RIEN — ET VOICI POURQUOI
+ * LES DEUX CTA S'ÉCRIVENT DANS LEUR PROVENANCE — ET VOICI POURQUOI
  * ─────────────────────────────────────────────────────────────────────────
  *
- * Deux producteurs ne nomment pas pareil, et le compositeur le documente
- * (`video-composer.ts`, « branding naming is confusing ») :
+ * Les producteurs ne nomment pas pareil, et le compositeur le documente
+ * (`video-composer.ts:2803-2805`, « branding naming is confusing ») :
  *
- *   GROS texte  ->  `design.ctaMainText`      ET  `branding.watermarkText`
- *   PETITE ligne -> `design.ctaSubTextDesign` ET  `branding.ctaText`
+ *   `creer-avance`, Agent IA : `branding.ctaText` porte la PETITE ligne
+ *   Assistant, Autopilote    : `branding.ctaText` porte le GROS texte
  *
- * `branding.ctaText` porte donc la PETITE ligne. L'assistant, lui, la lit et
- * l'affiche comme CTA principal. Tant qu'il se contentait de lire, cela n'avait
- * aucune conséquence. Une version précédente réécrivait `watermarkText` depuis
- * cette valeur : sur un post de l'éditeur avancé, le GROS texte était alors
- * remplacé par la petite ligne — sans affichage, sans erreur, et sans retour
- * possible, la colonne `jsonb` n'ayant pas d'historique.
+ * Le nom d'une clé ne dit donc rien de son contenu. Seule la FORME du post le
+ * dit, et c'est le rôle de `resoudreTextes` (`../textesCanoniques`) — d'où
+ * l'unique règle de ce module en matière de textes :
  *
- * `watermarkText`, `design.ctaMainText` et `design.ctaSubText` ne sont donc
- * PLUS JAMAIS écrits ici. Le filigrane ne pourra changer que depuis un contrôle
- * qui lui sera dédié ; il n'en existe pas dans ce parcours, sa valeur est donc
- * préservée telle quelle.
+ *   ON ÉCRIT DANS LA CLÉ D'OÙ VIENT LA VALEUR RELUE, JAMAIS AILLEURS.
+ *
+ * Ce que cela ferme, mesuré sur les six formes réellement produites :
+ *
+ *   - la clé `branding.ctaText` était écrasée SUR LES SIX — or c'est elle que
+ *     le compositeur peint en PETITE ligne (`video-composer.ts:2807`) ;
+ *   - le nouveau GROS texte n'atteignait JAMAIS le rendu, sur les six non
+ *     plus : le compositeur lit `design.ctaMainText` en premier (`:2806`), et
+ *     personne ne l'écrivait ;
+ *   - au pixel, la petite ligne changeait sur TROIS des six — ailleurs,
+ *     `design.ctaSubText` masquait la casse au rendu.
+ *
+ * Le tout sans affichage, sans erreur, et sans retour possible : la colonne
+ * `jsonb` n'a pas d'historique.
+ *
+ * Ce que cela NE fait PAS, et ne doit pas faire :
+ *
+ *   - AUCUNE SYNCHRONISATION des clés jumelles. Un post dont
+ *     `branding.watermarkText` recopiait `design.ctaMainText` garde son
+ *     `watermarkText` sur l'ancienne valeur. Le rendu lit `design.ctaMainText`
+ *     en premier (`video-composer.ts:2806`) ; aligner l'autre demanderait une
+ *     décision produit que ce module n'a pas à prendre.
+ *   - AUCUNE ÉCRITURE DU VRAI FILIGRANE. Il vit sous `design.siteText.text`,
+ *     qu'aucune cascade de CTA ne traverse, et le parcours n'a pas de contrôle
+ *     relié au post pour le modifier. Sa valeur est préservée telle quelle.
  *
  * Le montage déjà rendu (`renderedVideoUrl`, `thumbnailUrl`, `composerVersion`)
  * n'est JAMAIS touché : modifier des textes ne produit pas une nouvelle vidéo,
@@ -61,6 +79,8 @@
  * Ce module ne fait aucun appel réseau, ne déclenche aucun rendu et ne modifie
  * pas ses arguments.
  */
+
+import { resoudreTextes, ecrireTexte, type ChampTexte, type CleTexte } from '../textesCanoniques';
 
 const estObjet = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -105,6 +125,18 @@ function poserSiChange(
   if (memeValeur(valeur, reference)) return false;
   cible[cle] = copier(valeur);
   return true;
+}
+
+/**
+ * La cle ou ECRIRE un CTA : celle d'ou vient la valeur relue.
+ *
+ * On ne la rededuit pas ici — ce serait dupliquer l'invariant du contrat, et
+ * c'est exactement la faute qui avait fait perdre des ecritures. On demande sa
+ * cible a `ecrireTexte`, puis on relit la provenance sur son resultat : le
+ * contrat garantit que les deux coincident.
+ */
+function cibleTexte(base: unknown, champ: ChampTexte, valeur: string): CleTexte | null {
+  return resoudreTextes(ecrireTexte(base, champ, valeur))[champ].cle;
 }
 
 /** Ce que le parcours guidé sait produire sans rendre de vidéo. */
@@ -170,26 +202,15 @@ export function metadataPourEnregistrement(
 
   // ── `branding` : recomposé SUR l'existant, et seulement s'il bouge ───
   //
-  // `watermarkText` N'EST PAS ÉCRIT : le parcours ne l'affiche pas, donc il
-  // n'a rien à en dire. Le déduire du CTA détruisait le gros texte des posts
-  // venus de l'éditeur avancé.
+  // Les deux CTA ne sont plus posés ici en direct : leur clé dépend de la
+  // FORME du post, pas du bloc. Voir la section « textes » plus bas.
   const brandingBase = estObjet(base.branding) ? copier(base.branding) : {};
   const branding: Record<string, unknown> = { ...brandingBase };
   let brandingChange = false;
   brandingChange = poserSiChange(branding, 'accentColor', valeurs.accentColor, ref.accentColor)
     || brandingChange;
-  brandingChange = poserSiChange(branding, 'ctaText', valeurs.ctaText, ref.ctaText)
-    || brandingChange;
-  brandingChange = poserSiChange(branding, 'ctaSubText', valeurs.ctaSubText, ref.ctaSubText)
-    || brandingChange;
-  if (brandingChange) envoi.branding = branding;
 
   // ── `design` : même règle ───────────────────────────────────────────
-  //
-  // `ctaMainText` et `ctaSubText` n'y sont PAS écrits non plus : le premier est
-  // le jumeau de `watermarkText`, le second celui de `branding.ctaText`. Les
-  // synchroniser depuis ce que l'écran affiche reviendrait à réintroduire la
-  // perte par une autre porte.
   const designBase = estObjet(base.design) ? copier(base.design) : {};
   const design: Record<string, unknown> = { ...designBase };
   let designChange = false;
@@ -220,6 +241,47 @@ export function metadataPourEnregistrement(
     designChange = true;
   }
 
+  // ── LES DEUX CTA : ECRITS DANS LEUR PROVENANCE ──────────────────────
+  //
+  // La cle depend du producteur du post. Sur un post `avance-herite`, le GROS
+  // texte vit sous `branding.watermarkText` et la PETITE ligne sous
+  // `branding.ctaText` ; sur un post recent, sous `design.ctaMainText` et
+  // `design.ctaSubText`. Ecrire toujours dans `branding.ctaText`, comme avant
+  // ce lot, revenait a remplacer la petite ligne de la video par le gros texte
+  // — une perte silencieuse, sur une colonne `jsonb` sans historique.
+  //
+  // AUCUNE ancienne cle n'est deplacee, synchronisee ni supprimee : seule la
+  // cle d'origine de la valeur est reecrite. Un post dont `watermarkText` et
+  // `design.ctaMainText` etaient jumeles garde donc son `watermarkText` sur
+  // l'ancienne valeur — le rendu lit `design.ctaMainText` en premier
+  // (`video-composer.ts:2806`), et synchroniser demanderait une decision
+  // produit que ce lot n'a pas a prendre.
+  const textes: ReadonlyArray<readonly [ChampTexte, string | undefined, unknown]> = [
+    ['ctaPrincipal', valeurs.ctaText, ref.ctaText],
+    ['ctaSecondaire', valeurs.ctaSubText, ref.ctaSubText],
+  ];
+  for (const [champ, valeur, reference] of textes) {
+    if (valeur === undefined) continue;
+    if (memeValeur(valeur, reference)) continue;
+    const cle = cibleTexte(base, champ, valeur);
+    // `cle` ne peut etre nulle : `ecrireTexte` pose toujours la valeur.
+    if (cle === null) continue;
+    const separateur = cle.indexOf('.');
+    const bloc = cle.slice(0, separateur);
+    const feuille = cle.slice(separateur + 1);
+    // Un CTA ne vise jamais un chemin profond — `design.siteText.text` est le
+    // filigrane, qu'aucune cascade de CTA ne traverse.
+    if (feuille.includes('.')) continue;
+    if (bloc === 'branding') {
+      branding[feuille] = valeur;
+      brandingChange = true;
+    } else {
+      design[feuille] = valeur;
+      designChange = true;
+    }
+  }
+
+  if (brandingChange) envoi.branding = branding;
   if (designChange) envoi.design = design;
 
   return envoi;

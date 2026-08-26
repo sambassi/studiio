@@ -15,11 +15,16 @@ import { toWizardDraft } from '../lib/creer/postMetadata/to-wizard';
  *   Sub  text -> `design.ctaSubTextDesign` ET `branding.ctaText`
  *
  * Autrement dit `branding.ctaText` porte la PETITE ligne, pas le gros CTA.
- * L'assistant, lui, lit `branding.ctaText` et l'affiche comme CTA principal.
- * Tant qu'il se contentait de lire, cela n'avait aucune conséquence. En
- * réécrivant `watermarkText` depuis cette valeur, il remplaçait le gros texte
- * d'un post par sa petite ligne — sans rien afficher, sans erreur, et sans
- * retour possible : la colonne `jsonb` n'a pas d'historique.
+ * L'assistant la lisait et l'affichait comme CTA principal, puis la réécrivait
+ * à cet endroit : le gros texte d'un post était remplacé par sa petite ligne —
+ * sans rien afficher, sans erreur, et sans retour possible, la colonne `jsonb`
+ * n'ayant pas d'historique.
+ *
+ * Les deux adaptateurs passent désormais par le RÉSOLVEUR CANONIQUE, qui
+ * tranche par la FORME des clés et non par leur nom. Sur le post ci-dessous,
+ * le gros texte est donc `design.ctaMainText` (« MARQUE ») et la petite ligne
+ * `design.ctaSubText` (« SUIVEZ-NOUS ») — et c'est bien dans CES clés-là que
+ * l'écriture retourne.
  *
  * La règle est donc double :
  *
@@ -112,15 +117,18 @@ describe('B. modifier uniquement le CTA principal affiché', () => {
     const envoi = metadataPourEnregistrement(
       META_AVANCE, { ...base, ctaText: 'NOUVEAU' }, base,
     ) as Record<string, any>;
-    expect(envoi.branding.ctaText).toBe('NOUVEAU');
-    // `mergePostMetadata` fusionne au PREMIER NIVEAU : un `branding` envoyé
+    // La provenance du GROS texte sur cette forme est `design.ctaMainText`.
+    expect(envoi.design.ctaMainText).toBe('NOUVEAU');
+    // `mergePostMetadata` fusionne au PREMIER NIVEAU : un `design` envoyé
     // remplace le bloc entier. Les voisins doivent donc y figurer — mais avec
     // leur valeur D'ORIGINE, jamais dérivée du CTA. C'est la distinction qui
     // compte : recopier n'est pas synchroniser.
-    expect(envoi.branding.watermarkText).toBe('MARQUE');
-    expect(envoi.branding.watermarkText).not.toBe('NOUVEAU');
-    // `design` n'a aucune raison de partir : rien de ce qu'il porte n'a bougé.
-    expect(envoi).not.toHaveProperty('design');
+    expect(envoi.design.ctaSubText).toBe('SUIVEZ-NOUS');
+    expect(envoi.design.font).toBe('Anton');
+    expect(envoi.design.siteText).toEqual({ text: 'studiio.pro', opacity: 0.5 });
+    // `branding` n'a aucune raison de partir : rien de ce qu'il porte n'a bougé.
+    // Son `watermarkText` reste donc sur l'ancienne valeur — non synchronisé.
+    expect(envoi).not.toHaveProperty('branding');
   });
 
   it('le filigrane et le CTA secondaire restent strictement inchangés', () => {
@@ -129,10 +137,14 @@ describe('B. modifier uniquement le CTA principal affiché', () => {
       META_AVANCE,
       metadataPourEnregistrement(META_AVANCE, { ...base, ctaText: 'NOUVEAU' }, base),
     ) as Record<string, any>;
+    expect(apres.design.ctaMainText).toBe('NOUVEAU');
+    // Aucune synchronisation : le jumeau historique garde sa valeur.
     expect(apres.branding.watermarkText).toBe('MARQUE');
-    expect(apres.design.ctaMainText).toBe('MARQUE');
+    expect(apres.branding.ctaText).toBe('SUIVEZ-NOUS');
     expect(apres.branding.ctaSubText).toBe('LIEN EN BIO');
+    // La petite ligne ne bouge pas — c'est l'écrasement que ce lot ferme.
     expect(apres.design.ctaSubText).toBe('SUIVEZ-NOUS');
+    expect(apres.design.siteText).toEqual({ text: 'studiio.pro', opacity: 0.5 });
   });
 });
 
@@ -143,10 +155,14 @@ describe('C. modifier uniquement le CTA secondaire affiché', () => {
       META_AVANCE,
       metadataPourEnregistrement(META_AVANCE, { ...base, ctaSubText: 'AUTRE' }, base),
     ) as Record<string, any>;
-    expect(apres.branding.ctaSubText).toBe('AUTRE');
-    expect(apres.branding.watermarkText).toBe('MARQUE');
+    // La provenance de la PETITE ligne sur cette forme est `design.ctaSubText`.
+    expect(apres.design.ctaSubText).toBe('AUTRE');
+    // Le gros texte et ses jumeaux historiques ne bougent pas.
     expect(apres.design.ctaMainText).toBe('MARQUE');
+    expect(apres.branding.watermarkText).toBe('MARQUE');
     expect(apres.branding.ctaText).toBe('SUIVEZ-NOUS');
+    expect(apres.branding.ctaSubText).toBe('LIEN EN BIO');
+    expect(apres.design.siteText).toEqual({ text: 'studiio.pro', opacity: 0.5 });
   });
 });
 
@@ -158,13 +174,20 @@ describe('D. le filigrane ne se déduit de rien', () => {
       { ...base, ctaText: 'X', ctaSubText: 'Y', subtitle: 'Z', theme: 'nutrition' },
       base,
     ) as Record<string, any>;
-    // Les deux clés peuvent VOYAGER (la fusion est de surface), mais jamais
-    // avec la valeur d'une autre : elles gardent exactement ce qu'elles avaient.
-    expect(envoi.branding.watermarkText).toBe('MARQUE');
-    expect(envoi.design?.ctaMainText ?? 'MARQUE').toBe('MARQUE');
+    // Le VRAI filigrane — `design.siteText` — n'est jamais écrit, quoi qu'il
+    // arrive aux quatre clés voisines.
+    expect(envoi.design.siteText).toEqual({ text: 'studiio.pro', opacity: 0.5 });
+    // `branding` n'a AUCUNE raison de partir : aucune des trois clés qu'il
+    // porte n'est la provenance d'un des deux CTA sur cette forme. Le dire
+    // ainsi, plutôt que par un `?.` complaisant, est ce qui rend l'assertion
+    // vraie : `watermarkText` n'est pas synchronisé, il n'est pas envoyé.
+    expect(envoi).not.toHaveProperty('branding');
+    // Et les deux textes ne s'inversent pas en chemin : chacun atterrit dans
+    // SA provenance, avec SA valeur.
+    expect(envoi.design.ctaMainText).toBe('X');
+    expect(envoi.design.ctaSubText).toBe('Y');
     for (const nouvelle of ['X', 'Y', 'Z']) {
-      expect(envoi.branding.watermarkText).not.toBe(nouvelle);
-      expect(envoi.design?.ctaMainText).not.toBe(nouvelle);
+      expect(envoi.design.siteText.text).not.toBe(nouvelle);
     }
   });
 });
