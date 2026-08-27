@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { debiterRenduAtomique, referenceRendu, CHAMPS_INTERDITS } from '@/lib/credits/atomique';
+import {
+  politiqueDeLUtilisateur, consommeDesCredits, CHAMPS_INTERDITS_FACTURATION,
+} from '@/lib/facturation/politique';
 
 /**
  * Debit d'un rendu.
@@ -47,7 +50,7 @@ export async function POST(req: NextRequest) {
 
     const corps = body as Record<string, unknown>;
 
-    const interdit = CHAMPS_INTERDITS.find(
+    const interdit = [...CHAMPS_INTERDITS, ...CHAMPS_INTERDITS_FACTURATION].find(
       (c) => Object.prototype.hasOwnProperty.call(corps, c),
     );
     if (interdit) {
@@ -78,6 +81,17 @@ export async function POST(req: NextRequest) {
     // Le format est lu SUR LE POST. `reel` par defaut, comme la colonne.
     const format: 'reel' | 'tv' = post.format === 'tv' ? 'tv' : 'reel';
 
+    // ── Frais partenaires : aucun credit Studiio ─────────────────────
+    // Le role est relu EN BASE, jamais recu du corps. Aucun debit, et
+    // aucune transaction fictive a zero -- une ligne a zero se relirait
+    // plus tard comme un rendu gratuit, ce qu'elle n'est pas.
+    const { politique } = await politiqueDeLUtilisateur(session.user.id);
+    if (!consommeDesCredits(politique)) {
+      return NextResponse.json({
+        ok: true, politique, balance: null, dejaDebite: false, motif: null,
+      });
+    }
+
     const resultat = await debiterRenduAtomique(
       session.user.id, format, referenceRendu(post.id),
     );
@@ -94,6 +108,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         ok: resultat.ok,
+        politique,
         balance: resultat.solde,
         dejaDebite: resultat.dejaDebite,
         motif: resultat.motif,

@@ -23,6 +23,7 @@ export const RACINE = process.cwd();
 export const MIGRATIONS = [
   join(RACINE, 'migrations/2026-08-27-credits-atomiques.sql'),
   join(RACINE, 'migrations/2026-08-28-rendus-preuve-serveur.sql'),
+  join(RACINE, 'migrations/2026-08-29-facturation-partenaires.sql'),
 ];
 
 /** La première, conservée pour les tests qui ne parlent que de crédits. */
@@ -217,4 +218,44 @@ export async function enConcurrence<T>(
   const resultats = await Promise.all(courses);
   await Promise.all(clients.map((c) => c.end()));
   return resultats;
+}
+
+
+/** Cree un utilisateur avec un role donne. */
+export async function creerUtilisateurAvecRole(
+  client: Client, credits: number, role: string | null,
+): Promise<string> {
+  compteur += 1;
+  const { rows } = await client.query<{ id: string }>(
+    `insert into public.users (id, email, credits, role)
+     values (gen_random_uuid(), $1, $2, $3) returning id`,
+    [`r${compteur}-${role ?? 'nul'}@test.local`, credits, role],
+  );
+  return rows[0].id;
+}
+
+/** Appelle la confirmation SANS debit, telle qu'elle est en production. */
+export async function confirmerSansDebit(
+  client: Client, userId: string, renduId: string,
+  taille = 120_000, contentType = 'video/webm',
+  partenaire: string | null = null, operation: string | null = null,
+  cout: number | null = null,
+): Promise<{ ok: boolean; etat: string | null; deja_confirme: boolean; motif: string | null }> {
+  const { rows } = await client.query(
+    'select * from public.confirmer_rendu_sans_debit($1, $2, $3, $4, $5, $6, $7)',
+    [userId, renduId, taille, contentType, partenaire, operation, cout],
+  );
+  return rows[0] as { ok: boolean; etat: string | null; deja_confirme: boolean; motif: string | null };
+}
+
+/** Lit les colonnes de facturation d'une tentative. */
+export async function lireFacturation(client: Client, renduId: string) {
+  const { rows } = await client.query(
+    `select politique, partenaire, operation_partenaire, cout_partenaire, transaction_id, etat
+       from public.rendus where id = $1`, [renduId],
+  );
+  return rows[0] as {
+    politique: string; partenaire: string | null; operation_partenaire: string | null;
+    cout_partenaire: string | null; transaction_id: string | null; etat: string;
+  } | undefined;
 }

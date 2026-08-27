@@ -218,15 +218,21 @@ const nextAuth = NextAuth({
         try {
           const { data: u } = await supabaseAdmin
             .from('users')
-            .select('plan')
+            .select('plan, role')
             .eq('id', resolvedId)
             .maybeSingle();
           (session.user as any).plan = u?.plan || 'free';
+          // Le role sert a AFFICHER (libelle de facturation). Il ne DECIDE
+          // rien : chaque chemin de facturation le relit en base, parce
+          // qu'une session vit des heures et qu'un role peut etre retire.
+          (session.user as any).role = typeof u?.role === 'string' ? u.role : null;
         } catch {
           (session.user as any).plan = 'free';
+          (session.user as any).role = null;
         }
       } else {
         (session.user as any).plan = 'free';
+        (session.user as any).role = null;
       }
       return session;
     },

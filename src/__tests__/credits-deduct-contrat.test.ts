@@ -61,6 +61,8 @@ beforeEach(() => {
   rpcAppels.length = 0;
   tablesLues.length = 0;
   post = { id: 'post-1', format: 'reel', user_id: 'moi' };
+  // La route relit `users.role` : sans role explicite, la politique retombe
+  // sur `credits`, ce que ces tests attendent.
   reponseRpc = [{ ok: true, solde: 90, deja_debite: false, motif: null }];
   erreurRpc = null;
   authMock.mockReset();
@@ -217,10 +219,20 @@ describe('Aucun effet de bord', () => {
     expect(rpcAppels[0].nom).toBe('debiter_credits');
   });
 
-  it('ne touche ni users ni credit_transactions directement', async () => {
+  it('ne lit users QUE pour resoudre la politique, et n y ecrit jamais', async () => {
+    // La route lit desormais `users.role` : c'est la base, et elle seule, qui
+    // decide si ce compte paie en credits. Le faux client leve sur toute
+    // ecriture, donc une modification ferait tomber ce test.
     await appeler({ postId: 'post-1' });
-    expect(tablesLues).not.toContain('users');
+    expect(tablesLues).toContain('users');
     expect(tablesLues).not.toContain('credit_transactions');
+  });
+
+  it('ne touche jamais credit_transactions directement', async () => {
+    // Le journal n'est ecrit que par la fonction SQL, dans sa transaction.
+    await appeler({ postId: 'post-1' });
+    expect(tablesLues).not.toContain('credit_transactions');
+    expect(rpcAppels[0].nom).toBe('debiter_credits');
   });
 });
 
