@@ -178,7 +178,10 @@ describe('Suivi par contenu et echec partiel', () => {
   it('affiche un rapport quand le lot s est arrete en route', () => {
     expect(wizard).toContain('data-batch-report');
     expect(wizard).toContain('{!sending && batchPartiel(batchItems) && (');
-    expect(wizard).toContain('Série interrompue');
+    // Le titre suit desormais le nombre de contenus : « Serie interrompue »
+    // au-dela d'un, « Creation interrompue » pour un seul — ou parler de
+    // serie decrivait une situation qui n'existe pas.
+    expect(wizard).toContain('titreInterruption(batchItems.length)');
   });
 
   it("dit combien de contenus n'ont jamais demarre — donc non factures", () => {

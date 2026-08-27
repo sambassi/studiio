@@ -17,6 +17,48 @@ export interface ObjetStocke {
 
 export interface ClientStockage {
   statObject(bucket: string, cle: string): Promise<ObjetStocke>;
+  /**
+   * Ecrit un objet. Le flux vient de la requete, la cle vient de la base.
+   *
+   * Presente ici pour la meme raison que `statObject` : le relais de
+   * televersement doit etre testable sans stockage, et c'est le seul point
+   * ou l'application ecrit dans MinIO pour le compte d'un rendu.
+   */
+  putObject(
+    bucket: string, cle: string, flux: unknown,
+    taille?: number, entetes?: Record<string, string>,
+  ): Promise<unknown>;
+}
+
+/**
+ * Le client de SIGNATURE, sur le nom PUBLIC.
+ *
+ * Ce n'est pas le meme que celui du serveur : la signature porte l'hote, et
+ * signer avec `studiio-minio:9000` produit une URL injouable dehors -- c'est
+ * exactement ce qui a bloque un envoi en production. Rend `null` tant que
+ * `MINIO_PUBLIC_ENDPOINT` n'est pas configure : l'envoi passe alors par le
+ * relais de l'application.
+ *
+ * La region est FIXEE : sans elle le SDK va la demander au serveur avant de
+ * signer, une requete sortante a chaque envoi, qui echoue si l'application
+ * ne joint pas ce nom.
+ */
+export function signeurPublic(): { presignedPutObject(b: string, c: string, t: number): Promise<string> } | null {
+  const endPoint = process.env.MINIO_PUBLIC_ENDPOINT;
+  if (!endPoint) return null;
+  const secretKey = process.env.MINIO_SECRET_KEY || process.env.MINIO_ROOT_PASSWORD || '';
+  if (!secretKey) return null;
+  const useSSL = process.env.MINIO_PUBLIC_USE_SSL !== 'false';
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Client: MinioClient } = require('minio');
+  return new MinioClient({
+    endPoint,
+    port: useSSL ? 443 : 80,
+    useSSL,
+    accessKey: process.env.MINIO_ACCESS_KEY || process.env.MINIO_ROOT_USER || 'studiio',
+    secretKey,
+    region: process.env.MINIO_REGION || 'us-east-1',
+  });
 }
 
 export function clientMinio(): ClientStockage {

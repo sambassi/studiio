@@ -92,7 +92,9 @@ const CONTENU = {
 };
 
 const JOB = 'job-77';
-const CLE_SERVEUR = 'https://minio/media/rendus/u1/job-77.webm';
+const CLE_SERVEUR = 'https://studiio.pro/storage/v1/object/public/media/u1/rendus/job-77.webm';
+/** La cible d'envoi que le serveur rend : le relais same-origin. */
+const CIBLE = '/api/render/jobs/job-77/upload';
 
 /** Ce que le scenario veut faire echouer. */
 interface Scenario {
@@ -122,11 +124,11 @@ function installerFetch(sc: Scenario = {}) {
       trace.push('reservation');
       if (sc.reservationRefusee) return rep({ ok: false, error: 'refus' }, 500);
       return rep({
-        ok: true, jobId: JOB, uploadUrl: 'https://minio/upload/job-77',
+        ok: true, jobId: JOB, uploadUrl: CIBLE, uploadMode: 'relais',
         publicUrl: CLE_SERVEUR, cout: 10,
       });
     }
-    if (u.includes('/upload/job-77') && m === 'PUT') {
+    if (u.includes('/jobs/job-77/upload') && m === 'PUT') {
       trace.push('televersement');
       return sc.televersementRefuse ? rep({}, 500) : rep({});
     }
@@ -228,7 +230,7 @@ describe('1. « Composer et envoyer » ouvre une tentative AVANT de composer', (
     await envoyer();
     const appels = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
     const put = appels.find((a) => String((a[1] as RequestInit)?.method).toUpperCase() === 'PUT');
-    expect(String(put?.[0])).toContain('/upload/job-77');
+    expect(String(put?.[0])).toBe(CIBLE);
   });
 
   it('le post porte l URL verifiee par le serveur', async () => {
@@ -422,5 +424,93 @@ describe('9 & 10. Aucune publication, Batch toujours ferme', () => {
     await allerAEnvoi();
     const serie = document.querySelector('[data-batch-mode="serie"]') as HTMLButtonElement;
     expect(serie.disabled).toBe(true);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// L'envoi lui-même : HTTPS, même clé, et ce qu'on dit quand il échoue
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('1 & 2. Depuis une page HTTPS, aucune cible non chiffrée ni interne', () => {
+  beforeEach(() => { installerFetch({ politique: 'credits' }); poser(); });
+
+  it('aucune requête ne vise http:// ni un nom interne', async () => {
+    await allerAEnvoi();
+    await envoyer();
+    const appels = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    for (const a of appels) {
+      const u = String(a[0]);
+      expect(u.startsWith('http://'), u).toBe(false);
+      expect(u).not.toContain('studiio-minio');
+      expect(u).not.toContain(':9000');
+      expect(u).not.toMatch(/\/\/(localhost|127\.0\.0\.1|10\.|192\.168\.)/);
+    }
+  });
+
+  it("l'envoi part vers la cible rendue par le serveur, telle quelle", async () => {
+    await allerAEnvoi();
+    await envoyer();
+    const appels = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    const put = appels.find((a) => String((a[1] as RequestInit)?.method).toUpperCase() === 'PUT');
+    expect(String(put?.[0])).toBe(CIBLE);
+  });
+
+  it('le relais same-origin reçoit bien le cookie de session', async () => {
+    await allerAEnvoi();
+    await envoyer();
+    const appels = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    const put = appels.find((a) => String((a[1] as RequestInit)?.method).toUpperCase() === 'PUT');
+    expect((put?.[1] as RequestInit)?.credentials).toBe('include');
+  });
+});
+
+describe('4. La clé est la même de la réservation à la confirmation', () => {
+  it("l'envoi et la confirmation portent le même jobId, et le post l'URL de cette clé", async () => {
+    installerFetch({ politique: 'credits' }); poser();
+    await allerAEnvoi();
+    await envoyer();
+    const appels = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    const put = appels.find((a) => String((a[1] as RequestInit)?.method).toUpperCase() === 'PUT');
+    const confirm = appels.find((a) => String(a[0]).includes('/confirm'));
+    expect(String(put?.[0])).toContain(JOB);
+    expect(String(confirm?.[0])).toContain(JOB);
+    const post = appels.find((a) => String(a[0]).includes('/api/posts'));
+    const corps = JSON.parse(String((post?.[1] as RequestInit)?.body));
+    // Le navigateur n'invente aucun chemin : il repose l'URL du serveur.
+    expect(corps.media_url).toBe(CLE_SERVEUR);
+  });
+});
+
+describe('12. Un seul contenu : « Création interrompue »', () => {
+  beforeEach(() => { installerFetch({ televersementRefuse: true }); poser(); });
+
+  it('le titre ne parle plus de série', async () => {
+    await allerAEnvoi();
+    await envoyer();
+    expect(document.querySelector('[data-interruption-titre]')?.textContent)
+      .toBe('Création interrompue');
+    expect(document.body.textContent).not.toContain('Série interrompue');
+  });
+
+  it("il dit ce qui s'est passé : rien débité, rien enregistré, relançable", async () => {
+    await allerAEnvoi();
+    await envoyer();
+    const msg = document.querySelector('[data-interruption-message]')?.textContent ?? '';
+    expect(msg).toContain('Aucun crédit n’a été débité');
+    expect(msg).toContain('aucun contenu n’a été enregistré');
+    expect(msg).toContain('relancer la création');
+  });
+
+  it("il n'affirme plus que l'idempotence n'existe pas", async () => {
+    await allerAEnvoi();
+    await envoyer();
+    expect(document.body.textContent).not.toContain('clé d’idempotence');
+    expect(document.body.textContent).not.toContain('facturer deux fois');
+  });
+
+  it("et ne propose pas de « reprendre » ce qui n'est pas une série", async () => {
+    await allerAEnvoi();
+    await envoyer();
+    expect(document.querySelector('[data-batch-retry]')).toBeNull();
   });
 });
