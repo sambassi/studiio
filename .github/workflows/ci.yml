@@ -35,3 +35,77 @@ jobs:
       - name: Resume des tests
         if: always()
         run: echo "### Resultat des tests" >> $GITHUB_STEP_SUMMARY && echo "Les tests Vitest ont termine avec le code ${{ job.status }}." >> $GITHUB_STEP_SUMMARY
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Credits : atomicite et idempotence, sur un VRAI PostgreSQL.
+  #
+  # Job SEPARE : le job « Tests Vitest » ci-dessus n'est pas touche. Les tests
+  # PostgreSQL vivent hors de `src/`, donc hors de son glob, et ont leur propre
+  # configuration (`vitest.pg.config.ts`).
+  #
+  # Pourquoi un vrai moteur : `UPDATE ... WHERE credits >= cout` n'est atomique
+  # que parce que Postgres serialise les transactions concurrentes, et un index
+  # unique ne deduplique que parce que le moteur le fait respecter. Aucune de
+  # ces deux proprietes n'existe dans un mock — un faux client validerait aussi
+  # bien une implementation cassee.
+  #
+  # La base est ephemere : elle nait avec le runner et meurt avec lui. Aucun
+  # secret, aucune URL de production, aucun acces distant.
+  # ──────────────────────────────────────────────────────────────────────────
+  credits-postgres:
+    name: Credits - PostgreSQL reel
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: studiio_ci
+          POSTGRES_PASSWORD: studiio_ci
+          POSTGRES_DB: studiio_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U studiio_ci -d studiio_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Installer Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Installer les dependances
+        run: npm ci --ignore-scripts
+
+      - name: Attendre PostgreSQL
+        # Attente BORNEE : le healthcheck du service suffit en principe, ce
+        # sondage garantit qu'on n'entre pas dans les tests avant que la base
+        # accepte les connexions, et qu'on echoue en 30 s plutot qu'en timeout
+        # de job si elle ne vient jamais.
+        run: |
+          for i in $(seq 1 30); do
+            if pg_isready -h 127.0.0.1 -p 5432 -U studiio_ci -d studiio_ci; then
+              echo "PostgreSQL pret apres ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "PostgreSQL n'a pas repondu en 30 s"
+          exit 1
+
+      - name: Tests de concurrence et d'idempotence
+        env:
+          DATABASE_URL: postgresql://studiio_ci:studiio_ci@127.0.0.1:5432/studiio_ci
+        run: npm run test:pg
+
+      - name: Resume
+        if: always()
+        run: echo "### Credits - PostgreSQL reel" >> $GITHUB_STEP_SUMMARY && echo "Les tests de concurrence ont termine avec le code ${{ job.status }}." >> $GITHUB_STEP_SUMMARY

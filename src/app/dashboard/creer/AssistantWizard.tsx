@@ -121,6 +121,7 @@ import {
   BATCH_SERIE_DISPONIBLE, BATCH_SERIE_BADGE, BATCH_SERIE_EXPLICATION,
   BATCH_SERIE_REFUS, batchCountAutorise, lotRefuse,
 } from '@/lib/creer/batchDisponible';
+import { rendreEtFacturer, messagePour } from '@/lib/rendus/client';
 // Catalogue de polices — LA source unique, partagee avec le compositeur.
 // Deux listes finiraient par diverger, et la video ne ressemblerait plus a
 // l'apercu.
@@ -5602,18 +5603,28 @@ export default function AssistantWizard() {
   const slugTitre = (titre: string): string =>
     (titre || 'studiio').replace(/[^a-zA-Z0-9-_]+/g, '_').slice(0, 60) || 'studiio';
 
-  const debiterRendu = async (cost: number, renderFormat: 'reel' | 'tv', postId?: string) => {
+  /**
+   * Debite un rendu.
+   *
+   * Le corps ne porte plus qu'un `postId` : ni montant, ni format, ni
+   * identite. Le serveur relit le format SUR le post dont il vient de
+   * verifier la propriete, en tire le prix depuis `public.tarifs_rendu`, et
+   * construit lui-meme la reference idempotente. Envoyer `cost` est desormais
+   * refuse par la route, et c'est voulu — l'ignorer en silence laisserait
+   * croire qu'il a ete pris en compte.
+   *
+   * Toujours non bloquant : le montage est deja livre, le refuser apres coup
+   * ne le rendrait pas moins livre.
+   */
+  const debiterRendu = async (postId: string) => {
     try {
       const res = await fetch('/api/credits/deduct', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cost, reason: 'render', format: renderFormat }),
+        body: JSON.stringify({ postId }),
       });
       if (!res.ok) {
-        console.warn(
-          `[Assistant] Débit des crédits refusé (${res.status})`
-          + (postId ? ` — post ${postId} conservé` : ' — montage conservé'),
-        );
+        console.warn(`[Assistant] Débit des crédits refusé (${res.status}) — post ${postId} conservé`);
       }
     } catch (e) {
       console.warn('[Assistant] Débit des crédits injoignable — montage conservé:', e);
@@ -6035,39 +6046,63 @@ export default function AssistantWizard() {
         } else if (destination === 'calendrier') {
           composed = await composeAndUpload(optionsRendu);
         } else {
-          // Aperçu et bureau composent sans téléverser. La vignette est
-          // gardée pour l'aperçu : un montage réutilisé par le Calendrier
-          // arriverait sinon sans miniature.
-          const rendu = await composeVideo(optionsRendu);
+          // ── Aperçu et bureau : parcours facturé COMPLET ──────────────
+          // Le serveur ouvre une tentative et attribue une clé de stockage ;
+          // on compose ; on téléverse vers CETTE clé ; le serveur va
+          // regarder l'objet et débite s'il l'y trouve. Le montage n'est
+          // délivré qu'après cette confirmation — c'est ce qui remplace le
+          // montant que le navigateur envoyait autrefois.
+          const livraison = await rendreEtFacturer({
+            operation: destination === 'apercu' ? 'apercu' : 'bureau',
+            format: renderFormat,
+            etape: (t) => setRenderStage(t),
+            composer: async () => {
+              const rendu = await composeVideo(optionsRendu);
+              // La vignette est gardée pour l'aperçu : un montage réutilisé
+              // par le Calendrier arriverait sinon sans miniature.
+              if (destination === 'apercu') vignetteApercu = rendu.thumbnail;
+              return rendu.video;
+            },
+          });
+
+          if (!livraison.ok || !livraison.blob) {
+            // Rien n'est livré, et rien n'a été débité : le serveur n'a pas
+            // confirmé. La tentative est déjà close de son côté.
+            setError(messagePour(livraison.motif));
+            majItem(itemEnCours, 'echoue', { erreur: livraison.motif || 'rendu refusé' });
+            return;
+          }
+
           composed = {
-            blob: rendu.video,
-            url: null,
+            blob: livraison.blob,
+            url: livraison.url ?? null,
             thumbnailUrl: null,
             composerVersion: CURRENT_COMPOSER_VERSION,
           };
-          if (destination === 'apercu') vignetteApercu = rendu.thumbnail;
         }
 
         // ── Destination « aperçu » ─────────────────────────────────────
         // On garde le montage, on débite une fois, et on le joue. Aucun post,
         // aucun téléversement.
         if (destination === 'apercu') {
+          // On n'arrive ici QUE si le serveur a confirmé : l'objet existe, il
+          // a été vu, et les crédits sont partis. L'aperçu est délivré après.
           setPreviewRender(composed.blob, signature, vignetteApercu);
-          await debiterRendu(cost, renderFormat);
           setRenderProgress(100);
           setRenderStage('Prêt.');
           return;
         }
 
         // ── Destination « bureau » ─────────────────────────────────────
-        // On garde le montage et on debite ; aucun post n'est cree. Le
-        // telechargement se fait APRES la boucle, pour n'ouvrir qu'une seule
-        // fenetre d'enregistrement meme sur un lot.
+        // Le montage est deja confirme et debite a ce stade : on n'arrive ici
+        // que si le serveur a vu l'objet. Le telechargement se fait APRES la
+        // boucle, pour n'ouvrir qu'une seule fenetre d'enregistrement meme
+        // sur un lot — et il n'ouvre donc jamais avant confirmation.
+        //
+        // Un montage reutilise a DEJA ete paye au moment du Play : il ne
+        // repasse pas par une tentative, donc il n'est pas facture deux fois.
         if (destination === 'bureau') {
           blobsBureau.push({ blob: composed.blob, titre: contenu.title });
-          // Un montage réutilisé a DÉJÀ été payé au moment du Play : le
-          // débiter à nouveau ferait payer deux fois le même rendu.
-          if (!reutilisable) await debiterRendu(cost, renderFormat);
           majItem(itemEnCours, 'pret');
           continue;
         }
@@ -6247,7 +6282,7 @@ export default function AssistantWizard() {
         // 5. Débit — le post existe, la vidéo est en ligne. On lit le statut :
         //    `/api/credits/deduct` répond 402 sur solde insuffisant, et un
         //    `.catch()` seul n'attrape que les erreurs réseau, pas un 402.
-        if (!reutilisable) await debiterRendu(cost, renderFormat, json.post.id);
+        if (!reutilisable) await debiterRendu(json.post.id);
         majItem(itemEnCours, 'pret', { postId: json.post.id });
 
         }

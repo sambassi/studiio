@@ -130,7 +130,10 @@ describe('Debit : aucune nouvelle surface de facturation', () => {
   });
 
   it('debite APRES que le post existe, une fois par contenu', () => {
-    expect(wizard).toContain('if (!reutilisable) await debiterRendu(cost, renderFormat, json.post.id);');
+    // Le corps ne porte plus qu'un `postId` : le serveur relit le format sur
+    // le post, en tire le prix et construit la reference idempotente.
+    expect(wizard).toContain('if (!reutilisable) await debiterRendu(json.post.id);');
+    expect(wizard).toContain('body: JSON.stringify({ postId }),');
   });
 
   it('ne debite pas un montage deja paye au moment du Play', () => {

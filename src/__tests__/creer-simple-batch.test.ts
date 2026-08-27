@@ -222,7 +222,9 @@ describe('Rétro-compatibilité : un seul montage = le parcours d avant', () => 
 
   it("le débit reste unitaire : une vidéo, un débit", () => {
     // Débiter le total d'un coup ferait payer des montages qui ont échoué.
-    expect(wizard).toContain("body: JSON.stringify({ cost, reason: 'render', format: renderFormat }),");
+    // Plus aucun montant ne part du navigateur : la route le refuse.
+    expect(wizard).toContain('body: JSON.stringify({ postId }),');
+    expect(wizard).not.toContain("JSON.stringify({ cost, reason: 'render'");
   });
 });
 
