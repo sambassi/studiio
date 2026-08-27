@@ -67,7 +67,7 @@ function verifyCronSecret(req: NextRequest): boolean {
 }
 
 // GET /api/cron/publish - Automatically publish scheduled posts whose time has passed
-// Supports ?force=true — picks the first scheduled/draft post and publishes it immediately,
+// Supports ?force=true — picks the first *scheduled* post and publishes it immediately,
 // skipping the time check. CRON_SECRET bearer check is still required.
 
 /**
@@ -192,14 +192,21 @@ export async function GET(req: NextRequest) {
   try {
     const now = new Date();
 
-    // force=true — pick the first scheduled/draft post and publish immediately
+    // force=true — pick the first *scheduled* post and publish immediately.
+    // Jamais un brouillon : `?force=true` contourne l'heure, pas le statut.
     let forcedPosts: any[] | null = null;
     if (force) {
-      console.log('[CRON] force=true — picking first scheduled/draft post, skipping time check');
+      console.log('[CRON] force=true — picking first scheduled post, skipping time check');
       const { data: forcePosts, error: forceErr } = await supabase
         .from('scheduled_posts')
         .select('*, videos:video_id(*), users:user_id(email, name)')
-        .in('status', ['scheduled', 'draft'])
+        // Un brouillon n'est JAMAIS publiable, pas meme par `?force=true`.
+        // `'draft'` etait ici depuis 36834e4, qui l'avait ajoute pour ce seul
+        // declencheur manuel — aucun flux produit n'en depend : la promotion
+        // draft -> scheduled se fait dans le Calendrier (« Programmer »,
+        // « Publier maintenant », onglet de statut), et la requete du chemin
+        // normal filtre deja strictement `.eq('status', 'scheduled')`.
+        .eq('status', 'scheduled')
         .order('scheduled_date', { ascending: true })
         .order('scheduled_time', { ascending: true })
         .limit(1);
@@ -208,7 +215,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'Database query failed' }, { status: 500 });
       }
       if (!forcePosts || forcePosts.length === 0) {
-        return NextResponse.json({ success: true, published: 0, message: 'No scheduled/draft post found' });
+        return NextResponse.json({ success: true, published: 0, message: 'No scheduled post found' });
       }
       forcedPosts = forcePosts;
     }
@@ -318,6 +325,10 @@ export async function GET(req: NextRequest) {
       const { data: snapshot } = await supabase
         .from('scheduled_posts')
         .select('id, status')
+        // Diagnostic SEUL — un `select` de comptage pour le log. Les
+        // brouillons y restent volontairement : c'est ce qui rend visible un
+        // post reste en brouillon alors qu'on l'attendait publie. Aucune
+        // publication ne part d'ici.
         .in('status', ['scheduled', 'publishing', 'draft'])
         .limit(50);
       const counts: Record<string, number> = {};
@@ -339,7 +350,7 @@ export async function GET(req: NextRequest) {
     for (const post of duePosts) {
       console.log(`[CRON] Processing post: id=${post.id}, title="${post.title}", platforms=${JSON.stringify(post.platforms)}, video_id=${post.video_id}, media_url=${post.media_url ? 'SET' : 'NULL'}`);
 
-      // Atomic claim: flip status scheduled/draft → publishing only if no
+      // Atomic claim: flip status scheduled → publishing only if no
       // other cron invocation got there first. The `.in('status', …)`
       // guard turns this into a single conditional UPDATE — Supabase /
       // Postgres serialise it, so if two instances race only one row gets
@@ -348,7 +359,10 @@ export async function GET(req: NextRequest) {
         .from('scheduled_posts')
         .update({ status: 'publishing' })
         .eq('id', post.id)
-        .in('status', ['scheduled', 'draft'])
+        // Meme invariant que la selection : seul un statut explicitement
+        // publiable peut etre reclame. Un brouillon qui arriverait ici par un
+        // chemin futur echouerait le claim au lieu d'etre publie.
+        .eq('status', 'scheduled')
         .select('id');
 
       if (claimErr) {
