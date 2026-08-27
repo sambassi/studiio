@@ -117,6 +117,10 @@ import {
   batchRunId, batchItemId, initialBatchItems, setItemState, batchSummary,
   batchPartiel, repriseAutorisee, type BatchItem,
 } from '@/lib/creer/batchRun';
+import {
+  BATCH_SERIE_DISPONIBLE, BATCH_SERIE_BADGE, BATCH_SERIE_EXPLICATION,
+  BATCH_SERIE_REFUS, batchCountAutorise, lotRefuse,
+} from '@/lib/creer/batchDisponible';
 // Catalogue de polices — LA source unique, partagee avec le compositeur.
 // Deux listes finiraient par diverger, et la video ne ressemblerait plus a
 // l'apercu.
@@ -4956,7 +4960,10 @@ export default function AssistantWizard() {
     if (draft.posterTransform) setPosterTransform(clampPosterTransform(draft.posterTransform));
     if (draft.seqBackgrounds) setSeqBackgrounds(draft.seqBackgrounds as SeqBackgrounds);
     if (draft.imageSource) setImageSource(draft.imageSource);
-    if (draft.batchCount) setBatchCount(draft.batchCount);
+    // Un brouillon enregistre AVANT la fermeture de la serie porte encore son
+    // nombre : le relire tel quel rouvrirait le mode sans qu'aucun bouton ait
+    // ete touche. Tout passe par la meme porte.
+    if (draft.batchCount) setBatchCount(batchCountAutorise(draft.batchCount));
     if (draft.batchPhotoUrls) setBatchPhotoUrls(draft.batchPhotoUrls);
     if (draft.batchPhotoMode) setBatchPhotoMode(draft.batchPhotoMode);
     // Le contenu a ete regenere s'il vient du brouillon : la signature evite
@@ -5625,6 +5632,21 @@ export default function AssistantWizard() {
     // annonce avant confirmation. Elle n'existe pas encore.
     if (editPostId) return;
     if (!generated || sending) return;
+
+    // ── Serie fermee ────────────────────────────────────────────────
+    // Place ici, et pas plus bas : la premiere chose que faisait ce
+    // gestionnaire etait de lire le solde, donc un appel reseau. Rien ne doit
+    // partir, rien ne doit etre compose, aucun post ne doit naitre, aucun
+    // credit ne doit bouger. Meme pas `setSending(true)` : on rend la main
+    // avant, ce qui evite d'avoir a defaire un etat de chargement.
+    //
+    // Griser la carte ne suffirait pas — un brouillon restaure porte un
+    // nombre sans qu'aucun bouton ait ete touche.
+    if (lotRefuse(batchCount)) {
+      setError(BATCH_SERIE_REFUS);
+      return;
+    }
+
     setSending(true);
     // Sert UNIQUEMENT a placer l'etat de chargement au bon endroit — dans le
     // cadre pour l'apercu, dans l'etape Envoi pour les deux autres. La
@@ -6704,8 +6726,8 @@ export default function AssistantWizard() {
                 <div className="min-w-0 flex-1">
                   <CardTitle className="text-lg">Créer avec l&apos;assistant</CardTitle>
                   <CardContent className="mt-1 text-sm text-gray-400">
-                    Quatre étapes — sujet, style, contenu, envoi. Le texte et les cartes sont
-                    générés pour vous.
+                    Cinq étapes — sujet, style, audio, contenu, envoi. Le texte et les cartes
+                    sont générés pour vous.
                   </CardContent>
                   <div className="mt-4">
                     <Button variant="primary" size="sm" onClick={() => setStarted(true)}>
@@ -8429,19 +8451,42 @@ export default function AssistantWizard() {
                           <span className="block font-medium">Un seul contenu</span>
                           <span className="block text-[11px] text-gray-500 mt-0.5">Le montage affiché</span>
                         </button>
+                        {/* La carte reste VISIBLE : la masquer laisserait croire
+                            que la serie n'a jamais existe. `disabled` sur un
+                            bouton natif retire l'element de l'ordre de
+                            tabulation et neutralise clic ET clavier. */}
                         <button
                           type="button"
                           data-batch-mode="serie"
+                          disabled={!BATCH_SERIE_DISPONIBLE}
+                          aria-disabled={!BATCH_SERIE_DISPONIBLE}
                           aria-pressed={modeLot === 'serie'}
+                          title={BATCH_SERIE_DISPONIBLE ? undefined : BATCH_SERIE_EXPLICATION}
                           onClick={() => setBatchCount((n) => (n > 1 ? n : 2))}
                           className={`rounded-lg border px-3 py-2.5 text-sm text-left transition-colors ${
-                            modeLot === 'serie'
-                              ? 'border-purple-500 text-white'
-                              : 'border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
+                            !BATCH_SERIE_DISPONIBLE
+                              ? 'border-gray-900 text-gray-600 opacity-50 cursor-not-allowed'
+                              : modeLot === 'serie'
+                                ? 'border-purple-500 text-white'
+                                : 'border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
                           }`}
                         >
-                          <span className="block font-medium">Série</span>
-                          <span className="block text-[11px] text-gray-500 mt-0.5">Jusqu’à {MAX_BATCH} brouillons</span>
+                          <span className="flex items-center gap-1.5">
+                            <span className="block font-medium">Série</span>
+                            {!BATCH_SERIE_DISPONIBLE && (
+                              <span
+                                data-batch-serie-badge
+                                className="text-[9px] uppercase tracking-wide rounded px-1 py-0.5 border border-gray-700 text-gray-500"
+                              >
+                                {BATCH_SERIE_BADGE}
+                              </span>
+                            )}
+                          </span>
+                          <span className="block text-[11px] text-gray-500 mt-0.5">
+                            {BATCH_SERIE_DISPONIBLE
+                              ? `Jusqu’à ${MAX_BATCH} brouillons`
+                              : BATCH_SERIE_EXPLICATION}
+                          </span>
                         </button>
                       </div>
                     </div>
