@@ -8374,8 +8374,12 @@ export default function AssistantWizard() {
                     <div>
                       <div className="font-semibold">Envoyé au calendrier</div>
                       <p className="text-sm text-gray-400 mt-1">
-                        La vidéo est composée et le post enregistré en brouillon. Le calendrier
-                        la lit telle quelle — aucun nouveau rendu n'est nécessaire.
+                        {batchCount > 1
+                          ? `Les ${batchCount} vidéos sont composées et les posts enregistrés en brouillon.`
+                          : 'La vidéo est composée et le post enregistré en brouillon.'}{' '}
+                        Le calendrier les lit telles quelles — aucun nouveau rendu n&apos;est
+                        nécessaire. Rien n&apos;est publié : la diffusion se déclenche depuis le
+                        calendrier, une fois le brouillon programmé.
                       </p>
                     </div>
                     <div className="flex gap-2 justify-center flex-wrap">
@@ -8437,7 +8441,7 @@ export default function AssistantWizard() {
                           }`}
                         >
                           <span className="block font-medium">Série</span>
-                          <span className="block text-[11px] text-gray-500 mt-0.5">Jusqu’à {MAX_BATCH} variantes</span>
+                          <span className="block text-[11px] text-gray-500 mt-0.5">Jusqu’à {MAX_BATCH} brouillons</span>
                         </button>
                       </div>
                     </div>
