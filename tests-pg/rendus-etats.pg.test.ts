@@ -161,6 +161,22 @@ describe('6. Confirmation et annulation CONCURRENTES', () => {
 
       expect(['confirmed', 'cancelled']).toContain(etatFinal);
 
+      // ── L'assertion qui met le verrou a l'epreuve ──────────────────
+      // Une annulation qui s'est DECLAREE gagnante doit l'etre restee. Sans
+      // `where etat = 'reserved'`, la confirmation ecrase la ligne annulee,
+      // la passe a `confirmed` et debite : l'utilisateur a annule, et il est
+      // facture quand meme. Les invariants globaux, eux, restent coherents
+      // dans ce cas — c'est pourquoi ils ne suffisent pas.
+      const annulation = res.find(
+        (x): x is { ok: true; valeur: { quoi: 'clore'; r: Awaited<ReturnType<typeof clore>> } } =>
+          x.ok && (x as { valeur: { quoi: string } }).valeur.quoi === 'clore',
+      )!.valeur.r;
+
+      if (annulation.ok) {
+        expect(etatFinal, "une annulation reussie ne doit pas finir confirmee").toBe('cancelled');
+        expect(journal, "une annulation reussie ne doit rien facturer").toHaveLength(0);
+      }
+
       if (etatFinal === 'confirmed') {
         // La confirmation a gagné : exactement un débit.
         expect(journal).toHaveLength(1);
