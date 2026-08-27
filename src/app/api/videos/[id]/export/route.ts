@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
+import { resolveExportableUrl } from '@/lib/videos/playable-url';
 
 // POST /api/videos/[id]/export - Get export URL for a video
 export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
@@ -21,12 +22,9 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
       return NextResponse.json({ success: false, error: 'Video not found' }, { status: 404 });
     }
 
-    // Return the video URL or first rush URL from metadata
-    const url = video.video_url
-      || video.metadata?.rushUrls?.[0]
-      || video.metadata?.posterPhotoUrl
-      || video.metadata?.characterImageUrl
-      || null;
+    // Montage, puis rush, puis affiche — la cascade vit dans un seul endroit,
+    // partage avec la Bibliotheque et le repost.
+    const url = resolveExportableUrl(video);
 
     if (!url) {
       return NextResponse.json({ success: false, error: 'No exportable file found' }, { status: 404 });

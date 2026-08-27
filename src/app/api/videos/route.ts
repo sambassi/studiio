@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth/config';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { ApiResponse, PaginatedResponse } from '@/lib/types/api';
 import { parsePostVideoPayload, VIDEO_POST_FORCED_STATUS } from '@/lib/videos/post-payload';
+import { resolveMontageUrl } from '@/lib/videos/playable-url';
 
 type LibraryItem = {
   id: string;
@@ -54,7 +55,10 @@ export async function GET(req: NextRequest): Promise<NextResponse<PaginatedRespo
       status: v.status,
       type: 'video',
       created_at: v.created_at,
-      video_url: v.video_url ?? null,
+      // Le montage d'abord. La colonne n'est plus alimentee depuis le
+      // navigateur (liste blanche du POST) : sans ce resolveur, la
+      // Bibliotheque retombait sur le rush brut.
+      video_url: resolveMontageUrl(v),
       thumbnail_url: v.thumbnail_url ?? null,
       metadata: v.metadata ?? null,
     }));
@@ -68,7 +72,11 @@ export async function GET(req: NextRequest): Promise<NextResponse<PaginatedRespo
         status: p.status,
         type: 'infographic',
         created_at: p.created_at,
-        video_url: meta.videoUrl ?? p.media_url ?? null,
+        // `renderedVideoUrl` AVANT `videoUrl` : sur un post, `videoUrl` est
+        // ambigu — il porte le montage pour l'infographie et l'autopilote,
+        // mais le RUSH pour l'editeur avance. Meme priorite que
+        // `cron/publish`, qui exclut nommement `videoUrl` pour cette raison.
+        video_url: meta.renderedVideoUrl ?? meta.videoUrl ?? p.media_url ?? null,
         thumbnail_url: meta.posterUrl ?? meta.thumbnail ?? null,
         metadata: meta,
       };
