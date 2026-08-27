@@ -89,9 +89,13 @@ export async function reserverRendu(
   client: Client, userId: string, operation: string, format: string,
 ): Promise<Rendu> {
   const { rows } = await client.query<Rendu>(
+    // Les casts sont indispensables : `$1` sert a la fois d'uuid (colonne
+    // `user_id`) et de texte (dans la cle d'objet). Sans eux, Postgres refuse
+    // — « inconsistent types deduced for parameter $1 ».
     `insert into public.rendus (user_id, operation, format, cout, bucket, cle_objet)
-     select $1, $2, $3, t.credits, 'media', $1 || '/rendus/' || gen_random_uuid()::text || '.webm'
-       from public.tarifs_rendu t where t.format = $3
+     select $1::uuid, $2::text, $3::text, t.credits, 'media',
+            $1::text || '/rendus/' || gen_random_uuid()::text || '.webm'
+       from public.tarifs_rendu t where t.format = $3::text
      returning id, etat, cout, bucket, cle_objet, transaction_id, taille_octets`,
     [userId, operation, format],
   );
