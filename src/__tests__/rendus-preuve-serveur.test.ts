@@ -321,7 +321,7 @@ describe('13 & 16. Les quatre parcours passent par le contrat, et livrent après
   it('16. rien n est livré avant la confirmation', () => {
     const garde = wizard.indexOf('if (!livraison.ok || !livraison.blob) {');
     expect(garde).toBeGreaterThan(-1);
-    expect(garde).toBeLessThan(wizard.indexOf('setPreviewRender(composed.blob, signature, vignetteApercu);'));
+    expect(garde).toBeLessThan(wizard.indexOf('setPreviewRender(composed.blob, signature, vignetteApercu, renduConfirme);'));
     expect(garde).toBeLessThan(wizard.indexOf('blobsBureau.push('));
   });
 

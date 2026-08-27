@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
-import { resolve } from 'path';
+import { resolve, join } from 'path';
 
 /**
  * Export « bureau » — télécharger le montage sur l'ordinateur.
@@ -36,9 +36,9 @@ describe('Un seul chemin pour les deux destinations', () => {
     expect(wizard.split('const optionsRendu: ComposerOptions = {').length - 1).toBe(1);
   });
 
-  it('les deux destinations composent sur le MÊME objet d options', () => {
+  it('les trois destinations composent sur le MÊME objet d options', () => {
     expect(rendu).toContain('await composeVideo(optionsRendu)');
-    expect(rendu).toContain('await composeAndUpload(optionsRendu)');
+    expect(rendu).toContain("composerEtFacturer('calendrier', renderFormat, optionsRendu)");
   });
 
   it('le bouton du Calendrier passe par ce chemin', () => {
@@ -46,13 +46,16 @@ describe('Un seul chemin pour les deux destinations', () => {
     expect(wizard).toContain("onClick={() => runRender('bureau')}");
   });
 
-  it('« bureau » compose SANS téléverser', () => {
-    // `composeAndUpload` enverrait le fichier au stockage : un téléchargement
-    // local n'a aucune raison d'y passer. Seul le Calendrier l'appelle.
+  it('« bureau » téléverse lui aussi, mais vers LA clé du serveur', () => {
+    // Il ne téléversait nulle part, et c'était le probleme inverse de celui
+    // du Calendrier : sans objet dans le stockage, le serveur n'a rien a
+    // regarder, donc rien a confirmer. Les trois destinations envoient
+    // desormais le montage a la cle attribuee, et nulle part ailleurs.
     expect(rendu).toContain("} else if (destination === 'calendrier') {");
-    expect(rendu).toContain('composed = await composeAndUpload(optionsRendu);');
-    // L'autre branche — aperçu et bureau — compose sans téléverser.
+    expect(rendu).toContain("composed = await composerEtFacturer('calendrier', renderFormat, optionsRendu);");
     expect(rendu).toContain('const rendu = await composeVideo(optionsRendu);');
+    // Le chemin non prouve a disparu de l'ecran.
+    expect(rendu).not.toMatch(/composeAndUpload\s*\(/);
   });
 });
 
@@ -75,14 +78,15 @@ describe('Le bureau ne crée AUCUN post', () => {
 });
 
 describe('Les crédits', () => {
-  it('le débit est factorisé — un seul code pour les deux destinations', () => {
-    // Calendrier : le post sert de ressource vérifiable.
-    expect(wizard).toContain('const debiterRendu = async (postId: string) => {');
-    expect(rendu).toContain('if (!reutilisable) await debiterRendu(json.post.id);');
-    // Aperçu et bureau : une tentative de rendu sert de ressource, et le
-    // parcours est le MÊME pour les deux — un seul appel dans le source.
+  it('le débit est factorisé — un seul socle pour les trois destinations', () => {
+    // Il ne l'etait pas : le Calendrier debitait apres coup par
+    // `/api/credits/deduct`, apercu et bureau par le socle. Deux contrats,
+    // et c'est celui qui ne prouvait rien qui servait au parcours principal.
+    expect(wizard).not.toMatch(/debiterRendu\s*\(/);
+    expect(wizard).not.toMatch(/fetch\('\/api\/credits\/deduct'/);
     expect((rendu.match(/rendreEtFacturer\(\{/g) || [])).toHaveLength(1);
     expect(rendu).toContain("operation: destination === 'apercu' ? 'apercu' : 'bureau',");
+    expect((rendu.match(/composerEtFacturer\(/g) || [])).toHaveLength(1);
   });
 
   it('le téléchargement est TOUJOURS facturé, mais contre une preuve serveur', () => {
@@ -107,11 +111,16 @@ describe('Les crédits', () => {
   });
 
   it('rien n est débité si la composition échoue', () => {
-    // Le débit vient APRÈS la composition : une exception sort de la boucle
-    // par le `catch` sans jamais l'atteindre.
-    const compose = rendu.indexOf('await composeVideo(optionsRendu)');
-    const debit = rendu.indexOf('debiterRendu(json.post.id);');
-    expect(debit).toBeGreaterThan(compose);
+    // La composition vit DANS la tentative : `rendreEtFacturer` l'entoure
+    // d'un try/catch qui abandonne la tentative et rend `ok: false`. Une
+    // tentative abandonnee n'a jamais ete confirmee, donc jamais debitee.
+    const client = readFileSync(join(process.cwd(), 'src/lib/rendus/client.ts'), 'utf-8');
+    const compose = client.indexOf('blob = await composer();');
+    const abandon = client.indexOf("return { ok: false, motif: 'composition'");
+    const confirme = client.indexOf('/confirm`');
+    expect(compose).toBeGreaterThan(-1);
+    expect(abandon).toBeGreaterThan(compose);
+    expect(abandon).toBeLessThan(confirme);
   });
 
   it('le solde est vérifié pour le lot ENTIER avant de commencer', () => {
@@ -119,9 +128,12 @@ describe('Les crédits', () => {
     expect(rendu).toContain('balance < coutTotal');
   });
 
-  it('un débit refusé ne fait pas perdre le montage', () => {
-    // Le fichier est déjà rendu : le refuser après coup ne le déferait pas.
-    expect(wizard).toContain('— montage conservé');
+  it('un débit refusé ne livre RIEN — c est l inverse d avant', () => {
+    // Avant : « le fichier est deja rendu, le refuser apres coup ne le
+    // deferait pas » — donc on livrait quand meme. Le montage n'est
+    // desormais livre qu'apres confirmation, et le refus arrete tout.
+    expect(wizard).not.toContain('— montage conservé');
+    expect(rendu).toContain('if (!livraison.ok || !livraison.blob) {');
   });
 });
 
@@ -195,11 +207,13 @@ describe('Le bouton', () => {
 });
 
 describe('Le Calendrier n a pas bougé', () => {
-  it('il téléverse, crée le post, puis débite', () => {
+  it('il réserve, compose, téléverse, fait confirmer — puis crée le post', () => {
+    const socle = rendu.indexOf("composerEtFacturer('calendrier'");
     const post = rendu.indexOf("await fetch('/api/posts'");
-    const debit = rendu.indexOf('await debiterRendu(json.post.id);');
-    expect(post).toBeGreaterThan(0);
-    expect(debit).toBeGreaterThan(post);
+    expect(socle).toBeGreaterThan(0);
+    expect(post).toBeGreaterThan(socle);
+    // Et plus rien apres le post : le debit n'y est plus.
+    expect(rendu.slice(post)).not.toMatch(/debiterRendu|credits\/deduct/);
   });
 
   it('il garde sa vérification d URL et son message', () => {

@@ -130,15 +130,19 @@ describe('AUCUNE video « completed » sans rendu', () => {
 });
 
 describe('Debit : aucune nouvelle surface de facturation', () => {
-  it("ne connait qu'un seul point de debit", () => {
-    expect(wizard.match(/fetch\('\/api\/credits\/deduct'/g) || []).toHaveLength(1);
+  it("ne connait AUCUN point de debit apres coup", () => {
+    // `/api/credits/deduct` etait tire une fois le post cree, sans bloquer :
+    // la livraison precedait le paiement et rien ne prouvait au serveur que
+    // le fichier existait. Le debit a lieu desormais a la confirmation.
+    expect(wizard.match(/fetch\('\/api\/credits\/deduct'/g) || []).toHaveLength(0);
+    expect(wizard).not.toMatch(/debiterRendu\s*\(/);
   });
 
-  it('debite APRES que le post existe, une fois par contenu', () => {
-    // Le corps ne porte plus qu'un `postId` : le serveur relit le format sur
-    // le post, en tire le prix et construit la reference idempotente.
-    expect(wizard).toContain('if (!reutilisable) await debiterRendu(json.post.id);');
-    expect(wizard).toContain('body: JSON.stringify({ postId }),');
+  it('debite AVANT de livrer, contre une preuve serveur', () => {
+    // L'ordre du socle : tentative, composition, televersement vers LA cle
+    // attribuee, verification, puis seulement livraison.
+    expect(wizard).toContain("composerEtFacturer('calendrier', renderFormat, optionsRendu)");
+    expect(wizard).toContain('rendreEtFacturer({');
   });
 
   it('ne debite pas un montage deja paye au moment du Play', () => {
@@ -254,6 +258,9 @@ describe('Rien de la creation unitaire n a bouge', () => {
 
   it("n'introduit pas de second moteur de montage", () => {
     expect(wizard).toContain("from '@/lib/video-composer'");
-    expect(wizard.match(/composeAndUpload\(/g) || []).toHaveLength(1);
+    // Zero : le seul appel restant etait celui du Calendrier, qui composait
+    // et televersait vers une cle choisie par le navigateur, sans tentative.
+    expect(wizard.match(/composeAndUpload\(/g) || []).toHaveLength(0);
+    expect(wizard.match(/composerEtFacturer\(/g) || []).toHaveLength(1);
   });
 });
