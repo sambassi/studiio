@@ -147,7 +147,7 @@ describe('Le Play passe par le MÊME chemin que l export', () => {
     // n'est joué qu'une fois le serveur ayant vu l'objet.
     expect(rendu).toContain("operation: destination === 'apercu' ? 'apercu' : 'bureau',");
     const confirme = rendu.indexOf('if (!livraison.ok || !livraison.blob) {');
-    const joue = rendu.indexOf('setPreviewRender(composed.blob, signature, vignetteApercu);');
+    const joue = rendu.indexOf('setPreviewRender(composed.blob, signature, vignetteApercu, renduConfirme);');
     expect(confirme).toBeGreaterThan(-1);
     expect(confirme).toBeLessThan(joue);
   });
@@ -164,10 +164,18 @@ describe('Un seul débit pour un seul rendu', () => {
     // `reutilisable` court-circuite `rendreEtFacturer`, donc rien n'est
     // facturé une seconde fois.
     expect(rendu).toContain('if (reutilisable) {');
-    expect(rendu).toContain('if (!reutilisable) await debiterRendu(json.post.id);');
     const reutil = rendu.indexOf('if (reutilisable) {');
     const facture = rendu.indexOf('rendreEtFacturer({');
     expect(reutil).toBeLessThan(facture);
+  });
+
+  it('mais il exige la PREUVE, pas seulement la présence du montage', () => {
+    // « le blob existe » suffisait à le réutiliser. Un blob peut arriver là
+    // par un chemin qui n'a rien facturé : on exige donc la tentative
+    // confirmée elle-même, et l'URL relue est CELLE du serveur.
+    expect(rendu).toContain('&& !!previewRenduRef.current');
+    expect(rendu).toContain('const preuve = previewRenduRef.current!;');
+    expect(rendu).toContain('url: preuve.url,');
   });
 
   it('le LOT ne réutilise jamais — ses vidéos ont un contenu varié', () => {
@@ -177,8 +185,13 @@ describe('Un seul débit pour un seul rendu', () => {
     expect(rendu).toContain("&& destination !== 'apercu'");
   });
 
-  it('le Calendrier téléverse le montage gardé au lieu de recomposer', () => {
-    expect(rendu).toContain('await uploadRendu(dejaFait, previewThumbRef.current, optionsRendu)');
+  it('le Calendrier relit la clé du serveur au lieu de recomposer', () => {
+    // Il téléversait une seconde copie vers une clé choisie par le
+    // navigateur : le Calendrier recevait alors un fichier que rien n'avait
+    // vérifié, alors que l'original confirmé était déjà en ligne.
+    expect(rendu).toContain('const dejaFait = previewBlobRef.current!;');
+    expect(rendu).not.toMatch(/uploadRendu\s*\(/);
+    expect(rendu).toContain('url: preuve.url,');
   });
 
   it('la vignette est gardée avec le montage', () => {

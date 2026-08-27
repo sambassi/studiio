@@ -46,7 +46,7 @@ import {
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
 import {
-  composeAndUpload, composeVideo, uploadRendu, downloadBlob, CURRENT_COMPOSER_VERSION, posterTransformActive,
+  composeVideo, downloadBlob, CURRENT_COMPOSER_VERSION, posterTransformActive,
   type ComposerOptions,
   TRANSITION_KEYS, TRANSITION_LABELS, DEFAULT_TRANSITION, type TransitionStyle,
   TEXT_ANIMATION_KEYS, TEXT_ANIMATION_LABELS, TEXT_ANIMATION_HINTS,
@@ -122,6 +122,7 @@ import {
   BATCH_SERIE_REFUS, batchCountAutorise, lotRefuse,
 } from '@/lib/creer/batchDisponible';
 import { rendreEtFacturer, messagePour } from '@/lib/rendus/client';
+import { composerEtFacturer, televerserVignette } from '@/lib/rendus/composer';
 // Catalogue de polices — LA source unique, partagee avec le compositeur.
 // Deux listes finiraient par diverger, et la video ne ressemblerait plus a
 // l'apercu.
@@ -3728,10 +3729,30 @@ export default function AssistantWizard() {
   /** Signature du montage en cache — lue dans le rendu, sans le refaire dépendre. */
   const previewSignatureRef = useRef<string | null>(null);
   const previewBlobRef = useRef<Blob | null>(null);
+  /**
+   * La tentative CONFIRMEE qui a paye le montage garde en memoire.
+   *
+   * Sans elle, « le blob existe » suffisait a le reutiliser pour le
+   * Calendrier -- et un blob peut arriver la par un chemin qui n'a rien
+   * facture. On exige donc la preuve elle-meme, pas sa consequence.
+   *
+   * `url` est celle de la CLE ATTRIBUEE PAR LE SERVEUR : le montage y est
+   * deja, vu et verifie. Le Calendrier la relit telle quelle plutot que de
+   * televerser une seconde copie vers une cle choisie par le navigateur.
+   */
+  const previewRenduRef = useRef<{ jobId: string; url: string | null } | null>(null);
 
   /** Remplace le montage en cache, et libère l'URL du précédent. */
-  const setPreviewRender = useCallback((blob: Blob | null, signature: string | null, thumbnail: Blob | null = null) => {
+  const setPreviewRender = useCallback((
+    blob: Blob | null,
+    signature: string | null,
+    thumbnail: Blob | null = null,
+    rendu: { jobId: string; url: string | null } | null = null,
+  ) => {
     previewThumbRef.current = thumbnail;
+    // La preuve suit le blob : effacer l'un sans l'autre laisserait un
+    // montage reutilisable adosse a une tentative qui n'est plus la sienne.
+    previewRenduRef.current = blob ? rendu : null;
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     previewUrlRef.current = blob ? URL.createObjectURL(blob) : null;
     previewBlobRef.current = blob;
@@ -5544,17 +5565,19 @@ export default function AssistantWizard() {
    * `renderedVideoUrl`. Le Calendrier n'a donc plus rien à recomposer : il lit
    * la vidéo telle quelle (calendar/page.tsx branche `renderedVideoUrl`).
    *
-   * Ordre volontaire :
-   *   1. vérification du solde   → on ne lance pas un rendu qu'on ne peut payer
+   * Ordre volontaire, et le meme pour les trois destinations :
+   *   1. lecture du solde        → on n'ouvre pas un rendu qu'on ne peut payer
    *   2. photo des cartes        → garantit apercu == video, pixel pour pixel
-   *   3. composition + upload    → composeAndUpload fait les deux
-   *   4. création du post
-   *   5. débit des crédits       → EN DERNIER
+   *   3. TENTATIVE serveur       → le serveur attribue la cle et le cout
+   *   4. composition             → dans le navigateur
+   *   5. televersement VERS CETTE CLE, et nulle part ailleurs
+   *   6. CONFIRMATION            → le serveur regarde l'objet, puis debite
+   *   7. livraison               → post, telechargement ou apercu
    *
-   * Le débit vient après le post, et non l'inverse : si /api/posts échoue,
-   * l'utilisateur ne doit pas se retrouver débité, sans post, avec une vidéo
-   * orpheline — et invité à recommencer, donc à payer une seconde fois.
-   * Un échec de composition ne débite rien non plus.
+   * Le debit est en 6, pas en dernier : il precede la livraison. L'ordre
+   * inverse -- livrer puis debiter sans bloquer -- laissait passer des
+   * montages que rien n'avait factures, et ne prouvait au serveur ni que le
+   * fichier existait ni ce qu'il valait.
    */
   /**
    * Contenu de la n-ieme video du lot.
@@ -5637,32 +5660,19 @@ export default function AssistantWizard() {
     (titre || 'studiio').replace(/[^a-zA-Z0-9-_]+/g, '_').slice(0, 60) || 'studiio';
 
   /**
-   * Debite un rendu.
+   * Le debit APRES COUP a ete retire.
    *
-   * Le corps ne porte plus qu'un `postId` : ni montant, ni format, ni
-   * identite. Le serveur relit le format SUR le post dont il vient de
-   * verifier la propriete, en tire le prix depuis `public.tarifs_rendu`, et
-   * construit lui-meme la reference idempotente. Envoyer `cost` est desormais
-   * refuse par la route, et c'est voulu — l'ignorer en silence laisserait
-   * croire qu'il a ete pris en compte.
+   * Il appelait `/api/credits/deduct` une fois le post cree, sans bloquer :
+   * « le montage est deja livre, le refuser apres coup ne le rendrait pas
+   * moins livre ». C'etait vrai, et c'etait le probleme -- la livraison
+   * precedait le paiement, et rien ne prouvait au serveur que le fichier
+   * annonce existait.
    *
-   * Toujours non bloquant : le montage est deja livre, le refuser apres coup
-   * ne le rendrait pas moins livre.
+   * Le Calendrier passe desormais par `composerEtFacturer`, qui debite a la
+   * CONFIRMATION, apres que le serveur a vu l'objet. Garder les deux aurait
+   * facture deux fois : les deux references idempotentes sont differentes,
+   * l'une derivee du `jobId`, l'autre du `postId`.
    */
-  const debiterRendu = async (postId: string) => {
-    try {
-      const res = await fetch('/api/credits/deduct', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ postId }),
-      });
-      if (!res.ok) {
-        console.warn(`[Assistant] Débit des crédits refusé (${res.status}) — post ${postId} conservé`);
-      }
-    } catch (e) {
-      console.warn('[Assistant] Débit des crédits injoignable — montage conservé:', e);
-    }
-  };
 
   const runRender = async (destination: 'calendrier' | 'bureau' | 'apercu') => {
     // ⚠️ MODIFICATION : ON NE COMPOSE PAS. Le garde est ICI, et pas seulement
@@ -5903,8 +5913,9 @@ export default function AssistantWizard() {
           setCapturing(false);
         }
 
-        // 3. Composition + upload (composeAndUpload fait les deux et produit
-        //    aussi la vignette).
+        // 3 a 6. Tentative, composition, televersement, confirmation. Le
+        //    parcours entier vit dans `@/lib/rendus` : l'ecran ne fait que
+        //    fournir de quoi composer, et recoit un montage deja prouve.
         setRenderStage('Rendu du montage…');
         // Cartes enrichies d'un `iconImage` : sans cela le repli canvas du
         // compositeur ecrirait « Droplet » en toutes lettres.
@@ -6069,24 +6080,53 @@ export default function AssistantWizard() {
         // montage de l'aperçu ne représente pas.
         const signature = renderSignature(optionsRendu);
         let vignetteApercu: Blob | null = null;
+        // Reutiliser suppose que le montage a DEJA ete paye et prouve. On
+        // exige donc la tentative confirmee, pas seulement la presence d'un
+        // blob : un blob peut arriver par un chemin qui n'a rien facture.
         const reutilisable =
           total === 1
           && destination !== 'apercu'
           && !!previewBlobRef.current
+          && !!previewRenduRef.current
           && signatureMatches(previewSignatureRef.current, signature);
 
         let composed: { blob: Blob; url: string | null; thumbnailUrl: string | null; composerVersion: string };
+        /** La tentative confirmee de CE tour, s'il en a ouvert une. */
+        let renduConfirme: { jobId: string; url: string | null } | null = null;
         if (reutilisable) {
           setRenderStage('Montage déjà prêt — réutilisé.');
           setRenderProgress(60);
           const dejaFait = previewBlobRef.current!;
+          const preuve = previewRenduRef.current!;
           composed = destination === 'bureau'
             ? { blob: dejaFait, url: null, thumbnailUrl: null, composerVersion: CURRENT_COMPOSER_VERSION }
-            // Le Calendrier a besoin d'une URL : on téléverse le blob déjà
-            // composé au lieu de refaire tout le rendu.
-            : await uploadRendu(dejaFait, previewThumbRef.current, optionsRendu);
+            // Le Calendrier a besoin d'une URL. Ce montage est deja dans le
+            // stockage, a la cle attribuee par le serveur, et le serveur l'y
+            // a VU avant de confirmer. On relit cette cle. Televerser une
+            // seconde copie vers une cle choisie par le navigateur donnerait
+            // au Calendrier un fichier que rien n'a verifie.
+            : {
+                blob: dejaFait,
+                url: preuve.url,
+                thumbnailUrl: previewThumbRef.current
+                  ? await televerserVignette(previewThumbRef.current)
+                  : null,
+                composerVersion: CURRENT_COMPOSER_VERSION,
+              };
         } else if (destination === 'calendrier') {
-          composed = await composeAndUpload(optionsRendu);
+          // ── Calendrier : parcours facture COMPLET ────────────────────
+          // Cette branche appelait `composeAndUpload`, qui compose et
+          // televerse vers une cle choisie par le navigateur : aucune
+          // tentative n'etait ouverte, donc `public.rendus` restait vide et
+          // la seule trace etait un `POST /api/credits/deduct` tire apres
+          // coup, sans preuve que le fichier existait.
+          //
+          // `composerEtFacturer` rend le meme contrat et insere l'ordre :
+          // tentative -> composition -> televersement vers LA cle attribuee
+          // -> verification serveur -> livraison. Il LEVE si le serveur ne
+          // confirme pas, et le `catch` de la boucle arrete l'envoi : aucun
+          // post n'est cree pour un montage non prouve.
+          composed = await composerEtFacturer('calendrier', renderFormat, optionsRendu);
         } else {
           // ── Aperçu et bureau : parcours facturé COMPLET ──────────────
           // Le serveur ouvre une tentative et attribue une clé de stockage ;
@@ -6115,6 +6155,7 @@ export default function AssistantWizard() {
             return;
           }
 
+          renduConfirme = { jobId: livraison.jobId ?? '', url: livraison.url ?? null };
           composed = {
             blob: livraison.blob,
             url: livraison.url ?? null,
@@ -6129,7 +6170,9 @@ export default function AssistantWizard() {
         if (destination === 'apercu') {
           // On n'arrive ici QUE si le serveur a confirmé : l'objet existe, il
           // a été vu, et les crédits sont partis. L'aperçu est délivré après.
-          setPreviewRender(composed.blob, signature, vignetteApercu);
+          // La preuve accompagne le montage : c'est elle qui autorisera sa
+          // reutilisation par le Calendrier, plus tard.
+          setPreviewRender(composed.blob, signature, vignetteApercu, renduConfirme);
           setRenderProgress(100);
           setRenderStage('Prêt.');
           return;
@@ -6154,10 +6197,11 @@ export default function AssistantWizard() {
           return;
         }
 
-        // 4. Création du post AVANT le débit. Dans l'autre ordre, un échec de
-        //    /api/posts laissait l'utilisateur débité, sans post, avec une vidéo
-        //    orpheline — et le message l'invitait à recommencer, donc à payer
-        //    une seconde fois.
+        // 4. Création du post. Le rendu est deja paye et prouve a ce stade :
+        //    on n'arrive ici que si le serveur a vu l'objet et confirme la
+        //    tentative. Un echec de `/api/posts` laisse donc un montage paye
+        //    et en ligne, mais aucun post — c'est le seul ordre qui ne livre
+        //    jamais une video que rien n'a facturee.
         setRenderStage('Finalisation…');
 
         // Le post, montage inclus. `renderedVideoUrl` +
@@ -6321,10 +6365,9 @@ export default function AssistantWizard() {
           // credits sur un lot qu'on sait deja casse.
           return;
         }
-        // 5. Débit — le post existe, la vidéo est en ligne. On lit le statut :
-        //    `/api/credits/deduct` répond 402 sur solde insuffisant, et un
-        //    `.catch()` seul n'attrape que les erreurs réseau, pas un 402.
-        if (!reutilisable) await debiterRendu(json.post.id);
+        // 5. Plus de debit ici : il a eu lieu a la confirmation, avant que
+        //    le montage ne soit livre. Un post n'existe donc jamais pour un
+        //    rendu non paye, et aucun rendu paye n'est facture deux fois.
         majItem(itemEnCours, 'pret', { postId: json.post.id });
 
         }
