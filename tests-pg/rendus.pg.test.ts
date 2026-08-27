@@ -62,7 +62,7 @@ describe('1 & 3. La tentative est créée par le serveur', () => {
     const u = await creerUtilisateur(db, 100);
     await expect(db.query(
       `insert into public.rendus (user_id, operation, format, cout, bucket, cle_objet)
-       values ($1, 'apercu', 'carre', 0, 'media', $1 || '/x.webm')`, [u],
+       values ($1::uuid, 'apercu', 'carre', 0, 'media', $1::text || '/x.webm')`, [u],
     )).rejects.toThrow(/foreign key|violates/i);
   });
 
