@@ -97,3 +97,108 @@ export function resolveExportableUrl(video: SourceVideo | null | undefined): str
     ?? urlOuNull(m.posterPhotoUrl)
     ?? urlOuNull(m.characterImageUrl);
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// PUBLICATION
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Hotes qu'un media publiable ne peut JAMAIS designer.
+ *
+ * `api/social/publish` telecharge lui-meme le fichier pour YouTube
+ * (`fetch(publicVideoUrl)`) : une URL choisie par un tiers deviendrait une
+ * requete sortante emise par notre serveur, depuis notre reseau. C'est la
+ * definition d'un SSRF.
+ */
+const HOTES_INTERNES = new Set([
+  'localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]',
+  // Endpoint de metadonnees des fournisseurs cloud — la cible classique.
+  '169.254.169.254', 'metadata.google.internal',
+]);
+
+/** Plages privees, en notation litterale. Un nom DNS n'est pas resolu ici. */
+function estAdressePrivee(hote: string): boolean {
+  if (HOTES_INTERNES.has(hote)) return true;
+  // Suffixes de reseau interne.
+  if (/\.(local|internal|localdomain|home|lan)$/.test(hote)) return true;
+  // IPv6 locale unique (fc00::/7) ou lien-local (fe80::/10).
+  if (/^\[?(f[cd][0-9a-f]{2}:|fe[89ab][0-9a-f]:)/i.test(hote)) return true;
+  const v4 = hote.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!v4) return false;
+  const [a, b] = [Number(v4[1]), Number(v4[2])];
+  if (a === 10 || a === 127 || a === 0) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 169 && b === 254) return true;
+  if (a >= 224) return true; // multicast et reserve
+  return false;
+}
+
+/**
+ * L'URL est-elle utilisable pour une PUBLICATION ?
+ *
+ * Plus stricte que la lecture dans la Bibliotheque, et pour deux raisons
+ * distinctes : le fichier part chez un tiers qui doit pouvoir l'atteindre, et
+ * notre serveur le telecharge lui-meme pour YouTube.
+ *
+ * - `https:` seul. `http:` est refuse : les plateformes le rejettent de toute
+ *   facon, et l'autoriser rouvrirait la porte du reseau interne.
+ * - `blob:`, `data:`, `javascript:` : refuses par la meme regle.
+ * - Aucun identifiant dans l'URL (`https://user:mdp@hote/`).
+ * - Aucune remontee de chemin. Garde etroit, et c'est assume : `new URL`
+ *   normalise deja `..` et `%2e%2e` (le chemin est reecrit avant qu'on le
+ *   voie). Ce qui survit au parseur, et que ce garde attrape, c'est la forme
+ *   antislash encodee `%5c`.
+ * - Aucun hote local, prive ou interne.
+ *
+ * Reprend les gardes de `api/proxy-media` — schema, identifiants, traversee,
+ * hote — sans sa liste blanche d'hotes : un montage peut legitimement vivre
+ * sur un stockage dont le nom d'hote n'est pas connu de ce fichier.
+ */
+export function isPubliableMediaUrl(valeur: unknown): valeur is string {
+  if (typeof valeur !== 'string' || valeur.length === 0) return false;
+  // Un blanc de tete masque un schema : `\njavascript:…` est lu comme
+  // `javascript:…` par certains analyseurs.
+  if (valeur !== valeur.trim()) return false;
+
+  let url: URL;
+  try {
+    url = new URL(valeur);
+  } catch {
+    return false;
+  }
+
+  if (url.protocol !== 'https:') return false;
+  if (url.username || url.password) return false;
+
+  let chemin = url.pathname;
+  try {
+    chemin = decodeURIComponent(url.pathname);
+  } catch {
+    return false;
+  }
+  if (chemin.includes('..') || chemin.includes('\\')) return false;
+
+  const hote = url.hostname.toLowerCase().replace(/\.$/, '');
+  if (!hote) return false;
+  return !estAdressePrivee(hote);
+}
+
+/**
+ * L'URL a PUBLIER, ou `null`.
+ *
+ * 1. `video_url` — la colonne, quand un rendu serveur l'a remplie ;
+ * 2. `metadata.renderedVideoUrl` — le montage compose dans le navigateur ;
+ * 3. `null` — on refuse.
+ *
+ * JAMAIS le rush brut, contrairement a l'apercu de la Bibliotheque. Publier
+ * la video source a la place du montage est irreversible : le fichier part
+ * chez un tiers, sous le nom de l'utilisateur. Mieux vaut refuser.
+ *
+ * L'URL retenue est validee : une valeur venue des metadonnees a ete ecrite
+ * par un navigateur, et rien ne garantit a elle seule qu'elle soit sure.
+ */
+export function resolvePublishableUrl(video: SourceVideo | null | undefined): string | null {
+  const montage = resolveMontageUrl(video);
+  return isPubliableMediaUrl(montage) ? montage : null;
+}
