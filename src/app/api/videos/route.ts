@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { ApiResponse, PaginatedResponse } from '@/lib/types/api';
+import { parsePostVideoPayload, VIDEO_POST_FORCED_STATUS } from '@/lib/videos/post-payload';
 
 type LibraryItem = {
   id: string;
@@ -105,13 +106,36 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<a
       );
     }
 
-    const body = await req.json();
+    // Corps illisible : 400 explicite, et surtout AVANT toute requete.
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json(
+        { success: false, error: 'Corps JSON invalide' },
+        { status: 400 }
+      );
+    }
+
+    // Liste blanche : plus aucun etalement du corps client. Les colonnes qui
+    // decident d'un cout, d'un rendu ou d'une publication n'y figurent pas.
+    const payload = parsePostVideoPayload(body);
+    if (!payload.ok) {
+      return NextResponse.json(
+        { success: false, error: payload.error },
+        { status: payload.status }
+      );
+    }
+
     const { data, error } = await supabase
       .from('videos')
       .insert({
-        ...body,
+        ...payload.values,
+        // Le serveur, et lui seul : l'identite vient de la session, et une
+        // ligne ne peut pas naitre terminee. Poses APRES l'etalement, ils
+        // resteraient imposes meme si la liste blanche s'elargissait.
         user_id: session.user.id,
-        status: body.status || 'draft',
+        status: VIDEO_POST_FORCED_STATUS,
       })
       .select()
       .single();
