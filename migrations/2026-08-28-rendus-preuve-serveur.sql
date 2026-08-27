@@ -94,9 +94,15 @@ create index if not exists rendus_etat_idx on public.rendus (etat);
 -- journal. Aucun etat intermediaire n'est observable.
 --
 -- La serialisation ne vient pas d'un verrou pris a la main mais de la clause
--- `where etat = 'reserved'` : deux confirmations concurrentes se disputent la
--- meme ligne, la seconde attend, puis relit une ligne devenue `confirmed` et
--- ne correspond plus. Elle rend alors le resultat de la premiere.
+-- `where etat = 'reserved'` : deux transitions concurrentes se disputent la
+-- meme ligne, la seconde attend, puis relit une ligne qui ne correspond plus.
+--
+-- Cette clause est le VERROU DE TRANSITION, et pas une optimisation : c'est
+-- elle, et elle seule, qui empeche de confirmer une tentative qu'une
+-- annulation concurrente vient de fermer. L'index unique sur
+-- `credit_transactions`, lui, empeche un SECOND debit d'une meme reference —
+-- il ne dit rien du PREMIER debit d'un travail deja clos. Les deux protections
+-- sont distinctes et aucune ne remplace l'autre.
 --
 -- Le solde insuffisant leve une exception VOLONTAIRE : c'est le seul moyen,
 -- en plpgsql, de defaire le passage a `confirmed` deja ecrit plus haut dans
@@ -153,9 +159,18 @@ begin
      returning r.cout into v_cout;
 
     if not found then
-      -- Quelqu'un d'autre vient de la confirmer pendant qu'on attendait.
+      -- La ligne a change d'etat pendant qu'on attendait le verrou. On RELIT
+      -- pour savoir lequel : conclure « quelqu'un d'autre l'a confirmee »
+      -- serait faux si c'est une ANNULATION qui a gagne la course — on
+      -- repondrait « confirme » sur une tentative jamais payee, et l'ecran
+      -- livrerait le montage gratuitement.
+      select r.etat into v_etat from public.rendus r where r.id = p_rendu_id;
       select u.credits into v_solde from public.users u where u.id = p_user_id;
-      return query select true, 'confirmed'::text, v_solde, true, null::text;
+      if v_etat = 'confirmed' then
+        return query select true, 'confirmed'::text, v_solde, true, null::text;
+      else
+        return query select false, v_etat, v_solde, false, 'rendu_clos'::text;
+      end if;
       return;
     end if;
 
