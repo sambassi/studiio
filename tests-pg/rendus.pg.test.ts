@@ -45,10 +45,25 @@ describe('1 & 3. La tentative est créée par le serveur', () => {
     expect((await reserverRendu(db, u, 'bureau', 'reel')).cout).toBe(10);
   });
 
-  it('un format hors tarif ne peut pas créer de tentative', async () => {
+  it('un format hors tarif ne crée AUCUNE tentative', async () => {
     const u = await creerUtilisateur(db, 100);
-    // La FK vers `tarifs_rendu` l'interdit : pas de tentative gratuite.
-    await expect(reserverRendu(db, u, 'apercu', 'carre')).rejects.toThrow();
+    // La réservation lit le coût dans `tarifs_rendu` : un format absent ne
+    // sélectionne rien, donc rien n'est inséré. Pas d'exception — mais pas de
+    // tentative non plus, ce qui est le point : aucun rendu ne peut naître
+    // sans tarif.
+    await reserverRendu(db, u, 'apercu', 'carre');
+    const { rows } = await db.query<{ n: string }>(
+      'select count(*) as n from public.rendus where user_id = $1', [u],
+    );
+    expect(Number(rows[0].n)).toBe(0);
+  });
+
+  it('et la FK refuse un format inventé, même en écriture directe', async () => {
+    const u = await creerUtilisateur(db, 100);
+    await expect(db.query(
+      `insert into public.rendus (user_id, operation, format, cout, bucket, cle_objet)
+       values ($1, 'apercu', 'carre', 0, 'media', $1 || '/x.webm')`, [u],
+    )).rejects.toThrow(/foreign key|violates/i);
   });
 
   it('une opération inconnue est refusée', async () => {
