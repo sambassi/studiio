@@ -70,6 +70,36 @@ insert into public.tarifs_rendu (format, credits) values ('reel', 10), ('tv', 15
 -- empecher l'autre de payer — ni, pire, se voir opposer un « deja debite »
 -- qui appartient a quelqu'un d'autre.
 -- ─────────────────────────────────────────────────────────────────────────
+-- La colonne AVANT l'index qui l'indexe.
+--
+-- Elle etait supposee presente : `src/lib/db/migrations/002_complete_schema.sql:58`
+-- la declare. Mais ce fichier date de l'ere Supabase et n'a jamais ete applique
+-- INTEGRALEMENT a la base Hetzner — il contient `create policy if not exists`,
+-- une syntaxe qui n'existe dans aucune version de PostgreSQL, et toute
+-- execution s'interrompt avant la fin. La production n'a donc jamais eu cette
+-- colonne, et le precontrole l'a montre :
+--
+--   ERROR: column "reference_id" does not exist
+--
+-- Sans cette instruction, la migration echoue ici meme. On ne corrige PAS
+-- `002_complete_schema.sql` pour masquer l'ecart : ce fichier decrit une base
+-- qui n'est plus la notre, et le reecrire ferait croire que le schema du depot
+-- decrit la production.
+--
+-- Nullable, sans defaut, sans remplissage : les lignes existantes restent
+-- exactement ce qu'elles sont, avec `reference_id IS NULL`.
+alter table public.credit_transactions
+  add column if not exists reference_id varchar(255);
+
+-- `description` subit exactement le meme sort : declaree dans
+-- `002_complete_schema.sql`, jamais garantie en production, et ECRITE par la
+-- fonction plus bas (`insert ... (user_id, amount, type, reference_id,
+-- description)`). Son absence ne ferait pas echouer CETTE migration — elle
+-- ferait echouer le premier debit reel, en production, apres deploiement.
+-- Meme forme : nullable, sans defaut, sans remplissage.
+alter table public.credit_transactions
+  add column if not exists description text;
+
 create unique index if not exists credit_transactions_reference_unique
   on public.credit_transactions (user_id, reference_id)
   where reference_id is not null;
@@ -224,6 +254,11 @@ grant select on table public.tarifs_rendu to public;
 -- ignore la nouvelle fonction et repond 404 sur /rpc/debiter_credits.
 --
 -- CONTROLES PREALABLES (avant d'appliquer) :
+--   select exists(select 1 from information_schema.columns
+--                  where table_schema='public' and table_name='credit_transactions'
+--                    and column_name='reference_id');
+--     -- `false` est l'etat NORMAL avant migration : la colonne est creee ici.
+--     -- Si `true`, alors seulement :
 --   select count(*) from public.credit_transactions where reference_id is not null;
 --     -- attendu : 0. Sinon, verifier qu'il n'y a pas deja de doublon :
 --   select user_id, reference_id, count(*) from public.credit_transactions
