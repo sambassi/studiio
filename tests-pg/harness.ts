@@ -15,8 +15,18 @@ import { join } from 'path';
 
 export const RACINE = process.cwd();
 
-/** Le fichier de migration RÉEL, celui destiné à la production. */
-export const MIGRATION = join(RACINE, 'migrations/2026-08-27-credits-atomiques.sql');
+/**
+ * Les fichiers de migration RÉELS, ceux destinés à la production, dans
+ * l'ordre où ils s'appliquent. Aucun n'est recopié dans les tests : un test
+ * qui réécrirait la fonction atomique ne testerait que sa propre copie.
+ */
+export const MIGRATIONS = [
+  join(RACINE, 'migrations/2026-08-27-credits-atomiques.sql'),
+  join(RACINE, 'migrations/2026-08-28-rendus-preuve-serveur.sql'),
+];
+
+/** La première, conservée pour les tests qui ne parlent que de crédits. */
+export const MIGRATION = MIGRATIONS[0];
 
 export function urlBase(): string {
   const url = process.env.DATABASE_URL;
@@ -46,18 +56,83 @@ export async function preparerBase(client: Client): Promise<void> {
   await client.query('drop schema if exists public cascade; create schema public;');
   await client.query(readFileSync(join(RACINE, 'tests-pg/schema-prealable.sql'), 'utf-8'));
 
-  if (!existsSync(MIGRATION)) {
-    throw new Error(
-      `Migration absente : ${MIGRATION}\n`
-      + "C'est le résultat attendu tant que le correctif n'est pas écrit.",
-    );
+  for (const fichier of MIGRATIONS) {
+    if (!existsSync(fichier)) {
+      throw new Error(
+        `Migration absente : ${fichier}\n`
+        + "C'est le résultat attendu tant que le correctif n'est pas écrit.",
+      );
+    }
+    await client.query(readFileSync(fichier, 'utf-8'));
   }
-  await client.query(readFileSync(MIGRATION, 'utf-8'));
 }
 
-/** Applique la migration une seconde fois — elle doit être rejouable. */
+/** Applique les migrations une seconde fois — elles doivent être rejouables. */
 export async function rejouerMigration(client: Client): Promise<void> {
-  await client.query(readFileSync(MIGRATION, 'utf-8'));
+  for (const fichier of MIGRATIONS) {
+    await client.query(readFileSync(fichier, 'utf-8'));
+  }
+}
+
+export interface Rendu {
+  id: string;
+  etat: string;
+  cout: number;
+  bucket: string;
+  cle_objet: string;
+  transaction_id: string | null;
+  taille_octets: string | null;
+}
+
+/** Réserve une tentative, comme le fera la route de création. */
+export async function reserverRendu(
+  client: Client, userId: string, operation: string, format: string,
+): Promise<Rendu> {
+  const { rows } = await client.query<Rendu>(
+    `insert into public.rendus (user_id, operation, format, cout, bucket, cle_objet)
+     select $1, $2, $3, t.credits, 'media', $1 || '/rendus/' || gen_random_uuid()::text || '.webm'
+       from public.tarifs_rendu t where t.format = $3
+     returning id, etat, cout, bucket, cle_objet, transaction_id, taille_octets`,
+    [userId, operation, format],
+  );
+  return rows[0];
+}
+
+export async function lireRendu(client: Client, id: string): Promise<Rendu | null> {
+  const { rows } = await client.query<Rendu>(
+    'select id, etat, cout, bucket, cle_objet, transaction_id, taille_octets from public.rendus where id = $1',
+    [id],
+  );
+  return rows[0] ?? null;
+}
+
+export interface Confirmation {
+  ok: boolean;
+  etat: string | null;
+  solde: number;
+  deja_confirme: boolean;
+  motif: string | null;
+}
+
+/** Appelle la fonction de production. Aucune logique n'est réimplémentée. */
+export async function confirmer(
+  client: Client, userId: string, renduId: string,
+  taille = 120_000, contentType = 'video/webm',
+): Promise<Confirmation> {
+  const { rows } = await client.query<Confirmation>(
+    'select * from public.confirmer_rendu($1, $2, $3, $4)',
+    [userId, renduId, taille, contentType],
+  );
+  return rows[0];
+}
+
+export async function clore(
+  client: Client, userId: string, renduId: string, etat: string, motif = 'test',
+): Promise<{ ok: boolean; etat: string | null }> {
+  const { rows } = await client.query<{ ok: boolean; etat: string | null }>(
+    'select * from public.clore_rendu($1, $2, $3, $4)', [userId, renduId, etat, motif],
+  );
+  return rows[0];
 }
 
 let compteur = 0;
