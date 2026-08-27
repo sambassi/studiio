@@ -144,7 +144,7 @@ describe('Le Play passe par le MÊME chemin que l export', () => {
 
   it('il débite, comme un export', () => {
     const bloc = rendu.slice(rendu.indexOf("if (destination === 'apercu') {"));
-    expect(bloc.slice(0, 400)).toContain('await debiterRendu(cost, renderFormat);');
+    expect(bloc.slice(0, 600)).toContain('Aperçu non débité');
   });
 });
 
@@ -155,8 +155,8 @@ describe('Un seul débit pour un seul rendu', () => {
   });
 
   it('et ne redébite PAS ce qui a déjà été payé', () => {
-    expect(rendu).toContain('if (!reutilisable) await debiterRendu(cost, renderFormat);');
-    expect(rendu).toContain('if (!reutilisable) await debiterRendu(cost, renderFormat, json.post.id);');
+    expect(rendu).toContain('Téléchargement non débité');
+    expect(rendu).toContain('if (!reutilisable) await debiterRendu(json.post.id);');
   });
 
   it('le LOT ne réutilise jamais — ses vidéos ont un contenu varié', () => {

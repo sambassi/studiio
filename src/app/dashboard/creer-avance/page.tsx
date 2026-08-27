@@ -5129,11 +5129,20 @@ function InfographicPageInner() {
             renderedComposerVersion = composedVersion || null;
             console.log('[Export→Calendar] Montage composed and uploaded:', renderedVideoUrl, 'thumb:', renderedThumbnailUrl, 'version:', renderedComposerVersion);
             // Deduct credits for this successful render
-            await fetch('/api/credits/deduct', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ cost, reason: 'render', format: renderFormat }),
-            }).catch(() => {});
+            // ⚠️ PLUS DE DEBIT ICI.
+            //
+            // Cet appel envoyait `cost`, un montant choisi par le navigateur —
+            // ce que la route refuse desormais. Le nouveau contrat exige un
+            // `postId` dont le serveur verifie la propriete, pour en tirer le
+            // format, le prix et la reference idempotente. Or ce debit-ci
+            // partait AVANT la creation du post (et l'autre ne cree aucun
+            // post du tout) : il n'y a rien a referencer.
+            //
+            // Le rebrancher demande de deplacer le debit apres la creation du
+            // post, dans un flux qui gere aussi la re-edition (PATCH vs POST).
+            // C'est un lot a part. En attendant, on ne debite pas plutot que
+            // de laisser le navigateur decider du montant.
+            console.info('[creer-avance] Rendu non débité — migration du contrat de débit en cours.');
             if (!renderedVideoUrl) {
               // Only surface errors as toasts — success is conveyed by the
               // progress bar reaching 100%.
@@ -5781,11 +5790,20 @@ function InfographicPageInner() {
               showToast(`Export bureau échoué : ${(dlErr as Error)?.message || 'conversion MP4 impossible'}`);
               throw dlErr;
             }
-            await fetch('/api/credits/deduct', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ cost, reason: 'render', format: renderFormat }),
-            }).catch(() => {});
+            // ⚠️ PLUS DE DEBIT ICI.
+            //
+            // Cet appel envoyait `cost`, un montant choisi par le navigateur —
+            // ce que la route refuse desormais. Le nouveau contrat exige un
+            // `postId` dont le serveur verifie la propriete, pour en tirer le
+            // format, le prix et la reference idempotente. Or ce debit-ci
+            // partait AVANT la creation du post (et l'autre ne cree aucun
+            // post du tout) : il n'y a rien a referencer.
+            //
+            // Le rebrancher demande de deplacer le debit apres la creation du
+            // post, dans un flux qui gere aussi la re-edition (PATCH vs POST).
+            // C'est un lot a part. En attendant, on ne debite pas plutot que
+            // de laisser le navigateur decider du montant.
+            console.info('[creer-avance] Rendu non débité — migration du contrat de débit en cours.');
             // Chrome/Firefox bloquent les téléchargements multiples rapides
             // depuis une même page — un délai de 600ms entre downloads laisse
             // au navigateur le temps de présenter (et accepter) chaque fichier.

@@ -76,26 +76,31 @@ describe('Le bureau ne crée AUCUN post', () => {
 
 describe('Les crédits', () => {
   it('le débit est factorisé — un seul code pour les deux destinations', () => {
-    expect(wizard).toContain('const debiterRendu = async (cost: number, renderFormat:');
-    expect(rendu).toContain('await debiterRendu(cost, renderFormat);');
-    expect(rendu).toContain('await debiterRendu(cost, renderFormat, json.post.id);');
+    expect(wizard).toContain('const debiterRendu = async (postId: string) => {');
+    expect(rendu).toContain('await debiterRendu(json.post.id);');
+    expect(rendu).toContain('Téléchargement non débité');
     // Un montage reutilise a deja ete paye au moment du Play.
-    expect(rendu).toContain('if (!reutilisable) await debiterRendu(cost, renderFormat);');
+    expect(rendu).toContain('if (!reutilisable) await debiterRendu(json.post.id);');
   });
 
-  it('il est débité PAR VIDÉO, dans la boucle', () => {
-    // Un lot de trois coûte trois rendus, comme au Calendrier.
+  it('le téléchargement n est PLUS débité, faute de ressource à référencer', () => {
+    // Il l'était, par vidéo, dans la boucle. Le nouveau contrat de débit
+    // exige un `postId` dont le serveur vérifie la propriété — un
+    // téléchargement n'en crée aucun. Plutôt que de continuer à envoyer un
+    // montant choisi par le navigateur, on ne débite pas. C'est une décision
+    // de produit, assumée et réversible.
     const i = rendu.indexOf("if (destination === 'bureau') {");
-    const bloc = rendu.slice(i, i + 500);
-    expect(bloc).toContain('debiterRendu(cost, renderFormat);');
+    const bloc = rendu.slice(i, i + 900);
+    expect(bloc).toContain('Téléchargement non débité');
     expect(bloc).toContain('continue;');
+    expect(bloc).not.toContain('debiterRendu(');
   });
 
   it('rien n est débité si la composition échoue', () => {
     // Le débit vient APRÈS la composition : une exception sort de la boucle
     // par le `catch` sans jamais l'atteindre.
     const compose = rendu.indexOf('await composeVideo(optionsRendu)');
-    const debit = rendu.indexOf('debiterRendu(cost, renderFormat);');
+    const debit = rendu.indexOf('debiterRendu(json.post.id);');
     expect(debit).toBeGreaterThan(compose);
   });
 
@@ -182,7 +187,7 @@ describe('Le bouton', () => {
 describe('Le Calendrier n a pas bougé', () => {
   it('il téléverse, crée le post, puis débite', () => {
     const post = rendu.indexOf("await fetch('/api/posts'");
-    const debit = rendu.indexOf('await debiterRendu(cost, renderFormat, json.post.id);');
+    const debit = rendu.indexOf('await debiterRendu(json.post.id);');
     expect(post).toBeGreaterThan(0);
     expect(debit).toBeGreaterThan(post);
   });

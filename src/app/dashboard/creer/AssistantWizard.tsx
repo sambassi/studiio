@@ -5602,18 +5602,28 @@ export default function AssistantWizard() {
   const slugTitre = (titre: string): string =>
     (titre || 'studiio').replace(/[^a-zA-Z0-9-_]+/g, '_').slice(0, 60) || 'studiio';
 
-  const debiterRendu = async (cost: number, renderFormat: 'reel' | 'tv', postId?: string) => {
+  /**
+   * Debite un rendu.
+   *
+   * Le corps ne porte plus qu'un `postId` : ni montant, ni format, ni
+   * identite. Le serveur relit le format SUR le post dont il vient de
+   * verifier la propriete, en tire le prix depuis `public.tarifs_rendu`, et
+   * construit lui-meme la reference idempotente. Envoyer `cost` est desormais
+   * refuse par la route, et c'est voulu — l'ignorer en silence laisserait
+   * croire qu'il a ete pris en compte.
+   *
+   * Toujours non bloquant : le montage est deja livre, le refuser apres coup
+   * ne le rendrait pas moins livre.
+   */
+  const debiterRendu = async (postId: string) => {
     try {
       const res = await fetch('/api/credits/deduct', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cost, reason: 'render', format: renderFormat }),
+        body: JSON.stringify({ postId }),
       });
       if (!res.ok) {
-        console.warn(
-          `[Assistant] Débit des crédits refusé (${res.status})`
-          + (postId ? ` — post ${postId} conservé` : ' — montage conservé'),
-        );
+        console.warn(`[Assistant] Débit des crédits refusé (${res.status}) — post ${postId} conservé`);
       }
     } catch (e) {
       console.warn('[Assistant] Débit des crédits injoignable — montage conservé:', e);
@@ -6053,7 +6063,12 @@ export default function AssistantWizard() {
         // aucun téléversement.
         if (destination === 'apercu') {
           setPreviewRender(composed.blob, signature, vignetteApercu);
-          await debiterRendu(cost, renderFormat);
+          // ⚠️ PLUS DE DEBIT ICI. Le nouveau contrat exige une ressource
+          // serveur dont la propriete est verifiable — un apercu n'en cree
+          // aucune. Plutot que de continuer a envoyer un montant choisi par
+          // le navigateur, on ne debite pas. C'est une decision de produit,
+          // pas un oubli : voir la PR.
+          console.info('[Assistant] Aperçu non débité — aucune ressource serveur à référencer.');
           setRenderProgress(100);
           setRenderStage('Prêt.');
           return;
@@ -6067,7 +6082,9 @@ export default function AssistantWizard() {
           blobsBureau.push({ blob: composed.blob, titre: contenu.title });
           // Un montage réutilisé a DÉJÀ été payé au moment du Play : le
           // débiter à nouveau ferait payer deux fois le même rendu.
-          if (!reutilisable) await debiterRendu(cost, renderFormat);
+          // ⚠️ PLUS DE DEBIT ICI non plus : un telechargement ne cree
+          // aucune ligne serveur a referencer. Meme raison qu'a l'apercu.
+          console.info('[Assistant] Téléchargement non débité — aucune ressource serveur à référencer.');
           majItem(itemEnCours, 'pret');
           continue;
         }
@@ -6247,7 +6264,7 @@ export default function AssistantWizard() {
         // 5. Débit — le post existe, la vidéo est en ligne. On lit le statut :
         //    `/api/credits/deduct` répond 402 sur solde insuffisant, et un
         //    `.catch()` seul n'attrape que les erreurs réseau, pas un 402.
-        if (!reutilisable) await debiterRendu(cost, renderFormat, json.post.id);
+        if (!reutilisable) await debiterRendu(json.post.id);
         majItem(itemEnCours, 'pret', { postId: json.post.id });
 
         }
