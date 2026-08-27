@@ -19,6 +19,7 @@ create table if not exists public.users (
   name       varchar(255),
   credits    integer default 10,
   plan       varchar(50) default 'free',
+  role       text default 'user',
   created_at timestamptz default now()
 );
 

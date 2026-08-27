@@ -27,12 +27,17 @@ export function BillingContent() {
   const tc = useTranslations('common');
   const [loadingPortal, setLoadingPortal] = useState(false);
   const [credits, setCredits] = useState<number | null>(null);
+  const [libelleFacturation, setLibelleFacturation] = useState<string | null>(null);
   const [sub, setSub] = useState<SubscriptionInfo | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [showBuy, setShowBuy] = useState(false);
 
   useEffect(() => {
-    fetch('/api/credits/balance').then(r => r.json()).then(d => { if (d?.ok) setCredits(d.balance); }).catch(() => {});
+    fetch('/api/credits/balance').then(r => r.json()).then(d => {
+      if (!d?.ok) return;
+      if (typeof d.balance === 'number') { setCredits(d.balance); setLibelleFacturation(null); }
+      else if (d.libelle) { setCredits(null); setLibelleFacturation(d.libelle); }
+    }).catch(() => {});
     fetch('/api/billing/summary').then(r => r.json()).then(d => {
       if (d?.ok) { setSub(d.subscription); setTransactions(d.transactions || []); }
     }).catch(() => {});
@@ -68,7 +73,13 @@ export function BillingContent() {
             <div className="flex items-center gap-3">
               <Zap className="text-purple-400" size={32} />
               <div>
-                <div className="text-4xl font-bold text-white">{credits ?? '—'}</div>
+                <div className="text-4xl font-bold text-white">
+                  {credits !== null
+                    ? credits
+                    : libelleFacturation !== null
+                      ? <span data-facturation-libelle className="text-xl font-semibold text-gray-300">{libelleFacturation}</span>
+                      : '—'}
+                </div>
                 <div className="text-xs text-gray-400">crédits restants</div>
               </div>
             </div>

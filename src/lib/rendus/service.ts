@@ -6,6 +6,10 @@
  */
 import { randomUUID } from 'crypto';
 import { supabaseAdmin } from '@/lib/db/supabase';
+import {
+  politiqueDeLUtilisateur, consommeDesCredits, coutPartenaireVerifiable,
+  type Politique,
+} from '@/lib/facturation/politique';
 
 /** Les quatre parcours factures, plus le calendrier deja migre. */
 export const OPERATIONS = [
@@ -36,6 +40,8 @@ export interface RenduReserve {
   cout: number;
   format: Format;
   operation: Operation;
+  /** Figee a la reservation, depuis le role lu en base. */
+  politique: Politique;
 }
 
 /** Le socle SQL est-il absent de ce serveur ? */
@@ -69,6 +75,11 @@ export async function reserverRendu(
   const id = randomUUID();
   const cle = `${userId}/rendus/${id}.webm`;
 
+  // La politique est resolue ICI, depuis le role en base, et figee sur la
+  // ligne. La confirmation la relira : une tentative ouverte sous une
+  // politique ne peut pas se confirmer sous une autre.
+  const { politique } = await politiqueDeLUtilisateur(userId);
+
   const { data, error } = await supabaseAdmin
     .from('rendus')
     .insert({
@@ -79,8 +90,9 @@ export async function reserverRendu(
       cout: tarif.credits,
       bucket: BUCKET_RENDUS,
       cle_objet: cle,
+      politique,
     })
-    .select('id, bucket, cle_objet, cout, format, operation')
+    .select('id, bucket, cle_objet, cout, format, operation, politique')
     .single();
 
   if (error) {
@@ -92,6 +104,7 @@ export async function reserverRendu(
     rendu: {
       id: data.id, bucket: data.bucket, cle: data.cle_objet,
       cout: data.cout, format: data.format, operation: data.operation,
+      politique: (data.politique === 'partner_cost_only' ? 'partner_cost_only' : 'credits'),
     },
   };
 }
@@ -100,7 +113,7 @@ export async function reserverRendu(
 export async function lireRendu(userId: string, renduId: string) {
   const { data, error } = await supabaseAdmin
     .from('rendus')
-    .select('id, user_id, operation, format, cout, bucket, cle_objet, etat')
+    .select('id, user_id, operation, format, cout, bucket, cle_objet, etat, politique')
     .eq('id', renduId)
     .eq('user_id', userId)
     .maybeSingle();
@@ -161,4 +174,59 @@ export async function cloreRendu(
   }
   const ligne = (Array.isArray(data) ? data[0] : data) as { ok: boolean; etat: string | null } | undefined;
   return { ok: !!ligne?.ok, etat: ligne?.etat ?? null };
+}
+
+
+export interface FraisPartenaire {
+  partenaire?: string | null;
+  operationPartenaire?: string | null;
+  /** `null` = INDISPONIBLE. Jamais 0 estime. */
+  cout?: unknown;
+}
+
+/**
+ * Confirme un rendu SANS toucher aux credits.
+ *
+ * Meme machine a etats que `confirmerRendu` -- la preuve serveur est
+ * identique pour tout le monde, seul le paiement differe. La fonction SQL
+ * appelee ne contient aucune ligne visant `users` ni `credit_transactions`.
+ */
+export async function confirmerRenduSansDebit(
+  userId: string, renduId: string, taille: number, contentType: string,
+  frais: FraisPartenaire = {},
+): Promise<{ ok: boolean; etat: string | null; dejaConfirme: boolean; motif: string | null; socleAbsent?: boolean }> {
+  const { data, error } = await supabaseAdmin.rpc('confirmer_rendu_sans_debit', {
+    p_user_id: userId,
+    p_rendu_id: renduId,
+    p_taille: taille,
+    p_content_type: contentType,
+    p_partenaire: frais.partenaire ?? null,
+    p_operation_partenaire: frais.operationPartenaire ?? null,
+    // Un cout non verifiable est enregistre comme INDISPONIBLE, pas comme 0.
+    p_cout_partenaire: coutPartenaireVerifiable(frais.cout),
+  });
+
+  if (error) {
+    if (socleAbsent(error)) {
+      return { ok: false, etat: null, dejaConfirme: false, motif: 'socle_absent', socleAbsent: true };
+    }
+    throw new Error(error.message || 'confirmation impossible');
+  }
+
+  const ligne = (Array.isArray(data) ? data[0] : data) as {
+    ok: boolean; etat: string | null; deja_confirme: boolean; motif: string | null;
+  } | undefined;
+  if (!ligne) throw new Error('confirmation sans reponse');
+
+  return {
+    ok: !!ligne.ok,
+    etat: ligne.etat ?? null,
+    dejaConfirme: !!ligne.deja_confirme,
+    motif: ligne.motif ?? null,
+  };
+}
+
+/** Le rendu doit-il etre facture en credits Studiio ? */
+export function factureEnCredits(politique: Politique): boolean {
+  return consommeDesCredits(politique);
 }

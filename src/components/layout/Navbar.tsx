@@ -39,6 +39,8 @@ export function Navbar() {
   const isAdmin = ADMIN_EMAILS.includes(session?.user?.email?.toLowerCase() || '');
   const t = useTranslations('navbar');
   const [credits, setCredits] = useState<number | null>(null);
+  /** Renseigne quand le compte ne consomme pas de credits Studiio. */
+  const [libelleFacturation, setLibelleFacturation] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [nonLues, setNonLues] = useState(0);
   const [clocheOuverte, setClocheOuverte] = useState(false);
@@ -48,7 +50,13 @@ export function Navbar() {
     if (!session?.user?.id) return;
     fetch('/api/credits/balance')
       .then((r) => r.json())
-      .then((d) => { if (d?.ok) setCredits(d.balance ?? 0); })
+      .then((d) => {
+        if (!d?.ok) return;
+        // `balance: null` + un libelle = ce compte ne paie pas en credits.
+        // On affiche ce qu'il en est, jamais un nombre invente.
+        if (typeof d.balance === 'number') { setCredits(d.balance); setLibelleFacturation(null); }
+        else if (d.libelle) { setCredits(null); setLibelleFacturation(d.libelle); }
+      })
       .catch(() => {});
   }, [session?.user?.id]);
 
@@ -127,6 +135,15 @@ export function Navbar() {
               <Zap size={14} className="text-purple-300" />
               {credits}
             </button>
+          )}
+          {libelleFacturation !== null && (
+            <span
+              data-facturation-libelle
+              className="px-3 py-1.5 rounded-full border border-gray-700 text-gray-400 text-xs font-medium"
+              title="Ce compte ne consomme pas de crédits Studiio"
+            >
+              {libelleFacturation}
+            </span>
           )}
           {isAdmin && (
             <button

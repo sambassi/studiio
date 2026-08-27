@@ -29,6 +29,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const [credits, setCredits] = useState<number | null>(null);
+  const [libelleFacturation, setLibelleFacturation] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const isAdmin = session?.user?.email === 'contact.artboost@gmail.com';
   const t = useTranslations('sidebar');
@@ -38,9 +39,11 @@ export function Sidebar() {
       try {
         const res = await fetch('/api/credits/balance');
         const data = await res.json();
-        if (data.success) {
-          setCredits(data.data?.credits || 0);
-        }
+        // La route rend `{ ok, balance }`, pas `{ success, data.credits }` :
+        // cette lecture-ci echouait en silence et affichait 0.
+        if (!data?.ok) return;
+        if (typeof data.balance === 'number') { setCredits(data.balance); setLibelleFacturation(null); }
+        else if (data.libelle) { setCredits(null); setLibelleFacturation(data.libelle); }
       } catch {
         // Silently fail - will show placeholder
       }
@@ -116,7 +119,11 @@ export function Sidebar() {
         <div className="card-base p-4">
           <div className="text-xs text-gray-500 mb-2">{t('creditsAvailable')}</div>
           <div className="text-2xl font-bold text-studiio-accent mb-4">
-            {credits !== null ? credits.toLocaleString() : '...'}
+            {credits !== null
+              ? credits.toLocaleString()
+              : libelleFacturation !== null
+                ? <span data-facturation-libelle className="text-sm font-medium text-gray-400">{libelleFacturation}</span>
+                : '...'}
           </div>
           {/* Pas de `block` ici : c'est un utilitaire, il gagne sur le `inline-flex`
               de .button-base, ce qui neutralise le centrage vertical. `w-full`

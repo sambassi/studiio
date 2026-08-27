@@ -1,12 +1,21 @@
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { deductCredits as systemDeductCredits } from '@/lib/credits/system';
-import { isAdmin } from '@/lib/admin';
 
-// Solde affiché pour les admins (illimité côté business model — les admins
-// n'achètent jamais de crédits, ils utilisent tous les services librement
-// pour les démos, support, et tests internes). 999_999_999 plutôt que
-// Infinity pour rester un nombre JSON-serializable côté API.
-const ADMIN_BALANCE = 999_999_999;
+// ⚠️ LE SOLDE FICTIF A ETE RETIRE.
+//
+// Ce module rendait `999_999_999` aux administrateurs. Depuis que le debit
+// des rendus passe par le socle atomique -- qui lit la VRAIE colonne
+// `users.credits` et ne connait aucune exception --, ce nombre invente
+// devenait dangereux : l'ecran annoncait un solde quasi infini pendant qu'un
+// debit reel pouvait echouer sur solde insuffisant.
+//
+// L'exemption administrateur existe toujours, mais elle est desormais une
+// POLITIQUE resolue dans `lib/facturation/politique.ts`, a partir du role lu
+// en base -- pas d'une liste d'e-mails codee dans le bundle.
+//
+// `system.ts` porte encore son propre `ADMIN_BALANCE`, pour les chemins IA
+// image et avatar qui ne sont pas dans ce lot. Il y reste coherent : solde
+// fictif ET debit neutralise, les deux ensemble.
 
 export async function requireCredits(
   userId: string,
@@ -18,14 +27,6 @@ export async function requireCredits(
     .eq('id', userId)
     .single();
   if (error || !data) return { ok: false, balance: 0, error: 'user not found' };
-
-  // Admin bypass : les admins ont un solde fictif illimité et passent
-  // tous les checks. Le `deductCredits` côté admin est aussi neutralisé
-  // ci-dessous, donc l'utilisation des services par un admin ne décrémente
-  // jamais la valeur réelle stockée en DB.
-  if (isAdmin(data.email)) {
-    return { ok: true, balance: ADMIN_BALANCE };
-  }
 
   const balance = data.credits ?? 0;
   return { ok: balance >= cost, balance };
@@ -43,9 +44,6 @@ export async function deductCredits(
     .single();
 
   // Admin bypass : pas de décrément, retour OK avec solde fictif.
-  if (u?.email && isAdmin(u.email)) {
-    return { ok: true, balance: ADMIN_BALANCE };
-  }
 
   const current = u?.credits ?? 0;
   if (current < cost) return { ok: false, balance: current, error: 'insufficient' };

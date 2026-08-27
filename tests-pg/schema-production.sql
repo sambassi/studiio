@@ -24,6 +24,9 @@ create table if not exists public.users (
   name       varchar(255),
   credits    integer default 10,
   plan       varchar(50) default 'free',
+  -- Presente en production : verifiee en lecture seule le 27 aout
+  -- (text, defaut 'user', 1 compte admin, 3 comptes user, aucun NULL).
+  role       text default 'user',
   created_at timestamptz default now()
 );
 
