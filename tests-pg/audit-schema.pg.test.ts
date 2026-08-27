@@ -91,7 +91,7 @@ async function empreinte() {
             data_type || coalesce('(' || character_maximum_length || ')','') || '/' || is_nullable
        from information_schema.columns where table_schema = 'public'
      union all
-     select 'contrainte', conname, pg_get_constraintdef(oid)
+     select 'contrainte', con.conname, pg_get_constraintdef(con.oid)
        from pg_constraint con join pg_class cl on cl.oid = con.conrelid
        join pg_namespace n on n.oid = cl.relnamespace where n.nspname = 'public'
      union all
@@ -130,7 +130,11 @@ describe('1. Syntaxe valide sur PostgreSQL 16', () => {
   beforeEach(async () => { await poserProduction(); });
 
   it('la version du moteur est bien 16', async () => {
-    const { rows } = await db.query<{ v: string }>('show server_version');
+    // `show server_version` nomme sa colonne `server_version`, pas `v` :
+    // le `as` n'est possible que par `current_setting`.
+    const { rows } = await db.query<{ v: string }>(
+      "select current_setting('server_version') as v",
+    );
     expect(rows[0].v.startsWith('16.')).toBe(true);
   });
 
