@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
+import { resolveExportableUrl } from '@/lib/videos/playable-url';
 
 // POST /api/videos/[id]/repost - Repost a video to calendar as new draft
 export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
@@ -26,11 +27,8 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     const today = new Date();
     const scheduledDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-    const mediaUrl = video.video_url
-      || video.metadata?.rushUrls?.[0]
-      || video.metadata?.posterPhotoUrl
-      || video.metadata?.characterImageUrl
-      || null;
+    // Meme cascade que l'export et la Bibliotheque : le montage d'abord.
+    const mediaUrl = resolveExportableUrl(video);
 
     const { data: post, error: postError } = await supabase
       .from('scheduled_posts')

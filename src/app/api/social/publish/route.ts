@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth/config';
 import { getValidToken } from '@/lib/social/token-refresh';
 import { isWhatsAppEnabled, canUseWhatsApp, broadcastWhatsApp, resolveRecipients, formatBroadcastFailures } from '@/lib/social/whatsapp';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
+import { resolvePublishableUrl } from '@/lib/videos/playable-url';
 
 // POST /api/social/publish - Publish a video to social platforms
 export async function POST(req: NextRequest) {
@@ -35,7 +36,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Video not found' }, { status: 404 });
     }
 
-    if (!video.video_url) {
+    // ── URL a publier ────────────────────────────────────────────────
+    // La colonne d'abord, puis le montage compose dans le navigateur
+    // (`metadata.renderedVideoUrl`) — que `POST /api/videos` refuse en
+    // colonne, a raison. JAMAIS le rush brut : publier la video source a la
+    // place du montage est irreversible, le fichier part chez un tiers sous
+    // le nom de l'utilisateur.
+    //
+    // L'URL est validee avant d'aller plus loin : elle peut venir des
+    // metadonnees, donc d'un navigateur. Et le publieur YouTube TELECHARGE le
+    // fichier depuis notre serveur — une URL non verifiee y deviendrait une
+    // requete sortante vers le reseau interne.
+    //
+    // Ce refus precede tout appel reseau et toute ecriture en base : le
+    // statut de la video n'est pas touche, aucun credit n'est engage.
+    const mediaUrl = resolvePublishableUrl(video);
+    if (!mediaUrl) {
       return NextResponse.json(
         { success: false, error: 'Video has no output URL. Complete rendering first.' },
         { status: 400 }
@@ -177,16 +193,16 @@ export async function POST(req: NextRequest) {
 
         switch (platform) {
           case 'instagram':
-            publishResult = await publishToInstagram(authedAccount, video, caption, hashtags);
+            publishResult = await publishToInstagram(authedAccount, video, mediaUrl, caption, hashtags);
             break;
           case 'facebook':
-            publishResult = await publishToFacebook(authedAccount, video, caption, hashtags);
+            publishResult = await publishToFacebook(authedAccount, video, mediaUrl, caption, hashtags);
             break;
           case 'tiktok':
-            publishResult = await publishToTikTok(authedAccount, video, caption, hashtags);
+            publishResult = await publishToTikTok(authedAccount, video, mediaUrl, caption, hashtags);
             break;
           case 'youtube':
-            publishResult = await publishToYouTube(authedAccount, video, caption, hashtags);
+            publishResult = await publishToYouTube(authedAccount, video, mediaUrl, caption, hashtags);
             break;
           default:
             publishResult = { success: false, error: `Plateforme non supportee: ${platformName}` };
@@ -315,6 +331,8 @@ export async function POST(req: NextRequest) {
 async function publishToInstagram(
   account: any,
   video: any,
+  /** URL deja resolue ET validee par `resolvePublishableUrl`. */
+  mediaUrl: string,
   caption?: string,
   hashtags?: string[],
 ): Promise<{ success: boolean; platformPostId?: string; platformUrl?: string; error?: string }> {
@@ -332,7 +350,7 @@ async function publishToInstagram(
   ].join('\n').trim();
 
   try {
-    const publicVideoUrl = await ensurePublicUrl(video.video_url);
+    const publicVideoUrl = await ensurePublicUrl(mediaUrl);
 
     // Step 1: Create media container (Reels)
     const createRes = await fetch(
@@ -426,6 +444,8 @@ async function publishToInstagram(
 async function publishToFacebook(
   account: any,
   video: any,
+  /** URL deja resolue ET validee par `resolvePublishableUrl`. */
+  mediaUrl: string,
   caption?: string,
   hashtags?: string[],
 ): Promise<{ success: boolean; platformPostId?: string; platformUrl?: string; error?: string }> {
@@ -439,7 +459,7 @@ async function publishToFacebook(
   const fullCaption = [caption || video.title, '', hashtags?.join(' ') || ''].join('\n').trim();
 
   try {
-    const publicVideoUrl = await ensurePublicUrl(video.video_url);
+    const publicVideoUrl = await ensurePublicUrl(mediaUrl);
 
     // Post video directly by file_url (simpler + works for most FB page video uploads)
     const directRes = await fetch(
@@ -484,6 +504,8 @@ async function publishToFacebook(
 async function publishToTikTok(
   account: any,
   video: any,
+  /** URL deja resolue ET validee par `resolvePublishableUrl`. */
+  mediaUrl: string,
   caption?: string,
   hashtags?: string[],
 ): Promise<{ success: boolean; platformPostId?: string; platformUrl?: string; error?: string }> {
@@ -516,7 +538,7 @@ async function publishToTikTok(
           },
           source_info: {
             source: 'PULL_FROM_URL',
-            video_url: video.video_url,
+            video_url: mediaUrl,
           },
         }),
       }
@@ -542,6 +564,8 @@ async function publishToTikTok(
 async function publishToYouTube(
   account: any,
   video: any,
+  /** URL deja resolue ET validee par `resolvePublishableUrl`. */
+  mediaUrl: string,
   caption?: string,
   hashtags?: string[],
 ): Promise<{ success: boolean; platformPostId?: string; platformUrl?: string; error?: string }> {
@@ -612,7 +636,7 @@ async function publishToYouTube(
     }
 
     // Download video and upload to YouTube
-    const publicVideoUrl = await ensurePublicUrl(video.video_url);
+    const publicVideoUrl = await ensurePublicUrl(mediaUrl);
     const videoRes = await fetch(publicVideoUrl);
     if (!videoRes.ok) {
       console.error('[SOCIAL_PUBLISH_ERROR]', { platform: 'youtube', step: 'download', status: videoRes.status });

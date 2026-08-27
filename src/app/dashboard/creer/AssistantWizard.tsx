@@ -113,6 +113,10 @@ import {
   MAX_BATCH, clampBatchCount, batchCost, distinctPhotoForIndex, distinctUrls,
   autoAssignPhotos, batchPhotosReady, photosToFetch, batchDates, batchTopic, variationNonce,
 } from '@/lib/creer/batch';
+import {
+  batchRunId, batchItemId, initialBatchItems, setItemState, batchSummary,
+  batchPartiel, repriseAutorisee, type BatchItem,
+} from '@/lib/creer/batchRun';
 // Catalogue de polices — LA source unique, partagee avec le compositeur.
 // Deux listes finiraient par diverger, et la video ne ressemblerait plus a
 // l'apercu.
@@ -3336,6 +3340,14 @@ export default function AssistantWizard() {
   }, []);
 
   const [scheduledDate, setScheduledDate] = useState('');
+  /**
+   * Heure de publication du post.
+   *
+   * `12:00` par defaut — exactement la valeur qui etait ecrite en dur dans le
+   * `POST /api/posts`. Un lot existant qui ne touche pas ce champ produit donc
+   * strictement les memes posts qu'avant.
+   */
+  const [scheduledTime, setScheduledTime] = useState('12:00');
   const [sending, setSending] = useState(false);
   /**
    * Ce que `runRender` est en train de produire, ou `null`.
@@ -3540,6 +3552,23 @@ export default function AssistantWizard() {
     setSelectedElementId(null);
   }, []);
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
+  /**
+   * Etat de CHAQUE contenu du lot — en attente, rendu, pret ou echoue.
+   *
+   * `batchProgress` ne dit que « x sur y » : quand le lot s'arrete en route,
+   * il ne dit ni lequel a echoue, ni lesquels n'ont jamais demarre. Cette
+   * liste survit a la fin de la boucle, c'est ce qui permet d'afficher un
+   * echec partiel au lieu d'un simple message d'erreur.
+   */
+  const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
+  /**
+   * Mode du lot, DEDUIT de `batchCount` : un seul contenu, ou une serie.
+   *
+   * Volontairement pas un second `useState` — deux sources de verite pour la
+   * meme chose finissent par se contredire, et c'est le nombre qui compte
+   * partout ailleurs (cout, dates, affiches, boucle).
+   */
+  const modeLot: 'unique' | 'serie' = batchCount > 1 ? 'serie' : 'unique';
   const [elementPickerOpen, setElementPickerOpen] = useState(false);
   const freeElementsRef = useRef<FreeElement[]>(freeElements);
   useEffect(() => { freeElementsRef.current = freeElements; }, [freeElements]);
@@ -5642,6 +5671,22 @@ export default function AssistantWizard() {
     const baseDate = scheduledDate ? new Date(`${scheduledDate}T12:00:00`) : new Date();
     const dates = batchDates(Number.isNaN(baseDate.getTime()) ? new Date() : baseDate, total);
 
+    // ── Suivi par contenu ──────────────────────────────────────────
+    // Un identifiant STABLE par contenu, derive du rang. L'apercu n'en a pas
+    // besoin : il ne cree rien et rend la main dans la boucle.
+    const suivi = destination !== 'apercu';
+    const runId = batchRunId(Date.now());
+    let items: BatchItem[] = suivi ? initialBatchItems(runId, total) : [];
+    setBatchItems(items);
+    /** Applique un etat au contenu `id`, en local ET a l'ecran. */
+    const majItem = (id: string, etat: BatchItem['etat'], extra?: { postId?: string; erreur?: string }) => {
+      if (!suivi) return;
+      items = setItemState(items, id, etat, extra);
+      setBatchItems(items);
+    };
+    /** Contenu en cours — sert au `catch` global, qui ne connait pas `b`. */
+    let itemEnCours: string | null = null;
+
     try {
       // 1. Solde — non bloquant si l'endpoint est indisponible, comme l'éditeur.
       try {
@@ -5671,6 +5716,8 @@ export default function AssistantWizard() {
       try {
         for (let b = 0; b < total; b += 1) {
           setBatchProgress({ done: b, total });
+          itemEnCours = batchItemId(runId, b);
+          majItem(itemEnCours, 'rendu');
           let contenu = contenuInitial;
           if (total > 1 && b > 0) {
             setRenderStage(`Variation ${b + 1}/${total}…`);
@@ -5999,6 +6046,7 @@ export default function AssistantWizard() {
           // Un montage réutilisé a DÉJÀ été payé au moment du Play : le
           // débiter à nouveau ferait payer deux fois le même rendu.
           if (!reutilisable) await debiterRendu(cost, renderFormat);
+          majItem(itemEnCours, 'pret');
           continue;
         }
 
@@ -6152,7 +6200,7 @@ export default function AssistantWizard() {
             format: renderFormat,
             platforms: [],
             scheduled_date: dates[b],
-            scheduled_time: '12:00',
+            scheduled_time: scheduledTime || '12:00',
             status: 'draft',
             metadata,
           }),
@@ -6160,17 +6208,25 @@ export default function AssistantWizard() {
 
         const json = await res.json();
         if (!json.success || !json.post?.id) {
+          const motif = res.status === 401
+            ? 'Session expirée.'
+            : "Le montage est prêt mais l'enregistrement du post a échoué.";
+          majItem(itemEnCours, 'echoue', { erreur: motif });
           setError(
             res.status === 401
               ? 'Votre session a expiré. Reconnectez-vous et réessayez.'
               : "Le montage est prêt mais l'enregistrement du post a échoué.",
           );
+          // On s'arrete, comme avant : les contenus suivants restent « en
+          // attente », donc jamais factures. Les poursuivre depenserait des
+          // credits sur un lot qu'on sait deja casse.
           return;
         }
         // 5. Débit — le post existe, la vidéo est en ligne. On lit le statut :
         //    `/api/credits/deduct` répond 402 sur solde insuffisant, et un
         //    `.catch()` seul n'attrape que les erreurs réseau, pas un 402.
         if (!reutilisable) await debiterRendu(cost, renderFormat, json.post.id);
+        majItem(itemEnCours, 'pret', { postId: json.post.id });
 
         }
       } finally {
@@ -6229,6 +6285,13 @@ export default function AssistantWizard() {
       setSent(true);
     } catch (err) {
       console.error('[Assistant] Envoi au calendrier échoué:', err);
+      // Le contenu qui etait en vol est le seul a avoir echoue : les suivants
+      // n'ont jamais demarre et restent « en attente ».
+      if (itemEnCours) {
+        majItem(itemEnCours, 'echoue', {
+          erreur: err instanceof Error && err.message ? err.message : 'Rendu interrompu.',
+        });
+      }
       setError(
         err instanceof Error && err.message
           ? `Le rendu a échoué : ${err.message}`
@@ -6272,6 +6335,7 @@ export default function AssistantWizard() {
     appliedVoiceDurations.current = {};
     setCropping(false);
     setBatchCount(1);
+    setBatchItems([]);
     setBatchPhotoUrls([]);
     setBatchPhotoMode('auto');
     setSlotCible(null);
@@ -8310,8 +8374,12 @@ export default function AssistantWizard() {
                     <div>
                       <div className="font-semibold">Envoyé au calendrier</div>
                       <p className="text-sm text-gray-400 mt-1">
-                        La vidéo est composée et le post enregistré en brouillon. Le calendrier
-                        la lit telle quelle — aucun nouveau rendu n'est nécessaire.
+                        {batchCount > 1
+                          ? `Les ${batchCount} vidéos sont composées et les posts enregistrés en brouillon.`
+                          : 'La vidéo est composée et le post enregistré en brouillon.'}{' '}
+                        Le calendrier les lit telles quelles — aucun nouveau rendu n&apos;est
+                        nécessaire. Rien n&apos;est publié : la diffusion se déclenche depuis le
+                        calendrier, une fois le brouillon programmé.
                       </p>
                     </div>
                     <div className="flex gap-2 justify-center flex-wrap">
@@ -8338,10 +8406,51 @@ export default function AssistantWizard() {
                       </p>
                     </div>
 
+                    {/* ── UN SEUL CONTENU, OU UNE SERIE ───────────────────
+                        Le choix precede le nombre : « 1 » perdu au milieu
+                        d'une rangee de dix ne se lit pas comme un mode, et
+                        c'est pourtant le parcours de loin le plus frequent.
+                        `batchCount` reste la SEULE source de verite — le mode
+                        s'en deduit, deux etats se desynchroniseraient. */}
+                    <div>
+                      <label className="block text-sm font-medium mb-2">Que voulez-vous produire ?</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          data-batch-mode="unique"
+                          aria-pressed={modeLot === 'unique'}
+                          onClick={() => setBatchCount(1)}
+                          className={`rounded-lg border px-3 py-2.5 text-sm text-left transition-colors ${
+                            modeLot === 'unique'
+                              ? 'border-purple-500 text-white'
+                              : 'border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
+                          }`}
+                        >
+                          <span className="block font-medium">Un seul contenu</span>
+                          <span className="block text-[11px] text-gray-500 mt-0.5">Le montage affiché</span>
+                        </button>
+                        <button
+                          type="button"
+                          data-batch-mode="serie"
+                          aria-pressed={modeLot === 'serie'}
+                          onClick={() => setBatchCount((n) => (n > 1 ? n : 2))}
+                          className={`rounded-lg border px-3 py-2.5 text-sm text-left transition-colors ${
+                            modeLot === 'serie'
+                              ? 'border-purple-500 text-white'
+                              : 'border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
+                          }`}
+                        >
+                          <span className="block font-medium">Série</span>
+                          <span className="block text-[11px] text-gray-500 mt-0.5">Jusqu’à {MAX_BATCH} brouillons</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {modeLot === 'serie' && (
                     <div>
                       <label className="block text-sm font-medium mb-2">Combien de vidéos ?</label>
                       <div className="flex flex-wrap gap-1.5">
-                        {Array.from({ length: MAX_BATCH }, (_, i) => i + 1).map((n) => (
+                        {Array.from({ length: MAX_BATCH - 1 }, (_, i) => i + 2).map((n) => (
                           <button
                             key={n}
                             type="button"
@@ -8357,25 +8466,68 @@ export default function AssistantWizard() {
                           </button>
                         ))}
                       </div>
-                      {batchCount > 1 && (
-                        <p className="mt-2 text-xs text-gray-500">
-                          Chaque vidéo reçoit un angle différent et sa propre date, un jour après
-                          l’autre. La première garde le contenu affiché ci-contre.
-                          {batchPhotoUrls.length > 0
-                            ? ` ${batchPhotoUrls.length} affiche${batchPhotoUrls.length > 1 ? 's' : ''} retenue${batchPhotoUrls.length > 1 ? 's' : ''}, reprise${batchPhotoUrls.length > 1 ? 's' : ''} en boucle si besoin.`
-                            : ' Choisissez plusieurs photos dans « Photo d’affiche » pour les varier.'}
-                        </p>
-                      )}
+                      <p className="mt-2 text-xs text-gray-500">
+                        Chaque vidéo reçoit un angle différent et sa propre date, un jour après
+                        l’autre. La première garde le contenu affiché ci-contre.
+                        {batchPhotoUrls.length > 0
+                          ? ` ${batchPhotoUrls.length} affiche${batchPhotoUrls.length > 1 ? 's' : ''} retenue${batchPhotoUrls.length > 1 ? 's' : ''}.`
+                          : ' Choisissez plusieurs photos dans « Photo d’affiche » pour les varier.'}
+                      </p>
+                    </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-sm font-medium mb-2" htmlFor="lot-date">Date</label>
+                        <input
+                          id="lot-date"
+                          type="date"
+                          value={scheduledDate}
+                          onChange={(e) => setScheduledDate(e.target.value)}
+                          className="w-full rounded-xl bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2.5 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2" htmlFor="lot-heure">Heure</label>
+                        <input
+                          id="lot-heure"
+                          type="time"
+                          value={scheduledTime}
+                          onChange={(e) => setScheduledTime(e.target.value || '12:00')}
+                          className="w-full rounded-xl bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2.5 text-sm"
+                        />
+                      </div>
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium mb-2">Date</label>
-                      <input
-                        type="date"
-                        value={scheduledDate}
-                        onChange={(e) => setScheduledDate(e.target.value)}
-                        className="w-full rounded-xl bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2.5 text-sm"
-                      />
+                    {/* ── RECAPITULATIF AVANT CONFIRMATION ────────────────
+                        Le nombre exact et le cout, en clair, juste au-dessus
+                        du bouton : c'est la derniere chose lue avant de
+                        depenser des credits. */}
+                    <div
+                      data-batch-recap
+                      className="rounded-lg border border-gray-800 bg-gray-900/40 px-3 py-2.5 text-xs text-gray-400"
+                    >
+                      <span className="text-gray-200 font-medium">
+                        {batchCount} {batchCount > 1 ? 'contenus' : 'contenu'}
+                      </span>
+                      {' · '}
+                      <span className="text-gray-200 font-medium">
+                        {batchCost(format === '9:16' ? COST.reel : COST.tv, batchCount)} crédits
+                      </span>
+                      {scheduledDate ? (
+                        <>
+                          {' · '}
+                          {batchCount > 1 ? 'à partir du ' : 'le '}
+                          {scheduledDate} à {scheduledTime}
+                          {batchCount > 1 ? ', un par jour' : ''}
+                        </>
+                      ) : (
+                        <>{' · '}<span className="text-amber-400">choisissez une date</span></>
+                      )}
+                      <span className="block mt-1 text-gray-500">
+                        Enregistré{batchCount > 1 ? 's' : ''} en brouillon. Aucune publication
+                        automatique : la diffusion reste déclenchée depuis le calendrier.
+                      </span>
                     </div>
 
                     {/* ── TÉLÉCHARGER SUR L'ORDINATEUR ────────────────────
@@ -8471,6 +8623,62 @@ export default function AssistantWizard() {
                         {renderStage && (
                           <p className="text-center text-xs text-gray-500">{renderStage}</p>
                         )}
+                      </div>
+                    )}
+
+                    {/* ── ECHEC PARTIEL ───────────────────────────────────
+                        Un lot qui s'arrete en route laissait jusqu'ici un
+                        simple message d'erreur : impossible de savoir ce qui
+                        etait passe. On liste chaque contenu et son etat.
+
+                        La REPRISE est volontairement inactive : relancer un
+                        contenu echoue suppose de savoir qu'il n'a pas ete
+                        facture, et le debit ne dispose d'aucune cle
+                        d'idempotence. `repriseAutorisee` porte cette regle. */}
+                    {!sending && batchPartiel(batchItems) && (
+                      <div data-batch-report className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-3 space-y-2">
+                        <div className="flex items-center gap-2 text-sm font-medium text-amber-300">
+                          <AlertTriangle className="w-4 h-4" /> Série interrompue
+                        </div>
+                        <p className="text-xs text-gray-400">
+                          {(() => {
+                            const { total, prets, echoues, restants } = batchSummary(batchItems);
+                            return `${prets} sur ${total} enregistrée${prets > 1 ? 's' : ''} au calendrier`
+                              + `, ${echoues} en échec`
+                              + (restants > 0 ? `, ${restants} jamais démarrée${restants > 1 ? 's' : ''} — donc non facturée${restants > 1 ? 's' : ''}.` : '.');
+                          })()}
+                        </p>
+                        <ul className="space-y-1">
+                          {batchItems.map((it) => (
+                            <li key={it.id} data-batch-item={it.id} data-batch-item-state={it.etat} className="flex items-center gap-2 text-xs">
+                              <span
+                                className="w-1.5 h-1.5 rounded-full shrink-0"
+                                style={{
+                                  backgroundColor:
+                                    it.etat === 'pret' ? '#6EE7B7'
+                                      : it.etat === 'echoue' ? '#FCA5A5'
+                                        : it.etat === 'rendu' ? '#93C5FD' : '#4B5563',
+                                }}
+                              />
+                              <span className="text-gray-400">Vidéo {it.index + 1}</span>
+                              <span className="text-gray-500">
+                                {it.etat === 'pret' ? 'prête'
+                                  : it.etat === 'echoue' ? `échec — ${it.erreur || 'raison inconnue'}`
+                                    : it.etat === 'rendu' ? 'rendu interrompu' : 'jamais démarrée'}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                        <button
+                          type="button"
+                          data-batch-retry
+                          disabled
+                          title={repriseAutorisee(batchItems).raison}
+                          className="w-full rounded-lg border border-gray-800 px-3 py-2 text-xs text-gray-500 cursor-not-allowed"
+                        >
+                          Reprendre les contenus échoués
+                        </button>
+                        <p className="text-[11px] text-gray-500">{repriseAutorisee(batchItems).raison}</p>
                       </div>
                     )}
                   </>

@@ -2,9 +2,26 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { RENDER_COSTS } from '@/lib/stripe/constants';
+import { BATCH_RENDER_DESACTIVE, BATCH_RENDER_MESSAGE } from '@/lib/render/batch-disabled';
 
-// POST /api/render/batch - Start multiple render jobs
+// POST /api/render/batch — DESACTIVEE.
+//
+// Le corps historique est CONSERVE sous le garde, deliberement : il documente
+// ce que le rendu Batch serveur devra refaire, et le supprimer effacerait la
+// seule trace de la forme attendue (compositions, `input_props`, tarifs). Il
+// est desormais inatteignable. Voir `@/lib/render/batch-disabled` pour le
+// motif exact de la desactivation.
 export async function POST(req: NextRequest) {
+  // Premier statement du gestionnaire : rien n'est lu, rien n'est ecrit,
+  // aucun credit n'est touche. La premiere ecriture du corps historique est
+  // l'`update` de `users.credits` — elle est desormais inatteignable.
+  if (BATCH_RENDER_DESACTIVE) {
+    return NextResponse.json(
+      { success: false, error: BATCH_RENDER_MESSAGE, disabled: true },
+      { status: 503 }
+    );
+  }
+
   try {
     const session = await auth();
     if (!session?.user?.id) {
