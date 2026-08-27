@@ -81,6 +81,16 @@ function installerFetch() {
     const u = String(url);
     const method = String(init?.method ?? 'GET').toUpperCase();
     appels.push({ url: u, method });
+    // La file ne vaut QUE pour `/api/posts/...`, comme son commentaire le dit.
+    // Elle etait servie a n'importe quelle URL : une lecture sans rapport --
+    // le solde, lu au montage -- consommait la premiere reponse et decalait
+    // tout le scenario. Le contrat est desormais applique, pas seulement ecrit.
+    if (u.includes('/api/credits/balance')) {
+      return {
+        ok: true, status: 200,
+        json: async () => ({ ok: true, politique: 'credits', balance: 5000 }),
+      } as Response;
+    }
     const r = reponses.length > 1 ? reponses.shift()! : reponses[0];
     if (r.reseau) throw new Error('offline');
     return {

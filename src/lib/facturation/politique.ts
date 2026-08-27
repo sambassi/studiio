@@ -42,8 +42,15 @@ export const ROLE_ADMIN = 'admin';
 
 export const POLITIQUE_DEFAUT: Politique = 'credits';
 
-/** Ce que l'ecran affiche a la place d'un solde, sous cette politique. */
-export const LIBELLE_PARTENAIRES = 'Frais partenaires uniquement';
+/**
+ * Ce que l'ecran affiche a la place d'un solde, sous cette politique.
+ *
+ * Le libelle vit dans `./libelles`, sans dependance : les composants client
+ * en ont besoin et ce module-ci importe `supabaseAdmin`. Il est re-exporte
+ * ici pour que les appelants serveur existants n'aient pas a savoir ou il
+ * habite -- une seule chaine, deux portes.
+ */
+export { LIBELLE_PARTENAIRES } from './libelles';
 
 /**
  * Champs qu'un client n'a jamais le droit de proposer sur un chemin de

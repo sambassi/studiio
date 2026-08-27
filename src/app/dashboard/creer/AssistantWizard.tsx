@@ -127,6 +127,10 @@ import { rendreEtFacturer, messagePour } from '@/lib/rendus/client';
 // l'apercu.
 import { FONT_GROUPS, fontStack, ensureFontLoaded, preloadCatalogPreview } from '@/lib/fonts/catalog';
 import { useSession } from 'next-auth/react';
+import type { Politique } from '@/lib/facturation/politique';
+import {
+  libelleCout, politiqueAffichable, MENTION_AUCUN_CREDIT,
+} from '@/lib/facturation/libelles';
 import {
   DRAFT_VERSION,
   draftKey,
@@ -3353,6 +3357,19 @@ export default function AssistantWizard() {
    * strictement les memes posts qu'avant.
    */
   const [scheduledTime, setScheduledTime] = useState('12:00');
+  /**
+   * La politique de facturation, telle que le SERVEUR l'a decidee.
+   *
+   * `credits` par defaut, et tant que la reponse n'est pas arrivee : un
+   * ecran qui annonce un prix a quelqu'un qui ne paiera pas dit une chose
+   * inutile ; un ecran qui promet la gratuite a quelqu'un qui sera debite
+   * ment sur de l'argent. Le defaut penche du cote reparable.
+   *
+   * Rien ici ne DECIDE : ni `isAdmin`, ni une adresse, ni un role lu dans la
+   * session. On relaie ce que `/api/credits/balance` a repondu, et le debit
+   * reel reste tranche par le serveur, seul, a la confirmation du rendu.
+   */
+  const [politiqueFacturation, setPolitiqueFacturation] = useState<Politique>('credits');
   const [sending, setSending] = useState(false);
   /**
    * Ce que `runRender` est en train de produire, ou `null`.
@@ -3366,6 +3383,22 @@ export default function AssistantWizard() {
   const [renderTarget, setRenderTarget] = useState<'calendrier' | 'bureau' | 'apercu' | null>(null);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Lit la politique une fois au montage.
+   *
+   * `/api/credits/balance` la renvoie deja -- c'est la meme porte que la
+   * barre superieure. Aucun appel supplementaire n'est ajoute au parcours,
+   * et l'echec est silencieux : on reste sur `credits`.
+   */
+  useEffect(() => {
+    let vivant = true;
+    fetch('/api/credits/balance')
+      .then((r) => r.json())
+      .then((d) => { if (vivant) setPolitiqueFacturation(politiqueAffichable(d?.politique)); })
+      .catch(() => { /* le defaut `credits` tient */ });
+    return () => { vivant = false; };
+  }, []);
 
   // Rendu du montage
   const [renderProgress, setRenderProgress] = useState(0);
@@ -5724,12 +5757,21 @@ export default function AssistantWizard() {
       // 1. Solde — non bloquant si l'endpoint est indisponible, comme l'éditeur.
       try {
         const check = await fetch('/api/credits/balance').then((r) => r.json());
+        // La politique arrive avec le solde. On la relit ICI, au moment qui
+        // compte, plutôt que de se fier à l'état posé au montage : la réponse
+        // est fraîche et vient du serveur.
+        const politiqueFraiche = politiqueAffichable(check?.politique);
+        setPolitiqueFacturation(politiqueFraiche);
         const balance = check?.data?.credits ?? check?.balance;
         // `check.ok` est indispensable : la route renvoie `{ok:false, balance:0}`
         // sur 401/500. Sans ce garde, une panne passagère afficherait
         // « Crédits insuffisants : 0 disponible » à un utilisateur qui en a.
         const readable = check?.success !== false && check?.ok !== false;
-        if (readable && typeof balance === 'number' && balance < coutTotal) {
+        // Sous `partner_cost_only` il n'y a pas de solde à comparer : la route
+        // renvoie `balance: null` et un libellé. « Crédits insuffisants » y
+        // serait un refus inventé, sur un compte qui ne paie pas en crédits.
+        if (politiqueFraiche === 'credits'
+          && readable && typeof balance === 'number' && balance < coutTotal) {
           setError(`Crédits insuffisants : ${coutTotal} requis, ${balance} disponible(s).`);
           return;
         }
@@ -8456,10 +8498,15 @@ export default function AssistantWizard() {
                         {batchCount > 1 ? 'Les vidéos sont composées' : 'La vidéo est composée'}{' '}
                         maintenant, exactement telle que l&apos;aperçu l&apos;affiche, puis
                         enregistrée{batchCount > 1 ? 's' : ''} en brouillon.{' '}
-                        <span className="text-gray-300">
-                          {batchCost(format === '9:16' ? COST.reel : COST.tv, batchCount)} crédits
+                        <span className="text-gray-300" data-facturation-annonce>
+                          {libelleCout(
+                            politiqueFacturation,
+                            batchCost(format === '9:16' ? COST.reel : COST.tv, batchCount),
+                          )}
                         </span>{' '}
-                        seront débités une fois le rendu terminé.
+                        {politiqueFacturation === 'partner_cost_only'
+                          ? `— ${MENTION_AUCUN_CREDIT}`
+                          : 'seront débités une fois le rendu terminé.'}
                       </p>
                     </div>
 
@@ -8591,8 +8638,11 @@ export default function AssistantWizard() {
                         {batchCount} {batchCount > 1 ? 'contenus' : 'contenu'}
                       </span>
                       {' · '}
-                      <span className="text-gray-200 font-medium">
-                        {batchCost(format === '9:16' ? COST.reel : COST.tv, batchCount)} crédits
+                      <span className="text-gray-200 font-medium" data-facturation-recap>
+                        {libelleCout(
+                          politiqueFacturation,
+                          batchCost(format === '9:16' ? COST.reel : COST.tv, batchCount),
+                        )}
                       </span>
                       {scheduledDate ? (
                         <>
@@ -8611,9 +8661,9 @@ export default function AssistantWizard() {
                     </div>
 
                     {/* ── TÉLÉCHARGER SUR L'ORDINATEUR ────────────────────
-                        Rendu local : aucun post n'est créé. Les crédits sont
-                        débités comme pour le Calendrier — c'est le même
-                        rendu, au même coût.
+                        Rendu local : aucun post n'est créé. La facturation est
+                        celle du Calendrier — même rendu, même politique, donc
+                        aucun crédit non plus sous `partner_cost_only`.
 
                         Absent en modification : il compose et débite, comme
                         l'envoi. */}

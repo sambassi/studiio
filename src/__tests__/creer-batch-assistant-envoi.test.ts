@@ -69,7 +69,12 @@ describe('Le nombre et le cout sont annonces AVANT confirmation', () => {
 
   it('y annonce le nombre de contenus et le cout total', () => {
     expect(wizard).toContain("{batchCount} {batchCount > 1 ? 'contenus' : 'contenu'}");
-    expect(wizard).toContain("{batchCost(format === '9:16' ? COST.reel : COST.tv, batchCount)} crédits");
+    // Le cout passe par `libelleCout`, qui rend « N crédits » sous la
+    // politique `credits` et le libelle partenaires sinon. Le montant reste
+    // celui du serveur ; c'est sa MISE EN MOTS qui depend de la politique.
+    expect(wizard).toContain('data-facturation-recap');
+    expect(wizard).toContain("batchCost(format === '9:16' ? COST.reel : COST.tv, batchCount)");
+    expect(wizard).toContain('libelleCout(');
   });
 
   it('dit qu aucune publication n est automatique', () => {
