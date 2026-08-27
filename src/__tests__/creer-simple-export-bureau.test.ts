@@ -76,24 +76,34 @@ describe('Le bureau ne crée AUCUN post', () => {
 
 describe('Les crédits', () => {
   it('le débit est factorisé — un seul code pour les deux destinations', () => {
+    // Calendrier : le post sert de ressource vérifiable.
     expect(wizard).toContain('const debiterRendu = async (postId: string) => {');
-    expect(rendu).toContain('await debiterRendu(json.post.id);');
-    expect(rendu).toContain('Téléchargement non débité');
-    // Un montage reutilise a deja ete paye au moment du Play.
     expect(rendu).toContain('if (!reutilisable) await debiterRendu(json.post.id);');
+    // Aperçu et bureau : une tentative de rendu sert de ressource, et le
+    // parcours est le MÊME pour les deux — un seul appel dans le source.
+    expect((rendu.match(/rendreEtFacturer\(\{/g) || [])).toHaveLength(1);
+    expect(rendu).toContain("operation: destination === 'apercu' ? 'apercu' : 'bureau',");
   });
 
-  it('le téléchargement n est PLUS débité, faute de ressource à référencer', () => {
-    // Il l'était, par vidéo, dans la boucle. Le nouveau contrat de débit
-    // exige un `postId` dont le serveur vérifie la propriété — un
-    // téléchargement n'en crée aucun. Plutôt que de continuer à envoyer un
-    // montant choisi par le navigateur, on ne débite pas. C'est une décision
-    // de produit, assumée et réversible.
+  it('le téléchargement est TOUJOURS facturé, mais contre une preuve serveur', () => {
+    // Il l'était contre un montant choisi par le navigateur. Il l'est
+    // désormais contre une tentative ouverte par le serveur, un objet
+    // téléversé vers LA clé attribuée, et une vérification de cet objet.
     const i = rendu.indexOf("if (destination === 'bureau') {");
     const bloc = rendu.slice(i, i + 900);
-    expect(bloc).toContain('Téléchargement non débité');
     expect(bloc).toContain('continue;');
+    // Plus aucun débit ici : il a déjà eu lieu à la confirmation, en amont.
     expect(bloc).not.toContain('debiterRendu(');
+    expect(rendu).toContain("format: renderFormat,");
+  });
+
+  it('rien n est livré si le serveur ne confirme pas', () => {
+    // La garde est AVANT que le blob n'atteigne `blobsBureau` : un montage
+    // non confirmé n'est jamais téléchargé.
+    const garde = rendu.indexOf('if (!livraison.ok || !livraison.blob) {');
+    const livre = rendu.indexOf('blobsBureau.push(');
+    expect(garde).toBeGreaterThan(-1);
+    expect(garde).toBeLessThan(livre);
   });
 
   it('rien n est débité si la composition échoue', () => {

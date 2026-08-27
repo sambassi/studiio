@@ -135,7 +135,8 @@ import {
 } from "@/lib/constants/platforms";
 import FloatingPanel from "@/components/ui/FloatingPanel";
 import ColorWheel from "@/components/ui/ColorWheel";
-import { composeAndUpload, downloadBlob } from "@/lib/video-composer";
+import { downloadBlob } from "@/lib/video-composer";
+import { composerEtFacturer } from "@/lib/rendus/composer";
 import { ICON_LIBRARY, ICON_KEYWORDS, ALL_LUCIDE_NAMES } from "@/lib/icons/library";
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { Modal } from "@/components/ui/Modal";
@@ -4997,7 +4998,11 @@ function InfographicPageInner() {
             ));
             const ctaIconImage = await preRenderCtaIcon();
             const titleIconImage = await preRenderTitleIcon();
-            const { url: composedUrl, thumbnailUrl: composedThumbUrl, composerVersion: composedVersion } = await composeAndUpload({
+            // Parcours facture : le serveur ouvre une tentative, attribue une
+            // cle, on compose, on televerse VERS cette cle, il verifie l'objet
+            // et debite. Une composition non confirmee leve — le `catch`
+            // d'iteration saute alors la creation du post.
+            const { url: composedUrl, thumbnailUrl: composedThumbUrl, composerVersion: composedVersion } = await composerEtFacturer('avance-brouillon', renderFormat, {
               width: isReel ? 1080 : 1920,
               height: isReel ? 1920 : 1080,
               fps: 30,
@@ -5128,21 +5133,7 @@ function InfographicPageInner() {
             renderedThumbnailUrl = composedThumbUrl || null;
             renderedComposerVersion = composedVersion || null;
             console.log('[Export→Calendar] Montage composed and uploaded:', renderedVideoUrl, 'thumb:', renderedThumbnailUrl, 'version:', renderedComposerVersion);
-            // Deduct credits for this successful render
-            // ⚠️ PLUS DE DEBIT ICI.
-            //
-            // Cet appel envoyait `cost`, un montant choisi par le navigateur —
-            // ce que la route refuse desormais. Le nouveau contrat exige un
-            // `postId` dont le serveur verifie la propriete, pour en tirer le
-            // format, le prix et la reference idempotente. Or ce debit-ci
-            // partait AVANT la creation du post (et l'autre ne cree aucun
-            // post du tout) : il n'y a rien a referencer.
-            //
-            // Le rebrancher demande de deplacer le debit apres la creation du
-            // post, dans un flux qui gere aussi la re-edition (PATCH vs POST).
-            // C'est un lot a part. En attendant, on ne debite pas plutot que
-            // de laisser le navigateur decider du montant.
-            console.info('[creer-avance] Rendu non débité — migration du contrat de débit en cours.');
+            // Le debit a deja eu lieu, a la confirmation du montage.
             if (!renderedVideoUrl) {
               // Only surface errors as toasts — success is conveyed by the
               // progress bar reaching 100%.
@@ -5611,7 +5602,9 @@ function InfographicPageInner() {
           const titleIconImage = await preRenderTitleIcon();
           // Per-iteration sales phrase: cycle through bSalesPhrases like the calendar loop.
           const bureauSalesPhrase = bSalesPhrases.length > 0 ? bSalesPhrases[b % bSalesPhrases.length] : "";
-          const composedResult = await composeAndUpload({
+          // Meme parcours facture que le brouillon. Le telechargement ne
+          // part qu'apres confirmation du serveur.
+          const composedResult = await composerEtFacturer('avance-bureau', renderFormat, {
             width: isReel ? 1080 : 1920,
             height: isReel ? 1920 : 1080,
             fps: 30,
@@ -5790,20 +5783,7 @@ function InfographicPageInner() {
               showToast(`Export bureau échoué : ${(dlErr as Error)?.message || 'conversion MP4 impossible'}`);
               throw dlErr;
             }
-            // ⚠️ PLUS DE DEBIT ICI.
-            //
-            // Cet appel envoyait `cost`, un montant choisi par le navigateur —
-            // ce que la route refuse desormais. Le nouveau contrat exige un
-            // `postId` dont le serveur verifie la propriete, pour en tirer le
-            // format, le prix et la reference idempotente. Or ce debit-ci
-            // partait AVANT la creation du post (et l'autre ne cree aucun
-            // post du tout) : il n'y a rien a referencer.
-            //
-            // Le rebrancher demande de deplacer le debit apres la creation du
-            // post, dans un flux qui gere aussi la re-edition (PATCH vs POST).
-            // C'est un lot a part. En attendant, on ne debite pas plutot que
-            // de laisser le navigateur decider du montant.
-            console.info('[creer-avance] Rendu non débité — migration du contrat de débit en cours.');
+            // Le debit a deja eu lieu, a la confirmation du montage.
             // Chrome/Firefox bloquent les téléchargements multiples rapides
             // depuis une même page — un délai de 600ms entre downloads laisse
             // au navigateur le temps de présenter (et accepter) chaque fichier.

@@ -142,9 +142,14 @@ describe('Le Play passe par le MÊME chemin que l export', () => {
     expect(rendu).toContain("const total = destination === 'apercu' ? 1 : clampBatchCount(batchCount);");
   });
 
-  it('il débite, comme un export', () => {
-    const bloc = rendu.slice(rendu.indexOf("if (destination === 'apercu') {"));
-    expect(bloc.slice(0, 600)).toContain('Aperçu non débité');
+  it('il débite, comme un export — contre une preuve serveur', () => {
+    // L'aperçu ouvre une tentative, téléverse vers la clé attribuée, et
+    // n'est joué qu'une fois le serveur ayant vu l'objet.
+    expect(rendu).toContain("operation: destination === 'apercu' ? 'apercu' : 'bureau',");
+    const confirme = rendu.indexOf('if (!livraison.ok || !livraison.blob) {');
+    const joue = rendu.indexOf('setPreviewRender(composed.blob, signature, vignetteApercu);');
+    expect(confirme).toBeGreaterThan(-1);
+    expect(confirme).toBeLessThan(joue);
   });
 });
 
@@ -155,8 +160,14 @@ describe('Un seul débit pour un seul rendu', () => {
   });
 
   it('et ne redébite PAS ce qui a déjà été payé', () => {
-    expect(rendu).toContain('Téléchargement non débité');
+    // Le montage réutilisé ne repasse pas par une tentative : la branche
+    // `reutilisable` court-circuite `rendreEtFacturer`, donc rien n'est
+    // facturé une seconde fois.
+    expect(rendu).toContain('if (reutilisable) {');
     expect(rendu).toContain('if (!reutilisable) await debiterRendu(json.post.id);');
+    const reutil = rendu.indexOf('if (reutilisable) {');
+    const facture = rendu.indexOf('rendreEtFacturer({');
+    expect(reutil).toBeLessThan(facture);
   });
 
   it('le LOT ne réutilise jamais — ses vidéos ont un contenu varié', () => {

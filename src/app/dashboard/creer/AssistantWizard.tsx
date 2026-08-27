@@ -121,6 +121,7 @@ import {
   BATCH_SERIE_DISPONIBLE, BATCH_SERIE_BADGE, BATCH_SERIE_EXPLICATION,
   BATCH_SERIE_REFUS, batchCountAutorise, lotRefuse,
 } from '@/lib/creer/batchDisponible';
+import { rendreEtFacturer, messagePour } from '@/lib/rendus/client';
 // Catalogue de polices — LA source unique, partagee avec le compositeur.
 // Deux listes finiraient par diverger, et la video ne ressemblerait plus a
 // l'apercu.
@@ -6045,46 +6046,63 @@ export default function AssistantWizard() {
         } else if (destination === 'calendrier') {
           composed = await composeAndUpload(optionsRendu);
         } else {
-          // Aperçu et bureau composent sans téléverser. La vignette est
-          // gardée pour l'aperçu : un montage réutilisé par le Calendrier
-          // arriverait sinon sans miniature.
-          const rendu = await composeVideo(optionsRendu);
+          // ── Aperçu et bureau : parcours facturé COMPLET ──────────────
+          // Le serveur ouvre une tentative et attribue une clé de stockage ;
+          // on compose ; on téléverse vers CETTE clé ; le serveur va
+          // regarder l'objet et débite s'il l'y trouve. Le montage n'est
+          // délivré qu'après cette confirmation — c'est ce qui remplace le
+          // montant que le navigateur envoyait autrefois.
+          const livraison = await rendreEtFacturer({
+            operation: destination === 'apercu' ? 'apercu' : 'bureau',
+            format: renderFormat,
+            etape: (t) => setRenderStage(t),
+            composer: async () => {
+              const rendu = await composeVideo(optionsRendu);
+              // La vignette est gardée pour l'aperçu : un montage réutilisé
+              // par le Calendrier arriverait sinon sans miniature.
+              if (destination === 'apercu') vignetteApercu = rendu.thumbnail;
+              return rendu.video;
+            },
+          });
+
+          if (!livraison.ok || !livraison.blob) {
+            // Rien n'est livré, et rien n'a été débité : le serveur n'a pas
+            // confirmé. La tentative est déjà close de son côté.
+            setError(messagePour(livraison.motif));
+            majItem(itemEnCours, 'echoue', { erreur: livraison.motif || 'rendu refusé' });
+            return;
+          }
+
           composed = {
-            blob: rendu.video,
-            url: null,
+            blob: livraison.blob,
+            url: livraison.url ?? null,
             thumbnailUrl: null,
             composerVersion: CURRENT_COMPOSER_VERSION,
           };
-          if (destination === 'apercu') vignetteApercu = rendu.thumbnail;
         }
 
         // ── Destination « aperçu » ─────────────────────────────────────
         // On garde le montage, on débite une fois, et on le joue. Aucun post,
         // aucun téléversement.
         if (destination === 'apercu') {
+          // On n'arrive ici QUE si le serveur a confirmé : l'objet existe, il
+          // a été vu, et les crédits sont partis. L'aperçu est délivré après.
           setPreviewRender(composed.blob, signature, vignetteApercu);
-          // ⚠️ PLUS DE DEBIT ICI. Le nouveau contrat exige une ressource
-          // serveur dont la propriete est verifiable — un apercu n'en cree
-          // aucune. Plutot que de continuer a envoyer un montant choisi par
-          // le navigateur, on ne debite pas. C'est une decision de produit,
-          // pas un oubli : voir la PR.
-          console.info('[Assistant] Aperçu non débité — aucune ressource serveur à référencer.');
           setRenderProgress(100);
           setRenderStage('Prêt.');
           return;
         }
 
         // ── Destination « bureau » ─────────────────────────────────────
-        // On garde le montage et on debite ; aucun post n'est cree. Le
-        // telechargement se fait APRES la boucle, pour n'ouvrir qu'une seule
-        // fenetre d'enregistrement meme sur un lot.
+        // Le montage est deja confirme et debite a ce stade : on n'arrive ici
+        // que si le serveur a vu l'objet. Le telechargement se fait APRES la
+        // boucle, pour n'ouvrir qu'une seule fenetre d'enregistrement meme
+        // sur un lot — et il n'ouvre donc jamais avant confirmation.
+        //
+        // Un montage reutilise a DEJA ete paye au moment du Play : il ne
+        // repasse pas par une tentative, donc il n'est pas facture deux fois.
         if (destination === 'bureau') {
           blobsBureau.push({ blob: composed.blob, titre: contenu.title });
-          // Un montage réutilisé a DÉJÀ été payé au moment du Play : le
-          // débiter à nouveau ferait payer deux fois le même rendu.
-          // ⚠️ PLUS DE DEBIT ICI non plus : un telechargement ne cree
-          // aucune ligne serveur a referencer. Meme raison qu'a l'apercu.
-          console.info('[Assistant] Téléchargement non débité — aucune ressource serveur à référencer.');
           majItem(itemEnCours, 'pret');
           continue;
         }
