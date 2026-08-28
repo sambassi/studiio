@@ -77,6 +77,97 @@ export async function autopilotRushKeys(): Promise<Set<string> | null> {
 }
 
 /**
+ * Clés des rushes INDEXÉS et des vignettes d'analyse — le socle du tournage.
+ *
+ * ⚠️ POURQUOI CETTE FONCTION EXISTE, ET POURQUOI ELLE EST URGENTE.
+ *
+ * Un rush indexé par M3-A vit dans `media/<userId>/rush/…`. `getFileType` le
+ * classe `video`, donc **24 h de rétention**. Or aucune des deux sources
+ * d'exemption existantes ne le connaît : `getProtectedUrls` ne lit que
+ * `scheduled_posts`, `autopilotRushKeys` ne lit que `autopilot_config.
+ * rush_urls`. Un rush téléversé dans une session de tournage disparaissait
+ * donc au bout d'un jour, et toute analyse ultérieure échouait en 404 sur un
+ * fichier qui existait la veille.
+ *
+ * Les vignettes d'analyse posent la même question un cran plus loin : elles
+ * sont écrites sous `media/<userId>/analyse/<analysisId>/…`, sont classées
+ * `image` (7 jours), et la ligne d'analyse continuerait de les désigner
+ * longtemps après leur suppression.
+ *
+ * ⚠️ `rush_analyses` PEUT NE PAS EXISTER, et ce n'est pas une panne : la
+ * migration `2026-09-01-rush-analyses.sql` n'est pas appliquée partout. Une
+ * table absente signifie qu'aucune vignette n'existe — un ensemble vide est
+ * alors la réponse JUSTE. Une table présente mais illisible est autre chose,
+ * et rend `null`.
+ */
+export async function clesTournageEtAnalyses(): Promise<Set<string> | null> {
+  const out = new Set<string>();
+
+  // ── Les rushes indexés ──────────────────────────────────────────────────
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('rushes')
+      .select('bucket, cle_objet');
+    // Même contrat que `autopilotRushKeys` : `null`, et non un ensemble vide.
+    // Un nettoyage manqué se rattrape au passage suivant ; un rush supprimé
+    // ne revient pas.
+    if (error && !tableAbsente(error)) {
+      console.error('[Storage] rushes illisibles :', error.message);
+      return null;
+    }
+    for (const ligne of data ?? []) {
+      const l = ligne as { bucket?: unknown; cle_objet?: unknown };
+      if (typeof l.bucket === 'string' && typeof l.cle_objet === 'string') {
+        out.add(`${l.bucket}/${l.cle_objet}`);
+      }
+    }
+  } catch (err) {
+    console.error('[Storage] rushes illisibles :', err);
+    return null;
+  }
+
+  // ── Les vignettes d'analyse ─────────────────────────────────────────────
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('rush_analyses')
+      .select('vignettes');
+    if (error) {
+      // Table absente = socle M3-B1 pas encore appliqué = aucune vignette.
+      // Ce n'est pas une lecture ratée, c'est une lecture qui n'a rien à lire.
+      if (!tableAbsente(error)) {
+        console.error('[Storage] vignettes illisibles :', error.message);
+        return null;
+      }
+    }
+    for (const ligne of data ?? []) {
+      const v = (ligne as { vignettes?: unknown }).vignettes;
+      if (!Array.isArray(v)) continue;
+      for (const brut of v) {
+        if (!brut || typeof brut !== 'object') continue;
+        const g = brut as { bucket?: unknown; cle?: unknown };
+        if (typeof g.bucket === 'string' && typeof g.cle === 'string') {
+          out.add(`${g.bucket}/${g.cle}`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[Storage] vignettes illisibles :', err);
+    return null;
+  }
+
+  return out;
+}
+
+/** Codes PostgREST qui signifient « la table n'existe pas ». */
+function tableAbsente(erreur: { code?: string; message?: string } | null): boolean {
+  if (!erreur) return false;
+  const code = erreur.code ?? '';
+  const message = (erreur.message ?? '').toLowerCase();
+  return code === '42P01' || code === 'PGRST205' || code === 'PGRST202'
+    || message.includes('does not exist') || message.includes('schema cache');
+}
+
+/**
  * Pull every URL out of a post's metadata that points to Supabase Storage.
  * Order: video assets first (largest), then audio, then images. Logo URLs
  * are intentionally NOT included — a logo is typically reused across many

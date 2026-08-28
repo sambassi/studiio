@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { getFileType, getExpiresAt } from '@/lib/storage/retention';
-import { storageKey, autopilotRushKeys } from '@/lib/storage/cleanup';
+import { storageKey, autopilotRushKeys, clesTournageEtAnalyses } from '@/lib/storage/cleanup';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -104,10 +104,25 @@ export async function GET(req: NextRequest) {
       { status: 503 },
     );
   }
+  // ⚠️ TROISIÈME SOURCE D'EXEMPTION : le socle du tournage.
+  //
+  // Les rushes indexés vivent dans `media/` sous une rétention de 24 h, et
+  // aucune des deux sources précédentes ne les connaît. Sans cette lecture,
+  // un rush téléversé dans une session disparaît le lendemain et toute
+  // analyse ultérieure échoue en 404 sur un fichier qui existait la veille.
+  // Même contrat que la banque : `null` = illisible = on ne supprime RIEN.
+  const tournageLu = await clesTournageEtAnalyses();
+  if (!tournageLu) {
+    return NextResponse.json(
+      { success: false, error: 'Rushes ou vignettes illisibles — aucune suppression tentée.' },
+      { status: 503 },
+    );
+  }
   const rushKeys: Set<string> = banqueLue;
   const now = new Date();
   let exemptesPosts = 0;
   let exemptesRushes = 0;
+  let exemptesTournage = 0;
   let candidats = 0;
   const buckets = ['media', 'audio'];
   const breakdown = { video: 0, audio: 0, image: 0 };
@@ -146,9 +161,33 @@ export async function GET(req: NextRequest) {
         if (!files) continue;
 
         for (const file of files) {
-          if (!file.id) continue;
-          const path = `${userFolder.name}/${sub.name}/${file.name}`;
-          await processFile(bucket, path, file, now, protectedUrls, breakdown, errors);
+          if (file.id) {
+            const path = `${userFolder.name}/${sub.name}/${file.name}`;
+            await processFile(bucket, path, file, now, protectedUrls, breakdown, errors);
+            continue;
+          }
+
+          // ⚠️ UN NIVEAU DE PLUS, ET C'EST INDISPENSABLE.
+          //
+          // Le balayage s'arrêtait à trois niveaux. Les vignettes d'analyse
+          // vivent à quatre : `<userId>/analyse/<analysisId>/<fichier>`. Elles
+          // n'étaient donc JAMAIS visitées — ni protégées, ni supprimées, ni
+          // même comptées : une fuite de stockage silencieuse et permanente.
+          //
+          // Descendre ici les rend visibles. Celles qu'une analyse référence
+          // encore sont exemptées par `tournageLu` ; les orphelines d'une
+          // analyse échouée expirent comme n'importe quelle image.
+          const { data: sousFichiers } = await supabaseAdmin.storage
+            .from(bucket)
+            .list(`${userFolder.name}/${sub.name}/${file.name}`, { limit: 200 });
+
+          if (!sousFichiers) continue;
+
+          for (const sousFichier of sousFichiers) {
+            if (!sousFichier.id) continue;
+            const path = `${userFolder.name}/${sub.name}/${file.name}/${sousFichier.name}`;
+            await processFile(bucket, path, sousFichier, now, protectedUrls, breakdown, errors);
+          }
         }
       }
     }
@@ -173,6 +212,14 @@ export async function GET(req: NextRequest) {
     const cle = `${bucket}/${path}`;
     if (rushKeys.has(cle)) {
       exemptesRushes++;
+      preserved++;
+      return;
+    }
+    // Rush indexé ou vignette d'analyse encore référencée. Même principe que
+    // la banque : la protection suit la RÉFÉRENCE, elle ne marque pas le
+    // fichier. Un rush supprimé de sa session redevient éligible.
+    if (tournageLu.has(cle)) {
+      exemptesTournage++;
       preserved++;
       return;
     }
@@ -208,8 +255,9 @@ export async function GET(req: NextRequest) {
     `[CLEANUP-MEDIA] candidats=${candidats} supprimes=${deleted} `
     + `(video=${breakdown.video}, audio=${breakdown.audio}, image=${breakdown.image}) `
     + `conserves=${kept} exemptes=${preserved} `
-    + `(posts=${exemptesPosts}, rushes-autopilote=${exemptesRushes}) `
-    + `| banque=${rushKeys.size} cles`,
+    + `(posts=${exemptesPosts}, rushes-autopilote=${exemptesRushes}, `
+    + `tournage=${exemptesTournage}) `
+    + `| banque=${rushKeys.size} cles, tournage=${tournageLu.size} cles`,
   );
 
   return NextResponse.json({
