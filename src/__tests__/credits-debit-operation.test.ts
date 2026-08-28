@@ -80,12 +80,57 @@ describe('Le débit passe par une seule instruction SQL', () => {
   });
 
   it('aucune valeur absolue de solde ne part vers la base', async () => {
+    // ─────────────────────────────────────────────────────────────────────
+    // CETTE ASSERTION ÉTAIT INSTABLE, ET C'ÉTAIT MA FAUTE
+    //
+    // Elle cherchait `'100'` et `'60'` comme SOUS-CHAÎNES du JSON des
+    // arguments. Or ces arguments portent une référence jetable bâtie sur un
+    // UUID aléatoire : le jour où il contenait `06600f4fb0f2`, le test
+    // tombait. Environ deux exécutions sur quinze.
+    //
+    // Une recherche textuelle sur un document qui contient de l'aléatoire ne
+    // peut pas être stable. Ce qu'on veut vérifier n'est d'ailleurs pas
+    // « ces caractères n'apparaissent nulle part » mais « aucun ARGUMENT ne
+    // transporte un solde ». On le vérifie donc argument par argument.
+    // ─────────────────────────────────────────────────────────────────────
     await deductCredits('moi', 40, 'avatar');
     const args = rpcAppels[0].args;
-    expect(args.p_montant).toBe(40);
-    // Ni le solde lu, ni le solde calculé : la base décrémente elle-même.
-    expect(JSON.stringify(args)).not.toContain('100');
-    expect(JSON.stringify(args)).not.toContain('60');
+
+    // 1. La liste des arguments est FERMÉE : aucun champ supplémentaire ne
+    //    pourrait glisser un solde à côté.
+    expect(Object.keys(args).sort()).toEqual(
+      ['p_description', 'p_montant', 'p_reference', 'p_type', 'p_user_id'],
+    );
+
+    // 2. Le seul argument numérique est le montant, et il vaut le montant.
+    const numeriques = Object.entries(args).filter(([, v]) => typeof v === 'number');
+    expect(numeriques).toEqual([['p_montant', 40]]);
+
+    // 3. Ni le solde lu (100) ni le solde calculé (60) n'est transmis, en
+    //    valeur — la base décrémente elle-même.
+    for (const valeur of Object.values(args)) {
+      expect(valeur).not.toBe(100);
+      expect(valeur).not.toBe(60);
+      expect(valeur).not.toBe('100');
+      expect(valeur).not.toBe('60');
+    }
+  });
+
+  it('une référence contenant « 60 » ne fait plus échouer la garantie', async () => {
+    // Le cas déterministe qui reproduisait l'instabilité : la référence
+    // contient légitimement les caractères que l'ancienne assertion
+    // cherchait. Elle n'est pas un solde, et rien ne doit s'en émouvoir.
+    await deductCredits('moi', 40, 'avatar', 'avatar:v60-lot100');
+    const args = rpcAppels[0].args;
+    expect(args.p_reference).toBe('avatar:v60-lot100');
+    expect(JSON.stringify(args)).toContain('60');
+    // Et la garantie tient toujours : aucun argument n'est un solde.
+    const numeriques = Object.entries(args).filter(([, v]) => typeof v === 'number');
+    expect(numeriques).toEqual([['p_montant', 40]]);
+    for (const valeur of Object.values(args)) {
+      expect(valeur).not.toBe(100);
+      expect(valeur).not.toBe(60);
+    }
   });
 
   it('le code source ne contient plus de décrément calculé en JavaScript', () => {
