@@ -2,6 +2,9 @@ import { supabaseAdmin } from '@/lib/db/supabase';
 import { lireRush } from '@/lib/autopilot/tournage/service';
 import {
   analyseDepuisLigne, COLONNES_ANALYSE,
+  statutAnalyseValide, etapeAnalyseValide,
+  objetJsonValide, tableauJsonValide, fournisseursValides, vignettesValides,
+  RESUME_MAX, MOTIF_ECHEC_MAX,
   type RushAnalysis, type RushAnalysisStatus, type RushAnalysisStep,
   type FournisseursParEtape, type VignetteAnalyse,
 } from './contrat';
@@ -51,7 +54,8 @@ export type MotifAnalyse =
   | 'rush_introuvable'
   | 'analyse_introuvable'
   | 'analyse_active_existante'
-  | 'analyse_close';
+  | 'analyse_close'
+  | 'donnees_invalides';
 
 /**
  * Codes PostgREST qui signifient « la table n'existe pas ».
@@ -81,6 +85,14 @@ function violationUnicite(erreur: { code?: string; message?: string } | null): b
 export interface ResultatAnalyse {
   analyse: RushAnalysis | null;
   motif: MotifAnalyse | null;
+  /**
+   * Le champ refusé, quand `motif` vaut `donnees_invalides`.
+   *
+   * Nommer le champ est ce qui distingue un refus utile d'un « invalide »
+   * que l'appelant devra deviner. La base, elle, ne peut nommer que la
+   * contrainte — `rush_analyses_vignettes_check` n'apprend rien à personne.
+   */
+  champ?: string;
 }
 
 /**
@@ -112,8 +124,18 @@ export async function creerAnalyse(
     .limit(1)
     .maybeSingle();
 
-  if (erreurLecture && socleAbsent(erreurLecture)) {
-    return { analyse: null, motif: 'socle_absent' };
+  if (erreurLecture) {
+    if (socleAbsent(erreurLecture)) return { analyse: null, motif: 'socle_absent' };
+    // ⚠️ NE PAS retomber à la version 1.
+    //
+    // Une panne de lecture ne dit rien sur ce qui existe. Repartir à 1
+    // ferait échouer l'insertion sur `rush_analyses_rush_version_unique`,
+    // et ce refus serait traduit en « une analyse tourne déjà » — un
+    // diagnostic FAUX pour une panne d'infrastructure, qui enverrait
+    // chercher un verrou là où il y a une base injoignable.
+    //
+    // On s'arrête donc AVANT l'insertion, et l'erreur remonte telle quelle.
+    throw new Error(erreurLecture.message || 'lecture de la version impossible');
   }
   const version = derniere && typeof (derniere as { version?: unknown }).version === 'number'
     ? (derniere as { version: number }).version + 1 : 1;
@@ -225,8 +247,55 @@ export interface MajAnalyse {
   motifEchec?: string | null;
 }
 
+/** Un refus qui NOMME le champ fautif, avant tout aller-retour avec la base. */
+function refus(champ: string): ResultatAnalyse {
+  return { analyse: null, motif: 'donnees_invalides', champ };
+}
+
 /**
- * Met à jour une analyse — seulement si elle est encore ouverte.
+ * `null` n'est pas « absent » pour une colonne `not null`.
+ *
+ * `objetJsonValide` traite `null` comme une valeur non fournie et rend `{}` —
+ * ce qui est juste pour un corps de requête, et faux ici : un appelant qui
+ * écrit explicitement `null` dans `technique` demande quelque chose que la
+ * colonne refuse. Le lui dire vaut mieux que de le remplacer par `{}` en
+ * silence.
+ */
+function objetObligatoire(v: unknown): { ok: boolean; valeur: Record<string, unknown> } {
+  if (v === null || v === undefined) return { ok: false, valeur: {} };
+  return objetJsonValide(v);
+}
+
+function tableauObligatoire(v: unknown): { ok: boolean; valeur: unknown[] } {
+  if (v === null || v === undefined) return { ok: false, valeur: [] };
+  return tableauJsonValide(v);
+}
+
+/** Une chaîne bornée, ou `null` — jamais autre chose. */
+function texteOuNul(v: unknown, max: number): boolean {
+  if (v === null) return true;
+  return typeof v === 'string' && v.length <= max;
+}
+
+/**
+ * Met à jour une analyse — seulement si elle est encore ouverte, et seulement
+ * si ce qu'on lui donne est valide.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * LA VALIDATION EST ICI, PAS SEULEMENT À LA LECTURE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * `analyseDepuisLigne` reste défensif : une ligne illisible ne doit pas faire
+ * tomber un écran. Mais il ne peut pas être la PREMIÈRE validation, parce
+ * qu'il ne refuse rien — il abandonne. Une carte de fournisseurs mal formée
+ * passerait le `CHECK` de la base, qui ne vérifie que `jsonb_typeof =
+ * 'object'`, serait écrite, puis disparaîtrait silencieusement à la lecture.
+ * Écrite mais jamais restituée : c'est le genre de chose qui coûte une
+ * après-midi.
+ *
+ * Chaque champ fourni passe donc par le validateur du contrat AVANT l'appel à
+ * PostgREST, et un refus NOMME le champ. Ce qui est écrit est la valeur
+ * NORMALISÉE que rend le validateur, pas l'entrée brute.
  *
  * Le `.in('etat', ETATS_ACTIFS)` n'est pas une politesse : sans lui, une
  * reprise tardive écraserait un résultat déjà consigné, et un `reussie`
@@ -241,19 +310,72 @@ export async function majAnalyse(
   userId: string, analyseId: string, patch: MajAnalyse,
 ): Promise<ResultatAnalyse> {
   const colonnes: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  if (patch.etat !== undefined) colonnes.etat = patch.etat;
-  if (patch.etape !== undefined) colonnes.etape = patch.etape;
-  if (patch.fournisseurs !== undefined) colonnes.fournisseurs = patch.fournisseurs;
-  if (patch.dureeSecondes !== undefined) colonnes.duree_secondes = patch.dureeSecondes;
-  if (patch.technique !== undefined) colonnes.technique = patch.technique;
-  if (patch.resume !== undefined) colonnes.resume = patch.resume;
-  if (patch.textesVisibles !== undefined) colonnes.textes_visibles = patch.textesVisibles;
-  if (patch.parole !== undefined) colonnes.parole = patch.parole;
-  if (patch.audio !== undefined) colonnes.audio = patch.audio;
-  if (patch.qualite !== undefined) colonnes.qualite = patch.qualite;
-  if (patch.vignettes !== undefined) colonnes.vignettes = patch.vignettes;
-  if (patch.usage !== undefined) colonnes.usage = patch.usage;
-  if (patch.motifEchec !== undefined) colonnes.motif_echec = patch.motifEchec;
+
+  if (patch.etat !== undefined) {
+    if (!statutAnalyseValide(patch.etat)) return refus('etat');
+    colonnes.etat = patch.etat;
+  }
+  if (patch.etape !== undefined) {
+    if (patch.etape !== null && !etapeAnalyseValide(patch.etape)) return refus('etape');
+    colonnes.etape = patch.etape;
+  }
+  if (patch.fournisseurs !== undefined) {
+    const f = fournisseursValides(patch.fournisseurs);
+    if (!f.ok) return refus('fournisseurs');
+    colonnes.fournisseurs = f.valeur;
+  }
+  if (patch.dureeSecondes !== undefined) {
+    const d = patch.dureeSecondes;
+    // `null` = pas encore mesurée, et c'est légitime. Un nombre négatif ou
+    // non fini, non.
+    if (d !== null && (typeof d !== 'number' || !Number.isFinite(d) || d < 0)) {
+      return refus('dureeSecondes');
+    }
+    colonnes.duree_secondes = d;
+  }
+  if (patch.technique !== undefined) {
+    const o = objetObligatoire(patch.technique);
+    if (!o.ok) return refus('technique');
+    colonnes.technique = o.valeur;
+  }
+  if (patch.resume !== undefined) {
+    if (!texteOuNul(patch.resume, RESUME_MAX)) return refus('resume');
+    colonnes.resume = patch.resume;
+  }
+  if (patch.textesVisibles !== undefined) {
+    const t = tableauObligatoire(patch.textesVisibles);
+    if (!t.ok) return refus('textesVisibles');
+    colonnes.textes_visibles = t.valeur;
+  }
+  if (patch.parole !== undefined) {
+    const o = objetObligatoire(patch.parole);
+    if (!o.ok) return refus('parole');
+    colonnes.parole = o.valeur;
+  }
+  if (patch.audio !== undefined) {
+    const o = objetObligatoire(patch.audio);
+    if (!o.ok) return refus('audio');
+    colonnes.audio = o.valeur;
+  }
+  if (patch.qualite !== undefined) {
+    const o = objetObligatoire(patch.qualite);
+    if (!o.ok) return refus('qualite');
+    colonnes.qualite = o.valeur;
+  }
+  if (patch.vignettes !== undefined) {
+    const v = vignettesValides(patch.vignettes);
+    if (!v.ok) return refus('vignettes');
+    colonnes.vignettes = v.valeur;
+  }
+  if (patch.usage !== undefined) {
+    const o = objetObligatoire(patch.usage);
+    if (!o.ok) return refus('usage');
+    colonnes.usage = o.valeur;
+  }
+  if (patch.motifEchec !== undefined) {
+    if (!texteOuNul(patch.motifEchec, MOTIF_ECHEC_MAX)) return refus('motifEchec');
+    colonnes.motif_echec = patch.motifEchec;
+  }
 
   const { data, error } = await supabaseAdmin
     .from('rush_analyses')

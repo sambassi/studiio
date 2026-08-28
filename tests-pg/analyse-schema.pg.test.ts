@@ -179,6 +179,71 @@ describe('La migration s applique sur une base qui contient DEJA des rushes', ()
     expect(await temoins()).toEqual(avant);
   });
 
+  it('appliquée en TRANSACTION UNIQUE sur une base qui porte des rushes', async () => {
+    // C'est le mode EXACT de la production : `psql -v ON_ERROR_STOP=1
+    // --single-transaction`. Le test qui suivait ne jouait la transaction que
+    // sur une base DÉJÀ migrée — il prouvait la ré-application, pas
+    // l'application. Celui-ci part du socle M3-A avec des données réelles.
+    const { readFileSync } = await import('fs');
+    const u = await creerUtilisateur(client, 10);
+    const s = await creerSession(u, 'Tournage du 30 août');
+    const r = await indexerRush(s, u, `${u}/rush/reel.mp4`);
+
+    const ligneRush = async () => {
+      const { rows } = await client.query(
+        `select id, shoot_session_id, user_id, bucket, cle_objet, nom_origine,
+                content_type, taille_octets, duree_secondes, rang, etat,
+                metadata, created_at, updated_at
+           from public.rushes where id = $1`, [r],
+      );
+      return rows[0];
+    };
+    const avant = await ligneRush();
+
+    await client.query('begin');
+    await client.query(readFileSync(MIGRATION_ANALYSES, 'utf-8'));
+    await client.query('commit');
+
+    // 1. La table est là.
+    const { rows: presente } = await client.query(
+      "select to_regclass('public.rush_analyses') as t",
+    );
+    expect(presente[0].t).toBe('rush_analyses');
+
+    // 2. Le rush préexistant est intact, colonne par colonne.
+    expect(await ligneRush()).toEqual(avant);
+
+    // 3. L'index qui rend la clé étrangère composite possible.
+    const { rows: idx } = await client.query(
+      `select indexdef from pg_indexes
+        where schemaname = 'public' and indexname = 'rushes_id_user_key'`,
+    );
+    expect(idx).toHaveLength(1);
+    expect(idx[0].indexdef).toMatch(/unique/i);
+
+    // 4. Les quatre index attendus sur la nouvelle table, nommément.
+    const { rows: index } = await client.query(
+      `select indexname from pg_indexes
+        where schemaname = 'public' and tablename = 'rush_analyses'
+        order by indexname`,
+    );
+    expect(index.map((l) => l.indexname)).toEqual([
+      'rush_analyses_active_unique',
+      'rush_analyses_pkey',
+      'rush_analyses_rush_version_unique',
+      'rush_analyses_user_idx',
+    ]);
+
+    // 5. `public` n'a aucun privilège — par les ACL, jamais par un nom de rôle.
+    const { rows: acl } = await client.query(
+      `select count(*)::int as n
+         from pg_class c
+         left join lateral aclexplode(c.relacl) a on true
+        where c.oid = 'public.rush_analyses'::regclass and a.grantee = 0`,
+    );
+    expect(acl[0].n).toBe(0);
+  });
+
   it('elle est rejouable sur une base qui porte déjà des analyses', async () => {
     const u = await creerUtilisateur(client, 10);
     const s = await creerSession(u);

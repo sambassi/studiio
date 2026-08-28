@@ -42,6 +42,8 @@ import {
 interface Ligne { [k: string]: unknown }
 let tables: Record<string, Ligne[]>;
 let tableAbsente: string | null = null;
+/** Panne de lecture sur le `select('version')` — et sur lui seul. */
+let panneLectureVersion = false;
 const insertions: Array<{ table: string; valeurs: Ligne }> = [];
 const majEffectuees: Array<{ table: string; valeurs: Ligne }> = [];
 
@@ -89,6 +91,7 @@ function requete(table: string) {
   let limite: number | null = null;
   let aInserer: Ligne | null = null;
   let aMettreAJour: Ligne | null = null;
+  let colonnesLues: string | null = null;
 
   const lignes = () => {
     if (tableAbsente === table) return null;
@@ -108,6 +111,14 @@ function requete(table: string) {
 
   const executer = () => {
     if (tableAbsente === table) return { data: null, error: erreurTable };
+    // Une panne qui n'est PAS « table absente » : connexion perdue, délai
+    // dépassé. Le service ne doit pas la confondre avec « aucune analyse ».
+    if (panneLectureVersion && colonnesLues === 'version') {
+      return {
+        data: null,
+        error: { code: '57P01', message: 'terminating connection due to administrator command' },
+      };
+    }
 
     if (aInserer) {
       const valeurs: Ligne = { version: 1, etat: 'en_attente', ...aInserer };
@@ -169,7 +180,7 @@ function requete(table: string) {
   };
 
   const api: Record<string, unknown> = {
-    select: () => api,
+    select: (cols?: string) => { colonnesLues = cols ?? null; return api; },
     eq: (c: string, v: unknown) => { filtres.push([c, v]); return api; },
     in: (c: string, vs: unknown[]) => { filtresIn.push([c, vs]); return api; },
     order: (c: string, o?: { ascending?: boolean }) => {
@@ -208,6 +219,7 @@ beforeEach(() => {
   insertions.length = 0;
   majEffectuees.length = 0;
   tableAbsente = null;
+  panneLectureVersion = false;
   tables = {
     rushes: [{ ...RUSH_DE_A }, { ...RUSH_DE_B }],
     rush_analyses: [],
@@ -326,6 +338,31 @@ describe('Les validations refusent au lieu de nettoyer en silence', () => {
     ]) {
       expect(vignettesValides(mauvaise).ok, JSON.stringify(mauvaise)).toBe(false);
     }
+  });
+
+  it('le compartiment d une vignette passe par la liste blanche unique', async () => {
+    // La même liste que les deux chemins d'envoi et que l'indexation des
+    // rushes. Pas de seconde liste ici : deux listes blanches divergent le
+    // jour où l'une accueille un compartiment et pas l'autre.
+    const { ALLOWED_BUCKETS } = await import('@/lib/storage/buckets');
+    for (const bucket of ALLOWED_BUCKETS) {
+      expect(vignettesValides([{ bucket, cle: 'A/analyse/0.jpg', seconde: 0 }]).ok, bucket)
+        .toBe(true);
+    }
+    for (const bucket of ['nimporte', 'rushes', '..', '', 'MEDIA', 'media ', null, 7]) {
+      expect(vignettesValides([{ bucket, cle: 'A/analyse/0.jpg', seconde: 0 }]).ok,
+        String(bucket)).toBe(false);
+    }
+  });
+
+  it('les cinq refus attendus sur une vignette', () => {
+    expect(vignettesValides([{ bucket: 'media', cle: 'A/analyse/0.jpg', seconde: 0 }]).ok)
+      .toBe(true);
+    expect(vignettesValides([{ bucket: 'inconnu', cle: 'A/0.jpg', seconde: 0 }]).ok).toBe(false);
+    expect(vignettesValides([{ bucket: '..', cle: 'A/0.jpg', seconde: 0 }]).ok).toBe(false);
+    expect(vignettesValides([{ bucket: 'media', cle: 'A/../B/0.jpg', seconde: 0 }]).ok).toBe(false);
+    expect(vignettesValides([{ bucket: 'media', cle: 'https://x/0.jpg', seconde: 0 }]).ok)
+      .toBe(false);
   });
 
   it('la liste des champs interdits couvre les DEUX orthographes', () => {
@@ -576,6 +613,106 @@ describe('Mettre à jour — une analyse close ne se rouvre pas', () => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────
+describe('Rien d invalide n atteint la base — la validation est AVANT l ecriture', () => {
+  const invalides: Array<[string, Record<string, unknown>]> = [
+    ['etat', { etat: 'terminee' }],
+    ['etape', { etape: 'montage' }],
+    ['fournisseurs', { fournisseurs: { montage: { fournisseur: 'local' } } }],
+    ['fournisseurs', { fournisseurs: { visuel: { fournisseur: 'gemini' } } }],
+    ['fournisseurs', { fournisseurs: { visuel: { fournisseur: 'anthropic', modele: 7 } } }],
+    ['fournisseurs', { fournisseurs: [] }],
+    ['dureeSecondes', { dureeSecondes: -1 }],
+    ['dureeSecondes', { dureeSecondes: Number.NaN }],
+    ['dureeSecondes', { dureeSecondes: 'douze' }],
+    ['technique', { technique: [] }],
+    ['technique', { technique: null }],
+    ['resume', { resume: 7 }],
+    ['resume', { resume: 'x'.repeat(RESUME_MAX + 1) }],
+    ['textesVisibles', { textesVisibles: {} }],
+    ['parole', { parole: [] }],
+    ['audio', { audio: 'x' }],
+    ['qualite', { qualite: null }],
+    ['vignettes', { vignettes: [{ bucket: 'inconnu', cle: 'a/0.jpg', seconde: 0 }] }],
+    ['vignettes', { vignettes: [{ bucket: 'media', cle: 'https://x/0.jpg', seconde: 0 }] }],
+    ['vignettes', { vignettes: [{ bucket: '..', cle: 'a/0.jpg', seconde: 0 }] }],
+    ['usage', { usage: [] }],
+    ['motifEchec', { motifEchec: 'x'.repeat(MOTIF_ECHEC_MAX + 1) }],
+  ];
+
+  it.each(invalides)('refuse %s AVANT tout appel a la base', async (champ, patch) => {
+    const { analyse } = await creerAnalyse('A', 'r-a');
+    majEffectuees.length = 0;
+    const r = await majAnalyse('A', analyse!.id, patch as never);
+    expect(r.motif).toBe('donnees_invalides');
+    expect(r.champ).toBe(champ);
+    expect(r.analyse).toBeNull();
+    // La preuve qui compte : aucune écriture n'a été tentée.
+    expect(majEffectuees).toHaveLength(0);
+  });
+
+  it('rien n est nettoye en silence — le refus NOMME le champ', async () => {
+    const { analyse } = await creerAnalyse('A', 'r-a');
+    const r = await majAnalyse('A', analyse!.id, {
+      fournisseurs: { montage: { fournisseur: 'local', modele: null } } as never,
+    });
+    expect(r.champ).toBe('fournisseurs');
+    // Et la ligne n'a pas bougé : ni `{}` écrit à la place, ni état modifié.
+    const relue = await lireAnalyse('A', analyse!.id);
+    expect(relue.analyse?.fournisseurs).toEqual({});
+    expect(relue.analyse?.etat).toBe('en_attente');
+  });
+
+  it('ce qui est ecrit est la valeur NORMALISEE du validateur', async () => {
+    const { analyse } = await creerAnalyse('A', 'r-a');
+    await majAnalyse('A', analyse!.id, {
+      // `modele` absent : le validateur le normalise en `null`.
+      fournisseurs: { extraction: { fournisseur: 'local' } } as never,
+    });
+    expect(majEffectuees[0].valeurs.fournisseurs)
+      .toEqual({ extraction: { fournisseur: 'local', modele: null } });
+  });
+
+  it('une valeur valide passe toujours', async () => {
+    const { analyse } = await creerAnalyse('A', 'r-a');
+    const r = await majAnalyse('A', analyse!.id, {
+      etat: 'en_cours', etape: 'extraction', dureeSecondes: 42.5,
+      technique: { largeur: 1080 }, resume: null, textesVisibles: [],
+      vignettes: [{ bucket: 'media', cle: 'A/analyse/0.jpg', seconde: 0 }],
+      usage: { jetons: 0 }, motifEchec: null,
+    });
+    expect(r.motif).toBeNull();
+    expect(r.analyse?.etat).toBe('en_cours');
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+describe('Une panne de lecture n est pas « une analyse tourne deja »', () => {
+  it('elle remonte comme erreur, et AUCUN insert n est tente', async () => {
+    // Retomber à la version 1 ferait échouer l'insertion sur l'index unique,
+    // et ce refus serait traduit en `analyse_active_existante` — un
+    // diagnostic faux qui enverrait chercher un verrou là où il y a une base
+    // injoignable.
+    panneLectureVersion = true;
+    await expect(creerAnalyse('A', 'r-a')).rejects.toThrow(/terminating connection/i);
+    expect(insertions).toHaveLength(0);
+    expect(tables.rush_analyses).toHaveLength(0);
+  });
+
+  it('mais « table absente » reste un socle absent, pas une panne', async () => {
+    tableAbsente = 'rush_analyses';
+    const { motif } = await creerAnalyse('A', 'r-a');
+    expect(motif).toBe('socle_absent');
+    expect(insertions).toHaveLength(0);
+  });
+
+  it('et « aucune analyse existante » donne bien la version 1', async () => {
+    const { analyse, motif } = await creerAnalyse('A', 'r-a');
+    expect(motif).toBeNull();
+    expect(analyse?.version).toBe(1);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
 describe('Ce que M3-B1 ne fait pas — vérifié, pas supposé', () => {
   const source = (chemin: string) => readFileSync(join(process.cwd(), chemin), 'utf-8');
   const MODULES = [
@@ -597,7 +734,10 @@ describe('Ce que M3-B1 ne fait pas — vérifié, pas supposé', () => {
 
   /** Ce que chaque module a le droit d'importer, exhaustivement. */
   const IMPORTS_AUTORISES: Record<string, string[]> = {
-    'src/lib/autopilot/analyse/contrat.ts': [],
+    // `buckets.ts` est une LISTE DE NOMS, pas un accès au stockage : aucun
+    // client, aucune requête, aucune variable d'environnement. L'importer est
+    // ce qui évite une seconde liste blanche qui divergerait de la première.
+    'src/lib/autopilot/analyse/contrat.ts': ['@/lib/storage/buckets'],
     'src/lib/autopilot/analyse/service.ts': [
       '@/lib/db/supabase', '@/lib/autopilot/tournage/service', './contrat',
     ],

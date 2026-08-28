@@ -25,7 +25,14 @@
  * Ni segments candidats, ni scores, ni montage, ni publication. Ces concepts
  * appartiennent aux lots suivants et n'ont pas de forme arrêtée. Ce module ne
  * connaît pas non plus HTTP : il ne décide d'aucun code de refus.
+ *
+ * Son unique import est `ALLOWED_BUCKETS` — une LISTE DE NOMS, pas un accès au
+ * stockage. La recopier ici serait exactement la faute que ce fichier décrit
+ * plus haut : deux listes blanches divergent le jour où l'une accueille un
+ * compartiment et pas l'autre, et ce jour-là un chemin accepte ce que l'autre
+ * refuse, sans que rien ne le signale.
  */
+import { bucketAutorise } from '@/lib/storage/buckets';
 
 /** Les cinq états d'une analyse. Mêmes valeurs que le CHECK de la table. */
 export const STATUTS_ANALYSE = [
@@ -255,10 +262,14 @@ export function vignettesValides(
       return { ok: false, valeur: [] };
     }
     const v = brut as Record<string, unknown>;
-    if (typeof v.bucket !== 'string' || !v.bucket.trim()) return { ok: false, valeur: [] };
+    // Le compartiment passe par la MÊME liste blanche que les deux chemins
+    // d'envoi et que la route d'indexation des rushes. `bucketAutorise`
+    // écarte du même coup un nom vide, un nom inconnu et `..`, puisqu'aucun
+    // de ces trois n'est dans la liste.
+    if (!bucketAutorise(v.bucket)) return { ok: false, valeur: [] };
     if (typeof v.cle !== 'string' || !v.cle.trim()) return { ok: false, valeur: [] };
     // Une URL n'est pas une clé. Ni `https://…`, ni `s3://…`.
-    if (v.cle.includes('://') || v.bucket.includes('://')) return { ok: false, valeur: [] };
+    if (v.cle.includes('://')) return { ok: false, valeur: [] };
     // Même garde que `verifierObjet` : `A/../B/x` désigne l'espace de B.
     if (v.cle.includes('..')) return { ok: false, valeur: [] };
     const seconde = Number(v.seconde);
