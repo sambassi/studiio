@@ -7,6 +7,11 @@ import {
   chargerMoteurExtraction, resultatExtractionValide,
   type MotifExtraction,
 } from '@/lib/autopilot/analyse/moteur';
+import {
+  prendrePlaceExtraction, RETRY_APRES_SECONDES,
+  MOTIF_CAPACITE_SATUREE, MESSAGE_CAPACITE_SATUREE,
+} from '@/lib/autopilot/analyse/capacite';
+import type { Rush } from '@/lib/autopilot/tournage/contrat';
 
 /**
  * Lance l'analyse d'un rush — l'étape `extraction`, et elle seule.
@@ -15,13 +20,36 @@ import {
  * CE QUE CETTE ROUTE FAIT, DANS L'ORDRE
  * ─────────────────────────────────────────────────────────────────────────
  *
- * Elle relit le rush, refuse tout de suite ce qui doit l'être, crée la ligne
- * d'analyse AVANT de travailler, la passe `en_cours`, appelle le moteur une
- * fois, consigne le résultat, et recopie la durée sur le rush.
+ * Elle relit le rush, refuse tout de suite ce qui doit l'être, PREND UNE PLACE
+ * D'EXTRACTION, crée la ligne d'analyse AVANT de travailler, la passe
+ * `en_cours`, appelle le moteur une fois, consigne le résultat, et recopie la
+ * durée sur le rush.
  *
  * La ligne est posée avant le travail pour la même raison qu'en M3-B1 : si le
  * processus meurt en cours de mesure, une reprise retrouve une analyse
  * `en_cours` plutôt que d'avoir à deviner qu'un travail a eu lieu.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * DEUX BORNES DIFFÉRENTES, QU'IL NE FAUT PAS CONFONDRE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * `rush_analyses_active_unique` interdit deux analyses actives SUR LE MÊME
+ * RUSH : c'est de l'idempotence, elle vit en base, et elle rend 409.
+ *
+ * `capacite.ts` borne le nombre d'extractions simultanées SUR CE SERVEUR,
+ * tous rushes confondus : c'est de la charge machine, elle vit en mémoire du
+ * processus, et elle rend 429.
+ *
+ * Les deux se cumulent et ne se remplacent pas. La place est prise AVANT
+ * `creerAnalyse` — donc avant l'idempotence — pour qu'un refus de capacité ne
+ * laisse aucune ligne derrière lui.
+ *
+ * Mais elle ne DOIT PAS masquer le 409, et avec une seule place elle le
+ * masquerait systématiquement : deux requêtes simultanées sur le même rush se
+ * croisent forcément sur la place. Le refus faute de place relit donc les
+ * analyses de ce rush et rend 409 quand l'une est active. C'est une lecture
+ * qui n'autorise rien — elle choisit le mot du refus, jamais le droit
+ * d'écrire. Voir `refusFauteDePlace`.
  *
  * ─────────────────────────────────────────────────────────────────────────
  * LE CORPS N'APPORTE RIEN, ET C'EST VOLONTAIRE
@@ -165,6 +193,277 @@ function analysePublique(analyse: RushAnalysis) {
   };
 }
 
+/**
+ * Le 409 « une analyse tourne déjà », écrit UNE fois.
+ *
+ * Deux endroits le rendent — le refus de la base après `creerAnalyse`, et le
+ * refus de capacité qui découvre la même chose avant d'avoir inséré. Recopier
+ * la réponse aux deux endroits la ferait diverger d'un mot, et un écran qui
+ * teste `motif` marcherait sur l'un et pas sur l'autre.
+ *
+ * L'analyse gagnante est jointe pour que le perdant sache quoi suivre : sans
+ * elle, il n'a qu'un refus et aucun identifiant à interroger.
+ */
+function reponseAnalyseDejaActive(analyse: RushAnalysis | null): NextResponse {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: 'Une analyse de ce rush est déjà en cours.',
+      motif: 'analyse_active_existante',
+      analyse: analyse ? analysePublique(analyse) : null,
+    },
+    { status: 409 },
+  );
+}
+
+/**
+ * Ce qu'on répond quand il n'y a plus de place — et pourquoi ce n'est pas
+ * toujours 429.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * UNE LECTURE, JAMAIS UNE ÉCRITURE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Avec UNE place, deux requêtes simultanées sur le MÊME rush se croisent
+ * forcément ici : la seconde trouve la place prise. Répondre 429 serait vrai
+ * mais moins utile — et surtout, ce serait faire disparaître le refus
+ * d'idempotence exactement dans le cas où il compte. L'appelant repartirait
+ * avec « le serveur est plein, revenez dans 300 s » là où la réponse exacte
+ * est « ce rush-là est déjà en cours d'analyse, voici laquelle ».
+ *
+ * On relit donc les analyses de CE rush. Si l'une est active, c'est le même
+ * 409 qu'avant ce lot : le contrat de M3-B1 ne bouge pas.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * CETTE LECTURE N'EST PAS LE `SELECT` QUE LA ROUTE S'INTERDIT
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Le `select` proscrit est celui qui AUTORISERAIT une insertion : entre lui
+ * et l'`insert` il y a une fenêtre, et deux requêtes la traversent. Ici, rien
+ * ne sera inséré quoi qu'on lise — la décision de refuser est déjà prise. La
+ * lecture ne fait que CHOISIR LE MOT du refus.
+ *
+ * Elle ne peut donc pas se tromper dangereusement : si elle rate l'analyse
+ * active (course, ou base injoignable), on retombe sur 429, qui reste un
+ * refus. Jamais l'inverse.
+ */
+async function refusFauteDePlace(userId: string, rushId: string): Promise<NextResponse> {
+  let active: RushAnalysis | null = null;
+  try {
+    const { analyses } = await listerAnalyses(userId, rushId);
+    active = analyses.find((a) => analyseActive(a.etat)) ?? null;
+  } catch {
+    // Une base injoignable ne doit pas transformer un refus en 500 : le refus
+    // est déjà décidé, seul son libellé est en jeu.
+    active = null;
+  }
+  if (active) return reponseAnalyseDejaActive(active);
+
+  // 429, et non 503 : le service fonctionne, il est occupé. `Retry-After` est
+  // explicite pour que le client sache quand revenir au lieu de marteler — un
+  // refus sans délai annoncé se retente tout de suite.
+  //
+  // Aucune file d'attente : attendre ici consommerait le budget de cette
+  // requête à ne rien faire, puis la ferait tuer avant même de mesurer.
+  return NextResponse.json(
+    { ok: false, error: MESSAGE_CAPACITE_SATUREE, motif: MOTIF_CAPACITE_SATUREE },
+    { status: 429, headers: { 'Retry-After': String(RETRY_APRES_SECONDES) } },
+  );
+}
+
+/**
+ * Le travail lui-même — tout ce qui suit la prise de place.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * POURQUOI C'EST UNE FONCTION À PART, ET NON LA SUITE DE `POST`
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Parce que la place doit être rendue quoi qu'il arrive, et que la seule
+ * façon de l'écrire sans se tromper est un `finally` qui enveloppe TOUT le
+ * travail — pas quelques branches choisies à la main. Un `try` autour de
+ * cent quatre-vingts lignes déjà imbriquées se relit mal, et le jour où l'on
+ * ajoute une sortie anticipée on ne voit plus si elle est couverte.
+ *
+ * Ici, l'appelant tient la place et ce corps l'ignore complètement : il ne
+ * peut donc pas oublier de la rendre, quel que soit le `return` qu'il prend
+ * et même s'il lève.
+ *
+ * Le rush est passé en argument plutôt que relu : il vient d'être lu par
+ * l'appelant, et le relire ouvrirait une fenêtre pendant laquelle son état
+ * pourrait changer entre la vérification et l'usage.
+ */
+async function executerAnalyse(
+  userId: string, rushId: string, rush: Rush,
+): Promise<NextResponse> {
+  // ── La ligne d'analyse, AVANT tout travail ────────────────────────────
+  const creation = await creerAnalyse(userId, rushId);
+  if (creation.motif === 'socle_absent') {
+    return NextResponse.json(
+      { ok: false, error: SOCLE_ANALYSE_ABSENT, motif: 'socle_absent' }, { status: 503 },
+    );
+  }
+  if (creation.motif === 'rush_introuvable') {
+    // Le rush a disparu entre les deux lectures. Rare, mais réel.
+    return NextResponse.json({ ok: false, error: 'Rush introuvable' }, { status: 404 });
+  }
+  if (creation.motif === 'analyse_active_existante') {
+    // 409 : la contrainte de la base a tranché, pas un `if` de cette route.
+    // L'analyse gagnante est relue pour que le perdant sache quoi suivre.
+    const { analyses } = await listerAnalyses(userId, rushId);
+    return reponseAnalyseDejaActive(analyses.find((a) => analyseActive(a.etat)) ?? null);
+  }
+  const analyse = creation.analyse;
+  if (!analyse) {
+    return NextResponse.json(
+      { ok: false, error: 'Analyse non créée' }, { status: 500 },
+    );
+  }
+
+  // ── Le moteur : chargé APRÈS les refus, pour qu'ils restent gratuits ──
+  const moteur = await chargerMoteurExtraction();
+  if (!moteur) {
+    // L'analyse existe déjà : la laisser `en_attente` pour toujours
+    // occuperait le verrou d'unicité et interdirait toute relance. On la
+    // clôt.
+    await majAnalyse(userId, analyse.id, {
+      etat: 'echouee', motifEchec: 'moteur_absent',
+    });
+    return NextResponse.json(
+      { ok: false, error: MOTEUR_ABSENT, motif: 'moteur_absent' }, { status: 503 },
+    );
+  }
+
+  // ── `en_cours`, et qui fait le travail ────────────────────────────────
+  const demarrage = await majAnalyse(userId, analyse.id, {
+    etat: 'en_cours',
+    etape: 'extraction',
+    fournisseurs: { extraction: FOURNISSEUR_EXTRACTION },
+  });
+  if (demarrage.motif === 'socle_absent') {
+    return NextResponse.json(
+      { ok: false, error: SOCLE_ANALYSE_ABSENT, motif: 'socle_absent' }, { status: 503 },
+    );
+  }
+  if (demarrage.motif) {
+    // `analyse_close` ou `analyse_introuvable` : quelqu'un l'a fermée entre
+    // sa création et ici. On ne mesure pas une analyse qu'on ne tient plus.
+    return NextResponse.json(
+      { ok: false, error: 'Analyse close avant son démarrage.', motif: demarrage.motif },
+      { status: 409 },
+    );
+  }
+
+  // ── Une seule mesure. Pas de reprise, pas de second essai ─────────────
+  let resultatBrut: unknown;
+  try {
+    resultatBrut = await moteur({
+      bucket: rush.bucket,
+      cleObjet: rush.cleObjet,
+      userId,
+      analysisId: analyse.id,
+    });
+  } catch (e: unknown) {
+    // Le moteur a levé : ce n'est pas un des quatre échecs prévus, c'est un
+    // bug. L'analyse est close quand même — une ligne `en_cours` abandonnée
+    // occuperait le verrou et interdirait toute relance.
+    await majAnalyse(userId, analyse.id, {
+      etat: 'echouee', motifEchec: 'moteur_en_erreur',
+    });
+    const message = e instanceof Error ? e.message : 'extraction impossible';
+    return NextResponse.json(
+      { ok: false, error: message, motif: 'moteur_en_erreur' }, { status: 500 },
+    );
+  }
+
+  const resultat = resultatExtractionValide(resultatBrut);
+  if (!resultat) {
+    await majAnalyse(userId, analyse.id, {
+      etat: 'echouee', motifEchec: 'resultat_moteur_invalide',
+    });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'Le moteur d’extraction a rendu un résultat inexploitable.',
+        motif: 'resultat_moteur_invalide',
+      },
+      { status: 500 },
+    );
+  }
+
+  // ── Échec contrôlé : `echouee` + motif, et le code qui correspond ─────
+  if (!resultat.ok) {
+    const fin = await majAnalyse(userId, analyse.id, {
+      etat: 'echouee', motifEchec: resultat.motif,
+    });
+    const refus = REFUS_EXTRACTION[resultat.motif];
+    return NextResponse.json(
+      {
+        ok: false,
+        error: refus.message,
+        motif: resultat.motif,
+        analyse: fin.analyse ? analysePublique(fin.analyse) : null,
+      },
+      { status: refus.statut },
+    );
+  }
+
+  // ── Succès : le résultat est consigné, PUIS l'état passe `reussie` ────
+  //
+  // Une seule écriture, parce que `majAnalyse` refuse tout ce qui n'est pas
+  // valide AVANT d'écrire : si l'une des trois valeurs ne passe pas, rien
+  // n'est écrit et l'état ne ment pas.
+  const consigne = await majAnalyse(userId, analyse.id, {
+    etat: 'reussie',
+    // `etape` reste `extraction` : c'est là que cette analyse s'arrête, et
+    // l'effacer perdrait l'information de jusqu'où elle est allée.
+    dureeSecondes: resultat.dureeSecondes,
+    technique: resultat.technique,
+    vignettes: resultat.vignettes,
+  });
+  if (consigne.motif === 'donnees_invalides') {
+    // Le moteur a rendu une valeur que le contrat refuse — une vignette
+    // hors compartiment, par exemple. C'est un désaccord entre deux
+    // morceaux à nous, pas une faute de l'appelant.
+    await majAnalyse(userId, analyse.id, {
+      etat: 'echouee', motifEchec: `resultat_moteur_refuse:${consigne.champ ?? ''}`.slice(0, 200),
+    });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'Le résultat du moteur a été refusé par le contrat d’analyse.',
+        motif: 'resultat_moteur_refuse',
+        champ: consigne.champ ?? null,
+      },
+      { status: 500 },
+    );
+  }
+  if (consigne.motif || !consigne.analyse) {
+    return NextResponse.json(
+      { ok: false, error: 'Résultat non consigné.', motif: consigne.motif }, { status: 409 },
+    );
+  }
+
+  // ── La durée, recopiée sur le rush ────────────────────────────────────
+  //
+  // COPIE DE CONFORT, et traitée comme telle. `rush_analyses` porte la
+  // mesure faisant foi ; `rushes.duree_secondes` évite une jointure pour
+  // afficher une liste. Faire échouer la requête parce que la copie n'a pas
+  // pris ferait croire que l'analyse a raté alors qu'elle est consignée et
+  // `reussie`. On le dit, on ne le cache pas, et on ne ment pas dessus.
+  let dureeRushEcrite = false;
+  try {
+    const copie = await majDureeRush(userId, rushId, resultat.dureeSecondes);
+    dureeRushEcrite = copie.motif === null;
+  } catch {
+    dureeRushEcrite = false;
+  }
+
+  return NextResponse.json(
+    { ok: true, analyse: analysePublique(consigne.analyse), dureeRushEcrite },
+    { status: 201 },
+  );
+}
+
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await auth();
@@ -243,183 +542,32 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       );
     }
 
-    // ── La ligne d'analyse, AVANT tout travail ────────────────────────────
-    const creation = await creerAnalyse(userId, params.id);
-    if (creation.motif === 'socle_absent') {
-      return NextResponse.json(
-        { ok: false, error: SOCLE_ANALYSE_ABSENT, motif: 'socle_absent' }, { status: 503 },
-      );
-    }
-    if (creation.motif === 'rush_introuvable') {
-      // Le rush a disparu entre les deux lectures. Rare, mais réel.
-      return NextResponse.json({ ok: false, error: 'Rush introuvable' }, { status: 404 });
-    }
-    if (creation.motif === 'analyse_active_existante') {
-      // 409 : la contrainte de la base a tranché, pas un `if` de cette route.
-      // L'analyse gagnante est relue pour que le perdant sache quoi suivre —
-      // sans elle, il n'aurait qu'un refus et aucun identifiant à interroger.
-      const { analyses } = await listerAnalyses(userId, params.id);
-      const enCours = analyses.find((a) => analyseActive(a.etat)) ?? null;
-      return NextResponse.json(
-        {
-          ok: false,
-          error: 'Une analyse de ce rush est déjà en cours.',
-          motif: 'analyse_active_existante',
-          analyse: enCours ? analysePublique(enCours) : null,
-        },
-        { status: 409 },
-      );
-    }
-    const analyse = creation.analyse;
-    if (!analyse) {
-      return NextResponse.json(
-        { ok: false, error: 'Analyse non créée' }, { status: 500 },
-      );
-    }
-
-    // ── Le moteur : chargé APRÈS les refus, pour qu'ils restent gratuits ──
-    const moteur = await chargerMoteurExtraction();
-    if (!moteur) {
-      // L'analyse existe déjà : la laisser `en_attente` pour toujours
-      // occuperait le verrou d'unicité et interdirait toute relance. On la
-      // clôt.
-      await majAnalyse(userId, analyse.id, {
-        etat: 'echouee', motifEchec: 'moteur_absent',
-      });
-      return NextResponse.json(
-        { ok: false, error: MOTEUR_ABSENT, motif: 'moteur_absent' }, { status: 503 },
-      );
-    }
-
-    // ── `en_cours`, et qui fait le travail ────────────────────────────────
-    const demarrage = await majAnalyse(userId, analyse.id, {
-      etat: 'en_cours',
-      etape: 'extraction',
-      fournisseurs: { extraction: FOURNISSEUR_EXTRACTION },
-    });
-    if (demarrage.motif === 'socle_absent') {
-      return NextResponse.json(
-        { ok: false, error: SOCLE_ANALYSE_ABSENT, motif: 'socle_absent' }, { status: 503 },
-      );
-    }
-    if (demarrage.motif) {
-      // `analyse_close` ou `analyse_introuvable` : quelqu'un l'a fermée entre
-      // sa création et ici. On ne mesure pas une analyse qu'on ne tient plus.
-      return NextResponse.json(
-        { ok: false, error: 'Analyse close avant son démarrage.', motif: demarrage.motif },
-        { status: 409 },
-      );
-    }
-
-    // ── Une seule mesure. Pas de reprise, pas de second essai ─────────────
-    let resultatBrut: unknown;
-    try {
-      resultatBrut = await moteur({
-        bucket: rush.bucket,
-        cleObjet: rush.cleObjet,
-        userId,
-        analysisId: analyse.id,
-      });
-    } catch (e: unknown) {
-      // Le moteur a levé : ce n'est pas un des quatre échecs prévus, c'est un
-      // bug. L'analyse est close quand même — une ligne `en_cours` abandonnée
-      // occuperait le verrou et interdirait toute relance.
-      await majAnalyse(userId, analyse.id, {
-        etat: 'echouee', motifEchec: 'moteur_en_erreur',
-      });
-      const message = e instanceof Error ? e.message : 'extraction impossible';
-      return NextResponse.json(
-        { ok: false, error: message, motif: 'moteur_en_erreur' }, { status: 500 },
-      );
-    }
-
-    const resultat = resultatExtractionValide(resultatBrut);
-    if (!resultat) {
-      await majAnalyse(userId, analyse.id, {
-        etat: 'echouee', motifEchec: 'resultat_moteur_invalide',
-      });
-      return NextResponse.json(
-        {
-          ok: false,
-          error: 'Le moteur d’extraction a rendu un résultat inexploitable.',
-          motif: 'resultat_moteur_invalide',
-        },
-        { status: 500 },
-      );
-    }
-
-    // ── Échec contrôlé : `echouee` + motif, et le code qui correspond ─────
-    if (!resultat.ok) {
-      const fin = await majAnalyse(userId, analyse.id, {
-        etat: 'echouee', motifEchec: resultat.motif,
-      });
-      const refus = REFUS_EXTRACTION[resultat.motif];
-      return NextResponse.json(
-        {
-          ok: false,
-          error: refus.message,
-          motif: resultat.motif,
-          analyse: fin.analyse ? analysePublique(fin.analyse) : null,
-        },
-        { status: refus.statut },
-      );
-    }
-
-    // ── Succès : le résultat est consigné, PUIS l'état passe `reussie` ────
+    // ── La place, AVANT la première écriture ──────────────────────────────
     //
-    // Une seule écriture, parce que `majAnalyse` refuse tout ce qui n'est pas
-    // valide AVANT d'écrire : si l'une des trois valeurs ne passe pas, rien
-    // n'est écrit et l'état ne ment pas.
-    const consigne = await majAnalyse(userId, analyse.id, {
-      etat: 'reussie',
-      // `etape` reste `extraction` : c'est là que cette analyse s'arrête, et
-      // l'effacer perdrait l'information de jusqu'où elle est allée.
-      dureeSecondes: resultat.dureeSecondes,
-      technique: resultat.technique,
-      vignettes: resultat.vignettes,
-    });
-    if (consigne.motif === 'donnees_invalides') {
-      // Le moteur a rendu une valeur que le contrat refuse — une vignette
-      // hors compartiment, par exemple. C'est un désaccord entre deux
-      // morceaux à nous, pas une faute de l'appelant.
-      await majAnalyse(userId, analyse.id, {
-        etat: 'echouee', motifEchec: `resultat_moteur_refuse:${consigne.champ ?? ''}`.slice(0, 200),
-      });
-      return NextResponse.json(
-        {
-          ok: false,
-          error: 'Le résultat du moteur a été refusé par le contrat d’analyse.',
-          motif: 'resultat_moteur_refuse',
-          champ: consigne.champ ?? null,
-        },
-        { status: 500 },
-      );
-    }
-    if (consigne.motif || !consigne.analyse) {
-      return NextResponse.json(
-        { ok: false, error: 'Résultat non consigné.', motif: consigne.motif }, { status: 409 },
-      );
-    }
-
-    // ── La durée, recopiée sur le rush ────────────────────────────────────
+    // Ici, et pas ailleurs. APRÈS les refus — session, propriété du rush,
+    // état d’ingestion — parce qu’une requête qui n’avait pas le droit
+    // d’analyser ne doit pas s’entendre dire que le serveur est plein : ce
+    // serait lui faire réessayer un refus définitif.
     //
-    // COPIE DE CONFORT, et traitée comme telle. `rush_analyses` porte la
-    // mesure faisant foi ; `rushes.duree_secondes` évite une jointure pour
-    // afficher une liste. Faire échouer la requête parce que la copie n'a pas
-    // pris ferait croire que l'analyse a raté alors qu'elle est consignée et
-    // `reussie`. On le dit, on ne le cache pas, et on ne ment pas dessus.
-    let dureeRushEcrite = false;
-    try {
-      const copie = await majDureeRush(userId, params.id, resultat.dureeSecondes);
-      dureeRushEcrite = copie.motif === null;
-    } catch {
-      dureeRushEcrite = false;
+    // Et AVANT `creerAnalyse`, parce qu’une place refusée ne doit laisser
+    // AUCUNE ligne derrière elle. Une analyse créée puis abandonnée resterait
+    // active, occuperait `rush_analyses_active_unique`, et interdirait toute
+    // relance de ce rush : le refus le plus bénin produirait le blocage le
+    // plus durable.
+    const place = prendrePlaceExtraction();
+    if (!place) {
+      // 429 le plus souvent, 409 quand c'est CE rush qui est déjà analysé —
+      // voir `refusFauteDePlace`. Dans les deux cas : aucune écriture.
+      return await refusFauteDePlace(userId, params.id);
     }
 
-    return NextResponse.json(
-      { ok: true, analyse: analysePublique(consigne.analyse), dureeRushEcrite },
-      { status: 201 },
-    );
+    try {
+      return await executerAnalyse(userId, params.id, rush);
+    } finally {
+      // La seule libération, et elle couvre tout : un `return` de succès, un
+      // refus contrôlé, une exception du moteur, un dépassement de délai.
+      place.liberer();
+    }
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'analyse impossible';
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
