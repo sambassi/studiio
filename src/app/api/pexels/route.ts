@@ -1,5 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
+import { motifPourStatut, type EchecFournisseur } from '@/lib/creer/photosEtat';
+
+/**
+ * Un refus du FOURNISSEUR, distinct d'une recherche sans resultat.
+ *
+ * Les deux se ressemblaient : toute erreur etait attrapee, journalisee, et
+ * rendait une liste vide. L'ecran annoncait alors « Aucune photo pour cette
+ * recherche » — ce qui est faux quand la cle est refusee ou le quota
+ * epuise, et l'utilisateur reformulait sa requete sans fin.
+ *
+ * Le STATUT seul est conserve. Le corps de la reponse ne l'est jamais : un
+ * fournisseur peut y placer n'importe quoi, y compris un echo de la cle
+ * qu'on vient de lui envoyer.
+ */
+class ErreurFournisseur extends Error {
+  constructor(public readonly fournisseur: string, public readonly statut: number) {
+    super(`${fournisseur} ${statut}`);
+  }
+}
 
 const PEXELS_API_KEY = process.env.PEXELS_API_KEY;
 const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY;
@@ -137,7 +156,7 @@ async function fetchPexels(query: string, perPage: number, page: number, orienta
     `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${page}&orientation=${orientation}`,
     { headers: { Authorization: PEXELS_API_KEY } }
   );
-  if (!res.ok) throw new Error(`Pexels ${res.status}`);
+  if (!res.ok) throw new ErreurFournisseur('Pexels', res.status);
   const data = await res.json();
   return (data.photos || []).map((p: any) => ({
     id: `pexels-${p.id}`,
@@ -158,7 +177,7 @@ async function fetchUnsplash(query: string, perPage: number, page: number, orien
     `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${page}&orientation=${orient}`,
     { headers: { Authorization: `Client-ID ${UNSPLASH_ACCESS_KEY}` } }
   );
-  if (!res.ok) throw new Error(`Unsplash ${res.status}`);
+  if (!res.ok) throw new ErreurFournisseur('Unsplash', res.status);
   const data = await res.json();
   return (data.results || []).map((p: any) => ({
     id: `unsplash-${p.id}`,
@@ -183,15 +202,32 @@ function interleave(a: Photo[], b: Photo[]): Photo[] {
 
 type Source = 'pexels' | 'unsplash' | 'both';
 
-async function searchSource(source: Source, query: string, count: number, page: number, orientation: string): Promise<Photo[]> {
+/** Le refus, s'il y en a eu un — jamais le corps de la reponse. */
+function motifDe(raison: unknown): EchecFournisseur {
+  return raison instanceof ErreurFournisseur
+    ? motifPourStatut(raison.statut)
+    : 'indisponible';
+}
+
+interface Recherche {
+  photos: Photo[];
+  /** Renseigne UNIQUEMENT si le fournisseur a refuse, pas s'il n'a rien. */
+  echec?: EchecFournisseur;
+}
+
+async function searchSource(
+  source: Source, query: string, count: number, page: number, orientation: string,
+): Promise<Recherche> {
   const perSource = Math.max(count, 5);
-  if (source === 'pexels') {
-    try { return await fetchPexels(query, perSource, page, orientation); }
-    catch (e) { console.error('Pexels fetch failed:', e); return []; }
-  }
-  if (source === 'unsplash') {
-    try { return await fetchUnsplash(query, perSource, page, orientation); }
-    catch (e) { console.error('Unsplash fetch failed:', e); return []; }
+  if (source === 'pexels' || source === 'unsplash') {
+    const appel = source === 'pexels' ? fetchPexels : fetchUnsplash;
+    try {
+      return { photos: await appel(query, perSource, page, orientation) };
+    } catch (e) {
+      // Le statut sert au message ; le detail reste dans le journal serveur.
+      console.error(`${source} fetch failed:`, e instanceof Error ? e.message : e);
+      return { photos: [], echec: motifDe(e) };
+    }
   }
   // both — parallel + interleave
   const [pexelsRes, unsplashRes] = await Promise.allSettled([
@@ -202,7 +238,13 @@ async function searchSource(source: Source, query: string, count: number, page: 
   const unsplash = unsplashRes.status === 'fulfilled' ? unsplashRes.value : [];
   if (pexelsRes.status === 'rejected') console.error('Pexels fetch failed:', pexelsRes.reason);
   if (unsplashRes.status === 'rejected') console.error('Unsplash fetch failed:', unsplashRes.reason);
-  return interleave(pexels, unsplash);
+  const photos = interleave(pexels, unsplash);
+  // Une source qui tombe pendant que l'autre repond n'est pas un echec :
+  // l'utilisateur voit des photos. Les deux tombees, si.
+  if (photos.length === 0 && pexelsRes.status === 'rejected' && unsplashRes.status === 'rejected') {
+    return { photos, echec: motifDe(pexelsRes.reason) };
+  }
+  return { photos };
 }
 
 // GET /api/pexels?query=fitness&count=5&source=pexels|unsplash|both
@@ -243,18 +285,28 @@ export async function GET(req: NextRequest) {
 
     const { query: translatedQuery } = translateQuery(searchQuery);
 
-    let photos = await searchSource(source, translatedQuery, count, page, orientation);
+    const premiere = await searchSource(source, translatedQuery, count, page, orientation);
+    const photos = [...premiere.photos];
 
-    // Auto-retry with next page if too few results
-    if (photos.length < 3) {
-      const extra = await searchSource(source, translatedQuery, count, page + 1, orientation);
+    // Une page de plus quand il y a trop peu de resultats — mais JAMAIS
+    // apres un refus : relancer un fournisseur qui vient de repondre 429
+    // double la charge et rapproche du blocage au lieu de l'eviter.
+    if (photos.length < 3 && !premiere.echec) {
+      const suite = await searchSource(source, translatedQuery, count, page + 1, orientation);
       const seen = new Set(photos.map((p) => p.id));
-      for (const p of extra) {
+      for (const p of suite.photos) {
         if (!seen.has(p.id)) photos.push(p);
       }
     }
 
     const limited = photos.slice(0, count);
+    // `echec` n'accompagne que les mains vides : des photos sont des photos,
+    // meme si une seconde page a echoue apres elles.
+    if (limited.length === 0 && premiere.echec) {
+      return NextResponse.json({
+        success: true, photos: [], echec: premiere.echec, query: translatedQuery, source,
+      });
+    }
     return NextResponse.json({ success: true, photos: limited, query: translatedQuery, source });
   } catch (error) {
     console.error('Image search error:', error);

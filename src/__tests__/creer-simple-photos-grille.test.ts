@@ -51,7 +51,18 @@ describe('La cause : l API peut rendre une URL absente', () => {
 describe('urlUtilisable', () => {
   it('accepte http et https', () => {
     expect(urlUtilisable('https://a.test/x.jpg')).toBe(true);
-    expect(urlUtilisable('http://a.test/x.jpg')).toBe(true);
+    // `http://` n'est PLUS accepte : studiio.pro est servi en HTTPS, et
+    // Chrome bloque toute image en clair — la vignette ne s'affichait pas,
+    // sans un mot pour le dire. Autant la retirer de la grille.
+    expect(urlUtilisable('http://a.test/x.jpg')).toBe(false);
+    // Ni les adresses locales, privees ou internes.
+    for (const v of [
+      'https://127.0.0.1/x.jpg', 'https://localhost/x.jpg',
+      'https://10.0.0.4/x.jpg', 'https://192.168.1.9/x.jpg',
+      'https://minio.local/x.jpg', 'https://studiio-minio/x.jpg',
+    ]) {
+      expect(urlUtilisable(v), v).toBe(false);
+    }
   });
 
   it('refuse tout le reste — y compris ce que produisait le bug', () => {

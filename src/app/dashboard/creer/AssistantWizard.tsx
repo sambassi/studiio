@@ -125,6 +125,9 @@ import {
 } from '@/lib/creer/batchDisponible';
 import { useVerrous, VERROU } from '@/lib/creer/verrouAction';
 import {
+  etatDepuisReponse, messagePhotos, reessayable, type EtatPhotos,
+} from '@/lib/creer/photosEtat';
+import {
   annonceCout, tarifsAffichables, libelleNombre, type Tarifs,
 } from '@/lib/facturation/annonce';
 import { rendreEtFacturer, messagePour } from '@/lib/rendus/client';
@@ -3539,6 +3542,16 @@ export default function AssistantWizard() {
   const [posterPhotos, setPosterPhotos] = useState<PosterPhoto[]>([]);
   const [posterUrl, setPosterUrl] = useState<string | null>(null);
   const [imageSource, setImageSource] = useState<'pexels' | 'unsplash'>('pexels');
+  /**
+   * Pourquoi la grille est vide.
+   *
+   * `photosError` ne portait qu'un texte : impossible d'en deduire s'il
+   * fallait proposer « Réessayer ». Un refus du fournisseur et une recherche
+   * sans resultat s'affichaient pareil, et le second message etait faux.
+   */
+  const [photosEtat, setPhotosEtat] = useState<EtatPhotos | null>(null);
+  /** La derniere recherche, pour la rejouer telle quelle. */
+  const derniereRecherche = useRef<{ query: string; source: 'pexels' | 'unsplash' } | null>(null);
   const [photoQuery, setPhotoQuery] = useState('');
   const [photosLoading, setPhotosLoading] = useState(false);
   const [photosError, setPhotosError] = useState<string | null>(null);
@@ -3658,8 +3671,10 @@ export default function AssistantWizard() {
   ) => {
     const q = query.trim();
     if (!q) return;
+    derniereRecherche.current = { query: q, source };
     setPhotosLoading(true);
     setPhotosError(null);
+    setPhotosEtat(null);
     const page = nextPage ? posterPageRef.current + 1 : 1;
     posterPageRef.current = page;
     const appel = async (p: number) => {
@@ -3681,18 +3696,18 @@ export default function AssistantWizard() {
         setPosterPhotos(sanitizePhotos(data.photos));
       } else {
         setPosterPhotos([]);
-        // L'API dit si la source n'a pas de cle configuree. Sans cette
-        // distinction, une source absente du serveur passait pour une
-        // recherche infructueuse — et l'utilisateur reformulait sans fin.
-        setPhotosError(
-          data?.configured === false
-            ? `${source === 'unsplash' ? 'Unsplash' : 'Pexels'} n’est pas configuré sur ce serveur.`
-            : 'Aucune photo pour cette recherche.',
-        );
+        // La route distingue desormais quatre raisons : source non
+        // configuree, cle refusee, quota atteint, ou simplement rien trouve.
+        // Les confondre faisait reformuler une requete que le fournisseur
+        // n'avait jamais executee.
+        const etat = etatDepuisReponse(data);
+        setPhotosEtat(etat);
+        setPhotosError(messagePhotos(etat, source));
       }
     } catch {
       setPosterPhotos([]);
-      setPhotosError('Recherche de photos indisponible.');
+      setPhotosEtat('indisponible');
+      setPhotosError(messagePhotos('indisponible', source));
     } finally {
       setPhotosLoading(false);
     }
@@ -7262,6 +7277,7 @@ export default function AssistantWizard() {
                               searchPhotos(photoQuery.trim() || currentTopic, imageSource);
                             }
                           }}
+                          data-poster-query
                           placeholder={`Rechercher des photos… (ex : ${currentTopic})`}
                           className="w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none pl-8 pr-2.5 py-2 text-sm"
                         />
@@ -7277,7 +7293,29 @@ export default function AssistantWizard() {
                       </button>
                     </div>
 
-                    {photosError && <p className="text-xs text-gray-500">{photosError}</p>}
+                    {photosError && (
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs text-gray-500 flex-1" data-photos-erreur>{photosError}</p>
+                        {/* « Réessayer » n'apparaît que là où il sert : une
+                            source non configurée ne le deviendra pas d'un
+                            clic, et une recherche sans résultat demande une
+                            autre requête, pas la même. */}
+                        {photosEtat && reessayable(photosEtat) && (
+                          <button
+                            type="button"
+                            data-photos-reessayer
+                            disabled={photosLoading}
+                            onClick={() => {
+                              const d = derniereRecherche.current;
+                              if (d) searchPhotos(d.query, d.source);
+                            }}
+                            className="shrink-0 rounded-lg border border-gray-800 px-2.5 py-1 text-xs text-gray-400 hover:text-white hover:border-gray-700 disabled:opacity-40"
+                          >
+                            Réessayer
+                          </button>
+                        )}
+                      </div>
+                    )}
 
                     {/* ── AFFICHES DU LOT ─────────────────────────────
                         Une par video, toutes differentes. */}
