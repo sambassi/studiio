@@ -96,7 +96,12 @@ declare
 begin
   -- Une reference vide rendrait `reference_id` nul, donc hors de l'index
   -- partiel : le debit serait rejouable a l'infini sans que rien ne le dise.
-  if p_reference is null or length(trim(p_reference)) = 0 then
+  --
+  -- `btrim` avec sa liste explicite, et NON `trim(p_reference)` : le `trim`
+  -- sans argument ne retire que des ESPACES. Une reference reduite a une
+  -- tabulation passait donc pour valide — trouve par le test sur le moteur
+  -- reel, pas a la relecture.
+  if p_reference is null or length(btrim(p_reference, E' \t\n\r')) = 0 then
     return query select false, 0, false, 'reference_absente'::text;
     return;
   end if;

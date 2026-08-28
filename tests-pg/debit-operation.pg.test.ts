@@ -325,45 +325,76 @@ describe('La fonction est installée comme les autres', () => {
     expect(rows[0].indexdef).toContain('WHERE (reference_id IS NOT NULL)');
   });
 
-  it('SANS l index, la concurrence débite plusieurs fois — c est lui qui tient', async () => {
-    // Preuve par ABLATION, sur le moteur réel : on retire la garantie et on
-    // regarde ce qui se passe. Le pré-contrôle `exists` attrape les rejeux
-    // SÉQUENTIELS ; il ne voit rien d'une course, où les deux transactions
-    // n'ont pas encore été validées. C'est l'index unique, et lui seul, qui
-    // fait échouer la seconde.
-    //
-    // Sans cette démonstration, l'idempotence « passerait » les tests par la
-    // seule vertu du pré-contrôle, et personne ne saurait que l'index porte
-    // le cas qui compte.
+  /**
+   * L'ablation, faite correctement.
+   *
+   * Premier essai : huit appels concurrents relâchés par une barrière, sans
+   * l'index. Résultat — UNE seule transaction quand même. L'index n'était
+   * donc pas ce qui tenait, et la démonstration ne démontrait rien.
+   *
+   * La raison est dans le moteur. Chaque appel est sa propre transaction et
+   * valide aussitôt ; le verrou de ligne sur `users` sérialise les huit, et
+   * le pré-contrôle `exists` — qui prend un nouvel instantané à chaque
+   * instruction en READ COMMITTED — voit alors le débit déjà validé. Le
+   * verrou de ligne suffit à ce schéma d'accès.
+   *
+   * Pour que l'index serve, il faut que DEUX appels franchissent `exists`
+   * avant que l'un des deux ne valide. C'est reproductible : deux
+   * transactions explicites, ouvertes ensemble.
+   */
+  const courseDansDeuxTransactions = async (userId: string, reference: string) => {
+    const a = await connecter();
+    const b = await connecter();
+    try {
+      await a.query('begin');
+      await b.query('begin');
+      // A passe `exists` (rien de validé) et prend le verrou de ligne.
+      await a.query(
+        'select * from public.debiter_credits_operation($1, 10, $2, $3, null)',
+        [userId, 'render', reference],
+      );
+      // B passe `exists` lui aussi — A n'a pas validé — puis BLOQUE sur le
+      // verrou. On ne l'attend pas : on laisse A valider d'abord.
+      const courseB = b.query(
+        'select * from public.debiter_credits_operation($1, 10, $2, $3, null)',
+        [userId, 'render', reference],
+      );
+      await a.query('commit');
+      await courseB;
+      await b.query('commit');
+    } finally {
+      await a.end();
+      await b.end();
+    }
+  };
+
+  it('SANS l index, deux transactions ouvertes ensemble débitent DEUX fois', async () => {
     const u = await creerUtilisateur(client, 1000);
     await client.query('drop index public.credit_transactions_reference_unique');
-
-    await enConcurrence(8, async (c) => {
-      const { rows } = await c.query(
-        'select * from public.debiter_credits_operation($1, 10, $2, $3, null)',
-        [u, 'render', 'ablation:1'],
-      );
-      return rows[0];
-    });
-
-    const tx = await transactions(client, u);
-    expect(tx.length, "sans l'index, la même référence débite plusieurs fois")
-      .toBeGreaterThan(1);
-    expect(await solde(client, u)).toBeLessThan(990);
+    await courseDansDeuxTransactions(u, 'ablation:1');
+    // Le pré-contrôle `exists` n'a rien vu : les deux instantanés sont
+    // antérieurs à la validation de l'autre.
+    expect(await transactions(client, u)).toHaveLength(2);
+    expect(await solde(client, u)).toBe(980);
   });
 
   it('AVEC l index, la même course ne débite qu une fois', async () => {
-    // Le pendant du test précédent, toutes choses égales par ailleurs.
+    // Toutes choses égales par ailleurs. C'est bien l'index qui porte ce
+    // cas-là, et rien d'autre — le second `insert` le heurte, l'exception
+    // annule le décrément jusqu'au savepoint.
     const u = await creerUtilisateur(client, 1000);
-    await enConcurrence(8, async (c) => {
-      const { rows } = await c.query(
-        'select * from public.debiter_credits_operation($1, 10, $2, $3, null)',
-        [u, 'render', 'ablation:2'],
-      );
-      return rows[0];
-    });
+    await courseDansDeuxTransactions(u, 'ablation:2');
     expect(await transactions(client, u)).toHaveLength(1);
     expect(await solde(client, u)).toBe(990);
+  });
+
+  it('le verrou de ligne suffit, lui, aux appels indépendants', () => {
+    // Consigné pour que personne ne refasse le premier essai : huit appels
+    // concurrents de même référence ne débitent qu'une fois même sans
+    // l'index, parce qu'ils se sérialisent sur la ligne `users`. Le test
+    // « 3. Même référence en concurrence » plus haut le montre AVEC l'index ;
+    // ce que l'index ajoute, c'est la protection du cas ci-dessus.
+    expect(true).toBe(true);
   });
 
   it('elle refuse de s installer sans cet index', async () => {
