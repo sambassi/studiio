@@ -1083,3 +1083,83 @@ Quand l'utilisateur demande un fix, un changement de code ou une correction de b
 
 ## APPRENTISSAGES
 (Claude remplit cette section au fil du temps)
+
+# Mémoire projet — état validé au 28 août 2026
+
+> Mémoire durable pour les prochaines sessions (Claude Code / Cowork). Faits validés
+> et décisions durables uniquement — PAS un journal de conversation. Rester concis.
+
+> Cette section est un snapshot validé au 28 août 2026. Avant tout nouveau lot,
+> vérifier l’état actuel de `origin/main` et de la production. Toute preuve plus
+> récente et vérifiée remplace les états datés consignés ici.
+
+## État production validé
+
+- Production applicative = commit `f765ffa8930b642e77e2b0190f5bddc6306f5aeb` (PR #358 fusionnée dans `main`).
+- CI sur ce socle : Vitest **3534 tests / 145 fichiers** ; PostgreSQL réel **145 tests / 6 fichiers**.
+- Déploiement Coolify de `f765ffa` confirmé : **Success**, service `studiio-app` **Running (healthy)**. La preuve du SHA vient de **Coolify** — le champ `/api/health` `version="dev"` NE prouve PAS le SHA.
+- Smoke test prod OK : `/`→200 ; `/auth/login`→200 ; `/dashboard` non authentifié→307 vers login ; `/dashboard/creer` non authentifié→307 ; `/api/health`→200 status ok ; utilisateur authentifié Dashboard + Créer OK.
+
+## Crédits / PostgreSQL / PostgREST (protection à ne pas rouvrir)
+
+- Migration appliquée en prod : `migrations/2026-08-30-debit-operation.sql`.
+- Primitive : `debiter_credits_operation(uuid, integer, text, text, text)`.
+- Garanties validées : décrément relatif atomique ; condition solde suffisant ; journalisation dans la même transaction ; précontrôle `reference_id` ; index unique d'idempotence `credit_transactions_reference_unique` ; `SECURITY DEFINER` ; `search_path` figé à `pg_catalog, public` ; `PUBLIC` sans `EXECUTE` ; rôle `studiio` avec `EXECUTE`.
+- Appel applicatif via `supabaseAdmin.rpc('debiter_credits_operation', ...)` → **PostgREST/RPC**, pas de connexion PostgreSQL directe. Cache PostgREST rechargé (SIGUSR1) : `studiio-postgrest` running, restarts=0, config reloaded, schema cache loaded, 5 RPCs chargées.
+- Témoins métier inchangés avant/après : utilisateurs=4 ; somme crédits=1000998120 ; transactions=3. Aucun débit réel effectué pour tester.
+- **Règle durable** : MIGRATION DB → validation → reload PostgREST si RPC → SEULEMENT ENSUITE déploiement application. Jamais l'inverse quand un nouveau code dépend d'une nouvelle RPC.
+
+## Série / Batch (état à préserver — ne pas rouvrir sans lot dédié)
+
+- `BATCH_SERIE_DISPONIBLE = true` ; `BATCH_SERIE_MAX = 2` (**pilote**, pas l'objectif final) ; `BATCH_RENDER_DESACTIVE = true` (`/api/render/batch` reste **désactivée**) ; reprise après échec `autorisee = false` ; mode unitaire = défaut.
+- Ne JAMAIS, sans lot explicite + pré-flight + tests + validation : augmenter `BATCH_SERIE_MAX` ; réactiver `/api/render/batch` ; activer retry/reprise.
+- Objectif futur : monter progressivement à 3 / 5 / 7 / 10+ vidéos quand l'orchestration et les garanties sont validées.
+
+## Architecture rendu (confirmée sur f765ffa — remplace l'ancien audit)
+
+- L'ancien audit fait sur `5cd0394` est **périmé** pour rendu / facturation / batch : ne pas s'en servir.
+- `composeAndUpload` : zéro appelant direct hors de son propre module.
+- `composerEtFacturer` : contrat actuel utilisé par les parcours de production (Calendrier, éditeur avancé, Infographie, Assistant, Agent IA).
+- Remotion **n'est PAS orphelin** : réellement utilisé côté serveur.
+- Routes render présentes : `/api/render`, `/api/render/batch`, `/api/render/jobs`, `/api/render/jobs/[id]/upload`, `/api/render/jobs/[id]/confirm`, `/api/render/jobs/[id]/cancel`, `/api/render/status`, `/api/render/tarifs`.
+- `render_jobs` (ancien modèle/job de rendu) et `rendus` (socle récent de preuve serveur / facturation) sont **DEUX concepts distincts** — ne pas les confondre ni les fusionner implicitement.
+
+## Parcours Créer
+
+- Route canonique produit : `/dashboard/creer`. `/dashboard/creer-avance` reste **legacy / accès direct** — ne jamais le re-promouvoir dans le menu.
+- Réutiliser / extraire les fonctions avancées utiles comme briques partagées pour `/dashboard/creer`. Aucune fonction existante ne doit être perdue ou recréée inutilement.
+
+## Autopilote — pré-flight M3
+
+- Le premier audit Autopilote (checkout obsolète) est **périmé** sur les zones modifiées depuis. Un pré-flight différentiel a été refait sur `origin/main` `f765ffa`.
+- Préconditions M3-A confirmées : aucune table `shoot_sessions` ; aucune table `rushes` ; aucun modèle de « Session de tournage » ; aucune indexation DB complète des rushes (aujourd'hui surtout URL / tableaux / metadata) ; aucune migration récente en conflit.
+- **M3-A = Session de tournage + contrat de données + indexation des rushes.** Ne démarre JAMAIS automatiquement parce que cette mémoire existe : toujours un **GO explicite**.
+
+## Règles de travail Studiio
+
+1. pré-flight lecture seule ;
+2. partir du dernier `origin/main` ;
+3. branche/worktree isolé propre ;
+4. petits lots ;
+5. un objectif unique par lot ;
+6. tests ciblés + suite complète ;
+7. comparer TypeScript à sa baseline ;
+8. `npm run build` ;
+9. `git diff --check` ;
+10. push normal ;
+11. PR en brouillon ;
+12. CI sur le SHA exact ;
+13. fusion uniquement après GO explicite ;
+14. migration séparée du code si nécessaire ;
+15. déploiement séparé et contrôlé ;
+16. smoke test production après déploiement.
+
+- **Interdictions permanentes** : jamais de secret dans logs / prompts / commits ; jamais de push forcé ; jamais de modification directe de `main` ; jamais de débit réel pour un test sauf autorisation explicite ; jamais de publication sociale réelle en test ; jamais de rendu coûteux réel juste pour valider une PR ; jamais de rollback automatique sans validation ; jamais supprimer une fonction avancée sous prétexte de simplifier ; ne pas inventer l'état de Coolify / prod si non vérifiable.
+
+## Checkout local à NE PAS utiliser
+
+- `/Users/afroboost/studiio` observé sur `feat/creer-elements-library`, HEAD `5cd0394`, ~150 commits de retard, 98 entrées modifiées / non suivies, `.git/index.lock` présent, travail ancien non committé.
+- NE PAS : reset / clean / stash / checkout destructif / supprimer `index.lock` sans autorisation explicite.
+- Pour tout nouveau lot : **worktree propre basé sur `origin/main`**.
+
+---
