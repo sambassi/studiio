@@ -179,8 +179,11 @@ describe('repriseAutorisee — la garde anti double debit', () => {
   it('donne la vraie raison, pas une panne passagere', () => {
     const { raison } = repriseAutorisee([]);
     expect(raison).toBe(REPRISE_INDISPONIBLE);
-    expect(raison).toContain('idempotence');
-    expect(raison).toContain('deux fois');
+    // La raison a change avec le socle : le debit EST idempotent, mais par
+    // tentative. Ce qui manque, c'est une cle stable par element du lot.
+    expect(raison).toContain('idempotent');
+    expect(raison).toContain('TENTATIVE');
+    expect(raison).not.toContain('n’est pas atomique');
   });
 
   it('annonce que les contenus reussis sont conserves', () => {

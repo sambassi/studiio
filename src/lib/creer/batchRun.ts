@@ -110,6 +110,27 @@ export function batchSummary(items: BatchItem[]): BatchSummary {
 }
 
 /**
+ * Le bilan d'une serie, en une ligne.
+ *
+ * « 1 réussie · 1 échouée » : la seule information qui compte apres un echec
+ * partiel est ce qui a ete gagne et ce qui a ete perdu. Le detail par contenu
+ * est juste en dessous ; ce resume evite d'avoir a le lire pour comprendre.
+ *
+ * Ce qui n'a jamais demarre est compte a part : ces contenus n'ont ouvert
+ * aucune tentative, donc rien n'a ete debite pour eux.
+ */
+export function bilanSerie(items: BatchItem[]): string {
+  const { prets, echoues, restants } = batchSummary(items);
+  const morceaux: string[] = [];
+  if (prets > 0) morceaux.push(`${prets} réussie${prets > 1 ? 's' : ''}`);
+  if (echoues > 0) morceaux.push(`${echoues} échouée${echoues > 1 ? 's' : ''}`);
+  if (restants > 0) {
+    morceaux.push(`${restants} jamais démarrée${restants > 1 ? 's' : ''}`);
+  }
+  return morceaux.join(' · ');
+}
+
+/**
  * Le lot s'est-il arrete en cours de route ?
  *
  * Vrai des qu'un contenu a echoue OU qu'il en reste sur le carreau alors que
@@ -129,10 +150,11 @@ export function batchPartiel(items: BatchItem[]): boolean {
  * a une panne passagere alors que c'est une garantie deliberee.
  */
 export const REPRISE_INDISPONIBLE =
-  'La reprise des contenus échoués n’est pas encore activée : le débit des '
-  + 'crédits ne dispose d’aucune clé d’idempotence, donc relancer un contenu '
-  + 'pourrait le facturer deux fois. Les contenus déjà réussis sont conservés '
-  + 'dans le calendrier ; relancez les manquants depuis un nouveau lot.';
+  'La reprise n’est pas encore activée. Le débit est bien idempotent — mais '
+  + 'par TENTATIVE, et reprendre un contenu en ouvrirait une nouvelle : rien '
+  + 'ne permet encore de reconnaître qu’il s’agit du même. Les contenus '
+  + 'réussis sont conservés ; relancez les manquants depuis une nouvelle '
+  + 'série.';
 
 /**
  * Ce qu'on dit apres l'echec d'une creation UNIQUE.
@@ -172,15 +194,25 @@ export interface Reprise {
 /**
  * La reprise est-elle autorisee ?
  *
- * NON, systematiquement, et ce n'est pas un oubli. Rejouer un contenu echoue
- * suppose de savoir qu'il n'a PAS ete facture — or `POST /api/credits/deduct`
- * n'accepte aucune cle d'idempotence, `credit_transactions` ne porte aucune
- * contrainte unique, et `deductCredits` est un lire-modifier-ecrire non
- * atomique. Tant que ces trois points tiennent, une reprise est un double
- * debit en puissance.
+ * NON, systematiquement, et ce n'est toujours pas un oubli — mais la raison
+ * a change.
  *
- * La fonction prend quand meme le lot : le jour ou l'idempotence existera,
- * c'est ici que la regle changera, et nulle part ailleurs dans l'ecran.
+ * Les trois defauts d'origine sont fermes : `debiter_credits` est atomique,
+ * le cout vient du serveur, et un index unique sur `(user_id, reference_id)`
+ * interdit le second debit d'une meme reference.
+ *
+ * Ce qui manque est ailleurs. L'idempotence porte sur la TENTATIVE : la
+ * reference est derivee du `jobId`, cree a la reservation. Reprendre un
+ * contenu echoue ouvrirait une NOUVELLE tentative, donc une nouvelle
+ * reference — et le socle la facturerait, a juste titre, comme un rendu
+ * different. Il n'existe aucune cle stable par element du lot, persistee
+ * cote serveur et retrouvee apres un rechargement.
+ *
+ * Tant que cette cle n'existe pas, « reprendre » veut dire « recomposer et
+ * repayer », ce qui n'est pas ce que le mot promet.
+ *
+ * La fonction prend quand meme le lot : le jour ou cette cle existera, c'est
+ * ici que la regle changera, et nulle part ailleurs dans l'ecran.
  */
 export function repriseAutorisee(items: BatchItem[]): Reprise {
   void items;

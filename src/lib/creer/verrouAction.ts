@@ -81,4 +81,6 @@ export const VERROU = {
   exporter: 'rendu:exporter',
   infographieExport: 'rendu:infographie-export',
   agentIA: 'rendu:agent-ia',
+  /** Le lancement de l'Assistant — un contenu comme une serie. */
+  serie: 'rendu:assistant',
 } as const;

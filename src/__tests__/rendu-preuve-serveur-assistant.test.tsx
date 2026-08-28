@@ -418,12 +418,14 @@ describe('9 & 10. Aucune publication, Batch toujours ferme', () => {
     expect(corps.platforms).toEqual([]);
   });
 
-  it('le mode Serie reste ferme', async () => {
-    expect(BATCH_SERIE_DISPONIBLE).toBe(false);
+  it('le mode Serie est ouvert en pilote, mais l unitaire reste par defaut', async () => {
+    expect(BATCH_SERIE_DISPONIBLE).toBe(true);
     installerFetch({ politique: 'credits' }); poser();
     await allerAEnvoi();
     const serie = document.querySelector('[data-batch-mode="serie"]') as HTMLButtonElement;
-    expect(serie.disabled).toBe(true);
+    expect(serie.disabled).toBe(false);
+    const unique = document.querySelector('[data-batch-mode="unique"]');
+    expect(unique?.getAttribute('aria-pressed')).toBe('true');
   });
 });
 
