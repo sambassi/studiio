@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
-import { supabaseAdmin } from '@/lib/db/supabase';
+import { signeurPublic } from '@/lib/storage/minio-client';
+import {
+  cibleTeleversement, urlSortieSure, urlPubliqueRendu,
+} from '@/lib/rendus/cible-upload';
 import {
   reserverRendu, OPERATIONS, FORMATS, CHAMPS_INTERDITS_RENDU,
   type Operation, type Format,
@@ -65,28 +68,38 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: motif || 'reservation impossible' }, { status: 400 });
     }
 
-    const { data: signe, error: eSigne } = await supabaseAdmin
-      .storage.from(rendu.bucket).createSignedUploadUrl(rendu.cle);
+    // ── OU LE NAVIGATEUR ENVOIE ──────────────────────────────────────
+    // Cette route signait ici avec le client Supabase, dont l'endpoint est
+    // `http://studiio-minio:9000` sous `STORAGE_PROVIDER=s3` : le nom Docker
+    // du conteneur, en clair. Chrome bloquait l'envoi en Mixed Content, apres
+    // que le montage avait ete compose -- donc aucun debit, aucun post, et
+    // huit megaoctets perdus.
+    //
+    // La cible est desormais soit une URL presignee HTTPS sur le nom PUBLIC,
+    // soit le relais same-origin de l'application. Dans les deux cas, bucket
+    // et cle viennent de la ligne `rendus`.
+    const cible = await cibleTeleversement(
+      rendu.id, rendu.bucket, rendu.cle, signeurPublic(),
+    );
 
-    if (eSigne || !signe?.signedUrl) {
+    // Garde de dernier recours : rien d'inatteignable ou de non chiffre ne
+    // sort d'ici. `cibleTeleversement` retombe deja sur le relais, mais une
+    // regression future ne doit pas pouvoir renvoyer une adresse interne.
+    if (!urlSortieSure(cible.url)) {
       return NextResponse.json(
         { ok: false, error: 'Televersement indisponible' }, { status: 503 },
       );
     }
 
-    // URL publique de LA cle attribuee — pour que l'appelant puisse la poser
-    // comme media d'un post sans jamais inventer de chemin.
-    const base = process.env.PUBLIC_STORAGE_URL
-      || (process.env.NEXT_PUBLIC_APP_URL
-        ? `${process.env.NEXT_PUBLIC_APP_URL}/storage/v1/object/public`
-        : '/storage/v1/object/public');
-
     return NextResponse.json({
       ok: true,
       jobId: rendu.id,
       cout: rendu.cout,
-      uploadUrl: signe.signedUrl,
-      publicUrl: `${base}/${rendu.bucket}/${rendu.cle}`,
+      uploadUrl: cible.url,
+      uploadMode: cible.mode,
+      // URL publique de LA cle attribuee — pour que l'appelant puisse la
+      // poser comme media d'un post sans jamais inventer de chemin.
+      publicUrl: urlPubliqueRendu(rendu.bucket, rendu.cle),
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'reservation impossible';

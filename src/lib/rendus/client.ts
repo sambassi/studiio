@@ -23,7 +23,14 @@ export type OperationRendu =
 
 export interface Tentative {
   jobId: string;
+  /**
+   * Ou envoyer le montage. TOUJOURS en HTTPS, ou relative a l'origine de la
+   * page -- jamais une adresse interne : le serveur applique une garde de
+   * sortie avant de la rendre.
+   */
   uploadUrl: string;
+  /** `direct` = presigne sur le nom public, `relais` = route de l'app. */
+  uploadMode?: 'direct' | 'relais';
   publicUrl: string;
   cout: number;
 }
@@ -62,7 +69,10 @@ async function ouvrir(operation: OperationRendu, format: 'reel' | 'tv'): Promise
   });
   const json = await res.json().catch(() => null);
   if (!res.ok || !json?.ok) return null;
-  return { jobId: json.jobId, uploadUrl: json.uploadUrl, publicUrl: json.publicUrl, cout: json.cout };
+  return {
+    jobId: json.jobId, uploadUrl: json.uploadUrl, uploadMode: json.uploadMode,
+    publicUrl: json.publicUrl, cout: json.cout,
+  };
 }
 
 async function abandonner(jobId: string, motif: string): Promise<void> {
@@ -110,10 +120,16 @@ export async function rendreEtFacturer(params: {
 
   try {
     etape?.('Envoi du montage…');
+    // Le relais de l'application est SAME-ORIGIN et authentifie par le
+    // cookie de session : sans `credentials`, `fetch` ne l'envoie pas sur
+    // une requete construite a la main, et la route repondrait 401. Une URL
+    // presignee, elle, est absolue et ne doit recevoir aucun cookie.
+    const relais = tentative.uploadUrl.startsWith('/');
     const put = await fetch(tentative.uploadUrl, {
       method: 'PUT',
       headers: { 'Content-Type': blob.type || 'video/webm' },
       body: blob,
+      ...(relais ? { credentials: 'include' as const } : {}),
     });
     if (!put.ok) throw new Error(`PUT ${put.status}`);
   } catch (e) {

@@ -115,7 +115,8 @@ import {
 } from '@/lib/creer/batch';
 import {
   batchRunId, batchItemId, initialBatchItems, setItemState, batchSummary,
-  batchPartiel, repriseAutorisee, type BatchItem,
+  batchPartiel, repriseAutorisee, titreInterruption, messageInterruption,
+  type BatchItem,
 } from '@/lib/creer/batchRun';
 import {
   BATCH_SERIE_DISPONIBLE, BATCH_SERIE_BADGE, BATCH_SERIE_EXPLICATION,
@@ -8811,7 +8812,8 @@ export default function AssistantWizard() {
                     {!sending && batchPartiel(batchItems) && (
                       <div data-batch-report className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-3 space-y-2">
                         <div className="flex items-center gap-2 text-sm font-medium text-amber-300">
-                          <AlertTriangle className="w-4 h-4" /> Série interrompue
+                          <AlertTriangle className="w-4 h-4" />{' '}
+                          <span data-interruption-titre>{titreInterruption(batchItems.length)}</span>
                         </div>
                         <p className="text-xs text-gray-400">
                           {(() => {
@@ -8842,16 +8844,30 @@ export default function AssistantWizard() {
                             </li>
                           ))}
                         </ul>
-                        <button
-                          type="button"
-                          data-batch-retry
-                          disabled
-                          title={repriseAutorisee(batchItems).raison}
-                          className="w-full rounded-lg border border-gray-800 px-3 py-2 text-xs text-gray-500 cursor-not-allowed"
-                        >
-                          Reprendre les contenus échoués
-                        </button>
-                        <p className="text-[11px] text-gray-500">{repriseAutorisee(batchItems).raison}</p>
+                        {/* ── CE QUI RESTE A FAIRE ────────────────────
+                            Un seul contenu : il n'y a rien a « reprendre »,
+                            et l'ancienne raison affirmait que le debit n'a
+                            pas de cle d'idempotence — ce n'est plus vrai
+                            depuis le socle. On dit ce qui s'est reellement
+                            passe : rien n'a ete debite, rien n'a ete
+                            enregistre, la creation peut etre relancee.
+
+                            Plusieurs contenus : le vocabulaire Serie et sa
+                            regle de reprise sont conserves tels quels. */}
+                        {batchItems.length > 1 && (
+                          <button
+                            type="button"
+                            data-batch-retry
+                            disabled
+                            title={repriseAutorisee(batchItems).raison}
+                            className="w-full rounded-lg border border-gray-800 px-3 py-2 text-xs text-gray-500 cursor-not-allowed"
+                          >
+                            Reprendre les contenus échoués
+                          </button>
+                        )}
+                        <p className="text-[11px] text-gray-500" data-interruption-message>
+                          {messageInterruption(batchItems.length)}
+                        </p>
                       </div>
                     )}
                   </>

@@ -134,6 +134,36 @@ export const REPRISE_INDISPONIBLE =
   + 'pourrait le facturer deux fois. Les contenus déjà réussis sont conservés '
   + 'dans le calendrier ; relancez les manquants depuis un nouveau lot.';
 
+/**
+ * Ce qu'on dit apres l'echec d'une creation UNIQUE.
+ *
+ * `REPRISE_INDISPONIBLE` parlait d'un debit « sans cle d'idempotence » : ce
+ * n'est plus vrai. Le socle ouvre une tentative, ne debite qu'a la
+ * confirmation, et un index unique sur `(user_id, reference_id)` interdit le
+ * second debit. Un echec d'envoi ne facture rien et n'enregistre rien --
+ * relancer est donc sans risque, et le dire evite de laisser croire a une
+ * perte.
+ */
+export const CREATION_INTERROMPUE =
+  'L’envoi a échoué. Aucun crédit n’a été débité et aucun contenu n’a été '
+  + 'enregistré. Vous pouvez relancer la création.';
+
+/** Titre du rapport d'echec — le vocabulaire suit le nombre de contenus. */
+export function titreInterruption(total: number): string {
+  return total > 1 ? 'Série interrompue' : 'Création interrompue';
+}
+
+/**
+ * Le message d'echec, selon le nombre de contenus.
+ *
+ * Le vocabulaire « Serie » est conserve au-dela d'un contenu, comme demande.
+ * En dessous, il decrivait une situation qui n'existe pas : un seul contenu
+ * ne s'interrompt pas « en serie », et rien n'y reste a reprendre.
+ */
+export function messageInterruption(total: number): string {
+  return total > 1 ? REPRISE_INDISPONIBLE : CREATION_INTERROMPUE;
+}
+
 export interface Reprise {
   autorisee: boolean;
   raison: string;

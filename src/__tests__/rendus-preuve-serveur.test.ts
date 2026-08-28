@@ -37,6 +37,12 @@ let objetLeve: Error | null = null;
 const statAppels: Array<{ bucket: string; cle: string }> = [];
 
 vi.mock('@/lib/storage/minio-client', () => ({
+  /**
+   * Aucun endpoint public configure : la cible d'envoi est le relais
+   * same-origin. C'est le cas par defaut, et celui de la production au
+   * moment ou Chrome a bloque l'envoi.
+   */
+  signeurPublic: () => null,
   clientMinio: () => ({
     async statObject(bucket: string, cle: string) {
       statAppels.push({ bucket, cle });
@@ -123,11 +129,16 @@ beforeEach(() => {
 });
 
 describe('1 & 3. Le serveur crée la tentative et attribue la clé', () => {
-  it('rend un identifiant et une URL de téléversement', async () => {
+  it('rend un identifiant et une cible de téléversement', async () => {
     const r = await creer({ operation: 'apercu', format: 'reel' });
     expect(r.status).toBe(200);
     expect(r.body.jobId).toBeTruthy();
-    expect(r.body.uploadUrl).toContain('https://minio.test/put/');
+    // Sans endpoint public, la cible est le relais de l'application : une
+    // URL RELATIVE, donc chiffrée par l'origine de la page. Elle signait
+    // auparavant sur `http://studiio-minio:9000`, que Chrome bloquait.
+    expect(r.body.uploadUrl).toBe(`/api/render/jobs/${r.body.jobId}/upload`);
+    expect(r.body.uploadMode).toBe('relais');
+    expect(JSON.stringify(r.body)).not.toContain('studiio-minio');
   });
 
   it('la clé est dérivée du serveur et reste dans le périmètre de l utilisateur', async () => {
