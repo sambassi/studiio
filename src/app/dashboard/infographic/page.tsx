@@ -9,7 +9,8 @@ import { generateSmartContent } from '@/lib/smart-content';
 import { useBranding } from '@/lib/hooks/useBranding';
 import { useCreatorPreferences } from '@/lib/hooks/useCreatorPreferences';
 import { BrandingIndicator } from '@/components/shared/BrandingIndicator';
-import { composeAndUpload, downloadBlob } from '@/lib/video-composer';
+import { downloadBlob } from '@/lib/video-composer';
+import { composerEtFacturer } from '@/lib/rendus/composer';
 import { useTranslations } from '@/i18n/client';
 
 interface InfoCard {
@@ -551,7 +552,11 @@ export default function InfographiePage() {
           // ═══ CLIENT-SIDE VIDEO RENDERING ═══
           let renderedVideoUrl: string | null = null;
           try {
-            const result = await composeAndUpload({
+            // Ce montage devient la video d'un post du Calendrier : rendu
+            // facture, tentative serveur, objet verifie a la cle attribuee.
+            // Un echec LEVE et sort par le `catch` du tour — aucun post n'est
+            // cree pour un montage que le serveur n'a pas vu.
+            const result = await composerEtFacturer('calendrier', isReel ? 'reel' : 'tv', {
               width: compWidth, height: compHeight, fps: 30,
               title: bTitle, subtitle: bSub, salesPhrase: bPhrase,
               cards: await preRenderCardIcons(cards.map(c => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color }))),
@@ -579,8 +584,21 @@ export default function InfographiePage() {
               savedBlobForExport = result.blob;
             }
           } catch (err) {
+            // ── ON S'ARRETE, ON NE POURSUIT PAS ────────────────────────
+            // Cette erreur etait avalee : le post etait cree quand meme,
+            // avec l'affiche a la place du montage et `renderedVideoUrl`
+            // a `null`. L'ecran annoncait « enregistre au calendrier »
+            // pour un contenu dont la video n'existait pas.
+            //
+            // Depuis le socle, un echec signifie aussi que RIEN n'a ete
+            // debite : il n'y a donc rien a rattraper, et poursuivre
+            // enchainerait des rendus sur un lot deja casse.
             console.error(`[Compose] Erreur vidéo ${b + 1}:`, err);
-            lastError = String(err);
+            throw new Error(
+              `Le montage ${b + 1} n'a pas pu être produit : `
+              + `${err instanceof Error ? err.message : 'erreur inconnue'}. `
+              + 'Aucun crédit n’a été débité pour lui, et il n’a pas été enregistré.',
+            );
           }
 
           // Create calendar post with rendered video
@@ -663,7 +681,10 @@ export default function InfographiePage() {
             setExportProgress(98);
           } else {
             setExportToast({ message: t('export.composingForExport'), type: 'success' });
-            const result = await composeAndUpload({
+            // Export direct : le montage part sur le disque de
+            // l'utilisateur, donc operation `bureau`. Meme contrat, meme
+            // preuve, meme refus de livrer sans confirmation.
+            const result = await composerEtFacturer('bureau', isReel ? 'reel' : 'tv', {
               width: compWidth, height: compHeight, fps: 30,
               title: title || 'Infographie', subtitle, salesPhrase,
               cards: await preRenderCardIcons(cards.map(c => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color }))),

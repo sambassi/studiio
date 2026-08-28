@@ -4722,6 +4722,23 @@ export async function uploadRendu(
   return composeAndUploadInterne(blob, thumbnailBlob, options);
 }
 
+/**
+ * ⚠️ NE PLUS APPELER DIRECTEMENT — utiliser `composerEtFacturer`.
+ *
+ * Cette fonction compose ET televerse vers une cle demandee a
+ * `/api/upload/signed-url`, donc choisie par le navigateur. Elle n'ouvre
+ * aucune tentative serveur, ne produit aucune preuve de stockage et ne
+ * facture rien. Sept ecrans l'appelaient encore : une video pouvait etre
+ * regeneree, enregistree, programmee et publiee sans qu'une seule ligne
+ * n'existe dans `public.rendus`.
+ *
+ * Le remplacant a le MEME contrat de retour : `composerEtFacturer(operation,
+ * format, options)` de `@/lib/rendus/composer`. Un test verifie qu'aucun
+ * fichier de `src/` hors ce module ne l'appelle plus.
+ *
+ * Elle reste ici parce qu'elle porte la strategie de televersement des
+ * RUSHES, qui n'ont pas de tentative et n'en ont pas besoin.
+ */
 export async function composeAndUpload(options: ComposerOptions): Promise<{ blob: Blob; url: string | null; thumbnailUrl: string | null; composerVersion: string }> {
   const { video: blob, thumbnail: thumbnailBlob } = await composeVideo(options);
   return composeAndUploadInterne(blob, thumbnailBlob, options);

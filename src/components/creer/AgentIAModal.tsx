@@ -17,7 +17,7 @@ import { Modal } from '@/components/ui/Modal';
 import { useBranding } from '@/lib/hooks/useBranding';
 import { useCreatorPreferences } from '@/lib/hooks/useCreatorPreferences';
 import { BrandingIndicator } from '@/components/shared/BrandingIndicator';
-import { composeAndUpload } from '@/lib/video-composer';
+import { composerEtFacturer } from '@/lib/rendus/composer';
 import { renderMontage, type MontageSpec } from '@/lib/ffmpeg-montage';
 import { useTranslations, useLocale } from '@/i18n/client';
 import { getContentPools } from '@/lib/i18n-content';
@@ -428,7 +428,9 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
         let renderedVideoUrl: string | null = null;
         if (rushUrls.length > 0 || posterUrl) {
           try {
-            const { url } = await composeAndUpload({
+            // L'Agent cree des posts de Calendrier : chaque montage est un
+            // rendu facture, avec sa propre tentative serveur.
+            const { url } = await composerEtFacturer('calendrier', 'reel', {
               width: 1080,
               height: 1920,
               fps: 30,
@@ -461,7 +463,20 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
             });
             if (url) renderedVideoUrl = url;
           } catch (err) {
+            // ── ON S'ARRETE, ON NE POURSUIT PAS ────────────────────────
+            // Cette erreur etait avalee : le post etait cree quand meme,
+            // avec l'affiche a la place du montage. L'utilisateur voyait
+            // une serie « reussie » dont les videos n'existaient pas.
+            //
+            // Depuis le socle, un echec signifie aussi que RIEN n'a ete
+            // debite. Poursuivre creerait des posts sans video et
+            // enchainerait des rendus sur une serie deja cassee.
             console.error(`[Agent IA] Compose error post ${i + 1}:`, err);
+            throw new Error(
+              `Le montage ${i + 1} n'a pas pu être produit : `
+              + `${err instanceof Error ? err.message : 'erreur inconnue'}. `
+              + 'Aucun crédit n’a été débité pour lui, et il n’a pas été enregistré.',
+            );
           }
         }
 

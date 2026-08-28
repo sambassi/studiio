@@ -44,7 +44,25 @@ import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { useBranding } from '@/lib/hooks/useBranding';
 import { fontStack, ensureFontsLoaded } from '@/lib/fonts/catalog';
-import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
+import { CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
+import { composerEtFacturer } from '@/lib/rendus/composer';
+
+/**
+ * Le format tarifaire d'un post.
+ *
+ * Le serveur lit le prix dans `tarifs_rendu`, indexe par format. Il ne
+ * l'accepte pas du navigateur : ce qui part d'ici designe seulement LEQUEL
+ * des deux tarifs s'applique, et un post sans format explicite est traite
+ * comme du 16:9 — exactement comme `montageSize` le fait deja.
+ *
+ * Au niveau du MODULE, mais NON EXPORTEE : les quatre chemins de composition
+ * du Calendrier vivent dans des fonctions differentes, et une copie par
+ * fonction finirait par diverger sur le defaut. Un fichier de page Next
+ * n'accepte qu'un jeu d'exports connus — l'exporter casserait `.next/types`.
+ */
+function formatRendu(p?: { format?: string | null } | null): 'reel' | 'tv' {
+  return p?.format === 'reel' ? 'reel' : 'tv';
+}
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { useTranslations, useLocale } from '@/i18n/client';
 import { AgentIAModal } from '@/components/creer/AgentIAModal';
@@ -627,7 +645,7 @@ export default function CalendarPage() {
    * Regenerate the montage video + thumbnail for an existing post.
    *
    * Targets posts that predate the thumbnailUrl feature (or never passed
-   * through the composer at all). Re-runs composeAndUpload with the stored
+   * through the composer at all). Re-runs le montage, par le socle, avec le stored
    * metadata so the new video matches the current editor→composer parity,
    * then PATCHes the post with the fresh `renderedVideoUrl` + `thumbnailUrl`
    * and reloads the month.
@@ -697,7 +715,11 @@ export default function CalendarPage() {
     setRegenStage('Préparation...');
 
     try {
-      const { url: renderedUrl, thumbnailUrl: freshThumb, composerVersion: freshVersion } = await composeAndUpload({
+      // Le montage remplace la video d'un post du Calendrier : c'est un
+      // rendu, il ouvre une tentative serveur et n'est livre qu'une fois
+      // l'objet vu a la cle attribuee. `composerEtFacturer` LEVE sinon, et
+      // le `catch` de cette fonction affiche l'erreur sans rien enregistrer.
+      const { url: renderedUrl, thumbnailUrl: freshThumb, composerVersion: freshVersion } = await composerEtFacturer('calendrier', formatRendu(post), {
         // Dimensions reelles du montage quand le post les porte : sans
         // elles, un carre se recomposait en 1920x1080.
         ...montageSize(meta?.videoSize, post?.format ?? 'tv'),
@@ -1147,7 +1169,9 @@ export default function CalendarPage() {
         const brand = meta.branding;
 
         const designMeta = meta.design || {};
-        const { url: renderedUrl } = await composeAndUpload({
+        // Composition automatique avant programmation : meme contrat.
+        // Un echec fait `return` plus bas — le post n'est jamais programme.
+        const { url: renderedUrl } = await composerEtFacturer('calendrier', formatRendu(post), {
           // Dimensions reelles du montage quand le post les porte : sans
           // elles, un carre se recomposait en 1920x1080.
           ...montageSize(meta?.videoSize, post?.format ?? 'tv'),
@@ -1791,7 +1815,11 @@ export default function CalendarPage() {
           console.log('[Publish] Media URLs:', { posterUrl: posterUrl?.substring(0, 60), videoUrl: videoUrl?.substring(0, 60), logoUrl: logoUrl?.substring(0, 30), musicUrl: musicUrl?.substring(0, 60) });
 
           // Wrap composition in a 3-minute timeout to prevent hanging forever
-          const composePromise = composeAndUpload({
+          // « Publier maintenant » compose d'abord. La publication elle-meme
+          // passe par le cron, apres passage en `scheduled` : elle ne peut
+          // donc commencer qu'apres la confirmation, puisqu'un echec sort
+          // par le `catch` avant tout enregistrement.
+          const composePromise = composerEtFacturer('calendrier', formatRendu(post), {
             // Dimensions reelles du montage quand le post les porte : sans
             // elles, un carre se recomposait en 1920x1080.
             ...montageSize(meta?.videoSize, post?.format ?? 'tv'),
@@ -2291,7 +2319,7 @@ export default function CalendarPage() {
       const brand = meta?.branding;
 
       // If no media at all, the recompose has nothing to draw with — bail
-      // out cleanly instead of letting composeAndUpload throw on a useless
+      // out cleanly instead of letting le compositeur throw on a useless
       // empty montage. Cards/title-only posts are still OK (cards array
       // covers that case).
       const hasCards = (meta?.cards?.length || 0) > 0 || (meta?.textCards?.length || 0) > 0;
@@ -2308,7 +2336,9 @@ export default function CalendarPage() {
       const calDesign = meta?.design;
       const calSiteText = calDesign?.siteText;
 
-      const { blob, url: renderedUrl } = await composeAndUpload({
+      // Recomposition a la volee pour TELECHARGEMENT : le montage part sur
+      // le disque de l'utilisateur, c'est l'operation `bureau`.
+      const { blob, url: renderedUrl } = await composerEtFacturer('bureau', formatRendu(post), {
         // Dimensions reelles du montage quand le post les porte : sans
         // elles, un carre se recomposait en 1920x1080.
         ...montageSize(meta?.videoSize, post?.format ?? 'tv'),
