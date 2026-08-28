@@ -61,6 +61,49 @@ export function signeurPublic(): { presignedPutObject(b: string, c: string, t: n
   });
 }
 
+/**
+ * Le signeur de LECTURE, sur le nom INTERNE.
+ *
+ * L'exact inverse de `signeurPublic` : l'URL produite ici ne doit JAMAIS
+ * sortir du serveur. Elle sert a donner a un processus local — ffmpeg,
+ * ffprobe — un moyen de lire un objet volumineux par requetes `Range`, sans
+ * que l'application ne le charge en memoire ni ne le recopie sur disque.
+ *
+ * Trois raisons de ne PAS ajouter `presignedGetObject` a `ClientStockage` :
+ *
+ * 1. `ClientStockage` decrit ce que l'application fait au stockage pour le
+ *    compte d'un utilisateur : regarder un objet, en ecrire un. Signer une
+ *    lecture interne n'est pas de cette nature — c'est une couture entre
+ *    deux processus du serveur.
+ * 2. Les doublures de test de `clientMinio` n'implementent que `statObject`
+ *    et `putObject`. Elargir l'interface les rendrait toutes invalides d'un
+ *    coup, pour un besoin qu'aucune d'elles n'a.
+ * 3. Le nom retenu — INTERNE ici, PUBLIC la — est ce qui rend l'erreur
+ *    visible a la relecture. Une seule methode sur un seul client laisserait
+ *    quelqu'un signer avec le mauvais hote sans s'en apercevoir, et c'est
+ *    exactement la panne que `signeurPublic` raconte plus haut.
+ *
+ * Rend `null` quand aucun secret n'est configure : l'appelant traduit ce
+ * `null` en refus, il ne fabrique pas d'URL de repli.
+ */
+export function signeurInterne(): { presignedGetObject(b: string, c: string, t: number): Promise<string> } | null {
+  const secretKey = process.env.MINIO_SECRET_KEY || process.env.MINIO_ROOT_PASSWORD || '';
+  if (!secretKey) return null;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Client: MinioClient } = require('minio');
+  return new MinioClient({
+    endPoint: process.env.MINIO_ENDPOINT || 'studiio-minio',
+    port: parseInt(process.env.MINIO_PORT || '9000', 10),
+    useSSL: process.env.MINIO_USE_SSL === 'true',
+    accessKey: process.env.MINIO_ACCESS_KEY || process.env.MINIO_ROOT_USER || 'studiio',
+    secretKey,
+    // Region FIXEE, pour la meme raison que dans `signeurPublic` : sans elle
+    // le SDK la demande au serveur avant de signer, soit une requete de plus
+    // a chaque analyse.
+    region: process.env.MINIO_REGION || 'us-east-1',
+  });
+}
+
 export function clientMinio(): ClientStockage {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Client: MinioClient } = require('minio');
