@@ -6,6 +6,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
+import SessionsTournagePanel from '@/components/creer/SessionsTournagePanel';
 import { CardIcon } from '@/components/ui/CardIcon';
 import ColorWheel from '@/components/ui/ColorWheel';
 import { THEMES, themeLabel, isCustomTopic } from '@/lib/themes';
@@ -485,6 +486,20 @@ export default function AutopilotPanel({ accent, onConfigChange, onPatchReady }:
       {/* ── Étape 2 · Vos rushes ─────────────────────────────────────── */}
       {etape === 1 && (
         <div className="space-y-3">
+{/* ── SESSIONS DE TOURNAGE ──────────────────────────────────────
+              Le socle M3-A, monte ICI plutot que dans une route de plus :
+              c'est l'etape ou l'on parle deja des rushes, et l'utilisateur
+              n'a pas a chercher ailleurs ce qui prolonge ce qu'il regarde.
+
+              La banque de rushes historique (`config.rushUrls`) reste juste
+              en dessous, INTACTE. Les deux coexistent : migrer l'une vers
+              l'autre est une decision de produit, pas un effet de bord de ce
+              lot. */}
+          <div className="rounded-xl border border-gray-800 bg-gray-900/30 p-3 space-y-2">
+            <p className="text-xs font-medium text-gray-300">Sessions de tournage</p>
+            <SessionsTournagePanel />
+          </div>
+
 {/* ── Banque de rushes ─────────────────────────────────────────── */}
           <div>
             <div className="flex items-center justify-between gap-2 mb-2">

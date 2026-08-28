@@ -57,7 +57,20 @@ export async function verifierObjet(
 ): Promise<Verification> {
   const vide: Verification = { ok: false, taille: 0, contentType: '' };
 
+  // Le prefixe EST la preuve de propriete : les cles sont fabriquees par le
+  // serveur sous la forme `<userId>/<usage>/<horodatage>-<nom>`, et le nom
+  // seul vient du navigateur. Que l'objet EXISTE ne prouve rien — il peut
+  // appartenir a quelqu'un d'autre.
   if (!cle.startsWith(`${userId}/`)) {
+    return { ...vide, motif: 'cle_hors_perimetre' };
+  }
+  // `..` refuse, comme le fait deja `cheminAutorise` du chemin multipart.
+  // `A/../B/x` satisfait le prefixe tout en designant l'espace de B. S3 et
+  // MinIO traitent les cles comme opaques et ne normalisent pas — un tel
+  // objet n'existerait donc pas — mais la garde existe une route plus loin,
+  // et une garantie de propriete ne doit pas dependre du fait qu'un
+  // fournisseur de stockage ne normalise pas ses cles.
+  if (cle.includes('..')) {
     return { ...vide, motif: 'cle_hors_perimetre' };
   }
 

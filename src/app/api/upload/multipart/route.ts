@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { Client as MinioClient } from 'minio';
+import { ALLOWED_BUCKETS as BUCKETS } from '@/lib/storage/buckets';
 import { sanitizeStorageFilename } from '@/lib/storage/sanitize-filename';
 
 /**
@@ -27,7 +28,9 @@ export const dynamic = 'force-dynamic';
 /** Validité d'une URL de morceau : de quoi couvrir une reprise lente. */
 const PART_URL_TTL_S = 3600;
 
-const ALLOWED_BUCKETS = new Set(['media', 'audio', 'videos', 'images']);
+// La liste vit dans `lib/storage/buckets` : elle etait ecrite deux fois,
+// a l'identique, dans cette route et dans l'autre chemin d'envoi.
+const ALLOWED_BUCKETS = new Set<string>(BUCKETS);
 
 /**
  * Client visant l'endpoint PUBLIC.

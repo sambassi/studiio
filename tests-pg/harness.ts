@@ -25,6 +25,7 @@ export const MIGRATIONS = [
   join(RACINE, 'migrations/2026-08-28-rendus-preuve-serveur.sql'),
   join(RACINE, 'migrations/2026-08-29-facturation-partenaires.sql'),
   join(RACINE, 'migrations/2026-08-30-debit-operation.sql'),
+  join(RACINE, 'migrations/2026-08-31-shoot-sessions-rushes.sql'),
 ];
 
 /** La première, conservée pour les tests qui ne parlent que de crédits. */
