@@ -342,6 +342,21 @@ describe('La fonction est installée comme les autres', () => {
    * avant que l'un des deux ne valide. C'est reproductible : deux
    * transactions explicites, ouvertes ensemble.
    */
+  /** Attend qu'une session attende un verrou de ligne. Borné, jamais un sleep. */
+  const attendreVerrou = async (_userId: string): Promise<boolean> => {
+    for (let i = 0; i < 200; i += 1) {
+      const { rows } = await client.query<{ n: number }>(
+        `select count(*)::int as n
+           from pg_locks l
+          where not l.granted and l.locktype in ('transactionid', 'tuple')`,
+      );
+      if (rows[0].n > 0) return true;
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => { setTimeout(r, 20); });
+    }
+    return false;
+  };
+
   const courseDansDeuxTransactions = async (userId: string, reference: string) => {
     const a = await connecter();
     const b = await connecter();
@@ -354,11 +369,22 @@ describe('La fonction est installée comme les autres', () => {
         [userId, 'render', reference],
       );
       // B passe `exists` lui aussi — A n'a pas validé — puis BLOQUE sur le
-      // verrou. On ne l'attend pas : on laisse A valider d'abord.
+      // verrou de ligne. On ne l'attend pas.
       const courseB = b.query(
         'select * from public.debiter_credits_operation($1, 10, $2, $3, null)',
         [userId, 'render', reference],
       );
+      // ── LA SYNCHRONISATION EST LE TEST ────────────────────────────────
+      // Le premier essai commettait A « après avoir lancé B », sans savoir
+      // si B était parti. Quand A validait en premier, B prenait un
+      // instantané postérieur, son `exists` voyait le débit, et le test
+      // concluait à tort que l'index ne servait à rien.
+      //
+      // On attend donc que B soit RÉELLEMENT bloqué sur le verrou, observé
+      // dans `pg_locks`. Sans cette attente, il n'y a pas de course, donc
+      // rien à démontrer.
+      const bloque = await attendreVerrou(userId);
+      expect(bloque, 'B doit être bloqué sur le verrou de ligne').toBe(true);
       await a.query('commit');
       await courseB;
       await b.query('commit');
