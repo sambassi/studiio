@@ -92,8 +92,12 @@ describe('La contrainte qui commandait tout', () => {
 
   it('et il débite MAINTENANT, comme un rendu manuel', () => {
     // Le montage est rendu et en ligne : il se paie, au même tarif.
-    expect(route).toContain('deductCredits(userId, COST_PER_VIDEO');
+    expect(route).toContain('deductCredits(');
+    expect(route).toContain('userId, COST_PER_VIDEO');
     expect(route).toContain("getVideoRenderCost('reel')");
+    // Et il le fait avec une REFERENCE stable, derivee du job : un cron se
+    // relance, et l'ancien debit non idempotent aurait facture deux fois.
+    expect(route).toContain("referenceOperation('autopilote', jobId)");
   });
 
   it('le débit vient APRÈS le rendu et l insertion', () => {

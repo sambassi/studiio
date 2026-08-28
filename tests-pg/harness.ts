@@ -24,6 +24,7 @@ export const MIGRATIONS = [
   join(RACINE, 'migrations/2026-08-27-credits-atomiques.sql'),
   join(RACINE, 'migrations/2026-08-28-rendus-preuve-serveur.sql'),
   join(RACINE, 'migrations/2026-08-29-facturation-partenaires.sql'),
+  join(RACINE, 'migrations/2026-08-30-debit-operation.sql'),
 ];
 
 /** La première, conservée pour les tests qui ne parlent que de crédits. */
@@ -258,4 +259,24 @@ export async function lireFacturation(client: Client, renduId: string) {
     politique: string; partenaire: string | null; operation_partenaire: string | null;
     cout_partenaire: string | null; transaction_id: string | null; etat: string;
   } | undefined;
+}
+
+/**
+ * Appelle `debiter_credits_operation` — la fonction de production, telle
+ * quelle. Rien n'est réimplémenté ici : une copie du SQL ne prouverait que
+ * sa propre correction.
+ */
+export async function debiterOperation(
+  client: Client,
+  userId: string,
+  montant: number,
+  reference: string,
+  type = 'render',
+  description: string | null = null,
+): Promise<Debit> {
+  const { rows } = await client.query<Debit>(
+    'select * from public.debiter_credits_operation($1, $2, $3, $4, $5)',
+    [userId, montant, type, reference, description],
+  );
+  return rows[0];
 }

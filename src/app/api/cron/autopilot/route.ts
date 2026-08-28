@@ -13,6 +13,7 @@ import { notifyOnce, NOTIFICATION_KINDS } from '@/lib/notifications/store';
 import { buildAutopilotVoices } from '@/lib/autopilot/voice';
 import { pickTopics } from '@/lib/autopilot/topics';
 import { deductCredits, getVideoRenderCost } from '@/lib/credits/system';
+import { referenceOperation } from '@/lib/credits/atomique';
 
 /**
  * Moteur de l'Autopilote — un passage par appel.
@@ -389,7 +390,14 @@ export async function GET(req: NextRequest) {
           // et le post existe. Debiter avant ferait payer un rendu qui peut
           // encore echouer.
           try {
-            await deductCredits(userId, COST_PER_VIDEO, 'render');
+            // Reference stable : le `jobId` de l'autopilote. Une relance du
+            // cron sur le meme job ne debite pas une seconde fois — c'est
+            // exactement le cas que l'ancien debit non idempotent laissait
+            // passer, et un cron se relance.
+            await deductCredits(
+              userId, COST_PER_VIDEO, 'render',
+              referenceOperation('autopilote', jobId),
+            );
           } catch (e) {
             // Le montage est livre : on ne le retire pas pour un debit
             // manque. On le dit fort, c'est tout.
