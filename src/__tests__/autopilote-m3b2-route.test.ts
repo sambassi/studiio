@@ -38,6 +38,31 @@ import {
 const authMock = vi.fn();
 vi.mock('@/lib/auth/config', () => ({ auth: () => authMock() }));
 
+/**
+ * Le moteur réel est REMPLACÉ par un module vide dans ce fichier.
+ *
+ * ⚠️ SANS CELA, « moteur absent » N'EST PLUS SIMULABLE. Depuis que le moteur
+ * existe vraiment, `definirMoteurExtraction(null)` ne suffit plus : la
+ * couture retombe sur l'import dynamique, trouve `extraireRush`, et la route
+ * lance une vraie mesure — sans MinIO, donc `stockage_injoignable` au lieu du
+ * 503 attendu.
+ *
+ * Ce fichier teste l'ORCHESTRATION, jamais la mesure : tous ses moteurs sont
+ * injectés. Neutraliser le module ici rend `null` de nouveau signifiant, et
+ * garantit qu'aucun ffmpeg ne démarre pendant ces 88 tests.
+ *
+ * Le raccord réel entre la couture et le moteur est vérifié ailleurs, dans
+ * `autopilote-m3b2-branchement.test.ts`, qui charge le vrai module.
+ */
+vi.mock('@/lib/autopilot/analyse/extraction', async (importOriginal) => {
+  // Le VOCABULAIRE est conservé — `moteur.ts` l'importe d'ici, et un module
+  // entièrement vide ferait échouer la validation des motifs, transformant
+  // chaque échec attendu en 500. Seule la FONCTION disparaît : c'est elle,
+  // et elle seule, dont on veut simuler l'absence.
+  const reel = await importOriginal<Record<string, unknown>>();
+  return { MOTIFS_EXTRACTION: reel.MOTIFS_EXTRACTION };
+});
+
 // ───────────────────────────────────────────────────────────────────────────
 // Une base minuscule, en mémoire, avec le filtrage que fait PostgREST.
 // ───────────────────────────────────────────────────────────────────────────

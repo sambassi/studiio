@@ -77,8 +77,24 @@ import { vignettesValides, type VignetteAnalyse } from './contrat';
 /** Plafond dur de vignettes. Huit images racontent un rush ; pas cinquante. */
 export const VIGNETTES_MAX = 8;
 
-/** Où vont les vignettes. Doit appartenir à `ALLOWED_BUCKETS`. */
-export const BUCKET_VIGNETTES = 'images';
+/**
+ * Où vont les vignettes. Doit appartenir à `ALLOWED_BUCKETS`.
+ *
+ * ⚠️ `media`, ET NON `images`, ET C'EST UNE DÉCISION DE RÉTENTION.
+ *
+ * Le nettoyage périodique (`/api/cron/cleanup-media`) ne balaie que `media`
+ * et `audio`. Des vignettes rangées dans `images` ne seraient donc jamais
+ * visitées : ni protégées, ni nettoyées — une fuite de stockage silencieuse
+ * et permanente.
+ *
+ * L'inverse — ajouter `images` au balayage — ferait entrer sous rétention
+ * tout le contenu préexistant de ce compartiment, avec de vraies
+ * suppressions à la clé. On ne change pas le sort de données existantes pour
+ * accommoder des données qui n'existent pas encore.
+ *
+ * `media` est aussi le compartiment du rush dont ces vignettes sont tirées.
+ */
+export const BUCKET_VIGNETTES = 'media';
 
 /**
  * Durée de vie de l'URL signée, en secondes.

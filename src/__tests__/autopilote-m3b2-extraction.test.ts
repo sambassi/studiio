@@ -393,8 +393,14 @@ describe('M3-B2 — mesure réelle, vrais binaires, vrai HTTP à `Range`', () =>
     const r = await extraire({ bucket, cleObjet });
 
     expect(r.vignettes.length).toBe(8);
+    // Le compartiment vient de la constante, jamais d'un littéral recopié :
+    // il a changé à l'intégration (`images` → `media`, pour que le nettoyage
+    // périodique le balaie), et un littéral en second exemplaire aurait fait
+    // échouer ce test pour la mauvaise raison. Ce que le compartiment doit
+    // valoir est vérifié une fois, dans `autopilote-m3b2-branchement`.
+    const { BUCKET_VIGNETTES } = await import('@/lib/autopilot/analyse/extraction');
     for (const v of r.vignettes) {
-      expect(v.bucket).toBe('images');
+      expect(v.bucket).toBe(BUCKET_VIGNETTES);
       expect(v.cle.startsWith(`${USER}/analyse/${ANALYSE}/`)).toBe(true);
       expect(v.cle).not.toContain('://');
       expect(v.cle).not.toContain('..');

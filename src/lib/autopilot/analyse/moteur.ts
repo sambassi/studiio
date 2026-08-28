@@ -81,12 +81,28 @@ export interface ExtractionReussie {
  * `timeout`               — la mesure a dépassé son délai.
  * `objet_introuvable`     — la clé indexée ne désigne plus rien.
  */
-export type MotifExtraction =
-  | 'format_illisible' | 'extraction_impossible' | 'timeout' | 'objet_introuvable';
+/**
+ * ⚠️ IMPORTÉ, ET NON REDÉCLARÉ.
+ *
+ * Ce module a d'abord porté sa propre liste de quatre motifs, écrite avant
+ * que le moteur n'existe. Le moteur en rend SIX : il distingue en plus une
+ * clé hors du périmètre de l'utilisateur d'un stockage injoignable — deux
+ * causes qui n'appellent ni le même code HTTP ni la même conduite.
+ *
+ * Deux listes du même vocabulaire ne divergent pas tout de suite : elles
+ * divergent au troisième changement. Ici la divergence était déjà là, et
+ * elle rendait `resultatExtractionValide` refusant sur deux issues
+ * parfaitement légitimes — l'analyse aurait fini en 500 « résultat invalide »
+ * là où le moteur avait correctement diagnostiqué.
+ *
+ * Le module qui PRODUIT les motifs fait autorité sur leur liste.
+ */
+export type { MotifExtraction } from './extraction';
+import { MOTIFS_EXTRACTION as MOTIFS, type MotifExtraction as MotifExtractionLocal } from './extraction';
 
 export interface ExtractionEchouee {
   ok: false;
-  motif: MotifExtraction;
+  motif: MotifExtractionLocal;
   /** Facultatif, pour les journaux. Jamais montré tel quel à un navigateur. */
   detail?: string;
 }
@@ -96,14 +112,12 @@ export type ResultatExtraction = ExtractionReussie | ExtractionEchouee;
 /** La signature, en un seul type — c'est le contrat entre les deux morceaux. */
 export type MoteurExtraction = (demande: DemandeExtraction) => Promise<ResultatExtraction>;
 
-/** Les quatre motifs, sous forme de liste, pour valider ce que le moteur rend. */
-export const MOTIFS_EXTRACTION: readonly MotifExtraction[] = [
-  'format_illisible', 'extraction_impossible', 'timeout', 'objet_introuvable',
-];
+/** La liste, telle que le moteur la publie. Réexportée, jamais recopiée. */
+export { MOTIFS_EXTRACTION } from './extraction';
 
-export function motifExtractionValide(valeur: unknown): valeur is MotifExtraction {
+export function motifExtractionValide(valeur: unknown): valeur is MotifExtractionLocal {
   return typeof valeur === 'string'
-    && (MOTIFS_EXTRACTION as readonly string[]).includes(valeur);
+    && (MOTIFS as readonly string[]).includes(valeur);
 }
 
 /**
@@ -133,7 +147,15 @@ export async function chargerMoteurExtraction(): Promise<MoteurExtraction | null
   if (moteurInjecte) return moteurInjecte;
   try {
     const module = await import('@/lib/autopilot/analyse/extraction') as Record<string, unknown>;
-    const candidat = module.extraire ?? module.default;
+    // ⚠️ `extraireRush` D'ABORD — c'est le nom que le moteur exporte.
+    //
+    // Ce chargeur cherchait `extraire`, un nom choisi avant que le moteur ne
+    // soit écrit. Aucun test ne l'a vu : ceux de la route injectent une
+    // doublure par `definirMoteurExtraction` et ne passent jamais par ici.
+    // En production, la route aurait répondu 503 « moteur absent » avec le
+    // moteur pourtant présent — le lot entier inerte, sans un test rouge.
+    // D'où le test qui charge RÉELLEMENT le module.
+    const candidat = module.extraireRush ?? module.extraire ?? module.default;
     return typeof candidat === 'function' ? candidat as MoteurExtraction : null;
   } catch {
     // Module absent, ou qui refuse de se charger. Les deux se répondent de la

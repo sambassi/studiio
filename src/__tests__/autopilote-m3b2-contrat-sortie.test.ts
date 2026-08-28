@@ -88,10 +88,19 @@ export interface SortieExtraction {
   vignettes: VignetteAnalyse[];
 }
 
-/** Les quatre échecs typés, et les seuls. */
-export const MOTIFS_EXTRACTION = [
-  'format_illisible', 'extraction_impossible', 'timeout', 'objet_introuvable',
-] as const;
+/**
+ * Les échecs typés — IMPORTÉS du moteur, jamais recopiés.
+ *
+ * ⚠️ C'était une COPIE, écrite avant que le moteur n'existe, et elle a
+ * divergé aussitôt : quatre motifs ici, six là-bas. Un test qui garde sa
+ * propre copie de ce qu'il vérifie ne vérifie plus rien — il se compare à
+ * lui-même, et reste vert pendant que le vrai vocabulaire s'éloigne.
+ *
+ * C'est exactement la faute que `CARD_ICON_MAP` a coûté au projet, et que
+ * `tournage/contrat.ts` décrit en tête de fichier.
+ */
+export { MOTIFS_EXTRACTION } from '@/lib/autopilot/analyse/extraction';
+import { MOTIFS_EXTRACTION } from '@/lib/autopilot/analyse/extraction';
 
 export interface Verdict { ok: boolean; champ?: string }
 
@@ -306,9 +315,18 @@ describe('Une forme aberrante ne fait pas tomber la validation', () => {
 
 // ───────────────────────────────────────────────────────────────────────────
 describe('Le vocabulaire d échec est fermé et tenable', () => {
-  it('quatre motifs, et quatre seulement', () => {
+  it('six motifs, et six seulement', () => {
+    // ⚠️ SIX, ET NON QUATRE COMME CE TEST L'ATTENDAIT D'ABORD.
+    //
+    // Les quatre premiers ont été écrits avant le moteur. Le moteur en
+    // distingue deux de plus, et la distinction porte : `cle_hors_perimetre`
+    // est une incohérence entre la ligne `rushes` et le stockage — définitif,
+    // 422 — là où `stockage_injoignable` est transitoire et mérite une
+    // relance — 503. Les fondre dans `extraction_impossible` aurait fait
+    // relancer l'un et abandonner l'autre, à l'envers.
     expect(MOTIFS_EXTRACTION).toEqual([
-      'format_illisible', 'extraction_impossible', 'timeout', 'objet_introuvable',
+      'cle_hors_perimetre', 'objet_introuvable', 'stockage_injoignable',
+      'format_illisible', 'extraction_impossible', 'timeout',
     ]);
     expect(new Set(MOTIFS_EXTRACTION).size).toBe(MOTIFS_EXTRACTION.length);
   });

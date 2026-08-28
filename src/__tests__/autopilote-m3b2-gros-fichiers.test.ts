@@ -179,6 +179,10 @@ describe.skipIf(!cheminComplet)('Preuve statique — rien ne matérialise le rus
   const PREFIXES_AUTORISES = [
     './', '../',
     '@/lib/autopilot/',
+    // La résolution des binaires ffmpeg/ffprobe. AJOUTÉ EXPLICITEMENT, comme
+    // la règle l'exige : le module ne fait que rendre un chemin d'exécutable,
+    // il ne lit ni n'écrit aucun octet de rush.
+    '@/lib/ffmpeg/binaires',
     '@/lib/storage/buckets',
     '@/lib/storage/minio-client',
     '@/lib/storage/verifier-objet',

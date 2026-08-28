@@ -119,6 +119,10 @@ export async function GET(req: NextRequest) {
     );
   }
   const rushKeys: Set<string> = banqueLue;
+  // Lié à une constante non-nullable : `processFile` est une fonction
+  // imbriquée, et TypeScript ne propage pas le rétrécissement d'un `let`
+  // au travers d'une fermeture.
+  const clesTournage: Set<string> = tournageLu;
   const now = new Date();
   let exemptesPosts = 0;
   let exemptesRushes = 0;
@@ -218,7 +222,7 @@ export async function GET(req: NextRequest) {
     // Rush indexé ou vignette d'analyse encore référencée. Même principe que
     // la banque : la protection suit la RÉFÉRENCE, elle ne marque pas le
     // fichier. Un rush supprimé de sa session redevient éligible.
-    if (tournageLu.has(cle)) {
+    if (clesTournage.has(cle)) {
       exemptesTournage++;
       preserved++;
       return;
@@ -257,7 +261,7 @@ export async function GET(req: NextRequest) {
     + `conserves=${kept} exemptes=${preserved} `
     + `(posts=${exemptesPosts}, rushes-autopilote=${exemptesRushes}, `
     + `tournage=${exemptesTournage}) `
-    + `| banque=${rushKeys.size} cles, tournage=${tournageLu.size} cles`,
+    + `| banque=${rushKeys.size} cles, tournage=${clesTournage.size} cles`,
   );
 
   return NextResponse.json({

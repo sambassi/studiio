@@ -171,7 +171,7 @@ describe('Le cron branche réellement cette source', () => {
   it('l exemption est appliquée AVANT le calcul d expiration', () => {
     // Sinon la protection ne servirait à rien : le fichier serait supprimé
     // puis « protégé ».
-    const posExemption = nettoyage.indexOf('tournageLu.has(cle)');
+    const posExemption = nettoyage.indexOf('clesTournage.has(cle)');
     const posExpiration = nettoyage.indexOf('const expiresAt = getExpiresAt');
     expect(posExemption).toBeGreaterThan(0);
     expect(posExpiration).toBeGreaterThan(posExemption);

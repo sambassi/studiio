@@ -102,6 +102,20 @@ const FOURNISSEUR_EXTRACTION = { fournisseur: 'local' as const, modele: 'ffmpeg'
  * code que « migration absente », et pour la même raison — le service ne peut
  * pas répondre maintenant, ce n'est pas la faute de l'appelant. Le champ
  * `motif` distingue les deux.
+ *
+ * ⚠️ DEUX MOTIFS DE PLUS QUE PRÉVU, ET ILS NE SE RÉPONDENT PAS PAREIL.
+ *
+ * Le moteur en distingue six, là où cette table en attendait quatre. Les deux
+ * qui manquaient ne sont pas des variantes de `extraction_impossible` :
+ *
+ * `cle_hors_perimetre`   — la clé indexée ne commence pas par l'identifiant de
+ *   son propriétaire. Ce n'est pas une panne, c'est une incohérence entre la
+ *   ligne `rushes` et le stockage. Ré-essayer ne changera rien, et le journal
+ *   doit le montrer : 422, comme les autres refus définitifs.
+ *
+ * `stockage_injoignable` — MinIO n'a pas répondu. Transitoire, de notre côté,
+ *   et ça mérite une relance : 503, comme `extraction_impossible`, mais avec
+ *   un `motif` distinct pour qu'on sache lequel des deux compter.
  */
 const REFUS_EXTRACTION: Record<MotifExtraction, { statut: number; message: string }> = {
   format_illisible: {
@@ -119,6 +133,14 @@ const REFUS_EXTRACTION: Record<MotifExtraction, { statut: number; message: strin
   extraction_impossible: {
     statut: 503,
     message: 'L’analyse n’a pas abouti. Réessayez plus tard.',
+  },
+  cle_hors_perimetre: {
+    statut: 422,
+    message: 'Ce fichier n’appartient pas à votre espace.',
+  },
+  stockage_injoignable: {
+    statut: 503,
+    message: 'Le stockage est momentanément injoignable. Réessayez.',
   },
 };
 
