@@ -812,9 +812,13 @@ describe.skipIf(!capacitePresente)('Le module de capacité respecte les mêmes i
   it('le plafond est déclaré, et vaut 1', () => {
     // Nommé en clair : un `1` littéral au milieu d'une condition ne se
     // retrouve pas quand il faut le changer.
-    expect(code(), 'MAX_EXTRACTIONS_CONCURRENTES introuvable — hypothèse sur le '
-      + 'nom du module d en face, à corriger ici si le nom diffère')
-      .toContain('MAX_EXTRACTIONS_CONCURRENTES');
+    // Le nom réel choisi par le module : `MAX_EXTRACTIONS_SIMULTANEES`.
+    // L'hypothèse écrite avant l'intégration disait `…_CONCURRENTES` — c'est
+    // le test qu'on corrige, jamais la règle qu'on assouplit.
+    expect(code(), 'plafond nommé introuvable').toContain('MAX_EXTRACTIONS_SIMULTANEES');
+    // Nommé en clair ET valant 1 : un `1` littéral au milieu d'une condition
+    // ne se retrouve pas quand il faut le changer.
+    expect(code()).toMatch(/MAX_EXTRACTIONS_SIMULTANEES\s*=\s*1\b/);
   });
 });
 
@@ -833,9 +837,6 @@ describe.skipIf(!capacitePresente)('L ordre du chemin est celui qui tient l isol
   const symboles = (ligneImport?.[1] ?? '')
     .split(',').map((s) => s.trim().split(/\s+as\s+/).pop()!.trim()).filter(Boolean);
 
-  const positions = (symbole: string) => [...code.matchAll(new RegExp(`\\b${symbole}\\s*\\(`, 'g'))]
-    .map((m) => m.index ?? -1);
-
   it('la route importe bien le limiteur', () => {
     expect(
       ligneImport,
@@ -846,14 +847,24 @@ describe.skipIf(!capacitePresente)('L ordre du chemin est celui qui tient l isol
     expect(symboles.length).toBeGreaterThan(0);
   });
 
-  it('l acquisition arrive APRÈS la vérification du rush et AVANT `creerAnalyse`', () => {
-    const posVerifie = code.indexOf("rush.etat !== 'verifie'");
-    const posCreation = code.indexOf('creerAnalyse(');
+  it('l acquisition arrive APRÈS la vérification du rush et AVANT toute écriture', () => {
+    // ⚠️ MESURÉ DANS LE CORPS DE `POST`, ET NON DANS TOUT LE FICHIER.
+    //
+    // La route a été découpée : le travail vit dans `executerAnalyse`, définie
+    // AVANT `POST`. Comparer des positions à l'échelle du fichier comparait
+    // donc l'ordre des déclarations, pas l'ordre d'exécution — la première
+    // version de ce test échouait pour cette seule raison.
+    const debutPost = code.indexOf('export async function POST');
+    expect(debutPost, '`POST` introuvable').toBeGreaterThan(-1);
+    const corpsPost = code.slice(debutPost);
+
+    const posVerifie = corpsPost.indexOf("rush.etat !== 'verifie'");
+    const posTravail = corpsPost.indexOf('executerAnalyse(');
     expect(posVerifie, "la garde `etat !== 'verifie'` a disparu").toBeGreaterThan(0);
-    expect(posCreation, '`creerAnalyse` a disparu').toBeGreaterThan(posVerifie);
+    expect(posTravail, 'le travail n est plus appelé').toBeGreaterThan(posVerifie);
 
     const premiereUtilisation = Math.min(
-      ...symboles.flatMap(positions).filter((p) => p >= 0),
+      ...symboles.map((sym) => corpsPost.indexOf(sym)).filter((p) => p >= 0),
     );
     expect(
       premiereUtilisation,
@@ -863,25 +874,39 @@ describe.skipIf(!capacitePresente)('L ordre du chemin est celui qui tient l isol
     ).toBeGreaterThan(posVerifie);
     expect(
       premiereUtilisation,
-      'le limiteur est sollicité après `creerAnalyse` : une ligne serait créée '
-      + 'puis abandonnée à chaque refus de capacité',
-    ).toBeLessThan(posCreation);
+      'le limiteur est sollicité après le début du travail : une ligne serait '
+      + 'créée puis abandonnée à chaque refus de capacité',
+    ).toBeLessThan(posTravail);
+
+    // Et la seule écriture reste bien DERRIÈRE l'appel au travail.
+    expect(corpsPost.indexOf('creerAnalyse('), 'une écriture a lieu dans `POST` '
+      + 'avant la prise de place').toBe(-1);
   });
 
   it('la libération est dans un `finally`', () => {
     const finallys = [...code.matchAll(/finally\s*\{/g)].map((m) => m.index ?? -1);
     expect(finallys.length, 'aucun `finally` : le slot fuite sur la première '
       + 'exception, et le serveur refuse tout jusqu au redémarrage').toBeGreaterThan(0);
-    const utilisations = symboles.flatMap(positions).filter((p) => p >= 0);
-    const dansUnFinally = utilisations.some(
+    // On cherche la LIBÉRATION, pas un symbole importé : la place est un objet
+    // local (`place.liberer()`), donc aucun symbole du module n'apparaît ici.
+    const liberations = [...code.matchAll(/\.liberer\s*\(\s*\)/g)].map((m) => m.index ?? -1);
+    expect(liberations.length, 'aucune libération').toBeGreaterThan(0);
+    const dansUnFinally = liberations.some(
       (u) => finallys.some((f) => u > f && u - f < 400),
     );
-    expect(dansUnFinally, 'aucun symbole du limiteur dans un `finally`').toBe(true);
+    expect(dansUnFinally, 'la libération n est pas dans un `finally` : le slot '
+      + 'fuite à la première exception, et le serveur refuse tout jusqu au '
+      + 'redémarrage').toBe(true);
   });
 
   it('le motif et l en-tête de relance sont écrits en clair', () => {
-    expect(code, 'motif `analyse_capacite_saturee` absent de la route')
-      .toContain('analyse_capacite_saturee');
+    // Le motif vit dans une CONSTANTE du module de capacité, que la route
+    // importe. C'est mieux qu'un littéral recopié — mais il faut alors
+    // vérifier les deux bouts, sinon on ne vérifie plus rien.
+    const capacite = sansCommentaires(source(MODULE_CAPACITE));
+    expect(capacite, 'motif absent du module de capacité')
+      .toContain("'analyse_capacite_saturee'");
+    expect(code, 'la route n importe pas le motif').toContain('MOTIF_CAPACITE_SATUREE');
     expect(code, 'en-tête `Retry-After` absent : un 429 sans consigne de '
       + 'relance ne dit pas quand revenir').toContain('Retry-After');
     expect(code).toContain('429');
