@@ -172,11 +172,29 @@ describe('Ce que la migration ne fait pas', () => {
     expect(code).not.toContain('autopilot_config');
   });
 
-  it('`autopilot_config` est intacte après la migration', async () => {
+  it('elle n ajoute que DEUX tables au schéma', async () => {
+    // `autopilot_config` ne fait pas partie du jeu d'essai — le harnais ne
+    // joue que les migrations du socle crédits/rendus. Assurer son intégrité
+    // ici ne prouverait rien : la garantie est que la migration ne NOMME
+    // jamais cette table, ce que vérifie le test précédent sur le SQL.
+    //
+    // Ce qui se vérifie sur le moteur, en revanche, c'est qu'elle n'a créé
+    // que ce qu'elle annonce.
     const { rows } = await client.query(
-      "select column_name from information_schema.columns where table_name='autopilot_config' and column_name in ('rush_urls','last_rush_url') order by column_name",
+      `select tablename from pg_tables
+        where schemaname = 'public' and tablename in ('shoot_sessions', 'rushes')
+        order by tablename`,
     );
-    expect(rows.map((r) => r.column_name)).toEqual(['last_rush_url', 'rush_urls']);
+    expect(rows.map((r) => r.tablename)).toEqual(['rushes', 'shoot_sessions']);
+
+    // Et aucune colonne de tournage n'a été greffée sur une table existante.
+    const { rows: ailleurs } = await client.query(
+      `select table_name from information_schema.columns
+        where table_schema = 'public'
+          and column_name in ('shoot_session_id', 'cle_objet')
+          and table_name not in ('shoot_sessions', 'rushes')`,
+    );
+    expect(ailleurs).toEqual([]);
   });
 
   it('la durée d un rush reste nullable — inconnue n est pas zéro', async () => {
