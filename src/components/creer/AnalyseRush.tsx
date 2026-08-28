@@ -5,7 +5,7 @@ import {
   AlertTriangle, CheckCircle2, Clock, Loader2, RotateCcw, ScanSearch,
 } from 'lucide-react';
 import {
-  lireAnalyse, lancerAnalyse, lireVignettes, conduiteApresLancement,
+  lireAnalyse, lancerAnalyse, vignettesAffichables, conduiteApresLancement,
   analyseEnCours, DELAI_SUIVI_MS,
   type AnalyseEcran, type VignetteAffichable,
 } from '@/lib/autopilot/analyse/passerelle';
@@ -188,15 +188,17 @@ export default function AnalyseRush({ rushId }: Props) {
     if (!analyse || analyse.etat !== 'reussie' || analyse.vignettes.nombre <= 0) return undefined;
     if (vignettesPourRef.current === analyse.id) return undefined;
     vignettesPourRef.current = analyse.id;
-    let annule = false;
-    (async () => {
-      const r = await lireVignettes(rushId);
-      if (annule || !vivantRef.current) return;
-      if (r.sorte === 'ok') setVignettes(r.vignettes.slice(0, VIGNETTES_AFFICHEES));
-      else setVignettesManquantes(true);
-    })();
-    return () => { annule = true; };
-  }, [analyse, rushId]);
+    // ⚠️ AUCUN ALLER-RETOUR. Les adresses se déduisent de l'analyse déjà lue :
+    // le serveur sert chaque image à `…/analyses/<id>/vignettes/<i>` en
+    // relisant la clé lui-même. Une requête de plus par rush, toutes les
+    // trois secondes, pour reconstruire des adresses déterministes serait du
+    // trafic pur. Un échec image se voit sur le `<img>`, pas ici.
+    setVignettes(
+      vignettesAffichables(analyse.id, analyse.vignettes.nombre, analyse.vignettes.secondes)
+        .slice(0, VIGNETTES_AFFICHEES),
+    );
+    return undefined;
+  }, [analyse]);
 
   const etatAffiche = chargement ? 'chargement' : analyse ? analyse.etat : 'aucune';
 
@@ -337,16 +339,20 @@ export default function AnalyseRush({ rushId }: Props) {
             <ul className="grid grid-cols-4 sm:grid-cols-8 gap-1" data-analyse-vignettes>
               {vignettes.map((v, i) => (
                 <li key={v.url}>
-                  {/* Un `<img>` nu, et non `next/image` : l'URL est signée,
-                      valable quelques minutes, et sur un hôte que la
-                      configuration d'images ne connaît pas. L'optimiseur la
-                      réécrirait et la signature ne suivrait pas. */}
+                  {/* Un `<img>` nu, et non `next/image`. L'adresse est servie
+                      par notre propre route, qui relit la clé côté serveur et
+                      rend les octets : l'optimiseur d'images irait chercher
+                      l'objet sans la session, et n'obtiendrait qu'un 401. */}
                   <img
                     src={v.url}
                     alt={v.seconde === null ? `Aperçu ${i + 1}` : `Aperçu à ${Math.round(v.seconde)} s`}
                     loading="lazy"
                     decoding="async"
                     data-analyse-vignette={i}
+                    // Une image qui ne vient pas — objet disparu, stockage
+                    // injoignable — ne doit pas laisser un carré vide sans
+                    // explication. La mesure, elle, reste affichée.
+                    onError={() => setVignettesManquantes(true)}
                     className="w-full rounded object-cover bg-gray-900"
                     style={{ aspectRatio: '1 / 1' }}
                   />

@@ -583,14 +583,20 @@ describe('F — les vignettes : visibles, bornées, et sans clé de stockage', (
     expect(document.querySelectorAll('[data-analyse-vignette]').length).toBe(8);
   });
 
-  it('elles sont demandées une seule fois, et par GET', async () => {
-    analyseServeur = analyse();
-    vignettesServeur = [{ seconde: 0, url: 'https://minio.interne/signe-0' }];
+  it('elles ne coûtent AUCUNE requête — les adresses se déduisent', async () => {
+    // ⚠️ Ce test exigeait d'abord un `GET …/vignettes` unique. Le serveur ne
+    // rend pas de liste d'URL : il sert chaque image à une adresse
+    // déterministe, `…/analyses/<id>/vignettes/<i>`, en relisant la clé
+    // lui-même. Réclamer une liste pour reconstruire des adresses qu'on
+    // connaît déjà serait une requête par rush toutes les trois secondes,
+    // pour rien. La preuve devient donc : zéro appel, et des `<img>` bien
+    // adressés.
+    analyseServeur = analyse({ vignettes: { nombre: 1, secondes: [0] } });
     await monter();
     await avancer(30_000);
-    const appels = journal.filter((a) => a.url.endsWith('/vignettes'));
-    expect(appels.length).toBe(1);
-    expect(appels[0].methode).toBe('GET');
+    expect(journal.filter((a) => a.url.includes('/vignettes'))).toHaveLength(0);
+    const img = document.querySelector('[data-analyse-vignette="0"]');
+    expect(img?.getAttribute('src')).toMatch(/^\/api\/autopilot\/analyses\/[^/]+\/vignettes\/0$/);
   });
 
   it('ni compartiment ni clé technique dans le DOM', async () => {
@@ -603,27 +609,30 @@ describe('F — les vignettes : visibles, bornées, et sans clé de stockage', (
         { bucket: 'media', cle: 'u-42/rushes/a-1/v1.jpg', seconde: 9 },
       ],
     });
-    vignettesServeur = [{ seconde: 0, url: 'https://minio.interne/signe-0?X-Amz-Signature=zz' }];
     await monter();
     const html = bloc().innerHTML;
     expect(html).not.toContain('u-42/rushes');
     expect(html).not.toContain('"bucket"');
     expect(html).not.toContain('/storage/v1/object/public/');
-    expect(document.querySelectorAll('[data-analyse-vignette]').length).toBe(1);
+    // Deux vignettes annoncées, deux `<img>` — et pas une clé dans le DOM.
+    expect(document.querySelectorAll('[data-analyse-vignette]').length).toBe(2);
+    // Aucune signature ne circule : l'adresse ne porte qu'un index.
+    expect(html).not.toContain('X-Amz-');
   });
 
-  it('des aperçus indisponibles n’effacent pas la mesure', async () => {
-    analyseServeur = analyse();
-    vignettesServeur = null;                  // 404 sur les vignettes
+  it('une analyse sans aperçu n efface pas la mesure', async () => {
+    // Il n'y a plus de « 404 sur la liste » à simuler : la liste n'existe
+    // plus. Le cas qui reste est une analyse qui n'a produit aucune vignette
+    // — une vidéo trop courte, par exemple. La mesure doit rester entière.
+    analyseServeur = analyse({ vignettes: { nombre: 0, secondes: [] } });
     await monter();
-    expect(document.querySelector('[data-analyse-vignettes-absentes]')).toBeTruthy();
+    expect(document.querySelectorAll('[data-analyse-vignette]').length).toBe(0);
     expect(document.querySelector('[data-analyse-badge]')).toBeTruthy();
     expect(texte()).toContain('1080 × 1920');
   });
 
   it('chaque aperçu porte un texte de remplacement utile', async () => {
-    analyseServeur = analyse();
-    vignettesServeur = [{ seconde: 42, url: 'https://minio.interne/signe-0' }];
+    analyseServeur = analyse({ vignettes: { nombre: 1, secondes: [42] } });
     await monter();
     expect(document.querySelector('[data-analyse-vignette="0"]')?.getAttribute('alt'))
       .toBe('Aperçu à 42 s');

@@ -109,6 +109,33 @@ vi.mock('@/lib/auth/config', () => ({ auth: () => authMock() }));
 // doublure évite d'embarquer XHR et le découpage en morceaux pour rien.
 vi.mock('@/lib/storage/uploadFile', () => ({ uploadFile: vi.fn() }));
 
+/**
+ * Le lecteur d'objets est une DOUBLURE — aucun serveur n'est joint.
+ *
+ * Le lot A sert les octets de la vignette au lieu de signer une URL. Sans
+ * cette doublure, `getObject` tenterait une vraie connexion vers
+ * `studiio-minio:9000`, échouerait, et la route rendrait 502 : le test
+ * accuserait le stockage alors qu'il n'y a pas de stockage.
+ *
+ * On enregistre CE QUI EST OUVERT : c'est la preuve qui compte, bien plus
+ * qu'un code HTTP — une clé arbitraire venue du navigateur ne doit jamais
+ * apparaître ici.
+ */
+const objetsOuverts: Array<{ bucket: string; cle: string }> = [];
+vi.mock('@/lib/storage/minio-client', async (original) => {
+  const reel = await original<Record<string, unknown>>();
+  const { Readable } = await import('stream');
+  return {
+    ...reel,
+    lecteurMinio: () => ({
+      async getObject(bucket: string, cle: string) {
+        objetsOuverts.push({ bucket, cle });
+        return Readable.from([Buffer.from('vignette-de-test')]);
+      },
+    }),
+  };
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // LA DOUBLURE POSTGREST
 // ═══════════════════════════════════════════════════════════════════════════
@@ -424,7 +451,24 @@ const getPresent = typeof GET === 'function';
  * l'URL est la seule partie du lot B dont on peut fixer le nom à l'avance,
  * puisqu'elle est décidée par le lot A.
  */
-const panneauIntegre = /\/analyse/.test(sansCommentaires(lire(FICHIER_PANNEAU)));
+/**
+ * Le panneau est branché — directement, ou en DÉLÉGUANT.
+ *
+ * La première rédaction exigeait que le fichier du panneau mentionne
+ * lui-même une URL `/analyse`. Le lot B a mieux fait : il a monté un
+ * composant dédié par rush et rangé tout le réseau dans une passerelle —
+ * le panneau ne connaît aucune URL, et c'est précisément la bonne
+ * architecture. Exiger l'URL dans ce fichier revenait à imposer un dessin.
+ *
+ * Ce qui compte est que le chemin d'écran EXISTE : soit le panneau parle
+ * lui-même à l'analyse, soit il monte quelque chose qui le fait.
+ */
+const panneauSource = sansCommentaires(lire(FICHIER_PANNEAU));
+const panneauIntegre = /\/analyse/.test(panneauSource)
+  || (/[Aa]nalyse/.test(panneauSource)
+      && ['src/components/creer/AnalyseRush.tsx',
+          'src/lib/autopilot/analyse/passerelle.ts']
+        .some((f) => /\/analyse/.test(sansCommentaires(lire(f)))));
 
 describe('Ce que ce fichier attend des lots A et B', () => {
   it('la route d analyse exporte GET — c est le lot A', () => {
@@ -685,15 +729,31 @@ async function demanderVignette(o: {
   if (typeof handler !== 'function') {
     throw new Error(`${ROUTE_VIGNETTE} doit exporter GET`);
   }
+  // ⚠️ LE SEGMENT PRÉCÉDENT DÉCIDE, PAS LE NOM DU PARAMÈTRE.
+  //
+  // La première rédaction lisait le nom : `id` → rush, `index|rang|position`
+  // → un entier, le reste → analyse. Le lot A a nommé sa route
+  // `analyses/[id]/vignettes/[n]` : `id` y désigne l'ANALYSE et `n` l'index.
+  // La règle par nom donnait donc exactement l'inverse des deux, et une
+  // requête parfaitement légitime rendait 404.
+  //
+  // Le segment qui précède, lui, dit ce que la valeur désigne — c'est la
+  // convention de toute route REST, et elle ne dépend d'aucun nom choisi.
   const params: Record<string, string> = {};
-  for (const segment of ROUTE_VIGNETTE.split('/')) {
+  const segments = ROUTE_VIGNETTE.split('/');
+  segments.forEach((segment, i) => {
     const m = segment.match(/^\[\.{0,3}(.+?)\]$/);
-    if (!m) continue;
+    if (!m) return;
     const nom = m[1];
-    if (/^(id|rushId|rush)$/i.test(nom)) params[nom] = o.rushId;
-    else if (/(index|rang|position|seconde)/i.test(nom)) params[nom] = String(o.rang ?? 0);
+    const precedent = (segments[i - 1] ?? '').toLowerCase();
+    if (/vignette|apercu|image/.test(precedent)) params[nom] = String(o.rang ?? 0);
+    else if (/analyse/.test(precedent)) params[nom] = o.analyseId;
+    else if (/rush/.test(precedent)) params[nom] = o.rushId;
+    // Sans contexte utilisable, on retombe sur le nom.
+    else if (/^(id|rushId|rush)$/i.test(nom)) params[nom] = o.rushId;
+    else if (/(index|rang|position|seconde|^n$)/i.test(nom)) params[nom] = String(o.rang ?? 0);
     else params[nom] = o.analyseId;
-  }
+  });
   const query = new URLSearchParams({
     cle: o.cle, key: o.cle, path: o.cle, objet: o.cle, vignette: o.cle,
     bucket: o.bucket ?? 'media', analyseId: o.analyseId,
@@ -960,9 +1020,15 @@ function installerFauxServeur() {
           analyseCourante = { ...ANALYSE_EN_COURS };
           return faireReponse(201, { ok: true, analyse: analyseCourante });
         }
-        return faireReponse(200, {
-          ok: true, analyses: analyseCourante ? [analyseCourante] : [],
-        });
+        // ⚠️ LA FORME RÉELLE DU LOT A EST AU SINGULIER.
+        //
+        // Cette doublure rendait `{ analyses: [...] }`, une hypothèse écrite
+        // avant que la route n'existe. Le lot A rend `{ analyse: <objet|null> }`
+        // — une seule analyse, la plus récente. L'écran, qui lit la forme
+        // réelle, ne voyait donc jamais d'analyse : ni suivi, ni mesure
+        // affichée, et trois tests accusaient l'écran d'un défaut du banc
+        // d'essai. On corrige la doublure, pas le code.
+        return faireReponse(200, { ok: true, analyse: analyseCourante ?? null });
       }
       if (url.includes('/api/autopilot/sessions') && !url.includes('/rushes')) {
         if (methode === 'GET') {

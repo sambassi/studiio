@@ -60,15 +60,31 @@ export function cheminAnalyse(rushId: string): string {
 }
 
 /**
- * Les vignettes de l'analyse la plus récente, en URL signées et COURTES.
+ * L'adresse d'UNE vignette — l'image elle-même, servie par le serveur.
  *
- * ⚠️ Ce chemin n'est PAS un accès direct au stockage, et ne doit jamais le
- * devenir. `/storage/v1/object/public/…` rendrait publiques des images
- * extraites d'un rush privé, pour toujours et pour tout le monde. Le serveur
- * vérifie la propriété, puis signe pour quelques minutes.
+ * ⚠️ CE N'EST PAS UNE URL SIGNÉE, ET C'EST VOULU.
+ *
+ * L'écran attendait d'abord une liste d'URL signées courtes. Il n'existe
+ * aucun signeur de lecture utilisable par un navigateur : `signeurInterne`
+ * signe sur le nom interne `studiio-minio:9000`, injouable dehors et
+ * révélateur de la topologie ; `signeurPublic` n'expose pas de GET. Et une
+ * URL signée fuite par trois chemins qu'on ne maîtrise pas — la signature
+ * en query-string dans les journaux du proxy, le `Referer` d'un `<img>`
+ * cross-origin, et le cache public du chemin `/storage`.
+ *
+ * Le serveur relit donc la ligne d'analyse filtrée par `user_id`, en tire la
+ * clé LUI-MÊME, et rend les octets. Le navigateur n'envoie qu'un
+ * identifiant d'analyse et un INDEX : il n'existe aucune clé à falsifier,
+ * aucun jeton à faire expirer, et la session est réévaluée à chaque image.
+ *
+ * `/storage/v1/object/public/…` n'est ni utilisé ni touché.
+ *
+ * On passe l'identifiant de l'ANALYSE et non celui du rush : les vignettes
+ * restent alors celles de l'analyse affichée, même si une nouvelle démarre
+ * entre-temps.
  */
-export function cheminVignettes(rushId: string): string {
-  return `${cheminAnalyse(rushId)}/vignettes`;
+export function cheminVignette(analyseId: string, index: number): string {
+  return `/api/autopilot/analyses/${encodeURIComponent(analyseId)}/vignettes/${index}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -410,33 +426,19 @@ export type LectureVignettes =
  * ferait croire à un problème de mesure. L'écran dit sobrement que les
  * aperçus ne sont pas disponibles, et le reste des résultats s'affiche.
  */
-export async function lireVignettes(rushId: string): Promise<LectureVignettes> {
-  let reponse: Response;
-  try {
-    reponse = await fetch(cheminVignettes(rushId), { method: 'GET' });
-  } catch {
-    return { sorte: 'indisponible' };
+export function vignettesAffichables(
+  analyseId: string, nombre: number, secondes: readonly number[],
+): VignetteAffichable[] {
+  const total = Math.max(0, Math.min(nombre, secondes.length || nombre));
+  const out: VignetteAffichable[] = [];
+  for (let i = 0; i < total; i += 1) {
+    const s = secondes[i];
+    out.push({
+      seconde: Number.isFinite(s) ? s : null,
+      url: cheminVignette(analyseId, i),
+    });
   }
-  if (!reponse.ok) return { sorte: 'indisponible' };
-  let corps: unknown;
-  try { corps = await reponse.json(); } catch { return { sorte: 'indisponible' }; }
-  const brut = objet(corps).vignettes;
-  if (!Array.isArray(brut)) return { sorte: 'indisponible' };
-  const vignettes: VignetteAffichable[] = [];
-  for (const item of brut) {
-    // Deux formes tolérées : une URL nue, ou `{ url, seconde }`. Rien
-    // d'autre — et surtout pas un `bucket`/`cle` qu'on recomposerait.
-    if (typeof item === 'string') {
-      if (item) vignettes.push({ seconde: null, url: item });
-      continue;
-    }
-    const o = objet(item);
-    if (typeof o.url !== 'string' || !o.url) continue;
-    const s = Number(o.seconde);
-    vignettes.push({ seconde: Number.isFinite(s) && s >= 0 ? s : null, url: o.url });
-  }
-  if (vignettes.length === 0) return { sorte: 'indisponible' };
-  return { sorte: 'ok', vignettes };
+  return out;
 }
 
 /**
