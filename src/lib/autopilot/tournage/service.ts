@@ -240,3 +240,56 @@ export async function indexerRush(
   if (!data) throw new Error('indexation sans reponse');
   return { rush: rushDepuisLigne(data as Record<string, unknown>), motif: null };
 }
+
+/**
+ * Consigne sur le rush la durée que l'analyse a MESURÉE.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * POURQUOI ICI, ET NON DANS LE MODULE D'ANALYSE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * `rushes` a un seul propriétaire dans le code, et c'est ce fichier. Écrire
+ * la durée depuis le module d'analyse ferait deux modules qui écrivent la
+ * même table — exactement la duplication que `CARD_ICON_MAP` a déjà coûtée à
+ * ce projet : deux écritures d'une même colonne ne divergent pas tout de
+ * suite, elles divergent au troisième changement.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * LA DURÉE FAISANT FOI EST CELLE DE L'ANALYSE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * `rush_analyses.duree_secondes` est le résultat daté et versionné d'une
+ * mesure ; `rushes.duree_secondes` en est une COPIE de confort, pour que
+ * lister des rushes ne demande pas une jointure. La copie peut donc échouer
+ * sans invalider la mesure — l'appelant traite ce refus comme tel.
+ *
+ * La valeur ne vient jamais d'un navigateur : elle vient du moteur, par la
+ * route, qui la tient de ffmpeg. Elle est tout de même bornée ici, parce
+ * qu'une colonne n'a pas à faire confiance à son appelant.
+ */
+export async function majDureeRush(
+  userId: string, rushId: string, dureeSecondes: number,
+): Promise<{ rush: Rush | null; motif: MotifTournage | null }> {
+  // `0` est refusé au même titre qu'un négatif : `null` veut dire « inconnue »
+  // et un zéro se lirait comme « vide », ce que le contrat interdit déjà.
+  if (typeof dureeSecondes !== 'number' || !Number.isFinite(dureeSecondes) || dureeSecondes <= 0) {
+    throw new Error('duree_secondes doit etre un nombre strictement positif');
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('rushes')
+    .update({ duree_secondes: dureeSecondes, updated_at: new Date().toISOString() })
+    .eq('id', rushId)
+    // Le filtre de propriété est DANS la requête : le rush d'autrui n'est pas
+    // « refusé », il n'est pas atteint.
+    .eq('user_id', userId)
+    .select('id, shoot_session_id, user_id, bucket, cle_objet, nom_origine, content_type, taille_octets, duree_secondes, rang, etat, metadata, created_at, updated_at')
+    .maybeSingle();
+
+  if (error) {
+    if (socleAbsent(error)) return { rush: null, motif: 'socle_absent' };
+    throw new Error(error.message || 'ecriture de la duree impossible');
+  }
+  if (!data) return { rush: null, motif: 'rush_introuvable' };
+  return { rush: rushDepuisLigne(data as Record<string, unknown>), motif: null };
+}

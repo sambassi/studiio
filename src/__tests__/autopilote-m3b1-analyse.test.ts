@@ -767,14 +767,23 @@ describe('Ce que M3-B1 ne fait pas — vérifié, pas supposé', () => {
     }
   });
 
-  it('aucune route HTTP n est créée par ce lot', async () => {
-    const { existsSync } = await import('fs');
-    for (const chemin of [
-      'src/app/api/autopilot/rushes',
-      'src/app/api/autopilot/analyses',
-      'src/app/api/analyse',
-    ]) {
-      expect(existsSync(join(process.cwd(), chemin)), chemin).toBe(false);
+  it('aucune route HTTP ne sort de CES DEUX modules', () => {
+    // Formulation d'origine : « aucune route n'existe sous
+    // `src/app/api/autopilot/rushes` ». Elle était juste au moment de M3-B1,
+    // et elle a cessé de l'être avec M3-B2, qui pose légitimement
+    // `POST /api/autopilot/rushes/[id]/analyse` — et dont c'est tout le
+    // travail. Ce qui doit rester vrai de M3-B1, c'est que le socle ne
+    // contient pas de gestionnaire HTTP : ce sont les modules qu'on
+    // interroge, pas l'arborescence des routes, que le lot suivant a le droit
+    // de faire grandir.
+    for (const chemin of MODULES) {
+      const code = sansCommentaires(source(chemin));
+      for (const verbe of ['GET', 'POST', 'PATCH', 'DELETE']) {
+        expect(code, `${chemin} / ${verbe}`)
+          .not.toMatch(new RegExp(`export\\s+(async\\s+)?function\\s+${verbe}\\b`));
+      }
+      expect(code, `${chemin} : NextResponse`).not.toContain('NextResponse');
+      expect(code, `${chemin} : next/server`).not.toContain('next/server');
     }
   });
 
