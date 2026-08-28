@@ -168,15 +168,38 @@ create index if not exists rushes_session_idx
   on public.rushes (shoot_session_id, rang);
 
 -- ---------------------------------------------------------------------------
--- 3. DROITS POSTGREST
+-- 3. AUCUN DROIT A `public` — ET C'EST DELIBERE
 --
--- Sans ce grant, PostgREST voit les tables mais repond « not in schema
--- cache » : le role qu'il utilise n'a aucun droit dessus, donc elles
--- n'entrent pas dans le cache. Meme forme que `user_drive`, `user_voices` et
--- les autres tables du projet.
+-- Les autres migrations du projet finissent par `grant all on table ... to
+-- public`, avec ce commentaire : « sans ce grant, PostgREST repond "not in
+-- schema cache" ». On ne le reprend pas ici, parce que la preuve du
+-- contraire est dans le depot.
+--
+-- La migration du 29 aout fait `revoke all on function ... from public`, et
+-- ses RPC sont bien apparues dans le document OpenAPI apres le SIGUSR1. Le
+-- controle du 30 aout l'a montre chiffre a l'appui : `execute_public = false`,
+-- `execute_studiio = true`.
+--
+-- La raison est simple : les migrations sont appliquees avec `psql -U
+-- studiio`. `studiio` POSSEDE donc les objets qu'elles creent, et un
+-- proprietaire n'a besoin d'aucun `GRANT`. Le grant a `public` n'ajoutait
+-- rien a ce dont l'application a besoin — il ouvrait seulement les tables a
+-- tout autre role.
+--
+-- ⚠️ CE QUE CECI NE REGLE PAS. Si le role anonyme de PostgREST est
+-- lui-meme `studiio`, une requete anonyme s'execute EN TANT QUE
+-- proprietaire, et aucun jeu de privileges n'y change rien — seule RLS
+-- aiderait. Cette question concerne TOUTES les tables du projet, pas ces
+-- deux-ci, et elle demande de connaitre la configuration de PostgREST. Elle
+-- n'est pas tranchee dans ce lot, et aucune RLS n'y est posee : une RLS mal
+-- reglee couperait l'application sans prevenir.
+--
+-- CONTROLE APRES APPLICATION :
+--   select has_table_privilege('public', 'public.shoot_sessions', 'SELECT');
+--     -- attendu : false
+--   select tableowner from pg_tables where tablename = 'shoot_sessions';
+--     -- attendu : studiio
 -- ---------------------------------------------------------------------------
-grant all on table public.shoot_sessions to public;
-grant all on table public.rushes to public;
 
 -- ---------------------------------------------------------------------------
 -- 4. APRES APPLICATION — ETAPE OBLIGATOIRE

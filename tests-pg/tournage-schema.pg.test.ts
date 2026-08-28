@@ -156,6 +156,56 @@ describe('La suppression est conservatrice, et documentée', () => {
   });
 });
 
+describe('Les privilèges : rien à `public`, tout au propriétaire', () => {
+  it('`public` n a AUCUN privilège sur les deux tables', async () => {
+    // Les autres migrations du projet font `grant all ... to public` en
+    // affirmant que PostgREST l'exige. La migration du 29 août prouve le
+    // contraire : elle révoque, et ses RPC sont bien exposées. La raison est
+    // que `psql -U studiio` rend `studiio` PROPRIÉTAIRE — un propriétaire
+    // n'a besoin d'aucun grant.
+    for (const table of ['shoot_sessions', 'rushes']) {
+      for (const droit of ['SELECT', 'INSERT', 'UPDATE', 'DELETE']) {
+        // eslint-disable-next-line no-await-in-loop
+        const { rows } = await client.query(
+          'select has_table_privilege($1, $2, $3) as a',
+          ['public', `public.${table}`, droit],
+        );
+        expect(rows[0].a, `${table}.${droit}`).toBe(false);
+      }
+    }
+  });
+
+  it('le propriétaire, lui, garde tous ses droits', async () => {
+    for (const table of ['shoot_sessions', 'rushes']) {
+      // eslint-disable-next-line no-await-in-loop
+      const { rows } = await client.query(
+        `select has_table_privilege(current_user, $1, 'SELECT') as lit,
+                has_table_privilege(current_user, $1, 'INSERT') as ecrit,
+                (select tableowner from pg_tables
+                  where schemaname = 'public' and tablename = $2) = current_user as possede`,
+        [`public.${table}`, table],
+      );
+      expect(rows[0].lit, table).toBe(true);
+      expect(rows[0].ecrit, table).toBe(true);
+      expect(rows[0].possede, table).toBe(true);
+    }
+  });
+
+  it('la migration ne contient plus aucun `grant`', async () => {
+    const { readFileSync } = await import('fs');
+    const { join } = await import('path');
+    const sql = readFileSync(
+      join(process.cwd(), 'migrations/2026-08-31-shoot-sessions-rushes.sql'), 'utf-8',
+    );
+    const code = sql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+    expect(code).not.toMatch(/grant\s/i);
+    // Et aucune RLS n'est posée : la question dépasse ces deux tables, et
+    // une politique mal réglée couperait l'application sans prévenir.
+    expect(code).not.toMatch(/row level security/i);
+    expect(code).not.toMatch(/create policy/i);
+  });
+});
+
 describe('Ce que la migration ne fait pas', () => {
   it('elle ne touche à aucune table existante', async () => {
     const { readFileSync } = await import('fs');

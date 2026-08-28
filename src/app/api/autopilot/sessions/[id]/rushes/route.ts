@@ -4,6 +4,7 @@ import { indexerRush, listerRushes } from '@/lib/autopilot/tournage/service';
 import {
   CHAMPS_INTERDITS_TOURNAGE, metadataValide, NOM_ORIGINE_MAX,
 } from '@/lib/autopilot/tournage/contrat';
+import { bucketAutorise } from '@/lib/storage/buckets';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -84,6 +85,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (!bucket || !cleObjet) {
       return NextResponse.json(
         { ok: false, error: '`bucket` et `path` sont requis.' }, { status: 422 },
+      );
+    }
+    // Le compartiment vient du navigateur : il passe par la MEME liste
+    // blanche que les deux chemins d'envoi. Sans elle, un nom libre
+    // laisserait viser un compartiment que l'application ne gere pas.
+    if (!bucketAutorise(bucket)) {
+      return NextResponse.json(
+        { ok: false, error: 'Compartiment de stockage non autorise.' }, { status: 422 },
       );
     }
     const nomBrut = corps.nomOrigine;

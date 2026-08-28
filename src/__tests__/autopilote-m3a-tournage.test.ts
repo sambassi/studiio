@@ -599,3 +599,83 @@ describe('Débrancher le volume pendant l envoi ne crée jamais de faux rush', (
     expect(r.body.rush.rang).toBe(0);
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// Durcissement — ce que l'existence d'un objet ne prouve pas
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('Le compartiment passe par la liste blanche partagée', () => {
+  it('un compartiment connu est accepté', async () => {
+    const { ALLOWED_BUCKETS } = await import('@/lib/storage/buckets');
+    for (const b of ALLOWED_BUCKETS) {
+      objetStocke = OBJET_VALIDE;
+      // eslint-disable-next-line no-await-in-loop
+      const r = await indexer('s-a', { bucket: b, path: `A/rushes/${b}.mp4` });
+      expect(r.status, b).toBe(201);
+    }
+  });
+
+  it('un compartiment inconnu est refusé — avant même de regarder le stockage', async () => {
+    for (const b of ['secret', 'backups', '../media', '', 'MEDIA']) {
+      // eslint-disable-next-line no-await-in-loop
+      const r = await indexer('s-a', { bucket: b, path: 'A/rushes/x.mp4' });
+      expect(r.status, b).toBe(422);
+      expect(insertions.filter((i) => i.table === 'rushes')).toEqual([]);
+    }
+    // Le stockage n'a même pas été interrogé.
+    expect(statAppels).toEqual([]);
+  });
+
+  it('la liste n est pas une seconde copie — elle est partagée', async () => {
+    const { readFileSync } = await import('fs');
+    const { join } = await import('path');
+    // Elle vivait DEUX fois, à l'identique, dans les deux chemins d'envoi.
+    // Deux copies d'une liste blanche divergent le jour où l'une accueille un
+    // compartiment de plus.
+    for (const f of [
+      'src/app/api/storage/upload/route.ts',
+      'src/app/api/upload/multipart/route.ts',
+      'src/app/api/autopilot/sessions/[id]/rushes/route.ts',
+    ]) {
+      const src = readFileSync(join(process.cwd(), f), 'utf-8');
+      expect(src, f).toContain("from '@/lib/storage/buckets'");
+      expect(src, f).not.toContain("new Set(['media', 'audio', 'videos', 'images'])");
+    }
+  });
+});
+
+describe('Une clé ne prouve la propriété que si elle est vraiment dans le périmètre', () => {
+  it('la clé de l utilisateur est acceptée', async () => {
+    const r = await indexer('s-a', { bucket: 'media', path: 'A/rushes/plan.mp4' });
+    expect(r.status).toBe(201);
+  });
+
+  it('une clé contenant `..` est refusée', async () => {
+    // `A/../B/x` satisfait le préfixe tout en désignant l'espace de B. Le
+    // stockage ne normalise pas les clés, donc l'objet n'existerait pas —
+    // mais une garantie de propriété ne doit pas dépendre de ça.
+    for (const p of ['A/../B/vole.mp4', 'A/rushes/../../B/x.mp4', 'A/..']) {
+      // eslint-disable-next-line no-await-in-loop
+      const r = await indexer('s-a', { bucket: 'media', path: p });
+      expect(r.status, p).toBe(422);
+      expect(r.body.motif, p).toBe('cle_hors_perimetre');
+    }
+    expect(insertions.filter((i) => i.table === 'rushes')).toEqual([]);
+  });
+
+  it('la clé d un autre utilisateur est refusée, même si l objet existe', async () => {
+    // Le stockage répond « oui, ce fichier est là » — et ça ne suffit pas.
+    objetStocke = OBJET_VALIDE;
+    const r = await indexer('s-a', { bucket: 'media', path: 'B/rushes/secret.mp4' });
+    expect(r.status).toBe(422);
+    expect(r.body.motif).toBe('cle_hors_perimetre');
+    expect(insertions.filter((i) => i.table === 'rushes')).toEqual([]);
+  });
+
+  it('le périmètre est vérifié AVANT d interroger le stockage', async () => {
+    await indexer('s-a', { bucket: 'media', path: 'B/rushes/secret.mp4' });
+    // Aucun `statObject` : on n'apprend rien sur les fichiers d'autrui, pas
+    // même leur existence.
+    expect(statAppels).toEqual([]);
+  });
+});
