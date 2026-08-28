@@ -455,6 +455,7 @@ let tables: Record<string, Ligne[]> = {};
 function requete(table: string) {
   const filtres: Array<[string, unknown]> = [];
   const filtresIn: Array<[string, unknown[]]> = [];
+  const filtresLt: Array<[string, unknown]> = [];
   let tri: { colonne: string; asc: boolean } | null = null;
   let limite: number | null = null;
   let aInserer: Ligne | null = null;
@@ -463,7 +464,8 @@ function requete(table: string) {
   const lignes = () => {
     let out = (tables[table] ?? []).filter(
       (l) => filtres.every(([c, v]) => l[c] === v)
-        && filtresIn.every(([c, vs]) => vs.includes(l[c])),
+        && filtresIn.every(([c, vs]) => vs.includes(l[c]))
+        && filtresLt.every(([c, v]) => String(l[c] ?? '') < String(v)),
     );
     if (tri) {
       const t = tri;
@@ -506,6 +508,14 @@ function requete(table: string) {
     select: () => api,
     eq: (c: string, v: unknown) => { filtres.push([c, v]); return api; },
     in: (c: string, vs: unknown[]) => { filtresIn.push([c, vs]); return api; },
+    // ⚠️ `.lt()` EST INDISPENSABLE DEPUIS LA RÉCUPÉRATION DES ANALYSES.
+    //
+    // `creerAnalyse` filtre désormais sur `updated_at < seuil`. Une doublure
+    // qui ignore `.lt` lève `api.lt is not a function`, l'exception sort par
+    // le `catch` global de la route, et TOUS les tests de ce fichier
+    // répondent 500 — un échec qui accuse le stockage alors que le fautif
+    // est la doublure.
+    lt: (c: string, v: unknown) => { filtresLt.push([c, v]); return api; },
     order: (c: string, o?: { ascending?: boolean }) => {
       tri = { colonne: c, asc: o?.ascending !== false }; return api;
     },

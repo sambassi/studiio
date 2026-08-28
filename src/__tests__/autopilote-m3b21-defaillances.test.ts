@@ -578,6 +578,14 @@ afterEach(() => {
 const FICHIER_ROUTE = 'src/app/api/autopilot/rushes/[id]/analyse/route.ts';
 const FICHIER_SERVICE = 'src/lib/autopilot/analyse/service.ts';
 const FICHIER_RECUPERATION = 'src/lib/autopilot/analyse/recuperation.ts';
+/**
+ * Le vocabulaire du lot vit dans le CONTRAT — c'est la convention du projet,
+ * et le lot A l'a suivie : `MOTIF_ANALYSE_INTERROMPUE` y est déclaré, puis
+ * importé par le service. Le littéral n'apparaît donc dans aucun des trois
+ * fichiers cherchés à l'origine. C'est la liste de fichiers qu'on élargit,
+ * jamais la garde qu'on supprime.
+ */
+const FICHIER_CONTRAT = 'src/lib/autopilot/analyse/contrat.ts';
 const FICHIER_EXTRACTION = 'src/lib/autopilot/analyse/extraction.ts';
 
 /**
@@ -604,7 +612,9 @@ const sansCommentaires = (code: string) => code
  * ce que l'utilisateur et le journal verront, donc la seule partie du lot A
  * dont on peut raisonnablement fixer le nom à l'avance.
  */
-const recuperationIntegree = [FICHIER_RECUPERATION, FICHIER_SERVICE, FICHIER_ROUTE]
+const recuperationIntegree = [
+  FICHIER_RECUPERATION, FICHIER_CONTRAT, FICHIER_SERVICE, FICHIER_ROUTE,
+]
   .some((f) => sansCommentaires(lire(f)).includes(MOTIF_INTERROMPUE));
 
 describe('Ce que ce fichier attend des lots A et B', () => {
@@ -618,7 +628,7 @@ describe('Ce que ce fichier attend des lots A et B', () => {
     expect(
       recuperationIntegree,
       `motif « ${MOTIF_INTERROMPUE} » introuvable dans ${FICHIER_RECUPERATION}, `
-      + `${FICHIER_SERVICE} ni ${FICHIER_ROUTE}. Les preuves qui exigent la `
+      + `${FICHIER_CONTRAT}, ${FICHIER_SERVICE} ni ${FICHIER_ROUTE}. Les preuves qui exigent la `
       + 'récupération sont mises de côté tant qu il manque. Si le lot A ferme '
       + 'les analyses interrompues sous un AUTRE motif, corriger '
       + 'MOTIF_INTERROMPUE ici plutôt que supprimer cette garde.',
@@ -645,10 +655,23 @@ describe('Ce que ce fichier attend des lots A et B', () => {
       .replace(/\/\*[\s\S]*?\*\//g, (bloc) => bloc.replace(/[^\n]/g, ' '))
       .split('\n').map((l) => (l.trim().startsWith('//') ? '' : l)).join('\n');
     expect(code.trim(), `${FICHIER_EXTRACTION} introuvable`).not.toBe('');
+    // ⚠️ ON MESURE LA CONSTRUCTION DU CLIENT, PAS LA FORME DE L'APPEL.
+    //
+    // La première rédaction cherchait `await x.statObject(` — elle supposait
+    // que le bornage se ferait en chaînant l'appel sur le constructeur. Le
+    // lot B a rangé les clients bornés dans des variables
+    // (`const signeur = signeurInterne(BORNE)`), ce que ce motif lisait
+    // comme un appel « à nu » : un faux positif sur du code correct.
+    //
+    // Ce qui compte n'est pas où l'appel est écrit, c'est qu'AUCUN client de
+    // ce fichier ne soit construit sans borne. Un constructeur aux
+    // parenthèses vides est le seul moyen d'obtenir un client non borné —
+    // c'est donc lui, et lui seul, qu'on interdit ici. La preuve reste
+    // indépendante du nom de la borne et de la forme du bornage.
     const nus = [
-      /await\s+[A-Za-z_$][\w$]*(\(\))?\s*\.\s*statObject\s*\(/,
-      /await\s+[A-Za-z_$][\w$]*(\(\))?\s*\.\s*presignedGetObject\s*\(/,
-      /await\s+[A-Za-z_$][\w$]*(\(\))?\s*\.\s*putObject\s*\(/,
+      /\bclientMinio\s*\(\s*\)/,
+      /\bsigneurInterne\s*\(\s*\)/,
+      /\bsigneurPublic\s*\(\s*\)/,
     ];
     // On rend les LIGNES fautives, pas le fichier : un échec qui recrache
     // sept cents lignes de source ne se lit pas.
@@ -659,10 +682,15 @@ describe('Ce que ce fichier attend des lots A et B', () => {
 
     expect(
       fautives,
-      'appel MinIO attendu à nu : un stockage qui accepte la connexion puis '
-      + 'ne répond jamais ferait pendre la requête au-delà de son budget, et '
-      + 'l analyse resterait « en_cours » indéfiniment',
+      'client MinIO construit sans borne : un stockage qui accepte la '
+      + 'connexion puis ne répond jamais ferait pendre la requête au-delà de '
+      + 'son budget, et l analyse resterait « en_cours » indéfiniment',
     ).toEqual([]);
+
+    // Et le fichier utilise bien au moins un client borné — sans quoi la
+    // règle ci-dessus serait vraie d'un fichier qui n'appelle rien.
+    expect(code, 'aucun client borné dans le moteur')
+      .toMatch(/(clientMinio|signeurInterne)\s*\(\s*[A-Za-z_$]/);
   });
 });
 
