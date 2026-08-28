@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { lireRush, majDureeRush } from '@/lib/autopilot/tournage/service';
-import { creerAnalyse, majAnalyse, listerAnalyses } from '@/lib/autopilot/analyse/service';
+import {
+  creerAnalyse, majAnalyse, listerAnalyses, lireDerniereAnalyse,
+} from '@/lib/autopilot/analyse/service';
 import { CHAMPS_INTERDITS_ANALYSE, analyseActive, type RushAnalysis } from '@/lib/autopilot/analyse/contrat';
 import {
   chargerMoteurExtraction, resultatExtractionValide,
@@ -473,6 +475,103 @@ async function executerAnalyse(
     { ok: true, analyse: analysePublique(consigne.analyse), dureeRushEcrite },
     { status: 201 },
   );
+}
+
+/**
+ * Rend l'analyse LA PLUS RÉCENTE d'un rush — et rien d'autre.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * UNE LECTURE, ET UNE SEULE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Ce gestionnaire n'écrit rien, ne crée rien, ne ferme rien. En particulier
+ * il n'appelle PAS `recupererAnalysesInterrompues` : consulter l'état d'une
+ * analyse ne doit pas la fermer. Un écran qui rafraîchit sa page toutes les
+ * cinq secondes tuerait alors le travail qu'il regarde. La récupération
+ * appartient à la RELANCE, où l'utilisateur demande explicitement un nouveau
+ * travail — c'est-à-dire à `creerAnalyse`, et à lui seul.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * LA PLUS RÉCENTE, C'EST LA PLUS GRANDE `version` — ET UNE SEULE LIGNE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * `lireDerniereAnalyse`, et NON `listerAnalyses` : cet écran SONDE cet état
+ * toutes les quelques secondes, par rush ouvert, sur le processus Node qui
+ * fait aussi tourner ffmpeg. `listerAnalyses` rapatrierait toutes les
+ * versions avec toutes leurs colonnes `jsonb` pour n'en afficher qu'une.
+ *
+ * Ni `created_at`, ni `updated_at` pour trancher : le premier peut être
+ * identique à la milliseconde entre deux insertions, le second remonterait
+ * une vieille analyse fermée après coup devant une neuve.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * AUCUNE ANALYSE N'EST UN ÉTAT NORMAL, PAS UNE ERREUR
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Un rush jamais analysé répond 200 avec `analyse: null`. Un 404 dirait « ce
+ * rush n'existe pas », ce qui est faux et enverrait l'écran afficher la
+ * mauvaise chose. La distinction compte : c'est précisément l'écran qui doit
+ * proposer « Analyser » dans ce cas.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * CE QUI SORT, ET CE QUI NE SORT PAS
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * `analysePublique` — la MÊME fonction que le POST, pas une seconde qui
+ * divergerait d'un champ. Elle retire les clés de stockage et ne laisse des
+ * vignettes que leur nombre et leurs positions. Les IMAGES elles-mêmes se
+ * demandent une par une à `/api/autopilot/analyses/[id]/vignettes/[n]`, qui
+ * les sert depuis l'application. Aucune clé, aucun compartiment et aucune
+ * URL de stockage ne sortent d'ici — deux tests le vérifient déjà sur le
+ * POST, et la raison vaut mot pour mot pour la lecture.
+ *
+ * ⚠️ Beaucoup de champs sont vides, et c'est NORMAL : `resume`, `parole`,
+ * `qualite` et `textesVisibles` attendent M3-B4 et M3-B5. Ils sont rendus
+ * tels quels — vides. Les remplir d'une valeur « raisonnable » ferait croire
+ * à un travail qui n'a pas eu lieu.
+ */
+export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    const userId = session.user.id;
+
+    // Le rush est lu D'ABORD, et pour DEUX raisons. La première : distinguer
+    // les deux migrations qui peuvent manquer — un message qui nommerait la
+    // mauvaise enverrait appliquer la mauvaise. La seconde : sans elle, un
+    // rush inexistant et un rush jamais analysé répondraient la même chose,
+    // et l'écran ne saurait pas s'il doit proposer « Analyser ».
+    const { rush, motif: motifRush } = await lireRush(userId, params.id);
+    if (motifRush === 'socle_absent') {
+      return NextResponse.json(
+        { ok: false, error: SOCLE_TOURNAGE_ABSENT, motif: 'socle_absent' }, { status: 503 },
+      );
+    }
+    // Inconnu ou appartenant à autrui : même réponse. Un 403 confirmerait
+    // l'existence du rush d'un tiers.
+    if (!rush) {
+      return NextResponse.json({ ok: false, error: 'Rush introuvable' }, { status: 404 });
+    }
+
+    const { analyse, motif } = await lireDerniereAnalyse(userId, params.id);
+    if (motif === 'socle_absent') {
+      return NextResponse.json(
+        { ok: false, error: SOCLE_ANALYSE_ABSENT, motif: 'socle_absent' }, { status: 503 },
+      );
+    }
+
+    return NextResponse.json(
+      { ok: true, analyse: analyse ? analysePublique(analyse) : null },
+      // `private, no-store` : la réponse dépend de la session, et un cache
+      // partagé qui la garderait la servirait au visiteur suivant.
+      { status: 200, headers: { 'Cache-Control': 'private, no-store' } },
+    );
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : 'lecture d analyse impossible';
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {

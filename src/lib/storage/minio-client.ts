@@ -234,6 +234,55 @@ export function signeurInterne(
 }
 
 /**
+ * Le LECTEUR d'objets : il rend le flux, il ne le bufferise pas.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * POURQUOI UN CONSTRUCTEUR A PART, ET NON `getObject` SUR `ClientStockage`
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Exactement les trois raisons deja ecrites pour `presignedGetObject` juste
+ * au-dessus, et elles valent mot pour mot :
+ *
+ * 1. `ClientStockage` decrit ce que l'application FAIT au stockage pour le
+ *    compte d'un utilisateur — regarder un objet, en ecrire un. Servir un
+ *    octet a un navigateur est une troisieme nature.
+ * 2. Les doublures de test de `clientMinio` n'implementent que `statObject`
+ *    et `putObject`. Elargir cette interface-la les rendrait toutes invalides
+ *    d'un coup, pour un besoin qu'aucune d'elles n'a.
+ * 3. Un nom distinct rend l'erreur visible a la relecture.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ CE LECTEUR EST FAIT POUR LES PETITS OBJETS, ET POUR EUX SEULS
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Il rend un flux Node, jamais un `Buffer` : rien n'est materialise en
+ * memoire par ce fichier, et l'appelant doit se garder de le faire. Il est
+ * ne pour les VIGNETTES d'analyse — quelques dizaines de kilo-octets. Le
+ * rush, lui, ne passe jamais par l'application : il est lu par ffmpeg au
+ * travers d'une URL signee interne, par requetes `Range`. Ne pas confondre.
+ *
+ * `borne` est FACULTATIF et se comporte comme partout ailleurs dans ce
+ * fichier : sans lui, aucun delai — le comportement historique.
+ */
+export function lecteurMinio(borne?: BorneReseau): {
+  getObject(bucket: string, cle: string): Promise<NodeJS.ReadableStream>;
+} {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Client: MinioClient } = require('minio');
+  const secretKey = process.env.MINIO_SECRET_KEY || process.env.MINIO_ROOT_PASSWORD || '';
+  if (!secretKey) throw new Error('MINIO_SECRET_KEY/MINIO_ROOT_PASSWORD manquant (env)');
+  const useSSL = process.env.MINIO_USE_SSL === 'true';
+  return new MinioClient({
+    endPoint: process.env.MINIO_ENDPOINT || 'studiio-minio',
+    port: parseInt(process.env.MINIO_PORT || '9000', 10),
+    useSSL,
+    accessKey: process.env.MINIO_ACCESS_KEY || process.env.MINIO_ROOT_USER || 'studiio',
+    secretKey,
+    ...(borne ? optionsBornees(useSSL, borne) : {}),
+  });
+}
+
+/**
  * Le client de LECTURE/ECRITURE sur le nom interne.
  *
  * `borne` est FACULTATIF, et le defaut est le comportement historique : aucun
