@@ -146,6 +146,65 @@ export const RESUME_MAX = 4000;
 export const MOTIF_ECHEC_MAX = 200;
 
 /**
+ * ─────────────────────────────────────────────────────────────────────────
+ * LA PÉREMPTION D'UNE ANALYSE ACTIVE — M3-B2.1
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * `rush_analyses_active_unique` interdit deux analyses actives sur un même
+ * rush. C'est ce qui porte l'idempotence — et c'est aussi ce qui transforme
+ * un processus mort en blocage DÉFINITIF : si le conteneur disparaît entre
+ * `majAnalyse({ etat: 'en_cours' })` et la consignation du résultat
+ * (redéploiement Coolify, OOM, SIGKILL), la ligne reste `en_cours` pour
+ * toujours, occupe le verrou, et plus aucune analyse de ce rush ne peut
+ * naître. Aucune route ne sait la fermer ; seule une écriture SQL manuelle
+ * débloque.
+ *
+ * Le délai ci-dessous est la SEULE chose qui distingue « un travail tourne »
+ * de « un travail est mort ». Le choisir trop court reviendrait à tuer des
+ * analyses vivantes ; c'est pourquoi il est calé bien au-dessus de toutes les
+ * bornes réelles du chemin :
+ *
+ *   * moteur d'extraction, pire cas — `TIMEOUT_SONDE_MS` (30 s) pour ffprobe,
+ *     plus 30 s pour le repli ffmpeg quand ffprobe est absent, plus
+ *     `VIGNETTES_MAX` (8) × `TIMEOUT_VIGNETTE_MS` (20 s) : ~220 s.
+ *     `RW_TIMEOUT_US` (15 s) est un délai PAR socket, déjà contenu dans ces
+ *     bornes-là ; il n'ajoute rien au total.
+ *   * route `POST /api/autopilot/rushes/[id]/analyse` — `maxDuration = 300`.
+ *     C'est le plafond DUR : au-delà, la requête qui tenait l'analyse
+ *     n'existe plus, donc plus personne ne la fermera jamais.
+ *
+ * 900 s, c'est trois fois le budget de la route et quatre fois le pire cas du
+ * moteur. La marge n'est pas un excès de prudence : les téléversements MinIO
+ * des vignettes s'ajoutent à ces bornes, et leurs propres délais réseau
+ * s'ajouteront encore. Une analyse encore vivante à 900 s est une analyse
+ * dont la route ne peut de toute façon plus consigner le résultat.
+ */
+export const PEREMPTION_ANALYSE_MS = 15 * 60 * 1000;
+
+/**
+ * Le motif écrit dans `motif_echec` quand on ferme une analyse abandonnée.
+ *
+ * Un nom MÉTIER, du même vocabulaire que `moteur_absent`,
+ * `moteur_en_erreur` ou `resultat_moteur_invalide` : il dit ce qui est
+ * arrivé à l'analyse, pas quel mécanisme l'a constaté. Une constante, parce
+ * qu'un écran et un test le comparent, et qu'une chaîne recopiée finit par
+ * différer d'une lettre.
+ */
+export const MOTIF_ANALYSE_INTERROMPUE = 'analyse_interrompue';
+
+/**
+ * L'instant AVANT lequel une analyse encore active est réputée abandonnée.
+ *
+ * Rendu en ISO, parce que c'est ce que compare la colonne `timestamptz` à
+ * travers PostgREST. `maintenant` est un argument pour que les tests puissent
+ * vieillir une ligne sans attendre un quart d'heure — jamais pour qu'un
+ * appelant choisisse son propre seuil.
+ */
+export function seuilPeremptionAnalyse(maintenant: number = Date.now()): string {
+  return new Date(maintenant - PEREMPTION_ANALYSE_MS).toISOString();
+}
+
+/**
  * Champs qu'un navigateur n'a jamais le droit de proposer.
  *
  * Même principe que `CHAMPS_INTERDITS_TOURNAGE` et `CHAMPS_INTERDITS_RENDU` :
