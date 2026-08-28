@@ -1,0 +1,403 @@
+'use client';
+
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  AlertTriangle, CheckCircle2, Clock, Loader2, RotateCcw, ScanSearch,
+} from 'lucide-react';
+import {
+  lireAnalyse, lancerAnalyse, lireVignettes, conduiteApresLancement,
+  analyseEnCours, DELAI_SUIVI_MS,
+  type AnalyseEcran, type VignetteAffichable,
+} from '@/lib/autopilot/analyse/passerelle';
+import {
+  phraseEnCours, messageEchec, relanceCoherente, formaterTechnique,
+  extraireContenuInterprete, contenuInterpreteVide,
+} from '@/lib/autopilot/analyse/presentation';
+
+/**
+ * L'analyse d'UN rush, greffée sous sa ligne dans les sessions de tournage.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * POURQUOI CE COMPOSANT EXISTE PAR RUSH, ET NON UNE FOIS POUR LA LISTE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Parce que le suivi périodique doit s'arrêter tout seul, et qu'il ne
+ * s'arrête proprement que s'il appartient à ce qui disparaît. Un suivi tenu
+ * par la liste devrait savoir quels rushes sont encore actifs, se
+ * réabonner quand la liste change, et se démonter quand elle se vide — trois
+ * occasions d'oublier. Ici, le rush qui quitte l'écran emporte sa minuterie.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * LE STATUT NE VIT PAS DANS REACT — IL VIT SUR LE SERVEUR
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Au montage, le composant DEMANDE l'analyse (`GET`). Il ne suppose rien à
+ * partir de ce qui s'est passé dans la page : une analyse lancée avant un
+ * rechargement, ou depuis un autre onglet, se retrouve intacte. Un état tenu
+ * en mémoire aurait affiché « Analyser » sur un rush en train d'être mesuré,
+ * et le clic suivant aurait pris un 409 sans que personne comprenne pourquoi.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * LE SUIVI NE FAIT QUE LIRE. JAMAIS D'ÉCRITURE AUTOMATIQUE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * La minuterie appelle `lireAnalyse`, et cette fonction ne connaît que `GET`.
+ * C'est un invariant, pas une précaution : un `POST` rejoué toutes les trois
+ * secondes consommerait une place d'extraction à chaque tour, et créerait des
+ * analyses que personne n'a demandées. Aucune réponse — pas même un 429 avec
+ * son `Retry-After` — ne déclenche de relance. Relancer est un geste.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * AUCUN POURCENTAGE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Le serveur connaît des ÉTAPES, pas une progression. « 67 % » serait une
+ * invention : il n'avancerait au rythme de rien, et se figerait au milieu
+ * d'une étape longue. On nomme l'étape en cours, et c'est tout ce qu'on sait.
+ */
+
+interface Props {
+  rushId: string;
+}
+
+/** Le plafond dur du moteur (`VIGNETTES_MAX`), redit ici pour l'affichage. */
+const VIGNETTES_AFFICHEES = 8;
+
+interface Refus {
+  message: string;
+  relancable: boolean;
+  retryApresSecondes: number | null;
+}
+
+export default function AnalyseRush({ rushId }: Props) {
+  const [analyse, setAnalyse] = useState<AnalyseEcran | null>(null);
+  const [chargement, setChargement] = useState(true);
+  const [indisponible, setIndisponible] = useState<string | null>(null);
+  const [demande, setDemande] = useState(false);
+  const [refus, setRefus] = useState<Refus | null>(null);
+  const [vignettes, setVignettes] = useState<VignetteAffichable[] | null>(null);
+  const [vignettesManquantes, setVignettesManquantes] = useState(false);
+
+  const vivantRef = useRef(true);
+  const minuterieRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const analyseRef = useRef<AnalyseEcran | null>(null);
+  const demandeRef = useRef(false);
+  const rafraichirRef = useRef<() => void>(() => {});
+  const vignettesPourRef = useRef<string | null>(null);
+
+  /**
+   * Programme — ou ne programme pas — la prochaine lecture.
+   *
+   * Le tour suivant n'est armé QUE si l'analyse est encore active. `reussie`,
+   * `echouee` et `annulee` ne se rouvrent pas : continuer à interroger serait
+   * une requête toutes les trois secondes, pour toujours, sur un résultat qui
+   * ne bougera plus.
+   *
+   * La minuterie précédente est toujours annulée d'abord : sans ça, un clic
+   * pendant un tour en vol ferait courir deux boucles en parallèle, et la
+   * seconde survivrait au démontage.
+   */
+  const planifier = useCallback((suivante: AnalyseEcran | null) => {
+    if (minuterieRef.current) {
+      clearTimeout(minuterieRef.current);
+      minuterieRef.current = null;
+    }
+    if (!vivantRef.current) return;
+    if (!analyseEnCours(suivante)) return;
+    minuterieRef.current = setTimeout(() => { rafraichirRef.current(); }, DELAI_SUIVI_MS);
+  }, []);
+
+  const rafraichir = useCallback(async () => {
+    const r = await lireAnalyse(rushId);
+    // Le composant a pu être démonté pendant la requête. Écrire ici
+    // provoquerait un avertissement React et, pire, rearmerait la minuterie.
+    if (!vivantRef.current) return;
+    setChargement(false);
+
+    if (r.sorte === 'indisponible') {
+      setIndisponible(r.message);
+      // Une lecture ratée n'arrête pas le suivi d'une analyse qu'on savait
+      // active : le réseau flanche plus souvent que le serveur.
+      planifier(analyseRef.current);
+      return;
+    }
+    setIndisponible(null);
+    const suivante = r.sorte === 'trouvee' ? r.analyse : null;
+    analyseRef.current = suivante;
+    setAnalyse(suivante);
+    planifier(suivante);
+  }, [rushId, planifier]);
+
+  rafraichirRef.current = rafraichir;
+
+  useEffect(() => {
+    vivantRef.current = true;
+    rafraichir();
+    return () => {
+      vivantRef.current = false;
+      if (minuterieRef.current) {
+        clearTimeout(minuterieRef.current);
+        minuterieRef.current = null;
+      }
+    };
+  }, [rafraichir]);
+
+  /**
+   * Le clic — un `POST`, et un seul, même si l'on clique trois fois.
+   *
+   * Le garde-fou est un `ref` et non l'état `demande` : deux clics dans le
+   * même tour de rendu liraient tous les deux `false`, et deux requêtes
+   * partiraient. La seconde prendrait un 409, ce qui n'est pas grave, mais
+   * elle aurait aussi occupé une place d'extraction pour rien.
+   */
+  const analyser = useCallback(async () => {
+    if (demandeRef.current) return;
+    demandeRef.current = true;
+    setDemande(true);
+    setRefus(null);
+    setIndisponible(null);
+
+    const conduite = conduiteApresLancement(await lancerAnalyse(rushId));
+    if (vivantRef.current) {
+      if (conduite.suite === 'relire') {
+        // 201 comme 409 : dans les deux cas une analyse existe, et c'est le
+        // serveur qui dit laquelle — pas le corps de la réponse au POST.
+        await rafraichir();
+      } else {
+        setRefus({
+          message: conduite.message,
+          relancable: conduite.relancable,
+          retryApresSecondes: conduite.retryApresSecondes,
+        });
+        setChargement(false);
+      }
+    }
+    demandeRef.current = false;
+    if (vivantRef.current) setDemande(false);
+  }, [rushId, rafraichir]);
+
+  /**
+   * Les vignettes : demandées une seule fois par analyse, et seulement quand
+   * il y en a.
+   *
+   * Les URL sont signées et courtes — elles ne sont donc ni mises en cache ni
+   * conservées d'une analyse à l'autre. `vignettesPourRef` empêche que chaque
+   * rendu en redemande un jeu neuf.
+   */
+  useEffect(() => {
+    if (!analyse || analyse.etat !== 'reussie' || analyse.vignettes.nombre <= 0) return undefined;
+    if (vignettesPourRef.current === analyse.id) return undefined;
+    vignettesPourRef.current = analyse.id;
+    let annule = false;
+    (async () => {
+      const r = await lireVignettes(rushId);
+      if (annule || !vivantRef.current) return;
+      if (r.sorte === 'ok') setVignettes(r.vignettes.slice(0, VIGNETTES_AFFICHEES));
+      else setVignettesManquantes(true);
+    })();
+    return () => { annule = true; };
+  }, [analyse, rushId]);
+
+  const etatAffiche = chargement ? 'chargement' : analyse ? analyse.etat : 'aucune';
+
+  const boutonAnalyse = (libelle: string, relance: boolean) => (
+    <button
+      type="button"
+      onClick={analyser}
+      disabled={demande}
+      data-analyse-lancer={relance ? 'relance' : 'premiere'}
+      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-800 px-2.5 py-2 min-h-[36px] text-[11px] text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-50 transition-colors"
+    >
+      {demande
+        ? <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+        : relance
+          ? <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+          : <ScanSearch className="w-3.5 h-3.5 shrink-0" />}
+      {demande ? 'Analyse demandée…' : libelle}
+    </button>
+  );
+
+  const contenu = analyse ? extraireContenuInterprete(analyse) : null;
+  const aVenir = contenu === null || contenuInterpreteVide(contenu);
+  const { mesures, details } = analyse
+    ? formaterTechnique(analyse.technique, analyse.dureeSecondes)
+    : { mesures: [], details: [] };
+
+  return (
+    <div
+      className="mt-1.5 space-y-1.5"
+      data-analyse-rush={rushId}
+      data-analyse-etat={etatAffiche}
+    >
+      {chargement && (
+        <span className="inline-flex items-center gap-1.5 text-[11px] text-gray-500">
+          <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+          Statut de l’analyse…
+        </span>
+      )}
+
+      {/* Jamais analysé : le seul endroit où « Analyser » est une première fois. */}
+      {!chargement && !analyse && !refus && boutonAnalyse('Analyser', false)}
+
+      {analyse?.etat === 'en_attente' && (
+        <span className="inline-flex items-center gap-1.5 text-[11px] text-gray-400">
+          <Clock className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+          Analyse en attente
+        </span>
+      )}
+
+      {analyse?.etat === 'en_cours' && (
+        <span className="inline-flex items-center gap-1.5 text-[11px] text-gray-300" data-analyse-etape={analyse.etape ?? ''}>
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-400 shrink-0" />
+          {/* Une ÉTAPE, jamais un pourcentage. */}
+          {phraseEnCours(analyse.etape)}
+        </span>
+      )}
+
+      {analyse?.etat === 'echouee' && (
+        <div className="space-y-1.5">
+          <p className="flex items-start gap-1.5 text-[11px] text-amber-300" data-analyse-echec={analyse.motifEchec ?? ''}>
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
+            <span className="min-w-0">{messageEchec(analyse.motifEchec)}</span>
+          </p>
+          {/* Relancer n'est proposé que si recommencer peut changer le
+              résultat. Un fichier illisible le restera. */}
+          {relanceCoherente(analyse.motifEchec) && boutonAnalyse('Relancer l’analyse', true)}
+        </div>
+      )}
+
+      {analyse?.etat === 'annulee' && (
+        <div className="space-y-1.5">
+          <p className="text-[11px] text-gray-400">Analyse annulée.</p>
+          {boutonAnalyse('Relancer l’analyse', true)}
+        </div>
+      )}
+
+      {/* Le refus du POST : distinct de l'échec d'une analyse, parce qu'il n'y
+          a rien eu à analyser. `Retry-After` informe, il ne relance pas. */}
+      {refus && (
+        <div className="space-y-1.5">
+          <p className="flex items-start gap-1.5 text-[11px] text-amber-300" data-analyse-message>
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
+            <span className="min-w-0">{refus.message}</span>
+          </p>
+          {refus.retryApresSecondes !== null && (
+            <p className="text-[10px] text-gray-500" data-analyse-retry={refus.retryApresSecondes}>
+              Le serveur suggère de revenir dans {Math.max(1, Math.round(refus.retryApresSecondes / 60))} min.
+            </p>
+          )}
+          {refus.relancable && boutonAnalyse('Réessayer', true)}
+        </div>
+      )}
+
+      {indisponible && !refus && (
+        <p className="text-[11px] text-gray-500" data-analyse-indisponible>{indisponible}</p>
+      )}
+
+      {analyse?.etat === 'reussie' && (
+        <div className="rounded-lg border border-gray-800 bg-gray-950/40 p-2 space-y-2">
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-emerald-400" data-analyse-badge>
+            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+            Analysé
+          </span>
+
+          {mesures.length > 0 && (
+            <dl
+              className="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-1.5"
+              data-analyse-technique
+            >
+              {mesures.map((l) => (
+                <div key={l.cle} className="min-w-0" data-analyse-mesure={l.cle}>
+                  <dt className="text-[10px] uppercase tracking-wide text-gray-500 truncate">{l.libelle}</dt>
+                  <dd className="text-[11px] text-gray-200 truncate">{l.valeur}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+
+          {details.length > 0 && (
+            <details data-analyse-details>
+              {/* Repliés : la sonde utilisée intéresse le diagnostic, pas
+                  l'usage courant — et sur un téléphone, chaque ligne compte. */}
+              <summary className="cursor-pointer list-none text-[10px] text-gray-500 hover:text-gray-300 min-h-[28px] flex items-center">
+                Détails de la mesure
+              </summary>
+              <dl className="mt-1 grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-1.5">
+                {details.map((l) => (
+                  <div key={l.cle} className="min-w-0" data-analyse-mesure={l.cle}>
+                    <dt className="text-[10px] uppercase tracking-wide text-gray-500 truncate">{l.libelle}</dt>
+                    <dd className="text-[11px] text-gray-200 truncate">{l.valeur}</dd>
+                  </div>
+                ))}
+              </dl>
+            </details>
+          )}
+
+          {vignettes && vignettes.length > 0 && (
+            <ul className="grid grid-cols-4 sm:grid-cols-8 gap-1" data-analyse-vignettes>
+              {vignettes.map((v, i) => (
+                <li key={v.url}>
+                  {/* Un `<img>` nu, et non `next/image` : l'URL est signée,
+                      valable quelques minutes, et sur un hôte que la
+                      configuration d'images ne connaît pas. L'optimiseur la
+                      réécrirait et la signature ne suivrait pas. */}
+                  <img
+                    src={v.url}
+                    alt={v.seconde === null ? `Aperçu ${i + 1}` : `Aperçu à ${Math.round(v.seconde)} s`}
+                    loading="lazy"
+                    decoding="async"
+                    data-analyse-vignette={i}
+                    className="w-full rounded object-cover bg-gray-900"
+                    style={{ aspectRatio: '1 / 1' }}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {vignettesManquantes && (
+            <p className="text-[10px] text-gray-500" data-analyse-vignettes-absentes>
+              Aperçus indisponibles pour l’instant. La mesure, elle, est complète.
+            </p>
+          )}
+
+          {/* ── Ce qui viendra, dit comme tel ────────────────────────────── */}
+          {aVenir ? (
+            <p className="text-[10px] text-gray-500 leading-relaxed" data-analyse-a-venir>
+              Compréhension du contenu, parole et qualité : ces analyses arriveront
+              à une étape suivante.
+            </p>
+          ) : (
+            <div className="space-y-1.5" data-analyse-interprete>
+              {(contenu?.resume || (contenu?.textes.length ?? 0) > 0) && (
+                <section className="space-y-1" data-analyse-section="comprehension">
+                  <h4 className="text-[10px] uppercase tracking-wide text-gray-500">
+                    Compréhension du contenu
+                  </h4>
+                  {contenu?.resume && (
+                    <p className="text-[11px] text-gray-300 leading-relaxed">{contenu.resume}</p>
+                  )}
+                  {(contenu?.textes.length ?? 0) > 0 && (
+                    <ul className="flex flex-wrap gap-1">
+                      {contenu?.textes.slice(0, 8).map((t) => (
+                        <li key={t} className="rounded bg-gray-900 px-1.5 py-0.5 text-[10px] text-gray-400 max-w-full truncate">
+                          {t}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              )}
+              {contenu?.paroleTexte && (
+                <section className="space-y-1" data-analyse-section="parole">
+                  <h4 className="text-[10px] uppercase tracking-wide text-gray-500">Parole</h4>
+                  <p className="text-[11px] text-gray-300 leading-relaxed">{contenu.paroleTexte}</p>
+                </section>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
