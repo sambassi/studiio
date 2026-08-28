@@ -106,9 +106,38 @@ function refusUnicite(valeurs: Ligne): { code: string; message: string } | null 
   return null;
 }
 
+/**
+ * L'horodatage d'une ligne d'analyse POSÉE À L'INSTANT.
+ *
+ * ⚠️ PAS UNE DATE EN DUR, ET C'EST M3-B2.1 QUI L'EXIGE. Depuis que
+ * `creerAnalyse` ferme les analyses actives dont l'`updated_at` a dépassé
+ * `PEREMPTION_ANALYSE_MS`, une analyse « active » figée à une date littérale
+ * finit par devenir périmée avec le simple passage du temps réel : les tests
+ * d'idempotence ci-dessous verraient un 201 là où ils attendent un 409, et
+ * ils le verraient un jour donné, sans qu'aucun commit n'ait bougé. Une
+ * analyse vivante se date maintenant.
+ */
+const maintenantIso = () => new Date().toISOString();
+
+/**
+ * `<` sur un `timestamptz`, ajouté par M3-B2.1.
+ *
+ * `recupererAnalysesInterrompues` filtre sur `updated_at < seuil` — une
+ * doublure qui ignorerait `.lt()` laisserait passer la fermeture d'analyses
+ * VIVANTES sans qu'aucun test ne s'en aperçoive. La comparaison porte donc
+ * sur des DATES, pas sur des chaînes.
+ */
+function anterieurA(valeur: unknown, borne: unknown): boolean {
+  const a = Date.parse(String(valeur));
+  const b = Date.parse(String(borne));
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+  return a < b;
+}
+
 function requete(table: string) {
   const filtres: Array<[string, unknown]> = [];
   const filtresIn: Array<[string, unknown[]]> = [];
+  const filtresLt: Array<[string, unknown]> = [];
   let tri: { colonne: string; asc: boolean } | null = null;
   let limite: number | null = null;
   let aInserer: Ligne | null = null;
@@ -118,7 +147,8 @@ function requete(table: string) {
     if (tableAbsente === table) return null;
     let out = (tables[table] ?? []).filter(
       (l) => filtres.every(([c, v]) => l[c] === v)
-        && filtresIn.every(([c, vs]) => vs.includes(l[c])),
+        && filtresIn.every(([c, vs]) => vs.includes(l[c]))
+        && filtresLt.every(([c, v]) => anterieurA(l[c], v)),
     );
     if (tri) {
       out = [...out].sort((a, b) => {
@@ -166,8 +196,8 @@ function requete(table: string) {
         vignettes: [],
         usage: {},
         motif_echec: null,
-        created_at: '2026-09-01T10:00:00Z',
-        updated_at: '2026-09-01T10:00:00Z',
+        created_at: maintenantIso(),
+        updated_at: maintenantIso(),
         ...valeurs,
       };
       insertions.push({ table, valeurs: aInserer });
@@ -201,6 +231,7 @@ function requete(table: string) {
     select: () => api,
     eq: (c: string, v: unknown) => { filtres.push([c, v]); return api; },
     in: (c: string, vs: unknown[]) => { filtresIn.push([c, vs]); return api; },
+    lt: (c: string, v: unknown) => { filtresLt.push([c, v]); return api; },
     order: (c: string, o?: { ascending?: boolean }) => {
       tri = { colonne: c, asc: o?.ascending !== false }; return api;
     },
@@ -632,7 +663,7 @@ describe('Idempotence : la base tranche, pas un `if`', () => {
       etape: 'extraction', fournisseurs: {}, duree_secondes: null, technique: {},
       resume: null, textes_visibles: [], parole: {}, audio: {}, qualite: {},
       vignettes: [], usage: {}, motif_echec: null,
-      created_at: '2026-09-01T10:00:00Z', updated_at: '2026-09-01T10:00:00Z',
+      created_at: maintenantIso(), updated_at: maintenantIso(),
     }];
     const r = await appeler('r-a');
     expect(r.status).toBe(409);
@@ -653,7 +684,7 @@ describe('Idempotence : la base tranche, pas un `if`', () => {
       etape: 'extraction', fournisseurs: {}, duree_secondes: null, technique: {},
       resume: null, textes_visibles: [], parole: {}, audio: {}, qualite: {},
       vignettes: [], usage: {}, motif_echec: 'timeout',
-      created_at: '2026-09-01T10:00:00Z', updated_at: '2026-09-01T10:00:00Z',
+      created_at: maintenantIso(), updated_at: maintenantIso(),
     }];
     const r = await appeler('r-a');
     expect(r.status).toBe(201);

@@ -5,6 +5,7 @@ import {
   statutAnalyseValide, etapeAnalyseValide,
   objetJsonValide, tableauJsonValide, fournisseursValides, vignettesValides,
   RESUME_MAX, MOTIF_ECHEC_MAX,
+  ETATS_ACTIFS, MOTIF_ANALYSE_INTERROMPUE, seuilPeremptionAnalyse,
   type RushAnalysis, type RushAnalysisStatus, type RushAnalysisStep,
   type FournisseursParEtape, type VignetteAnalyse,
 } from './contrat';
@@ -96,6 +97,114 @@ export interface ResultatAnalyse {
 }
 
 /**
+ * Ferme les analyses de CE rush qui sont actives depuis trop longtemps.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * LE PROBLÈME QU'ELLE RÈGLE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Une analyse peut rester `en_attente` ou `en_cours` DÉFINITIVEMENT si le
+ * processus meurt entre le passage `en_cours` et la consignation du résultat.
+ * `rush_analyses_active_unique` interdit alors toute nouvelle analyse de ce
+ * rush : le blocage est permanent, et jusqu'ici seule une écriture SQL
+ * manuelle en sortait.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ L'ATOMICITÉ EST TOUT LE SUJET
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Le `select` ci-dessous n'AUTORISE rien : il ne fait qu'énumérer des
+ * candidats. Ce qui décide est l'`update`, et il rejoue TOUTES les conditions
+ * dans sa propre clause de filtrage — `id`, `user_id`, un état encore actif,
+ * et un `updated_at` encore antérieur au seuil.
+ *
+ * Sans ce rejeu, la fenêtre entre les deux requêtes serait une vraie course :
+ * une analyse périmée à la lecture peut être reprise et rafraîchie
+ * (`majAnalyse` réécrit `updated_at` à chaque étape) une milliseconde plus
+ * tard, et on fermerait un travail EN TRAIN DE SE FAIRE. Avec le rejeu,
+ * PostgreSQL réévalue les conditions au moment de l'écriture : si la ligne ne
+ * les satisfait plus, zéro ligne est touchée et la fonction ne rend rien.
+ *
+ * Le refus final reste celui de la base. Cette fonction ne donne aucun droit
+ * d'insérer : elle libère peut-être le verrou, et c'est
+ * `rush_analyses_active_unique` qui tranche ensuite, comme avant.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * AUCUNE LIGNE N'EST SUPPRIMÉE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Une analyse interrompue est un FAIT : elle dit qu'un travail a été demandé
+ * et n'a pas abouti. L'effacer ferait disparaître la seule trace d'un
+ * redéploiement qui tue des analyses en série. Elle est close, avec un motif,
+ * et la version suivante s'ajoute à côté.
+ *
+ * Le balayage est volontairement LOCAL à un rush, et déclenché par la
+ * relance de ce rush-là. Un balayage global permanent demanderait un
+ * ordonnanceur, une capacité, et une surveillance — pour résoudre au fond
+ * exactement ce que résout le geste de l'utilisateur qui réessaie.
+ */
+export async function recupererAnalysesInterrompues(
+  userId: string, rushId: string, maintenant: number = Date.now(),
+): Promise<{ recuperees: RushAnalysis[]; motif: MotifAnalyse | null }> {
+  const seuil = seuilPeremptionAnalyse(maintenant);
+  const etatsActifs = [...ETATS_ACTIFS];
+
+  // ── 1. Énumération. Elle n'autorise rien, elle propose des candidats ──
+  const { data, error } = await supabaseAdmin
+    .from('rush_analyses')
+    .select('id')
+    .eq('rush_id', rushId)
+    .eq('user_id', userId)
+    .in('etat', etatsActifs)
+    .lt('updated_at', seuil);
+
+  if (error) {
+    if (socleAbsent(error)) return { recuperees: [], motif: 'socle_absent' };
+    throw new Error(error.message || 'lecture des analyses interrompues impossible');
+  }
+
+  const candidats = Array.isArray(data) ? data : [];
+  const recuperees: RushAnalysis[] = [];
+
+  for (const candidat of candidats) {
+    const id = (candidat as { id?: unknown }).id;
+    if (typeof id !== 'string' || !id) continue;
+
+    // ── 2. La décision, et elle est ENTIÈREMENT dans le `where` ────────
+    const { data: ligne, error: erreurMaj } = await supabaseAdmin
+      .from('rush_analyses')
+      .update({
+        etat: 'echouee' as RushAnalysisStatus,
+        motif_echec: MOTIF_ANALYSE_INTERROMPUE,
+        updated_at: new Date(maintenant).toISOString(),
+      })
+      .eq('id', id)
+      // La propriété est REJOUÉE ici, et pas seulement dans l'énumération :
+      // l'écriture ne doit jamais dépendre d'une lecture qui l'a précédée.
+      .eq('user_id', userId)
+      // Encore active AU MOMENT DE L'ÉCRITURE. Une analyse déjà close par
+      // ailleurs (`reussie`, `echouee`, `annulee`) n'est pas retouchée.
+      .in('etat', etatsActifs)
+      // Encore périmée AU MOMENT DE L'ÉCRITURE. C'est la condition qui ferme
+      // la course : une reprise qui a rafraîchi `updated_at` entre les deux
+      // requêtes rend ce filtre faux, et zéro ligne est touchée.
+      .lt('updated_at', seuil)
+      .select(COLONNES_ANALYSE)
+      .maybeSingle();
+
+    if (erreurMaj) {
+      if (socleAbsent(erreurMaj)) return { recuperees, motif: 'socle_absent' };
+      throw new Error(erreurMaj.message || 'fermeture d analyse interrompue impossible');
+    }
+    // `null` = la ligne ne satisfaisait plus les conditions. Ce n'est pas une
+    // panne : c'est exactement le refus qu'on voulait.
+    if (ligne) recuperees.push(analyseDepuisLigne(ligne as Record<string, unknown>));
+  }
+
+  return { recuperees, motif: null };
+}
+
+/**
  * Crée une analyse `en_attente` pour un rush — et rien d'autre.
  *
  * La ligne est posée AVANT tout travail. Elle existe donc même si le
@@ -112,6 +221,22 @@ export async function creerAnalyse(
   const { rush, motif } = await lireRush(userId, rushId);
   if (motif === 'socle_absent') return { analyse: null, motif: 'socle_absent' };
   if (!rush) return { analyse: null, motif: 'rush_introuvable' };
+
+  // ── Les analyses abandonnées de CE rush sont fermées d'abord ──────────
+  //
+  // Ici, et pas ailleurs : le seul moment où le blocage gêne quelqu'un est
+  // celui où il redemande l'analyse de ce rush. Après `lireRush`, pour ne
+  // rien écrire sur un rush qui n'est pas le sien. Avant tout le reste, pour
+  // que le verrou soit libre quand l'insertion se présente.
+  //
+  // Ce n'est PAS le `select` que ce module s'interdit : rien ici n'autorise
+  // l'insertion qui suit. Si la récupération échoue à libérer le verrou, ou
+  // si une analyse fraîche naît entre-temps, c'est
+  // `rush_analyses_active_unique` qui refuse — comme avant ce lot.
+  const recuperation = await recupererAnalysesInterrompues(userId, rushId);
+  if (recuperation.motif === 'socle_absent') {
+    return { analyse: null, motif: 'socle_absent' };
+  }
 
   // La version suit ce qui existe. Si deux appels simultanés calculent le
   // même numéro, l'index unique en refuse un — c'est le comportement voulu.
