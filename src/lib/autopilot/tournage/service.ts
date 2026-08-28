@@ -23,7 +23,8 @@ import {
  */
 
 /** La migration n'est pas appliquée sur ce serveur. */
-export type MotifTournage = 'socle_absent' | 'session_introuvable' | 'objet_absent';
+export type MotifTournage =
+  | 'socle_absent' | 'session_introuvable' | 'objet_absent' | 'rush_introuvable';
 
 /** Codes PostgREST qui signifient « la table n'existe pas ». */
 function socleAbsent(erreur: { code?: string; message?: string } | null): boolean {
@@ -117,6 +118,35 @@ export async function listerRushes(
   }
   const lignes = Array.isArray(data) ? data : [];
   return { rushes: lignes.map((l) => rushDepuisLigne(l as Record<string, unknown>)), motif: null };
+}
+
+/**
+ * Un rush, par son identifiant — s'il appartient bien à l'appelant.
+ *
+ * Vit ICI et non dans le service d'analyse : c'est le vocabulaire du
+ * tournage, et le lire depuis deux endroits est exactement l'erreur que
+ * `contrat.ts` décrit en tête de fichier — deux définitions d'un même concept
+ * ne divergent pas tout de suite, elles divergent au troisième changement.
+ *
+ * Le filtre de propriété est dans la requête : un rush d'autrui ne revient
+ * pas, donc l'appelant n'a rien à décider.
+ */
+export async function lireRush(
+  userId: string, id: string,
+): Promise<{ rush: Rush | null; motif: MotifTournage | null }> {
+  const { data, error } = await supabaseAdmin
+    .from('rushes')
+    .select('id, shoot_session_id, user_id, bucket, cle_objet, nom_origine, content_type, taille_octets, duree_secondes, rang, etat, metadata, created_at, updated_at')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    if (socleAbsent(error)) return { rush: null, motif: 'socle_absent' };
+    throw new Error(error.message || 'lecture de rush impossible');
+  }
+  if (!data) return { rush: null, motif: 'rush_introuvable' };
+  return { rush: rushDepuisLigne(data as Record<string, unknown>), motif: null };
 }
 
 export interface IndexationRush {

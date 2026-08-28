@@ -20,13 +20,26 @@ export const RACINE = process.cwd();
  * l'ordre où ils s'appliquent. Aucun n'est recopié dans les tests : un test
  * qui réécrirait la fonction atomique ne testerait que sa propre copie.
  */
-export const MIGRATIONS = [
+export const MIGRATIONS_SOCLE = [
   join(RACINE, 'migrations/2026-08-27-credits-atomiques.sql'),
   join(RACINE, 'migrations/2026-08-28-rendus-preuve-serveur.sql'),
   join(RACINE, 'migrations/2026-08-29-facturation-partenaires.sql'),
   join(RACINE, 'migrations/2026-08-30-debit-operation.sql'),
   join(RACINE, 'migrations/2026-08-31-shoot-sessions-rushes.sql'),
 ];
+
+/**
+ * M3-B1, tenue A PART.
+ *
+ * En production elle s'appliquera sur une base qui contient DEJA des rushes.
+ * Un harnais qui la jouerait toujours avec les autres ne testerait que le cas
+ * de la table vide — c'est-a-dire le seul cas qui ne se produira jamais.
+ * `preparerBaseSocle` permet donc de s'arreter avant, de poser des donnees,
+ * puis de l'appliquer.
+ */
+export const MIGRATION_ANALYSES = join(RACINE, 'migrations/2026-09-01-rush-analyses.sql');
+
+export const MIGRATIONS = [...MIGRATIONS_SOCLE, MIGRATION_ANALYSES];
 
 /** La première, conservée pour les tests qui ne parlent que de crédits. */
 export const MIGRATION = MIGRATIONS[0];
@@ -68,6 +81,27 @@ export async function preparerBase(client: Client): Promise<void> {
     }
     await client.query(readFileSync(fichier, 'utf-8'));
   }
+}
+
+/**
+ * Repose la base au socle M3-A — SANS la migration des analyses.
+ *
+ * C'est le point de depart du scenario realiste : une base de production
+ * telle qu'elle est aujourd'hui, avec ses rushes deja indexes.
+ */
+export async function preparerBaseSocle(client: Client): Promise<void> {
+  await client.query('drop schema if exists public cascade; create schema public;');
+  await client.query(readFileSync(join(RACINE, 'tests-pg/schema-prealable.sql'), 'utf-8'));
+  for (const fichier of MIGRATIONS_SOCLE) {
+    if (!existsSync(fichier)) throw new Error(`Migration absente : ${fichier}`);
+    await client.query(readFileSync(fichier, 'utf-8'));
+  }
+}
+
+/** Applique un fichier de migration precis, tel qu'il partira en production. */
+export async function appliquerMigration(client: Client, fichier: string): Promise<void> {
+  if (!existsSync(fichier)) throw new Error(`Migration absente : ${fichier}`);
+  await client.query(readFileSync(fichier, 'utf-8'));
 }
 
 /** Applique les migrations une seconde fois — elles doivent être rejouables. */
