@@ -67,7 +67,7 @@
 import { execFile } from 'child_process';
 import { bucketAutorise } from '@/lib/storage/buckets';
 import { cheminFfmpeg, cheminFfprobe } from '@/lib/ffmpeg/binaires';
-import { clientMinio, signeurInterne } from '@/lib/storage/minio-client';
+import { clientMinio, signeurInterne, type BorneReseau } from '@/lib/storage/minio-client';
 import { vignettesValides, type VignetteAnalyse } from './contrat';
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -110,6 +110,76 @@ export const TIMEOUT_SONDE_MS = 30_000;
 
 /** Temps maximal accordé à UNE vignette. */
 export const TIMEOUT_VIGNETTE_MS = 20_000;
+
+/**
+ * Temps maximal accordé à UNE requête vers MinIO — `statObject`, la signature,
+ * l'écriture d'une vignette.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ L'ORDRE DES BORNES, ET IL N'EST PAS NÉGOCIABLE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ *   TIMEOUT_MINIO_MS  <  TIMEOUT_VIGNETTE_MS  <  TIMEOUT_SONDE_MS
+ *                                             <  BUDGET_EXTRACTION_MS
+ *   10 s              <  20 s                 <  30 s
+ *                                             <  290 s ≤ RETRY_APRES_SECONDES
+ *
+ * Autrement dit : le délai RÉSEAU de MinIO doit rendre la main avant le délai
+ * du PROCESSUS ffprobe/ffmpeg, qui doit lui-même rendre la main avant le
+ * BUDGET GLOBAL de l'analyse. Chaque borne intérieure qui dépasserait celle
+ * qui l'englobe serait inerte, et le motif rendu serait faux : ffmpeg tué par
+ * son propre `timeout` alors que le vrai coupable est le stockage muet.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * CE QUI BORNE VRAIMENT, ET CE QUI NE BORNE RIEN
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * `maxDuration` de Next NE BORNE RIEN ICI. Studiio tourne sur Coolify
+ * (`docs/infra.md`) : le serveur Node autonome n'applique pas cette limite,
+ * qui n'a jamais existé que sur Vercel. Rien au-dessus de ce module ne
+ * l'interrompra donc — ce sont ces constantes, et elles seules, qui
+ * garantissent qu'une analyse se termine.
+ *
+ * Dix secondes : `statObject` est une requête `HEAD`, et une vignette pèse
+ * quelques dizaines de kilo-octets — sur le réseau Docker local, entre deux
+ * conteneurs de la même machine. Dix secondes, c'est déjà l'aveu que le
+ * stockage ne répond plus.
+ *
+ * La borne ne vaut que si le NOMBRE de requêtes est connu : c'est pourquoi le
+ * client d'analyse désactive la reprise interne du SDK — qui rejouerait
+ * chaque requête une fois — et fixe la région, qui sinon coûterait un
+ * `GET ?location` avant la première opération de chaque client. Neuf requêtes
+ * au total : un `statObject`, huit écritures. La signature n'en fait aucune.
+ */
+export const TIMEOUT_MINIO_MS = 10_000;
+
+/**
+ * Le pire cas de `extraireRush`, en millisecondes. Calculé, jamais choisi.
+ *
+ * Un `statObject`, une signature, un sondage, puis huit fois (une vignette et
+ * son écriture). La signature est comptée pour une requête alors qu'elle n'en
+ * fait aucune aujourd'hui : la majoration est volontaire, elle rend le calcul
+ * vrai même si la région cessait d'être fixée.
+ *
+ * C'est cette somme que `RETRY_APRES_SECONDES` annonce à l'appelant : la
+ * place d'extraction ne peut pas rester prise plus longtemps, et un test
+ * vérifie que les deux ne divergent pas en silence.
+ */
+export const BUDGET_EXTRACTION_MS =
+  TIMEOUT_MINIO_MS * 2
+  + TIMEOUT_SONDE_MS
+  + VIGNETTES_MAX * (TIMEOUT_VIGNETTE_MS + TIMEOUT_MINIO_MS);
+
+/**
+ * La borne passée à CHAQUE client MinIO de ce module. Une seule, exportée.
+ *
+ * Exportée pour être vérifiable : un test peut prouver que les trois appels
+ * — `statObject`, la signature, l'écriture d'une vignette — la reçoivent
+ * bien, plutôt que de le relire dans un commentaire. Les clients construits
+ * ailleurs dans Studiio ne la reçoivent PAS, et gardent leur absence de
+ * délai : un envoi de rush n'a rien à voir avec un `statObject`.
+ */
+export const BORNE_MINIO: BorneReseau = { timeoutMs: TIMEOUT_MINIO_MS };
 
 /** Largeur maximale d'une vignette. La hauteur suit le rapport d'origine. */
 export const LARGEUR_VIGNETTE = 640;
@@ -268,9 +338,13 @@ async function executer(entree: EntreeExtraction): Promise<ResultatExtraction> {
   // « rush disparu » ne se soigne pas comme « rush illisible ».
   let taille = 0;
   try {
-    const stat = await clientMinio().statObject(entree.bucket, cle);
+    const stat = await clientMinio(BORNE_MINIO).statObject(entree.bucket, cle);
     taille = Number(stat?.size ?? 0);
   } catch (e: unknown) {
+    // Un délai dépassé arrive ICI, et il se range dans `stockage_injoignable` :
+    // un stockage qui accepte la connexion puis se tait est injoignable, pas
+    // introuvable — et l'appelant n'en tire pas la même conduite (503 qu'on
+    // relance, contre 422 définitif).
     const message = e instanceof Error ? e.message : String(e);
     const absent = /not found|does not exist|NoSuchKey|NotFound/i.test(message);
     return vide(absent ? 'objet_introuvable' : 'stockage_injoignable', message);
@@ -278,7 +352,7 @@ async function executer(entree: EntreeExtraction): Promise<ResultatExtraction> {
   if (taille <= 0) return vide('objet_introuvable', 'objet de taille nulle');
 
   // ── 3. L'URL signée, interne et brève ─────────────────────────────────
-  const signeur = signeurInterne();
+  const signeur = signeurInterne(BORNE_MINIO);
   if (!signeur) return vide('stockage_injoignable', 'stockage non configuré');
 
   let url: string;
@@ -478,7 +552,7 @@ export function positionsVignettes(dureeSecondes: number): number[] {
 async function produireVignettes(
   url: string, duree: number, entree: EntreeExtraction,
 ): Promise<VignetteAnalyse[]> {
-  const client = clientMinio();
+  const client = clientMinio(BORNE_MINIO);
   const produites: VignetteAnalyse[] = [];
 
   for (const [index, seconde] of positionsVignettes(duree).entries()) {

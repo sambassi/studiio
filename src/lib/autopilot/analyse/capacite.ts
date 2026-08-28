@@ -67,12 +67,29 @@ export const MAX_EXTRACTIONS_SIMULTANEES = 1;
 /**
  * Ce que l'appelant doit attendre avant de retenter, en secondes.
  *
- * C'est la durée MAXIMALE pendant laquelle une place peut rester prise : le
- * budget de la route (`maxDuration = 300`), au-delà duquel la requête qui la
- * détient n'existe plus. Le moteur, lui, s'arrête bien avant — 30 s de
- * sondage plus huit vignettes de 20 s au pire, soit ~220 s — mais annoncer sa
- * borne à lui ferait mentir l'en-tête le jour où une vignette de plus est
- * ajoutée.
+ * C'est la durée MAXIMALE pendant laquelle une place peut rester prise.
+ *
+ * ⚠️ ELLE VIENT DU MOTEUR, PAS DE LA PLATEFORME.
+ *
+ * Ce commentaire a d'abord dit que la place était libérée au plus tard par le
+ * `maxDuration = 300` de la route, « au-delà duquel la requête qui la détient
+ * n'existe plus ». C'était faux : sur Coolify, le serveur Node autonome
+ * n'applique pas `maxDuration` (`docs/infra.md`), et le `Dockerfile` lance un
+ * simple `node server.js`. Rien ne tue la requête à 300 s ; la place n'est
+ * rendue que par le `finally` de la route, donc seulement quand le travail
+ * revient. Un `statObject` sur un stockage muet ne revenait jamais : la place
+ * — il n'y en a qu'UNE — restait prise, et toutes les analyses suivantes
+ * recevaient 429 jusqu'au redémarrage du conteneur.
+ *
+ * C'est le bornage réseau de `analyse/extraction.ts` qui rend cette valeur
+ * vraie : il garantit que le travail revient, donc que le `finally` s'exécute.
+ *
+ * Ce qui la libère est le budget INTERNE du moteur, borné par ses propres
+ * délais : `BUDGET_EXTRACTION_MS` dans `analyse/extraction.ts` vaut 290 s au
+ * pire cas, et reste sous les 300 s annoncés ici. Annoncer la borne exacte du
+ * moteur ferait mentir l'en-tête le jour où une vignette de plus est ajoutée ;
+ * annoncer 300 s laisse cette marge, et un test vérifie que le pire cas ne la
+ * dépasse pas.
  *
  * Annoncer une valeur trop courte est pire que ne rien annoncer : le client
  * reviendrait pile pour se faire refuser de nouveau, et compterait ce

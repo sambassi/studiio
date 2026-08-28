@@ -92,11 +92,22 @@ export const runtime = 'nodejs';
  * `/api/cron/publish`. L'extraction est du même ordre de travail : télécharger
  * un rush qui peut peser des gigaoctets, puis le faire lire par ffmpeg.
  *
- * Ce n'est PAS un réglage de confort. Un `maxDuration` plus court que le délai
- * interne du moteur ferait tuer le processus pendant la mesure, et l'analyse
- * resterait `en_cours` pour toujours — un état dont l'index unique interdit
- * ensuite de sortir autrement qu'à la main. La borne de la route doit rester
- * la plus LARGE des deux ; c'est au moteur de rendre `timeout` avant elle.
+ * ⚠️ MAIS CETTE DÉCLARATION NE PROTÈGE RIEN SUR NOTRE HÉBERGEMENT.
+ *
+ * `maxDuration` est une limite de plateforme sans frais : Vercel l'applique,
+ * le serveur Node autonome de Coolify NON (`docs/infra.md` : « il ne reste
+ * que `functions.maxDuration` […] inerte sur Coolify »). Aucune requête ne
+ * sera donc interrompue à 300 s, et rien au-dessus du moteur ne le sera non
+ * plus. Écrire ici que la route « borne » la mesure serait faux, et c'est
+ * exactement la croyance qui laissait passer un stockage muet.
+ *
+ * Ce qui borne réellement est INTERNE au moteur, et lui seul :
+ * `TIMEOUT_MINIO_MS` < `TIMEOUT_VIGNETTE_MS` < `TIMEOUT_SONDE_MS` <
+ * `BUDGET_EXTRACTION_MS` (`src/lib/autopilot/analyse/extraction.ts`), dont la
+ * somme du pire cas reste sous cette valeur. La déclaration est conservée
+ * parce qu'elle redeviendrait vraie sur une plateforme qui l'applique, et
+ * parce que `RETRY_APRES_SECONDES` s'aligne dessus — pas parce qu'elle
+ * garantit quoi que ce soit aujourd'hui.
  */
 export const maxDuration = 300;
 
