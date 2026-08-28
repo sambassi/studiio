@@ -11,6 +11,7 @@ import { useCreatorPreferences } from '@/lib/hooks/useCreatorPreferences';
 import { BrandingIndicator } from '@/components/shared/BrandingIndicator';
 import { downloadBlob } from '@/lib/video-composer';
 import { composerEtFacturer } from '@/lib/rendus/composer';
+import { useVerrous, VERROU } from '@/lib/creer/verrouAction';
 import { useTranslations } from '@/i18n/client';
 
 interface InfoCard {
@@ -177,6 +178,9 @@ export default function InfographiePage() {
 
   // Other state
   const [salesPhrase, setSalesPhrase] = useState('');
+  /** Verrou d'action : un seul export a la fois, meme sur deux clics. */
+  const { prendre, rendre, actif } = useVerrous();
+
   const [destination, setDestination] = useState<Destination>('calendar');
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
@@ -479,7 +483,7 @@ export default function InfographiePage() {
     } catch (err) { console.error('[Upload] Error:', err); return null; }
   };
 
-  const handleExport = async () => {
+  const handleExportInterne = async () => {
     if (cards.length === 0) { setExportToast({ message: t('export.errorNoCards'), type: 'error' }); setTimeout(() => setExportToast(null), 3000); return; }
     setIsExporting(true); setExportProgress(0);
     try {
@@ -742,6 +746,20 @@ export default function InfographiePage() {
       setExportToast({ message: t('export.errorExport'), type: 'error' });
     } finally { setTimeout(() => { setIsExporting(false); setExportProgress(0); setExportToast(null); }, 5000); }
   };
+
+  /**
+   * Verrou synchrone.
+   *
+   * `isExporting` grise bien le bouton, mais seulement au rendu suivant :
+   * deux clics dans le meme tour entreraient tous les deux et ouvriraient
+   * DEUX tentatives serveur, donc deux rendus reellement factures.
+   */
+  const handleExport = async () => {
+    if (!prendre(VERROU.infographieExport)) return;
+    try { await handleExportInterne(); }
+    finally { rendre(VERROU.infographieExport); }
+  };
+
 
   // --- Preview for a single sequence screen ---
   const renderSequencePreview = (seqType: string) => {
@@ -1196,7 +1214,7 @@ export default function InfographiePage() {
               </div>
 
               {/* Export button with integrated progress */}
-              <button onClick={handleExport} disabled={isExporting} className="w-full relative overflow-hidden bg-gradient-to-r from-pink-600 to-pink-400 hover:from-pink-700 hover:to-pink-500 disabled:opacity-50 text-white font-bold py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-2 mb-3">
+              <button onClick={handleExport} data-infographie-export disabled={isExporting || actif(VERROU.infographieExport)} className="w-full relative overflow-hidden bg-gradient-to-r from-pink-600 to-pink-400 hover:from-pink-700 hover:to-pink-500 disabled:opacity-50 text-white font-bold py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-2 mb-3">
                 {isExporting && (
                   <div className="absolute inset-0 bg-gradient-to-r from-pink-700 to-pink-500 transition-all duration-500" style={{ width: `${exportProgress}%` }} />
                 )}

@@ -18,6 +18,7 @@ import { useBranding } from '@/lib/hooks/useBranding';
 import { useCreatorPreferences } from '@/lib/hooks/useCreatorPreferences';
 import { BrandingIndicator } from '@/components/shared/BrandingIndicator';
 import { composerEtFacturer } from '@/lib/rendus/composer';
+import { useVerrous, VERROU } from '@/lib/creer/verrouAction';
 import { renderMontage, type MontageSpec } from '@/lib/ffmpeg-montage';
 import { useTranslations, useLocale } from '@/i18n/client';
 import { getContentPools } from '@/lib/i18n-content';
@@ -68,6 +69,9 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
   const [aiRushFiles, setAiRushFiles] = useState<File[]>([]);
   const [aiMusicFile, setAiMusicFile] = useState<File | null>(null);
   const [aiPhotoAffiche, setAiPhotoAffiche] = useState(false);
+  /** Verrou d'action : une seule serie a la fois, meme sur deux clics. */
+  const { prendre, rendre, actif } = useVerrous();
+
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiProgress, setAiProgress] = useState(0);
   const [aiStage, setAiStage] = useState('');
@@ -283,7 +287,7 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
     }
   };
 
-  const handleAIGenerate = async () => {
+  const handleAIGenerateInterne = async () => {
     if (aiRushFiles.length === 0) return;
     if (montageMode && montageEnabled) { handleMontagGenerate(); return; }
     setAiGenerating(true);
@@ -577,6 +581,20 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
     }
   };
 
+  /**
+   * Verrou synchrone.
+   *
+   * `aiGenerating` grise le bouton — au rendu suivant seulement. Deux clics
+   * dans le meme tour lanceraient deux series completes, donc deux fois N
+   * tentatives serveur.
+   */
+  const handleAIGenerate = async () => {
+    if (!prendre(VERROU.agentIA)) return;
+    try { await handleAIGenerateInterne(); }
+    finally { rendre(VERROU.agentIA); }
+  };
+
+
   return (
     <>
       {/* Hidden file inputs */}
@@ -835,7 +853,8 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
             </Button>
             <button
               onClick={handleAIGenerate}
-              disabled={aiGenerating || aiRushFiles.length === 0}
+              data-agent-lancer
+              disabled={aiGenerating || actif(VERROU.agentIA) || aiRushFiles.length === 0}
               className="flex-1 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 disabled:opacity-50 rounded-lg text-sm font-bold transition"
             >
               {aiGenerating ? <Loader2 size={16} className="animate-spin" /> : <Bot size={16} />}

@@ -92,6 +92,15 @@ interface Scenario {
   reservationRefusee?: boolean;
   televersementRefuse?: boolean;
   confirmationRefusee?: boolean;
+  /**
+   * Ralentit la réservation, en millisecondes.
+   *
+   * Sans ça, toutes les doublures résolvent en microtâches : le parcours
+   * entier — réservation, composition, téléversement, confirmation, action
+   * métier — s'exécute dans un seul tour, et il n'existe aucun instant
+   * observable « pendant ». Un vrai réseau, lui, prend du temps.
+   */
+  lent?: number;
 }
 
 let trace: string[];
@@ -116,6 +125,7 @@ function installerFetch(sc: Scenario = {}) {
 
     if (u.endsWith('/api/render/jobs') && m === 'POST') {
       trace.push('reservation');
+      if (sc.lent) await new Promise((r) => setTimeout(r, sc.lent));
       if (sc.reservationRefusee) return rep({ ok: false, error: 'refus' }, 500);
       return rep({
         ok: true, jobId: JOB, uploadUrl: CIBLE, uploadMode: 'relais',
@@ -161,9 +171,9 @@ function installerFetch(sc: Scenario = {}) {
   }) as unknown as typeof fetch;
 }
 
-const attendre = async (tours = 40) => {
+const attendre = async (tours = 40, pas = 0) => {
   for (let i = 0; i < tours; i += 1) {
-    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    await act(async () => { await new Promise((r) => setTimeout(r, pas)); });
   }
 };
 
@@ -190,6 +200,21 @@ function bouton(motif: string): HTMLButtonElement | undefined {
   ) as HTMLButtonElement | undefined;
 }
 
+/**
+ * Deux clics AVANT que la premiere promesse ne se resolve.
+ *
+ * Les deux `fireEvent` sont dans le meme `act` : aucun rendu React ne
+ * s'intercale, donc le drapeau d'affichage (`regenerating`, `saving`…) vaut
+ * encore `false` au second clic. C'est exactement la fenetre que le verrou
+ * synchrone doit fermer.
+ */
+const doubleCliquer = async (motif: string) => {
+  const b = bouton(motif);
+  expect(b, `bouton « ${motif} » introuvable`).toBeTruthy();
+  await act(async () => { fireEvent.click(b!); fireEvent.click(b!); });
+  await attendre(80);
+};
+
 const cliquer = async (motif: string) => {
   const b = bouton(motif);
   expect(b, `bouton « ${motif} » introuvable`).toBeTruthy();
@@ -198,11 +223,11 @@ const cliquer = async (motif: string) => {
 };
 
 /** Les quatre chemins, par le libellé de leur bouton. */
-const CHEMINS: Array<{ nom: string; bouton: string; action: string }> = [
-  { nom: 'Régénérer', bouton: 'Re-générer le montage', action: 'patch' },
-  { nom: 'Planifier', bouton: 'fullPreview.schedule', action: 'programmation' },
-  { nom: 'Publier maintenant', bouton: 'fullPreview.publishNow', action: 'programmation' },
-  { nom: 'Exporter', bouton: 'actions.exportDesktop', action: 'conversion' },
+const CHEMINS: Array<{ nom: string; bouton: string; action: string; marque: string }> = [
+  { nom: 'Régénérer', bouton: 'Re-générer le montage', action: 'patch', marque: 'data-regenerer' },
+  { nom: 'Planifier', bouton: 'fullPreview.schedule', action: 'programmation', marque: 'data-programmer' },
+  { nom: 'Publier maintenant', bouton: 'fullPreview.publishNow', action: 'programmation', marque: 'data-publier' },
+  { nom: 'Exporter', bouton: 'actions.exportDesktop', action: 'conversion', marque: 'data-exporter' },
 ];
 
 beforeEach(() => {
@@ -303,6 +328,103 @@ describe('Confirmation refusée : rien n est livré', () => {
       expect(parcours()).toEqual(['reservation', 'televersement', 'confirmation']);
       expect(trace).not.toContain(action);
     });
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Double clic : une seule tentative, un seul rendu, une seule action
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('Deux clics immédiats ne produisent qu un seul rendu', () => {
+  CHEMINS.forEach(({ nom, bouton: b, action, marque }) => {
+    it(`${nom} : une seule réservation, une seule composition`, async () => {
+      installerFetch();
+      await ouvrirApercu();
+      await doubleCliquer(b);
+      expect(trace.filter((t) => t === 'reservation')).toHaveLength(1);
+      expect(composeVideoSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it(`${nom} : une seule confirmation, un seul ${action}`, async () => {
+      installerFetch();
+      await ouvrirApercu();
+      await doubleCliquer(b);
+      expect(trace.filter((t) => t === 'confirmation')).toHaveLength(1);
+      expect(trace.filter((t) => t === action)).toHaveLength(1);
+    });
+
+    it(`${nom} : le bouton est grisé pendant l action`, async () => {
+      // Réservation lente : c'est le seul moyen d'observer un « pendant ».
+      installerFetch({ lent: 120 });
+      await ouvrirApercu();
+      const btn = bouton(b)!;
+      await act(async () => { fireEvent.click(btn); });
+      await act(async () => { await new Promise((r) => setTimeout(r, 5)); });
+      const pendant = document.querySelector(`[${marque}]`) as HTMLButtonElement | null;
+      expect(pendant, `le bouton ${marque} doit être monté`).toBeTruthy();
+      expect(pendant!.disabled, 'le bouton doit être grisé pendant le rendu').toBe(true);
+      await attendre(40, 10);
+    });
+
+    it(`${nom} : le verrou est RENDU — une reprise volontaire repart`, async () => {
+      // Après une réussite, l'écran change (modale fermée, bouton masqué) :
+      // c'est sur un ÉCHEC que le bouton reste, et c'est là qu'on vérifie
+      // que le verrou n'est pas resté pris. Sans le `finally`, la seconde
+      // tentative n'ouvrirait rien du tout.
+      installerFetch({ confirmationRefusee: true });
+      await ouvrirApercu();
+      await cliquer(b);
+      expect(trace.filter((t) => t === 'reservation')).toHaveLength(1);
+      // « Régénérer » laisse volontairement son drapeau d'affichage 800 ms
+      // de plus, pour que « Terminé ! » reste lisible : on attend ce délai
+      // avant de conclure, sinon on mesurerait l'animation, pas le verrou.
+      await attendre(20, 60);
+      // Certains chemins referment l'aperçu même en échec : on le rouvre,
+      // sur LA MÊME instance montée — remonter le composant remettrait les
+      // verrous à zéro et ne prouverait rien.
+      if (!document.querySelector(`[${marque}]`)) {
+        const fp = bouton('calendar.actions.fullPreview');
+        expect(fp, "l'aperçu doit pouvoir être rouvert").toBeTruthy();
+        await act(async () => { fireEvent.click(fp!); });
+        await attendre(6);
+      }
+      const encore = document.querySelector(`[${marque}]`) as HTMLButtonElement | null;
+      expect(encore, 'le bouton est de nouveau atteignable').toBeTruthy();
+      expect(encore!.disabled, 'et de nouveau cliquable — le verrou a été rendu').toBe(false);
+      await act(async () => { fireEvent.click(encore!); });
+      await attendre(60);
+      expect(trace.filter((t) => t === 'reservation')).toHaveLength(2);
+    });
+  });
+});
+
+describe('Double clic et facturation', () => {
+  it('administrateur : le parcours aboutit sans aucun débit', async () => {
+    installerFetch();
+    // Le serveur repond `partner_cost_only` a la confirmation : c'est LUI
+    // qui decide, le navigateur ne fait que recevoir.
+    const brut = globalThis.fetch as unknown as (u: unknown, i?: RequestInit) => Promise<Response>;
+    globalThis.fetch = (async (u: unknown, i?: RequestInit) => {
+      const r = await brut(u, i);
+      if (String(u).includes('/confirm')) {
+        return { ok: true, status: 200, json: async () => ({ ok: true, politique: 'partner_cost_only', balance: null }) } as Response;
+      }
+      return r;
+    }) as unknown as typeof fetch;
+    await ouvrirApercu();
+    await doubleCliquer('Re-générer le montage');
+    expect(trace.filter((t) => t === 'confirmation')).toHaveLength(1);
+    expect(trace).not.toContain('DEBIT_APRES_COUP');
+    expect(trace.filter((t) => t === 'patch')).toHaveLength(1);
+  });
+
+  it('utilisateur normal : une seule confirmation, donc un seul débit possible', async () => {
+    installerFetch();
+    await ouvrirApercu();
+    await doubleCliquer('Re-générer le montage');
+    expect(trace.filter((t) => t === 'reservation')).toHaveLength(1);
+    expect(trace.filter((t) => t === 'confirmation')).toHaveLength(1);
+    expect(trace).not.toContain('DEBIT_APRES_COUP');
   });
 });
 

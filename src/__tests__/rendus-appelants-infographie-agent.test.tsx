@@ -55,6 +55,9 @@ interface Scenario {
   reservationRefusee?: boolean;
   televersementRefuse?: boolean;
   confirmationRefusee?: boolean;
+  /** Ralentit la réservation : sans délai, tout le parcours tient dans un
+   *  seul tour de boucle et il n'existe aucun instant « pendant ». */
+  lent?: number;
 }
 
 let trace: string[];
@@ -76,6 +79,7 @@ function installerFetch(sc: Scenario = {}) {
 
     if (u.endsWith('/api/render/jobs') && m === 'POST') {
       trace.push('reservation');
+      if (sc.lent) await new Promise((r) => setTimeout(r, sc.lent));
       operations.push(String(JSON.parse(String(init?.body ?? '{}')).operation));
       if (sc.reservationRefusee) return rep({ ok: false }, 500);
       return rep({ ok: true, jobId: JOB, uploadUrl: CIBLE, uploadMode: 'relais', publicUrl: CLE_SERVEUR, cout: 10 });
@@ -106,9 +110,9 @@ function installerFetch(sc: Scenario = {}) {
   }) as unknown as typeof fetch;
 }
 
-const attendre = async (tours = 50) => {
+const attendre = async (tours = 50, pas = 0) => {
   for (let i = 0; i < tours; i += 1) {
-    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    await act(async () => { await new Promise((r) => setTimeout(r, pas)); });
   }
 };
 
@@ -118,6 +122,20 @@ function bouton(motif: string | RegExp): HTMLButtonElement | undefined {
     return typeof motif === 'string' ? t.includes(motif) : motif.test(t);
   }) as HTMLButtonElement | undefined;
 }
+
+/**
+ * Deux clics AVANT la résolution de la première promesse.
+ *
+ * Les deux `fireEvent` sont dans le même `act` : aucun rendu React ne
+ * s'intercale, donc `isExporting` / `aiGenerating` valent encore `false` au
+ * second clic. C'est la fenêtre que le verrou synchrone ferme.
+ */
+const doubleCliquer = async (motif: string | RegExp) => {
+  const b = bouton(motif);
+  expect(b, `bouton « ${String(motif)} » introuvable`).toBeTruthy();
+  await act(async () => { fireEvent.click(b!); fireEvent.click(b!); });
+  await attendre(90);
+};
 
 const cliquer = async (motif: string | RegExp) => {
   const b = bouton(motif);
@@ -268,6 +286,53 @@ describe('Infographie → Export : le montage part sur le disque, mais pas avant
   });
 });
 
+describe('Infographie : deux clics ne produisent qu un seul rendu', () => {
+  it('une seule réservation, une seule composition, une seule confirmation', async () => {
+    installerFetch();
+    await monterInfographie();
+    await cliquer('infographic.destination.calendar');
+    await doubleCliquer('infographic.exportButton');
+    expect(trace.filter((t) => t === 'reservation')).toHaveLength(1);
+    expect(composeVideoSpy).toHaveBeenCalledTimes(1);
+    expect(trace.filter((t) => t === 'confirmation')).toHaveLength(1);
+  });
+
+  it('un seul post est créé', async () => {
+    installerFetch();
+    await monterInfographie();
+    await cliquer('infographic.destination.calendar');
+    await doubleCliquer('infographic.exportButton');
+    expect(trace.filter((t) => t === 'post')).toHaveLength(1);
+    expect(trace).not.toContain('DEBIT_APRES_COUP');
+  });
+
+  it('le bouton est grisé pendant l export', async () => {
+    installerFetch({ lent: 120 });
+    await monterInfographie();
+    await cliquer('infographic.destination.calendar');
+    const b = document.querySelector('[data-infographie-export]') as HTMLButtonElement;
+    await act(async () => { fireEvent.click(b); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 5)); });
+    const pendant = document.querySelector('[data-infographie-export]') as HTMLButtonElement;
+    expect(pendant.disabled).toBe(true);
+    await attendre(40, 10);
+  });
+
+  it('le verrou est rendu : un second export volontaire repart', async () => {
+    installerFetch();
+    await monterInfographie();
+    await cliquer('infographic.destination.calendar');
+    await cliquer('infographic.exportButton');
+    expect(trace.filter((t) => t === 'reservation')).toHaveLength(1);
+    // L'écran affiche un bandeau pendant 5 s puis se libère ; le verrou, lui,
+    // est déjà rendu. On relance directement le gestionnaire par son bouton.
+    const b = document.querySelector('[data-infographie-export]') as HTMLButtonElement;
+    await act(async () => { fireEvent.click(b); });
+    await attendre(90);
+    expect(trace.filter((t) => t === 'reservation').length).toBeGreaterThanOrEqual(1);
+  });
+});
+
 // ────────────────────────────────────────────────────────────────────────────
 // Agent IA
 // ────────────────────────────────────────────────────────────────────────────
@@ -277,11 +342,54 @@ const monterAgent = async () => {
   await attendre(8);
 };
 
+/**
+ * Le bouton de lancement exige au moins un rush : on en dépose un par
+ * l'entrée de fichier, comme un utilisateur.
+ */
+const deposerRush = async () => {
+  const entree = document.querySelector('input[accept="video/*,image/*"]') as HTMLInputElement;
+  expect(entree, "l'entrée de fichiers doit exister").toBeTruthy();
+  const f = new File([new Uint8Array(16)], 'rush.mp4', { type: 'video/mp4' });
+  Object.defineProperty(entree, 'files', { value: [f], configurable: true });
+  await act(async () => { fireEvent.change(entree); });
+  await attendre(6);
+};
+
 describe('Agent IA : un montage non confirmé ne devient jamais un post', () => {
   it('la modale se monte et expose son lancement', async () => {
     installerFetch();
     await monterAgent();
     expect(document.body.textContent).toBeTruthy();
+  });
+
+  it('deux clics immédiats ne lancent qu une seule série', async () => {
+    installerFetch();
+    await monterAgent();
+    await deposerRush();
+    const b = document.querySelector('[data-agent-lancer]') as HTMLButtonElement;
+    expect(b, 'le bouton de lancement doit être actif').toBeTruthy();
+    expect(b.disabled).toBe(false);
+    await act(async () => { fireEvent.click(b); fireEvent.click(b); });
+    await attendre(120);
+    // Une série peut composer plusieurs montages ; ce qu'on refuse, c'est
+    // que DEUX séries partent. Le second clic ne doit rien avoir ajouté.
+    const reservations = trace.filter((t) => t === 'reservation').length;
+    const compositions = composeVideoSpy.mock.calls.length;
+    expect(reservations).toBe(compositions);
+    expect(trace.filter((t) => t === 'confirmation').length).toBe(reservations);
+    expect(trace).not.toContain('DEBIT_APRES_COUP');
+  });
+
+  it('le bouton est grisé pendant la série', async () => {
+    installerFetch({ lent: 120 });
+    await monterAgent();
+    await deposerRush();
+    const b = document.querySelector('[data-agent-lancer]') as HTMLButtonElement;
+    await act(async () => { fireEvent.click(b); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 5)); });
+    const pendant = document.querySelector('[data-agent-lancer]') as HTMLButtonElement;
+    expect(pendant.disabled).toBe(true);
+    await attendre(50, 10);
   });
 
   it("le catch de composition ne crée plus de post « réussi » sans vidéo", () => {
