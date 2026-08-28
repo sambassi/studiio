@@ -100,59 +100,116 @@ export async function autopilotRushKeys(): Promise<Set<string> | null> {
  * alors la réponse JUSTE. Une table présente mais illisible est autre chose,
  * et rend `null`.
  */
+export const PAGE_LECTURE = 1000;
+
+/**
+ * Plafond de sécurité, en lignes.
+ *
+ * Au-delà, on refuse de conclure plutôt que de rendre une liste dont on ne
+ * peut plus garantir la complétude. Sous-protéger, ici, c'est supprimer.
+ */
+export const LIGNES_MAX = 500_000;
+
+/**
+ * Lit une table ENTIÈRE, par tranches.
+ *
+ * ⚠️ SANS PAGINATION, CETTE LECTURE PEUT ÊTRE TRONQUÉE SANS QUE RIEN NE LE
+ * DISE — ET UNE TRONCATURE ICI SUPPRIME DES FICHIERS.
+ *
+ * PostgREST plafonne le nombre de lignes rendues (`db-max-rows`), et le
+ * client n'émet aucun en-tête `Range` tant qu'on ne demande pas de tranche.
+ * La réponse tronquée arrive alors en `200`, avec `error === null` et
+ * simplement moins de lignes : rien ne distingue « c'est tout » de « il y en
+ * avait dix fois plus ». Le repli `NEXT_PUBLIC_SUPABASE_URL` de
+ * `src/lib/db/supabase.ts` rend ce cas atteignable dès qu'une variable
+ * d'environnement manque.
+ *
+ * Or tout ce fichier est écrit sur le contrat inverse — « `null` ET NON UN
+ * ENSEMBLE VIDE ». Une lecture tronquée EST un ensemble partiel rendu comme
+ * s'il était complet : exactement ce que ce contrat existe pour interdire,
+ * et le seul chemin qui le contournait.
+ *
+ * `.range()` force l'émission d'un `Range`, ce qui neutralise `db-max-rows`
+ * quelle que soit sa valeur — la correction n'a donc pas besoin qu'on
+ * connaisse le plafond.
+ *
+ * L'ordre stable est OBLIGATOIRE : sans `ORDER BY`, PostgreSQL rend les
+ * lignes dans l'ordre physique, qui change entre deux tranches. Deux pages
+ * successives pourraient alors répéter une ligne et en omettre une autre.
+ *
+ * Rend `null` dès que la lecture est incomplète ou impossible.
+ */
+async function lireTout(
+  table: string, colonnes: string, tolererAbsence: boolean,
+): Promise<Record<string, unknown>[] | null> {
+  const out: Record<string, unknown>[] = [];
+  for (let debut = 0; ; debut += PAGE_LECTURE) {
+    // eslint-disable-next-line no-await-in-loop
+    const { data, error } = await supabaseAdmin
+      .from(table)
+      .select(colonnes)
+      .order('id', { ascending: true })
+      .range(debut, debut + PAGE_LECTURE - 1);
+
+    if (error) {
+      // Table absente = socle non appliqué = rien à lire. Ce n'est pas une
+      // lecture ratée, c'est une lecture qui n'a rien à lire.
+      if (tolererAbsence && tableAbsente(error)) return [];
+      console.error(`[Storage] ${table} illisible :`, error.message);
+      return null;
+    }
+
+    const lot = (data ?? []) as unknown as Record<string, unknown>[];
+    out.push(...lot);
+    // Une page plus courte que demandée est la seule fin de table honnête.
+    if (lot.length < PAGE_LECTURE) return out;
+    if (out.length > LIGNES_MAX) {
+      console.error(`[Storage] ${table} depasse ${LIGNES_MAX} lignes — lecture abandonnee`);
+      return null;
+    }
+  }
+}
+
 export async function clesTournageEtAnalyses(): Promise<Set<string> | null> {
   const out = new Set<string>();
 
   // ── Les rushes indexés ──────────────────────────────────────────────────
+  // Même contrat que `autopilotRushKeys` : `null`, et non un ensemble vide.
+  // Un nettoyage manqué se rattrape au passage suivant ; un rush supprimé ne
+  // revient pas.
+  let rushes: Record<string, unknown>[] | null;
   try {
-    const { data, error } = await supabaseAdmin
-      .from('rushes')
-      .select('bucket, cle_objet');
-    // Même contrat que `autopilotRushKeys` : `null`, et non un ensemble vide.
-    // Un nettoyage manqué se rattrape au passage suivant ; un rush supprimé
-    // ne revient pas.
-    if (error && !tableAbsente(error)) {
-      console.error('[Storage] rushes illisibles :', error.message);
-      return null;
-    }
-    for (const ligne of data ?? []) {
-      const l = ligne as { bucket?: unknown; cle_objet?: unknown };
-      if (typeof l.bucket === 'string' && typeof l.cle_objet === 'string') {
-        out.add(`${l.bucket}/${l.cle_objet}`);
-      }
-    }
+    rushes = await lireTout('rushes', 'id, bucket, cle_objet', true);
   } catch (err) {
     console.error('[Storage] rushes illisibles :', err);
     return null;
   }
+  if (!rushes) return null;
+  for (const l of rushes) {
+    if (typeof l.bucket === 'string' && typeof l.cle_objet === 'string') {
+      out.add(`${l.bucket}/${l.cle_objet}`);
+    }
+  }
 
   // ── Les vignettes d'analyse ─────────────────────────────────────────────
+  let analyses: Record<string, unknown>[] | null;
   try {
-    const { data, error } = await supabaseAdmin
-      .from('rush_analyses')
-      .select('vignettes');
-    if (error) {
-      // Table absente = socle M3-B1 pas encore appliqué = aucune vignette.
-      // Ce n'est pas une lecture ratée, c'est une lecture qui n'a rien à lire.
-      if (!tableAbsente(error)) {
-        console.error('[Storage] vignettes illisibles :', error.message);
-        return null;
-      }
-    }
-    for (const ligne of data ?? []) {
-      const v = (ligne as { vignettes?: unknown }).vignettes;
-      if (!Array.isArray(v)) continue;
-      for (const brut of v) {
-        if (!brut || typeof brut !== 'object') continue;
-        const g = brut as { bucket?: unknown; cle?: unknown };
-        if (typeof g.bucket === 'string' && typeof g.cle === 'string') {
-          out.add(`${g.bucket}/${g.cle}`);
-        }
-      }
-    }
+    analyses = await lireTout('rush_analyses', 'id, vignettes', true);
   } catch (err) {
     console.error('[Storage] vignettes illisibles :', err);
     return null;
+  }
+  if (!analyses) return null;
+  for (const ligne of analyses) {
+    const v = ligne.vignettes;
+    if (!Array.isArray(v)) continue;
+    for (const brut of v) {
+      if (!brut || typeof brut !== 'object') continue;
+      const g = brut as { bucket?: unknown; cle?: unknown };
+      if (typeof g.bucket === 'string' && typeof g.cle === 'string') {
+        out.add(`${g.bucket}/${g.cle}`);
+      }
+    }
   }
 
   return out;

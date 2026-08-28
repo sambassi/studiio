@@ -28,15 +28,29 @@ function verifyCronSecret(req: NextRequest): boolean {
  * Retirer un rush de la banque le rend de nouveau éligible : la protection
  * suit la référence, elle ne marque pas le fichier.
  */
-async function getProtectedUrls(): Promise<Set<string>> {
+async function getProtectedUrls(): Promise<Set<string> | null> {
   const urls = new Set<string>();
 
-  const { data: posts } = await supabaseAdmin
+  // ⚠️ L'ERREUR ÉTAIT IGNORÉE, ET UN ENSEMBLE VIDE RENDU À SA PLACE.
+  //
+  // `error` n'était pas déstructuré : une base momentanément injoignable
+  // rendait `posts` nul, donc un ensemble VIDE, que la suite lit « aucun
+  // média de post à protéger ». Le balayage supprimait alors, en une passe,
+  // tout média de post arrivé à expiration.
+  //
+  // Ce lot installe partout ailleurs le contrat « illisible ⇒ on ne supprime
+  // RIEN ». La plus ancienne et la plus large des trois sources d'exemption
+  // le violait, à soixante lignes des deux gardes qui l'énoncent.
+  const { data: posts, error } = await supabaseAdmin
     .from('scheduled_posts')
     .select('media_url, metadata')
     .in('status', ['scheduled', 'published', 'draft']);
 
-  if (!posts) return urls;
+  if (error) {
+    console.error('[CLEANUP-MEDIA] posts illisibles :', error.message);
+    return null;
+  }
+  if (!posts) return null;
 
   for (const post of posts) {
     if (post.media_url) urls.add(post.media_url);
@@ -94,6 +108,12 @@ export async function GET(req: NextRequest) {
   }
 
   const protectedUrls = await getProtectedUrls();
+  if (!protectedUrls) {
+    return NextResponse.json(
+      { success: false, error: 'Medias des posts illisibles — aucune suppression tentee.' },
+      { status: 503 },
+    );
+  }
   // Les rushes des Autopilotes actifs, en CLÉS de stockage. `null` = lecture
   // impossible : on ne supprime alors RIEN, plutôt que de supprimer ce qu'on
   // n'a pas pu protéger.
@@ -270,7 +290,16 @@ export async function GET(req: NextRequest) {
     deleted,
     kept,
     preserved,
-    exemptes: { posts: exemptesPosts, rushesAutopilote: exemptesRushes, banque: rushKeys.size },
+    // `tournage` manquait : c'est la seule des trois sources d'exemption
+    // qu'on ne pouvait pas lire depuis la réponse, alors que les compteurs
+    // n'existent que pour être vérifiables en production.
+    exemptes: {
+      posts: exemptesPosts,
+      rushesAutopilote: exemptesRushes,
+      tournage: exemptesTournage,
+      banque: rushKeys.size,
+      clesTournage: clesTournage.size,
+    },
     breakdown,
     errors: errors.length > 0 ? errors : undefined,
   });
