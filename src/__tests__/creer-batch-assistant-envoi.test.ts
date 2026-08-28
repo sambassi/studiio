@@ -37,7 +37,9 @@ describe('Choix « un seul contenu » ou « série »', () => {
   });
 
   it('« Série » ne redescend jamais en dessous de 2', () => {
-    expect(wizard).toContain('onClick={() => setBatchCount((n) => (n > 1 ? n : 2))}');
+    // Le clic passe désormais par `batchCountAutorise` : la carte ne peut
+    // pas poser un nombre que le lancement refuserait.
+    expect(wizard).toContain('setBatchCount((n) => batchCountAutorise(n > 1 ? n : 2))');
   });
 
   it('n offre le nombre que dans le mode serie', () => {
@@ -54,11 +56,17 @@ describe('Volume du lot', () => {
   });
 
   it('propose 2..MAX dans le selecteur — 1 est devenu un mode, pas un nombre', () => {
-    expect(wizard).toContain('{Array.from({ length: MAX_BATCH - 1 }, (_, i) => i + 2).map((n) => (');
+    // La plage locale a disparu : l'écran lit `nombresProposes()`, qui vaut
+    // exactement `[2]` sous le pilote. Une plage écrite dans le JSX pourrait
+    // proposer un nombre que `lotRefuse` rejetterait.
+    expect(wizard).toContain('{nombresProposes().map((n) => (');
+    expect(wizard).not.toContain('length: MAX_BATCH - 1');
   });
 
   it('borne toujours le total par clampBatchCount avant la boucle', () => {
-    expect(wizard).toContain("const total = destination === 'apercu' ? 1 : clampBatchCount(batchCount);");
+    // `batchCountAutorise` et non `clampBatchCount` : le second borne à dix,
+    // le premier au plafond du pilote.
+    expect(wizard).toContain("const total = destination === 'apercu' ? 1 : batchCountAutorise(batchCount);");
   });
 });
 
@@ -68,13 +76,21 @@ describe('Le nombre et le cout sont annonces AVANT confirmation', () => {
   });
 
   it('y annonce le nombre de contenus et le cout total', () => {
-    expect(wizard).toContain("{batchCount} {batchCount > 1 ? 'contenus' : 'contenu'}");
+    // Le nombre passe par `libelleNombre`, et par le plafond du pilote : un
+    // brouillon restauré à 10 annonce « 2 vidéos », pas « 10 contenus ».
+    expect(wizard).toContain('libelleNombre(batchCountAutorise(batchCount))');
+    expect(wizard).toContain('data-serie-nombre');
     // Le cout passe par `libelleCout`, qui rend « N crédits » sous la
     // politique `credits` et le libelle partenaires sinon. Le montant reste
     // celui du serveur ; c'est sa MISE EN MOTS qui depend de la politique.
     expect(wizard).toContain('data-facturation-recap');
-    expect(wizard).toContain("batchCost(format === '9:16' ? COST.reel : COST.tv, batchCount)");
-    expect(wizard).toContain('libelleCout(');
+    // Le montant ne vient plus d'une constante TypeScript : `annonceCout` le
+    // lit dans les tarifs renvoyés par le serveur, et écrit « Tarif confirmé
+    // au rendu » s'il ne les a pas. Un prix codé en dur et présenté comme
+    // certain n'était vrai que par coïncidence.
+    expect(wizard).toContain('annonceCout(');
+    expect(wizard).toContain('tarifsServeur');
+    expect(wizard).not.toContain("batchCost(format === '9:16' ? COST.reel : COST.tv, batchCount)");
   });
 
   it('dit qu aucune publication n est automatique', () => {
@@ -186,7 +202,10 @@ describe('Suivi par contenu et echec partiel', () => {
 
   it("dit combien de contenus n'ont jamais demarre — donc non factures", () => {
     expect(wizard).toContain('jamais démarrée');
-    expect(wizard).toContain('non facturée');
+    // Le bilan dit maintenant ce qui a été gagné et perdu, et la phrase qui
+    // suit explique pourquoi les contenus jamais démarrés n'ont rien coûté.
+    expect(wizard).toContain('bilanSerie(batchItems)');
+    expect(wizard).toContain('n’ont ouvert aucune tentative');
   });
 
   it("expose l'etat de chaque contenu, lisible par un test comme par un humain", () => {

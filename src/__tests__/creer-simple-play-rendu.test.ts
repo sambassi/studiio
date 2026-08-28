@@ -139,7 +139,7 @@ describe('Le Play passe par le MÊME chemin que l export', () => {
 
   it('il ne rend QU UNE vidéo, même en lot', () => {
     // En jouer cinq n'apprendrait rien de plus et coûterait cinq rendus.
-    expect(rendu).toContain("const total = destination === 'apercu' ? 1 : clampBatchCount(batchCount);");
+    expect(rendu).toContain("const total = destination === 'apercu' ? 1 : batchCountAutorise(batchCount);");
   });
 
   it('il débite, comme un export — contre une preuve serveur', () => {

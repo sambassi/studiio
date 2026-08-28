@@ -91,6 +91,12 @@ function installerFetch() {
         json: async () => ({ ok: true, politique: 'credits', balance: 5000 }),
       } as Response;
     }
+    if (u.includes('/api/render/tarifs')) {
+      return {
+        ok: true, status: 200,
+        json: async () => ({ ok: true, politique: 'credits', tarifs: { reel: 10, tv: 15 } }),
+      } as Response;
+    }
     const r = reponses.length > 1 ? reponses.shift()! : reponses[0];
     if (r.reseau) throw new Error('offline');
     return {
@@ -226,7 +232,10 @@ describe('modification — une seule action, et rien qui compose', () => {
     const interdits = appels.filter((a) =>
       (a.url === '/api/posts' && a.method === 'POST')
       || a.url.startsWith('/api/credits/deduct')
-      || a.url.startsWith('/api/render')
+      // `/api/render/tarifs` est une LECTURE : elle dit combien coûterait un
+      // rendu, elle n'en lance aucun. Ce qui est interdit ici, ce sont les
+      // routes qui composent ou débitent.
+      || (a.url.startsWith('/api/render') && !a.url.startsWith('/api/render/tarifs'))
       || a.url.startsWith('/api/social/publish'));
     expect(interdits).toEqual([]);
   });

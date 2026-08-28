@@ -110,18 +110,23 @@ import ColorWheel from '@/components/ui/ColorWheel';
 import FloatingPanel from '@/components/ui/FloatingPanel';
 import { uploadPosterFile } from '@/lib/creer/posterUpload';
 import {
-  MAX_BATCH, clampBatchCount, batchCost, distinctPhotoForIndex, distinctUrls,
+  batchCost, distinctPhotoForIndex, distinctUrls,
   autoAssignPhotos, batchPhotosReady, photosToFetch, batchDates, batchTopic, variationNonce,
 } from '@/lib/creer/batch';
 import {
   batchRunId, batchItemId, initialBatchItems, setItemState, batchSummary,
   batchPartiel, repriseAutorisee, titreInterruption, messageInterruption,
-  type BatchItem,
+  bilanSerie, type BatchItem,
 } from '@/lib/creer/batchRun';
 import {
   BATCH_SERIE_DISPONIBLE, BATCH_SERIE_BADGE, BATCH_SERIE_EXPLICATION,
-  BATCH_SERIE_REFUS, batchCountAutorise, lotRefuse,
+  BATCH_SERIE_REFUS, BATCH_SERIE_MAX, batchCountAutorise, lotRefuse,
+  nombresProposes,
 } from '@/lib/creer/batchDisponible';
+import { useVerrous, VERROU } from '@/lib/creer/verrouAction';
+import {
+  annonceCout, tarifsAffichables, libelleNombre, type Tarifs,
+} from '@/lib/facturation/annonce';
 import { rendreEtFacturer, messagePour } from '@/lib/rendus/client';
 import { composerEtFacturer, televerserVignette } from '@/lib/rendus/composer';
 // Catalogue de polices — LA source unique, partagee avec le compositeur.
@@ -131,7 +136,7 @@ import { FONT_GROUPS, fontStack, ensureFontLoaded, preloadCatalogPreview } from 
 import { useSession } from 'next-auth/react';
 import type { Politique } from '@/lib/facturation/politique';
 import {
-  libelleCout, politiqueAffichable, MENTION_AUCUN_CREDIT,
+  politiqueAffichable, MENTION_AUCUN_CREDIT,
 } from '@/lib/facturation/libelles';
 import {
   DRAFT_VERSION,
@@ -3372,6 +3377,24 @@ export default function AssistantWizard() {
    * reel reste tranche par le serveur, seul, a la confirmation du rendu.
    */
   const [politiqueFacturation, setPolitiqueFacturation] = useState<Politique>('credits');
+
+  /**
+   * Les tarifs, tels que le SERVEUR les lit dans `tarifs_rendu`.
+   *
+   * `null` tant qu'on ne les a pas — et l'ecran ecrit alors « Tarif confirmé
+   * au rendu » plutot qu'un prix calcule sur une constante locale. Le prix
+   * affiche et le prix preleve viennent desormais de la meme table.
+   */
+  const [tarifsServeur, setTarifsServeur] = useState<Tarifs>(null);
+
+  /**
+   * Le verrou de lancement.
+   *
+   * `sending` grise bien le bouton, mais seulement au rendu suivant : deux
+   * clics dans le meme tour le lisent tous les deux a `false` et lancent DEUX
+   * series, donc quatre tentatives.
+   */
+  const { prendre, rendre, actif } = useVerrous();
   const [sending, setSending] = useState(false);
   /**
    * Ce que `runRender` est en train de produire, ou `null`.
@@ -3399,6 +3422,12 @@ export default function AssistantWizard() {
       .then((r) => r.json())
       .then((d) => { if (vivant) setPolitiqueFacturation(politiqueAffichable(d?.politique)); })
       .catch(() => { /* le defaut `credits` tient */ });
+    // Le tarif vient de la meme table que le debit. Un echec laisse
+    // `tarifsServeur` a `null`, et l'ecran l'avoue au lieu de deviner.
+    fetch('/api/render/tarifs')
+      .then((r) => r.json())
+      .then((d) => { if (vivant) setTarifsServeur(tarifsAffichables(d?.tarifs)); })
+      .catch(() => { /* « Tarif confirmé au rendu » */ });
     return () => { vivant = false; };
   }, []);
 
@@ -5675,7 +5704,20 @@ export default function AssistantWizard() {
    * l'une derivee du `jobId`, l'autre du `postId`.
    */
 
+  /**
+   * Lance un rendu — enveloppe par le verrou.
+   *
+   * Le corps historique est `runRenderInterne`. Ici, une seule chose : un
+   * second clic dans le meme tour est ignore. Sur une serie, il aurait lance
+   * DEUX series completes, donc quatre tentatives serveur et quatre debits.
+   */
   const runRender = async (destination: 'calendrier' | 'bureau' | 'apercu') => {
+    if (!prendre(VERROU.serie)) return;
+    try { await runRenderInterne(destination); }
+    finally { rendre(VERROU.serie); }
+  };
+
+  const runRenderInterne = async (destination: 'calendrier' | 'bureau' | 'apercu') => {
     // ⚠️ MODIFICATION : ON NE COMPOSE PAS. Le garde est ICI, et pas seulement
     // dans l'affichage : les trois destinations composent et debitent, et
     // « calendrier » ferait en plus un `POST /api/posts` — donc un SECOND post,
@@ -5729,7 +5771,11 @@ export default function AssistantWizard() {
     // Le lot : combien de montages, et a quelles dates.
     // Un apercu ne rend qu'UNE video : en jouer cinq a la suite n'apprendrait
     // rien de plus, et couterait cinq rendus.
-    const total = destination === 'apercu' ? 1 : clampBatchCount(batchCount);
+    // `batchCountAutorise` et non `clampBatchCount` : le second borne a
+    // `MAX_BATCH` (dix), le premier au plafond du PILOTE. Une valeur injectee
+    // qui aurait franchi `lotRefuse` ne pourrait donc toujours pas composer
+    // plus que le pilote n'autorise.
+    const total = destination === 'apercu' ? 1 : batchCountAutorise(batchCount);
     // Un lot incomplet livrerait deux montages a l'affiche identique — ce que
     // le lot existe precisement pour eviter. On refuse plutot que de dupliquer
     // en silence.
@@ -8543,14 +8589,17 @@ export default function AssistantWizard() {
                         maintenant, exactement telle que l&apos;aperçu l&apos;affiche, puis
                         enregistrée{batchCount > 1 ? 's' : ''} en brouillon.{' '}
                         <span className="text-gray-300" data-facturation-annonce>
-                          {libelleCout(
-                            politiqueFacturation,
-                            batchCost(format === '9:16' ? COST.reel : COST.tv, batchCount),
+                          {annonceCout(
+                            politiqueFacturation, tarifsServeur,
+                            format === '9:16' ? 'reel' : 'tv',
+                            batchCountAutorise(batchCount),
                           )}
                         </span>{' '}
                         {politiqueFacturation === 'partner_cost_only'
                           ? `— ${MENTION_AUCUN_CREDIT}`
-                          : 'seront débités une fois le rendu terminé.'}
+                          : tarifsServeur
+                            ? 'seront débités une fois le rendu terminé.'
+                            : '— le tarif du serveur fait foi.'}
                       </p>
                     </div>
 
@@ -8588,7 +8637,7 @@ export default function AssistantWizard() {
                           aria-disabled={!BATCH_SERIE_DISPONIBLE}
                           aria-pressed={modeLot === 'serie'}
                           title={BATCH_SERIE_DISPONIBLE ? undefined : BATCH_SERIE_EXPLICATION}
-                          onClick={() => setBatchCount((n) => (n > 1 ? n : 2))}
+                          onClick={() => setBatchCount((n) => batchCountAutorise(n > 1 ? n : 2))}
                           className={`rounded-lg border px-3 py-2.5 text-sm text-left transition-colors ${
                             !BATCH_SERIE_DISPONIBLE
                               ? 'border-gray-900 text-gray-600 opacity-50 cursor-not-allowed'
@@ -8599,19 +8648,19 @@ export default function AssistantWizard() {
                         >
                           <span className="flex items-center gap-1.5">
                             <span className="block font-medium">Série</span>
-                            {!BATCH_SERIE_DISPONIBLE && (
-                              <span
-                                data-batch-serie-badge
-                                className="text-[9px] uppercase tracking-wide rounded px-1 py-0.5 border border-gray-700 text-gray-500"
-                              >
-                                {BATCH_SERIE_BADGE}
-                              </span>
-                            )}
+                            {/* La pastille reste, et change de sens : elle
+                                disait « Bientôt disponible », elle dit
+                                maintenant « Pilote ». Un mode rouvert à deux
+                                vidéos n'est pas le mode complet. */}
+                            <span
+                              data-batch-serie-badge
+                              className="text-[9px] uppercase tracking-wide rounded px-1 py-0.5 border border-gray-700 text-gray-500"
+                            >
+                              {BATCH_SERIE_BADGE}
+                            </span>
                           </span>
                           <span className="block text-[11px] text-gray-500 mt-0.5">
-                            {BATCH_SERIE_DISPONIBLE
-                              ? `Jusqu’à ${MAX_BATCH} brouillons`
-                              : BATCH_SERIE_EXPLICATION}
+                            {BATCH_SERIE_EXPLICATION}
                           </span>
                         </button>
                       </div>
@@ -8619,9 +8668,18 @@ export default function AssistantWizard() {
 
                     {modeLot === 'serie' && (
                     <div>
-                      <label className="block text-sm font-medium mb-2">Combien de vidéos ?</label>
+                      <label className="block text-sm font-medium mb-2">
+                        Combien de vidéos ?
+                        <span className="ml-2 text-[11px] font-normal text-gray-500" data-serie-plafond>
+                          Pilote : {BATCH_SERIE_MAX} au maximum
+                        </span>
+                      </label>
                       <div className="flex flex-wrap gap-1.5">
-                        {Array.from({ length: MAX_BATCH - 1 }, (_, i) => i + 2).map((n) => (
+                        {/* `nombresProposes()` et non une plage locale :
+                            l'ecran ne doit pas pouvoir proposer un nombre que
+                            le lancement refuserait. Sous le pilote, la liste
+                            vaut exactement `[2]`. */}
+                        {nombresProposes().map((n) => (
                           <button
                             key={n}
                             type="button"
@@ -8678,14 +8736,15 @@ export default function AssistantWizard() {
                       data-batch-recap
                       className="rounded-lg border border-gray-800 bg-gray-900/40 px-3 py-2.5 text-xs text-gray-400"
                     >
-                      <span className="text-gray-200 font-medium">
-                        {batchCount} {batchCount > 1 ? 'contenus' : 'contenu'}
+                      <span className="text-gray-200 font-medium" data-serie-nombre>
+                        {libelleNombre(batchCountAutorise(batchCount))}
                       </span>
                       {' · '}
                       <span className="text-gray-200 font-medium" data-facturation-recap>
-                        {libelleCout(
-                          politiqueFacturation,
-                          batchCost(format === '9:16' ? COST.reel : COST.tv, batchCount),
+                        {annonceCout(
+                          politiqueFacturation, tarifsServeur,
+                          format === '9:16' ? 'reel' : 'tv',
+                          batchCountAutorise(batchCount),
                         )}
                       </span>
                       {scheduledDate ? (
@@ -8715,7 +8774,7 @@ export default function AssistantWizard() {
                     <button
                       type="button"
                       onClick={() => runRender('bureau')}
-                      disabled={sending}
+                      disabled={sending || actif(VERROU.serie)}
                       data-export-bureau
                       title="Composer le montage et l’enregistrer sur votre ordinateur, sans créer de post"
                       className="w-full flex items-center justify-center gap-2 rounded-lg border border-gray-800 px-3 py-2 text-xs text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -8741,7 +8800,7 @@ export default function AssistantWizard() {
                         variant="primary"
                         size="sm"
                         onClick={() => runRender('calendrier')}
-                        disabled={sending || !scheduledDate}
+                        disabled={sending || actif(VERROU.serie) || !scheduledDate}
                         className={DISABLED}
                       >
                         <span className="flex items-center gap-2">
@@ -8815,12 +8874,17 @@ export default function AssistantWizard() {
                           <AlertTriangle className="w-4 h-4" />{' '}
                           <span data-interruption-titre>{titreInterruption(batchItems.length)}</span>
                         </div>
+                        {/* Le bilan d'abord, en une ligne : ce qui est gagné
+                            et ce qui est perdu. Le détail par contenu est
+                            juste en dessous pour qui veut savoir lequel. */}
+                        <p className="text-xs font-medium text-gray-300" data-serie-bilan>
+                          {bilanSerie(batchItems)}
+                        </p>
                         <p className="text-xs text-gray-400">
                           {(() => {
-                            const { total, prets, echoues, restants } = batchSummary(batchItems);
+                            const { total, prets, restants } = batchSummary(batchItems);
                             return `${prets} sur ${total} enregistrée${prets > 1 ? 's' : ''} au calendrier`
-                              + `, ${echoues} en échec`
-                              + (restants > 0 ? `, ${restants} jamais démarrée${restants > 1 ? 's' : ''} — donc non facturée${restants > 1 ? 's' : ''}.` : '.');
+                              + (restants > 0 ? `. Les contenus jamais démarrés n’ont ouvert aucune tentative — rien n’a été débité pour eux.` : '.');
                           })()}
                         </p>
                         <ul className="space-y-1">

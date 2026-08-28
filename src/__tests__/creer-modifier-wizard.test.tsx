@@ -201,9 +201,13 @@ describe('aucun effet de bord au chargement', () => {
   it('ni rendu, ni débit, ni publication', async () => {
     ouvrir('post-42');
     await laisserTourner();
-    for (const interdit of ['/api/credits/deduct', '/api/render', '/api/posts/publish']) {
+    for (const interdit of ['/api/credits/deduct', '/api/render/jobs', '/api/posts/publish']) {
       expect(appels.some((a) => a.url.includes(interdit))).toBe(false);
     }
+    // `/api/render/tarifs` est une LECTURE du prix, pas un rendu : l'écran
+    // l'interroge au montage pour annoncer un chiffre qui vienne du serveur.
+    expect(appels.some((a) => a.url.includes('/api/render') && !a.url.includes('/api/render/tarifs')))
+      .toBe(false);
   });
 
   it('l\'Autopilote n\'est que LU, jamais écrit', async () => {
@@ -339,9 +343,13 @@ describe('enregistrement explicite', () => {
     ouvrir('post-42');
     await laisserTourner();
     await cliquerEnregistrer();
-    for (const interdit of ['/api/credits/deduct', '/api/render', '/api/posts/publish']) {
+    for (const interdit of ['/api/credits/deduct', '/api/render/jobs', '/api/posts/publish']) {
       expect(appels.some((a) => a.url.includes(interdit))).toBe(false);
     }
+    // `/api/render/tarifs` est une LECTURE du prix, pas un rendu : l'écran
+    // l'interroge au montage pour annoncer un chiffre qui vienne du serveur.
+    expect(appels.some((a) => a.url.includes('/api/render') && !a.url.includes('/api/render/tarifs')))
+      .toBe(false);
   });
 
   it('une fois enregistré, l\'écran le dit', async () => {

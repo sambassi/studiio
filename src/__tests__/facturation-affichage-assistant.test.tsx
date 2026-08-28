@@ -92,6 +92,16 @@ function installerFetch(reponse: Record<string, unknown>) {
     if (u.includes('/api/credits/balance')) {
       return { ok: true, status: 200, json: async () => reponse } as Response;
     }
+    // Le tarif ne vient plus d'une constante TypeScript mais de
+    // `tarifs_rendu`, via cette route. Sans elle, l'écran écrirait
+    // « Tarif confirmé au rendu » — ce qui est le comportement voulu quand
+    // le serveur ne répond pas, et qui a son propre test plus bas.
+    if (u.includes('/api/render/tarifs')) {
+      return {
+        ok: true, status: 200,
+        json: async () => ({ ok: true, politique: 'credits', tarifs: { reel: 10, tv: 15 } }),
+      } as Response;
+    }
     return {
       ok: true, status: 200,
       json: async () => ({ success: true, post: { id: 'p1' } }),
@@ -309,12 +319,16 @@ describe('Le navigateur ne decide rien', () => {
 });
 
 describe('7, 8. Rien d autre n a bouge', () => {
-  it('le mode Serie reste ferme', async () => {
-    expect(BATCH_SERIE_DISPONIBLE).toBe(false);
+  it('le mode Serie est ouvert en pilote, et l unitaire reste par defaut', async () => {
+    expect(BATCH_SERIE_DISPONIBLE).toBe(true);
     installerFetch(REPONSE_ADMIN); poser();
     await allerAEnvoi();
     const serie = document.querySelector('[data-batch-mode="serie"]') as HTMLButtonElement;
-    expect(serie.disabled).toBe(true);
+    expect(serie.disabled).toBe(false);
+    // Ouvert ne veut pas dire selectionne : c'est « Un seul contenu » qui
+    // l'est, et le selecteur du nombre n'apparait qu'apres un clic.
+    const unique = document.querySelector('[data-batch-mode="unique"]');
+    expect(unique?.getAttribute('aria-pressed')).toBe('true');
     expect(document.querySelectorAll('[data-batch-count]')).toHaveLength(0);
   });
 
@@ -332,6 +346,9 @@ describe('7, 8. Rien d autre n a bouge', () => {
     expect(ecritures()).toEqual([]);
     expect(composeAndUploadSpy).not.toHaveBeenCalled();
     expect(composeVideoSpy).not.toHaveBeenCalled();
-    expect(appels.filter((a) => /credits\/deduct|\/render/.test(a.url))).toEqual([]);
+    // `/api/render/tarifs` est une lecture de prix, pas un rendu.
+    expect(appels.filter((a) => /credits\/deduct/.test(a.url))).toEqual([]);
+    expect(appels.filter((a) => /\/render/.test(a.url) && !/\/render\/tarifs/.test(a.url)))
+      .toEqual([]);
   });
 });

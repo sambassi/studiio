@@ -194,7 +194,9 @@ describe('Le bouton', () => {
 
   it('il se désarme pendant le rendu', () => {
     const bloc = wizard.slice(wizard.indexOf("onClick={() => runRender('bureau')}"));
-    expect(bloc.slice(0, 400)).toContain('disabled={sending}');
+    // Le verrou synchrone s'ajoute au drapeau d'affichage : `sending` grise
+    // au rendu suivant, `actif(VERROU.serie)` bloque dans le tour courant.
+    expect(bloc.slice(0, 400)).toContain('disabled={sending || actif(VERROU.serie)}');
   });
 
   it('il dit qu aucun post n est créé', () => {
