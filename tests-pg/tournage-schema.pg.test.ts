@@ -188,11 +188,16 @@ describe('Ce que la migration ne fait pas', () => {
     expect(rows.map((r) => r.tablename)).toEqual(['rushes', 'shoot_sessions']);
 
     // Et aucune colonne de tournage n'a été greffée sur une table existante.
+    //
+    // `shoot_session_id` seulement, et non `cle_objet` : cette dernière
+    // existe déjà sur `rendus` depuis le socle de preuve serveur du 28 août.
+    // La chercher partout revenait à accuser la migration d'une colonne
+    // qu'elle n'a pas posée — la CI l'a dit avant moi.
     const { rows: ailleurs } = await client.query(
       `select table_name from information_schema.columns
         where table_schema = 'public'
-          and column_name in ('shoot_session_id', 'cle_objet')
-          and table_name not in ('shoot_sessions', 'rushes')`,
+          and column_name = 'shoot_session_id'
+          and table_name <> 'rushes'`,
     );
     expect(ailleurs).toEqual([]);
   });
