@@ -42,9 +42,41 @@ export interface PosterPhotoValide {
   source?: string;
 }
 
-/** Une URL exploitable comme image : http(s) uniquement. */
+/**
+ * Hotes qu'une photo ne doit jamais porter.
+ *
+ * Ces URL viennent d'un fournisseur externe : elles sont recopiees dans un
+ * `src`, puis persistees dans les metadonnees d'un post. Une adresse locale
+ * ou privee y ferait pointer l'affiche vers une machine du reseau de qui
+ * ouvre la page — chez lui, pas chez nous.
+ */
+const HOTE_INTERNE = /^(localhost|.*\.local|.*\.internal|.*\.lan)$/i;
+const IP_PRIVEE =
+  /^(127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|0\.0\.0\.0$|\[?::1\]?$|\[?fc|\[?fd)/i;
+
+/**
+ * Une URL exploitable comme image : HTTPS PUBLIC, et rien d'autre.
+ *
+ * `http://` etait accepte, et c'etait un reste d'avant HTTPS : studiio.pro
+ * est servi en HTTPS, et Chrome bloque toute image en clair — la vignette
+ * n'apparaissait pas, sans un mot dans l'interface pour le dire. Le filtre
+ * la retire desormais de la grille plutot que de proposer un choix qui ne
+ * s'affichera jamais.
+ *
+ * Les adresses locales et privees sont refusees pour la meme raison qu'a
+ * l'ecriture : une adresse interne n'a rien a faire dans un navigateur, et
+ * elle designerait le reseau du visiteur.
+ */
 export function urlUtilisable(value: unknown): value is string {
-  return typeof value === 'string' && /^https?:\/\/\S+$/i.test(value.trim());
+  if (typeof value !== 'string') return false;
+  const brut = value.trim();
+  if (!/^https:\/\/\S+$/i.test(brut)) return false;
+  let u: URL;
+  try { u = new URL(brut); } catch { return false; }
+  if (HOTE_INTERNE.test(u.hostname)) return false;
+  if (IP_PRIVEE.test(u.hostname)) return false;
+  // Un hote sans point n'est pas un nom public.
+  return u.hostname.includes('.');
 }
 
 /**

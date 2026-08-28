@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
+import { etatDepuisReponse, messagePhotos } from '@/lib/creer/photosEtat';
 import { render, cleanup } from '@testing-library/react';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
@@ -162,15 +163,23 @@ describe('La recherche', () => {
   });
 
   it('un échec réseau est dit, il ne laisse pas une grille muette', () => {
-    expect(wizard).toContain("setPhotosError('Recherche de photos indisponible.');");
-    expect(wizard).toContain("'Aucune photo pour cette recherche.',");
+    // Les messages vivent desormais dans `lib/creer/photosEtat`, parce qu'il
+    // y en a QUATRE et non deux : rien trouvé, source non configurée, clé
+    // refusée, quota atteint. L'ecran les distingue au lieu de tous les
+    // rendre par « Aucune photo pour cette recherche » — qui accusait la
+    // requête de l'utilisateur quand le fournisseur n'avait rien exécuté.
+    expect(wizard).toContain("setPhotosEtat('indisponible');");
+    expect(wizard).toContain("messagePhotos('indisponible', source)");
+    expect(messagePhotos('vide', 'pexels')).toBe('Aucune photo pour cette recherche.');
   });
 
   it("une source non configurée le dit, au lieu de « aucune photo »", () => {
     // L'API renvoie `configured: false` quand la clé manque côté serveur.
     // Sans cette distinction, l'utilisateur reformule sa recherche sans fin.
-    expect(wizard).toContain('data?.configured === false');
-    expect(wizard).toContain('n’est pas configuré sur ce serveur.');
+    expect(etatDepuisReponse({ configured: false })).toBe('non-configure');
+    expect(messagePhotos('non-configure', 'unsplash'))
+      .toBe('Unsplash n’est pas configuré sur ce serveur.');
+    expect(wizard).toContain('etatDepuisReponse(data)');
   });
 });
 
