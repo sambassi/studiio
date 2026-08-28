@@ -15,6 +15,24 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, act, fireEvent, cleanup } from '@testing-library/react';
 
 class NoopResizeObserver { observe() {} unobserve() {} disconnect() {} }
+
+/**
+ * jsdom n'implemente pas la lecture media : `video.play()` y rend
+ * `undefined`, et le code produit fait `play().catch(...)` — parfaitement
+ * correct dans un navigateur, ou la methode rend une promesse. Sans cette
+ * doublure, un `setTimeout` de l'apercu leve APRES la fin du test, hors de
+ * toute assertion, et fait echouer la suite entiere.
+ */
+Object.defineProperty(HTMLMediaElement.prototype, 'play', {
+  configurable: true, value: () => Promise.resolve(),
+});
+Object.defineProperty(HTMLMediaElement.prototype, 'pause', {
+  configurable: true, value: () => {},
+});
+Object.defineProperty(HTMLMediaElement.prototype, 'load', {
+  configurable: true, value: () => {},
+});
+
 (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = NoopResizeObserver;
 
 vi.mock('next-auth/react', () => ({
