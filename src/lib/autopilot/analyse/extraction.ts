@@ -114,6 +114,29 @@ export const TIMEOUT_VIGNETTE_MS = 20_000;
 /** Largeur maximale d'une vignette. La hauteur suit le rapport d'origine. */
 export const LARGEUR_VIGNETTE = 640;
 
+/**
+ * Les protocoles que ffmpeg a le droit d'ouvrir. Rien d'autre.
+ *
+ * ⚠️ L'URL D'ENTREE EST SÛRE ; LE CONTENU DU FICHIER NE L'EST PAS.
+ *
+ * L'hôte vient de `MINIO_ENDPOINT`, le compartiment de `bucketAutorise`, la
+ * clé de la base filtrée par `user_id` et forcée au préfixe `<userId>/`. Sur
+ * cet axe, rien n'est contrôlable par l'appelant.
+ *
+ * Mais l'OCTET, lui, est intégralement choisi par l'utilisateur : il
+ * téléverse ce qu'il veut sous `media/<userId>/rush/…`. Un fichier reconnu
+ * comme playlist HLS ou comme `ffconcat` fait ouvrir à ffmpeg des ressources
+ * IMBRIQUÉES, dont l'adresse est écrite dans le fichier. Le conteneur est
+ * sur le même réseau Docker que `studiio-postgrest:3000` et `studiio-db` :
+ * c'est une porte de SSRF, et `file:` serait une lecture de fichier local.
+ *
+ * Les versions récentes de ffmpeg refusent déjà certaines de ces
+ * combinaisons — mais par une propriété du binaire installé, pas par une
+ * décision de ce code. Une liste blanche explicite ferme la question par
+ * contrat, et ne coûte qu'un argument.
+ */
+export const PROTOCOLES_AUTORISES = 'http,https,tcp,tls';
+
 /** Plafond de sortie du sondage — le JSON de ffprobe tient en quelques Ko. */
 const SORTIE_MAX_SONDE = 2 * 1024 * 1024;
 
@@ -317,6 +340,7 @@ async function sonderFfprobe(url: string): Promise<Sondage> {
     '-hide_banner',
     '-loglevel', 'error',
     // Options de PROTOCOLE, obligatoirement avant `-i`.
+    '-protocol_whitelist', PROTOCOLES_AUTORISES,
     '-rw_timeout', RW_TIMEOUT_US,
     '-print_format', 'json',
     '-show_format',
@@ -377,6 +401,7 @@ async function sonderFfmpeg(url: string): Promise<Sondage> {
   const r = await lancer(cheminFfmpeg(), [
     '-hide_banner',
     '-nostdin',
+    '-protocol_whitelist', PROTOCOLES_AUTORISES,
     '-rw_timeout', RW_TIMEOUT_US,
     '-i', url,
   ], { timeoutMs: TIMEOUT_SONDE_MS, maxSortie: SORTIE_MAX_SONDE });
@@ -461,6 +486,7 @@ async function produireVignettes(
       '-hide_banner',
       '-loglevel', 'error',
       '-nostdin',
+      '-protocol_whitelist', PROTOCOLES_AUTORISES,
       '-rw_timeout', RW_TIMEOUT_US,
       // ⚠️ `-ss` AVANT `-i` : positionnement du démuxeur, donc requête
       // `Range`. Après `-i`, ffmpeg décoderait depuis la première image et
