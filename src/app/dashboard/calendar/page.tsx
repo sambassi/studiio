@@ -44,7 +44,26 @@ import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { useBranding } from '@/lib/hooks/useBranding';
 import { fontStack, ensureFontsLoaded } from '@/lib/fonts/catalog';
-import { composeAndUpload, CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
+import { CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
+import { composerEtFacturer } from '@/lib/rendus/composer';
+import { useVerrous, VERROU } from '@/lib/creer/verrouAction';
+
+/**
+ * Le format tarifaire d'un post.
+ *
+ * Le serveur lit le prix dans `tarifs_rendu`, indexe par format. Il ne
+ * l'accepte pas du navigateur : ce qui part d'ici designe seulement LEQUEL
+ * des deux tarifs s'applique, et un post sans format explicite est traite
+ * comme du 16:9 — exactement comme `montageSize` le fait deja.
+ *
+ * Au niveau du MODULE, mais NON EXPORTEE : les quatre chemins de composition
+ * du Calendrier vivent dans des fonctions differentes, et une copie par
+ * fonction finirait par diverger sur le defaut. Un fichier de page Next
+ * n'accepte qu'un jeu d'exports connus — l'exporter casserait `.next/types`.
+ */
+function formatRendu(p?: { format?: string | null } | null): 'reel' | 'tv' {
+  return p?.format === 'reel' ? 'reel' : 'tv';
+}
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { useTranslations, useLocale } from '@/i18n/client';
 import { AgentIAModal } from '@/components/creer/AgentIAModal';
@@ -510,6 +529,16 @@ export default function CalendarPage() {
   }, []);
   const agentIAEnabled = useAgentIAEnabled();
   const [currentDate, setCurrentDate] = useState(new Date());
+  /**
+   * Les verrous d'action.
+   *
+   * Un par geste produisant un rendu : regenerer, programmer, publier,
+   * exporter. Ils ne remplacent pas les drapeaux d'affichage existants — ils
+   * ferment la fenetre que ces drapeaux laissent ouverte, entre le clic et
+   * le rendu React qui grise le bouton.
+   */
+  const { prendre, rendre, actif } = useVerrous();
+
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
@@ -627,12 +656,12 @@ export default function CalendarPage() {
    * Regenerate the montage video + thumbnail for an existing post.
    *
    * Targets posts that predate the thumbnailUrl feature (or never passed
-   * through the composer at all). Re-runs composeAndUpload with the stored
+   * through the composer at all). Re-runs le montage, par le socle, avec le stored
    * metadata so the new video matches the current editor→composer parity,
    * then PATCHes the post with the fresh `renderedVideoUrl` + `thumbnailUrl`
    * and reloads the month.
    */
-  const regenerateMontage = useCallback(async (post: Post) => {
+  const regenerateMontageInterne = useCallback(async (post: Post) => {
     if (regenerating) return;
     const meta: any = post.metadata || {};
     const brand = meta.branding;
@@ -697,7 +726,11 @@ export default function CalendarPage() {
     setRegenStage('Préparation...');
 
     try {
-      const { url: renderedUrl, thumbnailUrl: freshThumb, composerVersion: freshVersion } = await composeAndUpload({
+      // Le montage remplace la video d'un post du Calendrier : c'est un
+      // rendu, il ouvre une tentative serveur et n'est livre qu'une fois
+      // l'objet vu a la cle attribuee. `composerEtFacturer` LEVE sinon, et
+      // le `catch` de cette fonction affiche l'erreur sans rien enregistrer.
+      const { url: renderedUrl, thumbnailUrl: freshThumb, composerVersion: freshVersion } = await composerEtFacturer('calendrier', formatRendu(post), {
         // Dimensions reelles du montage quand le post les porte : sans
         // elles, un carre se recomposait en 1920x1080.
         ...montageSize(meta?.videoSize, post?.format ?? 'tv'),
@@ -840,6 +873,20 @@ export default function CalendarPage() {
       }, 800);
     }
   }, [regenerating]);
+
+  /**
+   * Verrou synchrone.
+   *
+   * `if (regenerating) return;` existait deja en tete — et ne protegeait
+   * rien : `setRegenerating(true)` ne change pas `regenerating` dans le tour
+   * courant, donc deux clics le lisaient tous les deux a `false`.
+   */
+  const regenerateMontage = useCallback(async (post: Post) => {
+    if (!prendre(VERROU.regenerer)) return;
+    try { await regenerateMontageInterne(post); }
+    finally { rendre(VERROU.regenerer); }
+  }, [regenerateMontageInterne, prendre, rendre]);
+
 
   // Stats
   const totalPosts = posts.length;
@@ -1115,7 +1162,7 @@ export default function CalendarPage() {
     await handlePublishPost(cleanPost);
   };
 
-  const handleSchedulePost = async (post: Post) => {
+  const handleSchedulePostInterne = async (post: Post) => {
     // Validate: must have at least one platform selected
     if (!post.platforms || post.platforms.length === 0) {
       alert(t('validation.noPlatforms') || 'Veuillez sélectionner au moins un canal avant de planifier.');
@@ -1147,7 +1194,9 @@ export default function CalendarPage() {
         const brand = meta.branding;
 
         const designMeta = meta.design || {};
-        const { url: renderedUrl } = await composeAndUpload({
+        // Composition automatique avant programmation : meme contrat.
+        // Un echec fait `return` plus bas — le post n'est jamais programme.
+        const { url: renderedUrl } = await composerEtFacturer('calendrier', formatRendu(post), {
           // Dimensions reelles du montage quand le post les porte : sans
           // elles, un carre se recomposait en 1920x1080.
           ...montageSize(meta?.videoSize, post?.format ?? 'tv'),
@@ -1294,6 +1343,14 @@ export default function CalendarPage() {
     }
     finally { setSaving(false); }
   };
+
+  /** Verrou synchrone : voir `handleExportPost`. */
+  const handleSchedulePost = async (post: Post) => {
+    if (!prendre(VERROU.programmer)) return;
+    try { await handleSchedulePostInterne(post); }
+    finally { rendre(VERROU.programmer); }
+  };
+
 
   const handleSavePost = async () => {
     // Validate: if scheduling, must have platforms
@@ -1758,7 +1815,7 @@ export default function CalendarPage() {
     };
   }, [showFullPreview, fullPreviewPost, infoSeqIndex]);
 
-  const handlePublishPost = async (post: Post) => {
+  const handlePublishPostInterne = async (post: Post) => {
     setSaving(true);
     try {
       let updatedPost = { ...post };
@@ -1791,7 +1848,11 @@ export default function CalendarPage() {
           console.log('[Publish] Media URLs:', { posterUrl: posterUrl?.substring(0, 60), videoUrl: videoUrl?.substring(0, 60), logoUrl: logoUrl?.substring(0, 30), musicUrl: musicUrl?.substring(0, 60) });
 
           // Wrap composition in a 3-minute timeout to prevent hanging forever
-          const composePromise = composeAndUpload({
+          // « Publier maintenant » compose d'abord. La publication elle-meme
+          // passe par le cron, apres passage en `scheduled` : elle ne peut
+          // donc commencer qu'apres la confirmation, puisqu'un echec sort
+          // par le `catch` avant tout enregistrement.
+          const composePromise = composerEtFacturer('calendrier', formatRendu(post), {
             // Dimensions reelles du montage quand le post les porte : sans
             // elles, un carre se recomposait en 1920x1080.
             ...montageSize(meta?.videoSize, post?.format ?? 'tv'),
@@ -1949,6 +2010,14 @@ export default function CalendarPage() {
     } catch (error) { console.error('Error publishing:', error); }
     finally { setSaving(false); }
   };
+
+  /** Verrou synchrone : voir `handleExportPost`. */
+  const handlePublishPost = async (post: Post) => {
+    if (!prendre(VERROU.publier)) return;
+    try { await handlePublishPostInterne(post); }
+    finally { rendre(VERROU.publier); }
+  };
+
 
   const handleNewPost = () => {
     setEditFormData({
@@ -2121,7 +2190,7 @@ export default function CalendarPage() {
   // AI Agent handler
   // Export / download a post's rendered montage video
   // If renderedVideoUrl exists, download it. Otherwise, compose on-the-fly using metadata.
-  const handleExportPost = async (post: Post) => {
+  const handleExportPostInterne = async (post: Post) => {
     const meta = post.metadata;
 
     // If we already have a rendered montage URL in WebM format, convert server-side to MP4 then download
@@ -2291,7 +2360,7 @@ export default function CalendarPage() {
       const brand = meta?.branding;
 
       // If no media at all, the recompose has nothing to draw with — bail
-      // out cleanly instead of letting composeAndUpload throw on a useless
+      // out cleanly instead of letting le compositeur throw on a useless
       // empty montage. Cards/title-only posts are still OK (cards array
       // covers that case).
       const hasCards = (meta?.cards?.length || 0) > 0 || (meta?.textCards?.length || 0) > 0;
@@ -2308,7 +2377,9 @@ export default function CalendarPage() {
       const calDesign = meta?.design;
       const calSiteText = calDesign?.siteText;
 
-      const { blob, url: renderedUrl } = await composeAndUpload({
+      // Recomposition a la volee pour TELECHARGEMENT : le montage part sur
+      // le disque de l'utilisateur, c'est l'operation `bureau`.
+      const { blob, url: renderedUrl } = await composerEtFacturer('bureau', formatRendu(post), {
         // Dimensions reelles du montage quand le post les porte : sans
         // elles, un carre se recomposait en 1920x1080.
         ...montageSize(meta?.videoSize, post?.format ?? 'tv'),
@@ -2526,6 +2597,18 @@ export default function CalendarPage() {
       }, 3000);
     }
   };
+
+  /**
+   * Verrou synchrone. `exportRendering` grise bien le bouton, mais seulement
+   * au rendu suivant : deux clics dans le meme tour entreraient tous les deux
+   * et ouvriraient DEUX tentatives.
+   */
+  const handleExportPost = async (post: Post) => {
+    if (!prendre(VERROU.exporter)) return;
+    try { await handleExportPostInterne(post); }
+    finally { rendre(VERROU.exporter); }
+  };
+
 
 
   // Calendar grid
@@ -2963,7 +3046,7 @@ export default function CalendarPage() {
                               <button onClick={() => rouvrirDansEditeur(post)} className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition" title="Modifier le montage dans l’éditeur" data-post-remodifier><Wand2 className="w-3 h-3" /></button>
                               <button onClick={() => handleDuplicatePost(post)} className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition" title={t('actions.duplicate')}><Copy className="w-3 h-3" /></button>
                               {(post.media_url || post.metadata?.characterUrl) && (
-                                <button onClick={() => handleExportPost(post)} className="p-1 rounded bg-gray-700 hover:bg-blue-600 text-gray-300 hover:text-white transition" title={t('actions.export')}><Download className="w-3 h-3" /></button>
+                                <button onClick={() => handleExportPost(post)} disabled={actif(VERROU.exporter)} className="p-1 rounded bg-gray-700 hover:bg-blue-600 text-gray-300 hover:text-white transition disabled:opacity-50" title={t('actions.export')}><Download className="w-3 h-3" /></button>
                               )}
                               {!post.metadata?.hasAudio && post.media_type === 'video' && (
                                 <button onClick={() => { window.location.href = `/dashboard/creer-avance?postId=${post.id}&tab=audio`; }} className="p-1 rounded bg-purple-600 hover:bg-purple-700 text-white transition" title={t('actions.addAudio')}><Volume2 className="w-3 h-3" /></button>
@@ -3480,7 +3563,8 @@ export default function CalendarPage() {
             || meta?.composerVersion !== CURRENT_COMPOSER_VERSION) && (
             <button
               onClick={(e) => { e.stopPropagation(); regenerateMontage(fullPreviewPost); }}
-              disabled={regenerating}
+              disabled={regenerating || actif(VERROU.regenerer)}
+              data-regenerer
               className="fixed top-4 right-4 z-[60] flex items-center gap-2 px-4 py-2 rounded-full bg-purple-600 hover:bg-purple-500 backdrop-blur-sm text-white border-2 border-white/30 shadow-2xl disabled:opacity-70 disabled:cursor-wait active:scale-95 transition-transform font-semibold"
               title={regenerating ? `${regenStage} ${regenProgress}%` : 'Re-générer le montage avec la dernière version du composer'}
             >
@@ -4398,7 +4482,9 @@ export default function CalendarPage() {
                 {(fullPreviewPost.media_url || meta?.characterUrl) && (
                   <button
                     onClick={() => handleExportPost(fullPreviewPost)}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm font-medium transition"
+                    disabled={actif(VERROU.exporter)}
+                    data-exporter
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm font-medium transition disabled:opacity-50"
                   >
                     <Download size={14} /> {t('actions.exportDesktop')}
                   </button>
@@ -4423,7 +4509,8 @@ export default function CalendarPage() {
                       }
                       handleSchedulePost(fullPreviewPost).then(() => { setShowFullPreview(false); });
                     }}
-                    disabled={saving}
+                    disabled={saving || actif(VERROU.programmer)}
+                    data-programmer
                     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm font-bold text-white transition"
                   >
                     <Send size={14} /> {t('fullPreview.schedule')}
@@ -4431,7 +4518,8 @@ export default function CalendarPage() {
                 )}
                 <button
                   onClick={() => handlePublishPost(fullPreviewPost)}
-                  disabled={saving}
+                  disabled={saving || actif(VERROU.publier)}
+                  data-publier
                   className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 disabled:opacity-50 rounded-lg text-sm font-bold text-white transition"
                 >
                   {saving ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}

@@ -17,7 +17,8 @@ import { Modal } from '@/components/ui/Modal';
 import { useBranding } from '@/lib/hooks/useBranding';
 import { useCreatorPreferences } from '@/lib/hooks/useCreatorPreferences';
 import { BrandingIndicator } from '@/components/shared/BrandingIndicator';
-import { composeAndUpload } from '@/lib/video-composer';
+import { composerEtFacturer } from '@/lib/rendus/composer';
+import { useVerrous, VERROU } from '@/lib/creer/verrouAction';
 import { renderMontage, type MontageSpec } from '@/lib/ffmpeg-montage';
 import { useTranslations, useLocale } from '@/i18n/client';
 import { getContentPools } from '@/lib/i18n-content';
@@ -68,6 +69,9 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
   const [aiRushFiles, setAiRushFiles] = useState<File[]>([]);
   const [aiMusicFile, setAiMusicFile] = useState<File | null>(null);
   const [aiPhotoAffiche, setAiPhotoAffiche] = useState(false);
+  /** Verrou d'action : une seule serie a la fois, meme sur deux clics. */
+  const { prendre, rendre, actif } = useVerrous();
+
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiProgress, setAiProgress] = useState(0);
   const [aiStage, setAiStage] = useState('');
@@ -283,7 +287,7 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
     }
   };
 
-  const handleAIGenerate = async () => {
+  const handleAIGenerateInterne = async () => {
     if (aiRushFiles.length === 0) return;
     if (montageMode && montageEnabled) { handleMontagGenerate(); return; }
     setAiGenerating(true);
@@ -428,7 +432,9 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
         let renderedVideoUrl: string | null = null;
         if (rushUrls.length > 0 || posterUrl) {
           try {
-            const { url } = await composeAndUpload({
+            // L'Agent cree des posts de Calendrier : chaque montage est un
+            // rendu facture, avec sa propre tentative serveur.
+            const { url } = await composerEtFacturer('calendrier', 'reel', {
               width: 1080,
               height: 1920,
               fps: 30,
@@ -461,7 +467,20 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
             });
             if (url) renderedVideoUrl = url;
           } catch (err) {
+            // ── ON S'ARRETE, ON NE POURSUIT PAS ────────────────────────
+            // Cette erreur etait avalee : le post etait cree quand meme,
+            // avec l'affiche a la place du montage. L'utilisateur voyait
+            // une serie « reussie » dont les videos n'existaient pas.
+            //
+            // Depuis le socle, un echec signifie aussi que RIEN n'a ete
+            // debite. Poursuivre creerait des posts sans video et
+            // enchainerait des rendus sur une serie deja cassee.
             console.error(`[Agent IA] Compose error post ${i + 1}:`, err);
+            throw new Error(
+              `Le montage ${i + 1} n'a pas pu être produit : `
+              + `${err instanceof Error ? err.message : 'erreur inconnue'}. `
+              + 'Aucun crédit n’a été débité pour lui, et il n’a pas été enregistré.',
+            );
           }
         }
 
@@ -561,6 +580,20 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
       onClose();
     }
   };
+
+  /**
+   * Verrou synchrone.
+   *
+   * `aiGenerating` grise le bouton — au rendu suivant seulement. Deux clics
+   * dans le meme tour lanceraient deux series completes, donc deux fois N
+   * tentatives serveur.
+   */
+  const handleAIGenerate = async () => {
+    if (!prendre(VERROU.agentIA)) return;
+    try { await handleAIGenerateInterne(); }
+    finally { rendre(VERROU.agentIA); }
+  };
+
 
   return (
     <>
@@ -820,7 +853,8 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
             </Button>
             <button
               onClick={handleAIGenerate}
-              disabled={aiGenerating || aiRushFiles.length === 0}
+              data-agent-lancer
+              disabled={aiGenerating || actif(VERROU.agentIA) || aiRushFiles.length === 0}
               className="flex-1 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 disabled:opacity-50 rounded-lg text-sm font-bold transition"
             >
               {aiGenerating ? <Loader2 size={16} className="animate-spin" /> : <Bot size={16} />}
