@@ -185,17 +185,33 @@ export default function AnalyseRush({ rushId }: Props) {
    * rendu en redemande un jeu neuf.
    */
   useEffect(() => {
-    if (!analyse || analyse.etat !== 'reussie' || analyse.vignettes.nombre <= 0) return undefined;
-    if (vignettesPourRef.current === analyse.id) return undefined;
-    vignettesPourRef.current = analyse.id;
+    // ⚠️ LA CLÉ EST L'ANALYSE AFFICHÉE, PAS « CELLE QUI A DES IMAGES ».
+    //
+    // La sortie anticipée sur `nombre <= 0` se faisait AVANT de mettre à jour
+    // `vignettesPourRef` et sans jamais toucher à `vignettes`. Une analyse
+    // réussie SANS aucun aperçu laissait donc à l'écran les images de la
+    // version précédente — sous les mesures de la nouvelle, à des adresses
+    // qui répondent encore. Tant qu'on ne pouvait relancer que depuis
+    // `echouee` ou `annulee`, où il n'y a jamais d'image à l'écran, la
+    // situation n'existait pas. Depuis `reussie`, elle est ordinaire : c'est
+    // même exactement le cas qu'on relance — une mesure qui a réussi et dont
+    // les huit vignettes ont échoué.
+    const affichee = analyse && analyse.etat === 'reussie' ? analyse.id : null;
+    if (vignettesPourRef.current === affichee) return undefined;
+    vignettesPourRef.current = affichee;
+    // Une image cassée n'appartient qu'à l'analyse qui l'a produite : sans
+    // cette remise à zéro, sa note collerait à la suivante.
+    setVignettesManquantes(false);
     // ⚠️ AUCUN ALLER-RETOUR. Les adresses se déduisent de l'analyse déjà lue :
     // le serveur sert chaque image à `…/analyses/<id>/vignettes/<i>` en
     // relisant la clé lui-même. Une requête de plus par rush, toutes les
     // trois secondes, pour reconstruire des adresses déterministes serait du
     // trafic pur. Un échec image se voit sur le `<img>`, pas ici.
     setVignettes(
-      vignettesAffichables(analyse.id, analyse.vignettes.nombre, analyse.vignettes.secondes)
-        .slice(0, VIGNETTES_AFFICHEES),
+      affichee && analyse && analyse.vignettes.nombre > 0
+        ? vignettesAffichables(affichee, analyse.vignettes.nombre, analyse.vignettes.secondes)
+          .slice(0, VIGNETTES_AFFICHEES)
+        : null,
     );
     return undefined;
   }, [analyse]);
@@ -298,10 +314,30 @@ export default function AnalyseRush({ rushId }: Props) {
 
       {analyse?.etat === 'reussie' && (
         <div className="rounded-lg border border-gray-800 bg-gray-950/40 p-2 space-y-2">
-          <span className="inline-flex items-center gap-1.5 text-[11px] text-emerald-400" data-analyse-badge>
-            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-            Analysé
-          </span>
+          {/* L'état à gauche, l'action à droite — le même ordre que sous
+              `echouee` et `annulee`, où le bouton suit immédiatement la phrase
+              d'état.
+
+              Une mesure réussie n'est pas définitive : le rush a pu être
+              remplacé, et une extraction peut réussir sa mesure sans produire
+              un seul aperçu. Relancer crée une version de plus — c'est le
+              serveur qui la numérote (`version = max + 1`), le client ne
+              demande qu'« une nouvelle analyse » et ne choisit rien.
+
+              Le bouton s'AJOUTE au résultat, il ne s'y substitue pas : ce
+              qu'on veut comparer à la mesure suivante doit rester lisible
+              pendant qu'on la demande.
+
+              `!refus` : le bloc de refus, rendu plus haut, porte déjà son
+              propre bouton. Deux boutons pour un même geste, sous deux
+              libellés, dans le même écran, ne se distinguent pas. */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-emerald-400" data-analyse-badge>
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+              Analysé
+            </span>
+            {!refus && boutonAnalyse('Relancer l’analyse', true)}
+          </div>
 
           {mesures.length > 0 && (
             <dl
