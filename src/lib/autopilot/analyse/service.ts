@@ -350,6 +350,64 @@ export async function listerAnalyses(
 }
 
 /**
+ * La SEULE analyse la plus récente d'un rush — une ligne, pas la liste.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * POURQUOI ELLE EXISTE À CÔTÉ DE `listerAnalyses`
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * L'écran de tournage SONDE cet état pendant qu'une analyse tourne : une
+ * requête toutes les quelques secondes, par rush ouvert, sur le processus
+ * Node unique qui fait aussi tourner ffmpeg. `listerAnalyses` rend TOUTES
+ * les versions, avec toutes leurs colonnes `jsonb` — `technique`, `parole`,
+ * `qualite`, `textes_visibles` — sans aucune borne. Sonder avec elle, c'est
+ * rapatrier N fois le résultat complet de chaque tentative passée pour en
+ * afficher une.
+ *
+ * Le `limit(1)` est donc la correction utile, et non une projection réduite :
+ * l'API de lecture DOIT rendre `technique`, `resume`, `parole`, `qualite` et
+ * les autres — c'est son contrat. Ce qu'on peut supprimer, ce sont les
+ * VERSIONS qu'on n'affichera pas.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ELLE NE RELIT PAS LE RUSH, ET C'EST DÉLIBÉRÉ
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * `listerAnalyses` le fait, pour distinguer « rush inexistant » de « rush
+ * jamais analysé ». Ici l'appelant l'a DÉJÀ lu — il en a besoin pour nommer
+ * la bonne migration quand un socle manque — et le relire doublerait le coût
+ * du sondage pour une information qu'on tient.
+ *
+ * La propriété, elle, n'est pas déléguée à cet appelant : le filtre
+ * `.eq('user_id', userId)` est ici, dans la requête, comme partout dans ce
+ * module. Un rush d'autrui rend `null`, jamais la ligne d'un tiers.
+ *
+ * `null` sans motif = ce rush n'a jamais été analysé. C'est un état normal.
+ */
+export async function lireDerniereAnalyse(
+  userId: string, rushId: string,
+): Promise<ResultatAnalyse> {
+  const { data, error } = await supabaseAdmin
+    .from('rush_analyses')
+    .select(COLONNES_ANALYSE)
+    .eq('rush_id', rushId)
+    .eq('user_id', userId)
+    // `version`, et ni `created_at` ni `updated_at` : le premier peut être
+    // identique à la milliseconde entre deux insertions, le second ferait
+    // remonter une vieille analyse fermée après coup devant une neuve.
+    .order('version', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    if (socleAbsent(error)) return { analyse: null, motif: 'socle_absent' };
+    throw new Error(error.message || 'lecture de la derniere analyse impossible');
+  }
+  if (!data) return { analyse: null, motif: null };
+  return { analyse: analyseDepuisLigne(data as Record<string, unknown>), motif: null };
+}
+
+/**
  * Ce qu'un traitement a le droit d'écrire sur une analyse en cours.
  *
  * Ni `id`, ni `rush_id`, ni `user_id`, ni `version` : ces quatre-là sont

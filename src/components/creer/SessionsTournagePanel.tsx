@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, Plus, Film, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { uploadFile } from '@/lib/storage/uploadFile';
+import AnalyseRush from '@/components/creer/AnalyseRush';
 import type { ShootSession, Rush } from '@/lib/autopilot/tournage/contrat';
 
 /**
@@ -12,10 +13,14 @@ import type { ShootSession, Rush } from '@/lib/autopilot/tournage/contrat';
  * CE QU'IL FAIT, ET CE QU'IL NE FAIT PAS
  * ─────────────────────────────────────────────────────────────────────────
  *
- * Nommer un tournage, y déposer des rushes, voir ceux qui sont indexés. Rien
- * d'autre : ni analyse, ni sélection, ni montage, ni « créer 10 vidéos ».
+ * Nommer un tournage, y déposer des rushes, voir ceux qui sont indexés, et —
+ * depuis M3-B3 — demander l'analyse d'un rush vérifié puis en suivre l'état.
+ * Rien d'autre : ni sélection de moments, ni montage, ni « créer 10 vidéos ».
  * Ces boutons viendront avec les fonctionnalités qui les portent — les poser
  * maintenant promettrait ce qui n'existe pas.
+ *
+ * L'analyse elle-même vit dans `AnalyseRush`, un composant par ligne : c'est
+ * lui qui interroge le serveur et qui arrête son suivi en disparaissant.
  *
  * ─────────────────────────────────────────────────────────────────────────
  * DEPUIS N'IMPORTE QUEL VOLUME, SANS COPIE LOCALE
@@ -248,14 +253,26 @@ export default function SessionsTournagePanel() {
             </ul>
           )}
 
-          <ul className="space-y-1" data-tournage-rushes>
+          <ul className="space-y-2" data-tournage-rushes>
             {rushes.map((r) => (
-              <li key={r.id} data-tournage-rush={r.id} className="flex items-center gap-2 text-xs">
-                <span className="w-5 text-center text-gray-500">{r.rang + 1}</span>
-                <span className="flex-1 truncate text-gray-400">
-                  {r.nomOrigine || r.cleObjet}
-                </span>
-                <span className="text-gray-500" data-tournage-rush-etat={r.etat}>{r.etat}</span>
+              <li key={r.id} data-tournage-rush={r.id} className="text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-5 shrink-0 text-center text-gray-500">{r.rang + 1}</span>
+                  <span className="flex-1 truncate text-gray-400">
+                    {r.nomOrigine || r.cleObjet}
+                  </span>
+                  <span className="shrink-0 text-gray-500" data-tournage-rush-etat={r.etat}>{r.etat}</span>
+                </div>
+                {/* L'analyse ne s'affiche que pour un rush VÉRIFIÉ — le seul
+                    que la route accepte de mesurer. La proposer sur un rush
+                    `indexe` ou `absent` reviendrait à offrir un bouton dont on
+                    sait déjà qu'il rendra 409. Le décalage vers la droite
+                    aligne le bloc sous le nom, pas sous le numéro. */}
+                {r.etat === 'verifie' && (
+                  <div className="pl-7">
+                    <AnalyseRush rushId={r.id} />
+                  </div>
+                )}
               </li>
             ))}
             {rushes.length === 0 && (

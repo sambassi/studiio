@@ -880,10 +880,29 @@ describe('Le cadre d exécution', () => {
     expect(source).toContain("export const dynamic = 'force-dynamic'");
   });
 
-  it('ce lot n expose que POST — ni file d attente, ni worker', async () => {
+  /**
+   * ⚠️ MODIFIÉ PAR M3-B3, ET DÉLIBÉRÉMENT.
+   *
+   * La version d'origine exigeait que ce fichier n'exporte QUE `POST`. Ce
+   * n'était pas une règle de sécurité : c'était la façon de dire « M3-B2 ne
+   * livre pas de file d'attente, pas de worker, pas de reprise ». M3-B3 y
+   * ajoute la LECTURE de l'analyse, un verbe sûr — sans écriture, sans
+   * moteur, sans capacité — et ses propres preuves sont dans
+   * `autopilote-m3b3-lecture.test.ts`.
+   *
+   * L'intention d'origine est CONSERVÉE en la disant précisément : les verbes
+   * qui MODIFIENT ou SUPPRIMENT restent absents. Un `DELETE` effacerait une
+   * analyse, alors que le lot pose comme principe qu'une analyse interrompue
+   * est un fait qu'on n'efface pas ; un `PUT`/`PATCH` laisserait écrire de
+   * l'extérieur un état que seul le serveur mesure.
+   */
+  it('ce lot n expose que des verbes sûrs — ni suppression, ni écriture externe', async () => {
     const module = await import('@/app/api/autopilot/rushes/[id]/analyse/route');
     expect(typeof module.POST).toBe('function');
-    expect((module as Record<string, unknown>).GET).toBeUndefined();
-    expect((module as Record<string, unknown>).DELETE).toBeUndefined();
+    // M3-B3 : la lecture de l'analyse la plus récente.
+    expect(typeof (module as Record<string, unknown>).GET).toBe('function');
+    for (const verbe of ['DELETE', 'PUT', 'PATCH']) {
+      expect((module as Record<string, unknown>)[verbe], verbe).toBeUndefined();
+    }
   });
 });
