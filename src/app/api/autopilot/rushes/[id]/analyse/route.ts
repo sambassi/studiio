@@ -528,6 +528,9 @@ async function executerAnalyse(
   // la trace de ffmpeg.
   const passage = await majAnalyse(userId, analyse.id, {
     etape: 'visuel',
+    // Au passage, le modèle n'est pas encore connu : le fournisseur ne l'a
+    // pas encore répondu. On pose l'identité provisoire, et on la corrige à
+    // la clôture avec le nom réellement employé.
     fournisseurs: { extraction: FOURNISSEUR_EXTRACTION, visuel: FOURNISSEUR_VISUEL },
   });
   if (passage.motif || !passage.analyse) {
@@ -583,8 +586,24 @@ async function executerAnalyse(
   // ── LA SEULE ÉCRITURE DE `reussie` DE TOUT LE CHEMIN ────────────────
   const clot = await majAnalyse(userId, analyse.id, {
     etat: 'reussie',
+    // ⚠️ LE MODÈLE RÉELLEMENT EMPLOYÉ, pas l'étiquette générique posée avant
+    // l'appel. Savoir qu'un rush a été lu par tel modèle et pas tel autre est
+    // ce qui permettra de comparer deux analyses, ou d'expliquer une dérive.
+    // La valeur vient d'une CONSTANTE de l'adaptateur, jamais d'un champ de
+    // la réponse : un modèle qui se nommerait lui-même choisirait ce qu'on
+    // écrit à son sujet.
+    fournisseurs: {
+      extraction: FOURNISSEUR_EXTRACTION,
+      visuel: { ...FOURNISSEUR_VISUEL, modele: visuel.modele },
+    },
     resume: visuel.visuel.resume,
-    textesVisibles: visuel.visuel.textesVisibles.map((t) => t.texte),
+    // ⚠️ LES OBJETS COMPLETS, PAS SEULEMENT LE TEXTE.
+    //
+    // `seconde` et `confiance` sont ce qui distingue une transcription d'un
+    // ancrage : sans elles, M3-C saurait QU'un texte apparaît, jamais OÙ ni
+    // avec quelle certitude. La colonne est un tableau `jsonb`, elle les
+    // accepte tels quels — aucune migration.
+    textesVisibles: visuel.visuel.textesVisibles as unknown as unknown[],
     qualite: visuel.visuel.qualite as unknown as Record<string, unknown>,
     usage: visuel.visuel.usage as unknown as Record<string, unknown>,
   });

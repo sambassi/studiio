@@ -40,6 +40,7 @@ import type { VignetteAnalyse } from './contrat';
 import {
   lireReponseVisuelle, usageVisuel,
   type AnalyseVisuelle, type ContexteVisuel, type MotifVisuel,
+  type MotifVisuelEtape,
 } from './visuel-contrat';
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -125,21 +126,13 @@ export const MOTIFS_IMAGE = [
 export type MotifImage = (typeof MOTIFS_IMAGE)[number];
 
 /**
- * Pourquoi l'étape visuelle a échoué. Vocabulaire FERMÉ, comme
- * `MOTIFS_EXTRACTION`.
+ * Réexportés, jamais recopiés : le vocabulaire fait autorité dans le contrat,
+ * qui est le seul module que `moteur-visuel.ts` puisse importer sans tirer
+ * ffmpeg avec lui.
  */
-export const MOTIFS_VISUEL_ETAPE = [
-  'aucune_image',        // rien de lisible à montrer — le fournisseur n'est pas appelé
-  'fournisseur_absent',  // aucun adaptateur branché sur ce serveur
-  'fournisseur_en_erreur', // il a levé, ou le délai a été dépassé
-  'resultat_visuel_invalide', // il a répondu, mais hors du contrat
-] as const;
-export type MotifVisuelEtape = (typeof MOTIFS_VISUEL_ETAPE)[number];
-
-export function motifVisuelEtapeValide(valeur: unknown): valeur is MotifVisuelEtape {
-  return typeof valeur === 'string'
-    && (MOTIFS_VISUEL_ETAPE as readonly string[]).includes(valeur);
-}
+export {
+  MOTIFS_VISUEL_ETAPE, motifVisuelEtapeValide, type MotifVisuelEtape,
+} from './visuel-contrat';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Lecture bornée des images

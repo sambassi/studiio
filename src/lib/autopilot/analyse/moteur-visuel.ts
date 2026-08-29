@@ -12,6 +12,9 @@
  * `reussie` à l'étape `extraction`, et les analyses déjà en base restent
  * indiscernables des nouvelles.
  */
+// ⚠️ LE CONTRAT, PAS LE MOTEUR. `visuel.ts` tire ffmpeg et MinIO ; ce module
+// est importé par la route, qui n'a aucune raison de les charger.
+import { motifVisuelEtapeValide } from './visuel-contrat';
 import type { DemandeVisuel, ResultatEtapeVisuelle } from './visuel';
 
 export type { DemandeVisuel, ResultatEtapeVisuelle };
@@ -81,10 +84,18 @@ export function resultatVisuelEtapeValide(valeur: unknown): ResultatEtapeVisuell
   const r = valeur as Record<string, unknown>;
 
   if (r.ok === false) {
-    if (typeof r.motif !== 'string' || !r.motif) return null;
+    // ⚠️ LE VOCABULAIRE EST FERMÉ, ET IL EST VÉRIFIÉ.
+    //
+    // Accepter n'importe quelle chaîne ferait entrer en base, via
+    // `motif_echec`, un mot que `MESSAGES_ECHEC` ne connaît pas et que
+    // `ECHECS_DEFINITIFS` ne sait pas classer : l'écran afficherait le
+    // message générique et proposerait de relancer un échec définitif.
+    // Un motif hors liste n'est pas un échec mal nommé, c'est un moteur qui
+    // ne parle pas le même langage — et ça se refuse.
+    if (!motifVisuelEtapeValide(r.motif)) return null;
     return {
       ok: false,
-      motif: r.motif as ResultatEtapeVisuelle extends { ok: false; motif: infer M } ? M : never,
+      motif: r.motif,
       detail: typeof r.detail === 'string' ? r.detail : undefined,
     };
   }

@@ -317,9 +317,23 @@ export function extraireContenuInterprete(a: {
   textesVisibles: unknown[];
   parole: Record<string, unknown>;
 }): ContenuInterprete {
+  // ⚠️ DEUX FORMES, ET LES DEUX COMPTENT.
+  //
+  // M3-B4 consigne des OBJETS `{ texte, seconde, confiance }` : garder
+  // l'instant et la lisibilité est ce qui permettra à M3-C d'ancrer une
+  // décision dans le temps. Mais la colonne a pu contenir de simples chaînes,
+  // et une analyse déjà en base ne doit pas devenir illisible parce que le
+  // format s'est enrichi. On lit donc les deux, et on n'affiche que le texte.
   const textes = a.textesVisibles
-    .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
-    .map((t) => t.trim());
+    .map((t) => {
+      if (typeof t === 'string') return t.trim();
+      if (t && typeof t === 'object' && !Array.isArray(t)) {
+        const brut = (t as { texte?: unknown }).texte;
+        return typeof brut === 'string' ? brut.trim() : '';
+      }
+      return '';
+    })
+    .filter((t) => t.length > 0);
   const brut = a.parole.texte;
   const paroleTexte = typeof brut === 'string' && brut.trim() ? brut.trim() : null;
   return { resume: a.resume, textes, paroleTexte };

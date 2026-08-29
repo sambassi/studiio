@@ -153,6 +153,32 @@ export function motifVisuelValide(valeur: unknown): valeur is MotifVisuel {
     && (MOTIFS_VISUEL as readonly string[]).includes(valeur);
 }
 
+/**
+ * Pourquoi l'ÉTAPE visuelle a échoué. Vocabulaire FERMÉ.
+ *
+ * ⚠️ IL VIT ICI, ET PAS DANS LE MOTEUR. `moteur-visuel.ts` doit pouvoir
+ * vérifier un motif SANS importer `visuel.ts` — qui tire ffmpeg et MinIO. Le
+ * mettre côté moteur ferait entrer le pipeline d'extraction dans tout ce qui
+ * touche à la route, et casserait les tests qui doublent `extraction`.
+ *
+ * Contrairement aux `MOTIFS_VISUEL` ci-dessus, ceux-là VONT en base, dans
+ * `motif_echec` : `presentation.ts` leur associe un message et décide s'ils
+ * sont relançables. Un motif hors liste y afficherait le message générique et
+ * proposerait de relancer un échec définitif.
+ */
+export const MOTIFS_VISUEL_ETAPE = [
+  'aucune_image',             // rien de lisible — le fournisseur n'est pas appelé
+  'fournisseur_absent',       // aucun adaptateur branché sur ce serveur
+  'fournisseur_en_erreur',    // il a levé, ou le délai a été dépassé
+  'resultat_visuel_invalide', // il a répondu, mais hors du contrat
+] as const;
+export type MotifVisuelEtape = (typeof MOTIFS_VISUEL_ETAPE)[number];
+
+export function motifVisuelEtapeValide(valeur: unknown): valeur is MotifVisuelEtape {
+  return typeof valeur === 'string'
+    && (MOTIFS_VISUEL_ETAPE as readonly string[]).includes(valeur);
+}
+
 export function problemeVisuelValide(valeur: unknown): valeur is ProblemeVisuel {
   return typeof valeur === 'string'
     && (PROBLEMES_VISUELS as readonly string[]).includes(valeur);
