@@ -77,6 +77,8 @@ const MESSAGES_ECHEC: Record<string, string> = {
   moteur_visuel_en_erreur: 'La lecture des images s’est arrêtée sur une erreur.',
   fournisseur_en_erreur: 'La lecture des images n’a pas répondu.',
   resultat_visuel_invalide: 'La lecture des images a rendu un résultat inexploitable.',
+  configuration_visuelle_invalide:
+    'La lecture des images est demandée mais mal configurée sur ce serveur.',
 };
 
 /**
@@ -118,6 +120,8 @@ const ECHECS_DEFINITIFS = new Set([
   // Aucune image lisible à montrer : ce sont les vignettes qui manquent, et
   // une relance de la seule étape visuelle n'en fabriquerait pas.
   'aucune_image',
+  // Relancer ne reconfigurerait rien : c'est à l'exploitant d'agir.
+  'configuration_visuelle_invalide',
 ]);
 
 export function relanceCoherente(motif: string | null): boolean {

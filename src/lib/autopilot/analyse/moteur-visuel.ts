@@ -59,16 +59,71 @@ export function definirMoteurVisuel(moteur: MoteurVisuel | null): void {
  * l'extraction — sans erreur, sans 503, sans rien à diagnostiquer.
  */
 export async function chargerMoteurVisuel(): Promise<MoteurVisuel | null> {
+  // A. Le moteur posé par un test gagne toujours, et sans rien charger.
   if (moteurInjecte) return moteurInjecte;
+
+  let module: Record<string, unknown>;
   try {
-    const module = await import('@/lib/autopilot/analyse/visuel') as Record<string, unknown>;
-    const disponible = module.moteurVisuelDisponible;
-    if (typeof disponible !== 'function' || !disponible()) return null;
-    const candidat = module.analyserVisuelRush;
-    return typeof candidat === 'function' ? candidat as MoteurVisuel : null;
+    module = await import('@/lib/autopilot/analyse/visuel') as Record<string, unknown>;
+  } catch {
+    // Le module d'étape n'est pas là : l'analyse s'arrête à l'extraction.
+    return null;
+  }
+
+  const disponible = module.moteurVisuelDisponible;
+  const candidat = module.analyserVisuelRush;
+  if (typeof disponible !== 'function' || typeof candidat !== 'function') return null;
+
+  // B. Un fournisseur déjà branché — par un test, ou par un appel précédent.
+  //    On ne relit pas l'environnement : le câblage est fait une fois par
+  //    processus, comme `definirMoteurExtraction`.
+  if (disponible()) return candidat as MoteurVisuel;
+
+  // ── C/D/E. Le branchement de l'adaptateur ────────────────────────────
+  //
+  // ⚠️ L'IMPORT EST ICI, ET PAS DANS `visuel.ts`.
+  //
+  // `visuel-anthropic.ts` importe `TIMEOUT_VISUEL_MS` et `IMAGES_MAX` DEPUIS
+  // `visuel.ts`. Le brancher là-bas fabriquerait un cycle
+  // `visuel → visuel-anthropic → visuel`. Ce module-ci n'est importé ni par
+  // l'un ni par l'autre : il peut les connaître tous les deux.
+  //
+  // C'est aussi ce qui fait ENTRER l'adaptateur dans le paquet serveur. Avant
+  // M3-B4.1, personne ne l'important, le traceur de Next ne le voyait pas :
+  // le fichier existait dans l'image, et le code n'y était pas. Poser le
+  // drapeau n'aurait alors rien changé — panne muette par excellence.
+  let adaptateur: Record<string, unknown>;
+  try {
+    adaptateur = await import('@/lib/autopilot/analyse/visuel-anthropic') as Record<string, unknown>;
   } catch {
     return null;
   }
+
+  const actif = adaptateur.anthropicActive;
+  // C. Drapeau absent, `false`, `"1"`, `"oui"`… — l'adaptateur n'est pas
+  //    demandé. Aucune clé n'est lue, aucun réseau n'est touché, et l'analyse
+  //    se clôt à l'extraction : le comportement d'avant, à l'identique.
+  if (typeof actif !== 'function' || !actif()) return null;
+
+  const construire = adaptateur.fournisseurAnthropic;
+  if (typeof construire !== 'function') return null;
+
+  // ⚠️ E. AUCUN `catch` ICI, ET C'EST DÉLIBÉRÉ.
+  //
+  // `fournisseurAnthropic()` lève `ConfigurationVisuelleInvalide` quand le
+  // drapeau est posé mais que la clé ou le modèle manque. Avaler cette erreur
+  // la transformerait en « aucun fournisseur configuré » — c'est-à-dire en
+  // extraction-only silencieux, exactement l'inverse de ce qu'on veut dire :
+  // quelqu'un a DEMANDÉ l'étape visuelle et elle ne peut pas se faire. Elle
+  // remonte, et l'appelant la traduit en échec nommé.
+  const fournisseur = (construire as () => unknown)();
+  if (typeof fournisseur !== 'function') return null;
+
+  const brancher = module.definirFournisseurVisuel;
+  if (typeof brancher !== 'function') return null;
+  (brancher as (f: unknown) => void)(fournisseur);
+
+  return candidat as MoteurVisuel;
 }
 
 /**
