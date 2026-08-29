@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { purposeAcceptable } from '@/lib/storage/acces-objet';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { sanitizeStorageFilename } from '@/lib/storage/sanitize-filename';
@@ -69,7 +70,16 @@ export async function POST(req: NextRequest) {
     const bucket = contentType.startsWith('audio/') ? 'audio' : 'media';
     const timestamp = Date.now();
     const safeFilename = sanitizeStorageFilename(filename);
-    const storagePath = `${session.user.id}/${purpose || 'rush'}/${timestamp}-${safeFilename}`;
+    // `purpose` entre TEL QUEL dans la clé : il doit être refusé s'il vise
+    // l'espace de noms réservé aux vignettes d'analyse, sans quoi le serveur
+    // délivrerait une clé que la lecture publique refuse ensuite.
+    const usage = typeof purpose === 'string' && purpose.length > 0 ? purpose : 'rush';
+    if (!purposeAcceptable(usage)) {
+      return NextResponse.json(
+        { success: false, error: 'purpose invalide' }, { status: 422 },
+      );
+    }
+    const storagePath = `${session.user.id}/${usage}/${timestamp}-${safeFilename}`;
 
     // Quand on est sur S3/MinIO (Hetzner), on ne peut pas exposer un
     // presigned URL MinIO direct au browser : le hostname interne

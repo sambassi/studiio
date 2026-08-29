@@ -146,3 +146,126 @@ export function clePossedeePar(cle: unknown, userId: string): boolean {
   if (cle.startsWith(`${userId}/`)) return true;
   return PREFIXES_PARTAGES.some((prefixe) => cle.startsWith(prefixe));
 }
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────
+ * LE NAMESPACE D'ANALYSE N'A RIEN A FAIRE SUR LA ROUTE PUBLIQUE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * `lib/autopilot/analyse/extraction.ts` ecrit les vignettes sous
+ * `media/<userId>/analyse/<analysisId>/vignette-NN.jpg` (voir la fabrication
+ * de `cle` et `BUCKET_VIGNETTES`). Cette cle est DETERMINISTE : les deux
+ * identifiants qui la composent sont deja dans le navigateur de l'ecran
+ * d'analyse. `lib/autopilot/analyse/vignettes.ts` le dit noir sur blanc :
+ * « Quiconque les a lit les vignettes de leur proprietaire ».
+ *
+ * Le seul acces legitime est
+ * `GET /api/autopilot/analyses/[id]/vignettes/[n]`, qui exige une session,
+ * relit la cle en base sous `.eq('user_id', …)` et n'accepte aucune cle
+ * venue du client. Cette route-la n'est pas touchee.
+ *
+ * ⚠️ LE REFUS EST UN 404, JAMAIS UN 401 NI UN 403. Un code distinct
+ * repondrait « ce namespace existe » — et comme la cle est devinable, ce seul
+ * bit suffirait a confirmer qu'une analyse donnee a produit des vignettes.
+ * On rend exactement ce que rend un objet absent.
+ *
+ * On refuse le NAMESPACE, pas le seul motif `vignette-NN.jpg` : tout ce qui
+ * est range sous `analyse/` est un derive prive d'un rush. Une regle collee
+ * au nom de fichier d'aujourd'hui laisserait passer celui de demain.
+ */
+export const BUCKET_NAMESPACE_ANALYSE = 'media';
+
+/** Le segment de chemin qui porte le namespace. Compare sans casse. */
+export const SEGMENT_NAMESPACE_ANALYSE = 'analyse';
+
+/**
+ * Decode jusqu'a point fixe, avec une borne.
+ *
+ * Next.js decode deja une fois les segments dynamiques. La forme BRUTE est
+ * celle qui partira a MinIO, donc c'est elle qui suffit a la justesse : une
+ * cle qui ne porte pas litteralement `/analyse/` ne peut pas designer une
+ * vignette. Les formes decodees sont la pour tenir si un intermediaire — un
+ * proxy, une version future de Next — decodait une fois de plus.
+ */
+function formesDecodees(valeur: string): string[] {
+  const formes = [valeur];
+  let courante = valeur;
+  for (let i = 0; i < 4; i++) {
+    let suivante: string;
+    try {
+      suivante = decodeURIComponent(courante);
+    } catch {
+      // Sequence d'echappement invalide : on ne devine pas ce qu'elle
+      // voulait dire. `cleObjetValide` la refuse deja de son cote.
+      break;
+    }
+    if (suivante === courante) break;
+    formes.push(suivante);
+    courante = suivante;
+  }
+  return formes;
+}
+
+/**
+ * Cette cible vise-t-elle le namespace prive des analyses ?
+ *
+ * Vrai des qu'un SEGMENT de la cle vaut `analyse` — comparaison sans casse,
+ * pour qu'un `Analyse/` ecrit un jour par une migration ne rouvre pas la
+ * porte — avec au moins un segment non vide avant et un apres, c'est-a-dire
+ * la forme `<quelque-chose>/analyse/<quelque-chose>`. Les segments vides
+ * (`a//analyse//b`) ne comptent pas : ils ne sont pas « quelque chose ».
+ *
+ * Ne s'applique qu'au compartiment `media`, le seul ou l'extraction ecrit.
+ */
+/**
+ * Un `purpose` d'envoi acceptable.
+ *
+ * ⚠️ SANS CETTE GARDE, LE BLOCAGE CI-DESSOUS CRÉE UNE VRAIE RÉGRESSION.
+ *
+ * Les trois routes d'envoi interpolent `purpose` tel quel dans la clé —
+ * `<userId>/<purpose>/<horodatage>-<nom>` — sans aucune liste blanche, et
+ * `sanitizeStorageFilename` ne s'applique qu'au NOM de fichier, jamais au
+ * `purpose`. Un appelant qui demande `purpose: "analyse"` obtient donc une
+ * clé `<userId>/analyse/…` **délivrée par notre propre serveur**, que le
+ * blocage rendrait ensuite illisible — sans message, sans trace, et sans que
+ * son propriétaire puisse comprendre pourquoi.
+ *
+ * Un audit l'a démontré en appelant les vraies routes, pas en le supposant.
+ *
+ * On refuse donc à l'écriture ce qu'on refuse à la lecture, plutôt que de
+ * documenter un trou. Cela ferme aussi, au passage, la possibilité pour un
+ * compte d'écrire dans son propre espace de vignettes : la clé
+ * `<userId>/analyse/<analysisId>/vignette-NN.jpg` est déterministe, et rien
+ * n'interdisait jusqu'ici de l'écraser.
+ *
+ * La barre oblique est refusée pour la même raison : elle permettrait de
+ * fabriquer un segment réservé au milieu du chemin.
+ */
+export function purposeAcceptable(valeur: unknown): boolean {
+  if (typeof valeur !== 'string' || valeur.length === 0) return false;
+  if (valeur.includes('/') || valeur.includes('\\')) return false;
+  if (valeur.includes('..') || valeur.includes('://')) return false;
+  return valeur !== SEGMENT_NAMESPACE_ANALYSE;
+}
+
+export function cleDansNamespaceAnalyse(bucket: unknown, cle: unknown): boolean {
+  if (bucket !== BUCKET_NAMESPACE_ANALYSE) return false;
+  if (typeof cle !== 'string' || cle.length === 0) return false;
+  return formesDecodees(cle).some((forme) => {
+    const segments = forme.split('/');
+    for (let i = 0; i < segments.length; i++) {
+      // ⚠️ SENSIBLE À LA CASSE, ET C'EST DÉLIBÉRÉ.
+      //
+      // Les clés S3 sont exactes à l'octet près : `A/ANALYSE/…` désigne un
+      // objet DIFFÉRENT, qui n'existe pas. Le bloquer ne rend donc aucune
+      // vignette inaccessible — ça n'ajoute que des refus sur des clés qu'un
+      // compte pourrait légitimement s'être données. Deux audits indépendants
+      // ont conclu la même chose.
+      if (segments[i] !== SEGMENT_NAMESPACE_ANALYSE) continue;
+      const avant = segments.slice(0, i).some((s) => s.length > 0);
+      const apres = segments.slice(i + 1).some((s) => s.length > 0);
+      if (avant && apres) return true;
+    }
+    return false;
+  });
+}

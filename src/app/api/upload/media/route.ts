@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { purposeAcceptable } from '@/lib/storage/acces-objet';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { sanitizeStorageFilename } from '@/lib/storage/sanitize-filename';
@@ -57,6 +58,12 @@ export async function POST(req: NextRequest) {
     const bucket = getBucket(mimeType);
     const timestamp = Date.now();
     const safeFilename = sanitizeStorageFilename(file.name);
+    // Même garde que les deux autres chemins d'envoi.
+    if (!purposeAcceptable(purpose)) {
+      return NextResponse.json(
+        { success: false, error: 'purpose invalide' }, { status: 422 },
+      );
+    }
     const storagePath = `${session.user.id}/${purpose}/${timestamp}-${safeFilename}`;
 
     // Upload to Supabase Storage

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { purposeAcceptable } from '@/lib/storage/acces-objet';
 import { auth } from '@/lib/auth/config';
 import { Client as MinioClient } from 'minio';
 import { ALLOWED_BUCKETS as BUCKETS } from '@/lib/storage/buckets';
@@ -95,6 +96,13 @@ export async function POST(req: NextRequest) {
       const bucket = contentType.startsWith('audio/') ? 'audio' : 'media';
       const filename = sanitizeStorageFilename(String(corps.filename || 'fichier'));
       const purpose = String(corps.purpose || 'rush');
+      // Même garde que le chemin présigné : un `purpose` qui viserait
+      // l'espace des vignettes produirait une clé illisible ensuite.
+      if (!purposeAcceptable(purpose)) {
+        return NextResponse.json(
+          { success: false, error: 'purpose invalide' }, { status: 422 },
+        );
+      }
       const key = `${userId}/${purpose}/${Date.now()}-${filename}`;
       const uploadId = await client.initiateNewMultipartUpload(bucket, key, {
         'Content-Type': contentType,

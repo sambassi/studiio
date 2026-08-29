@@ -39,6 +39,11 @@
  *      d'un média qui n'est pas public.
  *   5. La clé est normalisée avant tout appel au stockage.
  *   6. Le message du SDK ne remonte plus au client.
+ *   7. Le namespace `media/<userId>/analyse/<analysisId>/…` — les vignettes
+ *      d'analyse Autopilote, dont la cle est DEVINABLE — rend 404 avant tout
+ *      appel MinIO, en `GET` comme en `HEAD`. Le seul acces legitime reste
+ *      `/api/autopilot/analyses/[id]/vignettes/[n]`, qui exige une session et
+ *      relit la cle en base. Voir `cleDansNamespaceAnalyse`.
  *
  * ⚠️ Le bloc `Range` / 206 / 416 et le `HEAD` sont intacts, et doivent le
  * rester : le Calendrier fait un `HEAD` puis lit `Accept-Ranges`, le
@@ -50,7 +55,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Client as MinioClient } from 'minio';
 import { Readable } from 'stream';
 import { bucketAutorise } from '@/lib/storage/buckets';
-import { cleObjetValide, typeContenuDepuisCle } from '@/lib/storage/acces-objet';
+import {
+  cleObjetValide, typeContenuDepuisCle, cleDansNamespaceAnalyse,
+} from '@/lib/storage/acces-objet';
 
 // Force the route to run on Node (Edge can't stream from the MinIO SDK) and
 // never be statically cached — Range requests must hit the handler every
@@ -155,9 +162,30 @@ function introuvable(): NextResponse {
   return NextResponse.json({ error: 'not found' }, { status: 404 });
 }
 
-/** La cible est-elle recevable, sans avoir rien demandé au stockage ? */
+/**
+ * La cible est-elle recevable, sans avoir rien demandé au stockage ?
+ *
+ * Trois refus, une seule réponse (`introuvable`) : compartiment hors liste,
+ * chemin malformé, et — depuis M3-B3.2a — namespace privé des analyses.
+ *
+ * L'ordre compte. La normalisation de chemin (`cleObjetValide` : `..`, antislash,
+ * `://`, caractères de contrôle, sur la valeur brute ET décodée) passe AVANT
+ * le refus du namespace, de sorte qu'aucune forme tordue ne puisse à la fois
+ * échapper au motif `analyse/` et désigner malgré tout l'objet. Et la garde
+ * de namespace relit elle-même les formes décodées, donc elle ne dépend pas
+ * de l'ordre pour être juste — elle en dépend seulement pour rester lisible.
+ *
+ * ⚠️ `media/<userId>/analyse/<analysisId>/vignette-NN.jpg` est une clé
+ * DEVINABLE (voir `lib/storage/acces-objet.ts`). Le seul accès légitime aux
+ * vignettes est `/api/autopilot/analyses/[id]/vignettes/[n]`, authentifié.
+ * Ici, c'est 404 — pas 401, pas 403 : un code distinct signalerait que le
+ * namespace existe.
+ */
 function cibleRecevable(bucket: string, storagePath: string): boolean {
-  return bucketAutorise(bucket) && cleObjetValide(storagePath);
+  if (!bucketAutorise(bucket)) return false;
+  if (!cleObjetValide(storagePath)) return false;
+  if (cleDansNamespaceAnalyse(bucket, storagePath)) return false;
+  return true;
 }
 
 export async function GET(
@@ -299,6 +327,11 @@ export async function HEAD(
 }
 
 // OPTIONS: browsers send preflight for CORS requests (e.g. crossOrigin=anonymous)
+//
+// Le prévol n'ouvre AUCUN accès au contenu et n'en révèle aucun : il ne lit ni
+// le compartiment ni la clé, ne touche jamais MinIO, et répond 204 sans corps.
+// Sa réponse est donc identique pour `media/u1/analyse/…` et pour n'importe
+// quelle autre cible — rien n'y distingue le namespace refusé.
 export async function OPTIONS(req: NextRequest) {
   const cors = entetesCors(req);
   return new NextResponse(null, {
