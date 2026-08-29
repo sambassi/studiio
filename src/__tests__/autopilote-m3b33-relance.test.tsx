@@ -221,6 +221,19 @@ function bouton(): HTMLButtonElement | null {
 
 const LIBELLE_RELANCE = /Relancer\s+l['’]analyse/;
 
+/**
+ * COMBIEN de boutons de lancement, et pas seulement « y en a-t-il un ».
+ *
+ * `bouton()` rend le PREMIER du document : un doublon lui échapperait
+ * entièrement, et c'est exactement la faute qu'on cherche à interdire ici.
+ * L'invariant du composant est un COMPTE — sur une analyse réussie, un
+ * bouton, jamais zéro, jamais deux — et un compte ne se vérifie qu'en
+ * comptant.
+ */
+function boutons(): HTMLButtonElement[] {
+  return Array.from(document.querySelectorAll('[data-analyse-lancer]'));
+}
+
 async function monter(rushId = RUSH) {
   const rendu = render(<AnalyseRush rushId={rushId} />);
   // La fin du chargement, attendue et non dormie : le composant retire son
@@ -378,6 +391,121 @@ describe('B2 — ce que la relance rend atteignable : les aperçus d une version
     });
     await monter();
     expect(document.querySelectorAll('[data-analyse-vignette]').length).toBe(8);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+describe('B3 — sur une analyse réussie : EXACTEMENT un bouton, quoi qu il arrive', () => {
+  /**
+   * ⚠️ CE BLOC EXISTE PARCE QUE LA PREMIÈRE ÉCRITURE DU GARDE ÉTAIT FAUSSE.
+   *
+   * Le bouton de la carte cédait la place dès qu'un refus existait —
+   * `!refus`. Or le bloc de refus ne porte son propre bouton que si le refus
+   * est RELANÇABLE. Sur un refus définitif, il n'y avait donc plus aucun
+   * bouton nulle part ; et comme `refus` n'est remis à `null` que par le
+   * gestionnaire de clic, et que le sondage est arrêté sur un état terminal,
+   * plus rien ne pouvait le lever. Une session expirée condamnait l'écran
+   * jusqu'au rechargement de la page.
+   *
+   * Ce que ces tests verrouillent n'est donc pas « un bouton existe » mais
+   * un COMPTE, dans les quatre situations possibles.
+   */
+
+  /** Joue un clic dont le POST est refusé, et rend l'état de l'écran après. */
+  async function refusApresClic(reponse: Partial<ReponseLancement>) {
+    serveurRendAnalyse({ etat: 'reussie' });
+    await monter();
+    expect(boutons()).toHaveLength(1);
+    reseau.lancerAnalyse.mockResolvedValue(lancement(reponse));
+    await act(async () => { fireEvent.click(bouton() as Element); });
+  }
+
+  it('aucun refus : un seul bouton, celui de la carte', async () => {
+    serveurRendAnalyse({ etat: 'reussie' });
+    await monter();
+    const b = boutons();
+    expect(b).toHaveLength(1);
+    expect(b[0].getAttribute('data-analyse-lancer')).toBe('relance');
+    expect(b[0].textContent ?? '').toMatch(LIBELLE_RELANCE);
+  });
+
+  it('refus RELANÇABLE (429) : un seul bouton, celui du bloc de refus', async () => {
+    // La capacité est prise. Le bloc de refus porte « Réessayer » ; la carte
+    // s'efface pour ne pas offrir deux fois le même geste sous deux mots.
+    await refusApresClic({ statut: 429, retryApresSecondes: 300 });
+
+    const b = boutons();
+    expect(b, 'un seul geste proposé, pas deux').toHaveLength(1);
+    expect(b[0].textContent ?? '').toContain('Réessayer');
+    expect(b[0].textContent ?? '').not.toMatch(LIBELLE_RELANCE);
+    // Et la mesure reste lisible sous le message de refus.
+    expect(document.querySelector('[data-analyse-technique]')).toBeTruthy();
+  });
+
+  it('refus NON relançable (401 session expirée) : le bouton de la carte reste', async () => {
+    // Le cas qui condamnait l'écran. L'utilisateur se reconnecte : il doit
+    // retrouver de quoi relancer, sans recharger la page.
+    await refusApresClic({ statut: 401 });
+
+    const b = boutons();
+    expect(b, 'un refus définitif ne doit pas retirer le dernier geste').toHaveLength(1);
+    expect(b[0].getAttribute('data-analyse-lancer')).toBe('relance');
+    expect(b[0].textContent ?? '').toMatch(LIBELLE_RELANCE);
+    expect((b[0] as HTMLButtonElement).disabled, 'et il est de nouveau cliquable').toBe(false);
+  });
+
+  it('refus NON relançable (422 fichier inexploitable) : le bouton de la carte reste', async () => {
+    await refusApresClic({ statut: 422, message: 'Ce fichier ne peut pas être analysé.' });
+
+    const b = boutons();
+    expect(b).toHaveLength(1);
+    expect(b[0].getAttribute('data-analyse-lancer')).toBe('relance');
+    expect(texte()).toContain('ne peut pas être analysé');
+  });
+
+  it('après un refus définitif, le bouton REPART : l écran n est pas condamné', async () => {
+    // La preuve que le geste est réellement rendu, et pas seulement dessiné :
+    // un second clic doit atteindre le réseau.
+    await refusApresClic({ statut: 401 });
+    reseau.lancerAnalyse.mockClear();
+    reseau.lancerAnalyse.mockResolvedValue(lancement({ statut: 201 }));
+
+    await act(async () => { fireEvent.click(bouton() as Element); });
+    expect(reseau.lancerAnalyse).toHaveBeenCalledTimes(1);
+    expect(reseau.lancerAnalyse).toHaveBeenCalledWith(RUSH);
+  });
+
+  it('le double clic reste protégé, y compris après un refus définitif', async () => {
+    await refusApresClic({ statut: 401 });
+    reseau.lancerAnalyse.mockClear();
+    let debloquer: (r: ReponseLancement) => void = () => {};
+    reseau.lancerAnalyse.mockImplementation(
+      () => new Promise<ReponseLancement>((r) => { debloquer = r; }),
+    );
+
+    const b = bouton();
+    await act(async () => {
+      fireEvent.click(b as Element);
+      fireEvent.click(b as Element);
+    });
+    expect(reseau.lancerAnalyse, 'deux clics du même tour, un seul appel').toHaveBeenCalledTimes(1);
+    expect((bouton() as HTMLButtonElement).disabled).toBe(true);
+
+    await act(async () => { debloquer(lancement({ statut: 201 })); await Promise.resolve(); });
+    expect(reseau.lancerAnalyse).toHaveBeenCalledTimes(1);
+  });
+
+  it('les autres états gardent leur compte : 0 pendant le travail, 1 sinon', async () => {
+    // Le compte, état par état — un doublon ou une disparition ailleurs que
+    // sous `reussie` se verrait ici, et nulle part ailleurs dans le dépôt.
+    for (const [etatTeste, attendu] of [
+      ['en_attente', 0], ['en_cours', 0], ['annulee', 1], ['reussie', 1],
+    ] as const) {
+      serveurRendAnalyse({ etat: etatTeste });
+      const { unmount } = await monter();
+      expect(boutons(), `état ${etatTeste}`).toHaveLength(attendu);
+      unmount();
+    }
   });
 });
 

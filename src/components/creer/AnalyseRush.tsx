@@ -328,15 +328,26 @@ export default function AnalyseRush({ rushId }: Props) {
               qu'on veut comparer à la mesure suivante doit rester lisible
               pendant qu'on la demande.
 
-              `!refus` : le bloc de refus, rendu plus haut, porte déjà son
-              propre bouton. Deux boutons pour un même geste, sous deux
-              libellés, dans le même écran, ne se distinguent pas. */}
+              ⚠️ `!refus?.relancable`, ET SURTOUT PAS `!refus`.
+
+              Le bloc de refus, rendu plus haut, porte son propre bouton —
+              mais SEULEMENT quand le refus est relançable. Céder la place à
+              `refus` tout court laissait donc un écran SANS ISSUE sur un
+              refus définitif : ni bouton dans le bloc de refus, ni bouton
+              dans la carte, et `refus` n'est remis à `null` que par le
+              gestionnaire de clic, devenu inatteignable — le sondage, lui,
+              est arrêté sur un état terminal. Une session expirée (401)
+              condamnait ainsi l'écran jusqu'au rechargement de la page.
+
+              Ce que la condition garantit, et c'est un invariant total :
+              sur une analyse réussie, il y a EXACTEMENT un bouton de
+              lancement. Jamais zéro, jamais deux. */}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="inline-flex items-center gap-1.5 text-[11px] text-emerald-400" data-analyse-badge>
               <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
               Analysé
             </span>
-            {!refus && boutonAnalyse('Relancer l’analyse', true)}
+            {!refus?.relancable && boutonAnalyse('Relancer l’analyse', true)}
           </div>
 
           {mesures.length > 0 && (
