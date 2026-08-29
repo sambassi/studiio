@@ -94,6 +94,9 @@ let objets: Record<string, { taille: number }> = {};
 /** Les rangs d'appel de `putObject` qui doivent LEVER. Base 0. */
 let putObjectEchoueAuRang = new Set<number>();
 
+/** Le serveur rend 403 à tout ce qui suit la première requête. */
+let refuserApresLaSonde = false;
+
 /** Combien de fois `putObject` a été appelé, échecs compris. */
 let appelsPutObject = 0;
 
@@ -267,6 +270,15 @@ beforeAll(async () => {
   if (binairesDispo) FICHIERS.rush = fabriquerRush();
 
   serveur = createServer((req, res) => {
+    // Le stockage qui se ferme APRÈS la sonde : la première requête passe
+    // — c'est ffprobe, et il réussit —, toutes les suivantes sont refusées.
+    // C'est le seul montage qui fasse écrire à ffmpeg l'URL d'entrée dans
+    // son stderr, donc le seul qui mette réellement le masquage à l'épreuve.
+    if (refuserApresLaSonde && requetes.length > 0) {
+      requetes.push({ range: null, statut: 403, contentRange: null, acceptRanges: null });
+      res.writeHead(403).end('Forbidden');
+      return;
+    }
     // `/bucket/<userId>/rush/<nom de fixture>` — seul le dernier segment
     // nomme le fichier servi. Le reste imite la forme réelle d'une clé.
     const chemin = decodeURI((req.url || '').split('?')[0]);
@@ -346,6 +358,7 @@ beforeEach(() => {
   appelsPutObject = 0;
   requetes = [];
   octetsServis = 0;
+  refuserApresLaSonde = false;
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -552,6 +565,34 @@ describe('M3-B2.2 — la mesure et les vignettes, sur un vrai rush servi en `Ran
     for (const e of ecritures) {
       expect([e.corps[0], e.corps[1], e.corps[2]]).toEqual([0xff, 0xd8, 0xff]);
     }
+
+    // ── LE COMPTEUR, À SA VALEUR EXACTE ──────────────────────────────────
+    //
+    // Sans ces trois lignes, `vignettesEchouees` n'est JAMAIS vérifiée à une
+    // valeur non nulle par aucun test du dépôt : la soustraction
+    // `attendues - produites` pourrait être fausse sans que rien ne rougisse.
+    // C'est ici, et seulement ici, que le comptage d'un échec PARTIEL se
+    // prouve — l'échec total, lui, ne distingue pas 8-0 d'un compteur cassé.
+    expect(r.technique.vignettesAttendues, 'huit positions demandées').toBe(8);
+    expect(r.technique.vignettesProduites, 'sept images retenues').toBe(7);
+    expect(r.technique.vignettesEchouees, 'une seule perdue').toBe(1);
+  }, 300_000);
+
+  siBinaires()('un échec partiel ne journalise RIEN', async () => {
+    // La contrepartie du bloc suivant : sept images sur huit est le
+    // fonctionnement normal d'un rush, pas un incident. Journaliser à chaque
+    // vignette manquante noierait le seul message qui compte — celui de la
+    // panne totale — sous le bruit des rushes sains.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      poser();
+      putObjectEchoueAuRang = new Set([3]);
+      const r = await extraire();
+      expect(r.vignettes.length).toBe(7);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   }, 300_000);
 });
 
@@ -604,24 +645,16 @@ describe('M3-B2.2 — un échec TOTAL des vignettes n est pas une réussite', ()
     expect(attendues, 'des positions étaient bien attendues').toBe(8);
 
     /**
-     * ⚠️ CETTE ASSERTION EST ROUGE AUJOURD'HUI, ET C'EST LE BUT.
+     * Ce qui n'est plus acceptable : `ok: true`, `motif: null`,
+     * `vignettes: []` et rien d'autre. La ligne d'analyse était alors
+     * enregistrée `reussie`, indiscernable d'un rush d'une demi-seconde qui
+     * ne méritait aucune image, et personne ne pouvait plus compter les
+     * rushes dont l'extraction n'avait rien donné.
      *
-     * Elle n'impose PAS de forme de correction : elle refuse seulement le
-     * silence. Deux corrections la satisfont, et ce sont les deux seules
-     * défendables :
-     *
-     *   • rendre l'extraction en échec (`ok: false` + un `motif` du
-     *     vocabulaire fermé) quand AUCUNE vignette n'a pu être produite
-     *     alors que des positions étaient attendues ;
-     *   • garder `ok: true` mais rendre l'échec COMPTABLE, en portant dans
-     *     `technique` le nombre de positions attendues et le nombre
-     *     d'échecs — de quoi distinguer, après coup, « rush sans image
-     *     exploitable » de « ffmpeg absent du conteneur ».
-     *
-     * Ce qui n'est plus acceptable, c'est `ok: true`, `motif: null`,
-     * `vignettes: []` et rien d'autre : la ligne d'analyse est alors
-     * enregistrée `reussie` et personne ne peut plus compter les rushes
-     * dont l'extraction d'images n'a rien donné.
+     * Les compteurs sont vérifiés à leur VALEUR, pas à leur présence : une
+     * assertion qui se contente de `'vignettesAttendues' in technique`
+     * serait satisfaite par `0`, c'est-à-dire par le silence qu'elle
+     * prétend interdire.
      */
     const succesSilencieux = r.ok === true
       && r.motif === null
@@ -633,6 +666,91 @@ describe('M3-B2.2 — un échec TOTAL des vignettes n est pas une réussite', ()
       succesSilencieux,
       'huit vignettes perdues sont ressorties en `ok: true, motif: null` sans aucun compteur',
     ).toBe(false);
+
+    expect(r.technique.vignettesAttendues, 'huit positions demandées').toBe(8);
+    expect(r.technique.vignettesProduites, 'aucune image produite').toBe(0);
+    expect(r.technique.vignettesEchouees, 'les huit sont perdues').toBe(8);
+
+    // La mesure, elle, est intacte : c'est ce qui justifie que l'analyse
+    // reste `reussie`. Les lots suivants en dépendent, les images non.
+    expect(r.ok).toBe(true);
+    expect(r.technique.sonde).toBe('ffprobe');
+    expect(r.dureeSecondes).toBeGreaterThan(DUREE_FIXTURE - 0.6);
+  }, 300_000);
+
+  siBinaires()('un échec total journalise UNE fois, et sans rien qui se rejoue', async () => {
+    // Huit tentatives perdues, mais UN seul message : `premierEchec ??=` ne
+    // retient que la première cause. Huit lignes identiques n'expliqueraient
+    // pas mieux la panne et multiplieraient par huit l'occasion qu'un secret
+    // passe.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await extraireSansFfmpeg();
+
+      expect(warn, 'un avertissement, pas huit').toHaveBeenCalledTimes(1);
+      const [message, details] = warn.mock.calls[0] as [string, Record<string, unknown>];
+      expect(message).toContain('aucune vignette produite');
+      expect(details.attendues).toBe(8);
+      expect(details.analysisId).toBe(ANALYSE);
+      // La CAUSE est nommée, et nommée parmi les étiquettes fermées : c'est
+      // elle qui permettra au prochain rush réel de distinguer un binaire
+      // absent d'une sortie vide, d'un code non nul ou d'un refus d'écriture.
+      expect(String(details.cause)).toMatch(/^ffmpeg-absent\(ENOENT\)/);
+
+      // ── ET RIEN DE CE QUI SE REJOUE ────────────────────────────────────
+      //
+      // Le journal est le SEUL endroit du lot qui reçoive du stderr, donc le
+      // seul par où l'URL signée pourrait sortir. On inspecte l'appel entier,
+      // pas seulement la cause.
+      const rendu = JSON.stringify(warn.mock.calls[0]);
+      expect(rendu, 'schéma d URL').not.toMatch(/[a-z][a-z0-9+.-]*:\/\//i);
+      expect(rendu, 'signature présignée').not.toContain('X-Amz-');
+      expect(rendu, 'hôte du banc').not.toContain('127.0.0.1');
+      expect(rendu, 'port du banc').not.toContain(String(portServeur));
+    } finally {
+      warn.mockRestore();
+    }
+  }, 300_000);
+
+  siBinaires()('un stockage qui se ferme après la sonde : la cause est dite, l URL ne l est pas', async () => {
+    // ── LE SEUL MONTAGE QUI ÉPROUVE VRAIMENT `masquerUrls` ────────────────
+    //
+    // Sur `ENOENT`, le stderr est VIDE : le masquage n'a rien à masquer, et
+    // le prouver sur ce cas-là ne prouve rien. Ici la sonde passe, puis le
+    // stockage rend 403 : ffmpeg écrit alors l'URL d'entrée EN CLAIR dans son
+    // stderr, signature `X-Amz-` comprise. C'est exactement ce que ferait un
+    // MinIO dont l'URL signée a expiré entre la sonde et la huitième image.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      poser();
+      refuserApresLaSonde = true;
+      const r = await extraire();
+
+      // La mesure a bien eu lieu avant la fermeture, les images non.
+      expect(r.ok).toBe(true);
+      expect(r.technique.sonde).toBe('ffprobe');
+      expect(r.technique.vignettesAttendues).toBe(8);
+      expect(r.technique.vignettesProduites).toBe(0);
+      expect(r.technique.vignettesEchouees).toBe(8);
+      expect(ecritures.length).toBe(0);
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      const rendu = JSON.stringify(warn.mock.calls[0]);
+      // La cause reste DIAGNOSTIQUE — sans elle, la ligne de journal ne
+      // vaudrait pas la peine d'exister.
+      expect(String((warn.mock.calls[0][1] as Record<string, unknown>).cause).length)
+        .toBeGreaterThan(0);
+      // Et pourtant rien de rejouable n'en sort.
+      expect(rendu, 'schéma d URL').not.toMatch(/[a-z][a-z0-9+.-]*:\/\//i);
+      expect(rendu, 'signature présignée').not.toContain('X-Amz-');
+      expect(rendu, 'hôte du banc').not.toContain('127.0.0.1');
+      // Et rien non plus dans ce que le module REND à son appelant.
+      const sortie = JSON.stringify(r);
+      expect(sortie).not.toMatch(/[a-z][a-z0-9+.-]*:\/\//i);
+      expect(sortie).not.toContain('X-Amz-');
+    } finally {
+      warn.mockRestore();
+    }
   }, 300_000);
 
   siBinaires()('quelle que soit la correction, elle reste dans le vocabulaire fermé', async () => {
