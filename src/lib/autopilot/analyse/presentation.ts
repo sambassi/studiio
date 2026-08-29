@@ -68,6 +68,15 @@ const MESSAGES_ECHEC: Record<string, string> = {
   resultat_moteur_invalide: 'La mesure a rendu un résultat inexploitable.',
   resultat_moteur_refuse: 'La mesure a rendu une valeur refusée par le contrôle interne.',
   analyse_interrompue: 'L’analyse a été interrompue avant la fin (redémarrage du serveur).',
+  // ── Étape visuelle (M3-B4) ────────────────────────────────────────────
+  //
+  // Aucun de ces échecs n'efface la mesure : durée, technique et vignettes
+  // sont déjà consignées quand l'un d'eux se produit. Le message le dit, pour
+  // qu'on ne croie pas avoir tout perdu.
+  aucune_image: 'Les images du rush n’ont pas pu être relues. La mesure, elle, est faite.',
+  moteur_visuel_en_erreur: 'La lecture des images s’est arrêtée sur une erreur.',
+  fournisseur_en_erreur: 'La lecture des images n’a pas répondu.',
+  resultat_visuel_invalide: 'La lecture des images a rendu un résultat inexploitable.',
 };
 
 /**
@@ -103,6 +112,12 @@ const ECHECS_DEFINITIFS = new Set([
   'moteur_absent',
   'resultat_moteur_invalide',
   'resultat_moteur_refuse',
+  // Un résultat visuel hors contrat le restera tant que le modèle ou le
+  // contrat n'aura pas changé : relancer redonnerait le même refus.
+  'resultat_visuel_invalide',
+  // Aucune image lisible à montrer : ce sont les vignettes qui manquent, et
+  // une relance de la seule étape visuelle n'en fabriquerait pas.
+  'aucune_image',
 ]);
 
 export function relanceCoherente(motif: string | null): boolean {

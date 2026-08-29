@@ -407,7 +407,8 @@ describe('Les TROIS appels MinIO de l’extraction portent la borne', () => {
     );
     // La valeur reste — elle redeviendrait vraie sur une plateforme qui
     // l'applique — mais le commentaire doit dire qu'elle ne borne rien ici.
-    expect(route).toContain('export const maxDuration = 300');
+    // 360 depuis M3-B4 : l'étape `visuel` s'ajoute dans la même requête.
+    expect(route).toContain('export const maxDuration = 360');
     expect(route).toContain('NE PROTÈGE RIEN');
     expect(route).toContain('Coolify');
   });

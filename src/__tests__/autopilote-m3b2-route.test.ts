@@ -861,8 +861,14 @@ describe('Le cadre d exécution', () => {
   it('`maxDuration` couvre le pire cas vidéo du projet', () => {
     // Plus COURT que le délai interne du moteur, il ferait tuer le processus
     // pendant la mesure et laisserait l'analyse `en_cours` pour toujours.
-    expect(maxDuration).toBe(300);
-    // La même borne que les autres routes qui manipulent une vidéo.
+    //
+    // ⚠️ 360 ET NON PLUS 300 DEPUIS M3-B4. Cette route fait strictement plus
+    // que les deux autres routes vidéo : après l'extraction (290 s au pire),
+    // elle enchaîne l'étape `visuel` (60 s au pire) dans la MÊME requête. Son
+    // budget ne peut donc plus être celui d'une simple conversion — et
+    // `RETRY_APRES_SECONDES` suit la même valeur, un autre test le vérifie.
+    expect(maxDuration).toBe(360);
+    // Les autres routes vidéo, elles, n'ont pas changé : leur travail non plus.
     for (const f of [
       'src/app/api/convert/to-mp4/route.ts',
       'src/app/api/render/route.ts',

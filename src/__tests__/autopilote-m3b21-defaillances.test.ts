@@ -718,9 +718,17 @@ describe('Un processus tué laisse une trace, et rend sa place', () => {
     expect(extractionsEnCours()).toBe(0);
   });
 
-  it('tué APRÈS le passage `en_cours` : la ligne reste `en_cours`, la mesure est perdue', async () => {
-    // La 2e écriture est la consignation du résultat. Mourir là, c'est le
-    // cas le plus coûteux : le travail a été fait et il est perdu.
+  it('tué APRÈS la consignation : la ligne reste `en_cours`, mais la MESURE EST SAUVE', async () => {
+    // ⚠️ CE TEST A CHANGÉ DE SENS AVEC M3-B4, ET C'EST UNE AMÉLIORATION.
+    //
+    // Avant, la consignation portait `etat: 'reussie'` : mourir sur cette
+    // écriture perdait TOUT le travail de mesure. Depuis que l'étape `visuel`
+    // s'intercale, la consignation n'a plus le droit de clore la ligne — elle
+    // écrit la durée, la technique et les vignettes SANS l'état. Le crash
+    // tombe donc sur l'écriture SUIVANTE, et ce qui a été mesuré reste en base.
+    //
+    // La ligne demeure `en_cours` : c'est la reprise (M3-B2.1) qui la fermera.
+    // Mais le rush n'aura pas à être remesuré.
     crasherSur('rush_analyses', A_LA_CONSIGNATION);
 
     const r = await appeler('r-a');
@@ -731,9 +739,11 @@ describe('Un processus tué laisse une trace, et rend sa place', () => {
     expect(analyses()[0].etape).toBe('extraction');
     // Le moteur A tourné : c'est ce qui distingue ce crash du précédent.
     expect(appelsMoteur).toHaveLength(1);
-    // Rien n'a été consigné : ni durée sur l'analyse, ni copie sur le rush.
-    expect(analyses()[0].duree_secondes).toBeNull();
-    expect((tables.rushes ?? []).find((l) => l.id === 'r-a')!.duree_secondes).toBeNull();
+    // La mesure, elle, EST consignée — c'est tout l'intérêt du découpage.
+    expect(analyses()[0].duree_secondes).toBe(42.5);
+    // Et la copie de confort sur le rush a eu lieu elle aussi : elle vient
+    // juste après la consignation, donc avant l'écriture qui a crashé.
+    expect((tables.rushes ?? []).find((l) => l.id === 'r-a')!.duree_secondes).toBe(42.5);
     expect(extractionsEnCours()).toBe(0);
   });
 

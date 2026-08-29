@@ -766,11 +766,13 @@ describe('La route n a pas dérivé en accueillant le limiteur', () => {
     expect(appelsMoteur[0].userId).toBe('A');
   });
 
-  it('elle garde son `maxDuration` de 300 s', async () => {
+  it('elle garde un `maxDuration` qui couvre tout son travail', async () => {
     const { maxDuration } = await import('@/app/api/autopilot/rushes/[id]/analyse/route');
     // Plus court que le délai interne du moteur, le processus serait tué
     // pendant la mesure et l'analyse resterait `en_cours` pour toujours.
-    expect(maxDuration).toBe(300);
+    //
+    // 360 depuis M3-B4 : l'étape `visuel` s'ajoute dans la même requête.
+    expect(maxDuration).toBe(360);
   });
 });
 
