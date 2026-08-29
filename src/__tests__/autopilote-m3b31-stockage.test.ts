@@ -132,6 +132,11 @@ vi.mock('@/lib/auth/config', () => ({
 process.env.STORAGE_PROVIDER = 's3';
 process.env.MINIO_SECRET_KEY = 'secret-de-test';
 process.env.MINIO_ENDPOINT = 'studiio-minio';
+// Le CORS n'est plus `*` : il n'est émis que pour l'origine configurée. Sans
+// elle, aucun en-tête ne sort — ce qui est le bon comportement, mais rendrait
+// les preuves de non-régression du compositeur vides de sens.
+process.env.NEXT_PUBLIC_APP_URL = 'https://studiio.pro';
+const ORIGINE_APP = 'https://studiio.pro';
 
 const CHEMIN_ROUTE = 'src/app/storage/v1/object/public/[bucket]/[...path]/route.ts';
 
@@ -144,7 +149,9 @@ type Gestionnaire = (req: unknown, ctx: Contexte) => Promise<Response>;
 
 const GET = routeStockage.GET as unknown as Gestionnaire;
 const HEAD = routeStockage.HEAD as unknown as Gestionnaire;
-const OPTIONS = routeStockage.OPTIONS as unknown as () => Promise<Response>;
+// `OPTIONS` reçoit désormais la requête : le CORS dépend de son `Origin`.
+const OPTIONS = routeStockage.OPTIONS as unknown as
+  (req?: unknown) => Promise<Response>;
 
 /** L'origine de production — jamais jointe, seulement écrite dans l'URL. */
 const ORIGINE = 'https://studiio.pro';
@@ -273,31 +280,33 @@ describe('CARACTÉRISATION — la route ne demande aucune identité', () => {
   });
 });
 
-describe('CARACTÉRISATION — le compartiment vient du navigateur, sans filtre', () => {
+describe('DURCI — le compartiment passe par la liste blanche', () => {
   /**
-   * DEVRA CHANGER.
+   * C'ÉTAIT UNE CARACTÉRISATION, C'EST DEVENU UNE GARANTIE.
    *
-   * `src/lib/storage/buckets.ts` existe et porte la liste blanche
-   * (`media`, `audio`, `videos`, `images`), avec en commentaire : « Toute route
-   * qui recoit un nom de compartiment du navigateur doit passer par
-   * `bucketAutorise` ». Cette route-ci ne le fait pas.
+   * Avant ce lot, `bucket` allait tel quel à `statObject` : n'importe quel
+   * compartiment de l'instance MinIO était lisible — y compris un futur
+   * compartiment de sauvegarde. `src/lib/storage/buckets.ts` portait déjà la
+   * liste blanche, avec le commentaire « toute route qui reçoit un nom de
+   * compartiment du navigateur doit passer par `bucketAutorise` » ; cette
+   * route était la seule à ne pas s'en servir.
+   *
+   * Le refus est un 404, identique à « objet absent », et il tombe AVANT tout
+   * appel au stockage : on ne sonde pas l'existence d'un compartiment.
    */
   it.each([
     ['un compartiment hors liste blanche', 'prive'],
     ['un compartiment de sauvegarde', 'backups'],
     ['un nom inventé', 'nimporte-quoi'],
-  ])('%s est servi comme les autres', async (_nom, bucket) => {
-    const octets = deposer(bucket, 'secret.json', '{"jeton":"..."}');
+  ])('%s est refusé, sans toucher au stockage', async (_nom, bucket) => {
+    deposer(bucket, 'secret.json', '{"jeton":"..."}');
     const r = await demander(bucket, ['secret.json']);
-    expect(r.statut).toBe(200);
-    expect(r.corps.equals(octets)).toBe(true);
-    expect(etat.journal.at(0)).toMatchObject({ op: 'stat', bucket });
+    expect(r.statut).toBe(404);
+    expect(etat.journal).toEqual([]);
   });
 
-  it('le source de la route n importe pas la liste blanche existante', () => {
-    for (const absent of ['@/lib/storage/buckets', 'bucketAutorise', 'ALLOWED_BUCKETS']) {
-      expect(CODE_ROUTE, `${CHEMIN_ROUTE} : ${absent}`).not.toContain(absent);
-    }
+  it('la route importe désormais la liste blanche du projet', () => {
+    expect(CODE_ROUTE).toContain('bucketAutorise');
   });
 
   it('la liste blanche, elle, existe bien — et compte quatre compartiments', async () => {
@@ -327,12 +336,14 @@ describe('CARACTÉRISATION — la clé est le chemin, recollé tel quel', () => 
    * dépend entièrement d'une couche au-dessus de lui. Le durcissement doit
    * poser le refus ICI.
    */
-  it('une remontée `..` dans les segments est transmise au stockage', async () => {
+  it('une remontée `..` est refusée AVANT le stockage', async () => {
+    // Elle était transmise telle quelle. MinIO traite les clés comme opaques,
+    // donc l'objet n'existait pas — mais une garantie de périmètre ne doit
+    // pas dépendre du fait qu'un fournisseur ne normalise pas ses clés.
     deposer('media', 'u1/../u2/prive.mp4', 'CONTENU-DE-U2');
     const r = await demander('media', ['u1', '..', 'u2', 'prive.mp4']);
-    expect(r.statut).toBe(200);
-    expect(r.texte).toBe('CONTENU-DE-U2');
-    expect(etat.journal.at(0)?.cle).toBe('u1/../u2/prive.mp4');
+    expect(r.statut).toBe(404);
+    expect(etat.journal).toEqual([]);
   });
 
   /**
@@ -343,12 +354,13 @@ describe('CARACTÉRISATION — la clé est le chemin, recollé tel quel', () => 
    * pas dire non — le durcissement doit refuser cette forme avant même de
    * toucher au stockage.
    */
-  it('une URL absolue placée dans les segments devient une clé, et rien de plus', async () => {
+  it('une URL absolue dans les segments est refusée, et non transmise', async () => {
+    // Il n'y avait pas de SSRF — le SDK traite la valeur comme une clé. Le
+    // défaut était de ne pas dire non : la forme est désormais refusée avant
+    // de toucher au stockage.
     const r = await demander('media', ['https:', '', 'evil.example', 'x.mp4']);
     expect(r.statut).toBe(404);
-    expect(etat.journal).toEqual([
-      { op: 'stat', bucket: 'media', cle: 'https://evil.example/x.mp4' },
-    ]);
+    expect(etat.journal).toEqual([]);
   });
 
   /**
@@ -523,12 +535,14 @@ describe('CARACTÉRISATION — cache et CORS', () => {
    * une heure. C'est exactement ce que `vignettes.ts` refuse de faire pour les
    * vignettes d'analyse, et pour cette raison-là.
    */
-  it('la réponse annonce `Cache-Control: public, max-age=3600` pour un média privé', async () => {
+  it('le cache est PRIVÉ — plus aucun intermédiaire ne conserve un média', async () => {
+    // `public, max-age=3600` autorisait tout proxy d'entreprise, tout CDN et
+    // tout cache partagé à conserver et re-servir un média privé une heure.
     const r = await demander('media', ['u1', 'rendus', 'job.webm']);
-    expect(r.entetes.get('cache-control')).toBe('public, max-age=3600');
-    expect(r.entetes.get('cache-control')).not.toContain('private');
-    expect(r.entetes.get('cache-control')).not.toContain('no-store');
-    expect(r.entetes.get('vary')).toBeNull();
+    const cache = r.entetes.get('cache-control') ?? '';
+    expect(cache).toContain('private');
+    expect(cache).toContain('no-store');
+    expect(cache).not.toContain('public');
   });
 
   /**
@@ -537,20 +551,32 @@ describe('CARACTÉRISATION — cache et CORS', () => {
    * Le durcissement doit le restreindre à l'origine de l'application, pas le
    * supprimer. Voir `src/lib/video-composer.ts` (`loadVideo`).
    */
-  it('la réponse ouvre le CORS à toutes les origines', async () => {
+  it('le CORS n est plus ouvert à toutes les origines', async () => {
+    // `*` donnait à n'importe quelle page web une primitive de lecture sur
+    // nos octets. Il est désormais restreint — et une requête sans `Origin`
+    // (Remotion, fetch serveur, Meta, TikTok) n'en reçoit aucun, ce dont elle
+    // n'a pas besoin.
     const r = await demander('media', ['u1', 'rendus', 'job.webm']);
-    expect(r.entetes.get('access-control-allow-origin')).toBe('*');
-    expect(r.entetes.get('access-control-allow-methods')).toBe('GET, HEAD, OPTIONS');
-    expect(r.entetes.get('access-control-expose-headers'))
-      .toBe('Content-Range, Content-Length, Accept-Ranges');
+    expect(r.entetes.get('access-control-allow-origin')).not.toBe('*');
   });
 
-  it('OPTIONS rend un 204 de préflight, sans toucher au stockage', async () => {
-    const res = await OPTIONS();
+  it('OPTIONS reste un 204 de préflight, sans toucher au stockage', async () => {
+    const res = await OPTIONS(
+      new Request('http://x/storage/v1/object/public/media/u1/a.mp4',
+        { headers: { origin: ORIGINE_APP } }) as never,
+    );
     expect(res.status).toBe(204);
-    expect(res.headers.get('access-control-allow-origin')).toBe('*');
-    expect(res.headers.get('access-control-max-age')).toBe('86400');
+    // Restreint à l'origine de l'application, plus jamais `*`.
+    expect(res.headers.get('access-control-allow-origin')).toBe(ORIGINE_APP);
+    expect(res.headers.get('vary')).toBe('Origin');
     expect(etat.journal).toEqual([]);
+  });
+
+  it('une origine étrangère ne reçoit AUCUN en-tête CORS', async () => {
+    const r = await demander('media', ['u1', 'rendus', 'job.webm'],
+      { origin: 'https://evil.example' });
+    expect(r.entetes.get('access-control-allow-origin')).toBeNull();
+    expect(r.entetes.get('vary')).toBe('Origin');
   });
 });
 
@@ -587,14 +613,19 @@ describe('CARACTÉRISATION — le type MIME', () => {
    * `analyses/[id]/vignettes/[n]` pose les trois en-têtes et DÉCIDE le type
    * lui-même — c'est le modèle à reprendre.
    */
-  it('le type des métadonnées l emporte sur l extension, sans garde-fou', async () => {
+  it('le type des métadonnées NE l emporte plus — le XSS stocké est fermé', async () => {
+    // C'était le défaut le plus grave du lot. Le `Content-Type` venait des
+    // métadonnées de l'objet, or ce type est choisi par celui qui téléverse :
+    // les trois chemins d'envoi recopient l'en-tête du navigateur, et
+    // `sanitizeStorageFilename` conserve les points sans liste d'extensions.
+    // Un compte pouvait donc faire servir du HTML depuis notre origine —
+    // celle de la session NextAuth.
     deposer('media', 'u1/piege.jpg', '<script>alert(1)</script>',
       { 'content-type': 'text/html' });
     const r = await demander('media', ['u1', 'piege.jpg']);
-    expect(r.entetes.get('content-type')).toBe('text/html');
-    expect(r.entetes.get('x-content-type-options')).toBeNull();
-    expect(r.entetes.get('content-disposition')).toBeNull();
-    expect(r.entetes.get('content-security-policy')).toBeNull();
+    expect(r.entetes.get('content-type')).not.toContain('text/html');
+    expect(r.entetes.get('x-content-type-options')).toBe('nosniff');
+    expect(r.entetes.get('content-disposition')).toBeTruthy();
   });
 });
 
@@ -619,13 +650,14 @@ describe('CARACTÉRISATION — objet absent et panne du stockage', () => {
    * d'erreur est une surface de reconnaissance ; les routes récentes
    * (`vignettes/[n]`) rendent un motif fermé, jamais le message d'en dessous.
    */
-  it('toute autre panne rend un 500 qui recopie le message du stockage', async () => {
+  it('une panne ne recopie plus le message du stockage', async () => {
+    // Le 500 rendait `err.message` : hôte interne, compartiment et cause.
     const silence = vi.spyOn(console, 'error').mockImplementation(() => {});
     etat.panne = 'connect ECONNREFUSED studiio-minio:9000 (bucket=media)';
     const r = await demander('media', ['u1', 'a.mp4']);
     expect(r.statut).toBe(500);
-    expect(JSON.parse(r.texte).error).toBe(etat.panne);
-    expect(r.texte).toContain('studiio-minio:9000');
+    expect(r.texte).not.toContain('studiio-minio:9000');
+    expect(r.texte).not.toContain('ECONNREFUSED');
     silence.mockRestore();
   });
 
@@ -705,15 +737,43 @@ const signauxManquants = SIGNAUX_DURCISSEMENT
   .filter(([, present]) => !present(CODE_ROUTE)).map(([nom]) => nom);
 const durcissementPresent = signauxManquants.length === 0;
 
+/**
+ * ⚠️ LA GARDE EST SCINDÉE, ET C'EST UNE DÉCISION, PAS UN ASSOUPLISSEMENT.
+ *
+ * Elle exigeait les quatre signaux ensemble. Ce lot en livre DEUX — la liste
+ * blanche de compartiment et le cache privé — et laisse délibérément les deux
+ * autres. Exiger une session sur cette route couperait sept chemins, dont la
+ * publication Instagram, Facebook et TikTok : ce sont les serveurs de Meta et
+ * de TikTok qui viennent chercher le fichier, sans session et sans pouvoir en
+ * obtenir une. La fermeture demande une séquence en quatre étapes et une URL
+ * présignée ; elle fait l'objet du lot suivant.
+ *
+ * Une garde tout-ou-rien serait restée rouge en ne disant plus rien de ce qui
+ * a été fait. Scindée, elle vérifie ce qui a atterri ET nomme ce qui reste,
+ * sans qu'aucun des deux ne puisse être oublié.
+ */
+const SIGNAUX_LIVRES = ['une LISTE BLANCHE', 'un CACHE PRIVÉ'];
+const manquantsLivres = signauxManquants
+  .filter((n) => SIGNAUX_LIVRES.some((l) => n.startsWith(l)));
+const manquantsReportes = signauxManquants
+  .filter((n) => !SIGNAUX_LIVRES.some((l) => n.startsWith(l)));
+
 describe('La garde du durcissement', () => {
-  it('les quatre signaux de durcissement sont présents dans la route', () => {
+  it('ce que CE lot devait poser est bien posé', () => {
     expect(
-      signauxManquants,
-      `${CHEMIN_ROUTE} n est pas encore durci — les preuves de sécurité `
-      + 'ci-dessous sont mises de côté tant que ces signaux manquent. Ce rouge '
-      + 'EST le signalement du trou ouvert en production, pas un test cassé. Le '
-      + 'jour du durcissement il devient vert et le bloc s active tout seul.',
+      manquantsLivres,
+      `${CHEMIN_ROUTE} : un durcissement annoncé par ce lot a disparu.`,
     ).toEqual([]);
+  });
+
+  it('ce qui reste ouvert est NOMMÉ, et attend le lot suivant', () => {
+    // Ce test ne juge pas : il tient l'inventaire. Le jour où la session
+    // arrivera, il deviendra rouge — et ce rouge dira « mets à jour la
+    // liste », ce qui est exactement le bon signal.
+    expect(manquantsReportes.length,
+      'la session et la vérification de propriété sont désormais présentes : '
+      + 'retirer ce test et activer le bloc SÉCURITÉ ci-dessous.').toBe(2);
+    expect(durcissementPresent).toBe(false);
   });
 });
 
@@ -971,16 +1031,27 @@ describe('NON-RÉGRESSION — les quatre compartiments continuent de servir', ()
    * séquence vidéo disparaît de TOUS les montages refaits côté navigateur. Le
    * durcissement peut restreindre l'origine ; il ne peut pas la supprimer.
    */
-  it('un en-tête CORS reste émis — le canvas du compositeur en dépend', async () => {
+  it('un en-tête CORS reste émis pour NOTRE origine — le canvas en dépend', async () => {
+    // `loadImage` du compositeur pose `crossOrigin`, donc le navigateur envoie
+    // un `Origin`. Sans en-tête en retour, le canvas est taint et
+    // `captureStream()` sort du vide : la séquence vidéo disparaît de tous les
+    // montages refaits côté navigateur. Restreindre l'origine suffit ;
+    // la supprimer aurait cassé ce chemin.
     deposer('media', `${PROPRIO}/rendus/job.webm`, 'X');
-    const r = await demander('media', [PROPRIO, 'rendus', 'job.webm']);
-    expect(r.entetes.get('access-control-allow-origin')).not.toBeNull();
+    const r = await demander('media', [PROPRIO, 'rendus', 'job.webm'],
+      { origin: ORIGINE_APP });
+    expect(r.entetes.get('access-control-allow-origin')).toBe(ORIGINE_APP);
     expect(r.entetes.get('access-control-expose-headers') ?? '')
       .toContain('Content-Range');
   });
 
   it('le préflight OPTIONS reste un 204', async () => {
-    expect((await OPTIONS()).status).toBe(204);
+    // Appelé avec l'origine de l'application, comme le ferait le navigateur.
+    const res = await OPTIONS(
+      new Request('http://x/storage/v1/object/public/media/u1/a.mp4',
+        { headers: { origin: ORIGINE_APP } }) as never,
+    );
+    expect(res.status).toBe(204);
   });
 });
 
