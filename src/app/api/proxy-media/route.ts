@@ -1,17 +1,56 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
+import { bucketAutorise } from '@/lib/storage/buckets';
+import { clePossedeePar } from '@/lib/storage/acces-objet';
 
 /**
  * Proxy media files (audio/images) from Supabase storage
  * to avoid CORS issues during client-side video composition.
  * Only allows Supabase storage URLs for security.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * LA SECONDE PORTE DU MÊME STOCKAGE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Cette route exigeait une session — et s'arrêtait là. Elle ne vérifiait
+ * JAMAIS que l'objet demandé appartenait à l'appelant : n'importe quel
+ * compte connecté pouvait lire l'objet de n'importe qui, en passant
+ * simplement l'URL de stockage en paramètre. Durcir
+ * `/storage/v1/object/public/…` sans fermer celle-ci n'aurait refermé que la
+ * moitié de la fuite.
+ *
+ * Désormais, une URL qui vise NOTRE stockage doit désigner un compartiment
+ * de la liste blanche et une clé du périmètre de l'appelant
+ * (`clePossedeePar`). Les URL externes légitimes — Pexels, Unsplash —
+ * gardent exactement leur comportement : elles ne portent pas de clé
+ * d'objet, il n'y a rien à vérifier, et rien n'est élargi.
  */
+
+/**
+ * La clé d'objet d'une URL de stockage, s'il s'agit d'une.
+ *
+ * Forme reconnue : `/storage/v1/object/public/{compartiment}/{clé}` — celle
+ * que produit `getPublicUrl`, côté MinIO comme côté Supabase historique.
+ */
+function cibleStockage(u: URL): { bucket: string; cle: string } | null {
+  const m = /^\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/.exec(u.pathname);
+  if (!m) return null;
+  try {
+    return { bucket: decodeURIComponent(m[1]), cle: decodeURIComponent(m[2]) };
+  } catch {
+    // Échappement invalide : on garde la forme brute, que `clePossedeePar`
+    // refusera. On ne devine pas ce que la clé voulait dire.
+    return { bucket: m[1], cle: m[2] };
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const userId = session.user.id;
 
     const url = req.nextUrl.searchParams.get('url');
     if (!url) {
@@ -60,10 +99,37 @@ export async function GET(req: NextRequest) {
       }
       const h = u.hostname.toLowerCase().replace(/\.$/, '');
       let allowed = false;
-      if (appHost && h === appHost) allowed = u.pathname.startsWith('/storage/v1/object/public/');
-      else if (supabaseHost && h === supabaseHost) allowed = u.pathname.startsWith('/storage/');
-      else if (cdnHosts.has(h)) allowed = true;
-      return allowed ? { ok: true } : { ok: false, status: 403, error: 'URL domain not allowed' };
+      let notreStockage = false;
+      if (appHost && h === appHost) {
+        allowed = u.pathname.startsWith('/storage/v1/object/public/');
+        notreStockage = allowed;
+      } else if (supabaseHost && h === supabaseHost) {
+        allowed = u.pathname.startsWith('/storage/');
+        notreStockage = allowed;
+      } else if (cdnHosts.has(h)) {
+        // Pexels, Unsplash : pas de clé d'objet, rien à vérifier — et rien
+        // n'est élargi, la liste reste celle d'avant.
+        allowed = true;
+      }
+      if (!allowed) return { ok: false, status: 403, error: 'URL domain not allowed' };
+
+      // Propriété : une URL qui vise NOTRE stockage doit désigner un
+      // compartiment connu et une clé du périmètre de l'appelant. Sans ce
+      // contrôle, une session suffisait pour lire l'objet d'un autre.
+      if (notreStockage) {
+        const cible = cibleStockage(u);
+        if (!cible) {
+          // Un chemin de stockage qui ne porte pas la forme publique
+          // `{compartiment}/{clé}` ne désigne rien qu'on sache vérifier.
+          return { ok: false, status: 403, error: 'URL path not allowed' };
+        }
+        if (!bucketAutorise(cible.bucket) || !clePossedeePar(cible.cle, userId)) {
+          // Même réponse que « domaine refusé » : distinguer confirmerait
+          // l'existence de l'objet d'autrui.
+          return { ok: false, status: 403, error: 'URL domain not allowed' };
+        }
+      }
+      return { ok: true };
     };
 
     const initial = checkUrl(parsed);
