@@ -168,9 +168,7 @@ export const MOTIF_ECHEC_MAX = 200;
  *     plus 30 s pour le repli ffmpeg quand ffprobe est absent, plus
  *     `VIGNETTES_MAX` (8) × `TIMEOUT_VIGNETTE_MS` (20 s) : ~220 s.
  *     `RW_TIMEOUT_US` (15 s) est un délai PAR socket, déjà contenu dans ces
- *     bornes-là ; il n'ajoute rien au total — et depuis M3-B2.2 il ne
- *     s'applique plus qu'à ffprobe, ce qui ne change donc aucun de ces
- *     chiffres.
+ *     bornes-là ; il n'ajoute rien au total.
  *   * route `POST /api/autopilot/rushes/[id]/analyse` — `maxDuration = 300`.
  *     C'est le plafond DUR : au-delà, la requête qui tenait l'analyse
  *     n'existe plus, donc plus personne ne la fermera jamais.

@@ -214,37 +214,12 @@ const SORTIE_MAX_SONDE = 2 * 1024 * 1024;
 const SORTIE_MAX_VIGNETTE = 8 * 1024 * 1024;
 
 /**
- * Délai de lecture/écriture réseau, en MICROsecondes. **ffprobe SEULEMENT.**
+ * Délai de lecture/écriture réseau imposé à ffmpeg, en MICROsecondes.
  *
- * Il existe pour que la socket rende la main AVANT le `timeout` du processus :
- * un stockage qui accepte la connexion puis se tait ferait sinon attendre le
- * binaire jusqu'au `SIGKILL`.
- *
- * ─────────────────────────────────────────────────────────────────────────
- * ⚠️ NE JAMAIS LE REMETTRE SUR UN LANCEMENT DE `ffmpeg`
- * ─────────────────────────────────────────────────────────────────────────
- *
- * `-rw_timeout` n'est pas une option du protocole http : c'est une option
- * générique de l'URLContext (AVIO). Les ffmpeg récents (6.0, 8.1) l'acceptent
- * en ligne de commande ; le `ffmpeg` 5.1.9 du paquet Debian bookworm — celui
- * qu'installe le `Dockerfile`, et sur lequel `cheminFfmpeg()` retombe quand le
- * binaire de `ffmpeg-static` n'est pas dans l'image — la REFUSE à l'analyse de
- * la ligne de commande :
- *
- *     Unrecognized option 'rw_timeout'.
- *     Error splitting the argument list: Option not found
- *
- * Sortie 1, aucun octet, aucune lecture réseau — et cela pour CHACUNE des huit
- * positions. Le `ffprobe` du même paquet, lui, l'accepte. D'où le symptôme
- * observé en production le 2026-08-29 : une mesure verte et zéro vignette.
- *
- * L'option n'est de toute façon qu'un confort : ce qui GARANTIT la fin d'un
- * processus, ce sont `TIMEOUT_SONDE_MS` / `TIMEOUT_VIGNETTE_MS` et le
- * `SIGKILL` de `lancer()`, qui ne dépendent d'aucune option du binaire. Le
- * budget de `BUDGET_EXTRACTION_MS` est calculé sur ces bornes-là et ne change
- * pas d'une microseconde sans elle. Sur les binaires qui l'acceptent, son
- * retrait est sans effet mesurable ; sur ceux qui la refusent, sa présence
- * coûte toutes les images.
+ * Il existe pour que la socket rende la main AVANT le `timeout` du processus.
+ * Sans lui, un stockage qui accepte la connexion puis se tait ferait attendre
+ * ffmpeg jusqu'au `SIGKILL` — c'est-à-dire jusqu'au bout du budget, à chaque
+ * vignette.
  */
 const RW_TIMEOUT_US = '15000000';
 
@@ -516,9 +491,7 @@ async function sonderFfmpeg(url: string): Promise<Sondage> {
     '-hide_banner',
     '-nostdin',
     '-protocol_whitelist', PROTOCOLES_AUTORISES,
-    // Pas de `-rw_timeout` ici : voir sa définition. Ce repli existe pour les
-    // installations où ffprobe manque — y ajouter une option que certains
-    // ffmpeg refusent ferait échouer le repli lui-même.
+    '-rw_timeout', RW_TIMEOUT_US,
     '-i', url,
   ], { timeoutMs: TIMEOUT_SONDE_MS, maxSortie: SORTIE_MAX_SONDE });
 
@@ -625,9 +598,7 @@ async function produireVignettes(
       '-loglevel', 'error',
       '-nostdin',
       '-protocol_whitelist', PROTOCOLES_AUTORISES,
-      // ⚠️ PAS de `-rw_timeout` : voir sa définition. Le processus reste borné
-      // par `TIMEOUT_VIGNETTE_MS` et son `SIGKILL`, qui ne dépendent d'aucune
-      // option du binaire.
+      '-rw_timeout', RW_TIMEOUT_US,
       // ⚠️ `-ss` AVANT `-i` : positionnement du démuxeur, donc requête
       // `Range`. Après `-i`, ffmpeg décoderait depuis la première image et
       // téléchargerait tout le rush pour rendre une seule vignette.
