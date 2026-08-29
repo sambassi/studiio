@@ -510,7 +510,30 @@ async function executerAnalyse(
   // L'analyse se clot alors `reussie` à l'étape `extraction`, exactement comme
   // avant M3-B4, et les analyses déjà en base restent indiscernables des
   // nouvelles.
-  const moteurVisuel = await chargerMoteurVisuel();
+  // ⚠️ LE CHARGEMENT PEUT LEVER, ET IL FAUT QUE ÇA SE VOIE.
+  //
+  // Drapeau posé mais clé ou modèle manquant : quelqu'un a DEMANDÉ l'étape
+  // visuelle et elle ne peut pas se faire. Retomber en extraction-only
+  // laisserait croire que tout va bien — l'analyse s'écrirait `reussie` et
+  // personne ne saurait que la configuration est cassée.
+  let moteurVisuel: Awaited<ReturnType<typeof chargerMoteurVisuel>>;
+  try {
+    moteurVisuel = await chargerMoteurVisuel();
+  } catch {
+    // Le message de l'erreur n'est PAS repris : il pourrait nommer une
+    // variable d'environnement. Le motif suffit à diagnostiquer.
+    await majAnalyse(userId, analyse.id, {
+      etat: 'echouee', motifEchec: 'configuration_visuelle_invalide',
+    });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'La lecture des images est demandée mais mal configurée sur ce serveur.',
+        motif: 'configuration_visuelle_invalide',
+      },
+      { status: 503 },
+    );
+  }
   if (!moteurVisuel) {
     const fin = await majAnalyse(userId, analyse.id, { etat: 'reussie' });
     if (fin.motif || !fin.analyse) {

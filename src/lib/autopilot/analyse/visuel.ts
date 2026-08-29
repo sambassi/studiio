@@ -10,12 +10,10 @@
  * fournisseur est injecté, et tant que personne n'en injecte un, cette étape
  * n'existe pas — l'analyse se clôt à `extraction`, exactement comme avant.
  *
- * ⚠️ AUCUN ADAPTATEUR RÉEL N'EST LIVRÉ DANS CE LOT. Il n'y a ici ni clé
- * d'API, ni point d'accès, ni `fetch`. L'invite est écrite (`visuel-invite.ts`)
- * mais n'est envoyée nulle part. Brancher un fournisseur réel est un lot à
- * part, et c'est délibéré : une dépendance ajoutée maintenant serait inerte,
- * non testée, et affaiblirait la preuve « ce chemin ne parle à aucune IA » qui
- * verrouille M3-B2.
+ * ⚠️ CE MODULE-CI NE PARLE À AUCUN RÉSEAU : ni clé d'API, ni point d'accès,
+ * ni `fetch`. L'adaptateur Anthropic vit dans `visuel-anthropic.ts` et c'est
+ * `moteur-visuel.ts` qui l'y branche, sous drapeau — jamais ce module, qui
+ * serait alors pris dans un cycle d'imports.
  *
  * ─────────────────────────────────────────────────────────────────────────
  * ⚠️ CE MODULE BUFFERISE, ET C'EST L'EXCEPTION ASSUMÉE
