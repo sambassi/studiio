@@ -146,3 +146,88 @@ export function clePossedeePar(cle: unknown, userId: string): boolean {
   if (cle.startsWith(`${userId}/`)) return true;
   return PREFIXES_PARTAGES.some((prefixe) => cle.startsWith(prefixe));
 }
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────
+ * LE NAMESPACE D'ANALYSE N'A RIEN A FAIRE SUR LA ROUTE PUBLIQUE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * `lib/autopilot/analyse/extraction.ts` ecrit les vignettes sous
+ * `media/<userId>/analyse/<analysisId>/vignette-NN.jpg` (voir la fabrication
+ * de `cle` et `BUCKET_VIGNETTES`). Cette cle est DETERMINISTE : les deux
+ * identifiants qui la composent sont deja dans le navigateur de l'ecran
+ * d'analyse. `lib/autopilot/analyse/vignettes.ts` le dit noir sur blanc :
+ * « Quiconque les a lit les vignettes de leur proprietaire ».
+ *
+ * Le seul acces legitime est
+ * `GET /api/autopilot/analyses/[id]/vignettes/[n]`, qui exige une session,
+ * relit la cle en base sous `.eq('user_id', …)` et n'accepte aucune cle
+ * venue du client. Cette route-la n'est pas touchee.
+ *
+ * ⚠️ LE REFUS EST UN 404, JAMAIS UN 401 NI UN 403. Un code distinct
+ * repondrait « ce namespace existe » — et comme la cle est devinable, ce seul
+ * bit suffirait a confirmer qu'une analyse donnee a produit des vignettes.
+ * On rend exactement ce que rend un objet absent.
+ *
+ * On refuse le NAMESPACE, pas le seul motif `vignette-NN.jpg` : tout ce qui
+ * est range sous `analyse/` est un derive prive d'un rush. Une regle collee
+ * au nom de fichier d'aujourd'hui laisserait passer celui de demain.
+ */
+export const BUCKET_NAMESPACE_ANALYSE = 'media';
+
+/** Le segment de chemin qui porte le namespace. Compare sans casse. */
+export const SEGMENT_NAMESPACE_ANALYSE = 'analyse';
+
+/**
+ * Decode jusqu'a point fixe, avec une borne.
+ *
+ * Next.js decode deja une fois les segments dynamiques. La forme BRUTE est
+ * celle qui partira a MinIO, donc c'est elle qui suffit a la justesse : une
+ * cle qui ne porte pas litteralement `/analyse/` ne peut pas designer une
+ * vignette. Les formes decodees sont la pour tenir si un intermediaire — un
+ * proxy, une version future de Next — decodait une fois de plus.
+ */
+function formesDecodees(valeur: string): string[] {
+  const formes = [valeur];
+  let courante = valeur;
+  for (let i = 0; i < 4; i++) {
+    let suivante: string;
+    try {
+      suivante = decodeURIComponent(courante);
+    } catch {
+      // Sequence d'echappement invalide : on ne devine pas ce qu'elle
+      // voulait dire. `cleObjetValide` la refuse deja de son cote.
+      break;
+    }
+    if (suivante === courante) break;
+    formes.push(suivante);
+    courante = suivante;
+  }
+  return formes;
+}
+
+/**
+ * Cette cible vise-t-elle le namespace prive des analyses ?
+ *
+ * Vrai des qu'un SEGMENT de la cle vaut `analyse` — comparaison sans casse,
+ * pour qu'un `Analyse/` ecrit un jour par une migration ne rouvre pas la
+ * porte — avec au moins un segment non vide avant et un apres, c'est-a-dire
+ * la forme `<quelque-chose>/analyse/<quelque-chose>`. Les segments vides
+ * (`a//analyse//b`) ne comptent pas : ils ne sont pas « quelque chose ».
+ *
+ * Ne s'applique qu'au compartiment `media`, le seul ou l'extraction ecrit.
+ */
+export function cleDansNamespaceAnalyse(bucket: unknown, cle: unknown): boolean {
+  if (bucket !== BUCKET_NAMESPACE_ANALYSE) return false;
+  if (typeof cle !== 'string' || cle.length === 0) return false;
+  return formesDecodees(cle).some((forme) => {
+    const segments = forme.split('/');
+    for (let i = 0; i < segments.length; i++) {
+      if (segments[i].toLowerCase() !== SEGMENT_NAMESPACE_ANALYSE) continue;
+      const avant = segments.slice(0, i).some((s) => s.length > 0);
+      const apres = segments.slice(i + 1).some((s) => s.length > 0);
+      if (avant && apres) return true;
+    }
+    return false;
+  });
+}
