@@ -35,33 +35,82 @@ import { accessSync, constants } from 'fs';
 import { join } from 'path';
 
 /**
- * Le binaire ffmpeg : paquet embarqué d'abord, binaire système ensuite.
+ * Le binaire ffmpeg : binaire système d'abord, paquet embarqué en secours.
  *
  * `FFMPEG_PATH` gagne SANS être vérifié. Un chemin explicite qu'on ignore
  * parce qu'il ne répond pas est la pire des réponses : celui qui l'a posé
  * croit piloter la machine, et c'est un autre binaire qui tourne. Un chemin
  * faux doit produire un `ENOENT` visible, pas un silence.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ POURQUOI LE SYSTÈME PASSE AVANT `ffmpeg-static`
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Le binaire d'`ffmpeg-static` est lié STATIQUEMENT, sur une glibc plus
+ * ancienne que celle de l'image. Or une glibc statique n'embarque pas la
+ * résolution de noms : `getaddrinfo` va chercher son module NSS par
+ * `dlopen`, à chaud, et charge donc une bibliothèque partagée qui ne
+ * correspond pas à la sienne. Le processus meurt sur SIGSEGV — sans un
+ * octet sur stderr.
+ *
+ * Ce n'est pas un cas rare ici, c'est le cas NOMINAL : l'unique appelant de
+ * ce module sonde des rushes par une URL http signée dont l'hôte est le nom
+ * interne du stockage (`studiio-minio`). Toute URL portant un nom d'hôte —
+ * donc chacune des nôtres — déclenche la résolution, donc la panne. Une URL
+ * à adresse IP littérale, elle, passe : c'est bien le résolveur qui meurt,
+ * pas le protocole. Constaté en production le 2026-08-29 : huit vignettes
+ * attendues, zéro produite, huit fois `signal=SIGSEGV`.
+ *
+ * Le binaire du système est lié dynamiquement : il utilise le NSS de la
+ * machine sur laquelle il tourne, et n'a pas ce défaut. C'est déjà lui qui
+ * fournit `ffprobe`, sur exactement les mêmes URL, sans incident — la
+ * démonstration est faite par le fonctionnement de la sonde.
+ *
+ * ⚠️ Le renversement fait perdre l'homogénéité de version que le paquet
+ * embarqué apportait : la production exécute désormais le ffmpeg de Debian
+ * (`Dockerfile`, `apt-get install ffmpeg`), plus ancien que le paquet. Toute
+ * option ajoutée par un appelant doit donc exister dans cette version-là.
+ *
+ * `ffmpeg-static` reste une dépendance et reste le repli : il couvre les
+ * installations sans ffmpeg système. Il n'est simplement plus le premier
+ * servi là où l'on parle à un hôte.
  */
 export function cheminFfmpeg(): string {
   const force = process.env.FFMPEG_PATH;
   if (force) return force;
 
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const p = require('ffmpeg-static');
-    if (typeof p === 'string' && p && lisible(p)) return p;
-  } catch { /* paquet absent : on tente les emplacements connus */ }
-
-  const candidats = [
-    // Le paquet, atteint par le chemin plutot que par `require` : sous le
-    // transformateur ESM des tests, `require` n'existe pas, et le binaire
-    // serait declare absent alors qu'il est la.
-    join(process.cwd(), 'node_modules', 'ffmpeg-static', 'ffmpeg'),
+  const systeme = [
     '/usr/bin/ffmpeg',
     '/usr/local/bin/ffmpeg',
     '/opt/homebrew/bin/ffmpeg',
   ];
-  for (const c of candidats) if (lisible(c)) return c;
+  for (const c of systeme) if (lisible(c)) return c;
+
+  // ── Le repli : le paquet embarqué, par ses DEUX voies ─────────────────
+  //
+  // Aucune des deux ne couvre l'autre, et c'est pour cela qu'elles restent
+  // toutes les deux : elles ne partent pas du même point.
+  //
+  // `require` résout le paquet depuis l'emplacement de CE module, en suivant
+  // le hissage et les liens ; le chemin en dur part du RÉPERTOIRE COURANT.
+  // Les deux divergent dès que ces deux points ne coïncident pas — un
+  // worktree dont le `node_modules` est un lien, un dépôt en espace de
+  // travail, une sortie `standalone` — et l'une trouve alors le binaire là
+  // où l'autre le déclare absent.
+  //
+  // Le `catch` reste, lui, pour le cas où `require` n'existe pas ou échoue
+  // selon le contexte d'exécution. Attention toutefois à ne pas s'en
+  // remettre à une croyance commode : sous Vitest, `require` EST disponible
+  // et rend bien le chemin du paquet. Cette voie n'est donc pas du code mort
+  // en test — elle est exécutable, et donc vérifiable.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const p = require('ffmpeg-static');
+    if (typeof p === 'string' && p && lisible(p)) return p;
+  } catch { /* paquet absent, ou `require` indisponible : on tente le chemin */ }
+
+  const embarque = join(process.cwd(), 'node_modules', 'ffmpeg-static', 'ffmpeg');
+  if (lisible(embarque)) return embarque;
 
   // Dernier recours : le PATH. Si rien n'y répond, le lancement échoue avec
   // `ENOENT`, que l'appelant traduit — plutôt que de deviner ici.
