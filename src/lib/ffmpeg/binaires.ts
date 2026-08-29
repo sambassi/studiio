@@ -89,9 +89,20 @@ export function cheminFfmpeg(): string {
   // ── Le repli : le paquet embarqué, par ses DEUX voies ─────────────────
   //
   // Aucune des deux ne couvre l'autre, et c'est pour cela qu'elles restent
-  // toutes les deux. `require` échoue sous le transformateur ESM des tests,
-  // où il n'existe pas ; le chemin en dur, lui, échoue si le paquet a été
-  // hissé ailleurs que dans le `node_modules` du répertoire courant.
+  // toutes les deux : elles ne partent pas du même point.
+  //
+  // `require` résout le paquet depuis l'emplacement de CE module, en suivant
+  // le hissage et les liens ; le chemin en dur part du RÉPERTOIRE COURANT.
+  // Les deux divergent dès que ces deux points ne coïncident pas — un
+  // worktree dont le `node_modules` est un lien, un dépôt en espace de
+  // travail, une sortie `standalone` — et l'une trouve alors le binaire là
+  // où l'autre le déclare absent.
+  //
+  // Le `catch` reste, lui, pour le cas où `require` n'existe pas ou échoue
+  // selon le contexte d'exécution. Attention toutefois à ne pas s'en
+  // remettre à une croyance commode : sous Vitest, `require` EST disponible
+  // et rend bien le chemin du paquet. Cette voie n'est donc pas du code mort
+  // en test — elle est exécutable, et donc vérifiable.
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const p = require('ffmpeg-static');
