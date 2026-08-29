@@ -8,11 +8,49 @@
  *
  * Stream les objets directement depuis MinIO via le SDK officiel — pas de
  * buffer intermédiaire, supporte les gros fichiers (vidéos).
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * CE QUE CETTE ROUTE NE FAIT PAS : DEMANDER UNE SESSION
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Elle est appelée sans cookie par sept chemins recensés — rendus Remotion
+ * (Chromium sans session), `/api/proxy-media`, publication YouTube, Zernio,
+ * vérification de présence des rushes Autopilote, mesure de durée du rush,
+ * vidéo de démo de l'accueil — et, de façon irréductible sans URL présignée,
+ * par les serveurs de Meta et de TikTok, qui viennent CHERCHER le fichier
+ * eux-mêmes au moment de publier. Fermer par une session ici casserait la
+ * publication sociale. Cette fermeture demande une séquence à part (URL
+ * présignée sur `MINIO_PUBLIC_ENDPOINT`) et n'appartient pas à ce lot.
+ *
+ * Ce qui est fermé ici, en revanche, ne dépend d'aucun appelant :
+ *
+ *   1. Le compartiment vient d'une liste blanche. Il partait tel quel à
+ *      `statObject` : n'importe quel compartiment de l'instance était
+ *      lisible, y compris un futur compartiment de sauvegarde.
+ *   2. Le `Content-Type` est DÉCIDÉ ici, d'après l'extension. Il était lu sur
+ *      l'objet (`stat.metaData['content-type']`) — c'est-à-dire choisi par
+ *      celui qui envoie. Un compte pouvait déposer `x.html` en `text/html` et
+ *      le faire servir depuis la MÊME ORIGINE que la session NextAuth :
+ *      un XSS stocké. `nosniff` et `Content-Disposition: inline` ferment les
+ *      deux moitiés restantes de la porte.
+ *   3. `Access-Control-Allow-Origin: *` disparaît au profit de la seule
+ *      origine de l'application (voir `entetesCors`).
+ *   4. Le cache devient privé : un intermédiaire partagé n'a rien à faire
+ *      d'un média qui n'est pas public.
+ *   5. La clé est normalisée avant tout appel au stockage.
+ *   6. Le message du SDK ne remonte plus au client.
+ *
+ * ⚠️ Le bloc `Range` / 206 / 416 et le `HEAD` sont intacts, et doivent le
+ * rester : le Calendrier fait un `HEAD` puis lit `Accept-Ranges`, le
+ * compositeur cherche dans le rush, et toute l'affaire de l'atome `moov` en
+ * fin de MP4 en dépend. Aucun média n'est matérialisé en mémoire.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { Client as MinioClient } from 'minio';
 import { Readable } from 'stream';
+import { bucketAutorise } from '@/lib/storage/buckets';
+import { cleObjetValide, typeContenuDepuisCle } from '@/lib/storage/acces-objet';
 
 // Force the route to run on Node (Edge can't stream from the MinIO SDK) and
 // never be statically cached — Range requests must hit the handler every
@@ -44,23 +82,83 @@ function getClient(): MinioClient {
   return _client;
 }
 
-const EXT_TO_CONTENT_TYPE: Record<string, string> = {
-  mp4: 'video/mp4',
-  mov: 'video/quicktime',
-  webm: 'video/webm',
-  avi: 'video/x-msvideo',
-  mkv: 'video/x-matroska',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  png: 'image/png',
-  webp: 'image/webp',
-  gif: 'image/gif',
-  mp3: 'audio/mpeg',
-  wav: 'audio/wav',
-  aac: 'audio/aac',
-  ogg: 'audio/ogg',
-  json: 'application/json',
-};
+/**
+ * L'origine de l'application, telle qu'elle est CONFIGURÉE.
+ *
+ * Jamais le header `Host`, qui est fourni par l'appelant.
+ */
+function origineApplication(): string {
+  const brut = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || '';
+  if (!brut) return '';
+  try { return new URL(brut).origin; } catch { return ''; }
+}
+
+/**
+ * Les en-têtes CORS — et pourquoi ce n'est plus `*`.
+ *
+ * L'ancien commentaire justifiait l'étoile par le `crossOrigin="anonymous"`
+ * du compositeur. Ce n'est plus vrai pour la vidéo : depuis la migration
+ * MinIO, `video-composer.ts` OMET volontairement `crossOrigin` sur les
+ * chemins same-origin (« Rule: omit crossOrigin for same-origin paths »).
+ *
+ * Il reste un cas réel : `PUBLIC_STORAGE_URL` peut désigner un autre hôte que
+ * l'application (`https://cdn.studiio.pro/public` dans les tests de
+ * `upload-rendu-https`), et `loadImage`, lui, pose toujours
+ * `crossOrigin='anonymous'`. Une page servie par l'application qui charge une
+ * image depuis cet autre hôte a donc besoin d'un `Allow-Origin` — mais de
+ * celui de l'application, pas de tous.
+ *
+ * D'où : on n'émet l'en-tête que si l'`Origin` de la requête est EXACTEMENT
+ * l'origine configurée. Sans `Origin` (chargement no-cors, Remotion, fetch
+ * serveur, Meta/TikTok), aucun en-tête n'est émis — et aucun n'est nécessaire,
+ * la vérification CORS ne s'applique pas à ces requêtes. `Vary: Origin` est
+ * obligatoire : sans lui, un cache servirait à une origine la réponse
+ * calculée pour une autre.
+ */
+function entetesCors(req: NextRequest): Record<string, string> {
+  const entetes: Record<string, string> = { Vary: 'Origin' };
+  const origine = req.headers.get('origin');
+  const attendue = origineApplication();
+  if (!origine || !attendue || origine !== attendue) return entetes;
+  entetes['Access-Control-Allow-Origin'] = attendue;
+  entetes['Access-Control-Allow-Methods'] = 'GET, HEAD, OPTIONS';
+  entetes['Access-Control-Allow-Headers'] = 'Range, Content-Type';
+  entetes['Access-Control-Expose-Headers'] =
+    'Content-Range, Content-Length, Accept-Ranges';
+  return entetes;
+}
+
+/**
+ * Les en-têtes qui empêchent un média d'être interprété.
+ *
+ * `Content-Type` décidé par nous, `nosniff` pour que le navigateur ne
+ * cherche pas à faire mieux, `Content-Disposition: inline` pour qu'un type
+ * inconnu ne devienne pas un document. `private, no-store` parce que ces
+ * objets ne sont pas publics : un cache partagé n'a pas à les garder.
+ */
+function entetesMedia(storagePath: string): Record<string, string> {
+  return {
+    'Content-Type': typeContenuDepuisCle(storagePath),
+    'Content-Disposition': 'inline',
+    'X-Content-Type-Options': 'nosniff',
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'private, no-store',
+  };
+}
+
+/**
+ * Une seule et même réponse pour « compartiment inconnu », « chemin refusé »
+ * et « objet absent ». Un 403 distinct confirmerait l'existence de ce qu'on
+ * refuse, et laisserait énumérer les compartiments de l'instance.
+ */
+function introuvable(): NextResponse {
+  return NextResponse.json({ error: 'not found' }, { status: 404 });
+}
+
+/** La cible est-elle recevable, sans avoir rien demandé au stockage ? */
+function cibleRecevable(bucket: string, storagePath: string): boolean {
+  return bucketAutorise(bucket) && cleObjetValide(storagePath);
+}
 
 export async function GET(
   req: NextRequest,
@@ -74,18 +172,19 @@ export async function GET(
   }
 
   const { bucket, path } = await ctx.params;
-  const storagePath = path.join('/');
+  const storagePath = Array.isArray(path) ? path.join('/') : '';
+
+  // AVANT tout appel MinIO : un compartiment hors liste ou un chemin douteux
+  // ne doit pas coûter une requête au stockage, et surtout ne doit pas
+  // permettre d'en SONDER l'existence.
+  if (!cibleRecevable(bucket, storagePath)) return introuvable();
+
+  const cors = entetesCors(req);
 
   try {
     const client = getClient();
     const stat = await client.statObject(bucket, storagePath);
     const size = stat.size;
-
-    const ext = storagePath.split('.').pop()?.toLowerCase() || '';
-    const contentType =
-      stat.metaData?.['content-type'] ||
-      EXT_TO_CONTENT_TYPE[ext] ||
-      'application/octet-stream';
 
     // Parse Range header (RFC 7233). Without true range support, Chrome can't
     // seek video and any interruption forces a full re-download — fatal for
@@ -110,7 +209,7 @@ export async function GET(
         if (start > end || start >= size) {
           return new NextResponse(null, {
             status: 416,
-            headers: { 'Content-Range': `bytes */${size}` },
+            headers: { ...cors, 'Content-Range': `bytes */${size}` },
           });
         }
         isPartial = true;
@@ -142,18 +241,9 @@ export async function GET(
           });
 
     const headers: Record<string, string> = {
-      'Content-Type': contentType,
+      ...entetesMedia(storagePath),
       'Content-Length': String(length),
-      'Accept-Ranges': 'bytes',
-      'Cache-Control': 'public, max-age=3600',
-      // CORS required so the video-composer can draw frames to a Canvas2D
-      // context (crossOrigin="anonymous"). Without this the canvas gets
-      // tainted and captureStream() emits empty frames — video sequence
-      // missing in all client-side re-compositions.
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-      'Access-Control-Allow-Headers': 'Range, Content-Type',
-      'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges',
+      ...cors,
     };
     if (isPartial) {
       headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
@@ -165,64 +255,56 @@ export async function GET(
     });
   } catch (err: any) {
     if (err?.code === 'NoSuchKey' || err?.code === 'NotFound') {
-      return NextResponse.json({ error: 'not found' }, { status: 404 });
+      return introuvable();
     }
+    // Le message du SDK décrivait l'instance de stockage (compartiment,
+    // endpoint, cause). Il reste dans les journaux du serveur ; il ne
+    // redescend plus au client.
     console.error('[storage proxy] error', err);
-    return NextResponse.json(
-      { error: err?.message || 'storage error' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'storage error' }, { status: 500 });
   }
 }
 
 // HEAD: some clients probe with HEAD before issuing the Range GET. Mirror GET
 // headers without a body so file size and Accept-Ranges are visible.
 export async function HEAD(
-  _req: NextRequest,
+  req: NextRequest,
   ctx: { params: Promise<{ bucket: string; path: string[] }> },
 ) {
   if (STORAGE_PROVIDER !== 's3') {
     return new NextResponse(null, { status: 404 });
   }
   const { bucket, path } = await ctx.params;
-  const storagePath = path.join('/');
+  const storagePath = Array.isArray(path) ? path.join('/') : '';
+  if (!cibleRecevable(bucket, storagePath)) {
+    return new NextResponse(null, { status: 404 });
+  }
   try {
     const stat = await getClient().statObject(bucket, storagePath);
-    const ext = storagePath.split('.').pop()?.toLowerCase() || '';
-    const contentType =
-      stat.metaData?.['content-type'] ||
-      EXT_TO_CONTENT_TYPE[ext] ||
-      'application/octet-stream';
     return new NextResponse(null, {
       status: 200,
       headers: {
-        'Content-Type': contentType,
+        ...entetesMedia(storagePath),
         'Content-Length': String(stat.size),
-        'Accept-Ranges': 'bytes',
-        'Cache-Control': 'public, max-age=3600',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-        'Access-Control-Allow-Headers': 'Range, Content-Type',
-        'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges',
+        ...entetesCors(req),
       },
     });
   } catch (err: any) {
     if (err?.code === 'NoSuchKey' || err?.code === 'NotFound') {
       return new NextResponse(null, { status: 404 });
     }
+    console.error('[storage proxy] head error', err);
     return new NextResponse(null, { status: 500 });
   }
 }
 
 // OPTIONS: browsers send preflight for CORS requests (e.g. crossOrigin=anonymous)
-export async function OPTIONS() {
+export async function OPTIONS(req: NextRequest) {
+  const cors = entetesCors(req);
   return new NextResponse(null, {
     status: 204,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-      'Access-Control-Allow-Headers': 'Range, Content-Type',
-      'Access-Control-Max-Age': '86400',
-    },
+    headers: cors['Access-Control-Allow-Origin']
+      ? { ...cors, 'Access-Control-Max-Age': '86400' }
+      : cors,
   });
 }
