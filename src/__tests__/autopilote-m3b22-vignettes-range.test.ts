@@ -78,7 +78,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { execFileSync } from 'child_process';
 import { createServer, request as requeteHttp, type Server } from 'http';
-import { createReadStream, mkdirSync, readFileSync, rmSync, statSync } from 'fs';
+import { chmodSync, createReadStream, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { randomBytes } from 'crypto';
@@ -738,5 +738,92 @@ describe('M3-B2.2 — ni IA, ni crédit, ni rendu, ni publication', () => {
       './contrat',
       'child_process',
     ].sort());
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// L'option que le ffmpeg de production n'a pas
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Le seul argument de la commande qui puisse faire échouer les HUIT
+ * positions, immédiatement, pendant que ffprobe réussit.
+ *
+ * `-rw_timeout` n'est pas une option du protocole http : c'est une option
+ * générique de l'URLContext (AVIO). Les ffmpeg récents (6.0, 8.1, mesurés)
+ * l'acceptent, et elle est alors sans effet sur un stockage qui répond. Le
+ * `ffmpeg` 5.1.9 du paquet Debian bookworm — celui qu'installe le
+ * `Dockerfile`, et sur lequel `cheminFfmpeg()` retombe quand le binaire de
+ * `ffmpeg-static` n'est pas dans l'image — la REFUSE à l'analyse de la ligne
+ * de commande, avant même d'ouvrir l'entrée : sortie 1, aucun octet, aucune
+ * lecture réseau. Le `ffprobe` du même paquet, lui, l'accepte : d'où une
+ * mesure verte et zéro vignette, exactement le symptôme de production.
+ *
+ * Cette doublure REJOUE ce refus, et délègue tout le reste au vrai binaire :
+ * ce qui est vérifié ici, ce n'est pas la programmation de la doublure, mais
+ * que la commande de `produireVignettes` survive à un ffmpeg qui ne connaît
+ * pas cette option-là. Un binaire qui l'accepte ne prouverait rien : c'est le
+ * cas de tous ceux que cette machine possède.
+ */
+function ffmpegQuiRefuseRwTimeout(): string {
+  const chemin = join(RACINE, 'ffmpeg-sans-rw-timeout.js');
+  writeFileSync(chemin, [
+    '#!/usr/bin/env node',
+    "const { spawn } = require('child_process');",
+    'const args = process.argv.slice(2);',
+    "if (args.includes('-rw_timeout')) {",
+    '  process.stderr.write("Unrecognized option \'rw_timeout\'.\\nError splitting the argument list: Option not found\\n");',
+    '  process.exit(1);',
+    '}',
+    "const p = spawn(process.env.FFMPEG_REEL, args, { stdio: 'inherit' });",
+    'p.on("exit", (c, s) => process.exit(s ? 1 : (c ?? 1)));',
+  ].join('\n'));
+  chmodSync(chemin, 0o755);
+  return chemin;
+}
+
+describe('M3-B2.2 — un ffmpeg qui ignore `-rw_timeout` doit quand même produire les images', () => {
+  siBinaires()('huit vignettes, sur un binaire qui refuse cette option', async () => {
+    const avantChemin = process.env.FFMPEG_PATH;
+    const avantReel = process.env.FFMPEG_REEL;
+    process.env.FFMPEG_REEL = cheminFfmpeg();
+    process.env.FFMPEG_PATH = ffmpegQuiRefuseRwTimeout();
+    try {
+      poser();
+      const r = await extraire();
+
+      // La mesure passe par ffprobe : elle réussissait DÉJÀ en production,
+      // et elle doit continuer de réussir ici, sinon le décor est faux.
+      expect(r.ok).toBe(true);
+      expect(r.technique.sonde).toBe('ffprobe');
+
+      // Le cœur : les huit images sortent malgré le binaire diminué.
+      expect(r.technique.vignettesAttendues).toBe(8);
+      expect(r.technique.vignettesProduites).toBe(8);
+      expect(r.technique.vignettesEchouees).toBe(0);
+      expect(r.vignettes).toHaveLength(8);
+      // De VRAIES JPEG, pas des fichiers vides rendus par la doublure.
+      for (const e of ecritures) {
+        expect([e.corps[0], e.corps[1], e.corps[2]]).toEqual([0xff, 0xd8, 0xff]);
+      }
+    } finally {
+      if (avantChemin === undefined) delete process.env.FFMPEG_PATH;
+      else process.env.FFMPEG_PATH = avantChemin;
+      if (avantReel === undefined) delete process.env.FFMPEG_REEL;
+      else process.env.FFMPEG_REEL = avantReel;
+    }
+  }, 300_000);
+
+  it('`-rw_timeout` ne survit que sur ffprobe, et le source le dit', () => {
+    const source = readFileSync(
+      join(process.cwd(), 'src/lib/autopilot/analyse/extraction.ts'), 'utf8',
+    );
+    // Une seule occurrence de l'argument : celle de `sonderFfprobe`, dont la
+    // production prouve qu'elle est acceptée. Le jour où quelqu'un le
+    // remet sur un lancement de ffmpeg, ce test le dira avant la production.
+    const occurrences = source.match(/'-rw_timeout'/g) ?? [];
+    expect(occurrences).toHaveLength(1);
+    const avant = source.slice(0, source.indexOf("'-rw_timeout'"));
+    expect(avant.lastIndexOf('cheminFfprobe()')).toBeGreaterThan(avant.lastIndexOf('cheminFfmpeg()'));
   });
 });
