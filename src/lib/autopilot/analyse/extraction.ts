@@ -631,8 +631,25 @@ async function produireVignettes(
       premierEchec ??= [
         r.introuvable ? 'ffmpeg-absent(ENOENT)'
           : r.timeout ? 'processus-interrompu'
-            : r.code !== 0 ? `code=${r.code ?? 'aucun'}`
-              : 'sortie-vide(code=0)',
+            // ⚠️ GARDÉE SUR `typeof number`, ET C'EST LE CORRECTIF.
+            //
+            // `r.code !== 0` est VRAI quand `code` vaut `null`. Cette branche
+            // avalait donc les deux suivantes et rendait `code=aucun` pour un
+            // errno comme pour un signal — c'est exactement ce qu'on a lu en
+            // production, sur huit vignettes et deux analyses, sans jamais
+            // pouvoir nommer la panne.
+            : typeof r.code === 'number' && r.code !== 0 ? `code=${r.code}`
+              // L'enfant n'a pas tourné : `spawn` a refusé, ou Node l'a tué
+              // parce que sa sortie dépassait `maxBuffer`.
+              : r.codeSysteme ? `errno=${r.codeSysteme}`
+                // L'enfant a tourné puis est mort brutalement. `SIGKILL` est
+                // déjà parti en `processus-interrompu` plus haut ; restent
+                // `SIGSEGV`, `SIGABRT`, `SIGPIPE`, `SIGTERM`…
+                : r.signal ? `signal=${r.signal}`
+                  // Conservé pour rester total : Node peut changer, ce défaut
+                  // ne doit pas devenir un trou.
+                  : r.code !== 0 ? 'code=aucun'
+                    : 'sortie-vide(code=0)',
         // `lancer()` rend DÉJÀ un stderr masqué et tronqué. La seconde passe
         // ne coûte rien et tient le jour où `lancer` changerait.
         masquerUrls(r.stderr).slice(-400),
@@ -694,11 +711,62 @@ async function produireVignettes(
 // ─────────────────────────────────────────────────────────────────────────
 
 interface SortieProcessus {
+  /** Le code de SORTIE, et lui seul. `null` quand le processus n'en a pas eu. */
   code: number | null;
+  /**
+   * `err.code` quand Node y met une CHAÎNE plutôt qu'un entier : un errno de
+   * `spawn` (`EACCES`, `EAGAIN`, `EMFILE`, `ENFILE`, `ENOENT`) ou un code
+   * interne de Node (`ERR_CHILD_PROCESS_STDIO_MAXBUFFER`).
+   *
+   * Champ SÉPARÉ, et c'est tout l'intérêt : `code` garde son unique sens, donc
+   * `r.code !== 0` continue de dire exactement ce qu'il disait.
+   */
+  codeSysteme: string | null;
+  /**
+   * Le signal qui a tué l'enfant. `null` s'il est sorti de lui-même.
+   *
+   * ⚠️ `err.killed` ne vaut `true` que si c'est NOUS qui avons tué. Un signal
+   * reçu de l'extérieur — `SIGSEGV` d'un binaire qui plante, `SIGKILL` de
+   * l'OOM killer — laisse `killed: false`. Sans ce champ, tout ce qui n'est
+   * pas notre propre `SIGKILL` mourait anonymement.
+   */
+  signal: string | null;
   stdout: Buffer;
   stderr: string;
   timeout: boolean;
   introuvable: boolean;
+}
+
+/**
+ * Une étiquette système, bornée et sans surprise.
+ *
+ * Node ne fabrique JAMAIS ces chaînes à partir de l'entrée : un errno vient
+ * d'une table de littéraux libuv (le plus long, `EPROTONOSUPPORT`, fait 15
+ * caractères), un code `ERR_*` d'une table interne (le plus long atteignable
+ * depuis `execFile`, `ERR_CHILD_PROCESS_STDIO_MAXBUFFER`, en fait 33), un nom
+ * de signal des littéraux C de `signo_string()` (le plus long, `SIGVTALRM`,
+ * en fait 9). Le vocabulaire est donc FERMÉ, et cette fonction est une
+ * ceinture : elle transforme une propriété observée du runtime en garantie du
+ * code, et elle tiendra le jour où quelqu'un journalisera `e.message` — qui
+ * contient, lui, le chemin serveur du binaire.
+ *
+ * Une valeur hors vocabulaire ne devient PAS `null` : `null` se confondrait
+ * avec « rien à dire », et la ligne de journal perdrait précisément le signal
+ * qui la rendait intéressante. Elle devient un littéral À NOUS, incapable de
+ * transporter quoi que ce soit de l'entrée.
+ *
+ * Exportée pour être PROUVABLE. Aucune erreur que Node sait produire ne sort
+ * du vocabulaire — c'est justement ce qui fait de cette fonction une ceinture
+ * — donc aucun test passant par `execFile` ne peut distinguer sa présence de
+ * son absence. La tester en direct, avec une valeur forgée, est le seul moyen
+ * d'établir qu'elle fait ce qu'elle annonce plutôt que de l'espérer.
+ */
+const HORS_VOCABULAIRE = 'hors-vocabulaire';
+const ETIQUETTE_SYSTEME = /^[A-Z][A-Z0-9_]{1,39}$/;
+
+export function etiquetteSysteme(valeur: unknown): string | null {
+  if (typeof valeur !== 'string' || valeur === '') return null;
+  return ETIQUETTE_SYSTEME.test(valeur) ? valeur : HORS_VOCABULAIRE;
 }
 
 /**
@@ -732,6 +800,13 @@ function lancer(
       const e = err as (NodeJS.ErrnoException & { code?: number | string; killed?: boolean; signal?: string }) | null;
       resolve({
         code: err ? (typeof e?.code === 'number' ? e.code : null) : 0,
+        // Ce que la ligne au-dessus jetait. Node met dans `err.code` soit un
+        // entier — le code de sortie — soit une chaîne, et la chaîne est
+        // précisément celle qui NOMME la panne quand il n'y a pas eu de sortie
+        // du tout. On ne journalise QUE `code` et `signal` : ni `message`, ni
+        // `cmd`, ni `path`, ni `spawnargs`, qui portent tous l'URL signée.
+        codeSysteme: etiquetteSysteme(typeof e?.code === 'string' ? e.code : null),
+        signal: etiquetteSysteme(e?.signal),
         stdout: Buffer.isBuffer(stdout) ? stdout : Buffer.alloc(0),
         stderr: masquerUrls(
           (Buffer.isBuffer(stderr) ? stderr.toString('utf8') : String(stderr ?? '')),
