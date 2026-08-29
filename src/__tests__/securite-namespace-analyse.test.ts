@@ -224,7 +224,7 @@ const FAMILLES: Famille[] = [
     bucket: 'media', cle: `${UTILISATEUR}/rush/${HORODATAGE}-tournage_01.mp4`,
     type: 'video/mp4',
     fichier: 'src/app/api/upload/signed-url/route.ts',
-    marqueur: '${session.user.id}/${purpose || \'rush\'}/${timestamp}-${safeFilename}',
+    marqueur: '${session.user.id}/${usage}/${timestamp}-${safeFilename}',
   },
   {
     usage: 'vignette de post — Calendrier',
@@ -1002,7 +1002,7 @@ describe('Les vignettes : une seule porte, et elle demande une session', () => {
 // `purpose` n'est CONTRAINT NULLE PART. Les trois routes d'envoi le prennent
 // tel quel dans le corps de la requête et l'insèrent dans la clé :
 //
-//   signed-url  : `${session.user.id}/${purpose || 'rush'}/${timestamp}-${safeFilename}`
+//   signed-url  : `${session.user.id}/${usage}/${timestamp}-${safeFilename}`
 //   multipart   : `${userId}/${purpose}/${Date.now()}-${filename}`
 //   upload/media: `${session.user.id}/${purpose}/${timestamp}-${safeFilename}`
 //
@@ -1012,10 +1012,22 @@ describe('Les vignettes : une seule porte, et elle demande une session', () => {
 // l'URL de lecture qui va avec, écrite en base.
 // ═══════════════════════════════════════════════════════════════════════════
 
-describe('FAUX POSITIF — `purpose` n est contraint nulle part', () => {
+describe('FAUX POSITIF REFERME — `purpose` ne peut plus viser l espace reserve', () => {
   beforeEach(() => { session.courante = { user: { id: UTILISATEUR } }; });
 
-  it('aucune des trois routes d envoi ne valide `purpose`', () => {
+  /**
+   * ⚠️ CE BLOC DOCUMENTAIT UN TROU. IL DOCUMENTE MAINTENANT SA FERMETURE.
+   *
+   * `purpose` entrait tel quel dans la clé, sans liste blanche ni nettoyage :
+   * un appelant demandant `purpose: "analyse"` recevait une clé
+   * `<userId>/analyse/…` **délivrée par notre propre serveur**, que le blocage
+   * de lecture rendait ensuite illisible — sans message et sans trace.
+   *
+   * Le lot refuse donc à l'ÉCRITURE ce qu'il refuse à la LECTURE, plutôt que
+   * de documenter un trou. Cela ferme au passage la possibilité pour un compte
+   * d'écraser ses propres vignettes, dont la clé est déterministe.
+   */
+  it('les trois routes d envoi valident desormais `purpose`', () => {
     const ROUTES = [
       'src/app/api/upload/signed-url/route.ts',
       'src/app/api/upload/multipart/route.ts',
@@ -1023,12 +1035,7 @@ describe('FAUX POSITIF — `purpose` n est contraint nulle part', () => {
     ];
     for (const route of ROUTES) {
       const code = sansCommentaires(source(route));
-      expect(code, `${route} interpole purpose dans la clé`).toContain('${purpose');
-      // Ni liste blanche, ni nettoyage, ni expression : rien.
-      expect(code, `${route} : purpose n est pas nettoyé`)
-        .not.toMatch(/sanitizeStorageFilename\s*\(\s*[^)]*purpose/);
-      expect(code, `${route} : aucune liste blanche de purpose`)
-        .not.toMatch(/PURPOSES?_(AUTORISES|VALIDES|ALLOWED)/);
+      expect(code, `${route} : purpose n est pas valide`).toContain('purposeAcceptable');
     }
   });
 
@@ -1036,7 +1043,7 @@ describe('FAUX POSITIF — `purpose` n est contraint nulle part', () => {
    * LA DÉMONSTRATION. On appelle la vraie route, avec `purpose: 'analyse'`, et
    * on regarde ce qu'elle rend.
    */
-  it('signed-url délivre une clé `media/<user>/analyse/…` et son URL de lecture', async () => {
+  it('signed-url REFUSE desormais un purpose visant l espace reserve', async () => {
     delete process.env.MINIO_PUBLIC_ENDPOINT; // mode relais : pas de présigné
     const { POST } = await import('@/app/api/upload/signed-url/route');
     const res = await POST(new Request('https://studiio.pro/api/upload/signed-url', {
@@ -1045,18 +1052,28 @@ describe('FAUX POSITIF — `purpose` n est contraint nulle part', () => {
         filename: 'mon rush.mp4', contentType: 'video/mp4', purpose: 'analyse',
       }),
     }) as never);
-    const corps = await res.json() as { path: string; bucket: string; publicUrl: string };
-
-    expect(corps.bucket).toBe('media');
-    expect(corps.path).toMatch(
-      new RegExp(`^${UTILISATEUR}/analyse/\\d+-mon_rush\\.mp4$`),
-    );
-    expect(corps.publicUrl).toBe(`${PREFIXE_PUBLIC}media/${corps.path}`);
-    // La clé a exactement la forme visée par le blocage : `<x>/analyse/<y>`.
-    expect(corps.path.split('/')[1]).toBe('analyse');
+    // Plus aucune clé n'est délivrée : le refus tombe avant la signature.
+    expect(res.status).toBe(422);
+    const corps = await res.json() as { success: boolean; path?: string };
+    expect(corps.success).toBe(false);
+    expect(corps.path).toBeUndefined();
   });
 
-  it('multipart délivre la même forme, et l initie réellement dans MinIO', async () => {
+  it('un purpose normal continue de passer — la garde ne mord que le reserve', async () => {
+    delete process.env.MINIO_PUBLIC_ENDPOINT;
+    const { POST } = await import('@/app/api/upload/signed-url/route');
+    const res = await POST(new Request('https://studiio.pro/api/upload/signed-url', {
+      method: 'POST',
+      body: JSON.stringify({
+        filename: 'mon rush.mp4', contentType: 'video/mp4', purpose: 'rush',
+      }),
+    }) as never);
+    const corps = await res.json() as { path: string; bucket: string };
+    expect(corps.bucket).toBe('media');
+    expect(corps.path).toMatch(new RegExp(`^${UTILISATEUR}/rush/\\d+-mon_rush\\.mp4$`));
+  });
+
+  it('multipart REFUSE aussi, et n initie RIEN dans MinIO', async () => {
     process.env.MINIO_PUBLIC_ENDPOINT = 'minio.studiio.pro';
     try {
       const { POST } = await import('@/app/api/upload/multipart/route');
@@ -1067,11 +1084,9 @@ describe('FAUX POSITIF — `purpose` n est contraint nulle part', () => {
           contentType: 'video/mp4', purpose: 'analyse',
         }),
       }) as never);
-      const corps = await res.json() as { key: string; bucket: string; publicUrl: string };
-      expect(corps.bucket).toBe('media');
-      expect(corps.key.split('/')[1]).toBe('analyse');
-      expect(corps.publicUrl).toContain(`${PREFIXE_PUBLIC}media/${UTILISATEUR}/analyse/`);
-      expect(etat.multipart).toEqual([{ bucket: 'media', cle: corps.key }]);
+      expect(res.status).toBe(422);
+      // La preuve qui compte : aucun envoi n'a été initié dans le stockage.
+      expect(etat.multipart).toEqual([]);
     } finally {
       delete process.env.MINIO_PUBLIC_ENDPOINT;
     }
@@ -1081,7 +1096,7 @@ describe('FAUX POSITIF — `purpose` n est contraint nulle part', () => {
    * Et `purpose` n'est même pas limité à UN segment : rien n'y filtre la barre
    * oblique. `purpose: 'x/analyse/y'` place le segment n'importe où.
    */
-  it('`purpose` peut contenir des barres obliques — le segment va où il veut', async () => {
+  it('`purpose` ne peut plus contenir de barre oblique', async () => {
     delete process.env.MINIO_PUBLIC_ENDPOINT;
     const { POST } = await import('@/app/api/upload/signed-url/route');
     const res = await POST(new Request('https://studiio.pro/api/upload/signed-url', {
@@ -1090,9 +1105,11 @@ describe('FAUX POSITIF — `purpose` n est contraint nulle part', () => {
         filename: 'x.mp4', contentType: 'video/mp4', purpose: 'projets/analyse/2026',
       }),
     }) as never);
-    const corps = await res.json() as { path: string };
-    expect(corps.path).toContain('/analyse/');
-    expect(corps.path.split('/').length).toBe(5);
+    // Une barre oblique permettrait de fabriquer un segment réservé au milieu
+    // du chemin — elle est refusée pour cette seule raison.
+    expect(res.status).toBe(422);
+    const corps = await res.json() as { path?: string };
+    expect(corps.path).toBeUndefined();
   });
 
   /**

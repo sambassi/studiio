@@ -277,13 +277,33 @@ describe('Les contournements de chemin visant `/analyse/` sont refuses aussi', (
     ['segment entierement encode (`%61%6e%61%6c%79%73%65`)', ['userA', '%61%6e%61%6c%79%73%65', 'an-1', 'v.jpg']],
     ['barre oblique encodee dans un seul segment', ['userA%2Fanalyse%2Fan-1', 'vignette-01.jpg']],
     ['barre oblique doublement encodee', ['userA%252Fanalyse%252Fan-1', 'vignette-01.jpg']],
-    ['casse differente (`Analyse`)', ['userA', 'Analyse', 'an-1', 'vignette-01.jpg']],
-    ['casse melangee (`AnAlYsE`)', ['userA', 'AnAlYsE', 'an-1', 'vignette-01.jpg']],
     ['traversee vers le namespace', ['userA', 'rush', '..', 'analyse', 'an-1', 'v.jpg']],
     ['traversee encodee', ['userA', 'rush', '%2e%2e', 'analyse', 'an-1', 'v.jpg']],
     ['separateur antislash', ['userA\\analyse\\an-1\\vignette-01.jpg']],
     ['barres doublees', ['userA', '', 'analyse', '', 'an-1', 'vignette-01.jpg']],
   ];
+
+  /**
+   * ⚠️ LA CASSE N'EST PAS BLOQUEE, ET C'EST UN CHANGEMENT ASSUME.
+   *
+   * La premiere version refusait `Analyse` et `AnAlYsE`. Deux audits
+   * independants ont conclu que c'etait un refus sans gain : les cles S3 sont
+   * exactes a l'octet pres, donc `A/Analyse/...` designe un objet DIFFERENT,
+   * qui n'existe pas. Le bloquer ne rend aucune vignette inaccessible et
+   * n'ajoute que des refus sur des cles qu'un compte pourrait s'etre
+   * legitimement donnees.
+   */
+  it.each([['casse differente', 'Analyse'], ['casse melangee', 'AnAlYsE']])(
+    '%s (`%s`) reste servie — la cle designe un autre objet',
+    async (_q, segment) => {
+      etat.appels.length = 0;
+      const g = await lire('media', ['userA', segment, 'an-1', 'vignette-01.jpg']);
+      // Servie, donc le stockage est bien interroge — la preuve que la garde
+      // n'a pas mordu.
+      expect(g.status).toBe(200);
+      expect(etat.appels.length).toBeGreaterThan(0);
+    },
+  );
 
   for (const [nom, segments] of formes) {
     it(`${nom} : 404 sans appel MinIO`, async () => {

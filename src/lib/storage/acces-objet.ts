@@ -217,13 +217,51 @@ function formesDecodees(valeur: string): string[] {
  *
  * Ne s'applique qu'au compartiment `media`, le seul ou l'extraction ecrit.
  */
+/**
+ * Un `purpose` d'envoi acceptable.
+ *
+ * ⚠️ SANS CETTE GARDE, LE BLOCAGE CI-DESSOUS CRÉE UNE VRAIE RÉGRESSION.
+ *
+ * Les trois routes d'envoi interpolent `purpose` tel quel dans la clé —
+ * `<userId>/<purpose>/<horodatage>-<nom>` — sans aucune liste blanche, et
+ * `sanitizeStorageFilename` ne s'applique qu'au NOM de fichier, jamais au
+ * `purpose`. Un appelant qui demande `purpose: "analyse"` obtient donc une
+ * clé `<userId>/analyse/…` **délivrée par notre propre serveur**, que le
+ * blocage rendrait ensuite illisible — sans message, sans trace, et sans que
+ * son propriétaire puisse comprendre pourquoi.
+ *
+ * Un audit l'a démontré en appelant les vraies routes, pas en le supposant.
+ *
+ * On refuse donc à l'écriture ce qu'on refuse à la lecture, plutôt que de
+ * documenter un trou. Cela ferme aussi, au passage, la possibilité pour un
+ * compte d'écrire dans son propre espace de vignettes : la clé
+ * `<userId>/analyse/<analysisId>/vignette-NN.jpg` est déterministe, et rien
+ * n'interdisait jusqu'ici de l'écraser.
+ *
+ * La barre oblique est refusée pour la même raison : elle permettrait de
+ * fabriquer un segment réservé au milieu du chemin.
+ */
+export function purposeAcceptable(valeur: unknown): boolean {
+  if (typeof valeur !== 'string' || valeur.length === 0) return false;
+  if (valeur.includes('/') || valeur.includes('\\')) return false;
+  if (valeur.includes('..') || valeur.includes('://')) return false;
+  return valeur !== SEGMENT_NAMESPACE_ANALYSE;
+}
+
 export function cleDansNamespaceAnalyse(bucket: unknown, cle: unknown): boolean {
   if (bucket !== BUCKET_NAMESPACE_ANALYSE) return false;
   if (typeof cle !== 'string' || cle.length === 0) return false;
   return formesDecodees(cle).some((forme) => {
     const segments = forme.split('/');
     for (let i = 0; i < segments.length; i++) {
-      if (segments[i].toLowerCase() !== SEGMENT_NAMESPACE_ANALYSE) continue;
+      // ⚠️ SENSIBLE À LA CASSE, ET C'EST DÉLIBÉRÉ.
+      //
+      // Les clés S3 sont exactes à l'octet près : `A/ANALYSE/…` désigne un
+      // objet DIFFÉRENT, qui n'existe pas. Le bloquer ne rend donc aucune
+      // vignette inaccessible — ça n'ajoute que des refus sur des clés qu'un
+      // compte pourrait légitimement s'être données. Deux audits indépendants
+      // ont conclu la même chose.
+      if (segments[i] !== SEGMENT_NAMESPACE_ANALYSE) continue;
       const avant = segments.slice(0, i).some((s) => s.length > 0);
       const apres = segments.slice(i + 1).some((s) => s.length > 0);
       if (avant && apres) return true;
