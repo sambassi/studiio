@@ -194,6 +194,12 @@ function texte(v: unknown): string | null {
  * `src/lib/autopilot/analyse/extraction.ts` : `sonde`, `conteneur`,
  * `codecVideo`, `largeur`, `hauteur`, `fps`, `bitrate`, `rotation`, `aAudio`,
  * `codecAudio`, `canauxAudio`, `frequenceAudio`, `tailleOctets`.
+ *
+ * `extraction.ts` y écrit AUSSI `vignettesAttendues`, `vignettesProduites` et
+ * `vignettesEchouees`. Elles ne sont VOLONTAIREMENT pas lues ici : ce sont des
+ * compteurs de supervision, destinés au journal et aux requêtes de suivi, pas
+ * une mesure du rush. Les afficher à côté du codec et du fps ferait passer un
+ * incident d'outillage pour une caractéristique de la vidéo.
  */
 export function formaterTechnique(
   technique: Record<string, unknown>,

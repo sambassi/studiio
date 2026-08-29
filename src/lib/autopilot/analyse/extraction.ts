@@ -377,9 +377,24 @@ async function executer(entree: EntreeExtraction): Promise<ResultatExtraction> {
   // Une vignette manquante n'annule PAS une mesure réussie : la durée et les
   // dimensions sont ce dont dépendent les lots suivants, les images ne sont
   // qu'un confort de lecture. On rend ce qu'on a pu produire.
-  const vignettes = duree !== null && technique.codecVideo
+  //
+  // `null` = aucune image n'était ATTENDUE — durée non mesurée, ou pas de
+  // piste vidéo. Ce n'est pas la même chose que « attendues et toutes
+  // perdues », et c'est exactement la confusion que ce lot ferme : on ne
+  // compte rien, plutôt que de compter zéro sur zéro.
+  const production = duree !== null && technique.codecVideo
     ? await produireVignettes(url, duree, entree)
-    : [];
+    : null;
+  const vignettes = production?.vignettes ?? [];
+
+  if (production) {
+    // DES NOMBRES, et rien d'autre. `technique` est écrit en base ET rendu
+    // au navigateur par `analysePublique` ; le contrat de sortie lui interdit
+    // déjà tout ce qui ressemble à une URL ou à un chemin serveur. La sortie
+    // de ffmpeg, même masquée, n'a donc pas sa place ici — elle va au journal
+    // du serveur, et nulle part ailleurs.
+    Object.assign(technique, production.bilan);
+  }
 
   return { ok: true, motif: null, detail: null, dureeSecondes: duree, technique, vignettes };
 }
@@ -549,13 +564,35 @@ export function positionsVignettes(dureeSecondes: number): number[] {
   return Array.from({ length: n }, (_, i) => arrondir(((i + 0.5) * dureeSecondes) / n));
 }
 
+/**
+ * Ce que la production d'images a donné. Des NOMBRES, jamais du texte.
+ *
+ * Ces trois entiers partent dans `technique`, donc en base et jusqu'au
+ * navigateur. Ils existent pour une raison précise, constatée en production :
+ * huit tentatives échouées rendaient exactement le même résultat qu'un rush
+ * trop court pour mériter une image — `vignettes: []`, analyse `reussie`,
+ * aucune trace. Une absence PARTIELLE reste normale ; une absence TOTALE
+ * alors que des positions étaient attendues doit se voir et se compter.
+ */
+interface BilanVignettes {
+  vignettesAttendues: number;
+  vignettesProduites: number;
+  vignettesEchouees: number;
+}
+
 async function produireVignettes(
   url: string, duree: number, entree: EntreeExtraction,
-): Promise<VignetteAnalyse[]> {
+): Promise<{ vignettes: VignetteAnalyse[]; bilan: BilanVignettes }> {
   const client = clientMinio(BORNE_MINIO);
   const produites: VignetteAnalyse[] = [];
+  const positions = positionsVignettes(duree);
 
-  for (const [index, seconde] of positionsVignettes(duree).entries()) {
+  // Le PREMIER échec, et lui seul. Les sept suivants ont en pratique la même
+  // cause : les répéter huit fois au journal ne l'explique pas mieux, et
+  // allonge d'autant la fenêtre où un secret pourrait passer.
+  let premierEchec: string | null = null;
+
+  for (const [index, seconde] of positions.entries()) {
     const r = await lancer(cheminFfmpeg(), [
       '-hide_banner',
       '-loglevel', 'error',
@@ -580,10 +617,28 @@ async function produireVignettes(
       '-',
     ], { timeoutMs: TIMEOUT_VIGNETTE_MS, maxSortie: SORTIE_MAX_VIGNETTE });
 
-    // Un échec de vignette est SILENCIEUX pour l'appelant et non fatal :
-    // certaines positions tombent sur une zone sans image clé exploitable, et
-    // perdre la mesure entière pour cela serait absurde.
-    if (r.timeout || r.introuvable || r.code !== 0 || r.stdout.length === 0) continue;
+    // Un échec de vignette ISOLÉ reste non fatal : certaines positions
+    // tombent sur une zone sans image clé exploitable, et perdre la mesure
+    // entière pour cela serait absurde. Mais il n'est plus MUET — il est
+    // compté, et le premier d'entre eux garde sa cause.
+    //
+    // Les quatre conditions sont nommées séparément parce qu'elles ne se
+    // soignent pas pareil : `ENOENT` huit fois de suite, c'est un binaire
+    // absent du conteneur ; `code=1` huit fois, c'est une commande que ce
+    // ffmpeg-là refuse ; une sortie vide avec `code=0`, c'est une lecture
+    // réseau interrompue — ffmpeg sort alors en 0 sans avoir écrit d'image.
+    if (r.timeout || r.introuvable || r.code !== 0 || r.stdout.length === 0) {
+      premierEchec ??= [
+        r.introuvable ? 'ffmpeg-absent(ENOENT)'
+          : r.timeout ? 'processus-interrompu'
+            : r.code !== 0 ? `code=${r.code ?? 'aucun'}`
+              : 'sortie-vide(code=0)',
+        // `lancer()` rend DÉJÀ un stderr masqué et tronqué. La seconde passe
+        // ne coûte rien et tient le jour où `lancer` changerait.
+        masquerUrls(r.stderr).slice(-400),
+      ].join(' ');
+      continue;
+    }
 
     const cle = `${entree.userId}/analyse/${entree.analysisId}/vignette-${String(index + 1).padStart(2, '0')}.jpg`;
     try {
@@ -591,7 +646,8 @@ async function produireVignettes(
         BUCKET_VIGNETTES, cle, r.stdout, r.stdout.length,
         { 'Content-Type': 'image/jpeg' },
       );
-    } catch {
+    } catch (e: unknown) {
+      premierEchec ??= `ecriture ${masquerUrls(e instanceof Error ? e.message : String(e)).slice(0, 400)}`;
       continue;
     }
     produites.push({ bucket: BUCKET_VIGNETTES, cle, seconde });
@@ -602,7 +658,35 @@ async function produireVignettes(
   // visait un compartiment hors liste, l'erreur serait attrapée ici plutôt
   // qu'au moment de l'écriture en base.
   const controle = vignettesValides(produites);
-  return controle.ok ? controle.valeur : [];
+  const vignettes = controle.ok ? controle.valeur : [];
+
+  // `attendues - produites`, et non un compteur incrémenté à la main : la
+  // soustraction englobe du même coup le refus GLOBAL de `vignettesValides`,
+  // qui rend zéro image là où la boucle en avait fabriqué huit.
+  const bilan: BilanVignettes = {
+    vignettesAttendues: positions.length,
+    vignettesProduites: vignettes.length,
+    vignettesEchouees: positions.length - vignettes.length,
+  };
+
+  // ── L'ÉCHEC TOTAL N'A PLUS LE DROIT D'ÊTRE SILENCIEUX ──────────────────
+  //
+  // Une image perdue sur huit est un détail. HUIT sur huit est une panne
+  // complète, et elle s'écrivait `reussie` avec `vignettes: []` — indiscernable
+  // d'un rush d'une demi-seconde qui n'en méritait aucune. Constaté en
+  // production le 2026-08-29 : huit tentatives, zéro image, zéro trace.
+  //
+  // Le journal SERVEUR, et non `technique` : `analysisId` est journalisable
+  // (`identifiantSur` l'a validé), la sortie de ffmpeg ne l'est pas ailleurs.
+  if (positions.length > 0 && vignettes.length === 0) {
+    console.warn('[analyse] aucune vignette produite', {
+      analysisId: entree.analysisId,
+      attendues: positions.length,
+      cause: premierEchec ?? 'inconnue',
+    });
+  }
+
+  return { vignettes, bilan };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
