@@ -10,6 +10,9 @@ import {
   type MotifExtraction,
 } from '@/lib/autopilot/analyse/moteur';
 import {
+  chargerMoteurVisuel, resultatVisuelEtapeValide, FOURNISSEUR_VISUEL,
+} from '@/lib/autopilot/analyse/moteur-visuel';
+import {
   prendrePlaceExtraction, RETRY_APRES_SECONDES,
   MOTIF_CAPACITE_SATUREE, MESSAGE_CAPACITE_SATUREE,
 } from '@/lib/autopilot/analyse/capacite';
@@ -111,7 +114,7 @@ export const runtime = 'nodejs';
  * parce que `RETRY_APRES_SECONDES` s'aligne dessus — pas parce qu'elle
  * garantit quoi que ce soit aujourd'hui.
  */
-export const maxDuration = 300;
+export const maxDuration = 360;
 
 const SOCLE_TOURNAGE_ABSENT =
   'Rushes indisponibles : migration '
@@ -127,6 +130,29 @@ const MOTEUR_ABSENT =
 
 /** Le fournisseur de l'étape `extraction` : ffmpeg, chez nous, sans modèle. */
 const FOURNISSEUR_EXTRACTION = { fournisseur: 'local' as const, modele: 'ffmpeg' };
+
+
+/**
+ * Ce que l'ecran comprend d'un echec de l'etape VISUELLE.
+ *
+ * Aucun de ces echecs n'efface la mesure : `dureeSecondes`, `technique` et
+ * `vignettes` sont deja consignes quand on arrive ici. L'analyse passe
+ * `echouee` a l'etape `visuel`, et ce qui a ete mesure reste lisible.
+ */
+const REFUS_VISUEL: Record<string, { statut: number; message: string }> = {
+  aucune_image: {
+    statut: 422,
+    message: 'Aucune image exploitable n\u2019a pu \u00eatre lue pour ce rush.',
+  },
+  fournisseur_en_erreur: {
+    statut: 503,
+    message: 'La lecture des images n\u2019a pas abouti. R\u00e9essayez plus tard.',
+  },
+  resultat_visuel_invalide: {
+    statut: 500,
+    message: 'La lecture des images a rendu un r\u00e9sultat inexploitable.',
+  },
+};
 
 /**
  * Ce que l'écran comprend d'un échec de mesure, et le code qui va avec.
@@ -425,10 +451,16 @@ async function executerAnalyse(
   // Une seule écriture, parce que `majAnalyse` refuse tout ce qui n'est pas
   // valide AVANT d'écrire : si l'une des trois valeurs ne passe pas, rien
   // n'est écrit et l'état ne ment pas.
+  // ⚠️ L'ANALYSE N'EST PAS CLOSE ICI, ET C'EST LE CŒUR DU LOT.
+  //
+  // `majAnalyse` refuse d'écrire sur une ligne déjà terminée
+  // (`.in('etat', ETATS_ACTIFS)`). Marquer `reussie` maintenant fermerait la
+  // porte à l'étape suivante — elle rendrait `analyse_close` et le visuel
+  // n'aurait nulle part où s'écrire.
+  //
+  // Ce qui est mesuré est donc CONSIGNÉ sans être clos : un échec du visuel
+  // laissera `dureeSecondes`, `technique` et `vignettes` intacts en base.
   const consigne = await majAnalyse(userId, analyse.id, {
-    etat: 'reussie',
-    // `etape` reste `extraction` : c'est là que cette analyse s'arrête, et
-    // l'effacer perdrait l'information de jusqu'où elle est allée.
     dureeSecondes: resultat.dureeSecondes,
     technique: resultat.technique,
     vignettes: resultat.vignettes,
@@ -471,8 +503,118 @@ async function executerAnalyse(
     dureeRushEcrite = false;
   }
 
+  // ── ÉTAPE VISUELLE ────────────────────────────────────────────
+  //
+  // ⚠️ `null` N'EST PAS UNE PANNE. C'est un serveur où aucun fournisseur
+  // n'est branché — l'état de ce lot, où aucun adaptateur réel n'est livré.
+  // L'analyse se clot alors `reussie` à l'étape `extraction`, exactement comme
+  // avant M3-B4, et les analyses déjà en base restent indiscernables des
+  // nouvelles.
+  const moteurVisuel = await chargerMoteurVisuel();
+  if (!moteurVisuel) {
+    const fin = await majAnalyse(userId, analyse.id, { etat: 'reussie' });
+    if (fin.motif || !fin.analyse) {
+      return NextResponse.json(
+        { ok: false, error: 'Résultat non consigné.', motif: fin.motif }, { status: 409 },
+      );
+    }
+    return NextResponse.json(
+      { ok: true, analyse: analysePublique(fin.analyse), dureeRushEcrite }, { status: 201 },
+    );
+  }
+
+  // ⚠️ `extraction` EST RECOPIÉ : `majAnalyse` REMPLACE la carte des
+  // fournisseurs, il ne la fusionne pas. Écrire `{ visuel }` seul effacerait
+  // la trace de ffmpeg.
+  const passage = await majAnalyse(userId, analyse.id, {
+    etape: 'visuel',
+    // Au passage, le modèle n'est pas encore connu : le fournisseur ne l'a
+    // pas encore répondu. On pose l'identité provisoire, et on la corrige à
+    // la clôture avec le nom réellement employé.
+    fournisseurs: { extraction: FOURNISSEUR_EXTRACTION, visuel: FOURNISSEUR_VISUEL },
+  });
+  if (passage.motif || !passage.analyse) {
+    return NextResponse.json(
+      { ok: false, error: 'Résultat non consigné.', motif: passage.motif }, { status: 409 },
+    );
+  }
+
+  // UN SEUL appel, sans reprise — `TENTATIVES_VISUEL`.
+  let brutVisuel: unknown;
+  try {
+    brutVisuel = await moteurVisuel({
+      userId,
+      analysisId: analyse.id,
+      vignettes: consigne.analyse.vignettes,
+      dureeSecondes: resultat.dureeSecondes,
+    });
+  } catch {
+    await majAnalyse(userId, analyse.id, {
+      etat: 'echouee', motifEchec: 'moteur_visuel_en_erreur',
+    });
+    return NextResponse.json(
+      { ok: false, error: 'La lecture des images a échoué.', motif: 'moteur_visuel_en_erreur' },
+      { status: 500 },
+    );
+  }
+
+  const visuel = resultatVisuelEtapeValide(brutVisuel);
+  if (!visuel) {
+    await majAnalyse(userId, analyse.id, {
+      etat: 'echouee', motifEchec: 'resultat_visuel_invalide',
+    });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'La lecture des images a rendu un résultat inexploitable.',
+        motif: 'resultat_visuel_invalide',
+      },
+      { status: 500 },
+    );
+  }
+
+  if (!visuel.ok) {
+    const refus = REFUS_VISUEL[visuel.motif] ?? REFUS_VISUEL.resultat_visuel_invalide;
+    await majAnalyse(userId, analyse.id, {
+      etat: 'echouee', motifEchec: visuel.motif.slice(0, 200),
+    });
+    return NextResponse.json(
+      { ok: false, error: refus.message, motif: visuel.motif }, { status: refus.statut },
+    );
+  }
+
+  // ── LA SEULE ÉCRITURE DE `reussie` DE TOUT LE CHEMIN ────────────────
+  const clot = await majAnalyse(userId, analyse.id, {
+    etat: 'reussie',
+    // ⚠️ LE MODÈLE RÉELLEMENT EMPLOYÉ, pas l'étiquette générique posée avant
+    // l'appel. Savoir qu'un rush a été lu par tel modèle et pas tel autre est
+    // ce qui permettra de comparer deux analyses, ou d'expliquer une dérive.
+    // La valeur vient d'une CONSTANTE de l'adaptateur, jamais d'un champ de
+    // la réponse : un modèle qui se nommerait lui-même choisirait ce qu'on
+    // écrit à son sujet.
+    fournisseurs: {
+      extraction: FOURNISSEUR_EXTRACTION,
+      visuel: { ...FOURNISSEUR_VISUEL, modele: visuel.modele },
+    },
+    resume: visuel.visuel.resume,
+    // ⚠️ LES OBJETS COMPLETS, PAS SEULEMENT LE TEXTE.
+    //
+    // `seconde` et `confiance` sont ce qui distingue une transcription d'un
+    // ancrage : sans elles, M3-C saurait QU'un texte apparaît, jamais OÙ ni
+    // avec quelle certitude. La colonne est un tableau `jsonb`, elle les
+    // accepte tels quels — aucune migration.
+    textesVisibles: visuel.visuel.textesVisibles as unknown as unknown[],
+    qualite: visuel.visuel.qualite as unknown as Record<string, unknown>,
+    usage: visuel.visuel.usage as unknown as Record<string, unknown>,
+  });
+  if (clot.motif || !clot.analyse) {
+    return NextResponse.json(
+      { ok: false, error: 'Résultat non consigné.', motif: clot.motif }, { status: 409 },
+    );
+  }
+
   return NextResponse.json(
-    { ok: true, analyse: analysePublique(consigne.analyse), dureeRushEcrite },
+    { ok: true, analyse: analysePublique(clot.analyse), dureeRushEcrite },
     { status: 201 },
   );
 }

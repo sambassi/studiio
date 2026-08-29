@@ -68,6 +68,15 @@ const MESSAGES_ECHEC: Record<string, string> = {
   resultat_moteur_invalide: 'La mesure a rendu un résultat inexploitable.',
   resultat_moteur_refuse: 'La mesure a rendu une valeur refusée par le contrôle interne.',
   analyse_interrompue: 'L’analyse a été interrompue avant la fin (redémarrage du serveur).',
+  // ── Étape visuelle (M3-B4) ────────────────────────────────────────────
+  //
+  // Aucun de ces échecs n'efface la mesure : durée, technique et vignettes
+  // sont déjà consignées quand l'un d'eux se produit. Le message le dit, pour
+  // qu'on ne croie pas avoir tout perdu.
+  aucune_image: 'Les images du rush n’ont pas pu être relues. La mesure, elle, est faite.',
+  moteur_visuel_en_erreur: 'La lecture des images s’est arrêtée sur une erreur.',
+  fournisseur_en_erreur: 'La lecture des images n’a pas répondu.',
+  resultat_visuel_invalide: 'La lecture des images a rendu un résultat inexploitable.',
 };
 
 /**
@@ -103,6 +112,12 @@ const ECHECS_DEFINITIFS = new Set([
   'moteur_absent',
   'resultat_moteur_invalide',
   'resultat_moteur_refuse',
+  // Un résultat visuel hors contrat le restera tant que le modèle ou le
+  // contrat n'aura pas changé : relancer redonnerait le même refus.
+  'resultat_visuel_invalide',
+  // Aucune image lisible à montrer : ce sont les vignettes qui manquent, et
+  // une relance de la seule étape visuelle n'en fabriquerait pas.
+  'aucune_image',
 ]);
 
 export function relanceCoherente(motif: string | null): boolean {
@@ -302,9 +317,23 @@ export function extraireContenuInterprete(a: {
   textesVisibles: unknown[];
   parole: Record<string, unknown>;
 }): ContenuInterprete {
+  // ⚠️ DEUX FORMES, ET LES DEUX COMPTENT.
+  //
+  // M3-B4 consigne des OBJETS `{ texte, seconde, confiance }` : garder
+  // l'instant et la lisibilité est ce qui permettra à M3-C d'ancrer une
+  // décision dans le temps. Mais la colonne a pu contenir de simples chaînes,
+  // et une analyse déjà en base ne doit pas devenir illisible parce que le
+  // format s'est enrichi. On lit donc les deux, et on n'affiche que le texte.
   const textes = a.textesVisibles
-    .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
-    .map((t) => t.trim());
+    .map((t) => {
+      if (typeof t === 'string') return t.trim();
+      if (t && typeof t === 'object' && !Array.isArray(t)) {
+        const brut = (t as { texte?: unknown }).texte;
+        return typeof brut === 'string' ? brut.trim() : '';
+      }
+      return '';
+    })
+    .filter((t) => t.length > 0);
   const brut = a.parole.texte;
   const paroleTexte = typeof brut === 'string' && brut.trim() ? brut.trim() : null;
   return { resume: a.resume, textes, paroleTexte };

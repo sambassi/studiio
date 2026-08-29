@@ -98,7 +98,22 @@ export const MAX_EXTRACTIONS_SIMULTANEES = 1;
  * `autopilote-m3b2-capacite.test.ts` vérifie que cette valeur reste égale au
  * `maxDuration` de la route — les deux ne peuvent pas diverger en silence.
  */
-export const RETRY_APRES_SECONDES = 300;
+export const RETRY_APRES_SECONDES = 360;
+
+/**
+ * ⚠️ POURQUOI 360 ET NON PLUS 300 — M3-B4.
+ *
+ * L'analyse ne s'arrête plus à l'extraction : l'étape `visuel` s'exécute dans
+ * la même requête. Le pire cas est donc `BUDGET_EXTRACTION_MS` (290 s) plus
+ * `TIMEOUT_VISUEL_MS` (60 s), soit 350 s — au-dessus des 300 s annoncées
+ * jusqu'ici.
+ *
+ * Laisser 300 aurait fait mentir l'en-tête `Retry-After` exactement comme le
+ * décrit le commentaire ci-dessus : le client serait revenu pile pour se faire
+ * refuser de nouveau, et aurait compté ce deuxième refus comme une panne.
+ * `maxDuration` de la route suit la même valeur — un test vérifie que les deux
+ * ne peuvent pas diverger en silence.
+ */
 
 /**
  * Le motif rendu à l'appelant. Une constante, parce qu'un écran le teste et
