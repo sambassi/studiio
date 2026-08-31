@@ -59,8 +59,13 @@ vi.mock('@/lib/autopilot/analyse/extraction', async (importOriginal) => {
   // entièrement vide ferait échouer la validation des motifs, transformant
   // chaque échec attendu en 500. Seule la FONCTION disparaît : c'est elle,
   // et elle seule, dont on veut simuler l'absence.
+  //
+  // ⚠️ TOUT le reste est conservé, et pas seulement les motifs : depuis
+  // M3-D1, `analyse/audio.ts` importe d'ici les bornes réseau et le
+  // lancement de processus. Une doublure qui ne rendrait qu'une clé ferait
+  // échouer le CHARGEMENT du module — pas l'absence du moteur.
   const reel = await importOriginal<Record<string, unknown>>();
-  return { MOTIFS_EXTRACTION: reel.MOTIFS_EXTRACTION };
+  return { ...reel, extraireRush: undefined, extraire: undefined, default: undefined };
 });
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -867,7 +872,13 @@ describe('Le cadre d exécution', () => {
     // elle enchaîne l'étape `visuel` (60 s au pire) dans la MÊME requête. Son
     // budget ne peut donc plus être celui d'une simple conversion — et
     // `RETRY_APRES_SECONDES` suit la même valeur, un autre test le vérifie.
-    expect(maxDuration).toBe(360);
+    //
+    // ⚠️ 480 DEPUIS M3-D1. La mesure audio locale (130 s au pire) s'enchaîne
+    // à son tour avant la clôture. Elle coûte plus qu'une vignette pour une
+    // raison de nature : la bande son est entrelacée sur toute la durée du
+    // fichier, elle ne se lit pas par requêtes `Range` — la passe traverse
+    // donc le rush entier.
+    expect(maxDuration).toBe(480);
     // Les autres routes vidéo, elles, n'ont pas changé : leur travail non plus.
     for (const f of [
       'src/app/api/convert/to-mp4/route.ts',

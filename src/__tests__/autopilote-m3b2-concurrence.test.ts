@@ -772,7 +772,10 @@ describe('La route n a pas dérivé en accueillant le limiteur', () => {
     // pendant la mesure et l'analyse resterait `en_cours` pour toujours.
     //
     // 360 depuis M3-B4 : l'étape `visuel` s'ajoute dans la même requête.
-    expect(maxDuration).toBe(360);
+    // 480 depuis M3-D1 : la mesure audio locale aussi, et elle traverse le
+    // fichier entier — la bande son est entrelacée, elle ne se lit pas par
+    // requêtes `Range`.
+    expect(maxDuration).toBe(480);
   });
 });
 

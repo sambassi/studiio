@@ -98,7 +98,24 @@ export const MAX_EXTRACTIONS_SIMULTANEES = 1;
  * `autopilote-m3b2-capacite.test.ts` vérifie que cette valeur reste égale au
  * `maxDuration` de la route — les deux ne peuvent pas diverger en silence.
  */
-export const RETRY_APRES_SECONDES = 360;
+export const RETRY_APRES_SECONDES = 480;
+
+/**
+ * ⚠️ POURQUOI 480 ET NON PLUS 360 — M3-D1.
+ *
+ * La mesure audio locale s'exécute elle aussi DANS la même requête, avant la
+ * clôture. Le pire cas devient `BUDGET_EXTRACTION_MS` (290 s) plus
+ * `TIMEOUT_VISUEL_MS` (60 s) plus `BUDGET_AUDIO_MS` (130 s), soit 480 s.
+ *
+ * Elle coûte plus cher qu'une vignette pour une raison de nature, pas de
+ * réglage : l'audio est entrelacé sur toute la durée du fichier, il ne se lit
+ * pas par requêtes `Range`. La passe traverse donc le rush entier.
+ *
+ * Laisser 360 aurait fait mentir l'en-tête `Retry-After` exactement comme le
+ * décrit le commentaire ci-dessus. Un test additionne les trois budgets et
+ * vérifie que la somme tient sous cette valeur — ils ne peuvent pas diverger
+ * en silence.
+ */
 
 /**
  * ⚠️ POURQUOI 360 ET NON PLUS 300 — M3-B4.
@@ -124,6 +141,24 @@ export const MOTIF_CAPACITE_SATUREE = 'analyse_capacite_saturee';
 /** Ce que voit l'utilisateur. Aucune mention d'un détail d'infrastructure. */
 export const MESSAGE_CAPACITE_SATUREE =
   'Une autre analyse occupe déjà le serveur. Relancez celle-ci dans un moment.';
+
+/**
+ * Politique V1 : UNE passe audio à la fois sur ce processus.
+ *
+ * ⚠️ POURQUOI UNE BORNE DE PLUS, PUISQU'IL N'Y A DÉJÀ QU'UNE EXTRACTION.
+ *
+ * Parce que les deux bornes ne protègent pas la même chose. La place
+ * d'extraction est prise par la ROUTE d'analyse ; elle garantit qu'une seule
+ * analyse tourne, et c'est tout. `mesurerAudio` est une fonction exportée :
+ * le jour où un cron, une reprise ou un second écran l'appelle hors de cette
+ * route — et ce jour arrive toujours — plus rien ne l'empêcherait de décoder
+ * deux rushes entiers en parallèle sur quatre cœurs partagés avec la base et
+ * le stockage.
+ *
+ * Une garde qu'on suppose tenue en amont est une garde absente. Celle-ci vit
+ * DANS le module qui coûte cher, donc elle tient quel que soit l'appelant.
+ */
+export const MAX_AUDIO_SIMULTANEES = 1;
 
 /**
  * Le compteur. Un entier, et rien d'autre.
@@ -182,6 +217,43 @@ export function extractionsEnCours(): number {
 }
 
 /**
+ * Le compteur des passes audio. SÉPARÉ de celui des extractions, exprès.
+ *
+ * Un compteur commun ferait refuser la mesure audio d'une analyse par la
+ * place que cette même analyse détient déjà — le blocage garanti, à chaque
+ * fois, pour toujours.
+ */
+let audioEnCours = 0;
+
+/**
+ * Prend une place de mesure audio, ou rend `null` si elle est prise.
+ *
+ * Un refus N'EST PAS un échec d'analyse : `mesurerAudio` le traduit en
+ * `etatMesure: 'indisponible'`, motif `capacite_saturee`, et l'analyse se
+ * clôt `reussie` avec son visuel intact. Faire échouer une analyse parce que
+ * la mesure la moins importante n'a pas trouvé de place serait perdre le
+ * travail cher pour protéger le travail bon marché.
+ */
+export function prendrePlaceAudio(): PlaceExtraction | null {
+  if (audioEnCours >= MAX_AUDIO_SIMULTANEES) return null;
+  audioEnCours += 1;
+
+  let rendue = false;
+  return {
+    liberer() {
+      if (rendue) return;
+      rendue = true;
+      audioEnCours -= 1;
+    },
+  };
+}
+
+/** Le nombre de passes audio en cours sur ce processus. Pour les tests. */
+export function passesAudioEnCours(): number {
+  return audioEnCours;
+}
+
+/**
  * Remet le compteur à zéro — POUR LES TESTS, et pour eux seuls.
  *
  * Même esprit que `definirMoteurExtraction` : la couture est exportée pour que
@@ -191,4 +263,5 @@ export function extractionsEnCours(): number {
  */
 export function reinitialiserCapacite(): void {
   enCours = 0;
+  audioEnCours = 0;
 }

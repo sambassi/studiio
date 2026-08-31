@@ -710,7 +710,7 @@ async function produireVignettes(
 // Lancement de processus
 // ─────────────────────────────────────────────────────────────────────────
 
-interface SortieProcessus {
+export interface SortieProcessus {
   /** Le code de SORTIE, et lui seul. `null` quand le processus n'en a pas eu. */
   code: number | null;
   /**
@@ -770,7 +770,25 @@ export function etiquetteSysteme(valeur: unknown): string | null {
 }
 
 /**
+ * La FIN de `stderr` qu'on conserve par défaut, en caractères.
+ *
+ * La fin, et non le début : c'est là que ffmpeg dit pourquoi il s'est arrêté.
+ * Huit mille caractères suffisent largement à un message d'échec.
+ *
+ * ⚠️ Un appelant qui LIT `stderr` comme une MESURE — et non comme une cause
+ * d'échec — doit relever cette borne : `silencedetect` écrit une ligne par
+ * silence, et garder « la fin » reviendrait alors à perdre en silence les
+ * premiers silences du rush. Voir `analyse/audio.ts`, seul appelant à le
+ * faire aujourd'hui.
+ */
+const STDERR_CONSERVE = 8000;
+
+/**
  * Lance un binaire et rend sa sortie. Ne lève jamais.
+ *
+ * ⚠️ EXPORTÉ, et à n'utiliser QUE pour un binaire de ce module (ffprobe,
+ * ffmpeg) sur une URL fabriquée par le serveur. Les quatre garanties
+ * ci-dessous ne valent que dans ces conditions.
  *
  * Quatre garanties, toutes nécessaires :
  *
@@ -786,8 +804,9 @@ export function etiquetteSysteme(valeur: unknown): string | null {
  * 4. `stderr` tronqué et URLs masquées AVANT de revenir. Ce que ffmpeg écrit
  *    contient l'URL d'entrée dès qu'il échoue.
  */
-function lancer(
-  binaire: string, args: string[], opts: { timeoutMs: number; maxSortie: number },
+export function lancer(
+  binaire: string, args: string[],
+  opts: { timeoutMs: number; maxSortie: number; stderrMax?: number },
 ): Promise<SortieProcessus> {
   return new Promise((resolve) => {
     execFile(binaire, args, {
@@ -810,7 +829,7 @@ function lancer(
         stdout: Buffer.isBuffer(stdout) ? stdout : Buffer.alloc(0),
         stderr: masquerUrls(
           (Buffer.isBuffer(stderr) ? stderr.toString('utf8') : String(stderr ?? '')),
-        ).slice(-8000),
+        ).slice(-(opts.stderrMax ?? STDERR_CONSERVE)),
         timeout: Boolean(e?.killed) || e?.signal === 'SIGKILL',
         introuvable: e?.code === 'ENOENT',
       });

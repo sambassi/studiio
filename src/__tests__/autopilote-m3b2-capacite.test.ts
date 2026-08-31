@@ -68,8 +68,13 @@ vi.mock('@/lib/auth/config', () => ({ auth: () => authMock() }));
  * disparaît.
  */
 vi.mock('@/lib/autopilot/analyse/extraction', async (importOriginal) => {
+  // ⚠️ TOUT le module est conservé SAUF la fonction de mesure : c'est elle,
+  // et elle seule, dont on veut simuler l'absence. Ne rendre qu'une clé
+  // faisait échouer le CHARGEMENT du module pour les autres consommateurs de
+  // ce fichier — `analyse/audio.ts` en importe les bornes réseau et le
+  // lancement de processus — au lieu de simuler ce qu'on voulait simuler.
   const reel = await importOriginal<Record<string, unknown>>();
-  return { MOTIFS_EXTRACTION: reel.MOTIFS_EXTRACTION };
+  return { ...reel, extraireRush: undefined, extraire: undefined, default: undefined };
 });
 
 // ───────────────────────────────────────────────────────────────────────────

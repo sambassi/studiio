@@ -408,7 +408,9 @@ describe('Les TROIS appels MinIO de l’extraction portent la borne', () => {
     // La valeur reste — elle redeviendrait vraie sur une plateforme qui
     // l'applique — mais le commentaire doit dire qu'elle ne borne rien ici.
     // 360 depuis M3-B4 : l'étape `visuel` s'ajoute dans la même requête.
-    expect(route).toContain('export const maxDuration = 360');
+    // 480 depuis M3-D1 : la mesure audio aussi, et elle traverse le fichier
+    // entier — la bande son est entrelacée, elle ne se lit pas par `Range`.
+    expect(route).toContain('export const maxDuration = 480');
     expect(route).toContain('NE PROTÈGE RIEN');
     expect(route).toContain('Coolify');
   });

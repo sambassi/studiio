@@ -17,6 +17,8 @@ import {
   prendrePlaceExtraction, RETRY_APRES_SECONDES,
   MOTIF_CAPACITE_SATUREE, MESSAGE_CAPACITE_SATUREE,
 } from '@/lib/autopilot/analyse/capacite';
+import { mesurerAudio } from '@/lib/autopilot/analyse/audio';
+import { audioPourBase, audioIndisponible } from '@/lib/autopilot/analyse/audio-contrat';
 import type { Rush } from '@/lib/autopilot/tournage/contrat';
 
 /**
@@ -93,29 +95,32 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 /**
- * 300 s — la borne haute déjà retenue par tout ce qui manipule une vidéo dans
- * ce projet : `/api/convert/to-mp4`, `/api/render`, `/api/render/jobs/[id]/upload`,
- * `/api/cron/publish`. L'extraction est du même ordre de travail : télécharger
- * un rush qui peut peser des gigaoctets, puis le faire lire par ffmpeg.
+ * 480 s — la SOMME des trois budgets internes que cette requête enchaîne, et
+ * rien d'autre : `BUDGET_EXTRACTION_MS` (290 s) + `TIMEOUT_VISUEL_MS` (60 s)
+ * + `BUDGET_AUDIO_MS` (130 s). Le travail est du même ordre que celui de
+ * `/api/convert/to-mp4` ou `/api/render` : faire lire par ffmpeg un rush qui
+ * peut peser des gigaoctets — deux fois ici, puisque la bande son est
+ * entrelacée et ne se lit pas par requêtes `Range`.
  *
  * ⚠️ MAIS CETTE DÉCLARATION NE PROTÈGE RIEN SUR NOTRE HÉBERGEMENT.
  *
  * `maxDuration` est une limite de plateforme sans frais : Vercel l'applique,
  * le serveur Node autonome de Coolify NON (`docs/infra.md` : « il ne reste
  * que `functions.maxDuration` […] inerte sur Coolify »). Aucune requête ne
- * sera donc interrompue à 300 s, et rien au-dessus du moteur ne le sera non
+ * sera donc interrompue à 480 s, et rien au-dessus du moteur ne le sera non
  * plus. Écrire ici que la route « borne » la mesure serait faux, et c'est
  * exactement la croyance qui laissait passer un stockage muet.
  *
  * Ce qui borne réellement est INTERNE au moteur, et lui seul :
  * `TIMEOUT_MINIO_MS` < `TIMEOUT_VIGNETTE_MS` < `TIMEOUT_SONDE_MS` <
- * `BUDGET_EXTRACTION_MS` (`src/lib/autopilot/analyse/extraction.ts`), dont la
- * somme du pire cas reste sous cette valeur. La déclaration est conservée
+ * `BUDGET_EXTRACTION_MS` (`src/lib/autopilot/analyse/extraction.ts`), auquel
+ * s'ajoutent `TIMEOUT_VISUEL_MS` et `BUDGET_AUDIO_MS`, dont la somme du pire
+ * cas reste sous cette valeur. La déclaration est conservée
  * parce qu'elle redeviendrait vraie sur une plateforme qui l'applique, et
  * parce que `RETRY_APRES_SECONDES` s'aligne dessus — pas parce qu'elle
  * garantit quoi que ce soit aujourd'hui.
  */
-export const maxDuration = 360;
+export const maxDuration = 480;
 
 const SOCLE_TOURNAGE_ABSENT =
   'Rushes indisponibles : migration '
@@ -332,6 +337,62 @@ async function refusFauteDePlace(userId: string, rushId: string): Promise<NextRe
  * l'appelant, et le relire ouvrirait une fenêtre pendant laquelle son état
  * pourrait changer entre la vérification et l'usage.
  */
+/**
+ * M3-D1 — LA MESURE AUDIO, JUSTE AVANT LA CLÔTURE.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ POURQUOI ICI, ET NULLE PART AILLEURS
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * `majAnalyse` refuse d'écrire sur une ligne déjà terminée
+ * (`.in('etat', ETATS_ACTIFS)`). Une route séparée qui viendrait renseigner
+ * `audio` APRÈS coup se heurterait donc à `analyse_close` sur toute analyse
+ * `reussie` — c'est-à-dire sur toutes celles qui existent. La mesure doit
+ * avoir lieu pendant que l'analyse est encore ACTIVE, et c'est ce que cette
+ * fonction garantit : elle n'est appelée qu'immédiatement avant l'écriture
+ * qui clôt.
+ *
+ * L'ordre est donc : extraction → visuel → audio → clôture. L'audio en
+ * DERNIER parce qu'il est le moins important des trois : le placer avant le
+ * visuel ferait payer sa lecture du fichier entier à une analyse que le
+ * visuel va peut-être faire échouer trois secondes plus tard.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ ELLE NE PEUT PAS FAIRE ÉCHOUER UNE ANALYSE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Aucun chemin de sortie n'est un échec. `mesurerAudio` rend déjà une issue
+ * `indisponible` plutôt que de lever, et le `catch` ci-dessous est la
+ * ceinture : perdre un résumé visuel qui a coûté un appel de fournisseur
+ * parce qu'une mesure gratuite s'est mal passée serait le pire arbitrage
+ * possible.
+ *
+ * ⚠️ `etape` N'EST PAS TOUCHÉE. Le vocabulaire de la colonne est borné EN
+ * BASE à `extraction | visuel | transcription` ; y ajouter « audio »
+ * demanderait une migration, que ce lot n'a pas. La provenance de la mesure
+ * vit dans l'objet lui-même, sous `mesure.outil`.
+ */
+async function mesureAudioPourCloture(
+  rush: Rush, userId: string, technique: Record<string, unknown>, dureeSecondes: number | null,
+): Promise<Record<string, unknown>> {
+  // La SEULE autorité sur la présence d'une piste : le sondage ffprobe qui a
+  // mesuré la durée. Absent ou non booléen, c'est `null` — « on ne sait pas »
+  // — et surtout pas `false`.
+  const piste = typeof technique.aAudio === 'boolean' ? technique.aAudio : null;
+  try {
+    return audioPourBase(await mesurerAudio({
+      bucket: rush.bucket,
+      cleObjet: rush.cleObjet,
+      userId,
+      dureeSecondes,
+      pisteAttendue: piste,
+    }));
+  } catch {
+    // Le message n'est PAS repris : il pourrait nommer un hôte de stockage.
+    return audioPourBase(audioIndisponible('audio_illisible', dureeSecondes, piste));
+  }
+}
+
 async function executerAnalyse(
   userId: string, rushId: string, rush: Rush,
 ): Promise<NextResponse> {
@@ -536,7 +597,11 @@ async function executerAnalyse(
     );
   }
   if (!moteurVisuel) {
-    const fin = await majAnalyse(userId, analyse.id, { etat: 'reussie' });
+    // ── M3-D1 : la mesure audio, PUIS la clôture ─────────────────────────
+    const audio = await mesureAudioPourCloture(
+      rush, userId, consigne.analyse.technique, resultat.dureeSecondes,
+    );
+    const fin = await majAnalyse(userId, analyse.id, { etat: 'reussie', audio });
     if (fin.motif || !fin.analyse) {
       return NextResponse.json(
         { ok: false, error: 'Résultat non consigné.', motif: fin.motif }, { status: 409 },
@@ -625,9 +690,19 @@ async function executerAnalyse(
     );
   }
 
+  // ── M3-D1 : la mesure audio, PUIS la clôture ────────────────────────
+  //
+  // APRÈS le visuel, et dans la même écriture que lui : l'analyse ne devient
+  // `reussie` qu'une fois les deux consignées, et M3-C ne voit donc jamais
+  // une analyse `reussie` dont l'audio n'aurait pas été tenté.
+  const audio = await mesureAudioPourCloture(
+    rush, userId, consigne.analyse.technique, resultat.dureeSecondes,
+  );
+
   // ── LA SEULE ÉCRITURE DE `reussie` DE TOUT LE CHEMIN ────────────────
   const clot = await majAnalyse(userId, analyse.id, {
     etat: 'reussie',
+    audio,
     // ⚠️ LE MODÈLE RÉELLEMENT EMPLOYÉ, pas l'étiquette générique posée avant
     // l'appel. Savoir qu'un rush a été lu par tel modèle et pas tel autre est
     // ce qui permettra de comparer deux analyses, ou d'expliquer une dérive.

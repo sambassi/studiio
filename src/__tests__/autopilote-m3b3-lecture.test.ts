@@ -45,8 +45,14 @@ vi.mock('@/lib/auth/config', () => ({ auth: () => authMock() }));
  * des motifs est conservé : `moteur.ts` en dépend au chargement.
  */
 vi.mock('@/lib/autopilot/analyse/extraction', async (importOriginal) => {
+  // ⚠️ TOUT le module est rendu, SAUF la fonction de mesure : c'est elle
+  // seule qu'on neutralise. Depuis M3-D1, `analyse/audio.ts` importe d'ici
+  // les bornes réseau et le lancement de processus ; ne rendre que les motifs
+  // ferait échouer le CHARGEMENT de la route au lieu de neutraliser le
+  // moteur. Rien n'est exécuté pour autant : ce fichier ne lance aucune
+  // mesure.
   const reel = await importOriginal<Record<string, unknown>>();
-  return { MOTIFS_EXTRACTION: reel.MOTIFS_EXTRACTION };
+  return { ...reel, extraireRush: undefined, extraire: undefined, default: undefined };
 });
 
 // ───────────────────────────────────────────────────────────────────────────
