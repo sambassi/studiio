@@ -556,9 +556,27 @@ describe('M3-B2 n ajoute AUCUNE migration', () => {
    * qui parlerait de `rush_analyses` ferait rougir ce test, et c'est tout
    * l'intérêt de le maintenir.
    */
-  it('seules les migrations M3-B1 et M3-C parlent de `rush_analyses`', () => {
+  /**
+   * ⚠️ LE CODE, PAS LES COMMENTAIRES — ET C'EST M3-D2 QUI L'EXIGE.
+   *
+   * La règle porte sur ce qu'une migration FAIT à `rush_analyses`. La
+   * migration de M3-D2 crée `rush_transcriptions` sans toucher aux analyses,
+   * mais son en-tête explique POURQUOI elle ne se pose pas dans
+   * `rush_analyses.parole` — et cette explication est précisément ce qui
+   * empêchera quelqu'un de refaire le mauvais choix dans six mois.
+   *
+   * Chercher le nom dans le texte brut punirait donc le commentaire utile
+   * tout en laissant passer un `alter table` déguisé sous un autre nom. Le
+   * contrôle porte sur le SQL sans ses commentaires — le test frère fait déjà
+   * exactement ce filtrage, pour exactement cette raison.
+   */
+  const sqlSansCommentaires = (f: string) => readFileSync(
+    chemin(join('migrations', f)), 'utf-8',
+  ).split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+
+  it('seules les migrations M3-B1 et M3-C TOUCHENT `rush_analyses`', () => {
     const parlantes = fichiersMigration.filter(
-      (f) => readFileSync(chemin(join('migrations', f)), 'utf-8').includes('rush_analyses'),
+      (f) => sqlSansCommentaires(f).includes('rush_analyses'),
     );
     expect(parlantes).toEqual([
       '2026-09-01-rush-analyses.sql',
@@ -597,6 +615,43 @@ describe('M3-B2 n ajoute AUCUNE migration', () => {
   });
 
   /**
+   * L'exception de M3-D2 n'est pas un chèque en blanc non plus : elle a le
+   * droit de CRÉER sa table, et de RÉFÉRENCER `rushes`. Rien d'autre.
+   *
+   * En particulier, elle ne pose AUCUN index sur une table existante — la clé
+   * étrangère `(rush_id, user_id)` s'appuie sur `rushes_id_user_key`, que
+   * M3-B1 avait déjà créé pour lui-même.
+   */
+  it('M3-D2 ne touche à AUCUNE table existante, et ne détruit rien', () => {
+    const fichier = '2026-09-03-rush-transcriptions.sql';
+    expect(fichiersMigration).toContain(fichier);
+    const code = sqlSansCommentaires(fichier).toLowerCase();
+
+    // Elle crée sa table, et c'est son seul objet.
+    expect(code).toMatch(/create table if not exists public\.rush_transcriptions/);
+
+    // Le SEUL contact avec une table existante : la référence de la clé
+    // étrangère composite. Aucun index, aucun `alter`.
+    expect((code.match(/references public\.rushes/g) ?? []).length).toBe(1);
+    expect((code.match(/on public\.rushes\b/g) ?? []).length).toBe(0);
+    expect(code, 'aucun ALTER, sur quoi que ce soit').not.toMatch(/alter\s+table/);
+
+    // Les analyses et les candidats sont hors de son périmètre.
+    expect(code).not.toContain('rush_analyses');
+    expect(code).not.toContain('rush_candidate_sets');
+
+    // Et aucun geste destructif, nulle part.
+    for (const interdit of [
+      'drop table', 'drop column', 'drop index', 'truncate', 'delete from', 'alter column',
+    ]) {
+      expect(code, `M3-D2 ne doit pas contenir « ${interdit} »`).not.toContain(interdit);
+    }
+
+    // Aucun droit ouvert au rôle anonyme de PostgREST.
+    expect(code).not.toMatch(/\bgrant\b/);
+  });
+
+  /**
    * La règle porte sur la DATE du fichier, pas sur son vocabulaire.
    *
    * Une première rédaction cherchait « ffmpeg » dans tout le dossier. Elle
@@ -609,7 +664,13 @@ describe('M3-B2 n ajoute AUCUNE migration', () => {
     // M3-C est l'exception NOMMÉE, et le test juste au-dessus borne ce
     // qu'elle a le droit d'y faire. L'exclure ici sans cette seconde garde
     // reviendrait à retirer la règle.
-    const AUTORISEES = new Set(['2026-09-02-rush-candidate-sets.sql']);
+    // M3-C et M3-D2 sont les exceptions NOMMÉES, et chacune a sa propre garde
+    // juste au-dessus / au-dessous, qui borne ce qu'elle a le droit de faire.
+    // Les exclure ici sans ces gardes reviendrait à retirer la règle.
+    const AUTORISEES = new Set([
+      '2026-09-02-rush-candidate-sets.sql',
+      '2026-09-03-rush-transcriptions.sql',
+    ]);
     const posterieures = fichiersMigration.filter(
       (f) => f > '2026-09-01-rush-analyses.sql' && !AUTORISEES.has(f),
     );
