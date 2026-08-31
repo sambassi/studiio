@@ -55,8 +55,9 @@
 -- Ni moteur de coupe, ni sous-titre, ni montage, ni traduction, ni diarisation,
 -- ni debit de credits. M3-D2 v1 rend du TEXTE HORODATE ; il ne coupe rien.
 --
--- Aucune URL, aucune cle de stockage : une transcription est du texte et des
--- instants, elle ne designe aucun objet.
+-- Aucune cle de stockage, aucun en-tete, aucun champ brut du fournisseur : la
+-- table ne recoit que ce que le contrat RECONSTRUIT. Le TEXTE, lui, peut
+-- contenir ce que les gens disent — une adresse de site comprise.
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -107,20 +108,36 @@ create table if not exists public.rush_transcriptions (
   -- Des TABLEAUX, jamais des objets : segments et mots sont ORDONNES, et un
   -- objet perdrait cet ordre au premier aller-retour JSON.
   --
-  -- Le `not like '%://%'` reprend la garde de `rush_analyses.vignettes` et de
-  -- `rush_candidate_sets.candidats` : une transcription est du texte et des
-  -- instants. Aucune URL n'a de raison d'y entrer, donc aucune ne peut.
+  -- ─────────────────────────────────────────────────────────────────────
+  -- ⚠️ PAS DE `not like '%://%'` ICI, CONTRAIREMENT A `vignettes` ET
+  --    `candidats` — ET C'EST UNE DIFFERENCE DE NATURE, PAS UN OUBLI.
+  -- ─────────────────────────────────────────────────────────────────────
   --
-  -- ⚠️ La garde vaut aussi contre une PAROLE qui contiendrait « http:// » —
-  -- et c'est assume : refuser une transcription plutot que laisser une base
-  -- de donnees decider si une URL est innocente.
+  -- Une vignette est une CLE que le serveur fabrique : une URL n'y a aucune
+  -- raison d'entrer, donc la base peut l'interdire. Un candidat est un
+  -- intervalle et une phrase que le serveur ecrit : meme chose.
+  --
+  -- Une transcription, elle, est la PAROLE DE L'UTILISATEUR. « Retrouvez-nous
+  -- sur https://studiio.pro » est une phrase parfaitement ordinaire dans un
+  -- rush promotionnel. Une contrainte lexicale la ferait echouer, et l'echec
+  -- porterait sur ce que quelqu'un a DIT — c'est-a-dire sur rien de dangereux.
+  --
+  -- La securite est donc STRUCTURELLE, et elle vit dans
+  -- `transcription-contrat.ts` : l'objet ecrit est RECONSTRUIT champ par
+  -- champ — `presente`, `langue`, `texte`, `segments`, `mots`, et rien
+  -- d'autre. Un champ annexe du fournisseur, une URL signee, un en-tete, un
+  -- identifiant de requete n'ont aucun CHEMIN vers cette table : ils ne sont
+  -- pas filtres, ils ne sont jamais copies. Un test le verifie en injectant
+  -- exactement ces champs.
+  --
+  -- Interdire un motif de texte, c'est se proteger d'un contenu ; ne jamais
+  -- recopier un champ inconnu, c'est se proteger d'une structure. Seule la
+  -- seconde protection vaut ici.
   segments    jsonb not null default '[]'::jsonb
-                check (jsonb_typeof(segments) = 'array'
-                       and segments::text not like '%://%'),
+                check (jsonb_typeof(segments) = 'array'),
 
   mots        jsonb not null default '[]'::jsonb
-                check (jsonb_typeof(mots) = 'array'
-                       and mots::text not like '%://%'),
+                check (jsonb_typeof(mots) = 'array'),
 
   -- Secondes facturables, octets envoyes. RENSEIGNE, JAMAIS DEBITE dans ce
   -- lot : le debit viendra quand le cout reel sera connu, et il passera par

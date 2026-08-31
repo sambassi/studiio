@@ -22,7 +22,7 @@
 import { avecAudioFlac, type EntreeAudioFlac } from './transcription-audio';
 import {
   lireReponseTranscription,
-  type MotifTranscription, type Transcription,
+  type MotifTranscription, type Transcription, type Nettoyage,
 } from './transcription-contrat';
 
 /**
@@ -83,14 +83,24 @@ export interface EntreeEtapeTranscription extends EntreeAudioFlac {
   dureeSecondes: number;
 }
 
-export type ResultatEtapeTranscription =
+export type ResultatEtapeTranscription = {
+  /**
+   * L'issue du nettoyage du fichier temporaire — indépendante du succès.
+   *
+   * Elle accompagne TOUTES les issues, y compris les réussites : un `rm` raté
+   * ne rend pas une transcription fausse, mais il ne doit pas disparaître
+   * pour autant.
+   */
+  nettoyage: Nettoyage;
+} & (
   | {
       ok: true;
       transcription: Transcription;
       modele: string;
       usage: Record<string, unknown>;
     }
-  | { ok: false; motif: MotifTranscription; detail?: string };
+  | { ok: false; motif: MotifTranscription; detail?: string }
+);
 
 /**
  * Le minimum facturé par le fournisseur, en secondes.
@@ -115,22 +125,41 @@ export async function transcrireRush(
   entree: EntreeEtapeTranscription,
   fournisseur: FournisseurTranscription,
 ): Promise<ResultatEtapeTranscription> {
+  // ⚠️ L'ÉCHEC DU FOURNISSEUR EST RATTRAPÉ **DANS** LE TRAVAIL, ET C'EST
+  // DÉLIBÉRÉ.
+  //
+  // Laisser l'exception traverser `avecAudioFlac` emporterait avec elle
+  // l'issue du nettoyage — sur le seul chemin où elle compte vraiment. Elle
+  // devient donc une valeur, et rien ne s'échappe.
   const resultat = await avecAudioFlac(entree, async (fichier) => {
-    // ⚠️ UN SEUL APPEL. Une exception ici n'est PAS rattrapée dans le
-    // `travail` : elle traverse `avecAudioFlac`, dont le `finally` supprime
-    // quand même le fichier, et c'est l'appelant qui la nomme.
-    return fournisseur({ chemin: fichier.chemin, octets: fichier.octets });
+    try {
+      // UN SEUL APPEL. Aucune reprise : un fournisseur qui refuse ne devient
+      // pas accueillant parce qu'on insiste.
+      return {
+        ok: true as const,
+        sortie: await fournisseur({ chemin: fichier.chemin, octets: fichier.octets }),
+      };
+    } catch {
+      // Le message n'est PAS repris : il peut porter un identifiant de
+      // requête, une URL, voire un fragment de configuration.
+      return { ok: false as const };
+    }
   });
 
-  if (!resultat.ok) return { ok: false, motif: resultat.motif };
+  const nettoyage = resultat.nettoyage;
+  if (!resultat.ok) return { ok: false, motif: resultat.motif, nettoyage };
+  if (!resultat.valeur.ok) {
+    return { ok: false, motif: 'fournisseur_en_erreur', nettoyage };
+  }
 
-  const sortie = resultat.valeur;
+  const sortie = resultat.valeur.sortie;
   const lu = lireReponseTranscription(sortie.reponse, entree.dureeSecondes);
-  if (!lu.ok) return { ok: false, motif: lu.motif, detail: lu.detail };
+  if (!lu.ok) return { ok: false, motif: lu.motif, detail: lu.detail, nettoyage };
 
   const secondes = Math.max(0, entree.dureeSecondes);
   return {
     ok: true,
+    nettoyage,
     transcription: lu.transcription,
     modele: sortie.modele,
     usage: {

@@ -19,9 +19,18 @@
  * Une fonction qui rendrait `{ chemin }` ferait dépendre la suppression de la
  * discipline de son appelant — et l'appelant, un jour, prend une sortie
  * anticipée qu'il n'avait pas prévue. `avecAudioFlac` prend le TRAVAIL en
- * argument et enveloppe TOUT dans son propre `finally` : le répertoire
- * disparaît que le travail réussisse, échoue, ou lève. Il n'y a pas de
- * chemin de code où le fichier survit.
+ * argument et enveloppe TOUT dans son propre `finally` : la suppression est
+ * TENTÉE que le travail réussisse, échoue, ou lève.
+ *
+ * ⚠️ « TENTÉE », ET NON « GARANTIE ». `rm` peut échouer — `EBUSY`, `EPERM`,
+ * un volume monté en lecture seule. Avaler cette erreur permettrait d'écrire
+ * ici que le fichier ne survit jamais ; ce serait faux, et faux en silence :
+ * le disque se remplirait un FLAC à la fois sans que rien ne l'annonce.
+ *
+ * L'issue du nettoyage est donc RENDUE (`nettoyage: 'ok' | 'echoue'`), et
+ * l'appelant en fait quelque chose. Ce qu'il n'en fait PAS : relancer le
+ * fournisseur. Le nettoyage a lieu APRÈS le travail — un résultat déjà obtenu
+ * et déjà payé ne se rejette pas parce qu'un `rm` a raté.
  *
  * ─────────────────────────────────────────────────────────────────────────
  * CE QUI N'EXISTE NULLE PART ICI
@@ -44,7 +53,9 @@ import { signeurInterne } from '@/lib/storage/minio-client';
 import {
   BORNE_MINIO, TIMEOUT_MINIO_MS, TTL_URL_SECONDES, PROTOCOLES_AUTORISES, lancer,
 } from './extraction';
-import { FLAC_OCTETS_MAX, type MotifTranscription } from './transcription-contrat';
+import {
+  FLAC_OCTETS_MAX, type MotifTranscription, type Nettoyage,
+} from './transcription-contrat';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Les bornes
@@ -104,8 +115,8 @@ export interface FichierFlac {
 }
 
 export type ResultatAudioFlac<T> =
-  | { ok: true; valeur: T; octets: number }
-  | { ok: false; motif: MotifTranscription };
+  | { ok: true; valeur: T; octets: number; nettoyage: Nettoyage }
+  | { ok: false; motif: MotifTranscription; nettoyage: Nettoyage };
 
 /**
  * Les arguments de l'extraction. Exportés pour être PROUVABLES.
@@ -147,47 +158,56 @@ export async function avecAudioFlac<T>(
   entree: EntreeAudioFlac,
   travail: (fichier: FichierFlac) => Promise<T>,
 ): Promise<ResultatAudioFlac<T>> {
+  // Les refus qui arrivent AVANT la création du répertoire n'ont rien à
+  // nettoyer : leur nettoyage est `ok` parce qu'il n'y avait rien à faire, et
+  // non parce qu'on aurait réussi quelque chose.
+  const refus = (motif: MotifTranscription): ResultatAudioFlac<T> => (
+    { ok: false, motif, nettoyage: 'ok' }
+  );
+
   // ── 1. Le périmètre, avant tout accès ────────────────────────────────
   //
   // Les mêmes gardes qu'en M3-B2 et M3-D1, répétées plutôt que supposées :
   // une garde qu'on suppose faite en amont est une garde absente.
-  if (!bucketAutorise(entree.bucket)) return { ok: false, motif: 'cle_hors_perimetre' };
+  if (!bucketAutorise(entree.bucket)) return refus('cle_hors_perimetre');
   if (typeof entree.userId !== 'string' || !/^[\w-]{1,64}$/.test(entree.userId)) {
-    return { ok: false, motif: 'cle_hors_perimetre' };
+    return refus('cle_hors_perimetre');
   }
   const cle = entree.cleObjet;
   // Le préfixe EST la preuve de propriété. Qu'un objet EXISTE ne prouve rien.
   if (typeof cle !== 'string' || !cle.startsWith(`${entree.userId}/`)) {
-    return { ok: false, motif: 'cle_hors_perimetre' };
+    return refus('cle_hors_perimetre');
   }
   // `A/../B/x` satisfait le préfixe tout en désignant l'espace de B.
-  if (cle.includes('..') || cle.includes('://')) {
-    return { ok: false, motif: 'cle_hors_perimetre' };
-  }
+  if (cle.includes('..') || cle.includes('://')) return refus('cle_hors_perimetre');
 
   // ── 2. L'URL signée, interne et brève ────────────────────────────────
   const signeur = signeurInterne(BORNE_MINIO);
-  if (!signeur) return { ok: false, motif: 'stockage_injoignable' };
+  if (!signeur) return refus('stockage_injoignable');
 
   let url: string;
   try {
     url = await signeur.presignedGetObject(entree.bucket, cle, TTL_URL_SECONDES);
   } catch {
     // Le message n'est PAS repris : il peut nommer un hôte de stockage.
-    return { ok: false, motif: 'stockage_injoignable' };
+    return refus('stockage_injoignable');
   }
   if (typeof url !== 'string' || !/^https?:\/\//.test(url)) {
-    return { ok: false, motif: 'stockage_injoignable' };
+    return refus('stockage_injoignable');
   }
 
-  // ── 3. Le répertoire temporaire, et son `finally` ────────────────────
+  // ── 3. Le répertoire temporaire ──────────────────────────────────────
   let dossier: string;
   try {
     dossier = await mkdtemp(join(tmpdir(), 'studiio-m3d2-'));
   } catch {
-    return { ok: false, motif: 'stockage_injoignable' };
+    return refus('stockage_injoignable');
   }
 
+  // ⚠️ À PARTIR D'ICI, IL Y A QUELQUE CHOSE À SUPPRIMER, ET LA SUPPRESSION
+  // PEUT RATER. Le résultat porte donc son issue jusqu'à l'appelant.
+  let nettoyageRate = false;
+  let sortieResultat: ResultatAudioFlac<T>;
   try {
     const sortie = join(dossier, 'piste.flac');
 
@@ -196,36 +216,60 @@ export async function avecAudioFlac<T>(
       maxSortie: SORTIE_MAX_FLAC,
     });
 
-    if (proc.introuvable) return { ok: false, motif: 'outil_absent' };
-    if (proc.timeout) return { ok: false, motif: 'timeout' };
+    if (proc.introuvable) sortieResultat = refus('outil_absent');
+    else if (proc.timeout) sortieResultat = refus('timeout');
     // Un code non nul couvre le fichier illisible ET l'absence de la piste
     // que `-map 0:a:0` réclamait. Les deux se disent `audio_illisible` : dans
     // les deux cas l'extraction n'a PAS eu lieu, et c'est la seule chose
     // qu'on ait le droit d'affirmer.
-    if (proc.code !== 0) return { ok: false, motif: 'audio_illisible' };
+    else if (proc.code !== 0) sortieResultat = refus('audio_illisible');
+    else {
+      let octets: number | null = null;
+      try { octets = (await stat(sortie)).size; } catch { octets = null; }
 
-    let octets: number;
-    try {
-      octets = (await stat(sortie)).size;
-    } catch {
-      return { ok: false, motif: 'audio_illisible' };
+      // ffmpeg peut sortir 0 sur une piste vide : un FLAC sans échantillon
+      // n'est pas un échec de transfert, c'est un fichier qu'il ne sert à
+      // rien d'envoyer.
+      if (octets === null || octets <= 0) sortieResultat = refus('audio_illisible');
+      // ⚠️ LA BORNE EST VÉRIFIÉE ICI, AVANT le travail — donc avant l'appel
+      // payant. Refuser après avoir envoyé serait payer pour rien ; tronquer
+      // serait rendre un texte amputé sans le dire.
+      else if (octets > FLAC_OCTETS_MAX) sortieResultat = refus('audio_trop_long');
+      else {
+        sortieResultat = {
+          ok: true,
+          valeur: await travail({ chemin: sortie, octets }),
+          octets,
+          nettoyage: 'ok',
+        };
+      }
     }
-    // ffmpeg peut sortir 0 sur une piste vide : un FLAC sans échantillon
-    // n'est pas un échec de transfert, c'est un fichier qu'il ne sert à rien
-    // d'envoyer.
-    if (octets <= 0) return { ok: false, motif: 'audio_illisible' };
-
-    // ⚠️ LA BORNE EST VÉRIFIÉE ICI, AVANT le travail — donc avant l'appel
-    // payant. Refuser après avoir envoyé serait payer pour rien ; tronquer
-    // serait rendre un texte amputé sans le dire.
-    if (octets > FLAC_OCTETS_MAX) return { ok: false, motif: 'audio_trop_long' };
-
-    const valeur = await travail({ chemin: sortie, octets });
-    return { ok: true, valeur, octets };
   } finally {
-    // LA suppression, et elle couvre tout : succès, refus contrôlé, exception
-    // du travail, dépassement de délai. `force` pour qu'un répertoire déjà
-    // disparu ne transforme pas un nettoyage en panne.
-    await rm(dossier, { recursive: true, force: true }).catch(() => {});
+    // LA suppression, tentée quoi qu'il arrive : succès, refus contrôlé,
+    // exception du travail, dépassement de délai. `force` pour qu'un
+    // répertoire déjà disparu ne compte pas comme un échec.
+    //
+    // ⚠️ SON ÉCHEC EST CONSIGNÉ, JAMAIS AVALÉ. Une erreur d'`unlink` est rare
+    // et anormale : la taire laisserait le disque se remplir sans qu'aucun
+    // signal n'existe. Elle n'est PAS transformée en échec de transcription
+    // pour autant — voir `MOTIF_NETTOYAGE_ECHOUE`.
+    //
+    // Le message système n'est pas repris : il contient le CHEMIN.
+    try {
+      await rm(dossier, { recursive: true, force: true });
+    } catch {
+      nettoyageRate = true;
+    }
   }
+
+  // ⚠️ SI `travail` LÈVE, L'EXCEPTION PART SANS L'ISSUE DU NETTOYAGE.
+  //
+  // C'est pourquoi `transcrireRush` rattrape l'échec du fournisseur DANS le
+  // travail, et ne laisse rien traverser : sans cela, le seul chemin où le
+  // nettoyage rate ET où on ne le saurait pas serait précisément celui d'un
+  // fournisseur en panne — le moment où le disque a le plus de chances de
+  // garder un fichier.
+  //
+  // L'issue est reportée ici, après le `finally` qui l'a établie.
+  return nettoyageRate ? { ...sortieResultat, nettoyage: 'echoue' } : sortieResultat;
 }

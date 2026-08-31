@@ -39,6 +39,29 @@ vi.mock('@/lib/storage/minio-client', async (orig) => ({
 
 vi.mock('@/lib/auth/config', () => ({ auth: async () => ({ user: { id: 'A' } }) }));
 
+/** Quand vrai, `rm` échoue — comme un `EBUSY` ou un volume en lecture seule. */
+let rmCasse = false;
+/** Les répertoires que `rm` s'est vu demander de supprimer. */
+const rmDemandes: string[] = [];
+
+vi.mock('fs/promises', async (orig) => {
+  const reel = await orig<typeof import('fs/promises')>();
+  return {
+    ...reel,
+    rm: async (chemin: string, options?: object) => {
+      rmDemandes.push(chemin);
+      if (rmCasse) {
+        // Le message d'un vrai échec système PORTE le chemin — c'est
+        // précisément ce qui ne doit jamais ressortir.
+        throw Object.assign(
+          new Error(`EBUSY: resource busy or locked, rm '${chemin}'`), { code: 'EBUSY' },
+        );
+      }
+      return reel.rm(chemin, options as never);
+    },
+  };
+});
+
 /** Les chemins que ffmpeg s'est vu demander d'écrire. Pour prouver la suppression. */
 const cheminsProduits: string[] = [];
 /** Ce que le faux ffmpeg doit faire. */
@@ -216,6 +239,7 @@ import {
   SEGMENTS_MAX, MOTS_MAX, TEXTE_MAX, SEGMENT_TEXTE_MAX, MOT_TEXTE_MAX,
   FLAC_OCTETS_MAX, REPONSE_MAX_OCTETS, PEREMPTION_TRANSCRIPTION_MS,
   seuilPeremptionTranscription, MOTIFS_TRANSCRIPTION, FOURNISSEUR_TRANSCRIPTION,
+  MOTIF_NETTOYAGE_ECHOUE, CLE_USAGE_NETTOYAGE,
 } from '@/lib/autopilot/analyse/transcription-contrat';
 import {
   argumentsFlac, avecAudioFlac, TIMEOUT_FLAC_MS, BUDGET_FLAC_MS, FREQUENCE_HZ, CANAUX,
@@ -300,6 +324,8 @@ beforeEach(() => {
   cheminsProduits.length = 0;
   ffmpeg = { code: 0, octets: 4096 };
   signeurCasse = false;
+  rmCasse = false;
+  rmDemandes.length = 0;
   reinitialiserCapacite();
   definirFournisseurTranscription(null);
   for (const k of ENV_GARDES) { envInitial[k] = process.env[k]; delete process.env[k]; }
@@ -721,7 +747,7 @@ describe('18-20. L’appel, la réponse, et le fichier temporaire', () => {
       { bucket: 'media', cleObjet: 'A/rush/p.mp4', userId: 'A' },
       async () => 'jamais',
     );
-    expect(r).toEqual({ ok: false, motif: 'audio_illisible' });
+    expect(r).toMatchObject({ ok: false, motif: 'audio_illisible', nettoyage: 'ok' });
     expect(existsSync(cheminsProduits[0])).toBe(false);
   });
 
@@ -732,7 +758,7 @@ describe('18-20. L’appel, la réponse, et le fichier temporaire', () => {
       { bucket: 'media', cleObjet: 'A/rush/p.mp4', userId: 'A' },
       async () => { appele(); return 'x'; },
     );
-    expect(r).toEqual({ ok: false, motif: 'audio_trop_long' });
+    expect(r).toMatchObject({ ok: false, motif: 'audio_trop_long', nettoyage: 'ok' });
     expect(appele).not.toHaveBeenCalled();
     expect(existsSync(cheminsProduits[0])).toBe(false);
   });
@@ -754,7 +780,7 @@ describe('18-20. L’appel, la réponse, et le fichier temporaire', () => {
   it('une clé hors périmètre est refusée avant tout accès', async () => {
     for (const cle of ['B/rush/p.mp4', 'A/../B/p.mp4', 'https://ailleurs/p.mp4']) {
       const r = await avecAudioFlac({ bucket: 'media', cleObjet: cle, userId: 'A' }, async () => 1);
-      expect(r).toEqual({ ok: false, motif: 'cle_hors_perimetre' });
+      expect(r).toMatchObject({ ok: false, motif: 'cle_hors_perimetre', nettoyage: 'ok' });
     }
     expect(cheminsProduits).toHaveLength(0);
   });
@@ -764,7 +790,7 @@ describe('18-20. L’appel, la réponse, et le fichier temporaire', () => {
     const r = await avecAudioFlac(
       { bucket: 'media', cleObjet: 'A/rush/p.mp4', userId: 'A' }, async () => 1,
     );
-    expect(r).toEqual({ ok: false, motif: 'stockage_injoignable' });
+    expect(r).toMatchObject({ ok: false, motif: 'stockage_injoignable', nettoyage: 'ok' });
     expect(cheminsProduits).toHaveLength(0);
   });
 
@@ -898,6 +924,166 @@ describe('La capacité, et les refus qui n’écrivent rien', () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════
+describe('La PAROLE peut contenir une URL — la STRUCTURE ne peut rien contenir', () => {
+  /** Une réponse où la personne filmée dit une adresse de site. */
+  const PHRASE = 'Retrouvez-nous sur https://studiio.pro';
+
+  function reponseAvecUrlEtPollution() {
+    return JSON.stringify({
+      language: 'french',
+      text: PHRASE,
+      segments: [{ id: 0, start: 1, end: 3, text: PHRASE }],
+      words: [{ word: 'https://studiio.pro', start: 2, end: 3 }],
+      // ── Ce que le fournisseur pourrait ajouter, et qui ne doit JAMAIS
+      //    entrer : des champs annexes portant exactement ce qu'on protège.
+      x_groq: { id: 'req_01hxyz', region: 'us-east-1' },
+      url: URL_SIGNEE,
+      headers: { authorization: 'Bearer gsk-secret', 'x-amz-signature': 'deadbeef' },
+      debug: { chemin: '/tmp/studiio-m3d2-abc/piste.flac' },
+    });
+  }
+
+  it('une URL PRONONCÉE est conservée telle quelle, jusqu’en base', async () => {
+    definirFournisseurTranscription(async () => ({
+      reponse: reponseAvecUrlEtPollution(), modele: 'modele-test',
+    }));
+
+    const rep = await post();
+    // Le texte de quelqu'un ne fait pas échouer sa transcription.
+    expect(rep.status).toBe(201);
+    const t = (await rep.json()).transcription;
+    expect(t.etat).toBe('reussie');
+    expect(t.presente).toBe(true);
+    expect(t.texte).toBe(PHRASE);
+    expect(t.segments[0].texte).toBe(PHRASE);
+
+    // Et la ligne écrite en base la porte aussi : aucune contrainte lexicale
+    // ne l'a refusée.
+    const ligne = tables.rush_transcriptions[0];
+    expect(ligne.texte).toBe(PHRASE);
+    expect(JSON.stringify(ligne.segments)).toContain('https://studiio.pro');
+  });
+
+  it('les champs ANNEXES du fournisseur n’ont AUCUN chemin vers la base', async () => {
+    definirFournisseurTranscription(async () => ({
+      reponse: reponseAvecUrlEtPollution(), modele: 'modele-test',
+    }));
+    await post();
+
+    const ligne = tables.rush_transcriptions[0];
+    // Les seules colonnes de contenu écrites, et rien d'autre.
+    expect(ligne.x_groq).toBeUndefined();
+    expect(ligne.headers).toBeUndefined();
+    expect(ligne.debug).toBeUndefined();
+    expect(ligne.url).toBeUndefined();
+
+    const tout = JSON.stringify(ligne);
+    // ⚠️ LA SÉPARATION QU'ON VERROUILLE : l'URL DITE survit, l'URL SIGNÉE non.
+    expect(tout).toContain('https://studiio.pro');
+    expect(tout).not.toContain('X-Amz');
+    expect(tout).not.toContain('x-amz-signature');
+    expect(tout).not.toContain('studiio-minio');
+    expect(tout).not.toContain('gsk-secret');
+    expect(tout).not.toContain('req_01hxyz');
+    expect(tout).not.toContain('/tmp/studiio-m3d2-');
+    expect(tout).not.toContain('authorization');
+  });
+
+  it('le contrat, seul, suffit à établir la séparation', () => {
+    const lu = lireReponseTranscription(reponseAvecUrlEtPollution(), 10);
+    expect(lu.ok).toBe(true);
+    if (!lu.ok) return;
+    const base = transcriptionPourBase(lu.transcription, 10);
+    expect(Object.keys(base).sort())
+      .toEqual(['langue', 'mots', 'presente', 'segments', 'texte']);
+    expect(base.texte).toBe(PHRASE);
+    expect(JSON.stringify(base)).not.toContain('x_groq');
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+describe('Un nettoyage raté se VOIT, et ne se déguise en rien', () => {
+  it('rm en échec : la transcription reste `reussie`, et le fait est consigné', async () => {
+    const appele = vi.fn(async () => ({ reponse: verboseJson(), modele: 'modele-test' }));
+    definirFournisseurTranscription(appele);
+    rmCasse = true;
+
+    const rep = await post();
+
+    // ⚠️ LA TRANSCRIPTION EST VALIDE ET DÉJÀ PAYÉE : la rejeter obligerait à
+    // repayer pour retrouver un texte qu'on tenait déjà.
+    expect(rep.status).toBe(201);
+    const corps = await rep.json();
+    expect(corps.transcription.etat).toBe('reussie');
+    expect(corps.transcription.texte).toBe('Bonjour tout le monde. On danse.');
+
+    // Exactement UN appel, et aucune seconde transcription.
+    expect(appele).toHaveBeenCalledTimes(1);
+    expect(tables.rush_transcriptions).toHaveLength(1);
+
+    // L'échec est OBSERVABLE : dans la réponse, et consigné dans `usage`.
+    expect(corps.nettoyage).toBe('echoue');
+    expect(corps.transcription.usage[CLE_USAGE_NETTOYAGE]).toBe('echoue');
+    expect(tables.rush_transcriptions[0].usage)
+      .toMatchObject({ [CLE_USAGE_NETTOYAGE]: 'echoue' });
+
+    // ⚠️ CE N'EST PAS UN ÉCHEC DE TRANSCRIPTION. `motif_echec` répond à
+    // « pourquoi ça a échoué » ; y écrire un `rm` raté inviterait à relancer.
+    expect(corps.transcription.motifEchec).toBeNull();
+    expect(corps.motif).toBeUndefined();
+
+    // Et aucun chemin temporaire ne ressort, nulle part.
+    const tout = JSON.stringify(corps);
+    expect(tout).not.toContain('/tmp/');
+    expect(tout).not.toContain('studiio-m3d2-');
+    expect(tout).not.toContain('EBUSY');
+    expect(MOTIF_NETTOYAGE_ECHOUE).toBe('nettoyage_temporaire_echoue');
+  });
+
+  it('rm en échec APRÈS une panne fournisseur : la vraie cause l’emporte', async () => {
+    const appele = vi.fn(async () => { throw new Error('boom'); });
+    definirFournisseurTranscription(appele as never);
+    rmCasse = true;
+
+    const rep = await post();
+    const corps = await rep.json();
+
+    // Le motif reste celui de la VRAIE cause…
+    expect(rep.status).toBe(502);
+    expect(corps.motif).toBe('fournisseur_en_erreur');
+    expect(tables.rush_transcriptions[0].motif_echec).toBe('fournisseur_en_erreur');
+    // …et le nettoyage raté s'AJOUTE, il ne remplace pas.
+    expect(corps.nettoyage).toBe('echoue');
+    expect(tables.rush_transcriptions[0].usage)
+      .toMatchObject({ [CLE_USAGE_NETTOYAGE]: 'echoue' });
+    // Toujours un seul appel : aucune reprise, jamais.
+    expect(appele).toHaveBeenCalledTimes(1);
+  });
+
+  it('un nettoyage réussi ne laisse AUCUNE trace dans `usage`', async () => {
+    definirFournisseurTranscription(async () => ({
+      reponse: verboseJson(), modele: 'modele-test',
+    }));
+    const rep = await post();
+    const corps = await rep.json();
+    expect(corps.nettoyage).toBe('ok');
+    expect(corps.transcription.usage[CLE_USAGE_NETTOYAGE]).toBeUndefined();
+    // Le répertoire a bien été demandé à la suppression, et il a disparu.
+    expect(rmDemandes).toHaveLength(1);
+    expect(existsSync(cheminsProduits[0])).toBe(false);
+  });
+
+  it('un refus AVANT toute création de répertoire ne prétend rien nettoyer', async () => {
+    const r = await avecAudioFlac(
+      { bucket: 'inconnu', cleObjet: 'A/rush/p.mp4', userId: 'A' }, async () => 1,
+    );
+    expect(r).toMatchObject({ ok: false, motif: 'cle_hors_perimetre', nettoyage: 'ok' });
+    // Rien n'a été créé, donc rien n'avait à être supprimé.
+    expect(rmDemandes).toHaveLength(0);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════
 describe('23-27. Ce que ce lot ne touche pas, et ce que la migration promet', () => {
   it('23. aucune analyse n’est modifiée', async () => {
     tables.rush_analyses = [{
@@ -948,13 +1134,21 @@ describe('23-27. Ce que ce lot ne touche pas, et ce que la migration promet', ()
     expect(sql).not.toMatch(/alter\s+table\s+public\.(rush_analyses|rushes|rush_candidate_sets)/i);
   });
 
-  it('26bis. la table borne ce qu’elle accepte, y compris les URL', () => {
+  it('26bis. la table borne ce qu’elle accepte — mais PAS le vocabulaire parlé', () => {
     const sql = readFileSync(MIGRATION, 'utf8');
-    expect(sql).toContain("segments::text not like '%://%'");
-    expect(sql).toContain("mots::text not like '%://%'");
     expect(sql).toContain('length(texte) <= 60000');
     expect(sql).toContain("etat in ('en_attente', 'en_cours', 'reussie', 'echouee', 'annulee')");
     expect(sql).toContain("etape in ('extraction_audio', 'transcription')");
+
+    // ⚠️ AUCUNE CONTRAINTE LEXICALE SUR LES URL, et c'est une différence de
+    // NATURE avec `vignettes` et `candidats`. Une vignette est une clé que le
+    // serveur fabrique ; une transcription est la PAROLE de quelqu'un.
+    // « Retrouvez-nous sur https://studiio.pro » est une phrase ordinaire, et
+    // la refuser ferait échouer une transcription sur ce qui a été DIT.
+    const code = sql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+    expect(code).not.toContain("not like '%://%'");
+    // La sécurité est structurelle, et elle est vérifiée par le comportement
+    // — voir « la parole peut contenir une URL » plus haut.
   });
 
   it('27. aucun droit ouvert à `public`', () => {

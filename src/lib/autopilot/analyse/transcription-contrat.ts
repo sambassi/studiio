@@ -161,6 +161,34 @@ export function motifTranscriptionValide(v: unknown): v is MotifTranscription {
 }
 
 /**
+ * L'issue du nettoyage du fichier temporaire. Vocabulaire fermé.
+ *
+ * ⚠️ POURQUOI CE N'EST PAS UN `MotifTranscription`.
+ *
+ * `motif_echec` répond à « pourquoi la transcription a-t-elle échoué ». Or un
+ * nettoyage raté n'est PAS un échec de la transcription : le fournisseur a pu
+ * répondre, le texte est là, il est valide, et il a été payé. L'écrire dans
+ * `motif_echec` ferait passer un résultat exploitable pour un échec — et,
+ * pire, inviterait à relancer, donc à repayer.
+ *
+ * Ce fait vit donc dans `usage`, qui décrit ce qu'une exécution a consommé et
+ * comment elle s'est passée, jamais dans le vocabulaire des échecs.
+ */
+export const NETTOYAGES = ['ok', 'echoue'] as const;
+export type Nettoyage = (typeof NETTOYAGES)[number];
+
+/**
+ * L'étiquette du nettoyage raté — pour le journal, et pour l'API.
+ *
+ * Un littéral À NOUS, donc incapable de transporter un chemin temporaire, un
+ * message d'erreur système ou un nom de répertoire du serveur.
+ */
+export const MOTIF_NETTOYAGE_ECHOUE = 'nettoyage_temporaire_echoue';
+
+/** La clé sous laquelle `usage` porte cette information. */
+export const CLE_USAGE_NETTOYAGE = 'nettoyageTemporaire';
+
+/**
  * Le fournisseur, tel qu'il s'écrit en base.
  *
  * ⚠️ `modele` reste `null` ici : il est renseigné à la CLÔTURE, avec le

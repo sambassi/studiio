@@ -37,7 +37,8 @@ import { chargerFournisseurTranscription } from '@/lib/autopilot/analyse/moteur-
 import { transcrireRush } from '@/lib/autopilot/analyse/transcription';
 import {
   transcriptionPourBase, transcriptionSansAudio, FOURNISSEUR_TRANSCRIPTION,
-  type MotifTranscription,
+  MOTIF_NETTOYAGE_ECHOUE, CLE_USAGE_NETTOYAGE,
+  type MotifTranscription, type Nettoyage,
 } from '@/lib/autopilot/analyse/transcription-contrat';
 import {
   prendrePlaceTranscription, RETRY_APRES_SECONDES,
@@ -144,6 +145,43 @@ function dureeUtilisable(
  */
 function rushSansPiste(analyse: { audio: Record<string, unknown> } | null): boolean {
   return analyse?.audio?.present === false && analyse?.audio?.etatMesure === 'absente';
+}
+
+/**
+ * Ce qu'on fait d'un nettoyage raté — et ce qu'on n'en fait PAS.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * LA DÉCISION, ET SA RAISON
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Le nettoyage a lieu APRÈS le travail. Quand il rate, le fournisseur a
+ * peut-être déjà répondu — et il a déjà été payé. Trois conduites étaient
+ * possibles ; deux sont fausses :
+ *
+ *   ✗ Rejeter la transcription. Elle est valide et payée ; la jeter obligerait
+ *     à repayer pour retrouver un texte qu'on tenait déjà.
+ *   ✗ Écrire le motif dans `motif_echec`. Ce champ répond à « pourquoi la
+ *     transcription a-t-elle échoué » : y mettre un `rm` raté ferait passer un
+ *     résultat exploitable pour un échec, et inviterait à relancer.
+ *   ✓ Consigner le fait dans `usage`, qui décrit comment CETTE exécution s'est
+ *     passée, et le journaliser sous une étiquette fermée.
+ *
+ * Le diagnostic final dit donc exactement ce qui s'est produit : la
+ * transcription a réussi (ou échoué pour SA raison), et le nettoyage local a
+ * raté. Jamais l'un déguisé en l'autre.
+ *
+ * ⚠️ AUCUN CHEMIN N'EST JOURNALISÉ. L'étiquette est un littéral à nous ; le
+ * message système, lui, contient le répertoire temporaire, et il a été
+ * abandonné dès `avecAudioFlac`.
+ */
+function reporterNettoyage(
+  nettoyage: Nettoyage, transcriptionId: string, usage: Record<string, unknown> = {},
+): Record<string, unknown> {
+  if (nettoyage !== 'echoue') return usage;
+  console.warn(
+    `[autopilote][transcription] ${MOTIF_NETTOYAGE_ECHOUE} transcription=${transcriptionId}`,
+  );
+  return { ...usage, [CLE_USAGE_NETTOYAGE]: 'echoue' };
 }
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
@@ -363,15 +401,23 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
           `[autopilote][transcription] ${resultat.motif} transcription=${ligne.id}`,
         );
       }
+      // ⚠️ LE MOTIF RESTE CELUI DE LA VRAIE CAUSE. Un nettoyage raté ne le
+      // remplace jamais : il s'ajoute, dans `usage`.
+      const usage = reporterNettoyage(resultat.nettoyage, ligne.id);
       await majTranscription(userId, ligne.id, {
         etat: 'echouee',
         etape: resultat.motif === 'fournisseur_en_erreur' ? 'transcription' : 'extraction_audio',
         motifEchec: resultat.motif,
+        usage,
         terminee: true,
       });
       const refus = refusDe(resultat.motif);
       return NextResponse.json(
-        { ok: false, error: refus.message, motif: resultat.motif }, { status: refus.statut },
+        {
+          ok: false, error: refus.message, motif: resultat.motif,
+          nettoyage: resultat.nettoyage,
+        },
+        { status: refus.statut },
       );
     }
 
@@ -390,7 +436,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
         transcription: { ...FOURNISSEUR_TRANSCRIPTION, modele: resultat.modele },
       },
       ...propre,
-      usage: resultat.usage,
+      usage: reporterNettoyage(resultat.nettoyage, ligne.id, resultat.usage),
       motifEchec: null,
       terminee: true,
     });
@@ -401,7 +447,9 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     }
 
     const { transcription } = await lireDerniereTranscription(userId, params.id);
-    return NextResponse.json({ ok: true, transcription }, { status: 201 });
+    return NextResponse.json(
+      { ok: true, transcription, nettoyage: resultat.nettoyage }, { status: 201 },
+    );
   } catch (e: unknown) {
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : 'Erreur' }, { status: 500 },
