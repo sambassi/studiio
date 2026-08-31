@@ -540,11 +540,60 @@ describe('M3-B2 n ajoute AUCUNE migration', () => {
    */
   const fichiersMigration = readdirSync(chemin('migrations')).filter((f) => f.endsWith('.sql'));
 
-  it('une seule migration parle de `rush_analyses`, et c est celle de M3-B1', () => {
+  /**
+   * ⚠️ DEUX MIGRATIONS, ET LA SECONDE EST NOMMÉE.
+   *
+   * M3-C ajoute `rush_candidate_sets`, une table DÉRIVÉE des analyses. Sa clé
+   * étrangère composite `(analysis_id, user_id)` exige un index unique
+   * `(id, user_id)` sur `rush_analyses` — sans lui, PostgreSQL refuse la
+   * contrainte, et rien en base n'empêcherait une génération d'annoncer un
+   * propriétaire différent de celui de son analyse.
+   *
+   * C'est exactement le geste que M3-B1 avait dû faire sur `rushes`, une
+   * table de M3-A, et pour la même raison.
+   *
+   * La liste reste FERMÉE et écrite en toutes lettres : un troisième fichier
+   * qui parlerait de `rush_analyses` ferait rougir ce test, et c'est tout
+   * l'intérêt de le maintenir.
+   */
+  it('seules les migrations M3-B1 et M3-C parlent de `rush_analyses`', () => {
     const parlantes = fichiersMigration.filter(
       (f) => readFileSync(chemin(join('migrations', f)), 'utf-8').includes('rush_analyses'),
     );
-    expect(parlantes).toEqual(['2026-09-01-rush-analyses.sql']);
+    expect(parlantes).toEqual([
+      '2026-09-01-rush-analyses.sql',
+      '2026-09-02-rush-candidate-sets.sql',
+    ]);
+  });
+
+  /**
+   * L'exception de M3-C n'est pas un chèque en blanc : ce qu'elle a le droit
+   * de faire à `rush_analyses` est un index, et rien d'autre.
+   */
+  it('M3-C n ajoute qu un index à `rush_analyses`, sans rien détruire', () => {
+    const sql = readFileSync(
+      chemin(join('migrations', '2026-09-02-rush-candidate-sets.sql')), 'utf-8',
+    ).toLowerCase();
+
+    // Le seul contact avec la table existante : l'index unique que la clé
+    // étrangère composite à TROIS colonnes exige.
+    expect(sql).toMatch(
+      /create\s+unique\s+index\s+if\s+not\s+exists\s+rush_analyses_id_rush_user_key\s+on\s+public\.rush_analyses/,
+    );
+    // Et rien d'autre. Les deux seuls contacts autorisés avec la table
+    // existante sont l'index (`on`) et la référence de la clé étrangère
+    // (`references`) — jamais un `alter table`, qui pourrait tout faire.
+    const code = sql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+    expect((code.match(/on public\.rush_analyses/g) ?? []).length).toBe(1);
+    expect((code.match(/references public\.rush_analyses/g) ?? []).length).toBe(1);
+    expect(code, 'aucun ALTER sur rush_analyses').not.toMatch(/alter table[^;]*rush_analyses/);
+    // Et aucun geste destructif, nulle part.
+    for (const interdit of [
+      'drop table', 'drop column', 'drop index', 'truncate', 'delete from',
+      'alter table public.rush_analyses drop', 'alter column',
+    ]) {
+      expect(sql, `M3-C ne doit pas contenir « ${interdit} »`).not.toContain(interdit);
+    }
   });
 
   /**
@@ -557,7 +606,13 @@ describe('M3-B2 n ajoute AUCUNE migration', () => {
    * migration postérieur à M3-B1 qui toucherait aux rushes ou aux analyses.
    */
   it('aucune migration postérieure à M3-B1 ne touche aux rushes ni aux analyses', () => {
-    const posterieures = fichiersMigration.filter((f) => f > '2026-09-01-rush-analyses.sql');
+    // M3-C est l'exception NOMMÉE, et le test juste au-dessus borne ce
+    // qu'elle a le droit d'y faire. L'exclure ici sans cette seconde garde
+    // reviendrait à retirer la règle.
+    const AUTORISEES = new Set(['2026-09-02-rush-candidate-sets.sql']);
+    const posterieures = fichiersMigration.filter(
+      (f) => f > '2026-09-01-rush-analyses.sql' && !AUTORISEES.has(f),
+    );
     const fautives = posterieures.filter((f) => {
       const sql = readFileSync(chemin(join('migrations', f)), 'utf-8').toLowerCase();
       return sql.includes('rush') || sql.includes('analyse');

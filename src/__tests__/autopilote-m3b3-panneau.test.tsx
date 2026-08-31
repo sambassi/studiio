@@ -51,8 +51,28 @@ function reponse(status: number, corps: unknown, entetes: Record<string, string>
   } as unknown as Response;
 }
 
+/**
+ * Les lectures de la route ANALYSE, et elles seules.
+ *
+ * ⚠️ TROIS ROUTES SE PARTAGENT CE PANNEAU, et les compter ensemble rendrait
+ * ce fichier faux à chaque lot. `/vignettes` était déjà écarté ; `/candidats`
+ * l'est depuis M3-C, qui affiche « Passages suggérés » sous une analyse
+ * réussie.
+ *
+ * L'invariant historique n'est pas affaibli, il est RENDU EXACT : ce qui ne
+ * doit pas repartir en boucle, c'est le SUIVI DE L'ANALYSE. Une lecture M3-C
+ * qui se déclencherait en boucle ferait rougir `lecturesCandidats`, juste en
+ * dessous — la garde n'a pas été retirée, elle a été dédoublée.
+ */
 function lectures(): Appel[] {
-  return journal.filter((a) => a.methode === 'GET' && !a.url.endsWith('/vignettes'));
+  return journal.filter((a) => a.methode === 'GET'
+    && !a.url.endsWith('/vignettes')
+    && !a.url.endsWith('/candidats'));
+}
+
+/** Les lectures de la route CANDIDATS — M3-C, comptées à part. */
+function lecturesCandidats(): Appel[] {
+  return journal.filter((a) => a.methode === 'GET' && a.url.endsWith('/candidats'));
 }
 
 function ecritures(): Appel[] {
@@ -328,6 +348,13 @@ describe('C — le suivi périodique : il lit, et il s’arrête', () => {
     await monter();
     await avancer(30_000);
     expect(lectures().length).toBe(1);
+
+    // ⚠️ ET M3-C NON PLUS. La section « Passages suggérés » lit une fois, à
+    // l'affichage, et ne suit rien : une génération n'a pas d'état
+    // intermédiaire à observer, la route répond quand elle a fini. Un suivi
+    // ici rejouerait une requête toutes les trois secondes sur une analyse
+    // que personne ne regarde plus.
+    expect(lecturesCandidats().length, 'M3-C lit une fois, et ne boucle pas').toBe(1);
   });
 
   it('il ne démarre pas non plus quand il n’y a aucune analyse', async () => {
@@ -369,9 +396,20 @@ describe('D — le clic « Analyser » et chaque réponse du serveur', () => {
     await cliquer();
     expect(ecritures().length).toBe(1);
     expect(ecritures()[0].methode).toBe('POST');
+    expect(ecritures()[0].url).toContain('/analyse');
     // Le corps du POST n'est pas cru sur parole : on relit.
     expect(lectures().length).toBe(2);
     expect(etat()).toBe('reussie');
+
+    // ⚠️ L'INVARIANT QUI PROTÈGE LA FACTURE.
+    //
+    // L'analyse vient de réussir, donc « Passages suggérés » s'affiche. Il
+    // LIT, et il n'écrit RIEN : un POST automatique vers `/candidats`
+    // paierait un appel au fournisseur à chaque analyse terminée, sans que
+    // personne ne l'ait demandé. Seul un clic sur le bouton déclenche.
+    expect(ecritures().filter((a) => a.url.endsWith('/candidats')))
+      .toEqual([]);
+    expect(lecturesCandidats().length).toBe(1);
   });
 
   it('409 : on suit l’analyse déjà en cours, sans message d’erreur', async () => {

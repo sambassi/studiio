@@ -616,29 +616,59 @@ describe('E — ni IA, ni crédit, ni rendu, ni publication', () => {
   });
 
   it('et le source du composant ne les nomme nulle part', () => {
-    const chemin = resolve(process.cwd(), 'src/components/creer/AnalyseRush.tsx');
     // Les commentaires ont le droit de parler de ce qu'on ne fait pas ; seul
     // le code compte.
-    const code = readFileSync(chemin, 'utf8')
+    const nu = (c: string) => readFileSync(c, 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
 
-    for (const interdit of [
+    const chemin = resolve(process.cwd(), 'src/components/creer/AnalyseRush.tsx');
+    const code = nu(chemin);
+
+    const INTERDITS = [
       /@\/lib\/credits|deduireCredits|deductCredits|debiterCredits/i,
       /autopilot\/render|renderMedia|remotion/i,
       /@\/lib\/ai\/|openai|anthropic|replicate|gpt-|claude-/i,
       /social\/publishing|publierSur|publishTo/i,
-    ]) {
+    ];
+
+    for (const interdit of INTERDITS) {
       expect(code, `AnalyseRush.tsx ne doit pas contenir ${interdit}`).not.toMatch(interdit);
+    }
+
+    // ⚠️ ET SON UNIQUE ENFANT, POUR LA MÊME RAISON.
+    //
+    // `PassagesSuggeres` est entré dans l'arbre en M3-C. Sans cette boucle,
+    // il serait un TROU dans la garde statique : il suffirait d'y écrire un
+    // import interdit pour qu'aucun test de source ne le voie. La garde
+    // dynamique juste au-dessus le couvre déjà de façon transitive ; les deux
+    // se complètent plutôt qu'elles ne se doublent.
+    const enfant = nu(resolve(process.cwd(), 'src/components/creer/PassagesSuggeres.tsx'));
+    for (const interdit of INTERDITS) {
+      expect(enfant, `PassagesSuggeres.tsx ne doit pas contenir ${interdit}`)
+        .not.toMatch(interdit);
     }
 
     // La liste blanche d'imports : elle échoue le jour où un import arrive,
     // sans qu'il ait fallu deviner son nom à l'avance.
     const importes = [...code.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]);
     expect([...new Set(importes)].sort()).toEqual([
+      // M3-C : la section « Passages suggérés ». Le SEUL ajout depuis M3-B3,
+      // et il est nommé — un import de plus refera rougir ce test.
+      './PassagesSuggeres',
       '@/lib/autopilot/analyse/passerelle',
       '@/lib/autopilot/analyse/presentation',
       'lucide-react',
+      'react',
+    ].sort());
+
+    // L'enfant a SA propre liste blanche : il ne parle qu'à la passerelle
+    // M3-C, qui est un module pur. Une arête vers `candidat.ts`,
+    // `candidat-service.ts` ou `candidat-anthropic.ts` tirerait MinIO, la
+    // base ou la clé d'API dans le paquet navigateur.
+    const importesEnfant = [...enfant.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]);
+    expect([...new Set(importesEnfant)].sort()).toEqual([
+      '@/lib/autopilot/analyse/candidat-passerelle',
       'react',
     ].sort());
   });
