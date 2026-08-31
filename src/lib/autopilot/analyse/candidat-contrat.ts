@@ -162,7 +162,33 @@ export const MOTIFS_CANDIDATS_ETAPE = [
   'fournisseur_absent',          // aucun adaptateur branche sur ce serveur
   'fournisseur_en_erreur',       // il a leve, ou le delai a ete depasse
   'resultat_candidats_invalide', // il a repondu, mais hors du contrat
+  'generation_interrompue',      // le processus est mort, la ligne est restee active
 ] as const;
+
+/**
+ * Au-dela, une generation active est un RESTE, pas un travail en cours.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * D'OU VIENT CE CHIFFRE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * La route s'arrete a 120 secondes, et l'appel au fournisseur a 40. Une
+ * generation qui vit encore au bout de CINQ minutes n'attend donc plus rien :
+ * son processus est mort — redeploiement, kill, panne — et sa ligne bloque
+ * l'index unique partiel pour toujours.
+ *
+ * ⚠️ LARGE, ET DELIBEREMENT. Le risque n'est pas symetrique : fermer trop
+ * tot une generation qui travaille encore ferait payer un second appel au
+ * fournisseur pendant que le premier tourne. Attendre deux minutes de trop
+ * ne coute rien a personne. C'est le meme raisonnement que
+ * `PEREMPTION_ANALYSE_MS`, avec un budget quatre fois plus court.
+ */
+export const PEREMPTION_GENERATION_CANDIDATS_MS = 5 * 60 * 1000;
+
+/** Le seuil, en ISO, tel que la requete le compare. */
+export function seuilPeremptionGeneration(maintenant: number = Date.now()): string {
+  return new Date(maintenant - PEREMPTION_GENERATION_CANDIDATS_MS).toISOString();
+}
 export type MotifCandidatsEtape = (typeof MOTIFS_CANDIDATS_ETAPE)[number];
 
 export function motifCandidatsEtapeValide(valeur: unknown): valeur is MotifCandidatsEtape {

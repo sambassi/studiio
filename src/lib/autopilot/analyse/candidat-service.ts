@@ -10,8 +10,13 @@
  * pas `@/lib/credits`, et un test le vérifie.
  */
 import { supabaseAdmin } from '@/lib/db/supabase';
-import { MOTIF_ECHEC_MAX } from './candidat-contrat';
-import { candidatValide, type CandidatMontage } from './candidat-contrat';
+import {
+  MOTIF_ECHEC_MAX, candidatValide, seuilPeremptionGeneration,
+  type CandidatMontage,
+} from './candidat-contrat';
+
+/** Le motif écrit en base quand une génération est fermée par péremption. */
+export const MOTIF_GENERATION_INTERROMPUE = 'generation_interrompue';
 
 /** Le même vocabulaire d'états que `rush_analyses`, et pour la même raison. */
 export const ETATS_GENERATION = [
@@ -97,6 +102,55 @@ export type MotifGeneration =
   | 'socle_absent'
   | 'generation_active_existante';
 
+/**
+ * Ferme les générations actives PÉRIMÉES de cette analyse.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * LE PIÈGE QUE CE BLOC FERME
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * `rush_candidate_sets_active_unique` interdit deux générations actives par
+ * analyse — c'est ce qui empêche de payer deux fois le fournisseur. Mais un
+ * processus tué au mauvais moment laisse sa ligne `en_cours` POUR TOUJOURS,
+ * et l'analyse devient alors définitivement impossible à traiter. Le même
+ * piège s'était présenté sur `rush_analyses`, et se traite pareil.
+ *
+ * ⚠️ TROIS PRÉCAUTIONS, ET AUCUNE N'EST DÉCORATIVE :
+ *
+ *   * `user_id` dans le `where` — une péremption n'est pas une autorisation
+ *     d'écrire chez autrui ;
+ *   * `analysis_id` dans le `where` — on ne balaie pas la table entière au
+ *     passage, seulement ce qui bloque CETTE demande ;
+ *   * `created_at < seuil` — une génération RÉCENTE travaille peut-être
+ *     encore, et la fermer ferait payer un second appel pendant le premier.
+ *
+ * Aucun candidat ni usage n'est écrit : une génération interrompue n'a rien
+ * produit, et lui inventer un résultat vide serait affirmer qu'elle a
+ * cherché.
+ */
+export async function recupererGenerationsInterrompues(
+  userId: string, analysisId: string,
+): Promise<{ fermees: number; motif: MotifGeneration | null }> {
+  const { data, error } = await supabaseAdmin
+    .from('rush_candidate_sets')
+    .update({
+      etat: 'echouee' as EtatGeneration,
+      motif_echec: MOTIF_GENERATION_INTERROMPUE,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('user_id', userId)
+    .eq('analysis_id', analysisId)
+    .in('etat', ETATS_GENERATION_ACTIFS as unknown as string[])
+    .lt('created_at', seuilPeremptionGeneration())
+    .select('id');
+
+  if (error) {
+    if (socleAbsent(error)) return { fermees: 0, motif: 'socle_absent' };
+    throw new Error(error.message || 'recuperation de generation impossible');
+  }
+  return { fermees: Array.isArray(data) ? data.length : 0, motif: null };
+}
+
 export interface ResultatGeneration {
   generation: GenerationCandidats | null;
   motif: MotifGeneration | null;
@@ -113,6 +167,21 @@ export interface ResultatGeneration {
 export async function creerGeneration(
   userId: string, analysisId: string, rushId: string,
 ): Promise<ResultatGeneration> {
+  // ── Les générations abandonnées de CETTE analyse sont fermées d'abord ──
+  //
+  // Ici, et pas ailleurs : le seul moment où le blocage gêne quelqu'un est
+  // celui où il redemande des passages pour cette analyse. Avant tout le
+  // reste, pour que le verrou soit libre quand l'insertion se présente.
+  //
+  // Ce n'est PAS le `select` que ce module s'interdit : rien ici n'autorise
+  // l'insertion qui suit. Si la récupération échoue à libérer le verrou, ou
+  // si une génération fraîche naît entre-temps, c'est
+  // `rush_candidate_sets_active_unique` qui refuse — comme sans ce bloc.
+  const recuperation = await recupererGenerationsInterrompues(userId, analysisId);
+  if (recuperation.motif === 'socle_absent') {
+    return { generation: null, motif: 'socle_absent' };
+  }
+
   // La version suit ce qui existe. Si deux appels simultanés calculent le
   // même numéro, l'index unique en refuse un — c'est le comportement voulu.
   const { data: derniere, error: erreurLecture } = await supabaseAdmin

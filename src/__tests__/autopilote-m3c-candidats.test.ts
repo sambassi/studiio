@@ -62,7 +62,10 @@ import {
 import {
   fenetreCandidat, lireReponseCandidats, normaliserReference, candidatValide,
   DUREES_CANDIDAT_SECONDES, CANDIDATS_MAX, RAISON_MAX, MOTIFS_CANDIDATS,
+  PEREMPTION_GENERATION_CANDIDATS_MS, seuilPeremptionGeneration,
+  motifCandidatsEtapeValide,
 } from '@/lib/autopilot/analyse/candidat-contrat';
+import { MOTIF_GENERATION_INTERROMPUE } from '@/lib/autopilot/analyse/candidat-service';
 import type { VignetteAnalyse } from '@/lib/autopilot/analyse/contrat';
 
 const USER = 'u-m3c';
@@ -721,12 +724,37 @@ describe('M3-C — la route et le socle', () => {
     expect(route()).not.toMatch(/if\s*\(\s*existante?\s*\)\s*return/);
   });
 
-  it('la clé étrangère composite garantit le propriétaire', () => {
+  it('⚠️ la clé étrangère ferme le TRIANGLE analyse / rush / propriétaire', () => {
     const m = migration();
-    expect(m).toContain('foreign key (analysis_id, user_id)');
-    expect(m).toContain('references public.rush_analyses (id, user_id)');
-    // Et l'index qui la rend possible.
-    expect(m).toContain('rush_analyses_id_user_key');
+
+    // Une seule clé, TROIS colonnes.
+    expect(m).toContain('foreign key (analysis_id, rush_id, user_id)');
+    expect(m).toContain('references public.rush_analyses (id, rush_id, user_id)');
+    expect(m).toMatch(
+      /create\s+unique\s+index\s+if\s+not\s+exists\s+rush_analyses_id_rush_user_key\s+on\s+public\.rush_analyses\s+\(id,\s*rush_id,\s*user_id\)/,
+    );
+
+    // ── LE CAS QUE DEUX CLÉS SÉPARÉES LAISSAIENT PASSER ──────────────────
+    //
+    // Même utilisateur, analyse portant sur le rush A, génération annonçant
+    // le rush B. Avec `(analysis_id, user_id)` + `(rush_id, user_id)`, les
+    // deux contraintes étaient satisfaites — l'analyse est à lui, le rush est
+    // à lui — et l'écran aurait listé les passages du rush A sous le rush B.
+    //
+    // Avec la clé à trois colonnes, PostgreSQL doit trouver dans
+    // `rush_analyses` une ligne `(id=analyse, rush_id=B, user_id=u)`. Elle
+    // n'existe pas : l'analyse porte `rush_id=A`. L'insertion est refusée.
+    //
+    // Ce test lit la contrainte plutôt qu'il ne l'exécute — la base n'est pas
+    // montée ici. Ce qu'il verrouille, c'est qu'aucune rédaction future ne
+    // revienne à deux clés séparées.
+    expect(m, 'les deux clés séparées ne doivent PAS revenir')
+      .not.toContain('foreign key (rush_id, user_id)');
+    expect(m).not.toMatch(/foreign key \(analysis_id, user_id\)/);
+    expect(m).not.toMatch(/references\s+public\.rushes\s+\(id,\s*user_id\)/);
+
+    // Et le commentaire dit la vérité sur ce qui a été écarté, et pourquoi.
+    expect(m).toContain('TROIS COLONNES, ET PAS DEUX');
   });
 
   it('la migration est ADDITIVE : ni drop, ni alter destructif', () => {
@@ -819,6 +847,161 @@ describe('M3-C — la route et le socle', () => {
       expect(code, `${f} ne doit pas référencer la table M3-C`)
         .not.toContain('rush_candidate_sets');
     }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 8bis. LA GÉNÉRATION ABANDONNÉE — LE VERROU NE DOIT PAS ÊTRE ÉTERNEL
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('M3-C — récupération d une génération interrompue', () => {
+  /**
+   * Une base en carton, qui applique la MÊME logique que PostgreSQL sur les
+   * deux points qui comptent : le filtre du `update`, et le refus de
+   * l'insertion quand une génération active existe déjà.
+   */
+  function baseFactice() {
+    interface Ligne {
+      id: string; analysis_id: string; user_id: string; version: number;
+      etat: string; motif_echec: string | null; created_at: string;
+      candidats: unknown[]; usage: Record<string, unknown>;
+    }
+    const lignes: Ligne[] = [];
+    let n = 0;
+
+    const inserer = (analysisId: string, userId: string, ageMs: number, etat: string) => {
+      n += 1;
+      const l: Ligne = {
+        id: `g-${n}`, analysis_id: analysisId, user_id: userId, version: n,
+        etat, motif_echec: null,
+        created_at: new Date(Date.now() - ageMs).toISOString(),
+        candidats: [], usage: {},
+      };
+      lignes.push(l);
+      return l;
+    };
+
+    /** Le `where` de la récupération, appliqué exactement. */
+    const recuperer = (
+      userId: string, analysisId: string, seuil: string,
+    ): Ligne[] => {
+      const touchees = lignes.filter((l) => l.user_id === userId
+        && l.analysis_id === analysisId
+        && ['en_attente', 'en_cours'].includes(l.etat)
+        && l.created_at < seuil);
+      for (const l of touchees) {
+        l.etat = 'echouee';
+        l.motif_echec = 'generation_interrompue';
+      }
+      return touchees;
+    };
+
+    /** L'index unique partiel : au plus une active par analyse. */
+    const insererAvecVerrou = (analysisId: string, userId: string) => {
+      const active = lignes.find((l) => l.analysis_id === analysisId
+        && ['en_attente', 'en_cours'].includes(l.etat));
+      if (active) return null;
+      return inserer(analysisId, userId, 0, 'en_attente');
+    };
+
+    return { lignes, inserer, recuperer, insererAvecVerrou };
+  }
+
+  const SEUIL = () => seuilPeremptionGeneration();
+
+  it('le seuil vaut cinq minutes, cohérent avec les budgets de la route', () => {
+    expect(PEREMPTION_GENERATION_CANDIDATS_MS).toBe(5 * 60 * 1000);
+    // Plus large que la route (120 s) et que le fournisseur (40 s) : une
+    // génération encore vivante ne peut pas être fermée par erreur.
+    expect(PEREMPTION_GENERATION_CANDIDATS_MS).toBeGreaterThan(120_000);
+  });
+
+  it('1. une génération active RÉCENTE reste bloquante', () => {
+    const db = baseFactice();
+    db.inserer('a-1', USER, 30_000, 'en_cours'); // 30 secondes
+    const fermees = db.recuperer(USER, 'a-1', SEUIL());
+    expect(fermees).toEqual([]);
+    expect(db.lignes[0].etat, 'elle travaille peut-être encore').toBe('en_cours');
+    // Et le verrou tient toujours.
+    expect(db.insererAvecVerrou('a-1', USER)).toBeNull();
+  });
+
+  it('2. une génération active PÉRIMÉE est fermée `echouee`', () => {
+    const db = baseFactice();
+    db.inserer('a-1', USER, 10 * 60 * 1000, 'en_cours'); // 10 minutes
+    const fermees = db.recuperer(USER, 'a-1', SEUIL());
+    expect(fermees.length).toBe(1);
+    expect(db.lignes[0].etat).toBe('echouee');
+  });
+
+  it('5. le motif est `generation_interrompue`, et il est dans le vocabulaire', () => {
+    const db = baseFactice();
+    db.inserer('a-1', USER, 10 * 60 * 1000, 'en_attente');
+    db.recuperer(USER, 'a-1', SEUIL());
+    expect(db.lignes[0].motif_echec).toBe(MOTIF_GENERATION_INTERROMPUE);
+    // ⚠️ Un motif hors liste afficherait le message générique et proposerait
+    // de relancer un échec définitif.
+    expect(motifCandidatsEtapeValide(MOTIF_GENERATION_INTERROMPUE)).toBe(true);
+  });
+
+  it('3. une nouvelle version peut alors naître', () => {
+    const db = baseFactice();
+    db.inserer('a-1', USER, 10 * 60 * 1000, 'en_cours');
+    expect(db.insererAvecVerrou('a-1', USER), 'bloquée avant').toBeNull();
+    db.recuperer(USER, 'a-1', SEUIL());
+    const nouvelle = db.insererAvecVerrou('a-1', USER);
+    expect(nouvelle).not.toBeNull();
+    expect(nouvelle!.version).toBe(2);
+  });
+
+  it('4. deux requêtes concurrentes après récupération : UNE seule active', () => {
+    const db = baseFactice();
+    db.inserer('a-1', USER, 10 * 60 * 1000, 'en_cours');
+    // Les deux récupèrent — la seconde ne trouve plus rien à fermer.
+    db.recuperer(USER, 'a-1', SEUIL());
+    db.recuperer(USER, 'a-1', SEUIL());
+    // Puis les deux tentent d'insérer.
+    const a = db.insererAvecVerrou('a-1', USER);
+    const b = db.insererAvecVerrou('a-1', USER);
+    expect([a, b].filter(Boolean).length, 'la base tranche, pas le code').toBe(1);
+    expect(db.lignes.filter((l) => ['en_attente', 'en_cours'].includes(l.etat)).length)
+      .toBe(1);
+  });
+
+  it('6. aucun candidat ni usage n est inventé à la fermeture', () => {
+    const db = baseFactice();
+    db.inserer('a-1', USER, 10 * 60 * 1000, 'en_cours');
+    db.recuperer(USER, 'a-1', SEUIL());
+    // Une génération interrompue n'a rien produit ; lui écrire un résultat
+    // vide serait affirmer qu'elle a cherché.
+    expect(db.lignes[0].candidats).toEqual([]);
+    expect(db.lignes[0].usage).toEqual({});
+  });
+
+  it('la récupération ne touche ni une autre analyse, ni un autre utilisateur', () => {
+    const db = baseFactice();
+    db.inserer('a-1', USER, 10 * 60 * 1000, 'en_cours');   // la cible
+    db.inserer('a-2', USER, 10 * 60 * 1000, 'en_cours');   // autre analyse
+    db.inserer('a-1', 'autrui', 10 * 60 * 1000, 'en_cours'); // autrui
+    const fermees = db.recuperer(USER, 'a-1', SEUIL());
+    expect(fermees.length).toBe(1);
+    expect(db.lignes[1].etat, 'autre analyse').toBe('en_cours');
+    expect(db.lignes[2].etat, 'autre utilisateur').toBe('en_cours');
+  });
+
+  it('le service applique bien ces trois filtres, et pas moins', () => {
+    const src = readFileSync(
+      resolve(process.cwd(), 'src/lib/autopilot/analyse/candidat-service.ts'), 'utf8',
+    );
+    // Les trois précautions, dans la requête elle-même.
+    expect(src).toContain(".eq('user_id', userId)");
+    expect(src).toContain(".eq('analysis_id', analysisId)");
+    expect(src).toContain(".lt('created_at', seuilPeremptionGeneration())");
+    // Et la récupération est appelée AVANT la création.
+    const ordre = src.indexOf('recupererGenerationsInterrompues(userId, analysisId)');
+    const insertion = src.indexOf(".from('rush_candidate_sets')\n    .insert(");
+    expect(ordre).toBeGreaterThan(0);
+    expect(ordre, 'la récupération doit précéder l insertion').toBeLessThan(insertion);
   });
 });
 

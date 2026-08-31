@@ -575,10 +575,18 @@ describe('M3-B2 n ajoute AUCUNE migration', () => {
       chemin(join('migrations', '2026-09-02-rush-candidate-sets.sql')), 'utf-8',
     ).toLowerCase();
 
-    // Le seul contact avec la table existante.
+    // Le seul contact avec la table existante : l'index unique que la clé
+    // étrangère composite à TROIS colonnes exige.
     expect(sql).toMatch(
-      /create\s+unique\s+index\s+if\s+not\s+exists\s+rush_analyses_id_user_key\s+on\s+public\.rush_analyses/,
+      /create\s+unique\s+index\s+if\s+not\s+exists\s+rush_analyses_id_rush_user_key\s+on\s+public\.rush_analyses/,
     );
+    // Et rien d'autre. Les deux seuls contacts autorisés avec la table
+    // existante sont l'index (`on`) et la référence de la clé étrangère
+    // (`references`) — jamais un `alter table`, qui pourrait tout faire.
+    const code = sql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+    expect((code.match(/on public\.rush_analyses/g) ?? []).length).toBe(1);
+    expect((code.match(/references public\.rush_analyses/g) ?? []).length).toBe(1);
+    expect(code, 'aucun ALTER sur rush_analyses').not.toMatch(/alter table[^;]*rush_analyses/);
     // Et aucun geste destructif, nulle part.
     for (const interdit of [
       'drop table', 'drop column', 'drop index', 'truncate', 'delete from',

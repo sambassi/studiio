@@ -52,15 +52,31 @@
 -- Meme geste, meme raison qu'en M3-B1 pour `rushes`. Les index existants de
 -- `rush_analyses` sont la cle primaire, `rush_analyses_rush_version_unique`,
 -- `rush_analyses_active_unique` et `rush_analyses_user_idx`. Aucun ne porte
--- `(id, user_id)`, et PostgreSQL REFUSE une cle etrangere composite sans lui.
+-- les colonnes dont la cle etrangere composite a besoin, et PostgreSQL la
+-- REFUSE sans index unique correspondant.
 --
--- Sans cette cle, rien en base n'empecherait une generation de candidats
--- d'annoncer un proprietaire different de celui de son analyse.
+-- ⚠️ TROIS COLONNES, ET PAS DEUX. C'EST LE POINT.
 --
--- L'index ne peut pas echouer sur un doublon : `(id, user_id)` contient la
--- cle primaire `id`, il est donc unique par construction.
-create unique index if not exists rush_analyses_id_user_key
-  on public.rush_analyses (id, user_id);
+-- Une premiere redaction posait `(id, user_id)`, puis DEUX cles etrangeres
+-- separees depuis `rush_candidate_sets` :
+--
+--     (analysis_id, user_id) -> rush_analyses (id, user_id)
+--     (rush_id,     user_id) -> rushes        (id, user_id)
+--
+-- Chacune etait vraie, et ensemble elles ne prouvaient PAS ce qu'on voulait.
+-- Un utilisateur possedant deux rushes A et B pouvait ecrire une generation
+-- qui designe l'analyse du rush A et annonce le rush B : la premiere cle
+-- verifiait que l'analyse est a lui, la seconde que le rush est a lui, et
+-- AUCUNE que les deux parlent du meme rush. L'ecran aurait alors liste les
+-- passages du rush A sous le rush B.
+--
+-- Une seule cle sur TROIS colonnes ferme le triangle : l'analyse, son rush et
+-- leur proprietaire sont verifies ensemble, par le moteur, en une fois.
+--
+-- L'index ne peut pas echouer sur un doublon : `(id, rush_id, user_id)`
+-- contient la cle primaire `id`, il est donc unique par construction.
+create unique index if not exists rush_analyses_id_rush_user_key
+  on public.rush_analyses (id, rush_id, user_id);
 
 -- ---------------------------------------------------------------------------
 -- 2. GENERATIONS DE CANDIDATS
@@ -120,25 +136,27 @@ create table if not exists public.rush_candidate_sets (
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now(),
 
-  -- ── LA GARANTIE QUI COMPTE ──────────────────────────────────────────────
-  -- Une generation ne peut pas designer une analyse dont le proprietaire
-  -- differe du sien. Ce n'est pas une convention applicative, c'est le
-  -- moteur qui refuse.
+  -- ── LA GARANTIE QUI COMPTE — UNE SEULE CLE, TROIS COLONNES ─────────────
+  --
+  -- Elle etablit d'un seul coup les trois faits :
+  --
+  --   * l'analyse existe ;
+  --   * elle porte bien SUR CE RUSH ;
+  --   * et elle appartient bien A CET UTILISATEUR.
+  --
+  -- Deux cles separees — une vers l'analyse, une vers le rush — laissaient
+  -- passer une generation qui designe l'analyse d'un rush et annonce l'autre,
+  -- des lors que les deux rushes appartiennent a la meme personne. Ce n'est
+  -- pas une convention applicative qu'un futur appelant pourrait oublier :
+  -- c'est le moteur qui refuse, ou ne refuse pas.
   --
   -- `on delete cascade` : une generation de candidats est une donnee DERIVEE
   -- d'une donnee elle-meme derivee. Elle n'a aucune valeur propre une fois
   -- son analyse disparue, et la retenir ferait echouer la suppression d'un
-  -- rush.
-  constraint rush_candidate_sets_analyse_meme_proprietaire
-    foreign key (analysis_id, user_id)
-    references public.rush_analyses (id, user_id)
-    on delete cascade,
-
-  -- Le rush est redondant avec celui de l'analyse ; la FK le rend vrai plutot
-  -- que declaratif.
-  constraint rush_candidate_sets_rush_meme_proprietaire
-    foreign key (rush_id, user_id)
-    references public.rushes (id, user_id)
+  -- rush. La cascade de `rush_analyses` vers `rushes` la propage.
+  constraint rush_candidate_sets_analyse_rush_proprietaire
+    foreign key (analysis_id, rush_id, user_id)
+    references public.rush_analyses (id, rush_id, user_id)
     on delete cascade
 );
 
