@@ -11,6 +11,7 @@ import {
 } from '@/lib/autopilot/analyse/moteur';
 import {
   chargerMoteurVisuel, resultatVisuelEtapeValide, FOURNISSEUR_VISUEL,
+  diagnosticVisuelSur,
 } from '@/lib/autopilot/analyse/moteur-visuel';
 import {
   prendrePlaceExtraction, RETRY_APRES_SECONDES,
@@ -597,6 +598,24 @@ async function executerAnalyse(
   }
 
   if (!visuel.ok) {
+    // ⚠️ LA CAUSE FINE VA AU JOURNAL, ET NULLE PART AILLEURS.
+    //
+    // `resultat_visuel_invalide` dit qu'une réponse a été refusée ; il ne dit
+    // pas laquelle des sept raisons, ni sur quel champ. Cette distinction est
+    // ce qui sépare « il faudra relancer pour savoir » de « on sait ». Elle
+    // reste HORS de la base, hors de la réponse HTTP et hors de l'écran : le
+    // motif public ne change pas, et le nom d'un champ interne n'a rien à
+    // faire devant l'utilisateur.
+    //
+    // Une seule ligne, et seulement pour ce motif : les autres n'ont pas de
+    // détail à donner, et `fournisseur_en_erreur` porte un message de
+    // fournisseur qu'on ne recopie surtout pas.
+    if (visuel.motif === 'resultat_visuel_invalide' && visuel.detail !== undefined) {
+      console.warn(
+        `[autopilote][visuel] resultat_visuel_invalide analyse=${analyse.id} `
+        + `diagnostic=${diagnosticVisuelSur(visuel.detail)}`,
+      );
+    }
     const refus = REFUS_VISUEL[visuel.motif] ?? REFUS_VISUEL.resultat_visuel_invalide;
     await majAnalyse(userId, analyse.id, {
       etat: 'echouee', motifEchec: visuel.motif.slice(0, 200),

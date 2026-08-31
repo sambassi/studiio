@@ -14,10 +14,59 @@
  */
 // ⚠️ LE CONTRAT, PAS LE MOTEUR. `visuel.ts` tire ffmpeg et MinIO ; ce module
 // est importé par la route, qui n'a aucune raison de les charger.
-import { motifVisuelEtapeValide } from './visuel-contrat';
+import { motifVisuelEtapeValide, motifVisuelValide } from './visuel-contrat';
 import type { DemandeVisuel, ResultatEtapeVisuelle } from './visuel';
 
 export type { DemandeVisuel, ResultatEtapeVisuelle };
+
+/** La longueur au-delà de laquelle un diagnostic n'est plus un diagnostic. */
+export const DIAGNOSTIC_VISUEL_MAX = 160;
+
+/** Le repli, quand rien ne peut être dit sûrement. Un littéral à nous. */
+export const DIAGNOSTIC_INVALIDE = 'detail_invalide';
+
+/**
+ * Un chemin de champ, et rien d'autre : `qualite.nettete`,
+ * `textesVisibles[3].texte`, `resume`. Pas d'espace, donc ni saut de ligne ni
+ * tabulation ; pas de `/`, donc pas d'URL ; pas de `+` ni de `=`, donc aucun
+ * encodage en base 64 ; pas d'échappement, donc pas de séquence ANSI.
+ */
+const CHEMIN_CHAMP = /^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+|\[[0-9]+\])*$/;
+
+/**
+ * Rend un diagnostic SÛR à journaliser, ou le littéral de repli.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * POURQUOI CE FILTRE N'EST PAS DE LA PARANOÏA
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * `detail` vaut `${motifFin}:${champ}` et vient de notre code — mais `champ`
+ * n'est pas toujours à nous. `lireReponseVisuelle` refuse une clé inconnue en
+ * la NOMMANT : `refus('champ_inconnu', inconnue)`, où `inconnue` est une clé
+ * que LE MODÈLE a écrite. Journaliser cette chaîne telle quelle, c'est
+ * recopier dans le journal serveur du texte choisi par un tiers — donc
+ * possiblement une URL, un fragment encodé, ou un saut de ligne qui
+ * fabriquerait une fausse entrée de journal.
+ *
+ * Le filtre n'est donc pas un jeu de caractères : il exige la FORME entière —
+ * un motif de notre vocabulaire fermé, deux-points, un chemin de champ.
+ * `X-Amz-Signature` passerait un simple filtre de caractères ; il ne passe
+ * pas celui-ci, faute d'être un motif connu.
+ */
+export function diagnosticVisuelSur(detail: unknown): string {
+  if (typeof detail !== 'string') return DIAGNOSTIC_INVALIDE;
+  if (detail.length === 0 || detail.length > DIAGNOSTIC_VISUEL_MAX) return DIAGNOSTIC_INVALIDE;
+
+  const coupure = detail.indexOf(':');
+  if (coupure <= 0) return DIAGNOSTIC_INVALIDE;
+
+  const motif = detail.slice(0, coupure);
+  const champ = detail.slice(coupure + 1);
+  if (!motifVisuelValide(motif)) return DIAGNOSTIC_INVALIDE;
+  if (!CHEMIN_CHAMP.test(champ)) return DIAGNOSTIC_INVALIDE;
+
+  return `${motif}:${champ}`;
+}
 
 /**
  * Le fournisseur de l'étape `visuel`, tel qu'il s'écrit dans `fournisseurs`.
