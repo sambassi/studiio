@@ -102,24 +102,50 @@ export const BUDGET_AUDIO_MS = TIMEOUT_MINIO_MS + TIMEOUT_AUDIO_MS;
  */
 const RW_TIMEOUT_US = '15000000';
 
-/** Plafond du tampon de sortie du processus. */
-const SORTIE_MAX_AUDIO = 8 * 1024 * 1024;
+/**
+ * Plafond du tampon de sortie du processus, en octets.
+ *
+ * C'est `maxBuffer` de Node : au-delà, il TUE le processus. C'est donc la
+ * seule borne qui protège réellement la mémoire, et elle est appliquée par le
+ * runtime, pas par nous.
+ *
+ * Exporté pour être vérifiable : un test prouve que la conservation de
+ * `stderr` s'aligne EXACTEMENT dessus, et ne peut pas s'en écarter en
+ * silence.
+ */
+export const SORTIE_MAX_AUDIO = 8 * 1024 * 1024;
 
 /**
- * La longueur de `stderr` conservée — et POURQUOI elle est relevée.
+ * La longueur de `stderr` conservée — ÉGALE au tampon, et c'est le point.
  *
- * `lancer` garde par défaut les huit derniers milliers de caractères, ce qui
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ POURQUOI PAS UNE BORNE INTERMÉDIAIRE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * `lancer` garde par défaut les huit derniers milliers de caractères : cela
  * suffit à un message d'échec. Ici `stderr` n'est pas une cause d'échec,
- * c'est LA MESURE : `silencedetect` écrit une ligne par silence, au fil du
- * fichier. Garder « la fin » perdrait les silences du DÉBUT du rush, sans que
- * rien ne le signale — le pire type d'erreur, celui qui rend un résultat
- * plausible et faux.
+ * c'est LA MESURE — `silencedetect` écrit une ligne par silence, au fil du
+ * fichier.
  *
- * Deux cent cinquante-six mille caractères tiennent largement les cent
- * silences du contrat et les quelques lignes de `volumedetect`, tout en
- * restant très en dessous de `SORTIE_MAX_AUDIO`.
+ * Une borne intermédiaire (256 Kio, par exemple) ne protégerait RIEN : le
+ * processus a déjà tamponné jusqu'à `maxBuffer` quand nous découpons, donc le
+ * pic mémoire est le même. Elle ne ferait que JETER de la mesure, et de la
+ * pire façon possible :
+ *
+ *   • par la FIN, donc en supprimant les silences du DÉBUT du rush ;
+ *   • en pouvant commencer entre un `silence_start` et son `silence_end`,
+ *     laissant une fin orpheline en tête de tranche.
+ *
+ * Le résultat serait plausible et faux — l'erreur qu'on ne voit jamais. La
+ * conservation vaut donc exactement le tampon : sous cette borne, RIEN n'est
+ * jeté. Au-dessus, Node tue le processus et la mesure se dit `indisponible`
+ * plutôt que d'être silencieusement amputée.
+ *
+ * (`lireSilences` apparie de toute façon les événements dans leur ORDRE
+ * d'apparition, et ignore une fin orpheline : la ceinture tient même si une
+ * troncature revenait un jour.)
  */
-const STDERR_AUDIO_MAX = 256 * 1024;
+const STDERR_AUDIO_MAX = SORTIE_MAX_AUDIO;
 
 // ─────────────────────────────────────────────────────────────────────────
 // Point d'entrée
@@ -222,6 +248,14 @@ async function executer(
     });
 
     if (sortie.introuvable) return audioIndisponible('outil_absent', duree, piste);
+    // ⚠️ AVANT le délai : `maxBuffer` dépassé fait AUSSI tuer le processus par
+    // Node, donc `timeout` serait vrai — et le motif dirait « le stockage ne
+    // suit pas » là où ffmpeg a simplement trop parlé. Un `stderr` de plus de
+    // huit mégaoctets est un échec CONTRÔLÉ, pas une mesure tronquée en
+    // silence : c'est tout l'intérêt d'aligner la conservation sur le tampon.
+    if (sortie.codeSysteme === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') {
+      return audioIndisponible('audio_illisible', duree, piste);
+    }
     if (sortie.timeout) return audioIndisponible('timeout', duree, piste);
     // Un code non nul couvre le fichier illisible ET le cas où `-map 0:a:0`
     // ne trouve pas la piste que le sondage annonçait. Les deux se disent
@@ -281,42 +315,64 @@ export function argumentsMesure(url: string): string[] {
 // Lecture de la sortie
 // ─────────────────────────────────────────────────────────────────────────
 
-const RE_DEBUT = /silence_start:\s*(-?\d+(?:\.\d+)?)/g;
-const RE_FIN = /silence_end:\s*(-?\d+(?:\.\d+)?)/g;
+const RE_EVENEMENT = /silence_(start|end):\s*(-?\d+(?:\.\d+)?)/g;
 
 /**
  * Les silences, tels que `silencedetect` les écrit.
  *
  * Il écrit `silence_start:` puis, plus loin, `silence_end:` — deux lignes
- * séparées, appariées par leur ORDRE d'apparition et par rien d'autre. Les
- * lire séparément puis les apparier par rang est donc la seule lecture
- * fidèle ; une regex qui exigerait les deux dans la même ligne ne trouverait
- * jamais rien.
+ * SÉPARÉES. Une expression qui exigerait les deux dans la même ligne ne
+ * trouverait jamais rien.
+ *
+ * ⚠️ L'APPARIEMENT SE FAIT DANS L'ORDRE D'APPARITION, ET NON PAR RANG DANS
+ * DEUX LISTES SÉPARÉES.
+ *
+ * La différence ne se voit pas sur une sortie complète — ffmpeg alterne
+ * toujours — mais elle est tout le sujet sur une sortie AMPUTÉE. Un journal
+ * coupé en tête commence par une fin orpheline ; appariée par rang, elle
+ * deviendrait la fin du premier début RESTANT, et tous les silences suivants
+ * seraient décalés d'un cran. Le résultat serait plausible et faux. Lue dans
+ * l'ordre, une fin sans début ouvert est simplement IGNORÉE.
+ *
+ * Un début alors qu'un autre est déjà ouvert ne peut pas venir de ffmpeg. Si
+ * cela arrivait, le précédent serait abandonné plutôt que fermé sur une
+ * valeur inventée : perdre une mesure est un moindre mal que d'en fabriquer
+ * une.
  *
  * ffmpeg ferme lui-même un silence qui court jusqu'à la fin du flux. Mais
  * « lui-même » est une propriété du binaire installé, pas une décision de ce
- * code : un `silence_start` orphelin est donc fermé sur la durée du rush,
+ * code : un dernier début resté ouvert est donc fermé sur la durée du rush,
  * plutôt que jeté. Le jeter perdrait précisément le silence final — celui où
  * une coupe est la plus facile.
  *
  * Exportée pour être testable sans ffmpeg.
  */
 export function lireSilences(journal: string, dureeSecondes: number | null): SilenceAudio[] {
-  const debuts = [...String(journal ?? '').matchAll(RE_DEBUT)].map((m) => Number(m[1]));
-  const fins = [...String(journal ?? '').matchAll(RE_FIN)].map((m) => Number(m[1]));
   const duree = nombreFini(dureeSecondes);
-
   const bruts: SilenceAudio[] = [];
-  // Une borne dure AVANT toute allocation : un `stderr` hostile ou un binaire
+  let ouvert: number | null = null;
+
+  // Une borne dure PENDANT le balayage : un `stderr` hostile ou un binaire
   // devenu bavard ne doit pas faire grossir le tas. `normaliserSilences`
   // plafonnera de nouveau après tri — les deux bornes ont des rôles
   // différents et aucune ne remplace l'autre.
-  const total = Math.min(debuts.length, SILENCES_MAX * 4);
-  for (let i = 0; i < total; i += 1) {
-    const debut = debuts[i];
-    const fin = i < fins.length ? fins[i] : duree;
-    if (fin === null || fin === undefined) continue;
-    bruts.push({ debutSecondes: debut, finSecondes: fin });
+  const PLAFOND = SILENCES_MAX * 4;
+
+  for (const m of String(journal ?? '').matchAll(RE_EVENEMENT)) {
+    if (bruts.length >= PLAFOND) break;
+    const valeur = Number(m[2]);
+    if (m[1] === 'start') {
+      ouvert = valeur;
+      continue;
+    }
+    // Une fin sans début ouvert : journal amputé en tête. On l'ignore.
+    if (ouvert === null) continue;
+    bruts.push({ debutSecondes: ouvert, finSecondes: valeur });
+    ouvert = null;
+  }
+
+  if (ouvert !== null && duree !== null && bruts.length < PLAFOND) {
+    bruts.push({ debutSecondes: ouvert, finSecondes: duree });
   }
   return bruts;
 }

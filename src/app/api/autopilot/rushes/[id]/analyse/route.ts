@@ -690,19 +690,24 @@ async function executerAnalyse(
     );
   }
 
-  // ── M3-D1 : la mesure audio, PUIS la clôture ────────────────────────
+  // ── LE VISUEL EST CONSIGNÉ D'ABORD, ET SANS ÊTRE CLOS ───────────────
   //
-  // APRÈS le visuel, et dans la même écriture que lui : l'analyse ne devient
-  // `reussie` qu'une fois les deux consignées, et M3-C ne voit donc jamais
-  // une analyse `reussie` dont l'audio n'aurait pas été tenté.
-  const audio = await mesureAudioPourCloture(
-    rush, userId, consigne.analyse.technique, resultat.dureeSecondes,
-  );
-
-  // ── LA SEULE ÉCRITURE DE `reussie` DE TOUT LE CHEMIN ────────────────
-  const clot = await majAnalyse(userId, analyse.id, {
-    etat: 'reussie',
-    audio,
+  // ⚠️ POURQUOI DEUX ÉCRITURES ET NON UNE SEULE.
+  //
+  // Le visuel vient de COÛTER un appel de fournisseur. La mesure audio qui
+  // suit traverse le rush entier et peut durer deux minutes. Tout écrire dans
+  // la même requête ferait dépendre la SURVIE du résultat visuel du bon
+  // déroulement d'une mesure gratuite : un redéploiement, un `SIGKILL`, une
+  // coupure pendant ces deux minutes, et le résumé payé n'aurait jamais
+  // touché la base. La relance repaierait le même appel pour le même rush.
+  //
+  // C'est le même raisonnement qu'à l'étape précédente, où `dureeSecondes`,
+  // `technique` et `vignettes` sont consignés sans clore : ce qui est acquis
+  // s'écrit dès qu'il est acquis, et l'état ne passe `reussie` qu'à la fin.
+  //
+  // L'analyse reste donc ACTIVE ici — `majAnalyse` refuserait d'écrire
+  // l'audio sur une ligne déjà terminée.
+  const visuelConsigne = await majAnalyse(userId, analyse.id, {
     // ⚠️ LE MODÈLE RÉELLEMENT EMPLOYÉ, pas l'étiquette générique posée avant
     // l'appel. Savoir qu'un rush a été lu par tel modèle et pas tel autre est
     // ce qui permettra de comparer deux analyses, ou d'expliquer une dérive.
@@ -724,6 +729,33 @@ async function executerAnalyse(
     qualite: visuel.visuel.qualite as unknown as Record<string, unknown>,
     usage: visuel.visuel.usage as unknown as Record<string, unknown>,
   });
+  if (visuelConsigne.motif || !visuelConsigne.analyse) {
+    // Rien n'a été écrit : `majAnalyse` valide AVANT d'écrire. Aller mesurer
+    // l'audio d'une analyse qu'on ne tient plus n'aurait nulle part où
+    // aboutir — deux minutes de lecture pour un second refus.
+    return NextResponse.json(
+      { ok: false, error: 'Résultat non consigné.', motif: visuelConsigne.motif },
+      { status: 409 },
+    );
+  }
+
+  // ── M3-D1 : la mesure audio, PUIS la clôture ────────────────────────
+  //
+  // APRÈS que le visuel est en base, et avant la clôture : M3-C ne voit
+  // jamais une analyse `reussie` dont l'audio n'aurait pas été tenté, et une
+  // panne pendant la mesure laisse le résumé visuel intact sur une analyse
+  // encore active — donc reprenable.
+  const audio = await mesureAudioPourCloture(
+    rush, userId, consigne.analyse.technique, resultat.dureeSecondes,
+  );
+
+  // ── LA SEULE ÉCRITURE DE `reussie` DE TOUT LE CHEMIN ────────────────
+  //
+  // Elle ne porte QUE ce que l'écriture précédente n'a pas écrit. `majAnalyse`
+  // n'applique que les champs présents dans le correctif : ne pas répéter
+  // `resume`, `qualite` ni `fournisseurs` ne les efface pas, et les répéter
+  // ferait croire qu'ils viennent d'être produits.
+  const clot = await majAnalyse(userId, analyse.id, { etat: 'reussie', audio });
   if (clot.motif || !clot.analyse) {
     return NextResponse.json(
       { ok: false, error: 'Résultat non consigné.', motif: clot.motif }, { status: 409 },
