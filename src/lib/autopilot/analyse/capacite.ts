@@ -254,6 +254,61 @@ export function passesAudioEnCours(): number {
 }
 
 /**
+ * Politique V1 : UNE transcription à la fois sur ce processus.
+ *
+ * ⚠️ ELLE BORNE DEUX CHOSES À LA FOIS, ET C'EST POURQUOI ELLE EXISTE.
+ *
+ * L'extraction FLAC traverse le rush ENTIER et décode sa bande son : c'est le
+ * même coût machine qu'une passe M3-D1. Mais le FLAC produit est ensuite LU
+ * EN MÉMOIRE pour être envoyé — jusqu'à `FLAC_OCTETS_MAX`, vingt-quatre
+ * mébioctets. Deux transcriptions parallèles, ce sont deux décodages complets
+ * ET deux copies en mémoire, sur un serveur qui héberge aussi la base et le
+ * stockage.
+ *
+ * Un refus ici N'EST PAS un échec : la route rend 429 avec `Retry-After`,
+ * exactement comme la capacité d'extraction, et rien n'est écrit.
+ */
+export const MAX_TRANSCRIPTIONS_SIMULTANEES = 1;
+
+/**
+ * Le compteur des transcriptions. SÉPARÉ des deux autres, exprès.
+ *
+ * Un compteur partagé avec l'analyse ferait refuser une transcription parce
+ * qu'une analyse tourne, alors que les deux sont des travaux différents,
+ * demandés par des écrans différents, sur des rushes potentiellement
+ * différents.
+ */
+let transcriptionsEnCours = 0;
+
+/**
+ * Prend une place de transcription, ou rend `null` si elle est prise.
+ *
+ * NE JAMAIS l'appeler avant d'avoir refusé ce qui doit l'être — session
+ * absente, rush d'autrui, rush non vérifié. Et TOUJOURS avant
+ * `creerTranscription` : une place refusée ne doit laisser AUCUNE ligne
+ * derrière elle, sans quoi le refus le plus bénin occuperait le verrou
+ * d'unicité et interdirait toute relance de ce rush.
+ */
+export function prendrePlaceTranscription(): PlaceExtraction | null {
+  if (transcriptionsEnCours >= MAX_TRANSCRIPTIONS_SIMULTANEES) return null;
+  transcriptionsEnCours += 1;
+
+  let rendue = false;
+  return {
+    liberer() {
+      if (rendue) return;
+      rendue = true;
+      transcriptionsEnCours -= 1;
+    },
+  };
+}
+
+/** Le nombre de transcriptions en cours sur ce processus. Pour les tests. */
+export function transcriptionsEnCoursMaintenant(): number {
+  return transcriptionsEnCours;
+}
+
+/**
  * Remet le compteur à zéro — POUR LES TESTS, et pour eux seuls.
  *
  * Même esprit que `definirMoteurExtraction` : la couture est exportée pour que
@@ -264,4 +319,5 @@ export function passesAudioEnCours(): number {
 export function reinitialiserCapacite(): void {
   enCours = 0;
   audioEnCours = 0;
+  transcriptionsEnCours = 0;
 }
