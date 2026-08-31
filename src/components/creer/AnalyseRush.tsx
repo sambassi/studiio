@@ -13,6 +13,7 @@ import {
   phraseEnCours, messageEchec, relanceCoherente, formaterTechnique,
   extraireContenuInterprete, contenuInterpreteVide,
 } from '@/lib/autopilot/analyse/presentation';
+import PassagesSuggeres from './PassagesSuggeres';
 
 /**
  * L'analyse d'UN rush, greffée sous sa ligne dans les sessions de tournage.
@@ -449,6 +450,12 @@ export default function AnalyseRush({ rushId }: Props) {
               )}
             </div>
           )}
+
+          {/* ── M3-C : les passages candidats ──────────────────────────────
+              Uniquement sur une analyse RÉUSSIE : la route les refuse
+              autrement, et un bouton qui mène à un 409 est un bouton qui
+              ment. */}
+          {analyse.etat === 'reussie' && <PassagesSuggeres analyseId={analyse.id} />}
         </div>
       )}
     </div>
