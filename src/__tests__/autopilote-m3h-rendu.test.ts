@@ -39,6 +39,7 @@ import {
   TIMEOUT_MESURE_MS, AMORCE_RENDU_MS, FACTEUR_ENCODAGE, TIMEOUT_ENCODAGE_MIN_MS,
   timeoutEncodage, budgetRendu, BUDGET_RENDU_MAX_MS,
   MARGE_PEREMPTION_MS, PEREMPTION_RENDU_MS, TTL_SOURCE_RENDU_SECONDES,
+  BUDGET_PHASE_SOURCE_MS, COMPOSANT_CLE,
   TRAME_AAC_SECONDES, ECHANTILLONS_TRAME_AAC, toleranceDuree, TOLERANCE_FPS,
   dureeConforme, resolutionConforme,
   cleRendu, cleValide,
@@ -52,7 +53,9 @@ import {
   CLIP_OCTETS_MAX, TIMEOUT_TELEVERSEMENT_MS, PRESET, PIXEL_FORMAT,
   AUDIO_BITRATE, AUDIO_FREQUENCE, CRF, PEREMPTION_SET_MS,
 } from '@/lib/autopilot/analyse/clip-contrat';
-import { DUREE_CIBLE_MAX_SECONDES, PLANS_MAX } from '@/lib/autopilot/analyse/montage-contrat';
+import {
+  DUREE_CIBLE_MAX_SECONDES, PLANS_MAX, DUREE_PLAN_MIN_SECONDES,
+} from '@/lib/autopilot/analyse/montage-contrat';
 import { ALLOWED_BUCKETS } from '@/lib/storage/buckets';
 
 const SRC = resolve(process.cwd(), 'src/lib/autopilot/analyse/rendu-contrat.ts');
@@ -76,7 +79,7 @@ const RID = '4dbcd5a6-2e7b-4150-b43b-e318bb403198';
 // ═════════════════════════════════════════════════════════════════════════
 describe('1-4. L’identité : nommée, versionnée, décidée par le serveur', () => {
   it('la méthode de rendu est nommée et VERSIONNÉE', () => {
-    expect(METHODE_RENDU).toBe('x264-crf20-v1');
+    expect(METHODE_RENDU).toBe('x264-crf23-concat-v1');
     // Un nom versionné : une valeur mesurée autrement donnera `v2`, et les
     // rendus précédents ne seront pas réutilisés à tort.
     expect(METHODE_RENDU).toMatch(/-v\d+$/);
@@ -116,12 +119,21 @@ describe('1-4. L’identité : nommée, versionnée, décidée par le serveur', 
     expect(src).not.toMatch(/req\.|request\.|body|corps\./);
   });
 
-  it('CRF 20 : une marche plus stricte que M3-F, le reste À L’IDENTIQUE', () => {
-    // ⚠️ SECONDE GÉNÉRATION. Les clips sortent déjà d'un CRF 23 ; réencoder
-    // au même CRF viserait la qualité de l'entrée DÉJÀ dégradée.
+  it('LE CRF EST CELUI QUE LE DÉPÔT A MESURÉ, pas celui qu’on suppose', () => {
+    // ⚠️ LE TEST QUI EMPÊCHE DE REFAIRE L'ERREUR. Une première rédaction
+    // fixait CRF 20 au motif qu'un second encodage empile la perte. Le dépôt
+    // portait déjà la mesure qui tranche, sur ce rush et à cette résolution :
+    // « 23,6 Mo en CRF 23 contre 33,0 Mo en CRF 20 — trente pour cent de
+    // moins, pour une différence INVISIBLE à 1080p ».
     expect(CRF).toBe(23);
-    expect(CRF_RENDU).toBe(20);
-    expect(CRF_RENDU).toBeLessThan(CRF);
+    expect(CRF_RENDU).toBe(CRF);
+    const clipContrat = readFileSync(
+      resolve(process.cwd(), 'src/lib/autopilot/analyse/clip-contrat.ts'), 'utf8',
+    );
+    expect(clipContrat).toContain('23,6 Mo en CRF 23 contre 33,0 Mo en');
+    // Le nom reste DISTINCT de celui de M3-F : deux colonnes, deux opérations.
+    expect(METHODE_RENDU).not.toBe('x264-crf23-v1');
+    expect(METHODE_RENDU).toContain('concat');
     // Tout le reste est repris de M3-F sans changement : les clips en
     // sortent, et en changer sans mesure serait de l'optimisation
     // opportuniste.
@@ -159,6 +171,21 @@ describe('5-7. La clé de stockage : fabriquée, jamais reçue', () => {
     expect(cleValide(42, UID)).toBe(false);
   });
 
+  it('la fabrication REFUSE un composant malformé, avant de concaténer', () => {
+    // Les deux composants viennent de la session et de la base — mais une
+    // fabrication qui fait confiance à ses entrées n'est sûre que tant que
+    // cette provenance ne change pas. `cleValide` ne relirait la clé qu'APRÈS
+    // que l'objet ait été écrit.
+    expect(COMPOSANT_CLE.test(UID)).toBe(true);
+    for (const hostile of ['..', '../autre', 'a/b', '', 'x'.repeat(65),
+      'a:b', 'https://x', 'a b']) {
+      expect(() => cleRendu(UID, hostile), `renduId « ${hostile} »`).toThrow();
+      expect(() => cleRendu(hostile, RID), `userId « ${hostile} »`).toThrow();
+    }
+    // Et une clé ainsi refusée n'aurait de toute façon pas passé la relecture.
+    expect(cleValide(`${UID}/autopilote/montages/../autre/montage.mp4`, UID)).toBe(false);
+  });
+
   it('le compartiment est celui des vidéos, et il est autorisé', () => {
     expect(BUCKET_RENDUS_MONTAGE).toBe('videos');
     expect(ALLOWED_BUCKETS).toContain(BUCKET_RENDUS_MONTAGE);
@@ -179,8 +206,9 @@ describe('8-14. Les bornes : toutes DÉRIVÉES, aucune magique', () => {
 
   it('le poids maximal est EXTRAPOLÉ d’une mesure réelle', () => {
     // M3-F a produit 23 504 275 octets pour 26,934 s à CRF 23, soit ~0,87
-    // Mo/s ; CRF 20 coûte ~40 % de plus.
-    expect(OCTETS_PAR_SECONDE_ESTIMES).toBe(Math.ceil(23_504_275 / 26.934 * 1.4));
+    // Mo/s. M3-H encode aux mêmes paramètres.
+    // Aucun facteur correctif : M3-H encode aux MÊMES paramètres que M3-F.
+    expect(OCTETS_PAR_SECONDE_ESTIMES).toBe(Math.ceil(23_504_275 / 26.934));
     expect(RENDU_OCTETS_MAX).toBe(2 * OCTETS_PAR_SECONDE_ESTIMES * DUREE_RENDU_MAX_SECONDES);
     // Le double de l'extrapolation : une scène très détaillée dépasse la
     // moyenne d'un rush de démonstration, et un plafond serré transformerait
@@ -269,15 +297,13 @@ describe('8-14. Les bornes : toutes DÉRIVÉES, aucune magique', () => {
     // téléchargement : les clips descendent d'abord, puis ffmpeg travaille
     // sur des fichiers locaux. Les faire vivre aussi longtemps que le rendu
     // prolongerait un accès au stockage pendant vingt minutes inutiles.
-    expect(TTL_SOURCE_RENDU_SECONDES).toBe(Math.ceil(
-      (AMORCE_RENDU_MS + SOURCES_MAX * TIMEOUT_TRANSFERT_SOURCE_MS
-        + MARGE_PEREMPTION_MS) / 1000,
-    ));
+    expect(BUDGET_PHASE_SOURCE_MS)
+      .toBe(AMORCE_RENDU_MS + SOURCES_MAX * TIMEOUT_TRANSFERT_SOURCE_MS);
+    expect(TTL_SOURCE_RENDU_SECONDES)
+      .toBe(Math.ceil((BUDGET_PHASE_SOURCE_MS + MARGE_PEREMPTION_MS) / 1000));
     expect(TTL_SOURCE_RENDU_SECONDES * 1000).toBeLessThan(PEREMPTION_RENDU_MS);
     // Mais elle couvre bien toute la phase qu'elle protège.
-    expect(TTL_SOURCE_RENDU_SECONDES * 1000).toBeGreaterThan(
-      AMORCE_RENDU_MS + SOURCES_MAX * TIMEOUT_TRANSFERT_SOURCE_MS,
-    );
+    expect(TTL_SOURCE_RENDU_SECONDES * 1000).toBeGreaterThan(BUDGET_PHASE_SOURCE_MS);
   });
 });
 
@@ -317,6 +343,42 @@ describe('15-18. Les tolérances : issues du SUPPORT, pas d’une préférence',
     expect(dureeConforme(26, 25, 30, 5)).toBe(false);
     expect(dureeConforme(0, 25, 30, 5)).toBe(false);
     expect(dureeConforme(null, 25, 30, 5)).toBe(false);
+  });
+
+  it('LA TOLÉRANCE EST DÉMONTRÉE : assez large, et assez serrée', () => {
+    // ─────────────────────────────────────────────────────────────────────
+    // ASSEZ LARGE ? C'est une BORNE SUPÉRIEURE, pas une estimation.
+    // ─────────────────────────────────────────────────────────────────────
+    // `trim` coupe sur une frontière d'image : un segment de durée d rend un
+    // nombre entier d'images, donc une erreur dans [0, 1/fps). Les segments
+    // sont mis bout à bout, si bien que le pire cas cumulé vaut N × quantum.
+    // Il n'est atteint que si CHAQUE segment tombe entre deux images — sur le
+    // plan réel, trois des cinq durées (5 s, 8 s, 8 s à 30 i/s) sont des
+    // multiples exacts d'une image et n'apportent aucune erreur.
+    const quantum = Math.max(1 / 30, TRAME_AAC_SECONDES);
+    expect(toleranceDuree(30, 5)).toBeCloseTo(5 * quantum, 3);
+
+    // ─────────────────────────────────────────────────────────────────────
+    // ASSEZ SERRÉE ? Le plus petit défaut RÉEL reste très au-dessus.
+    // ─────────────────────────────────────────────────────────────────────
+    // ⚠️ C'EST CE QUI REND LA TOLÉRANCE DÉFENDABLE. M3-G impose qu'un plan
+    // dure au moins `DUREE_PLAN_MIN_SECONDES` : le plus petit défaut possible
+    // — un plan omis, tronqué ou dupliqué — déplace donc la durée finale d'au
+    // moins une seconde. Même au nombre maximal de plans, la tolérance reste
+    // une fraction de cette seconde, et un tel défaut est détecté.
+    expect(toleranceDuree(30, SOURCES_MAX)).toBeLessThan(DUREE_PLAN_MIN_SECONDES);
+    expect(toleranceDuree(24, SOURCES_MAX)).toBeLessThan(DUREE_PLAN_MIN_SECONDES);
+    // Avec une marge d'au moins quatre fois, y compris au pire cas — à 24 i/s
+    // sur six plans, le rapport vaut exactement quatre, et c'est le plancher.
+    expect(DUREE_PLAN_MIN_SECONDES / toleranceDuree(24, SOURCES_MAX))
+      .toBeGreaterThanOrEqual(4);
+    expect(DUREE_PLAN_MIN_SECONDES / toleranceDuree(30, SOURCES_MAX))
+      .toBeGreaterThan(4);
+
+    // Un plan manquant sur le montage réel est bien vu comme non conforme.
+    expect(dureeConforme(25 - DUREE_PLAN_MIN_SECONDES, 25, 30, 5)).toBe(false);
+    // Et un simple arrondi de support reste conforme.
+    expect(dureeConforme(25 + quantum, 25, 30, 5)).toBe(true);
   });
 
   it('LA RÉSOLUTION N’A AUCUNE TOLÉRANCE', () => {

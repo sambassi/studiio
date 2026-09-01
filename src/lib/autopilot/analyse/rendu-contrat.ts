@@ -29,7 +29,7 @@
  */
 import {
   AUDIO_BITRATE, AUDIO_FREQUENCE, CLIP_OCTETS_MAX, CONTENT_TYPE,
-  PIXEL_FORMAT, PRESET, TIMEOUT_TELEVERSEMENT_MS as TIMEOUT_TELEVERSEMENT_CLIP_MS,
+  CRF, PIXEL_FORMAT, PRESET, TIMEOUT_TELEVERSEMENT_MS as TIMEOUT_TELEVERSEMENT_CLIP_MS,
   arrondirSeconde, nombreFini,
 } from './clip-contrat';
 import { DUREE_CIBLE_MAX_SECONDES, PLANS_MAX } from './montage-contrat';
@@ -46,25 +46,33 @@ import { DUREE_CIBLE_MAX_SECONDES, PLANS_MAX } from './montage-contrat';
  * « comment encoder les clips » (`x264-crf23-v1`), « comment monter »
  * (`m3g-v1`), et maintenant « comment produire le fichier final ».
  *
- * ⚠️ CRF 20, ET NON 23 COMME M3-F — C'EST UNE SECONDE GÉNÉRATION.
+ * ⚠️ LES MÊMES PARAMÈTRES QUE M3-F, CRF COMPRIS — ET C'EST UNE MESURE QUI LE
+ * DIT, PAS UNE PRÉFÉRENCE.
  *
- * Les clips sortent déjà d'un encodage à CRF 23. Réencoder au même CRF ne
- * vise pas la qualité de la SOURCE mais celle de l'entrée déjà dégradée : la
- * perte s'ajoute une seconde fois, et se voit sur les aplats et les
- * dégradés. Une marche plus stricte coûte environ 40 % de débit et préserve
- * l'essentiel de la première génération.
+ * Une première rédaction de ce contrat fixait CRF 20, au motif qu'un second
+ * encodage empile la perte du premier. L'argument est courant, mais le dépôt
+ * porte déjà la mesure qui le tranche, sur ce rush et à cette résolution :
+ * « 23,6 Mo en CRF 23 contre 33,0 Mo en CRF 20 — trente pour cent de moins,
+ * pour une différence INVISIBLE à 1080p » (`clip-contrat.ts`). Descendre à 20
+ * aurait donc coûté quarante pour cent de poids pour un gain que la mesure
+ * dit invisible.
  *
- * Le reste des paramètres est repris de M3-F À L'IDENTIQUE — `veryfast`,
- * `yuv420p`, AAC 128 kb/s à 48 kHz, `+faststart` — parce que les clips en
- * sortent et qu'en changer sans mesure serait de l'optimisation
- * opportuniste. Le nom porte une version : une valeur mesurée autrement en
- * H3 ou H5 donnera `x264-crf20-v2`, et les rendus précédents ne seront pas
- * réutilisés à tort.
+ * Le nom reste DISTINCT de celui de M3-F malgré des paramètres identiques :
+ * les deux méthodes vivent dans deux colonnes différentes et décrivent deux
+ * opérations différentes — découper un rush, et concaténer des clips en les
+ * recadrant. Les confondre rendrait impossible de dire, devant un fichier,
+ * laquelle des deux a changé.
+ *
+ * Si une mesure ultérieure — sur du matériel plus exigeant, ou sur une
+ * troisième génération — montrait qu'un autre facteur s'impose, elle donnera
+ * `x264-crf<n>-concat-v2`, et les rendus produits sous v1 ne seront pas
+ * réutilisés à tort. Cette optimisation appartient à une mesure séparée, pas
+ * à ce contrat.
  */
-export const METHODE_RENDU = 'x264-crf20-v1' as const;
+export const METHODE_RENDU = 'x264-crf23-concat-v1' as const;
 
-/** Une marche plus stricte que M3-F, parce que c'est une seconde génération. */
-export const CRF_RENDU = 20;
+/** Repris de M3-F : la mesure du dépôt écarte explicitement CRF 20. */
+export const CRF_RENDU = CRF;
 
 /** Repris de M3-F sans changement : les clips en sortent. */
 export const PRESET_RENDU = PRESET;
@@ -97,15 +105,15 @@ export const SOURCES_MAX = PLANS_MAX;
  *
  * ⚠️ EXTRAPOLÉ D'UNE MESURE, PAS CHOISI. M3-F a produit 23 504 275 octets
  * pour 26,934 s de vidéo 1080p à CRF 23, soit environ 0,87 Mo par seconde.
- * CRF 20 coûte environ 40 % de plus, donc ~1,22 Mo/s. Au pire cas de
- * `DUREE_RENDU_MAX_SECONDES` (120 s), cela donne ~146 Mo.
+ * M3-H encode aux mêmes paramètres : le débit attendu est le même. Au pire
+ * cas de `DUREE_RENDU_MAX_SECONDES` (120 s), cela donne ~105 Mo.
  *
  * Le plafond retenu est le double de cette extrapolation : une scène très
  * détaillée ou très mouvementée peut dépasser la moyenne d'un rush de
  * démonstration, et un plafond trop serré transformerait une vidéo
  * parfaitement valide en `resultat_invalide`.
  */
-export const OCTETS_PAR_SECONDE_ESTIMES = Math.ceil(23_504_275 / 26.934 * 1.4);
+export const OCTETS_PAR_SECONDE_ESTIMES = Math.ceil(23_504_275 / 26.934);
 export const RENDU_OCTETS_MAX =
   2 * OCTETS_PAR_SECONDE_ESTIMES * DUREE_RENDU_MAX_SECONDES;
 
@@ -236,12 +244,25 @@ export const PEREMPTION_RENDU_MS = BUDGET_RENDU_MAX_MS + MARGE_PEREMPTION_MS;
  * aussi longtemps que le rendu entier prolongerait un accès au stockage
  * pendant vingt minutes où plus rien ne l'utilise.
  *
- * Elle couvre donc exactement l'amorce et les six téléchargements, plus la
- * même marge que la péremption. Dérivée, comme tout le reste.
+ * Elle couvre donc exactement `BUDGET_PHASE_SOURCE_MS` — l'amorce et les six
+ * téléchargements — plus la même marge que la péremption. Dérivée, comme tout
+ * le reste.
+ *
+ * ⚠️ CETTE VALEUR SUPPOSE UNE CONCEPTION, ET H3 DOIT LA TENIR : les sources
+ * descendent TOUTES d'abord, puis ffmpeg travaille sur des fichiers locaux.
+ * Le jour où l'on donnerait les URL signées directement à ffmpeg
+ * (`-i <url>`), les signatures devraient survivre à tout l'encodage — jusqu'à
+ * douze minutes de plus — et cette TTL deviendrait trop courte : les
+ * dernières lectures échoueraient en `clip_illisible`, un diagnostic FAUX
+ * pour une signature périmée. C'est exactement le piège que la revue de M3-F
+ * avait attrapé sur `TTL_URL_SECONDES`. Le nom `BUDGET_PHASE_SOURCE_MS` rend
+ * l'hypothèse visible plutôt que tacite.
  */
+export const BUDGET_PHASE_SOURCE_MS =
+  AMORCE_RENDU_MS + SOURCES_MAX * TIMEOUT_TRANSFERT_SOURCE_MS;
+
 export const TTL_SOURCE_RENDU_SECONDES = Math.ceil(
-  (AMORCE_RENDU_MS + SOURCES_MAX * TIMEOUT_TRANSFERT_SOURCE_MS
-    + MARGE_PEREMPTION_MS) / 1000,
+  (BUDGET_PHASE_SOURCE_MS + MARGE_PEREMPTION_MS) / 1000,
 );
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -333,7 +354,20 @@ export function dureeConforme(
  * n'est arbitraire, et un identifiant malformé ne peut pas fabriquer un
  * chemin qui sorte de l'espace de son propriétaire.
  */
+export const COMPOSANT_CLE = /^[\w-]{1,64}$/;
+
 export function cleRendu(userId: string, renduId: string): string {
+  // ⚠️ ON VALIDE AVANT DE CONCATÉNER, PAS APRÈS.
+  //
+  // Les deux composants viennent de la session et de la base, donc jamais du
+  // client — mais une fabrication de chemin qui fait CONFIANCE à ses entrées
+  // n'est sûre que tant que cette provenance ne change pas. Un `renduId`
+  // valant `../autre` produirait une clé parfaitement formée désignant
+  // l'espace d'un tiers, et `cleValide` ne la relirait qu'APRÈS que l'objet
+  // ait été écrit. Le même motif que `signerSource` de M3-F.
+  if (!COMPOSANT_CLE.test(userId) || !COMPOSANT_CLE.test(renduId)) {
+    throw new Error('composant de cle invalide');
+  }
   return `${userId}/autopilote/montages/${renduId}/montage.mp4`;
 }
 
