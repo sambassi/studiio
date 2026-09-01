@@ -337,6 +337,78 @@ export async function majTranscription(
 }
 
 /**
+ * Lit UNE transcription, désignée par son identifiant, avec ses MOTS.
+ *
+ * ⚠️ AVEC LES MOTS, ET C'EST LE POINT. `lireDerniereTranscription` les omet
+ * par défaut, à raison : l'écran affiche du texte et des phrases. M3-E, lui,
+ * a besoin de savoir si une borne tombe AU MILIEU d'un mot — ce que seuls les
+ * mots peuvent dire. Cette lecture est donc plus chère, et elle n'est appelée
+ * que par qui en a l'usage.
+ *
+ * `eq('user_id', userId)` : inconnue et appartenant à un tiers rendent la
+ * même chose, et l'appelant répond 404 dans les deux cas.
+ */
+export async function lireTranscriptionParId(
+  userId: string, transcriptionId: string,
+): Promise<{ transcription: TranscriptionRush | null; motif: MotifPersistance | null }> {
+  const { data, error } = await supabaseAdmin
+    .from('rush_transcriptions')
+    .select(COLONNES_TRANSCRIPTION)
+    .eq('id', transcriptionId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    if (socleAbsent(error)) return { transcription: null, motif: 'socle_absent' };
+    throw new Error(error.message || 'lecture de transcription impossible');
+  }
+  if (!data) return { transcription: null, motif: null };
+  return {
+    transcription: transcriptionDepuisLigne(data as Record<string, unknown>),
+    motif: null,
+  };
+}
+
+/**
+ * Lit la dernière transcription RÉUSSIE d'un rush, avec ses MOTS.
+ *
+ * ⚠️ « RÉUSSIE », ET C'EST TOUTE LA DIFFÉRENCE AVEC
+ * `lireDerniereTranscription`.
+ *
+ * Cette dernière rend la version la plus haute, quel que soit son état —
+ * c'est ce que l'écran veut, puisqu'il doit pouvoir afficher « la dernière
+ * tentative a échoué ». Son comportement ne change pas.
+ *
+ * M3-E veut de la MATIÈRE. Une tentative échouée en version 3 ne doit pas
+ * masquer la transcription réussie de la version 2 : sans ce filtre, un
+ * simple échec de fournisseur ferait perdre le calage sur la parole d'un
+ * rush qui en a pourtant une, parfaitement exploitable.
+ */
+export async function lireDerniereTranscriptionReussie(
+  userId: string, rushId: string,
+): Promise<{ transcription: TranscriptionRush | null; motif: MotifPersistance | null }> {
+  const { data, error } = await supabaseAdmin
+    .from('rush_transcriptions')
+    .select(COLONNES_TRANSCRIPTION)
+    .eq('rush_id', rushId)
+    .eq('user_id', userId)
+    .eq('etat', 'reussie')
+    .order('version', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    if (socleAbsent(error)) return { transcription: null, motif: 'socle_absent' };
+    throw new Error(error.message || 'lecture de transcription impossible');
+  }
+  if (!data) return { transcription: null, motif: null };
+  return {
+    transcription: transcriptionDepuisLigne(data as Record<string, unknown>),
+    motif: null,
+  };
+}
+
+/**
  * Lit la dernière transcription d'un rush — celle que l'écran affiche.
  *
  * `avecMots` est FAUX par défaut, et c'est le bon défaut : l'écran affiche du

@@ -284,6 +284,44 @@ export async function majGeneration(
 }
 
 /**
+ * Lit UNE génération, désignée par son identifiant.
+ *
+ * ⚠️ POURQUOI CETTE LECTURE EXISTE, À CÔTÉ DE `lireDerniereGeneration`.
+ *
+ * L'écran affiche « la dernière » : c'est ce qu'il veut, et cette fonction-là
+ * ne bouge pas. M3-E, lui, cale les coupes d'une génération PRÉCISE — celle
+ * dont l'appelant tient l'identifiant. S'il prenait « la dernière », une
+ * régénération de candidats changerait silencieusement des coupes déjà
+ * calculées pour une autre version, et un résultat historique se mettrait à
+ * répondre autre chose sans qu'aucune écriture n'ait eu lieu.
+ *
+ * `eq('user_id', userId)` n'est pas décoratif : sans lui, un identifiant
+ * suffirait à lire la génération d'autrui. Inconnue et appartenant à un tiers
+ * rendent donc la même chose — `null` —, et l'appelant répond 404 dans les
+ * deux cas.
+ */
+export async function lireGenerationParId(
+  userId: string, generationId: string,
+): Promise<{ generation: GenerationCandidats | null; motif: MotifGeneration | null }> {
+  const { data, error } = await supabaseAdmin
+    .from('rush_candidate_sets')
+    .select(COLONNES_GENERATION)
+    .eq('id', generationId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    if (socleAbsent(error)) return { generation: null, motif: 'socle_absent' };
+    throw new Error(error.message || 'lecture de generation impossible');
+  }
+  if (!data) return { generation: null, motif: null };
+  return {
+    generation: generationDepuisLigne(data as Record<string, unknown>),
+    motif: null,
+  };
+}
+
+/**
  * Lit la dernière génération d'une analyse — celle que l'écran affiche.
  *
  * Rend `null` sans erreur quand il n'y en a aucune : une analyse sans
