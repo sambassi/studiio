@@ -361,6 +361,61 @@ export function jeuxClipsEnCoursMaintenant(): number {
   return jeuxClipsEnCours;
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// M3-H — LES RENDUS DE MONTAGE
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Un seul rendu de montage à la fois.
+ *
+ * ⚠️ CE COMPTEUR NE FAIT PAS DOUBLE EMPLOI AVEC L'INDEX UNIQUE DE M3-H.
+ *
+ * `rush_montage_renders_actif_unique` empêche deux rendus du MÊME plan ; il
+ * n'empêche rien entre deux plans DIFFÉRENTS. Or c'est le cas le plus
+ * ordinaire : un même jeu de clips porte souvent un 9:16 pour un reel et un
+ * 16:9 pour YouTube, donc deux plans distincts. Sans ce compteur, deux
+ * libx264 partiraient ensemble sur les quatre cœurs que la base et le
+ * stockage partagent déjà.
+ *
+ * Séparé des quatre autres pour la même raison qu'eux : un compteur commun
+ * ferait refuser un rendu parce qu'une transcription tourne, alors que ce
+ * sont deux travaux demandés depuis deux écrans différents.
+ */
+export const MAX_RENDUS_MONTAGE_SIMULTANES = 1;
+
+let rendusMontageEnCours = 0;
+
+/**
+ * Prend une place de rendu, ou rend `null` si elle est prise.
+ *
+ * NE JAMAIS l'appeler avant d'avoir refusé ce qui doit l'être — session
+ * absente, plan d'autrui, plan inexploitable. Et TOUJOURS avant `creerRendu` :
+ * une place refusée ne doit laisser AUCUNE ligne derrière elle, sans quoi le
+ * refus le plus bénin occuperait l'index actif et interdirait toute relance
+ * pendant vingt-sept minutes.
+ *
+ * `liberer()` est IDEMPOTENTE : l'appeler deux fois — depuis un `finally`
+ * imbriqué, puis depuis l'appelant — ne rend pas deux places.
+ */
+export function prendrePlaceRendu(): PlaceExtraction | null {
+  if (rendusMontageEnCours >= MAX_RENDUS_MONTAGE_SIMULTANES) return null;
+  rendusMontageEnCours += 1;
+
+  let rendue = false;
+  return {
+    liberer() {
+      if (rendue) return;
+      rendue = true;
+      rendusMontageEnCours -= 1;
+    },
+  };
+}
+
+/** Combien de rendus occupent une place. Pour le diagnostic et les tests. */
+export function rendusMontageEnCoursMaintenant(): number {
+  return rendusMontageEnCours;
+}
+
 /**
  * Remet le compteur à zéro — POUR LES TESTS, et pour eux seuls.
  *
@@ -374,4 +429,5 @@ export function reinitialiserCapacite(): void {
   audioEnCours = 0;
   transcriptionsEnCours = 0;
   jeuxClipsEnCours = 0;
+  rendusMontageEnCours = 0;
 }

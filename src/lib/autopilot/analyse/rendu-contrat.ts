@@ -199,8 +199,16 @@ export function timeoutEncodage(dureeSecondes: number): number {
 export function budgetRendu(dureeSecondes: number): number {
   return AMORCE_RENDU_MS
     + SOURCES_MAX * TIMEOUT_TRANSFERT_SOURCE_MS
+    // ⚠️ UNE SONDE PAR SOURCE, ET NON UNE SEULE MESURE.
+    //
+    // Une première rédaction ne comptait que la mesure du fichier final.
+    // L'exécution sonde AUSSI chaque source — pour savoir si elle porte de
+    // l'audio, et pour vérifier que ses dimensions décodées sont bien celles
+    // du plan. Six sondes de plus font trois minutes que le budget ignorait,
+    // et l'affirmation « aucun travail ne peut dépasser ce budget » devenait
+    // fausse : la marge de péremption les absorbait en silence.
+    + (SOURCES_MAX + 1) * TIMEOUT_MESURE_MS
     + timeoutEncodage(dureeSecondes)
-    + TIMEOUT_MESURE_MS
     + TIMEOUT_TELEVERSEMENT_RENDU_MS;
 }
 

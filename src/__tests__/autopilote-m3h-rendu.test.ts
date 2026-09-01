@@ -253,9 +253,15 @@ describe('8-14. Les bornes : toutes DÉRIVÉES, aucune magique', () => {
   });
 
   it('le budget est une SOMME des étapes, pas un nombre', () => {
+    // ⚠️ UNE SONDE PAR SOURCE, PLUS LA MESURE FINALE. Une première rédaction
+    // ne comptait qu'une mesure ; l'exécution sonde AUSSI chaque source — pour
+    // savoir si elle porte de l'audio, et pour vérifier que ses dimensions
+    // décodées sont bien celles du plan. Trois minutes que le budget ignorait,
+    // et l'affirmation « aucun travail ne peut le dépasser » devenait fausse.
     const attendu = (d: number) => AMORCE_RENDU_MS
       + SOURCES_MAX * TIMEOUT_TRANSFERT_SOURCE_MS
-      + timeoutEncodage(d) + TIMEOUT_MESURE_MS + TIMEOUT_TELEVERSEMENT_RENDU_MS;
+      + (SOURCES_MAX + 1) * TIMEOUT_MESURE_MS
+      + timeoutEncodage(d) + TIMEOUT_TELEVERSEMENT_RENDU_MS;
     expect(budgetRendu(25)).toBe(attendu(25));
     expect(budgetRendu(120)).toBe(attendu(120));
     expect(BUDGET_RENDU_MAX_MS).toBe(budgetRendu(DUREE_RENDU_MAX_SECONDES));
@@ -265,6 +271,7 @@ describe('8-14. Les bornes : toutes DÉRIVÉES, aucune magique', () => {
     // La formule est celle de la source, pas un nombre recopié à côté.
     const src = sourceSansCommentaires();
     expect(src).toMatch(/AMORCE_RENDU_MS\s*\+\s*SOURCES_MAX \* TIMEOUT_TRANSFERT_SOURCE_MS/);
+    expect(src).toContain('(SOURCES_MAX + 1) * TIMEOUT_MESURE_MS');
   });
 
   it('LA PÉREMPTION DÉPASSE STRICTEMENT LE PIRE CAS', () => {
