@@ -652,6 +652,41 @@ describe('M3-B2 n ajoute AUCUNE migration', () => {
   });
 
   /**
+   * L'exception de M3-F n'est pas un chèque en blanc non plus : elle a le
+   * droit de CRÉER sa table, de RÉFÉRENCER `rush_candidate_sets`, et d'y
+   * poser l'index unique que sa clé étrangère composite EXIGE — le même
+   * geste que M3-B1 sur `rushes` et M3-C sur `rush_analyses`. Rien d'autre.
+   */
+  it('M3-F n ajoute qu un index à `rush_candidate_sets`, sans rien détruire', () => {
+    const fichier = '2026-09-04-rush-clip-sets.sql';
+    expect(fichiersMigration).toContain(fichier);
+    const code = sqlSansCommentaires(fichier).toLowerCase();
+
+    expect(code).toMatch(/create table if not exists public\.rush_clip_sets/);
+
+    // Le seul contact avec une table existante : l'index que la clé étrangère
+    // à trois colonnes exige, et la référence elle-même.
+    expect(code).toMatch(
+      /create\s+unique\s+index\s+if\s+not\s+exists\s+rush_candidate_sets_id_rush_user_key\s+on\s+public\.rush_candidate_sets/,
+    );
+    expect((code.match(/on public\.rush_candidate_sets/g) ?? []).length).toBe(1);
+    expect((code.match(/references public\.rush_candidate_sets/g) ?? []).length).toBe(1);
+    expect(code, 'aucun ALTER, sur quoi que ce soit').not.toMatch(/alter\s+table/);
+
+    // Les analyses, les rushes et les transcriptions sont hors de son périmètre.
+    expect(code).not.toContain('rush_analyses');
+    expect(code).not.toContain('rush_transcriptions');
+    expect((code.match(/on public\.rushes\b/g) ?? []).length).toBe(0);
+
+    for (const interdit of [
+      'drop table', 'drop column', 'drop index', 'truncate', 'delete from', 'alter column',
+    ]) {
+      expect(code, `M3-F ne doit pas contenir « ${interdit} »`).not.toContain(interdit);
+    }
+    expect(code).not.toMatch(/\bgrant\b/);
+  });
+
+  /**
    * La règle porte sur la DATE du fichier, pas sur son vocabulaire.
    *
    * Une première rédaction cherchait « ffmpeg » dans tout le dossier. Elle
@@ -670,6 +705,7 @@ describe('M3-B2 n ajoute AUCUNE migration', () => {
     const AUTORISEES = new Set([
       '2026-09-02-rush-candidate-sets.sql',
       '2026-09-03-rush-transcriptions.sql',
+      '2026-09-04-rush-clip-sets.sql',
     ]);
     const posterieures = fichiersMigration.filter(
       (f) => f > '2026-09-01-rush-analyses.sql' && !AUTORISEES.has(f),
