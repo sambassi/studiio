@@ -1,0 +1,535 @@
+/**
+ * M3-H — LE CONTRAT DU RENDU : CE QUI SERA EXÉCUTÉ, ET RIEN QUI SOIT DÉCIDÉ.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ M3-G DÉCIDE, M3-H EXÉCUTE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Tout ce qui relève du montage — quels clips, dans quel ordre, combien de
+ * temps chacun, avec quel recadrage, avec quelle transition, vers quel format
+ * et quelle cadence — est DÉJÀ décidé et persisté dans `rush_montage_plans`.
+ * M3-H lit ce plan et le rend littéralement.
+ *
+ * Ce module ne porte donc AUCUNE décision éditoriale. Il ne contient ni
+ * tolérance de coupe, ni heuristique de recadrage, ni règle de durée : les
+ * chercher ici serait le signe qu'une décision de M3-G a été refaite.
+ *
+ * Ce qu'il fixe, ce sont les paramètres d'EXÉCUTION : comment les octets
+ * seront produits, dans quelles bornes de temps et de taille, sous quelle
+ * clé, et à quelles conditions le résultat sera reconnu conforme.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * CE QU'IL NE CONTIENDRA JAMAIS
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Aucun crédit, aucun fournisseur, aucun modèle de langage, aucun accès à
+ * `render_jobs`, `rendus` ou `videos`, aucune URL persistée, aucun titre,
+ * CTA, logo, sous-titre, musique ni effet. Le rendu est du calcul local sur
+ * des octets déjà produits par M3-F.
+ */
+import {
+  AUDIO_BITRATE, AUDIO_FREQUENCE, CLIP_OCTETS_MAX, CONTENT_TYPE,
+  PIXEL_FORMAT, PRESET, TIMEOUT_TELEVERSEMENT_MS as TIMEOUT_TELEVERSEMENT_CLIP_MS,
+  arrondirSeconde, nombreFini,
+} from './clip-contrat';
+import { DUREE_CIBLE_MAX_SECONDES, PLANS_MAX } from './montage-contrat';
+
+// ───────────────────────────────────────────────────────────────────────────
+// L'identité de la méthode
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Comment les OCTETS FINAUX sont produits.
+ *
+ * Le pendant de `METHODE_MATERIALISATION` ('x264-crf23-v1') de M3-F, et la
+ * quatrième question distincte de la chaîne : « où couper » (`m3e-v1`),
+ * « comment encoder les clips » (`x264-crf23-v1`), « comment monter »
+ * (`m3g-v1`), et maintenant « comment produire le fichier final ».
+ *
+ * ⚠️ CRF 20, ET NON 23 COMME M3-F — C'EST UNE SECONDE GÉNÉRATION.
+ *
+ * Les clips sortent déjà d'un encodage à CRF 23. Réencoder au même CRF ne
+ * vise pas la qualité de la SOURCE mais celle de l'entrée déjà dégradée : la
+ * perte s'ajoute une seconde fois, et se voit sur les aplats et les
+ * dégradés. Une marche plus stricte coûte environ 40 % de débit et préserve
+ * l'essentiel de la première génération.
+ *
+ * Le reste des paramètres est repris de M3-F À L'IDENTIQUE — `veryfast`,
+ * `yuv420p`, AAC 128 kb/s à 48 kHz, `+faststart` — parce que les clips en
+ * sortent et qu'en changer sans mesure serait de l'optimisation
+ * opportuniste. Le nom porte une version : une valeur mesurée autrement en
+ * H3 ou H5 donnera `x264-crf20-v2`, et les rendus précédents ne seront pas
+ * réutilisés à tort.
+ */
+export const METHODE_RENDU = 'x264-crf20-v1' as const;
+
+/** Une marche plus stricte que M3-F, parce que c'est une seconde génération. */
+export const CRF_RENDU = 20;
+
+/** Repris de M3-F sans changement : les clips en sortent. */
+export const PRESET_RENDU = PRESET;
+export const PIXEL_FORMAT_RENDU = PIXEL_FORMAT;
+export const AUDIO_BITRATE_RENDU = AUDIO_BITRATE;
+export const AUDIO_FREQUENCE_RENDU = AUDIO_FREQUENCE;
+export const CONTENT_TYPE_RENDU = CONTENT_TYPE;
+
+/** Le compartiment du montage final. Jamais choisi par le client. */
+export const BUCKET_RENDUS_MONTAGE = 'videos';
+
+// ───────────────────────────────────────────────────────────────────────────
+// Les bornes — toutes DÉRIVÉES, aucune choisie
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * La durée finale qu'un plan peut demander.
+ *
+ * Reprise de M3-G, et non redéclarée : un plan ne peut pas viser plus long
+ * que ce que son propre contrat autorise. En écrire une autre valeur ici
+ * créerait deux plafonds qui divergeraient au premier ajustement.
+ */
+export const DUREE_RENDU_MAX_SECONDES = DUREE_CIBLE_MAX_SECONDES;
+
+/** Autant de sources que M3-G peut retenir de plans. */
+export const SOURCES_MAX = PLANS_MAX;
+
+/**
+ * Le poids du fichier final, plafonné.
+ *
+ * ⚠️ EXTRAPOLÉ D'UNE MESURE, PAS CHOISI. M3-F a produit 23 504 275 octets
+ * pour 26,934 s de vidéo 1080p à CRF 23, soit environ 0,87 Mo par seconde.
+ * CRF 20 coûte environ 40 % de plus, donc ~1,22 Mo/s. Au pire cas de
+ * `DUREE_RENDU_MAX_SECONDES` (120 s), cela donne ~146 Mo.
+ *
+ * Le plafond retenu est le double de cette extrapolation : une scène très
+ * détaillée ou très mouvementée peut dépasser la moyenne d'un rush de
+ * démonstration, et un plafond trop serré transformerait une vidéo
+ * parfaitement valide en `resultat_invalide`.
+ */
+export const OCTETS_PAR_SECONDE_ESTIMES = Math.ceil(23_504_275 / 26.934 * 1.4);
+export const RENDU_OCTETS_MAX =
+  2 * OCTETS_PAR_SECONDE_ESTIMES * DUREE_RENDU_MAX_SECONDES;
+
+/**
+ * Le disque temporaire d'un rendu entier.
+ *
+ * Les sources téléchargées plus la sortie. Rien d'autre ne descend sur le
+ * disque, et le répertoire est supprimé dans un `finally` dont l'échec sera
+ * RENDU, jamais avalé — la leçon de M3-D2, reprise en M3-F.
+ */
+export const ESPACE_TEMPORAIRE_MAX_OCTETS =
+  SOURCES_MAX * CLIP_OCTETS_MAX + RENDU_OCTETS_MAX;
+
+/**
+ * Le temps accordé au téléchargement d'UN clip.
+ *
+ * Repris de la borne de téléversement de M3-F : même stockage, même réseau,
+ * même plafond de 64 Mio par objet. Ce n'est pas une recopie de confort —
+ * c'est la même opération, dans l'autre sens, sur le même service.
+ */
+export const TIMEOUT_TRANSFERT_SOURCE_MS = TIMEOUT_TELEVERSEMENT_CLIP_MS;
+
+/**
+ * Le temps accordé au téléversement du fichier FINAL.
+ *
+ * Dérivé de la borne de M3-F par le rapport des tailles : elle accorde 60 s
+ * pour 64 Mio, soit un débit plancher garanti d'environ 1,07 Mio/s. Le même
+ * plancher appliqué à `RENDU_OCTETS_MAX` donne la valeur ci-dessous. Garder
+ * 60 s pour un fichier quatre fois plus gros aurait coupé un téléversement
+ * parfaitement sain.
+ */
+export const TIMEOUT_TELEVERSEMENT_RENDU_MS = Math.ceil(
+  TIMEOUT_TELEVERSEMENT_CLIP_MS * (RENDU_OCTETS_MAX / CLIP_OCTETS_MAX),
+);
+
+/** Une sonde `ffprobe` sur un fichier local. Elle lit l'en-tête, rien de plus. */
+export const TIMEOUT_MESURE_MS = 30_000;
+
+/** Signature des sources, ouverture du répertoire, lecture du plan. */
+export const AMORCE_RENDU_MS = 10_000;
+
+/**
+ * Le facteur de temps réel accordé à l'encodage.
+ *
+ * ⚠️ ÉTALONNÉ SUR UNE MESURE RÉELLE. M3-F a produit 26,934 s de vidéo en
+ * 38 201 ms sur les quatre cœurs du serveur — téléchargement, cinq
+ * encodages et cinq téléversements COMPRIS — soit environ 1,42 fois le temps
+ * réel pour la boucle entière.
+ *
+ * Six fois le temps réel laisse donc plus de quatre fois la marge observée.
+ * C'est délibéré : la mesure vient d'un serveur au repos, et l'encodage de
+ * M3-H monte vers 1080×1920 depuis un recadrage, ce qui est plus coûteux par
+ * seconde qu'une simple recompression.
+ */
+export const FACTEUR_ENCODAGE = 6;
+
+/** Le plancher : un rendu d'une seconde a quand même besoin de démarrer x264. */
+export const TIMEOUT_ENCODAGE_MIN_MS = 60_000;
+
+/**
+ * Le temps accordé à l'unique passage ffmpeg, pour une durée finale donnée.
+ *
+ * Fonction de la durée, et non constante : accorder à un montage de cinq
+ * secondes le délai d'un montage de deux minutes retarderait de plusieurs
+ * minutes le diagnostic d'un encodage bloqué.
+ */
+export function timeoutEncodage(dureeSecondes: number): number {
+  const duree = nombreFini(dureeSecondes);
+  if (duree === null || duree <= 0) return TIMEOUT_ENCODAGE_MIN_MS;
+  return Math.max(
+    TIMEOUT_ENCODAGE_MIN_MS,
+    Math.ceil(duree * FACTEUR_ENCODAGE) * 1000,
+  );
+}
+
+/**
+ * Le pire cas d'un rendu complet, en millisecondes. Calculé, jamais choisi.
+ *
+ * Amorce, puis le téléchargement de chaque source, puis l'unique encodage,
+ * puis la mesure, puis le téléversement. C'est cette somme que la péremption
+ * doit franchement dépasser.
+ */
+export function budgetRendu(dureeSecondes: number): number {
+  return AMORCE_RENDU_MS
+    + SOURCES_MAX * TIMEOUT_TRANSFERT_SOURCE_MS
+    + timeoutEncodage(dureeSecondes)
+    + TIMEOUT_MESURE_MS
+    + TIMEOUT_TELEVERSEMENT_RENDU_MS;
+}
+
+/** Le pire cas absolu : la durée la plus longue qu'un plan puisse demander. */
+export const BUDGET_RENDU_MAX_MS = budgetRendu(DUREE_RENDU_MAX_SECONDES);
+
+/**
+ * La marge accordée au-delà du pire cas mesurable.
+ *
+ * Cinq minutes : de quoi absorber une machine chargée par un autre travail,
+ * la contention disque d'un téléchargement concurrent, et l'écart entre
+ * l'horloge du serveur et celle de la base. Elle n'a pas à couvrir un
+ * travail plus long — aucun ne peut dépasser `BUDGET_RENDU_MAX_MS`, chaque
+ * étape étant bornée.
+ */
+export const MARGE_PEREMPTION_MS = 300_000;
+
+/**
+ * Au bout de combien de temps un rendu actif est réputé abandonné.
+ *
+ * ⚠️ CALCULÉE DEPUIS LE BUDGET, ET NON RECOPIÉE DE M3-F. La péremption de
+ * M3-F vaut trente minutes parce que SON pire cas vaut dix-huit ; celui de
+ * M3-H est différent, et lui emprunter sa valeur aurait été un nombre sans
+ * rapport avec le travail qu'il protège.
+ *
+ * En dessous du seuil, un rendu actif est PROTÉGÉ : le fermer ferait repartir
+ * un second ffmpeg pendant le premier. Au-delà, la ligne est fermée, sans
+ * quoi un processus tué au mauvais moment rendrait le plan définitivement
+ * impossible à rendre — le piège s'est présenté sur `rush_analyses`, puis sur
+ * `rush_candidate_sets`, puis sur `rush_transcriptions`, puis sur
+ * `rush_clip_sets`.
+ */
+export const PEREMPTION_RENDU_MS = BUDGET_RENDU_MAX_MS + MARGE_PEREMPTION_MS;
+
+/**
+ * La durée de vie des URL signées des SOURCES.
+ *
+ * ⚠️ ELLE NE SUIT PAS LA PÉREMPTION, ET C'EST VOULU. Les signatures ne
+ * servent qu'à la phase de téléchargement : les clips descendent tous
+ * d'abord, puis ffmpeg travaille sur des fichiers locaux. Les faire vivre
+ * aussi longtemps que le rendu entier prolongerait un accès au stockage
+ * pendant vingt minutes où plus rien ne l'utilise.
+ *
+ * Elle couvre donc exactement l'amorce et les six téléchargements, plus la
+ * même marge que la péremption. Dérivée, comme tout le reste.
+ */
+export const TTL_SOURCE_RENDU_SECONDES = Math.ceil(
+  (AMORCE_RENDU_MS + SOURCES_MAX * TIMEOUT_TRANSFERT_SOURCE_MS
+    + MARGE_PEREMPTION_MS) / 1000,
+);
+
+// ───────────────────────────────────────────────────────────────────────────
+// Les tolérances de validation
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * La durée d'une trame AAC, en secondes : 1024 échantillons.
+ *
+ * À 48 kHz, 21,33 ms. C'est le quantum en dessous duquel une piste audio ne
+ * peut pas être découpée — un plan ne tombe jamais pile sur une frontière de
+ * trame, et la différence se reporte sur la durée du conteneur.
+ */
+export const ECHANTILLONS_TRAME_AAC = 1024;
+export const TRAME_AAC_SECONDES = ECHANTILLONS_TRAME_AAC / AUDIO_FREQUENCE_RENDU;
+
+/**
+ * De combien la durée mesurée peut s'écarter de la durée du plan.
+ *
+ * ⚠️ ELLE VIENT DU SUPPORT, PAS D'UNE PRÉFÉRENCE. Deux quanta s'imposent :
+ * l'image (1/fps, soit 33,3 ms à 30 i/s) et la trame AAC (21,3 ms à 48 kHz).
+ * Le plus grossier des deux gouverne.
+ *
+ * Et il s'accumule : chaque frontière entre deux plans arrondit une fois, si
+ * bien que le pire cas croît avec le NOMBRE DE PLANS. Une tolérance fixe
+ * aurait été trop lâche pour un montage de deux plans et trop serrée pour un
+ * montage de six.
+ *
+ * Pour le plan de référence — 5 plans à 30 i/s visant 25,000 s — cela donne
+ * 166,7 ms, soit une conformité entre 24,833 s et 25,167 s.
+ */
+export function toleranceDuree(fps: number, nombrePlans: number): number {
+  const f = nombreFini(fps);
+  const n = nombreFini(nombrePlans);
+  const cadence = f !== null && f > 0 ? f : 30;
+  const plans = n !== null && n >= 1 ? Math.floor(n) : 1;
+  const quantum = Math.max(1 / cadence, TRAME_AAC_SECONDES);
+  return arrondirSeconde(quantum * plans);
+}
+
+/**
+ * La cadence mesurée peut-elle différer de la cadence demandée ?
+ *
+ * À peine : ffmpeg écrit une cadence constante, mais `ffprobe` la rend sous
+ * forme de fraction (`30000/1001` pour du 29,97). Un millième absorbe la
+ * conversion sans laisser passer une cadence réellement fausse.
+ */
+export const TOLERANCE_FPS = 0.001;
+
+/**
+ * La résolution, elle, n'a AUCUNE tolérance.
+ *
+ * `scale` produit exactement les dimensions demandées. Un pixel d'écart
+ * signifierait que le recadrage de M3-G n'a pas été appliqué tel quel, et
+ * c'est précisément ce qu'il ne faut pas laisser passer.
+ */
+export function resolutionConforme(
+  largeur: unknown, hauteur: unknown, attenduL: number, attenduH: number,
+): boolean {
+  return nombreFini(largeur) === attenduL && nombreFini(hauteur) === attenduH;
+}
+
+/** La durée mesurée tombe-t-elle dans la tolérance du plan ? */
+export function dureeConforme(
+  mesuree: unknown, attendue: number, fps: number, nombrePlans: number,
+): boolean {
+  const m = nombreFini(mesuree);
+  const a = nombreFini(attendue);
+  if (m === null || a === null || m <= 0 || a <= 0) return false;
+  return Math.abs(m - a) <= toleranceDuree(fps, nombrePlans);
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// La clé de stockage
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * La clé du montage final : FABRIQUÉE, jamais reçue.
+ *
+ * ⚠️ LE PRÉFIXE UTILISATEUR EST LA PREUVE DE PROPRIÉTÉ, comme en M3-F. Que
+ * l'objet EXISTE ne prouve rien ; qu'il vive sous `<userId>/` prouve à qui
+ * il appartient, et c'est ce que la lecture vérifiera.
+ *
+ * Déterministe pour un rendu donné : le même identifiant rend la même clé, ce
+ * qui permet de retrouver — et donc de supprimer — l'objet d'un rendu
+ * interrompu sans avoir à le relire en base.
+ *
+ * Les deux composants viennent de la session et de la base ; aucune partie
+ * n'est arbitraire, et un identifiant malformé ne peut pas fabriquer un
+ * chemin qui sorte de l'espace de son propriétaire.
+ */
+export function cleRendu(userId: string, renduId: string): string {
+  return `${userId}/autopilote/montages/${renduId}/montage.mp4`;
+}
+
+/**
+ * Une clé relue est-elle une clé, et rien d'autre ?
+ *
+ * `A/../B/x` satisfait un préfixe tout en désignant l'espace de B, et une
+ * URL n'a rien à faire dans un champ de clé — c'est le signe qu'une
+ * signature a été persistée quelque part.
+ */
+export function cleValide(valeur: unknown, userId: string): boolean {
+  if (typeof valeur !== 'string' || valeur.length === 0) return false;
+  if (!valeur.startsWith(`${userId}/`)) return false;
+  if (valeur.includes('..') || valeur.includes('://')) return false;
+  return true;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Les vocabulaires fermés
+// ───────────────────────────────────────────────────────────────────────────
+
+export const ETATS_RENDU = [
+  'en_attente', 'en_cours', 'reussie', 'echouee', 'annulee',
+] as const;
+export type EtatRendu = (typeof ETATS_RENDU)[number];
+
+export function etatRenduValide(v: unknown): v is EtatRendu {
+  return typeof v === 'string' && (ETATS_RENDU as readonly string[]).includes(v);
+}
+
+/**
+ * Les étapes : QUATRE, et chacune est une vraie frontière technique.
+ *
+ * Elles ne décorent pas une barre de progression — elles disent où le travail
+ * s'est arrêté, et chacune a ses propres modes d'échec :
+ *
+ *   • `source`       : signer, télécharger. Échoue en réseau ou en propriété.
+ *   • `encodage`     : l'unique passage ffmpeg. Échoue en média ou en délai.
+ *   • `mesure`       : ffprobe sur le fichier local. Échoue en conformité.
+ *   • `televersement`: l'envoi vers le stockage. Échoue en réseau.
+ *
+ * Un cinquième palier « préparation » ou « finalisation » n'apporterait
+ * aucun diagnostic que les quatre ne donnent déjà.
+ */
+export const ETAPES_RENDU = ['source', 'encodage', 'mesure', 'televersement'] as const;
+export type EtapeRendu = (typeof ETAPES_RENDU)[number];
+
+export function etapeRenduValide(v: unknown): v is EtapeRendu {
+  return typeof v === 'string' && (ETAPES_RENDU as readonly string[]).includes(v);
+}
+
+/**
+ * Les motifs d'échec : un vocabulaire fermé, traduisible et testable.
+ *
+ * ⚠️ AUCUNE SORTIE BRUTE DE FFMPEG N'ENTRE ICI. `stderr` porte le chemin
+ * local et l'URL signée de la source ; il part au journal, masqué, et
+ * jamais en base ni dans une réponse.
+ *
+ * `plan_introuvable` n'y figure PAS : un plan inconnu — ou appartenant à
+ * autrui — est un 404 de la route, jamais une ligne persistée. Un motif ne
+ * décrit que l'échec d'un travail qui a commencé.
+ */
+export const MOTIFS_RENDU = [
+  'plan_non_conforme',
+  'source_inaccessible',
+  'clip_illisible',
+  'outil_absent',
+  'encodage_echoue',
+  'delai_depasse',
+  'resultat_invalide',
+  'televersement_echoue',
+  'capacite_saturee',
+  'rendu_interrompu',
+] as const;
+export type MotifRendu = (typeof MOTIFS_RENDU)[number];
+
+export function motifRenduValide(v: unknown): v is MotifRendu {
+  return typeof v === 'string' && (MOTIFS_RENDU as readonly string[]).includes(v);
+}
+
+/** Le motif écrit en base quand un rendu est fermé par péremption. */
+export const MOTIF_RENDU_INTERROMPU: MotifRendu = 'rendu_interrompu';
+
+// ───────────────────────────────────────────────────────────────────────────
+// L'identité et les formes
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Ce qui fait qu'un rendu EST le même rendu.
+ *
+ * ⚠️ TROIS CHAMPS, ET PAS UN DE PLUS.
+ *
+ * Le plan porte DÉJÀ, dans sa propre identité persistée, le jeu de clips et
+ * sa version, l'analyse, `m3e-v1`, `x264-crf23-v1`, `m3g-v1`, le format et la
+ * durée cible. Les recopier ici les ferait exister à deux endroits, avec la
+ * certitude qu'ils divergeraient un jour ; `montagePlanId` et sa version les
+ * résument sans ambiguïté.
+ *
+ * `methodeRendu` en fait partie pour la raison que la revue de M3-F a mise au
+ * jour : `algorithme` disait comment les bornes avaient été décidées, mais
+ * rien ne disait comment les OCTETS avaient été produits. Sans elle, changer
+ * de CRF rendrait le fichier de l'encodage précédent en croyant réencoder.
+ *
+ * Elle est fixée par le SERVEUR à `METHODE_RENDU`, jamais reçue.
+ */
+export interface IdentiteRendu {
+  montagePlanId: string;
+  montagePlanVersion: number;
+  methodeRendu: string;
+}
+
+/** Le fichier final, tel que la mesure l'a constaté. */
+export interface RenduMaterialise {
+  bucket: string;
+  cle: string;
+  octets: number;
+  /** Ce que `ffprobe` a lu, et non ce que le plan demandait. */
+  dureeMesureeSecondes: number;
+  largeur: number;
+  hauteur: number;
+  fpsMesure: number | null;
+  codecVideo: string;
+  aAudio: boolean;
+  codecAudio: string | null;
+}
+
+/**
+ * Un résultat relu porte-t-il ce qu'il prétend porter ?
+ *
+ * Même garde qu'en M3-F et M3-G : ce qu'une version antérieure du code, ou
+ * une main, a écrit ne doit pas être servi comme s'il était complet. Une URL
+ * dans une clé est le signe qu'une signature a été persistée.
+ */
+export function renduMaterialiseValide(v: unknown, userId: string): v is RenduMaterialise {
+  if (typeof v !== 'object' || v === null) return false;
+  const r = v as Record<string, unknown>;
+  if (!cleValide(r.cle, userId)) return false;
+  if (typeof r.bucket !== 'string' || r.bucket.length === 0) return false;
+  for (const c of ['octets', 'dureeMesureeSecondes', 'largeur', 'hauteur']) {
+    const n = nombreFini(r[c]);
+    if (n === null || n <= 0) return false;
+  }
+  if (typeof r.codecVideo !== 'string' || r.codecVideo.length === 0) return false;
+  if (typeof r.aAudio !== 'boolean') return false;
+  return true;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Ce que le navigateur a le droit d'envoyer
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * ⚠️ RIEN. Le corps de la requête est VIDE, et c'est le contrat.
+ *
+ * `montagePlanId` vient du chemin ; tout le reste — les clips, les bornes,
+ * les recadrages, le format, la cadence, la durée — est lu dans le plan
+ * persisté. Il n'existe donc aucun paramètre de rendu légitime que le client
+ * pourrait fournir, contrairement à M3-G où le format et la durée cible
+ * étaient de vraies demandes de l'utilisateur.
+ *
+ * La liste ci-dessous n'est pas une liste de champs optionnels : c'est ce que
+ * la route REFUSERA explicitement, en 422. Un champ ignoré laisse croire
+ * qu'il a été pris en compte, et c'est exactement ce qu'espère celui qui
+ * l'envoie.
+ */
+export const CORPS_RENDU_ATTENDU_VIDE = true as const;
+
+export const CHAMPS_INTERDITS_RENDU = [
+  'clips', 'plans', 'ordre', 'debutSecondes', 'finSecondes', 'entreeSecondes',
+  'dureeRetenueSecondes', 'debutTimelineSecondes', 'coupes', 'recadrage', 'crop',
+  'largeur', 'hauteur', 'largeurCible', 'hauteurCible', 'width', 'height',
+  'fps', 'cadence', 'codec', 'crf', 'preset', 'audio', 'musicUrl',
+  'bucket', 'cle', 'cleObjet', 'url', 'args', 'ffmpeg', 'composition',
+  'duree', 'dureeCibleSecondes', 'methode', 'methodeRendu',
+  'force', 'regenerate', 'userId', 'user_id',
+] as const;
+
+/**
+ * Le plan est-il rendable ?
+ *
+ * ⚠️ ON NE JUGE PAS SA DÉCISION, ON VÉRIFIE QU'ELLE EST EXÉCUTABLE. Le
+ * nombre de plans, leur ordre et leurs durées viennent de M3-G et ne sont pas
+ * rediscutés ; ce qui est contrôlé ici, c'est qu'il y a quelque chose à
+ * rendre et que cela tient dans les bornes d'exécution.
+ */
+export function planRendable(plan: {
+  plans?: unknown; dureeTotaleSecondes?: unknown;
+  largeurCible?: unknown; hauteurCible?: unknown; fps?: unknown;
+}): boolean {
+  if (!Array.isArray(plan.plans) || plan.plans.length === 0) return false;
+  if (plan.plans.length > SOURCES_MAX) return false;
+  const duree = nombreFini(plan.dureeTotaleSecondes);
+  if (duree === null || duree <= 0 || duree > DUREE_RENDU_MAX_SECONDES) return false;
+  for (const c of ['largeurCible', 'hauteurCible', 'fps'] as const) {
+    const n = nombreFini(plan[c]);
+    if (n === null || n <= 0) return false;
+  }
+  return true;
+}
