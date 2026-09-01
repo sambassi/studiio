@@ -309,6 +309,59 @@ export function transcriptionsEnCoursMaintenant(): number {
 }
 
 /**
+ * Politique V1 : UN jeu de clips à la fois sur ce processus.
+ *
+ * ⚠️ LA BORNE LA PLUS SERRÉE DE TOUT L'AUTOPILOTE, ET LA MIEUX MÉRITÉE.
+ *
+ * Un jeu réencode jusqu'à six clips en H.264. Mesuré sur les cinq coupes
+ * réelles du rush de production — vingt-sept secondes de 1080p — le jeu
+ * complet coûte une TRENTAINE DE SECONDES DE CPU. `libx264` sature déjà les
+ * quatre cœurs à lui seul ; en lancer deux ne va pas plus vite et met la
+ * base, le stockage et l'application en concurrence pour le même processeur.
+ *
+ * Un refus ici n'écrit RIEN : la route rend 429 avec `Retry-After`, aucune
+ * ligne ne reste derrière, et aucun verrou d'unicité n'est occupé.
+ */
+export const MAX_JEUX_CLIPS_SIMULTANES = 1;
+
+/**
+ * Le compteur des jeux de clips. SÉPARÉ des trois autres, exprime.
+ *
+ * Un compteur partagé avec l'analyse ferait refuser une matérialisation parce
+ * qu'une analyse tourne, alors que ce sont deux travaux différents demandés
+ * depuis deux écrans différents.
+ */
+let jeuxClipsEnCours = 0;
+
+/**
+ * Prend une place de matérialisation, ou rend `null` si elle est prise.
+ *
+ * NE JAMAIS l'appeler avant d'avoir refusé ce qui doit l'être — session
+ * absente, jeu d'autrui, décision inexploitable. Et TOUJOURS avant `creerSet` :
+ * une place refusée ne doit laisser AUCUNE ligne derrière elle, sans quoi le
+ * refus le plus bénin occuperait le verrou d'unicité et interdirait toute
+ * relance.
+ */
+export function prendrePlaceClips(): PlaceExtraction | null {
+  if (jeuxClipsEnCours >= MAX_JEUX_CLIPS_SIMULTANES) return null;
+  jeuxClipsEnCours += 1;
+
+  let rendue = false;
+  return {
+    liberer() {
+      if (rendue) return;
+      rendue = true;
+      jeuxClipsEnCours -= 1;
+    },
+  };
+}
+
+/** Le nombre de jeux de clips en cours sur ce processus. Pour les tests. */
+export function jeuxClipsEnCoursMaintenant(): number {
+  return jeuxClipsEnCours;
+}
+
+/**
  * Remet le compteur à zéro — POUR LES TESTS, et pour eux seuls.
  *
  * Même esprit que `definirMoteurExtraction` : la couture est exportée pour que
@@ -320,4 +373,5 @@ export function reinitialiserCapacite(): void {
   enCours = 0;
   audioEnCours = 0;
   transcriptionsEnCours = 0;
+  jeuxClipsEnCours = 0;
 }
