@@ -726,6 +726,46 @@ describe('M3-B2 n ajoute AUCUNE migration', () => {
   });
 
   /**
+   * L'exception de M3-H suit le même moule que M3-F et M3-G : créer sa table,
+   * référencer `rush_montage_plans`, et y poser l'index unique que sa clé
+   * étrangère composite EXIGE. Rien d'autre — et surtout pas de retour sur
+   * les tables déjà en production.
+   */
+  it('M3-H n ajoute qu un index à `rush_montage_plans`, sans rien détruire', () => {
+    const fichier = '2026-09-06-rush-montage-renders.sql';
+    expect(fichiersMigration).toContain(fichier);
+    const code = sqlSansCommentaires(fichier).toLowerCase();
+
+    expect(code).toMatch(/create table if not exists public\.rush_montage_renders/);
+
+    // Le seul contact avec une table existante : l'index que la clé étrangère
+    // à trois colonnes exige, et la référence elle-même.
+    expect(code).toMatch(
+      /create\s+unique\s+index\s+if\s+not\s+exists\s+rush_montage_plans_id_version_user_key\s+on\s+public\.rush_montage_plans/,
+    );
+    expect((code.match(/on public\.rush_montage_plans/g) ?? []).length).toBe(1);
+    expect((code.match(/references public\.rush_montage_plans/g) ?? []).length).toBe(1);
+    expect(code, 'aucun ALTER, sur quoi que ce soit').not.toMatch(/alter\s+table/);
+
+    // Tout l'amont est hors de son périmètre, comme la file de rendu Remotion
+    // et la table de facturation.
+    expect(code).not.toContain('rush_analyses');
+    expect(code).not.toContain('rush_transcriptions');
+    expect(code).not.toContain('rush_candidate_sets');
+    expect(code).not.toContain('rush_clip_sets');
+    expect(code).not.toContain('render_jobs');
+    expect((code.match(/on public\.rushes\b/g) ?? []).length).toBe(0);
+    expect((code.match(/on public\.rendus\b/g) ?? []).length).toBe(0);
+
+    for (const interdit of [
+      'drop table', 'drop column', 'drop index', 'truncate', 'delete from', 'alter column',
+    ]) {
+      expect(code, `M3-H ne doit pas contenir « ${interdit} »`).not.toContain(interdit);
+    }
+    expect(code).not.toMatch(/\bgrant\b/);
+  });
+
+  /**
    * La règle porte sur la DATE du fichier, pas sur son vocabulaire.
    *
    * Une première rédaction cherchait « ffmpeg » dans tout le dossier. Elle
@@ -746,6 +786,7 @@ describe('M3-B2 n ajoute AUCUNE migration', () => {
       '2026-09-03-rush-transcriptions.sql',
       '2026-09-04-rush-clip-sets.sql',
       '2026-09-05-rush-montage-plans.sql',
+      '2026-09-06-rush-montage-renders.sql',
     ]);
     const posterieures = fichiersMigration.filter(
       (f) => f > '2026-09-01-rush-analyses.sql' && !AUTORISEES.has(f),
