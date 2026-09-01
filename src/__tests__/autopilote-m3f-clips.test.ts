@@ -105,6 +105,10 @@ vi.mock('@/lib/autopilot/analyse/extraction', async (orig) => {
 interface Ligne { [k: string]: unknown }
 let tables: Record<string, Ligne[]>;
 let tableAbsente: string | null = null;
+/** Une panne BRUTE, non un `error` PostgREST : la doublure lève, comme le ferait
+ *  un socle injoignable. Le message porte volontairement une adresse interne. */
+let tableEnPanne: string | null = null;
+const MESSAGE_INTERNE = 'connect ECONNREFUSED postgres 10.0.0.4:5432';
 const tentativesInsertion: Array<{ table: string; valeurs: Ligne }> = [];
 
 const erreurTable = { code: '42P01', message: 'relation does not exist' };
@@ -132,6 +136,7 @@ function anterieurA(v: unknown, b: unknown): boolean {
 }
 
 function requete(table: string) {
+  if (tableEnPanne === table) throw new Error(MESSAGE_INTERNE);
   const eq: Array<[string, unknown]> = [];
   const estNul: string[] = [];
   const dans: Array<[string, unknown[]]> = [];
@@ -248,6 +253,7 @@ import {
   BUCKET_CLIPS, CRF, PRESET, PIXEL_FORMAT, CLIPS_MAX, CLIP_SECONDES_MAX,
   SET_SECONDES_MAX, CLIP_OCTETS_MAX, TIMEOUT_CLIP_MS, TIMEOUT_TELEVERSEMENT_MS, BUDGET_SET_MS,
   PEREMPTION_SET_MS, MOTIFS_CLIPS, METHODE_MATERIALISATION,
+  TTL_SOURCE_SECONDES, BORNE_STOCKAGE_CLIPS,
 } from '@/lib/autopilot/analyse/clip-contrat';
 import { argumentsDecoupe, lireMesure } from '@/lib/autopilot/analyse/clip-extraction';
 import { materialiserSet, coupesRetenues, dureeCumulee } from '@/lib/autopilot/analyse/clip';
@@ -358,6 +364,7 @@ beforeEach(() => {
     rush_clip_sets: [],
   };
   tableAbsente = null;
+    tableEnPanne = null;
   tentativesInsertion.length = 0;
   objetsEcrits.length = 0;
   objetsSupprimes.length = 0;
@@ -434,6 +441,65 @@ describe('1-9. Le contrat : bornes, clé, vocabulaire', () => {
     expect(identifiantValide(CS)).toBe(true);
     expect(identifiantValide('pas-un-uuid')).toBe(false);
   });
+
+  it('la TTL de la source COUVRE le pire cas du jeu — l’invariant que la revue a exigé', () => {
+    // Reprendre les dix minutes de M3-B2 aurait laissé la signature expirer
+    // au milieu d'un jeu de six clips : les derniers auraient échoué en
+    // `media_illisible`, un diagnostic FAUX pour une URL périmée.
+    expect(TTL_SOURCE_SECONDES * 1000).toBeGreaterThanOrEqual(BUDGET_SET_MS);
+    // La valeur n'est pas choisie : la signature meurt quand le jeu est
+    // déclaré abandonné, et ne peut jamais lui survivre.
+    expect(TTL_SOURCE_SECONDES * 1000).toBe(PEREMPTION_SET_MS);
+    // Et elle est bien plus longue que celle de l'extraction, qui ne signait
+    // que pour huit vignettes.
+    const extraction = readFileSync(
+      resolve(process.cwd(), 'src/lib/autopilot/analyse/extraction.ts'), 'utf8',
+    );
+    expect(extraction).toContain('export const TTL_URL_SECONDES = 600');
+    expect(TTL_SOURCE_SECONDES).toBeGreaterThan(600);
+  });
+
+  it('la borne réseau du téléversement est celle de M3-F, pas celle des vignettes', () => {
+    // `BORNE_MINIO` vaut dix secondes, dimensionnées pour un `statObject` et
+    // des vignettes. Le transport borné DÉTRUIT la requête à l'échéance : la
+    // reprendre aurait coupé un clip de 64 Mio bien avant les soixante
+    // secondes annoncées, et le contrat aurait menti.
+    expect(BORNE_STOCKAGE_CLIPS).toEqual({ timeoutMs: TIMEOUT_TELEVERSEMENT_MS });
+    expect(TIMEOUT_TELEVERSEMENT_MS).toBeGreaterThan(10_000);
+
+    const src = readFileSync(SRC.extraction, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+    expect(src).toContain('clientMinio(BORNE_STOCKAGE_CLIPS).putObject');
+    // ⚠️ AUCUN `Promise.race` : `minio-client.ts` explique qu'une course est
+    // une borne en trompe-l'œil — elle rend la main sans fermer la socket, et
+    // un téléversement déclaré échoué continuerait d'écrire l'objet.
+    expect(src).not.toContain('Promise.race');
+  });
+
+  it('le transport borné COUPE réellement la requête — ce n’est pas une course', async () => {
+    // La preuve que la borne arrête l'I/O plutôt que de cesser d'attendre :
+    // le transport détruit la `ClientRequest`, ce qui fait rejeter la promesse.
+    const { transportMinioBorne, RAISON_TIMEOUT_MINIO } = await import('@/lib/storage/minio-client');
+    const http = await import('http');
+    const muet = http.createServer(() => { /* n'répond jamais */ });
+    await new Promise<void>((pret) => muet.listen(0, '127.0.0.1', pret));
+    const port = (muet.address() as { port: number }).port;
+
+    const transport = transportMinioBorne(false, 120);
+    const rejet = await new Promise<Error>((resoudre) => {
+      const requete = transport.request(
+        { host: '127.0.0.1', port, path: '/', method: 'GET' } as never,
+        () => { /* jamais */ },
+      );
+      requete.on('error', (e: Error) => resoudre(e));
+      requete.end();
+    });
+    muet.close();
+
+    expect(rejet.message).toContain(RAISON_TIMEOUT_MINIO);
+    // La socket est bien fermée : aucun travail fantôme ne continue.
+    expect(rejet.message).not.toMatch(/127\.0\.0\.1|localhost/);
+  }, 20_000);
 
   it('les arguments ffmpeg portent chacun leur garantie', () => {
     const a = argumentsDecoupe(URL_SIGNEE, coupe({ debutSecondes: 3, finSecondes: 6 }), '/tmp/x/rang-01.mp4');
@@ -665,6 +731,7 @@ describe('17-24. La persistance : idempotence, réutilisation, reprise', () => {
   const identite = {
     candidateSetId: CS, candidateSetVersion: 1, rushId: RU, analysisId: AN,
     transcriptionId: T1, transcriptionVersion: 1, algorithme: 'm3e-v1',
+    methode: METHODE_MATERIALISATION,
   };
 
   it('le jeu de candidats d’autrui : la CLÉ ÉTRANGÈRE refuse, pas un `if`', async () => {
@@ -724,11 +791,18 @@ describe('17-24. La persistance : idempotence, réutilisation, reprise', () => {
     tables.rush_clip_sets = [{
       id: 'ok', candidate_set_id: CS, candidate_set_version: 1, rush_id: RU,
       analysis_id: AN, transcription_id: T1, transcription_version: 1,
-      algorithme: 'm3e-v1', user_id: 'A', version: 1, etat: 'reussie',
+      algorithme: 'm3e-v1', methode: METHODE_MATERIALISATION,
+      user_id: 'A', version: 1, etat: 'reussie',
       clips: [], usage: {}, created_at: maintenantIso(), updated_at: maintenantIso(),
     }];
     const r = await lireSetReussiIdentique('A', identite);
     expect(r.set?.id).toBe('ok');
+    // ⚠️ LA MÉTHODE FAIT PARTIE DE L'IDENTITÉ. Changer de codec ou de qualité
+    // sans toucher à M3-E ne doit PAS rendre les fichiers de l'encodage
+    // précédent : on croirait avoir réencodé, et l'on servirait l'ancien.
+    expect((await lireSetReussiIdentique('A', {
+      ...identite, methode: 'x264-crf22-v2',
+    })).set).toBeNull();
     // Une transcription DIFFÉRENTE, c'est une autre décision : pas de réutilisation.
     expect((await lireSetReussiIdentique('A', { ...identite, transcriptionId: T2 })).set).toBeNull();
     // Une version de candidats différente non plus.
@@ -739,7 +813,8 @@ describe('17-24. La persistance : idempotence, réutilisation, reprise', () => {
     tables.rush_clip_sets = [{
       id: 'sans', candidate_set_id: CS, candidate_set_version: 1, rush_id: RU,
       analysis_id: AN, transcription_id: null, transcription_version: null,
-      algorithme: 'm3e-v1', user_id: 'A', version: 1, etat: 'reussie',
+      algorithme: 'm3e-v1', methode: METHODE_MATERIALISATION,
+      user_id: 'A', version: 1, etat: 'reussie',
       clips: [], usage: {}, created_at: maintenantIso(), updated_at: maintenantIso(),
     }];
     // Sans ce soin, un rush sans transcription refabriquerait le même jeu à l'infini.
@@ -834,7 +909,7 @@ describe('25-38. Les routes : propriété, refus, aucun timecode client', () => 
     expect(b.clipSet).toMatchObject({
       candidateSetId: CS, candidateSetVersion: 1, rushId: RU, analysisId: AN,
       transcriptionId: T1, transcriptionVersion: 1, algorithme: 'm3e-v1',
-      etat: 'en_attente', version: 1,
+      methode: METHODE_MATERIALISATION, etat: 'en_attente', version: 1,
     });
     await attendre();
     // Le travail a bien tourné derrière la réponse.
@@ -921,6 +996,67 @@ describe('25-38. Les routes : propriété, refus, aucun timecode client', () => 
     expect((await rep.json()).motif).toBe('socle_absent');
   });
 
+  it('une panne inattendue ne RECOPIE jamais le message interne au client', async () => {
+    // Rendre `e.message` était le réflexe : le client aurait lu l'adresse et le
+    // port du socle. Le détail part au journal, masqué ; la réponse est muette.
+    const journal = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      tableEnPanne = 'rush_candidate_sets';
+      const rep = await post();
+      expect(rep.status).toBe(500);
+      const corps = JSON.stringify(await rep.json());
+      expect(corps).toContain('erreur_interne');
+      expect(corps).not.toContain('10.0.0.4');
+      expect(corps).not.toContain('ECONNREFUSED');
+      expect(corps).not.toContain('postgres');
+
+      tableEnPanne = null;
+      await post();
+      await attendre();
+      const id = String(tables.rush_clip_sets[0].id);
+      tableEnPanne = 'rush_clip_sets';
+      const lu = await GET({} as never, { params: { clipSetId: id } });
+      expect(lu.status).toBe(500);
+      const corpsLu = JSON.stringify(await lu.json());
+      expect(corpsLu).toContain('erreur_interne');
+      expect(corpsLu).not.toContain('10.0.0.4');
+      expect(corpsLu).not.toContain('postgres');
+      // Le diagnostic existe, côté serveur seulement.
+      expect(journal).toHaveBeenCalled();
+    } finally {
+      tableEnPanne = null;
+      journal.mockRestore();
+    }
+  });
+
+  it('les objets déjà en ligne sont NOTÉS au fil de l’eau, pas à la fin', async () => {
+    // Si le conteneur meurt entre le deuxième et le troisième clip, la ligne
+    // reste `en_cours` et personne ne sait quels objets existent déjà. Noter
+    // les clés après CHAQUE téléversement est la seule trace qui survive.
+    const vues: number[] = [];
+    const majReelle = tables;
+    void majReelle;
+    const observer = setInterval(() => {
+      const l = tables.rush_clip_sets?.[0];
+      const u = (l?.usage ?? {}) as { objetsEnLigne?: string[] };
+      if (Array.isArray(u.objetsEnLigne)) vues.push(u.objetsEnLigne.length);
+    }, 1);
+    const rep = await post();
+    expect(rep.status).toBe(202);
+    await attendre();
+    clearInterval(observer);
+
+    const ligne = tables.rush_clip_sets[0];
+    const usage = ligne.usage as { objetsEnLigne?: string[] };
+    expect(usage.objetsEnLigne).toEqual(objetsEcrits.map((o) => o.cle));
+    expect(usage.objetsEnLigne!.length).toBeGreaterThan(1);
+    // ⚠️ La trace a existé AVANT la fin : au moins un état intermédiaire,
+    // strictement plus court que la liste finale, a été observé en base.
+    expect(vues.some((n) => n > 0 && n < usage.objetsEnLigne!.length)).toBe(true);
+    // Et chaque clé notée est bien une clé du préfixe utilisateur.
+    for (const cle of usage.objetsEnLigne!) expect(cle.startsWith('A/autopilote/clips/')).toBe(true);
+  });
+
   it('GET : lecture seule, 404 non fuyant, aucune écriture', async () => {
     await post();
     await attendre();
@@ -991,7 +1127,9 @@ describe('39-48. Ce que M3-F ne touche pas', () => {
       expect(s).not.toMatch(/sh\s+-c|bash\s+-c|execSync|child_process/);
     }
     // Le lancement passe par le helper borné de M3-B2, avec un TABLEAU d'args.
-    expect(readFileSync(SRC.extraction, 'utf8')).toContain("lancer,\n} from './extraction'");
+    const ext = readFileSync(SRC.extraction, 'utf8');
+    expect(ext).toMatch(/import\s*\{[^}]*\blancer\b[^}]*\}\s*from\s*'\.\/extraction'/s);
+    expect(ext).toMatch(/lancer\(\s*cheminFfmpeg\(\),\s*argumentsDecoupe\(/);
   });
 
   it('les sources M3-C, M3-D, M3-E ne sont pas modifiées par ce lot', () => {

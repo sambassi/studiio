@@ -38,6 +38,23 @@ export interface DemandeSet {
   clipSetId: string;
   source: SourceRush;
   coupes: readonly Coupe[];
+  /**
+   * Appelé APRÈS chaque téléversement réussi, avec les clés déjà en ligne.
+   *
+   * ⚠️ CE N'EST PAS UNE PROGRESSION D'AFFICHAGE, C'EST UNE TRACE.
+   *
+   * Le chemin d'échec normal supprime ce qu'il a écrit. Un arrêt BRUTAL —
+   * `SIGKILL`, redéploiement, conteneur tué — n'exécute aucun `finally` : la
+   * ligne reste `en_cours`, la péremption la fermera dans trente minutes, et
+   * les objets déjà écrits n'auraient été nommés nulle part. Personne, alors,
+   * ne saurait ce qu'il y a à reprendre.
+   *
+   * Consigner les clés au fil de l'eau ne supprime rien de plus — c'est le
+   * travail de la purge, qui appartient au lot suivant — mais transforme une
+   * fuite INVISIBLE en une fuite RECENSÉE. Une écriture par clip, six au
+   * plus.
+   */
+  signaler?: (cles: string[]) => Promise<void>;
 }
 
 export type ResultatSet =
@@ -120,6 +137,11 @@ export async function materialiserSet(demande: DemandeSet): Promise<ResultatSet>
       });
       if (!r.ok) { echec = r.motif; break; }
       produits.push(r.clip);
+      // La trace, avant de passer au suivant : si le processus meurt ici, ce
+      // qui est en ligne aura au moins été nommé.
+      if (demande.signaler) {
+        try { await demande.signaler(produits.map((c) => c.cle)); } catch { /* la trace n'est pas le travail */ }
+      }
     }
   } finally {
     // La suppression est TENTÉE quoi qu'il arrive, et son issue est rendue.
@@ -138,6 +160,10 @@ export async function materialiserSet(demande: DemandeSet): Promise<ResultatSet>
     return { ok: false, motif: echec, usage };
   }
 
+  // ⚠️ LA TRACE SURVIT À LA RÉUSSITE. `majSet` remplace `usage` en entier :
+  // omettre ici les clés effacerait, à la dernière écriture, la liste écrite
+  // au fil de l'eau — et un jeu réussi ne dirait plus quels objets il occupe.
+  usage.objetsEnLigne = produits.map((c) => c.cle);
   usage.clipsProduits = produits.length;
   usage.octetsProduits = produits.reduce((t, c) => t + c.octets, 0);
   usage.dureeMs = Date.now() - debutMs;

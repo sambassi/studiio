@@ -148,6 +148,45 @@ export function seuilPeremptionSet(maintenant: number = Date.now()): string {
 }
 
 /**
+ * La durée de vie de l'URL signée du rush, en secondes.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ PROPRE À M3-F, ET NON CELLE DE M3-B2 — LA REVUE L'A EXIGÉ
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * `TTL_URL_SECONDES` de l'extraction vaut dix minutes : assez pour un sondage
+ * et huit vignettes. M3-F signe UNE fois pour tout le jeu, puis découpe
+ * jusqu'à six clips — `BUDGET_SET_MS` vaut plus de DIX-HUIT MINUTES au pire
+ * cas. Reprendre la borne de M3-B2 aurait donc laissé la signature expirer
+ * au milieu du jeu, et les derniers clips auraient échoué en
+ * `media_illisible` — un diagnostic faux pour une signature périmée.
+ *
+ * La valeur n'est pas choisie : elle est celle de la PÉREMPTION du jeu. La
+ * signature meurt donc exactement quand le jeu est déclaré abandonné, et ne
+ * peut jamais lui survivre. Elle couvre le pire cas avec la marge que la
+ * péremption porte déjà, et un test vérifie que les deux ne divergent pas.
+ */
+export const TTL_SOURCE_SECONDES = Math.floor(PEREMPTION_SET_MS / 1000);
+
+/**
+ * Le délai réseau imposé au STOCKAGE pendant un jeu.
+ *
+ * ⚠️ IL NE PEUT PAS ÊTRE CELUI DE M3-B2. `BORNE_MINIO` vaut dix secondes,
+ * dimensionnées pour un `statObject` et des vignettes de quelques dizaines de
+ * kilo-octets. Un clip pèse jusqu'à soixante-quatre mébioctets : le transport
+ * borné de `minio-client.ts` DÉTRUIT la requête à l'échéance, la borne
+ * effective aurait donc été de dix secondes, et non des soixante que ce lot
+ * annonce. Le contrat aurait menti.
+ *
+ * C'est la SEULE autorité de délai du téléversement : le transport coupe la
+ * socket et fait rejeter la promesse de `minio`. Aucun `Promise.race` ne
+ * vient s'y superposer — `minio-client.ts` explique en toutes lettres qu'une
+ * course est une borne en trompe-l'œil, qui cesse d'attendre sans cesser de
+ * payer.
+ */
+export const BORNE_STOCKAGE_CLIPS = { timeoutMs: TIMEOUT_TELEVERSEMENT_MS };
+
+/**
  * La tolérance de matérialisation, en secondes, pour une cadence donnée.
  *
  * ─────────────────────────────────────────────────────────────────────────
@@ -253,7 +292,25 @@ export interface ClipMaterialise {
   dureeMesureeSecondes: number | null;
 }
 
-/** L'identité immutable : de quelle décision ces fichiers sont sortis. */
+/**
+ * L'identité immutable : de quelle décision ces fichiers sont sortis.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ `methode` EN FAIT PARTIE, ET CE N'EST PAS UN DÉTAIL
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * `algorithme` dit comment les BORNES ont été décidées ; `methode` dit
+ * comment les OCTETS ont été produits. Deux questions distinctes, et la
+ * seconde manquait.
+ *
+ * Sans elle, passer un jour de `x264-crf23-v1` à `x264-crf22-v2` sans toucher
+ * à M3-E aurait laissé `lireSetReussiIdentique` rendre les ANCIENS fichiers :
+ * on aurait cru avoir réencodé, et l'on aurait servi l'encodage précédent,
+ * sans qu'aucune erreur n'apparaisse. C'est précisément le genre de silence
+ * que le versionnement d'algorithme existe pour empêcher.
+ *
+ * Elle est fixée par le serveur, jamais reçue de l'appelant.
+ */
 export interface IdentiteClipSet {
   candidateSetId: string;
   candidateSetVersion: number;
@@ -261,7 +318,10 @@ export interface IdentiteClipSet {
   analysisId: string;
   transcriptionId: string | null;
   transcriptionVersion: number | null;
+  /** Comment les BORNES ont été décidées — `m3e-v1`. */
   algorithme: string;
+  /** Comment les OCTETS ont été produits — `x264-crf23-v1`. */
+  methode: string;
 }
 
 export interface ClipSet extends IdentiteClipSet {

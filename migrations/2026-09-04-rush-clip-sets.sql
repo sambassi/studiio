@@ -100,9 +100,21 @@ create table if not exists public.rush_clip_sets (
   transcription_version integer check (transcription_version is null
                                        or transcription_version >= 1),
 
-  -- La version des heuristiques de M3-E qui a produit les bornes. Le jour ou
+  -- La version des heuristiques de M3-E qui a produit les BORNES. Le jour ou
   -- elles changeront, un jeu deja produit dira sous quelle regle il l'a ete.
   algorithme text not null check (length(algorithme) between 1 and 40),
+
+  -- ⚠️ COMMENT LES OCTETS ONT ETE PRODUITS — codec, prereglage, qualite.
+  --
+  -- `algorithme` repond « comment les bornes ont ete decidees », `methode`
+  -- repond « comment le fichier a ete fabrique ». Deux questions distinctes,
+  -- et la seconde manquait a la premiere redaction.
+  --
+  -- Sans elle, passer de `x264-crf23-v1` a `x264-crf22-v2` sans toucher a
+  -- M3-E aurait laisse la reutilisation rendre les ANCIENS fichiers : on
+  -- aurait cru avoir reencode, et l'on aurait servi l'encodage precedent,
+  -- sans qu'aucune erreur n'apparaisse.
+  methode text not null check (length(methode) between 1 and 40),
 
   -- Regenerer ne detruit pas. En v1 aucun chemin ne cree une version 2 — un
   -- jeu reussi a l'identite identique est REUTILISE — mais la colonne existe
@@ -187,6 +199,14 @@ create unique index if not exists rush_clip_sets_active_unique
 -- La lecture de l'ecran : les jeux d'un utilisateur, les plus recents d'abord.
 create index if not exists rush_clip_sets_user_idx
   on public.rush_clip_sets (user_id, created_at desc);
+
+-- La recherche de REUTILISATION : « existe-t-il deja un jeu reussi portant
+-- exactement cette identite ? ». Sans index, chaque POST balaierait la table.
+--
+-- `methode` en fait partie : c'est ce qui empeche de rendre les fichiers d'un
+-- encodage precedent apres un changement de codec ou de qualite.
+create index if not exists rush_clip_sets_identite_idx
+  on public.rush_clip_sets (candidate_set_id, candidate_set_version, analysis_id, algorithme, methode);
 
 -- ---------------------------------------------------------------------------
 -- 3. AUCUN DROIT A `public` — MEME RAISON QUE PARTOUT AILLEURS

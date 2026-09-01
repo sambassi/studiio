@@ -41,8 +41,10 @@ import {
   creerSet, lireSetReussiIdentique, majSet,
 } from '@/lib/autopilot/analyse/clip-service';
 import { materialiserSet, coupesRetenues } from '@/lib/autopilot/analyse/clip';
+import { diagnosticSur } from '@/lib/autopilot/analyse/clip-extraction';
 import {
-  identifiantValide, type IdentiteClipSet, type MotifClips,
+  identifiantValide, METHODE_MATERIALISATION,
+  type IdentiteClipSet, type MotifClips,
 } from '@/lib/autopilot/analyse/clip-contrat';
 import {
   prendrePlaceClips, RETRY_APRES_SECONDES,
@@ -239,6 +241,10 @@ export async function POST(
       transcriptionId: transcription?.id ?? null,
       transcriptionVersion: transcription?.version ?? null,
       algorithme: ALGORITHME_COUPES,
+      // ⚠️ FIXÉE PAR LE SERVEUR, jamais reçue. Elle dit comment les octets
+      // sont produits, et fait partie de l'identité : un changement de codec
+      // ou de qualité doit produire un nouveau jeu, pas rendre l'ancien.
+      methode: METHODE_MATERIALISATION,
     };
 
     // ── LA RÉUTILISATION, AVANT TOUT TRAVAIL ────────────────────────────
@@ -291,8 +297,23 @@ export async function POST(
       { ok: true, reutilise: false, clipSet: setPublic(ligne) }, { status: 202 },
     );
   } catch (e: unknown) {
+    // ⚠️ LE MESSAGE INTERNE NE PART PAS AU CLIENT.
+    //
+    // Les exceptions qui remontent ici viennent de PostgREST, de MinIO ou de
+    // ffmpeg. Leurs messages nomment des tables, des colonnes, des chemins,
+    // des hôtes — nous avons vu un « postgres 10.0.0.4:5432 refuse la
+    // connexion » sortir d'une lecture ratée. Un 500 est une panne de NOTRE
+    // côté : l'appelant n'a rien à en corriger, et rien à en apprendre.
+    //
+    // Le diagnostic va au journal, URLs masquées, et lui seul.
+    console.error(
+      `[autopilote][clips] panne inattendue : ${diagnosticSur(
+        e instanceof Error ? e.message : String(e),
+      )}`,
+    );
     return NextResponse.json(
-      { ok: false, error: e instanceof Error ? e.message : 'Erreur' }, { status: 500 },
+      { ok: false, error: 'Une erreur interne est survenue.', motif: 'erreur_interne' },
+      { status: 500 },
     );
   } finally {
     // Rendue ICI seulement si le travail n'a pas été lancé — sinon c'est lui
@@ -322,6 +343,16 @@ async function executerSet(
       clipSetId,
       source: { bucket: rush.bucket, cleObjet: rush.cleObjet, userId },
       coupes,
+      // ⚠️ LA TRACE DES OBJETS DÉJÀ EN LIGNE, écrite au fil de l'eau.
+      //
+      // Un arrêt brutal — `SIGKILL`, redéploiement — n'exécute aucun
+      // `finally` : sans cette trace, la ligne resterait `en_cours` sans que
+      // rien ne dise ce qui avait été téléversé. Elle ne supprime rien de
+      // plus, mais elle transforme une fuite invisible en une fuite
+      // recensée, que la purge du lot suivant saura reprendre.
+      signaler: async (cles) => {
+        await majSet(userId, clipSetId, { usage: { objetsEnLigne: cles } });
+      },
     });
 
     if (!r.ok) {

@@ -23,6 +23,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { lireSetParId } from '@/lib/autopilot/analyse/clip-service';
+import { diagnosticSur } from '@/lib/autopilot/analyse/clip-extraction';
 import { identifiantValide } from '@/lib/autopilot/analyse/clip-contrat';
 
 export const dynamic = 'force-dynamic';
@@ -68,8 +69,23 @@ export async function GET(
       { status: 200, headers: { 'Cache-Control': 'private, no-store' } },
     );
   } catch (e: unknown) {
+    // ⚠️ LE MESSAGE INTERNE NE PART PAS AU CLIENT.
+    //
+    // Les exceptions qui remontent ici viennent de PostgREST, de MinIO ou de
+    // ffmpeg. Leurs messages nomment des tables, des colonnes, des chemins,
+    // des hôtes — nous avons vu un « postgres 10.0.0.4:5432 refuse la
+    // connexion » sortir d'une lecture ratée. Un 500 est une panne de NOTRE
+    // côté : l'appelant n'a rien à en corriger, et rien à en apprendre.
+    //
+    // Le diagnostic va au journal, URLs masquées, et lui seul.
+    console.error(
+      `[autopilote][clips] panne inattendue : ${diagnosticSur(
+        e instanceof Error ? e.message : String(e),
+      )}`,
+    );
     return NextResponse.json(
-      { ok: false, error: e instanceof Error ? e.message : 'Erreur' }, { status: 500 },
+      { ok: false, error: 'Une erreur interne est survenue.', motif: 'erreur_interne' },
+      { status: 500 },
     );
   }
 }

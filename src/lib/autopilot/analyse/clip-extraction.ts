@@ -36,13 +36,11 @@ import { join } from 'path';
 import { bucketAutorise } from '@/lib/storage/buckets';
 import { cheminFfmpeg, cheminFfprobe } from '@/lib/ffmpeg/binaires';
 import { clientMinio, signeurInterne } from '@/lib/storage/minio-client';
-import {
-  BORNE_MINIO, TTL_URL_SECONDES, PROTOCOLES_AUTORISES, masquerUrls, lancer,
-} from './extraction';
+import { BORNE_MINIO, PROTOCOLES_AUTORISES, masquerUrls, lancer } from './extraction';
 import {
   BUCKET_CLIPS, CONTENT_TYPE, CRF, PRESET, PIXEL_FORMAT,
   AUDIO_BITRATE, AUDIO_FREQUENCE, CLIP_OCTETS_MAX,
-  TIMEOUT_CLIP_MS, TIMEOUT_TELEVERSEMENT_MS,
+  TIMEOUT_CLIP_MS, TTL_SOURCE_SECONDES, BORNE_STOCKAGE_CLIPS,
   arrondirSeconde, nombreFini, cleClip,
   type ClipMaterialise, type MotifClips,
 } from './clip-contrat';
@@ -141,7 +139,11 @@ export async function signerSource(
   const signeur = signeurInterne(BORNE_MINIO);
   if (!signeur) return { ok: false, motif: 'source_inaccessible' };
   try {
-    const url = await signeur.presignedGetObject(source.bucket, cle, TTL_URL_SECONDES);
+    // ⚠️ LA TTL DE M3-F, PAS CELLE DE M3-B2. Dix minutes suffisaient à huit
+    // vignettes ; un jeu de six clips peut courir plus de dix-huit minutes, et
+    // la signature aurait expiré en chemin — les derniers clips auraient
+    // échoué en `media_illisible`, un diagnostic faux pour une URL périmée.
+    const url = await signeur.presignedGetObject(source.bucket, cle, TTL_SOURCE_SECONDES);
     if (typeof url !== 'string' || !/^https?:\/\//.test(url)) {
       return { ok: false, motif: 'source_inaccessible' };
     }
@@ -227,14 +229,22 @@ export async function materialiserClip(entree: {
   try { corps = await readFile(sortie); } catch { return { ok: false, motif: 'extraction_echouee' }; }
 
   try {
-    await Promise.race([
-      clientMinio(BORNE_MINIO).putObject(
-        BUCKET_CLIPS, cle, corps, corps.length, { 'Content-Type': CONTENT_TYPE },
-      ),
-      new Promise((_, rejeter) => setTimeout(
-        () => rejeter(new Error('delai televersement')), TIMEOUT_TELEVERSEMENT_MS,
-      )),
-    ]);
+    // ⚠️ UNE SEULE AUTORITÉ DE DÉLAI, ET C'EST LE TRANSPORT.
+    //
+    // `BORNE_STOCKAGE_CLIPS` arme une échéance ABSOLUE qui DÉTRUIT la requête
+    // : la socket se ferme et la promesse de `minio` rejette. Reprendre
+    // `BORNE_MINIO` (dix secondes, dimensionnées pour une vignette) aurait
+    // coupé un clip de soixante-quatre mébioctets bien avant la borne que ce
+    // lot annonce — le contrat aurait menti.
+    //
+    // Et surtout PAS de `Promise.race` par-dessus : `minio-client.ts`
+    // explique en toutes lettres qu'une course est une borne en trompe-l'œil,
+    // qui rend la main sans fermer la socket. On cesserait d'attendre sans
+    // cesser de payer, et un téléversement déclaré échoué continuerait
+    // d'écrire l'objet dans le dos de l'appelant.
+    await clientMinio(BORNE_STOCKAGE_CLIPS).putObject(
+      BUCKET_CLIPS, cle, corps, corps.length, { 'Content-Type': CONTENT_TYPE },
+    );
   } catch {
     // Le message n'est PAS repris : il nomme l'hôte du stockage.
     return { ok: false, motif: 'televersement_echoue' };
