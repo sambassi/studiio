@@ -29,6 +29,17 @@ jobs:
       - name: Installer les dependances
         run: npm ci --ignore-scripts
 
+      # Sans ces binaires, les tests de bout en bout de l'Autopilote — ceux qui
+      # encodent et sondent de vraies videos — se sautaient en silence, et la
+      # CI restait verte sur une couverture qui n'avait pas tourne. M3-H refuse
+      # ce silence : son test-sentinelle echoue si les binaires manquent.
+      - name: Installer FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffmpeg -version
+          ffprobe -version
+
       - name: Lancer les tests
         run: npm test
 
