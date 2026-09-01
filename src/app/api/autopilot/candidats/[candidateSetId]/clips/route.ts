@@ -380,6 +380,3 @@ async function executerSet(
     place.liberer();
   }
 }
-
-/** Exportée pour les tests : c'est le travail détaché, sans la couche HTTP. */
-export { executerSet as executerSetPourTests };

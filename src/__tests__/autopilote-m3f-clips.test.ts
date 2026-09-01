@@ -110,6 +110,9 @@ let tableAbsente: string | null = null;
 let tableEnPanne: string | null = null;
 const MESSAGE_INTERNE = 'connect ECONNREFUSED postgres 10.0.0.4:5432';
 const tentativesInsertion: Array<{ table: string; valeurs: Ligne }> = [];
+/** Chaque `update`, dans l'ORDRE : c'est ce qui prouve qu'une trace est
+ *  écrite AVANT la fin, sans dépendre d'un échantillonnage temporel. */
+const ecritures: Array<{ table: string; patch: Ligne }> = [];
 
 const erreurTable = { code: '42P01', message: 'relation does not exist' };
 const doublon = (i: string) => ({
@@ -226,7 +229,7 @@ function requete(table: string) {
     },
     limit: (n: number) => { limite = n; return api; },
     insert: (v: Ligne) => { aInserer = v; return api; },
-    update: (v: Ligne) => { aMaj = v; return api; },
+    update: (v: Ligne) => { aMaj = v; ecritures.push({ table, patch: v }); return api; },
     maybeSingle: async () => executer(),
     then: (resoudre: (v: unknown) => unknown) => {
       if (aInserer || aMaj) {
@@ -367,6 +370,7 @@ beforeEach(() => {
     tableEnPanne = null;
   tentativesInsertion.length = 0;
   objetsEcrits.length = 0;
+  ecritures.length = 0;
   objetsSupprimes.length = 0;
   commandes.length = 0;
   ffmpeg = { code: 0, octets: 4096 };
@@ -585,7 +589,8 @@ describe('10-16. La matérialisation d’un jeu : atomicité et orphelins', () =
     });
     void n; void vraiLancer; void originale;
     expect(r.ok).toBe(true); // témoin : sans panne, les deux passent
-    objetsEcrits.length = 0; objetsSupprimes.length = 0;
+    objetsEcrits.length = 0;
+  ecritures.length = 0; objetsSupprimes.length = 0;
 
     // Maintenant, la panne au deuxième clip.
     let appel = 0;
@@ -664,6 +669,7 @@ describe('10-16. La matérialisation d’un jeu : atomicité et orphelins', () =
     ];
     for (const [patch, motif] of cas) {
       objetsEcrits.length = 0;
+  ecritures.length = 0;
       ffmpeg = { code: 0, octets: 4096, ...patch } as typeof ffmpeg;
       const r = await materialiserSet(demande([coupe({ debutSecondes: 10, finSecondes: 13 })]));
       expect(r.ok, motif).toBe(false);
@@ -1033,28 +1039,41 @@ describe('25-38. Les routes : propriété, refus, aucun timecode client', () => 
     // Si le conteneur meurt entre le deuxième et le troisième clip, la ligne
     // reste `en_cours` et personne ne sait quels objets existent déjà. Noter
     // les clés après CHAQUE téléversement est la seule trace qui survive.
-    const vues: number[] = [];
-    const majReelle = tables;
-    void majReelle;
-    const observer = setInterval(() => {
-      const l = tables.rush_clip_sets?.[0];
-      const u = (l?.usage ?? {}) as { objetsEnLigne?: string[] };
-      if (Array.isArray(u.objetsEnLigne)) vues.push(u.objetsEnLigne.length);
-    }, 1);
     const rep = await post();
     expect(rep.status).toBe(202);
     await attendre();
-    clearInterval(observer);
 
     const ligne = tables.rush_clip_sets[0];
     const usage = ligne.usage as { objetsEnLigne?: string[] };
-    expect(usage.objetsEnLigne).toEqual(objetsEcrits.map((o) => o.cle));
-    expect(usage.objetsEnLigne!.length).toBeGreaterThan(1);
-    // ⚠️ La trace a existé AVANT la fin : au moins un état intermédiaire,
-    // strictement plus court que la liste finale, a été observé en base.
-    expect(vues.some((n) => n > 0 && n < usage.objetsEnLigne!.length)).toBe(true);
-    // Et chaque clé notée est bien une clé du préfixe utilisateur.
-    for (const cle of usage.objetsEnLigne!) expect(cle.startsWith('A/autopilote/clips/')).toBe(true);
+    const attendues = objetsEcrits.map((o) => o.cle);
+    expect(attendues.length).toBeGreaterThan(1);
+    // La trace SURVIT à la réussite : `majSet` remplace `usage` en entier.
+    expect(usage.objetsEnLigne).toEqual(attendues);
+
+    // ⚠️ ÉCRITE AU FIL DE L'EAU, ce que seul l'ORDRE des écritures prouve —
+    // un échantillonnage temporel serait vert par hasard sur une machine lente.
+    const traces = ecritures
+      // L'écriture finale porte elle aussi la liste : on ne retient ici que
+      // celles qui ne ferment RIEN — les traces intermédiaires.
+      .filter((e) => e.table === 'rush_clip_sets' && e.patch.etat === undefined)
+      .map((e) => (e.patch.usage as { objetsEnLigne?: string[] } | undefined)?.objetsEnLigne)
+      .filter((v): v is string[] => Array.isArray(v));
+    // Une écriture par téléversement, chacune plus longue que la précédente.
+    expect(traces.map((t) => t.length)).toEqual(attendues.map((_, i) => i + 1));
+    for (const [i, t] of traces.entries()) expect(t).toEqual(attendues.slice(0, i + 1));
+
+    // Et toutes AVANT la fermeture de la ligne : après un arrêt brutal entre
+    // deux clips, la liste des objets déjà en place est en base.
+    const finale = ecritures.findIndex((e) => e.patch.etat === 'reussie');
+    let derniereTrace = -1;
+    ecritures.forEach((e, i) => {
+      const u = e.patch.usage as { objetsEnLigne?: unknown } | undefined;
+      if (Array.isArray(u?.objetsEnLigne) && e.patch.etat === undefined) derniereTrace = i;
+    });
+    expect(derniereTrace).toBeGreaterThanOrEqual(0);
+    expect(derniereTrace).toBeLessThan(finale);
+
+    for (const cle of attendues) expect(cle.startsWith('A/autopilote/clips/')).toBe(true);
   });
 
   it('GET : lecture seule, 404 non fuyant, aucune écriture', async () => {
