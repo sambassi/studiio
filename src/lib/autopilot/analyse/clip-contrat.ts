@@ -136,7 +136,7 @@ export const BUDGET_SET_MS =
  * sur `rush_analyses`, puis sur `rush_candidate_sets`, puis sur
  * `rush_transcriptions` — il se traite pareil.
  *
- * Trente minutes : le pire cas (dix-huit) plus douze minutes. En
+ * Trente minutes : le pire cas (environ dix-huit minutes) plus douze minutes. En
  * dessous du seuil, un jeu actif est PROTÉGÉ : le fermer ferait repartir un
  * second découpage pendant le premier.
  */
