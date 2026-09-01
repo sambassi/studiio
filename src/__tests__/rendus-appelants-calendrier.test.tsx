@@ -199,10 +199,18 @@ const attendre = async (tours = 40, pas = 0) => {
 const ouvrirApercu = async () => {
   render(<Calendar />);
   await attendre(5);
-  const jour = Array.from(document.querySelectorAll('*')).find(
-    (e) => (e.textContent || '').trim().startsWith(JOUR)
-      && e.querySelectorAll('*').length < 6,
-  );
+  // ⚠️ `data-day`, ET NON LE TEXTE DE LA CASE.
+  //
+  // Cette recherche parcourait tout le document à la recherche d'un élément
+  // dont le texte COMMENCE par le numéro du jour. Le 31, `"31"` ne désigne
+  // qu'une case. Le 1er, `"1"` désigne aussi le 10, le 11, … jusqu'au 19 —
+  // et `find` rendait la première venue, c'est-à-dire la mauvaise. Les
+  // quarante-huit tests de ce fichier tombaient alors ensemble, du 1er au 9
+  // de chaque mois, sans qu'aucun commit n'ait bougé.
+  //
+  // Le calendrier pose déjà `data-day={day}` sur chaque case : un sélecteur
+  // d'ATTRIBUT est exact par construction, et ne peut pas confondre 1 et 19.
+  const jour = document.querySelector(`[data-day="${JOUR}"]`);
   expect(jour, 'la case du jour doit exister').toBeTruthy();
   await act(async () => { fireEvent.click(jour!); await Promise.resolve(); });
   await attendre(5);
