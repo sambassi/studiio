@@ -618,6 +618,39 @@ export default function CalendarPage() {
   const [exportRenderProgress, setExportRenderProgress] = useState(0);
   const [exportRenderStage, setExportRenderStage] = useState('');
 
+  /**
+   * Le timer qui efface le bandeau d'export, trois secondes plus tard.
+   *
+   * ⚠️ IL DOIT ÊTRE ANNULABLE. Il était posé par un `setTimeout` nu dans trois
+   * `finally` distincts. Trois secondes, c'est long : quitter le calendrier
+   * entre-temps laissait le timer vivre, et il appelait ensuite `setState` sur
+   * un composant démonté. En production, React se contente d'un avertissement ;
+   * sous Vitest, l'environnement jsdom est détruit à la fin du fichier de test
+   * et le timer levait `ReferenceError: window is not defined` — une erreur
+   * NON CAPTURÉE, hors de tout `it`, qui faisait échouer le job entier alors
+   * que les 5 015 tests passaient.
+   *
+   * Le déclenchement dépendait de la charge : le timer ne perdait la course
+   * que lorsque la suite se terminait dans les trois secondes. C'est pour cela
+   * que l'échec sautait d'un fichier à l'autre d'une exécution à la suivante.
+   *
+   * Même patron que `montageTimerRef` juste au-dessus : un seul timer en vol,
+   * annulé avant d'en poser un nouveau, et annulé au démontage.
+   */
+  const exportResetTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const planifierResetExport = useCallback(() => {
+    if (exportResetTimerRef.current) clearTimeout(exportResetTimerRef.current);
+    exportResetTimerRef.current = setTimeout(() => {
+      exportResetTimerRef.current = null;
+      setExportRendering(false);
+      setExportRenderProgress(0);
+      setExportRenderStage('');
+    }, 3000);
+  }, []);
+  useEffect(() => () => {
+    if (exportResetTimerRef.current) clearTimeout(exportResetTimerRef.current);
+  }, []);
+
   // Fetch posts
   const fetchPosts = useCallback(async () => {
     setLoading(true);
@@ -1309,7 +1342,7 @@ export default function CalendarPage() {
       } catch (err) {
         console.error('[Schedule] Auto-compose failed:', err);
         setExportRenderStage('Erreur de rendu');
-        setTimeout(() => { setExportRendering(false); setExportRenderProgress(0); setExportRenderStage(''); }, 3000);
+        planifierResetExport();
         return; // Don't schedule if compose failed
       } finally {
         setExportRendering(false);
@@ -2336,7 +2369,7 @@ export default function CalendarPage() {
       if (!shouldRecompose) {
         // Conversion path completed (success, user-confirmed WebM fallback, or
         // dismissed prompt). Reset progress UI and exit.
-        setTimeout(() => { setExportRendering(false); setExportRenderProgress(0); setExportRenderStage(''); }, 3000);
+        planifierResetExport();
         return;
       }
       // shouldRecompose === true → fall through to compose-on-the-fly below.
@@ -2590,11 +2623,7 @@ export default function CalendarPage() {
       setExportRenderStage(t('exportOverlay.errorMontage'));
       alert(`Export bureau échoué : ${msg}. Si le post est incomplet (pas de cartes / pas de visuel), modifiez-le d'abord depuis /creer puis ré-exportez.`);
     } finally {
-      setTimeout(() => {
-        setExportRendering(false);
-        setExportRenderProgress(0);
-        setExportRenderStage('');
-      }, 3000);
+      planifierResetExport();
     }
   };
 
