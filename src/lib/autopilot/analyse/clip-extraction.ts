@@ -40,7 +40,7 @@ import { BORNE_MINIO, PROTOCOLES_AUTORISES, masquerUrls, lancer } from './extrac
 import {
   BUCKET_CLIPS, CONTENT_TYPE, CRF, PRESET, PIXEL_FORMAT,
   AUDIO_BITRATE, AUDIO_FREQUENCE, CLIP_OCTETS_MAX,
-  TIMEOUT_CLIP_MS, TTL_SOURCE_SECONDES, BORNE_STOCKAGE_CLIPS,
+  TIMEOUT_CLIP_MS, TTL_SOURCE_CLIP_SECONDES, BORNE_STOCKAGE_CLIPS,
   arrondirSeconde, nombreFini, cleClip,
   type ClipMaterialise, type MotifClips,
 } from './clip-contrat';
@@ -143,7 +143,7 @@ export async function signerSource(
     // vignettes ; un jeu de six clips peut courir plus de dix-huit minutes, et
     // la signature aurait expiré en chemin — les derniers clips auraient
     // échoué en `media_illisible`, un diagnostic faux pour une URL périmée.
-    const url = await signeur.presignedGetObject(source.bucket, cle, TTL_SOURCE_SECONDES);
+    const url = await signeur.presignedGetObject(source.bucket, cle, TTL_SOURCE_CLIP_SECONDES);
     if (typeof url !== 'string' || !/^https?:\/\//.test(url)) {
       return { ok: false, motif: 'source_inaccessible' };
     }

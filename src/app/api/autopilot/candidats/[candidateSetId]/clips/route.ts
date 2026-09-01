@@ -244,7 +244,7 @@ export async function POST(
       // ⚠️ FIXÉE PAR LE SERVEUR, jamais reçue. Elle dit comment les octets
       // sont produits, et fait partie de l'identité : un changement de codec
       // ou de qualité doit produire un nouveau jeu, pas rendre l'ancien.
-      methode: METHODE_MATERIALISATION,
+      methodeMaterialisation: METHODE_MATERIALISATION,
     };
 
     // ── LA RÉUTILISATION, AVANT TOUT TRAVAIL ────────────────────────────

@@ -24,7 +24,8 @@
  * distant est le stockage interne.
  */
 import {
-  CLIPS_MAX, SET_SECONDES_MAX, arrondirSeconde, coupeMaterialisable,
+  CLIPS_MAX, SET_SECONDES_MAX, METHODE_MATERIALISATION,
+  arrondirSeconde, coupeMaterialisable,
   type ClipMaterialise, type MotifClips,
 } from './clip-contrat';
 import {
@@ -104,7 +105,7 @@ export async function materialiserSet(demande: DemandeSet): Promise<ResultatSet>
   const coupes = coupesRetenues(demande.coupes);
   const usage: Record<string, unknown> = {
     clipsDemandes: coupes.length,
-    methode: 'x264-crf23-v1',
+    methode: METHODE_MATERIALISATION,
   };
 
   if (coupes.length === 0) return { ok: false, motif: 'decision_invalide', usage };

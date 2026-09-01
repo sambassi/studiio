@@ -136,7 +136,7 @@ export const BUDGET_SET_MS =
  * sur `rush_analyses`, puis sur `rush_candidate_sets`, puis sur
  * `rush_transcriptions` — il se traite pareil.
  *
- * Trente minutes : le pire cas (environ treize) plus du double de marge. En
+ * Trente minutes : le pire cas (dix-huit) plus douze minutes. En
  * dessous du seuil, un jeu actif est PROTÉGÉ : le fermer ferait repartir un
  * second découpage pendant le premier.
  */
@@ -148,6 +148,16 @@ export function seuilPeremptionSet(maintenant: number = Date.now()): string {
 }
 
 /**
+ * La marge accordée à la signature au-delà du pire cas mesurable.
+ *
+ * Deux minutes : de quoi absorber la latence de signature, l'ouverture de la
+ * connexion sur chacun des six clips, et l'écart entre l'horloge du serveur
+ * et celle du stockage. Elle n'a pas à couvrir un travail plus long — aucun
+ * travail ne peut dépasser `BUDGET_SET_MS`, chaque étape étant bornée.
+ */
+export const MARGE_SIGNATURE_MS = 120_000;
+
+/**
  * La durée de vie de l'URL signée du rush, en secondes.
  *
  * ─────────────────────────────────────────────────────────────────────────
@@ -156,17 +166,22 @@ export function seuilPeremptionSet(maintenant: number = Date.now()): string {
  *
  * `TTL_URL_SECONDES` de l'extraction vaut dix minutes : assez pour un sondage
  * et huit vignettes. M3-F signe UNE fois pour tout le jeu, puis découpe
- * jusqu'à six clips — `BUDGET_SET_MS` vaut plus de DIX-HUIT MINUTES au pire
- * cas. Reprendre la borne de M3-B2 aurait donc laissé la signature expirer
- * au milieu du jeu, et les derniers clips auraient échoué en
- * `media_illisible` — un diagnostic faux pour une signature périmée.
+ * jusqu'à six clips — `BUDGET_SET_MS` dépasse DIX-HUIT MINUTES au pire cas.
+ * Reprendre la borne de M3-B2 aurait laissé la signature expirer au milieu du
+ * jeu, et les derniers clips auraient échoué en `media_illisible` — un
+ * diagnostic faux pour une signature périmée.
  *
- * La valeur n'est pas choisie : elle est celle de la PÉREMPTION du jeu. La
- * signature meurt donc exactement quand le jeu est déclaré abandonné, et ne
- * peut jamais lui survivre. Elle couvre le pire cas avec la marge que la
- * péremption porte déjà, et un test vérifie que les deux ne divergent pas.
+ * ⚠️ ELLE EST DÉRIVÉE DU BUDGET, JAMAIS CHOISIE. Toute constante qui allonge
+ * le pire cas — un clip de plus, un délai plus généreux — allonge du même
+ * geste la validité de la signature. Une valeur écrite à la main aurait
+ * silencieusement cessé de couvrir le budget à la première de ces retouches,
+ * et un test d'invariant garde cette relation.
+ *
+ * Elle NE touche pas au TTL de M3-B2, qui reste à dix minutes : rien ici
+ * n'élargit une signature ailleurs dans l'application.
  */
-export const TTL_SOURCE_SECONDES = Math.floor(PEREMPTION_SET_MS / 1000);
+export const TTL_SOURCE_CLIP_SECONDES =
+  Math.ceil((BUDGET_SET_MS + MARGE_SIGNATURE_MS) / 1000);
 
 /**
  * Le délai réseau imposé au STOCKAGE pendant un jeu.
@@ -296,10 +311,11 @@ export interface ClipMaterialise {
  * L'identité immutable : de quelle décision ces fichiers sont sortis.
  *
  * ─────────────────────────────────────────────────────────────────────────
- * ⚠️ `methode` EN FAIT PARTIE, ET CE N'EST PAS UN DÉTAIL
+ * ⚠️ `methodeMaterialisation` EN FAIT PARTIE, ET CE N'EST PAS UN DÉTAIL
  * ─────────────────────────────────────────────────────────────────────────
  *
- * `algorithme` dit comment les BORNES ont été décidées ; `methode` dit
+ * `algorithme` dit comment les BORNES ont été décidées ;
+ * `methodeMaterialisation` dit
  * comment les OCTETS ont été produits. Deux questions distinctes, et la
  * seconde manquait.
  *
@@ -321,7 +337,7 @@ export interface IdentiteClipSet {
   /** Comment les BORNES ont été décidées — `m3e-v1`. */
   algorithme: string;
   /** Comment les OCTETS ont été produits — `x264-crf23-v1`. */
-  methode: string;
+  methodeMaterialisation: string;
 }
 
 export interface ClipSet extends IdentiteClipSet {

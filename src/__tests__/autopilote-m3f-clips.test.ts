@@ -256,7 +256,7 @@ import {
   BUCKET_CLIPS, CRF, PRESET, PIXEL_FORMAT, CLIPS_MAX, CLIP_SECONDES_MAX,
   SET_SECONDES_MAX, CLIP_OCTETS_MAX, TIMEOUT_CLIP_MS, TIMEOUT_TELEVERSEMENT_MS, BUDGET_SET_MS,
   PEREMPTION_SET_MS, MOTIFS_CLIPS, METHODE_MATERIALISATION,
-  TTL_SOURCE_SECONDES, BORNE_STOCKAGE_CLIPS,
+  TTL_SOURCE_CLIP_SECONDES, MARGE_SIGNATURE_MS, BORNE_STOCKAGE_CLIPS,
 } from '@/lib/autopilot/analyse/clip-contrat';
 import { argumentsDecoupe, lireMesure } from '@/lib/autopilot/analyse/clip-extraction';
 import { materialiserSet, coupesRetenues, dureeCumulee } from '@/lib/autopilot/analyse/clip';
@@ -446,21 +446,46 @@ describe('1-9. Le contrat : bornes, clé, vocabulaire', () => {
     expect(identifiantValide('pas-un-uuid')).toBe(false);
   });
 
-  it('la TTL de la source COUVRE le pire cas du jeu — l’invariant que la revue a exigé', () => {
-    // Reprendre les dix minutes de M3-B2 aurait laissé la signature expirer
-    // au milieu d'un jeu de six clips : les derniers auraient échoué en
-    // `media_illisible`, un diagnostic FAUX pour une URL périmée.
-    expect(TTL_SOURCE_SECONDES * 1000).toBeGreaterThanOrEqual(BUDGET_SET_MS);
-    // La valeur n'est pas choisie : la signature meurt quand le jeu est
-    // déclaré abandonné, et ne peut jamais lui survivre.
-    expect(TTL_SOURCE_SECONDES * 1000).toBe(PEREMPTION_SET_MS);
-    // Et elle est bien plus longue que celle de l'extraction, qui ne signait
-    // que pour huit vignettes.
+  it('la TTL de la source est DÉRIVÉE du budget, et le couvre toujours', () => {
+    // ⚠️ L'INVARIANT, ET NON LA VALEUR. Reprendre les dix minutes de M3-B2
+    // aurait laissé la signature expirer au milieu d'un jeu de six clips :
+    // les derniers auraient échoué en `media_illisible`, un diagnostic FAUX
+    // pour une URL périmée.
+    expect(TTL_SOURCE_CLIP_SECONDES * 1000).toBeGreaterThan(BUDGET_SET_MS);
+
+    // Elle est CALCULÉE : allonger un délai par clip, ou en autoriser un
+    // septième, allonge du même geste la validité de la signature. Une
+    // constante écrite à la main aurait cessé de couvrir le budget sans que
+    // rien ne rougisse — c'est exactement ce que ce test empêche.
+    expect(TTL_SOURCE_CLIP_SECONDES)
+      .toBe(Math.ceil((BUDGET_SET_MS + MARGE_SIGNATURE_MS) / 1000));
+    expect(MARGE_SIGNATURE_MS).toBeGreaterThan(0);
+
+    // Le calcul est bien celui de la source, pas un nombre recopié à côté.
+    const contrat = readFileSync(SRC.contrat, 'utf8');
+    expect(contrat).toMatch(
+      /TTL_SOURCE_CLIP_SECONDES\s*=\s*\n?\s*Math\.ceil\(\(BUDGET_SET_MS \+ MARGE_SIGNATURE_MS\) \/ 1000\)/,
+    );
+
+    // ⚠️ ET RIEN N'EST ÉLARGI AILLEURS. Le TTL de M3-B2 reste à dix minutes :
+    // ce lot ne prolonge la vie d'aucune signature hors de son propre chemin.
     const extraction = readFileSync(
       resolve(process.cwd(), 'src/lib/autopilot/analyse/extraction.ts'), 'utf8',
     );
-    expect(extraction).toContain('export const TTL_URL_SECONDES = 600');
-    expect(TTL_SOURCE_SECONDES).toBeGreaterThan(600);
+    // Lue dans la source, et non importée : le module est doublé ici, et un
+    // import rendrait la valeur de la doublure plutôt que celle du dépôt.
+    const m3b = /export const TTL_URL_SECONDES = (\d+);/.exec(extraction);
+    expect(m3b?.[1]).toBe('600');
+    expect(TTL_SOURCE_CLIP_SECONDES).toBeGreaterThan(Number(m3b![1]));
+  });
+
+  it('c’est bien le TTL M3-F que la source est signée, pas celui des vignettes', () => {
+    const src = readFileSync(SRC.extraction, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    expect(src).toContain('TTL_SOURCE_CLIP_SECONDES');
+    // Aucune signature de M3-F ne retombe sur la borne historique.
+    expect(src).not.toMatch(/presignedGetObject\([^)]*TTL_URL_SECONDES/);
+    expect(src).toMatch(/presignedGetObject\([^)]*TTL_SOURCE_CLIP_SECONDES\)/);
   });
 
   it('la borne réseau du téléversement est celle de M3-F, pas celle des vignettes', () => {
@@ -504,6 +529,19 @@ describe('1-9. Le contrat : bornes, clé, vocabulaire', () => {
     // La socket est bien fermée : aucun travail fantôme ne continue.
     expect(rejet.message).not.toMatch(/127\.0\.0\.1|localhost/);
   }, 20_000);
+
+  it('la méthode n’est écrite QU’UNE FOIS, dans le contrat', () => {
+    // `usage.methode` recopiait le littéral : changer le profil d'encodage à
+    // un seul endroit aurait laissé l'autre mentir sur ce qui a été produit.
+    for (const [nom, chemin] of Object.entries(SRC)) {
+      if (nom === 'contrat') continue;
+      const src = readFileSync(chemin, 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+      expect(src).not.toContain(`'${METHODE_MATERIALISATION}'`);
+    }
+    const contrat = readFileSync(SRC.contrat, 'utf8');
+    expect(contrat).toContain("export const METHODE_MATERIALISATION = 'x264-crf23-v1' as const;");
+  });
 
   it('les arguments ffmpeg portent chacun leur garantie', () => {
     const a = argumentsDecoupe(URL_SIGNEE, coupe({ debutSecondes: 3, finSecondes: 6 }), '/tmp/x/rang-01.mp4');
@@ -737,7 +775,7 @@ describe('17-24. La persistance : idempotence, réutilisation, reprise', () => {
   const identite = {
     candidateSetId: CS, candidateSetVersion: 1, rushId: RU, analysisId: AN,
     transcriptionId: T1, transcriptionVersion: 1, algorithme: 'm3e-v1',
-    methode: METHODE_MATERIALISATION,
+    methodeMaterialisation: METHODE_MATERIALISATION,
   };
 
   it('le jeu de candidats d’autrui : la CLÉ ÉTRANGÈRE refuse, pas un `if`', async () => {
@@ -797,7 +835,7 @@ describe('17-24. La persistance : idempotence, réutilisation, reprise', () => {
     tables.rush_clip_sets = [{
       id: 'ok', candidate_set_id: CS, candidate_set_version: 1, rush_id: RU,
       analysis_id: AN, transcription_id: T1, transcription_version: 1,
-      algorithme: 'm3e-v1', methode: METHODE_MATERIALISATION,
+      algorithme: 'm3e-v1', methode_materialisation: METHODE_MATERIALISATION,
       user_id: 'A', version: 1, etat: 'reussie',
       clips: [], usage: {}, created_at: maintenantIso(), updated_at: maintenantIso(),
     }];
@@ -807,7 +845,7 @@ describe('17-24. La persistance : idempotence, réutilisation, reprise', () => {
     // sans toucher à M3-E ne doit PAS rendre les fichiers de l'encodage
     // précédent : on croirait avoir réencodé, et l'on servirait l'ancien.
     expect((await lireSetReussiIdentique('A', {
-      ...identite, methode: 'x264-crf22-v2',
+      ...identite, methodeMaterialisation: 'x264-crf22-v2',
     })).set).toBeNull();
     // Une transcription DIFFÉRENTE, c'est une autre décision : pas de réutilisation.
     expect((await lireSetReussiIdentique('A', { ...identite, transcriptionId: T2 })).set).toBeNull();
@@ -815,11 +853,33 @@ describe('17-24. La persistance : idempotence, réutilisation, reprise', () => {
     expect((await lireSetReussiIdentique('A', { ...identite, candidateSetVersion: 2 })).set).toBeNull();
   });
 
+  it('la MÉTHODE est persistée, et la réutilisation la filtre en base', async () => {
+    // ⚠️ FILTRÉE PAR LA BASE, PAS PAR UN `if`. Un jeu réussi n'est repris que
+    // si les octets ont été produits de la même façon ; sinon on servirait
+    // l'ancien encodage en croyant avoir réencodé.
+    const cree = await creerSet('A', identite);
+    expect(cree.motif).toBeNull();
+    expect(cree.set).not.toBeNull();
+    const ligne = tables.rush_clip_sets[0];
+    expect(ligne.methode_materialisation).toBe(METHODE_MATERIALISATION);
+    // La colonne porte le nom de la migration, jamais une abréviation.
+    expect(Object.keys(ligne)).toContain('methode_materialisation');
+
+    tables.rush_clip_sets = [{ ...ligne, etat: 'reussie' }];
+    expect((await lireSetReussiIdentique('A', identite)).set?.id).toBe(ligne.id);
+    expect((await lireSetReussiIdentique('A', {
+      ...identite, methodeMaterialisation: 'x264-crf18-v2',
+    })).set).toBeNull();
+    // Et ce qui remonte est bien relu depuis la colonne.
+    const relu = await lireSetReussiIdentique('A', identite);
+    expect(relu.set?.methodeMaterialisation).toBe(METHODE_MATERIALISATION);
+  });
+
   it('`transcription_id` NUL se compare avec `is`, jamais avec `eq`', async () => {
     tables.rush_clip_sets = [{
       id: 'sans', candidate_set_id: CS, candidate_set_version: 1, rush_id: RU,
       analysis_id: AN, transcription_id: null, transcription_version: null,
-      algorithme: 'm3e-v1', methode: METHODE_MATERIALISATION,
+      algorithme: 'm3e-v1', methode_materialisation: METHODE_MATERIALISATION,
       user_id: 'A', version: 1, etat: 'reussie',
       clips: [], usage: {}, created_at: maintenantIso(), updated_at: maintenantIso(),
     }];
@@ -915,7 +975,8 @@ describe('25-38. Les routes : propriété, refus, aucun timecode client', () => 
     expect(b.clipSet).toMatchObject({
       candidateSetId: CS, candidateSetVersion: 1, rushId: RU, analysisId: AN,
       transcriptionId: T1, transcriptionVersion: 1, algorithme: 'm3e-v1',
-      methode: METHODE_MATERIALISATION, etat: 'en_attente', version: 1,
+      methodeMaterialisation: METHODE_MATERIALISATION,
+      etat: 'en_attente', version: 1,
     });
     await attendre();
     // Le travail a bien tourné derrière la réponse.

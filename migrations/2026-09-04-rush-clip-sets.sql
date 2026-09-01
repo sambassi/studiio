@@ -106,7 +106,8 @@ create table if not exists public.rush_clip_sets (
 
   -- ⚠️ COMMENT LES OCTETS ONT ETE PRODUITS — codec, prereglage, qualite.
   --
-  -- `algorithme` repond « comment les bornes ont ete decidees », `methode`
+  -- `algorithme` repond « comment les bornes ont ete decidees »,
+  -- `methode_materialisation`
   -- repond « comment le fichier a ete fabrique ». Deux questions distinctes,
   -- et la seconde manquait a la premiere redaction.
   --
@@ -114,7 +115,8 @@ create table if not exists public.rush_clip_sets (
   -- M3-E aurait laisse la reutilisation rendre les ANCIENS fichiers : on
   -- aurait cru avoir reencode, et l'on aurait servi l'encodage precedent,
   -- sans qu'aucune erreur n'apparaisse.
-  methode text not null check (length(methode) between 1 and 40),
+  methode_materialisation text not null
+    check (length(methode_materialisation) between 1 and 40),
 
   -- Regenerer ne detruit pas. En v1 aucun chemin ne cree une version 2 — un
   -- jeu reussi a l'identite identique est REUTILISE — mais la colonne existe
@@ -203,10 +205,12 @@ create index if not exists rush_clip_sets_user_idx
 -- La recherche de REUTILISATION : « existe-t-il deja un jeu reussi portant
 -- exactement cette identite ? ». Sans index, chaque POST balaierait la table.
 --
--- `methode` en fait partie : c'est ce qui empeche de rendre les fichiers d'un
+-- `methode_materialisation` en fait partie : c'est ce qui empeche de rendre
+-- les fichiers d'un
 -- encodage precedent apres un changement de codec ou de qualite.
 create index if not exists rush_clip_sets_identite_idx
-  on public.rush_clip_sets (candidate_set_id, candidate_set_version, analysis_id, algorithme, methode);
+  on public.rush_clip_sets (candidate_set_id, candidate_set_version, analysis_id,
+                            algorithme, methode_materialisation);
 
 -- ---------------------------------------------------------------------------
 -- 3. AUCUN DROIT A `public` — MEME RAISON QUE PARTOUT AILLEURS

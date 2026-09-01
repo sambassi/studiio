@@ -24,7 +24,7 @@ export const ETATS_ACTIFS: readonly EtatSet[] = ['en_attente', 'en_cours'];
 // ⚠️ UN SEUL LITTÉRAL, JAMAIS UNE CONCATÉNATION. `supabase-js` analyse cette
 // chaîne AU NIVEAU DES TYPES ; un `+` la ramène à `string`, et le client rend
 // alors `ParserError` au lieu de la ligne.
-export const COLONNES_SET = 'id, user_id, candidate_set_id, candidate_set_version, rush_id, analysis_id, transcription_id, transcription_version, algorithme, methode, version, etat, etape, clips, usage, motif_echec, created_at, started_at, completed_at, updated_at';
+export const COLONNES_SET = 'id, user_id, candidate_set_id, candidate_set_version, rush_id, analysis_id, transcription_id, transcription_version, algorithme, methode_materialisation, version, etat, etape, clips, usage, motif_echec, created_at, started_at, completed_at, updated_at';
 
 /** 42P01 / PGRST205 : la migration M3-F n'est pas appliquée. */
 function socleAbsent(erreur: { code?: string; message?: string } | null): boolean {
@@ -63,7 +63,8 @@ export function setDepuisLigne(row: Record<string, unknown>): ClipSet {
     transcriptionVersion: typeof row.transcription_version === 'number'
       ? row.transcription_version : null,
     algorithme: typeof row.algorithme === 'string' ? row.algorithme : '',
-    methode: typeof row.methode === 'string' ? row.methode : '',
+    methodeMaterialisation: typeof row.methode_materialisation === 'string'
+      ? row.methode_materialisation : '',
     version: nombre(row.version, 1),
     etat: etatSetValide(row.etat) ? row.etat : 'echouee',
     etape: etapeSetValide(row.etape) ? row.etape : null,
@@ -158,7 +159,7 @@ export async function lireSetReussiIdentique(
     // ⚠️ LA MÉTHODE EN FAIT PARTIE. Sans elle, changer de codec ou de qualité
     // rendrait les fichiers de l'encodage PRÉCÉDENT : on croirait avoir
     // réencodé, et l'on servirait l'ancien, sans qu'aucune erreur n'apparaisse.
-    .eq('methode', identite.methode)
+    .eq('methode_materialisation', identite.methodeMaterialisation)
     .eq('etat', 'reussie');
 
   // ⚠️ `null` NE SE COMPARE PAS AVEC `eq`. Un rush sans transcription réussie
@@ -233,7 +234,7 @@ export async function creerSet(
       transcription_id: identite.transcriptionId,
       transcription_version: identite.transcriptionVersion,
       algorithme: identite.algorithme,
-      methode: identite.methode,
+      methode_materialisation: identite.methodeMaterialisation,
       version,
       // L'état et l'étape sont décidés ICI, jamais reçus.
       etat: 'en_attente' as EtatSet,
