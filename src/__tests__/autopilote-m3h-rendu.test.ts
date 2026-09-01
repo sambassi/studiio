@@ -37,6 +37,7 @@ import {
   OCTETS_PAR_SECONDE_ESTIMES, RENDU_OCTETS_MAX, ESPACE_TEMPORAIRE_MAX_OCTETS,
   TIMEOUT_TRANSFERT_SOURCE_MS, TIMEOUT_TELEVERSEMENT_RENDU_MS,
   TIMEOUT_MESURE_MS, AMORCE_RENDU_MS, FACTEUR_ENCODAGE, TIMEOUT_ENCODAGE_MIN_MS,
+  PARTIES_TELEVERSEMENT, OCTETS_PAR_PARTIE,
   timeoutEncodage, budgetRendu, BUDGET_RENDU_MAX_MS,
   MARGE_PEREMPTION_MS, PEREMPTION_RENDU_MS, TTL_SOURCE_RENDU_SECONDES,
   BUDGET_PHASE_SOURCE_MS, COMPOSANT_CLE,
@@ -232,6 +233,8 @@ describe('8-14. Les bornes : toutes DÉRIVÉES, aucune magique', () => {
     // Le téléchargement d'une source, lui, est la MÊME opération que le
     // téléversement d'un clip : même stockage, même plafond de 64 Mio.
     expect(TIMEOUT_TRANSFERT_SOURCE_MS).toBe(TIMEOUT_TELEVERSEMENT_MS);
+    expect(PARTIES_TELEVERSEMENT)
+      .toBe(Math.ceil(RENDU_OCTETS_MAX / OCTETS_PAR_PARTIE));
   });
 
   it('le délai d’encodage est FONCTION de la durée, pas une constante', () => {
@@ -261,7 +264,7 @@ describe('8-14. Les bornes : toutes DÉRIVÉES, aucune magique', () => {
     const attendu = (d: number) => AMORCE_RENDU_MS
       + SOURCES_MAX * TIMEOUT_TRANSFERT_SOURCE_MS
       + (SOURCES_MAX + 1) * TIMEOUT_MESURE_MS
-      + timeoutEncodage(d) + TIMEOUT_TELEVERSEMENT_RENDU_MS;
+      + timeoutEncodage(d) + PARTIES_TELEVERSEMENT * TIMEOUT_TELEVERSEMENT_RENDU_MS;
     expect(budgetRendu(25)).toBe(attendu(25));
     expect(budgetRendu(120)).toBe(attendu(120));
     expect(BUDGET_RENDU_MAX_MS).toBe(budgetRendu(DUREE_RENDU_MAX_SECONDES));
@@ -272,6 +275,10 @@ describe('8-14. Les bornes : toutes DÉRIVÉES, aucune magique', () => {
     const src = sourceSansCommentaires();
     expect(src).toMatch(/AMORCE_RENDU_MS\s*\+\s*SOURCES_MAX \* TIMEOUT_TRANSFERT_SOURCE_MS/);
     expect(src).toContain('(SOURCES_MAX + 1) * TIMEOUT_MESURE_MS');
+    // ⚠️ ET L'ENVOI MULTIPLE. La borne est PAR REQUÊTE : au-delà de la taille
+    // de partie, le SDK découpe, et chaque part est bornée séparément. N'en
+    // compter qu'une laissait la péremption tomber sur un envoi sain.
+    expect(src).toContain('PARTIES_TELEVERSEMENT * TIMEOUT_TELEVERSEMENT_RENDU_MS');
   });
 
   it('LA PÉREMPTION DÉPASSE STRICTEMENT LE PIRE CAS', () => {

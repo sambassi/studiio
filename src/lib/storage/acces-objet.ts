@@ -248,6 +248,44 @@ export function purposeAcceptable(valeur: unknown): boolean {
   return valeur !== SEGMENT_NAMESPACE_ANALYSE;
 }
 
+/**
+ * Le domaine des MONTAGES de l'Autopilote, fermé pour la même raison.
+ *
+ * ⚠️ SANS CETTE GARDE, LA ROUTE AUTHENTIFIÉE NE PROTÈGE RIEN. M3-H sert le
+ * montage par une route qui exige une session et refait le contrôle de
+ * propriété — mais le même objet vit dans `videos`, un compartiment de la
+ * liste blanche, donc ce relais le rendait SANS COOKIE. Le propriétaire
+ * connaît les deux identifiants de la clé : il pouvait fabriquer un lien
+ * public, permanent et irrévocable, ce qui vidait l'argument de sa
+ * substance.
+ *
+ * Exactement le geste déjà appliqué aux vignettes d'analyse, et pour le même
+ * motif. Aucun code ne lit un montage par ce relais : le fermer ne casse rien.
+ */
+export const BUCKET_NAMESPACE_MONTAGE = 'videos';
+export const SEGMENT_NAMESPACE_MONTAGE = 'montages';
+
+export function cleDansNamespaceMontage(bucket: unknown, cle: unknown): boolean {
+  if (bucket !== BUCKET_NAMESPACE_MONTAGE) return false;
+  return contientSegment(cle, SEGMENT_NAMESPACE_MONTAGE);
+}
+
+/** Le segment est-il ENTOURÉ d'autre chose, sous toutes ses formes décodées ? */
+function contientSegment(cle: unknown, segment: string): boolean {
+  if (typeof cle !== 'string' || cle.length === 0) return false;
+  return formesDecodees(cle).some((forme) => {
+    const segments = forme.split('/');
+    for (let i = 0; i < segments.length; i++) {
+      // ⚠️ SENSIBLE À LA CASSE, ET C'EST DÉLIBÉRÉ — voir plus bas.
+      if (segments[i] !== segment) continue;
+      const avant = segments.slice(0, i).some((s) => s.length > 0);
+      const apres = segments.slice(i + 1).some((s) => s.length > 0);
+      if (avant && apres) return true;
+    }
+    return false;
+  });
+}
+
 export function cleDansNamespaceAnalyse(bucket: unknown, cle: unknown): boolean {
   if (bucket !== BUCKET_NAMESPACE_ANALYSE) return false;
   if (typeof cle !== 'string' || cle.length === 0) return false;

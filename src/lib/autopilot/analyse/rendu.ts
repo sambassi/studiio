@@ -40,7 +40,8 @@ import {
 } from './rendu-contrat';
 import {
   argumentsRendu, descendreSource, encoder, fermerDossierRendu, mesurer,
-  ouvrirDossierRendu, rectangleCrop, sonderSource,
+  ouvrirDossierRendu, rectangleCrop, sonderSource, supprimerObjetRendu,
+  televerserRendu,
   type CibleRendu, type MesureRendu, type SourceLocale,
 } from './rendu-ffmpeg';
 
@@ -149,7 +150,7 @@ const echec = (motif: MotifRendu, usage: Record<string, unknown>): ResultatRendu
  * ne rend pas une seconde place.
  */
 export async function produireMontage(
-  demande: DemandeRendu, livrer?: Livreur,
+  demande: DemandeRendu, livrer?: Livreur, placeTenue?: PlaceExtraction,
 ): Promise<ResultatRendu> {
   const { userId, plan } = demande;
   const usage: Record<string, unknown> = {};
@@ -173,7 +174,16 @@ export async function produireMontage(
   // Elle ne fait pas double emploi avec l'index unique de la base : celui-ci
   // empêche deux rendus du MÊME plan, celle-ci empêche deux rendus de plans
   // DIFFÉRENTS de se partager quatre cœurs.
-  const place: PlaceExtraction | null = prendrePlaceRendu();
+  // ⚠️ LA PLACE PEUT DÉJÀ ÊTRE TENUE PAR L'APPELANT, ET C'EST LE CAS NORMAL.
+  //
+  // La route la prend AVANT de créer la ligne — sans quoi une saturation
+  // laisserait une ligne derrière elle, qui occuperait l'index actif et
+  // interdirait toute relance pendant la péremption. En redemander une ici
+  // ferait échouer TOUT rendu déclenché par la route : il n'y en a qu'une, et
+  // elle serait déjà prise par le même travail.
+  //
+  // Sans appelant qui la tienne — un test, un futur script — on la prend.
+  const place: PlaceExtraction | null = placeTenue ?? prendrePlaceRendu();
   if (!place) return echec('capacite_saturee', usage);
 
   let dossier: string | null = null;
@@ -317,4 +327,165 @@ async function abandonne(
 ): Promise<boolean> {
   if (!demande.avancer) return false;
   return (await demande.avancer(etape)) === 'rendu_absent';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// H4 — LA FINALISATION : DU FICHIER LOCAL AU RENDU DURABLE
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Ce que la finalisation doit savoir faire, sans connaître la base.
+ *
+ * L'orchestration ne parle pas à PostgreSQL directement : elle reçoit deux
+ * gestes. C'est ce qui la rend vérifiable sans base, et ce qui interdit
+ * qu'une écriture se glisse entre deux étapes sans passer par la compensation.
+ */
+export type IssueConsignation =
+  /** La ligne porte désormais la réussite. */
+  | 'consigne'
+  /** La ligne a disparu : ordre d'arrêt, plus rien à écrire. */
+  | 'rendu_absent'
+  /**
+   * Rien n'a été écrit, et la ligne existe peut-être encore.
+   *
+   * ⚠️ CE TROISIÈME CAS EXISTE PARCE QUE SON ABSENCE ÉTAIT UN FAUX SUCCÈS.
+   * La persistance peut refuser autrement qu'en disant « la ligne a fui » —
+   * socle absent, violation d'unicité, panne. Ne reconnaître que
+   * `rendu_absent` traduisait ces refus en réussite : le montage restait dans
+   * le stockage, la ligne restait `en_cours`, et personne n'était prévenu.
+   */
+  | 'non_consigne';
+
+export interface Finalisation {
+  /** Consigne la réussite, et DIT ce qui s'est réellement passé. */
+  consigner: (
+    bucket: string, cle: string, mesure: MesureRendu, usage: Record<string, unknown>,
+  ) => Promise<IssueConsignation>;
+  /** Consigne l'échec, avec son motif fermé. */
+  clore: (motif: MotifRendu, usage: Record<string, unknown>) => Promise<void>;
+}
+
+/**
+ * Produit le montage, le publie, et consigne — ou compense.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ IL N'Y A AUCUNE TRANSACTION ENTRE LE STOCKAGE ET LA BASE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Trois issues, et chacune a sa compensation écrite :
+ *
+ *   A. Le téléversement échoue → `echouee`, aucun objet, aucune réussite.
+ *   B. Téléversement puis consignation réussissent → `reussie`. C'est le SEUL
+ *      chemin qui écrit `reussie` : un `putObject` accepté ne suffit pas, un
+ *      code 0 de ffmpeg encore moins.
+ *   C. L'objet est monté mais la ligne ne peut plus être écrite — fermée par
+ *      péremption, ou emportée par la cascade d'un plan supprimé. C'est le
+ *      cas critique : on RETIRE l'objet. Si le retrait échoue à son tour,
+ *      l'objet est TRACÉ comme orphelin — bucket et clé, jamais d'URL — pour
+ *      qu'une purge ultérieure sache quoi chercher.
+ *
+ * Rien ici ne rejuge une décision vidéo : le fichier publié est exactement
+ * celui que la mesure a validé.
+ */
+export async function rendreEtPublier(
+  demande: DemandeRendu, renduId: string, finalisation: Finalisation,
+  placeTenue?: PlaceExtraction,
+): Promise<ResultatRendu> {
+  // ⚠️ UN PORTEUR EXPLICITE, ET NON UNE VARIABLE DE FERMETURE. TypeScript
+  // réduisait `publie` à `null` après l'`await`, l'affectation se faisant dans
+  // la closure : la garde de compensation était morte pour le compilateur, et
+  // un remaniement qui cesserait d'appeler le livreur n'aurait rien signalé.
+  const monte: { objet: { bucket: string; cle: string } | null } = { objet: null };
+
+  let resultat: ResultatRendu;
+  try {
+    resultat = await produireMontage(demande, async (fichier, mesure) => {
+      // ⚠️ ON NE TÉLÉVERSE QU'APRÈS LA VALIDATION. Le livreur n'est appelé que
+      // si ffmpeg a rendu 0 ET que la mesure est conforme : un fichier
+      // invalide ne peut pas devenir un résultat publié.
+      const envoi = await televerserRendu(
+        demande.userId, renduId, fichier, mesure.octets,
+      );
+      if (!envoi.ok) return envoi.motif;
+      monte.objet = { bucket: envoi.bucket, cle: envoi.cle };
+      return null;
+    }, placeTenue);
+  } catch (e: unknown) {
+    // ⚠️ UN JET APRÈS UN TÉLÉVERSEMENT RÉUSSI LAISSERAIT L'OBJET DERRIÈRE.
+    // La production ne jette pas aujourd'hui, mais rien ne l'y oblige demain.
+    if (monte.objet) await compenser(monte.objet, {});
+    throw e;
+  }
+
+  // ── Cas A : le travail a échoué, avec ou sans objet monté ─────────────
+  if (!resultat.ok) {
+    if (monte.objet) await compenser(monte.objet, resultat.usage);
+    if (!resultat.abandonne && resultat.motif) {
+      await sansJeter(() => finalisation.clore(resultat.motif!, resultat.usage));
+    }
+    return resultat;
+  }
+
+  const objet = monte.objet;
+  if (!objet) {
+    // Impossible en pratique — `ok` implique un livreur réussi — mais
+    // déclarer une réussite sans savoir OÙ est le fichier serait le pire des
+    // faux succès.
+    await sansJeter(() => finalisation.clore('televersement_echoue', resultat.usage));
+    return { ...resultat, ok: false, motif: 'televersement_echoue', mesure: null };
+  }
+
+  // ── Cas B et C : l'objet est monté, reste à le consigner ──────────────
+  let issue: IssueConsignation;
+  try {
+    issue = await finalisation.consigner(
+      objet.bucket, objet.cle, resultat.mesure!, resultat.usage,
+    );
+  } catch {
+    // ⚠️ UN JET N'EST PAS UN MOTIF. La persistance refuse par une exception —
+    // contrainte de base, socle injoignable — et cela ne passe pas par une
+    // valeur de retour. Sans ce `catch`, le montage restait dans le stockage
+    // sans aucune ligne ni aucune trace pour le retrouver.
+    issue = 'non_consigne';
+  }
+
+  if (issue === 'consigne') return resultat;
+
+  // ── Cas C : rien n'a été écrit. L'objet ne doit pas rester ────────────
+  await compenser(objet, resultat.usage);
+  if (issue === 'rendu_absent') {
+    return { ...resultat, ok: false, motif: null, abandonne: true };
+  }
+  await sansJeter(() => finalisation.clore('televersement_echoue', resultat.usage));
+  return { ...resultat, ok: false, motif: 'televersement_echoue', mesure: null };
+}
+
+/** Une clôture qui échoue ne doit pas masquer ce qu'elle venait consigner. */
+async function sansJeter(geste: () => Promise<void>): Promise<void> {
+  try { await geste(); } catch { /* la ligne se fermera par péremption */ }
+}
+
+/**
+ * Retire l'objet, ou le TRACE comme orphelin.
+ *
+ * ⚠️ NE JAMAIS MENTIR SUR CE QUI RESTE. Un objet qu'on n'a pas su retirer
+ * occupe le stockage pour toujours ; l'écrire dans le relevé — compartiment
+ * et clé, jamais d'URL, jamais la sortie du SDK — transforme une fuite
+ * invisible en une fuite recensée, que la purge d'un lot ultérieur saura
+ * reprendre. C'est le geste que M3-F avait adopté pour ses clips.
+ */
+async function compenser(
+  objet: { bucket: string; cle: string }, usage: Record<string, unknown>,
+): Promise<void> {
+  if (await supprimerObjetRendu(objet.bucket, objet.cle)) return;
+  const deja = Array.isArray(usage.orphelins) ? usage.orphelins : [];
+  usage.orphelins = [...deja, { bucket: objet.bucket, cle: objet.cle }];
+  // ⚠️ ET AU JOURNAL, PARCE QUE LE RELEVÉ PEUT NE JAMAIS ÊTRE ÉCRIT. Quand la
+  // ligne a disparu — c'est le cas qui déclenche le plus souvent une
+  // compensation — il n'y a plus rien à mettre à jour : la trace en mémoire
+  // s'évanouirait avec le processus. Un compartiment et une clé ne sont pas
+  // un secret ; un objet qu'on ne sait plus nommer, si.
+  console.error(
+    `[autopilote][rendu] orphelin non supprimé : ${objet.bucket}/${objet.cle}`,
+  );
 }

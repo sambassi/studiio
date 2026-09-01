@@ -98,9 +98,20 @@ export function usageSansUrl(usage: Record<string, unknown>): Record<string, unk
     if (typeof valeur === 'string' && valeur.includes('://')) {
       propre[cle] = '[url masquee]';
     } else if (Array.isArray(valeur)) {
-      propre[cle] = valeur.map(
-        (v) => (typeof v === 'string' && v.includes('://') ? '[url masquee]' : v),
-      );
+      // ⚠️ ET DANS LES OBJETS QU'IL CONTIENT. `usage.orphelins` est un tableau
+      // d'objets — la seule structure imbriquée de la chaîne — alors que le
+      // `check` de la base porte sur le TEXTE ENTIER. Ne masquer que les
+      // chaînes de premier niveau laissait passer précisément ce que H4
+      // écrit, et la clôture aurait échoué en 23514 : l'erreur de
+      // journalisation devenue indisponibilité, que ce module existe pour
+      // empêcher.
+      propre[cle] = valeur.map((v) => {
+        if (typeof v === 'string') return v.includes('://') ? '[url masquee]' : v;
+        if (typeof v === 'object' && v !== null) {
+          return usageSansUrl(v as Record<string, unknown>);
+        }
+        return v;
+      });
     } else if (typeof valeur === 'object' && valeur !== null) {
       propre[cle] = usageSansUrl(valeur as Record<string, unknown>);
     } else {

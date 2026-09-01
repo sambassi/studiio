@@ -26,20 +26,21 @@
  *   • aucun crédit, aucun fournisseur, aucun réseau sortant hors du stockage.
  */
 import { mkdtemp, rm, stat } from 'fs/promises';
-import { createWriteStream } from 'fs';
+import { createReadStream, createWriteStream } from 'fs';
 import { pipeline } from 'stream/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { bucketAutorise } from '@/lib/storage/buckets';
 import { cheminFfmpeg, cheminFfprobe } from '@/lib/ffmpeg/binaires';
-import { lecteurMinio } from '@/lib/storage/minio-client';
+import { clientMinio, lecteurMinio } from '@/lib/storage/minio-client';
 import { masquerUrls, lancer } from './extraction';
 import { arrondirSeconde, nombreFini } from './clip-contrat';
 import type { Recadrage } from './montage-contrat';
 import {
   AUDIO_BITRATE_RENDU, AUDIO_FREQUENCE_RENDU, CRF_RENDU, PIXEL_FORMAT_RENDU,
   PRESET_RENDU, RENDU_OCTETS_MAX, TIMEOUT_MESURE_MS, TIMEOUT_TRANSFERT_SOURCE_MS,
-  COMPOSANT_CLE, cleValide, timeoutEncodage,
+  TIMEOUT_TELEVERSEMENT_RENDU_MS, BUCKET_RENDUS_MONTAGE, CONTENT_TYPE_RENDU,
+  COMPOSANT_CLE, cleRendu, cleValide, timeoutEncodage,
   type MotifRendu, type RenduMaterialise,
 } from './rendu-contrat';
 
@@ -598,4 +599,108 @@ export function diagnosticRendu(stderr: unknown, dossier?: string): string {
   return masquerUrls(texte)
     .replace(/\/(?:private\/)?(?:tmp|var)\/[^\s'"]*/g, '[chemin]')
     .slice(-200);
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Le téléversement du montage final
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Envoie le montage validé vers le stockage.
+ *
+ * ⚠️ LA BORNE EST CELLE DU TRANSPORT, PAS UNE COURSE DE PROMESSES.
+ * `transportMinioBorne` DÉTRUIT la requête à l'échéance ; une course rendrait
+ * la main en laissant le transfert écrire l'objet derrière une erreur déjà
+ * rendue — le dépôt documente cette fausse borne ailleurs, et M3-F l'a
+ * retirée après revue.
+ *
+ * ⚠️ ET LA CLÉ EST FABRIQUÉE, JAMAIS REÇUE. `cleRendu` la dérive de la
+ * session et de l'identifiant de ligne ; elle est déterministe, donc un rejeu
+ * écrit AU MÊME ENDROIT plutôt que de semer un second objet.
+ */
+export async function televerserRendu(
+  userId: string, renduId: string, fichier: string, octets: number,
+): Promise<{ ok: true; bucket: string; cle: string } | { ok: false; motif: MotifRendu }> {
+  let cle: string;
+  try {
+    cle = cleRendu(userId, renduId);
+  } catch {
+    // `cleRendu` refuse un composant malformé plutôt que de fabriquer un
+    // chemin qui sortirait de l'espace de son propriétaire. Le motif est celui
+    // de l'ÉTAPE — le fichier produit, lui, était bon.
+    return { ok: false, motif: 'televersement_echoue' };
+  }
+  if (!cleValide(cle, userId)) return { ok: false, motif: 'televersement_echoue' };
+
+  try {
+    await clientMinio({ timeoutMs: TIMEOUT_TELEVERSEMENT_RENDU_MS }).putObject(
+      BUCKET_RENDUS_MONTAGE, cle, createReadStream(fichier), octets,
+      { 'Content-Type': CONTENT_TYPE_RENDU },
+    );
+    // ⚠️ ON RELIT CE QUI A ÉTÉ ÉCRIT. Le SDK n'impose pas la taille annoncée :
+    // un fichier tronqué monte en 200 sans un mot. Et au-delà de la taille de
+    // partie, il REPREND un envoi multiple inachevé — deux encodages ne sont
+    // pas garantis identiques octet pour octet, si bien qu'un rejeu pourrait
+    // assembler un fichier mêlant les deux. Comparer la taille attrape les
+    // deux cas pour le prix d'un appel.
+    const vu = await clientMinio({ timeoutMs: TIMEOUT_TELEVERSEMENT_RENDU_MS })
+      .statObject(BUCKET_RENDUS_MONTAGE, cle);
+    if (Number((vu as { size?: unknown }).size) !== octets) {
+      return { ok: false, motif: 'televersement_echoue' };
+    }
+    return { ok: true, bucket: BUCKET_RENDUS_MONTAGE, cle };
+  } catch {
+    // Le message nomme l'hôte du stockage : il ne remonte pas.
+    return { ok: false, motif: 'televersement_echoue' };
+  }
+}
+
+/**
+ * Retire un objet, et DIT si elle a échoué.
+ *
+ * ⚠️ C'EST LA COMPENSATION DU CAS SANS TRANSACTION. Le stockage et la base ne
+ * partagent aucune transaction : quand l'objet est monté mais que la ligne ne
+ * peut plus être écrite, il faut le retirer. Si le retrait échoue à son tour,
+ * l'échec est RENDU — l'objet devient un orphelin qu'on trace, jamais une
+ * fuite qu'on tait.
+ */
+export async function supprimerObjetRendu(bucket: string, cle: string): Promise<boolean> {
+  try {
+    const client = clientMinio({ timeoutMs: TIMEOUT_TELEVERSEMENT_RENDU_MS }) as unknown as {
+      removeObject(b: string, c: string): Promise<unknown>;
+    };
+    await client.removeObject(bucket, cle);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Ouvre le montage en lecture, pour le servir.
+ *
+ * ⚠️ SANS BORNE, ET C'EST DÉLIBÉRÉ. `transportMinioBorne` arme une échéance
+ * ABSOLUE qui détruit la requête — corps de réponse compris, le minuteur
+ * n'étant désarmé qu'à la fermeture. La poser ici couperait le téléchargement
+ * d'un spectateur trop lent en plein milieu : deux cents mégaoctets en trois
+ * minutes exigent près de dix mégabits par seconde soutenus, ce qu'une
+ * connexion mobile ne tient pas. Le lecteur recevrait un fichier tronqué
+ * contre une longueur promise.
+ *
+ * La borne existe pour les échanges INTERNES, dont la taille et la durée sont
+ * connues d'avance. Servir un octet à un navigateur n'en est pas un.
+ *
+ * ⚠️ LIMITE CONNUE : le relais lit l'objet d'un bloc et ne sait pas répondre à
+ * une requête partielle. Se déplacer dans la vidéo relance donc le transfert
+ * depuis le début. Y remédier demande un lecteur qui accepte une plage —
+ * `getPartialObject` — et une couture de plus dans le client de stockage.
+ */
+export async function ouvrirRendu(
+  bucket: string, cle: string,
+): Promise<NodeJS.ReadableStream | null> {
+  try {
+    return await lecteurMinio().getObject(bucket, cle);
+  } catch {
+    return null;
+  }
 }

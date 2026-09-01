@@ -149,6 +149,21 @@ export const TIMEOUT_TELEVERSEMENT_RENDU_MS = Math.ceil(
   TIMEOUT_TELEVERSEMENT_CLIP_MS * (RENDU_OCTETS_MAX / CLIP_OCTETS_MAX),
 );
 
+/**
+ * La taille de partie du client de stockage, et le nombre de parties.
+ *
+ * ⚠️ LE DÉLAI DE TÉLÉVERSEMENT EST PAR REQUÊTE, PAS PAR ENVOI. Le SDK découpe
+ * tout objet plus gros que sa taille de partie en un envoi multiple : une
+ * initialisation, N parties, un assemblage. La borne du transport s'applique à
+ * CHACUNE. Ne compter qu'un délai dans le budget rendait de nouveau fausse
+ * l'affirmation « aucun travail ne peut le dépasser » — un téléversement
+ * parfaitement sain pouvait être déclaré abandonné en cours de route.
+ */
+export const OCTETS_PAR_PARTIE = 64 * 1024 * 1024;
+export const PARTIES_TELEVERSEMENT = Math.max(
+  1, Math.ceil(RENDU_OCTETS_MAX / OCTETS_PAR_PARTIE),
+);
+
 /** Une sonde `ffprobe` sur un fichier local. Elle lit l'en-tête, rien de plus. */
 export const TIMEOUT_MESURE_MS = 30_000;
 
@@ -209,7 +224,7 @@ export function budgetRendu(dureeSecondes: number): number {
     // fausse : la marge de péremption les absorbait en silence.
     + (SOURCES_MAX + 1) * TIMEOUT_MESURE_MS
     + timeoutEncodage(dureeSecondes)
-    + TIMEOUT_TELEVERSEMENT_RENDU_MS;
+    + PARTIES_TELEVERSEMENT * TIMEOUT_TELEVERSEMENT_RENDU_MS;
 }
 
 /** Le pire cas absolu : la durée la plus longue qu'un plan puisse demander. */

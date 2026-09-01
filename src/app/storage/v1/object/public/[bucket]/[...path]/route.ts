@@ -57,6 +57,7 @@ import { Readable } from 'stream';
 import { bucketAutorise } from '@/lib/storage/buckets';
 import {
   cleObjetValide, typeContenuDepuisCle, cleDansNamespaceAnalyse,
+  cleDansNamespaceMontage,
 } from '@/lib/storage/acces-objet';
 
 // Force the route to run on Node (Edge can't stream from the MinIO SDK) and
@@ -185,6 +186,9 @@ function cibleRecevable(bucket: string, storagePath: string): boolean {
   if (!bucketAutorise(bucket)) return false;
   if (!cleObjetValide(storagePath)) return false;
   if (cleDansNamespaceAnalyse(bucket, storagePath)) return false;
+  // Le montage de l'Autopilote se lit par sa route authentifiée, jamais ici :
+  // sinon le propriétaire pourrait en faire un lien public et permanent.
+  if (cleDansNamespaceMontage(bucket, storagePath)) return false;
   return true;
 }
 
