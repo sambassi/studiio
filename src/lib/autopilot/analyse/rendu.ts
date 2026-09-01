@@ -34,13 +34,13 @@ import {
 import { nombreFini } from './clip-contrat';
 import type { MontagePlan, PlanMontage } from './montage-contrat';
 import {
-  PIXEL_FORMAT_RENDU, AUDIO_FREQUENCE_RENDU, TOLERANCE_FPS,
+  PIXEL_FORMAT_RENDU, AUDIO_FREQUENCE_RENDU, TOLERANCE_FPS, MOTIF_RENDU_INTERROMPU,
   dureeConforme, planRendable, resolutionConforme,
   type MotifRendu,
 } from './rendu-contrat';
 import {
-  argumentsRendu, descendreSource, encoder, fermerDossierRendu, mesurer,
-  ouvrirDossierRendu, rectangleCrop, sonderSource, supprimerObjetRendu,
+  argumentsRendu, descendreSource, diagnosticRendu, encoder, fermerDossierRendu,
+  mesurer, ouvrirDossierRendu, rectangleCrop, sonderSource, supprimerObjetRendu,
   televerserRendu,
   type CibleRendu, type MesureRendu, type SourceLocale,
 } from './rendu-ffmpeg';
@@ -116,7 +116,9 @@ function planExecutable(plans: readonly PlanMontage[]): SourceLocale[] | null {
  * celles de H1, et il n'en est créé aucune ici : la résolution n'en a aucune,
  * la durée a celle du support, la cadence celle de la conversion de fraction.
  */
-function resultatConforme(mesure: MesureRendu, plan: MontagePlan): boolean {
+function resultatConforme(
+  mesure: MesureRendu, plan: MontagePlan, avecAudio: boolean,
+): boolean {
   if (!resolutionConforme(
     mesure.largeur, mesure.hauteur, plan.largeurCible, plan.hauteurCible,
   )) return false;
@@ -127,9 +129,18 @@ function resultatConforme(mesure: MesureRendu, plan: MontagePlan): boolean {
   )) return false;
   if (mesure.fpsMesure === null) return false;
   if (Math.abs(mesure.fpsMesure - plan.fps) > TOLERANCE_FPS) return false;
-  // L'audio n'est PAS une condition : M3-F autorise le rush muet. Mais s'il y
-  // en a, il doit être celui du contrat — sinon on aurait produit autre chose
-  // que ce qu'on annonce.
+
+  // ⚠️ LA PISTE ATTENDUE EST CROISÉE AVEC LA PISTE MESURÉE.
+  //
+  // L'audio n'est pas une condition en soi — M3-F autorise le rush muet, et
+  // `argumentsRendu` part alors en `-an`. Mais il est une PROMESSE : dès
+  // qu'une source porte du son, le graphe entrelace les pistes et comble les
+  // silences, donc le montage DOIT sortir sonore. Ne regarder que
+  // `mesure.aAudio` laissait passer l'inverse exact du défaut que la sonde
+  // avait été écrite pour empêcher : six sources sonores, une bande son
+  // perdue en route, et un fichier déclaré conforme sans un mot. Le silence
+  // total, lui, reste légitime — et reste tracé dans `usage.montageMuet`.
+  if (mesure.aAudio !== avecAudio) return false;
   if (mesure.aAudio) {
     if (mesure.codecAudio !== 'aac') return false;
     if (mesure.frequenceAudio !== AUDIO_FREQUENCE_RENDU) return false;
@@ -281,7 +292,11 @@ export async function produireMontage(
     }
     const { mesure, motif } = await mesurer(sortie);
     if (mesure === null) return echec(motif ?? 'resultat_invalide', usage);
-    if (!resultatConforme(mesure, plan)) return echec('resultat_invalide', usage);
+    // `avecAudio` est CONSTATÉ sur les sondes, exactement comme le graphe :
+    // une seule source sonore suffit à ce que le montage doive l'être.
+    if (!resultatConforme(mesure, plan, sources.some((s) => s.aAudio))) {
+      return echec('resultat_invalide', usage);
+    }
     usage.octetsProduits = mesure.octets;
     usage.dureeMesureeSecondes = mesure.dureeMesureeSecondes;
 
@@ -302,6 +317,21 @@ export async function produireMontage(
         // échec — le fichier, lui, est bon.
         usage.nettoyageTemporaire = 'echoue';
       }
+    } catch (e: unknown) {
+      // ⚠️ LE NETTOYAGE EST SECONDAIRE, ET NE DÉCIDE DE RIEN.
+      //
+      // Un jet ici REMPLACE la valeur de retour du `try` : un montage produit,
+      // mesuré, téléversé, ressortait en exception — et l'orchestration, qui
+      // ne peut plus rien conclure, retirait l'objet et rendait un motif qui
+      // accusait ffmpeg. Un répertoire temporaire qu'on ne sait pas vider est
+      // un incident de disque, pas un défaut du fichier produit : il se
+      // constate au relevé et au journal, et laisse le résultat intact.
+      usage.nettoyageTemporaire = 'echoue';
+      console.error(
+        `[autopilote][rendu] nettoyage impossible : ${diagnosticRendu(
+          e instanceof Error ? e.message : String(e), dossier ?? undefined,
+        )}`,
+      );
     } finally {
       // ⚠️ IMBRIQUÉ, ET CE N'EST PAS DE LA PRUDENCE DÉCORATIVE. Un jet dans
       // le nettoyage sauterait la libération, et la place fuirait pour de
@@ -456,8 +486,17 @@ export async function rendreEtPublier(
   if (issue === 'rendu_absent') {
     return { ...resultat, ok: false, motif: null, abandonne: true };
   }
-  await sansJeter(() => finalisation.clore('televersement_echoue', resultat.usage));
-  return { ...resultat, ok: false, motif: 'televersement_echoue', mesure: null };
+  // ⚠️ LE MOTIF DIT CE QUI S'EST PASSÉ, PAS CE QUI ARRANGE.
+  //
+  // `televersement_echoue` était FAUX ici : l'envoi a réussi, sa taille a même
+  // été relue. Ce qui a refusé, c'est la base — socle injoignable, contrainte,
+  // panne. Accuser le stockage envoyait chercher la panne du mauvais côté, et
+  // aurait fait conclure à un incident MinIO là où PostgREST était muet.
+  // `rendu_interrompu` est le motif du vocabulaire H1 qui décrit exactement
+  // cet état : le travail a produit son fichier, rien n'a pu être consigné, et
+  // une relance est la suite normale.
+  await sansJeter(() => finalisation.clore(MOTIF_RENDU_INTERROMPU, resultat.usage));
+  return { ...resultat, ok: false, motif: MOTIF_RENDU_INTERROMPU, mesure: null };
 }
 
 /** Une clôture qui échoue ne doit pas masquer ce qu'elle venait consigner. */

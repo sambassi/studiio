@@ -471,7 +471,25 @@ export function motifRenduValide(v: unknown): v is MotifRendu {
   return typeof v === 'string' && (MOTIFS_RENDU as readonly string[]).includes(v);
 }
 
-/** Le motif écrit en base quand un rendu est fermé par péremption. */
+/**
+ * Le motif d'un rendu FERMÉ SANS AVOIR PU ABOUTIR, pour une raison qui n'est
+ * pas la sienne.
+ *
+ * Trois situations l'écrivent, et elles ont la même conséquence pour qui
+ * regarde l'écran — le travail n'a pas abouti, une relance est la suite
+ * normale :
+ *
+ *   • la péremption, qui ferme la ligne d'un processus disparu ;
+ *   • une consignation refusée alors que le fichier était monté — la base a
+ *     dit non, pas le stockage ;
+ *   • une panne inattendue du travail détaché, dont on ne sait pas dire
+ *     quelle étape a cédé.
+ *
+ * ⚠️ ET C'EST BIEN CE MOTIF-LÀ, PAS UN AUTRE. Les deux derniers cas
+ * écrivaient auparavant `televersement_echoue` et `encodage_echoue` : deux
+ * affirmations FAUSSES sur des étapes qui avaient réussi, qui envoyaient
+ * chercher la panne du mauvais côté.
+ */
 export const MOTIF_RENDU_INTERROMPU: MotifRendu = 'rendu_interrompu';
 
 // ───────────────────────────────────────────────────────────────────────────

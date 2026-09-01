@@ -136,13 +136,38 @@ describe('1-8. Le recadrage et les arguments : purs, donc vérifiables', () => {
     expect(c.y).toBe(0);
   });
 
-  it('un rectangle qui déborderait est RAMENÉ, jamais laissé sortir', () => {
-    const c = rectangleCrop(1920, 1080, { x: 0.9, y: 0.9, largeur: 0.9, hauteur: 0.9 })!;
-    expect(c.x + c.largeur).toBeLessThanOrEqual(1920);
-    expect(c.y + c.hauteur).toBeLessThanOrEqual(1080);
+  it('UN RECTANGLE QUI SORT DU CADRE EST REFUSÉ, jamais repositionné', () => {
+    // ⚠️ LE DÉFAUT QUE CE TEST REMPLACE. `x = 0,9` avec `largeur = 0,9`
+    // demande 1728 px à partir du pixel 1728 : impossible sur 1920. Le code
+    // ramenait alors le cadre à `x = 192` — 1536 pixels PLUS À GAUCHE que ce
+    // que le plan demandait — et rendait un montage cadré ailleurs, sans un
+    // mot. M3-G décide ; M3-H exécute ou refuse, il ne réinterprète pas.
+    expect(rectangleCrop(1920, 1080, { x: 0.9, y: 0, largeur: 0.9, hauteur: 1 }))
+      .toBeNull();
+    expect(rectangleCrop(1920, 1080, { x: 0, y: 0.9, largeur: 1, hauteur: 0.9 }))
+      .toBeNull();
+    expect(rectangleCrop(1920, 1080, { x: 0.6, y: 0.6, largeur: 0.6, hauteur: 0.6 }))
+      .toBeNull();
+    // Le cas limite qui trompait l'œil : quatre fractions à 1 demandent DEUX
+    // fois l'image, et se retrouvaient ramenées à l'image entière.
+    expect(rectangleCrop(1920, 1080, { x: 1, y: 1, largeur: 1, hauteur: 1 }))
+      .toBeNull();
+
+    // ── Ce qui reste légitime, et doit le rester ──────────────────────────
     // Identité : tout garder ne recadre rien.
     expect(rectangleCrop(1920, 1080, { x: 0, y: 0, largeur: 1, hauteur: 1 }))
       .toEqual({ largeur: 1920, hauteur: 1080, x: 0, y: 0 });
+    // ⚠️ `0,1 + 0,9` VAUT 1,0000000000000002 EN VIRGULE FLOTTANTE. Un seuil
+    // posé sur les fractions condamnerait ce plan, qui colle exactement au
+    // bord droit. Le seuil est donc en PIXELS, avec un pixel de jeu.
+    expect(rectangleCrop(1920, 1080, { x: 0.1, y: 0, largeur: 0.9, hauteur: 1 }))
+      .toEqual({ largeur: 1728, hauteur: 1080, x: 192, y: 0 });
+    // Et l'arrondi au pair près du bord reste RAMENÉ, lui : c'est ce que le
+    // clamp existe pour faire, et il ne déplace que de deux pixels au plus.
+    const bord = rectangleCrop(1920, 1080, { x: 0.6667, y: 0, largeur: 0.3333, hauteur: 1 })!;
+    expect(bord.x + bord.largeur).toBeLessThanOrEqual(1920);
+    expect(bord.x).toBeGreaterThanOrEqual(1278);
+
     // Des valeurs absurdes ne produisent pas un rectangle de fantaisie.
     expect(rectangleCrop(0, 1080, RECADRAGE)).toBeNull();
     expect(rectangleCrop(1920, 1080, { ...RECADRAGE, largeur: 0 })).toBeNull();

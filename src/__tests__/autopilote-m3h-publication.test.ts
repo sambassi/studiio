@@ -85,7 +85,12 @@ const RID = '55555555-5555-4555-8555-000000000001';
 let atelier = '';
 let fichierLocal = '';
 
-import { rendreEtPublier, produireMontage, type Finalisation } from '@/lib/autopilot/analyse/rendu';
+// ⚠️ `rendreEtPublier` N'EST PAS IMPORTÉE ICI, ET C'EST DÉLIBÉRÉ. Ce fichier
+// éprouve le téléversement et la lecture ; l'orchestration, elle, est
+// RÉELLEMENT EXÉCUTÉE dans `autopilote-m3h-finalisation.test.ts`. L'importer
+// sans l'appeler avait fait croire à une couverture qui n'existait pas —
+// TypeScript le signalait lui-même (`TS6133`).
+import { produireMontage, type Finalisation } from '@/lib/autopilot/analyse/rendu';
 import { renduPublic } from '@/lib/autopilot/analyse/rendu-presentation';
 import {
   BUCKET_RENDUS_MONTAGE, CHAMPS_INTERDITS_RENDU, CONTENT_TYPE_RENDU, cleRendu,
@@ -198,7 +203,7 @@ describe('5-12. L’atomicité : les quatre issues, et leurs compensations', () 
       f: {
         consigner: async (bucket, cle, mesure, usage) => {
           consignes.push({ bucket, cle, mesure, usage });
-          return null;
+          return 'consigne';
         },
         clore: async (motif, usage) => { clotures.push({ motif, usage }); },
         ...over,

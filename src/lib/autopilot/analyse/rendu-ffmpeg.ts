@@ -139,6 +139,22 @@ export function rectangleCrop(
   const [fx, fy, fl, fh] = fractions as number[];
   if (fl <= 0 || fh <= 0) return null;
 
+  // ⚠️ UN RECTANGLE QUI SORT DU CADRE EST REFUSÉ, JAMAIS REPOSITIONNÉ.
+  //
+  // Le clamp plus bas existe pour l'ARRONDI — les deux pixels gagnés en
+  // montant au pair supérieur près du bord. Il ne doit pas servir à rattraper
+  // un plan qui demande vraiment l'impossible : `x = 0,9` avec
+  // `largeur = 0,9` se retrouvait déplacé de 1536 pixels, et le montage
+  // sortait cadré ailleurs que là où M3-G l'avait décidé — sans un mot. M3-G
+  // décide, M3-H exécute ou refuse ; il ne réinterprète pas.
+  //
+  // Le seuil est exprimé en PIXELS et non en fractions : `0,1 + 0,9` vaut
+  // 1,0000000000000002 en virgule flottante, et refuser là-dessus
+  // condamnerait un plan parfaitement légitime. Un pixel de dépassement est
+  // du bruit de représentation ; au-delà, c'est une intention.
+  if (ls * (fx + fl) > ls + 1) return null;
+  if (hs * (fy + fh) > hs + 1) return null;
+
   // ⚠️ DEUX ARRONDIS, ET NON UN SEUL. Une DIMENSION ne peut pas valoir zéro —
   // `yuv420p` sous-échantillonne par deux, un côté nul n'est pas une image.
   // Une COORDONNÉE, si : un plan qui demande `x = 0` demande le bord gauche,

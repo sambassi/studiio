@@ -25,12 +25,13 @@ import { identifiantValide } from '@/lib/autopilot/analyse/clip-contrat';
 import { lirePlanParId } from '@/lib/autopilot/analyse/montage-service';
 import { prendrePlaceRendu } from '@/lib/autopilot/analyse/capacite';
 import {
-  BUDGET_RENDU_MAX_MS, CHAMPS_INTERDITS_RENDU, METHODE_RENDU,
+  BUDGET_RENDU_MAX_MS, CHAMPS_INTERDITS_RENDU, METHODE_RENDU, MOTIF_RENDU_INTERROMPU,
   type IdentiteRendu, type MotifRendu,
 } from '@/lib/autopilot/analyse/rendu-contrat';
 import { diagnosticRendu } from '@/lib/autopilot/analyse/rendu-ffmpeg';
 import {
   creerRendu, lireRenduActif, lireRenduReussiIdentique, majRendu,
+  type RenduMontage,
 } from '@/lib/autopilot/analyse/rendu-service';
 import { rendreEtPublier, type IssueConsignation } from '@/lib/autopilot/analyse/rendu';
 import { renduPublic } from '@/lib/autopilot/analyse/rendu-presentation';
@@ -49,6 +50,30 @@ const SOCLE_ABSENT = 'La table des rendus n’existe pas encore sur ce serveur.'
 
 const refus = (motif: string, message: string, status = 409) =>
   NextResponse.json({ ok: false, error: message, motif }, { status });
+
+/**
+ * Cette ligne peut-elle être SERVIE au lieu d'être refaite ?
+ *
+ * ⚠️ L'ÉTAT EST REVÉRIFIÉ ICI, MÊME SI LA REQUÊTE L'A DÉJÀ FILTRÉ.
+ *
+ * `lireRenduReussiIdentique` demande bien `etat = 'reussie'` à la base, mais
+ * `renduDepuisLigne` RÉTROGRADE en mémoire une réussite dont le résultat ne
+ * repasse pas la revalidation — clé hors du préfixe utilisateur, zéro octet,
+ * codec vide. Se contenter de « la requête a rendu quelque chose » servait
+ * alors un `reutilise: true` avec `video: null`, et comme l'index unique
+ * interdit d'en créer un autre pour la même identité, le plan devenait
+ * DÉFINITIVEMENT irrendable : chaque nouvel appel reservait la même impasse.
+ *
+ * L'identité est réaffirmée pour la même raison : elle est garantie par la
+ * requête, et une garantie d'ailleurs n'est pas une garantie ici.
+ */
+function reutilisable(rendu: RenduMontage | null, identite: IdentiteRendu): boolean {
+  if (!rendu) return false;
+  if (rendu.etat !== 'reussie' || !rendu.resultat) return false;
+  return rendu.montagePlanId === identite.montagePlanId
+    && rendu.montagePlanVersion === identite.montagePlanVersion
+    && rendu.methodeRendu === identite.methodeRendu;
+}
 
 export async function POST(
   req: NextRequest, { params }: { params: { montagePlanId: string } },
@@ -110,9 +135,9 @@ export async function POST(
         { ok: false, error: SOCLE_ABSENT, motif: 'socle_absent' }, { status: 503 },
       );
     }
-    if (existant.rendu) {
+    if (reutilisable(existant.rendu, identite)) {
       return NextResponse.json({
-        ok: true, reutilise: true, rendu: renduPublic(existant.rendu),
+        ok: true, reutilise: true, rendu: renduPublic(existant.rendu!),
       });
     }
 
@@ -148,9 +173,9 @@ export async function POST(
       // La base a refusé : un travail tourne déjà, ou vient d'aboutir. On
       // relit plutôt que d'échouer — l'écran doit pouvoir le suivre.
       const relu = await lireRenduReussiIdentique(userId, identite);
-      if (relu.rendu) {
+      if (reutilisable(relu.rendu, identite)) {
         return NextResponse.json({
-          ok: true, reutilise: true, rendu: renduPublic(relu.rendu),
+          ok: true, reutilise: true, rendu: renduPublic(relu.rendu!),
         });
       }
       const actif = await lireRenduActif(userId, plan.id);
@@ -266,8 +291,15 @@ async function executerRendu(
       )}`,
     );
     try {
+      // ⚠️ PAS `encodage_echoue` : ON NE SAIT PAS QUE FFMPEG A CÉDÉ.
+      //
+      // Ce `catch` attrape TOUT ce que le travail détaché peut jeter — un
+      // `majRendu` qui échoue pendant la mesure, un nettoyage de répertoire
+      // qui jette après un montage parfaitement produit, une panne du socle.
+      // Accuser l'encodage était une affirmation que rien n'établit, et qui
+      // envoyait chercher la panne dans ffmpeg alors qu'il avait rendu 0.
       await majRendu(userId, renduId, {
-        etat: 'echouee', motifEchec: 'encodage_echoue', termine: true,
+        etat: 'echouee', motifEchec: MOTIF_RENDU_INTERROMPU, termine: true,
         siEtat: ['en_attente', 'en_cours'],
       });
     } catch { /* la ligne se fermera par péremption */ }
