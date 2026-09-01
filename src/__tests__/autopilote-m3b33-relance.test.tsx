@@ -239,6 +239,20 @@ async function monter(rushId = RUSH) {
   // La fin du chargement, attendue et non dormie : le composant retire son
   // « Statut de l’analyse… » dès que la première lecture est revenue.
   await waitFor(() => expect(etat()).not.toBe('chargement'));
+  // ⚠️ LES APERÇUS SONT POSÉS PAR UN SECOND EFFET, pas par la lecture.
+  //
+  // `waitFor` rend la main dès que le STATUT change ; l'effet qui calcule les
+  // vignettes est validé au rendu suivant. Les trois assertions immédiates
+  // ci-dessous — « 3 aperçus », « 0 aperçu », « 8 aperçus » — lisaient donc un
+  // DOM qui n'avait pas fini de se poser, et ne passaient que parce que
+  // l'effet gagnait la course. Sur un agent de CI chargé, il la perdait :
+  // « expected +0 to be 3 ». La plus trompeuse était celle qui attend 0, qui
+  // passait pour la mauvaise raison — l'état AVANT l'effet vaut aussi 0.
+  //
+  // Ce vidage rend la main à React pour ses effets en attente. Ce n'est ni un
+  // délai, ni une attente allongée : les assertions restent identiques, elles
+  // lisent simplement un rendu stabilisé.
+  await act(async () => { await Promise.resolve(); });
   return rendu;
 }
 
