@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, Plus, Film, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { uploadFile } from '@/lib/storage/uploadFile';
 import AnalyseRush from '@/components/creer/AnalyseRush';
-import VideosPretes from '@/components/creer/VideosPretes';
+import {
+  MONTAGE_DEFAUT, type AutopilotMontageStyle,
+} from '@/lib/autopilot/textStyle';
 import type { ShootSession, Rush } from '@/lib/autopilot/tournage/contrat';
 
 /**
@@ -54,7 +56,46 @@ interface EnCours {
   erreur?: string;
 }
 
-export default function SessionsTournagePanel() {
+/**
+ * Ce que l'écran propose, et RIEN DE PLUS.
+ *
+ * ⚠️ AUCUN RÉGLAGE DE TEXTE, D'AUDIO, DE VOIX NI DE LOOK. Le moteur des
+ * rushes concatène des morceaux recadrés : sa commande ffmpeg n'a ni
+ * `drawtext`, ni `amix`, ni `lut3d`. Un contrôle de plus serait enregistré et
+ * ignoré au rendu — exactement le genre de réglage qui fait croire à une
+ * panne. Le format et la durée, eux, sont de vrais paramètres de M3-G.
+ */
+const FORMATS = [
+  { valeur: '9:16', libelle: 'Vertical' },
+  { valeur: '1:1', libelle: 'Carré' },
+  { valeur: '16:9', libelle: 'Horizontal' },
+] as const;
+
+/** Trois durées usuelles, toutes dans les bornes du contrat (1–120 s). */
+const DUREES = [15, 30, 60] as const;
+
+interface Props {
+  /** Le réglage enregistré de l'utilisateur, ou le défaut. */
+  montageDefaut?: AutopilotMontageStyle;
+  /** Enregistre le réglage courant comme défaut. Absent = bouton masqué. */
+  onEnregistrerDefaut?: (m: AutopilotMontageStyle) => void | Promise<void>;
+  /**
+   * Remonte la session regardée, pour que l'aperçu de la colonne de droite
+   * sache quoi montrer. C'est ce qui permet d'avoir UN SEUL aperçu.
+   */
+  onSessionChange?: (etat: { sessionId: string | null; aucunRush: boolean }) => void;
+  /**
+   * Prévient que la création d'une vidéo vient de partir.
+   *
+   * L'aperçu vit désormais dans la colonne de droite : c'est LUI qu'il faut
+   * réveiller, et il n'est plus dans cet arbre. Le signal remonte donc.
+   */
+  onVideoLancee?: () => void;
+}
+
+export default function SessionsTournagePanel({
+  montageDefaut, onEnregistrerDefaut, onSessionChange, onVideoLancee,
+}: Props = {}) {
   const [sessions, setSessions] = useState<ShootSession[]>([]);
   const [selection, setSelection] = useState<string | null>(null);
   const [rushes, setRushes] = useState<Rush[]>([]);
@@ -63,13 +104,29 @@ export default function SessionsTournagePanel() {
   const [erreur, setErreur] = useState<string | null>(null);
   const [envois, setEnvois] = useState<EnCours[]>([]);
   /**
-   * Incrémenté quand un rendu vient d'être lancé depuis un rush.
+   * Le réglage de CETTE vidéo.
    *
-   * `VideosPretes` a conclu « aucune vidéo » et cessé de sonder ; ce compteur
-   * est ce qui le fait repartir. Un compteur plutôt qu'un booléen : deux
-   * lancements successifs doivent produire deux réveils.
+   * ⚠️ IL NE S'ENREGISTRE PAS TOUT SEUL. Changer le format pour un montage ne
+   * doit pas changer tous les montages suivants : l'écriture dans la
+   * configuration demande un second geste, explicite.
    */
-  const [relanceVideos, setRelanceVideos] = useState(0);
+  const [montage, setMontage] = useState<AutopilotMontageStyle>(
+    montageDefaut ?? MONTAGE_DEFAUT,
+  );
+  const [defautEnregistre, setDefautEnregistre] = useState(false);
+
+  // Le réglage enregistré arrive après le premier rendu (la config se charge
+  // en réseau) : on s'y accorde tant que l'utilisateur n'a rien touché.
+  const toucheRef = useRef(false);
+  useEffect(() => {
+    if (!toucheRef.current && montageDefaut) setMontage(montageDefaut);
+  }, [montageDefaut]);
+
+  const changerMontage = (patch: Partial<AutopilotMontageStyle>) => {
+    toucheRef.current = true;
+    setDefautEnregistre(false);
+    setMontage((m) => ({ ...m, ...patch }));
+  };
   const fichiersRef = useRef<HTMLInputElement>(null);
 
   const chargerSessions = useCallback(async () => {
@@ -101,6 +158,12 @@ export default function SessionsTournagePanel() {
 
   useEffect(() => { chargerSessions(); }, [chargerSessions]);
   useEffect(() => { if (selection) chargerRushes(selection); }, [selection, chargerRushes]);
+
+  // L'aperçu unique de la colonne de droite a besoin de savoir QUEL tournage
+  // on regarde. Sans ce signal, il faudrait un second lecteur ici.
+  useEffect(() => {
+    onSessionChange?.({ sessionId: selection, aucunRush: rushes.length === 0 });
+  }, [selection, rushes.length, onSessionChange]);
 
   const creer = async () => {
     const t = titre.trim();
@@ -216,23 +279,76 @@ export default function SessionsTournagePanel() {
 
       {selection && (
         <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-3 space-y-2">
-          {/* ── LES VIDÉOS PRODUITES PAR CE TOURNAGE, EN TÊTE ─────────────
-              Mesuré sur la page de production : ce bloc se trouvait à 3 286 px
-              du haut — 4,6 écrans — sous la liste des rushes et leurs analyses.
-              Quelqu'un qui vient de lancer une création ne pouvait pas voir
-              qu'elle tournait sans faire défiler cinq écrans.
+          {/* ── LES RÉGLAGES DU MONTAGE ───────────────────────────────────
+              Deux, et deux seulement : ce sont les seuls paramètres que
+              `POST /clips/[id]/montage` accepte, donc les seuls qui changent
+              vraiment le MP4. Tout le reste — titre, musique, voix, look —
+              serait un contrôle sans effet.
 
-              Il est au niveau de la SESSION et non du rush : une vidéo naît
-              d'un montage, et la poser sous une ligne de rush laisserait
-              croire qu'elle n'en vient que d'un.
+              L'aperçu, lui, n'est plus ici : il vit dans la colonne de
+              droite, seul et collant. */}
+          <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-2 space-y-2" data-montage-reglages>
+            {/* ⚠️ PAS « Votre vidéo » : ce titre est celui de l'APERÇU, dans la
+                colonne de droite. Deux blocs portant le même nom dans deux
+                colonnes, c'est exactement la confusion qu'on vient d'enlever. */}
+            <p className="text-[10px] uppercase tracking-wide text-gray-500">
+              Réglages de la vidéo
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <label className="flex-1 min-w-[7rem]">
+                <span className="block text-[10px] text-gray-500 mb-1">Format</span>
+                <select
+                  value={montage.format}
+                  onChange={(e) => changerMontage({ format: e.target.value })}
+                  data-montage-format
+                  className="w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none px-2 py-1.5 text-xs"
+                >
+                  {FORMATS.map((f) => (
+                    <option key={f.valeur} value={f.valeur}>
+                      {f.libelle} ({f.valeur})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex-1 min-w-[7rem]">
+                <span className="block text-[10px] text-gray-500 mb-1">Durée</span>
+                <select
+                  value={String(montage.dureeSecondes)}
+                  onChange={(e) => changerMontage({ dureeSecondes: Number(e.target.value) })}
+                  data-montage-duree
+                  className="w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none px-2 py-1.5 text-xs"
+                >
+                  {DUREES.map((d) => (
+                    <option key={d} value={d}>{d} secondes</option>
+                  ))}
+                </select>
+              </label>
+            </div>
 
-              Ce composant est en LECTURE SEULE : il ne lance aucun rendu, ne
-              modifie aucun rush et n'écrit rien. */}
-          <VideosPretes
-            sessionId={selection}
-            aucunRush={rushes.length === 0}
-            relance={relanceVideos}
-          />
+            {/* ⚠️ UN SECOND GESTE, EXPLICITE. Sans lui, corriger le format
+                d'UNE vidéo changerait toutes les suivantes. */}
+            {onEnregistrerDefaut && (
+              <button
+                type="button"
+                onClick={async () => {
+                  await onEnregistrerDefaut(montage);
+                  setDefautEnregistre(true);
+                }}
+                data-montage-defaut
+                className="text-[10px] text-gray-500 hover:text-gray-300 underline underline-offset-2 transition-colors"
+              >
+                {defautEnregistre
+                  ? 'Enregistré comme réglage par défaut'
+                  : 'Enregistrer comme réglage par défaut'}
+              </button>
+            )}
+
+            {/* La validation humaine, dite avant même que la vidéo existe. */}
+            <p className="text-[10px] text-gray-500 leading-relaxed" data-validation-humaine>
+              Studiio prépare la vidéo. Vous la vérifiez avant publication.
+            </p>
+          </div>
+
 
           {/* Un input de fichiers ordinaire : c'est le sélecteur du système
               qui s'ouvre, donc TOUT volume monté — SSD, carte SD, clé USB.
@@ -299,7 +415,8 @@ export default function SessionsTournagePanel() {
                   <div className="pl-7">
                     <AnalyseRush
                       rushId={r.id}
-                      onVideoLancee={() => setRelanceVideos((n) => n + 1)}
+                      montage={montage}
+                      onVideoLancee={onVideoLancee}
                     />
                   </div>
                 )}

@@ -422,7 +422,21 @@ describe('D — la contrainte tenue : six étapes, colonne de gauche intacte', (
     // l'etape « Style & medias ». Ils vivent sur l'apercu.
     expect(panneau).not.toContain('FONT_GROUPS');
     expect(panneau).not.toContain('IconPicker');
-    expect(panneau).not.toContain('designStyle');
+
+    // ⚠️ `designStyle` N'EST PLUS INTERDIT EN BLOC — et la contrainte n'a pas
+    // bougé pour autant.
+    //
+    // Le panneau y enregistre depuis le LOT 1 le format et la durée du
+    // montage : deux valeurs que le moteur des rushes honore vraiment, et qui
+    // n'ont rien de typographique. Ce qui reste interdit, c'est d'éditer ICI
+    // les ZONES de texte — police, taille, casse, icônes — qui se règlent sur
+    // l'aperçu et empileraient sept contrôles fois trois zones sous les
+    // couleurs.
+    const style = panneau.slice(panneau.indexOf('designStyle'));
+    for (const zone of ['title:', 'subtitle:', 'cta:', 'cards:', 'cardIcons', 'cardStyle']) {
+      expect(style, `la colonne de gauche ne doit pas écrire ${zone}`)
+        .not.toContain(zone);
+    }
   });
 
   it('les panneaux de réglage sont FLOTTANTS, ouverts au double-clic', () => {

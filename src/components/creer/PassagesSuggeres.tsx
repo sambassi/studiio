@@ -25,10 +25,19 @@ import {
 import {
   creerVideo, phraseChaine, type EtapeChaine,
 } from '@/lib/autopilot/analyse/chaine-passerelle';
+import type { AutopilotMontageStyle } from '@/lib/autopilot/textStyle';
 
 interface Props {
   /** L'analyse source. Toujours `reussie` — l'appelant s'en assure. */
   analyseId: string;
+  /**
+   * Format et durée cible. Omis = les valeurs par défaut de la chaîne.
+   *
+   * ⚠️ CE SONT LES DEUX SEULS RÉGLAGES QUE LE MOTEUR HONORE. Ils partent tels
+   * quels vers `POST /clips/[id]/montage`, qui les refuse s'ils sortent de
+   * son vocabulaire.
+   */
+  montage?: AutopilotMontageStyle;
   /**
    * Prévient l'écran des vidéos qu'un rendu vient de partir.
    *
@@ -50,7 +59,7 @@ type EtatChaine =
   | { sorte: 'encours'; etape: EtapeChaine }
   | { sorte: 'dit'; texte: string; alerte: boolean };
 
-export default function PassagesSuggeres({ analyseId, onVideoLancee }: Props) {
+export default function PassagesSuggeres({ analyseId, montage, onVideoLancee }: Props) {
   const [generation, setGeneration] = useState<GenerationEcran | null>(null);
   const [chargement, setChargement] = useState(true);
   const [indisponible, setIndisponible] = useState<string | null>(null);
@@ -145,6 +154,8 @@ export default function PassagesSuggeres({ analyseId, onVideoLancee }: Props) {
     try {
       const r = await creerVideo({
         candidateSetId: jeuPassages,
+        format: montage?.format,
+        dureeCibleSecondes: montage?.dureeSecondes,
         signalerEtape: (etape) => {
           if (vivantRef.current) setChaine({ sorte: 'encours', etape });
         },
@@ -178,7 +189,7 @@ export default function PassagesSuggeres({ analyseId, onVideoLancee }: Props) {
     } finally {
       verrouRef.current = false;
     }
-  }, [generation?.id, onVideoLancee]);
+  }, [generation?.id, montage?.format, montage?.dureeSecondes, onVideoLancee]);
 
   if (chargement) return null;
 

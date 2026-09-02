@@ -77,6 +77,7 @@ import {
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import AiImageTools from '@/components/creer/AiImageTools';
 import AutopilotPanel from '@/components/creer/AutopilotPanel';
+import VideosPretes from '@/components/creer/VideosPretes';
 import { buildAutopilotSample, samplePosterVisible } from '@/lib/autopilot/sample';
 // ⚠️ DEPUIS `brand.ts`, PAS `design.ts`. Ce dernier entraîne toute la chaîne
 // serveur de l'Autopilote (`voice` → `storage/upload` → `minio`) dans le
@@ -2729,7 +2730,7 @@ function AutopilotPreview({ config, accent, onPatch }: {
       >
         <Info className="w-3 h-3 mt-0.5 shrink-0" />
         <span>
-          Aperçu — <span className="text-gray-400">exemple</span> sur le thème
+          Aperçu du projet — <span className="text-gray-400">exemple</span> sur le thème
           {' '}«&nbsp;{themeLabel(sample.topic)}&nbsp;». Le sujet, l’affiche et les textes
           changent à chaque vidéo ; le style, non.
         </span>
@@ -3148,6 +3149,27 @@ export default function AssistantWizard() {
    * fini par se contredire.
    */
   const [autopilotConfig, setAutopilotConfig] = useState<AutopilotConfig>(AUTOPILOT_DEFAULT_CONFIG);
+  /**
+   * ─────────────────────────────────────────────────────────────────────
+   * L'APERÇU UNIQUE
+   * ─────────────────────────────────────────────────────────────────────
+   *
+   * Le lecteur de la vidéo produite vivait DANS la colonne de configuration,
+   * sous la liste des rushes — mesuré à 3 286 px du haut de page, pendant que
+   * l'aperçu du style occupait la colonne de droite. Deux endroits où
+   * regarder, dont un qu'il fallait aller chercher.
+   *
+   * Ces trois états portent le tournage regardé jusqu'à la colonne de droite,
+   * qui devient le SEUL aperçu : elle montre le projet tant qu'aucune vidéo
+   * n'existe, puis la vidéo elle-même.
+   */
+  const [tournageRegarde, setTournageRegarde] = useState<
+    { sessionId: string | null; aucunRush: boolean }
+  >({ sessionId: null, aucunRush: true });
+  const [relanceVideos, setRelanceVideos] = useState(0);
+  const [etatVideo, setEtatVideo] = useState<'vide' | 'en_cours' | 'prete' | 'echec'>('vide');
+  /** La vidéo prend la place de l'aperçu du projet dès qu'elle existe. */
+  const videoOccupeLApercu = etatVideo === 'en_cours' || etatVideo === 'prete';
   /**
    * L'enregistrement du panneau, emprunte par l'apercu.
    *
@@ -6953,6 +6975,8 @@ export default function AssistantWizard() {
                       accent={accent}
                       onConfigChange={setAutopilotConfig}
                       onPatchReady={(patch) => { autopilotPatchRef.current = patch; }}
+                      onSessionChange={setTournageRegarde}
+                      onVideoLancee={() => setRelanceVideos((n) => n + 1)}
                     />
                   </div>
                 </div>
@@ -8999,11 +9023,27 @@ export default function AssistantWizard() {
             poignées d'édition, ses refs d'export et son bouton de rendu :
             rien de ce qui suit n'est modifié. */}
         {!started ? (
-          <AutopilotPreview
-            config={autopilotConfig}
-            accent={accent}
-            onPatch={autopilotPatch}
-          />
+          <div className="space-y-4">
+            {/* ⚠️ TOUJOURS MONTÉ QUAND UN TOURNAGE EST OUVERT — c'est lui qui
+                sonde. Il ne rend rien tant qu'il n'a rien à montrer, et
+                prévient par `onEtat` : c'est ce qui permet à l'aperçu du
+                projet de céder la place SANS qu'un second lecteur existe. */}
+            {tournageRegarde.sessionId && (
+              <VideosPretes
+                sessionId={tournageRegarde.sessionId}
+                aucunRush={tournageRegarde.aucunRush}
+                relance={relanceVideos}
+                onEtat={setEtatVideo}
+              />
+            )}
+            {!videoOccupeLApercu && (
+              <AutopilotPreview
+                config={autopilotConfig}
+                accent={accent}
+                onPatch={autopilotPatch}
+              />
+            )}
+          </div>
         ) : (
         <>
         <Preview

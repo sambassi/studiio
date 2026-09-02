@@ -672,6 +672,10 @@ describe('E — ni IA, ni crédit, ni rendu, ni publication', () => {
       './PassagesSuggeres',
       '@/lib/autopilot/analyse/passerelle',
       '@/lib/autopilot/analyse/presentation',
+      // LOT 1 : un import de TYPE seul (`AutopilotMontageStyle`), pour le
+      // passe-plat du format et de la durée vers `PassagesSuggeres`. Effacé à
+      // la compilation, il ne tire rien dans le paquet navigateur.
+      '@/lib/autopilot/textStyle',
       'lucide-react',
       'react',
     ].sort());
@@ -689,6 +693,9 @@ describe('E — ni IA, ni crédit, ni rendu, ni publication', () => {
       // fermés n'y entrent que comme des types, effacés à la compilation.
       // C'est cette liste-ci qui a exigé de le vérifier avant de l'ajouter.
       '@/lib/autopilot/analyse/chaine-passerelle',
+      // LOT 1 : le TYPE du réglage de montage (format + durée), reçu de son
+      // parent et remis à la chaîne. Import de type, effacé à la compilation.
+      '@/lib/autopilot/textStyle',
       'react',
     ].sort());
   });

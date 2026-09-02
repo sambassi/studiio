@@ -52,7 +52,85 @@ export interface AutopilotTextZone {
   strike?: boolean;
 }
 
+/**
+ * Les deux SEULS réglages de montage que le moteur des rushes honore.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ DEUX, ET PAS TROIS
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * M3-H concatène des morceaux de rush recadrés — sa commande ffmpeg n'a ni
+ * `drawtext`, ni `overlay`, ni `amix`, ni `lut3d`. Un réglage de titre, de
+ * musique, de voix ou de look serait donc affiché, enregistré… et ignoré au
+ * rendu. Le format et la durée cible, eux, sont de vrais paramètres de
+ * `POST /clips/[id]/montage` : ce sont les seuls qui méritent un contrôle.
+ *
+ * ⚠️ LES VALEURS SONT REVALIDÉES ICI, ET ELLES DOIVENT RESTER ALIGNÉES SUR
+ * `montage-contrat`. Elles sont recopiées plutôt qu'importées : ce module est
+ * lu par la configuration, qui n'a aucune raison de tirer `clip-contrat` et
+ * `designSpec` derrière elle. Un test compare les deux listes — c'est lui qui
+ * garantit l'alignement, pas une arête d'import.
+ */
+export interface AutopilotMontageStyle {
+  /** `9:16`, `1:1` ou `16:9` — les trois formats de `FORMATS_MONTAGE`. */
+  format: string;
+  /** Entre 1 et 120 secondes, les bornes de `dureeCibleValide`. */
+  dureeSecondes: number;
+}
+
+/** Les formats acceptés, recopiés de `FORMATS_MONTAGE`. */
+export const MONTAGE_FORMATS: readonly string[] = ['9:16', '1:1', '16:9'];
+/** Les bornes acceptées, recopiées de `DUREE_CIBLE_MIN/MAX_SECONDES`. */
+export const MONTAGE_DUREE_MIN = 1;
+export const MONTAGE_DUREE_MAX = 120;
+
+/**
+ * Ce qu'on utilise quand l'utilisateur n'a jamais rien choisi.
+ *
+ * ⚠️ RÉTRO-COMPATIBLE : c'est exactement ce que `chaine-passerelle` envoyait
+ * en dur avant ce lot. Une configuration existante, qui ne porte aucun
+ * `montage`, produit donc le MÊME montage qu'hier.
+ */
+export const MONTAGE_DEFAUT: AutopilotMontageStyle = {
+  format: '9:16',
+  dureeSecondes: 30,
+};
+
+function montage(brut: unknown): AutopilotMontageStyle | undefined {
+  if (!brut || typeof brut !== 'object') return undefined;
+  const o = brut as Record<string, unknown>;
+  const f = typeof o.format === 'string' && MONTAGE_FORMATS.includes(o.format)
+    ? o.format : null;
+  const d = typeof o.dureeSecondes === 'number' && Number.isFinite(o.dureeSecondes)
+    && o.dureeSecondes >= MONTAGE_DUREE_MIN && o.dureeSecondes <= MONTAGE_DUREE_MAX
+    ? o.dureeSecondes : null;
+  // ⚠️ TOUT OU RIEN. Un format valide avec une durée aberrante donnerait un
+  // réglage à moitié appliqué, et le montage suivant ne ressemblerait ni à ce
+  // qui est affiché ni au défaut.
+  if (f === null || d === null) return undefined;
+  return { format: f, dureeSecondes: d };
+}
+
+/**
+ * Le réglage de montage à utiliser, défaut compris.
+ *
+ * Un appelant n'a ainsi jamais à connaître `MONTAGE_DEFAUT` ni à écrire un
+ * `??` de plus — c'est là que la rétro-compatibilité est garantie une fois.
+ */
+export function montageDepuisStyle(
+  style: AutopilotDesignStyle | undefined | null,
+): AutopilotMontageStyle {
+  return style?.montage ?? MONTAGE_DEFAUT;
+}
+
 export interface AutopilotDesignStyle {
+  /**
+   * Format et durée du montage de rushes. Absent = les valeurs par défaut.
+   *
+   * Vit dans `designStyle` — un `jsonb` déjà en base — et non dans une colonne
+   * nouvelle : aucune migration n'est nécessaire pour un réglage de plus.
+   */
+  montage?: AutopilotMontageStyle;
   title?: AutopilotTextZone;
   /**
    * Sous-titre — police et taille SEULEMENT.
@@ -217,6 +295,9 @@ export function sanitizeDesignStyle(brut: unknown): AutopilotDesignStyle {
   const o = brut as Record<string, unknown>;
   const sousTitre = zone(o.subtitle, false);
   return compacter({
+    // ⚠️ SANS CETTE LIGNE, LE RÉGLAGE EST SILENCIEUSEMENT EFFACÉ à chaque
+    // enregistrement : `compacter` ne garde que ce qui est nommé ici.
+    montage: montage(o.montage),
     title: zone(o.title, true),
     // La position du sous-titre est retirée par `zone(..., false)` : voir le
     // commentaire du champ.

@@ -14,6 +14,7 @@ import {
   extraireContenuInterprete, contenuInterpreteVide,
 } from '@/lib/autopilot/analyse/presentation';
 import PassagesSuggeres from './PassagesSuggeres';
+import type { AutopilotMontageStyle } from '@/lib/autopilot/textStyle';
 
 /**
  * L'analyse d'UN rush, greffée sous sa ligne dans les sessions de tournage.
@@ -60,6 +61,11 @@ import PassagesSuggeres from './PassagesSuggeres';
 interface Props {
   rushId: string;
   /**
+   * Format et durée voulus pour la vidéo. Passe-plat vers `PassagesSuggeres`,
+   * qui les remet à la chaîne — ce composant n'en fait rien.
+   */
+  montage?: AutopilotMontageStyle;
+  /**
    * Passe-plat vers `PassagesSuggeres`, qui porte le bouton « Créer ma
    * vidéo ». Ce composant-ci ne lance rien et ne sait rien de la chaîne : il
    * transmet, c'est tout.
@@ -76,7 +82,7 @@ interface Refus {
   retryApresSecondes: number | null;
 }
 
-export default function AnalyseRush({ rushId, onVideoLancee }: Props) {
+export default function AnalyseRush({ rushId, montage, onVideoLancee }: Props) {
   const [analyse, setAnalyse] = useState<AnalyseEcran | null>(null);
   const [chargement, setChargement] = useState(true);
   const [indisponible, setIndisponible] = useState<string | null>(null);
@@ -482,7 +488,11 @@ export default function AnalyseRush({ rushId, onVideoLancee }: Props) {
               autrement, et un bouton qui mène à un 409 est un bouton qui
               ment. */}
           {analyse.etat === 'reussie' && (
-            <PassagesSuggeres analyseId={analyse.id} onVideoLancee={onVideoLancee} />
+            <PassagesSuggeres
+              analyseId={analyse.id}
+              montage={montage}
+              onVideoLancee={onVideoLancee}
+            />
           )}
         </div>
       )}

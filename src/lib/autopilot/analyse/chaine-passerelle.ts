@@ -201,6 +201,16 @@ function texte(v: unknown): string | null {
 export interface OptionsChaine {
   /** Le jeu de passages d'où l'on part. */
   candidateSetId: string;
+  /**
+   * Le format demandé. Omis = `FORMAT_VIDEO`.
+   *
+   * ⚠️ TRANSMIS TEL QUEL À M3-G, qui le REFUSE s'il sort de son vocabulaire.
+   * Rien n'est validé ici : une seconde validation qui diverge du serveur est
+   * pire qu'aucune.
+   */
+  format?: string;
+  /** La durée cible en secondes. Omise = `DUREE_CIBLE_SECONDES`. */
+  dureeCibleSecondes?: number;
   fetcher?: Fetcher;
   /** Appelé au passage de chaque étape, pour la phrase affichée. */
   signalerEtape?: (etape: EtapeChaine) => void;
@@ -280,7 +290,8 @@ export async function creerVideo(o: OptionsChaine): Promise<IssueChaine> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        format: FORMAT_VIDEO, dureeCibleSecondes: DUREE_CIBLE_SECONDES,
+        format: o.format ?? FORMAT_VIDEO,
+        dureeCibleSecondes: o.dureeCibleSecondes ?? DUREE_CIBLE_SECONDES,
       }),
     },
   );

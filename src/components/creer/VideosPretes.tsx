@@ -62,6 +62,15 @@ interface Props {
    * rush juste au-dessus n'apparaîtrait qu'au rechargement de la page.
    */
   relance?: number;
+  /**
+   * Remonte l'état courant, pour que la colonne d'aperçu sache qui afficher.
+   *
+   * ⚠️ C'EST LA CLÉ DE L'APERÇU UNIQUE. Ce composant est toujours monté — il
+   * doit sonder — mais il ne rend rien tant qu'il n'a rien à montrer. Le
+   * parent a besoin de le savoir pour laisser, ou non, l'aperçu du projet à
+   * sa place.
+   */
+  onEtat?: (etat: 'vide' | 'en_cours' | 'prete' | 'echec') => void;
   /** Injectable pour les tests. Le défaut est le `fetch` du navigateur. */
   fetcher?: Fetcher;
 }
@@ -74,7 +83,7 @@ type Etat =
   | { sorte: 'erreur'; message: string };
 
 export default function VideosPretes({
-  sessionId, aucunRush, relance = 0, fetcher,
+  sessionId, aucunRush, relance = 0, onEtat, fetcher,
 }: Props) {
   const [etat, setEtat] = useState<Etat>({ sorte: 'chargement' });
   const [lecture, setLecture] = useState(false);
@@ -141,6 +150,15 @@ export default function VideosPretes({
   }, [sessionId, fetcher, planifier]);
 
   rafraichirRef.current = rafraichir;
+
+  // Le parent n'a pas à deviner ce que ce composant montre : on le lui dit.
+  const courant = etat.sorte === 'trouve' ? etat.rendu : null;
+  const sorteAffichee: 'vide' | 'en_cours' | 'prete' | 'echec' = (() => {
+    if (aucunRush || !courant) return 'vide';
+    if (courant.etat === 'en_attente' || courant.etat === 'en_cours') return 'en_cours';
+    return courant.video ? 'prete' : 'echec';
+  })();
+  useEffect(() => { onEtat?.(sorteAffichee); }, [sorteAffichee, onEtat]);
 
   // Un changement de session repart de zéro : l'écran ne doit jamais montrer
   // la vidéo du tournage précédent pendant que la nouvelle charge.

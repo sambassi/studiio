@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import SessionsTournagePanel from '@/components/creer/SessionsTournagePanel';
+import { montageDepuisStyle } from '@/lib/autopilot/textStyle';
 import { CardIcon } from '@/components/ui/CardIcon';
 import ColorWheel from '@/components/ui/ColorWheel';
 import { THEMES, themeLabel, isCustomTopic } from '@/lib/themes';
@@ -181,8 +182,19 @@ const PLATEFORMES = [
   { id: 'youtube', label: 'YouTube' },
 ];
 
-export default function AutopilotPanel({ accent, onConfigChange, onPatchReady }: {
+export default function AutopilotPanel({
+  accent, onConfigChange, onPatchReady, onSessionChange, onVideoLancee,
+}: {
   accent: string;
+  /**
+   * Remonte le tournage regardé, et le départ d'une création.
+   *
+   * ⚠️ C'EST CE QUI PERMET UN SEUL APERÇU. Le lecteur de la vidéo produite
+   * vit dans la colonne de droite, hors de cet arbre : sans ces deux signaux,
+   * il faudrait un second lecteur ici — la duplication qu'on vient d'enlever.
+   */
+  onSessionChange?: (etat: { sessionId: string | null; aucunRush: boolean }) => void;
+  onVideoLancee?: () => void;
   /**
    * Remonte la configuration à chaque changement — c'est ce qui alimente
    * l'aperçu de la colonne de droite.
@@ -497,7 +509,17 @@ export default function AutopilotPanel({ accent, onConfigChange, onPatchReady }:
               lot. */}
           <div className="rounded-xl border border-gray-800 bg-gray-900/30 p-3 space-y-2">
             <p className="text-xs font-medium text-gray-300">Sessions de tournage</p>
-            <SessionsTournagePanel />
+            <SessionsTournagePanel
+              montageDefaut={montageDepuisStyle(config.designStyle)}
+              onEnregistrerDefaut={(m) => enregistrer({
+                // ⚠️ FUSION, JAMAIS REMPLACEMENT : `designStyle` porte aussi
+                // les polices et les icônes de cartes. Les écraser ici les
+                // perdrait sans un mot.
+                designStyle: { ...config.designStyle, montage: m },
+              })}
+              onSessionChange={onSessionChange}
+              onVideoLancee={onVideoLancee}
+            />
           </div>
 
 {/* ── Banque de rushes ─────────────────────────────────────────── */}
