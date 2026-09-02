@@ -126,12 +126,25 @@ export default function PassagesSuggeres({ analyseId, onVideoLancee }: Props) {
    */
   const creer = useCallback(async () => {
     if (verrouRef.current) return;
+    // ⚠️ LE JEU DE PASSAGES, PAS L'ANALYSE — ET LES DEUX SONT DES UUID.
+    //
+    // La route des clips est `/api/autopilot/candidats/[candidateSetId]/clips`.
+    // Lui donner `analyseId` produit un 404 « Passages introuvables » : elle
+    // cherche un jeu de candidats sous un identifiant d'analyse. Rien dans le
+    // typage ne l'empêche, les deux sont des chaînes — c'est en production que
+    // ça se voit.
+    //
+    // `generation.id` EST le jeu de candidats : c'est ce que rend
+    // `GET /analyses/[id]/candidats`, et ce que `generationDepuisReponse`
+    // recopie dans `id`.
+    const jeuPassages = generation?.id;
+    if (!jeuPassages) return;
     verrouRef.current = true;
     setChaine({ sorte: 'encours', etape: 'decoupage' });
 
     try {
       const r = await creerVideo({
-      candidateSetId: analyseId,
+        candidateSetId: jeuPassages,
         signalerEtape: (etape) => {
           if (vivantRef.current) setChaine({ sorte: 'encours', etape });
         },
@@ -165,7 +178,7 @@ export default function PassagesSuggeres({ analyseId, onVideoLancee }: Props) {
     } finally {
       verrouRef.current = false;
     }
-  }, [analyseId, onVideoLancee]);
+  }, [generation?.id, onVideoLancee]);
 
   if (chargement) return null;
 

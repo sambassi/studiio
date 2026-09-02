@@ -11,6 +11,16 @@ import {
 } from '@testing-library/react';
 
 const CANDIDATS = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+/**
+ * ⚠️ DEUX IDENTIFIANTS DISTINCTS, ET C'EST TOUT L'INTÉRÊT.
+ *
+ * L'analyse et le jeu de passages sont deux UUID différents, et la chaîne part
+ * du SECOND. La première version de ce test leur donnait la même valeur : elle
+ * ne pouvait donc pas voir que le composant envoyait l'identifiant d'analyse à
+ * une route qui attend un jeu de candidats. La production l'a vu — 404
+ * « Passages introuvables ».
+ */
+const ANALYSE = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 
 // React n'active ses garde-fous `act` que si l'environnement l'annonce ;
 // sans ça, chaque mise à jour d'état produit un avertissement et les
@@ -55,7 +65,7 @@ describe('6. Le bouton « Créer ma vidéo »', () => {
   });
 
   const monter = (onVideoLancee?: () => void) => render(
-    <PassagesSuggeres analyseId={CANDIDATS} onVideoLancee={onVideoLancee} />,
+    <PassagesSuggeres analyseId={ANALYSE} onVideoLancee={onVideoLancee} />,
   );
 
   it('6.1 apparaît dès qu’un jeu de passages existe', async () => {
@@ -72,7 +82,9 @@ describe('6. Le bouton « Créer ma vidéo »', () => {
     await act(async () => { fireEvent.click(bouton); });
 
     expect(chaineMock.creerVideo).toHaveBeenCalledTimes(1);
+    // ⚠️ LE JEU DE PASSAGES, PAS L'ANALYSE. C'est l'assertion qui manquait.
     expect(chaineMock.creerVideo.mock.calls[0][0].candidateSetId).toBe(CANDIDATS);
+    expect(chaineMock.creerVideo.mock.calls[0][0].candidateSetId).not.toBe(ANALYSE);
     expect(prevenu).toHaveBeenCalledTimes(1);
     expect(await screen.findByText(/en cours de création/i)).toBeInTheDocument();
   });
