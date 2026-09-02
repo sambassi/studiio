@@ -974,7 +974,10 @@ describe('25-38. Les routes : propriété, refus, aucun timecode client', () => 
     expect(b.reutilise).toBe(false);
     expect(b.clipSet).toMatchObject({
       candidateSetId: CS, candidateSetVersion: 1, rushId: RU, analysisId: AN,
-      transcriptionId: T1, transcriptionVersion: 1, algorithme: 'm3e-v1',
+      transcriptionId: T1, transcriptionVersion: 1,
+      // L'identite d'un jeu porte l'algorithme de M3-E : il passe a `m3e-v2`
+      // avec la regle anti-chevauchement de P0-C.
+      algorithme: 'm3e-v2',
       methodeMaterialisation: METHODE_MATERIALISATION,
       etat: 'en_attente', version: 1,
     });

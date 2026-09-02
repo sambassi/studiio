@@ -313,3 +313,101 @@ export async function lireRenduDeSession(
   if (!rendu) return { sorte: 'erreur', message: 'Réponse illisible.' };
   return { sorte: 'trouve', rendu };
 }
+
+// ───────────────────────────────────────────────────────────────────────────
+// Planifier la publication
+// ───────────────────────────────────────────────────────────────────────────
+
+export type IssuePlanification =
+  | { sorte: 'creee'; postId: string }
+  | { sorte: 'echec'; message: string };
+
+/**
+ * Crée un BROUILLON dans le Calendrier à partir d'une vidéo produite.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ AUCUN NOUVEAU SYSTÈME DE PUBLICATION
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * `scheduled_posts` + `POST /api/posts` + le Calendrier existent depuis
+ * longtemps et savent déjà choisir une plateforme, une date et une heure.
+ * Cette fonction ne fait que POSER la vidéo dans ce système ; tout le reste
+ * du parcours de publication reste celui du Calendrier.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ POURQUOI `renderedVideoUrl` ET PAS `media_url`
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Le seul chemin qui sert un montage Autopilote est
+ * `/api/autopilot/rendus-montage/[id]/fichier`, et il EXIGE une session : le
+ * relais public refuse explicitement le namespace des montages
+ * (`cleDansNamespaceMontage`), pour qu'un montage ne devienne pas un lien
+ * public et permanent.
+ *
+ * Or Instagram et TikTok viennent chercher le fichier EUX-MÊMES, sans session.
+ * Mettre ce chemin dans `media_url` fabriquerait donc un post qui a l'air
+ * publiable et qui ne le sera jamais — l'échec n'arrivant qu'au moment de la
+ * publication, longtemps après.
+ *
+ * Le brouillon porte donc la vidéo dans `metadata.renderedVideoUrl`, le champ
+ * que le Calendrier relit déjà pour SON aperçu, et `status: 'draft'`. Studiio
+ * sait la montrer ; personne ne la promet à un réseau social.
+ *
+ * ⚠️ NE JAMAIS BRANCHER LA PUBLICATION SOCIALE LÀ-DESSUS sans avoir d'abord
+ * donné au montage une adresse que le réseau peut atteindre. C'est un lot à
+ * part, et il commence par cette question-là.
+ */
+export async function creerBrouillonPlanification(
+  rendu: RenduEcran, fetcher: Fetcher = fetch,
+): Promise<IssuePlanification> {
+  if (!rendu.video) return { sorte: 'echec', message: 'Cette vidéo n’est pas prête.' };
+
+  const aujourdhui = new Date();
+  const jour = `${aujourdhui.getFullYear()}-`
+    + `${String(aujourdhui.getMonth() + 1).padStart(2, '0')}-`
+    + `${String(aujourdhui.getDate()).padStart(2, '0')}`;
+
+  let reponse: Response;
+  try {
+    reponse = await fetcher('/api/posts', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: 'Vidéo Studiio',
+        caption: '',
+        media_type: 'video',
+        // ⚠️ Vide, et c'est voulu — voir l'en-tête. La vidéo vit dans
+        // `metadata`, là où le Calendrier sait la lire sans la promettre.
+        media_url: null,
+        platforms: [],
+        scheduled_date: jour,
+        scheduled_time: '12:00',
+        status: 'draft',
+        metadata: {
+          renderedVideoUrl: rendu.video.chemin,
+          autopilotRenduId: rendu.id,
+          hasAudio: true,
+          format: rendu.video.hauteur >= rendu.video.largeur ? 'reel' : 'tv',
+        },
+      }),
+    });
+  } catch {
+    return { sorte: 'echec', message: 'Réseau indisponible.' };
+  }
+
+  if (reponse.status === 401) {
+    return { sorte: 'echec', message: 'Ta session a expiré. Reconnecte-toi.' };
+  }
+  let corps: unknown = null;
+  try { corps = await reponse.json(); } catch { corps = null; }
+  const c = typeof corps === 'object' && corps !== null
+    ? corps as Record<string, unknown> : {};
+  const post = typeof c.post === 'object' && c.post !== null
+    ? c.post as Record<string, unknown> : null;
+
+  if (!reponse.ok || c.success !== true || typeof post?.id !== 'string') {
+    return { sorte: 'echec', message: 'La planification n’a pas pu être créée.' };
+  }
+  return { sorte: 'creee', postId: post.id };
+}

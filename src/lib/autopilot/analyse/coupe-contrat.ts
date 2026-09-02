@@ -43,7 +43,103 @@ import type { IntervalleTexte } from './transcription-contrat';
  * incompréhensible. C'est le genre de champ qu'on ne peut pas ajouter
  * rétroactivement.
  */
-export const ALGORITHME_COUPES = 'm3e-v1' as const;
+export const ALGORITHME_COUPES = 'm3e-v2' as const;
+
+// ─────────────────────────────────────────────────────────────────────────
+// Deux fois le même moment n'est pas un montage
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * La part maximale d'image commune entre DEUX fenêtres retenues.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * LE DÉFAUT, CONSTATÉ EN PRODUCTION
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * M3-C classe les passages, il ne les rend pas disjoints. Sur le rush de
+ * production du 2026-09-02, le modèle a proposé :
+ *
+ *   #1  3,2 s → 11,2 s
+ *   #2  0,0 s →  8,0 s
+ *
+ * soit 4,8 secondes — plus de la moitié de chaque fenêtre — communes aux
+ * deux. M3-E les calait indépendamment, M3-F en extrayait deux clips, et
+ * `planifierMontage` — qui n'utilise pourtant chaque clip qu'UNE fois —
+ * plaçait donc bel et bien deux fois la même image dans la vidéo.
+ *
+ * ⚠️ LE FILTRE VIT ICI, ET PAS PLUS LOIN. En M3-F, on aurait déjà payé un
+ * ffmpeg par clip inutile ; en M3-G, on aurait dû défaire une décision au
+ * lieu de ne pas la prendre. M3-E est le premier endroit où les fenêtres
+ * FINALES existent — après calage, donc après que les bornes ont bougé.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * POURQUOI LA MOITIÉ, ET DE LA PLUS COURTE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Rapportée à la plus COURTE des deux fenêtres : une fenêtre brève entièrement
+ * contenue dans une longue est un doublon total, même si elle ne couvre qu'un
+ * tiers de sa voisine. Rapporter à l'union, ou à la plus longue, laisserait
+ * passer précisément ce cas-là.
+ *
+ * Le seuil à la moitié est le point où l'on cesse de voir deux plans pour
+ * voir deux fois le même. En deçà, deux fenêtres partagent une minorité
+ * d'images et se lisent encore comme deux moments ; au-delà, la répétition
+ * saute aux yeux. Sur le cas réel ci-dessus : 4,8 / 8,0 = 0,6 — écarté.
+ */
+export const CHEVAUCHEMENT_MAX = 0.5;
+
+/** Une fenêtre temporelle, réduite à ce que la comparaison exige. */
+export interface Fenetre {
+  debutSecondes: number;
+  finSecondes: number;
+}
+
+/**
+ * La part d'image commune à deux fenêtres, entre 0 et 1.
+ *
+ * Rendue par rapport à la plus COURTE des deux — voir `CHEVAUCHEMENT_MAX`.
+ * Deux fenêtres disjointes rendent 0 ; une fenêtre incluse dans l'autre rend
+ * 1. Une fenêtre de durée nulle ou non finie rend 0 : on ne divise pas par
+ * une durée qu'on n'a pas mesurée.
+ */
+export function chevauchement(a: Fenetre, b: Fenetre): number {
+  const da = nombreFini(a?.finSecondes) !== null && nombreFini(a?.debutSecondes) !== null
+    ? a.finSecondes - a.debutSecondes : 0;
+  const db = nombreFini(b?.finSecondes) !== null && nombreFini(b?.debutSecondes) !== null
+    ? b.finSecondes - b.debutSecondes : 0;
+  if (!(da > 0) || !(db > 0)) return 0;
+
+  const commun = Math.min(a.finSecondes, b.finSecondes)
+    - Math.max(a.debutSecondes, b.debutSecondes);
+  if (!(commun > 0)) return 0;
+  return commun / Math.min(da, db);
+}
+
+/** Deux fenêtres montrent-elles trop souvent la même chose ? */
+export function chevauchentTrop(a: Fenetre, b: Fenetre): boolean {
+  return chevauchement(a, b) > CHEVAUCHEMENT_MAX;
+}
+
+/**
+ * Écarte les fenêtres qui répètent une fenêtre déjà retenue.
+ *
+ * ⚠️ DÉTERMINISTE, ET « LE MIEUX CLASSÉ GAGNE ». La liste arrive triée par
+ * rang — l'ordre de qualité de M3-C. On garde en avançant : une fenêtre n'est
+ * écartée que par une fenêtre MIEUX classée qu'elle. Deux appels sur les
+ * mêmes données rendent donc le même résultat, ce dont dépend la
+ * réutilisation d'un jeu de clips.
+ *
+ * Ne renumérote RIEN : `rang` reste celui de M3-C, parce que c'est lui que
+ * l'écran affiche et que M3-F met dans la clé de stockage du clip.
+ */
+export function ecarterChevauchements<T extends Fenetre>(fenetres: readonly T[]): T[] {
+  const gardees: T[] = [];
+  for (const f of fenetres) {
+    if (gardees.some((g) => chevauchentTrop(g, f))) continue;
+    gardees.push(f);
+  }
+  return gardees;
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 // Les bornes

@@ -41,11 +41,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  AlertTriangle, Download, Film, Loader2, Play,
+  AlertTriangle, CalendarPlus, Download, Film, Loader2, Play,
 } from 'lucide-react';
 import {
-  DELAI_SUIVI_MS, formaterDuree, lireRenduDeSession, messageEchec,
-  orientation, phraseEnCours, renduEnCours,
+  DELAI_SUIVI_MS, creerBrouillonPlanification, formaterDuree,
+  lireRenduDeSession, messageEchec, orientation, phraseEnCours, renduEnCours,
   type Fetcher, type RenduEcran,
 } from '@/lib/autopilot/analyse/rendu-passerelle';
 
@@ -78,6 +78,11 @@ export default function VideosPretes({
 }: Props) {
   const [etat, setEtat] = useState<Etat>({ sorte: 'chargement' });
   const [lecture, setLecture] = useState(false);
+  const [planif, setPlanif] = useState<
+    { sorte: 'inactif' } | { sorte: 'encours' } | { sorte: 'dit'; texte: string; alerte: boolean }
+  >({ sorte: 'inactif' });
+  /** Le verrou du bouton, pour la même raison qu'ailleurs : une `ref`. */
+  const verrouPlanifRef = useRef(false);
 
   /**
    * Vivant tant que le composant est monté.
@@ -150,11 +155,42 @@ export default function VideosPretes({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, aucunRush, relance]);
 
+  /**
+   * Pose la vidéo dans le Calendrier, et rien de plus.
+   *
+   * ⚠️ AUCUN SYSTÈME DE PUBLICATION N'EST CRÉÉ ICI. `scheduled_posts`, le
+   * Calendrier et son choix de plateforme/date/heure existent déjà : on y
+   * dépose un BROUILLON, l'utilisateur y finit son geste.
+   */
+  const ouvrirPlanification = useCallback(async (rendu: RenduEcran) => {
+    if (verrouPlanifRef.current) return;
+    verrouPlanifRef.current = true;
+    setPlanif({ sorte: 'encours' });
+    try {
+      const r = await creerBrouillonPlanification(rendu, fetcher);
+      if (!vivantRef.current) return;
+      if (r.sorte === 'creee') {
+        setPlanif({
+          sorte: 'dit',
+          texte: 'Brouillon créé. Ouverture du Calendrier…',
+          alerte: false,
+        });
+        // Le Calendrier prend le relais : c'est LUI qui porte la plateforme,
+        // la date et l'heure.
+        window.location.href = '/dashboard/calendar';
+        return;
+      }
+      setPlanif({ sorte: 'dit', texte: r.message, alerte: true });
+    } finally {
+      verrouPlanifRef.current = false;
+    }
+  }, [fetcher]);
+
   // ── Aucun rush : rien n'a pu être créé, et on le dit ───────────────────
   if (aucunRush) {
     return (
       <section className="space-y-1.5" data-videos-pretes data-videos-etat="aucun_rush">
-        <Titre />
+        <Titre texte="Votre vidéo" />
         <p className="text-[11px] text-gray-500 leading-relaxed">
           Ajoute des rushes : Studiio en fera une vidéo.
         </p>
@@ -169,7 +205,7 @@ export default function VideosPretes({
   if (etat.sorte === 'erreur') {
     return (
       <section className="space-y-1.5" data-videos-pretes data-videos-etat="erreur">
-        <Titre />
+        <Titre texte="Votre vidéo" />
         <p
           className="flex items-start gap-1.5 text-[11px] text-amber-300 leading-relaxed"
           data-videos-message
@@ -184,7 +220,7 @@ export default function VideosPretes({
   if (etat.sorte === 'aucun') {
     return (
       <section className="space-y-1.5" data-videos-pretes data-videos-etat="aucune_video">
-        <Titre />
+        <Titre texte="Votre vidéo" />
         <p className="text-[11px] text-gray-500 leading-relaxed" data-videos-message>
           Aucune vidéo pour l’instant.
         </p>
@@ -198,7 +234,7 @@ export default function VideosPretes({
   if (rendu.etat === 'en_attente' || rendu.etat === 'en_cours') {
     return (
       <section className="space-y-1.5" data-videos-pretes data-videos-etat="en_cours">
-        <Titre />
+        <Titre texte="Création en cours" fort />
         <p
           className="flex items-center gap-1.5 text-[11px] text-gray-300"
           data-videos-etape={rendu.etape ?? ''}
@@ -223,7 +259,7 @@ export default function VideosPretes({
   if (!rendu.video) {
     return (
       <section className="space-y-1.5" data-videos-pretes data-videos-etat="echec">
-        <Titre />
+        <Titre texte="La création n’a pas abouti" fort />
         <p
           className="flex items-start gap-1.5 text-[11px] text-amber-300 leading-relaxed"
           data-videos-motif={rendu.motif ?? ''}
@@ -243,8 +279,8 @@ export default function VideosPretes({
 
   return (
     <section className="space-y-1.5" data-videos-pretes data-videos-etat="prete">
-      <Titre />
-      <div className="rounded-lg border border-gray-800 bg-gray-950/40 p-2 space-y-2">
+      <Titre texte="Votre vidéo est prête" fort />
+      <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2 space-y-2">
         {lecture ? (
           // ⚠️ `controls` ET `playsInline`. Sans le second, iOS passe en
           // plein écran de force et sort la personne de la page.
@@ -303,16 +339,54 @@ export default function VideosPretes({
           >
             <Download className="w-3.5 h-3.5 shrink-0" /> Télécharger
           </a>
+
+          {/* ── La suite du parcours, nommée ────────────────────────────
+              Sans ce bouton, quelqu'un qui vient d'obtenir sa vidéo ne sait
+              pas quoi faire ensuite : rien à l'écran ne mène au Calendrier. */}
+          <button
+            type="button"
+            onClick={() => ouvrirPlanification(rendu)}
+            disabled={planif.sorte === 'encours'}
+            data-videos-planifier
+            className="flex w-full min-h-[36px] items-center justify-center gap-1.5 rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white hover:bg-purple-500 disabled:opacity-50 transition-colors"
+          >
+            <CalendarPlus className="w-3.5 h-3.5 shrink-0" />
+            {planif.sorte === 'encours' ? 'Préparation…' : 'Planifier la publication'}
+          </button>
         </div>
+
+        {planif.sorte === 'dit' && (
+          <p
+            className={`text-[10px] leading-relaxed ${planif.alerte ? 'text-amber-400/80' : 'text-gray-400'}`}
+            data-videos-planif-message
+          >
+            {planif.texte}
+          </p>
+        )}
       </div>
     </section>
   );
 }
 
-function Titre() {
+/**
+ * Le titre du bloc.
+ *
+ * ⚠️ IL DIT L'ÉTAT, il ne nomme pas une rubrique. « Tes vidéos » laissait
+ * l'utilisateur déduire, d'un cadre gris ou d'un texte minuscule, si quelque
+ * chose était en train de se passer. Le titre porte désormais l'information
+ * principale, et c'est lui qu'on lit en arrivant.
+ */
+function Titre({ texte, fort = false }: { texte: string; fort?: boolean }) {
+  if (fort) {
+    return (
+      <h4 className="text-sm font-semibold text-white" data-videos-titre>
+        {texte}
+      </h4>
+    );
+  }
   return (
-    <h4 className="text-[10px] uppercase tracking-wide text-gray-500">
-      Tes vidéos
+    <h4 className="text-[10px] uppercase tracking-wide text-gray-500" data-videos-titre>
+      {texte}
     </h4>
   );
 }

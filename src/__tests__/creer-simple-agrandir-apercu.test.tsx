@@ -223,14 +223,15 @@ const props = {
 };
 
 describe('Preview — l en-tête est masquable', () => {
-  it('par défaut, l en-tête « Aperçu » est là', () => {
+  it('par défaut, l en-tête « Aperçu du style » est là', () => {
     render(<Preview {...props} />);
-    expect(screen.getByText('Aperçu')).toBeTruthy();
+    // « du style » depuis P0-A : distinguer l'échantillon de la vraie vidéo.
+    expect(screen.getByText('Aperçu du style')).toBeTruthy();
   });
 
   it('masqué, il disparaît — la barre de la fenêtre porte déjà ce titre', () => {
     render(<Preview {...props} hideHeader />);
-    expect(screen.queryByText('Aperçu')).toBeNull();
+    expect(screen.queryByText('Aperçu du style')).toBeNull();
   });
 
   it('masquer l en-tête ne touche pas aux onglets', () => {

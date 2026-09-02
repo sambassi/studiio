@@ -216,6 +216,24 @@ export default function SessionsTournagePanel() {
 
       {selection && (
         <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-3 space-y-2">
+          {/* ── LES VIDÉOS PRODUITES PAR CE TOURNAGE, EN TÊTE ─────────────
+              Mesuré sur la page de production : ce bloc se trouvait à 3 286 px
+              du haut — 4,6 écrans — sous la liste des rushes et leurs analyses.
+              Quelqu'un qui vient de lancer une création ne pouvait pas voir
+              qu'elle tournait sans faire défiler cinq écrans.
+
+              Il est au niveau de la SESSION et non du rush : une vidéo naît
+              d'un montage, et la poser sous une ligne de rush laisserait
+              croire qu'elle n'en vient que d'un.
+
+              Ce composant est en LECTURE SEULE : il ne lance aucun rendu, ne
+              modifie aucun rush et n'écrit rien. */}
+          <VideosPretes
+            sessionId={selection}
+            aucunRush={rushes.length === 0}
+            relance={relanceVideos}
+          />
+
           {/* Un input de fichiers ordinaire : c'est le sélecteur du système
               qui s'ouvre, donc TOUT volume monté — SSD, carte SD, clé USB.
               Rien de spécial à écrire pour ça, et surtout aucune copie
@@ -292,20 +310,6 @@ export default function SessionsTournagePanel() {
             )}
           </ul>
 
-          {/* ── LES VIDÉOS PRODUITES PAR CE TOURNAGE ──────────────────────
-              Monté ICI, au niveau de la SESSION et non du rush : une vidéo
-              naît d'un montage, qui peut puiser dans plusieurs rushes. La
-              poser sous une ligne de rush laisserait croire qu'elle n'en
-              vient que d'un.
-
-              Ce composant est en LECTURE SEULE : il ne lance aucun rendu, ne
-              modifie aucun rush et n'écrit rien. Le reste du panneau est
-              inchangé. */}
-          <VideosPretes
-            sessionId={selection}
-            aucunRush={rushes.length === 0}
-            relance={relanceVideos}
-          />
         </div>
       )}
     </div>

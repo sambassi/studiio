@@ -493,6 +493,7 @@ describe('4. VideosPretes — les cinq états', () => {
     expect(await screen.findByText(/Aucune vidéo pour l’instant/i)).toBeInTheDocument();
     expect(screen.queryByText(/Regarder/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Télécharger/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Planifier/i)).not.toBeInTheDocument();
   });
 
   it('4.3 en cours : la phrase de l’étape, et AUCUN pourcentage', async () => {
@@ -528,16 +529,20 @@ describe('4. VideosPretes — les cinq états', () => {
     }
   });
 
-  it('4.5 vidéo prête : durée, orientation, et EXACTEMENT deux actions', async () => {
+  it('4.5 vidéo prête : durée, orientation, et EXACTEMENT trois actions', async () => {
     monter({ fetcher: reponse({ ok: true, rendu: RENDU_PRET }) });
 
     expect(await screen.findByText('0:28 · Vertical')).toBeInTheDocument();
+    // Le titre DIT l'état, il ne nomme pas une rubrique.
+    expect(screen.getByText('Votre vidéo est prête')).toBeInTheDocument();
 
     const bloc = document.querySelector('[data-videos-pretes]')!;
-    // ⚠️ EXACTEMENT DEUX. Ni « Modifier », ni « Créer ma vidéo », ni relance.
-    expect(bloc.querySelectorAll('button, a')).toHaveLength(2);
+    // ⚠️ EXACTEMENT TROIS, et ce sont celles-là. Ni « Modifier », ni
+    // « Créer ma vidéo », ni relance.
+    expect(bloc.querySelectorAll('button, a')).toHaveLength(3);
     expect(screen.getByText('Regarder')).toBeInTheDocument();
     expect(screen.getByText('Télécharger')).toBeInTheDocument();
+    expect(screen.getByText('Planifier la publication')).toBeInTheDocument();
     expect(screen.queryByText(/Modifier/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Créer ma vidéo/i)).not.toBeInTheDocument();
   });

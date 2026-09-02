@@ -189,7 +189,14 @@ export default function PassagesSuggeres({ analyseId, onVideoLancee }: Props) {
     <section className="space-y-1.5" data-analyse-section="passages">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="text-[10px] uppercase tracking-wide text-gray-500">
+          {/* Le compte est l'information utile : « analyse terminée » ne dit
+              pas s'il y a de quoi monter une vidéo. */}
           Passages suggérés
+          {candidats.length > 0 && (
+            <span className="ml-1 text-gray-400" data-passages-compte>
+              · {candidats.length} trouvé{candidats.length > 1 ? 's' : ''}
+            </span>
+          )}
         </h4>
         {!indisponible && (
           <button

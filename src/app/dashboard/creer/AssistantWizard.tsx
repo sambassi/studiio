@@ -1462,7 +1462,7 @@ export function Preview({
         <div className="flex items-center gap-2 mb-3">
           <MonitorPlay className="w-4 h-4 text-gray-500" />
           <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-            Aperçu
+            Aperçu du style
           </span>
         </div>
       )}

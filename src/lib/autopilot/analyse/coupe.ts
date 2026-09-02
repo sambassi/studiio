@@ -36,7 +36,8 @@
  * source, et un autre en comparant les entrées avant et après.
  */
 import {
-  ALGORITHME_COUPES, TOLERANCE_SECONDES, EGALITE_SECONDES,
+  ALGORITHME_COUPES,
+  ecarterChevauchements, TOLERANCE_SECONDES, EGALITE_SECONDES,
   gardeDuree, arrondirSeconde, nombreFini, rangSource,
   intervalleUtilisable, candidatUtilisable,
   type Ajustement, type Coupe, type EntreeCoupes, type EtatAudio,
@@ -356,5 +357,11 @@ export function calerCoupes(entree: EntreeCoupes): ResultatCoupes {
   // pas. Aucun score nouveau n'existe qui pourrait le remettre en cause.
   coupes.sort((a, b) => a.rang - b.rang);
 
-  return { algorithme: ALGORITHME_COUPES, sources, coupes };
+  // ⚠️ APRÈS LE TRI, ET APRÈS LE CALAGE. Le tri donne l'ordre de qualité dont
+  // dépend « le mieux classé gagne » ; le calage donne les fenêtres FINALES,
+  // les seules qu'il soit juste de comparer — deux fenêtres disjointes à
+  // l'origine peuvent se recouvrir une fois leurs bornes recalées.
+  const retenues = ecarterChevauchements(coupes);
+
+  return { algorithme: ALGORITHME_COUPES, sources, coupes: retenues };
 }

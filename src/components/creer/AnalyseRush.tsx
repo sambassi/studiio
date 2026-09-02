@@ -357,6 +357,23 @@ export default function AnalyseRush({ rushId, onVideoLancee }: Props) {
             {!refus?.relancable && boutonAnalyse('Relancer l’analyse', true)}
           </div>
 
+          {/* ── TOUT LE DÉTAIL EST REPLIÉ ──────────────────────────────────
+              Mesuré sur le rush de production : ce bloc faisait 1 289 px de
+              haut — près de deux écrans — pour UN rush, et repoussait la
+              vidéo produite à 4,6 écrans du haut de page. Codec, débit,
+              fréquence d'échantillonnage et taille de fichier ne disent rien
+              à quelqu'un qui veut monter une vidéo ; ils restent lisibles
+              d'un clic pour qui diagnostique.
+
+              ⚠️ RIEN N'EST SUPPRIMÉ. Les mêmes noeuds, les mêmes attributs
+              `data-*`, la même mesure — seulement repliés. Les tests qui les
+              interrogent continuent de les trouver. */}
+          <details data-analyse-detail>
+            <summary className="cursor-pointer list-none text-[10px] text-gray-500 hover:text-gray-300 min-h-[28px] flex items-center">
+              Voir l’analyse détaillée
+            </summary>
+            <div className="mt-1.5 space-y-2">
+
           {mesures.length > 0 && (
             <dl
               className="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-1.5"
@@ -456,6 +473,9 @@ export default function AnalyseRush({ rushId, onVideoLancee }: Props) {
               )}
             </div>
           )}
+
+            </div>
+          </details>
 
           {/* ── M3-C : les passages candidats ──────────────────────────────
               Uniquement sur une analyse RÉUSSIE : la route les refuse

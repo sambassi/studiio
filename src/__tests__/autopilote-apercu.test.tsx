@@ -285,8 +285,9 @@ describe('E — l assistant « Créer simple » n est PAS touché', () => {
 
     fireEvent.click(screen.getByText('Commencer'));
     await waitFor(() => expect(document.querySelector('[data-autopilot-apercu]')).toBeNull());
-    // Son en-tête « Aperçu » est bien revenu.
-    expect(screen.getByText('Aperçu')).toBeTruthy();
+    // Son en-tête est bien revenu. Il dit « Aperçu du style » depuis P0-A :
+    // il ne doit pas pouvoir être pris pour la vidéo réellement produite.
+    expect(screen.getByText('Aperçu du style')).toBeTruthy();
   });
 
   it('le panneau Autopilote marche toujours sans consommateur d aperçu', () => {
