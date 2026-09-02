@@ -62,6 +62,14 @@ export default function SessionsTournagePanel() {
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [envois, setEnvois] = useState<EnCours[]>([]);
+  /**
+   * Incrémenté quand un rendu vient d'être lancé depuis un rush.
+   *
+   * `VideosPretes` a conclu « aucune vidéo » et cessé de sonder ; ce compteur
+   * est ce qui le fait repartir. Un compteur plutôt qu'un booléen : deux
+   * lancements successifs doivent produire deux réveils.
+   */
+  const [relanceVideos, setRelanceVideos] = useState(0);
   const fichiersRef = useRef<HTMLInputElement>(null);
 
   const chargerSessions = useCallback(async () => {
@@ -271,7 +279,10 @@ export default function SessionsTournagePanel() {
                     aligne le bloc sous le nom, pas sous le numéro. */}
                 {r.etat === 'verifie' && (
                   <div className="pl-7">
-                    <AnalyseRush rushId={r.id} />
+                    <AnalyseRush
+                      rushId={r.id}
+                      onVideoLancee={() => setRelanceVideos((n) => n + 1)}
+                    />
                   </div>
                 )}
               </li>
@@ -290,7 +301,11 @@ export default function SessionsTournagePanel() {
               Ce composant est en LECTURE SEULE : il ne lance aucun rendu, ne
               modifie aucun rush et n'écrit rien. Le reste du panneau est
               inchangé. */}
-          <VideosPretes sessionId={selection} aucunRush={rushes.length === 0} />
+          <VideosPretes
+            sessionId={selection}
+            aucunRush={rushes.length === 0}
+            relance={relanceVideos}
+          />
         </div>
       )}
     </div>

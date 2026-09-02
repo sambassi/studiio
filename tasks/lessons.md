@@ -244,6 +244,28 @@ les couleurs et polices de l'utilisateur. D'où la clé séparée
 `studiio:autosave:v1:creer`, qui ne porte qu'un horodatage. Séparer réellement
 les deux reste à faire.
 
+## [2026-09-02] Un garde anti-double-clic lu dans l'ÉTAT ne garde rien
+
+**Ce qui a mal tourné** — Le bouton « Créer ma vidéo » (P0.1) se protégeait du
+double clic par `if (chaine.sorte === 'encours') return;`. Trois clics dans le
+même tick ont lancé TROIS chaînes : React regroupe les mises à jour, donc les
+trois gestionnaires lisent la même closure, où l'état vaut encore `inactif`.
+Chacune partait découper, monter, encoder — trois ffmpeg pour une vidéo.
+
+Le bogue n'a été vu que parce qu'un test cliquait trois fois dans un seul
+`act()`. Un test qui clique une fois, ou qui attend entre deux clics, passe au
+vert sur du code cassé.
+
+**Règle** — Un verrou qui doit tenir DANS le tick du clic est une `ref`, jamais
+un `useState` : la ref bascule à l'affectation, l'état au rendu suivant. Poser
+le `finally` sur le verrou SEUL — le remettre sur l'état effacerait le message
+que l'issue vient d'afficher.
+
+**Corollaire** — L'idempotence serveur ne dispense pas du verrou client. Les
+trois routes M3-F/G/H refusent bien les doublons (index uniques en base), mais
+les trois requêtes partent quand même et c'est le REFUS qui s'affiche : la
+personne lit « déjà en cours » après avoir cliqué une fois de trop.
+
 ## Pré-merge : checklist obligatoire
 
 À cocher MENTALEMENT avant chaque merge (et écrire dans le PR body si non trivial) :

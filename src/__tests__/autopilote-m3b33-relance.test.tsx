@@ -676,13 +676,19 @@ describe('E — ni IA, ni crédit, ni rendu, ni publication', () => {
       'react',
     ].sort());
 
-    // L'enfant a SA propre liste blanche : il ne parle qu'à la passerelle
-    // M3-C, qui est un module pur. Une arête vers `candidat.ts`,
-    // `candidat-service.ts` ou `candidat-anthropic.ts` tirerait MinIO, la
-    // base ou la clé d'API dans le paquet navigateur.
+    // L'enfant a SA propre liste blanche : il ne parle qu'à des passerelles,
+    // qui sont des modules purs. Une arête vers `candidat.ts`,
+    // `candidat-service.ts`, `candidat-anthropic.ts`, `clip-service.ts` ou
+    // `rendu-ffmpeg.ts` tirerait MinIO, la base, ffmpeg ou la clé d'API dans
+    // le paquet navigateur.
     const importesEnfant = [...enfant.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]);
     expect([...new Set(importesEnfant)].sort()).toEqual([
       '@/lib/autopilot/analyse/candidat-passerelle',
+      // P0.1 : le bouton « Créer ma vidéo ». `chaine-passerelle` n'enchaîne
+      // que trois URL et n'importe RIEN à l'exécution — les vocabulaires
+      // fermés n'y entrent que comme des types, effacés à la compilation.
+      // C'est cette liste-ci qui a exigé de le vérifier avant de l'ajouter.
+      '@/lib/autopilot/analyse/chaine-passerelle',
       'react',
     ].sort());
   });

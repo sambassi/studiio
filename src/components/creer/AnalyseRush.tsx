@@ -59,6 +59,12 @@ import PassagesSuggeres from './PassagesSuggeres';
 
 interface Props {
   rushId: string;
+  /**
+   * Passe-plat vers `PassagesSuggeres`, qui porte le bouton « Créer ma
+   * vidéo ». Ce composant-ci ne lance rien et ne sait rien de la chaîne : il
+   * transmet, c'est tout.
+   */
+  onVideoLancee?: () => void;
 }
 
 /** Le plafond dur du moteur (`VIGNETTES_MAX`), redit ici pour l'affichage. */
@@ -70,7 +76,7 @@ interface Refus {
   retryApresSecondes: number | null;
 }
 
-export default function AnalyseRush({ rushId }: Props) {
+export default function AnalyseRush({ rushId, onVideoLancee }: Props) {
   const [analyse, setAnalyse] = useState<AnalyseEcran | null>(null);
   const [chargement, setChargement] = useState(true);
   const [indisponible, setIndisponible] = useState<string | null>(null);
@@ -455,7 +461,9 @@ export default function AnalyseRush({ rushId }: Props) {
               Uniquement sur une analyse RÉUSSIE : la route les refuse
               autrement, et un bouton qui mène à un 409 est un bouton qui
               ment. */}
-          {analyse.etat === 'reussie' && <PassagesSuggeres analyseId={analyse.id} />}
+          {analyse.etat === 'reussie' && (
+            <PassagesSuggeres analyseId={analyse.id} onVideoLancee={onVideoLancee} />
+          )}
         </div>
       )}
     </div>

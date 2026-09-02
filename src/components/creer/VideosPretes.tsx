@@ -54,6 +54,14 @@ interface Props {
   sessionId: string;
   /** La session ne porte aucun rush : l'écran le dit plutôt que de se taire. */
   aucunRush: boolean;
+  /**
+   * Compteur de réveil. Chaque incrément relance une lecture.
+   *
+   * Nécessaire parce que le sondage S'ARRÊTE sur un état terminal — et
+   * « aucune vidéo » en est un. Sans ce signal, une vidéo lancée depuis le
+   * rush juste au-dessus n'apparaîtrait qu'au rechargement de la page.
+   */
+  relance?: number;
   /** Injectable pour les tests. Le défaut est le `fetch` du navigateur. */
   fetcher?: Fetcher;
 }
@@ -65,7 +73,9 @@ type Etat =
   | { sorte: 'trouve'; rendu: RenduEcran }
   | { sorte: 'erreur'; message: string };
 
-export default function VideosPretes({ sessionId, aucunRush, fetcher }: Props) {
+export default function VideosPretes({
+  sessionId, aucunRush, relance = 0, fetcher,
+}: Props) {
   const [etat, setEtat] = useState<Etat>({ sorte: 'chargement' });
   const [lecture, setLecture] = useState(false);
 
@@ -138,7 +148,7 @@ export default function VideosPretes({ sessionId, aucunRush, fetcher }: Props) {
     if (aucunRush) return;
     rafraichirRef.current();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, aucunRush]);
+  }, [sessionId, aucunRush, relance]);
 
   // ── Aucun rush : rien n'a pu être créé, et on le dit ───────────────────
   if (aucunRush) {

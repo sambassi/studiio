@@ -22,18 +22,43 @@ import {
   lireCandidats, lancerCandidats, formaterInstant,
   type GenerationEcran,
 } from '@/lib/autopilot/analyse/candidat-passerelle';
+import {
+  creerVideo, phraseChaine, type EtapeChaine,
+} from '@/lib/autopilot/analyse/chaine-passerelle';
 
 interface Props {
   /** L'analyse source. Toujours `reussie` — l'appelant s'en assure. */
   analyseId: string;
+  /**
+   * Prévient l'écran des vidéos qu'un rendu vient de partir.
+   *
+   * Sans ce signal, `VideosPretes` a déjà conclu « aucune vidéo » et cessé de
+   * sonder : le rendu lancé n'apparaîtrait qu'au rechargement de la page.
+   */
+  onVideoLancee?: () => void;
 }
 
-export default function PassagesSuggeres({ analyseId }: Props) {
+/**
+ * L'état du bouton « Créer ma vidéo ».
+ *
+ * ⚠️ `encours` PORTE L'ÉTAPE, PAS UN POURCENTAGE. Aucune des trois routes ne
+ * sait dire où elle en est dans son travail ; elle sait seulement lequel des
+ * trois elle fait.
+ */
+type EtatChaine =
+  | { sorte: 'inactif' }
+  | { sorte: 'encours'; etape: EtapeChaine }
+  | { sorte: 'dit'; texte: string; alerte: boolean };
+
+export default function PassagesSuggeres({ analyseId, onVideoLancee }: Props) {
   const [generation, setGeneration] = useState<GenerationEcran | null>(null);
   const [chargement, setChargement] = useState(true);
   const [indisponible, setIndisponible] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [demande, setDemande] = useState(false);
+  const [chaine, setChaine] = useState<EtatChaine>({ sorte: 'inactif' });
+  /** Le verrou du bouton. Une `ref` : elle bascule dans le tick du clic. */
+  const verrouRef = useRef(false);
 
   const vivantRef = useRef(true);
 
@@ -80,6 +105,67 @@ export default function PassagesSuggeres({ analyseId }: Props) {
 
     setDemande(false);
   }, [analyseId, demande]);
+
+  /**
+   * Enchaîne découpage → montage → rendu.
+   *
+   * ⚠️ LE VERROU EST UNE `ref`, PAS L'ÉTAT — ET UN TEST L'A EXIGÉ.
+   *
+   * `if (chaine.sorte === 'encours')` semblait suffire. Il ne suffit pas :
+   * React regroupe les mises à jour d'un même tick, donc trois clics rapides
+   * lisent tous la MÊME closure, où `chaine` vaut encore `inactif`. Trois
+   * chaînes partaient. Une `ref` bascule, elle, immédiatement : le deuxième
+   * clic la voit déjà levée.
+   *
+   * Les trois routes s'en protègent aussi de leur côté, chacune par un index
+   * unique en base — mais compter là-dessus laisserait trois requêtes partir
+   * pour se faire refuser, et le message affiché serait celui du refus.
+   *
+   * ⚠️ ET LE `finally` NE TOUCHE QUE LE VERROU. Remettre `chaine` à
+   * « inactif » effacerait le message que chaque issue vient de poser.
+   */
+  const creer = useCallback(async () => {
+    if (verrouRef.current) return;
+    verrouRef.current = true;
+    setChaine({ sorte: 'encours', etape: 'decoupage' });
+
+    try {
+      const r = await creerVideo({
+      candidateSetId: analyseId,
+        signalerEtape: (etape) => {
+          if (vivantRef.current) setChaine({ sorte: 'encours', etape });
+        },
+      });
+      if (!vivantRef.current) return;
+
+      if (r.sorte === 'lancee') {
+        setChaine({
+          sorte: 'dit',
+          texte: 'Ta vidéo est en cours de création, juste en dessous.',
+          alerte: false,
+        });
+        onVideoLancee?.();
+        return;
+      }
+      if (r.sorte === 'deja_prete') {
+        setChaine({
+          sorte: 'dit', texte: 'Ta vidéo est déjà prête, juste en dessous.', alerte: false,
+        });
+        onVideoLancee?.();
+        return;
+      }
+      if (r.sorte === 'deja_en_cours') {
+        setChaine({
+          sorte: 'dit', texte: 'Une création est déjà en cours pour ce montage.', alerte: false,
+        });
+        onVideoLancee?.();
+        return;
+      }
+      setChaine({ sorte: 'dit', texte: r.message, alerte: true });
+    } finally {
+      verrouRef.current = false;
+    }
+  }, [analyseId, onVideoLancee]);
 
   if (chargement) return null;
 
@@ -147,6 +233,36 @@ export default function PassagesSuggeres({ analyseId }: Props) {
             </li>
           ))}
         </ul>
+      )}
+
+      {/* ── CRÉER MA VIDÉO ────────────────────────────────────────────
+          Ici, et pas ailleurs : c'est l'écran où le jeu de passages existe,
+          et c'est de LUI que part la chaîne. Le poser au niveau de la session
+          obligerait à retrouver quel jeu utiliser — une décision que personne
+          n'a prise. */}
+      {candidats.length > 0 && (
+        <div className="space-y-1" data-chaine>
+          <button
+            type="button"
+            onClick={creer}
+            disabled={chaine.sorte === 'encours'}
+            data-chaine-bouton
+            data-chaine-etat={chaine.sorte}
+            className="w-full min-h-[36px] rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white hover:bg-purple-500 disabled:opacity-50 transition-colors"
+          >
+            {chaine.sorte === 'encours'
+              ? phraseChaine(chaine.etape)
+              : 'Créer ma vidéo'}
+          </button>
+          {chaine.sorte === 'dit' && (
+            <p
+              className={`text-[10px] leading-relaxed ${chaine.alerte ? 'text-amber-400/80' : 'text-gray-400'}`}
+              data-chaine-message
+            >
+              {chaine.texte}
+            </p>
+          )}
+        </div>
       )}
 
       {/* Le modèle qui a proposé, quand il est connu. Jamais deviné. */}
