@@ -35,8 +35,38 @@
  * fichier d'un bloc, et le navigateur ne peut pas s'y déplacer. Monter le
  * `<video>` d'entrée ferait donc télécharger plusieurs mégaoctets à chaque
  * affichage de la liste, sur mobile compris, pour une vidéo que personne n'a
- * demandé à voir. « Regarder » est ce qui déclenche la lecture — et c'est
+ * demandé à voir. « Regarder » est ce qui déclenche le chargement — et c'est
  * aussi ce qui rend le geste explicite.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ NI `autoPlay`, NI `preload="none"` — LES DEUX ENSEMBLE NE CHARGEAIENT RIEN
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Mesuré en production : le lecteur restait à `readyState: 0`, `buffered: 0`,
+ * indéfiniment, sur un fichier de 14 Mo pourtant servi en 200 et encodé en
+ * `+faststart`. La cause est la RENCONTRE des deux attributs :
+ *
+ *   • `preload="none"` dit au navigateur de ne RIEN chercher tant que la
+ *     lecture n'est pas demandée ;
+ *   • `autoPlay` demandait cette lecture — mais sans `muted`, Chrome REFUSE
+ *     de démarrer une vidéo qu'aucun geste n'a réclamée.
+ *
+ * La demande étant refusée, le chargement n'était jamais déclenché : un
+ * lecteur qui tourne à vide, sans erreur, sans image, sans fin.
+ *
+ * On ne rattrape PAS cela en ajoutant `muted` — cela ferait démarrer du son
+ * coupé sans que personne l'ait demandé. On l'enlève :
+ *
+ *   • `autoPlay` disparaît. Aucun `play()` n'est appelé, ni ici ni ailleurs :
+ *     c'est le bouton natif de `controls` qui lance la lecture, donc un vrai
+ *     geste, que Chrome n'a aucune raison de refuser.
+ *   • `preload` passe à `auto`. Ce n'est plus le compromis d'avant : le
+ *     `<video>` n'existe QUE si l'on a cliqué « Regarder », et à cet instant
+ *     télécharger la vidéo est exactement ce qui a été demandé.
+ *
+ * ⚠️ ET L'ÉTAT DU MÉDIA EST DIT. Un octet qui n'arrive pas, un fichier
+ * illisible : sans `onError`, l'écran restait noir et muet. La phrase
+ * remplace le silence, et « Télécharger » reste la porte de sortie.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -87,6 +117,14 @@ export default function VideosPretes({
 }: Props) {
   const [etat, setEtat] = useState<Etat>({ sorte: 'chargement' });
   const [lecture, setLecture] = useState(false);
+  /**
+   * Ce que le `<video>` a réussi à faire des octets.
+   *
+   * ⚠️ TROIS ÉTATS, PAS UN BOOLÉEN. « pas encore chargé » et « ne chargera
+   * jamais » demandent deux phrases différentes : la première fait patienter,
+   * la seconde renvoie vers le téléchargement.
+   */
+  const [media, setMedia] = useState<'chargement' | 'pret' | 'erreur'>('chargement');
   const [planif, setPlanif] = useState<
     { sorte: 'inactif' } | { sorte: 'encours' } | { sorte: 'dit'; texte: string; alerte: boolean }
   >({ sorte: 'inactif' });
@@ -165,6 +203,7 @@ export default function VideosPretes({
   useEffect(() => {
     setEtat({ sorte: 'chargement' });
     setLecture(false);
+    setMedia('chargement');
     // ⚠️ SANS RUSH, ON N'INTERROGE PAS. Une session vide ne peut avoir produit
     // aucune vidéo : la réponse est connue d'avance, et la demander quand même
     // ferait une requête par tournage ouvert, pour rien.
@@ -300,21 +339,48 @@ export default function VideosPretes({
       <Titre texte="Votre vidéo est prête" fort />
       <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2 space-y-2">
         {lecture ? (
-          // ⚠️ `controls` ET `playsInline`. Sans le second, iOS passe en
-          // plein écran de force et sort la personne de la page.
-          //
-          // `preload="none"` reste cohérent avec le geste : c'est le clic qui
-          // demande les octets, et la route les rend d'un bloc.
-          <video
-            src={video.chemin}
-            controls
-            autoPlay
-            playsInline
-            preload="none"
-            data-videos-lecteur
-            className="w-full rounded-md bg-black"
-            style={{ aspectRatio: `${video.largeur} / ${video.hauteur}`, maxHeight: '60vh' }}
-          />
+          <div className="space-y-1">
+            {/* ⚠️ `controls` ET `playsInline`. Sans le second, iOS passe en
+                plein écran de force et sort la personne de la page.
+
+                ⚠️ PAS D'`autoPlay`, ET `preload="auto"` — voir l'en-tête du
+                fichier. C'est la lecture demandée par le bouton natif qui
+                démarre la vidéo ; rien ici n'appelle `play()`. */}
+            <video
+              src={video.chemin}
+              controls
+              playsInline
+              preload="auto"
+              onLoadedMetadata={() => setMedia('pret')}
+              onError={() => setMedia('erreur')}
+              data-videos-lecteur
+              data-videos-media={media}
+              className="w-full rounded-md bg-black"
+              style={{ aspectRatio: `${video.largeur} / ${video.hauteur}`, maxHeight: '60vh' }}
+            />
+            {media !== 'pret' && (
+              <p
+                className={`flex items-start gap-1.5 text-[10px] leading-relaxed ${
+                  media === 'erreur' ? 'text-amber-300' : 'text-gray-500'
+                }`}
+                data-videos-media-message
+              >
+                {media === 'erreur' ? (
+                  <>
+                    <AlertTriangle className="w-3 h-3 shrink-0 mt-px" />
+                    <span className="min-w-0">
+                      La vidéo ne s’ouvre pas ici. Télécharge-la pour la regarder.
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Loader2 className="w-3 h-3 shrink-0 mt-px animate-spin" />
+                    <span className="min-w-0">La vidéo se charge…</span>
+                  </>
+                )}
+              </p>
+            )}
+          </div>
         ) : (
           <div
             className="flex w-full items-center justify-center rounded-md bg-gray-900/60"
@@ -334,7 +400,7 @@ export default function VideosPretes({
               cette carte se lit d'abord sur un téléphone. */}
           <button
             type="button"
-            onClick={() => setLecture(true)}
+            onClick={() => { setMedia('chargement'); setLecture(true); }}
             disabled={lecture}
             data-videos-regarder
             className="flex flex-1 min-h-[36px] items-center justify-center gap-1.5 rounded-lg border border-gray-800 px-3 py-2 text-xs text-gray-200 hover:text-white hover:border-gray-700 disabled:opacity-40 transition-colors"

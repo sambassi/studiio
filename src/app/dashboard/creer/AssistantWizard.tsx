@@ -9037,11 +9037,26 @@ export default function AssistantWizard() {
               />
             )}
             {!videoOccupeLApercu && (
-              <AutopilotPreview
-                config={autopilotConfig}
-                accent={accent}
-                onPatch={autopilotPatch}
-              />
+              /* ⚠️ MESURÉ, PAS SUPPOSÉ : sur une fenêtre de 724 px, cet aperçu
+                 en fait 812 — 88 px de trop, et le bas de l'affiche restait
+                 coupé tant qu'on n'avait pas fait défiler. Une hauteur bornée
+                 au viewport (moins la navbar `fixed h-16` et l'aération du
+                 `top-20`) plus un défilement INTERNE : la colonne ne dépasse
+                 plus, et ce qui déborde se retrouve à la molette, sur place.
+
+                 Rien d'autre ne change — ni la colonne collante, ni l'aperçu
+                 lui-même, ni le panneau vidéo qui, lui, tenait déjà. */
+              <div
+                className="overflow-y-auto"
+                style={{ maxHeight: 'calc(100vh - 6rem)' }}
+                data-autopilot-apercu-cadre
+              >
+                <AutopilotPreview
+                  config={autopilotConfig}
+                  accent={accent}
+                  onPatch={autopilotPatch}
+                />
+              </div>
             )}
           </div>
         ) : (
