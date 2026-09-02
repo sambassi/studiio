@@ -559,7 +559,15 @@ describe('9-16. `GET .../fichier` : ce qui sort, et ce qui ne sort pas', () => {
     expect(rep.headers.get('X-Content-Type-Options')).toBe('nosniff');
     expect(rep.headers.get('Content-Security-Policy')).toBe("default-src 'none'; sandbox");
     expect(rep.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-    expect(rep.headers.get('Accept-Ranges')).toBe('none');
+    // ⚠️ `bytes` DEPUIS P0-A, ET C'EST UN CORRECTIF, PAS UN RELÂCHEMENT.
+    // Cette assertion disait `none` — ce qui décrivait fidèlement un relais
+    // incapable de servir une requête partielle, et rendait la vidéo
+    // illisible : mesuré en production, `Range: bytes=0-1023` recevait `200`
+    // et les 11 958 505 octets du fichier, et Chrome abandonnait
+    // (`NETWORK_NO_SOURCE`). Les codes `206` et `416` sont éprouvés dans
+    // `autopilote-p0a-plage-octets`. Le confinement, lui, n'a pas bougé :
+    // les quatre en-têtes ci-dessus sont inchangés.
+    expect(rep.headers.get('Accept-Ranges')).toBe('bytes');
     expect(rep.headers.get('Content-Length')).toBe(String(MESURE.octets));
     // Ni compartiment ni clé ne partent dans les en-têtes.
     expect(JSON.stringify([...rep.headers])).not.toContain(UID);

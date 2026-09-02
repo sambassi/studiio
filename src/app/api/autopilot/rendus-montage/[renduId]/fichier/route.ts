@@ -27,8 +27,13 @@ import { Readable } from 'stream';
 import { auth } from '@/lib/auth/config';
 import { identifiantValide } from '@/lib/autopilot/analyse/clip-contrat';
 import { CONTENT_TYPE_RENDU, cleValide } from '@/lib/autopilot/analyse/rendu-contrat';
-import { diagnosticRendu, ouvrirRendu } from '@/lib/autopilot/analyse/rendu-ffmpeg';
+import {
+  diagnosticRendu, ouvrirRendu, ouvrirRenduPartiel,
+} from '@/lib/autopilot/analyse/rendu-ffmpeg';
 import { lireRenduParId } from '@/lib/autopilot/analyse/rendu-service';
+import {
+  enteteContentRange, enteteContentRangeInsatisfiable, lirePlageOctets,
+} from '@/lib/http/plage-octets';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -51,9 +56,20 @@ const ENTETES = {
   // jour détourné, la page servie ne pourrait rien charger ni exécuter.
   'Content-Security-Policy': "default-src 'none'; sandbox",
   'Cache-Control': 'private, no-store, max-age=0',
-  // Le relais lit l'objet d'un bloc : il ne sait pas répondre à une requête
-  // partielle, et le dire évite qu'un lecteur croie pouvoir s'y déplacer.
-  'Accept-Ranges': 'none',
+  /**
+   * ⚠️ `bytes`, ET C'EST CE QUI REND LA VIDÉO LISIBLE.
+   *
+   * Cette route annonçait `none` et servait le fichier entier en `200` à
+   * TOUTE requête partielle — mesuré en production : `Range: bytes=0-1023`
+   * rendait 11 958 505 octets. Un lecteur HTML5 ne peut alors ni se
+   * positionner ni remplir son tampon : le `<video>` restait à
+   * `readyState: 0` puis abandonnait (`NETWORK_NO_SOURCE`), sur l'URL nue
+   * comme dans la page.
+   *
+   * L'annonce ne vaut que parce que le `GET` ci-dessous honore vraiment la
+   * plage. Ne jamais remettre `bytes` sans le code qui rend le `206`.
+   */
+  'Accept-Ranges': 'bytes',
 } as const;
 
 const introuvable = () => NextResponse.json(
@@ -61,7 +77,7 @@ const introuvable = () => NextResponse.json(
 );
 
 export async function GET(
-  _req: NextRequest, { params }: { params: { renduId: string } },
+  req: NextRequest, { params }: { params: { renduId: string } },
 ) {
   try {
     const session = await auth();
@@ -80,6 +96,49 @@ export async function GET(
     // l'espace d'un tiers — c'est le même geste qu'à l'écriture.
     if (!cleValide(rendu.resultat.cle, session.user.id)) return introuvable();
 
+    const taille = rendu.resultat.octets;
+    // ⚠️ LA TAILLE VIENT DE LA BASE, écrite au téléversement. C'est elle qui
+    // borne la plage et remplit `Content-Range` : une taille approchée ferait
+    // lire au client des octets décalés, sans qu'aucune erreur ne le dise.
+    const plage = lirePlageOctets(req.headers.get('range'), taille);
+
+    // ── 416 : bien formée, mais hors du fichier ─────────────────────────
+    //
+    // Le corps est vide, et `Content-Range: bytes */TOTAL` dit au client
+    // quelle taille il aurait dû viser. C'est la seule réponse qui lui permet
+    // de corriger sa demande ; un `200` le laisserait relire tout le fichier
+    // en croyant avoir obtenu ce qu'il demandait.
+    if (plage.sorte === 'insatisfiable') {
+      return new NextResponse(null, {
+        status: 416,
+        headers: {
+          ...ENTETES,
+          'Content-Range': enteteContentRangeInsatisfiable(taille),
+          'Content-Length': '0',
+        },
+      });
+    }
+
+    // ── 206 : le morceau demandé, et lui seul ───────────────────────────
+    if (plage.sorte === 'plage') {
+      const morceau = await ouvrirRenduPartiel(
+        rendu.resultat.bucket, rendu.resultat.cle, plage.debut, plage.longueur,
+      );
+      if (!morceau) return introuvable();
+      return new NextResponse(Readable.toWeb(Readable.from(morceau)) as ReadableStream, {
+        status: 206,
+        headers: {
+          ...ENTETES,
+          'Content-Range': enteteContentRange(plage.debut, plage.fin, taille),
+          // ⚠️ LA LONGUEUR DU MORCEAU, jamais celle du fichier. Annoncer la
+          // taille totale sur un `206` est exactement le mensonge qui fait
+          // attendre un lecteur jusqu'au délai d'expiration.
+          'Content-Length': String(plage.longueur),
+        },
+      });
+    }
+
+    // ── 200 : la ressource entière, comme avant ─────────────────────────
     const flux = await ouvrirRendu(rendu.resultat.bucket, rendu.resultat.cle);
     if (!flux) return introuvable();
 
@@ -89,7 +148,7 @@ export async function GET(
     // runtime veut bien accepter n'est pas un contrat.
     return new NextResponse(Readable.toWeb(Readable.from(flux)) as ReadableStream, {
       status: 200,
-      headers: { ...ENTETES, 'Content-Length': String(rendu.resultat.octets) },
+      headers: { ...ENTETES, 'Content-Length': String(taille) },
     });
   } catch (e: unknown) {
     console.error(

@@ -266,6 +266,22 @@ export function signeurInterne(
  */
 export function lecteurMinio(borne?: BorneReseau): {
   getObject(bucket: string, cle: string): Promise<NodeJS.ReadableStream>;
+  /**
+   * Un MORCEAU de l'objet, a partir de `decalage`, sur `longueur` octets.
+   *
+   * ⚠️ AJOUTE POUR SERVIR `Range`, ET POUR CELA SEULEMENT. Sans lui, la route
+   * des montages lisait l'objet d'un bloc et repondait `200` + fichier entier
+   * a toute requete partielle : mesure en production, `Range: bytes=0-1023`
+   * rendait 11 958 505 octets. Un lecteur HTML5 ne peut alors ni se
+   * positionner ni remplir son tampon.
+   *
+   * Le client MinIO l'expose deja (`getPartialObject`) : rien n'est ajoute au
+   * stockage, seule la SIGNATURE etait absente de cette interface volontairement
+   * etroite.
+   */
+  getPartialObject(
+    bucket: string, cle: string, decalage: number, longueur?: number,
+  ): Promise<NodeJS.ReadableStream>;
 } {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Client: MinioClient } = require('minio');

@@ -706,16 +706,49 @@ export async function supprimerObjetRendu(bucket: string, cle: string): Promise<
  * La borne existe pour les échanges INTERNES, dont la taille et la durée sont
  * connues d'avance. Servir un octet à un navigateur n'en est pas un.
  *
- * ⚠️ LIMITE CONNUE : le relais lit l'objet d'un bloc et ne sait pas répondre à
- * une requête partielle. Se déplacer dans la vidéo relance donc le transfert
- * depuis le début. Y remédier demande un lecteur qui accepte une plage —
- * `getPartialObject` — et une couture de plus dans le client de stockage.
+ * La limite « une requête partielle n'est pas servie » est LEVÉE : voir
+ * `ouvrirRenduPartiel` juste en dessous.
  */
 export async function ouvrirRendu(
   bucket: string, cle: string,
 ): Promise<NodeJS.ReadableStream | null> {
   try {
     return await lecteurMinio().getObject(bucket, cle);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Ouvre UN MORCEAU du montage, pour répondre à un `Range`.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * POURQUOI CETTE FONCTION EXISTE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Mesuré en production : `Range: bytes=0-1023` recevait `200` et les
+ * 11 958 505 octets du fichier entier, parce que le relais ne savait lire que
+ * l'objet complet. Chrome ne peut alors ni se positionner ni remplir le
+ * tampon de son lecteur — le `<video>` restait à `readyState: 0`, puis
+ * `NETWORK_NO_SOURCE`, sur l'URL nue comme dans la page.
+ *
+ * ⚠️ RIEN N'EST MATÉRIALISÉ EN MÉMOIRE. `getPartialObject` rend un FLUX du
+ * seul morceau demandé : le serveur ne charge jamais les douze méga-octets
+ * pour en servir mille. C'est ce qui rend le déplacement dans la timeline
+ * bon marché plutôt que ruineux.
+ *
+ * ⚠️ AUCUNE BORNE DE TEMPS, pour la même raison que `ouvrirRendu` : une
+ * échéance absolue détruirait le corps de la réponse en plein transfert.
+ *
+ * `longueur` est le nombre d'octets voulus, jamais une borne de fin — c'est
+ * la convention de `getPartialObject`, et la confondre avec un index de fin
+ * donnerait un morceau d'un octet de trop.
+ */
+export async function ouvrirRenduPartiel(
+  bucket: string, cle: string, decalage: number, longueur: number,
+): Promise<NodeJS.ReadableStream | null> {
+  try {
+    return await lecteurMinio().getPartialObject(bucket, cle, decalage, longueur);
   } catch {
     return null;
   }
