@@ -557,9 +557,12 @@ describe('33-38. M3-E ne touche à rien, et n’invente aucun score', () => {
   });
 
   it('les vocabulaires sont fermés, et l’algorithme est nommé', () => {
-    // Bumpe en P0-C : la regle anti-chevauchement change la DECISION, donc
-    // l'identite d'un jeu de clips doit changer avec elle.
-    expect(ALGORITHME_COUPES).toBe('m3e-v2');
+    // Bumpe DEUX FOIS en P0-C : la regle anti-chevauchement change la
+    // DECISION, donc l'identite d'un jeu de clips doit changer avec elle.
+    // `m3e-v2` = premiere version de la regle (moitie de la plus courte) ;
+    // `m3e-v3` = le critere en secondes, plancher compris, apres la mesure
+    // de production qui montrait 5,152 s encore rejouees.
+    expect(ALGORITHME_COUPES).toBe('m3e-v3');
     expect(SOURCES_ANCRAGE).toEqual(['silence', 'segment', 'mot', 'aucun']);
     expect(ETATS_PAROLE).toEqual(['exploitee', 'sans_parole', 'ecartee', 'absente']);
     expect(ETATS_AUDIO).toEqual(['exploitee', 'sans_silence', 'absente', 'indisponible']);
@@ -782,7 +785,7 @@ describe('La route : ce qu’elle rend, et ce qu’elle ne fait pas', () => {
     const rep = await appel();
     const b = await rep.json();
     expect(b.ok).toBe(true);
-    expect(b.algorithme).toBe('m3e-v2');
+    expect(b.algorithme).toBe(ALGORITHME_COUPES);
     expect(b).toMatchObject({
       candidateSetId: CS, candidateSetVersion: 1, analysisId: AN, rushId: RU,
     });

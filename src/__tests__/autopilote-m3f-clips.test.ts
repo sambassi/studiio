@@ -268,7 +268,7 @@ import {
   MAX_JEUX_CLIPS_SIMULTANES,
 } from '@/lib/autopilot/analyse/capacite';
 import { cheminFfmpeg, cheminFfprobe } from '@/lib/ffmpeg/binaires';
-import type { Coupe } from '@/lib/autopilot/analyse/coupe-contrat';
+import { ALGORITHME_COUPES, type Coupe } from '@/lib/autopilot/analyse/coupe-contrat';
 
 const { POST } = await import(
   '@/app/api/autopilot/candidats/[candidateSetId]/clips/route'
@@ -975,9 +975,12 @@ describe('25-38. Les routes : propriété, refus, aucun timecode client', () => 
     expect(b.clipSet).toMatchObject({
       candidateSetId: CS, candidateSetVersion: 1, rushId: RU, analysisId: AN,
       transcriptionId: T1, transcriptionVersion: 1,
-      // L'identite d'un jeu porte l'algorithme de M3-E : il passe a `m3e-v2`
-      // avec la regle anti-chevauchement de P0-C.
-      algorithme: 'm3e-v2',
+      // L'identite d'un jeu porte l'algorithme de M3-E, et il change a chaque
+      // fois que la DECISION change — `m3e-v2` puis `m3e-v3` en P0-C. La
+      // constante plutot que sa valeur : ce test verifie que l'identite la
+      // PORTE, pas quelle version court aujourd'hui. C'est
+      // `autopilote-p0c-chevauchement` qui fige la version.
+      algorithme: ALGORITHME_COUPES,
       methodeMaterialisation: METHODE_MATERIALISATION,
       etat: 'en_attente', version: 1,
     });

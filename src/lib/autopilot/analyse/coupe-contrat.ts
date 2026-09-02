@@ -43,7 +43,7 @@ import type { IntervalleTexte } from './transcription-contrat';
  * incompréhensible. C'est le genre de champ qu'on ne peut pas ajouter
  * rétroactivement.
  */
-export const ALGORITHME_COUPES = 'm3e-v2' as const;
+export const ALGORITHME_COUPES = 'm3e-v3' as const;
 
 // ─────────────────────────────────────────────────────────────────────────
 // Deux fois le même moment n'est pas un montage
@@ -53,40 +53,65 @@ export const ALGORITHME_COUPES = 'm3e-v2' as const;
  * La part maximale d'image commune entre DEUX fenêtres retenues.
  *
  * ─────────────────────────────────────────────────────────────────────────
- * LE DÉFAUT, CONSTATÉ EN PRODUCTION
+ * LE DÉFAUT, CONSTATÉ DEUX FOIS EN PRODUCTION
  * ─────────────────────────────────────────────────────────────────────────
  *
- * M3-C classe les passages, il ne les rend pas disjoints. Sur le rush de
- * production du 2026-09-02, le modèle a proposé :
+ * M3-C classe les passages, il ne les rend pas disjoints. Sur le rush
+ * `c0ad258d` du 2026-09-02, le modèle a proposé six fenêtres dont trois se
+ * recouvraient. La première version de cette règle — plus de la MOITIÉ de la
+ * plus courte — a bien écarté le doublon le plus gros (0,0→8,0 contre
+ * 3,2→11,2 : 4,844 s communes, 60 %). Elle a laissé passer les deux autres :
  *
- *   #1  3,2 s → 11,2 s
- *   #2  0,0 s →  8,0 s
+ *   #2  3,156 → 11,156   ∩  #3  7,927 → 16,120  =  3,229 s  (40 %)
+ *   #3  7,927 → 16,120   ∩  #6 14,197 → 19,197  =  1,923 s  (38 %)
  *
- * soit 4,8 secondes — plus de la moitié de chaque fenêtre — communes aux
- * deux. M3-E les calait indépendamment, M3-F en extrayait deux clips, et
- * `planifierMontage` — qui n'utilise pourtant chaque clip qu'UNE fois —
- * plaçait donc bel et bien deux fois la même image dans la vidéo.
+ * soit 5,152 s rejouées sur les 28,993 s du montage — 18 %. Et #2 et #3 sont
+ * CONSÉCUTIFS : les mêmes trois secondes revenaient trois secondes plus tard.
+ * Le seuil d'alors avait été calibré sur le seul cas observé (0,60) ; il ne
+ * décrivait pas ce que l'œil voit.
  *
  * ⚠️ LE FILTRE VIT ICI, ET PAS PLUS LOIN. En M3-F, on aurait déjà payé un
  * ffmpeg par clip inutile ; en M3-G, on aurait dû défaire une décision au
  * lieu de ne pas la prendre. M3-E est le premier endroit où les fenêtres
- * FINALES existent — après calage, donc après que les bornes ont bougé.
+ * FINALES existent — après calage, donc après que les bornes ont bougé. Le
+ * cas #3 le prouve : son calage a poussé sa fin de 15,927 à 16,120, ce qui a
+ * AUGMENTÉ son recouvrement avec #6.
  *
  * ─────────────────────────────────────────────────────────────────────────
- * POURQUOI LA MOITIÉ, ET DE LA PLUS COURTE
+ * DEUX SEUILS, ET LE PLUS EXIGEANT DES DEUX GAGNE
  * ─────────────────────────────────────────────────────────────────────────
  *
- * Rapportée à la plus COURTE des deux fenêtres : une fenêtre brève entièrement
- * contenue dans une longue est un doublon total, même si elle ne couvre qu'un
- * tiers de sa voisine. Rapporter à l'union, ou à la plus longue, laisserait
- * passer précisément ce cas-là.
+ * Une fenêtre est écartée dès que
  *
- * Le seuil à la moitié est le point où l'on cesse de voir deux plans pour
- * voir deux fois le même. En deçà, deux fenêtres partagent une minorité
- * d'images et se lisent encore comme deux moments ; au-delà, la répétition
- * saute aux yeux. Sur le cas réel ci-dessus : 4,8 / 8,0 = 0,6 — écarté.
+ *     secondes communes  >=  max(0,25 s ; 0,20 × la plus COURTE des deux)
+ *
+ * La part est rapportée à la plus COURTE, jamais à l'union : une brève
+ * fenêtre entièrement contenue dans une longue est rejouée à 100 %, alors
+ * que sur l'union elle ne pèserait presque rien. `0→8` contre `3→4` en est
+ * l'exemple — 1 s commune, 12,5 % de l'union, et pourtant la seconde n'est
+ * QUE de la répétition.
+ *
+ * Le plancher de 0,25 s existe pour l'autre bord : sans lui, un frôlement de
+ * quelques images entre deux longues fenêtres — 0,2 s sur 8 s — condamnerait
+ * un plan entier, alors que personne ne le verrait. Il ne peut pas cacher un
+ * vrai doublon : une fenêtre de moins d'une seconde n'existe pas, le plancher
+ * de `RUSH_SEQUENCE_SECONDS.min` l'interdit en amont.
+ *
+ * ⚠️ COMPARAISON `>=`, ET NON `>`. Tomber PILE sur le seuil, c'est déjà de la
+ * répétition : la règle produit se lit « à partir de », pas « au-delà de ».
+ *
+ * ⚠️ JOINTIF N'EST PAS CHEVAUCHANT. `0→5` puis `5→10` partagent zéro seconde
+ * et restent tous deux retenus : c'est un enchaînement, pas un doublon.
  */
-export const CHEVAUCHEMENT_MAX = 0.5;
+export const CHEVAUCHEMENT_MAX = 0.20;
+
+/**
+ * Le plancher absolu, en secondes.
+ *
+ * En dessous, on ne parle plus d'un passage rejoué mais de deux plans qui se
+ * touchent — voir `CHEVAUCHEMENT_MAX`.
+ */
+export const CHEVAUCHEMENT_MIN_SECONDES = 0.25;
 
 /** Une fenêtre temporelle, réduite à ce que la comparaison exige. */
 export interface Fenetre {
@@ -102,22 +127,57 @@ export interface Fenetre {
  * 1. Une fenêtre de durée nulle ou non finie rend 0 : on ne divise pas par
  * une durée qu'on n'a pas mesurée.
  */
-export function chevauchement(a: Fenetre, b: Fenetre): number {
-  const da = nombreFini(a?.finSecondes) !== null && nombreFini(a?.debutSecondes) !== null
-    ? a.finSecondes - a.debutSecondes : 0;
-  const db = nombreFini(b?.finSecondes) !== null && nombreFini(b?.debutSecondes) !== null
-    ? b.finSecondes - b.debutSecondes : 0;
-  if (!(da > 0) || !(db > 0)) return 0;
-
-  const commun = Math.min(a.finSecondes, b.finSecondes)
-    - Math.max(a.debutSecondes, b.debutSecondes);
-  if (!(commun > 0)) return 0;
-  return commun / Math.min(da, db);
+function dureeMesuree(f: Fenetre): number {
+  if (nombreFini(f?.finSecondes) === null || nombreFini(f?.debutSecondes) === null) return 0;
+  return f.finSecondes - f.debutSecondes;
 }
 
-/** Deux fenêtres montrent-elles trop souvent la même chose ? */
+/**
+ * Les SECONDES d'image communes à deux fenêtres.
+ *
+ * C'est la grandeur que l'œil perçoit — « trois secondes déjà vues » — et
+ * celle sur laquelle porte le plancher absolu. Deux fenêtres disjointes ou
+ * seulement jointives rendent 0 ; une fenêtre sans durée mesurable aussi, car
+ * on ne compare pas ce qu'on n'a pas mesuré.
+ */
+export function secondesCommunes(a: Fenetre, b: Fenetre): number {
+  if (!(dureeMesuree(a) > 0) || !(dureeMesuree(b) > 0)) return 0;
+  const commun = Math.min(a.finSecondes, b.finSecondes)
+    - Math.max(a.debutSecondes, b.debutSecondes);
+  return commun > 0 ? commun : 0;
+}
+
+/**
+ * La part d'image commune à deux fenêtres, entre 0 et 1.
+ *
+ * Rendue par rapport à la plus COURTE des deux — voir `CHEVAUCHEMENT_MAX`.
+ * Deux fenêtres disjointes rendent 0 ; une fenêtre incluse dans l'autre rend
+ * 1. Une fenêtre de durée nulle ou non finie rend 0 : on ne divise pas par
+ * une durée qu'on n'a pas mesurée.
+ */
+export function chevauchement(a: Fenetre, b: Fenetre): number {
+  const commun = secondesCommunes(a, b);
+  if (!(commun > 0)) return 0;
+  return commun / Math.min(dureeMesuree(a), dureeMesuree(b));
+}
+
+/**
+ * Deux fenêtres montrent-elles deux fois la même chose ?
+ *
+ * ⚠️ LES DEUX SEUILS SONT ÉVALUÉS ENSEMBLE, et le plus exigeant l'emporte :
+ * `secondes communes >= max(plancher ; part × la plus courte)`. Ne jamais
+ * réduire ce test à la seule part — `0→8` contre `3→4` partage 1 seconde
+ * pour une part de 1,0, mais un critère rapporté à l'union le laisserait
+ * passer, alors que la seconde fenêtre n'est QUE de la répétition.
+ */
 export function chevauchentTrop(a: Fenetre, b: Fenetre): boolean {
-  return chevauchement(a, b) > CHEVAUCHEMENT_MAX;
+  const commun = secondesCommunes(a, b);
+  if (!(commun > 0)) return false;
+  const seuil = Math.max(
+    CHEVAUCHEMENT_MIN_SECONDES,
+    CHEVAUCHEMENT_MAX * Math.min(dureeMesuree(a), dureeMesuree(b)),
+  );
+  return commun >= seuil;
 }
 
 /**
@@ -131,6 +191,15 @@ export function chevauchentTrop(a: Fenetre, b: Fenetre): boolean {
  *
  * Ne renumérote RIEN : `rang` reste celui de M3-C, parce que c'est lui que
  * l'écran affiche et que M3-F met dans la clé de stockage du clip.
+ *
+ * ⚠️ UN SEUL RUSH À LA FOIS, AUJOURD'HUI. `calerCoupes` est appelé par
+ * ANALYSE, et une analyse porte un seul rush : toutes les fenêtres reçues ici
+ * viennent donc du même fichier, et les comparer entre elles a un sens.
+ * Le jour où un montage mêlera plusieurs rushes, ce contrat cessera d'être
+ * vrai : deux fenêtres `0→8` de DEUX rushes différents ne se répètent pas,
+ * et la comparaison devra alors porter sur « même rushId ET recouvrement ».
+ * Ce n'est pas une lacune de cette fonction, c'est une propriété de son
+ * appelant — et c'est le chantier multi-rush qui devra la reprendre.
  */
 export function ecarterChevauchements<T extends Fenetre>(fenetres: readonly T[]): T[] {
   const gardees: T[] = [];
