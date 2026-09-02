@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, Plus, Film, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { uploadFile } from '@/lib/storage/uploadFile';
 import AnalyseRush from '@/components/creer/AnalyseRush';
+import VideosPretes from '@/components/creer/VideosPretes';
 import type { ShootSession, Rush } from '@/lib/autopilot/tournage/contrat';
 
 /**
@@ -279,6 +280,17 @@ export default function SessionsTournagePanel() {
               <li className="text-xs text-gray-500">Aucun rush indexé pour l’instant.</li>
             )}
           </ul>
+
+          {/* ── LES VIDÉOS PRODUITES PAR CE TOURNAGE ──────────────────────
+              Monté ICI, au niveau de la SESSION et non du rush : une vidéo
+              naît d'un montage, qui peut puiser dans plusieurs rushes. La
+              poser sous une ligne de rush laisserait croire qu'elle n'en
+              vient que d'un.
+
+              Ce composant est en LECTURE SEULE : il ne lance aucun rendu, ne
+              modifie aucun rush et n'écrit rien. Le reste du panneau est
+              inchangé. */}
+          <VideosPretes sessionId={selection} aucunRush={rushes.length === 0} />
         </div>
       )}
     </div>
