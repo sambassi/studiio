@@ -63,33 +63,46 @@ export async function GET(_req: NextRequest): Promise<NextResponse<ApiResponse<a
   }
 }
 
-export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<any>>> {
-  try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    const body = await req.json();
-    const { data, error } = await supabase
-      .from('social_accounts')
-      .insert({
-        ...body,
-        user_id: session.user.id,
-      })
-      .select(SELECT_COMPTE_PUBLIC)
-      .single();
-
-    if (error) throw error;
-
-    return NextResponse.json({ success: true, data });
-  } catch (error) {
-    return NextResponse.json(
-      { success: false, error: 'Failed to connect social account' },
-      { status: 500 }
-    );
-  }
-}
+/**
+ * IL N'Y A PAS DE `POST` ICI, ET C'EST LE CORRECTIF.
+ *
+ * ---------------------------------------------------------------------------
+ * CE QUE FAISAIT L'ANCIENNE VERSION
+ * ---------------------------------------------------------------------------
+ *
+ *     .insert({ ...body, user_id: session.user.id })
+ *
+ * Une affectation de masse : le corps HTTP choisissait les colonnes. Le
+ * `user_id` etait bien impose par la session — donc personne ne pouvait creer
+ * une connexion au nom d'un tiers — mais tout le reste de la ligne etait
+ * pilotable, `access_token` et `refresh_token` compris. Un compte pouvait
+ * ainsi ecrire dans SA propre ligne un jeton arbitraire, que le cron aurait
+ * ensuite presente a Meta, TikTok ou YouTube. La table porte aussi
+ * `connected` et `expires_at`, qui gouvernent la selection du compte a la
+ * publication et le rafraichissement.
+ *
+ * ---------------------------------------------------------------------------
+ * POURQUOI LA RETIRER PLUTOT QUE LA FILTRER
+ * ---------------------------------------------------------------------------
+ *
+ * Une liste blanche d'ecriture aurait suppose qu'un navigateur ait quelque
+ * chose de legitime a declarer ici. Il n'a rien : une connexion sociale N'EST
+ * PAS declaree, elle est le RESULTAT d'un echange OAuth. Le seul champ qu'un
+ * client pourrait fournir sans absurdite est `platform`, et une ligne
+ * `platform` sans jeton est une connexion morte que `/api/social/status`
+ * ecarterait aussitot.
+ *
+ * Le vrai chemin de creation est ailleurs, et il est complet :
+ * `/api/social/callback` fait son `upsert` avec une liste de colonnes
+ * NOMMEE, sur `onConflict: 'user_id,platform'`, a partir des valeurs rendues
+ * par la plateforme. Il n'appelle pas cette route, et rien d'autre ne le fait
+ * — verifie sur tout le depot : le seul appel a `/api/social/accounts` est le
+ * `fetch` de lecture de `dashboard/social/page.tsx`.
+ *
+ * Sans export `POST`, Next.js repond `405 Method Not Allowed`. La surface
+ * d'ecriture n'existe plus du tout, plutot que d'exister sous surveillance.
+ *
+ * SI UN JOUR UN BESOIN APPARAIT — une connexion saisie a la main, un import —
+ * il ne se reouvre PAS ici : il passe par une route dediee, avec sa liste
+ * blanche nommee et son propre test. Cette route-ci lit, et rien d'autre.
+ */

@@ -41,6 +41,17 @@ interface Appel {
 }
 
 const appels: Appel[] = [];
+
+/**
+ * Toute ecriture qui atteint PostgREST, quelle qu'en soit la forme.
+ *
+ * C'est la SEULE preuve qui compte pour l'affectation de masse : ni le code de
+ * retour, ni le corps rendu, mais les valeurs effectivement transmises. Un
+ * tableau vide veut dire qu'aucun chemin d'ecriture n'existe.
+ */
+interface Ecriture { table: string; op: 'insert' | 'upsert' | 'update'; valeurs: unknown }
+const ecritures: Ecriture[] = [];
+
 let lignes: unknown[] = [];
 let ligneUnique: Record<string, unknown> | null = null;
 
@@ -48,7 +59,9 @@ function makeQuery(table: string) {
   const appel: Appel = { table, colonnes: null, filtres: {} };
   const api: Record<string, unknown> = {
     select: (colonnes?: string) => { appel.colonnes = colonnes ?? null; return api; },
-    insert: () => api,
+    insert: (valeurs: unknown) => { ecritures.push({ table, op: 'insert', valeurs }); return api; },
+    upsert: (valeurs: unknown) => { ecritures.push({ table, op: 'upsert', valeurs }); return api; },
+    update: (valeurs: unknown) => { ecritures.push({ table, op: 'update', valeurs }); return api; },
     eq: (cle: string, valeur: unknown) => { appel.filtres[cle] = valeur; return api; },
     single: async () => { appels.push(appel); return { data: ligneUnique, error: null }; },
     maybeSingle: async () => { appels.push(appel); return { data: ligneUnique, error: null }; },
@@ -102,6 +115,7 @@ function lireSource(chemin: string): string {
 
 beforeEach(() => {
   appels.length = 0;
+  ecritures.length = 0;
   lignes = [];
   ligneUnique = null;
   authMock.mockReset();
@@ -170,23 +184,6 @@ describe('P0-S — GET /api/social/accounts', () => {
     expect(appels).toHaveLength(0);
   });
 
-  it('ne renvoie pas non plus de jeton en ECHO apres une insertion', async () => {
-    // Le POST rendait la ligne inseree telle quelle : un client qui envoyait un
-    // jeton se le voyait renvoye, et le POST reste ouvert aux colonnes libres.
-    ligneUnique = projeter(LIGNE_COMPLETE, comptes.SELECT_COMPTE_PUBLIC);
-    const req = new Request('https://studiio.pro/api/social/accounts', {
-      method: 'POST',
-      body: JSON.stringify({ platform: 'instagram', access_token: 'injecte' }),
-    }) as never;
-
-    const reponse = await comptes.POST(req);
-    const texte = JSON.stringify(await reponse.json());
-
-    const appel = appels.find((a) => a.table === 'social_accounts');
-    expect(appel!.colonnes).not.toContain('access_token');
-    expect(texte).not.toContain('access_token');
-    expect(texte).not.toContain('injecte');
-  });
 });
 
 describe('P0-S — aucune regression sur l etat des connexions', () => {
@@ -260,5 +257,109 @@ describe('P0-S — le backend garde ses jetons', () => {
     // il LIT le jeton, il ne le REND pas. Les deux faits doivent coexister.
     const source = lireSource('src/app/api/social/status/route.ts');
     expect(source).toContain('acc.access_token');
+  });
+});
+
+describe('P0-S — POST /api/social/accounts : plus aucune surface d ecriture', () => {
+  /**
+   * Le corps le plus hostile qu'un client puisse envoyer : il vise le
+   * proprietaire, les deux jetons, l'etat de connexion, la peremption, et une
+   * colonne inventee.
+   */
+  const CORPS_HOSTILE = {
+    user_id: 'victime-0000-0000-0000-000000000000',
+    platform: 'instagram',
+    account_id: 'vole',
+    account_name: 'compte-du-voisin',
+    access_token: 'JETON_INJECTE_PAR_LE_CLIENT',
+    refresh_token: 'RAFRAICHISSEMENT_INJECTE',
+    expires_at: '2099-01-01T00:00:00.000Z',
+    connected: true,
+    colonne_inventee: 'valeur arbitraire',
+  };
+
+  function requetePost() {
+    return new Request('https://studiio.pro/api/social/accounts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(CORPS_HOSTILE),
+    }) as never;
+  }
+
+  it('la route n expose plus de gestionnaire POST', () => {
+    // Sans export, Next.js repond 405. La surface n'est pas surveillee :
+    // elle n'existe pas.
+    expect((comptes as Record<string, unknown>).POST).toBeUndefined();
+  });
+
+  it('AUCUN export de cette route n ecrit dans social_accounts, meme nourri d un corps hostile', async () => {
+    // La preuve ne porte pas sur un code de retour mais sur ce qui atteint
+    // PostgREST : on passe le corps hostile a TOUT ce que le module exporte,
+    // et on exige zero ecriture.
+    for (const valeur of Object.values(comptes)) {
+      if (typeof valeur !== 'function') continue;
+      try { await (valeur as (r: never) => unknown)(requetePost()); } catch { /* sans objet ici */ }
+    }
+    expect(ecritures).toHaveLength(0);
+  });
+
+  it('ne peut pas ecrire au nom d un autre utilisateur', async () => {
+    for (const valeur of Object.values(comptes)) {
+      if (typeof valeur !== 'function') continue;
+      try { await (valeur as (r: never) => unknown)(requetePost()); } catch { /* sans objet ici */ }
+    }
+    // Aucune ecriture du tout, donc aucune ecriture pour la victime.
+    expect(ecritures.some((e) => JSON.stringify(e.valeurs).includes('victime'))).toBe(false);
+    // Et la seule lecture faite reste bornee a la session.
+    for (const lecture of appels.filter((a) => a.table === 'social_accounts')) {
+      expect(lecture.filtres.user_id ?? UID).toBe(UID);
+    }
+  });
+
+  it('n ecrit ni jeton, ni peremption, ni colonne inventee', async () => {
+    for (const valeur of Object.values(comptes)) {
+      if (typeof valeur !== 'function') continue;
+      try { await (valeur as (r: never) => unknown)(requetePost()); } catch { /* sans objet ici */ }
+    }
+    const tout = JSON.stringify(ecritures);
+    for (const interdit of [
+      'access_token', 'refresh_token', 'JETON_INJECTE_PAR_LE_CLIENT',
+      'RAFRAICHISSEMENT_INJECTE', 'colonne_inventee', '2099-01-01',
+    ]) {
+      expect(tout).not.toContain(interdit);
+    }
+  });
+
+  it('le comportement legitime de la route — la LECTURE — est intact', async () => {
+    lignes = [projeter(LIGNE_COMPLETE, comptes.SELECT_COMPTE_PUBLIC)];
+    const reponse = await comptes.GET(requete());
+    const corps = await reponse.json() as { success: boolean; accounts: unknown[] };
+
+    expect(corps.success).toBe(true);
+    expect(corps.accounts).toHaveLength(1);
+    expect(ecritures).toHaveLength(0);
+  });
+});
+
+describe('P0-S — le chemin legitime de creation reste entier', () => {
+  it('le callback OAuth ecrit lui-meme, avec une liste de colonnes NOMMEE', () => {
+    const source = lireSource('src/app/api/social/callback/route.ts');
+
+    // Il n'est pas passe par la route publique : il ecrit directement...
+    expect(source).not.toContain('/api/social/accounts');
+    expect(source).toContain("from('social_accounts')");
+    expect(source).toContain('.upsert(');
+    expect(source).toContain("onConflict: 'user_id,platform'");
+    // ...avec des colonnes nommees une a une, jamais un etalement du corps.
+    for (const colonne of ['user_id', 'platform', 'account_id', 'account_name',
+      'access_token', 'refresh_token', 'expires_at', 'connected']) {
+      expect(source).toContain(`${colonne}:`);
+    }
+    expect(source).not.toMatch(/\.upsert\(\s*\{\s*\.\.\.body/);
+  });
+
+  it('le callback expose toujours son GET — le flux OAuth n est pas casse', async () => {
+    const callback = await import('@/app/api/social/callback/route');
+    expect(typeof callback.GET).toBe('function');
   });
 });
