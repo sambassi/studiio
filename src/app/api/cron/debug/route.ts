@@ -77,15 +77,20 @@ export async function GET(_req: NextRequest) {
       .limit(10);
 
     // 2. Get all connected social accounts
+    //
+    // Le jeton n'est PAS relu. L'ancienne version en selectionnait la colonne
+    // puis en rendait les dix premiers et cinq derniers caracteres, sous le
+    // nom `access_token`. Un fragment reste un secret partiel, et surtout : ce
+    // que cet ecran de diagnostic doit dire, c'est SI un jeton existe et s'il
+    // est perime — deux booleens, pas une valeur. `connected` porte le
+    // premier, `token_expired` le second.
     const { data: accounts, error: accountsError } = await supabase
       .from('social_accounts')
-      .select('id, platform, account_id, account_name, connected, expires_at, access_token')
+      .select('id, platform, account_id, account_name, connected, expires_at')
       .eq('user_id', userId);
 
-    // Mask tokens for security
     const safeAccounts = accounts?.map((a) => ({
       ...a,
-      access_token: a.access_token ? `${a.access_token.substring(0, 10)}...${a.access_token.substring(a.access_token.length - 5)}` : 'NULL',
       token_expired: a.expires_at ? new Date(a.expires_at) < new Date() : 'no_expiry_set',
     }));
 

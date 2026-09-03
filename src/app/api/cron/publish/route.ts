@@ -1037,7 +1037,10 @@ async function publishToInstagram(
   const accessToken = account.access_token;
   const igAccountId = account.account_id;
 
-  console.log(`[CRON][IG] Starting Instagram publish. igAccountId=${igAccountId}, hasToken=${!!accessToken}, tokenPreview=${accessToken ? accessToken.substring(0, 15) + '...' : 'NULL'}`);
+  // Le jeton n'est PAS journalise, meme tronque : ces logs sont conserves par
+  // l'hebergeur et relus par des tiers. `hasToken` dit tout ce qu'un
+  // diagnostic a besoin de savoir — le jeton est present, ou il ne l'est pas.
+  console.log(`[CRON][IG] Starting Instagram publish. igAccountId=${igAccountId}, hasToken=${!!accessToken}`);
   console.log(`[CRON][IG] Video URL: ${video.video_url?.substring(0, 100) || 'NULL'}`);
 
   if (!accessToken || !igAccountId) {
