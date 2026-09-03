@@ -7,6 +7,7 @@ import AnalyseRush from '@/components/creer/AnalyseRush';
 import {
   MONTAGE_DEFAUT, type AutopilotMontageStyle,
 } from '@/lib/autopilot/textStyle';
+import type { RecetteAudio } from '@/lib/autopilot/analyse/recette-audio';
 import type { ShootSession, Rush } from '@/lib/autopilot/tournage/contrat';
 
 /**
@@ -79,6 +80,10 @@ interface Props {
   montageDefaut?: AutopilotMontageStyle;
   /** Enregistre le réglage courant comme défaut. Absent = bouton masqué. */
   onEnregistrerDefaut?: (m: AutopilotMontageStyle) => void | Promise<void>;
+  /** Le réglage AUDIO enregistré du compte. Passe-plat vers `AnalyseRush`. */
+  audioDefaut?: RecetteAudio;
+  /** Enregistre la recette audio comme défaut. Absent = bouton masqué. */
+  onEnregistrerAudioDefaut?: (recette: RecetteAudio) => Promise<boolean>;
   /**
    * Remonte la session regardée, pour que l'aperçu de la colonne de droite
    * sache quoi montrer. C'est ce qui permet d'avoir UN SEUL aperçu.
@@ -94,8 +99,7 @@ interface Props {
 }
 
 export default function SessionsTournagePanel({
-  montageDefaut, onEnregistrerDefaut, onSessionChange, onVideoLancee,
-}: Props = {}) {
+  montageDefaut, onEnregistrerDefaut, onSessionChange, onVideoLancee, audioDefaut, onEnregistrerAudioDefaut,}: Props = {}) {
   const [sessions, setSessions] = useState<ShootSession[]>([]);
   const [selection, setSelection] = useState<string | null>(null);
   const [rushes, setRushes] = useState<Rush[]>([]);
@@ -416,6 +420,8 @@ export default function SessionsTournagePanel({
                     <AnalyseRush
                       rushId={r.id}
                       montage={montage}
+                      audioDefaut={audioDefaut}
+                      onEnregistrerAudioDefaut={onEnregistrerAudioDefaut}
                       onVideoLancee={onVideoLancee}
                     />
                   </div>

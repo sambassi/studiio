@@ -27,6 +27,10 @@
  * CTA, logo, sous-titre, musique ni effet. Le rendu est du calcul local sur
  * des octets déjà produits par M3-F.
  */
+import { createHash } from 'crypto';
+import {
+  estRecetteHistorique, recetteCanonique, type RecetteAudio,
+} from './recette-audio';
 import {
   AUDIO_BITRATE, AUDIO_FREQUENCE, CLIP_OCTETS_MAX, CONTENT_TYPE,
   CRF, PIXEL_FORMAT, PRESET, TIMEOUT_TELEVERSEMENT_MS as TIMEOUT_TELEVERSEMENT_CLIP_MS,
@@ -70,6 +74,58 @@ import { DUREE_CIBLE_MAX_SECONDES, PLANS_MAX } from './montage-contrat';
  * à ce contrat.
  */
 export const METHODE_RENDU = 'x264-crf23-concat-v1' as const;
+
+/**
+ * LE PREFIXE DES RENDUS QUI PORTENT UNE RECETTE AUDIO.
+ *
+ * `methode_rendu` est un `text` borne a 40 caracteres par la migration, et il
+ * fait partie de `rush_montage_renders_reussi_unique`. C'est donc LE champ qui
+ * distingue deux materialisations du meme plan — et le seul disponible sans
+ * migration.
+ */
+export const PREFIXE_METHODE_MIX = 'x264-mix-v1-' as const;
+
+/**
+ * La longueur de l'empreinte, en caracteres hexadecimaux.
+ *
+ * 12 caracteres de prefixe + 24 d'empreinte = 36, sous la borne de 40. Vingt-
+ * quatre caracteres font 96 bits : une collision n'est pas un risque a
+ * l'echelle d'un compte, et une collision signifierait seulement qu'un rendu
+ * est reutilise pour une recette voisine.
+ */
+export const LONGUEUR_EMPREINTE = 24;
+
+export function empreinteRecette(recette: RecetteAudio): string {
+  return createHash('sha256')
+    .update(recetteCanonique(recette), 'utf8')
+    .digest('hex')
+    .slice(0, LONGUEUR_EMPREINTE);
+}
+
+/**
+ * La methode de rendu d'une recette — l'identite qui evite la panne muette.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ POURQUOI CE N'EST PAS UNE CONSTANTE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * La reutilisation d'un rendu reussi est STRUCTURELLE : l'index unique refuse
+ * le second, l'appelant relit le premier. Si la recette ne changeait pas
+ * `methode_rendu`, demander la meme video avec une autre musique rendrait
+ * L'ANCIEN FICHIER — sans erreur, sans message. C'est la meme panne
+ * silencieuse que celle des coupes rejouees, et elle se rejouerait ici.
+ *
+ * ⚠️ ET POURQUOI LA RECETTE HISTORIQUE GARDE L'ANCIENNE VALEUR. Une recette
+ * qui ne demande rien de plus que le comportement d'avant ce lot — le son des
+ * rushes, sans attenuation, sans musique — rend `METHODE_RENDU`. Le graphe
+ * emis est alors lui aussi l'ancien, au caractere pres : les rendus deja
+ * reussis restent donc reutilisables, et ce lot ne transforme pas tout le
+ * passe en travail a refaire.
+ */
+export function methodeRendu(recette: RecetteAudio | null | undefined): string {
+  if (estRecetteHistorique(recette)) return METHODE_RENDU;
+  return `${PREFIXE_METHODE_MIX}${empreinteRecette(recette as RecetteAudio)}`;
+}
 
 /** Repris de M3-F : la mesure du dépôt écarte explicitement CRF 20. */
 export const CRF_RENDU = CRF;
@@ -574,13 +630,33 @@ export function renduMaterialiseValide(v: unknown, userId: string): v is RenduMa
  * qu'il a été pris en compte, et c'est exactement ce qu'espère celui qui
  * l'envoie.
  */
+/**
+ * Le SEUL champ qu'un client a le droit d'envoyer.
+ *
+ * ---------------------------------------------------------------------------
+ * ⚠️ UNE RECETTE METIER, JAMAIS UNE COMMANDE TECHNIQUE
+ * ---------------------------------------------------------------------------
+ *
+ * `audio` a quitte `CHAMPS_INTERDITS_RENDU`, et c'est le seul a l'avoir fait.
+ * Ce qu'il porte est ferme, nomme et borne par `lireRecetteAudio` : un choix
+ * de musique dans SA propre mediatheque, deux volumes entre 0 et 1, un
+ * interrupteur. Toute autre propriete est refusee, a la racine comme dans
+ * `musique`.
+ *
+ * Ce qui reste interdit ne change pas d'un pouce : `musicUrl` en tete, mais
+ * aussi tout parametre d'encodage, toute dimension, toute duree, tout chemin.
+ * Le client dit CE QU'IL VEUT ENTENDRE ; il ne dit jamais comment le produire.
+ */
+export const CHAMP_AUDIO_RENDU = 'audio' as const;
+export const CHAMPS_RENDU_ACCEPTES = [CHAMP_AUDIO_RENDU] as const;
+
 export const CORPS_RENDU_ATTENDU_VIDE = true as const;
 
 export const CHAMPS_INTERDITS_RENDU = [
   'clips', 'plans', 'ordre', 'debutSecondes', 'finSecondes', 'entreeSecondes',
   'dureeRetenueSecondes', 'debutTimelineSecondes', 'coupes', 'recadrage', 'crop',
   'largeur', 'hauteur', 'largeurCible', 'hauteurCible', 'width', 'height',
-  'fps', 'cadence', 'codec', 'crf', 'preset', 'audio', 'musicUrl',
+  'fps', 'cadence', 'codec', 'crf', 'preset', 'musicUrl',
   'bucket', 'cle', 'cleObjet', 'url', 'args', 'ffmpeg', 'composition',
   'duree', 'dureeCibleSecondes', 'methode', 'methodeRendu',
   'force', 'regenerate', 'userId', 'user_id',

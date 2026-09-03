@@ -47,7 +47,7 @@ import {
   ETATS_RENDU, ETAPES_RENDU, MOTIFS_RENDU, MOTIF_RENDU_INTERROMPU,
   etatRenduValide, etapeRenduValide, motifRenduValide,
   renduMaterialiseValide, planRendable,
-  CORPS_RENDU_ATTENDU_VIDE, CHAMPS_INTERDITS_RENDU,
+  CORPS_RENDU_ATTENDU_VIDE, CHAMPS_RENDU_ACCEPTES, CHAMPS_INTERDITS_RENDU,
   type IdentiteRendu,
 } from '@/lib/autopilot/analyse/rendu-contrat';
 import {
@@ -495,18 +495,34 @@ describe('19-23. Les vocabulaires fermés', () => {
 
 // ═════════════════════════════════════════════════════════════════════════
 describe('24-30. Ce que le contrat n’accepte ni n’importe', () => {
-  it('LE CORPS ATTENDU EST VIDE, et tout paramètre de rendu est REFUSÉ', () => {
-    // ⚠️ Contrairement à M3-G, où le format et la durée cible étaient de
-    // vraies demandes de l'utilisateur, il n'existe ici AUCUN paramètre de
-    // rendu légitime : tout est lu dans le plan persisté.
+  it('LE CORPS N ACCEPTE QUE `audio`, et tout paramètre technique reste REFUSÉ', () => {
+    // ⚠️ CE CONTRAT A CHANGE D'UN SEUL CHAMP, AU LOT 2A, ET PAS D'UN DE PLUS.
+    //
+    // Il n'existait a l'origine aucun parametre de rendu legitime : tout etait
+    // lu dans le plan persiste. La recette AUDIO en est devenu un — parce
+    // qu'elle ne decrit pas COMMENT rendre, mais CE QU'ON VEUT ENTENDRE, et
+    // parce qu'elle ne peut pas vivre dans le plan sans faire entrer la
+    // musique dans l'identite du montage editorial.
+    //
+    // Le reste du contrat est intact, et ce test le prouve dans les deux sens :
+    // `audio` est le SEUL champ accepte, et tout ce qui touche a l'execution
+    // — dimensions, codec, chemins, arguments — reste interdit. `musicUrl` en
+    // particulier n'a pas bouge : une URL venue du client ferait sortir une
+    // requete arbitraire du moteur, ce que bucket + cle evite par nature.
     expect(CORPS_RENDU_ATTENDU_VIDE).toBe(true);
+    expect(CHAMPS_RENDU_ACCEPTES).toEqual(['audio']);
+
     for (const interdit of ['clips', 'plans', 'debutSecondes', 'finSecondes',
       'recadrage', 'crop', 'largeur', 'hauteur', 'width', 'height', 'fps',
-      'codec', 'crf', 'preset', 'audio', 'bucket', 'cle', 'cleObjet', 'url',
+      'codec', 'crf', 'preset', 'musicUrl', 'bucket', 'cle', 'cleObjet', 'url',
       'args', 'ffmpeg', 'composition', 'duree', 'methode', 'force',
       'regenerate', 'userId', 'user_id']) {
       expect(CHAMPS_INTERDITS_RENDU as readonly string[],
         `« ${interdit} » doit être refusé`).toContain(interdit);
+    }
+    // Un champ ne peut pas etre a la fois accepte et interdit.
+    for (const accepte of CHAMPS_RENDU_ACCEPTES) {
+      expect(CHAMPS_INTERDITS_RENDU as readonly string[]).not.toContain(accepte);
     }
     // Aucun doublon dans la liste.
     expect(new Set(CHAMPS_INTERDITS_RENDU).size).toBe(CHAMPS_INTERDITS_RENDU.length);

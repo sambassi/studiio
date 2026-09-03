@@ -746,7 +746,17 @@ describe('31-36. Ce que H3 ne fait pas', () => {
       expect(s).not.toContain('gardeDuree');
       expect(s).not.toContain('planifierMontage');
       expect(s).not.toContain('recadrer(');
-      expect(s).not.toMatch(/xfade|fade|zoompan|interpolate/i);
+      // ⚠️ LE GARDE VISE LA DECISION EDITORIALE, PAS TOUT CE QUI CONTIENT
+      // « fade ». `xfade`, `zoompan` et `interpolate` fabriquent une
+      // transition ou un mouvement que le plan n'a pas demandes : ils
+      // resteront interdits. `afade`, lui, est une rampe de VOLUME sur la
+      // musique — il ne rejuge aucun plan, il evite qu'un morceau coupe net a
+      // la derniere image claque. Lot 2A.
+      expect(s).not.toMatch(/xfade|zoompan|interpolate/i);
+      // Le seul fondu tolere est celui-la, et il est audio.
+      for (const occurrence of s.match(/[a-z]*fade/gi) ?? []) {
+        expect(occurrence.toLowerCase()).toBe('afade');
+      }
     }
     // Et le recadrage vient du plan, pas d'un calcul local.
     const moteur = readFileSync(SRC.orchestration, 'utf8');

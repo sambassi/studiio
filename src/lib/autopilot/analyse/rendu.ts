@@ -32,6 +32,10 @@ import {
   prendrePlaceRendu, type PlaceExtraction,
 } from './capacite';
 import { nombreFini } from './clip-contrat';
+import {
+  RECETTE_AUDIO_DEFAUT, estRecetteHistorique, recettePourUsage,
+  type RecetteAudio,
+} from './recette-audio';
 import type { MontagePlan, PlanMontage } from './montage-contrat';
 import {
   PIXEL_FORMAT_RENDU, AUDIO_FREQUENCE_RENDU, TOLERANCE_FPS, MOTIF_RENDU_INTERROMPU,
@@ -40,6 +44,7 @@ import {
 } from './rendu-contrat';
 import {
   argumentsRendu, descendreSource, diagnosticRendu, encoder, fermerDossierRendu,
+  nomMusiqueLocale, rendraDeLAudio, type MusiqueLocale,
   mesurer, ouvrirDossierRendu, rectangleCrop, sonderSource, supprimerObjetRendu,
   televerserRendu,
   type CibleRendu, type MesureRendu, type SourceLocale,
@@ -56,6 +61,16 @@ export interface DemandeRendu {
    * ORDRE D'ARRÊT, pas une erreur — voir `abandonne` plus bas.
    */
   avancer?: (etape: 'source' | 'encodage' | 'mesure') => Promise<'rendu_absent' | null>;
+  /**
+   * La recette audio VALIDEE par la route. Absente = comportement historique.
+   *
+   * ⚠️ ELLE N'EST PAS RELUE ICI. La route a deja verifie le schema ferme, les
+   * bornes, et surtout que la musique appartient au compte. Revalider ici
+   * ferait croire que ce module protege quelque chose : il ne protege rien,
+   * il execute — et `descendreSource` reposera de toute facon ses trois
+   * gardes de propriete sur la cle.
+   */
+  recette?: RecetteAudio | null;
 }
 
 export interface ResultatRendu {
@@ -165,6 +180,13 @@ export async function produireMontage(
 ): Promise<ResultatRendu> {
   const { userId, plan } = demande;
   const usage: Record<string, unknown> = {};
+  // Absente = le comportement d'avant ce lot, a la lettre.
+  const recette = demande.recette ?? RECETTE_AUDIO_DEFAUT;
+  // ⚠️ TRACEE SEULEMENT QUAND ELLE DIT QUELQUE CHOSE. Ecrire la recette par
+  // defaut dans `usage` de tous les rendus historiques n'apprendrait rien et
+  // ferait croire, a la relecture, que ces rendus ont ete demandes avec un
+  // reglage audio.
+  if (!estRecetteHistorique(recette)) usage.audio = recettePourUsage(recette);
 
   // ── Ce qui se refuse AVANT de prendre quoi que ce soit ────────────────
   if (!planRendable(plan)) return echec('plan_non_conforme', usage);
@@ -256,6 +278,32 @@ export async function produireMontage(
     if (muets === sources.length) usage.montageMuet = true;
     else if (muets > 0) usage.plansSilencieux = muets;
 
+    // ── La musique, s'il y en a une ────────────────────────────────────
+    //
+    // ⚠️ DESCENDUE PAR LE MEME CHEMIN QUE LES CLIPS. `descendreSource` pose
+    // ses trois gardes — compartiment autorise, cle sous le prefixe du
+    // compte, aucun `..` ni `://` — et ecrit au fil de l'eau. Aucune URL
+    // n'est signee, aucune requete ne sort du reseau interne : la musique est
+    // un objet de la mediatheque de l'utilisateur, pas une adresse.
+    let musique: MusiqueLocale | null = null;
+    if (recette.musique !== null) {
+      const cheminMusique = nomMusiqueLocale(dossier);
+      const descente = await descendreSource(
+        userId,
+        { ordre: 0, bucket: recette.musique.bucket, cle: recette.musique.cle },
+        dossier, 0, cheminMusique,
+      );
+      if (!descente.ok) return echec(descente.motif, usage);
+      // ⚠️ ON SONDE AVANT DE BOUCLER. `-stream_loop -1` sur un fichier sans
+      // piste audio ne donnerait rien a `atrim`, et le graphe echouerait avec
+      // un diagnostic obscur. Le motif `clip_illisible` est celui du socle
+      // pour « ce media ne porte pas ce qu'on attend de lui ».
+      const sondeMusique = await sonderSource(cheminMusique);
+      if (!sondeMusique.aAudio) return echec('clip_illisible', usage);
+      musique = { chemin: cheminMusique };
+      usage.octetsMusique = descente.octets;
+    }
+
     // ── L'unique passage ───────────────────────────────────────────────
     if (await abandonne(demande, 'encodage')) {
       return { ok: false, motif: null, abandonne: true, mesure: null, usage };
@@ -277,7 +325,10 @@ export async function produireMontage(
     const sortie = `${dossier}/montage.mp4`;
     const debut = Date.now();
     const proc = await encoder(
-      argumentsRendu(sources, cible, sortie), plan.dureeTotaleSecondes, dossier,
+      argumentsRendu(sources, cible, sortie, {
+        recette, musique, dureeSecondes: plan.dureeTotaleSecondes,
+      }),
+      plan.dureeTotaleSecondes, dossier,
     );
     usage.encodageMs = Date.now() - debut;
     if (!proc.ok) {
@@ -292,9 +343,14 @@ export async function produireMontage(
     }
     const { mesure, motif } = await mesurer(sortie);
     if (mesure === null) return echec(motif ?? 'resultat_invalide', usage);
-    // `avecAudio` est CONSTATÉ sur les sondes, exactement comme le graphe :
-    // une seule source sonore suffit à ce que le montage doive l'être.
-    if (!resultatConforme(mesure, plan, sources.some((s) => s.aAudio))) {
+    // ⚠️ LA PROMESSE EST CALCULEE PAR LE MOTEUR, PAS RECOPIEE ICI.
+    // `rendraDeLAudio` applique exactement la regle du graphe — le son des
+    // rushes seulement s'il est garde ET qu'une source en porte, plus la
+    // musique s'il y en a une. Reecrire cette regle a la main ici, c'est la
+    // faire diverger au premier lot suivant.
+    if (!resultatConforme(
+      mesure, plan, rendraDeLAudio(sources, recette, musique !== null),
+    )) {
       return echec('resultat_invalide', usage);
     }
     usage.octetsProduits = mesure.octets;

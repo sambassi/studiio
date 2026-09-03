@@ -42,6 +42,7 @@
  * travail continue sur le serveur, et le clic suivant le retrouve.
  */
 import type { Fetcher } from './rendu-passerelle';
+import type { RecetteAudio } from './recette-audio';
 
 // ───────────────────────────────────────────────────────────────────────────
 // Les deux seules décisions du lot
@@ -211,6 +212,19 @@ export interface OptionsChaine {
   format?: string;
   /** La durée cible en secondes. Omise = `DUREE_CIBLE_SECONDES`. */
   dureeCibleSecondes?: number;
+  /**
+   * La recette audio de CETTE vidéo. Omise = le comportement historique.
+   *
+   * ⚠️ TRANSMISE TELLE QUELLE À M3-H, QUI LA REFUSE si elle sort de son
+   * schéma fermé — et qui vérifie lui-même que la musique appartient au
+   * compte. Rien n'est validé ici : une seconde validation qui diverge du
+   * serveur est pire qu'aucune.
+   *
+   * ⚠️ ELLE NE TOUCHE PAS AU PLAN. Le montage reste identifié par son format
+   * et sa durée ; deux recettes différentes réutilisent donc le MÊME plan et
+   * produisent deux rendus distincts.
+   */
+  audio?: RecetteAudio | null;
   fetcher?: Fetcher;
   /** Appelé au passage de chaque étape, pour la phrase affichée. */
   signalerEtape?: (etape: EtapeChaine) => void;
@@ -311,7 +325,15 @@ export async function creerVideo(o: OptionsChaine): Promise<IssueChaine> {
   o.signalerEtape?.('rendu');
   const rendu = await appeler(
     fetcher, `/api/autopilot/montages/${encodeURIComponent(planId)}/rendu`,
-    { method: 'POST' },
+    o.audio
+      ? {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // Le seul champ que cette route accepte. Un corps vide reste le
+        // chemin historique, et reste valide.
+        body: JSON.stringify({ audio: o.audio }),
+      }
+      : { method: 'POST' },
   );
   if (!rendu) return { sorte: 'echec', message: MESSAGE_RESEAU };
   if (rendu.statut === 202) return { sorte: 'lancee' };

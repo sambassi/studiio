@@ -26,6 +26,10 @@ import {
   creerVideo, phraseChaine, type EtapeChaine,
 } from '@/lib/autopilot/analyse/chaine-passerelle';
 import type { AutopilotMontageStyle } from '@/lib/autopilot/textStyle';
+import {
+  RECETTE_AUDIO_DEFAUT, type RecetteAudio,
+} from '@/lib/autopilot/analyse/recette-audio';
+import ReglagesAudio from './ReglagesAudio';
 
 interface Props {
   /** L'analyse source. Toujours `reussie` — l'appelant s'en assure. */
@@ -38,6 +42,16 @@ interface Props {
    * son vocabulaire.
    */
   montage?: AutopilotMontageStyle;
+  /**
+   * Le reglage audio PAR DEFAUT du compte. Point de depart de l'ecran.
+   *
+   * ⚠️ IL N'EST PAS LA DEMANDE. Ce qui part au rendu est l'etat local
+   * ci-dessous : l'utilisateur peut en devier pour CETTE video sans que ses
+   * habitudes changent. Seul `onEnregistrerAudioDefaut` les reecrit.
+   */
+  audioDefaut?: RecetteAudio;
+  /** Enregistre la recette comme defaut. Absent = le bouton ne s'affiche pas. */
+  onEnregistrerAudioDefaut?: (recette: RecetteAudio) => Promise<boolean>;
   /**
    * Prévient l'écran des vidéos qu'un rendu vient de partir.
    *
@@ -59,7 +73,19 @@ type EtatChaine =
   | { sorte: 'encours'; etape: EtapeChaine }
   | { sorte: 'dit'; texte: string; alerte: boolean };
 
-export default function PassagesSuggeres({ analyseId, montage, onVideoLancee }: Props) {
+export default function PassagesSuggeres({
+  analyseId, montage, audioDefaut, onEnregistrerAudioDefaut, onVideoLancee,
+}: Props) {
+  // ⚠️ RESYNCHRONISE SUR LA VALEUR SERIALISEE, comme le fait deja le wizard
+  // pour `designStyle` : l'objet change d'identite a chaque relecture de la
+  // configuration, et se caler dessus reinitialiserait le reglage en cours
+  // d'edition a chaque rafraichissement.
+  const signatureDefaut = JSON.stringify(audioDefaut ?? null);
+  const [audio, setAudio] = useState<RecetteAudio>(audioDefaut ?? RECETTE_AUDIO_DEFAUT);
+  useEffect(() => {
+    setAudio(audioDefaut ?? RECETTE_AUDIO_DEFAUT);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signatureDefaut]);
   const [generation, setGeneration] = useState<GenerationEcran | null>(null);
   const [chargement, setChargement] = useState(true);
   const [indisponible, setIndisponible] = useState<string | null>(null);
@@ -156,6 +182,8 @@ export default function PassagesSuggeres({ analyseId, montage, onVideoLancee }: 
         candidateSetId: jeuPassages,
         format: montage?.format,
         dureeCibleSecondes: montage?.dureeSecondes,
+        // ⚠️ LA RECETTE DE CETTE VIDEO, PAS LE DEFAUT DU COMPTE.
+        audio,
         signalerEtape: (etape) => {
           if (vivantRef.current) setChaine({ sorte: 'encours', etape });
         },
@@ -189,7 +217,7 @@ export default function PassagesSuggeres({ analyseId, montage, onVideoLancee }: 
     } finally {
       verrouRef.current = false;
     }
-  }, [generation?.id, montage?.format, montage?.dureeSecondes, onVideoLancee]);
+  }, [generation?.id, montage?.format, montage?.dureeSecondes, audio, onVideoLancee]);
 
   if (chargement) return null;
 
@@ -272,7 +300,16 @@ export default function PassagesSuggeres({ analyseId, montage, onVideoLancee }: 
           obligerait à retrouver quel jeu utiliser — une décision que personne
           n'a prise. */}
       {candidats.length > 0 && (
-        <div className="space-y-1" data-chaine>
+        <div className="space-y-2" data-chaine>
+          {/* ⚠️ AVANT LE BOUTON, ET DANS LA MEME COLONNE. L'apercu colle a
+              droite reste ce qu'il est : ce lot n'ajoute aucun second
+              apercu, et ne touche pas a celui qui existe. */}
+          <ReglagesAudio
+            valeur={audio}
+            onChange={setAudio}
+            onEnregistrerDefaut={onEnregistrerAudioDefaut}
+            desactive={chaine.sorte === 'encours'}
+          />
           <button
             type="button"
             onClick={creer}

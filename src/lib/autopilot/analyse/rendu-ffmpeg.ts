@@ -37,6 +37,10 @@ import { masquerUrls, lancer } from './extraction';
 import { arrondirSeconde, nombreFini } from './clip-contrat';
 import type { Recadrage } from './montage-contrat';
 import {
+  DECIMALES_VOLUME, RECETTE_AUDIO_DEFAUT, estRecetteHistorique,
+  type RecetteAudio,
+} from './recette-audio';
+import {
   AUDIO_BITRATE_RENDU, AUDIO_FREQUENCE_RENDU, CRF_RENDU, PIXEL_FORMAT_RENDU,
   PRESET_RENDU, RENDU_OCTETS_MAX, TIMEOUT_MESURE_MS, TIMEOUT_TRANSFERT_SOURCE_MS,
   TIMEOUT_TELEVERSEMENT_RENDU_MS, BUCKET_RENDUS_MONTAGE, CONTENT_TYPE_RENDU,
@@ -126,6 +130,19 @@ export interface RectangleCrop {
  * près du bord ferait sortir le cadre, et ffmpeg échouerait sur un plan
  * pourtant valide.
  */
+/**
+ * Le nom local de la musique, dans le repertoire du rendu.
+ *
+ * Un seul fichier, un seul nom : contrairement aux sources il n'y en a jamais
+ * deux, et le nommer par un indice laisserait croire le contraire.
+ */
+export function nomMusiqueLocale(dossier: string): string {
+  return join(dossier, 'musique');
+}
+
+/** La duree du fondu de sortie de la musique, en secondes. */
+export const FONDU_MUSIQUE_SECONDES = 0.5;
+
 export function rectangleCrop(
   largeurSource: number, hauteurSource: number, recadrage: Recadrage,
 ): RectangleCrop | null {
@@ -233,14 +250,50 @@ function duree(v: number): string {
  *     que le dépôt documente — un `moov` en fin de fichier qui empêche la
  *     lecture en flux.
  */
+export interface MusiqueLocale {
+  /** Le fichier deja descendu dans le repertoire du rendu. */
+  chemin: string;
+}
+
+export interface EntreeAudioRendu {
+  recette: RecetteAudio;
+  /** `null` quand la recette n'en demande pas, ou qu'elle a ete refusee. */
+  musique: MusiqueLocale | null;
+  /** La duree du montage, qui borne la musique. */
+  dureeSecondes: number;
+}
+
+/** Un volume, ecrit avec le pas du contrat. Jamais une expression ffmpeg. */
+function volumeFfmpeg(v: number): string {
+  return v.toFixed(DECIMALES_VOLUME);
+}
+
 export function argumentsRendu(
   sources: readonly SourceLocale[], cible: CibleRendu, sortie: string,
+  audio?: EntreeAudioRendu | null,
 ): string[] {
   const ordonnees = [...sources].sort((a, b) => a.ordre - b.ordre);
-  // ⚠️ TOUT LE MONTAGE PORTE DE L'AUDIO, OU AUCUN. `concat` exige le même
-  // nombre de flux par segment ; le silence comble les sources muettes plutôt
-  // que de sacrifier le son des autres.
-  const avecAudio = ordonnees.some((s) => s.aAudio);
+  const recette = audio?.recette ?? RECETTE_AUDIO_DEFAUT;
+  const musique = audio?.musique ?? null;
+
+  // ⚠️ LE CHEMIN HISTORIQUE EST RENDU AU CARACTERE PRES.
+  //
+  // Quand la recette ne demande rien de plus que ce que le moteur faisait
+  // avant ce lot — le son des rushes, sans attenuation, sans musique — le
+  // graphe emis est EXACTEMENT l'ancien. Ce n'est pas de la coquetterie :
+  // `methodeRendu` rend alors elle aussi la methode historique, si bien qu'un
+  // rendu deja reussi est reutilise au lieu d'etre recalcule. Les deux
+  // decisions doivent rester d'accord, et c'est le meme predicat qui les
+  // gouverne.
+  const historique = musique === null && estRecetteHistorique(recette);
+
+  // ⚠️ « GARDER LE SON » N'EST PAS « IL Y A DU SON ». Un montage dont aucun
+  // clip ne porte de piste n'a pas de son original a garder : lui fabriquer
+  // du silence couterait un flux pour ne rien faire entendre. La regle
+  // historique — tout le montage porte de l'audio, ou aucun — ne vaut qu'a
+  // l'interieur du `concat`, et elle est conservee telle quelle.
+  const garderOriginal = recette.sonOriginal && ordonnees.some((s) => s.aAudio);
+  const sortieAudio = garderOriginal || musique !== null;
 
   const entrees: string[] = [];
   const chaines: string[] = [];
@@ -258,7 +311,7 @@ export function argumentsRendu(
       + `fps=${cible.fps},format=${PIXEL_FORMAT_RENDU}[v${i}]`,
     );
     liens.push(`[v${i}]`);
-    if (!avecAudio) return;
+    if (!garderOriginal) return;
     chaines.push(
       s.aAudio
         ? `[${i}:a]atrim=start=${debut}:duration=${d},asetpts=PTS-STARTPTS,`
@@ -276,9 +329,65 @@ export function argumentsRendu(
   // ⚠️ LES PADS S'ENTRELACENT PAR SEGMENT — `[v0][a0][v1][a1]…`, jamais tous
   // les `v` puis tous les `a`. L'erreur produit un montage mélangé, sans
   // aucun message.
-  const filtre = `${chaines.join(';')};${liens.join('')}`
-    + `concat=n=${ordonnees.length}:v=1:a=${avecAudio ? 1 : 0}`
-    + `[vout]${avecAudio ? '[aout]' : ''}`;
+  //
+  // L'etiquette de sortie audio du `concat` depend du chemin : historique,
+  // c'est deja la sortie finale ; sinon c'est un bus intermediaire que le
+  // volume et le melange vont reprendre.
+  const etiquetteConcat = historique ? '[aout]' : '[aconcat]';
+  let filtre = `${chaines.join(';')};${liens.join('')}`
+    + `concat=n=${ordonnees.length}:v=1:a=${garderOriginal ? 1 : 0}`
+    + `[vout]${garderOriginal ? etiquetteConcat : ''}`;
+
+  if (!historique) {
+    const bus: string[] = [];
+
+    if (garderOriginal) {
+      // Le volume est TOUJOURS ecrit sur ce chemin, meme a 1,00 : une valeur
+      // explicite se relit dans le graphe, un filtre absent ne se relit nulle
+      // part. Un volume a 0 laisse la piste EN PLACE et muette — retirer la
+      // source changerait la presence meme d'une piste audio dans le
+      // conteneur, ce que personne n'a demande en baissant un curseur.
+      filtre += `;[aconcat]volume=${volumeFfmpeg(recette.volumeSonOriginal)}`
+        + `[aorig]`;
+      bus.push('[aorig]');
+    }
+
+    if (musique !== null) {
+      // ⚠️ `-stream_loop -1` EST UNE OPTION D'ENTREE, donc AVANT son `-i`.
+      // Elle rejoue le fichier indefiniment ; c'est `atrim` qui borne, et
+      // c'est ce couple qui rend le comportement deterministe des deux cotes :
+      // une musique plus courte que le montage se repete, une plus longue est
+      // coupee. La jonction de boucle est une repetition brute du fichier :
+      // elle s'entend si le morceau ne boucle pas naturellement, et un
+      // fondu-enchaine a la jonction serait un lot a part.
+      const indiceMusique = ordonnees.length;
+      entrees.push('-stream_loop', '-1', '-i', musique.chemin);
+      const d = duree(audio?.dureeSecondes ?? 0);
+      // Le debut du fondu est calcule ICI, en TypeScript, jamais par une
+      // expression ffmpeg : la meme regle que `rectangleCrop`.
+      const debutFondu = duree(Math.max(
+        0, (audio?.dureeSecondes ?? 0) - FONDU_MUSIQUE_SECONDES,
+      ));
+      filtre += `;[${indiceMusique}:a]atrim=duration=${d},asetpts=PTS-STARTPTS,`
+        + `aresample=${AUDIO_FREQUENCE_RENDU},`
+        + `aformat=sample_fmts=fltp:channel_layouts=stereo,`
+        + `volume=${volumeFfmpeg(recette.volumeMusique)},`
+        // Sans ce fondu, une musique coupee net a la derniere image claque.
+        + `afade=t=out:st=${debutFondu}:d=${FONDU_MUSIQUE_SECONDES}[amus]`;
+      bus.push('[amus]');
+    }
+
+    if (bus.length === 2) {
+      // ⚠️ `normalize=0`. Par defaut `amix` divise chaque entree par leur
+      // nombre : deux sources a 1,00 sortiraient a 0,50 chacune, et le volume
+      // demande ne serait pas celui rendu. `duration=first` cale la sortie sur
+      // le son du montage, dont la duree EST celle du film.
+      filtre += `;${bus.join('')}amix=inputs=2:duration=first:normalize=0[aout]`;
+    } else if (bus.length === 1) {
+      // Une seule source : on la renomme, sans la retoucher.
+      filtre += `;${bus[0]}anull[aout]`;
+    }
+  }
 
   return [
     '-hide_banner', '-nostdin', '-nostats', '-loglevel', 'error',
@@ -286,16 +395,30 @@ export function argumentsRendu(
     ...entrees,
     '-filter_complex', filtre,
     '-map', '[vout]',
-    ...(avecAudio ? ['-map', '[aout]'] : []),
+    ...(sortieAudio ? ['-map', '[aout]'] : []),
     '-c:v', 'libx264', '-preset', PRESET_RENDU, '-crf', String(CRF_RENDU),
     '-pix_fmt', PIXEL_FORMAT_RENDU, '-r', String(cible.fps),
-    ...(avecAudio
+    ...(sortieAudio
       ? ['-c:a', 'aac', '-b:a', AUDIO_BITRATE_RENDU,
         '-ar', String(AUDIO_FREQUENCE_RENDU), '-ac', '2']
       : ['-an']),
     '-map_metadata', '-1', '-map_chapters', '-1',
     '-movflags', '+faststart', '-y', sortie,
   ];
+}
+
+/**
+ * La sortie portera-t-elle une piste audio ?
+ *
+ * ⚠️ LA MEME REGLE QUE LE GRAPHE, ECRITE UNE FOIS. `resultatConforme` compare
+ * cette promesse a ce que ffprobe a MESURE sur le fichier produit ; si les
+ * deux divergeaient, le rendu passerait pour reussi en ayant perdu son son.
+ */
+export function rendraDeLAudio(
+  sources: readonly SourceLocale[], recette: RecetteAudio, avecMusique: boolean,
+): boolean {
+  const garderOriginal = recette.sonOriginal && sources.some((s) => s.aAudio);
+  return garderOriginal || avecMusique;
 }
 
 /** La sonde qui dit si une source porte de l'audio. Une passe, avant le graphe. */
@@ -415,6 +538,7 @@ export interface SourceDistante {
  */
 export async function descendreSource(
   userId: string, source: SourceDistante, dossier: string, indice: number,
+  cheminImpose?: string,
 ): Promise<{ ok: true; chemin: string; octets: number } | { ok: false; motif: MotifRendu }> {
   // ⚠️ LES TROIS GARDES DE `signerSource`, DANS LE MÊME ORDRE ET POUR LA MÊME
   // RAISON. Le plan est persisté côté serveur, mais ses `bucket` et `cle`
@@ -426,7 +550,7 @@ export async function descendreSource(
   if (!bucketAutorise(source.bucket)) return { ok: false, motif: 'source_inaccessible' };
   if (!cleValide(source.cle, userId)) return { ok: false, motif: 'source_inaccessible' };
 
-  const chemin = nomSourceLocale(dossier, indice);
+  const chemin = cheminImpose ?? nomSourceLocale(dossier, indice);
   try {
     // ⚠️ AUCUNE URL SIGNÉE N'EST PRODUITE, NULLE PART.
     //

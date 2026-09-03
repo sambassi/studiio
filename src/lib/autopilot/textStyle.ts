@@ -4,6 +4,9 @@ import {
   TEXT_CASES, TEXT_ALIGNS, type TextCase, type TextAlign,
 } from '@/lib/creer/textFormat';
 import { CARD_STYLE_NAMES } from '@/lib/creer/cardStyles';
+import {
+  RECETTE_AUDIO_DEFAUT, lireRecetteAudio, type RecetteAudio,
+} from '@/lib/autopilot/analyse/recette-audio';
 
 /**
  * Le style de texte CONSTANT de l'Autopilote — police, taille, position,
@@ -131,6 +134,27 @@ export interface AutopilotDesignStyle {
    * nouvelle : aucune migration n'est nécessaire pour un réglage de plus.
    */
   montage?: AutopilotMontageStyle;
+  /**
+   * Le reglage AUDIO PAR DEFAUT du compte — musique, son original, volumes.
+   *
+   * ---------------------------------------------------------------------
+   * ⚠️ FRERE DE `montage`, ET SURTOUT PAS SON ENFANT
+   * ---------------------------------------------------------------------
+   *
+   * `montage` applique une regle « tout ou rien » assumee : un format valide
+   * avec une duree aberrante rend `undefined`, pour ne jamais laisser un
+   * reglage a moitie applique. Loger l'audio DANS `montage` le ferait donc
+   * disparaitre exactement dans le cas qu'on veut proteger — une ancienne
+   * configuration qui n'a pas encore de bloc `montage`. Les deux reglages
+   * sont independants ; ils se rangent cote a cote.
+   *
+   * ⚠️ C'EST LE DEFAUT, PAS LA DEMANDE. Ce qui est REELLEMENT rendu voyage
+   * dans le corps de `POST /rendu`, recette par recette : l'ecran part d'ici,
+   * l'utilisateur peut en devier pour une video sans rien changer ici, et
+   * « Enregistrer comme reglage par defaut » est le seul geste qui reecrit ce
+   * champ.
+   */
+  audio?: RecetteAudio;
   title?: AutopilotTextZone;
   /**
    * Sous-titre — police et taille SEULEMENT.
@@ -290,6 +314,26 @@ function icones(brut: unknown): Record<string, string> | undefined {
 }
 
 /** Nettoie un style relu de la base ou reçu de l'écran. */
+/** La recette relue, ou rien. Aucune valeur partielle n'est acceptee. */
+function audioValide(brut: unknown): RecetteAudio | undefined {
+  if (brut === undefined || brut === null) return undefined;
+  const lecture = lireRecetteAudio(brut);
+  return lecture.ok ? lecture.recette : undefined;
+}
+
+/**
+ * Le reglage audio a utiliser, defaut compris.
+ *
+ * Le pendant exact de `montageDepuisStyle` : un appelant n'a jamais a
+ * connaitre `RECETTE_AUDIO_DEFAUT` ni a ecrire un `??` de plus, et la
+ * retro-compatibilite est garantie a un seul endroit.
+ */
+export function audioDepuisStyle(
+  style: AutopilotDesignStyle | undefined | null,
+): RecetteAudio {
+  return style?.audio ?? RECETTE_AUDIO_DEFAUT;
+}
+
 export function sanitizeDesignStyle(brut: unknown): AutopilotDesignStyle {
   if (!brut || typeof brut !== 'object') return {};
   const o = brut as Record<string, unknown>;
@@ -298,6 +342,11 @@ export function sanitizeDesignStyle(brut: unknown): AutopilotDesignStyle {
     // ⚠️ SANS CETTE LIGNE, LE RÉGLAGE EST SILENCIEUSEMENT EFFACÉ à chaque
     // enregistrement : `compacter` ne garde que ce qui est nommé ici.
     montage: montage(o.montage),
+    // ⚠️ LA MEME LECTURE FERMEE QUE LA ROUTE, PAS UNE SECONDE. Un reglage
+    // invalide en base — ecrit par une version future, ou tronque — est
+    // ignore en bloc plutot que partiellement applique : l'utilisateur
+    // retrouve le defaut, jamais un melange incoherent.
+    audio: audioValide(o.audio),
     title: zone(o.title, true),
     // La position du sous-titre est retirée par `zone(..., false)` : voir le
     // commentaire du champ.

@@ -25,9 +25,12 @@ import { identifiantValide } from '@/lib/autopilot/analyse/clip-contrat';
 import { lirePlanParId } from '@/lib/autopilot/analyse/montage-service';
 import { prendrePlaceRendu } from '@/lib/autopilot/analyse/capacite';
 import {
-  BUDGET_RENDU_MAX_MS, CHAMPS_INTERDITS_RENDU, METHODE_RENDU, MOTIF_RENDU_INTERROMPU,
+  BUDGET_RENDU_MAX_MS, CHAMPS_INTERDITS_RENDU, MOTIF_RENDU_INTERROMPU,
   type IdentiteRendu, type MotifRendu,
+  CHAMP_AUDIO_RENDU, CHAMPS_RENDU_ACCEPTES, methodeRendu,
 } from '@/lib/autopilot/analyse/rendu-contrat';
+import { lireRecetteAudio, type RecetteAudio } from '@/lib/autopilot/analyse/recette-audio';
+import { MESSAGES_MUSIQUE, verifierMusique } from '@/lib/autopilot/analyse/musique-source';
 import { diagnosticRendu } from '@/lib/autopilot/analyse/rendu-ffmpeg';
 import {
   creerRendu, lireRenduActif, lireRenduReussiIdentique, majRendu,
@@ -91,7 +94,13 @@ export async function POST(
       return refus('identifiant_invalide', 'Identifiant invalide.', 422);
     }
 
-    // ── Le corps : rien, et tout paramètre est REFUSÉ ────────────────────
+    // ── Le corps : `audio`, et RIEN d'autre ──────────────────────────────
+    //
+    // ⚠️ TROIS REFUS SUCCESSIFS, ET L'ORDRE COMPTE. On refuse d'abord ce qui
+    // est nommement interdit — `musicUrl` en tete — pour que le message dise
+    // la vraie raison ; puis tout champ inconnu, parce qu'un schema ferme est
+    // le seul qui ne derive pas ; puis seulement on lit la recette.
+    let recette: RecetteAudio | null = null;
     const brut = (await req.text()).trim();
     if (brut.length > 0) {
       let json: unknown;
@@ -109,6 +118,40 @@ export async function POST(
           );
         }
       }
+      for (const cle of Object.keys(json)) {
+        if (!(CHAMPS_RENDU_ACCEPTES as readonly string[]).includes(cle)) {
+          return NextResponse.json(
+            { ok: false, error: `Le champ « ${cle} » n'est pas accepte ici.` },
+            { status: 422 },
+          );
+        }
+      }
+      const champ = (json as Record<string, unknown>)[CHAMP_AUDIO_RENDU];
+      if (champ !== undefined && champ !== null) {
+        const lecture = lireRecetteAudio(champ);
+        if (!lecture.ok) {
+          return NextResponse.json(
+            { ok: false, error: lecture.message, motif: lecture.motif }, { status: 422 },
+          );
+        }
+        recette = lecture.recette;
+      }
+    }
+
+    // ── La musique : ni devinee, ni crue sur parole ───────────────────────
+    //
+    // ⚠️ LE SERVEUR RESOUT, LE CLIENT DESIGNE. Que la session soit valide ne
+    // dit rien de la cle envoyee : `verifierMusique` reverifie le prefixe de
+    // propriete AVANT d'interroger le stockage, puis l'existence, le type et
+    // la taille.
+    if (recette?.musique) {
+      const v = await verifierMusique(recette.musique, userId);
+      if (!v.ok) {
+        const statut = v.motif === 'stockage_injoignable' ? 503 : 422;
+        return NextResponse.json(
+          { ok: false, error: MESSAGES_MUSIQUE[v.motif], motif: v.motif }, { status: statut },
+        );
+      }
     }
 
     // ── Le plan, et la propriété prouvée par la requête ──────────────────
@@ -125,7 +168,11 @@ export async function POST(
     const identite: IdentiteRendu = {
       montagePlanId: plan.id,
       montagePlanVersion: plan.version,
-      methodeRendu: METHODE_RENDU,
+      // ⚠️ C'EST ICI QUE LA PANNE MUETTE SE JOUE. Sans cette derivation, deux
+      // musiques differentes partageraient une identite, et la relecture d'un
+      // rendu reussi rendrait l'ANCIEN fichier. Recette historique = methode
+      // historique, donc les rendus deja produits restent reutilisables.
+      methodeRendu: methodeRendu(recette),
     };
 
     // ── Déjà rendu ? On sert l'existant, sans rien relancer ──────────────
@@ -194,7 +241,7 @@ export async function POST(
     // et `output: 'standalone'` : le processus vit, rien ne gèle après le
     // `return`. Le `catch` est la ceinture qui rend la place si le travail
     // jetait avant d'entrer dans son propre `finally`.
-    void executerRendu(userId, plan, rendu.id, placeDuTravail)
+    void executerRendu(userId, plan, rendu.id, placeDuTravail, recette)
       .catch((e: unknown) => {
         // La ceinture, et elle ne se tait pas : une panne avant le `try` du
         // travail serait autrement invisible.
@@ -235,6 +282,7 @@ async function executerRendu(
   plan: Awaited<ReturnType<typeof lirePlanParId>>['plan'],
   renduId: string,
   place: { liberer(): void },
+  recette: RecetteAudio | null,
 ): Promise<void> {
   try {
     // ⚠️ AVEC LA GARDE, ET SON RETOUR LU. Entre l'insertion et cette écriture,
@@ -246,7 +294,7 @@ async function executerRendu(
     if (depart.motif === 'rendu_absent') return;
     await rendreEtPublier(
       {
-        userId, plan: plan!,
+        userId, plan: plan!, recette,
         // Chaque frontière demande si la ligne existe encore. `rendu_absent`
         // est un ordre d'arrêt : on nettoie et on n'écrit plus rien.
         avancer: async (etape) => {

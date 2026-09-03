@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import SessionsTournagePanel from '@/components/creer/SessionsTournagePanel';
-import { montageDepuisStyle } from '@/lib/autopilot/textStyle';
+import { montageDepuisStyle, audioDepuisStyle } from '@/lib/autopilot/textStyle';
 import { CardIcon } from '@/components/ui/CardIcon';
 import ColorWheel from '@/components/ui/ColorWheel';
 import { THEMES, themeLabel, isCustomTopic } from '@/lib/themes';
@@ -517,6 +517,16 @@ export default function AutopilotPanel({
                 // perdrait sans un mot.
                 designStyle: { ...config.designStyle, montage: m },
               })}
+              audioDefaut={audioDepuisStyle(config.designStyle)}
+              onEnregistrerAudioDefaut={async (audio) => {
+                // ⚠️ MEME FUSION QUE POUR `montage`, ET POUR LA MEME RAISON :
+                // `designStyle` porte aussi les polices, les icones et le
+                // reglage de montage. Les ecraser ici les perdrait sans un mot.
+                await enregistrer({
+                  designStyle: { ...config.designStyle, audio },
+                });
+                return true;
+              }}
               onSessionChange={onSessionChange}
               onVideoLancee={onVideoLancee}
             />

@@ -672,6 +672,12 @@ describe('E — ni IA, ni crédit, ni rendu, ni publication', () => {
       './PassagesSuggeres',
       '@/lib/autopilot/analyse/passerelle',
       '@/lib/autopilot/analyse/presentation',
+      // LOT 2A : un import de TYPE seul (`RecetteAudio`), pour le passe-plat
+      // du réglage audio vers `PassagesSuggeres`. Effacé à la compilation, et
+      // le module visé est pur — aucun import, pas même `crypto` : il ne tire
+      // donc rien dans le paquet navigateur. Ce composant ne lance toujours
+      // aucun rendu et ne connaît aucune recette.
+      '@/lib/autopilot/analyse/recette-audio',
       // LOT 1 : un import de TYPE seul (`AutopilotMontageStyle`), pour le
       // passe-plat du format et de la durée vers `PassagesSuggeres`. Effacé à
       // la compilation, il ne tire rien dans le paquet navigateur.
@@ -687,6 +693,12 @@ describe('E — ni IA, ni crédit, ni rendu, ni publication', () => {
     // le paquet navigateur.
     const importesEnfant = [...enfant.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]);
     expect([...new Set(importesEnfant)].sort()).toEqual([
+      // LOT 2A : le panneau « Audio », et le contrat de recette qu'il edite.
+      // `ReglagesAudio` n'appelle aucune route : il edite un objet et le rend
+      // au parent, qui le remet a la chaine. `recette-audio` est un module PUR
+      // et sans aucun import — il ne tire donc rien dans le paquet navigateur.
+      './ReglagesAudio',
+      '@/lib/autopilot/analyse/recette-audio',
       '@/lib/autopilot/analyse/candidat-passerelle',
       // P0.1 : le bouton « Créer ma vidéo ». `chaine-passerelle` n'enchaîne
       // que trois URL et n'importe RIEN à l'exécution — les vocabulaires

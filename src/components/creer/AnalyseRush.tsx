@@ -15,6 +15,7 @@ import {
 } from '@/lib/autopilot/analyse/presentation';
 import PassagesSuggeres from './PassagesSuggeres';
 import type { AutopilotMontageStyle } from '@/lib/autopilot/textStyle';
+import type { RecetteAudio } from '@/lib/autopilot/analyse/recette-audio';
 
 /**
  * L'analyse d'UN rush, greffée sous sa ligne dans les sessions de tournage.
@@ -65,6 +66,9 @@ interface Props {
    * qui les remet à la chaîne — ce composant n'en fait rien.
    */
   montage?: AutopilotMontageStyle;
+  /** Passe-plat, comme `montage` : ce composant n'en fait rien. */
+  audioDefaut?: RecetteAudio;
+  onEnregistrerAudioDefaut?: (recette: RecetteAudio) => Promise<boolean>;
   /**
    * Passe-plat vers `PassagesSuggeres`, qui porte le bouton « Créer ma
    * vidéo ». Ce composant-ci ne lance rien et ne sait rien de la chaîne : il
@@ -82,7 +86,7 @@ interface Refus {
   retryApresSecondes: number | null;
 }
 
-export default function AnalyseRush({ rushId, montage, onVideoLancee }: Props) {
+export default function AnalyseRush({ rushId, montage, onVideoLancee, audioDefaut, onEnregistrerAudioDefaut,}: Props) {
   const [analyse, setAnalyse] = useState<AnalyseEcran | null>(null);
   const [chargement, setChargement] = useState(true);
   const [indisponible, setIndisponible] = useState<string | null>(null);
@@ -491,6 +495,8 @@ export default function AnalyseRush({ rushId, montage, onVideoLancee }: Props) {
             <PassagesSuggeres
               analyseId={analyse.id}
               montage={montage}
+              audioDefaut={audioDefaut}
+              onEnregistrerAudioDefaut={onEnregistrerAudioDefaut}
               onVideoLancee={onVideoLancee}
             />
           )}
