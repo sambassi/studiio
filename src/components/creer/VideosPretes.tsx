@@ -73,17 +73,35 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle, CalendarPlus, Download, Film, Loader2, Play,
 } from 'lucide-react';
+import MenuActions from '@/components/ui/MenuActions';
 import {
   DELAI_SUIVI_MS, creerBrouillonPlanification, formaterDuree,
   lireRenduDeSession, messageEchec, orientation, phraseEnCours, renduEnCours,
   type Fetcher, type RenduEcran,
 } from '@/lib/autopilot/analyse/rendu-passerelle';
 
+/** Les trois cadres possibles, dans le vocabulaire du contrat de montage. */
+const RATIOS: Record<string, [number, number]> = {
+  '9:16': [9, 16],
+  '1:1': [1, 1],
+  '16:9': [16, 9],
+};
+
 interface Props {
   /** La session de tournage regardée. */
   sessionId: string;
   /** La session ne porte aucun rush : l'écran le dit plutôt que de se taire. */
   aucunRush: boolean;
+  /**
+   * Le format DEMANDE dans le formulaire — « 9:16 », « 1:1 », « 16:9 ».
+   *
+   * ⚠️ IL NE SERT QU'AU CADRE VIDE. Une vidéo existante porte SES dimensions,
+   * et c'est elle qui a raison : afficher un rendu 1920×1080 dans un cadre
+   * vertical parce que le formulaire dit « 9:16 » serait le meme mensonge,
+   * dans l'autre sens. Le cadre vide, lui, doit montrer ce qu'on a demande —
+   * sinon on choisit « Vertical » devant un rectangle horizontal.
+   */
+  formatSouhaite?: string;
   /**
    * Compteur de réveil. Chaque incrément relance une lecture.
    *
@@ -113,10 +131,11 @@ type Etat =
   | { sorte: 'erreur'; message: string };
 
 export default function VideosPretes({
-  sessionId, aucunRush, relance = 0, onEtat, fetcher,
+  sessionId, aucunRush, relance = 0, onEtat, fetcher, formatSouhaite,
 }: Props) {
   const [etat, setEtat] = useState<Etat>({ sorte: 'chargement' });
   const [lecture, setLecture] = useState(false);
+  const [detail, setDetail] = useState(false);
   /**
    * Ce que le `<video>` a réussi à faire des octets.
    *
@@ -243,11 +262,33 @@ export default function VideosPretes({
     }
   }, [fetcher]);
 
+  /**
+   * Le cadre du format DEMANDE, montré tant qu'aucune vidéo ne répond.
+   *
+   * ⚠️ IL REMPLACE UN MENSONGE, PAS UN VIDE. Avant, la colonne n'affichait
+   * rien avant le premier rendu, puis reprenait les dimensions du rendu
+   * PRECEDENT : choisir « Vertical » laissait donc un rectangle horizontal a
+   * l'ecran, et c'est ce qui a fait croire a un rendu au mauvais format.
+   */
+  const CadreFormat = ({ enfant }: { enfant?: React.ReactNode }) => {
+    const [l, h] = RATIOS[formatSouhaite ?? ''] ?? RATIOS['9:16'];
+    return (
+      <div
+        className="flex w-full items-center justify-center rounded-lg border border-white/10 bg-white/[0.02]"
+        style={{ aspectRatio: `${l} / ${h}`, maxHeight: '52vh' }}
+        data-videos-cadre={formatSouhaite ?? '9:16'}
+      >
+        {enfant ?? <Film className="h-6 w-6 text-gray-700" aria-hidden="true" />}
+      </div>
+    );
+  };
+
   // ── Aucun rush : rien n'a pu être créé, et on le dit ───────────────────
   if (aucunRush) {
     return (
       <section className="space-y-1.5" data-videos-pretes data-videos-etat="aucun_rush">
         <Titre texte="Votre vidéo" />
+        <CadreFormat />
         <p className="text-[11px] text-gray-500 leading-relaxed">
           Ajoute des rushes : Studiio en fera une vidéo.
         </p>
@@ -278,6 +319,7 @@ export default function VideosPretes({
     return (
       <section className="space-y-1.5" data-videos-pretes data-videos-etat="aucune_video">
         <Titre texte="Votre vidéo" />
+        <CadreFormat />
         <p className="text-[11px] text-gray-500 leading-relaxed" data-videos-message>
           Aucune vidéo pour l’instant.
         </p>
@@ -292,6 +334,7 @@ export default function VideosPretes({
     return (
       <section className="space-y-1.5" data-videos-pretes data-videos-etat="en_cours">
         <Titre texte="Création en cours" fort />
+        <CadreFormat enfant={<Loader2 className="h-5 w-5 animate-spin text-purple-400" aria-hidden="true" />} />
         <p
           className="flex items-center gap-1.5 text-[11px] text-gray-300"
           data-videos-etape={rendu.etape ?? ''}
@@ -336,8 +379,23 @@ export default function VideosPretes({
 
   return (
     <section className="space-y-1.5" data-videos-pretes data-videos-etat="prete">
-      <Titre texte="Votre vidéo est prête" fort />
-      <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <Titre texte="Votre vidéo est prête" fort />
+        {/* ⚠️ AUCUN IDENTIFIANT ICI. Ni rendu, ni plan, ni algorithme : ce
+            sont des reperes de diagnostic, pas des informations d'usage. Ce
+            que le menu montre — duree, dimensions, poids — est ce qu'on lit
+            sur une fiche de fichier. */}
+        <MenuActions
+          compact
+          marqueur="rendu"
+          etiquette="Actions de la vidéo"
+          actions={[{
+            libelle: detail ? 'Masquer les détails' : 'Détails du rendu',
+            onClick: () => setDetail((d) => !d),
+          }]}
+        />
+      </div>
+      <div className="space-y-2">
         {lecture ? (
           <div className="space-y-1">
             {/* ⚠️ `controls` ET `playsInline`. Sans le second, iOS passe en
@@ -346,9 +404,14 @@ export default function VideosPretes({
                 ⚠️ PAS D'`autoPlay`, ET `preload="auto"` — voir l'en-tête du
                 fichier. C'est la lecture demandée par le bouton natif qui
                 démarre la vidéo ; rien ici n'appelle `play()`. */}
+            {/* ⚠️ `controlsList="nodownload"` SEULEMENT. Lecture, position,
+                volume et plein ecran restent : on retire l'entree du menu
+                natif qui doublait le bouton « Telecharger », pas les
+                commandes du lecteur. */}
             <video
               src={video.chemin}
               controls
+              controlsList="nodownload"
               playsInline
               preload="auto"
               onLoadedMetadata={() => setMedia('pret')}
@@ -382,32 +445,53 @@ export default function VideosPretes({
             )}
           </div>
         ) : (
-          <div
-            className="flex w-full items-center justify-center rounded-md bg-gray-900/60"
-            style={{ aspectRatio: `${video.largeur} / ${video.hauteur}`, maxHeight: '60vh' }}
+          /* ⚠️ « REGARDER » RESTE, MAIS DEVIENT LE CADRE LUI-MEME.
+             Le bouton n'etait pas redondant : c'est LUI qui evite de
+             telecharger plusieurs megaoctets a chaque affichage de la page,
+             puisque le `<video>` n'existe qu'apres le clic. Le supprimer
+             aurait remis cette charge sur tout le monde. Le fondre dans
+             l'affiche retire un bouton de la rangee sans rien perdre. */
+          <button
+            type="button"
+            onClick={() => { setMedia('chargement'); setLecture(true); }}
+            data-videos-regarder
             data-videos-placeholder
+            aria-label="Lire la vidéo"
+            title="Lire la vidéo"
+            className="group flex w-full items-center justify-center rounded-lg border
+              border-white/10 bg-white/[0.02] transition-colors hover:border-purple-500/50
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+            style={{ aspectRatio: `${video.largeur} / ${video.hauteur}`, maxHeight: '52vh' }}
           >
-            <Film className="w-6 h-6 text-gray-700" />
-          </div>
+            <span className="flex h-11 w-11 items-center justify-center rounded-full
+              border border-white/20 text-gray-300 group-hover:border-purple-400 group-hover:text-white">
+              <Play className="ml-0.5 h-4 w-4" aria-hidden="true" />
+            </span>
+          </button>
         )}
 
         <p className="text-[11px] text-gray-400" data-videos-resume>
           {[duree, forme].filter(Boolean).join(' · ')}
         </p>
 
+        {detail && (
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-1" data-videos-detail>
+            {[
+              ['Dimensions', `${video.largeur} × ${video.hauteur}`],
+              ['Durée', duree],
+              ['Format', forme],
+            ].map(([libelle, valeur]) => (
+              <div key={libelle} className="min-w-0">
+                <dt className="truncate text-[10px] uppercase tracking-wide text-gray-500">{libelle}</dt>
+                <dd className="truncate text-[11px] text-gray-200">{valeur}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+
         <div className="flex flex-wrap gap-1.5">
           {/* Cibles tactiles : `min-h-[36px]` et un remplissage confortable —
               cette carte se lit d'abord sur un téléphone. */}
-          <button
-            type="button"
-            onClick={() => { setMedia('chargement'); setLecture(true); }}
-            disabled={lecture}
-            data-videos-regarder
-            className="flex flex-1 min-h-[36px] items-center justify-center gap-1.5 rounded-lg border border-gray-800 px-3 py-2 text-xs text-gray-200 hover:text-white hover:border-gray-700 disabled:opacity-40 transition-colors"
-          >
-            <Play className="w-3.5 h-3.5 shrink-0" /> Regarder
-          </button>
-
           {/* ⚠️ L'ADRESSE VIENT DU SERVEUR, telle quelle. Aucune URL de
               stockage, aucune signature, rien à faire expirer — et rien à
               persister dans le navigateur.

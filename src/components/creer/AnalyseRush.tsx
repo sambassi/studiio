@@ -75,6 +75,27 @@ interface Props {
    * transmet, c'est tout.
    */
   onVideoLancee?: () => void;
+  /**
+   * `chaine` = la page principale refondue : l'etat de l'analyse et la
+   * chaine de creation, RIEN d'autre. `complete` = l'ancien rendu, avec le
+   * releve technique et les vignettes deplies sur place.
+   *
+   * ⚠️ AUCUNE FONCTION N'EST PERDUE EN `chaine`. Le releve, les vignettes et
+   * les passages vivent dans le tiroir « Voir l'analyse » ; ce sont les
+   * MEMES donnees, lues par les memes routes, montrees quand on les demande.
+   */
+  variante?: 'chaine' | 'complete';
+  /** Ouvre le tiroir d'analyse de ce rush. Absent = le lien ne s'affiche pas. */
+  onVoirAnalyse?: () => void;
+  /**
+   * Compteur de relance venu du « ⋯ » de la carte du rush.
+   *
+   * ⚠️ UN COMPTEUR, PAS UN BOOLEEN. Deux relances de suite portent deux
+   * valeurs differentes ; un booleen remis a `false` par le parent ferait un
+   * aller-retour de plus, et deux clics rapproches n'en declencheraient
+   * qu'un. La valeur initiale ne declenche rien : seul un CHANGEMENT lance.
+   */
+  relance?: number;
 }
 
 /** Le plafond dur du moteur (`VIGNETTES_MAX`), redit ici pour l'affichage. */
@@ -86,7 +107,11 @@ interface Refus {
   retryApresSecondes: number | null;
 }
 
-export default function AnalyseRush({ rushId, montage, onVideoLancee, audioDefaut, onEnregistrerAudioDefaut,}: Props) {
+export default function AnalyseRush({
+  rushId, montage, onVideoLancee, audioDefaut, onEnregistrerAudioDefaut,
+  variante = 'complete', onVoirAnalyse, relance,
+}: Props) {
+  const chaine = variante === 'chaine';
   const [analyse, setAnalyse] = useState<AnalyseEcran | null>(null);
   const [chargement, setChargement] = useState(true);
   const [indisponible, setIndisponible] = useState<string | null>(null);
@@ -192,6 +217,22 @@ export default function AnalyseRush({ rushId, montage, onVideoLancee, audioDefau
     demandeRef.current = false;
     if (vivantRef.current) setDemande(false);
   }, [rushId, rafraichir]);
+
+  /**
+   * La relance demandee par le « ⋯ » de la carte.
+   *
+   * ⚠️ ON IGNORE LA PREMIERE VALEUR. Monter le composant ne doit pas lancer
+   * une analyse que personne n'a demandee — c'est l'invariant de tout ce
+   * fichier, et un `useEffect` naif sur une prop le casserait au montage.
+   */
+  const relanceVueRef = useRef<number | undefined>(relance);
+  useEffect(() => {
+    if (relance === undefined) return;
+    if (relanceVueRef.current === relance) return;
+    relanceVueRef.current = relance;
+    analyser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [relance]);
 
   /**
    * Les vignettes : demandées une seule fois par analyse, et seulement quand
@@ -330,7 +371,7 @@ export default function AnalyseRush({ rushId, montage, onVideoLancee, audioDefau
       )}
 
       {analyse?.etat === 'reussie' && (
-        <div className="rounded-lg border border-gray-800 bg-gray-950/40 p-2 space-y-2">
+        <div className={chaine ? 'space-y-2' : 'rounded-lg border border-gray-800 bg-gray-950/40 p-2 space-y-2'}>
           {/* L'état à gauche, l'action à droite — le même ordre que sous
               `echouee` et `annulee`, où le bouton suit immédiatement la phrase
               d'état.
@@ -359,13 +400,21 @@ export default function AnalyseRush({ rushId, montage, onVideoLancee, audioDefau
               Ce que la condition garantit, et c'est un invariant total :
               sur une analyse réussie, il y a EXACTEMENT un bouton de
               lancement. Jamais zéro, jamais deux. */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="inline-flex items-center gap-1.5 text-[11px] text-emerald-400" data-analyse-badge>
-              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-              Analysé
-            </span>
-            {!refus?.relancable && boutonAnalyse('Relancer l’analyse', true)}
-          </div>
+          {/* ⚠️ EN VARIANTE `chaine`, NI BADGE NI BOUTON ICI. « Analysé » est
+              deja dit par le ✓ de la carte du rush, et « Relancer l'analyse »
+              vit dans le « ⋯ » de cette meme carte. Les repeter ajouterait
+              deux elements a l'ecran pour zero information de plus.
+              L'invariant « exactement un bouton de lancement sur une analyse
+              reussie » tient toujours : en `chaine` il est dans le menu. */}
+          {!chaine && (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-gray-300" data-analyse-badge>
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-gray-400" />
+                Analysé
+              </span>
+              {!refus?.relancable && boutonAnalyse('Relancer l’analyse', true)}
+            </div>
+          )}
 
           {/* ── TOUT LE DÉTAIL EST REPLIÉ ──────────────────────────────────
               Mesuré sur le rush de production : ce bloc faisait 1 289 px de
@@ -378,7 +427,7 @@ export default function AnalyseRush({ rushId, montage, onVideoLancee, audioDefau
               ⚠️ RIEN N'EST SUPPRIMÉ. Les mêmes noeuds, les mêmes attributs
               `data-*`, la même mesure — seulement repliés. Les tests qui les
               interrogent continuent de les trouver. */}
-          <details data-analyse-detail>
+          <details data-analyse-detail className={chaine ? 'hidden' : undefined}>
             <summary className="cursor-pointer list-none text-[10px] text-gray-500 hover:text-gray-300 min-h-[28px] flex items-center">
               Voir l’analyse détaillée
             </summary>
@@ -498,6 +547,8 @@ export default function AnalyseRush({ rushId, montage, onVideoLancee, audioDefau
               audioDefaut={audioDefaut}
               onEnregistrerAudioDefaut={onEnregistrerAudioDefaut}
               onVideoLancee={onVideoLancee}
+              variante={chaine ? 'compacte' : 'complete'}
+              onVoirAnalyse={onVoirAnalyse}
             />
           )}
         </div>

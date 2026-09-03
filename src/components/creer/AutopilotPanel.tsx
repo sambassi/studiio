@@ -193,7 +193,7 @@ export default function AutopilotPanel({
    * vit dans la colonne de droite, hors de cet arbre : sans ces deux signaux,
    * il faudrait un second lecteur ici — la duplication qu'on vient d'enlever.
    */
-  onSessionChange?: (etat: { sessionId: string | null; aucunRush: boolean }) => void;
+  onSessionChange?: (etat: { sessionId: string | null; aucunRush: boolean; format: string }) => void;
   onVideoLancee?: () => void;
   /**
    * Remonte la configuration à chaque changement — c'est ce qui alimente
@@ -510,29 +510,14 @@ export default function AutopilotPanel({
           <div className="rounded-xl border border-gray-800 bg-gray-900/30 p-3 space-y-2">
             <p className="text-xs font-medium text-gray-300">Sessions de tournage</p>
             <SessionsTournagePanel
-              montageDefaut={montageDepuisStyle(config.designStyle)}
-              onEnregistrerDefaut={(m) => enregistrer({
-                // ⚠️ FUSION, JAMAIS REMPLACEMENT : `designStyle` porte aussi
-                // les polices et les icônes de cartes. Les écraser ici les
-                // perdrait sans un mot.
-                designStyle: { ...config.designStyle, montage: m },
-              })}
-              audioDefaut={audioDepuisStyle(config.designStyle)}
-              onEnregistrerAudioDefaut={async (audio) => {
-                // ⚠️ MEME FUSION QUE POUR `montage`, ET POUR LA MEME RAISON :
-                // `designStyle` porte aussi les polices, les icones et le
-                // reglage de montage. Les ecraser ici les perdrait sans un mot.
-                await enregistrer({
-                  designStyle: { ...config.designStyle, audio },
-                });
-                return true;
-              }}
-              onSessionChange={onSessionChange}
-              onVideoLancee={onVideoLancee}
-            />
-          </div>
-
-{/* ── Banque de rushes ─────────────────────────────────────────── */}
+              /* ⚠️ LA BANQUE DE RUSHES N'EST PAS SUPPRIMEE, ELLE DEMENAGE.
+                 Elle alimente la rotation de l'Autopilote et reste donc une
+                 fonction vivante — mais elle faisait DOUBLON a l'ecran avec
+                 les rushes de la session : deux listes, deux « Ajouter »,
+                 deux corbeilles, pour deux magasins differents. Dans le
+                 tiroir, elle garde tout son comportement et cesse d'etre
+                 confondue avec les rushes du tournage. */
+              avance={<div className="space-y-3">{/* ── Banque de rushes ─────────────────────────────────────────── */}
           <div>
             <div className="flex items-center justify-between gap-2 mb-2">
               <p className="text-xs font-medium text-gray-300">
@@ -596,6 +581,27 @@ export default function AutopilotPanel({
                 setLibOpen(null);
                 if (url) enregistrer({ rushUrls: [...config.rushUrls, url] });
               }}
+            />
+          </div></div>}
+              montageDefaut={montageDepuisStyle(config.designStyle)}
+              onEnregistrerDefaut={(m) => enregistrer({
+                // ⚠️ FUSION, JAMAIS REMPLACEMENT : `designStyle` porte aussi
+                // les polices et les icônes de cartes. Les écraser ici les
+                // perdrait sans un mot.
+                designStyle: { ...config.designStyle, montage: m },
+              })}
+              audioDefaut={audioDepuisStyle(config.designStyle)}
+              onEnregistrerAudioDefaut={async (audio) => {
+                // ⚠️ MEME FUSION QUE POUR `montage`, ET POUR LA MEME RAISON :
+                // `designStyle` porte aussi les polices, les icones et le
+                // reglage de montage. Les ecraser ici les perdrait sans un mot.
+                await enregistrer({
+                  designStyle: { ...config.designStyle, audio },
+                });
+                return true;
+              }}
+              onSessionChange={onSessionChange}
+              onVideoLancee={onVideoLancee}
             />
           </div>
 

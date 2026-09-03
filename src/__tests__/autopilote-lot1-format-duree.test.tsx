@@ -75,7 +75,10 @@ async function ouvrirTournage(props: Parameters<typeof SessionsTournagePanel>[0]
   const rendu = render(<SessionsTournagePanel {...props} />);
   await act(async () => { await Promise.resolve(); });
   await act(async () => {
-    fireEvent.click(rendu.container.querySelector(`[data-tournage-session="${SESSION}"]`)!);
+    // ⚠️ PLUS DE CLIC : depuis la refonte, la premiere session s'ouvre
+    // d'elle-meme — un `<select>` qui affiche un nom sans avoir ouvert le
+    // tournage correspondant nommerait ce qu'il ne montre pas.
+    await Promise.resolve();
   });
   await act(async () => { await Promise.resolve(); });
   return rendu;
@@ -253,18 +256,31 @@ describe('4. Les réglages par défaut', () => {
     await act(async () => {
       fireEvent.change(format(container), { target: { value: '16:9' } });
     });
+    // ⚠️ LE SECOND GESTE A DEMENAGE, IL N'A PAS DISPARU. Depuis la refonte
+    // il vit dans le « ⋯ » de la ligne Format/Durée : un bouton permanent
+    // pour un geste rare pesait plus lourd que les deux réglages eux-mêmes.
+    // Ce qui est verrouillé reste le même — changer ne suffit pas, il faut
+    // demander.
     await act(async () => {
-      fireEvent.click(container.querySelector('[data-montage-defaut]')!);
+      fireEvent.click(container.querySelector('[data-menu-actions="montage"]')!);
     });
+    const entree = Array.from(container.querySelectorAll('[role="menuitem"]'))
+      .find((b) => (b.textContent ?? '').includes('réglage par défaut'))!;
+    await act(async () => { fireEvent.click(entree); });
     expect(onEnregistrerDefaut).toHaveBeenCalledTimes(1);
     expect(onEnregistrerDefaut).toHaveBeenCalledWith({ format: '16:9', dureeSecondes: 30 });
-    expect(container.querySelector('[data-montage-defaut]')!.textContent)
-      .toContain('Enregistré');
+
+    await act(async () => {
+      fireEvent.click(container.querySelector('[data-menu-actions="montage"]')!);
+    });
+    expect(Array.from(container.querySelectorAll('[role="menuitem"]'))
+      .map((b) => b.textContent ?? '').join(' ')).toContain('enregistré');
   });
 
   it('4.3 le bouton est ABSENT quand rien ne sait enregistrer', async () => {
     const { container } = await ouvrirTournage();
-    expect(container.querySelector('[data-montage-defaut]')).toBeNull();
+    // Rien qui sache enregistrer : pas de menu du tout, donc pas d'entrée.
+    expect(container.querySelector('[data-menu-actions="montage"]')).toBeNull();
   });
 
   it('4.4 le réglage enregistré est celui proposé à l’ouverture', async () => {
@@ -282,7 +298,7 @@ describe('4. Les réglages par défaut', () => {
     const rendu = render(<SessionsTournagePanel />);
     await act(async () => { await Promise.resolve(); });
     await act(async () => {
-      fireEvent.click(rendu.container.querySelector(`[data-tournage-session="${SESSION}"]`)!);
+      await Promise.resolve();
     });
     await act(async () => { await Promise.resolve(); });
     expect(format(rendu.container).value).toBe(MONTAGE_DEFAUT.format);
@@ -388,7 +404,7 @@ describe('7. Un seul endroit où regarder', () => {
     const onSessionChange = vi.fn();
     await ouvrirTournage({ onSessionChange });
     expect(onSessionChange).toHaveBeenLastCalledWith({
-      sessionId: SESSION, aucunRush: false,
+      sessionId: SESSION, aucunRush: false, format: MONTAGE_DEFAUT.format,
     });
   });
 

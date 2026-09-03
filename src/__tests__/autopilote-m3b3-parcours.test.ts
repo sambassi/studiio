@@ -1077,9 +1077,16 @@ const appelsAnalyse = (methode: string) => appelsHttp.filter(
 function boutonAnalyser(rushId: string): HTMLButtonElement | null {
   const parAttribut = document.querySelector(`[data-tournage-analyser="${rushId}"]`);
   if (parAttribut) return parAttribut as HTMLButtonElement;
-  const ligne = document.querySelector(`[data-tournage-rush="${rushId}"]`);
-  const racine: ParentNode = ligne ?? document;
-  const boutons = Array.from(racine.querySelectorAll('button'));
+  // ⚠️ LA PORTEE EST CELLE DU RUSH, JAMAIS LE DOCUMENT ENTIER.
+  //
+  // L'ancienne version retombait sur `document` quand la ligne du rush
+  // n'existait pas. Depuis la refonte, la chaine n'est montee QUE pour le
+  // rush regarde : chercher partout retrouvait donc le bouton du rush VOISIN
+  // et faisait passer pour present un bouton absent. Sans portee, ce test
+  // aurait dit oui a exactement ce qu'il interdit.
+  const ligne = document.querySelector(`[data-analyse-rush="${rushId}"]`);
+  if (!ligne) return null;
+  const boutons = Array.from(ligne.querySelectorAll('button'));
   return (boutons.find(
     (b) => /analys/i.test(b.textContent || '') || /analys/i.test(b.getAttribute('aria-label') || ''),
   ) as HTMLButtonElement | undefined) ?? null;
@@ -1125,10 +1132,13 @@ async function monterPanneau() {
   );
   const vue = render(createElement(SessionsTournagePanel));
   await jusqua(() => screen.queryByText('Cours du samedi') !== null, 'la liste des sessions');
-  fireEvent.click(screen.getByText('Cours du samedi'));
+  // ⚠️ PLUS DE CLIC SUR LA SESSION : depuis la refonte, la premiere s'ouvre
+  // d'elle-meme et la liste verticale des rushes est devenue une BANDE de
+  // cartes. Ce que le test verrouille — un clic, un travail, aucune boucle —
+  // ne change pas d'un iota ; seul le selecteur suit l'ecran.
   await jusqua(
-    () => document.querySelector('[data-tournage-rush="r-a"]') !== null,
-    'la liste des rushes',
+    () => document.querySelector('[data-bande-carte="r-a"]') !== null,
+    'la bande des rushes',
   );
   return vue;
 }
@@ -1153,6 +1163,15 @@ describe.skipIf(!panneauIntegre)('Le parcours écran — un clic, un travail, au
       boutonAnalyser('r-x'),
       'rush seulement indexé : le bouton promettrait une mesure que le serveur refuse',
     ).toBeNull();
+
+    // Et en le REGARDANT, l'écran dit pourquoi plutôt que de se taire.
+    const carte = document.querySelector('[data-bande-choisir="r-x"]') as HTMLElement | null;
+    if (carte) {
+      fireEvent.click(carte);
+      await avancer(0);
+      expect(boutonAnalyser('r-x')).toBeNull();
+      expect(document.querySelector('[data-rush-non-verifie]')).toBeTruthy();
+    }
   });
 
   it('un clic déclenche UN SEUL POST, même cliqué trois fois', async () => {

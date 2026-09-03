@@ -538,12 +538,18 @@ describe('4. VideosPretes — les cinq états', () => {
     expect(screen.getByText('Votre vidéo est prête')).toBeInTheDocument();
 
     const bloc = document.querySelector('[data-videos-pretes]')!;
-    // ⚠️ EXACTEMENT TROIS, et ce sont celles-là. Ni « Modifier », ni
+    // ⚠️ QUATRE COMMANDES, ET CE SONT CELLES-LA. Ni « Modifier », ni
     // « Créer ma vidéo », ni relance.
-    expect(bloc.querySelectorAll('button, a')).toHaveLength(3);
-    expect(screen.getByText('Regarder')).toBeInTheDocument();
+    //
+    // La quatrieme est le « ⋯ » : les details du rendu y ont remplace le
+    // texte technique qui n'avait nulle part ou aller. Et « Regarder » n'est
+    // plus un bouton de la rangee — c'est l'affiche elle-meme qui se clique,
+    // ce qui RETIRE un element sans retirer la fonction.
+    expect(bloc.querySelectorAll('button, a')).toHaveLength(4);
+    expect(document.querySelector('[data-videos-regarder]')).toBeTruthy();
     expect(screen.getByText('Télécharger')).toBeInTheDocument();
     expect(screen.getByText('Planifier la publication')).toBeInTheDocument();
+    expect(document.querySelector('[data-menu-actions="rendu"]')).toBeTruthy();
     expect(screen.queryByText(/Modifier/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Créer ma vidéo/i)).not.toBeInTheDocument();
   });
@@ -557,14 +563,16 @@ describe('4. VideosPretes — les cinq états', () => {
     }
   });
 
-  it('4.7 le lecteur ne se monte QU’au clic sur Regarder', async () => {
+  it('4.7 le lecteur ne se monte QU’au clic sur l’affiche', async () => {
     monter({ fetcher: reponse({ ok: true, rendu: RENDU_PRET }) });
     await screen.findByText('0:28 · Vertical');
 
     // Avant : rien ne télécharge. La route rend le fichier d'un bloc.
     expect(document.querySelector('[data-videos-lecteur]')).toBeNull();
 
-    await act(async () => { fireEvent.click(screen.getByText('Regarder')); });
+    await act(async () => {
+      fireEvent.click(document.querySelector('[data-videos-regarder]')!);
+    });
 
     const lecteur = document.querySelector('[data-videos-lecteur]') as HTMLVideoElement;
     expect(lecteur).not.toBeNull();

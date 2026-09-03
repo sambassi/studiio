@@ -59,6 +59,18 @@ interface Props {
    * sonder : le rendu lancé n'apparaîtrait qu'au rechargement de la page.
    */
   onVideoLancee?: () => void;
+  /**
+   * `compacte` = la page principale : Audio + « Creer ma video », SANS la
+   * liste des passages ni le releve. `complete` = l'ancien rendu, conserve
+   * pour les usages qui l'attendent encore.
+   *
+   * ⚠️ LA LISTE N'EST PAS SUPPRIMEE, ELLE DEMENAGE. Elle vit dans le tiroir
+   * « Voir l'analyse », qui la rend AVEC les images — ce qu'une liste de
+   * timecodes empilee sur la page principale ne faisait pas.
+   */
+  variante?: 'compacte' | 'complete';
+  /** Ouvre le tiroir d'analyse. Absent = le lien ne s'affiche pas. */
+  onVoirAnalyse?: () => void;
 }
 
 /**
@@ -75,6 +87,7 @@ type EtatChaine =
 
 export default function PassagesSuggeres({
   analyseId, montage, audioDefaut, onEnregistrerAudioDefaut, onVideoLancee,
+  variante = 'complete', onVoirAnalyse,
 }: Props) {
   // ⚠️ RESYNCHRONISE SUR LA VALEUR SERIALISEE, comme le fait deja le wizard
   // pour `designStyle` : l'objet change d'identite a chaque relecture de la
@@ -224,9 +237,18 @@ export default function PassagesSuggeres({
   const candidats = generation?.candidats ?? [];
   const aReussi = generation?.etat === 'reussie';
 
+  const compacte = variante === 'compacte';
+
   return (
-    <section className="space-y-1.5" data-analyse-section="passages">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <section className="space-y-1.5" data-analyse-section="passages" data-passages-variante={variante}>
+      {/* ⚠️ EN COMPACTE, L'EN-TETE NE S'AFFICHE QUE TANT QU'IL RESTE UNE
+          DECISION A PRENDRE : sans passage, le bouton EST le chemin. Une fois
+          les passages trouves, ni le compte ni « Chercher a nouveau » ne
+          servent au geste suivant — ils partent dans le tiroir. */}
+      <div
+        className={`flex flex-wrap items-center justify-between gap-2 ${
+          compacte && candidats.length > 0 ? 'hidden' : ''}`}
+      >
         <h4 className="text-[10px] uppercase tracking-wide text-gray-500">
           {/* Le compte est l'information utile : « analyse terminée » ne dit
               pas s'il y a de quoi monter une vidéo. */}
@@ -273,7 +295,7 @@ export default function PassagesSuggeres({
         </p>
       )}
 
-      {candidats.length > 0 && (
+      {candidats.length > 0 && !compacte && (
         <ul className="space-y-1" data-passages-liste>
           {candidats.map((c) => (
             <li
@@ -299,6 +321,19 @@ export default function PassagesSuggeres({
           et c'est de LUI que part la chaîne. Le poser au niveau de la session
           obligerait à retrouver quel jeu utiliser — une décision que personne
           n'a prise. */}
+      {compacte && candidats.length > 0 && onVoirAnalyse && (
+        <button
+          type="button"
+          onClick={onVoirAnalyse}
+          data-passages-voir
+          className="text-[11px] text-gray-500 underline underline-offset-2
+            hover:text-gray-300 focus-visible:outline-none focus-visible:ring-2
+            focus-visible:ring-purple-500 rounded transition-colors"
+        >
+          {candidats.length} passage{candidats.length > 1 ? 's' : ''} suggéré{candidats.length > 1 ? 's' : ''} — voir l’analyse
+        </button>
+      )}
+
       {candidats.length > 0 && (
         <div className="space-y-2" data-chaine>
           {/* ⚠️ AVANT LE BOUTON, ET DANS LA MEME COLONNE. L'apercu colle a
@@ -334,7 +369,7 @@ export default function PassagesSuggeres({
       )}
 
       {/* Le modèle qui a proposé, quand il est connu. Jamais deviné. */}
-      {aReussi && generation?.modele && (
+      {aReussi && !compacte && generation?.modele && (
         <p className="text-[9px] text-gray-600" data-passages-modele>
           Proposé par {generation.modele}.
         </p>

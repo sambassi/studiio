@@ -1,9 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, Plus, Film, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Loader2, Settings2 } from 'lucide-react';
 import { uploadFile } from '@/lib/storage/uploadFile';
 import AnalyseRush from '@/components/creer/AnalyseRush';
+import BandeRushes, { type AnalyseCarte } from '@/components/creer/BandeRushes';
+import ContenuAnalyse from '@/components/creer/ContenuAnalyse';
+import DrawerLateral from '@/components/ui/DrawerLateral';
+import MenuActions from '@/components/ui/MenuActions';
+import { lireAnalyse } from '@/lib/autopilot/analyse/passerelle';
 import {
   MONTAGE_DEFAUT, type AutopilotMontageStyle,
 } from '@/lib/autopilot/textStyle';
@@ -88,7 +93,19 @@ interface Props {
    * Remonte la session regardée, pour que l'aperçu de la colonne de droite
    * sache quoi montrer. C'est ce qui permet d'avoir UN SEUL aperçu.
    */
-  onSessionChange?: (etat: { sessionId: string | null; aucunRush: boolean }) => void;
+  onSessionChange?: (etat: {
+    sessionId: string | null;
+    aucunRush: boolean;
+    /**
+     * Le format CHOISI a l'instant, pas celui du dernier rendu.
+     *
+     * ⚠️ C'EST CE QUI CORRIGE L'APERCU QUI MENTAIT. Le cadre de droite se
+     * calait sur les dimensions du rendu EXISTANT : on choisissait 9:16 et
+     * il restait horizontal, parce que la derniere video l'etait. Le cadre
+     * suit desormais la demande tant qu'aucune video ne repond.
+     */
+    format: string;
+  }) => void;
   /**
    * Prévient que la création d'une vidéo vient de partir.
    *
@@ -96,10 +113,20 @@ interface Props {
    * réveiller, et il n'est plus dans cet arbre. Le signal remonte donc.
    */
   onVideoLancee?: () => void;
+  /**
+   * Ce que le tiroir « Avancé » contient.
+   *
+   * ⚠️ C'EST UN RECEPTACLE, PAS UNE FONCTION. LUT, texte, branding, voix
+   * viendront ici — et n'allongeront donc jamais la page principale. Il est
+   * decide maintenant, pendant qu'il ne coute rien.
+   */
+  avance?: React.ReactNode;
 }
 
 export default function SessionsTournagePanel({
-  montageDefaut, onEnregistrerDefaut, onSessionChange, onVideoLancee, audioDefaut, onEnregistrerAudioDefaut,}: Props = {}) {
+  montageDefaut, onEnregistrerDefaut, onSessionChange, onVideoLancee, audioDefaut,
+  onEnregistrerAudioDefaut, avance,
+}: Props = {}) {
   const [sessions, setSessions] = useState<ShootSession[]>([]);
   const [selection, setSelection] = useState<string | null>(null);
   const [rushes, setRushes] = useState<Rush[]>([]);
@@ -118,6 +145,12 @@ export default function SessionsTournagePanel({
     montageDefaut ?? MONTAGE_DEFAUT,
   );
   const [defautEnregistre, setDefautEnregistre] = useState(false);
+  /** Le rush qu'on regarde : il pilote la chaine et le bouton unique. */
+  const [rushChoisi, setRushChoisi] = useState<string | null>(null);
+  const [analyses, setAnalyses] = useState<Record<string, AnalyseCarte | null>>({});
+  const [tiroir, setTiroir] = useState<'analyse' | 'avance' | null>(null);
+  const [relances, setRelances] = useState<Record<string, number>>({});
+  const [nouvelleSession, setNouvelleSession] = useState(false);
 
   // Le réglage enregistré arrive après le premier rendu (la config se charge
   // en réseau) : on s'y accorde tant que l'utilisateur n'a rien touché.
@@ -131,7 +164,6 @@ export default function SessionsTournagePanel({
     setDefautEnregistre(false);
     setMontage((m) => ({ ...m, ...patch }));
   };
-  const fichiersRef = useRef<HTMLInputElement>(null);
 
   const chargerSessions = useCallback(async () => {
     setChargement(true);
@@ -161,13 +193,83 @@ export default function SessionsTournagePanel({
   }, []);
 
   useEffect(() => { chargerSessions(); }, [chargerSessions]);
+
+  /**
+   * La premiere session s'ouvre d'elle-meme.
+   *
+   * ⚠️ LE SELECTEUR L'EXIGE. Avec une liste de boutons, ne rien choisir etait
+   * un etat lisible : rien n'etait surligne. Un `<select>` sans valeur, lui,
+   * AFFICHE quand meme sa premiere option — l'ecran aurait donc nomme un
+   * tournage tout en n'en ayant ouvert aucun, et la bande de rushes serait
+   * restee vide sans raison visible.
+   */
+  useEffect(() => {
+    setSelection((actuelle) => {
+      if (actuelle && sessions.some((x) => x.id === actuelle)) return actuelle;
+      return sessions[0]?.id ?? null;
+    });
+  }, [sessions]);
   useEffect(() => { if (selection) chargerRushes(selection); }, [selection, chargerRushes]);
+
+  /**
+   * Le rush regarde par defaut : le premier qui soit exploitable.
+   *
+   * ⚠️ UN SEUL RUSH A LA FOIS, ET C'EST LE FOND DE LA REFONTE. L'ecran
+   * montait auparavant la chaine COMPLETE — analyse, passages, audio, bouton
+   * — pour CHAQUE rush verifie. Trois rushes faisaient trois panneaux audio
+   * et trois « Creer ma video », alors que le moteur, lui, part d'UN rush.
+   * L'ecran dit desormais la meme chose que le moteur.
+   */
+  useEffect(() => {
+    setRushChoisi((actuel) => {
+      if (actuel && rushes.some((r) => r.id === actuel)) return actuel;
+      return rushes.find((r) => r.etat === 'verifie')?.id ?? rushes[0]?.id ?? null;
+    });
+  }, [rushes]);
+
+  /**
+   * L'etat d'analyse de CHAQUE rush — pour la miniature et le ✓ des cartes.
+   *
+   * ⚠️ `GET` UNIQUEMENT, ET MOINS DE REQUETES QU'AVANT. Chaque rush verifie
+   * montait un `AnalyseRush` qui sondait pour son compte ; ici une passe de
+   * lecture suffit, et elle ne se repete que tant qu'une analyse bouge.
+   */
+  const chargerAnalyses = useCallback(async (liste: Rush[]) => {
+    const paires = await Promise.all(liste.map(async (r) => {
+      const a = await lireAnalyse(r.id);
+      const carte: AnalyseCarte | null = a.sorte === 'trouvee'
+        ? { id: a.analyse.id, etat: a.analyse.etat, dureeSecondes: a.analyse.dureeSecondes }
+        : null;
+      return [r.id, carte] as const;
+    }));
+    setAnalyses(Object.fromEntries(paires));
+  }, []);
+
+  useEffect(() => {
+    if (rushes.length === 0) { setAnalyses({}); return; }
+    chargerAnalyses(rushes);
+  }, [rushes, chargerAnalyses]);
+
+  /**
+   * ⚠️ ON NE SONDE QUE TANT QU'UNE ANALYSE BOUGE. `reussie`, `echouee` et
+   * `annulee` ne se rouvrent pas : continuer serait une requete toutes les
+   * huit secondes, pour toujours, sur un resultat fige.
+   */
+  const enVol = Object.values(analyses)
+    .some((a) => a !== null && (a.etat === 'en_cours' || a.etat === 'en_attente'));
+  useEffect(() => {
+    if (!enVol || rushes.length === 0) return undefined;
+    const t = setInterval(() => chargerAnalyses(rushes), 8000);
+    return () => clearInterval(t);
+  }, [enVol, rushes, chargerAnalyses]);
 
   // L'aperçu unique de la colonne de droite a besoin de savoir QUEL tournage
   // on regarde. Sans ce signal, il faudrait un second lecteur ici.
   useEffect(() => {
-    onSessionChange?.({ sessionId: selection, aucunRush: rushes.length === 0 });
-  }, [selection, rushes.length, onSessionChange]);
+    onSessionChange?.({
+      sessionId: selection, aucunRush: rushes.length === 0, format: montage.format,
+    });
+  }, [selection, rushes.length, montage.format, onSessionChange]);
 
   const creer = async () => {
     const t = titre.trim();
@@ -232,209 +334,206 @@ export default function SessionsTournagePanel({
     if (selection) await chargerRushes(selection);
   };
 
+  const rushActif = rushes.find((r) => r.id === rushChoisi) ?? null;
+  const nomRushActif = rushActif
+    ? (rushActif.nomOrigine || rushActif.cleObjet.split('/').pop() || 'rush')
+      .replace(/^\d{10,}-/, '')
+    : '';
+
   return (
-    <div className="space-y-3" data-tournage-panel>
+    <div className="space-y-4" data-tournage-panel>
+      {/* ══ EN-TETE ══════════════════════════════════════════════════════
+          Une ligne : la session qu'on regarde, et un « ⋯ » pour ce qui la
+          concerne. Creer et nommer un tournage sont des gestes rares ; ils
+          n'ont pas a occuper deux champs en permanence. */}
       <div className="flex items-center gap-2">
-        <input
-          type="text"
-          value={titre}
-          onChange={(e) => setTitre(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); creer(); } }}
-          placeholder="Nom du tournage — ex : cours du samedi"
-          data-tournage-titre
-          className="flex-1 rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none px-2.5 py-2 text-sm"
-        />
-        <button
-          type="button"
-          onClick={creer}
-          disabled={!titre.trim()}
-          data-tournage-creer
-          className="flex items-center gap-1 rounded-lg border border-gray-800 px-2.5 py-2 text-xs text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 transition-colors"
+        <label className="sr-only" htmlFor="session-active">Session de tournage</label>
+        <select
+          id="session-active"
+          value={selection ?? ''}
+          onChange={(e) => setSelection(e.target.value || null)}
+          data-tournage-selecteur
+          disabled={sessions.length === 0}
+          className="min-w-0 flex-1 rounded-lg border border-white/10 bg-transparent px-2 py-1.5
+            text-[13px] text-gray-100 outline-none focus:border-purple-500 disabled:opacity-40"
         >
-          <Plus className="w-3.5 h-3.5" /> Nouvelle session
-        </button>
+          {sessions.length === 0 && <option value="">Aucune session</option>}
+          {sessions.map((x) => (
+            <option key={x.id} value={x.id}>{x.titre}</option>
+          ))}
+        </select>
+        <MenuActions
+          marqueur="session"
+          etiquette="Actions de la session"
+          actions={[
+            { libelle: 'Nouvelle session', onClick: () => setNouvelleSession(true) },
+          ]}
+        />
       </div>
 
-      {erreur && <p className="text-xs text-gray-500" data-tournage-erreur>{erreur}</p>}
-      {chargement && <Loader2 className="w-4 h-4 animate-spin text-gray-500" />}
-
-      {sessions.length > 0 && (
-        <ul className="space-y-1" data-tournage-liste>
-          {sessions.map((s) => (
-            <li key={s.id}>
-              <button
-                type="button"
-                onClick={() => setSelection(s.id)}
-                data-tournage-session={s.id}
-                aria-pressed={selection === s.id}
-                className={`w-full text-left rounded-lg border px-2.5 py-2 text-sm transition-colors ${
-                  selection === s.id
-                    ? 'border-purple-500 text-white'
-                    : 'border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
-                }`}
-              >
-                {s.titre}
-                <span className="ml-2 text-[11px] text-gray-500">{s.statut}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {selection && (
-        <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-3 space-y-2">
-          {/* ── LES RÉGLAGES DU MONTAGE ───────────────────────────────────
-              Deux, et deux seulement : ce sont les seuls paramètres que
-              `POST /clips/[id]/montage` accepte, donc les seuls qui changent
-              vraiment le MP4. Tout le reste — titre, musique, voix, look —
-              serait un contrôle sans effet.
-
-              L'aperçu, lui, n'est plus ici : il vit dans la colonne de
-              droite, seul et collant. */}
-          <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-2 space-y-2" data-montage-reglages>
-            {/* ⚠️ PAS « Votre vidéo » : ce titre est celui de l'APERÇU, dans la
-                colonne de droite. Deux blocs portant le même nom dans deux
-                colonnes, c'est exactement la confusion qu'on vient d'enlever. */}
-            <p className="text-[10px] uppercase tracking-wide text-gray-500">
-              Réglages de la vidéo
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <label className="flex-1 min-w-[7rem]">
-                <span className="block text-[10px] text-gray-500 mb-1">Format</span>
-                <select
-                  value={montage.format}
-                  onChange={(e) => changerMontage({ format: e.target.value })}
-                  data-montage-format
-                  className="w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none px-2 py-1.5 text-xs"
-                >
-                  {FORMATS.map((f) => (
-                    <option key={f.valeur} value={f.valeur}>
-                      {f.libelle} ({f.valeur})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex-1 min-w-[7rem]">
-                <span className="block text-[10px] text-gray-500 mb-1">Durée</span>
-                <select
-                  value={String(montage.dureeSecondes)}
-                  onChange={(e) => changerMontage({ dureeSecondes: Number(e.target.value) })}
-                  data-montage-duree
-                  className="w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none px-2 py-1.5 text-xs"
-                >
-                  {DUREES.map((d) => (
-                    <option key={d} value={d}>{d} secondes</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            {/* ⚠️ UN SECOND GESTE, EXPLICITE. Sans lui, corriger le format
-                d'UNE vidéo changerait toutes les suivantes. */}
-            {onEnregistrerDefaut && (
-              <button
-                type="button"
-                onClick={async () => {
-                  await onEnregistrerDefaut(montage);
-                  setDefautEnregistre(true);
-                }}
-                data-montage-defaut
-                className="text-[10px] text-gray-500 hover:text-gray-300 underline underline-offset-2 transition-colors"
-              >
-                {defautEnregistre
-                  ? 'Enregistré comme réglage par défaut'
-                  : 'Enregistrer comme réglage par défaut'}
-              </button>
-            )}
-
-            {/* La validation humaine, dite avant même que la vidéo existe. */}
-            <p className="text-[10px] text-gray-500 leading-relaxed" data-validation-humaine>
-              Studiio prépare la vidéo. Vous la vérifiez avant publication.
-            </p>
-          </div>
-
-
-          {/* Un input de fichiers ordinaire : c'est le sélecteur du système
-              qui s'ouvre, donc TOUT volume monté — SSD, carte SD, clé USB.
-              Rien de spécial à écrire pour ça, et surtout aucune copie
-              préalable sur le disque interne. */}
+      {nouvelleSession && (
+        <div className="flex items-center gap-2" data-tournage-nouvelle>
           <input
-            ref={fichiersRef}
-            type="file"
-            multiple
-            accept="video/*"
-            data-tournage-fichiers
-            className="hidden"
-            onChange={(e) => {
-              const fs = Array.from(e.target.files ?? []);
-              e.target.value = '';
-              ajouterFichiers(fs);
+            type="text"
+            autoFocus
+            value={titre}
+            onChange={(e) => setTitre(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); creer(); setNouvelleSession(false); }
+              if (e.key === 'Escape') setNouvelleSession(false);
             }}
+            placeholder="Nom du tournage — ex : cours du samedi"
+            data-tournage-titre
+            className="min-w-0 flex-1 rounded-lg border border-white/10 bg-transparent px-2.5 py-1.5
+              text-[13px] outline-none focus:border-purple-500"
           />
           <button
             type="button"
-            onClick={() => fichiersRef.current?.click()}
-            data-tournage-ajouter
-            className="flex items-center gap-1.5 rounded-lg border border-gray-800 px-2.5 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 transition-colors"
+            onClick={() => { creer(); setNouvelleSession(false); }}
+            disabled={!titre.trim()}
+            data-tournage-creer
+            className="rounded-lg border border-white/10 px-2.5 py-1.5 text-[12px] text-gray-300
+              hover:border-white/20 hover:text-white disabled:opacity-40 transition-colors"
           >
-            <Film className="w-3.5 h-3.5" /> Ajouter des rushes
+            Créer
           </button>
-          <p className="text-[11px] text-gray-500">
-            Depuis n’importe quel volume — SSD externe, carte mémoire, clé USB.
-            Les fichiers ne sont pas copiés sur votre ordinateur.
-          </p>
-
-          {envois.length > 0 && (
-            <ul className="space-y-1" data-tournage-envois>
-              {envois.map((e) => (
-                <li key={e.nom} className="flex items-center gap-2 text-xs">
-                  {e.erreur
-                    ? <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    : <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 ${e.pourcent === 100 ? 'text-emerald-400' : 'text-gray-600'}`} />}
-                  <span className="flex-1 truncate text-gray-400">{e.nom}</span>
-                  <span className="text-gray-500">
-                    {e.erreur ? e.erreur : `${e.pourcent}%`}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <ul className="space-y-2" data-tournage-rushes>
-            {rushes.map((r) => (
-              <li key={r.id} data-tournage-rush={r.id} className="text-xs">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="w-5 shrink-0 text-center text-gray-500">{r.rang + 1}</span>
-                  <span className="flex-1 truncate text-gray-400">
-                    {r.nomOrigine || r.cleObjet}
-                  </span>
-                  <span className="shrink-0 text-gray-500" data-tournage-rush-etat={r.etat}>{r.etat}</span>
-                </div>
-                {/* L'analyse ne s'affiche que pour un rush VÉRIFIÉ — le seul
-                    que la route accepte de mesurer. La proposer sur un rush
-                    `indexe` ou `absent` reviendrait à offrir un bouton dont on
-                    sait déjà qu'il rendra 409. Le décalage vers la droite
-                    aligne le bloc sous le nom, pas sous le numéro. */}
-                {r.etat === 'verifie' && (
-                  <div className="pl-7">
-                    <AnalyseRush
-                      rushId={r.id}
-                      montage={montage}
-                      audioDefaut={audioDefaut}
-                      onEnregistrerAudioDefaut={onEnregistrerAudioDefaut}
-                      onVideoLancee={onVideoLancee}
-                    />
-                  </div>
-                )}
-              </li>
-            ))}
-            {rushes.length === 0 && (
-              <li className="text-xs text-gray-500">Aucun rush indexé pour l’instant.</li>
-            )}
-          </ul>
-
         </div>
       )}
+
+      {erreur && <p className="text-[11px] text-gray-500" data-tournage-erreur>{erreur}</p>}
+      {chargement && <Loader2 className="h-4 w-4 animate-spin text-gray-500" aria-hidden="true" />}
+
+      {selection && (
+        <>
+          {/* ══ RUSHES ═══════════════════════════════════════════════════ */}
+          <BandeRushes
+            rushes={rushes}
+            analyses={analyses}
+            selection={rushChoisi}
+            onSelectionner={setRushChoisi}
+            onVoirAnalyse={(id) => { setRushChoisi(id); setTiroir('analyse'); }}
+            onReanalyser={(id) => {
+              setRushChoisi(id);
+              setRelances((r) => ({ ...r, [id]: (r[id] ?? 0) + 1 }));
+            }}
+            onAjouterFichiers={ajouterFichiers}
+            envois={envois}
+          />
+
+          {/* ══ FORMAT ET DUREE ══════════════════════════════════════════
+              Une ligne, deux menus. La carte « Reglages de la video » qui les
+              entourait n'apportait qu'un cadre et un titre. */}
+          <div className="flex flex-wrap items-center gap-3" data-montage-reglages>
+            <label className="flex items-center gap-2">
+              <span className="text-[11px] text-gray-500">Format</span>
+              <select
+                value={montage.format}
+                onChange={(e) => changerMontage({ format: e.target.value })}
+                data-montage-format
+                className="rounded-lg border border-white/10 bg-transparent px-2 py-1
+                  text-[12px] text-gray-100 outline-none focus:border-purple-500"
+              >
+                {FORMATS.map((f) => (
+                  <option key={f.valeur} value={f.valeur}>{f.libelle} {f.valeur}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-2">
+              <span className="text-[11px] text-gray-500">Durée</span>
+              <select
+                value={String(montage.dureeSecondes)}
+                onChange={(e) => changerMontage({ dureeSecondes: Number(e.target.value) })}
+                data-montage-duree
+                className="rounded-lg border border-white/10 bg-transparent px-2 py-1
+                  text-[12px] text-gray-100 outline-none focus:border-purple-500"
+              >
+                {DUREES.map((d) => (
+                  <option key={d} value={d}>{d} s</option>
+                ))}
+              </select>
+            </label>
+            {onEnregistrerDefaut && (
+              <MenuActions
+                compact
+                marqueur="montage"
+                etiquette="Actions du format et de la durée"
+                actions={[{
+                  libelle: defautEnregistre
+                    ? 'Réglage par défaut enregistré'
+                    : 'Enregistrer comme réglage par défaut',
+                  onClick: async () => {
+                    await onEnregistrerDefaut(montage);
+                    setDefautEnregistre(true);
+                  },
+                }]}
+              />
+            )}
+          </div>
+
+          {/* ══ AUDIO + ACTION PRINCIPALE ════════════════════════════════
+              Portes par la chaine du rush regarde. UN panneau audio, UN
+              bouton — quel que soit le nombre de rushes. */}
+          {rushActif && rushActif.etat === 'verifie' && (
+            <AnalyseRush
+              key={rushActif.id}
+              rushId={rushActif.id}
+              montage={montage}
+              audioDefaut={audioDefaut}
+              onEnregistrerAudioDefaut={onEnregistrerAudioDefaut}
+              onVideoLancee={onVideoLancee}
+              variante="chaine"
+              relance={relances[rushActif.id]}
+              onVoirAnalyse={() => setTiroir('analyse')}
+            />
+          )}
+          {rushActif && rushActif.etat !== 'verifie' && (
+            <p className="text-[11px] text-gray-500" data-rush-non-verifie={rushActif.etat}>
+              Ce rush est encore « {rushActif.etat} ». Studiio le vérifie avant de pouvoir le monter.
+            </p>
+          )}
+
+          {/* ══ AVANCE ═══════════════════════════════════════════════════ */}
+          <div className="flex items-center justify-between gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setTiroir('avance')}
+              data-ouvrir-avance
+              className="inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-[11px]
+                text-gray-500 hover:text-gray-300 focus-visible:outline-none
+                focus-visible:ring-2 focus-visible:ring-purple-500 transition-colors"
+            >
+              <Settings2 className="h-3.5 w-3.5" aria-hidden="true" /> Avancé
+            </button>
+            {/* La validation humaine, dite une fois, en petit. */}
+            <p className="text-[10px] text-gray-600" data-validation-humaine>
+              Studiio prépare la vidéo. Vous la vérifiez avant publication.
+            </p>
+          </div>
+        </>
+      )}
+
+      {/* ══ TIROIRS ══════════════════════════════════════════════════════ */}
+      <DrawerLateral
+        ouvert={tiroir === 'analyse'}
+        onFermer={() => setTiroir(null)}
+        titre={nomRushActif ? `Analyse — ${nomRushActif}` : 'Analyse'}
+        marqueur="analyse"
+      >
+        {rushActif && <ContenuAnalyse rushId={rushActif.id} nom={nomRushActif} />}
+      </DrawerLateral>
+
+      <DrawerLateral
+        ouvert={tiroir === 'avance'}
+        onFermer={() => setTiroir(null)}
+        titre="Réglages avancés"
+        marqueur="avance"
+      >
+        {avance ?? (
+          <p className="text-[12px] text-gray-500">
+            Rien à régler pour l’instant. Les réglages créatifs viendront ici.
+          </p>
+        )}
+      </DrawerLateral>
     </div>
   );
 }

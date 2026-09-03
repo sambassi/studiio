@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Music, Volume2, VolumeX, Check, Loader2 } from 'lucide-react';
+import MenuActions, { type ActionMenu } from '@/components/ui/MenuActions';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import {
   BUCKET_MUSIQUE, RECETTE_AUDIO_DEFAUT, arrondirVolume, type RecetteAudio,
@@ -42,11 +43,8 @@ function Curseur({ libelle, valeur, onChange, desactive }: {
   desactive?: boolean;
 }) {
   return (
-    <label className={`block ${desactive ? 'opacity-40' : ''}`}>
-      <span className="flex items-center justify-between text-[11px] text-gray-400">
-        {libelle}
-        <span className="tabular-nums text-gray-300">{pourcent(valeur)} %</span>
-      </span>
+    <label className={`flex items-center gap-2 ${desactive ? 'opacity-40' : ''}`}>
+      <span className="w-24 shrink-0 text-[11px] text-gray-400">{libelle}</span>
       <input
         type="range"
         min={0}
@@ -55,8 +53,11 @@ function Curseur({ libelle, valeur, onChange, desactive }: {
         value={pourcent(valeur)}
         disabled={desactive}
         onChange={(e) => onChange(arrondirVolume(Number(e.target.value) / 100))}
-        className="mt-1 w-full accent-purple-500"
+        className="min-w-0 flex-1 accent-purple-500"
       />
+      <span className="w-10 shrink-0 text-right text-[11px] tabular-nums text-gray-300">
+        {pourcent(valeur)} %
+      </span>
     </label>
   );
 }
@@ -103,47 +104,84 @@ export default function ReglagesAudio({
     setMediatheque(false);
   };
 
-  return (
-    <section className="space-y-3 rounded-lg border border-white/10 bg-white/[0.02] p-3">
-      <h4 className="flex items-center gap-1.5 text-xs font-semibold text-gray-200">
-        <Music className="h-3.5 w-3.5 text-cyan-400" /> Audio
-      </h4>
+  const nomAffiche = valeur.musique === null
+    ? null
+    : nomMusique ?? valeur.musique.cle.split('/').pop() ?? 'musique';
 
-      {/* ── La musique ────────────────────────────────────────────────── */}
-      <div className="space-y-1.5">
-        <span className="text-[11px] text-gray-400">Musique</span>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            disabled={desactive}
-            onClick={() => { setNomMusique(null); majuscule({ musique: null }); }}
-            className={`rounded px-2 py-1 text-[11px] ${valeur.musique === null
-              ? 'bg-purple-600 text-white' : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}
-          >
-            Aucune
-          </button>
-          <button
-            type="button"
-            disabled={desactive}
-            onClick={() => setMediatheque(true)}
-            className={`rounded px-2 py-1 text-[11px] ${valeur.musique !== null
-              ? 'bg-purple-600 text-white' : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}
-          >
-            {valeur.musique === null ? 'Choisir une musique' : 'Changer'}
-          </button>
-        </div>
-        {valeur.musique !== null && (
-          <p className="truncate text-[11px] text-gray-400" title={nomMusique ?? valeur.musique.cle}>
-            {nomMusique ?? valeur.musique.cle.split('/').pop()}
-          </p>
-        )}
+  /**
+   * ⚠️ TOUT CE QUI N'EST PAS UN CURSEUR PART DANS LE « ⋯ ».
+   *
+   * Choisir, retirer, enregistrer un defaut, reinitialiser : quatre gestes
+   * rares. En boutons permanents, ils pesaient plus lourd que les deux
+   * reglages qu'on utilise vraiment. Les curseurs restent, eux, parce qu'ils
+   * changent le resultat a chaque video.
+   */
+  const actions: ActionMenu[] = [
+    {
+      libelle: valeur.musique === null ? 'Choisir une musique' : 'Changer la musique',
+      onClick: () => setMediatheque(true),
+      desactive,
+    },
+    {
+      libelle: 'Retirer la musique',
+      onClick: () => { setNomMusique(null); majuscule({ musique: null }); },
+      desactive: desactive || valeur.musique === null,
+    },
+    ...(onEnregistrerDefaut ? [{
+      libelle: enregistrement === 'fait'
+        ? 'Réglage par défaut enregistré'
+        : 'Enregistrer comme réglage par défaut',
+      desactive: desactive || enregistrement === 'encours',
+      onClick: async () => {
+        setEnregistrement('encours');
+        const ok = await onEnregistrerDefaut(valeur);
+        setEnregistrement(ok ? 'fait' : 'inactif');
+      },
+    } as ActionMenu] : []),
+    {
+      libelle: 'Réinitialiser',
+      onClick: () => { setNomMusique(null); onChange(RECETTE_AUDIO_DEFAUT); setEnregistrement('inactif'); },
+      desactive,
+    },
+  ];
+
+  return (
+    <section className="space-y-2" data-reglages-audio>
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-gray-500">
+          <Music className="h-3 w-3" aria-hidden="true" /> Audio
+        </h4>
+        <span className="flex items-center gap-1">
+          {enregistrement === 'encours' && (
+            <Loader2 className="h-3 w-3 animate-spin text-gray-500" aria-hidden="true" />
+          )}
+          {enregistrement === 'fait' && (
+            <Check className="h-3 w-3 text-gray-400" aria-hidden="true" />
+          )}
+          <MenuActions
+            compact
+            marqueur="audio"
+            etiquette="Actions audio"
+            actions={actions}
+          />
+        </span>
       </div>
+
+      {/* La musique en une ligne : son nom, ou l'absence dite simplement. */}
+      <p
+        className="flex items-center gap-1.5 truncate text-[12px] text-gray-300"
+        title={nomAffiche ?? undefined}
+        data-audio-musique={valeur.musique === null ? 'aucune' : 'choisie'}
+      >
+        <Music className="h-3 w-3 shrink-0 text-gray-500" aria-hidden="true" />
+        <span className="truncate">{nomAffiche ?? 'Aucune musique'}</span>
+      </p>
 
       {/* ⚠️ Le volume ne s'affiche QUE s'il y a une musique : un curseur sans
           source ne reglerait rien, et le moteur l'ignore d'ailleurs. */}
       {valeur.musique !== null && (
         <Curseur
-          libelle="Volume musique"
+          libelle="Musique"
           valeur={valeur.volumeMusique}
           desactive={desactive}
           onChange={(v) => majuscule({ volumeMusique: v })}
@@ -151,49 +189,34 @@ export default function ReglagesAudio({
       )}
 
       {/* ── Le son original ───────────────────────────────────────────── */}
-      <div className="space-y-1.5">
+      <div className="flex items-center gap-2">
+        <span className="w-24 shrink-0 text-[11px] text-gray-400">Son original</span>
         <button
           type="button"
           disabled={desactive}
           onClick={() => majuscule({ sonOriginal: !valeur.sonOriginal })}
-          className="flex w-full items-center justify-between rounded bg-white/5 px-2 py-1.5 text-[11px] text-gray-200 hover:bg-white/10"
+          aria-pressed={valeur.sonOriginal}
+          data-audio-son-original={valeur.sonOriginal ? 'on' : 'off'}
+          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]
+            font-medium transition-colors focus-visible:outline-none focus-visible:ring-2
+            focus-visible:ring-purple-500 disabled:opacity-40 ${valeur.sonOriginal
+              ? 'border-purple-500/50 bg-purple-500/10 text-purple-200'
+              : 'border-white/10 text-gray-500 hover:text-gray-300'}`}
         >
-          <span className="flex items-center gap-1.5">
-            {valeur.sonOriginal
-              ? <Volume2 className="h-3.5 w-3.5 text-emerald-400" />
-              : <VolumeX className="h-3.5 w-3.5 text-gray-500" />}
-            Son original du rush
-          </span>
-          <span className={valeur.sonOriginal ? 'text-emerald-400' : 'text-gray-500'}>
-            {valeur.sonOriginal ? 'Activé' : 'Désactivé'}
-          </span>
+          {valeur.sonOriginal
+            ? <Volume2 className="h-3 w-3" aria-hidden="true" />
+            : <VolumeX className="h-3 w-3" aria-hidden="true" />}
+          {valeur.sonOriginal ? 'ON' : 'OFF'}
         </button>
-        {/* Même règle que la musique : pas de curseur sans source. */}
-        {valeur.sonOriginal && (
-          <Curseur
-            libelle="Volume son original"
-            valeur={valeur.volumeSonOriginal}
-            desactive={desactive}
-            onChange={(v) => majuscule({ volumeSonOriginal: v })}
-          />
-        )}
       </div>
-
-      {onEnregistrerDefaut && (
-        <button
-          type="button"
-          disabled={desactive || enregistrement === 'encours'}
-          onClick={async () => {
-            setEnregistrement('encours');
-            const ok = await onEnregistrerDefaut(valeur);
-            setEnregistrement(ok ? 'fait' : 'inactif');
-          }}
-          className="flex w-full items-center justify-center gap-1.5 rounded border border-white/10 px-2 py-1.5 text-[11px] text-gray-300 hover:bg-white/5"
-        >
-          {enregistrement === 'encours' && <Loader2 className="h-3 w-3 animate-spin" />}
-          {enregistrement === 'fait' && <Check className="h-3 w-3 text-emerald-400" />}
-          {enregistrement === 'fait' ? 'Réglage par défaut enregistré' : 'Enregistrer comme réglage par défaut'}
-        </button>
+      {/* Même règle que la musique : pas de curseur sans source. */}
+      {valeur.sonOriginal && (
+        <Curseur
+          libelle="Volume original"
+          valeur={valeur.volumeSonOriginal}
+          desactive={desactive}
+          onChange={(v) => majuscule({ volumeSonOriginal: v })}
+        />
       )}
 
       {mediatheque && (

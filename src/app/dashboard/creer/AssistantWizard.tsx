@@ -3164,8 +3164,8 @@ export default function AssistantWizard() {
    * n'existe, puis la vidéo elle-même.
    */
   const [tournageRegarde, setTournageRegarde] = useState<
-    { sessionId: string | null; aucunRush: boolean }
-  >({ sessionId: null, aucunRush: true });
+    { sessionId: string | null; aucunRush: boolean; format: string }
+  >({ sessionId: null, aucunRush: true, format: '9:16' });
   const [relanceVideos, setRelanceVideos] = useState(0);
   const [etatVideo, setEtatVideo] = useState<'vide' | 'en_cours' | 'prete' | 'echec'>('vide');
   /** La vidéo prend la place de l'aperçu du projet dès qu'elle existe. */
@@ -9032,6 +9032,7 @@ export default function AssistantWizard() {
               <VideosPretes
                 sessionId={tournageRegarde.sessionId}
                 aucunRush={tournageRegarde.aucunRush}
+                formatSouhaite={tournageRegarde.format}
                 relance={relanceVideos}
                 onEtat={setEtatVideo}
               />
