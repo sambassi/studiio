@@ -284,8 +284,14 @@ describe('1-8. Le recadrage et les arguments : purs, donc vérifiables', () => {
     // le graphe sans piste sonore, et le montage serait déclaré réussi avec
     // sa bande son perdue.
     const moteur = readFileSync(SRC.moteur, 'utf8');
-    expect(moteur).toContain("return { ...vide, motif: 'outil_absent' }");
-    expect(moteur).toContain("return { ...vide, motif: 'delai_depasse' }");
+    // Depuis le correctif Lot 2A, la lecture ffprobe est partagee par les deux
+    // sondes — celle des clips et celle des musiques. Les deux pannes de
+    // SERVEUR y sont nommees une fois, et chaque sonde les repropage telles
+    // quelles plutot que de les aplatir en « pas d'audio ».
+    expect(moteur).toContain("return { flux: null, motif: 'outil_absent' }");
+    expect(moteur).toContain("return { flux: null, motif: 'delai_depasse' }");
+    expect(moteur).toContain('if (lu.motif !== null) return { ...vide, motif: lu.motif }');
+    expect(moteur).toContain('if (lu.motif !== null) return { aAudio: false, motif: lu.motif }');
     const orch = readFileSync(SRC.orchestration, 'utf8');
     expect(orch).toContain('if (sonde.motif) return echec(sonde.motif, usage)');
     expect(orch).not.toMatch(/sonder\w+\([^)]*\)\)\s*===\s*true/);

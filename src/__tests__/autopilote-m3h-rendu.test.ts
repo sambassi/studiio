@@ -442,7 +442,10 @@ describe('19-23. Les vocabulaires fermés', () => {
 
   it('les motifs sont fermés, utiles, et sans sortie brute', () => {
     expect(MOTIFS_RENDU).toEqual([
-      'plan_non_conforme', 'source_inaccessible', 'clip_illisible', 'outil_absent',
+      'plan_non_conforme', 'source_inaccessible', 'clip_illisible',
+      // Lot 2A : la musique a son propre motif. Sans lui, une musique
+      // illisible etait annoncee comme un rush casse.
+      'musique_illisible', 'outil_absent',
       'encodage_echoue', 'delai_depasse', 'resultat_invalide',
       'televersement_echoue', 'capacite_saturee', 'rendu_interrompu',
     ]);

@@ -312,9 +312,10 @@ describe('1. GET /api/autopilot/sessions/[id]/rendus', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('2. La traduction des vocabulaires fermés', () => {
-  it('2.1 les DIX motifs du contrat sont traduits, ni plus ni moins', () => {
+  it('2.1 les ONZE motifs du contrat sont traduits, ni plus ni moins', () => {
     expect([...MOTIFS_TRADUITS].sort()).toEqual([...MOTIFS_RENDU].sort());
-    expect(MOTIFS_RENDU).toHaveLength(10);
+    // Onze depuis le correctif Lot 2A, qui a donne son motif a la musique.
+    expect(MOTIFS_RENDU).toHaveLength(11);
   });
 
   it('2.2 aucun message ne contient un mot de machine', () => {

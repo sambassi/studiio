@@ -662,30 +662,71 @@ export interface SondeSource {
  *
  * On constate donc ici, et l'orchestration compare.
  */
-export async function sonderSource(fichier: string): Promise<SondeSource> {
-  const vide = { aAudio: false, largeur: null, hauteur: null };
+async function lireFluxSource(
+  fichier: string, motifIllisible: MotifRendu,
+): Promise<
+  | { flux: Array<Record<string, unknown>>; motif: null }
+  | { flux: null; motif: MotifRendu }
+> {
   const proc = await lancer(cheminFfprobe(), argumentsSondeSource(fichier), {
     timeoutMs: TIMEOUT_MESURE_MS, maxSortie: SORTIE_MAX,
   });
-  if (proc.introuvable) return { ...vide, motif: 'outil_absent' };
-  if (proc.timeout) return { ...vide, motif: 'delai_depasse' };
-  if (proc.code !== 0) return { ...vide, motif: 'clip_illisible' };
+  if (proc.introuvable) return { flux: null, motif: 'outil_absent' };
+  if (proc.timeout) return { flux: null, motif: 'delai_depasse' };
+  if (proc.code !== 0) return { flux: null, motif: motifIllisible };
   try {
     const o = JSON.parse(proc.stdout.toString('utf8')) as {
       streams?: Array<Record<string, unknown>>;
     };
-    const flux = Array.isArray(o.streams) ? o.streams : [];
-    const video = flux.find((f) => f.codec_type === 'video');
-    if (!video) return { ...vide, motif: 'clip_illisible' };
-    return {
-      aAudio: flux.some((f) => f.codec_type === 'audio'),
-      largeur: nombreFini(video.width),
-      hauteur: nombreFini(video.height),
-      motif: null,
-    };
+    return { flux: Array.isArray(o.streams) ? o.streams : [], motif: null };
   } catch {
-    return { ...vide, motif: 'clip_illisible' };
+    return { flux: null, motif: motifIllisible };
   }
+}
+
+export async function sonderSource(fichier: string): Promise<SondeSource> {
+  const vide = { aAudio: false, largeur: null, hauteur: null };
+  const lu = await lireFluxSource(fichier, 'clip_illisible');
+  if (lu.motif !== null) return { ...vide, motif: lu.motif };
+  const video = lu.flux.find((f) => f.codec_type === 'video');
+  // ⚠️ EXIGENCE MAINTENUE, ET DELIBEREMENT. Un CLIP sans piste video n'est pas
+  // un clip : c'est le contrat historique de M3-H, et le correctif Lot 2A ne
+  // l'assouplit pas — il donne sa propre sonde a la musique.
+  if (!video) return { ...vide, motif: 'clip_illisible' };
+  return {
+    aAudio: lu.flux.some((f) => f.codec_type === 'audio'),
+    largeur: nombreFini(video.width),
+    hauteur: nombreFini(video.height),
+    motif: null,
+  };
+}
+
+export interface SondeAudio {
+  /** Le media porte au moins une piste audio decodable. */
+  aAudio: boolean;
+  /** Renseigne quand la sonde n'a pas abouti. */
+  motif: MotifRendu | null;
+}
+
+/**
+ * Sonde une source MUSICALE. Elle n'exige AUCUNE piste video.
+ *
+ * ⚠️ C'EST LE CORRECTIF DE LOT 2A, ET IL TIENT EN UNE PHRASE : une musique se
+ * juge sur sa piste AUDIO. `sonderSource` cherche d'abord un flux video et
+ * refuse le fichier s'il n'en trouve pas — parfaitement juste pour un clip,
+ * faux pour un MP3. Un MP3 sans pochette n'a qu'un flux audio ; il repartait
+ * donc en `clip_illisible`, avant meme que le graphe de mixage n'existe. Un
+ * MP3 AVEC pochette passait, lui, par accident : la pochette est un flux
+ * video. Le resultat ne doit dependre de rien de tel.
+ *
+ * ⚠️ ET ELLE NE CONFOND PAS « PAS D'AUDIO » AVEC « JE N'AI PAS PU REGARDER ».
+ * `outil_absent` et `delai_depasse` ressortent tels quels, comme pour les
+ * clips : ce sont des pannes du serveur, pas des fichiers de l'utilisateur.
+ */
+export async function sonderSourceAudio(fichier: string): Promise<SondeAudio> {
+  const lu = await lireFluxSource(fichier, 'musique_illisible');
+  if (lu.motif !== null) return { aAudio: false, motif: lu.motif };
+  return { aAudio: lu.flux.some((f) => f.codec_type === 'audio'), motif: null };
 }
 
 /**

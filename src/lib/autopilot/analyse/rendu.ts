@@ -45,7 +45,8 @@ import {
 import {
   argumentsRendu, descendreSource, diagnosticRendu, encoder, fermerDossierRendu,
   nomMusiqueLocale, rendraDeLAudio, type MusiqueLocale,
-  mesurer, ouvrirDossierRendu, rectangleCrop, sonderSource, supprimerObjetRendu,
+  mesurer, ouvrirDossierRendu, rectangleCrop, sonderSource, sonderSourceAudio,
+  supprimerObjetRendu,
   televerserRendu,
   type CibleRendu, type MesureRendu, type SourceLocale,
 } from './rendu-ffmpeg';
@@ -296,10 +297,16 @@ export async function produireMontage(
       if (!descente.ok) return echec(descente.motif, usage);
       // ⚠️ ON SONDE AVANT DE BOUCLER. `-stream_loop -1` sur un fichier sans
       // piste audio ne donnerait rien a `atrim`, et le graphe echouerait avec
-      // un diagnostic obscur. Le motif `clip_illisible` est celui du socle
-      // pour « ce media ne porte pas ce qu'on attend de lui ».
-      const sondeMusique = await sonderSource(cheminMusique);
-      if (!sondeMusique.aAudio) return echec('clip_illisible', usage);
+      // un diagnostic obscur.
+      //
+      // ⚠️ ET ON SONDE AVEC LA SONDE AUDIO, PAS CELLE DES CLIPS. La premiere
+      // redaction appelait `sonderSource`, qui exige une piste VIDEO : tout
+      // MP3 sans pochette repartait en `clip_illisible` — un rush sain se
+      // faisait accuser, et le mixage n'etait jamais atteint. Constate en
+      // production le 2026-09-03 sur deux rendus.
+      const sondeMusique = await sonderSourceAudio(cheminMusique);
+      if (sondeMusique.motif !== null) return echec(sondeMusique.motif, usage);
+      if (!sondeMusique.aAudio) return echec('musique_illisible', usage);
       musique = { chemin: cheminMusique };
       usage.octetsMusique = descente.octets;
     }

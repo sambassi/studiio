@@ -513,6 +513,12 @@ export const MOTIFS_RENDU = [
   'plan_non_conforme',
   'source_inaccessible',
   'clip_illisible',
+  // ⚠️ LA MUSIQUE A SON PROPRE MOTIF, ET CE N'EST PAS UN LUXE. Lot 2A la
+  // faisait passer par la sonde des CLIPS, qui exige une piste video : un MP3
+  // sans pochette y devenait `clip_illisible`, et l'ecran accusait un rush
+  // parfaitement sain. Un diagnostic qui designe le mauvais fichier envoie
+  // l'utilisateur reparer ce qui n'est pas casse.
+  'musique_illisible',
   'outil_absent',
   'encodage_echoue',
   'delai_depasse',

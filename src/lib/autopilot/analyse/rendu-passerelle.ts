@@ -168,6 +168,12 @@ const ECHECS: Record<MotifRendu, Echec> = {
     message: 'Un de tes rushes est illisible.',
     relancable: false,
   },
+  // ⚠️ ELLE NE DIT PAS « RUSH ». C'est tout l'objet de ce motif : accuser un
+  // rush quand la musique est en cause envoie l'utilisateur refilmer.
+  musique_illisible: {
+    message: 'La musique choisie est illisible. Choisis-en une autre.',
+    relancable: false,
+  },
   outil_absent: {
     message: 'La création vidéo est indisponible sur ce serveur.',
     relancable: false,
