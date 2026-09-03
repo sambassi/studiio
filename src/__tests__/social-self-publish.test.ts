@@ -36,8 +36,18 @@ describe('Bloc « Publier vous-même » dans la page Réseaux', () => {
     expect(i3).toBeGreaterThan(i2);
   });
 
-  it('mène au téléchargement existant, sans réinventer de route', () => {
-    expect(page).toContain('href="/dashboard/library"');
+  it('déclenche le téléchargement de la dernière vidéo, sans réinventer de route', () => {
+    // La liste vient de la route déjà utilisée par la Bibliothèque, et le
+    // téléchargement est la même ancre `video_url` : rien de nouveau côté API.
+    expect(page).toContain('handleSelfPublishDownload');
+    expect(page).toContain("fetch('/api/videos?page=1&limit=12')");
+    expect(page).toContain('pickLatestDownloadable');
+    expect(page).toContain('link.download');
+  });
+
+  it('garde le repli vers la Bibliothèque quand aucune vidéo n est prête', () => {
+    expect(page).toContain("router.push('/dashboard/library')");
+    expect(page).toContain("t('selfPublish.noVideo')");
   });
 
   it('NE REMPLACE PAS la connexion automatique', () => {
@@ -68,12 +78,12 @@ describe('Bloc « Publier vous-même » dans la page Réseaux', () => {
 });
 
 describe('Traductions', () => {
-  it('les six clés existent dans les trois langues', () => {
+  it('les huit clés existent dans les trois langues', () => {
     for (const loc of locales) {
       const messages = JSON.parse(readFileSync(resolve(root, `messages/${loc}.json`), 'utf-8'));
       const sp = messages.social?.selfPublish;
       expect(sp, loc).toBeTruthy();
-      for (const key of ['title', 'intro', 'step1', 'step2', 'step3', 'cta']) {
+      for (const key of ['title', 'intro', 'step1', 'step2', 'step3', 'cta', 'downloadStarted', 'noVideo']) {
         expect(typeof sp[key], `${loc}.${key}`).toBe('string');
         expect(sp[key].length, `${loc}.${key}`).toBeGreaterThan(0);
       }
