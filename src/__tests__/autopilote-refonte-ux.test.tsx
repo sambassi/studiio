@@ -990,3 +990,125 @@ describe('20. Le fps d’un rush entre toujours dans la colonne', () => {
     }
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 21. PLUS DE « ⋯ » ANONYME : CHAQUE MENU DIT CE QU'IL CACHE
+// ═══════════════════════════════════════════════════════════════════════════
+describe('21. Les déclencheurs de menu portent une icône sémantique', () => {
+  /**
+   * ⚠️ CE QUI EST VERROUILLÉ, ET POURQUOI.
+   *
+   * « ⋯ » ne dit rien de ce qu'il cache : il faut cliquer pour savoir, donc
+   * cliquer partout. Cinq menus identiques sur un écran, c'est cinq énigmes.
+   * Chaque groupe porte donc une silhouette distincte — et le test refuse
+   * autant l'ellipse que le doublon, parce qu'une icône répétée redevient un
+   * « ⋯ » : elle ne distingue plus rien.
+   */
+  const monterVideoPrete = () => render(
+    <VideosPretes
+      sessionId={SESSION}
+      aucunRush={false}
+      formatSouhaite="9:16"
+      fetcher={vi.fn(async () => ({
+        ok: true, status: 200,
+        json: async () => ({
+          ok: true,
+          rendu: {
+            id: 'r', etat: 'reussie', etape: 'televersement', motif: null,
+            creeLe: '', termineLe: '',
+            video: {
+              dureeSecondes: 24.7, largeur: 1080, hauteur: 1920, fps: 25,
+              chemin: '/api/autopilot/rendus-montage/r/fichier',
+            },
+          },
+        }),
+      } as unknown as Response))}
+    />,
+  );
+
+  it('A. aucun déclencheur ne rend l’icône « ⋯ » sur l’écran Autopilote', async () => {
+    const { MoreHorizontal } = await import('lucide-react');
+    const temoin = render(<MoreHorizontal />);
+    const ellipse = temoin.container.querySelector('svg')!.innerHTML;
+    cleanup();
+
+    const { container } = await monterPanneau();
+    monterVideoPrete();
+    await screen.findByText('Votre vidéo est prête');
+    const decls = [...document.querySelectorAll('[data-menu-actions]')];
+    expect(decls.length).toBeGreaterThanOrEqual(4);
+    for (const d of decls) {
+      const svg = d.querySelector('svg')!;
+      expect(svg, `pas d’icône sur ${d.getAttribute('data-menu-actions')}`).toBeTruthy();
+      // ⚠️ COMPARÉ À L'ELLIPSE ELLE-MÊME, pas à une heuristique : `CirclePlay`
+      // contient un cercle, `MoreHorizontal` en contient TROIS alignés. Le
+      // seul test qui ne se trompe pas est l'égalité avec le dessin refusé.
+      expect(svg.innerHTML).not.toBe(ellipse);
+    }
+    expect(container.textContent).not.toContain('⋯');
+  });
+
+  it('B. cinq groupes, cinq silhouettes — aucun doublon', async () => {
+    await monterPanneau();
+    monterVideoPrete();
+    await screen.findByText('Votre vidéo est prête');
+    const empreintes = new Map<string, string>();
+    for (const d of document.querySelectorAll('[data-menu-actions]')) {
+      const groupe = (d.getAttribute('data-menu-actions') ?? '').replace(/^rush-.*/, 'rush');
+      const forme = d.querySelector('svg')!.innerHTML;
+      const vu = empreintes.get(groupe);
+      // Deux « ⋯ » de rushes différents partagent la même icône : c'est le
+      // MÊME groupe, et c'est voulu. Deux groupes distincts, jamais.
+      if (vu === undefined) empreintes.set(groupe, forme);
+      else expect(forme).toBe(vu);
+    }
+    const formes = [...empreintes.values()];
+    expect(new Set(formes).size).toBe(formes.length);
+    expect(empreintes.size).toBeGreaterThanOrEqual(4);
+  });
+
+  it('C/D. chaque icône est nommée, et le survol dit la même chose', async () => {
+    await monterPanneau();
+    monterVideoPrete();
+    await screen.findByText('Votre vidéo est prête');
+    for (const d of document.querySelectorAll('[data-menu-actions]')) {
+      const nom = d.getAttribute('aria-label');
+      expect(nom, `sans aria-label : ${d.getAttribute('data-menu-actions')}`).toBeTruthy();
+      expect(d.getAttribute('title')).toBe(nom);
+      // Un nom de fonction, pas « Actions » tout court.
+      expect(nom!.length).toBeGreaterThan(6);
+    }
+  });
+
+  it('E/F/J. le clic ouvre le bon menu, avec les actions existantes', async () => {
+    // Le compte fournit un enregistrement de défaut : c'est la configuration
+    // de production, et celle qui porte les quatre entrées.
+    const { container } = await monterPanneau({
+      onEnregistrerAudioDefaut: async () => true,
+    });
+    await act(async () => {
+      fireEvent.click(container.querySelector('[data-menu-actions="audio"]')!);
+    });
+    const entrees = [...document.querySelectorAll('[role="menuitem"]')].map((e) => e.textContent!.trim());
+    // ⚠️ AUCUNE ACTION INVENTÉE, AUCUNE PERDUE : les quatre du panneau audio.
+    expect(entrees).toEqual([
+      'Choisir une musique',
+      'Retirer la musique',
+      'Enregistrer comme réglage par défaut',
+      'Réinitialiser',
+    ]);
+    // L'en-tête nomme le groupe qu'on vient d'ouvrir.
+    expect(document.querySelector('[role="menu"]')!.textContent).toContain('Audio');
+  });
+
+  it('G/H/I. clavier : ouverture, Escape, retour du focus au déclencheur', async () => {
+    const { container } = await monterPanneau();
+    const decl = container.querySelector('[data-menu-actions="session"]') as HTMLButtonElement;
+    decl.focus();
+    fireEvent.keyDown(decl, { key: 'ArrowDown' });
+    expect(document.querySelectorAll('[role="menuitem"]').length).toBeGreaterThan(0);
+    fireEvent.keyDown(document.querySelector('[role="menu"]')!, { key: 'Escape' });
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(decl);
+  });
+});

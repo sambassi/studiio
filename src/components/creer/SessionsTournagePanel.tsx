@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Loader2, Plus, Save, Settings2 } from 'lucide-react';
+import {
+  CalendarRange, Check, Crop, Loader2, Plus, Save, Settings2,
+} from 'lucide-react';
 import { uploadFile } from '@/lib/storage/uploadFile';
 import AnalyseRush from '@/components/creer/AnalyseRush';
 import BandeRushes, { type AnalyseCarte } from '@/components/creer/BandeRushes';
@@ -366,7 +368,9 @@ export default function SessionsTournagePanel({
         <AideAutopilote />
         <MenuActions
           marqueur="session"
-          etiquette="Actions de la session"
+          etiquette="Réglages de la session"
+          titreGroupe="Session"
+          icone={<CalendarRange className="h-4 w-4" />}
           actions={[
             {
               libelle: 'Nouvelle session',
@@ -462,7 +466,9 @@ export default function SessionsTournagePanel({
               <MenuActions
                 compact
                 marqueur="montage"
-                etiquette="Actions du format et de la durée"
+                etiquette="Format et durée"
+                titreGroupe="Format et durée"
+                icone={<Crop className="h-3.5 w-3.5" />}
                 actions={[{
                   libelle: defautEnregistre
                     ? 'Réglage par défaut enregistré'

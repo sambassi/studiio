@@ -71,7 +71,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  AlertTriangle, CalendarPlus, Download, Film, Info, Loader2, Play,
+  AlertTriangle, CalendarPlus, CirclePlay, Download, Film, Info, Loader2, Play,
 } from 'lucide-react';
 import MenuActions from '@/components/ui/MenuActions';
 import EtapesCreation from '@/components/creer/EtapesCreation';
@@ -389,7 +389,9 @@ export default function VideosPretes({
         <MenuActions
           compact
           marqueur="rendu"
-          etiquette="Actions de la vidéo"
+          etiquette="Options de la vidéo"
+          titreGroupe="Vidéo"
+          icone={<CirclePlay className="h-3.5 w-3.5" />}
           actions={[{
             libelle: detail ? 'Masquer les détails' : 'Détails du rendu',
             icone: <Info className="h-3.5 w-3.5" />,

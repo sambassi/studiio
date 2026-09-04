@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle, ChevronLeft, ChevronRight, Eye, Film, Loader2, Plus, Check,
-  RotateCcw,
+  RotateCcw, ScanSearch,
 } from 'lucide-react';
 import MenuActions from '@/components/ui/MenuActions';
 import { formaterDuree } from '@/lib/autopilot/analyse/rendu-passerelle';
@@ -268,7 +268,9 @@ export default function BandeRushes({
                   <MenuActions
                     compact
                     marqueur={`rush-${r.id}`}
-                    etiquette={`Actions pour ${nom}`}
+                    etiquette={`Options du rush — ${nom}`}
+                    titreGroupe="Rush"
+                    icone={<ScanSearch className="h-3.5 w-3.5" />}
                     actions={[
                       {
                         libelle: 'Voir l’analyse',

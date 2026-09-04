@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import {
-  Music, Volume2, VolumeX, Check, Loader2, RotateCcw, Save, Trash2,
+  AudioLines, Music, Volume2, VolumeX, Check, Loader2, RotateCcw, Save, Trash2,
 } from 'lucide-react';
 import MenuActions, { type ActionMenu } from '@/components/ui/MenuActions';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
@@ -169,7 +169,9 @@ export default function ReglagesAudio({
           <MenuActions
             compact
             marqueur="audio"
-            etiquette="Actions audio"
+            etiquette="Options audio"
+            titreGroupe="Audio"
+            icone={<AudioLines className="h-3.5 w-3.5" />}
             actions={actions}
           />
         </span>

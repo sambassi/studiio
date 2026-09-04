@@ -17,6 +17,19 @@ import { MoreHorizontal } from 'lucide-react';
  * retenu est l'inverse : ESSENTIEL VISIBLE, DETAILS A LA DEMANDE.
  *
  * ---------------------------------------------------------------------------
+ * ⚠️ LE DECLENCHEUR N'EST PAS TROIS POINTS
+ * ---------------------------------------------------------------------------
+ *
+ * « ⋯ » ne dit rien de ce qu'il cache : il faut cliquer pour savoir, et donc
+ * cliquer partout. Cinq menus identiques sur un ecran, c'est cinq enigmes.
+ * Chaque appelant fournit donc une icone qui DIT le groupe — une pellicule
+ * pour un rush, un cadre pour le format, une onde pour l'audio — et deux
+ * groupes differents ne partagent jamais la meme silhouette.
+ *
+ * `MoreHorizontal` reste le repli quand aucune icone n'est fournie ; sur
+ * l'ecran Autopilote, aucun appelant ne s'en sert.
+ *
+ * ---------------------------------------------------------------------------
  * ⚠️ IL EST ACCESSIBLE, ET CE N'EST PAS DECORATIF
  * ---------------------------------------------------------------------------
  *
@@ -67,10 +80,19 @@ interface Props {
   /** Attribut de test, pose sur le declencheur. */
   marqueur?: string;
   compact?: boolean;
+  /**
+   * L'icone du declencheur — celle qui dit ce que le menu contient.
+   *
+   * ⚠️ ELLE EST PROPRE AU GROUPE. Deux menus qui la partageraient
+   * redeviendraient deux « ⋯ » : un pictogramme repete ne distingue rien.
+   */
+  icone?: React.ReactNode;
+  /** Titre affiche en tete du panneau. Absent = pas d'en-tete. */
+  titreGroupe?: string;
 }
 
 export default function MenuActions({
-  etiquette, actions, cote = 'droite', marqueur, compact,
+  etiquette, actions, cote = 'droite', marqueur, compact, icone, titreGroupe,
 }: Props) {
   const [ouvert, setOuvert] = useState(false);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
@@ -181,7 +203,9 @@ export default function MenuActions({
           focus-visible:ring-2 focus-visible:ring-purple-500 transition-colors
           ${compact ? 'h-6 w-6' : 'h-8 w-8'}`}
       >
-        <MoreHorizontal className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} aria-hidden="true" />
+        {icone ?? (
+          <MoreHorizontal className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} aria-hidden="true" />
+        )}
       </button>
 
       {ouvert && createPortal((
@@ -206,6 +230,11 @@ export default function MenuActions({
           className="z-[70] overflow-hidden rounded-lg border border-white/10
             bg-[#12121a]/95 py-1 shadow-xl backdrop-blur"
         >
+          {titreGroupe && (
+            <p className="px-3 pb-1 pt-0.5 text-[10px] uppercase tracking-wide text-gray-500">
+              {titreGroupe}
+            </p>
+          )}
           {actions.map((a) => (
             <button
               key={a.libelle}
