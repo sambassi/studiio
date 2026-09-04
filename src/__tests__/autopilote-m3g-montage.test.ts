@@ -175,12 +175,23 @@ const CS = '11111111-1111-4111-8111-111111111111';
 const AN = '22222222-2222-4222-8222-222222222222';
 const AUTRE = '33333333-3333-4333-8333-333333333333';
 
-/** Les cinq clips RÉELS du jeu de production, durées mesurées comprises. */
+/**
+ * Les cinq clips RÉELS du jeu de production, durées mesurées comprises.
+ *
+ * ⚠️ LES TIMECODES SOURCE SONT DISJOINTS, comme en production. La première
+ * rédaction posait `debutSecondes: 0` sur les cinq — un raccourci sans
+ * conséquence tant que le plan ignorait la position des passages dans le
+ * rush. Depuis la politique éditoriale (couverture plafonnée, aucune image
+ * source deux fois), cette position DÉCIDE : cinq passages qui commencent
+ * tous à zéro se répètent intégralement, et quatre d'entre eux seraient
+ * légitimement écartés. La fixture dit donc ce que M3-F écrit vraiment.
+ */
 function clipsProduction(): ClipMaterialise[] {
+  const debuts = [0, 10, 20, 30, 40];
   const base = (rang: number, duree: number, mesuree: number, octets: number) => ({
     rang,
-    debutSecondes: 0,
-    finSecondes: duree,
+    debutSecondes: debuts[rang - 1],
+    finSecondes: debuts[rang - 1] + duree,
     dureeSecondes: duree,
     bucket: 'videos',
     cle: `A/autopilote/clips/${CL}/rang-0${rang}.mp4`,
@@ -538,8 +549,14 @@ describe('9-18. Le moteur : ordre, durée, recadrage, déterminisme', () => {
   });
 
   it('jamais plus de plans que M3-F ne sait produire de clips', () => {
+    // ⚠️ NEUF PASSAGES DISTINCTS, pas neuf copies du premier. Depuis la
+    // politique editoriale, neuf clips qui pointent tous sur `0 → 5` sont
+    // NEUF FOIS LA MEME IMAGE : huit seraient ecartes comme repetitions, et
+    // ce test ne mesurerait plus le plafond qu'il vise.
     const beaucoup = Array.from({ length: 9 }, (_, i) => ({
       ...clipsProduction()[0], rang: i + 1,
+      debutSecondes: i * 10,
+      finSecondes: i * 10 + 5,
       cle: `A/autopilote/clips/${CL}/rang-0${i + 1}.mp4`,
     }));
     const { resultat } = planifierMontage({

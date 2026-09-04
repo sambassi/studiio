@@ -127,6 +127,31 @@ export const PLANS_MAX = CLIPS_MAX;
  */
 export const DUREE_PLAN_MIN_SECONDES = RUSH_SEQUENCE_SECONDS.min;
 
+/**
+ * LA PART DU RUSH QU'UN MONTAGE N'A PAS LE DROIT DE DEPASSER.
+ *
+ * ---------------------------------------------------------------------------
+ * ⚠️ UN PLAFOND, PAS UNE CIBLE
+ * ---------------------------------------------------------------------------
+ *
+ * La duree demandee etait traitee comme un objectif a remplir : sur un rush de
+ * 23 s avec une cible de 60 s, le plan prenait TOUS les passages et couvrait
+ * 92 % de la source — le montage donnait l'impression du rush repris presque
+ * tel quel. Constate en production le 2026-09-04 sur
+ * `20260903_073142_195_1.mp4`.
+ *
+ * La regle s'inverse : QUALITE AVANT DUREE. La duree demandee devient un
+ * MAXIMUM, et la couverture de la source un second maximum. Ni l'un ni
+ * l'autre ne se remplit : si les bons passages ne font que huit secondes, le
+ * montage fait huit secondes.
+ *
+ * ⚠️ ET ELLE SE MESURE SUR L'UNION DES PLAGES SOURCE, jamais sur la somme des
+ * durees. Quatre passages de 5 s qui se recouvrent deux a deux ne font pas
+ * 20 s de rush : ils en font moins, et c'est cette valeur-la qui dit si le
+ * montage montre autre chose que le rush entier.
+ */
+export const COUVERTURE_MAX_RUSH = 0.60;
+
 export function dureeCibleValide(v: unknown): v is number {
   const n = nombreFini(v);
   return n !== null && n >= DUREE_CIBLE_MIN_SECONDES && n <= DUREE_CIBLE_MAX_SECONDES;

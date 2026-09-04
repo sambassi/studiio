@@ -15,7 +15,7 @@
  */
 import {
   ALGORITHME_PLAN, DUREE_PLAN_MIN_SECONDES, PLANS_MAX,
-  dimensionsCible, dureeUtilisable, recadrer,
+  COUVERTURE_MAX_RUSH, dimensionsCible, dureeUtilisable, recadrer,
   RACCORD_DEFAUT,
   type FormatMontage, type GeometrieSource, type MotifPlan, type PlanMontage,
 } from './montage-contrat';
@@ -27,6 +27,15 @@ export interface DemandePlan {
   dureeCibleSecondes: number;
   /** La géométrie mesurée du rush, appliquée à tous ses clips. */
   geometrie: GeometrieSource;
+  /**
+   * La durée du rush source, en secondes.
+   *
+   * ⚠️ ELLE SERT AU PLAFOND DE COUVERTURE, et à rien d'autre. Absente, le
+   * plafond ne s'applique pas : un appelant qui ne sait pas combien dure le
+   * rush ne peut pas dire quelle part il en montre, et refuser au hasard
+   * serait pire que ne pas refuser.
+   */
+  dureeRushSecondes?: number;
 }
 
 export interface ResultatPlan {
@@ -79,6 +88,45 @@ function parRang(clips: readonly ClipMaterialise[]): ClipMaterialise[] {
  * silencieusement rallongé — et c'est l'utilisateur qui décide s'il tourne
  * davantage ou vise plus court.
  */
+interface Plage { debut: number; fin: number }
+
+function nombreFiniPositif(v: unknown): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * Ce qu'il reste d'une plage une fois retirées celles déjà retenues.
+ *
+ * ⚠️ AUCUNE IMAGE SOURCE DEUX FOIS. Les candidats ont le droit de se
+ * recouvrir — M3-C tolère jusqu'à une seconde entre voisins — mais un
+ * montage qui rejoue les mêmes images n'est pas un montage : le rendu du
+ * 2026-09-04 répétait 1,85 s sur 23. Ce qui est déjà pris est donc soustrait
+ * ici, avant toute décision.
+ */
+function reste(plage: Plage, prises: readonly Plage[]): Plage[] {
+  let morceaux: Plage[] = [plage];
+  for (const p of prises) {
+    const suite: Plage[] = [];
+    for (const m of morceaux) {
+      if (p.fin <= m.debut || p.debut >= m.fin) { suite.push(m); continue; }
+      if (m.debut < p.debut) suite.push({ debut: m.debut, fin: Math.min(m.fin, p.debut) });
+      if (m.fin > p.fin) suite.push({ debut: Math.max(m.debut, p.fin), fin: m.fin });
+    }
+    morceaux = suite;
+  }
+  return morceaux.filter((m) => m.fin > m.debut);
+}
+
+/** Le plus long morceau restant. Déterministe : à égalité, le premier. */
+function plusLong(morceaux: readonly Plage[]): Plage | null {
+  let meilleur: Plage | null = null;
+  for (const m of morceaux) {
+    if (meilleur === null || (m.fin - m.debut) > (meilleur.fin - meilleur.debut)) meilleur = m;
+  }
+  return meilleur;
+}
+
 export function planifierMontage(
   demande: DemandePlan,
 ): { resultat: ResultatPlan | null; motif: MotifPlan | null } {
@@ -91,43 +139,116 @@ export function planifierMontage(
   if (cadrage === null) return { resultat: null, motif: 'geometrie_inconnue' };
 
   const cible = dimensionsCible(format);
-  const plans: PlanMontage[] = [];
   let cumul = 0;
   let ecartes = 0;
   let raccourcis = 0;
 
+  /**
+   * Le plafond de couverture, en secondes de rush.
+   *
+   * ⚠️ SANS DUREE DE RUSH, PAS DE PLAFOND. On ne peut pas dire quelle part
+   * d'une source on montre si on ignore combien elle dure ; refuser au
+   * hasard serait pire que ne pas refuser.
+   */
+  const dureeRush = nombreFiniPositif(demande.dureeRushSecondes);
+  const couvertureMax = dureeRush === null
+    ? Infinity
+    : arrondirSeconde(COUVERTURE_MAX_RUSH * dureeRush);
+
+  /** Ce qui est déjà pris dans la SOURCE, pour n'en rien montrer deux fois. */
+  const prises: Plage[] = [];
+  let couverture = 0;
+  const retenus: Array<{ clip: ClipMaterialise; plage: Plage; entree: number; duree: number; raccourci: boolean }> = [];
+
   for (const clip of ordonnes) {
     // Le plafond de M3-F vaut aussi ici : au plus autant de plans que de
     // clips matérialisables. Tout ce qui suit est écarté, et compté.
-    if (plans.length >= PLANS_MAX) { ecartes += 1; continue; }
+    if (retenus.length >= PLANS_MAX) { ecartes += 1; continue; }
 
     const disponible = dureeUtilisable(clip);
     if (disponible === null) { ecartes += 1; continue; }
 
-    const reste = arrondirSeconde(dureeCibleSecondes - cumul);
-    if (reste <= 0) { ecartes += 1; continue; }
+    // ── Ce que ce clip apporte de NEUF dans la source ──────────────────
+    const morceau = plusLong(reste(
+      { debut: clip.debutSecondes, fin: clip.finSecondes }, prises,
+    ));
+    if (morceau === null) { ecartes += 1; continue; }
+    // Le fichier découpé commence au début du passage : l'entrée est le
+    // décalage du morceau retenu par rapport à ce début.
+    const entree = arrondirSeconde(Math.max(0, morceau.debut - clip.debutSecondes));
+    /**
+     * ⚠️ LA DUREE VIENT DU FICHIER, PAS DES BORNES DEMANDEES.
+     *
+     * `dureeUtilisable` rend la duree MESUREE du clip decoupe — 2,934 s la ou
+     * les bornes disaient 2,92 : ffmpeg cale sur une frame. Tant que le
+     * morceau va jusqu'au bout du passage, c'est cette mesure qui fait foi ;
+     * seul un morceau tronque par un chevauchement se calcule sur les bornes.
+     */
+    const jusquAuBout = morceau.fin >= clip.finSecondes;
+    const finDansLeFichier = jusquAuBout
+      ? disponible
+      : arrondirSeconde(morceau.fin - clip.debutSecondes);
+    const neuf = arrondirSeconde(Math.min(finDansLeFichier, disponible) - entree);
+    if (neuf < DUREE_PLAN_MIN_SECONDES) { ecartes += 1; continue; }
 
-    const retenue = arrondirSeconde(Math.min(disponible, reste));
+    // ── Les deux plafonds. AUCUN N'EST UNE CIBLE ───────────────────────
+    //
+    // La durée demandée est une commande explicite : on peut y tomber pile,
+    // donc on raccourcit. La couverture est une garde éditoriale interne :
+    // la remplir n'aurait aucun sens, on écarte plutôt que de rogner.
+    if (arrondirSeconde(couverture + neuf) > couvertureMax) { ecartes += 1; continue; }
+
+    const place = arrondirSeconde(dureeCibleSecondes - cumul);
+    if (place <= 0) { ecartes += 1; continue; }
+    const retenue = arrondirSeconde(Math.min(neuf, place));
     // Un plan trop court n'est pas un plan : on l'écarte plutôt que de le
     // laisser clignoter. Le déficit restant sera dit par `ecartSecondes`.
     if (retenue < DUREE_PLAN_MIN_SECONDES) { ecartes += 1; continue; }
 
-    const raccourci = retenue < disponible;
+    const raccourci = retenue < neuf;
     if (raccourci) raccourcis += 1;
 
+    retenus.push({
+      clip,
+      plage: { debut: morceau.debut, fin: arrondirSeconde(morceau.debut + retenue) },
+      entree,
+      duree: retenue,
+      raccourci,
+    });
+    prises.push({ debut: morceau.debut, fin: arrondirSeconde(morceau.debut + retenue) });
+    couverture = arrondirSeconde(couverture + retenue);
+    cumul = arrondirSeconde(cumul + retenue);
+  }
+
+  if (retenus.length === 0) return { resultat: null, motif: 'plan_vide' };
+
+  /**
+   * ⚠️ LE SCORE CHOISIT, LA CHRONOLOGIE MONTE.
+   *
+   * Le classement de M3-C dit QUELS passages valent la peine ; il ne dit pas
+   * dans quel ordre les regarder. Les garder dans l'ordre du score donnait,
+   * sur un seul rush, un montage qui saute en arrière — 8,9 s, puis 16,2 s,
+   * puis 0 s. Sur un rush unique, la source A une chronologie, et la suivre
+   * est la seule lecture qui ne surprenne pas.
+   *
+   * ⚠️ SINGLE-RUSH SEULEMENT. Le jour où un montage mêlera plusieurs rushes,
+   * « avant » et « après » cesseront d'avoir un sens entre deux fichiers, et
+   * cette règle devra être reprise par le lot qui les mêlera.
+   */
+  retenus.sort((a, b) => a.plage.debut - b.plage.debut);
+
+  const plans: PlanMontage[] = [];
+  let timeline = 0;
+  for (const r of retenus) {
     plans.push({
       ordre: plans.length + 1,
-      rangClip: clip.rang,
-      bucket: clip.bucket,
-      cle: clip.cle,
-      // Le clip découpé commence à zéro : M3-F l'a mesuré sur les cinq clips
-      // de production (`debutMesureSecondes` valait 0 partout). Entrer
-      // ailleurs que zéro serait une décision de montage que M3-G ne prend
-      // pas — il garde le début du passage que M3-E avait choisi.
-      entreeSecondes: 0,
-      dureeRetenueSecondes: retenue,
-      debutTimelineSecondes: arrondirSeconde(cumul),
-      raccourci,
+      rangClip: r.clip.rang,
+      bucket: r.clip.bucket,
+      cle: r.clip.cle,
+      entreeSecondes: r.entree,
+      dureeRetenueSecondes: r.duree,
+      debutTimelineSecondes: arrondirSeconde(timeline),
+      raccourci: r.raccourci,
       recadrage: cadrage.recadrage,
       strategieRecadrage: cadrage.strategie,
       largeurSource: geometrie.largeur,
@@ -135,11 +256,9 @@ export function planifierMontage(
       // Coupe franche, toujours. Le fondu appartient à un lot ultérieur.
       raccordEntrant: RACCORD_DEFAUT,
     });
-
-    cumul = arrondirSeconde(cumul + retenue);
+    timeline = arrondirSeconde(timeline + r.duree);
   }
-
-  if (plans.length === 0) return { resultat: null, motif: 'plan_vide' };
+  cumul = arrondirSeconde(timeline);
 
   return {
     resultat: {
@@ -161,6 +280,13 @@ export function planifierMontage(
         largeurCible: cible.largeur,
         hauteurCible: cible.hauteur,
         strategieRecadrage: cadrage.strategie,
+        // Ce que la politique editoriale a decide, releve pour la relecture.
+        couvertureSecondes: couverture,
+        couvertureMaxSecondes: Number.isFinite(couvertureMax) ? couvertureMax : null,
+        couverturePart: dureeRush === null
+          ? null
+          : Math.round((couverture / dureeRush) * 1000) / 1000,
+        ordreFinal: 'chronologique',
       },
     },
     motif: null,

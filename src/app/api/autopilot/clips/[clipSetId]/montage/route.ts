@@ -190,6 +190,10 @@ export async function POST(
       format,
       dureeCibleSecondes,
       geometrie,
+      // ⚠️ LA DUREE DU RUSH, POUR LE PLAFOND DE COUVERTURE. Elle vient de
+      // l'analyse deja lue ci-dessus : aucune requete de plus, et c'est la
+      // meme mesure que celle qui a servi a decider la geometrie.
+      dureeRushSecondes: analyse.dureeSecondes ?? undefined,
     });
     if (!resultat) {
       return refus(motifPlan ?? 'plan_vide',
