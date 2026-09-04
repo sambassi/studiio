@@ -928,3 +928,65 @@ describe('19. La progression montre des étapes réelles', () => {
     expect(document.querySelector('[data-etapes-creation]')).toBeNull();
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 20. « UNE ERREUR INTERNE EST SURVENUE » — LA CADENCE NON ENTIÈRE
+// ═══════════════════════════════════════════════════════════════════════════
+describe('20. Le fps d’un rush entre toujours dans la colonne', () => {
+  /**
+   * ⚠️ LA PANNE QUE CE BLOC INTERDIT DE REVENIR.
+   *
+   * `rush_montage_plans.fps` est un `integer not null check (fps between 1
+   * and 240)`. Une caméra de téléphone se sonde à 30,046 images par seconde ;
+   * cette valeur partait telle quelle vers la base, qui refusait l'insertion.
+   * L'exception n'était prévue nulle part : la route rendait « Une erreur
+   * interne est survenue » sur un rush parfaitement sain, et rien à l'écran
+   * ne pouvait le laisser deviner. Reproduit en production le 2026-09-04.
+   */
+  it('le cas exact de production : 30,046 devient 30', async () => {
+    const { geometrieDepuisTechnique } = await import('@/lib/autopilot/analyse/montage');
+    const g = geometrieDepuisTechnique({ largeur: 1920, hauteur: 1080, fps: 30.046 })!;
+    expect(g.fps).toBe(30);
+    expect(Number.isInteger(g.fps)).toBe(true);
+  });
+
+  it.each([
+    [23.976, 24], [29.97, 30], [30.046, 30], [59.94, 60], [25, 25], [30, 30],
+  ])('la cadence sondée %s entre en base comme %s', async (sonde, attendu) => {
+    const { geometrieDepuisTechnique } = await import('@/lib/autopilot/analyse/montage');
+    expect(geometrieDepuisTechnique({ largeur: 1920, hauteur: 1080, fps: sonde })!.fps)
+      .toBe(attendu);
+  });
+
+  it('une cadence hors des bornes du `check` retombe sur le défaut', async () => {
+    const { geometrieDepuisTechnique, FPS_DEFAUT, FPS_MIN, FPS_MAX } = await import(
+      '@/lib/autopilot/analyse/montage'
+    );
+    // ⚠️ CE SONT LES BORNES DE LA MIGRATION, PAS DES VALEURS DE CONFORT :
+    // `check (fps between 1 and 240)`. Les dépasser rejouerait la même panne
+    // muette, sur un autre chiffre.
+    expect([FPS_MIN, FPS_MAX]).toEqual([1, 240]);
+    for (const aberrant of [0, 0.4, -30, 1000, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const g = geometrieDepuisTechnique({ largeur: 1920, hauteur: 1080, fps: aberrant })!;
+      expect(g.fps).toBe(FPS_DEFAUT);
+    }
+  });
+
+  it('largeur et hauteur restent arrondies comme avant', async () => {
+    const { geometrieDepuisTechnique } = await import('@/lib/autopilot/analyse/montage');
+    const g = geometrieDepuisTechnique({ largeur: 1919.6, hauteur: 1080.4, fps: 30 })!;
+    expect(g).toEqual({ largeur: 1920, hauteur: 1080, fps: 30 });
+  });
+
+  it('toute cadence acceptée satisfait le `check` de la colonne', async () => {
+    const { geometrieDepuisTechnique, FPS_MIN, FPS_MAX } = await import(
+      '@/lib/autopilot/analyse/montage'
+    );
+    for (let sonde = 0.1; sonde < 300; sonde += 0.37) {
+      const g = geometrieDepuisTechnique({ largeur: 1920, hauteur: 1080, fps: sonde })!;
+      expect(Number.isInteger(g.fps)).toBe(true);
+      expect(g.fps).toBeGreaterThanOrEqual(FPS_MIN);
+      expect(g.fps).toBeLessThanOrEqual(FPS_MAX);
+    }
+  });
+});

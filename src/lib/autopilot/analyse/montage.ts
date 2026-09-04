@@ -180,6 +180,15 @@ export function planifierMontage(
  */
 export const FPS_DEFAUT = 30;
 
+/**
+ * Les bornes de la colonne `fps`, recopiees du `check` de la migration
+ * `2026-09-05-rush-montage-plans.sql`. Les tenir ICI evite que la base soit
+ * le seul endroit qui sache dire non — et elle le dit par une exception que
+ * personne n'attrape.
+ */
+export const FPS_MIN = 1;
+export const FPS_MAX = 240;
+
 export function geometrieDepuisTechnique(
   technique: Record<string, unknown> | null | undefined,
 ): GeometrieSource | null {
@@ -188,10 +197,29 @@ export function geometrieDepuisTechnique(
   const hauteur = Number(technique.hauteur);
   if (!Number.isFinite(largeur) || !Number.isFinite(hauteur)) return null;
   if (largeur <= 0 || hauteur <= 0) return null;
-  const fps = Number(technique.fps);
+  /**
+   * ⚠️ LE FPS S'ARRONDIT, COMME LA LARGEUR ET LA HAUTEUR JUSTE AU-DESSUS.
+   *
+   * `rush_montage_plans.fps` est un `integer not null check (fps between 1 and
+   * 240)`. Une camera de telephone se sonde volontiers a 30,046 images par
+   * seconde — cadence variable — et cette valeur partait telle quelle vers la
+   * colonne : la base refusait l'insertion, l'exception n'etait prevue nulle
+   * part, et la route rendait « Une erreur interne est survenue ». Le rush
+   * etait pourtant sain, ses clips aussi, et rien a l'ecran ne pouvait le
+   * laisser deviner.
+   *
+   * Constate en production le 2026-09-04 sur `20260903_073142_195_1.mp4`
+   * (fps sonde : 30,046) ; les rushes a 25 et 30 passaient, d'ou une panne
+   * qui semblait aleatoire.
+   *
+   * Les bornes du `check` sont respectees ici plutot qu'esperees : une
+   * cadence aberrante — un sondage a 0,5 ou a 1000 — produirait exactement la
+   * meme panne muette.
+   */
+  const fps = Math.round(Number(technique.fps));
   return {
     largeur: Math.round(largeur),
     hauteur: Math.round(hauteur),
-    fps: Number.isFinite(fps) && fps > 0 ? fps : FPS_DEFAUT,
+    fps: Number.isFinite(fps) && fps >= FPS_MIN && fps <= FPS_MAX ? fps : FPS_DEFAUT,
   };
 }
