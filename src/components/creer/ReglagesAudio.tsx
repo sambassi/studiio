@@ -1,7 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { Music, Volume2, VolumeX, Check, Loader2 } from 'lucide-react';
+import {
+  Music, Volume2, VolumeX, Check, Loader2, RotateCcw, Save, Trash2,
+} from 'lucide-react';
 import MenuActions, { type ActionMenu } from '@/components/ui/MenuActions';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import {
@@ -119,11 +121,13 @@ export default function ReglagesAudio({
   const actions: ActionMenu[] = [
     {
       libelle: valeur.musique === null ? 'Choisir une musique' : 'Changer la musique',
+      icone: <Music className="h-3.5 w-3.5" />,
       onClick: () => setMediatheque(true),
       desactive,
     },
     {
       libelle: 'Retirer la musique',
+      icone: <Trash2 className="h-3.5 w-3.5" />,
       onClick: () => { setNomMusique(null); majuscule({ musique: null }); },
       desactive: desactive || valeur.musique === null,
     },
@@ -131,6 +135,9 @@ export default function ReglagesAudio({
       libelle: enregistrement === 'fait'
         ? 'Réglage par défaut enregistré'
         : 'Enregistrer comme réglage par défaut',
+      icone: enregistrement === 'fait'
+        ? <Check className="h-3.5 w-3.5" />
+        : <Save className="h-3.5 w-3.5" />,
       desactive: desactive || enregistrement === 'encours',
       onClick: async () => {
         setEnregistrement('encours');
@@ -140,6 +147,7 @@ export default function ReglagesAudio({
     } as ActionMenu] : []),
     {
       libelle: 'Réinitialiser',
+      icone: <RotateCcw className="h-3.5 w-3.5" />,
       onClick: () => { setNomMusique(null); onChange(RECETTE_AUDIO_DEFAUT); setEnregistrement('inactif'); },
       desactive,
     },

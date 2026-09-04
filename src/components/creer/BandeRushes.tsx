@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  AlertTriangle, ChevronLeft, ChevronRight, Film, Loader2, Plus, Check,
+  AlertTriangle, ChevronLeft, ChevronRight, Eye, Film, Loader2, Plus, Check,
+  RotateCcw,
 } from 'lucide-react';
 import MenuActions from '@/components/ui/MenuActions';
 import { formaterDuree } from '@/lib/autopilot/analyse/rendu-passerelle';
@@ -134,7 +135,12 @@ export default function BandeRushes({
   return (
     <section className="space-y-2" data-bande-rushes>
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-[11px] uppercase tracking-wide text-gray-500">Rushes</h3>
+        {/* ⚠️ LE TITRE DIT LE CONTRAT, PAS LA RUBRIQUE. Le moteur monte UN
+            rush : « Rushes » laissait croire qu'ils seraient tous utilises,
+            et rien a l'ecran ne disait lequel partait au montage. */}
+        <h3 className="text-[11px] uppercase tracking-wide text-gray-500">
+          Rush utilisé pour cette vidéo
+        </h3>
         {(debord.gauche || debord.droite) && (
           <div className="flex items-center gap-0.5">
             <button
@@ -206,6 +212,10 @@ export default function BandeRushes({
                   type="button"
                   onClick={() => onSelectionner(r.id)}
                   aria-pressed={choisi}
+                  aria-label={choisi
+                    ? `${nom} — rush sélectionné pour cette vidéo`
+                    : `Utiliser ${nom} pour cette vidéo`}
+                  title={choisi ? `${nom} — sélectionné` : `Utiliser ${nom}`}
                   data-bande-choisir={r.id}
                   className="block w-full text-left focus-visible:outline-none
                     focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-500"
@@ -230,6 +240,15 @@ export default function BandeRushes({
                       <Film className="h-5 w-5 text-gray-700" aria-hidden="true" />
                     )}
                   </span>
+                  {choisi && (
+                    <span
+                      data-bande-badge
+                      className="absolute left-1.5 top-1.5 inline-flex items-center gap-1
+                        rounded-full bg-purple-600 px-1.5 py-0.5 text-[9px] font-medium text-white"
+                    >
+                      <Check className="h-2.5 w-2.5" aria-hidden="true" /> Sélectionné
+                    </span>
+                  )}
                   <span className="block px-2 pb-2 pt-1.5">
                     <span className="block truncate text-[11px] text-gray-200" title={nom}>
                       {nom}
@@ -253,11 +272,13 @@ export default function BandeRushes({
                     actions={[
                       {
                         libelle: 'Voir l’analyse',
+                        icone: <Eye className="h-3.5 w-3.5" />,
                         onClick: () => onVoirAnalyse(r.id),
                         desactive: !a,
                       },
                       {
                         libelle: 'Ré-analyser',
+                        icone: <RotateCcw className="h-3.5 w-3.5" />,
                         onClick: () => onReanalyser(r.id),
                       },
                     ]}

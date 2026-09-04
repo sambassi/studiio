@@ -698,6 +698,9 @@ describe('E — ni IA, ni crédit, ni rendu, ni publication', () => {
       // au parent, qui le remet a la chaine. `recette-audio` est un module PUR
       // et sans aucun import — il ne tire donc rien dans le paquet navigateur.
       './ReglagesAudio',
+      // La progression de creation : un composant de PRESENTATION, sans etat
+      // ni requete — il recoit un jalon et dessine quatre lignes.
+      './EtapesCreation',
       '@/lib/autopilot/analyse/recette-audio',
       '@/lib/autopilot/analyse/candidat-passerelle',
       // P0.1 : le bouton « Créer ma vidéo ». `chaine-passerelle` n'enchaîne

@@ -30,6 +30,7 @@ import {
   RECETTE_AUDIO_DEFAUT, type RecetteAudio,
 } from '@/lib/autopilot/analyse/recette-audio';
 import ReglagesAudio from './ReglagesAudio';
+import EtapesCreation from './EtapesCreation';
 
 interface Props {
   /** L'analyse source. Toujours `reussie` — l'appelant s'en assure. */
@@ -345,6 +346,11 @@ export default function PassagesSuggeres({
             onEnregistrerDefaut={onEnregistrerAudioDefaut}
             desactive={chaine.sorte === 'encours'}
           />
+          {/* ⚠️ LA PROGRESSION REMPLACE UNE PHRASE UNIQUE. « Découpage des
+              meilleurs passages… » ne disait ni combien d'étapes restaient,
+              ni si quelque chose avançait encore. Les étapes, elles, sont
+              celles que la chaîne et le moteur annoncent vraiment. */}
+          {chaine.sorte === 'encours' && <EtapesCreation jalon={chaine.etape} />}
           <button
             type="button"
             onClick={creer}

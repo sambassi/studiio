@@ -1,11 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, Settings2 } from 'lucide-react';
+import { Check, Loader2, Plus, Save, Settings2 } from 'lucide-react';
 import { uploadFile } from '@/lib/storage/uploadFile';
 import AnalyseRush from '@/components/creer/AnalyseRush';
 import BandeRushes, { type AnalyseCarte } from '@/components/creer/BandeRushes';
 import ContenuAnalyse from '@/components/creer/ContenuAnalyse';
+import AideAutopilote from '@/components/creer/AideAutopilote';
 import DrawerLateral from '@/components/ui/DrawerLateral';
 import MenuActions from '@/components/ui/MenuActions';
 import { lireAnalyse } from '@/lib/autopilot/analyse/passerelle';
@@ -362,11 +363,16 @@ export default function SessionsTournagePanel({
             <option key={x.id} value={x.id}>{x.titre}</option>
           ))}
         </select>
+        <AideAutopilote />
         <MenuActions
           marqueur="session"
           etiquette="Actions de la session"
           actions={[
-            { libelle: 'Nouvelle session', onClick: () => setNouvelleSession(true) },
+            {
+              libelle: 'Nouvelle session',
+              icone: <Plus className="h-3.5 w-3.5" />,
+              onClick: () => setNouvelleSession(true),
+            },
           ]}
         />
       </div>
@@ -461,6 +467,9 @@ export default function SessionsTournagePanel({
                   libelle: defautEnregistre
                     ? 'Réglage par défaut enregistré'
                     : 'Enregistrer comme réglage par défaut',
+                  icone: defautEnregistre
+                    ? <Check className="h-3.5 w-3.5" />
+                    : <Save className="h-3.5 w-3.5" />,
                   onClick: async () => {
                     await onEnregistrerDefaut(montage);
                     setDefautEnregistre(true);

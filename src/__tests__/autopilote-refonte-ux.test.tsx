@@ -716,3 +716,215 @@ describe('14. Sept repères, sans ouvrir un seul menu', () => {
     // par l'assistant ; `VideosPretes` la couvre dans les blocs 5 et 6.
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 15. « JE NE COMPRENDS PAS QUEL RUSH SERA UTILISÉ » — LE CONTRAT SE VOIT
+// ═══════════════════════════════════════════════════════════════════════════
+describe('15. Un seul rush, et on voit lequel', () => {
+  it('A. l’intitulé dit le contrat : UN rush pour CETTE vidéo', async () => {
+    const { container } = await monterPanneau();
+    const bande = container.querySelector('[data-bande-rushes]')!;
+    // ⚠️ « Rushes » tout court laissait croire qu'ils partaient tous au
+    // montage. Le moteur, lui, part d'un seul.
+    expect(bande.textContent).toContain('Rush utilisé pour cette vidéo');
+  });
+
+  it('B. le rush sélectionné porte un badge lisible, et lui seul', async () => {
+    const { container } = await monterPanneau();
+    const badges = container.querySelectorAll('[data-bande-badge]');
+    expect(badges).toHaveLength(1);
+    expect(badges[0].textContent).toContain('Sélectionné');
+    expect(badges[0].closest('[data-bande-carte]')!.getAttribute('data-bande-carte-choisie'))
+      .toBe('1');
+  });
+
+  it('C. choisir un autre rush déplace la sélection — elle ne s’ajoute pas', async () => {
+    const { container } = await monterPanneau();
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>(`[data-bande-choisir="${RUSH_B}"]`)!.click();
+    });
+    expect(container.querySelectorAll('[data-bande-carte-choisie]')).toHaveLength(1);
+    expect(container.querySelector(`[data-bande-carte="${RUSH_B}"]`)!
+      .getAttribute('data-bande-carte-choisie')).toBe('1');
+    expect(container.querySelectorAll('[data-bande-badge]')).toHaveLength(1);
+  });
+
+  it('D. aucune case à cocher : rien ne promet un montage multi-rush', async () => {
+    const { container } = await monterPanneau();
+    expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
+    const cartes = [...container.querySelectorAll('[data-bande-choisir]')];
+    // `aria-pressed` : un choix exclusif, pas une sélection multiple.
+    for (const c of cartes) expect(c.hasAttribute('aria-pressed')).toBe(true);
+    expect(cartes.filter((c) => c.getAttribute('aria-pressed') === 'true')).toHaveLength(1);
+  });
+
+  it('D bis. l’étiquette du clic dit ce qu’il fait', async () => {
+    const { container } = await monterPanneau();
+    const choisi = container.querySelector('[data-bande-carte-choisie] [data-bande-choisir]')!;
+    const autre = container.querySelector(`[data-bande-choisir="${RUSH_B}"]`)!;
+    expect(choisi.getAttribute('aria-label')).toContain('sélectionné');
+    expect(autre.getAttribute('aria-label')).toContain('Utiliser');
+  });
+});
+
+describe('16. L’aperçu de droite ne se fait pas passer pour autre chose', () => {
+  it('E. il se nomme « dernière vidéo créée »', async () => {
+    render(
+      <VideosPretes
+        sessionId={SESSION}
+        aucunRush={false}
+        formatSouhaite="9:16"
+        fetcher={vi.fn(async () => ({
+          ok: true, status: 200,
+          json: async () => ({
+            ok: true,
+            rendu: {
+              id: 'r', etat: 'reussie', etape: 'televersement', motif: null,
+              creeLe: '', termineLe: '',
+              video: {
+                dureeSecondes: 24.7, largeur: 1080, hauteur: 1920, fps: 25,
+                chemin: '/api/autopilot/rendus-montage/r/fichier',
+              },
+            },
+          }),
+        } as unknown as Response))}
+      />,
+    );
+    const resume = await screen.findByText(/dernière vidéo créée/);
+    // ⚠️ CE N'EST PAS UN APERÇU DU RUSH SÉLECTIONNÉ. Sans le dire, l'image
+    // de droite paraît sans rapport avec la miniature qu'on vient de choisir.
+    expect(resume.textContent).toContain('Vertical');
+  });
+});
+
+describe('17. L’aide, trois lignes, à la demande', () => {
+  it('F. le « ? » est nommé, et n’ouvre rien tant qu’on ne clique pas', async () => {
+    const { container } = await monterPanneau();
+    const aide = container.querySelector('[data-aide-autopilote]')!;
+    expect(aide.getAttribute('aria-label')).toContain('Autopilote');
+    expect(container.querySelector('[data-aide-panneau]')).toBeNull();
+
+    await act(async () => { fireEvent.click(aide); });
+    const panneau = container.querySelector('[data-aide-panneau]')!;
+    expect(panneau.querySelectorAll('li')).toHaveLength(3);
+    expect(panneau.textContent).toContain('un seul rush');
+    expect(panneau.textContent).toContain('multi-rush');
+
+    await act(async () => { fireEvent.keyDown(document, { key: 'Escape' }); });
+    expect(container.querySelector('[data-aide-panneau]')).toBeNull();
+  });
+});
+
+describe('18. Les menus disent ce qu’ils font', () => {
+  it('G. chaque entrée porte une icône ET un libellé en toutes lettres', async () => {
+    const { container } = await monterPanneau();
+    await act(async () => {
+      fireEvent.click(container.querySelector(`[data-menu-actions="rush-${RUSH_A}"]`)!);
+    });
+    const entrees = [...document.querySelectorAll('[role="menuitem"]')];
+    expect(entrees.length).toBeGreaterThan(0);
+    for (const e of entrees) {
+      // ⚠️ JAMAIS L'ICÔNE SEULE. Une pictogramme sans mot se devine, et se
+      // devine mal — c'est le reproche fait aux « ⋯ » trop mystérieux.
+      expect((e.textContent ?? '').trim().length).toBeGreaterThan(2);
+      expect(e.querySelector('svg')).toBeTruthy();
+    }
+  });
+
+  it('H. chaque « ⋯ » est nommé pour un lecteur d’écran et au survol', async () => {
+    const { container } = await monterPanneau();
+    const menus = [...container.querySelectorAll('[data-menu-actions]')];
+    expect(menus.length).toBeGreaterThanOrEqual(2);
+    for (const m of menus) {
+      expect(m.getAttribute('aria-label')).toBeTruthy();
+      expect(m.getAttribute('title')).toBe(m.getAttribute('aria-label'));
+    }
+  });
+});
+
+describe('19. La progression montre des étapes réelles', () => {
+  const rendu = (etape: string) => ({
+    ok: true,
+    rendu: {
+      id: 'r', etat: 'en_cours', etape, motif: null, video: null,
+      creeLe: '', termineLe: null,
+    },
+  });
+  const monterEnCours = (etape: string) => render(
+    <VideosPretes
+      sessionId={SESSION}
+      aucunRush={false}
+      formatSouhaite="9:16"
+      fetcher={vi.fn(async () => ({
+        ok: true, status: 200, json: async () => rendu(etape),
+      } as unknown as Response))}
+    />,
+  );
+
+  it('I. la progression est visible pendant toute la création', async () => {
+    monterEnCours('encodage');
+    await screen.findByText('Création en cours');
+    const bloc = document.querySelector('[data-etapes-creation]')!;
+    expect(bloc).toBeTruthy();
+    expect(bloc.querySelectorAll('[data-etape]')).toHaveLength(4);
+    expect(document.querySelector('[data-etapes-barre]')).toBeTruthy();
+  });
+
+  it.each([
+    ['decoupage', 'decoupage', '1/4'],
+    ['montage', 'montage', '2/4'],
+    ['source', 'encodage', '3/4'],
+    ['encodage', 'encodage', '3/4'],
+    ['mesure', 'finalisation', '4/4'],
+    ['televersement', 'finalisation', '4/4'],
+  ])('J. le jalon réel « %s » se lit comme « %s »', async (jalon, attendue, compte) => {
+    cleanup();
+    monterEnCours(jalon);
+    await screen.findByText('Création en cours');
+    const bloc = document.querySelector('[data-etapes-creation]')!;
+    expect(bloc.getAttribute('data-etape-active')).toBe(attendue);
+    // ⚠️ UN COMPTE D'ÉTAPES, JAMAIS UN POURCENTAGE D'AVANCEMENT. Aucune route
+    // ne sait où elle en est DANS son travail ; « 73 % » serait inventé.
+    expect(document.querySelector('[data-etapes-compte]')!.textContent).toBe(compte);
+    expect(bloc.textContent).not.toMatch(/\d+\s?%/);
+  });
+
+  it('J bis. les étapes affichées ne sont QUE des jalons du contrat', async () => {
+    const { ETAPES_CREATION, etapeAffichee } = await import('@/components/creer/EtapesCreation');
+    expect(ETAPES_CREATION).toHaveLength(4);
+    // Les six jalons réels du produit, et rien d'autre.
+    for (const jalon of ['decoupage', 'montage', 'rendu', 'source', 'encodage', 'mesure', 'televersement']) {
+      expect(ETAPES_CREATION.map((e) => e.cle)).toContain(etapeAffichee(jalon));
+    }
+    // Un jalon inconnu ne fabrique pas une étape : il retombe sur la première.
+    expect(etapeAffichee('inexistant')).toBe('decoupage');
+    expect(etapeAffichee(null)).toBe('decoupage');
+  });
+
+  it('K. une fois réussie, la progression cède la place à la vidéo', async () => {
+    cleanup();
+    render(
+      <VideosPretes
+        sessionId={SESSION}
+        aucunRush={false}
+        formatSouhaite="9:16"
+        fetcher={vi.fn(async () => ({
+          ok: true, status: 200,
+          json: async () => ({
+            ok: true,
+            rendu: {
+              id: 'r', etat: 'reussie', etape: 'televersement', motif: null,
+              creeLe: '', termineLe: '',
+              video: {
+                dureeSecondes: 24.7, largeur: 1080, hauteur: 1920, fps: 25,
+                chemin: '/api/autopilot/rendus-montage/r/fichier',
+              },
+            },
+          }),
+        } as unknown as Response))}
+      />,
+    );
+    await screen.findByText('Votre vidéo est prête');
+    expect(document.querySelector('[data-etapes-creation]')).toBeNull();
+  });
+});

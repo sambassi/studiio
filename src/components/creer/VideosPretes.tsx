@@ -71,9 +71,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  AlertTriangle, CalendarPlus, Download, Film, Loader2, Play,
+  AlertTriangle, CalendarPlus, Download, Film, Info, Loader2, Play,
 } from 'lucide-react';
 import MenuActions from '@/components/ui/MenuActions';
+import EtapesCreation from '@/components/creer/EtapesCreation';
 import {
   RATIOS_APERCU, geometrieApercu,
 } from '@/lib/creer/apercu-geometrie';
@@ -331,6 +332,10 @@ export default function VideosPretes({
       <section className="space-y-1.5" data-videos-pretes data-videos-etat="en_cours">
         <Titre texte="Création en cours" fort />
         <CadreFormat enfant={<Loader2 className="h-5 w-5 animate-spin text-purple-400" aria-hidden="true" />} />
+        {/* Le relais de la colonne gauche : mêmes étapes, même vocabulaire,
+            pour que la progression ne « recommence » pas en changeant de
+            colonne. */}
+        <EtapesCreation jalon={rendu.etape} titre="Nouvelle vidéo en cours" />
         <p
           className="flex items-center gap-1.5 text-[11px] text-gray-300"
           data-videos-etape={rendu.etape ?? ''}
@@ -387,6 +392,7 @@ export default function VideosPretes({
           etiquette="Actions de la vidéo"
           actions={[{
             libelle: detail ? 'Masquer les détails' : 'Détails du rendu',
+            icone: <Info className="h-3.5 w-3.5" />,
             onClick: () => setDetail((d) => !d),
           }]}
         />
@@ -466,8 +472,12 @@ export default function VideosPretes({
           </button>
         )}
 
+        {/* ⚠️ CE PANNEAU MONTRE LE DERNIER RENDU DE LA SESSION, PAS LE RUSH
+            SÉLECTIONNÉ. Sans le dire, on laisse croire à un aperçu instantané
+            du rush qu'on vient de choisir — et l'image ne correspond alors à
+            rien de compréhensible. */}
         <p className="text-[11px] text-gray-400" data-videos-resume>
-          {[duree, forme].filter(Boolean).join(' · ')}
+          {[duree, forme, 'dernière vidéo créée'].filter(Boolean).join(' · ')}
         </p>
 
         {detail && (

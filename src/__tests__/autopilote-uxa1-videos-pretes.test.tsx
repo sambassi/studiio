@@ -533,7 +533,7 @@ describe('4. VideosPretes — les cinq états', () => {
   it('4.5 vidéo prête : durée, orientation, et EXACTEMENT trois actions', async () => {
     monter({ fetcher: reponse({ ok: true, rendu: RENDU_PRET }) });
 
-    expect(await screen.findByText('0:28 · Vertical')).toBeInTheDocument();
+    expect(await screen.findByText(/0:28 · Vertical/)).toBeInTheDocument();
     // Le titre DIT l'état, il ne nomme pas une rubrique.
     expect(screen.getByText('Votre vidéo est prête')).toBeInTheDocument();
 
@@ -556,7 +556,7 @@ describe('4. VideosPretes — les cinq états', () => {
 
   it('4.6 aucune donnée technique n’apparaît à l’écran', async () => {
     monter({ fetcher: reponse({ ok: true, rendu: RENDU_PRET }) });
-    await screen.findByText('0:28 · Vertical');
+    await screen.findByText(/0:28 · Vertical/);
     const texte = document.querySelector('[data-videos-pretes]')!.textContent ?? '';
     for (const interdit of ['1080', '1920', RENDU, 'mp4', 'bucket', 'crf', 'ffmpeg']) {
       expect(texte).not.toContain(interdit);
@@ -565,7 +565,7 @@ describe('4. VideosPretes — les cinq états', () => {
 
   it('4.7 le lecteur ne se monte QU’au clic sur l’affiche', async () => {
     monter({ fetcher: reponse({ ok: true, rendu: RENDU_PRET }) });
-    await screen.findByText('0:28 · Vertical');
+    await screen.findByText(/0:28 · Vertical/);
 
     // Avant : rien ne télécharge. La route rend le fichier d'un bloc.
     expect(document.querySelector('[data-videos-lecteur]')).toBeNull();
@@ -583,7 +583,7 @@ describe('4. VideosPretes — les cinq états', () => {
 
   it('4.8 Télécharger pointe sur la route de l’application, jamais sur le stockage', async () => {
     monter({ fetcher: reponse({ ok: true, rendu: RENDU_PRET }) });
-    await screen.findByText('0:28 · Vertical');
+    await screen.findByText(/0:28 · Vertical/);
 
     const lien = document.querySelector('[data-videos-telecharger]') as HTMLAnchorElement;
     expect(lien.getAttribute('href')).toBe(RENDU_PRET.video.chemin);
