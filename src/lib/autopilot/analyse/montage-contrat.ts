@@ -49,8 +49,34 @@ import { VIDEO_SIZE, RUSH_SEQUENCE_SECONDS } from '@/lib/creer/designSpec';
  * questions distinctes, trois réponses distinctes : « où couper »,
  * « comment encoder », « comment monter ». Les confondre rendrait
  * impossible de dire, devant un fichier, ce qui a changé depuis la veille.
+ *
+ * ---------------------------------------------------------------------------
+ * ⚠️ CETTE VALEUR CHANGE DES QUE LA POLITIQUE CHANGE
+ * ---------------------------------------------------------------------------
+ *
+ * Elle fait partie de `IdentitePlan`, et `lirePlanIdentique` filtre dessus :
+ * c'est elle qui decide si un plan deja calcule peut resservir. Changer la
+ * facon de monter SANS la changer laisse donc tous les plans anciens intacts
+ * — la nouvelle politique n'est jamais executee, et rien ne le signale.
+ *
+ * Constate le 2026-09-04 : le plafond de couverture et la diversite
+ * temporelle etaient en production, mais le plan du rush de test avait deja
+ * ete calcule ; la route repondait `reutilise: true` et rendait les quatre
+ * anciens passages. Le meme piege que celui deja documente pour
+ * `methodeRendu`, qui porte l'empreinte de la recette audio pour cette raison
+ * exacte.
+ *
+ * `m3g-v1` : un plan par clip, dans l'ordre du score, tant que la duree cible
+ *            n'est pas atteinte.
+ * `m3g-v2` : duree demandee = MAXIMUM ; couverture du rush plafonnee ;
+ *            aucune portion source montree deux fois ; ecart minimal entre
+ *            deux moments ; montage remis en ordre chronologique.
+ *
+ * ⚠️ LES PLANS `m3g-v1` DEJA ECRITS RESTENT LISIBLES ET INTACTS. Ils ne sont
+ * ni migres ni renommes : ils disent ce qui a produit les fichiers d'hier, et
+ * les reetiqueter effacerait cette trace.
  */
-export const ALGORITHME_PLAN = 'm3g-v1' as const;
+export const ALGORITHME_PLAN = 'm3g-v2' as const;
 
 // ───────────────────────────────────────────────────────────────────────────
 // Le format cible

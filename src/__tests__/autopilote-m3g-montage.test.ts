@@ -273,7 +273,12 @@ describe('1-8. Le contrat : formats, durée, raccord, recadrage', () => {
       'jeu_non_reussi', 'jeu_sans_clip', 'format_invalide',
       'duree_cible_invalide', 'geometrie_inconnue', 'plan_vide',
     ]);
-    expect(ALGORITHME_PLAN).toBe('m3g-v1');
+    // ⚠️ LA VERSION SUIT LA POLITIQUE. `m3g-v2` = duree maximale, couverture
+    // plafonnee, aucune image source repetee, ecart minimal entre moments,
+    // ordre chronologique. Un plan `m3g-v1` ne doit jamais resservir pour ces
+    // regles-la — c'est `lirePlanIdentique` qui le garantit, en filtrant sur
+    // ce champ.
+    expect(ALGORITHME_PLAN).toBe('m3g-v2');
     expect(formatValide('9:16')).toBe(true);
     expect(formatValide('4:3')).toBe(false);
     expect(formatValide('')).toBe(false);
@@ -633,7 +638,7 @@ describe('9-18. Le moteur : ordre, durée, recadrage, déterminisme', () => {
       dureeCibleSecondes: 22, geometrie: GEO_16_9,
     });
     expect(resultat!.usage).toMatchObject({
-      algorithmePlan: 'm3g-v1',
+      algorithmePlan: ALGORITHME_PLAN,
       clipsRecus: 5,
       plansRetenus: 4,
       clipsEcartes: 1,
@@ -822,7 +827,7 @@ describe('25-36. Les routes : refus, propriété, aucun paramètre de montage', 
     expect(b.plan).toMatchObject({
       clipSetId: CL, clipSetVersion: 1, candidateSetId: CS, analysisId: AN,
       algorithme: 'm3e-v1', methodeMaterialisation: 'x264-crf23-v1',
-      algorithmePlan: 'm3g-v1', format: '9:16', dureeCibleSecondes: 25,
+      algorithmePlan: ALGORITHME_PLAN, format: '9:16', dureeCibleSecondes: 25,
       largeurCible: 1080, hauteurCible: 1920, fps: 30, version: 1,
     });
     expect(b.plan.plans.length).toBeGreaterThan(0);
@@ -850,6 +855,70 @@ describe('25-36. Les routes : refus, propriété, aucun paramètre de montage', 
     expect(insertions).toHaveLength(nbInsertions);
     expect(tables.rush_montage_plans).toHaveLength(1);
     expect(tables.rush_montage_plans[0].version).toBe(1);
+  });
+
+  it('UN PLAN `m3g-v1` N’EST JAMAIS RÉUTILISÉ PAR LA POLITIQUE COURANTE', async () => {
+    /**
+     * ⚠️ LA PANNE QUE CE TEST INTERDIT DE REVENIR.
+     *
+     * Le plafond de couverture et la diversité temporelle étaient en
+     * production le 2026-09-04, mais le plan du rush de test avait déjà été
+     * calculé sous l'ancienne règle. `lirePlanIdentique` le retrouvait, la
+     * route répondait `reutilise: true`, et le montage rendait les quatre
+     * anciens passages — la nouvelle politique n'était jamais exécutée, et
+     * rien ne le signalait.
+     */
+    tables.rush_montage_plans = [{
+      id: 'ancien', user_id: 'A',
+      clip_set_id: CL, clip_set_version: 1,
+      candidate_set_id: CS, analysis_id: AN,
+      algorithme: 'm3e-v1', methode_materialisation: 'x264-crf23-v1',
+      // Tout est identique SAUF la version de la politique.
+      algorithme_plan: 'm3g-v1',
+      format: '9:16', duree_cible_secondes: 25, version: 1,
+      largeur_cible: 1080, hauteur_cible: 1920, fps: 30,
+      plans: [
+        { ordre: 1, rangClip: 1, bucket: 'videos', cle: 'A/autopilote/clips/x.mp4',
+          entreeSecondes: 0, dureeRetenueSecondes: 5, debutTimelineSecondes: 0,
+          raccourci: false, recadrage: { x: 0, y: 0, largeur: 1, hauteur: 1 },
+          strategieRecadrage: 'aucun', largeurSource: 1920, hauteurSource: 1080,
+          raccordEntrant: 'coupe' },
+      ],
+      duree_totale_secondes: 5, ecart_secondes: 20, clips_ecartes: 0, usage: {},
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    }];
+
+    const rep = await post({ format: '9:16', dureeCibleSecondes: 25 });
+    const b = await rep.json();
+
+    // Un plan NEUF est calculé, sous la politique courante.
+    expect(rep.status).toBe(201);
+    expect(b.reutilise).toBe(false);
+    expect(b.plan.id).not.toBe('ancien');
+    expect(b.plan.algorithmePlan).toBe(ALGORITHME_PLAN);
+    expect(b.plan.algorithmePlan).not.toBe('m3g-v1');
+
+    // ⚠️ ET L'ANCIEN RESTE EN BASE, INTACT. Il dit ce qui a produit les
+    // fichiers d'hier ; le migrer ou le renommer effacerait cette trace.
+    const ancien = tables.rush_montage_plans.find((l) => l.id === 'ancien')!;
+    expect(ancien).toBeDefined();
+    expect(ancien.algorithme_plan).toBe('m3g-v1');
+    expect(tables.rush_montage_plans).toHaveLength(2);
+  });
+
+  it('un plan de la version COURANTE, lui, est bien réutilisé', async () => {
+    // L'idempotence ne doit pas être perdue au passage : deux demandes
+    // identiques sous la même politique ne recalculent rien.
+    const premier = await post({ format: '9:16', dureeCibleSecondes: 25 });
+    expect(premier.status).toBe(201);
+    expect((await premier.json()).plan.algorithmePlan).toBe(ALGORITHME_PLAN);
+
+    const second = await post({ format: '9:16', dureeCibleSecondes: 25 });
+    expect(second.status).toBe(200);
+    const b = await second.json();
+    expect(b.reutilise).toBe(true);
+    expect(b.plan.algorithmePlan).toBe(ALGORITHME_PLAN);
+    expect(tables.rush_montage_plans).toHaveLength(1);
   });
 
   it('un FORMAT différent produit un plan DISTINCT, pas une réutilisation', async () => {
