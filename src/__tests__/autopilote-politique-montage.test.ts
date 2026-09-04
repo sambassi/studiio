@@ -28,7 +28,7 @@
 import { describe, it, expect } from 'vitest';
 import { planifierMontage } from '@/lib/autopilot/analyse/montage';
 import {
-  COUVERTURE_MAX_RUSH, DUREE_PLAN_MIN_SECONDES,
+  COUVERTURE_MAX_RUSH, DUREE_PLAN_MIN_SECONDES, ECART_MOMENTS_MIN_SECONDES,
 } from '@/lib/autopilot/analyse/montage-contrat';
 import type { ClipMaterialise } from '@/lib/autopilot/analyse/clip-contrat';
 
@@ -94,19 +94,28 @@ describe('A. Le cas de production ne reprend plus presque tout le rush', () => {
     expect(couverture / CAS_REEL.rush).toBeLessThanOrEqual(COUVERTURE_MAX_RUSH);
     // Avant : 21,237 s couvertes sur 23,061 — 92,09 %.
     expect(couverture / CAS_REEL.rush).toBeLessThan(0.92);
-    expect(+(couverture).toFixed(3)).toBe(12.265);
+    expect(+(couverture).toFixed(3)).toBe(13);
   });
 
-  it('les deux meilleurs scores sont retenus, les deux suivants écartés', () => {
-    // Le classement est celui de M3-C : `rang` 1 = meilleur score.
-    expect(resultat!.plans.map((p) => p.rangClip).sort()).toEqual([1, 2]);
+  it('le second moment n’est PAS le voisin du premier, mais un ailleurs', () => {
+    // ⚠️ LE SCORE NE SUFFIT PAS. `rang` 2 (score 76) touche `rang` 1 une fois
+    // leur recouvrement retiré : les garder tous deux reconstruisait une
+    // plage continue de 12,3 s. C'est `rang` 3 (score 75), qui vit à l'autre
+    // bout du rush, qui fait le second MOMENT.
+    expect(resultat!.plans.map((p) => p.rangClip).sort()).toEqual([1, 3]);
     expect(resultat!.clipsEcartes).toBe(2);
   });
 
+  it('les deux moments sont séparés par un vrai trou dans la source', () => {
+    const tri = [...plages].sort((a, b) => a.debut - b.debut);
+    expect(+(tri[1].debut - tri[0].fin).toFixed(3)).toBe(3.972);
+    expect(resultat!.usage.plusPetitTrouSecondes).toBe(3.972);
+  });
+
   it('la durée finale est celle de la matière retenue, pas la cible', () => {
-    expect(+resultat!.dureeTotaleSecondes.toFixed(3)).toBe(12.265);
+    expect(+resultat!.dureeTotaleSecondes.toFixed(3)).toBe(13);
     // ⚠️ L'ECART EST DIT, JAMAIS COMBLE.
-    expect(+resultat!.ecartSecondes.toFixed(3)).toBe(47.735);
+    expect(+resultat!.ecartSecondes.toFixed(3)).toBe(47);
   });
 });
 
@@ -154,33 +163,30 @@ describe('C. La durée demandée reste un maximum qu’on peut atteindre', () =>
 });
 
 describe('D/G. Aucune image source deux fois', () => {
-  it('deux passages qui se chevauchent : la partie commune n’est montrée qu’une fois', () => {
+  it('deux passages qui se chevauchent : le second est ÉCARTÉ, pas rogné', () => {
+    // ⚠️ LE ROGNAGE PROLONGERAIT LA MEME SCENE. `0→10` puis `8→18` rogné
+    // donnerait `0→10` + `10→18`, soit `0→18` d'une traite : deux plans, une
+    // seule plage continue. C'est exactement ce qu'on refuse.
     const clips = [clip(1, 0, 10), clip(2, 8, 18)];
     const { resultat } = planifierMontage({
       clips, format: '9:16', dureeCibleSecondes: 300, geometrie: GEO,
       dureeRushSecondes: 100,
     });
+    expect(resultat!.plans.map((p) => p.rangClip)).toEqual([1]);
     const plages = plagesSource(resultat!.plans, clips);
     const somme = plages.reduce((t, p) => t + (p.fin - p.debut), 0);
-    // Somme des durées === union : il n'y a donc aucun recouvrement.
     expect(+somme.toFixed(3)).toBe(+secondesCouvertes(plages).toFixed(3));
-    // Le second entre APRES la partie déjà prise.
-    const second = resultat!.plans.find((p) => p.rangClip === 2)!;
-    expect(second.entreeSecondes).toBe(2);
-    expect(second.dureeRetenueSecondes).toBe(8);
   });
 
-  it('deux passages adjacents sans recouvrement sont gardés entiers', () => {
+  it('deux passages exactement adjacents ne font qu’UN moment', () => {
+    // `0→10` puis `10→20`, c'est `0→20`. Aucune coupe ne se verrait.
     const clips = [clip(1, 0, 10), clip(2, 10, 20)];
     const { resultat } = planifierMontage({
       clips, format: '9:16', dureeCibleSecondes: 300, geometrie: GEO,
       dureeRushSecondes: 100,
     });
-    expect(resultat!.plans).toHaveLength(2);
-    for (const p of resultat!.plans) {
-      expect(p.entreeSecondes).toBe(0);
-      expect(p.dureeRetenueSecondes).toBe(10);
-    }
+    expect(resultat!.plans).toHaveLength(1);
+    expect(resultat!.plans[0].rangClip).toBe(1);
   });
 
   it('un passage entièrement contenu dans un autre est écarté', () => {
@@ -209,7 +215,7 @@ describe('E/F. Le score choisit, la chronologie monte', () => {
   it('les meilleurs scores sont prioritaires', () => {
     // Le rang porte le classement : rang 1 = meilleur. Le plafond (0,60 × 90
     // = 54 s) ne laisse passer que deux passages de 20 s sur trois.
-    const clips = [clip(1, 50, 70), clip(2, 20, 40), clip(3, 0, 20)];
+    const clips = [clip(1, 50, 70), clip(2, 25, 45), clip(3, 0, 20)];
     const { resultat } = planifierMontage({
       clips, format: '9:16', dureeCibleSecondes: 300, geometrie: GEO,
       dureeRushSecondes: 90,
@@ -218,7 +224,8 @@ describe('E/F. Le score choisit, la chronologie monte', () => {
   });
 
   it('l’ordre du montage est CHRONOLOGIQUE, pas celui du score', () => {
-    const clips = [clip(1, 50, 70), clip(2, 20, 40), clip(3, 0, 20)];
+    // Trois moments réellement séparés — 5 s de trou entre chacun.
+    const clips = [clip(1, 50, 70), clip(2, 25, 45), clip(3, 0, 20)];
     const { resultat } = planifierMontage({
       clips, format: '9:16', dureeCibleSecondes: 300, geometrie: GEO,
       dureeRushSecondes: 200,
@@ -232,6 +239,8 @@ describe('E/F. Le score choisit, la chronologie monte', () => {
     // Et la timeline est continue, renumérotée après le tri.
     expect(resultat!.plans.map((p) => p.ordre)).toEqual([1, 2, 3]);
     expect(resultat!.plans.map((p) => p.debutTimelineSecondes)).toEqual([0, 20, 40]);
+    // Et chaque coupe correspond à une vraie suppression dans la source.
+    expect(resultat!.usage.plusPetitTrouSecondes).toBe(5);
   });
 });
 
@@ -240,6 +249,8 @@ describe('I. La couverture se mesure sur l’union, jamais sur la somme', () => 
     // Somme des durées = 30 s ; union réelle = 14 s. Le plafond (0,60 × 20 s
     // = 12 s) doit s'appliquer à l'union, sinon un seul passage suffirait à
     // le saturer — et le montage n'aurait qu'un plan là où deux tiennent.
+    // Trois passages qui se recouvrent deux à deux : seul le premier passe
+    // la garde de diversité, et l'union ne compte donc pas trois fois.
     const clips = [clip(1, 0, 10), clip(2, 8, 18), clip(3, 16, 26)];
     const rush = 40;
     const { resultat } = planifierMontage({
@@ -279,5 +290,88 @@ describe('L. Les trois formats restent intacts', () => {
     });
     expect(resultat!.usage.largeurCible).toBe(l);
     expect(resultat!.usage.hauteurCible).toBe(h);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LA DIVERSITÉ TEMPORELLE — « plusieurs clips » ne fait pas « un montage »
+// ═══════════════════════════════════════════════════════════════════════════
+describe('Diversité temporelle : deux plans, deux MOMENTS', () => {
+  const rush = 200;
+  const monter = (clips: ClipMaterialise[]) => planifierMontage({
+    clips, format: '9:16', dureeCibleSecondes: 300, geometrie: GEO,
+    dureeRushSecondes: rush,
+  }).resultat!;
+
+  it('A. deux candidats exactement adjacents : un seul moment', () => {
+    const r = monter([clip(1, 0, 10), clip(2, 10, 20)]);
+    expect(r.plans).toHaveLength(1);
+  });
+
+  it('B. deux candidats séparés de 0,2 s : ce n’est pas une coupe', () => {
+    // ⚠️ UNE COUPE DE DEUX DIXIEMES NE COUPE RIEN. Elle ne se voit pas, et
+    // le montage reste la même scène jouée d'une traite.
+    const r = monter([clip(1, 0, 10), clip(2, 10.2, 20)]);
+    expect(r.plans).toHaveLength(1);
+  });
+
+  it('C. au seuil exact, le second moment est accepté', () => {
+    expect(ECART_MOMENTS_MIN_SECONDES).toBe(1);
+    // Juste en dessous : refusé. Juste au seuil : accepté. La convention est
+    // « >= seuil », et le test la fixe des deux côtés.
+    expect(monter([clip(1, 0, 10), clip(2, 10.999, 20)]).plans).toHaveLength(1);
+    expect(monter([clip(1, 0, 10), clip(2, 11, 20)]).plans).toHaveLength(2);
+  });
+
+  it('D. un score plus faible mais VRAIMENT ailleurs bat un voisin mieux noté', () => {
+    // C'est le cas de production, en miniature : rang 2 est mieux classé,
+    // mais il colle à rang 1 ; rang 3 est à l'autre bout du rush.
+    const r = monter([clip(1, 50, 60), clip(2, 60, 70), clip(3, 0, 10)]);
+    expect(r.plans.map((p) => p.rangClip).sort()).toEqual([1, 3]);
+    // Et le montage les rend dans l'ordre du rush.
+    expect(r.plans.map((p) => p.rangClip)).toEqual([3, 1]);
+  });
+
+  it('E/F/G/H. les garanties du lot précédent tiennent toujours', () => {
+    const clips = [clip(1, 0, 20), clip(2, 40, 60), clip(3, 80, 100)];
+    const r = planifierMontage({
+      clips, format: '9:16', dureeCibleSecondes: 45, geometrie: GEO,
+      dureeRushSecondes: rush,
+    }).resultat!;
+    const plages = plagesSource(r.plans, clips);
+    // E — aucune portion source répétée
+    const somme = plages.reduce((t, p) => t + (p.fin - p.debut), 0);
+    expect(+somme.toFixed(3)).toBe(+secondesCouvertes(plages).toFixed(3));
+    // F — couverture sous le plafond
+    expect(secondesCouvertes(plages)).toBeLessThanOrEqual(COUVERTURE_MAX_RUSH * rush);
+    // G — la durée demandée reste un maximum
+    expect(r.dureeTotaleSecondes).toBeLessThanOrEqual(45);
+    // H — ordre chronologique
+    for (let i = 1; i < plages.length; i += 1) {
+      expect(plages[i].debut).toBeGreaterThan(plages[i - 1].debut);
+    }
+  });
+
+  it('I. aucun quota : trois vrais moments donnent trois plans', () => {
+    const r = monter([clip(1, 0, 10), clip(2, 30, 40), clip(3, 60, 70)]);
+    expect(r.plans).toHaveLength(3);
+  });
+
+  it('J. un rush qui n’a qu’un moment fort donne UN plan, sans remplissage', () => {
+    // Les trois candidats vivent au même endroit : le second colle au
+    // premier, le troisième n'en est séparé que d'une demi-seconde. Aucun des
+    // deux n'ajoute un moment, et rien n'est ajouté pour « faire des coupes ».
+    const r = monter([clip(1, 0, 10), clip(2, 10, 20), clip(3, 10.5, 20.5)]);
+    expect(r.plans).toHaveLength(1);
+    expect(r.dureeTotaleSecondes).toBe(10);
+    expect(r.clipsEcartes).toBe(2);
+  });
+
+  it('le relevé dit le seuil appliqué et le plus petit trou obtenu', () => {
+    const r = monter([clip(1, 0, 10), clip(2, 30, 40), clip(3, 60, 70)]);
+    expect(r.usage.ecartMomentsMin).toBe(ECART_MOMENTS_MIN_SECONDES);
+    expect(r.usage.plusPetitTrouSecondes).toBe(20);
+    // Un seul moment : il n'y a pas de trou à mesurer, et on ne l'invente pas.
+    expect(monter([clip(1, 0, 10)]).usage.plusPetitTrouSecondes).toBeNull();
   });
 });

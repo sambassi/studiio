@@ -15,7 +15,8 @@
  */
 import {
   ALGORITHME_PLAN, DUREE_PLAN_MIN_SECONDES, PLANS_MAX,
-  COUVERTURE_MAX_RUSH, dimensionsCible, dureeUtilisable, recadrer,
+  COUVERTURE_MAX_RUSH, ECART_MOMENTS_MIN_SECONDES,
+  dimensionsCible, dureeUtilisable, recadrer,
   RACCORD_DEFAUT,
   type FormatMontage, type GeometrieSource, type MotifPlan, type PlanMontage,
 } from './montage-contrat';
@@ -118,6 +119,14 @@ function reste(plage: Plage, prises: readonly Plage[]): Plage[] {
   return morceaux.filter((m) => m.fin > m.debut);
 }
 
+/**
+ * Ce qui SÉPARE deux plages source, en secondes. Zéro si elles se touchent
+ * ou se recouvrent.
+ */
+function ecart(a: Plage, b: Plage): number {
+  return Math.max(0, Math.max(a.debut, b.debut) - Math.min(a.fin, b.fin));
+}
+
 /** Le plus long morceau restant. Déterministe : à égalité, le premier. */
 function plusLong(morceaux: readonly Plage[]): Plage | null {
   let meilleur: Plage | null = null;
@@ -167,6 +176,26 @@ export function planifierMontage(
 
     const disponible = dureeUtilisable(clip);
     if (disponible === null) { ecartes += 1; continue; }
+
+    /**
+     * ── UN MOMENT DISTINCT, PAS LA SUITE DU PRÉCÉDENT ─────────────────
+     *
+     * ⚠️ ÉVALUÉ SUR LA PLAGE BRUTE, AVANT TOUT ROGNAGE. Rogner d'abord
+     * transformerait deux candidats qui se recouvrent en deux plans
+     * exactement adjacents — c'est ce qui s'est produit sur le cas de
+     * production : `8,972 → 16,972` suivi de `16,972 → 21,237`, soit une
+     * seule plage continue de 12,3 s. Techniquement deux plans,
+     * éditorialement le rush.
+     *
+     * Un candidat qui touche un passage déjà retenu, ou qui n'en est séparé
+     * que par moins d'une seconde, est donc écarté AU PROFIT DU SUIVANT — on
+     * ne le rogne pas pour prolonger la même scène.
+     */
+    const brute: Plage = { debut: clip.debutSecondes, fin: clip.finSecondes };
+    if (retenus.some((r) => ecart(brute, r.plage) < ECART_MOMENTS_MIN_SECONDES)) {
+      ecartes += 1;
+      continue;
+    }
 
     // ── Ce que ce clip apporte de NEUF dans la source ──────────────────
     const morceau = plusLong(reste(
@@ -287,6 +316,14 @@ export function planifierMontage(
           ? null
           : Math.round((couverture / dureeRush) * 1000) / 1000,
         ordreFinal: 'chronologique',
+        ecartMomentsMin: ECART_MOMENTS_MIN_SECONDES,
+        // Le plus petit trou entre deux moments montés : la mesure qui dit
+        // si les coupes se voient. `null` quand il n'y a qu'un moment.
+        plusPetitTrouSecondes: retenus.length < 2 ? null : arrondirSeconde(
+          Math.min(...retenus.slice(1).map(
+            (r, i) => r.plage.debut - retenus[i].plage.fin,
+          )),
+        ),
       },
     },
     motif: null,

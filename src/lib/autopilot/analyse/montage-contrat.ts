@@ -152,6 +152,38 @@ export const DUREE_PLAN_MIN_SECONDES = RUSH_SEQUENCE_SECONDS.min;
  */
 export const COUVERTURE_MAX_RUSH = 0.60;
 
+/**
+ * L'ECART SOURCE MINIMAL ENTRE DEUX PASSAGES RETENUS, EN SECONDES.
+ *
+ * ---------------------------------------------------------------------------
+ * ⚠️ PLUSIEURS CLIPS NE FONT PAS UN MONTAGE
+ * ---------------------------------------------------------------------------
+ *
+ * Le plafond de couverture a fait tomber le cas de production de 92 % a 53 %,
+ * mais les deux passages retenus etaient EXACTEMENT ADJACENTS une fois leur
+ * recouvrement retire : `8,972 → 16,972` puis `16,972 → 21,237`. Deux plans
+ * dans le plan, une seule plage continue a l'ecran — techniquement un
+ * montage, editorialement le rush.
+ *
+ * Deux passages ne comptent donc pour deux MOMENTS que s'il manque vraiment
+ * quelque chose entre eux.
+ *
+ * ---------------------------------------------------------------------------
+ * POURQUOI UNE SECONDE, ET PAS UN AUTRE CHIFFRE
+ * ---------------------------------------------------------------------------
+ *
+ * Simule sur le cas reel, 0,5 / 1,0 / 1,5 / 2,0 s donnent le MEME resultat :
+ * les voisins s'y recouvrent, leur ecart vaut zero, et n'importe quel seuil
+ * positif les ecarte. Le choix se joue donc sur ce que chacun refuse
+ * ailleurs — et `DUREE_PLAN_MIN_SECONDES` vaut deja une seconde, la duree en
+ * dessous de laquelle ce depot considere qu'un plan « clignote » plutot
+ * qu'il ne se voit. Un TROU plus court qu'un PLAN minimal ne se voit pas
+ * davantage : une coupe de 0,1 s ne coupe rien. Aligner les deux evite
+ * d'inventer une constante de plus, et 1,5 ou 2 s ecarteraient des moments
+ * legitimes sur un rush dense sans qu'aucune mesure ne le justifie.
+ */
+export const ECART_MOMENTS_MIN_SECONDES = DUREE_PLAN_MIN_SECONDES;
+
 export function dureeCibleValide(v: unknown): v is number {
   const n = nombreFini(v);
   return n !== null && n >= DUREE_CIBLE_MIN_SECONDES && n <= DUREE_CIBLE_MAX_SECONDES;
