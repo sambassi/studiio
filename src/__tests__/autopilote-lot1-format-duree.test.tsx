@@ -264,7 +264,9 @@ describe('4. Les réglages par défaut', () => {
     await act(async () => {
       fireEvent.click(container.querySelector('[data-menu-actions="montage"]')!);
     });
-    const entree = Array.from(container.querySelectorAll('[role="menuitem"]'))
+    // ⚠️ `document`, ET NON `container` : le panneau du menu est rendu dans
+    // `document.body` par un portail depuis le correctif du menu rogné.
+    const entree = Array.from(document.querySelectorAll('[role="menuitem"]'))
       .find((b) => (b.textContent ?? '').includes('réglage par défaut'))!;
     await act(async () => { fireEvent.click(entree); });
     expect(onEnregistrerDefaut).toHaveBeenCalledTimes(1);
@@ -273,7 +275,7 @@ describe('4. Les réglages par défaut', () => {
     await act(async () => {
       fireEvent.click(container.querySelector('[data-menu-actions="montage"]')!);
     });
-    expect(Array.from(container.querySelectorAll('[role="menuitem"]'))
+    expect(Array.from(document.querySelectorAll('[role="menuitem"]'))
       .map((b) => b.textContent ?? '').join(' ')).toContain('enregistré');
   });
 

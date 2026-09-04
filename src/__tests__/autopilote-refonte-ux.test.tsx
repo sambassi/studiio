@@ -27,6 +27,9 @@ import { render, fireEvent, cleanup, act, screen } from '@testing-library/react'
 import MenuActions from '@/components/ui/MenuActions';
 import VideosPretes from '@/components/creer/VideosPretes';
 import SessionsTournagePanel from '@/components/creer/SessionsTournagePanel';
+import {
+  HAUTEUR_MAX_APERCU, RATIOS_APERCU, geometrieApercu,
+} from '@/lib/creer/apercu-geometrie';
 
 const SESSION = '11111111-1111-4111-8111-111111111111';
 const RUSH_A = '22222222-2222-4222-8222-222222222222';
@@ -510,5 +513,206 @@ describe('9. L’analyse, quand on la demande', () => {
     // La vignette vient de l'analyse : aucune image n'est fabriquée pour ça.
     expect(premier.querySelector('img')!.getAttribute('src'))
       .toContain(`/api/autopilot/analyses/${ANALYSE}/vignettes/`);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 10. LES QUATRE DÉFAUTS TROUVÉS EN PRODUCTION LE 2026-09-04
+// ═══════════════════════════════════════════════════════════════════════════
+describe('10. La géométrie de l’aperçu borne la LARGEUR', () => {
+  /**
+   * ⚠️ CE QUI EST VERROUILLÉ ICI EST EXACTEMENT CE QUI A CASSÉ.
+   *
+   * `aspect-ratio` + `max-height` + `width: 100%` donnait, en production, un
+   * cadre 394×389 pour un montage 1080×1920 : le navigateur rabotait la
+   * hauteur sans revenir sur la largeur. La correction consiste à borner la
+   * LARGEUR ; sans cette borne, jsdom ne verrait rien — d'où le contrôle
+   * Playwright qui mesure la boîte réelle aux trois largeurs de fenêtre.
+   */
+  it.each([
+    ['9:16', 9, 16],
+    ['16:9', 16, 9],
+    ['1:1', 1, 1],
+  ])('A/B/C. %s garde son ratio ET borne sa largeur', (nom, l, h) => {
+    expect(RATIOS_APERCU[nom]).toEqual([l, h]);
+    const g = geometrieApercu(l, h);
+    expect(g.aspectRatio).toBe(`${l} / ${h}`);
+    expect(g.maxWidth).toBe(`calc(${HAUTEUR_MAX_APERCU} * ${l} / ${h})`);
+    expect(g.maxHeight).toBe(HAUTEUR_MAX_APERCU);
+    expect(g.marginInline).toBe('auto');
+  });
+
+  it('D. une contrainte de hauteur ne peut plus déformer le cadre', () => {
+    // Le cas exact de production : 1080×1920 dans une colonne étroite.
+    const g = geometrieApercu(1080, 1920);
+    expect(g.maxWidth).toBe('calc(52vh * 1080 / 1920)');
+    // La borne de largeur est CE QUI MANQUAIT : sans elle, la hauteur seule
+    // était rabotée et le cadre devenait carré.
+    expect(g.maxWidth).not.toBe('none');
+    expect(g.width).toBe('100%');
+  });
+
+  it('D bis. les quatre états de l’aperçu partagent la même géométrie', async () => {
+    const { readFileSync } = await import('node:fs');
+    const path = await import('node:path');
+    const src = readFileSync(
+      path.resolve(__dirname, '../components/creer/VideosPretes.tsx'), 'utf8',
+    );
+    // TROIS appels — `CadreFormat`, l'affiche, le lecteur — pour CINQ
+    // emplacements : `CadreFormat` sert a lui seul « aucun rush », « aucune
+    // video » et « creation en cours ». Une formule, aucune exception.
+    expect(src.match(/geometrieApercu\(/g) ?? []).toHaveLength(3);
+    expect(src.match(/<CadreFormat/g) ?? []).toHaveLength(3);
+    // Et plus aucun `aspect-ratio` écrit à la main, qui échapperait à la règle.
+    expect(src).not.toContain('aspectRatio: `${');
+  });
+});
+
+describe('11. Le menu « ⋯ » ne peut plus être rogné', () => {
+  it('E. le panneau est rendu HORS de la piste qui défile', async () => {
+    const { container } = await monterPanneau();
+    await act(async () => {
+      fireEvent.click(container.querySelector(`[data-menu-actions="rush-${RUSH_A}"]`)!);
+    });
+    const panneau = document.querySelector(`[data-menu-panneau="rush-${RUSH_A}"]`)!;
+    expect(panneau).toBeTruthy();
+    // ⚠️ LE POINT ENTIER DU CORRECTIF. Rendu dans la piste `overflow-x-auto`,
+    // le menu s'y faisait couper — « ir l'analyse » au lieu de « Voir
+    // l'analyse », constaté en production.
+    const piste = container.querySelector('[data-bande-piste]')!;
+    expect(piste.contains(panneau)).toBe(false);
+    expect(panneau.closest('[data-bande-rushes]')).toBeNull();
+    expect(getComputedStyle(panneau).position).toBe('fixed');
+  });
+
+  it('E bis. Escape ferme, et le clic hors du menu aussi', async () => {
+    const { container } = await monterPanneau();
+    const decl = container.querySelector(`[data-menu-actions="rush-${RUSH_A}"]`)! as HTMLElement;
+    await act(async () => { fireEvent.click(decl); });
+    await act(async () => {
+      fireEvent.keyDown(document.querySelector('[role="menu"]')!, { key: 'Escape' });
+    });
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+
+    await act(async () => { fireEvent.click(decl); });
+    await act(async () => { fireEvent.mouseDown(document.body); });
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+  });
+
+  it('E ter. les flèches circulent dans le panneau porté ailleurs', async () => {
+    const { container } = await monterPanneau();
+    await act(async () => {
+      fireEvent.click(container.querySelector(`[data-menu-actions="rush-${RUSH_A}"]`)!);
+    });
+    const menu = document.querySelector('[role="menu"]')!;
+    const entrees = [...document.querySelectorAll('[role="menuitem"]')];
+    expect(document.activeElement).toBe(entrees[0]);
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(entrees[1]);
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(entrees[0]);
+  });
+});
+
+describe('12. « Ajouter » ne se cache plus au bout de la bande', () => {
+  it('F. le bouton est HORS de la zone qui défile', async () => {
+    const { container } = await monterPanneau();
+    const ajouter = container.querySelector('[data-bande-ajouter]')!;
+    const piste = container.querySelector('[data-bande-piste]')!;
+    expect(ajouter).toBeTruthy();
+    // ⚠️ MESURÉ EN PRODUCTION : à quatre rushes, il fallait faire défiler
+    // 325 px pour le découvrir. C'est le seul point qui faisait échouer le
+    // test des cinq secondes.
+    expect(piste.contains(ajouter)).toBe(false);
+  });
+
+  it('G. le dépôt est annoncé en permanence, et signalé au survol', async () => {
+    const { container } = await monterPanneau();
+    const aide = container.querySelector('[data-bande-aide]')!;
+    expect(aide.textContent).toContain('Déposez vos vidéos');
+
+    expect(container.querySelector('[data-bande-depot]')).toBeNull();
+    const zone = container.querySelector('[data-bande-piste]')!.closest('.relative')!;
+    fireEvent.dragEnter(zone, { dataTransfer: { types: ['Files'], files: [] } });
+    expect(container.querySelector('[data-bande-depot]')!.textContent)
+      .toContain('Déposez vos vidéos ici');
+    fireEvent.dragLeave(zone, { dataTransfer: { types: ['Files'], files: [] } });
+    expect(container.querySelector('[data-bande-depot]')).toBeNull();
+  });
+});
+
+describe('13. Le focus revient au « ⋯ », jamais au body', () => {
+  const parcours = async (fermeture: 'escape' | 'bouton') => {
+    const { container } = await monterPanneau();
+    const decl = container.querySelector(
+      `[data-menu-actions="rush-${RUSH_A}"]`,
+    ) as HTMLButtonElement;
+    decl.focus();
+    await act(async () => { fireEvent.click(decl); });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Voir l’analyse' }));
+    });
+    expect(document.querySelector('[data-drawer="analyse"]')).toBeTruthy();
+
+    if (fermeture === 'escape') {
+      await act(async () => { fireEvent.keyDown(document, { key: 'Escape' }); });
+    } else {
+      await act(async () => {
+        fireEvent.click(document.querySelector('[data-drawer-fermer]')!);
+      });
+    }
+    return { decl };
+  };
+
+  it('H. Escape referme le tiroir et rend le focus au déclencheur', async () => {
+    const { decl } = await parcours('escape');
+    expect(document.querySelector('[data-drawer="analyse"]')).toBeNull();
+    // ⚠️ L'ENTRÉE DE MENU N'EXISTE PLUS À CET INSTANT. Le tiroir mémorisait
+    // ce `menuitem` démonté et rendait donc le focus à `<body>` — constaté en
+    // production. Le menu rend maintenant le focus au « ⋯ » AVANT d'exécuter
+    // l'action, si bien que ce que le tiroir mémorise survit à sa fermeture.
+    expect(document.activeElement).toBe(decl);
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('H bis. le bouton Fermer se comporte comme Escape', async () => {
+    const { decl } = await parcours('bouton');
+    expect(document.querySelector('[data-drawer="analyse"]')).toBeNull();
+    expect(document.activeElement).toBe(decl);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 14. LE TEST DES CINQ SECONDES, ÉCRIT COMME UN TEST
+// ═══════════════════════════════════════════════════════════════════════════
+describe('14. Sept repères, sans ouvrir un seul menu', () => {
+  it('rushes, ajouter, format, durée, audio, créer, résultat', async () => {
+    const { container } = await monterPanneau();
+    // Le rush qui porte la chaîne : celui-là a des passages.
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>(`[data-bande-choisir="${RUSH_A}"]`)!.click();
+    });
+    for (let i = 0; i < 6; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await act(async () => { await Promise.resolve(); });
+    }
+
+    const reperes = {
+      rushes: !!container.querySelector('[data-bande-carte]'),
+      ajouter: !!container.querySelector('[data-bande-ajouter]'),
+      format: !!container.querySelector('[data-montage-format]'),
+      duree: !!container.querySelector('[data-montage-duree]'),
+      audio: !!container.querySelector('[data-reglages-audio]'),
+      creer: !!container.querySelector('[data-chaine-bouton]'),
+    };
+    for (const [nom, present] of Object.entries(reperes)) {
+      expect(present, `repère manquant : ${nom}`).toBe(true);
+    }
+    // ⚠️ ET AUCUN MENU N'A ÉTÉ OUVERT. Un repère qu'il faut aller chercher
+    // dans un « ⋯ » n'est pas un repère : c'est exactement le reproche fait à
+    // « + Ajouter », qui vivait au bout d'une bande à faire défiler.
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    // Le septième — « où voir le résultat » — est la colonne d'aperçu, montée
+    // par l'assistant ; `VideosPretes` la couvre dans les blocs 5 et 6.
   });
 });

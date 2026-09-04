@@ -75,17 +75,13 @@ import {
 } from 'lucide-react';
 import MenuActions from '@/components/ui/MenuActions';
 import {
+  RATIOS_APERCU, geometrieApercu,
+} from '@/lib/creer/apercu-geometrie';
+import {
   DELAI_SUIVI_MS, creerBrouillonPlanification, formaterDuree,
   lireRenduDeSession, messageEchec, orientation, phraseEnCours, renduEnCours,
   type Fetcher, type RenduEcran,
 } from '@/lib/autopilot/analyse/rendu-passerelle';
-
-/** Les trois cadres possibles, dans le vocabulaire du contrat de montage. */
-const RATIOS: Record<string, [number, number]> = {
-  '9:16': [9, 16],
-  '1:1': [1, 1],
-  '16:9': [16, 9],
-};
 
 interface Props {
   /** La session de tournage regardée. */
@@ -271,11 +267,11 @@ export default function VideosPretes({
    * l'ecran, et c'est ce qui a fait croire a un rendu au mauvais format.
    */
   const CadreFormat = ({ enfant }: { enfant?: React.ReactNode }) => {
-    const [l, h] = RATIOS[formatSouhaite ?? ''] ?? RATIOS['9:16'];
+    const [l, h] = RATIOS_APERCU[formatSouhaite ?? ''] ?? RATIOS_APERCU['9:16'];
     return (
       <div
-        className="flex w-full items-center justify-center rounded-lg border border-white/10 bg-white/[0.02]"
-        style={{ aspectRatio: `${l} / ${h}`, maxHeight: '52vh' }}
+        className="flex items-center justify-center rounded-lg border border-white/10 bg-white/[0.02]"
+        style={geometrieApercu(l, h)}
         data-videos-cadre={formatSouhaite ?? '9:16'}
       >
         {enfant ?? <Film className="h-6 w-6 text-gray-700" aria-hidden="true" />}
@@ -418,8 +414,8 @@ export default function VideosPretes({
               onError={() => setMedia('erreur')}
               data-videos-lecteur
               data-videos-media={media}
-              className="w-full rounded-md bg-black"
-              style={{ aspectRatio: `${video.largeur} / ${video.hauteur}`, maxHeight: '60vh' }}
+              className="rounded-md bg-black"
+              style={geometrieApercu(video.largeur, video.hauteur)}
             />
             {media !== 'pret' && (
               <p
@@ -458,10 +454,10 @@ export default function VideosPretes({
             data-videos-placeholder
             aria-label="Lire la vidéo"
             title="Lire la vidéo"
-            className="group flex w-full items-center justify-center rounded-lg border
+            className="group flex items-center justify-center rounded-lg border
               border-white/10 bg-white/[0.02] transition-colors hover:border-purple-500/50
               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
-            style={{ aspectRatio: `${video.largeur} / ${video.hauteur}`, maxHeight: '52vh' }}
+            style={geometrieApercu(video.largeur, video.hauteur)}
           >
             <span className="flex h-11 w-11 items-center justify-center rounded-full
               border border-white/20 text-gray-300 group-hover:border-purple-400 group-hover:text-white">

@@ -176,10 +176,11 @@ export default function BandeRushes({
         onDragLeave={surSortie}
         onDrop={surDepot}
       >
+        <div className="flex items-stretch gap-2">
         <div
           ref={pisteRef}
           data-bande-piste
-          className="flex gap-2 overflow-x-auto pb-1
+          className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1
             [scrollbar-width:thin] [-ms-overflow-style:none]"
         >
           {rushes.map((r) => {
@@ -266,22 +267,32 @@ export default function BandeRushes({
             );
           })}
 
-          {/* La carte « + » : meme gabarit que les rushes, donc meme ligne. */}
-          <button
-            type="button"
-            onClick={() => fichiersRef.current?.click()}
-            data-bande-ajouter
-            aria-label="Ajouter des rushes"
-            title="Ajouter des rushes — ou déposez vos fichiers ici"
-            className="flex w-[9.5rem] shrink-0 flex-col items-center justify-center gap-1
-              rounded-xl border border-dashed border-white/15 bg-white/[0.01] py-6
-              text-gray-500 hover:border-purple-500/50 hover:text-gray-300
-              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500
-              transition-colors"
-          >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            <span className="text-[11px]">Ajouter</span>
-          </button>
+        </div>
+
+        {/* ⚠️ « AJOUTER » EST HORS DE LA PISTE, ET C'EST TOUT L'OBJET DU
+            CORRECTIF. Place a la fin des cartes, il sortait de l'ecran des le
+            quatrieme rush : il fallait faire defiler 325 px pour decouvrir
+            comment ajouter un rush — mesure en production le 2026-09-04, et
+            c'est le seul point qui faisait echouer le test des cinq secondes.
+            Le depot par glisser-deposer marchait, mais rien ne le disait.
+
+            Ici, la piste defile et le bouton reste. Il est donc visible quel
+            que soit le nombre de rushes, et quel que soit le defilement. */}
+        <button
+          type="button"
+          onClick={() => fichiersRef.current?.click()}
+          data-bande-ajouter
+          aria-label="Ajouter des rushes"
+          title="Ajouter des rushes — ou déposez vos fichiers ici"
+          className="mb-1 flex w-[5.5rem] shrink-0 flex-col items-center justify-center gap-1
+            rounded-xl border border-dashed border-white/15 bg-white/[0.01]
+            text-gray-500 hover:border-purple-500/50 hover:text-gray-300
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500
+            transition-colors"
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          <span className="text-[11px]">Ajouter</span>
+        </button>
         </div>
 
         {/* La drop-zone n'existe QUE pendant le survol : hors de ce moment,
@@ -328,11 +339,14 @@ export default function BandeRushes({
         </ul>
       )}
 
-      {rushes.length === 0 && envois.length === 0 && (
-        <p className="text-[11px] text-gray-500" data-bande-vide>
-          Aucun rush. Déposez vos vidéos ou utilisez « Ajouter ».
-        </p>
-      )}
+      {/* ⚠️ LE DEPOT SE DIT, IL NE SE DEVINE PAS. Une zone qui accepte les
+          fichiers sans jamais l'ecrire n'est decouverte que par hasard. Une
+          ligne de onze pixels suffit, et elle ne coute pas une carte. */}
+      <p className="text-[11px] text-gray-500" data-bande-aide>
+        {rushes.length === 0 && envois.length === 0
+          ? 'Aucun rush. Déposez vos vidéos ici, ou utilisez « Ajouter ».'
+          : 'Déposez vos vidéos ici pour en ajouter.'}
+      </p>
     </section>
   );
 }
