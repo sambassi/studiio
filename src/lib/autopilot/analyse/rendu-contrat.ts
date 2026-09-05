@@ -29,8 +29,12 @@
  */
 import { createHash } from 'crypto';
 import {
-  estRecetteHistorique, recetteCanonique, type RecetteAudio,
+  RECETTE_AUDIO_DEFAUT, estRecetteHistorique, recetteCanonique, type RecetteAudio,
 } from './recette-audio';
+import {
+  estProfilHistorique, profilCreatifCanonique,
+  type ProfilCreatifAutopilote, type ProfilCreatifPartiel,
+} from './profil-creatif';
 import {
   AUDIO_BITRATE, AUDIO_FREQUENCE, CLIP_OCTETS_MAX, CONTENT_TYPE,
   CRF, PIXEL_FORMAT, PRESET, TIMEOUT_TELEVERSEMENT_MS as TIMEOUT_TELEVERSEMENT_CLIP_MS,
@@ -86,6 +90,37 @@ export const METHODE_RENDU = 'x264-crf23-concat-v1' as const;
 export const PREFIXE_METHODE_MIX = 'x264-mix-v1-' as const;
 
 /**
+ * LOT 2B — LE PREFIXE DES RENDUS QUI PORTENT UN PROFIL CREATIF.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ UN TROISIEME PREFIXE, ET NON UNE EXTENSION DU SECOND
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * `x264-mix-v1-<empreinte>` designe une empreinte calculee sur la SEULE
+ * recette audio. Y glisser le profil creatif changerait la valeur rendue pour
+ * des recettes audio inchangees : tous les rendus deja reussis deviendraient
+ * introuvables, seraient recalcules, et seraient refactures. Un prefixe
+ * distinct laisse le passe strictement intact.
+ *
+ * Trois cas, et un seul est nouveau :
+ *
+ *   1. ni audio ni profil -> `METHODE_RENDU`            (inchange)
+ *   2. audio seul         -> `x264-mix-v1-<h(audio)>`   (inchange, au bit pres)
+ *   3. profil present     -> `x264-pc-v1-<h(audio+profil)>`
+ *
+ * ⚠️ ONZE CARACTERES, ET C'EST MESURE. `methode_rendu` est un `text` borne a
+ * 40 par la migration, et il fait partie de
+ * `rush_montage_renders_reussi_unique`. 11 + 24 = 35 : la marge est de cinq
+ * caracteres, et un test la garde. Un prefixe plus bavard ferait echouer
+ * l'insertion, pas la validation — c'est-a-dire en production, au moment de
+ * televerser un rendu deja calcule.
+ */
+export const PREFIXE_METHODE_PROFIL = 'x264-pc-v1-' as const;
+
+/** La borne de la colonne, recopiee de la migration. Gardee par un test. */
+export const LONGUEUR_METHODE_RENDU_MAX = 40;
+
+/**
  * La longueur de l'empreinte, en caracteres hexadecimaux.
  *
  * 12 caracteres de prefixe + 24 d'empreinte = 36, sous la borne de 40. Vingt-
@@ -122,9 +157,42 @@ export function empreinteRecette(recette: RecetteAudio): string {
  * reussis restent donc reutilisables, et ce lot ne transforme pas tout le
  * passe en travail a refaire.
  */
-export function methodeRendu(recette: RecetteAudio | null | undefined): string {
+export function methodeRendu(
+  recette: RecetteAudio | null | undefined,
+  profil?: ProfilCreatifPartiel | ProfilCreatifAutopilote | null,
+): string {
+  // ⚠️ LE PROFIL D'ABORD. Un profil qui demande quelque chose l'emporte, meme
+  // sur une recette audio historique : sinon une video sans musique mais avec
+  // un CTA rendrait `METHODE_RENDU`, c'est-a-dire le fichier d'avant.
+  if (!estProfilHistorique(profil)) {
+    return `${PREFIXE_METHODE_PROFIL}${empreinteRenduComplet(recette, profil)}`;
+  }
   if (estRecetteHistorique(recette)) return METHODE_RENDU;
   return `${PREFIXE_METHODE_MIX}${empreinteRecette(recette as RecetteAudio)}`;
+}
+
+/**
+ * L'empreinte d'un rendu COMPLET — le son ET le style.
+ *
+ * ⚠️ UNE SEULE EMPREINTE POUR LES DEUX, ET NON DEUX CONCATENEES. La colonne
+ * n'a la place que d'une : 11 caracteres de prefixe et 24 d'empreinte. Hacher
+ * la concatenation des deux formes canoniques donne une valeur qui change des
+ * qu'UN des deux change, ce qui est exactement la garantie recherchee.
+ *
+ * ⚠️ LE SEPARATEUR EST OBLIGATOIRE. Sans lui, deux decoupages differents des
+ * memes caracteres — une cle de musique se terminant par ce que le profil
+ * commence — rendraient la meme empreinte pour deux rendus differents.
+ */
+export function empreinteRenduComplet(
+  recette: RecetteAudio | null | undefined,
+  profil: ProfilCreatifPartiel | ProfilCreatifAutopilote | null | undefined,
+): string {
+  const audio = recetteCanonique(recette ?? RECETTE_AUDIO_DEFAUT);
+  const style = profilCreatifCanonique(profil);
+  return createHash('sha256')
+    .update(`${audio}\n--\n${style}`, 'utf8')
+    .digest('hex')
+    .slice(0, LONGUEUR_EMPREINTE);
 }
 
 /** Repris de M3-F : la mesure du dépôt écarte explicitement CRF 20. */

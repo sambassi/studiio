@@ -7,6 +7,14 @@ import { CARD_STYLE_NAMES } from '@/lib/creer/cardStyles';
 import {
   RECETTE_AUDIO_DEFAUT, lireRecetteAudio, type RecetteAudio,
 } from '@/lib/autopilot/analyse/recette-audio';
+import {
+  PROFIL_CREATIF_DEFAUT, lireProfilCreatif, normaliserProfilCreatif,
+  type ProfilCreatifAutopilote,
+} from '@/lib/autopilot/analyse/profil-creatif';
+import {
+  OBJECTIF_DEFAUT, lireObjectif, normaliserObjectif,
+  type ObjectifCommunication,
+} from '@/lib/autopilot/analyse/objectif-communication';
 
 /**
  * Le style de texte CONSTANT de l'Autopilote — police, taille, position,
@@ -155,6 +163,38 @@ export interface AutopilotDesignStyle {
    * champ.
    */
   audio?: RecetteAudio;
+  /**
+   * LOT 2B — LE PROFIL CREATIF DU COMPTE : « mon style ».
+   *
+   * ⚠️ FRERE DE `montage` ET DE `audio`, JAMAIS LEUR ENFANT. Le meme
+   * raisonnement que celui ecrit pour `audio` : `montage` applique une regle
+   * « tout ou rien », et loger le profil dedans le ferait disparaitre
+   * exactement pour les configurations anciennes qu'on veut proteger.
+   *
+   * ⚠️ ET C'EST LE DEFAUT DU COMPTE, PAS LA DEMANDE D'UNE VIDEO. Ce qui est
+   * REELLEMENT rendu voyage dans le corps de `POST /rendu`, video par video ;
+   * l'ecran part d'ici, l'utilisateur peut en devier pour une seule video, et
+   * « Enregistrer comme mon style » est le seul geste qui reecrit ce champ.
+   *
+   * ⚠️ ISOLE PAR CONSTRUCTION. `designStyle` est une colonne d'une LIGNE de
+   * `autopilot_config`, et cette table porte un `user_id`. Le profil du
+   * compte A ne peut pas atteindre le compte B : il faudrait lire une autre
+   * ligne.
+   */
+  profilCreatif?: ProfilCreatifAutopilote;
+  /**
+   * LOT 2B — L'OBJECTIF HABITUEL DU COMPTE.
+   *
+   * ⚠️ UNE AUTRE COUCHE, ET DONC UN AUTRE CHAMP. Le profil creatif dit
+   * COMMENT les videos ressemblent ; l'objectif dit POURQUOI elles existent,
+   * et lui SEUL a vocation a changer les decisions de montage. Les ranger
+   * dans la meme structure aurait fini par faire recalculer un plan parce
+   * qu'une couleur a change.
+   *
+   * C'est un DEFAUT : `objectifEffectif(objectifVideo, celui-ci)` tranche a
+   * chaque creation, et une video peut toujours declarer le sien.
+   */
+  objectifParDefaut?: ObjectifCommunication;
   title?: AutopilotTextZone;
   /**
    * Sous-titre — police et taille SEULEMENT.
@@ -334,6 +374,42 @@ export function audioDepuisStyle(
   return style?.audio ?? RECETTE_AUDIO_DEFAUT;
 }
 
+/** Le profil relu, ou rien. Aucune valeur partielle n'est acceptee. */
+function profilValide(brut: unknown): ProfilCreatifAutopilote | undefined {
+  if (brut === undefined || brut === null) return undefined;
+  const lecture = lireProfilCreatif(brut);
+  if (!lecture.ok) return undefined;
+  return normaliserProfilCreatif(lecture.profil);
+}
+
+/** L'objectif relu, ou rien. Meme regle : tout ou rien. */
+function objectifValide(brut: unknown): ObjectifCommunication | undefined {
+  if (brut === undefined || brut === null) return undefined;
+  const lecture = lireObjectif(brut);
+  if (!lecture.ok) return undefined;
+  return normaliserObjectif(lecture.objectif);
+}
+
+/**
+ * Le profil creatif a utiliser, defaut compris.
+ *
+ * Le pendant exact de `montageDepuisStyle` et de `audioDepuisStyle` : un
+ * appelant n'a jamais a connaitre `PROFIL_CREATIF_DEFAUT` ni a ecrire un `??`
+ * de plus, et la retro-compatibilite est garantie a un seul endroit.
+ */
+export function profilCreatifDepuisStyle(
+  style: AutopilotDesignStyle | undefined | null,
+): ProfilCreatifAutopilote {
+  return style?.profilCreatif ?? PROFIL_CREATIF_DEFAUT;
+}
+
+/** L'objectif par defaut du compte, defaut compris. */
+export function objectifDepuisStyle(
+  style: AutopilotDesignStyle | undefined | null,
+): ObjectifCommunication {
+  return style?.objectifParDefaut ?? OBJECTIF_DEFAUT;
+}
+
 export function sanitizeDesignStyle(brut: unknown): AutopilotDesignStyle {
   if (!brut || typeof brut !== 'object') return {};
   const o = brut as Record<string, unknown>;
@@ -347,6 +423,11 @@ export function sanitizeDesignStyle(brut: unknown): AutopilotDesignStyle {
     // ignore en bloc plutot que partiellement applique : l'utilisateur
     // retrouve le defaut, jamais un melange incoherent.
     audio: audioValide(o.audio),
+    // ⚠️ SANS CES DEUX LIGNES, LE REGLAGE EST SILENCIEUSEMENT EFFACE a chaque
+    // enregistrement : `compacter` ne garde que ce qui est nomme ici. C'est
+    // la meme dette que celle payee pour `montage` puis pour `audio`.
+    profilCreatif: profilValide(o.profilCreatif),
+    objectifParDefaut: objectifValide(o.objectifParDefaut),
     title: zone(o.title, true),
     // La position du sous-titre est retirée par `zone(..., false)` : voir le
     // commentaire du champ.
