@@ -1090,19 +1090,30 @@ describe('NON-RÉGRESSION — les producteurs de cette URL, et ce qui les casser
   /**
    * LE POINT DE RUPTURE N°1 — la publication sociale.
    *
-   * `ensurePublicUrl` laisse passer une URL `/storage/v1/object/public/…` TELLE
-   * QUELLE vers Instagram, TikTok, Facebook et YouTube. Ce sont LEURS serveurs
-   * qui viennent chercher le média, depuis Internet, sans cookie et sans
-   * session. Un durcissement par session SEULE coupe la publication.
+   * `ensurePublicUrl` livre une URL `/storage/v1/object/public/…` à Instagram,
+   * TikTok, Facebook et YouTube. Ce sont LEURS serveurs qui viennent chercher
+   * le média, depuis Internet, sans cookie et sans session. Un durcissement
+   * par session SEULE coupe la publication.
+   *
+   * ⚠️ CE QUI A CHANGÉ AU P0.1, ET CE QUI N'A PAS CHANGÉ. La version
+   * précédente rendait l'URL TELLE QUELLE — donc, depuis la migration MinIO,
+   * un chemin RELATIF que ni Meta ni TikTok ne pouvaient résoudre : le
+   * 5 septembre 2026, les trois réseaux ont échoué pour cette seule raison,
+   * avec trois messages qui n'en parlaient pas. L'URL est désormais
+   * absolutisée. Le fait que ce test fixe, lui, est intact : la publication
+   * dépend de ce préfixe, et il doit rester lisible sans session.
    *
    * Ce test fixe le fait ; il ne dit pas comment le résoudre.
    */
   it.each([
     'src/app/api/social/publish/route.ts',
     'src/app/api/cron/publish/route.ts',
-  ])('%s livre ce chemin tel quel aux plateformes', (fichier) => {
+  ])('%s livre ce chemin, désormais en URL absolue, aux plateformes', (fichier) => {
     const code = sansCommentaires(source(fichier));
-    expect(code).toContain("if (url.includes('/storage/v1/object/public/')) return url;");
+    // Le préfixe est toujours reconnu…
+    expect(code).toContain("!url.includes('/storage/v1/object/public/')");
+    // …et ce qui part vers les plateformes est absolu.
+    expect(code).toContain('return toAbsoluteMediaUrl(url);');
   });
 
   /**

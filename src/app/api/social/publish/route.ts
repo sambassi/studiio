@@ -4,6 +4,8 @@ import { getValidToken } from '@/lib/social/token-refresh';
 import { isWhatsAppEnabled, canUseWhatsApp, broadcastWhatsApp, resolveRecipients, formatBroadcastFailures } from '@/lib/social/whatsapp';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { resolvePublishableUrl } from '@/lib/videos/playable-url';
+import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
+import { adressePubliqueValide } from '@/lib/social/publishing';
 
 // POST /api/social/publish - Publish a video to social platforms
 export async function POST(req: NextRequest) {
@@ -144,6 +146,19 @@ export async function POST(req: NextRequest) {
           success: false,
           message: `${platformName} non connecte. Connectez votre compte dans Reseaux Sociaux.`,
         });
+        continue;
+      }
+
+      // ⚠️ ON N'APPELLE PAS LA PLATEFORME AVEC UNE ADRESSE INUTILISABLE.
+      // Sans cette garde, Meta accepte, echoue dix secondes plus tard, et rend
+      // un message qui parle de traitement ou de permissions. L'utilisateur
+      // lit alors une cause qui n'est pas la sienne.
+      //
+      // ⚠️ APRES la recherche de compte, jamais avant : WhatsApp publie sans
+      // media et ne franchit jamais cette ligne.
+      const adresse = adressePubliqueValide(await ensurePublicUrl(mediaUrl));
+      if (!adresse.ok) {
+        results.push({ platform: platformName, success: false, message: adresse.motif! });
         continue;
       }
 
@@ -538,7 +553,11 @@ async function publishToTikTok(
           },
           source_info: {
             source: 'PULL_FROM_URL',
-            video_url: mediaUrl,
+            // ⚠️ TikTok etait le SEUL a ne pas passer par `ensurePublicUrl`,
+            // ici comme dans le cron : il recevait l'URL brute, donc le chemin
+            // relatif. `PULL_FROM_URL` veut dire que TikTok va chercher le
+            // fichier lui-meme — il lui faut une adresse absolue.
+            video_url: await ensurePublicUrl(mediaUrl),
           },
         }),
       }
@@ -687,22 +706,42 @@ async function publishToYouTube(
 // If it's a private Supabase path, create a 1h signed URL.
 // Otherwise return it as-is (already public).
 // ══════════════════════════════════════════════════════════════
+/**
+ * L'URL qu'une PLATEFORME ira chercher elle-meme — toujours absolue.
+ *
+ * ⚠️ LE MEME INVARIANT QUE DANS `api/cron/publish`, ET IL DOIT LE RESTER.
+ * Ce fichier est le chemin « Publier maintenant » ; le cron est le chemin
+ * planifie. Les deux donnent une adresse a Instagram, Facebook et TikTok, qui
+ * viennent chercher le fichier depuis LEURS serveurs, sans cookie et sans
+ * session. Les deux portaient donc le meme defaut : la version precedente
+ * rendait `url` inchangee des qu'elle contenait `/storage/v1/object/public/`,
+ * c'est-a-dire le cas ordinaire depuis la migration MinIO, ou `media_url`
+ * vaut `/storage/v1/object/public/media/...`. Un chemin sans hote.
+ *
+ * Corriger le cron seul aurait laisse ce bouton casse — et casse SANS ERREUR
+ * VISIBLE, puisque Meta accepte le media puis echoue en differe.
+ *
+ * ⚠️ IDEMPOTENTE : `toAbsoluteMediaUrl` rend telle quelle toute URL deja en
+ * `http(s)`. Jamais de `https://studiio.prohttps://...`, jamais de reecriture
+ * d'une URL externe legitime.
+ */
 async function ensurePublicUrl(url: string): Promise<string> {
   if (!url) return url;
-  // Already a public Supabase URL or any external HTTPS URL → pass through
-  if (url.includes('/storage/v1/object/public/')) return url;
-  if (!url.includes('/storage/v1/object/')) return url;
-
-  // Private Supabase path — try to derive { bucket, path } and sign for 1h
-  try {
-    // Pattern: .../storage/v1/object/(sign|authenticated|private)/<bucket>/<path...>?...
-    const m = url.match(/\/storage\/v1\/object\/(?:sign|authenticated|private)\/([^/]+)\/([^?]+)/);
-    if (!m) return url;
-    const [, bucket, path] = m;
-    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600);
-    if (error || !data?.signedUrl) return url;
-    return data.signedUrl;
-  } catch {
-    return url;
+  // Un chemin de stockage PRIVE se signe d'abord ; le resultat est ensuite
+  // absolutise comme le reste.
+  if (url.includes('/storage/v1/object/') && !url.includes('/storage/v1/object/public/')) {
+    try {
+      // Pattern: .../storage/v1/object/(sign|authenticated|private)/<bucket>/<path...>?...
+      const m = url.match(/\/storage\/v1\/object\/(?:sign|authenticated|private)\/([^/]+)\/([^?]+)/);
+      if (m) {
+        const [, bucket, path] = m;
+        const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600);
+        if (!error && data?.signedUrl) return toAbsoluteMediaUrl(data.signedUrl);
+      }
+    } catch {
+      // On retombe sur l'absolutisation : mieux vaut une URL publique absolue
+      // qu'un chemin relatif que personne ne peut lire.
+    }
   }
+  return toAbsoluteMediaUrl(url);
 }

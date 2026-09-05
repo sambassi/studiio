@@ -138,6 +138,70 @@ export async function droitDePublier(userId: string, email?: string | null): Pro
  * l'accepte, puis le rejette des heures plus tard, ou publie une vidéo
  * illisible. Mieux vaut refuser tout de suite, en le disant.
  */
+/**
+ * L'ADRESSE d'un média est-elle utilisable par un réseau social ?
+ *
+ * ---------------------------------------------------------------------------
+ * POURQUOI CE N'EST PAS `mediaPubliable`
+ * ---------------------------------------------------------------------------
+ *
+ * `mediaPubliable` répond à DEUX questions à la fois : « l'adresse est-elle
+ * publique ? » et « le conteneur est-il accepté ? ». C'est ce qu'il faut pour
+ * Zernio, qui transmet le fichier tel quel.
+ *
+ * Le cron, lui, sait CONVERTIR : `publishToInstagram` transcode un WebM en MP4
+ * avant d'appeler Graph. Lui opposer la règle du conteneur AVANT la conversion
+ * bloquerait des publications qui aboutissaient — une régression franche pour
+ * réparer un bug d'adresse. Cette fonction ne pose donc QUE la question de
+ * l'adresse.
+ *
+ * ---------------------------------------------------------------------------
+ * CE QU'ELLE REFUSE, ET POURQUOI CHAQUE REFUS COMPTE
+ * ---------------------------------------------------------------------------
+ *
+ * Un réseau social va CHERCHER le fichier lui-même, depuis ses propres
+ * serveurs, sans cookie et sans session. Tout ce qui n'est pas une URL
+ * absolue en `http(s)` lui est donc inutilisable :
+ *
+ *   • un chemin relatif (`/storage/v1/object/public/…`) — le cas qui a fait
+ *     échouer les publications du 5 septembre 2026 : Meta acceptait le
+ *     conteneur, puis rendait `status_code: ERROR` dix secondes plus tard,
+ *     et Facebook rendait « (#100) No permission to publish the video ».
+ *     Trois erreurs distantes illisibles pour une seule cause locale ;
+ *   • `data:` et `blob:` — n'existent que dans le navigateur qui les a créés ;
+ *   • un chemin local (`/tmp/x.mp4`, `file://`) — n'existe que sur le serveur ;
+ *   • une chaîne vide.
+ *
+ * ⚠️ ELLE NE VÉRIFIE PAS QUE L'URL RÉPOND. C'est une garde de FORME, pas de
+ * disponibilité : elle ferme la porte le plus tôt possible, sans requête
+ * réseau, exactement comme `cleObjetValide` le fait pour une clé de stockage.
+ */
+export function adressePubliqueValide(
+  url: string | null | undefined,
+): { ok: boolean; motif?: string } {
+  if (!url || url.trim().length === 0) {
+    return { ok: false, motif: 'Ce montage n\u2019a pas encore de vid\u00e9o.' };
+  }
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    // Un chemin relatif n'est pas une URL : `new URL` lève, et c'est le
+    // signal qu'on cherche.
+    return {
+      ok: false,
+      motif: 'La vid\u00e9o n\u2019a pas d\u2019adresse publique accessible aux r\u00e9seaux sociaux.',
+    };
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+    return {
+      ok: false,
+      motif: 'La vid\u00e9o n\u2019a pas d\u2019adresse publique accessible aux r\u00e9seaux sociaux.',
+    };
+  }
+  return { ok: true };
+}
+
 export function mediaPubliable(url: string | null | undefined): { ok: boolean; motif?: string } {
   if (!url) {
     return { ok: false, motif: 'Ce montage n’a pas encore de vidéo.' };

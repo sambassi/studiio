@@ -836,10 +836,16 @@ describe('Aucun consommateur ne peut porter une clé de l espace bloqué', () =>
    * changerait, et il faut le savoir.
    */
   const CONSOMMATEURS: Array<[string, string, string]> = [
+    // ⚠️ MARQUEUR MIS À JOUR AU P0.1, PAS LE FAIT QU'IL PROUVE. Ces deux routes
+    // rendaient l'URL INCHANGÉE dès qu'elle portait ce préfixe — donc un chemin
+    // relatif, que Meta et TikTok ne pouvaient pas aller chercher. Elles
+    // l'absolutisent désormais. Ce qu'il fallait fixer reste vrai et le
+    // redevient même plus clairement : la publication passe par ce préfixe, et
+    // les plateformes le lisent depuis Internet, SANS session.
     ['publication sociale immédiate', 'src/app/api/social/publish/route.ts',
-      "if (url.includes('/storage/v1/object/public/')) return url;"],
+      "!url.includes('/storage/v1/object/public/')"],
     ['publication programmée (cron)', 'src/app/api/cron/publish/route.ts',
-      "if (url.includes('/storage/v1/object/public/')) return url;"],
+      "!url.includes('/storage/v1/object/public/')"],
     ['relais authentifié du compositeur', 'src/app/api/proxy-media/route.ts',
       "u.pathname.startsWith('/storage/v1/object/public/')"],
     ['rendu serveur — lit MinIO en direct, hors de cette route',

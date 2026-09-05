@@ -8,6 +8,7 @@ import { join } from 'path';
 import { promisify } from 'util';
 import { transcodeWebmToMp4WithLadder } from '@/lib/ffmpeg/transcode-to-mp4';
 import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
+import { adressePubliqueValide } from '@/lib/social/publishing';
 import { downloadMediaToFile } from '@/lib/storage/fetch-media';
 import { getValidToken } from '@/lib/social/token-refresh';
 import { sendEmail } from '@/lib/email/resend';
@@ -502,6 +503,32 @@ export async function GET(req: NextRequest) {
           }
         }
 
+        // ═══ L'ADRESSE DONNEE AUX RESEAUX, RESOLUE UNE SEULE FOIS ═══
+        //
+        // ⚠️ APRES LE MUXAGE, JAMAIS AVANT : le bloc ci-dessus peut remplacer
+        // `videoData.video_url` par la version avec audio. Normaliser plus haut
+        // aurait absolutise une URL qui n'est plus celle qu'on publie.
+        //
+        // Les providers reçoivent desormais TOUS cette valeur, et leurs propres
+        // appels a `ensurePublicUrl` deviennent des non-operations idempotentes.
+        if (videoData.video_url) {
+          videoData.video_url = await ensurePublicUrl(videoData.video_url);
+          videoUrl = videoData.video_url;
+        }
+
+        // ⚠️ LA GARDE EST CALCULEE ICI MAIS APPLIQUEE DANS LA BOUCLE, et ce
+        // n'est pas un detour. Email, WhatsApp et afroboost.com publient sans
+        // media : faire echouer le post entier ici les priverait d'un envoi
+        // qui n'a besoin d'aucune video — exactement la regression que
+        // `requiresSocialAccount` a deja eu a reparer une fois.
+        const adresse = adressePubliqueValide(videoData.video_url);
+        if (!adresse.ok) {
+          console.warn(
+            `[CRON] Media non publiable pour le post ${post.id} : ${adresse.motif} `
+            + `(valeur commencant par « ${String(videoData.video_url ?? '').slice(0, 32)} »)`,
+          );
+        }
+
         const platformResults: Array<{ platform: string; success: boolean; error?: string }> = [];
 
         for (const platform of (post.platforms || [])) {
@@ -668,6 +695,16 @@ export async function GET(req: NextRequest) {
           const account = accounts?.find((a: any) => a.platform === channel);
           if (!account) {
             platformResults.push({ platform, success: false, error: `${platform} not connected` });
+            continue;
+          }
+
+          // ⚠️ ON N'APPELLE PAS LE FOURNISSEUR AVEC UNE ADRESSE INUTILISABLE.
+          // Sans cette garde, Meta accepte, echoue dix secondes plus tard et
+          // rend un message qui parle de permissions ou de traitement — et le
+          // diagnostic part dans la mauvaise direction pendant des heures.
+          // Mieux vaut le dire ici, dans les mots de l'utilisateur.
+          if (!adresse.ok) {
+            platformResults.push({ platform, success: false, error: adresse.motif });
             continue;
           }
 
@@ -1011,22 +1048,61 @@ async function muxAudioIntoVideo(
 // FONCTIONS DE PUBLICATION PAR PLATEFORME (identique à /api/social/publish)
 // ══════════════════════════════════════════════════════════════
 
-// Resolve a publicly-fetchable URL for the Graph API / platform fetchers.
-// If the URL is a private Supabase path, create a 1h signed URL.
+/**
+ * L'URL qu'un RESEAU SOCIAL ira chercher lui-meme.
+ *
+ * ---------------------------------------------------------------------------
+ * ⚠️ ELLE DOIT ETRE ABSOLUE, ET C'EST TOUT L'OBJET DE CETTE FONCTION
+ * ---------------------------------------------------------------------------
+ *
+ * Instagram, Facebook et TikTok ne telechargent pas la video depuis Studiio :
+ * ils recoivent une adresse et vont la chercher depuis LEURS serveurs, sans
+ * cookie et sans session. Un chemin relatif ne leur dit rien.
+ *
+ * La version precedente rendait `url` INCHANGEE des qu'elle contenait
+ * `/storage/v1/object/public/` — c'est-a-dire precisement dans le cas le plus
+ * frequent depuis la migration MinIO, ou `media_url` vaut
+ * `/storage/v1/object/public/media/...`. Le 5 septembre 2026, les trois
+ * reseaux ont donc recu un chemin sans hote :
+ *
+ *   • Instagram creait le conteneur (Graph ne valide pas l'URL de facon
+ *     synchrone) puis rendait `status_code: ERROR` au deuxieme sondage ;
+ *   • Facebook rendait « (#100) No permission to publish the video » ;
+ *   • TikTok recevait meme l'URL brute, sans passer ici.
+ *
+ * Trois erreurs distantes illisibles, une seule cause locale.
+ *
+ * ⚠️ POURQUOI ICI ET PAS DANS CHAQUE PROVIDER. `toAbsoluteMediaUrl` existait
+ * deja et etait deja importe dans ce fichier — mais appele a UN SEUL endroit,
+ * dans `publishToYouTube`, parce que YouTube telecharge les octets lui-meme et
+ * que le `fetch` de Node LEVE sur une URL relative. Les trois autres ne levent
+ * rien : l'echec part chez le fournisseur, en differe. Corriger les trois
+ * appelants aurait laisse le meme piege ouvert pour le quatrieme reseau qu'on
+ * ajoutera. L'invariant est donc pose UNE FOIS, ici.
+ *
+ * ⚠️ IDEMPOTENTE. `toAbsoluteMediaUrl` rend telle quelle toute URL deja en
+ * `http(s)` : appeler cette fonction deux fois ne produit jamais
+ * `https://studiio.prohttps://...`, et une URL externe legitime n'est jamais
+ * reecrite. Les appels deja presents dans les providers restent donc valides.
+ */
 async function ensurePublicUrl(url: string): Promise<string> {
   if (!url) return url;
-  if (url.includes('/storage/v1/object/public/')) return url;
-  if (!url.includes('/storage/v1/object/')) return url;
-  try {
-    const m = url.match(/\/storage\/v1\/object\/(?:sign|authenticated|private)\/([^/]+)\/([^?]+)/);
-    if (!m) return url;
-    const [, bucket, path] = m;
-    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600);
-    if (error || !data?.signedUrl) return url;
-    return data.signedUrl;
-  } catch {
-    return url;
+  // Un chemin de stockage PRIVE se signe d'abord ; le resultat est ensuite
+  // absolutise comme le reste, car rien ne garantit qu'il le soit.
+  if (url.includes('/storage/v1/object/') && !url.includes('/storage/v1/object/public/')) {
+    try {
+      const m = url.match(/\/storage\/v1\/object\/(?:sign|authenticated|private)\/([^/]+)\/([^?]+)/);
+      if (m) {
+        const [, bucket, path] = m;
+        const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600);
+        if (!error && data?.signedUrl) return toAbsoluteMediaUrl(data.signedUrl);
+      }
+    } catch {
+      // On retombe sur l'absolutisation : mieux vaut une URL publique absolue
+      // qu'un chemin relatif que personne ne peut lire.
+    }
   }
+  return toAbsoluteMediaUrl(url);
 }
 
 async function publishToInstagram(
@@ -1259,7 +1335,11 @@ async function publishToTikTok(
           },
           source_info: {
             source: 'PULL_FROM_URL',
-            video_url: video.video_url,
+            // ⚠️ TikTok etait le SEUL provider a ne pas passer par
+            // `ensurePublicUrl` : il recevait `video.video_url` brute, donc le
+            // chemin relatif. `PULL_FROM_URL` veut dire que TikTok va chercher
+            // le fichier lui-meme — il lui faut une adresse absolue.
+            video_url: await ensurePublicUrl(video.video_url),
           },
         }),
       }
