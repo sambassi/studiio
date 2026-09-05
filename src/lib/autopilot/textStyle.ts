@@ -1,4 +1,4 @@
-import { findFont } from '@/lib/fonts/catalog';
+import { findFont } from '@/lib/fonts/catalog-data';
 import { ALL_LUCIDE_NAMES } from '@/lib/icons/library';
 import {
   TEXT_CASES, TEXT_ALIGNS, type TextCase, type TextAlign,

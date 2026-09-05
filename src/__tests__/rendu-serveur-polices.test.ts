@@ -23,7 +23,13 @@ import {
  * charge pas ».
  */
 
-const catalogue = readFileSync(resolve(__dirname, '../lib/fonts/catalog.ts'), 'utf-8');
+// ⚠️ `catalog-data.ts`, ET NON `catalog.ts`, DEPUIS LA SÉPARATION DE LA
+// FRONTIÈRE SERVEUR/CLIENT. `fontStack` et l'explication des variables CSS
+// vivent désormais dans le module PUR : `catalog.ts` garde la directive
+// `'use client'` et le chargement navigateur, et re-exporte les données.
+// Ce que ce test fixe — la même pile CSS des deux côtés, et la cause écrite là
+// où on la cherchera — est inchangé ; seul le fichier qui la porte a bougé.
+const catalogue = readFileSync(resolve(__dirname, '../lib/fonts/catalog-data.ts'), 'utf-8');
 const crochet = readFileSync(resolve(__dirname, '../../remotion/useMontageFonts.ts'), 'utf-8');
 const composition = readFileSync(resolve(__dirname, '../../remotion/CreerSimpleMontage.tsx'), 'utf-8');
 const layout = readFileSync(resolve(__dirname, '../app/layout.tsx'), 'utf-8');

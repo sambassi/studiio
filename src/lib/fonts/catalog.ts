@@ -1,6 +1,21 @@
 'use client';
 
 /**
+ * Le catalogue de polices, COTE NAVIGATEUR.
+ *
+ * ⚠️ LES DONNEES NE SONT PLUS ICI. Elles vivent dans `./catalog-data`, qui est
+ * pur et lisible par le serveur ; ce fichier les re-exporte pour que les
+ * quelque dix composants qui importent deja `@/lib/fonts/catalog` n'aient rien
+ * a changer, et il y ajoute ce qui n'a de sens que dans un navigateur :
+ * insertion de la feuille Google Fonts, attente de son analyse, verification
+ * des `FontFace` reellement obtenues.
+ *
+ * ⚠️ UN MODULE SERVEUR NE DOIT PAS IMPORTER D'ICI, MEME POUR UNE DONNEE.
+ * La re-exportation ne change rien a la frontiere : Next rend une reference
+ * client pour tout ce qui traverse un module `'use client'`. Le serveur importe
+ * `@/lib/fonts/catalog-data`. Un test verifie que les deux modules du contrat
+ * Autopilote le font.
+ *
  * Catalogue de polices — LA source unique.
  *
  * L'apercu (DOM) et le compositeur (canvas) doivent charger exactement les
@@ -23,188 +38,22 @@
  * l'apercu, lui, affichait la bonne police. Il faut attendre le `load` de la
  * balise AVANT de demander les polices, et se fier aux `FontFace` reellement
  * renvoyees, jamais a `check()`.
+ 
  */
 
-export type FontGroup = 'display' | 'text' | 'script';
+export {
+  FONT_GROUP_LABELS,
+  FONT_CATALOG,
+  FONT_GROUPS,
+  findFont,
+  fontStack,
+  googleFontsUrl,
+  fontVariablesCss,
+  googleFontsUrlMany,
+} from './catalog-data';
+export type { FontGroup, FontDef } from './catalog-data';
 
-export interface FontDef {
-  family: string;
-  /** Graisses REELLEMENT publiees par Google pour cette famille. */
-  weights: number[];
-  group: FontGroup;
-  /**
-   * Variable CSS posee par `next/font` dans `layout.tsx`, quand la famille en
-   * a une. Ces six-la sont deja dans la page : elles s'affichent sans aucun
-   * telechargement, et leur pile CSS ne doit pas changer — c'est le rendu
-   * d'avant ce catalogue.
-   */
-  cssVar?: string;
-}
-
-/**
- * Ordre d'affichage dans le selecteur. « Titres » d'abord : c'est ce qu'on
- * cherche pour une affiche.
- */
-export const FONT_GROUP_LABELS: Record<FontGroup, string> = {
-  display: 'Titres',
-  text: 'Texte',
-  script: 'Script',
-};
-
-export const FONT_CATALOG: FontDef[] = [
-  // ── Titres / display ────────────────────────────────────────────────
-  { family: 'Anton', weights: [400], group: 'display', cssVar: '--font-anton' },
-  { family: 'Bebas Neue', weights: [400], group: 'display', cssVar: '--font-bebas' },
-  { family: 'Syne', weights: [400, 500, 600, 700, 800], group: 'display', cssVar: '--font-syne' },
-  { family: 'Archivo Black', weights: [400], group: 'display' },
-  { family: 'Oswald', weights: [200, 300, 400, 500, 600, 700], group: 'display' },
-  { family: 'Teko', weights: [300, 400, 500, 600, 700], group: 'display' },
-  { family: 'Righteous', weights: [400], group: 'display' },
-  { family: 'Bungee', weights: [400], group: 'display' },
-  { family: 'Alfa Slab One', weights: [400], group: 'display' },
-  { family: 'Titan One', weights: [400], group: 'display' },
-  { family: 'Fjalla One', weights: [400], group: 'display' },
-  { family: 'Staatliches', weights: [400], group: 'display' },
-  { family: 'Chivo', weights: [300, 400, 700, 900], group: 'display' },
-  { family: 'Playfair Display', weights: [400, 500, 600, 700, 800, 900], group: 'display' },
-  { family: 'Abril Fatface', weights: [400], group: 'display' },
-  { family: 'Bodoni Moda', weights: [400, 500, 600, 700, 800, 900], group: 'display' },
-  { family: 'Cinzel', weights: [400, 500, 600, 700, 800, 900], group: 'display' },
-  { family: 'Anton SC', weights: [400], group: 'display' },
-  { family: 'Rubik Mono One', weights: [400], group: 'display' },
-  { family: 'Passion One', weights: [400, 700, 900], group: 'display' },
-
-  // ── Texte courant ───────────────────────────────────────────────────
-  { family: 'Inter', weights: [400, 500, 600, 700, 800, 900], group: 'text', cssVar: '--font-inter' },
-  { family: 'Poppins', weights: [400, 500, 600, 700, 800, 900], group: 'text', cssVar: '--font-poppins' },
-  { family: 'Space Grotesk', weights: [400, 500, 600, 700], group: 'text', cssVar: '--font-space' },
-  { family: 'Roboto', weights: [400, 500, 700, 900], group: 'text' },
-  { family: 'Lato', weights: [400, 700, 900], group: 'text' },
-  { family: 'Open Sans', weights: [400, 500, 600, 700, 800], group: 'text' },
-  { family: 'Montserrat', weights: [400, 500, 600, 700, 800, 900], group: 'text' },
-  { family: 'Raleway', weights: [400, 500, 600, 700, 800, 900], group: 'text' },
-  { family: 'Nunito', weights: [400, 500, 600, 700, 800, 900], group: 'text' },
-  { family: 'Work Sans', weights: [400, 500, 600, 700, 800, 900], group: 'text' },
-  { family: 'DM Sans', weights: [400, 500, 600, 700, 800, 900], group: 'text' },
-  { family: 'Manrope', weights: [400, 500, 600, 700, 800], group: 'text' },
-  { family: 'Rubik', weights: [400, 500, 600, 700, 800, 900], group: 'text' },
-  { family: 'Karla', weights: [400, 500, 600, 700, 800], group: 'text' },
-  { family: 'Figtree', weights: [400, 500, 600, 700, 800, 900], group: 'text' },
-  { family: 'Source Sans 3', weights: [400, 500, 600, 700, 800, 900], group: 'text' },
-  { family: 'Merriweather', weights: [400, 700, 900], group: 'text' },
-  { family: 'Lora', weights: [400, 500, 600, 700], group: 'text' },
-  { family: 'Roboto Condensed', weights: [400, 500, 600, 700, 800, 900], group: 'text' },
-  { family: 'Barlow', weights: [400, 500, 600, 700, 800, 900], group: 'text' },
-
-  // ── Scriptes / manuscrites ──────────────────────────────────────────
-  { family: 'Pacifico', weights: [400], group: 'script' },
-  { family: 'Dancing Script', weights: [400, 500, 600, 700], group: 'script' },
-  { family: 'Caveat', weights: [400, 500, 600, 700], group: 'script' },
-  { family: 'Permanent Marker', weights: [400], group: 'script' },
-  { family: 'Satisfy', weights: [400], group: 'script' },
-  { family: 'Great Vibes', weights: [400], group: 'script' },
-  { family: 'Lobster', weights: [400], group: 'script' },
-  { family: 'Sacramento', weights: [400], group: 'script' },
-  { family: 'Shadows Into Light', weights: [400], group: 'script' },
-  { family: 'Indie Flower', weights: [400], group: 'script' },
-  { family: 'Kalam', weights: [300, 400, 700], group: 'script' },
-  { family: 'Courgette', weights: [400], group: 'script' },
-];
-
-const BY_FAMILY = new Map(FONT_CATALOG.map((f) => [f.family, f]));
-
-export function findFont(family: string | undefined | null): FontDef | undefined {
-  return family ? BY_FAMILY.get(family) : undefined;
-}
-
-/** Le selecteur, groupe par usage — memes donnees, autre forme. */
-export const FONT_GROUPS: Array<{ group: FontGroup; label: string; fonts: string[] }> = (
-  ['display', 'text', 'script'] as FontGroup[]
-).map((group) => ({
-  group,
-  label: FONT_GROUP_LABELS[group],
-  fonts: FONT_CATALOG.filter((f) => f.group === group).map((f) => f.family),
-}));
-
-/**
- * Pile CSS d'une famille.
- *
- * La variable `next/font` en tete quand elle existe : ces six familles sont
- * deja dans la page, elles s'affichent sans le moindre telechargement. Le nom
- * brut ensuite — c'est sous ce nom que la feuille Google Fonts injectee
- * enregistre la famille, et c'est aussi le seul nom que `ctx.font` comprend
- * cote canvas.
- */
-export function fontStack(family: string): string {
-  const def = findFont(family);
-  const quoted = `'${family}'`;
-  return def?.cssVar ? `var(${def.cssVar}), ${quoted}, sans-serif` : `${quoted}, sans-serif`;
-}
-
-/**
- * URL de la feuille Google Fonts d'une famille, avec SES graisses.
- *
- * L'API tolere les graisses surnumeraires — elle les rabat sur les plus
- * proches — et ne repond 400 que si AUCUNE des graisses demandees n'existe.
- * Ne demander que les graisses publiees allege donc la feuille et permet de
- * verifier le chargement sur les bonnes, sans etre en soi un correctif.
- */
-export function googleFontsUrl(family: string, weights: number[]): string {
-  const name = family.trim().replace(/\s+/g, '+');
-  const list = [...new Set(weights)].sort((a, b) => a - b).join(';');
-  return `https://fonts.googleapis.com/css2?family=${name}:wght@${list}&display=swap`;
-}
-
-/**
- * Déclarations CSS des variables de police, pour un moteur qui n'a PAS
- * `next/font`.
- *
- * ⚠️ Sans elles, `fontStack()` ne rend rien du tout côté serveur — et c'est
- * bien pire qu'une police manquante.
- *
- * `fontStack('Anton')` produit `var(--font-anton), 'Anton', sans-serif`. Or
- * une variable CSS **indéfinie** rend la déclaration entière invalide au
- * moment du calcul : le navigateur n'essaie même pas le repli `'Anton'`, il
- * retombe sur `sans-serif`. Vérifié dans Chromium — `getComputedStyle` rend
- * `sans-serif`, et `'Anton'` a disparu.
- *
- * Charger la police n'aurait donc servi à rien : la famille n'atteignait
- * jamais le moteur de rendu. Définir les variables est la première moitié du
- * correctif ; charger les fichiers est la seconde.
- *
- * Rendre ces variables ici — et non dans la composition — garde `fontStack()`
- * comme source unique : la même pile CSS fonctionne verbatim des deux côtés.
- */
-export function fontVariablesCss(): string {
-  const lignes = FONT_CATALOG
-    .filter((f) => f.cssVar)
-    .map((f) => `  ${f.cssVar}: '${f.family}';`);
-  return `:root {\n${lignes.join('\n')}\n}`;
-}
-
-/**
- * Feuille Google Fonts couvrant PLUSIEURS familles en une requête.
- *
- * Une balise par famille multiplierait les allers-retours réseau au démarrage
- * de chaque rendu — et un rendu serveur en fait un par image jusqu'à ce que
- * les polices soient prêtes.
- *
- * Les familles inconnues du catalogue sont ignorées : demander une famille
- * inexistante fait répondre 400 à l'API, et la feuille entière échoue — donc
- * TOUTES les polices, pas seulement la fautive.
- */
-export function googleFontsUrlMany(families: Array<string | undefined | null>): string | null {
-  const defs = [...new Set(families.filter((f): f is string => !!f))]
-    .map((f) => findFont(f))
-    .filter((d): d is FontDef => !!d);
-  if (defs.length === 0) return null;
-  const parts = defs.map((d) => {
-    const nom = d.family.trim().replace(/\s+/g, '+');
-    const poids = [...new Set(d.weights)].sort((a, b) => a - b).join(';');
-    return `family=${nom}:wght@${poids}`;
-  });
-  return `https://fonts.googleapis.com/css2?${parts.join('&')}&display=swap`;
-}
+import { FONT_CATALOG, findFont, googleFontsUrl } from './catalog-data';
 
 /** Familles deja servies par une feuille complete — une balise par famille. */
 const injected = new Map<string, Promise<boolean>>();

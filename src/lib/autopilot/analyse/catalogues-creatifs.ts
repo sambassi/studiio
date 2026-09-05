@@ -36,7 +36,7 @@
  * permettra a l'ecran « Mon style » d'afficher les memes listes que celles
  * que le serveur validera, sans les recopier.
  */
-import { FONT_CATALOG, type FontGroup } from '@/lib/fonts/catalog';
+import { FONT_CATALOG, type FontGroup } from '@/lib/fonts/catalog-data';
 
 // ---------------------------------------------------------------------------
 // Polices

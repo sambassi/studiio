@@ -1,6 +1,6 @@
 'use client';
 
-import { findFont } from '@/lib/fonts/catalog';
+import { findFont } from '@/lib/fonts/catalog-data';
 import { TRANSITION_KEYS } from '@/lib/video-composer';
 import { TEXT_ANIMATION_KEYS } from '@/lib/creer/textAnimation';
 
