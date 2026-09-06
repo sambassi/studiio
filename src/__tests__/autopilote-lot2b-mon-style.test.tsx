@@ -71,9 +71,23 @@ function makeQuery() {
 }
 function baseInjoippable() { return baseInjoignable; }
 
+/**
+ * ⚠️ ICI, LA FONCTION SQL DE FUSION N'EXISTE PAS.
+ *
+ * Ce fichier verifie donc le CHEMIN DE REPLI — celui qui tourne tant que la
+ * migration du 2026-09-06 n'est pas appliquee en production. L'atomicite, elle,
+ * est couverte par `autopilote-lot2b-style-concurrence`. Les deux chemins
+ * doivent donner le meme resultat fonctionnel, et c'est ce que la duplication
+ * de couverture prouve.
+ */
+const rpcAbsente = async () => ({
+  data: null,
+  error: { message: 'Could not find the function public.autopilot_design_style_merge' },
+});
+
 vi.mock('@/lib/db/supabase', () => ({
-  supabaseAdmin: { from: () => makeQuery() },
-  supabase: { from: () => makeQuery() },
+  supabaseAdmin: { from: () => makeQuery(), rpc: rpcAbsente },
+  supabase: { from: () => makeQuery(), rpc: rpcAbsente },
 }));
 
 // La session, pilotee test par test.

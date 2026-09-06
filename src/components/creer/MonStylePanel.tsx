@@ -230,7 +230,11 @@ export default function MonStylePanel({
                 onClick={() => modifier({
                   marque: { ...brouillon.marque, logoActif: !brouillon.marque.logoActif },
                 })}
-                className={`rounded-full px-2 py-0.5 text-[10px] transition ${
+                // ⚠️ `py-1.5`, ET NON `py-0.5`. Mesure au banc responsive :
+                // l'interrupteur ne faisait que 19 px de haut, sous le seuil
+                // ou un doigt le vise sans le rater. Le texte reste petit ;
+                // c'est la CIBLE qui grandit.
+                className={`rounded-full px-2.5 py-1.5 text-[10px] leading-none transition ${
                   brouillon.marque.logoActif
                     ? 'bg-purple-500/20 text-purple-300'
                     : 'bg-gray-800 text-gray-500'
@@ -330,7 +334,11 @@ export default function MonStylePanel({
                 onClick={() => modifier({
                   ctaVisuel: { ...brouillon.ctaVisuel, actif: !brouillon.ctaVisuel.actif },
                 })}
-                className={`rounded-full px-2 py-0.5 text-[10px] transition ${
+                // ⚠️ `py-1.5`, ET NON `py-0.5`. Mesure au banc responsive :
+                // l'interrupteur ne faisait que 19 px de haut, sous le seuil
+                // ou un doigt le vise sans le rater. Le texte reste petit ;
+                // c'est la CIBLE qui grandit.
+                className={`rounded-full px-2.5 py-1.5 text-[10px] leading-none transition ${
                   brouillon.ctaVisuel.actif
                     ? 'bg-purple-500/20 text-purple-300'
                     : 'bg-gray-800 text-gray-500'

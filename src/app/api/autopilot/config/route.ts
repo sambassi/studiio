@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { sanitizeConfig, DEFAULT_CONFIG, type AutopilotConfig } from '@/lib/autopilot/rules';
+import {
+  fusionnerDesignStyle, patchDesignStyleConfig,
+} from '@/lib/autopilot/analyse/profil-compte';
 
 /**
  * Configuration de l'Autopilote.
@@ -229,12 +232,17 @@ export async function PUT(req: NextRequest) {
             voice_volume: propre.voiceVolume,
             rush_volume: propre.rushVolume,
           } : null),
-          // ⚠️ SONDEE A PART. `design_style` arrive avec une migration
-          // POSTERIEURE a celle de l'identite : les deux peuvent etre
-          // appliquees separement, et ecrire une colonne absente ferait
-          // echouer l'upsert ENTIER — l'utilisateur ne pourrait plus rien
-          // enregistrer, pas meme sa cadence.
-          ...(avecStyle ? { design_style: propre.designStyle } : null),
+          // ⚠️ `design_style` N'EST PLUS ECRIT ICI.
+          //
+          // Cette colonne porte QUATRE reglages independants et a DEUX
+          // ecrivains. La reecrire en entier depuis l'ecran effacait le style
+          // enregistre entre temps par `PUT /api/autopilot/profil-creatif` :
+          // trois gestes d'un seul utilisateur dans un seul onglet suffisaient
+          // — charger la page, enregistrer « Mon style », toucher a la
+          // cadence. Sans erreur, sans message.
+          //
+          // Elle est desormais FUSIONNEE plus bas, cle par cle, et seulement
+          // pour les cles que cet ecran possede.
           // Sondee a part, comme les autres : la migration des affiches peut
           // etre appliquee separement, et ecrire une colonne absente ferait
           // echouer l'upsert ENTIER.
@@ -253,6 +261,23 @@ export async function PUT(req: NextRequest) {
       console.error('[Autopilote] ecriture :', error.message);
       return NextResponse.json({ success: false, error: 'Enregistrement impossible.' }, { status: 500 });
     }
+
+    // ── `design_style`, fusionne cle par cle ─────────────────────────────
+    //
+    // APRES l'upsert des colonnes, et jamais dedans : les deux touchent des
+    // donnees disjointes, et separer les deux ecritures est precisement ce qui
+    // permet a celle-ci de ne porter que les cles de cet ecran.
+    if (avecStyle) {
+      const ok = await fusionnerDesignStyle(
+        session.user.id, patchDesignStyleConfig(propre.designStyle) as never,
+      );
+      if (!ok) {
+        return NextResponse.json(
+          { success: false, error: 'Enregistrement impossible.' }, { status: 500 },
+        );
+      }
+    }
+
     return NextResponse.json({
       success: true,
       brandingReady: avecIdentite,

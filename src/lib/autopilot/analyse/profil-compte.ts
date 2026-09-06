@@ -26,14 +26,19 @@
  * la meme regle que `user_id` dans `CHAMPS_INTERDITS_RENDU`.
  *
  * ---------------------------------------------------------------------------
- * ⚠️ L'ECRITURE EST UN LIRE-MODIFIER-ECRIRE, ET C'EST OBLIGATOIRE
+ * ⚠️ L'ECRITURE EST UNE FUSION, ET ELLE EST ATOMIQUE
  * ---------------------------------------------------------------------------
  *
  * `design_style` porte AUSSI le format de montage, la recette audio, les
  * polices, les icones et le style de cartes. Ecrire `{ profilCreatif }` seul
- * effacerait tout le reste — et personne ne s'en apercevrait avant la video
- * suivante. On relit donc la ligne, on remplace le seul champ concerne, et on
- * repasse le tout par `sanitizeDesignStyle`.
+ * effacerait tout le reste ; le relire puis le reecrire en entier ouvre une
+ * fenetre ou l'ecriture d'un voisin se perd.
+ *
+ * `fusionnerDesignStyle` appelle donc une fonction SQL qui fait
+ * `design_style || patch` en UNE instruction. Tant que la migration du
+ * 2026-09-06 n'est pas appliquee, elle retombe sur un lire-modifier-ecrire :
+ * les cles voisines sont conservees, seule l'atomicite manque — et la
+ * fonction est reprise d'elle-meme des qu'elle apparait.
  */
 import { supabaseAdmin } from '@/lib/db/supabase';
 import {
@@ -81,9 +86,157 @@ export async function styleDuCompteDisponible(): Promise<boolean> {
   return prete;
 }
 
-/** Remet la sonde a zero. Reserve aux tests. */
+/** Remet les sondes a zero. Reserve aux tests. */
 export function reinitialiserSondeStyle(): void {
   sonde = null;
+  fusionAbsente = null;
+}
+
+/**
+ * Les cles de `design_style` que l'ECRAN DE CONFIGURATION ne possede pas.
+ *
+ * ⚠️ C'EST LA REGLE QUI EMPECHE LA MISE A JOUR PERDUE. `PUT
+ * /api/autopilot/config` envoie le document entier tel que l'ecran le connait
+ * — c'est-a-dire tel qu'il etait a son CHARGEMENT. Le laisser ecrire ces deux
+ * cles, c'est laisser un ecran perime effacer un style enregistre entre temps,
+ * sans erreur ni message.
+ *
+ * Chaque ecrivain n'ecrit que ses propres cles : c'est ce qui rend deux
+ * enregistrements simultanes inoffensifs l'un pour l'autre.
+ */
+export const CLES_DESIGN_STYLE_HORS_CONFIG = [
+  'profilCreatif', 'objectifParDefaut',
+] as const;
+
+/**
+ * Les cles que l'ecran de configuration POSSEDE, et qu'il est donc seul a
+ * ecrire.
+ *
+ * ⚠️ EXPLICITE, ET SURVEILLEE PAR UN TEST. Une cle ajoutee a
+ * `AutopilotDesignStyle` et oubliee ici deviendrait ineditable depuis l'ecran
+ * — un reglage qui s'affiche, se modifie, et ne s'enregistre jamais. Le test
+ * compare cette liste a ce que `sanitizeDesignStyle` sait reellement produire.
+ */
+export const CLES_DESIGN_STYLE_CONFIG = [
+  'montage', 'audio', 'title', 'subtitle', 'cta', 'cards', 'cardIcons', 'cardStyle',
+] as const;
+
+/**
+ * Le patch que l'ecran de configuration a le droit d'appliquer.
+ *
+ * ⚠️ CHAQUE CLE POSSEDEE EST PRESENTE, MEME ABSENTE DU STYLE — a `null`.
+ * Une fusion `||` ne retire jamais une cle : sans ce `null` explicite, un
+ * reglage EFFACE par l'utilisateur resterait en base et reviendrait au
+ * chargement suivant. `null` traverse la fusion, puis `sanitizeDesignStyle` le
+ * lit comme une absence a la relecture — c'est ce qui rend l'effacement
+ * possible sans reecrire le document entier.
+ *
+ * Et les cles qui ne lui appartiennent pas — `profilCreatif`,
+ * `objectifParDefaut` — n'y figurent tout simplement pas : un ecran perime ne
+ * peut donc plus effacer un style enregistre entre temps.
+ */
+export function patchDesignStyleConfig(
+  style: AutopilotDesignStyle | null | undefined,
+): Record<string, unknown> {
+  const source = (style ?? {}) as Record<string, unknown>;
+  const patch: Record<string, unknown> = {};
+  for (const cle of CLES_DESIGN_STYLE_CONFIG) {
+    patch[cle] = source[cle] ?? null;
+  }
+  return patch;
+}
+
+/**
+ * La fonction SQL de fusion a-t-elle deja repondu « je n'existe pas » ?
+ *
+ * ⚠️ PAS DE SONDE PREALABLE, ET C'EST DELIBERE. Une premiere redaction
+ * appelait la fonction avec un UUID bidon pour savoir si elle existe. Elle
+ * aurait TOUJOURS conclu « indisponible » : `autopilot_config.user_id`
+ * reference `users(id)`, donc un UUID qui ne designe aucun compte fait echouer
+ * l'insertion — une erreur, mais pas celle qu'on cherchait. La sonde aurait
+ * desactive pour de bon une fonction parfaitement deployee.
+ *
+ * On tente donc la VRAIE ecriture, et on ne retient l'absence que sur le
+ * message qui la designe. Rien n'est ecrit pour savoir si on peut ecrire.
+ */
+let fusionAbsente: { a: number } | null = null;
+
+/** PostgREST quand la fonction n'est pas dans son cache de schema. */
+function ressembleAFonctionAbsente(message: string): boolean {
+  return /could not find the function|does not exist|PGRST202|schema cache/i.test(message);
+}
+
+/**
+ * Applique un patch a `design_style`, cle par cle, sans toucher aux voisines.
+ *
+ * ⚠️ C'EST LE SEUL CHEMIN D'ECRITURE DE CETTE COLONNE. Les deux routes qui
+ * l'ecrivent passent par ici : c'est ce qui garantit qu'elles ne peuvent pas
+ * diverger sur la facon de fusionner.
+ */
+export async function fusionnerDesignStyle(
+  userId: string, patch: AutopilotDesignStyle,
+): Promise<boolean> {
+  if (!userId) return false;
+
+  const recemmentAbsente = fusionAbsente !== null
+    && Date.now() - fusionAbsente.a < TTL_SONDE_MS;
+
+  if (!recemmentAbsente) {
+    try {
+      const { error } = await supabaseAdmin.rpc('autopilot_design_style_merge', {
+        p_user_id: userId, p_patch: patch,
+      });
+      if (!error) {
+        // La fonction repond : on oublie une eventuelle absence passee.
+        fusionAbsente = null;
+        return true;
+      }
+      if (!ressembleAFonctionAbsente(error.message)) {
+        // La fonction existe et a REFUSE. Reessayer par un chemin moins sur
+        // transformerait un refus en ecriture.
+        console.error('[Autopilote] Fusion de design_style :', error.message);
+        return false;
+      }
+      console.error(
+        `[Autopilote] Fusion atomique indisponible (${error.message}) — repli sur `
+        + 'lire-modifier-ecrire. Appliquer '
+        + 'migrations/2026-09-06-autopilot-design-style-merge.sql puis '
+        + '`docker kill -s SIGUSR1 studiio-postgrest`.',
+      );
+      fusionAbsente = { a: Date.now() };
+    } catch (err) {
+      console.error(
+        '[Autopilote] Fusion de design_style impossible :',
+        err instanceof Error ? err.message : err,
+      );
+      return false;
+    }
+  }
+
+  // ── Repli : lire-modifier-ecrire ──────────────────────────────────────
+  // Moins sur — une ecriture voisine glissee entre la lecture et l'ecriture
+  // se perd — mais il conserve les cles voisines, ce qui est deja l'essentiel.
+  const existant = await lireStyleDuCompte(userId);
+  const fusionne = sanitizeDesignStyle({ ...existant, ...patch });
+  try {
+    const { error } = await supabaseAdmin
+      .from(TABLE)
+      .upsert(
+        { user_id: userId, design_style: fusionne, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id' },
+      );
+    if (error) {
+      console.error('[Autopilote] Ecriture de design_style :', error.message);
+      return false;
+    }
+  } catch (err) {
+    console.error(
+      '[Autopilote] Ecriture de design_style impossible :',
+      err instanceof Error ? err.message : err,
+    );
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -159,33 +312,11 @@ export async function enregistrerProfilCreatifUtilisateur(
   // en bloc, et l'utilisateur verrait son style disparaitre sans un mot.
   const normalise = normaliserProfilCreatif(profil as never);
 
-  // Lire-modifier-ecrire : voir l'en-tete. Les freres de `profilCreatif`
-  // — montage, audio, polices, icones — doivent survivre a cet appel.
-  const existant = await lireStyleDuCompte(userId);
-  const fusionne = sanitizeDesignStyle({ ...existant, profilCreatif: normalise });
-
-  try {
-    const { error } = await supabaseAdmin
-      .from(TABLE)
-      .upsert(
-        {
-          user_id: userId,
-          design_style: fusionne,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'user_id' },
-      );
-    if (error) {
-      console.error('[Autopilote] Ecriture de « Mon style » :', error.message);
-      return { ok: false, motif: 'ecriture_impossible' };
-    }
-  } catch (err) {
-    console.error(
-      '[Autopilote] Ecriture de « Mon style » impossible :',
-      err instanceof Error ? err.message : err,
-    );
-    return { ok: false, motif: 'ecriture_impossible' };
-  }
+  // ⚠️ UNE SEULE CLE DANS LE PATCH. Les freres de `profilCreatif` — montage,
+  // audio, polices, icones — ne sont ni relus ni reecrits : ils ne peuvent
+  // donc pas etre perdus, meme si quelqu'un les enregistre au meme instant.
+  const ok = await fusionnerDesignStyle(userId, { profilCreatif: normalise });
+  if (!ok) return { ok: false, motif: 'ecriture_impossible' };
   return { ok: true, profil: normalise };
 }
 

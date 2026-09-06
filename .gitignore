@@ -83,3 +83,9 @@ skills-lock.json
 mockups/
 skills/
 skills-lock.json
+
+# Artefacts generes par le banc responsive de « Mon style »
+# (le source du banc, lui, est versionne)
+scripts/mon-style-proof/bundle.js
+scripts/mon-style-proof/tailwind.css
+scripts/mon-style-proof/entree.css
