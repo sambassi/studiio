@@ -32,8 +32,9 @@ import {
 import { lireRecetteAudio, type RecetteAudio } from '@/lib/autopilot/analyse/recette-audio';
 import {
   fusionnerProfilEtOverride, lireProfilCreatif,
-  type ProfilCreatifAutopilote,
+  type ProfilCreatifAutopilote, type ProfilCreatifPartiel,
 } from '@/lib/autopilot/analyse/profil-creatif';
+import { lireProfilCreatifUtilisateur } from '@/lib/autopilot/analyse/profil-compte';
 import { MESSAGES_LOGO, verifierLogo } from '@/lib/autopilot/analyse/logo-source';
 import { MESSAGES_MUSIQUE, verifierMusique } from '@/lib/autopilot/analyse/musique-source';
 import { diagnosticRendu } from '@/lib/autopilot/analyse/rendu-ffmpeg';
@@ -106,7 +107,9 @@ export async function POST(
     // la vraie raison ; puis tout champ inconnu, parce qu'un schema ferme est
     // le seul qui ne derive pas ; puis seulement on lit la recette.
     let recette: RecetteAudio | null = null;
-    let profil: ProfilCreatifAutopilote | null = null;
+    // L'override de CETTE video, tel que le corps l'a envoye. Le profil
+    // EFFECTIF est construit plus bas, une fois le style du compte relu.
+    let override: ProfilCreatifPartiel | null = null;
     const brut = (await req.text()).trim();
     if (brut.length > 0) {
       let json: unknown;
@@ -151,24 +154,7 @@ export async function POST(
             { ok: false, error: lecture.message, motif: lecture.motif }, { status: 422 },
           );
         }
-        // ⚠️ LE PROFIL EFFECTIF SE CONSTRUIT ICI, ET NULLE PART AILLEURS.
-        //
-        // Trois couches, de la moins prioritaire a la plus : les valeurs
-        // generiques sures de `PROFIL_CREATIF_DEFAUT`, le profil par defaut
-        // du compte, l'override de CETTE video. `fusionnerProfilEtOverride`
-        // les applique propriete par propriete — un override qui ne porte
-        // qu'une transition ne doit pas effacer la duree et l'intensite que
-        // l'utilisateur avait reglees.
-        //
-        // ⚠️ ET LA FUSION N'ECRIT RIEN. C'est une fonction pure : le profil
-        // par defaut du compte ressort inchange de cet appel. Le rendre
-        // permanent demande une action explicite, sur une autre route.
-        //
-        // `profilDuCompte` vaut `null` tant que « Mon style » n'est pas
-        // persiste : la fusion retombe alors sur les valeurs generiques, ce
-        // qui est exactement le comportement voulu.
-        const profilDuCompte: ProfilCreatifAutopilote | null = null;
-        profil = fusionnerProfilEtOverride(profilDuCompte, lecture.profil);
+        override = lecture.profil;
       }
     }
 
@@ -187,6 +173,35 @@ export async function POST(
         );
       }
     }
+
+    // ── Le profil EFFECTIF : compte, puis video ──────────────────────────
+    //
+    // ⚠️ TROIS COUCHES, DANS CET ORDRE : les valeurs generiques sures de
+    // `PROFIL_CREATIF_DEFAUT`, le style par defaut du compte, l'override de
+    // CETTE video. `fusionnerProfilEtOverride` les applique propriete par
+    // propriete — un override qui ne porte qu'une transition ne doit pas
+    // effacer la duree et l'intensite que l'utilisateur avait reglees.
+    //
+    // ⚠️ LE SERVEUR RELIT LE STYLE DU COMPTE, LE CLIENT NE LE RENVOIE PAS.
+    // Exiger qu'il reposte son style entier pour rendre une video ferait de
+    // lui la source de verite : il suffirait d'un champ oublie pour que le
+    // rendu parte sans le logo, et d'un champ ajoute pour contourner ce que
+    // la route d'enregistrement valide.
+    //
+    // ⚠️ ET RIEN N'EST ECRIT ICI. `fusionnerProfilEtOverride` est une
+    // fonction pure : le style du compte ressort inchange. Le rendre
+    // permanent demande une action explicite, sur `PUT /api/autopilot/
+    // profil-creatif`. Un style essaye sur une video ne redefinit jamais
+    // l'identite visuelle du compte.
+    //
+    // ⚠️ `null` QUAND LES DEUX SONT ABSENTS, et c'est ce qui protege le
+    // passe : `methodeRendu(recette, null)` rend la methode historique, donc
+    // un compte qui n'a jamais configure son style continue de se voir servir
+    // ses rendus deja reussis.
+    const profilDuCompte = await lireProfilCreatifUtilisateur(userId);
+    const profil: ProfilCreatifAutopilote | null = override !== null
+      ? fusionnerProfilEtOverride(profilDuCompte, override)
+      : profilDuCompte;
 
     // ── Le logo : ni devine, ni cru sur parole ───────────────────────────
     //

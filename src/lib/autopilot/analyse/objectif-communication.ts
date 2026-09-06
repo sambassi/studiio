@@ -665,7 +665,16 @@ export function lireObjectif(brut: unknown): LectureObjectif {
   const o = objet(brut);
   if (o === null) return refusObjectif('corps_invalide', 'Objectif invalide.');
 
+  // ⚠️ MEME CORRECTIF QUE `lireProfilCreatif`, ET POUR LA MEME PANNE.
+  // `normaliserObjectif` ecrit `version` ; le refuser ici empechait tout
+  // aller-retour de persistance : `sanitizeDesignStyle` jetait l'objectif
+  // entier, sans erreur, et le compte le retrouvait vide. Une autre valeur
+  // reste refusee — un objectif d'une version future se lirait faux.
+  if (o.version !== undefined && o.version !== VERSION_OBJECTIF) {
+    return refusObjectif('valeur_invalide', 'Cet objectif vient d\'une autre version de Studiio.');
+  }
   for (const cle of Object.keys(o)) {
+    if (cle === 'version') continue;
     if (!(CHAMPS_OBJECTIF as readonly string[]).includes(cle)) {
       return refusObjectif('champ_inconnu', `Le champ « ${cle} » n'existe pas dans l'objectif.`);
     }

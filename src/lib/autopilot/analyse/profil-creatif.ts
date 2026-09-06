@@ -779,7 +779,23 @@ export function lireProfilCreatif(brut: unknown): LectureProfil {
   const o = objet(brut);
   if (o === null) return refus('corps_invalide', 'Profil creatif invalide.');
 
+  // ⚠️ `version` EST ACCEPTE, ET C'EST UN CORRECTIF, PAS UN ASSOUPLISSEMENT.
+  //
+  // `normaliserProfilCreatif` ECRIT `version` ; ce lecteur le REFUSAIT. Un
+  // profil normalise ne survivait donc pas a un aller-retour de persistance :
+  // `sanitizeDesignStyle` le repasse par ici, tombait sur `champ_inconnu` et
+  // jetait le profil ENTIER. « Mon style » se serait enregistre sans erreur et
+  // serait revenu vide — la panne muette exacte que le versionnement devait
+  // eviter. Constate au Lot 2B etape 3, avant toute mise en service.
+  //
+  // Une AUTRE valeur reste refusee : un profil ecrit par une version future
+  // porte des regles qu'on ne connait pas, et le lire avec les notres
+  // produirait un style plausible et faux.
+  if (o.version !== undefined && o.version !== VERSION_PROFIL_CREATIF) {
+    return refus('valeur_invalide', 'Ce profil vient d\'une autre version de Studiio.');
+  }
   for (const cle of Object.keys(o)) {
+    if (cle === 'version') continue;
     if (!(BLOCS_PROFIL as readonly string[]).includes(cle)) {
       return refus('champ_inconnu', `Le champ « ${cle} » n'existe pas dans le profil creatif.`);
     }

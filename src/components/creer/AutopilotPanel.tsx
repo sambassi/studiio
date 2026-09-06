@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import SessionsTournagePanel from '@/components/creer/SessionsTournagePanel';
+import MonStylePanel from '@/components/creer/MonStylePanel';
+import type { ProfilCreatifAutopilote } from '@/lib/autopilot/analyse/profil-creatif';
 import { montageDepuisStyle, audioDepuisStyle } from '@/lib/autopilot/textStyle';
 import { CardIcon } from '@/components/ui/CardIcon';
 import ColorWheel from '@/components/ui/ColorWheel';
@@ -230,6 +232,19 @@ export default function AutopilotPanel({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   /**
+   * « Mon style » — le profil creatif par defaut du compte.
+   *
+   * ⚠️ LU A PART DE `config`, ET C'EST VOLONTAIRE. Il vit bien dans le meme
+   * `design_style`, mais il s'ECRIT par sa propre route : le melanger a
+   * `config` inviterait a l'enregistrer avec le reste, donc a repasser par un
+   * PUT qui reecrit toutes les colonnes.
+   *
+   * `null` = ce compte n'a pas encore de style. Ce n'est pas une erreur :
+   * l'ecran affiche « Style par defaut » et propose de le configurer.
+   */
+  const [monStyle, setMonStyle] = useState<ProfilCreatifAutopilote | null>(null);
+  const [monStyleChargement, setMonStyleChargement] = useState(true);
+  /**
    * Quelle médiathèque est ouverte, et pour quoi.
    *
    * ⚠️ PAS UN BOOLEEN. Il y a maintenant DEUX points d'ouverture — les rushes
@@ -319,6 +334,52 @@ export default function AutopilotPanel({
   // configuration de depart, et l'apercu aurait ecrase tous les reglages faits
   // entre-temps a chaque geste.
   useEffect(() => { onPatchReady?.(enregistrer); }, [enregistrer, onPatchReady]);
+
+  // ── « Mon style » : lecture au montage ────────────────────────────────
+  useEffect(() => {
+    let annule = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/autopilot/profil-creatif');
+        const j = await r.json();
+        if (!annule && j?.ok) setMonStyle((j.profil ?? null) as ProfilCreatifAutopilote | null);
+      } catch {
+        // Un style illisible n'est pas une panne d'ecran : on reste sur
+        // « Style par defaut », qui est exactement ce que le rendu fera.
+      } finally {
+        if (!annule) setMonStyleChargement(false);
+      }
+    })();
+    return () => { annule = true; };
+  }, []);
+
+  /**
+   * Le SEUL geste qui reecrit le style du compte.
+   *
+   * Rend `true` en cas de succes pour que l'ecran puisse le dire — un bouton
+   * qui affiche « Enregistre » sans que rien ne soit parti est pire que pas
+   * de retour du tout.
+   */
+  const enregistrerMonStyle = useCallback(async (profil: ProfilCreatifAutopilote) => {
+    setError(null);
+    try {
+      const r = await fetch('/api/autopilot/profil-creatif', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profil),
+      });
+      const j = await r.json();
+      if (!r.ok || !j?.ok) {
+        setError(typeof j?.error === 'string' ? j.error : 'Ton style n’a pas pu être enregistré.');
+        return false;
+      }
+      setMonStyle((j.profil ?? null) as ProfilCreatifAutopilote | null);
+      return true;
+    } catch {
+      setError('Ton style n’a pas pu être enregistré. Réessaie.');
+      return false;
+    }
+  }, []);
 
   const etat = statusMessage(config, Date.now(), (d) =>
     d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }));
@@ -604,6 +665,23 @@ export default function AutopilotPanel({
               onVideoLancee={onVideoLancee}
             />
           </div>
+
+{/* ── MON STYLE ────────────────────────────────────────────────
+              L'identite visuelle du compte : look, logo, bandeau de fin,
+              transitions. Reglee UNE FOIS, appliquee ensuite toute seule aux
+              videos de l'Autopilote.
+
+              ⚠️ SA PROPRE ROUTE, ET NON `PUT /api/autopilot/config`. Celle-ci
+              reecrit TOUTES les colonnes — cadence, mode, plateformes,
+              plancher de credits : un champ oublie par l'ecran remettrait un
+              reglage a son defaut sans un mot. Et elle ne verifie pas la
+              PROPRIETE du logo, ce que `PUT /api/autopilot/profil-creatif`
+              fait avant d'ecrire. */}
+          <MonStylePanel
+            profilEnregistre={monStyle}
+            chargement={monStyleChargement}
+            onEnregistrer={enregistrerMonStyle}
+          />
 
 {/* ── VOS AFFICHES ─────────────────────────────────────────────
               ⚠️ L'AUTOPILOTE CHOISISSAIT SEUL. Il cherche une photo chez
