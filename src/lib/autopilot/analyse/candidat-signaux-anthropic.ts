@@ -40,10 +40,29 @@ const VERSION_API = '2023-06-01';
  * Le plafond de jetons de sortie.
  *
  * Six relevés de huit champs, tous choisis dans des listes fermées, aucune
- * phrase : mille jetons, c'est déjà plusieurs fois ce qu'il faut. Et c'est
+ * phrase : quelques centaines de jetons suffisent au JSON lui-même. C'est
  * une borne DURE sur ce qu'un modèle bavard peut coûter.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ POURQUOI CE PLAFOND N'EST PLUS À MILLE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Mille suffisait tant qu'un modèle ne faisait qu'écrire. Sur les modèles
+ * récents, le raisonnement est ACTIF PAR DÉFAUT et ses jetons se prennent
+ * sur CE MÊME plafond : le modèle pouvait donc épuiser les mille jetons
+ * avant d'avoir écrit une accolade. La réponse revenait tronquée,
+ * `lireReponseSignaux` la refusait, et l'enrichissement retombait à
+ * `signaux: null` — donc `m3g-v2` — SANS QUE RIEN NE LE DISE, en payant
+ * chaque appel. Exactement la panne muette que ce dépôt refuse.
+ *
+ * ⚠️ ET C'EST UN PLAFOND, PAS UNE DÉPENSE. Un modèle qui ne raisonne pas
+ * écrit toujours ses quelques centaines de jetons et n'est facturé que sur
+ * eux : relever la borne ne coûte rien là où elle ne servait pas. On ne
+ * touche donc NI `thinking` NI `output_config.effort`, qui ne sont acceptés
+ * que par certains modèles — cet adaptateur doit rester agnostique du
+ * modèle que l'exploitant configure.
  */
-const JETONS_SORTIE_MAX = 1000;
+const JETONS_SORTIE_MAX = 8000;
 
 /** Le délai de l'étape. Un relevé sans rédaction va vite, ou ne vient pas. */
 export const TIMEOUT_SIGNAUX_MS = 40_000;
@@ -123,7 +142,12 @@ function schemaSignaux(indices: readonly number[]): Record<string, unknown> {
     properties: {
       signaux: {
         type: 'array',
-        minItems: 1,
+        // ⚠️ PAS DE `minItems`. Les sorties structurées n'acceptent pas les
+        // contraintes de tableau, exactement comme elles refusent `minimum`
+        // et `maximum` plus bas. Envoyée telle quelle, la clé risque de faire
+        // refuser le schéma entier à la compilation — et l'étape échouerait
+        // pour une contrainte que `lireReponseSignaux` revérifie déjà, en
+        // exigeant un relevé par image, ni plus ni moins.
         description: `Un relevé par image, exactement. Au plus ${SIGNAUX_MAX}. Aucun numéro en double, aucun numéro omis.`,
         items: {
           type: 'object',
