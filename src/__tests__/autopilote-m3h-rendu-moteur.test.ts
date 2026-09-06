@@ -35,6 +35,32 @@ import { join, resolve } from 'path';
 const execFileP = promisify(execFile);
 
 // ───────────────────────────────────────────────────────────────────────────
+// UN `tmpdir` RIEN QU'A CE FICHIER
+// ───────────────────────────────────────────────────────────────────────────
+/**
+ * ⚠️ ISOLATION DE TEST, PAS UN CHANGEMENT DE COMPORTEMENT.
+ *
+ * « LE REPERTOIRE TEMPORAIRE NE SURVIT A AUCUN CAS » COMPTE les dossiers
+ * `studiio-m3h-*` du repertoire temporaire, avant puis apres. CINQ fichiers de
+ * test appellent `produireMontage`, et vitest les execute en parallele dans le
+ * MEME repertoire temporaire : un voisin qui termine son rendu — donc qui
+ * efface son dossier — pendant la fenetre de ce test fait chuter le compte, et
+ * l'assertion echoue sur un moteur parfaitement propre.
+ *
+ * C'est la signature exacte de l'echec observe : « expected +0 to be 1 », un
+ * dossier present a la lecture d'AVANT et disparu a celle d'APRES, alors que
+ * les dossiers de ce test-ci ne naissent qu'entre les deux.
+ *
+ * `os.tmpdir()` relit `TMPDIR` a chaque appel sous POSIX, et vitest execute
+ * chaque fichier dans son propre processus : fixer la variable ici donne a ce
+ * fichier un repertoire que personne d'autre n'ecrit. Le code de production
+ * n'est pas touche — il continue d'appeler `tmpdir()`, qui lui rend
+ * simplement un chemin different pendant ce test.
+ */
+const TMP_ISOLE = mkdtempSync(join(tmpdir(), 'm3h-tmp-'));
+process.env.TMPDIR = TMP_ISOLE;
+
+// ───────────────────────────────────────────────────────────────────────────
 // Le stockage, doublé : il sert des fixtures locales
 // ───────────────────────────────────────────────────────────────────────────
 /** Ce que le stockage rendra, par clé. */
@@ -562,7 +588,12 @@ describe.skipIf(!OUTILS)('20-30. Le vrai moteur, sur de vraies vidéos', () => {
   beforeAll(async () => {
     atelier = mkdtempSync(join(tmpdir(), 'm3h-atelier-'));
   }, 60_000);
-  afterAll(() => { if (atelier) rmSync(atelier, { recursive: true, force: true }); });
+  afterAll(() => {
+    if (atelier) rmSync(atelier, { recursive: true, force: true });
+    // Le repertoire temporaire prive de ce fichier part avec lui : sans cela
+    // il s'en accumulerait un par execution.
+    rmSync(TMP_ISOLE, { recursive: true, force: true });
+  });
 
   beforeEach(async () => {
     if (fixtures.length === 0) fixtures = await fabriquerFixtures();
