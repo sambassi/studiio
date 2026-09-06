@@ -42,6 +42,10 @@ import {
   type SignauxVision,
 } from '@/lib/autopilot/analyse/signaux-contrat';
 import { lireReponseCandidats } from '@/lib/autopilot/analyse/candidat-contrat';
+import {
+  enrichirCandidats, definirFournisseurSignaux,
+} from '@/lib/autopilot/analyse/candidat-signaux';
+import type { CandidatMontage } from '@/lib/autopilot/analyse/candidat-contrat';
 import { calerCoupes } from '@/lib/autopilot/analyse/coupe';
 import { planifierMontage } from '@/lib/autopilot/analyse/montage';
 import { ALGORITHME_PLAN } from '@/lib/autopilot/analyse/montage-contrat';
@@ -123,6 +127,46 @@ function entreeCoupes(over: Partial<EntreeCoupes> = {}): EntreeCoupes {
     mots: [],
     ...over,
   };
+}
+
+/**
+ * Des images factices, une par instant. Le contenu n'est jamais decode : le
+ * fournisseur est double, seul l'appariement instant ↔ image est en jeu.
+ */
+function imagesPour(positions: readonly number[]) {
+  return positions.map((seconde) => ({
+    seconde, mimeType: 'image/jpeg' as const, data: Buffer.from([0xff, 0xd8]),
+  }));
+}
+
+/**
+ * Attache un relevé à des candidats DÉJÀ FIGÉS, via l'étape d'enrichissement.
+ *
+ * ⚠️ C'EST LE SEUL CHEMIN. Depuis l'étape 4A.1, un `signaux` glissé dans la
+ * réponse de M3-C est refusé comme `champ_inconnu` : le modèle qui choisit
+ * les moments n'a rien à dire sur ce qu'ils montrent.
+ */
+async function enrichir(
+  candidats: readonly CandidatMontage[],
+  parSeconde: Record<number, Record<string, unknown>>,
+) {
+  definirFournisseurSignaux(async ({ moments }) => ({
+    reponse: {
+      signaux: moments.map((m) => ({
+        indice: m.indice, ...(parSeconde[m.seconde] ?? visionBrute()),
+      })),
+    },
+    usage: { inputTokens: 10, outputTokens: 5 },
+    modele: 'modele-de-test',
+  }));
+  try {
+    return await enrichirCandidats({
+      candidats,
+      images: imagesPour(candidats.map((c) => c.secondeReference)),
+    });
+  } finally {
+    definirFournisseurSignaux(null);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -294,44 +338,52 @@ describe('2. La parole — dérivée, déterministe, et honnête sur son absence
 describe('3. La temporalité — trois fenêtres du MÊME rush, trois relevés', () => {
   const POSITIONS = [5, 14, 30];
 
-  /** Trois moments d'un seul rush, chacun avec son propre relevé. */
+  /** Trois moments d'un seul rush — la réponse HISTORIQUE de M3-C. */
   function reponseTroisFenetres() {
     return {
       candidats: [
         {
           secondeReference: 5, dureeCibleSecondes: 8, scoreMontage: 90,
           raison: 'salle pleine',
-          signaux: visionBrute({
-            personnes: 'foule', echellePlan: 'plan_large', expression: 'indetermine',
-          }),
         },
         {
           secondeReference: 14, dureeCibleSecondes: 8, scoreMontage: 80,
           raison: 'une personne face caméra',
-          signaux: visionBrute({
-            personnes: 'une', echellePlan: 'gros_plan', expression: 'souriante',
-          }),
         },
         {
           secondeReference: 30, dureeCibleSecondes: 8, scoreMontage: 70,
           raison: 'mains sur un objet',
-          signaux: visionBrute({
-            personnes: 'deux', echellePlan: 'plan_moyen',
-            mainsEnAction: 'oui', objetMisEnAvant: 'oui', marqueVisible: 'oui',
-          }),
         },
       ],
     };
   }
 
-  it('3.1 M3-C rend trois relevés DIFFÉRENTS pour un même rush', () => {
+  /** Ce que l'étape d'enrichissement relèvera, instant par instant. */
+  const RELEVES = {
+    5: visionBrute({ personnes: 'foule', echellePlan: 'plan_large', expression: 'indetermine' }),
+    14: visionBrute({ personnes: 'une', echellePlan: 'gros_plan', expression: 'souriante' }),
+    30: visionBrute({
+      personnes: 'deux', echellePlan: 'plan_moyen',
+      mainsEnAction: 'oui', objetMisEnAvant: 'oui', marqueVisible: 'oui',
+    }),
+  };
+
+  async function troisFenetresEnrichies() {
     const r = lireReponseCandidats(reponseTroisFenetres(), {
       positions: POSITIONS, dureeSecondes: DUREE_RUSH,
     });
-    expect(r.ok).toBe(true);
-    if (!r.ok) return;
+    if (!r.ok) throw new Error('candidats invalides');
+    // Chaque candidat SORT de M3-C sans relevé : c'est l'étape 4A.1.
+    for (const c of r.valeur) expect(c.signaux).toBeNull();
+    const e = await enrichir(r.valeur, RELEVES);
+    expect(e.applique).toBe(true);
+    return e.candidats;
+  }
 
-    const parInstant = new Map(r.valeur.map((c) => [c.secondeReference, c.signaux]));
+  it('3.1 l’enrichissement rend trois relevés DIFFÉRENTS pour un même rush', async () => {
+    const candidats = await troisFenetresEnrichies();
+
+    const parInstant = new Map(candidats.map((c) => [c.secondeReference, c.signaux]));
     expect(parInstant.get(5)?.personnes).toBe('foule');
     expect(parInstant.get(14)?.personnes).toBe('une');
     expect(parInstant.get(30)?.mainsEnAction).toBe('oui');
@@ -339,15 +391,12 @@ describe('3. La temporalité — trois fenêtres du MÊME rush, trois relevés',
     // LE POINT DE TOUT LE LOT : trois fenêtres du même rush ne portent pas
     // la même chose. `qualite.energie`, écrit PAR RUSH, aurait donné trois
     // fois la même valeur — donc aucune séparation possible.
-    const distincts = new Set(r.valeur.map((c) => JSON.stringify(c.signaux)));
+    const distincts = new Set(candidats.map((c) => JSON.stringify(c.signaux)));
     expect(distincts.size).toBe(3);
   });
 
-  it('3.2 la parole aussi discrimine, fenêtre par fenêtre', () => {
-    const lus = lireReponseCandidats(reponseTroisFenetres(), {
-      positions: POSITIONS, dureeSecondes: DUREE_RUSH,
-    });
-    if (!lus.ok) throw new Error('candidats invalides');
+  it('3.2 la parole aussi discrimine, fenêtre par fenêtre', async () => {
+    const lus = { ok: true as const, valeur: await troisFenetresEnrichies() };
 
     // On parle SEULEMENT autour de la seconde 14. Les bornes sont posées
     // loin des bords de fenêtre (> TOLERANCE_SECONDES = 0,75 s) pour que le
@@ -370,11 +419,8 @@ describe('3. La temporalité — trois fenêtres du MÊME rush, trois relevés',
     expect(densites.get(5)).toBe(0);
   });
 
-  it('3.3 sans transcription, les TROIS fenêtres disent `inconnue`', () => {
-    const lus = lireReponseCandidats(reponseTroisFenetres(), {
-      positions: POSITIONS, dureeSecondes: DUREE_RUSH,
-    });
-    if (!lus.ok) throw new Error('candidats invalides');
+  it('3.3 sans transcription, les TROIS fenêtres disent `inconnue`', async () => {
+    const lus = { ok: true as const, valeur: await troisFenetresEnrichies() };
     const r = calerCoupes(entreeCoupes({ candidats: lus.valeur }));
     for (const c of r.coupes) {
       expect(c.signaux.parole).toEqual(PAROLE_INCONNUE);
@@ -384,6 +430,7 @@ describe('3. La temporalité — trois fenêtres du MÊME rush, trois relevés',
   });
 
   it('3.4 un candidat SANS relevé traverse M3-E sans faire échouer quoi que ce soit', () => {
+    // C'est le chemin par défaut : enrichissement éteint, candidat nu.
     const r = lireReponseCandidats({
       candidats: [{
         secondeReference: 14, dureeCibleSecondes: 8, scoreMontage: 80, raison: 'r',
@@ -401,18 +448,25 @@ describe('3. La temporalité — trois fenêtres du MÊME rush, trois relevés',
 // ═══════════════════════════════════════════════════════════════════════════
 describe('4. Le transport — m3c → m3e → m3f → entrée m3g, sans perte', () => {
   it('4.1 un signal posé chez M3-C se retrouve dans le clip matérialisé', async () => {
+    // ── m3c, HISTORIQUE : aucun relevé demandé ─────────────────────────
     const lus = lireReponseCandidats({
       candidats: [{
         secondeReference: 14, dureeCibleSecondes: 8, scoreMontage: 80,
         raison: 'une personne, logo lisible',
-        signaux: visionBrute({ personnes: 'une', marqueVisible: 'oui', echellePlan: 'gros_plan' }),
       }],
     }, { positions: [14], dureeSecondes: DUREE_RUSH });
     if (!lus.ok) throw new Error('candidats invalides');
+    expect(lus.valeur[0].signaux).toBeNull();
+
+    // ── l'enrichissement, APRÈS ────────────────────────────────────────
+    const e = await enrichir(lus.valeur, {
+      14: visionBrute({ personnes: 'une', marqueVisible: 'oui', echellePlan: 'gros_plan' }),
+    });
+    expect(e.applique).toBe(true);
 
     // ── m3e ────────────────────────────────────────────────────────────
     const coupes = calerCoupes(entreeCoupes({
-      candidats: lus.valeur,
+      candidats: e.candidats,
       transcriptionRetenue: true,
       parolePresente: true,
       segments: [{ debutSecondes: 12, finSecondes: 16, texte: 'bonjour' }],

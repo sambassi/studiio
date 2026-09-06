@@ -46,9 +46,7 @@
 import { MOTIF_ECHEC_MAX } from './contrat';
 // ⚠️ MODULE PUR LUI AUSSI : aucun `child_process`, aucun `minio`. L'ecran
 // d'analyse importe ce contrat, et l'arete doit rester inoffensive.
-import {
-  lireSignauxVision, visionDepuisLigne, type SignauxVision,
-} from './signaux-contrat';
+import { visionDepuisLigne, type SignauxVision } from './signaux-contrat';
 
 export { MOTIF_ECHEC_MAX };
 export type { SignauxVision };
@@ -121,15 +119,16 @@ export interface PropositionCandidateVisuelle {
   scoreMontage: number;
   raison: string;
   /**
-   * LES SIGNAUX SEMANTIQUES DE LA FENETRE — Lot 2B, etape 4A.
+   * LES SIGNAUX SEMANTIQUES DE LA FENETRE — Lot 2B, etapes 4A / 4A.1.
    *
-   * ⚠️ `null` QUAND LE FOURNISSEUR N'EN REND PAS. Un serveur dont l'invite
-   * n'a pas encore ete deployee doit continuer de produire des candidats :
-   * ces champs ne servent a aucune decision d'aujourd'hui.
+   * ⚠️ TOUJOURS `null` A LA SORTIE DE `lireReponseCandidats`. Ce champ n'est
+   * PAS rempli par le fournisseur qui choisit les moments : il l'est apres
+   * coup, par l'etape d'enrichissement (`candidat-signaux.ts`), sur des
+   * candidats deja figes.
    *
-   * ⚠️ ILS N'ENTRENT PAS DANS `scoreMontage`, et l'invite l'interdit
-   * explicitement au modele. Le score reste ce qu'il etait : l'interet
-   * VISUEL d'un moment comme matiere de montage.
+   * C'est toute la raison d'etre de l'etape 4A.1 : demander davantage au
+   * modele qui SELECTIONNE pouvait deplacer sa selection. Le chemin
+   * historique doit rester historique tant qu'aucun objectif ne l'influence.
    */
   signaux: SignauxVision | null;
 }
@@ -312,8 +311,13 @@ function refus(
 
 /** Les cles connues. Tout le reste est `champ_inconnu`. */
 const CLES_RACINE = ['candidats'] as const;
+// ⚠️ `signaux` N'EN FAIT PAS PARTIE, ET C'EST LE POINT DE L'ETAPE 4A.1.
+// Le fournisseur qui CHOISIT les moments n'a rien a dire sur ce qu'ils
+// montrent : on ne lui demande rien de plus qu'avant, donc son choix ne
+// peut pas avoir change. Les signaux sont attaches APRES, par une etape
+// distincte, sur des candidats deja figes.
 const CLES_CANDIDAT = [
-  'secondeReference', 'dureeCibleSecondes', 'scoreMontage', 'raison', 'signaux',
+  'secondeReference', 'dureeCibleSecondes', 'scoreMontage', 'raison',
 ] as const;
 
 function cleInconnue(objet: Record<string, unknown>, connues: readonly string[]): string | null {
@@ -438,26 +442,15 @@ export function lireReponseCandidats(
       return refus('valeur_hors_plage', `${ou}.secondeReference`, 'fenetre indefinissable');
     }
 
-    // ── Les signaux : ABSENTS = `null`, jamais une erreur ──────────────
-    //
-    // Une faute de FORME est refusee comme partout ici — objet attendu, cle
-    // inconnue. Une VALEUR illisible, elle, est deja devenue « inconnu » a
-    // l'interieur de `lireSignauxVision` : faire echouer une generation
-    // entiere pour un enum fantaisiste ferait echouer ce pipeline la ou il
-    // reussissait hier, pour un champ que personne ne lit encore.
-    let signaux: SignauxVision | null = null;
-    if (c.signaux !== undefined && c.signaux !== null) {
-      const lu = lireSignauxVision(c.signaux);
-      if (!lu.ok) return refus(lu.motif, `${ou}.${lu.champ}`);
-      signaux = lu.valeur;
-    }
-
     lus.push({
       secondeReference: reference,
       dureeCibleSecondes: duree,
       scoreMontage: score,
       raison: raison.trim(),
-      signaux,
+      // ⚠️ TOUJOURS `null` ICI, ET JAMAIS AUTRE CHOSE. Un candidat NAIT sans
+      // signaux : les lui demander dans la meme reponse ferait dependre le
+      // choix des moments d'une question qui n'a rien a voir avec lui.
+      signaux: null,
       ...fenetre,
     });
   }

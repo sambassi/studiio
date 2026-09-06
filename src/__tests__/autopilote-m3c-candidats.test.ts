@@ -236,15 +236,7 @@ describe('M3-C — le schéma envoyé au fournisseur', () => {
     expect(s.properties.candidats.items.additionalProperties).toBe(false);
     expect(s.required).toEqual(['candidats']);
     expect(s.properties.candidats.items.required.sort())
-      .toEqual(['dureeCibleSecondes', 'raison', 'scoreMontage', 'secondeReference', 'signaux']);
-    // Le bloc de signaux est ferme LUI AUSSI : `additionalProperties: false` a
-    // la racine ne dit rien de ce qu'un sous-objet accepte.
-    const sig = s.properties.candidats.items.properties.signaux;
-    expect(sig.additionalProperties).toBe(false);
-    expect(sig.required.sort()).toEqual([
-      'echellePlan', 'expression', 'mainsEnAction', 'marqueVisible',
-      'nettete', 'objetMisEnAvant', 'personnes', 'texteALEcran',
-    ]);
+      .toEqual(['dureeCibleSecondes', 'raison', 'scoreMontage', 'secondeReference']);
   });
 
   it('4. `secondeReference` est l enum EXACT des vignettes envoyées', async () => {

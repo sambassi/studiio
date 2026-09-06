@@ -32,6 +32,10 @@ import {
   type CandidatMontage, type ContexteCandidats, type MotifCandidatsEtape,
 } from './candidat-contrat';
 import type { VignetteAnalyse } from './contrat';
+// ⚠️ L'ENRICHISSEMENT EST UNE ETAPE A PART, APPELEE APRES COUP. Il ne partage
+// ni invite, ni schema, ni fournisseur, ni drapeau avec la selection.
+import { enrichirCandidats, type MotifEnrichissement } from './candidat-signaux';
+import type { usageSignaux } from './candidat-signaux-contrat';
 
 /**
  * Le délai de l'étape, et celui de la requête.
@@ -110,8 +114,27 @@ export interface DemandeCandidats {
   contexte: ContexteVisuelSource;
 }
 
+/**
+ * L'usage de l'etape, selection et enrichissement compris.
+ *
+ * ⚠️ `signaux` EST UNE SOUS-CLE, ET NON UN SECOND COMPTEUR FONDU DANS LE
+ * PREMIER. L'enrichissement est un appel PAYANT distinct : melanger son cout
+ * a celui de la selection rendrait impossible de savoir lequel des deux
+ * coute. Absente quand l'enrichissement n'a rien attache.
+ */
+export type UsageEtapeCandidats = ReturnType<typeof usageCandidats> & {
+  signaux?: ReturnType<typeof usageSignaux> & { modele: string };
+};
+
 export type ResultatEtapeCandidats =
-  | { ok: true; modele: string; candidats: CandidatMontage[]; usage: ReturnType<typeof usageCandidats> }
+  | {
+    ok: true;
+    modele: string;
+    candidats: CandidatMontage[];
+    usage: UsageEtapeCandidats;
+    /** Pourquoi aucun releve n'a ete attache. `null` = il l'a ete. */
+    motifSignaux?: MotifEnrichissement | null;
+  }
   | { ok: false; motif: MotifCandidatsEtape; detail?: string };
 
 /**
@@ -196,15 +219,39 @@ export async function produireCandidats(
     };
   }
 
+  // ── L'ENRICHISSEMENT SEMANTIQUE — APRES, ET SEULEMENT APRES ────────────
+  //
+  // ⚠️ LES CANDIDATS SONT FIGES A CETTE LIGNE. `valide.valeur` porte les
+  // moments choisis, leurs bornes, leurs notes et leur ordre ; plus rien
+  // ci-dessous n'y touche. C'est ce qui garantit que le chemin historique
+  // reste historique : le modele qui SELECTIONNE n'a rien eu de plus a
+  // faire qu'avant, donc son choix ne peut pas avoir change.
+  //
+  // ⚠️ NE PEUT PAS FAIRE ECHOUER L'ETAPE. `enrichirCandidats` ne leve jamais
+  // et rend toujours des candidats : fournisseur eteint, cle absente,
+  // reponse hors contrat ou delai depasse laissent `signaux: null` et le
+  // montage se poursuit. Perdre une selection deja payee parce qu'un releve
+  // decoratif n'a pas abouti serait echanger la fonction contre l'ornement.
+  const enrichissement = await enrichirCandidats({
+    candidats: valide.valeur,
+    images: entree.images,
+  });
+
+  const usage: UsageEtapeCandidats = usageCandidats({
+    images: entree.images.length,
+    inputTokens: sortie.usage?.inputTokens,
+    outputTokens: sortie.usage?.outputTokens,
+  });
+  if (enrichissement.usage && enrichissement.modele) {
+    usage.signaux = { ...enrichissement.usage, modele: enrichissement.modele };
+  }
+
   return {
     ok: true,
     modele: sortie.modele,
-    candidats: valide.valeur,
-    usage: usageCandidats({
-      images: entree.images.length,
-      inputTokens: sortie.usage?.inputTokens,
-      outputTokens: sortie.usage?.outputTokens,
-    }),
+    candidats: enrichissement.candidats,
+    usage,
+    motifSignaux: enrichissement.motif,
   };
 }
 
