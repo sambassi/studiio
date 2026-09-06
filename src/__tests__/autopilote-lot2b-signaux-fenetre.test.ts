@@ -31,8 +31,6 @@
  * test qui traverse M3-F.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
 
 import {
   VERSION_SIGNAUX, SIGNAUX_ABSENTS, PAROLE_INCONNUE,
@@ -242,6 +240,31 @@ describe('1. Le contrat — ce qui est refusé, et ce qui devient « inconnu »'
     const lu = signauxDepuisLigne(ligne);
     expect(lu?.vision?.personnes).toBe('groupe');
     expect(lu?.parole).toEqual({ source: 'transcription', etat: 'presente', densite: 0.25 });
+  });
+
+  it('1.7bis un relevé RELU tel qu’il a été ÉCRIT revient intact (aller-retour)', () => {
+    // ⚠️ CE TEST A ÉTÉ AJOUTÉ APRÈS UNE PANNE MUETTE TROUVÉE À L'ÉTAPE 4B.
+    //
+    // Le test 1.7 relisait `visionBrute()` — la forme que rend un
+    // FOURNISSEUR, sans `source`. Mais la base porte un `SignauxVision`
+    // COMPLET, `source` inclus, et `lireSignauxVision` refusait cette clé
+    // comme inconnue. Tout relevé sorti de la base revenait donc `vision:
+    // null` : la couverture tombait à zéro, le montage retombait sur
+    // `m3g-v2` partout, et pas une erreur nulle part.
+    //
+    // On relit désormais EXACTEMENT ce qui est écrit, et non une forme
+    // voisine — c'est la seule version du test qui pouvait attraper cela.
+    const ecrit = assemblerSignaux(
+      vision({ personnes: 'groupe', marqueVisible: 'oui' }),
+      { source: 'transcription', etat: 'presente', densite: 0.42 },
+    );
+    const relu = signauxDepuisLigne(JSON.parse(JSON.stringify(ecrit)));
+    expect(relu).toEqual(ecrit);
+    expect(relu?.vision?.source).toBe('vision');
+
+    // Et une `source` que nous n'avons pas écrite reste refusée : un
+    // fournisseur ne déclare pas lui-même d'où vient son relevé.
+    expect(visionDepuisLigne({ ...visionBrute(), source: 'devinette' })).toBeNull();
   });
 
   it('1.8 `presente` sans densité lisible redevient `inconnue`', () => {
@@ -521,6 +544,7 @@ describe('5. Aucun effet sur le montage — le plan est le même, avec ou sans',
       octets: 1_000_000,
       debutMesureSecondes: 0,
       dureeMesureeSecondes: fin - debut,
+      scoreMontage: null,
       signaux,
     };
   }
@@ -579,16 +603,24 @@ describe('5. Aucun effet sur le montage — le plan est le même, avec ou sans',
     expect(ALGORITHME_COUPES).toBe('m3e-v3');
   });
 
-  it('5.4 `m3g` ne mentionne aucun objectif de communication', () => {
-    const source = readFileSync(
-      resolve(process.cwd(), 'src/lib/autopilot/analyse/montage.ts'), 'utf8',
-    );
-    // Le corps du moteur — commentaires exclus — ne doit lire ni objectif,
-    // ni signal. Le commentaire, lui, a le droit d'expliquer pourquoi.
-    const code = source
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/\/\/.*$/gm, '');
-    expect(code).not.toMatch(/objectif|Objectif/);
-    expect(code).not.toMatch(/\.signaux/);
+  it('5.4 sans objectif, la politique est `m3g-v2` et le relevé n’en parle pas', () => {
+    // ⚠️ CE TEST A CHANGÉ DE FORME À L'ÉTAPE 4B, ET C'EST NORMAL. Jusqu'ici
+    // il vérifiait que `montage.ts` ne mentionnait aucun objectif ; depuis
+    // `m3g-v3`, il en lit un. L'invariant, lui, n'a pas bougé : SANS
+    // objectif, rien ne change — et c'est cela qu'on vérifie désormais sur
+    // le résultat plutôt que sur le source.
+    const r = planifierMontage({
+      clips: [clip(1, 2, 10, RICHES), clip(2, 14, 22, RICHES)],
+      format: '9:16',
+      dureeCibleSecondes: 20,
+      geometrie: { largeur: 1920, hauteur: 1080, fps: 30 },
+      dureeRushSecondes: DUREE_RUSH,
+    });
+    expect(r.resultat?.politique.objectiveAware).toBe(false);
+    expect(r.resultat?.politique.algorithmePlan).toBe(ALGORITHME_PLAN);
+    expect(r.resultat?.usage.algorithmePlan).toBe(ALGORITHME_PLAN);
+    // Aucune clé d'explicabilité : le relevé d'un plan générique est celui
+    // d'avant l'étape 4B, au caractère près.
+    expect(r.resultat?.usage.objectif).toBeUndefined();
   });
 });

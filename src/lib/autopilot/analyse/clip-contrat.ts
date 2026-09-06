@@ -307,6 +307,24 @@ export interface ClipMaterialise {
   debutMesureSecondes: number | null;
   dureeMesureeSecondes: number | null;
   /**
+   * LA NOTE DE M3-C, RECOPIÉE — Lot 2B, étape 4B.
+   *
+   * ⚠️ SA SIGNIFICATION NE CHANGE PAS D'UN MOT : l'intérêt VISUEL de ce
+   * moment comme matière de montage, décidé par M3-C, sans le son, sans la
+   * parole, sans aucune notion de performance. Elle est REPRISE, jamais
+   * recalculée, jamais mélangée à autre chose.
+   *
+   * Elle traverse jusqu'ici parce que `m3g-v3` en a besoin pour tenir sa
+   * garantie : la pertinence d'un objectif ne départage que des fenêtres de
+   * QUALITÉ COMPARABLE. Sans note de qualité au moment de classer, cette
+   * garantie ne serait qu'une phrase.
+   *
+   * ⚠️ `null` POUR TOUT CE QUI A ÉTÉ MATÉRIALISÉ AVANT. Les jeux existants
+   * n'en portent pas — et un jeu sans note fait retomber le plan sur
+   * `m3g-v2`, plutôt que de classer sur une qualité devinée.
+   */
+  scoreMontage: number | null;
+  /**
    * LES SIGNAUX SÉMANTIQUES DE LA FENÊTRE — Lot 2B, étape 4A.
    *
    * ⚠️ C'EST ICI QUE LE SENS SE PERDAIT. Avant cette étape, un clip ne portait
@@ -446,5 +464,9 @@ export function clipValide(v: unknown): v is ClipMaterialise {
  * devient `null`. Un jeu de clips de la semaine dernière doit rester lisible.
  */
 export function normaliserClipRelu(c: ClipMaterialise): ClipMaterialise {
-  return { ...c, signaux: signauxDepuisLigne((c as { signaux?: unknown }).signaux) };
+  const brut = c as { signaux?: unknown; scoreMontage?: unknown };
+  const note = typeof brut.scoreMontage === 'number' && Number.isFinite(brut.scoreMontage)
+    ? brut.scoreMontage
+    : null;
+  return { ...c, scoreMontage: note, signaux: signauxDepuisLigne(brut.signaux) };
 }

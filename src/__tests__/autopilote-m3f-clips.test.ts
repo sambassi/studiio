@@ -357,7 +357,35 @@ function post(id = CS, corps?: unknown) {
   );
 }
 /** Laisse le travail détaché s'exécuter. */
-const attendre = () => new Promise((r) => setTimeout(r, 30));
+/**
+ * Attend que le TRAVAIL DÉTACHÉ de M3-F soit terminé.
+ *
+ * ⚠️ UNE CONDITION, ET NON UN DÉLAI. C'était `setTimeout(30)` : trente
+ * millisecondes suffisaient sur une machine au repos, et la suite complète
+ * échouait par intermittence dès que le parallélisme de Vitest chargeait la
+ * machine — deux tests sur cinq mille, jamais les mêmes. Un test qui dépend
+ * de la charge ne vérifie pas le produit, il vérifie l'humeur du moment.
+ *
+ * La place de capacité est RENDUE par le travail lui-même, à sa dernière
+ * ligne : `jeuxClipsEnCoursMaintenant() === 0` est donc exactement le signal
+ * « c'est fini », et il ne dépend d'aucune horloge. Même correction d'esprit
+ * que l'isolation des répertoires temporaires de M3-H (commit `1768c47`).
+ *
+ * Le plafond existe pour qu'un blocage échoue en disant qu'il a bloqué,
+ * plutôt que de suspendre la suite entière.
+ */
+const attendre = async (limiteMs = 5000) => {
+  const fin = Date.now() + limiteMs;
+  while (jeuxClipsEnCoursMaintenant() > 0) {
+    if (Date.now() > fin) {
+      throw new Error('le travail détaché de M3-F ne s’est jamais terminé');
+    }
+    await new Promise((r) => setTimeout(r, 1));
+  }
+  // Une dernière boucle d'événements : la place est rendue dans un `finally`,
+  // et l'écriture de la ligne peut se résoudre juste après.
+  await new Promise((r) => setTimeout(r, 1));
+};
 
 beforeEach(() => {
   tables = {
@@ -646,7 +674,8 @@ describe('10-16. La matérialisation d’un jeu : atomicité et orphelins', () =
           clip: {
             rang: 1, debutSecondes: 10, finSecondes: 13, dureeSecondes: 3,
             bucket: 'videos', cle: cleClip('A', CS, 1), octets: 10,
-            debutMesureSecondes: 0, dureeMesureeSecondes: 3, signaux: null,
+            debutMesureSecondes: 0, dureeMesureeSecondes: 3,
+            scoreMontage: null, signaux: null,
           },
         };
       }
@@ -681,7 +710,8 @@ describe('10-16. La matérialisation d’un jeu : atomicité et orphelins', () =
           clip: {
             rang: 1, debutSecondes: 10, finSecondes: 13, dureeSecondes: 3,
             bucket: 'videos', cle: cleClip('A', CS, 1), octets: 10,
-            debutMesureSecondes: 0, dureeMesureeSecondes: 3, signaux: null,
+            debutMesureSecondes: 0, dureeMesureeSecondes: 3,
+            scoreMontage: null, signaux: null,
           },
         };
       }

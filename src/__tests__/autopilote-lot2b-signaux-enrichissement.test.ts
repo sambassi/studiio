@@ -464,6 +464,7 @@ describe('F. Le plan est le même : sans, avec, ou après échec d’enrichissem
       octets: 1_000_000,
       debutMesureSecondes: 0,
       dureeMesureeSecondes: c.dureeSecondes,
+      scoreMontage: c.scoreMontage,
       signaux: c.signaux,
     }));
   }

@@ -21,6 +21,12 @@ import {
   type FormatMontage, type GeometrieSource, type MotifPlan, type PlanMontage,
 } from './montage-contrat';
 import { arrondirSeconde, type ClipMaterialise } from './clip-contrat';
+import {
+  politiqueDePlan, palierDeQualite, PALIER_QUALITE, VERSION_SCORING,
+  type PolitiquePlan,
+} from './objectif-score';
+import { VERSION_SIGNAUX } from './signaux-contrat';
+import type { ObjectifCommunication } from './objectif-communication';
 
 export interface DemandePlan {
   /**
@@ -56,6 +62,32 @@ export interface DemandePlan {
    * serait pire que ne pas refuser.
    */
   dureeRushSecondes?: number;
+  /**
+   * L'OBJECTIF DE COMMUNICATION — Lot 2B, étape 4B.
+   *
+   * ⚠️ ABSENT OU GÉNÉRIQUE = `m3g-v2`, À LA SECONDE PRÈS. C'est le chemin de
+   * tous les comptes qui n'ont rien déclaré, et il ne bouge pas.
+   *
+   * Quand il est présent ET exploitable, il ne fait qu'UNE chose : changer
+   * l'ORDRE DANS LEQUEL les clips sont proposés au remplissage. Tous les
+   * garde-fous ci-dessous s'appliquent ensuite sans exception — recouvrement,
+   * écart minimal entre moments, plafond de couverture, durée minimale de
+   * plan, plafond de plans. Un objectif ne peut en contourner aucun.
+   */
+  objectif?: ObjectifCommunication | null;
+  /**
+   * La politique DÉJÀ DÉCIDÉE par l'appelant.
+   *
+   * ⚠️ ELLE EXISTE PARCE QUE L'IDENTITÉ DU PLAN SE FIGE AVANT LE CALCUL. La
+   * route doit connaître `algorithme_plan` pour interroger `lirePlanIdentique`
+   * — donc avant de planifier. La décider deux fois, ici et là-bas, ouvrirait
+   * la porte à deux réponses différentes : un plan calculé sous une politique
+   * et rangé sous l'identité d'une autre.
+   *
+   * Absente, elle est décidée ici — même fonction, mêmes entrées, même
+   * résultat.
+   */
+  politique?: PolitiquePlan;
 }
 
 export interface ResultatPlan {
@@ -65,6 +97,8 @@ export interface ResultatPlan {
   clipsEcartes: number;
   /** Ce qui a servi à décider, relevé pour la lecture après coup. */
   usage: Record<string, unknown>;
+  /** La politique réellement appliquée — `m3g-v2` ou `m3g-v3.<empreinte>`. */
+  politique: PolitiquePlan;
 }
 
 /**
@@ -82,6 +116,30 @@ export interface ResultatPlan {
  */
 function parRang(clips: readonly ClipMaterialise[]): ClipMaterialise[] {
   return [...clips].sort((a, b) => a.rang - b.rang);
+}
+
+/**
+ * Range les clips dans l'ordre décidé par la politique.
+ *
+ * ⚠️ CE N'EST PAS L'ORDRE DU MONTAGE. C'est l'ordre dans lequel les clips
+ * sont PROPOSÉS au remplissage, donc celui qui décide lesquels sont retenus
+ * quand la durée cible est atteinte. Le montage, lui, est remis en ordre
+ * chronologique tout en bas de cette fonction — un objectif ne réordonne
+ * jamais ce que le spectateur voit.
+ *
+ * Un rang que la politique ne nomme pas passe en dernier, par `rang` : elle
+ * les nomme tous, mais une liste tronquée ne doit pas faire disparaître un
+ * clip du montage.
+ */
+function selonPolitique(
+  clips: readonly ClipMaterialise[], ordreRangs: readonly number[],
+): ClipMaterialise[] {
+  const position = new Map(ordreRangs.map((rang, i) => [rang, i]));
+  return [...clips].sort((a, b) => {
+    const pa = position.get(a.rang) ?? Number.MAX_SAFE_INTEGER;
+    const pb = position.get(b.rang) ?? Number.MAX_SAFE_INTEGER;
+    return pa - pb || a.rang - b.rang;
+  });
 }
 
 /**
@@ -160,8 +218,21 @@ export function planifierMontage(
 ): { resultat: ResultatPlan | null; motif: MotifPlan | null } {
   const { format, dureeCibleSecondes, geometrie } = demande;
 
-  const ordonnes = parRang(demande.clips);
-  if (ordonnes.length === 0) return { resultat: null, motif: 'jeu_sans_clip' };
+  if (demande.clips.length === 0) return { resultat: null, motif: 'jeu_sans_clip' };
+
+  // ⚠️ LA POLITIQUE D'ABORD, LE REMPLISSAGE ENSUITE. Elle ne touche qu'à
+  // l'ordre de proposition ; tout ce qui suit est le moteur de `m3g-v2`,
+  // inchangé.
+  const politique = demande.politique ?? politiqueDePlan(
+    demande.clips.map((c) => ({
+      rang: c.rang, scoreMontage: c.scoreMontage, signaux: c.signaux,
+    })),
+    demande.objectif,
+    ALGORITHME_PLAN,
+  );
+  const ordonnes = politique.objectiveAware
+    ? selonPolitique(demande.clips, politique.ordreRangs)
+    : parRang(demande.clips);
 
   const cadrage = recadrer(geometrie.largeur, geometrie.hauteur, format);
   if (cadrage === null) return { resultat: null, motif: 'geometrie_inconnue' };
@@ -317,7 +388,10 @@ export function planifierMontage(
       ecartSecondes: arrondirSeconde(Math.max(0, dureeCibleSecondes - cumul)),
       clipsEcartes: ecartes,
       usage: {
-        algorithmePlan: ALGORITHME_PLAN,
+        // ⚠️ LA POLITIQUE RÉELLEMENT APPLIQUÉE, pas la constante. Sur le
+        // chemin générique elle VAUT `ALGORITHME_PLAN`, et le relevé est
+        // donc identique au caractère près à celui d'avant l'étape 4B.
+        algorithmePlan: politique.algorithmePlan,
         clipsRecus: demande.clips.length,
         plansRetenus: plans.length,
         clipsEcartes: ecartes,
@@ -343,7 +417,41 @@ export function planifierMontage(
             (r, i) => r.plage.debut - retenus[i].plage.fin,
           )),
         ),
+        // ─────────────────────────────────────────────────────────────
+        // L'EXPLICABILITÉ — AJOUTÉE SEULEMENT QUAND L'OBJECTIF A SERVI
+        // ─────────────────────────────────────────────────────────────
+        //
+        // ⚠️ RIEN SUR LE CHEMIN GÉNÉRIQUE. Ces clés ne doivent pas apparaître
+        // dans le relevé d'un plan qui n'a lu aucun objectif : le plan
+        // historique doit rester identique jusque dans son `usage`, sans
+        // quoi « rien n'a changé » deviendrait invérifiable.
+        //
+        // ⚠️ DES IDENTIFIANTS, JAMAIS UNE PHRASE. C'est ce qui permettra de
+        // répondre « pourquoi ce passage ? » sans qu'un texte produit par un
+        // modèle n'ait jamais pesé sur la décision.
+        ...(politique.objectiveAware ? {
+          objectif: {
+            versionScoring: VERSION_SCORING,
+            versionSignaux: VERSION_SIGNAUX,
+            ordreRangs: politique.ordreRangs,
+            palierQualite: PALIER_QUALITE,
+            fenetres: [...demande.clips]
+              .sort((a, b) => a.rang - b.rang)
+              .map((c) => ({
+                rang: c.rang,
+                retenu: retenus.some((r) => r.clip.rang === c.rang),
+                scoreMontage: c.scoreMontage,
+                palier: c.scoreMontage === null ? null : palierDeQualite(c.scoreMontage),
+                objectiveScore: politique.notes[c.rang]?.score ?? null,
+                objectiveReasons: politique.notes[c.rang]?.raisons ?? [],
+                criteresApplicables: politique.notes[c.rang]?.criteresApplicables ?? 0,
+                criteresDemandes: politique.notes[c.rang]?.criteresDemandes ?? 0,
+                paroleEtat: c.signaux?.parole.etat ?? null,
+              })),
+          },
+        } : {}),
       },
+      politique,
     },
     motif: null,
   };

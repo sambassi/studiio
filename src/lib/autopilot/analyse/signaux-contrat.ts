@@ -367,8 +367,24 @@ export function lireSignauxVision(brut: unknown): LectureSignauxVision {
  * lecture en echec qui rendrait le passe de ce pipeline illisible.
  */
 export function visionDepuisLigne(brut: unknown): SignauxVision | null {
-  if (brut === undefined || brut === null) return null;
-  const lu = lireSignauxVision(brut);
+  if (typeof brut !== 'object' || brut === null || Array.isArray(brut)) return null;
+
+  // ⚠️ `source` EST RETIRÉ AVANT LA LECTURE, ET C'EST INDISPENSABLE.
+  //
+  // Ce que la base porte est un `SignauxVision` COMPLET, donc avec sa
+  // provenance. Ce que `lireSignauxVision` accepte est ce qu'un FOURNISSEUR
+  // a le droit d'écrire, et `source` n'en fait pas partie — un modèle qui
+  // déclarerait lui-même d'où vient son relevé déclarerait sa propre
+  // fiabilité.
+  //
+  // Sans ce retrait, la relecture refusait `champ_inconnu` sur le champ que
+  // nous avions écrit nous-mêmes : tout relevé sorti de la base revenait
+  // `null`, et la couverture des signaux tombait à zéro — donc `m3g-v2`
+  // partout, sans la moindre erreur. Une panne parfaitement muette.
+  const { source, ...reste } = brut as Record<string, unknown>;
+  if (source !== undefined && source !== 'vision') return null;
+
+  const lu = lireSignauxVision(reste);
   return lu.ok ? lu.valeur : null;
 }
 
@@ -389,8 +405,11 @@ export function signauxDepuisLigne(brut: unknown): SignauxFenetre | null {
   const o = brut as Record<string, unknown>;
   if (o.version !== VERSION_SIGNAUX) return null;
 
-  const lu = lireSignauxVision(o.vision);
-  const vision = lu.ok ? lu.valeur : null;
+  // ⚠️ `visionDepuisLigne`, ET NON `lireSignauxVision`. Voir juste au-dessus :
+  // le lecteur du fournisseur refuse `source`, que nous écrivons nous-mêmes.
+  // L'appeler directement ici rendait `vision: null` pour TOUT relevé sorti
+  // de la base.
+  const vision = visionDepuisLigne(o.vision);
 
   const p = typeof o.parole === 'object' && o.parole !== null && !Array.isArray(o.parole)
     ? o.parole as Record<string, unknown>

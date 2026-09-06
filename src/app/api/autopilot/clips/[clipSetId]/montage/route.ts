@@ -40,6 +40,11 @@ import {
   type FormatMontage, type IdentitePlan,
 } from '@/lib/autopilot/analyse/montage-contrat';
 import { geometrieDepuisTechnique, planifierMontage } from '@/lib/autopilot/analyse/montage';
+import { politiqueDePlan } from '@/lib/autopilot/analyse/objectif-score';
+import {
+  lireObjectif, normaliserObjectif, OBJECTIF_DEFAUT,
+  type ObjectifCommunication,
+} from '@/lib/autopilot/analyse/objectif-communication';
 import { creerPlan, lirePlanIdentique } from '@/lib/autopilot/analyse/montage-service';
 
 export const dynamic = 'force-dynamic';
@@ -60,6 +65,11 @@ const CHAMPS_INTERDITS = [
   'recadrage', 'crop', 'largeurSource', 'hauteurSource',
   'largeurCible', 'hauteurCible', 'raccordEntrant',
   'bucket', 'cle', 'cleObjet', 'rushId', 'userId', 'user_id',
+  // ⚠️ LA POLITIQUE ET L'ALGORITHME SONT DECIDES ICI, JAMAIS RECUS. Les
+  // accepter laisserait demander un `m3g-v3` sans objectif, ou un
+  // `algorithme_plan` choisi — donc l'identite d'un plan d'autrui.
+  'politique', 'algorithmePlan', 'algorithme_plan', 'objectifCanonique',
+  'signaux', 'notes', 'objectiveScore',
 ] as const;
 
 function refus(motif: string, message: string, status = 409) {
@@ -121,6 +131,23 @@ export async function POST(
     }
     const dureeCibleSecondes = Number(corps.dureeCibleSecondes);
 
+    // ── L'OBJECTIF — VALIDE PAR SON PROPRE CONTRAT, JAMAIS AFFECTE EN MASSE
+    //
+    // ⚠️ `lireObjectif` REFUSE toute cle que le contrat ne connait pas, et
+    // borne chaque valeur. Rien d'autre du corps n'atteint le moteur : ni
+    // `userId` — il vient de la session — ni un poids, ni une politique.
+    //
+    // ⚠️ ABSENT = GENERIQUE. Un corps qui n'en porte pas produit exactement
+    // le plan d'avant l'etape 4B, sous `m3g-v2`.
+    let objectif: ObjectifCommunication = { ...OBJECTIF_DEFAUT };
+    if (corps.objectif !== undefined && corps.objectif !== null) {
+      const lu = lireObjectif(corps.objectif);
+      if (!lu.ok) {
+        return refus('objectif_invalide', lu.message, 422);
+      }
+      objectif = normaliserObjectif(lu.objectif);
+    }
+
     // ── Le jeu de clips, et la propriété prouvée par la requête ─────────
     const { set, motif: motifSet } = await lireSetParId(userId, params.clipSetId);
     if (motifSet === 'socle_absent') {
@@ -140,6 +167,23 @@ export async function POST(
       return refus('jeu_sans_clip', 'Ce jeu ne porte aucun clip.');
     }
 
+    // ── LA POLITIQUE, DECIDEE AVANT L'IDENTITE ─────────────────────────
+    //
+    // ⚠️ CET ORDRE N'EST PAS UN DETAIL. `algorithme_plan` fait partie de
+    // l'identite interrogee juste en dessous : sans la politique, on
+    // chercherait un plan sous une identite qui n'est pas la sienne, et on
+    // rendrait le plan generique a une demande qui porte un objectif.
+    //
+    // La MEME fonction sert ensuite au calcul, et le resultat lui est passe :
+    // la decider deux fois ouvrirait la porte a deux reponses differentes.
+    const politique = politiqueDePlan(
+      set.clips.map((c) => ({
+        rang: c.rang, scoreMontage: c.scoreMontage, signaux: c.signaux,
+      })),
+      objectif,
+      ALGORITHME_PLAN,
+    );
+
     // ── L'identité complète, figée AVANT tout calcul ────────────────────
     const identite: IdentitePlan = {
       clipSetId: set.id,
@@ -148,7 +192,10 @@ export async function POST(
       analysisId: set.analysisId,
       algorithme: set.algorithme,
       methodeMaterialisation: set.methodeMaterialisation,
-      algorithmePlan: ALGORITHME_PLAN,
+      // `m3g-v2` sur le chemin generique — donc l'identite d'hier, et les
+      // plans deja calcules restent trouves. `m3g-v3.<empreinte>` seulement
+      // quand un objectif a reellement change le classement.
+      algorithmePlan: politique.algorithmePlan,
       format,
       dureeCibleSecondes,
     };
@@ -194,6 +241,9 @@ export async function POST(
       // l'analyse deja lue ci-dessus : aucune requete de plus, et c'est la
       // meme mesure que celle qui a servi a decider la geometrie.
       dureeRushSecondes: analyse.dureeSecondes ?? undefined,
+      // La politique DEJA decidee ci-dessus, jamais recalculee : le plan est
+      // ainsi calcule sous exactement l'identite qui vient d'etre interrogee.
+      politique,
     });
     if (!resultat) {
       return refus(motifPlan ?? 'plan_vide',

@@ -265,6 +265,10 @@ export async function materialiserClip(entree: {
       // RECOPIÉS, jamais recalculés : la coupe les porte déjà, mesurés sur
       // cette fenêtre exacte. Les refaire ici en produirait une seconde
       // version, et deux vérités pour un même moment.
+      //
+      // ⚠️ `scoreMontage` EST CELUI DE M3-C, INCHANGÉ. M3-F n'a aucune
+      // opinion sur la qualité d'un moment : il découpe ce qu'on lui dit.
+      scoreMontage: typeof coupe.scoreMontage === 'number' ? coupe.scoreMontage : null,
       signaux: coupe.signaux ?? null,
     },
   };

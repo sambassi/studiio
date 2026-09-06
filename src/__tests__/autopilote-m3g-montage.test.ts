@@ -198,6 +198,7 @@ function clipsProduction(): ClipMaterialise[] {
     octets,
     debutMesureSecondes: 0,
     dureeMesureeSecondes: mesuree,
+    scoreMontage: null,
     signaux: null,
   });
   return [
@@ -1102,5 +1103,155 @@ describe('37-44. Ce que M3-G ne touche pas', () => {
     expect(JSON.stringify(tables.rush_analyses)).toBe(avantAnalyses);
     // Et rien n'a été inséré ailleurs que dans la table de M3-G.
     expect(insertions.every((i) => i.table === 'rush_montage_plans')).toBe(true);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+// LOT 2B — ÉTAPE 4B : LA ROUTE ET L'OBJECTIF DE COMMUNICATION
+// ═════════════════════════════════════════════════════════════════════════
+//
+// ⚠️ CE QUI SE JOUE ICI EST L'IDENTITÉ, PAS LE CLASSEMENT. Le classement est
+// prouvé sur des valeurs dans `autopilote-lot2b-objectif-montage.test.ts` ;
+// ce bloc-ci vérifie que la ROUTE valide l'objectif, ne se laisse rien
+// dicter d'autre, et range le plan sous l'identité qu'elle vient
+// d'interroger — jamais sous une autre.
+describe('4B. L’objectif de communication, vu de la route', () => {
+  const VISION = {
+    source: 'vision' as const,
+    personnes: 'foule' as const, echellePlan: 'plan_large' as const,
+    expression: 'neutre' as const, objetMisEnAvant: 'non' as const,
+    mainsEnAction: 'non' as const, marqueVisible: 'non' as const,
+    texteALEcran: 'non' as const, nettete: 0.8,
+  };
+  const PAROLE = { source: 'transcription' as const, etat: 'absente' as const, densite: 0 };
+
+  /** Cinq clips relevés : le rang 3 est le seul qui montre une foule. */
+  function clipsReleves() {
+    return clipsProduction().map((c) => ({
+      ...c,
+      scoreMontage: 85,
+      signaux: {
+        version: 'signaux-v1' as const,
+        vision: c.rang === 3
+          ? VISION
+          : { ...VISION, personnes: 'une' as const, echellePlan: 'gros_plan' as const },
+        parole: PAROLE,
+      },
+    }));
+  }
+
+  it('4B.1 sans objectif, l’identité reste `m3g-v2` — le chemin de tous', async () => {
+    const r = await post({ format: '9:16', dureeCibleSecondes: 25 });
+    expect(r.status).toBe(201);
+    expect(insertions[0].valeurs.algorithme_plan).toBe(ALGORITHME_PLAN);
+  });
+
+  it('4B.2 un objectif exploitable range le plan sous `m3g-v3.<empreinte>`', async () => {
+    tables.rush_clip_sets = [ligneJeu({ clips: clipsReleves() })];
+    const r = await post({
+      format: '9:16', dureeCibleSecondes: 25, objectif: { type: 'evenement' },
+    });
+    expect(r.status).toBe(201);
+    const ecrit = String(insertions[0].valeurs.algorithme_plan);
+    expect(ecrit).toMatch(/^m3g-v3\.[0-9a-f]{16}$/);
+    // ⚠️ LA CONTRAINTE DE LA BASE : `check (length(algorithme_plan) between
+    // 1 and 40)`. Une empreinte plus longue ferait échouer l'insertion en
+    // production, et nulle part ailleurs.
+    expect(ecrit.length).toBeLessThanOrEqual(40);
+  });
+
+  it('4B.3 un objectif sans discriminant retombe sur `m3g-v2`', async () => {
+    tables.rush_clip_sets = [ligneJeu({ clips: clipsReleves() })];
+    const r = await post({
+      format: '9:16', dureeCibleSecondes: 25, objectif: { type: 'inscriptions' },
+    });
+    expect(r.status).toBe(201);
+    expect(insertions[0].valeurs.algorithme_plan).toBe(ALGORITHME_PLAN);
+  });
+
+  it('4B.4 le plan est rangé sous l’identité qui a été INTERROGÉE', async () => {
+    // ⚠️ LE PIÈGE QUE CE TEST FERME. `lirePlanIdentique` interroge
+    // `algorithme_plan` AVANT que le plan ne soit calculé. Si la politique
+    // était décidée deux fois — une fois pour l'identité, une fois pour le
+    // calcul — un plan objective-aware pourrait être rangé sous l'identité
+    // générique, et ressorti ensuite pour une demande sans objectif.
+    tables.rush_clip_sets = [ligneJeu({ clips: clipsReleves() })];
+    const r = await post({
+      format: '9:16', dureeCibleSecondes: 25, objectif: { type: 'evenement' },
+    });
+    expect(r.status).toBe(201);
+    const corps = await r.json();
+    expect(insertions[0].valeurs.algorithme_plan).toBe(corps.plan.algorithmePlan);
+    expect(String(corps.plan.usage.algorithmePlan)).toBe(String(insertions[0].valeurs.algorithme_plan));
+  });
+
+  it('4B.5 un objectif hors contrat est REFUSÉ, jamais ignoré', async () => {
+    for (const mauvais of [
+      { type: 'inventé' },
+      { scoreObjectif: 100 },
+      { appelAction: { destination: 'javascript:alert(1)' } },
+      { priorites: ['inexistante'] },
+      'du texte',
+      42,
+    ]) {
+      const r = await post({
+        format: '9:16', dureeCibleSecondes: 25, objectif: mauvais,
+      });
+      expect(r.status).toBe(422);
+      const corps = await r.json();
+      expect(corps.motif).toBe('objectif_invalide');
+    }
+  });
+
+  it('4B.6 la politique et l’algorithme ne se dictent PAS depuis le corps', async () => {
+    // Un champ ignoré laisse croire qu'il a été pris en compte — et c'est
+    // exactement ce qu'espère celui qui l'envoie.
+    for (const interdit of [
+      'politique', 'algorithmePlan', 'algorithme_plan', 'objectifCanonique',
+      'signaux', 'notes', 'objectiveScore',
+    ]) {
+      const r = await post({
+        format: '9:16', dureeCibleSecondes: 25, [interdit]: 'm3g-v3.deadbeefdeadbeef',
+      });
+      expect(r.status).toBe(422);
+    }
+  });
+
+  it('4B.7 deux objectifs différents ne partagent JAMAIS un plan', async () => {
+    tables.rush_clip_sets = [ligneJeu({ clips: clipsReleves() })];
+    const a = await post({
+      format: '9:16', dureeCibleSecondes: 25, objectif: { type: 'evenement' },
+    });
+    expect(a.status).toBe(201);
+    const identiteA = String(insertions[0].valeurs.algorithme_plan);
+
+    // Le plan de l'objectif A est maintenant en base. Une demande portant
+    // l'objectif B ne doit pas le récupérer.
+    tables.rush_montage_plans = [{ ...insertions[0].valeurs, id: 'p1', version: 1 }];
+    insertions.length = 0;
+    const b = await post({
+      format: '9:16', dureeCibleSecondes: 25, objectif: { type: 'temoignage' },
+    });
+    expect(b.status).toBe(201);
+    const corpsB = await b.json();
+    expect(corpsB.reutilise).toBeFalsy();
+    expect(String(insertions[0].valeurs.algorithme_plan)).not.toBe(identiteA);
+  });
+
+  it('4B.8 le MÊME objectif retrouve son plan, sans le recalculer', async () => {
+    tables.rush_clip_sets = [ligneJeu({ clips: clipsReleves() })];
+    const a = await post({
+      format: '9:16', dureeCibleSecondes: 25, objectif: { type: 'evenement' },
+    });
+    expect(a.status).toBe(201);
+    tables.rush_montage_plans = [{ ...insertions[0].valeurs, id: 'p1', version: 1 }];
+    insertions.length = 0;
+
+    const b = await post({
+      format: '9:16', dureeCibleSecondes: 25, objectif: { type: 'evenement' },
+    });
+    const corpsB = await b.json();
+    expect(corpsB.reutilise).toBe(true);
+    expect(insertions).toHaveLength(0);
   });
 });
