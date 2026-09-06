@@ -27,9 +27,14 @@ import { prendrePlaceRendu } from '@/lib/autopilot/analyse/capacite';
 import {
   BUDGET_RENDU_MAX_MS, CHAMPS_INTERDITS_RENDU, MOTIF_RENDU_INTERROMPU,
   type IdentiteRendu, type MotifRendu,
-  CHAMP_AUDIO_RENDU, CHAMPS_RENDU_ACCEPTES, methodeRendu,
+  CHAMP_AUDIO_RENDU, CHAMP_STYLE_RENDU, CHAMPS_RENDU_ACCEPTES, methodeRendu,
 } from '@/lib/autopilot/analyse/rendu-contrat';
 import { lireRecetteAudio, type RecetteAudio } from '@/lib/autopilot/analyse/recette-audio';
+import {
+  fusionnerProfilEtOverride, lireProfilCreatif,
+  type ProfilCreatifAutopilote,
+} from '@/lib/autopilot/analyse/profil-creatif';
+import { MESSAGES_LOGO, verifierLogo } from '@/lib/autopilot/analyse/logo-source';
 import { MESSAGES_MUSIQUE, verifierMusique } from '@/lib/autopilot/analyse/musique-source';
 import { diagnosticRendu } from '@/lib/autopilot/analyse/rendu-ffmpeg';
 import {
@@ -101,6 +106,7 @@ export async function POST(
     // la vraie raison ; puis tout champ inconnu, parce qu'un schema ferme est
     // le seul qui ne derive pas ; puis seulement on lit la recette.
     let recette: RecetteAudio | null = null;
+    let profil: ProfilCreatifAutopilote | null = null;
     const brut = (await req.text()).trim();
     if (brut.length > 0) {
       let json: unknown;
@@ -136,6 +142,34 @@ export async function POST(
         }
         recette = lecture.recette;
       }
+
+      const champStyle = (json as Record<string, unknown>)[CHAMP_STYLE_RENDU];
+      if (champStyle !== undefined && champStyle !== null) {
+        const lecture = lireProfilCreatif(champStyle);
+        if (!lecture.ok) {
+          return NextResponse.json(
+            { ok: false, error: lecture.message, motif: lecture.motif }, { status: 422 },
+          );
+        }
+        // ⚠️ LE PROFIL EFFECTIF SE CONSTRUIT ICI, ET NULLE PART AILLEURS.
+        //
+        // Trois couches, de la moins prioritaire a la plus : les valeurs
+        // generiques sures de `PROFIL_CREATIF_DEFAUT`, le profil par defaut
+        // du compte, l'override de CETTE video. `fusionnerProfilEtOverride`
+        // les applique propriete par propriete — un override qui ne porte
+        // qu'une transition ne doit pas effacer la duree et l'intensite que
+        // l'utilisateur avait reglees.
+        //
+        // ⚠️ ET LA FUSION N'ECRIT RIEN. C'est une fonction pure : le profil
+        // par defaut du compte ressort inchange de cet appel. Le rendre
+        // permanent demande une action explicite, sur une autre route.
+        //
+        // `profilDuCompte` vaut `null` tant que « Mon style » n'est pas
+        // persiste : la fusion retombe alors sur les valeurs generiques, ce
+        // qui est exactement le comportement voulu.
+        const profilDuCompte: ProfilCreatifAutopilote | null = null;
+        profil = fusionnerProfilEtOverride(profilDuCompte, lecture.profil);
+      }
     }
 
     // ── La musique : ni devinee, ni crue sur parole ───────────────────────
@@ -150,6 +184,22 @@ export async function POST(
         const statut = v.motif === 'stockage_injoignable' ? 503 : 422;
         return NextResponse.json(
           { ok: false, error: MESSAGES_MUSIQUE[v.motif], motif: v.motif }, { status: statut },
+        );
+      }
+    }
+
+    // ── Le logo : ni devine, ni cru sur parole ───────────────────────────
+    //
+    // ⚠️ MEME DOCTRINE QUE LA MUSIQUE, MEME ORDRE. `verifierLogo` repose le
+    // prefixe de propriete AVANT d'interroger le stockage : un compte qui
+    // enverrait la cle d'un tiers est refuse sans que la reponse confirme
+    // l'existence du fichier d'autrui.
+    if (profil?.marque.logoActif && profil.marque.logo) {
+      const v = await verifierLogo(profil.marque.logo, userId);
+      if (!v.ok) {
+        const statut = v.motif === 'stockage_injoignable' ? 503 : 422;
+        return NextResponse.json(
+          { ok: false, error: MESSAGES_LOGO[v.motif], motif: v.motif }, { status: statut },
         );
       }
     }
@@ -172,7 +222,12 @@ export async function POST(
       // musiques differentes partageraient une identite, et la relecture d'un
       // rendu reussi rendrait l'ANCIEN fichier. Recette historique = methode
       // historique, donc les rendus deja produits restent reutilisables.
-      methodeRendu: methodeRendu(recette),
+      // ⚠️ LE PROFIL ENTRE DANS L'IDENTITE. Sans lui, deux styles differents
+      // partageraient une methode, et la relecture d'un rendu reussi
+      // servirait la video de l'ANCIEN style — le meme piege muet que celui
+      // de la musique au Lot 2A. Profil historique = methode historique, donc
+      // les rendus deja produits restent reutilisables.
+      methodeRendu: methodeRendu(recette, profil),
     };
 
     // ── Déjà rendu ? On sert l'existant, sans rien relancer ──────────────
@@ -241,7 +296,7 @@ export async function POST(
     // et `output: 'standalone'` : le processus vit, rien ne gèle après le
     // `return`. Le `catch` est la ceinture qui rend la place si le travail
     // jetait avant d'entrer dans son propre `finally`.
-    void executerRendu(userId, plan, rendu.id, placeDuTravail, recette)
+    void executerRendu(userId, plan, rendu.id, placeDuTravail, recette, profil)
       .catch((e: unknown) => {
         // La ceinture, et elle ne se tait pas : une panne avant le `try` du
         // travail serait autrement invisible.
@@ -283,6 +338,7 @@ async function executerRendu(
   renduId: string,
   place: { liberer(): void },
   recette: RecetteAudio | null,
+  profil: ProfilCreatifAutopilote | null,
 ): Promise<void> {
   try {
     // ⚠️ AVEC LA GARDE, ET SON RETOUR LU. Entre l'insertion et cette écriture,
@@ -294,7 +350,7 @@ async function executerRendu(
     if (depart.motif === 'rendu_absent') return;
     await rendreEtPublier(
       {
-        userId, plan: plan!, recette,
+        userId, plan: plan!, recette, profil,
         // Chaque frontière demande si la ligne existe encore. `rendu_absent`
         // est un ordre d'arrêt : on nettoie et on n'écrit plus rien.
         avancer: async (etape) => {

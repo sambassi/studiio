@@ -312,10 +312,18 @@ describe('1. GET /api/autopilot/sessions/[id]/rendus', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('2. La traduction des vocabulaires fermés', () => {
-  it('2.1 les ONZE motifs du contrat sont traduits, ni plus ni moins', () => {
+  it('2.1 les DOUZE motifs du contrat sont traduits, ni plus ni moins', () => {
     expect([...MOTIFS_TRADUITS].sort()).toEqual([...MOTIFS_RENDU].sort());
     // Onze depuis le correctif Lot 2A, qui a donne son motif a la musique.
-    expect(MOTIFS_RENDU).toHaveLength(11);
+    // DOUZE depuis Lot 2B etape 2, qui applique la meme lecon au logo : le
+    // faire passer par la sonde des clips l'aurait rendu `clip_illisible`, et
+    // l'ecran aurait accuse un rush sain quand l'image de marque est en cause.
+    //
+    // ⚠️ CE NOMBRE EST UN GARDE-FOU, PAS UN COMPTEUR. Le monter sans ajouter
+    // la phrase correspondante dans `ECHECS` laisserait un motif traverser
+    // jusqu'a l'ecran sous sa forme machine — c'est exactement ce que 2.1 et
+    // 2.2 empechent ensemble.
+    expect(MOTIFS_RENDU).toHaveLength(12);
   });
 
   it('2.2 aucun message ne contient un mot de machine', () => {

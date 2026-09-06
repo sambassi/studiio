@@ -587,6 +587,11 @@ export const MOTIFS_RENDU = [
   // parfaitement sain. Un diagnostic qui designe le mauvais fichier envoie
   // l'utilisateur reparer ce qui n'est pas casse.
   'musique_illisible',
+  // ⚠️ ET LE LOGO AUSSI A LE SIEN, POUR LA MEME RAISON EXACTEMENT. Le faire
+  // passer par la sonde des clips le rendrait `clip_illisible` : l'ecran
+  // accuserait un rush sain quand c'est l'image de marque qui est en cause.
+  // La lecon de Lot 2A n'a de valeur que si on l'applique au cas suivant.
+  'logo_illisible',
   'outil_absent',
   'encodage_echoue',
   'delai_depasse',
@@ -722,7 +727,23 @@ export function renduMaterialiseValide(v: unknown, userId: string): v is RenduMa
  * Le client dit CE QU'IL VEUT ENTENDRE ; il ne dit jamais comment le produire.
  */
 export const CHAMP_AUDIO_RENDU = 'audio' as const;
-export const CHAMPS_RENDU_ACCEPTES = [CHAMP_AUDIO_RENDU] as const;
+
+/**
+ * Le second champ accepte : le style de CETTE video.
+ *
+ * ⚠️ IL SUIT LA MEME REGLE QUE `audio`, SANS UN POUCE D'ECART. Ce qu'il porte
+ * est ferme, nomme et borne par `lireProfilCreatif` : des IDENTIFIANTS pris
+ * dans les catalogues de Studiio, des couleurs `#RRGGBB`, des nombres bornes,
+ * et un logo designe par un couple compartiment/cle de SA propre mediatheque.
+ * Aucun chemin, aucune URL, aucun nom de filtre, aucun argument.
+ *
+ * ⚠️ ET C'EST UN OVERRIDE DE VIDEO, PAS UN REGLAGE DE COMPTE. L'envoyer ici
+ * n'ecrit rien dans le profil par defaut : il faut une action explicite,
+ * ailleurs, pour cela. Un style essaye sur une video ne doit pas redefinir
+ * l'identite visuelle du compte a l'insu de son proprietaire.
+ */
+export const CHAMP_STYLE_RENDU = 'style' as const;
+export const CHAMPS_RENDU_ACCEPTES = [CHAMP_AUDIO_RENDU, CHAMP_STYLE_RENDU] as const;
 
 export const CORPS_RENDU_ATTENDU_VIDE = true as const;
 

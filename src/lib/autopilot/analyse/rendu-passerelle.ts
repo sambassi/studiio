@@ -174,6 +174,13 @@ const ECHECS: Record<MotifRendu, Echec> = {
     message: 'La musique choisie est illisible. Choisis-en une autre.',
     relancable: false,
   },
+  // ⚠️ ELLE NE DIT NI « RUSH » NI « MUSIQUE », pour la meme raison. Le logo
+  // est le seul fichier en cause : le nommer evite d'envoyer quelqu'un
+  // remplacer une video qui n'a rien.
+  logo_illisible: {
+    message: 'Ton logo est illisible. Choisis une autre image.',
+    relancable: false,
+  },
   outil_absent: {
     message: 'La création vidéo est indisponible sur ce serveur.',
     relancable: false,

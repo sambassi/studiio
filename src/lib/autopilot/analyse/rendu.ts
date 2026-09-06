@@ -37,6 +37,8 @@ import {
   type RecetteAudio,
 } from './recette-audio';
 import type { MontagePlan, PlanMontage } from './montage-contrat';
+import type { ProfilCreatifAutopilote } from './profil-creatif';
+import { construireStyle, type LogoLocal, type StyleRendu } from './rendu-style';
 import {
   PIXEL_FORMAT_RENDU, AUDIO_FREQUENCE_RENDU, TOLERANCE_FPS, MOTIF_RENDU_INTERROMPU,
   dureeConforme, planRendable, resolutionConforme,
@@ -44,6 +46,7 @@ import {
 } from './rendu-contrat';
 import {
   argumentsRendu, descendreSource, diagnosticRendu, encoder, fermerDossierRendu,
+  nomLogoLocale, sonderImage,
   nomMusiqueLocale, rendraDeLAudio, type MusiqueLocale,
   mesurer, ouvrirDossierRendu, rectangleCrop, sonderSource, sonderSourceAudio,
   supprimerObjetRendu,
@@ -72,6 +75,18 @@ export interface DemandeRendu {
    * gardes de propriete sur la cle.
    */
   recette?: RecetteAudio | null;
+  /**
+   * Le profil creatif EFFECTIF, deja fusionne et deja VALIDE par la route.
+   *
+   * ⚠️ IL N'EST PAS RELU ICI, exactement comme la recette audio. La route a
+   * verifie le schema ferme, les bornes, les identifiants du catalogue, et
+   * surtout que le logo appartient au compte. Ce module execute — et
+   * `descendreSource` reposera de toute facon ses trois gardes de propriete
+   * sur la cle du logo.
+   *
+   * Absent ou historique = graphe d'avant ce lot, au caractere pres.
+   */
+  profil?: ProfilCreatifAutopilote | null;
 }
 
 export interface ResultatRendu {
@@ -183,6 +198,7 @@ export async function produireMontage(
   const usage: Record<string, unknown> = {};
   // Absente = le comportement d'avant ce lot, a la lettre.
   const recette = demande.recette ?? RECETTE_AUDIO_DEFAUT;
+  const profil = demande.profil ?? null;
   // ⚠️ TRACEE SEULEMENT QUAND ELLE DIT QUELQUE CHOSE. Ecrire la recette par
   // defaut dans `usage` de tous les rendus historiques n'apprendrait rien et
   // ferait croire, a la relecture, que ces rendus ont ete demandes avec un
@@ -311,6 +327,41 @@ export async function produireMontage(
       usage.octetsMusique = descente.octets;
     }
 
+    // ── Le logo, s'il y en a un ────────────────────────────────────────
+    //
+    // ⚠️ DESCENDU PAR LE MEME CHEMIN QUE LA MUSIQUE ET LES CLIPS. Aucune URL
+    // n'est signee, aucune requete ne sort : un logo est un objet de la
+    // mediatheque du compte, designe par un couple compartiment/cle, jamais
+    // par une adresse.
+    //
+    // ⚠️ UN LOGO REFUSE FAIT ECHOUER LE RENDU, IL N'EST PAS IGNORE. Rendre
+    // le montage sans l'image de marque que l'utilisateur a demandee
+    // produirait un fichier « reussi » qui n'est pas celui qu'il a commande —
+    // et il ne s'en apercevrait qu'apres publication.
+    let logo: LogoLocal | null = null;
+    const objetLogo = profil?.marque.logoActif ? profil.marque.logo : null;
+    if (objetLogo !== null && objetLogo !== undefined) {
+      const cheminLogo = nomLogoLocale(dossier);
+      const descente = await descendreSource(
+        userId,
+        { ordre: 0, bucket: objetLogo.bucket, cle: objetLogo.cle },
+        dossier, 0, cheminLogo,
+      );
+      if (!descente.ok) return echec(descente.motif, usage);
+      // ⚠️ ON SONDE AVANT D'INCRUSTER, et avec la sonde des IMAGES. Elle
+      // rend les dimensions dont `rectangleLogo` a besoin pour calculer la
+      // hauteur a l'echelle en TypeScript, et elle refuse ce qui n'est pas
+      // une image d'une seule trame.
+      const sondeLogo = await sonderImage(cheminLogo);
+      if (sondeLogo.motif !== null) return echec(sondeLogo.motif, usage);
+      logo = {
+        chemin: cheminLogo,
+        largeur: sondeLogo.largeur ?? 1,
+        hauteur: sondeLogo.hauteur ?? 1,
+      };
+      usage.octetsLogo = descente.octets;
+    }
+
     // ── L'unique passage ───────────────────────────────────────────────
     if (await abandonne(demande, 'encodage')) {
       return { ok: false, motif: null, abandonne: true, mesure: null, usage };
@@ -331,10 +382,34 @@ export async function produireMontage(
     const cible: CibleRendu = { largeur, hauteur, fps };
     const sortie = `${dossier}/montage.mp4`;
     const debut = Date.now();
+    // ⚠️ `indicePremiereEntree` EST CALCULE ICI, PAS DEDUIT PAR LE STYLE.
+    // Les entrees ffmpeg sont, dans l'ordre : les clips, puis la musique si
+    // elle existe, puis celles du style. Le style ne peut pas connaitre la
+    // presence de la musique ; la lui faire deviner ferait pointer son
+    // incrustation sur l'entree du voisin — un logo qui affiche le mauvais
+    // flux ne leve aucune erreur.
+    const style: StyleRendu = construireStyle(profil, {
+      cible: { largeur, hauteur },
+      // Les durees RETENUES, celles que le graphe met dans `trim` : un fondu
+      // doit se borner a la moitie du plan REELLEMENT montre.
+      clips: sources
+        .slice()
+        .sort((a, b) => a.ordre - b.ordre)
+        .map((s) => ({ dureeSecondes: s.dureeRetenueSecondes })),
+      dureeTotaleSecondes: plan.dureeTotaleSecondes,
+      logo,
+      indicePremiereEntree: sources.length + (musique !== null ? 1 : 0),
+    });
+    if (style.transitionsNonRendues.length > 0) {
+      // Trace, jamais silence : la transition demandee est acceptee par le
+      // contrat mais rendue comme `cut` tant que ce lot ne sait pas la faire
+      // a duree constante.
+      usage.transitionsNonRendues = style.transitionsNonRendues.join(',');
+    }
     const proc = await encoder(
       argumentsRendu(sources, cible, sortie, {
         recette, musique, dureeSecondes: plan.dureeTotaleSecondes,
-      }),
+      }, style),
       plan.dureeTotaleSecondes, dossier,
     );
     usage.encodageMs = Date.now() - debut;

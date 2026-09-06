@@ -40,6 +40,7 @@ import {
   DECIMALES_VOLUME, RECETTE_AUDIO_DEFAUT, estRecetteHistorique,
   type RecetteAudio,
 } from './recette-audio';
+import { STYLE_NEUTRE, type StyleRendu } from './rendu-style';
 import {
   AUDIO_BITRATE_RENDU, AUDIO_FREQUENCE_RENDU, CRF_RENDU, PIXEL_FORMAT_RENDU,
   PRESET_RENDU, RENDU_OCTETS_MAX, TIMEOUT_MESURE_MS, TIMEOUT_TRANSFERT_SOURCE_MS,
@@ -130,6 +131,16 @@ export interface RectangleCrop {
  * près du bord ferait sortir le cadre, et ffmpeg échouerait sur un plan
  * pourtant valide.
  */
+/**
+ * Le nom local de la musique, dans le repertoire du rendu.
+ *
+ * Un seul fichier, un seul nom : contrairement aux sources il n'y en a jamais
+ * deux, et le nommer par un indice laisserait croire le contraire.
+ */
+export function nomLogoLocale(dossier: string): string {
+  return join(dossier, 'logo');
+}
+
 /**
  * Le nom local de la musique, dans le repertoire du rendu.
  *
@@ -271,10 +282,16 @@ function volumeFfmpeg(v: number): string {
 export function argumentsRendu(
   sources: readonly SourceLocale[], cible: CibleRendu, sortie: string,
   audio?: EntreeAudioRendu | null,
+  style?: StyleRendu | null,
 ): string[] {
   const ordonnees = [...sources].sort((a, b) => a.ordre - b.ordre);
   const recette = audio?.recette ?? RECETTE_AUDIO_DEFAUT;
   const musique = audio?.musique ?? null;
+  // ⚠️ `STYLE_NEUTRE` N'EST PAS UN DEFAUT DE CONFORT. C'est la garantie de
+  // retro-compatibilite : sans profil, chaque fragment est vide, `post` est
+  // vide, et le graphe emis est EXACTEMENT celui d'avant ce lot — donc le
+  // rendu deja reussi reste reutilisable au lieu d'etre recalcule.
+  const st = style ?? STYLE_NEUTRE;
 
   // ⚠️ LE CHEMIN HISTORIQUE EST RENDU AU CARACTERE PRES.
   //
@@ -304,11 +321,19 @@ export function argumentsRendu(
     const d = duree(s.dureeRetenueSecondes);
     const debut = duree(s.entreeSecondes);
     const c = s.crop;
+    // ⚠️ LE STYLE S'INSERE APRES `fps=`, AVANT `format=`, ET NULLE PART
+    // AILLEURS. Avant `crop`/`scale`, il travaillerait sur la geometrie de la
+    // source et non sur celle du montage ; apres `format=yuv420p`, il
+    // corrigerait une image deja sous-echantillonnee en chrominance. Et il
+    // n'entre JAMAIS dans `trim` : la duree de la branche est celle du plan.
+    const style_i = st.fragmentsParClip[i] ?? '';
     chaines.push(
       `[${i}:v]trim=start=${debut}:duration=${d},setpts=PTS-STARTPTS,`
       + `crop=${c.largeur}:${c.hauteur}:${c.x}:${c.y},`
       + `scale=${cible.largeur}:${cible.hauteur}:flags=bicubic,setsar=1,`
-      + `fps=${cible.fps},format=${PIXEL_FORMAT_RENDU}[v${i}]`,
+      + `fps=${cible.fps},`
+      + (style_i.length > 0 ? `${style_i},` : '')
+      + `format=${PIXEL_FORMAT_RENDU}[v${i}]`,
     );
     liens.push(`[v${i}]`);
     if (!garderOriginal) return;
@@ -334,9 +359,12 @@ export function argumentsRendu(
   // c'est deja la sortie finale ; sinon c'est un bus intermediaire que le
   // volume et le melange vont reprendre.
   const etiquetteConcat = historique ? '[aout]' : '[aconcat]';
+  // Sans post-traitement, le `concat` ecrit directement `[vout]` : c'est le
+  // graphe historique. Avec, il ecrit un bus que la chaine de style reprend.
+  const etiquetteVideo = st.post.length > 0 ? '[vconcat]' : '[vout]';
   let filtre = `${chaines.join(';')};${liens.join('')}`
     + `concat=n=${ordonnees.length}:v=1:a=${garderOriginal ? 1 : 0}`
-    + `[vout]${garderOriginal ? etiquetteConcat : ''}`;
+    + `${etiquetteVideo}${garderOriginal ? etiquetteConcat : ''}`;
 
   if (!historique) {
     const bus: string[] = [];
@@ -387,6 +415,18 @@ export function argumentsRendu(
       // Une seule source : on la renomme, sans la retoucher.
       filtre += `;${bus[0]}anull[aout]`;
     }
+  }
+
+  // ── Le style, applique UNE FOIS sur le montage assemble ───────────────
+  //
+  // ⚠️ APRES LE BLOC AUDIO, ET C'EST STRUCTURANT. Les entrees du style
+  // s'ajoutent derriere celle de la musique : leur indice dans le graphe est
+  // `nombre de clips + (musique ? 1 : 0)`, exactement ce que l'appelant a
+  // passe en `indicePremiereEntree`. Les inserer avant decalerait la musique
+  // d'un rang, et `[N:a]` designerait alors une image.
+  if (st.post.length > 0) {
+    entrees.push(...st.entrees);
+    filtre += `;${st.post}`;
   }
 
   return [
@@ -727,6 +767,49 @@ export async function sonderSourceAudio(fichier: string): Promise<SondeAudio> {
   const lu = await lireFluxSource(fichier, 'musique_illisible');
   if (lu.motif !== null) return { aAudio: false, motif: lu.motif };
   return { aAudio: lu.flux.some((f) => f.codec_type === 'audio'), motif: null };
+}
+
+export interface SondeImage {
+  largeur: number | null;
+  hauteur: number | null;
+  motif: MotifRendu | null;
+}
+
+/**
+ * Sonde un LOGO : une image, et rien d'autre.
+ *
+ * ⚠️ C'EST LA GARDE QUI COMPTE, PAS LE `Content-Type` DU STOCKAGE. MinIO pose
+ * `application/octet-stream` des que le televersement n'a rien declare : s'y
+ * fier laisserait entrer dans `-f image2` un fichier qui n'est pas une image.
+ * Ici on regarde ce que le decodeur voit vraiment.
+ *
+ * ⚠️ ET UNE SEULE TRAME. Un GIF anime ou un MP4 renomme presenterait un flux
+ * video de plusieurs milliers de trames : `-f image2` en lirait une, mais la
+ * lire du tout reviendrait a incruster une video que personne n'a validee.
+ * `nb_frames > 1` est refuse.
+ *
+ * Les dimensions sont RENDUES, et non devinees : `rectangleLogo` en a besoin
+ * pour calculer la hauteur a l'echelle, en TypeScript, comme `rectangleCrop`.
+ */
+export async function sonderImage(fichier: string): Promise<SondeImage> {
+  const lu = await lireFluxSource(fichier, 'logo_illisible');
+  if (lu.motif !== null) return { largeur: null, hauteur: null, motif: lu.motif };
+  const video = lu.flux.filter((f) => f.codec_type === 'video');
+  if (video.length !== 1) return { largeur: null, hauteur: null, motif: 'logo_illisible' };
+  if (lu.flux.some((f) => f.codec_type === 'audio')) {
+    return { largeur: null, hauteur: null, motif: 'logo_illisible' };
+  }
+  const f = video[0];
+  const trames = nombreFini(f.nb_frames);
+  if (trames !== null && trames > 1) {
+    return { largeur: null, hauteur: null, motif: 'logo_illisible' };
+  }
+  const largeur = nombreFini(f.width);
+  const hauteur = nombreFini(f.height);
+  if (largeur === null || hauteur === null || largeur < 1 || hauteur < 1) {
+    return { largeur: null, hauteur: null, motif: 'logo_illisible' };
+  }
+  return { largeur, hauteur, motif: null };
 }
 
 /**

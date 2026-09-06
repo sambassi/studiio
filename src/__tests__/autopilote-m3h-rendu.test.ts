@@ -445,7 +445,11 @@ describe('19-23. Les vocabulaires fermés', () => {
       'plan_non_conforme', 'source_inaccessible', 'clip_illisible',
       // Lot 2A : la musique a son propre motif. Sans lui, une musique
       // illisible etait annoncee comme un rush casse.
-      'musique_illisible', 'outil_absent',
+      'musique_illisible',
+      // Lot 2B etape 2 : le logo aussi. La meme lecon appliquee au cas
+      // suivant — accuser un rush quand c'est l'image de marque qui est en
+      // cause enverrait quelqu'un refilmer pour rien.
+      'logo_illisible', 'outil_absent',
       'encodage_echoue', 'delai_depasse', 'resultat_invalide',
       'televersement_echoue', 'capacite_saturee', 'rendu_interrompu',
     ]);
@@ -498,22 +502,30 @@ describe('19-23. Les vocabulaires fermés', () => {
 
 // ═════════════════════════════════════════════════════════════════════════
 describe('24-30. Ce que le contrat n’accepte ni n’importe', () => {
-  it('LE CORPS N ACCEPTE QUE `audio`, et tout paramètre technique reste REFUSÉ', () => {
-    // ⚠️ CE CONTRAT A CHANGE D'UN SEUL CHAMP, AU LOT 2A, ET PAS D'UN DE PLUS.
+  it('LE CORPS N ACCEPTE QUE `audio` ET `style`, tout paramètre technique reste REFUSÉ', () => {
+    // ⚠️ CE CONTRAT A CHANGE DEUX FOIS, ET DEUX FOIS SEULEMENT.
     //
     // Il n'existait a l'origine aucun parametre de rendu legitime : tout etait
-    // lu dans le plan persiste. La recette AUDIO en est devenu un — parce
-    // qu'elle ne decrit pas COMMENT rendre, mais CE QU'ON VEUT ENTENDRE, et
-    // parce qu'elle ne peut pas vivre dans le plan sans faire entrer la
+    // lu dans le plan persiste. La recette AUDIO en est devenu un au Lot 2A —
+    // parce qu'elle ne decrit pas COMMENT rendre, mais CE QU'ON VEUT ENTENDRE,
+    // et parce qu'elle ne peut pas vivre dans le plan sans faire entrer la
     // musique dans l'identite du montage editorial.
     //
+    // `style` en est devenu le second au Lot 2B etape 2, et pour exactement la
+    // meme raison : il decrit CE QU'ON VEUT VOIR — un look, un logo de sa
+    // propre mediatheque, une transition du catalogue — jamais comment le
+    // produire. Ce qu'il porte est ferme et borne par `lireProfilCreatif` :
+    // des IDENTIFIANTS, des couleurs `#RRGGBB`, des nombres bornes. Aucun
+    // chemin, aucune URL, aucun nom de filtre.
+    //
     // Le reste du contrat est intact, et ce test le prouve dans les deux sens :
-    // `audio` est le SEUL champ accepte, et tout ce qui touche a l'execution
-    // — dimensions, codec, chemins, arguments — reste interdit. `musicUrl` en
-    // particulier n'a pas bouge : une URL venue du client ferait sortir une
-    // requete arbitraire du moteur, ce que bucket + cle evite par nature.
+    // ces DEUX champs sont les seuls acceptes, et tout ce qui touche a
+    // l'execution — dimensions, codec, chemins, arguments — reste interdit.
+    // `musicUrl` en particulier n'a pas bouge : une URL venue du client ferait
+    // sortir une requete arbitraire du moteur, ce que bucket + cle evite par
+    // nature.
     expect(CORPS_RENDU_ATTENDU_VIDE).toBe(true);
-    expect(CHAMPS_RENDU_ACCEPTES).toEqual(['audio']);
+    expect(CHAMPS_RENDU_ACCEPTES).toEqual(['audio', 'style']);
 
     for (const interdit of ['clips', 'plans', 'debutSecondes', 'finSecondes',
       'recadrage', 'crop', 'largeur', 'hauteur', 'width', 'height', 'fps',
