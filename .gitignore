@@ -83,3 +83,6 @@ skills-lock.json
 mockups/
 skills/
 skills-lock.json
+
+# Bundle genere par le banc de preuve LUT (scripts/lut-proof/run.js)
+scripts/lut-proof/bundle.js

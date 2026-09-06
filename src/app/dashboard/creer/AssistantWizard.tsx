@@ -2180,6 +2180,10 @@ export default function AssistantWizard() {
           // Sans ce champ : titre et CTA en Helvetica, cartes en Inter.
           font: DESIGN.font,
 
+          // Filtre couleur du rush. Absent quand aucun filtre n'est importe :
+          // le rendu est alors strictement celui d'avant cette fonctionnalite.
+          ...(lut ? { lut: { url: lut.url, intensity: lut.intensity } } : {}),
+
           // ── Fond ──────────────────────────────────────────────────────
           gradientColor1: gradStart,
           gradientColor2: gradEnd,

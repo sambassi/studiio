@@ -56,9 +56,22 @@ export interface SiteTextConfig {
 }
 
 /** Design settings matching the HTML preview — ensures published video looks identical */
+import { loadLut } from './luts/load';
+import { decodeImageInBrowser } from './luts/import';
+import { createLutGrader, type LutGrader } from './luts/grader';
+
 export interface DesignOptions {
   /** Font family name (e.g. 'Anton', 'Syne', 'Poppins') — will be loaded via document.fonts */
   font?: string;
+  /**
+   * Filtre couleur (LUT) applique AU RUSH, et a lui seul : ni les textes, ni
+   * le degrade, ni la barre de progression, ni le filigrane. Etalonner
+   * l'habillage serait un bug, pas un look.
+   *
+   * Absent = comportement strictement identique a celui d'avant cet ajout,
+   * pour tous les montages existants.
+   */
+  lut?: { url: string; intensity?: number };
   /**
    * Style de transition entre sequences, cote design (l'editeur persiste ses
    * reglages ici). `ComposerOptions.transition` est prioritaire ; absent des
@@ -2303,11 +2316,30 @@ function drawVideoSeq(
   seqBgImg: HTMLImageElement | null = null,
   /** Per-sequence background opacity (0-1). */
   seqBgOpacity: number = 1,
+  /**
+   * Filtre couleur du rush, ou `null`. Il n'est applique QU'ICI : c'est le
+   * seul endroit du montage ou la video importee est peinte. Les textes, le
+   * degrade, la barre de progression et le filigrane ne le voient jamais.
+   */
+  lutGrader: LutGrader | null = null,
 ) {
   const fontFamily = design?.font || 'sans-serif';
-  const backgroundSource: HTMLVideoElement | HTMLImageElement | null = videoEl || videoImageEl || null;
+  const rawSource: HTMLVideoElement | HTMLImageElement | null = videoEl || videoImageEl || null;
   const srcW = videoEl ? videoEl.videoWidth : (videoImageEl?.naturalWidth || 0);
   const srcH = videoEl ? videoEl.videoHeight : (videoImageEl?.naturalHeight || 0);
+  // Etalonnage sur GPU, aux dimensions de la SOURCE : la geometrie de cadrage
+  // ci-dessous est alors inchangee, elle travaille sur une image de meme
+  // taille. Un echec de rendu GPU retombe sur la source brute — une video aux
+  // couleurs d'origine vaut mieux qu'une frame noire.
+  let backgroundSource: CanvasImageSource | null = rawSource;
+  if (rawSource && lutGrader && srcW && srcH) {
+    try {
+      backgroundSource = lutGrader.grade(rawSource, srcW, srcH);
+    } catch (err) {
+      backgroundSource = rawSource;
+      console.warn('[Composer] Etalonnage de la frame impossible :', err);
+    }
+  }
   if (backgroundSource && srcW && srcH) {
     const t = rushTransform || {};
     const userScale = t.scale || 1;
@@ -3145,6 +3177,28 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       }),
     );
   }
+  // ── Filtre couleur (LUT) du rush ──────────────────────────────────────
+  // Charge UNE fois, avant la boucle de rendu. Un echec ne fait jamais echouer
+  // le montage : on rend le rush non etalonne, comme les fonds de sequence
+  // introuvables juste au-dessus.
+  let lutGrader: LutGrader | null = null;
+  if (normalizedDesign?.lut?.url) {
+    try {
+      const table = await loadLut(normalizedDesign.lut.url, {
+        decodeImage: decodeImageInBrowser,
+      });
+      lutGrader = createLutGrader(table, normalizedDesign.lut.intensity ?? 1);
+      console.log(
+        `[Composer] LUT ${lutGrader ? 'active' : 'ignoree (WebGL indisponible)'} — ${table.size} pas, intensite ${normalizedDesign.lut.intensity ?? 1}`,
+      );
+    } catch (err) {
+      console.warn(
+        '[Composer] LUT illisible, rendu sans etalonnage :',
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
   // Helpers to resolve the right image + opacity per sequence type.
   const seqKeyForType = (type: string): 'titre' | 'cartes' | 'video' | 'cta' | null => {
     if (type === 'intro') return 'titre';
@@ -3514,7 +3568,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         case 'video': {
           const videoSeq = sequences.find((s) => s.type === 'video');
           const secondsIn = videoSeq ? progress * videoSeq.duration : 0;
-          drawVideoSeq(target, width, height, videoEl, logoImg, progress, normalizedDesign, rushTransform, videoImageEl, secondsIn, bgImg, seqBg.opacity);
+          drawVideoSeq(target, width, height, videoEl, logoImg, progress, normalizedDesign, rushTransform, videoImageEl, secondsIn, bgImg, seqBg.opacity, lutGrader);
           break;
         }
         case 'cta': drawCTA(target, width, height, accentColor, ctaText, ctaSubText, salesPhrase, watermarkText, logoImg, progress, normalizedDesign, bgImg, seqBg.opacity); break;
@@ -3919,6 +3973,9 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         document.removeEventListener('visibilitychange', onVisibilityChange);
         releaseWakeLock();
         try { document.body.removeChild(canvas); } catch {}
+        // Textures et programme GPU liberes : sans cela chaque montage laisse
+        // un contexte WebGL vivant, et le navigateur en plafonne le nombre.
+        lutGrader?.dispose();
         onProgress?.(100, 'Terminé !');
         resolve({ video: blob, thumbnail: thumbnailBlob });
       };
@@ -4034,6 +4091,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       document.removeEventListener('visibilitychange', onVisibilityChange);
       releaseWakeLock();
       try { document.body.removeChild(canvas); } catch {}
+      lutGrader?.dispose();
       onProgress?.(100, 'Terminé !');
       resolve({ video: blob, thumbnail: thumbnailBlob });
       // Only close AudioContext if we created it (NOT shared in batch mode)

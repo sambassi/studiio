@@ -244,6 +244,39 @@ les couleurs et polices de l'utilisateur. D'où la clé séparée
 `studiio:autosave:v1:creer`, qui ne porte qu'un horodatage. Séparer réellement
 les deux reste à faire.
 
+## [2026-07-30] Un WebM produit par MediaRecorder n'a pas de durée — toute sonde doit gérer `Infinity`
+
+**Ce qui a mal tourné** — Dans « Créer (simple) », l'import d'un rush lit sa
+durée pour cadencer la séquence Vidéo : `preload='metadata'` puis
+`video.duration`. Correct pour un MP4. Mais l'extrait produit par « Temps
+forts » (`extractClip`, `clip-detector.ts`) est un WebM `MediaRecorder`, dont
+l'en-tête EBML **ne porte aucune durée** : Chrome renvoie `Infinity`. Le garde
+`Number.isFinite(d)` retombait donc **toujours** sur la valeur par défaut — un
+temps fort de 3 s laissait 3 s d'image figée, un temps fort de 12 s était
+amputé de moitié. La fonctionnalité entière ne tenait pas sa promesse, sans la
+moindre erreur : juste une valeur de repli qui a l'air raisonnable.
+
+Le dépôt **connaissait déjà** ce piège : `clip-detector.ts:70-80` logue
+explicitement `durationIsFinite` et abandonne l'analyse dans ce cas. La
+connaissance était là, à deux fichiers de distance, et n'a pas été cherchée.
+
+**Règle** — (1) Toute lecture de `video.duration` doit traiter `Infinity` comme
+un cas NORMAL, pas comme une erreur : seek au-delà de la fin
+(`currentTime = 1e101`) puis relire `duration` (ou `currentTime`), et ne tenter
+ce rattrapage que sur une durée non finie — un MP4 ne doit pas être téléchargé
+en entier pour être mesuré. (2) Avant de brancher une source de média produite
+par un AUTRE module du dépôt, lire ce que ce module écrit vraiment (ici : un
+WebM `MediaRecorder`, pas un MP4) — l'hypothèse « c'est une vidéo comme une
+autre » est ce qui a coûté la fonctionnalité.
+
+**Corollaire sur les tests** — Les 11 tests de la PR fautive étaient verts :
+c'étaient des expressions régulières sur le source, qui vérifiaient la présence
+de lignes, pas un comportement. L'un d'eux réimplémentait même la formule qu'il
+prétendait vérifier, puis testait sa propre réimplémentation. Un test qui ne
+peut pas échouer quand le produit est cassé n'est pas une vérification — c'est
+une décoration. Quand un composant est montable seul (`@testing-library/react`
+est installé), le monter et interroger le DOM produit.
+
 ## Pré-merge : checklist obligatoire
 
 À cocher MENTALEMENT avant chaque merge (et écrire dans le PR body si non trivial) :
