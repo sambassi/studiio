@@ -225,6 +225,22 @@ export interface OptionsChaine {
    * produisent deux rendus distincts.
    */
   audio?: RecetteAudio | null;
+  /**
+   * L'objectif de CETTE vidéo, s'il diffère de celui du compte.
+   *
+   * ⚠️ OMIS = LE DÉFAUT DU COMPTE, chargé par le serveur. Le navigateur n'a
+   * rien à renvoyer quand il n'a rien à dire : lui faire porter l'objectif
+   * habituel ferait dépendre le plan de ce qu'un écran périmé croit savoir
+   * de l'intention de son utilisateur.
+   *
+   * ⚠️ IL N'ÉCRIT RIEN. Cet objectif vaut pour ce plan et repart avec lui ;
+   * seul `PUT /api/autopilot/objectif` change le défaut du compte.
+   *
+   * ⚠️ TRANSMIS TEL QUEL À M3-G, qui le REFUSE s'il sort de son schéma
+   * fermé. Rien n'est validé ici : une seconde validation qui diverge du
+   * serveur est pire qu'aucune.
+   */
+  objectif?: unknown;
   fetcher?: Fetcher;
   /** Appelé au passage de chaque étape, pour la phrase affichée. */
   signalerEtape?: (etape: EtapeChaine) => void;
@@ -306,6 +322,9 @@ export async function creerVideo(o: OptionsChaine): Promise<IssueChaine> {
       body: JSON.stringify({
         format: o.format ?? FORMAT_VIDEO,
         dureeCibleSecondes: o.dureeCibleSecondes ?? DUREE_CIBLE_SECONDES,
+        // Absent quand la vidéo ne déclare rien : la clé n'est même pas
+        // écrite, et le serveur applique le défaut du compte.
+        ...(o.objectif ? { objectif: o.objectif } : {}),
       }),
     },
   );

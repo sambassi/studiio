@@ -30,6 +30,8 @@ import {
   creerGeneration, majGeneration, lireDerniereGeneration,
 } from '@/lib/autopilot/analyse/candidat-service';
 import { CANDIDATS_MAX } from '@/lib/autopilot/analyse/candidat-contrat';
+import { lireObjectifCommunicationUtilisateur } from '@/lib/autopilot/analyse/objectif-compte';
+import { objectifPeutChangerLeMontage } from '@/lib/autopilot/analyse/objectif-score';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -204,6 +206,21 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
 
     await majGeneration(userId, generation.id, { etat: 'en_cours', etape: 'candidats' });
 
+    // ── L'ENRICHISSEMENT SEMANTIQUE VAUT-IL SON APPEL ? ──────────────────
+    //
+    // ⚠️ L'OBJECTIF EST LU ICI, ET IL NE TOUCHE PAS A LA SELECTION. Il ne
+    // part pas au fournisseur qui CHOISIT les moments — l'etape 4A.1 a
+    // separe les deux pour de bon. Il ne sert qu'a decider si le SECOND
+    // appel, celui qui releve ce que montre chaque fenetre, a une chance de
+    // servir a quelque chose.
+    //
+    // Sans objectif, ou avec un objectif que rien ne distingue a l'image
+    // (`inscriptions`, `reservations`, `leads`…), on ne paie pas un releve
+    // que `politiqueDePlan` refusera ensuite de lire. Le montage reste
+    // `m3g-v2`, exactement comme avant ce lot.
+    const objectifCompte = await lireObjectifCommunicationUtilisateur(userId);
+    const enrichissementUtile = objectifPeutChangerLeMontage(objectifCompte);
+
     // ⚠️ UN SEUL APPEL. Aucune reprise, quoi qu'il arrive.
     let brut: unknown;
     try {
@@ -217,6 +234,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
           textesVisibles: (analyse.textesVisibles ?? []) as ContexteTextes,
           qualite: (analyse.qualite ?? {}) as Record<string, unknown>,
         },
+        enrichissementUtile,
       });
     } catch {
       await majGeneration(userId, generation.id, {

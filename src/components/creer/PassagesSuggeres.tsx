@@ -44,6 +44,13 @@ interface Props {
    */
   montage?: AutopilotMontageStyle;
   /**
+   * L'objectif de CETTE vidéo, s'il a été choisi juste au-dessus.
+   *
+   * ⚠️ `null` = LE DÉFAUT DU COMPTE. On n'envoie rien, et le serveur charge
+   * l'objectif habituel lui-même.
+   */
+  objectifCetteVideo?: unknown;
+  /**
    * Le reglage audio PAR DEFAUT du compte. Point de depart de l'ecran.
    *
    * ⚠️ IL N'EST PAS LA DEMANDE. Ce qui part au rendu est l'etat local
@@ -88,6 +95,7 @@ type EtatChaine =
 
 export default function PassagesSuggeres({
   analyseId, montage, audioDefaut, onEnregistrerAudioDefaut, onVideoLancee,
+  objectifCetteVideo,
   variante = 'complete', onVoirAnalyse,
 }: Props) {
   // ⚠️ RESYNCHRONISE SUR LA VALEUR SERIALISEE, comme le fait deja le wizard
@@ -198,6 +206,9 @@ export default function PassagesSuggeres({
         dureeCibleSecondes: montage?.dureeSecondes,
         // ⚠️ LA RECETTE DE CETTE VIDEO, PAS LE DEFAUT DU COMPTE.
         audio,
+        // ⚠️ IDEM POUR L'OBJECTIF : il vaut pour cette video, et n'ecrit
+        // rien. Absent, le serveur applique le defaut du compte.
+        objectif: objectifCetteVideo ?? undefined,
         signalerEtape: (etape) => {
           if (vivantRef.current) setChaine({ sorte: 'encours', etape });
         },
@@ -231,7 +242,10 @@ export default function PassagesSuggeres({
     } finally {
       verrouRef.current = false;
     }
-  }, [generation?.id, montage?.format, montage?.dureeSecondes, audio, onVideoLancee]);
+  }, [
+    generation?.id, montage?.format, montage?.dureeSecondes, audio,
+    objectifCetteVideo, onVideoLancee,
+  ]);
 
   if (chargement) return null;
 

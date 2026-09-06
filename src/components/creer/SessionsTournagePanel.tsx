@@ -93,6 +93,13 @@ interface Props {
   /** Enregistre la recette audio comme défaut. Absent = bouton masqué. */
   onEnregistrerAudioDefaut?: (recette: RecetteAudio) => Promise<boolean>;
   /**
+   * L'objectif de CETTE vidéo. Passe-plat jusqu'à `PassagesSuggeres`.
+   *
+   * ⚠️ Absent = le défaut du compte, chargé par le SERVEUR. L'écran n'a rien
+   * à renvoyer quand il n'a rien à dire.
+   */
+  objectifCetteVideo?: unknown;
+  /**
    * Remonte la session regardée, pour que l'aperçu de la colonne de droite
    * sache quoi montrer. C'est ce qui permet d'avoir UN SEUL aperçu.
    */
@@ -128,7 +135,7 @@ interface Props {
 
 export default function SessionsTournagePanel({
   montageDefaut, onEnregistrerDefaut, onSessionChange, onVideoLancee, audioDefaut,
-  onEnregistrerAudioDefaut, avance,
+  onEnregistrerAudioDefaut, avance, objectifCetteVideo,
 }: Props = {}) {
   const [sessions, setSessions] = useState<ShootSession[]>([]);
   const [selection, setSelection] = useState<string | null>(null);
@@ -496,6 +503,7 @@ export default function SessionsTournagePanel({
               audioDefaut={audioDefaut}
               onEnregistrerAudioDefaut={onEnregistrerAudioDefaut}
               onVideoLancee={onVideoLancee}
+              objectifCetteVideo={objectifCetteVideo}
               variante="chaine"
               relance={relances[rushActif.id]}
               onVoirAnalyse={() => setTiroir('analyse')}

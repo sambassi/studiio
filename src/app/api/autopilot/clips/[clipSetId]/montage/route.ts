@@ -42,9 +42,9 @@ import {
 import { geometrieDepuisTechnique, planifierMontage } from '@/lib/autopilot/analyse/montage';
 import { politiqueDePlan } from '@/lib/autopilot/analyse/objectif-score';
 import {
-  lireObjectif, normaliserObjectif, OBJECTIF_DEFAUT,
-  type ObjectifCommunication,
+  lireObjectif, type ObjectifCommunication, type ObjectifPartiel,
 } from '@/lib/autopilot/analyse/objectif-communication';
+import { objectifEffectifUtilisateur } from '@/lib/autopilot/analyse/objectif-compte';
 import { creerPlan, lirePlanIdentique } from '@/lib/autopilot/analyse/montage-service';
 
 export const dynamic = 'force-dynamic';
@@ -131,22 +131,29 @@ export async function POST(
     }
     const dureeCibleSecondes = Number(corps.dureeCibleSecondes);
 
-    // ── L'OBJECTIF — VALIDE PAR SON PROPRE CONTRAT, JAMAIS AFFECTE EN MASSE
+    // ── L'OBJECTIF EFFECTIF — LE COMPTE, PUIS L'OVERRIDE DE CETTE VIDEO
+    //
+    // ⚠️ LE NAVIGATEUR N'ENVOIE RIEN QUAND IL N'A RIEN A DIRE. L'objectif
+    // habituel du compte est charge ICI, cote serveur : demander a l'ecran
+    // de le renvoyer a chaque montage ferait dependre le plan de ce qu'un
+    // ecran perime croit savoir de l'intention de l'utilisateur.
+    //
+    // ⚠️ L'OVERRIDE VAUT POUR CETTE VIDEO, ET N'ECRIT RIEN. Il remplace
+    // l'objectif du compte le temps de ce plan ; le compte est exactement le
+    // meme avant et apres. Seul `PUT /api/autopilot/objectif` le change.
     //
     // ⚠️ `lireObjectif` REFUSE toute cle que le contrat ne connait pas, et
     // borne chaque valeur. Rien d'autre du corps n'atteint le moteur : ni
     // `userId` — il vient de la session — ni un poids, ni une politique.
-    //
-    // ⚠️ ABSENT = GENERIQUE. Un corps qui n'en porte pas produit exactement
-    // le plan d'avant l'etape 4B, sous `m3g-v2`.
-    let objectif: ObjectifCommunication = { ...OBJECTIF_DEFAUT };
+    let override: ObjectifPartiel | null = null;
     if (corps.objectif !== undefined && corps.objectif !== null) {
       const lu = lireObjectif(corps.objectif);
       if (!lu.ok) {
         return refus('objectif_invalide', lu.message, 422);
       }
-      objectif = normaliserObjectif(lu.objectif);
+      override = lu.objectif;
     }
+    const objectif: ObjectifCommunication = await objectifEffectifUtilisateur(userId, override);
 
     // ── Le jeu de clips, et la propriété prouvée par la requête ─────────
     const { set, motif: motifSet } = await lireSetParId(userId, params.clipSetId);

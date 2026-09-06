@@ -281,6 +281,26 @@ export function poidsDeLObjectif(o: ObjectifCommunication): Poids | null {
 // La note
 // ───────────────────────────────────────────────────────────────────────────
 
+/**
+ * Cet objectif peut-il, en principe, changer un montage ?
+ *
+ * ⚠️ C'EST LA QUESTION QUI DÉCIDE D'UNE DÉPENSE. L'enrichissement sémantique
+ * est un SECOND appel payant par analyse. Le lancer pour un compte sans
+ * objectif, ou pour un objectif que rien ne distingue à l'image, serait payer
+ * un relevé que `politiqueDePlan` refusera ensuite de lire.
+ *
+ * « En principe » : la réponse ne promet pas que le plan changera — il faudra
+ * encore que les signaux soient complets et que le classement diffère. Elle
+ * dit seulement qu'il PEUT changer, ce qui est le seul critère honnête avant
+ * d'avoir vu les images.
+ */
+export function objectifPeutChangerLeMontage(
+  o: ObjectifCommunication | null | undefined,
+): boolean {
+  if (!o || estObjectifGenerique(o)) return false;
+  return poidsDeLObjectif(o) !== null;
+}
+
 /** Trois décimales, `-0` ramené à `0`. Le même arrondi que partout ailleurs. */
 export function arrondirNote(n: number): number {
   const r = Math.round(n * 1000) / 1000;

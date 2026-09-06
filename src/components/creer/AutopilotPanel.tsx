@@ -8,6 +8,8 @@ import {
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import SessionsTournagePanel from '@/components/creer/SessionsTournagePanel';
 import MonStylePanel from '@/components/creer/MonStylePanel';
+import MonObjectifPanel from '@/components/creer/MonObjectifPanel';
+import type { ObjectifCommunication } from '@/lib/autopilot/analyse/objectif-communication';
 import type { ProfilCreatifAutopilote } from '@/lib/autopilot/analyse/profil-creatif';
 import { montageDepuisStyle, audioDepuisStyle } from '@/lib/autopilot/textStyle';
 import { CardIcon } from '@/components/ui/CardIcon';
@@ -245,6 +247,27 @@ export default function AutopilotPanel({
   const [monStyle, setMonStyle] = useState<ProfilCreatifAutopilote | null>(null);
   const [monStyleChargement, setMonStyleChargement] = useState(true);
   /**
+   * « Mon objectif » — l'intention habituelle du compte.
+   *
+   * ⚠️ FRERE DE `monStyle`, ET SURTOUT PAS SON ENFANT. Le style dit COMMENT
+   * les videos ressemblent, l'objectif dit POURQUOI elles existent — et lui
+   * seul a vocation a changer le choix des passages. Les melanger aurait fini
+   * par faire recalculer un montage parce qu'une couleur a change.
+   *
+   * `null` = ce compte n'a rien declare. Ce n'est pas une erreur : l'ecran
+   * affiche « Objectif general » et le montage reste celui d'avant ce lot.
+   */
+  const [monObjectif, setMonObjectif] = useState<ObjectifCommunication | null>(null);
+  const [monObjectifChargement, setMonObjectifChargement] = useState(true);
+  /**
+   * L'objectif de la SEULE video en cours.
+   *
+   * ⚠️ IL N'EST JAMAIS ECRIT EN BASE. Il part avec la demande de montage, et
+   * repart avec elle. Le defaut du compte, lui, ne change que par le bouton
+   * « Enregistrer comme mon objectif par defaut ».
+   */
+  const [objectifCetteVideo, setObjectifCetteVideo] = useState<ObjectifCommunication | null>(null);
+  /**
    * Quelle médiathèque est ouverte, et pour quoi.
    *
    * ⚠️ PAS UN BOOLEEN. Il y a maintenant DEUX points d'ouverture — les rushes
@@ -351,6 +374,54 @@ export default function AutopilotPanel({
       }
     })();
     return () => { annule = true; };
+  }, []);
+
+  // ── « Mon objectif » : lecture au montage ─────────────────────────────
+  useEffect(() => {
+    let annule = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/autopilot/objectif');
+        const j = await r.json();
+        if (!annule && j?.ok) {
+          setMonObjectif((j.objectif ?? null) as ObjectifCommunication | null);
+        }
+      } catch {
+        // Un objectif illisible n'est pas une panne d'ecran : on reste sur
+        // « Objectif general », qui est exactement ce que le montage fera.
+      } finally {
+        if (!annule) setMonObjectifChargement(false);
+      }
+    })();
+    return () => { annule = true; };
+  }, []);
+
+  /**
+   * Le SEUL geste qui reecrit l'objectif du compte.
+   *
+   * ⚠️ APPELE PAR UN BOUTON, ET PAR LUI SEUL. Choisir un objectif « pour
+   * cette video » ne passe jamais par ici : il reste dans l'etat local.
+   */
+  const enregistrerMonObjectif = useCallback(async (objectif: ObjectifCommunication) => {
+    setError(null);
+    try {
+      const r = await fetch('/api/autopilot/objectif', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(objectif),
+      });
+      const j = await r.json();
+      if (!r.ok || !j?.ok) {
+        setError(typeof j?.error === 'string'
+          ? j.error : 'Ton objectif n’a pas pu être enregistré.');
+        return false;
+      }
+      setMonObjectif((j.objectif ?? null) as ObjectifCommunication | null);
+      return true;
+    } catch {
+      setError('Ton objectif n’a pas pu être enregistré.');
+      return false;
+    }
   }, []);
 
   /**
@@ -663,8 +734,23 @@ export default function AutopilotPanel({
               }}
               onSessionChange={onSessionChange}
               onVideoLancee={onVideoLancee}
+              objectifCetteVideo={objectifCetteVideo}
             />
           </div>
+
+{/* ── MON OBJECTIF ─────────────────────────────────────────────
+              POURQUOI la video existe. Regle une fois, applique ensuite tout
+              seul — et modifiable pour une seule video sans toucher au
+              defaut du compte.
+
+              ⚠️ AVANT « Mon style », ET C'EST L'ORDRE DE LA DECISION. On
+              choisit ce qu'on veut obtenir, puis a quoi cela ressemble. */}
+          <MonObjectifPanel
+            objectifEnregistre={monObjectif}
+            chargement={monObjectifChargement}
+            onEnregistrerDefaut={enregistrerMonObjectif}
+            onAppliquerACetteVideo={setObjectifCetteVideo}
+          />
 
 {/* ── MON STYLE ────────────────────────────────────────────────
               L'identite visuelle du compte : look, logo, bandeau de fin,

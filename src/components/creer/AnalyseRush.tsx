@@ -96,6 +96,13 @@ interface Props {
    * qu'un. La valeur initiale ne declenche rien : seul un CHANGEMENT lance.
    */
   relance?: number;
+  /**
+   * L'objectif de CETTE vidéo. Passe-plat vers `PassagesSuggeres`.
+   *
+   * ⚠️ Absent = le défaut du compte, chargé par le SERVEUR. L'écran n'a rien
+   * à renvoyer quand il n'a rien à dire.
+   */
+  objectifCetteVideo?: unknown;
 }
 
 /** Le plafond dur du moteur (`VIGNETTES_MAX`), redit ici pour l'affichage. */
@@ -109,7 +116,7 @@ interface Refus {
 
 export default function AnalyseRush({
   rushId, montage, onVideoLancee, audioDefaut, onEnregistrerAudioDefaut,
-  variante = 'complete', onVoirAnalyse, relance,
+  variante = 'complete', onVoirAnalyse, relance, objectifCetteVideo,
 }: Props) {
   const chaine = variante === 'chaine';
   const [analyse, setAnalyse] = useState<AnalyseEcran | null>(null);
@@ -547,6 +554,7 @@ export default function AnalyseRush({
               audioDefaut={audioDefaut}
               onEnregistrerAudioDefaut={onEnregistrerAudioDefaut}
               onVideoLancee={onVideoLancee}
+              objectifCetteVideo={objectifCetteVideo}
               variante={chaine ? 'compacte' : 'complete'}
               onVoirAnalyse={onVoirAnalyse}
             />

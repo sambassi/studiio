@@ -56,7 +56,14 @@ export type MotifEnrichissement =
   | 'fournisseur_absent'
   | 'fournisseur_en_erreur'
   | 'aucune_image_appariee'
-  | 'trop_de_candidats';
+  | 'trop_de_candidats'
+  /**
+   * ⚠️ CELUI-CI N'EST PAS UN ECHEC. Il dit que l'appel n'a PAS EU LIEU, parce
+   * que l'objectif du compte ne pouvait de toute facon rien changer au
+   * montage. Le confondre avec `fournisseur_absent` ferait chercher une
+   * configuration manquante la ou il n'y a qu'une economie deliberee.
+   */
+  | 'objectif_sans_effet_attendu';
 
 export interface DemandeEnrichissement {
   /** Les candidats FIGÉS de M3-C, dans leur ordre. Jamais mutés. */

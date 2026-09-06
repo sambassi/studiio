@@ -240,6 +240,59 @@ export async function fusionnerDesignStyle(
 }
 
 /**
+ * Applique un patch a `design_style`, MAIS SEULEMENT DE FACON ATOMIQUE.
+ *
+ * ---------------------------------------------------------------------------
+ * ⚠️ AUCUN REPLI, ET C'EST TOUT L'INTERET DE CETTE SECONDE PORTE
+ * ---------------------------------------------------------------------------
+ *
+ * `fusionnerDesignStyle` retombe sur un lire-modifier-ecrire quand la
+ * fonction SQL manque : les cles voisines survivent, mais une ecriture
+ * glissee entre la lecture et l'ecriture se perd. C'etait le bon compromis
+ * pour « Mon style », ou l'ecrivain est un humain qui clique.
+ *
+ * L'objectif, lui, s'ecrit pendant qu'une video se cree : une fusion de
+ * profil creatif, une recette audio ou un format de montage peuvent tomber
+ * au meme instant. Perdre l'un d'eux pour enregistrer un objectif serait un
+ * echange que personne n'a demande — et personne ne le verrait.
+ *
+ * On prefere donc REFUSER en le disant. La migration
+ * `2026-09-06-autopilot-design-style-merge.sql` rend cette porte ouverte ;
+ * tant qu'elle n'est pas appliquee, « Mon objectif » repond « pas encore
+ * disponible » plutot que d'ecrire a l'aveugle.
+ */
+export type FusionStricte = 'ok' | 'non_atomique' | 'echec';
+
+export async function fusionnerDesignStyleStrict(
+  userId: string, patch: AutopilotDesignStyle,
+): Promise<FusionStricte> {
+  if (!userId) return 'echec';
+  try {
+    const { error } = await supabaseAdmin.rpc('autopilot_design_style_merge', {
+      p_user_id: userId, p_patch: patch,
+    });
+    if (!error) return 'ok';
+    if (ressembleAFonctionAbsente(error.message)) {
+      console.error(
+        `[Autopilote] Fusion atomique indisponible (${error.message}) — « Mon objectif » `
+        + 'REFUSE d\'ecrire plutot que de risquer une mise a jour perdue. Appliquer '
+        + 'migrations/2026-09-06-autopilot-design-style-merge.sql puis '
+        + '`docker kill -s SIGUSR1 studiio-postgrest`.',
+      );
+      return 'non_atomique';
+    }
+    console.error('[Autopilote] Fusion stricte de design_style :', error.message);
+    return 'echec';
+  } catch (err) {
+    console.error(
+      '[Autopilote] Fusion stricte impossible :',
+      err instanceof Error ? err.message : err,
+    );
+    return 'echec';
+  }
+}
+
+/**
  * Le `design_style` complet du compte, deja assaini.
  *
  * Rend `{}` quand la ligne n'existe pas, quand la colonne manque, ou quand la

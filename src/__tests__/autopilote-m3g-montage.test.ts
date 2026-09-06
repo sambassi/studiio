@@ -1255,3 +1255,149 @@ describe('4B. L’objectif de communication, vu de la route', () => {
     expect(insertions).toHaveLength(0);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════
+// LOT 2B — ÉTAPE 4C : L'OBJECTIF DU COMPTE, CHARGÉ PAR LE SERVEUR
+// ═════════════════════════════════════════════════════════════════════════
+//
+// ⚠️ CE QUI SE JOUE ICI EST LE CHEMIN RÉEL. Les étapes 4B et 4C ont prouvé le
+// classement et la persistance séparément ; ce bloc vérifie qu'un compte qui a
+// déclaré son intention la retrouve appliquée SANS que le navigateur ait rien
+// à renvoyer — et qu'un objectif essayé sur une vidéo ne la lui vole pas.
+describe('4C. « Mon objectif » de bout en bout', () => {
+  const VISION_FOULE = {
+    source: 'vision' as const,
+    personnes: 'foule' as const, echellePlan: 'plan_large' as const,
+    expression: 'neutre' as const, objetMisEnAvant: 'non' as const,
+    mainsEnAction: 'non' as const, marqueVisible: 'non' as const,
+    texteALEcran: 'non' as const, nettete: 0.8,
+  };
+  const VISION_SEUL = {
+    ...VISION_FOULE, personnes: 'une' as const, echellePlan: 'gros_plan' as const,
+  };
+  const PAROLE_DENSE = {
+    source: 'transcription' as const, etat: 'presente' as const, densite: 0.9,
+  };
+  const PAROLE_MUETTE = {
+    source: 'transcription' as const, etat: 'absente' as const, densite: 0,
+  };
+
+  /**
+   * Cinq clips relevés, de MÊME qualité — donc seul l'objectif départage.
+   * Les rangs 2 et 4 parlent en gros plan ; le rang 3 montre une foule.
+   */
+  function clipsReleves() {
+    return clipsProduction().map((c) => ({
+      ...c,
+      scoreMontage: 85,
+      signaux: {
+        version: 'signaux-v1' as const,
+        vision: c.rang === 3 ? VISION_FOULE : VISION_SEUL,
+        parole: c.rang === 2 || c.rang === 4 ? PAROLE_DENSE : PAROLE_MUETTE,
+      },
+    }));
+  }
+
+  /** L'objectif habituel du compte, tel qu'il est réellement stocké. */
+  function poserObjectifCompte(type: string) {
+    tables.autopilot_config = [{
+      user_id: 'A',
+      design_style: { objectifParDefaut: { version: 'objectif-v1', type } },
+    }];
+  }
+
+  beforeEach(async () => {
+    delete tables.autopilot_config;
+    const { reinitialiserSondeStyle } = await import('@/lib/autopilot/analyse/profil-compte');
+    reinitialiserSondeStyle();
+  });
+
+  it('4C.1 le compte déclare « témoignage » : le serveur le charge SEUL', async () => {
+    // ⚠️ LE CORPS NE PORTE AUCUN OBJECTIF. C'est tout l'intérêt : demander à
+    // l'écran de renvoyer l'intention du compte à chaque montage ferait
+    // dépendre le plan de ce qu'un écran périmé croit savoir.
+    tables.rush_clip_sets = [ligneJeu({ clips: clipsReleves() })];
+    poserObjectifCompte('temoignage');
+
+    const r = await post({ format: '9:16', dureeCibleSecondes: 25 });
+    expect(r.status).toBe(201);
+    const corps = await r.json();
+    expect(String(corps.plan.algorithmePlan)).toMatch(/^m3g-v3\.[0-9a-f]{16}$/);
+    // Les passages parlés en gros plan passent devant.
+    expect(corps.plan.usage.objectif.ordreRangs.slice(0, 2).sort()).toEqual([2, 4]);
+  });
+
+  it('4C.2 l’override de la vidéo gagne, et le compte reste intact', async () => {
+    tables.rush_clip_sets = [ligneJeu({ clips: clipsReleves() })];
+    poserObjectifCompte('temoignage');
+
+    const temoin = await post({ format: '9:16', dureeCibleSecondes: 25 });
+    const planTemoin = (await temoin.json()).plan;
+
+    const avecOverride = await post({
+      format: '9:16', dureeCibleSecondes: 25, objectif: { type: 'evenement' },
+    });
+    expect(avecOverride.status).toBe(201);
+    const planEvenement = (await avecOverride.json()).plan;
+
+    // Deux intentions, deux plans — et deux identités.
+    expect(planEvenement.algorithmePlan).not.toBe(planTemoin.algorithmePlan);
+    expect(planEvenement.usage.objectif.ordreRangs[0]).toBe(3);
+
+    // ⚠️ LE COMPTE N'A PAS BOUGÉ. Aucune écriture n'a eu lieu sur
+    // `autopilot_config` : essayer un objectif sur une vidéo ne redéfinit pas
+    // l'intention de toutes les suivantes.
+    expect(insertions.every((i) => i.table !== 'autopilot_config')).toBe(true);
+    expect(tables.autopilot_config[0].design_style)
+      .toEqual({ objectifParDefaut: { version: 'objectif-v1', type: 'temoignage' } });
+  });
+
+  it('4C.3 sans relevés sémantiques, le montage se fait quand même — en m3g-v2', async () => {
+    // L'enrichissement est éteint par défaut : un compte qui a déclaré son
+    // objectif obtient sa vidéo, sans objectif appliqué et sans erreur.
+    tables.rush_clip_sets = [ligneJeu()];
+    poserObjectifCompte('temoignage');
+
+    const r = await post({ format: '9:16', dureeCibleSecondes: 25 });
+    expect(r.status).toBe(201);
+    const corps = await r.json();
+    expect(corps.plan.algorithmePlan).toBe(ALGORITHME_PLAN);
+    expect(corps.plan.plans.length).toBeGreaterThan(0);
+    expect(corps.plan.usage.objectif).toBeUndefined();
+  });
+
+  it('4C.4 un objectif sans matière visuelle reste en m3g-v2', async () => {
+    tables.rush_clip_sets = [ligneJeu({ clips: clipsReleves() })];
+    poserObjectifCompte('reservations');
+
+    const r = await post({ format: '9:16', dureeCibleSecondes: 25 });
+    expect(r.status).toBe(201);
+    expect((await r.json()).plan.algorithmePlan).toBe(ALGORITHME_PLAN);
+  });
+
+  it('4C.5 sans objectif de compte, le plan est celui d’avant tout ce lot', async () => {
+    tables.rush_clip_sets = [ligneJeu({ clips: clipsReleves() })];
+    // Aucune ligne `autopilot_config` : ce compte n'a jamais rien déclaré.
+
+    const r = await post({ format: '9:16', dureeCibleSecondes: 25 });
+    expect(r.status).toBe(201);
+    const corps = await r.json();
+    expect(corps.plan.algorithmePlan).toBe(ALGORITHME_PLAN);
+    expect(insertions[0].valeurs.algorithme_plan).toBe(ALGORITHME_PLAN);
+    expect(corps.plan.usage.objectif).toBeUndefined();
+  });
+
+  it('4C.6 l’objectif d’un AUTRE compte n’atteint jamais ce plan', async () => {
+    tables.rush_clip_sets = [ligneJeu({ clips: clipsReleves() })];
+    tables.autopilot_config = [{
+      user_id: 'B',
+      design_style: { objectifParDefaut: { version: 'objectif-v1', type: 'evenement' } },
+    }];
+
+    const r = await post({ format: '9:16', dureeCibleSecondes: 25 });
+    expect(r.status).toBe(201);
+    // `supabaseAdmin` contourne RLS : c'est le `eq('user_id', …)` qui tient
+    // la garde. Sans lui, la première ligne venue deviendrait notre objectif.
+    expect((await r.json()).plan.algorithmePlan).toBe(ALGORITHME_PLAN);
+  });
+});

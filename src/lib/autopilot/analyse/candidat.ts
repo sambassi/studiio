@@ -112,6 +112,19 @@ export interface DemandeCandidats {
   vignettes: readonly VignetteAnalyse[];
   dureeSecondes: number;
   contexte: ContexteVisuelSource;
+  /**
+   * L'ENRICHISSEMENT SEMANTIQUE VAUT-IL SON APPEL ?
+   *
+   * ⚠️ `false` PAR DEFAUT, ET C'EST UNE DECISION DE COUT. L'enrichissement
+   * est un SECOND appel payant par analyse. Le lancer pour un compte sans
+   * objectif, ou pour un objectif que rien ne distingue a l'image, ferait
+   * payer un releve que `politiqueDePlan` refusera ensuite de lire.
+   *
+   * C'est la ROUTE qui tranche, parce qu'elle seule connait l'objectif du
+   * compte — et parce qu'un moteur qui lirait la base cesserait d'etre
+   * testable sans elle.
+   */
+  enrichissementUtile?: boolean;
 }
 
 /**
@@ -232,10 +245,18 @@ export async function produireCandidats(
   // reponse hors contrat ou delai depasse laissent `signaux: null` et le
   // montage se poursuit. Perdre une selection deja payee parce qu'un releve
   // decoratif n'a pas abouti serait echanger la fonction contre l'ornement.
-  const enrichissement = await enrichirCandidats({
-    candidats: valide.valeur,
-    images: entree.images,
-  });
+  const enrichissement = demande.enrichissementUtile === true
+    ? await enrichirCandidats({ candidats: valide.valeur, images: entree.images })
+    : {
+      // Rien n'est appele, rien n'est facture. Les candidats sortent tels
+      // que M3-C les a choisis, et le montage restera `m3g-v2`.
+      candidats: valide.valeur.map((c) => ({ ...c, signaux: null })),
+      applique: false,
+      motif: 'objectif_sans_effet_attendu' as const,
+      detail: null,
+      modele: null,
+      usage: null,
+    };
 
   const usage: UsageEtapeCandidats = usageCandidats({
     images: entree.images.length,
