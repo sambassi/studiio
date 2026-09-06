@@ -23,6 +23,7 @@
  * lancement de processus sont doublés ; le seul ffmpeg réel travaille sur une
  * fixture engendrée dans un répertoire temporaire, et supprimée.
  */
+import { SIGNAUX_ABSENTS } from '@/lib/autopilot/analyse/signaux-contrat';
 import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
 import { execFile, execFileSync } from 'child_process';
 import { promisify } from 'util';
@@ -297,7 +298,7 @@ function coupe(over: Partial<Coupe> = {}): Coupe {
   const f = over.finSecondes ?? 18;
   return {
     rang: 1, secondeReference: (d + f) / 2, dureeCibleSecondes: 8,
-    scoreMontage: 77, raison: 'r',
+    scoreMontage: 77, raison: 'r', signaux: SIGNAUX_ABSENTS,
     debutOriginalSecondes: d, finOriginalSecondes: f,
     debutSecondes: d, finSecondes: f, dureeSecondes: arrondirSeconde(f - d),
     ajustementDebut: { deltaSecondes: 0, source: 'aucun' },
@@ -645,7 +646,7 @@ describe('10-16. La matérialisation d’un jeu : atomicité et orphelins', () =
           clip: {
             rang: 1, debutSecondes: 10, finSecondes: 13, dureeSecondes: 3,
             bucket: 'videos', cle: cleClip('A', CS, 1), octets: 10,
-            debutMesureSecondes: 0, dureeMesureeSecondes: 3,
+            debutMesureSecondes: 0, dureeMesureeSecondes: 3, signaux: null,
           },
         };
       }
@@ -680,7 +681,7 @@ describe('10-16. La matérialisation d’un jeu : atomicité et orphelins', () =
           clip: {
             rang: 1, debutSecondes: 10, finSecondes: 13, dureeSecondes: 3,
             bucket: 'videos', cle: cleClip('A', CS, 1), octets: 10,
-            debutMesureSecondes: 0, dureeMesureeSecondes: 3,
+            debutMesureSecondes: 0, dureeMesureeSecondes: 3, signaux: null,
           },
         };
       }

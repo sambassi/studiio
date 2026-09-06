@@ -14,6 +14,7 @@
  * montage livrable — lui déjà tarifé — sera produit. Ce module n'importe pas
  * `@/lib/credits`, et un test le vérifie.
  */
+import { signauxDepuisLigne, type SignauxFenetre } from './signaux-contrat';
 import type { Coupe } from './coupe-contrat';
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -305,6 +306,22 @@ export interface ClipMaterialise {
   octets: number;
   debutMesureSecondes: number | null;
   dureeMesureeSecondes: number | null;
+  /**
+   * LES SIGNAUX SÉMANTIQUES DE LA FENÊTRE — Lot 2B, étape 4A.
+   *
+   * ⚠️ C'EST ICI QUE LE SENS SE PERDAIT. Avant cette étape, un clip ne portait
+   * que son rang, ses bornes, sa clé et son poids : `scoreMontage` et `raison`
+   * survivaient jusqu'à `Coupe` puis disparaissaient. Le moteur de plan
+   * recevait donc des FICHIERS, jamais des MOMENTS — et c'est la raison pour
+   * laquelle un objectif de communication ne pouvait rien changer.
+   *
+   * ⚠️ `null` POUR TOUT CE QUI A ÉTÉ MATÉRIALISÉ AVANT. Les jeux de clips
+   * existants n'en portent pas, et leur relecture ne doit pas échouer.
+   *
+   * ⚠️ AUCUNE DÉCISION NE LES LIT. `m3g` reste `m3g-v2` : il les reçoit, il
+   * ne s'en sert pas. Le premier scoring sera `m3g-v3`.
+   */
+  signaux: SignauxFenetre | null;
 }
 
 /**
@@ -415,4 +432,19 @@ export function clipValide(v: unknown): v is ClipMaterialise {
   // Une URL n'est pas une clé — ni `https://…`, ni `s3://…`.
   if (o.cle.includes('://') || o.cle.includes('..')) return false;
   return (o.debutSecondes as number) < (o.finSecondes as number);
+}
+
+/**
+ * Normalise un clip relu depuis la base.
+ *
+ * ⚠️ `clipValide` NE SUFFIT PAS, ET C'EST UNE QUESTION D'HONNÊTETÉ DE TYPE.
+ * Un jeu matérialisé avant l'étape 4A ne porte pas `signaux` ; le garde le
+ * laisse passer — à juste titre, il est valide — mais l'objet rendu aurait
+ * alors `signaux: undefined` là où le type promet `SignauxFenetre | null`.
+ *
+ * Ne refuse rien : ce qui est illisible, ou écrit par une version future,
+ * devient `null`. Un jeu de clips de la semaine dernière doit rester lisible.
+ */
+export function normaliserClipRelu(c: ClipMaterialise): ClipMaterialise {
+  return { ...c, signaux: signauxDepuisLigne((c as { signaux?: unknown }).signaux) };
 }

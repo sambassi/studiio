@@ -46,6 +46,7 @@ function clip(rang: number, debut: number, fin: number): ClipMaterialise {
     octets: 1_000_000,
     debutMesureSecondes: 0,
     dureeMesureeSecondes: fin - debut,
+    signaux: null,
   };
 }
 

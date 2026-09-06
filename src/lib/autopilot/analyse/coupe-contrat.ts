@@ -27,6 +27,7 @@
  * calcul qui se refait en une milliseconde. La décision se figera au rendu,
  * quand il y aura enfin quelque chose dont être comptable.
  */
+import type { SignauxFenetre } from './signaux-contrat';
 import type { CandidatMontage } from './candidat-contrat';
 import type { SilenceAudio } from './audio-contrat';
 import type { IntervalleTexte } from './transcription-contrat';
@@ -336,6 +337,21 @@ export interface Coupe {
   dureeCibleSecondes: number;
   scoreMontage: number;
   raison: string;
+
+  /**
+   * LES SIGNAUX SÉMANTIQUES DE LA FENÊTRE — Lot 2B, étape 4A.
+   *
+   * ⚠️ LE BLOC `vision` EST REPRIS DE M3-C SANS ÊTRE TOUCHÉ ; le bloc
+   * `parole` est calculé ICI, et il ne pouvait pas l'être plus tôt : la
+   * densité se mesure sur la fenêtre FINALE, celle que le calage vient de
+   * décider. La calculer sur la fenêtre de M3-C aurait mesuré une fenêtre
+   * qui n'existe plus.
+   *
+   * ⚠️ AUCUN CALAGE NE LES LIT. `m3e-v3` décide exactement ce qu'il décidait
+   * avant, avec les mêmes entrées : où couper est une question de qualité
+   * d'image et de parole, pas d'intention commerciale.
+   */
+  signaux: SignauxFenetre;
 
   // ── La fenêtre d'origine, gardée pour que le calage soit lisible ─────
   debutOriginalSecondes: number;

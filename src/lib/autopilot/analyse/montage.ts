@@ -23,6 +23,25 @@ import {
 import { arrondirSeconde, type ClipMaterialise } from './clip-contrat';
 
 export interface DemandePlan {
+  /**
+   * Les clips matérialisés par M3-F.
+   *
+   * ─────────────────────────────────────────────────────────────────────
+   * ⚠️ ILS PORTENT DES SIGNAUX SÉMANTIQUES, ET `m3g-v2` N'EN LIT AUCUN
+   * ─────────────────────────────────────────────────────────────────────
+   *
+   * Depuis le lot 2B étape 4A, `ClipMaterialise.signaux` transporte ce qui
+   * a été observé sur chaque fenêtre — personnes, échelle de plan, marque
+   * visible, densité de parole. Le chemin est ouvert JUSQU'ICI, et s'arrête
+   * ici : aucune ligne de ce fichier ne les consulte, l'ordre reste celui
+   * de `rang`, et le plan produit est le même, signaux présents ou absents.
+   *
+   * C'est délibéré. Incrémenter `ALGORITHME_PLAN` avant qu'un comportement
+   * ne change invaliderait tous les plans existants pour rien ; lire un
+   * signal sans incrémenter ferait rendre par `lirePlanIdentique` un plan
+   * calculé autrement pour une demande identique. Les deux se font ensemble,
+   * dans le commit `m3g-v3`, ou pas du tout.
+   */
   clips: readonly ClipMaterialise[];
   format: FormatMontage;
   dureeCibleSecondes: number;

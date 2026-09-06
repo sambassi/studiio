@@ -11,7 +11,7 @@
  */
 import { supabaseAdmin } from '@/lib/db/supabase';
 import {
-  MOTIF_ECHEC_MAX, candidatValide, seuilPeremptionGeneration,
+  MOTIF_ECHEC_MAX, candidatValide, normaliserCandidatRelu, seuilPeremptionGeneration,
   type CandidatMontage,
 } from './candidat-contrat';
 
@@ -89,7 +89,7 @@ export function generationDepuisLigne(row: Record<string, unknown>): GenerationC
     etape: row.etape === 'candidats' ? 'candidats' : null,
     fournisseurs: (typeof row.fournisseurs === 'object' && row.fournisseurs !== null
       ? row.fournisseurs : {}) as GenerationCandidats['fournisseurs'],
-    candidats: brut.filter(candidatValide),
+    candidats: brut.filter(candidatValide).map(normaliserCandidatRelu),
     usage: (typeof row.usage === 'object' && row.usage !== null
       ? row.usage : {}) as Record<string, unknown>,
     motifEchec: typeof row.motif_echec === 'string' ? row.motif_echec : null,

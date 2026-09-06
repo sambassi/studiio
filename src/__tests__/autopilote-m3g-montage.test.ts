@@ -198,6 +198,7 @@ function clipsProduction(): ClipMaterialise[] {
     octets,
     debutMesureSecondes: 0,
     dureeMesureeSecondes: mesuree,
+    signaux: null,
   });
   return [
     base(1, 5, 5, 3086489),

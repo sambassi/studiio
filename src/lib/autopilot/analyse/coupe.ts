@@ -44,6 +44,9 @@ import {
   type EtatParole, type ResultatCoupes, type SourceAncrage,
 } from './coupe-contrat';
 import type { CandidatMontage } from './candidat-contrat';
+import {
+  assemblerSignaux, paroleDeFenetre, PAROLE_INCONNUE,
+} from './signaux-contrat';
 
 /** Un point sur lequel une borne peut se poser. */
 interface Ancrage {
@@ -246,6 +249,9 @@ function calerCandidat(c: CandidatMontage, m: Materiel): Coupe {
       dureeCibleSecondes: c.dureeCibleSecondes,
       scoreMontage: c.scoreMontage,
       raison: c.raison,
+      // La vision est reprise telle quelle ; la parole reste INCONNUE ici, et
+      // sera remplie une fois la fenêtre finale connue — voir `calerCoupes`.
+      signaux: assemblerSignaux(c.signaux, PAROLE_INCONNUE),
       debutOriginalSecondes: arrondirSeconde(c.debutSecondes),
       finOriginalSecondes: arrondirSeconde(c.finSecondes),
       debutSecondes: debut,
@@ -277,6 +283,7 @@ function coupeIntacte(c: CandidatMontage): Coupe {
     dureeCibleSecondes: c.dureeCibleSecondes,
     scoreMontage: c.scoreMontage,
     raison: c.raison,
+    signaux: assemblerSignaux(c.signaux, PAROLE_INCONNUE),
     debutOriginalSecondes: debut,
     finOriginalSecondes: fin,
     debutSecondes: debut,
@@ -363,5 +370,32 @@ export function calerCoupes(entree: EntreeCoupes): ResultatCoupes {
   // l'origine peuvent se recouvrir une fois leurs bornes recalées.
   const retenues = ecarterChevauchements(coupes);
 
-  return { algorithme: ALGORITHME_COUPES, sources, coupes: retenues };
+  // ── La parole, MESURÉE SUR LA FENÊTRE FINALE ─────────────────────────
+  //
+  // ⚠️ APRÈS LE CALAGE, jamais avant : `calerCandidat` a pu déplacer les deux
+  // bornes de plusieurs dixièmes pour ne pas couper un mot. Mesurer la
+  // densité sur la fenêtre de M3-C décrirait une fenêtre que plus personne
+  // ne monte.
+  //
+  // ⚠️ LES MOTS PLUTÔT QUE LES SEGMENTS quand ils existent. Un segment
+  // englobe ses silences ; une phrase de deux mots séparés par trois
+  // secondes remplirait la fenêtre à 100 % alors qu'on n'y parle presque
+  // pas. Les mots donnent la part réellement parlée.
+  //
+  // ⚠️ `exploitee` ET RIEN D'AUTRE. `absente`, `sans_parole` et `ecartee`
+  // veulent tous dire « on ne sait pas » : écrire `absente` sur une fenêtre
+  // dont personne n'a écouté le son affirmerait un silence jamais constaté,
+  // et un futur objectif « témoignage » écarterait justement les fenêtres
+  // qu'il cherche.
+  const paroleExploitable = sources.parole === 'exploitee';
+  const intervalles = materiel.mots.length > 0 ? materiel.mots : materiel.segments;
+  const avecParole = retenues.map((c) => ({
+    ...c,
+    signaux: assemblerSignaux(
+      c.signaux.vision,
+      paroleDeFenetre(c.debutSecondes, c.finSecondes, intervalles, paroleExploitable),
+    ),
+  }));
+
+  return { algorithme: ALGORITHME_COUPES, sources, coupes: avecParole };
 }

@@ -262,6 +262,10 @@ export async function materialiserClip(entree: {
       octets,
       debutMesureSecondes: lu.debut,
       dureeMesureeSecondes: lu.duree,
+      // RECOPIÉS, jamais recalculés : la coupe les porte déjà, mesurés sur
+      // cette fenêtre exacte. Les refaire ici en produirait une seconde
+      // version, et deux vérités pour un même moment.
+      signaux: coupe.signaux ?? null,
     },
   };
 }

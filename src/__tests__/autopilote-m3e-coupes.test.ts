@@ -111,7 +111,7 @@ function cand(over: Partial<CandidatMontage> = {}): CandidatMontage {
   return {
     rang: 1, secondeReference: ref, dureeCibleSecondes: cible,
     debutSecondes: ref - cible / 2, finSecondes: ref + cible / 2,
-    scoreMontage: 77, raison: 'raison M3-C',
+    scoreMontage: 77, raison: 'raison M3-C', signaux: null,
     ...over,
   };
 }
@@ -431,6 +431,7 @@ describe('26-32. Les invariants, après tout arrondi', () => {
     const court: CandidatMontage = {
       rang: 1, secondeReference: 1, dureeCibleSecondes: 8,
       debutSecondes: 0, finSecondes: 2, scoreMontage: 50, raison: 'r',
+      signaux: null,
     };
     const r = calerCoupes(entree({ dureeRushSecondes: 2, candidats: [court] }));
     expect(r.coupes[0].debutSecondes).toBe(0);
@@ -549,6 +550,10 @@ describe('33-38. M3-E ne touche à rien, et n’invente aucun score', () => {
       'ajustementDebut', 'ajustementFin', 'debutOriginalSecondes', 'debutSecondes',
       'dureeCibleSecondes', 'dureeSecondes', 'finOriginalSecondes', 'finSecondes',
       'raison', 'rang', 'scoreMontage', 'secondeReference',
+      // Lot 2B, etape 4A : des FAITS OBSERVES, transportes tels quels. Ce
+      // n'est pas un score de plus, et l'assertion ci-dessous continue de
+      // l'interdire.
+      'signaux',
     ]);
     for (const src of [SOURCE_MOTEUR, SOURCE_CONTRAT]) {
       const s = readFileSync(src, 'utf8');

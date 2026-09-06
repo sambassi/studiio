@@ -33,6 +33,13 @@ import {
   DUREES_CANDIDAT_SECONDES, CANDIDATS_MAX, CANDIDATS_MIN, RAISON_MAX,
   SCORE_MIN, SCORE_MAX,
 } from './candidat-contrat';
+// ⚠️ LE MEME VOCABULAIRE QUE LE VALIDATEUR, JAMAIS UNE COPIE. Un enum recopie
+// ici derive du contrat sans que rien ne le signale, et le modele repond alors
+// dans un vocabulaire que la lecture transforme en `indetermine` — un signal
+// perdu en silence, sur toute la production.
+import {
+  PRESENCES_PERSONNES, ECHELLES_PLAN, EXPRESSIONS_VISIBLES, PRESENCES_OBSERVEES,
+} from './signaux-contrat';
 
 /** Le point d'accès, tel que le reste du dépôt l'écrit déjà. */
 const POINT_ACCES = 'https://api.anthropic.com/v1/messages';
@@ -114,7 +121,7 @@ function schemaCandidats(secondes: readonly number[]): Record<string, unknown> {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['secondeReference', 'dureeCibleSecondes', 'scoreMontage', 'raison'],
+          required: ['secondeReference', 'dureeCibleSecondes', 'scoreMontage', 'raison', 'signaux'],
           properties: {
             secondeReference: {
               type: 'number',
@@ -133,6 +140,56 @@ function schemaCandidats(secondes: readonly number[]): Record<string, unknown> {
             raison: {
               type: 'string',
               description: `Ce qu’on voit à cet instant, en une phrase courte. Au plus ${RAISON_MAX} caractères. Aucune accroche, aucun slogan, aucune adresse web.`,
+            },
+            signaux: {
+              type: 'object',
+              additionalProperties: false,
+              description: 'Ce qui est visible sur l’image de cet instant. N’influence en rien scoreMontage.',
+              required: [
+                'personnes', 'echellePlan', 'expression', 'objetMisEnAvant',
+                'mainsEnAction', 'marqueVisible', 'texteALEcran', 'nettete',
+              ],
+              properties: {
+                personnes: {
+                  type: 'string',
+                  enum: [...PRESENCES_PERSONNES],
+                  description: 'Combien de personnes sont visibles. Aucune identification.',
+                },
+                echellePlan: {
+                  type: 'string',
+                  enum: [...ECHELLES_PLAN],
+                  description: 'L’échelle de cadrage de l’image.',
+                },
+                expression: {
+                  type: 'string',
+                  enum: [...EXPRESSIONS_VISIBLES],
+                  description: 'L’expression lisible sur un visage. « indetermine » sans visage lisible.',
+                },
+                objetMisEnAvant: {
+                  type: 'string',
+                  enum: [...PRESENCES_OBSERVEES],
+                  description: 'Un objet délibérément présenté, tenu ou centré.',
+                },
+                mainsEnAction: {
+                  type: 'string',
+                  enum: [...PRESENCES_OBSERVEES],
+                  description: 'Des mains en train d’agir sur quelque chose, sur cette image.',
+                },
+                marqueVisible: {
+                  type: 'string',
+                  enum: [...PRESENCES_OBSERVEES],
+                  description: 'Un logo ou un nom de marque lisible dans l’image.',
+                },
+                texteALEcran: {
+                  type: 'string',
+                  enum: [...PRESENCES_OBSERVEES],
+                  description: 'Du texte lisible dans l’image, incrusté ou filmé.',
+                },
+                nettete: {
+                  type: 'number',
+                  description: 'La netteté de CETTE image. Nombre de 0 à 1 inclus.',
+                },
+              },
             },
           },
         },

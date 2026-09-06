@@ -44,8 +44,14 @@
  * n'a jamais entendu ce rush.
  */
 import { MOTIF_ECHEC_MAX } from './contrat';
+// ⚠️ MODULE PUR LUI AUSSI : aucun `child_process`, aucun `minio`. L'ecran
+// d'analyse importe ce contrat, et l'arete doit rester inoffensive.
+import {
+  lireSignauxVision, visionDepuisLigne, type SignauxVision,
+} from './signaux-contrat';
 
 export { MOTIF_ECHEC_MAX };
+export type { SignauxVision };
 
 // ───────────────────────────────────────────────────────────────────────────
 // Les bornes
@@ -114,6 +120,18 @@ export interface PropositionCandidateVisuelle {
   dureeCibleSecondes: number;
   scoreMontage: number;
   raison: string;
+  /**
+   * LES SIGNAUX SEMANTIQUES DE LA FENETRE — Lot 2B, etape 4A.
+   *
+   * ⚠️ `null` QUAND LE FOURNISSEUR N'EN REND PAS. Un serveur dont l'invite
+   * n'a pas encore ete deployee doit continuer de produire des candidats :
+   * ces champs ne servent a aucune decision d'aujourd'hui.
+   *
+   * ⚠️ ILS N'ENTRENT PAS DANS `scoreMontage`, et l'invite l'interdit
+   * explicitement au modele. Le score reste ce qu'il etait : l'interet
+   * VISUEL d'un moment comme matiere de montage.
+   */
+  signaux: SignauxVision | null;
 }
 
 /** Ce que Studiio persiste, une fois les bornes calculees ICI. */
@@ -125,6 +143,15 @@ export interface CandidatMontage {
   finSecondes: number;
   scoreMontage: number;
   raison: string;
+  /**
+   * ⚠️ OPTIONNEL A LA RELECTURE. Toutes les generations ecrites avant l'etape
+   * 4A valent `null` ici : les relire doit continuer de fonctionner, sans
+   * quoi ce pipeline deviendrait incapable de lire son propre passe.
+   *
+   * ⚠️ AUCUNE DECISION NE LES LIT ENCORE — ni le classement ci-dessous, ni
+   * `m3e`, ni `m3g`. Ils traversent, ils ne choisissent pas.
+   */
+  signaux: SignauxVision | null;
 }
 
 /**
@@ -286,7 +313,7 @@ function refus(
 /** Les cles connues. Tout le reste est `champ_inconnu`. */
 const CLES_RACINE = ['candidats'] as const;
 const CLES_CANDIDAT = [
-  'secondeReference', 'dureeCibleSecondes', 'scoreMontage', 'raison',
+  'secondeReference', 'dureeCibleSecondes', 'scoreMontage', 'raison', 'signaux',
 ] as const;
 
 function cleInconnue(objet: Record<string, unknown>, connues: readonly string[]): string | null {
@@ -411,11 +438,26 @@ export function lireReponseCandidats(
       return refus('valeur_hors_plage', `${ou}.secondeReference`, 'fenetre indefinissable');
     }
 
+    // ── Les signaux : ABSENTS = `null`, jamais une erreur ──────────────
+    //
+    // Une faute de FORME est refusee comme partout ici — objet attendu, cle
+    // inconnue. Une VALEUR illisible, elle, est deja devenue « inconnu » a
+    // l'interieur de `lireSignauxVision` : faire echouer une generation
+    // entiere pour un enum fantaisiste ferait echouer ce pipeline la ou il
+    // reussissait hier, pour un champ que personne ne lit encore.
+    let signaux: SignauxVision | null = null;
+    if (c.signaux !== undefined && c.signaux !== null) {
+      const lu = lireSignauxVision(c.signaux);
+      if (!lu.ok) return refus(lu.motif, `${ou}.${lu.champ}`);
+      signaux = lu.valeur;
+    }
+
     lus.push({
       secondeReference: reference,
       dureeCibleSecondes: duree,
       scoreMontage: score,
       raison: raison.trim(),
+      signaux,
       ...fenetre,
     });
   }
@@ -472,4 +514,19 @@ export function candidatValide(valeur: unknown): valeur is CandidatMontage {
   if (typeof c.raison !== 'string' || c.raison.length === 0) return false;
   if (!(Number(c.debutSecondes) < Number(c.finSecondes))) return false;
   return true;
+}
+
+/**
+ * Normalise un candidat relu depuis la base.
+ *
+ * ⚠️ `candidatValide` NE SUFFIT PAS, ET C'EST UNE QUESTION D'HONNETETE DE
+ * TYPE. Une ligne ecrite avant l'etape 4A ne porte pas `signaux` ; le garde
+ * la laisse passer — a juste titre, elle est valide — mais l'objet rendu
+ * aurait alors `signaux: undefined` la ou le type promet `SignauxVision |
+ * null`. Un `?.` de plus en aval, et l'absence redeviendrait invisible.
+ *
+ * Ne refuse rien : ce qui est illisible devient `null`.
+ */
+export function normaliserCandidatRelu(c: CandidatMontage): CandidatMontage {
+  return { ...c, signaux: visionDepuisLigne((c as { signaux?: unknown }).signaux) };
 }

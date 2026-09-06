@@ -11,7 +11,7 @@
  */
 import { supabaseAdmin } from '@/lib/db/supabase';
 import {
-  clipValide, etatSetValide, etapeSetValide, seuilPeremptionSet,
+  clipValide, normaliserClipRelu, etatSetValide, etapeSetValide, seuilPeremptionSet,
   type ClipMaterialise, type ClipSet, type EtapeSet, type EtatSet,
   type IdentiteClipSet,
 } from './clip-contrat';
@@ -68,7 +68,7 @@ export function setDepuisLigne(row: Record<string, unknown>): ClipSet {
     version: nombre(row.version, 1),
     etat: etatSetValide(row.etat) ? row.etat : 'echouee',
     etape: etapeSetValide(row.etape) ? row.etape : null,
-    clips: brut.filter(clipValide),
+    clips: brut.filter(clipValide).map(normaliserClipRelu),
     usage: (typeof row.usage === 'object' && row.usage !== null
       ? row.usage : {}) as Record<string, unknown>,
     motifEchec: typeof row.motif_echec === 'string' ? row.motif_echec : null,
