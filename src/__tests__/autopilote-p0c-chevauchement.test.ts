@@ -347,6 +347,6 @@ describe('7. La version de l’algorithme', () => {
     // jeu déjà calculé sous `m3e-v2` — avec ses 5,152 s rejouées — serait
     // RÉUTILISÉ tel quel, et la correction resterait invisible sur tout rush
     // déjà découpé, dont celui de production.
-    expect(ALGORITHME_COUPES).toBe('m3e-v3');
+    expect(ALGORITHME_COUPES).toBe('m3e-v4');
   });
 });

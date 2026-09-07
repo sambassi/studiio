@@ -429,7 +429,7 @@ describe('Lot 2A — securite du contrat', () => {
 // N — ce que le lot ne touche PAS
 // ---------------------------------------------------------------------------
 
-describe('Lot 2A — l anti-repetition m3e-v3 est intacte', () => {
+describe('Lot 2A — l anti-repetition m3e-v4 est intacte', () => {
   it('aucun fichier du lot ne touche aux coupes ni aux candidats', () => {
     for (const f of [
       'src/lib/autopilot/analyse/recette-audio.ts',
@@ -448,7 +448,7 @@ describe('Lot 2A — l anti-repetition m3e-v3 est intacte', () => {
 
   it('le seuil et l algorithme des coupes n ont pas bouge', () => {
     const coupes = lireSource('src/lib/autopilot/analyse/coupe-contrat.ts');
-    expect(coupes).toContain("export const ALGORITHME_COUPES = 'm3e-v3'");
+    expect(coupes).toContain("export const ALGORITHME_COUPES = 'm3e-v4'");
     expect(coupes).toContain('export const CHEVAUCHEMENT_MAX = 0.20');
     expect(coupes).toContain('export const CHEVAUCHEMENT_MIN_SECONDES = 0.25');
   });

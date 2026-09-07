@@ -136,7 +136,7 @@ function unMontage(plans: PlanMontage[]): MontagePlan {
   const total = plans.reduce((t, p) => t + p.dureeRetenueSecondes, 0);
   return {
     id: 'r1', userId: UID, montagePlanId: 'p1', clipSetId: 'c1', clipSetVersion: 1,
-    candidateSetId: 'cs1', analysisId: 'a1', algorithme: 'm3e-v3',
+    candidateSetId: 'cs1', analysisId: 'a1', algorithme: 'm3e-v4',
     methodeMaterialisation: 'x264-crf23-v1', algorithmePlan: 'm3g-v1',
     format: '16:9', dureeCibleSecondes: total, version: 1,
     largeurCible: 1920, hauteurCible: 1080, fps: 30,

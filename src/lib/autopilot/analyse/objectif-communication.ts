@@ -833,5 +833,14 @@ export const M3G_V3_RECOMMANDATION = Object.freeze({
     'police', 'couleurs', 'lut', 'logo', 'animations', 'ctaVisuel',
     'opacite', 'margesSures', 'transitions',
   ],
-  coupesInchangees: 'm3e-v3',
+  /* ⚠️ « INCHANGEES PAR LE STYLE », PAS « FIGEES ». Ce champ dit que la
+     police, les couleurs ou la LUT ne déplacent aucune borne — il ne promet
+     pas que le calage ne progressera jamais. Il a d'ailleurs suivi le
+     passage en `m3e-v4` (ancrage de phrase), qui ne doit rien au style.
+     Écrire la version en dur l'avait laissé mentir pendant un lot : elle est
+     mise à jour avec elle. ⚠️ ELLE RESTE ÉCRITE EN DUR : ce module n'importe
+     RIEN, et c'est ce qui garantit qu'aucune règle éditoriale n'y entre par
+     une dépendance. Un test compare cette valeur à `ALGORITHME_COUPES` et
+     échoue si les deux divergent — la vigilance est là, pas dans un import. */
+  coupesInchangees: 'm3e-v4',
 });

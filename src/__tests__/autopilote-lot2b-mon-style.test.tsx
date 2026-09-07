@@ -491,7 +491,7 @@ describe('15-18. l’ecran n’affiche que les transitions REELLEMENT rendues', 
 // ---------------------------------------------------------------------------
 
 describe('19-22. le montage et l’audio sont intacts', () => {
-  it('20. m3e-v3 inchange', () => { expect(ALGORITHME_COUPES).toBe('m3e-v3'); });
+  it('20. m3e-v4 inchange', () => { expect(ALGORITHME_COUPES).toBe('m3e-v4'); });
   it('21. m3g-v2 inchange', () => { expect(ALGORITHME_PLAN).toBe('m3g-v2'); });
 
   it('19. la recette audio par defaut n’est pas touchee par le style du compte', async () => {

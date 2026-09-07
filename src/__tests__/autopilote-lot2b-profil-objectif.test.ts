@@ -443,7 +443,7 @@ describe('E. securite du contrat de profil', () => {
 
 describe('F. le style ne touche jamais l\'identite du plan', () => {
   it('les algorithmes editoriaux restent ceux valides humainement', () => {
-    expect(ALGORITHME_COUPES).toBe('m3e-v3');
+    expect(ALGORITHME_COUPES).toBe('m3e-v4');
     expect(ALGORITHME_PLAN).toBe('m3g-v2');
   });
 
@@ -457,11 +457,11 @@ describe('F. le style ne touche jamais l\'identite du plan', () => {
     ['transition', { transitions: { active: true, transitionId: 'flash' } }],
     ['opacite', { marque: { opacite: 0.4 } }],
   ] as Array<[string, ProfilCreatifPartiel]>)(
-    'changer %s ne change ni m3e-v3 ni m3g-v2, seulement la methode de rendu',
+    'changer %s ne change ni m3e-v4 ni m3g-v2, seulement la methode de rendu',
     (_n, delta) => {
       const avant = fusionnerProfilEtOverride(PROFIL_AFROBOOST, null);
       const apres = fusionnerProfilEtOverride(PROFIL_AFROBOOST, delta);
-      expect(ALGORITHME_COUPES).toBe('m3e-v3');
+      expect(ALGORITHME_COUPES).toBe('m3e-v4');
       expect(ALGORITHME_PLAN).toBe('m3g-v2');
       expect(methodeRendu(AUDIO, apres)).not.toBe(methodeRendu(AUDIO, avant));
     },

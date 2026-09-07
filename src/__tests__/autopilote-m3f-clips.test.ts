@@ -1007,7 +1007,7 @@ describe('25-38. Les routes : propriété, refus, aucun timecode client', () => 
       candidateSetId: CS, candidateSetVersion: 1, rushId: RU, analysisId: AN,
       transcriptionId: T1, transcriptionVersion: 1,
       // L'identite d'un jeu porte l'algorithme de M3-E, et il change a chaque
-      // fois que la DECISION change — `m3e-v2` puis `m3e-v3` en P0-C. La
+      // fois que la DECISION change — `m3e-v2` puis `m3e-v4` en P0-C. La
       // constante plutot que sa valeur : ce test verifie que l'identite la
       // PORTE, pas quelle version court aujourd'hui. C'est
       // `autopilote-p0c-chevauchement` qui fige la version.

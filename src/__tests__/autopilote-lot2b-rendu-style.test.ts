@@ -432,8 +432,8 @@ describe('11. le style ne touche jamais au graphe audio du Lot 2A', () => {
 // ---------------------------------------------------------------------------
 
 describe('12 + 13. les algorithmes de plan sont INCHANGES', () => {
-  it('m3e-v3 pour les coupes', () => {
-    expect(ALGORITHME_COUPES).toBe('m3e-v3');
+  it('m3e-v4 pour les coupes', () => {
+    expect(ALGORITHME_COUPES).toBe('m3e-v4');
   });
 
   it('m3g-v2 pour le montage — pas de m3g-v3 dans ce lot', () => {

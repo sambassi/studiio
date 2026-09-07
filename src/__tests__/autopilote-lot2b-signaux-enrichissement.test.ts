@@ -15,7 +15,7 @@
  * aucun objectif — aurait donc pu se mettre à produire d'autres plans : sans
  * objectif, sans changement de version d'algorithme, et sans qu'aucune ligne
  * ne le signale. Exactement la panne muette que le versionnement de `m3g-v2`
- * et `m3e-v3` existe pour empêcher.
+ * et `m3e-v4` existe pour empêcher.
  *
  * ⚠️ CE FICHIER NE VÉRIFIE PAS QUE LE CODE « DIT » LA BONNE CHOSE. Il
  * fabrique les situations : un `signaux` glissé dans la réponse de M3-C, un

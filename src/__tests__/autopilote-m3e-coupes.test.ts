@@ -566,9 +566,12 @@ describe('33-38. M3-E ne touche à rien, et n’invente aucun score', () => {
     // DECISION, donc l'identite d'un jeu de clips doit changer avec elle.
     // `m3e-v2` = premiere version de la regle (moitie de la plus courte) ;
     // `m3e-v3` = le critere en secondes, plancher compris, apres la mesure
-    // de production qui montrait 5,152 s encore rejouees.
-    expect(ALGORITHME_COUPES).toBe('m3e-v3');
-    expect(SOURCES_ANCRAGE).toEqual(['silence', 'segment', 'mot', 'aucun']);
+    // de production qui montrait 5,152 s encore rejouees ;
+    // `m3e-v4` = l'ancrage de PHRASE, apres la validation humaine du
+    // 2026-09-07 : « certaines phrases parlees sont coupees ». La decision
+    // change, donc l'identite du calage change avec elle.
+    expect(ALGORITHME_COUPES).toBe('m3e-v4');
+    expect(SOURCES_ANCRAGE).toEqual(['phrase', 'silence', 'segment', 'mot', 'aucun']);
     expect(ETATS_PAROLE).toEqual(['exploitee', 'sans_parole', 'ecartee', 'absente']);
     expect(ETATS_AUDIO).toEqual(['exploitee', 'sans_silence', 'absente', 'indisponible']);
     expect(SOURCES_TRANSCRIPTION).toEqual(['demandee', 'derniere', 'aucune']);

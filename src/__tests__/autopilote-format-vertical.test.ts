@@ -109,7 +109,7 @@ describe.skipIf(!OUTILS)('Le MP4 réellement produit', () => {
     } as unknown as PlanMontage;
     return {
       id: 'r1', userId: UID, montagePlanId: 'p1', clipSetId: 'c1', clipSetVersion: 1,
-      candidateSetId: 'cs1', analysisId: 'a1', algorithme: 'm3e-v3',
+      candidateSetId: 'cs1', analysisId: 'a1', algorithme: 'm3e-v4',
       methodeMaterialisation: 'x264-crf23-v1', algorithmePlan: 'm3g-v1',
       format, dureeCibleSecondes: 4, version: 1,
       largeurCible: cible.largeur, hauteurCible: cible.hauteur, fps: 30,

@@ -44,7 +44,7 @@ import type { IntervalleTexte } from './transcription-contrat';
  * incompréhensible. C'est le genre de champ qu'on ne peut pas ajouter
  * rétroactivement.
  */
-export const ALGORITHME_COUPES = 'm3e-v3' as const;
+export const ALGORITHME_COUPES = 'm3e-v4' as const;
 
 // ─────────────────────────────────────────────────────────────────────────
 // Deux fois le même moment n'est pas un montage
@@ -242,6 +242,109 @@ export function ecarterChevauchements<T extends Fenetre>(fenetres: readonly T[])
 export const TOLERANCE_SECONDES = 0.75;
 
 /**
+ * La tolérance ACCORDÉE EN PLUS pour finir une phrase.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ POURQUOI UNE PHRASE MÉRITE PLUS DE 0,75 s
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Validation humaine, 2026-09-07 : « le montage est bon, mais certaines
+ * phrases parlées sont coupées ». Le moteur faisait pourtant son travail —
+ * il posait la borne sur le point le plus proche. Le défaut est ailleurs :
+ *
+ *   • un « segment » de transcription N'EST PAS une phrase. Whisper découpe
+ *     en tronçons de souffle, souvent au milieu d'une proposition ; se caler
+ *     dessus ne garantit donc rien sur le sens ;
+ *   • une frontière de MOT, elle, est presque toujours toute proche — donc
+ *     elle gagnait, et la borne se posait proprement entre deux mots, au
+ *     milieu d'une phrase. Techniquement irréprochable, et inaudible.
+ *
+ * Une vraie fin de phrase est plus loin : elle attend la ponctuation. 0,75 s
+ * ne suffisait pas à l'atteindre. 1,5 s au total la met à portée sans ouvrir
+ * la porte à une dérive : au-delà, on ne finit plus une phrase, on en ajoute
+ * une autre.
+ */
+export const TOLERANCE_PHRASE_SECONDES = 1.5;
+
+/** La tolérance applicable à un ancrage, selon d'où il vient. */
+export function toleranceDe(source: SourceAncrage): number {
+  return source === 'phrase' ? TOLERANCE_PHRASE_SECONDES : TOLERANCE_SECONDES;
+}
+
+/**
+ * Ce que la garde de durée concède EN PLUS quand une borne finit une phrase.
+ *
+ * ⚠️ SANS CELA, LA CORRECTION SE SABORDE. Étendre une borne de 1,2 s fait
+ * varier la durée d'autant ; la garde, plafonnée à 1 s, rejetait alors la
+ * fenêtre — et le moteur retombait sur la coupe qui tranche la phrase. La
+ * concession est donc exactement de la même nature que la tolérance qui l'a
+ * rendue possible, et elle ne s'applique QUE si un ancrage `phrase` a servi.
+ */
+export const GARDE_PHRASE_SECONDES = TOLERANCE_PHRASE_SECONDES - TOLERANCE_SECONDES;
+
+// ─────────────────────────────────────────────────────────────────────────
+// Où une phrase commence, où elle finit
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * La ponctuation qui FERME une phrase, guillemets et parenthèses compris.
+ *
+ * ⚠️ NI LA VIRGULE, NI LE POINT-VIRGULE, NI LES DEUX-POINTS. Ils annoncent
+ * une suite : couper là laisse la phrase en suspens, ce qui est exactement
+ * le défaut qu'on répare.
+ */
+const FIN_DE_PHRASE = /[.!?…]+[\s"\u00bb'\u2019)\]]*$/u;
+
+/* ⚠️ L'ESPACE AVANT LE GUILLEMET FERMANT EST FRANÇAIS, PAS UNE FAUTE.
+   La typographie française insère une espace fine avant », ! et ? : une classe
+   qui n'acceptait que des caractères collés ratait donc toutes les fins de
+   citation. Le `+` sur la ponctuation couvre « ?! » et les points de
+   suspension écrits en trois points. */
+
+/** Un intervalle qui porte son texte — la forme que la transcription rend. */
+interface IntervalleLu {
+  debutSecondes: number;
+  finSecondes: number;
+  texte?: string;
+}
+
+/**
+ * Les instants où une phrase commence et où elle finit.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ AUCUNE PONCTUATION, AUCUNE FRONTIÈRE — ET C'EST UN COMPORTEMENT VOULU
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Tous les fournisseurs ne ponctuent pas, et une transcription peut arriver
+ * en majuscules sans un seul point. Cette fonction rend alors deux listes
+ * vides : le moteur se comporte EXACTEMENT comme avant, sans phrase à
+ * viser. Le défaut par défaut est donc l'ancien comportement, jamais une
+ * frontière devinée — inventer une fin de phrase là où rien ne la prouve
+ * couperait au hasard en croyant bien faire.
+ */
+export function frontieresPhrase(unites: readonly IntervalleLu[]): {
+  debuts: readonly number[]; fins: readonly number[];
+} {
+  const debuts: number[] = [];
+  const fins: number[] = [];
+  let precedenteFerme = false;
+  for (let i = 0; i < unites.length; i += 1) {
+    const u = unites[i];
+    const texte = typeof u.texte === 'string' ? u.texte.trim() : '';
+    // La première unité ouvre une phrase ; ensuite, seule celle qui suit une
+    // unité CLOSE en ouvre une nouvelle.
+    if (i === 0 || precedenteFerme) debuts.push(u.debutSecondes);
+    const ferme = texte !== '' && FIN_DE_PHRASE.test(texte);
+    if (ferme) fins.push(u.finSecondes);
+    precedenteFerme = ferme;
+  }
+  // Sans une seule ponctuation, il n'y a pas de phrase reperable : le seul
+  // « debut » trouve serait celui de la premiere unite, un ancrage arbitraire.
+  if (fins.length === 0) return { debuts: [], fins: [] };
+  return { debuts, fins };
+}
+
+/**
  * De combien la DURÉE finale peut s'écarter de celle de M3-C.
  *
  * Proportionnelle, et plafonnée. Une borne absolue unique serait fausse aux
@@ -291,7 +394,7 @@ export const EGALITE_SECONDES = 10 ** -DECIMALES;
  * L'ordre de cette liste EST l'ordre de départage — et il ne sert qu'à
  * départager : la proximité passe d'abord, toujours.
  */
-export const SOURCES_ANCRAGE = ['silence', 'segment', 'mot', 'aucun'] as const;
+export const SOURCES_ANCRAGE = ['phrase', 'silence', 'segment', 'mot', 'aucun'] as const;
 export type SourceAncrage = (typeof SOURCES_ANCRAGE)[number];
 
 /** Le rang de départage. Plus petit = préféré, à distance égale seulement. */

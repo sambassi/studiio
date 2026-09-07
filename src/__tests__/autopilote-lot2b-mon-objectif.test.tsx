@@ -419,7 +419,7 @@ describe('5. Le coût — on n’analyse pas pour rien', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 describe('6. Ce que 4C ne touche pas', () => {
   it('6.1 les versions de moteur n’ont pas bougé', () => {
-    expect(ALGORITHME_COUPES).toBe('m3e-v3');
+    expect(ALGORITHME_COUPES).toBe('m3e-v4');
     expect(ALGORITHME_PLAN).toBe('m3g-v2');
   });
 
@@ -710,7 +710,7 @@ describe('7. L’écran — un wizard, une décision par étape', () => {
     suivant();
     const texte = document.body.textContent ?? '';
     for (const jargon of [
-      'm3g-v3', 'm3g-v2', 'm3e-v3', 'objectiveScore', 'signaux-v1',
+      'm3g-v3', 'm3g-v2', 'm3e-v4', 'objectiveScore', 'signaux-v1',
       'scoreMontage', 'empreinte', 'FNV', 'signalCoverage', 'algorithmePlan',
     ]) {
       expect(texte).not.toContain(jargon);

@@ -37,7 +37,8 @@
  */
 import {
   ALGORITHME_COUPES,
-  ecarterChevauchements, TOLERANCE_SECONDES, EGALITE_SECONDES,
+  ecarterChevauchements, EGALITE_SECONDES,
+  GARDE_PHRASE_SECONDES, toleranceDe, frontieresPhrase,
   gardeDuree, arrondirSeconde, nombreFini, rangSource,
   intervalleUtilisable, candidatUtilisable,
   type Ajustement, type Coupe, type EntreeCoupes, type EtatAudio,
@@ -81,7 +82,10 @@ function choisirAncrage(
 
   for (const a of ancrages) {
     const distance = Math.abs(a.instant - borne);
-    if (distance > TOLERANCE_SECONDES + EGALITE_SECONDES) continue;
+    // ⚠️ LA TOLÉRANCE DÉPEND DE LA SOURCE. Une fin de phrase est plus loin
+    // qu'une frontière de mot, par nature : lui appliquer la même fenêtre
+    // revenait à ne jamais la voir.
+    if (distance > toleranceDe(a.source) + EGALITE_SECONDES) continue;
     if (!admissible(a.instant)) continue;
 
     if (gagnant === null) { gagnant = { a, distance }; continue; }
@@ -128,23 +132,33 @@ function motCoupe(borne: number, mots: readonly { debutSecondes: number; finSeco
 interface Materiel {
   dureeRush: number;
   silences: readonly { debutSecondes: number; finSecondes: number }[];
-  segments: readonly { debutSecondes: number; finSecondes: number }[];
-  mots: readonly { debutSecondes: number; finSecondes: number }[];
+  /* Le TEXTE voyage avec les instants : sans lui, aucune ponctuation, donc
+     aucune phrase repérable. */
+  segments: readonly { debutSecondes: number; finSecondes: number; texte?: string }[];
+  mots: readonly { debutSecondes: number; finSecondes: number; texte?: string }[];
 }
 
 /** La fenêtre finale respecte-t-elle TOUT ce que le contrat promet ? */
 function fenetreValide(
   debut: number, fin: number, c: CandidatMontage, dureeRush: number,
+  ajDebut: Ajustement = IMMOBILE, ajFin: Ajustement = IMMOBILE,
 ): boolean {
+  /* La concession n'est accordée QUE si un ancrage `phrase` a réellement
+     servi : une fenêtre qui s'étire pour une autre raison reste jugée par la
+     garde d'origine. */
+  const phrase = ajDebut.source === 'phrase' || ajFin.source === 'phrase';
+  const bonus = phrase ? GARDE_PHRASE_SECONDES : 0;
   if (!Number.isFinite(debut) || !Number.isFinite(fin)) return false;
   if (debut < 0 || !(debut < fin) || fin > dureeRush + EGALITE_SECONDES) return false;
   if (c.secondeReference < debut - EGALITE_SECONDES) return false;
   if (c.secondeReference > fin + EGALITE_SECONDES) return false;
-  if (Math.abs(debut - c.debutSecondes) > TOLERANCE_SECONDES + EGALITE_SECONDES) return false;
-  if (Math.abs(fin - c.finSecondes) > TOLERANCE_SECONDES + EGALITE_SECONDES) return false;
+  const tolDebut = toleranceDe(ajDebut.source) + EGALITE_SECONDES;
+  const tolFin = toleranceDe(ajFin.source) + EGALITE_SECONDES;
+  if (Math.abs(debut - c.debutSecondes) > tolDebut) return false;
+  if (Math.abs(fin - c.finSecondes) > tolFin) return false;
   const dureeOriginale = c.finSecondes - c.debutSecondes;
   const variation = Math.abs((fin - debut) - dureeOriginale);
-  return variation <= gardeDuree(c.dureeCibleSecondes) + EGALITE_SECONDES;
+  return variation <= gardeDuree(c.dureeCibleSecondes) + bonus + EGALITE_SECONDES;
 }
 
 /**
@@ -182,6 +196,19 @@ function calerCandidat(c: CandidatMontage, m: Materiel): Coupe {
     ancragesFin.push({ instant: s.finSecondes, source: 'segment' });
   }
 
+  /* ── Les frontières de PHRASE, tenues à part ───────────────────────────
+     ⚠️ ELLES NE REJOIGNENT PAS LES AUTRES ANCRAGES, et c'est tout le point.
+     Mélangées, la proximité les écraserait : une frontière de mot est
+     presque toujours plus proche qu'une fin de phrase, et c'est précisément
+     ce qui laissait des phrases coupées. Elles forment donc une proposition
+     CONCURRENTE, essayée en premier — jamais un ancrage de plus dans le même
+     concours. */
+  const phrases = frontieresPhrase(m.segments.length > 0 ? m.segments : m.mots);
+  const ancragesPhraseDebut: Ancrage[] = phrases.debuts
+    .map((i) => ({ instant: i, source: 'phrase' as const }));
+  const ancragesPhraseFin: Ancrage[] = phrases.fins
+    .map((i) => ({ instant: i, source: 'phrase' as const }));
+
   // ⚠️ Les mots ne sont offerts QUE si la borne en coupe un. Les offrir tous
   // ferait sauter chaque borne sur le mot le plus proche, partout, tout le
   // temps — c'est-à-dire déplacer sans réparer.
@@ -197,24 +224,51 @@ function calerCandidat(c: CandidatMontage, m: Materiel): Coupe {
   }
 
   // ── Chaque borne choisit, sans savoir ce que l'autre a choisi ─────────
-  const propDebut = choisirAncrage(c.debutSecondes, ancragesDebut, (i) => (
+  const admissibleDebut = (i: number) => (
     i >= 0 && i <= dureeRush + EGALITE_SECONDES
       && i <= c.secondeReference + EGALITE_SECONDES
       && i < c.finSecondes
-  ));
-  const propFin = choisirAncrage(c.finSecondes, ancragesFin, (i) => (
+  );
+  const admissibleFin = (i: number) => (
     i >= 0 && i <= dureeRush + EGALITE_SECONDES
       && i >= c.secondeReference - EGALITE_SECONDES
       && i > c.debutSecondes
-  ));
+  );
+  const propDebut = choisirAncrage(c.debutSecondes, ancragesDebut, admissibleDebut);
+  const propFin = choisirAncrage(c.finSecondes, ancragesFin, admissibleFin);
+  const phraseDebut = choisirAncrage(c.debutSecondes, ancragesPhraseDebut, admissibleDebut);
+  const phraseFin = choisirAncrage(c.finSecondes, ancragesPhraseFin, admissibleFin);
 
   // ── Les combinaisons, de la plus complète à la plus prudente ─────────
+  /* ⚠️ LA PHRASE PASSE DEVANT — MAIS N'ÉLIMINE RIEN.
+     Les combinaisons de phrase sont essayées AVANT la proposition de
+     proximité, et celle-ci reste dans la liste, juste derrière. Toute
+     fenêtre que le moteur produisait hier reste donc atteignable
+     aujourd'hui : si aucune phrase n'est repérable, ou si la fenêtre
+     étendue échoue à la validation, on retombe exactement sur l'ancien
+     résultat. C'est ce qui rend ce changement sûr par construction plutôt
+     que par relecture. */
+  const estPhrase = (a: Ajustement) => a.source === 'phrase';
+  /* ⚠️ CHAQUE ESSAI DE TÊTE DOIT APPORTER UNE PHRASE — SINON IL VOLE LA
+     PLACE DE L'ANCIEN COMPORTEMENT. Sans cette condition, `{IMMOBILE,
+     propFin}` (le « mixte » dont la moitié phrase est vide) passait avant
+     `{propDebut, propFin}` : la fin se calait, le début restait immobile, et
+     quatre tests de calage tombaient. Un essai qui n'apporte rien de neuf
+     n'a rien à faire devant celui qu'il remplace. */
   const essais: Array<{ debut: Ajustement; fin: Ajustement }> = [
+    ...(estPhrase(phraseDebut) || estPhrase(phraseFin)
+      ? [{ debut: phraseDebut, fin: phraseFin }] : []),
+    ...(estPhrase(phraseDebut) ? [{ debut: phraseDebut, fin: propFin }] : []),
+    ...(estPhrase(phraseFin) ? [{ debut: propDebut, fin: phraseFin }] : []),
     { debut: propDebut, fin: propFin },
-  ];
+  ].filter((e, i, tous) => (
+    tous.findIndex((a) => a.debut === e.debut && a.fin === e.fin) === i
+  ));
   // Chaque ajustement seul, le plus petit déplacement d'abord ; à égalité,
   // la catégorie tranche. L'ordre est FIXE, donc le résultat aussi.
   const seuls = [
+    { debut: phraseDebut, fin: IMMOBILE },
+    { debut: IMMOBILE, fin: phraseFin },
     { debut: propDebut, fin: IMMOBILE },
     { debut: IMMOBILE, fin: propFin },
   ].filter((e) => e.debut.source !== 'aucun' || e.fin.source !== 'aucun');
@@ -242,7 +296,7 @@ function calerCandidat(c: CandidatMontage, m: Materiel): Coupe {
     // ⚠️ LA VALIDATION EST FAITE APRÈS L'ARRONDI, jamais avant : arrondir
     // peut pousser une borne d'un millième au-delà du rush, et vérifier
     // avant ne prouverait rien sur ce qui est réellement rendu.
-    if (!fenetreValide(debut, fin, c, dureeRush)) continue;
+    if (!fenetreValide(debut, fin, c, dureeRush, essai.debut, essai.fin)) continue;
     return {
       rang: c.rang,
       secondeReference: c.secondeReference,

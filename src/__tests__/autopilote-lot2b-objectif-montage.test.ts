@@ -475,11 +475,11 @@ describe('5. Les garde-fous de M3-E et M3-G tiennent', () => {
     expect(couverture).toBeLessThanOrEqual(max);
   });
 
-  it('5.4 `m3e-v3` n’a pas bougé — l’objectif ne déplace aucune borne', () => {
+  it('5.4 `m3e-v4` n’a pas bougé — l’objectif ne déplace aucune borne', () => {
     // Où couper est une question de qualité d'image et de parole, pas
     // d'intention commerciale. Le jour où un objectif déplacerait une borne,
     // ce serait `m3e-v4`, et une décision séparée.
-    expect(ALGORITHME_COUPES).toBe('m3e-v3');
+    expect(ALGORITHME_COUPES).toBe('m3e-v4');
   });
 });
 

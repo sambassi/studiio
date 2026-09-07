@@ -600,7 +600,7 @@ describe('5. Aucun effet sur le montage — le plan est le même, avec ou sans',
     // version sans changement de comportement invaliderait tous les plans et
     // toutes les coupes existants pour rien.
     expect(ALGORITHME_PLAN).toBe('m3g-v2');
-    expect(ALGORITHME_COUPES).toBe('m3e-v3');
+    expect(ALGORITHME_COUPES).toBe('m3e-v4');
   });
 
   it('5.4 sans objectif, la politique est `m3g-v2` et le relevé n’en parle pas', () => {
