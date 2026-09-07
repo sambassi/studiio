@@ -368,17 +368,53 @@ export default function PassagesSuggeres({
           et c'est de LUI que part la chaîne. Le poser au niveau de la session
           obligerait à retrouver quel jeu utiliser — une décision que personne
           n'a prise. */}
-      {compacte && candidats.length > 0 && onVoirAnalyse && (
-        <button
-          type="button"
-          onClick={onVoirAnalyse}
-          data-passages-voir
-          className="text-[11px] text-gray-500 underline underline-offset-2
-            hover:text-gray-300 focus-visible:outline-none focus-visible:ring-2
-            focus-visible:ring-purple-500 rounded transition-colors"
-        >
-          {candidats.length} passage{candidats.length > 1 ? 's' : ''} suggéré{candidats.length > 1 ? 's' : ''} — voir l’analyse
-        </button>
+      {/* ══ LE RESUME, ET L'ACTION QUI VA AVEC ═══════════════════════════
+          ⚠️ « CHERCHER A NOUVEAU » ETAIT DANS LE DOM, ET INATTEIGNABLE.
+
+          L'en-tete au-dessus porte ce bouton depuis toujours, mais il recoit
+          `hidden` en variante compacte des qu'un passage existe. Un
+          commentaire disait qu'il « part dans le tiroir » ; le tiroir —
+          `ContenuAnalyse` — est en lecture seule par conception et ne l'a
+          jamais recu. Resultat : pour obtenir d'autres passages, il fallait
+          « Re-analyser », donc repayer l'extraction des vignettes, l'analyse
+          visuelle et la transcription — alors que la route des candidats
+          REUTILISE l'analyse existante et ne recalcule que les passages.
+
+          Le bouton revient donc ici, colle au resume qu'il concerne. Il n'y
+          en a jamais deux a l'ecran : celui de l'en-tete ne s'affiche qu'en
+          variante complete, ou tant qu'aucun passage n'existe. */}
+      {compacte && candidats.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          {onVoirAnalyse && (
+            <button
+              type="button"
+              onClick={onVoirAnalyse}
+              data-passages-voir
+              className="text-[11px] text-gray-500 underline underline-offset-2
+                hover:text-gray-300 focus-visible:outline-none focus-visible:ring-2
+                focus-visible:ring-purple-500 rounded transition-colors"
+            >
+              {candidats.length} passage{candidats.length > 1 ? 's' : ''} suggéré{candidats.length > 1 ? 's' : ''} — voir l’analyse
+            </button>
+          )}
+          {!indisponible && (
+            <button
+              type="button"
+              onClick={chercher}
+              disabled={demande}
+              data-passages-rechercher
+              className="text-[11px] text-purple-300 underline underline-offset-2
+                hover:text-purple-200 disabled:opacity-50 disabled:no-underline
+                focus-visible:outline-none focus-visible:ring-2
+                focus-visible:ring-purple-500 rounded transition-colors"
+            >
+              {/* ⚠️ LE MEME VERROU QUE L'EN-TETE, PAS UN SECOND. `demande`
+                  desarme les DEUX boutons : deux entrees pour une seule
+                  requete, et l'index unique de la base derriere. */}
+              {demande ? 'Recherche de nouveaux passages…' : 'Chercher à nouveau'}
+            </button>
+          )}
+        </div>
       )}
 
       {candidats.length > 0 && (
