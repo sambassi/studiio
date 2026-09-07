@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/db/supabase';
+import { moteurDepuisConfig, repliDepuisConfig } from '@/lib/autopilot/automatique/contrat';
+import { choisirRushMontable } from '@/lib/autopilot/automatique/rush-banque';
+import { monterAvecM3 } from '@/lib/autopilot/automatique/chaine-serveur';
+import { montageDepuisStyle, audioDepuisStyle } from '@/lib/autopilot/textStyle';
+import { formatValide } from '@/lib/autopilot/analyse/montage-contrat';
 import { getUserCredits } from '@/lib/credits/system';
 import { sendEmailSilent } from '@/lib/email/resend';
 import { sanitizeConfig, decideRun, type SkipReason } from '@/lib/autopilot/rules';
@@ -307,6 +312,10 @@ export async function GET(req: NextRequest) {
        * calcule. On collecte, on retire une fois, a la fin.
        */
       const rushesMorts = new Set<string>();
+    /* Les rushes deja montes par M3 dans CE cycle : sans eux, deux montages
+       du meme cycle repartiraient du meme rush et se ressembleraient. */
+    const rushesM3Utilises = new Set<string>();
+    let m3Reussis = 0; let m3Ignores = 0; let m3Echecs = 0;
 
       for (const post of posts) {
         const jeton = slotKey(userId, post.scheduledDate, post.scheduledTime);
@@ -321,6 +330,91 @@ export async function GET(req: NextRequest) {
         // televersement echouer. Rien de tout cela ne doit emporter le reste
         // du cycle.
         try {
+          /* ══ L'AIGUILLAGE DES DEUX MOTEURS ══════════════════════════════
+             ⚠️ ICI, ET PAS AILLEURS. A cet instant tout ce qui dit QUOI
+             produire est connu — `post`, `config`, `userId`, `jeton` — et
+             rien n'a encore ete fabrique. C'est la seule frontiere ou l'on
+             peut changer de moteur sans dupliquer une decision.
+
+             Le defaut est `legacy_template` : un compte qui n'a rien demande
+             recoit exactement ce qu'il recevait hier. */
+          if (moteurDepuisConfig(config.designStyle) === 'm3') {
+            const montage = montageDepuisStyle(config.designStyle);
+            const choix = await choisirRushMontable(userId, rushesM3Utilises);
+            /* ⚠️ LE FORMAT EST UNE CHAINE LIBRE COTE REGLAGES, et le contrat
+               du moteur n'en accepte que trois. On le VALIDE au lieu de le
+               forcer : un `as` ferait entrer « portrait » dans un vocabulaire
+               ferme, et l'erreur ressortirait au rendu, trois minutes plus
+               loin, sous un motif qui ne dirait pas ca. */
+            const issue = choix === null
+              ? { sorte: 'ignore' as const, motif: 'aucun_rush_analyse' as const }
+              : !formatValide(montage.format)
+                ? { sorte: 'echec' as const, motif: 'plan_impossible' as const,
+                  detail: 'format inconnu' }
+                : await monterAvecM3({
+                userId,
+                  rushId: choix.rushId,
+                  analysisId: choix.analysisId,
+                  candidateSetId: choix.candidateSetId,
+                  format: montage.format,
+                  dureeCibleSecondes: montage.dureeSecondes,
+                  // La MEME recette que le parcours manuel : musique,
+                  // volumes, son du rush, et la coupe du blanc initial.
+                  recette: audioDepuisStyle(config.designStyle),
+                });
+
+            if (issue.sorte === 'reussi') {
+              rushesM3Utilises.add(issue.rushId);
+              const videoUrl = `/api/autopilot/rendus-montage/${issue.renduId}/fichier`;
+              const { error: erreurM3 } = await supabaseAdmin
+                .from('scheduled_posts')
+                .insert(toPostRow({
+                  userId, post, config, videoUrl,
+                  metadata: {
+                    source: 'autopilote',
+                    /* ⚠️ LE MOTEUR EST ECRIT DANS LE POST. Sans lui, on ne
+                       pourrait plus dire d'ou vient une video — et comparer
+                       les deux moteurs est TOUT l'interet de cette
+                       passerelle. */
+                    moteur: 'm3',
+                    slotKey: jeton,
+                    renduId: issue.renduId,
+                    montagePlanId: issue.planId,
+                    rushId: issue.rushId,
+                    videoUrl,
+                    dureeSecondes: issue.dureeSecondes,
+                    pendingRender: false,
+                    serverRendered: true,
+                  },
+                }));
+              if (erreurM3) throw new Error(`insertion du post M3 : ${erreurM3.message}`);
+              dejaFaits.add(jeton);
+              reussis += 1;
+              m3Reussis += 1;
+              try {
+                await deductCredits(userId, COST_PER_VIDEO, 'render',
+                  referenceOperation('autopilote', `m3-${issue.renduId}`));
+              } catch (err) {
+                console.error('[autopilote][m3] debit impossible', err);
+              }
+              continue;
+            }
+
+            /* ⚠️ AUCUN REPLI SILENCIEUX. Retomber sur le gabarit sans le dire
+               produirait des videos d'un moteur en croyant les avoir de
+               l'autre, et rendrait la comparaison impossible. Le repli est un
+               CHOIX explicite, et il ne couvre que « ignore » — un echec
+               reste un echec, on ne le maquille pas en video. */
+            if (issue.sorte === 'echec') {
+              m3Echecs += 1;
+              console.warn(`[autopilote][m3] echec ${issue.motif} user=${userId}`);
+              echecs += 1;
+              continue;
+            }
+            m3Ignores += 1;
+            if (repliDepuisConfig(config.designStyle) !== 'template_si_ignore') continue;
+          }
+
           // ── Le rush existe-t-il encore ? ───────────────────────────────
           // Un rush supprime — retention du stockage, menage de
           // l'utilisateur — reste ecrit dans `rush_urls`. Sans ce controle,
@@ -499,6 +593,15 @@ export async function GET(req: NextRequest) {
         ...(echecs ? { echecs } : null),
         ...(doublons ? { doublons } : null),
         ...(rushesMorts.size ? { rushesRetires: rushesMorts.size } : null),
+        /* ⚠️ CE QUE M3 A FAIT, DIT SEPAREMENT. Un cycle ou M3 ignore tout et
+           ou le gabarit produit trois videos afficherait sinon « 3 prepares »
+           — un rapport vrai et trompeur. Et « ignore » n'est pas « echec » :
+           un compte sans rush analyse n'a rien casse, il n'a rien a monter.
+           Les confondre ferait sonner une alarme a chaque cycle, et l'alarme
+           finirait ignoree le jour ou quelque chose casse vraiment. */
+        ...(m3Reussis ? { m3Reussis } : null),
+        ...(m3Ignores ? { m3Ignores } : null),
+        ...(m3Echecs ? { m3Echecs } : null),
       });
     }
 
