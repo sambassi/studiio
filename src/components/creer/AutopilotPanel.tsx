@@ -750,6 +750,7 @@ export default function AutopilotPanel({
             chargement={monObjectifChargement}
             onEnregistrerDefaut={enregistrerMonObjectif}
             onAppliquerACetteVideo={setObjectifCetteVideo}
+            objectifCetteVideo={objectifCetteVideo}
           />
 
 {/* ── MON STYLE ────────────────────────────────────────────────

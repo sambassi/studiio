@@ -449,8 +449,26 @@ describe('6. Ce que 4C ne touche pas', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-describe('7. L’écran — minimal, honnête, et sans jargon', () => {
-  function monter(objectif: Parameters<typeof MonObjectifPanel>[0]['objectifEnregistre'] = null) {
+// ═══════════════════════════════════════════════════════════════════════════
+// LOT 2B ÉTAPE 4E — LE WIZARD
+//
+// ⚠️ CE QUE CETTE SECTION EMPÊCHE DE REVENIR.
+//
+// Mesuré en production le 2026-09-07 : l'utilisateur voulait un montage
+// « témoignage » pour UNE vidéo. Il a coché la PREUVE « Un témoignage » au
+// lieu de choisir le TYPE « Mettre en avant un témoignage », puis appuyé sur
+// le bouton violet — le plus visible des deux. Son objectif par défaut est
+// devenu `evenement + preuve temoignage`, et le montage n'a pas bougé.
+//
+// Les tests 7.14 à 7.18 tiennent les quatre scénarios de la refonte : le type
+// gagne, la case décochée n'écrit rien, la case cochée écrit, fermer n'écrit
+// rien.
+// ═══════════════════════════════════════════════════════════════════════════
+describe('7. L’écran — un wizard, une décision par étape', () => {
+  function monter(
+    objectif: Parameters<typeof MonObjectifPanel>[0]['objectifEnregistre'] = null,
+    options: { cetteVideo?: unknown; sansVideo?: boolean } = {},
+  ) {
     // ⚠️ LES PARAMETRES SONT TYPES. Un `vi.fn()` nu rend `calls: [][]`, et
     // `calls[0][0]` cesse alors de compiler — le test verifierait un appel
     // dont il ne peut plus lire l'argument.
@@ -461,7 +479,8 @@ describe('7. L’écran — minimal, honnête, et sans jargon', () => {
         objectifEnregistre={objectif}
         chargement={false}
         onEnregistrerDefaut={enregistrer}
-        onAppliquerACetteVideo={pourLaVideo}
+        {...(options.sansVideo ? {} : { onAppliquerACetteVideo: pourLaVideo })}
+        objectifCetteVideo={(options.cetteVideo ?? null) as never}
       />,
     );
     return { vue, enregistrer, pourLaVideo };
@@ -469,6 +488,18 @@ describe('7. L’écran — minimal, honnête, et sans jargon', () => {
 
   function ouvrir() {
     fireEvent.click(document.querySelector('[data-mon-objectif-toggle]')!);
+  }
+  function suivant() {
+    fireEvent.click(document.querySelector('[data-mon-objectif-suivant]')!);
+  }
+  /** Ouvre le wizard et va droit à l'étape 3. */
+  function jusquAuRecap() {
+    suivant();
+    suivant();
+  }
+  function etapeCourante(): string | null {
+    return document.querySelector('[data-mon-objectif-etape]')
+      ?.getAttribute('data-mon-objectif-etape') ?? null;
   }
 
   it('7.1 sans objectif, la carte propose de le configurer', () => {
@@ -485,13 +516,19 @@ describe('7. L’écran — minimal, honnête, et sans jargon', () => {
     expect(screen.getByText('Modifier')).toBeTruthy();
   });
 
-  it('7.3 le panneau s’ouvre sur la question, pas sur un formulaire', () => {
+  it('7.3 le wizard s’ouvre sur UNE question, pas sur un formulaire', () => {
     monter(null);
     ouvrir();
-    expect(screen.getByText('Que veux-tu obtenir avec cette vidéo ?')).toBeTruthy();
+    expect(etapeCourante()).toBe('1');
+    expect(document.querySelector('[data-mon-objectif-question]')?.textContent)
+      .toContain('Quel est le but de cette vidéo ?');
+    // Les priorités et le récapitulatif appartiennent aux étapes suivantes :
+    // tout afficher d'un coup est exactement ce que ce lot supprime.
+    expect(document.querySelector('[data-mon-objectif-option]')).toBeNull();
+    expect(document.querySelector('[data-mon-objectif-recap]')).toBeNull();
   });
 
-  it('7.4 TOUS les identifiants du catalogue sont atteignables', () => {
+  it('7.4 TOUS les identifiants du catalogue restent atteignables', () => {
     monter(null);
     ouvrir();
     // Six en avant : quinze cases d'un coup se lisent comme un formulaire
@@ -517,21 +554,21 @@ describe('7. L’écran — minimal, honnête, et sans jargon', () => {
     }
   });
 
-  it('7.6 les champs de contexte dépendent du type choisi', () => {
+  it('7.6 les champs de contexte dépendent du type, et vivent après la question', () => {
     monter(null);
     ouvrir();
-    // Générique : aucun champ de contexte, l'écran reste une question.
+    fireEvent.click(document.querySelector('[data-mon-objectif-type="evenement"]')!);
+    // ⚠️ PAS À L'ÉTAPE 1. Le message ne doit plus concurrencer le choix.
     expect(document.querySelector('[data-mon-objectif-champ]')).toBeNull();
 
-    fireEvent.click(document.querySelector('[data-mon-objectif-type="evenement"]')!);
+    suivant();
+    // Replié : c'est facultatif, et ça se voit.
+    expect(document.querySelector('[data-mon-objectif-champ]')).toBeNull();
+    fireEvent.click(document.querySelector('[data-mon-objectif-voir-message]')!);
     expect(document.querySelector('[data-mon-objectif-champ="contexte"]')).toBeTruthy();
     expect(document.querySelector('[data-mon-objectif-champ="messagePrincipal"]')).toBeTruthy();
-    // « Le produit » n'a rien à faire sous « événement ».
+    // « Ce que tu veux obtenir » n'a rien à faire sous « événement ».
     expect(document.querySelector('[data-mon-objectif-champ="objectifPrincipal"]')).toBeNull();
-
-    fireEvent.click(document.querySelector('[data-mon-objectif-type="produit"]')!);
-    expect(document.querySelector('[data-mon-objectif-champ="objectifPrincipal"]')).toBeTruthy();
-    expect(document.querySelector('[data-mon-objectif-champ="contexte"]')).toBeNull();
   });
 
   it('7.7 l’écran DIT quand l’objectif ne change pas le montage', () => {
@@ -548,37 +585,129 @@ describe('7. L’écran — minimal, honnête, et sans jargon', () => {
       .toBe('aucun');
   });
 
-  it('7.8 « pour cette vidéo » n’enregistre RIEN côté compte', () => {
-    const { enregistrer, pourLaVideo } = monter(null);
+  it('7.8 SCÉNARIO A — le type choisi part vers la vidéo, le compte ne bouge pas', () => {
+    // Le compte dit « événement ». L'utilisateur veut « témoignage » pour
+    // CETTE vidéo. C'est le scénario exact qui a échoué en production.
+    const { enregistrer, pourLaVideo } = monter(normaliserObjectif(EVENEMENT));
     ouvrir();
-    fireEvent.click(document.querySelector('[data-mon-objectif-type="evenement"]')!);
+    fireEvent.click(document.querySelector('[data-mon-objectif-type="temoignage"]')!);
+    jusquAuRecap();
     fireEvent.click(document.querySelector('[data-mon-objectif-cette-video]')!);
 
     expect(pourLaVideo).toHaveBeenCalledTimes(1);
-    expect(pourLaVideo.mock.calls[0][0]).toMatchObject({ type: 'evenement' });
+    expect(pourLaVideo.mock.calls[0][0]).toMatchObject({ type: 'temoignage' });
     // ⚠️ LE GESTE QUI COMPTE : le défaut du compte n'a pas été touché.
     expect(enregistrer).not.toHaveBeenCalled();
   });
 
-  it('7.9 seul le bouton dédié enregistre le défaut du compte', async () => {
-    const { enregistrer } = monter(null);
+  it('7.9 SCÉNARIO B — case décochée : AUCUNE écriture du défaut', async () => {
+    const { enregistrer, pourLaVideo } = monter(normaliserObjectif(EVENEMENT));
     ouvrir();
     fireEvent.click(document.querySelector('[data-mon-objectif-type="temoignage"]')!);
-    // Toucher aux priorités, aux preuves, aux champs : rien ne part.
+    suivant();
+    // Toucher aux priorités : rien ne part non plus.
     fireEvent.click(document.querySelector('[data-mon-objectif-priorite="personnalite"]')!);
-    fireEvent.click(document.querySelector('[data-mon-objectif-preuve="temoignage"]')!);
-    expect(enregistrer).not.toHaveBeenCalled();
+    suivant();
 
-    fireEvent.click(document.querySelector('[data-mon-objectif-enregistrer]')!);
-    await waitFor(() => expect(enregistrer).toHaveBeenCalledTimes(1));
-    expect(enregistrer.mock.calls[0][0]).toMatchObject({
-      type: 'temoignage', priorites: ['personnalite'], preuveSouhaitee: ['temoignage'],
-    });
+    const case_ = document.querySelector('[data-mon-objectif-aussi-defaut]') as HTMLInputElement;
+    expect(case_).toBeTruthy();
+    // ⚠️ DÉCOCHÉE D'OFFICE. Une case pré-cochée ferait du défaut du compte un
+    // effet de bord de l'action locale — le défaut exact de l'écran d'avant.
+    expect(case_.checked).toBe(false);
+
+    fireEvent.click(document.querySelector('[data-mon-objectif-cette-video]')!);
+    await waitFor(() => expect(pourLaVideo).toHaveBeenCalledTimes(1));
+    expect(enregistrer).not.toHaveBeenCalled();
   });
 
-  it('7.10 aucune donnée technique interne n’est affichée', () => {
+  it('7.10 SCÉNARIO C — case cochée : le défaut est écrit, et seulement alors', async () => {
+    const { enregistrer, pourLaVideo } = monter(normaliserObjectif(EVENEMENT));
+    ouvrir();
+    fireEvent.click(document.querySelector('[data-mon-objectif-type="temoignage"]')!);
+    jusquAuRecap();
+    fireEvent.click(document.querySelector('[data-mon-objectif-aussi-defaut]')!);
+    fireEvent.click(document.querySelector('[data-mon-objectif-cette-video]')!);
+
+    await waitFor(() => expect(enregistrer).toHaveBeenCalledTimes(1));
+    expect(enregistrer.mock.calls[0][0]).toMatchObject({ type: 'temoignage' });
+    // La vidéo en cours l'a reçu AUSSI — cocher la case n'échange pas les deux.
+    expect(pourLaVideo).toHaveBeenCalledTimes(1);
+  });
+
+  it('7.11 SCÉNARIO D — fermer avant d’appliquer ne mute rien', () => {
+    const { enregistrer, pourLaVideo } = monter(normaliserObjectif(EVENEMENT));
+    ouvrir();
+    fireEvent.click(document.querySelector('[data-mon-objectif-type="temoignage"]')!);
+    jusquAuRecap();
+    fireEvent.click(document.querySelector('[data-mon-objectif-aussi-defaut]')!);
+    // Fermer, sans appliquer.
+    fireEvent.click(document.querySelector('[data-mon-objectif-toggle]')!);
+
+    expect(enregistrer).not.toHaveBeenCalled();
+    expect(pourLaVideo).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-mon-objectif-wizard]')).toBeNull();
+  });
+
+  it('7.12 le doublon qui a coûté un objectif de compte a disparu', () => {
+    monter(null);
+    ouvrir();
+    fireEvent.click(document.querySelector('[data-mon-objectif-type="temoignage"]')!);
+    suivant();
+    // Tout déplier : même en cherchant, la preuve homonyme n'est plus là.
+    const voirPlus = document.querySelector('[data-mon-objectif-voir-plus-contexte]');
+    if (voirPlus) fireEvent.click(voirPlus);
+
+    expect(document.querySelector('[data-mon-objectif-preuve="temoignage"]')).toBeNull();
+    // Et les preuves dont une priorité homonyme porte le MÊME critère avec le
+    // MÊME poids ne sont proposées nulle part : deux contrôles pour un seul
+    // effet, c'est la confusion elle-même.
+    expect(document.querySelector('[data-mon-objectif-preuve="foule"]')).toBeNull();
+    expect(document.querySelector('[data-mon-objectif-preuve="demonstration"]')).toBeNull();
+    // La priorité, elle, reste atteignable.
+    expect(document.querySelector('[data-mon-objectif-priorite="foule"]')).toBeTruthy();
+  });
+
+  it('7.13 l’objectif de la vidéo et celui du compte sont distincts à l’œil', () => {
+    monter(normaliserObjectif(EVENEMENT), { cetteVideo: normaliserObjectif(TEMOIGNAGE) });
+    const video = document.querySelector('[data-mon-objectif-video]');
+    const compte = document.querySelector('[data-mon-objectif-etat]');
+    expect(video?.textContent).toContain('Mettre en avant un témoignage');
+    expect(compte?.textContent).toContain('Promouvoir un événement');
+    // Deux lignes, deux libellés, et l'écran nomme laquelle est laquelle.
+    expect(document.body.textContent).toContain('Objectif de cette vidéo');
+    expect(document.body.textContent).toContain('Objectif par défaut');
+  });
+
+  it('7.14 sans contexte vidéo, l’action principale enregistre le défaut', async () => {
+    const { enregistrer } = monter(null, { sansVideo: true });
+    ouvrir();
+    fireEvent.click(document.querySelector('[data-mon-objectif-type="evenement"]')!);
+    jusquAuRecap();
+    // Pas de case à cocher : il n'y a pas de vidéo à qui appliquer quoi que
+    // ce soit, donc pas de choix à offrir.
+    expect(document.querySelector('[data-mon-objectif-aussi-defaut]')).toBeNull();
+    fireEvent.click(document.querySelector('[data-mon-objectif-enregistrer]')!);
+    await waitFor(() => expect(enregistrer).toHaveBeenCalledTimes(1));
+  });
+
+  it('7.15 le récapitulatif relit ce qui va être appliqué', () => {
+    monter(null);
+    ouvrir();
+    fireEvent.click(document.querySelector('[data-mon-objectif-type="evenement"]')!);
+    suivant();
+    fireEvent.click(document.querySelector('[data-mon-objectif-priorite="foule"]')!);
+    suivant();
+    expect(document.querySelector('[data-mon-objectif-recap-type]')?.textContent)
+      .toContain('Promouvoir un événement');
+    expect(document.querySelector('[data-mon-objectif-recap-priorites]')?.textContent)
+      .toContain('Du monde');
+  });
+
+  it('7.16 aucune donnée technique interne n’est affichée', () => {
     monter(normaliserObjectif(EVENEMENT));
     ouvrir();
+    suivant();
+    suivant();
     const texte = document.body.textContent ?? '';
     for (const jargon of [
       'm3g-v3', 'm3g-v2', 'm3e-v3', 'objectiveScore', 'signaux-v1',
@@ -588,10 +717,13 @@ describe('7. L’écran — minimal, honnête, et sans jargon', () => {
     }
   });
 
-  it('7.11 seules les priorités et preuves RÉELLEMENT lues sont proposées', () => {
+  it('7.17 seules les priorités RÉELLEMENT lues sont proposées', () => {
     monter(null);
     ouvrir();
     fireEvent.click(document.querySelector('[data-mon-objectif-type="evenement"]')!);
+    suivant();
+    const voirPlus = document.querySelector('[data-mon-objectif-voir-plus-contexte]');
+    if (voirPlus) fireEvent.click(voirPlus);
 
     // ⚠️ PAS DE SLIDER « IMPORTANCE », PAS DE POIDS, PAS DE PRIORITÉ LIBRE.
     // Les poids sont des constantes du moteur ; les exposer laisserait
@@ -608,7 +740,7 @@ describe('7. L’écran — minimal, honnête, et sans jargon', () => {
     expect(proposees.length).toBeGreaterThan(0);
   });
 
-  it('7.12 les textes libres n’ont aucun effet sur le classement', () => {
+  it('7.18 les textes libres n’ont aucun effet sur le classement', () => {
     // L'écran les affiche comme descriptifs, et le moteur les ignore. Le
     // second point est ce qui compte : on le vérifie sur le moteur.
     const nu = normaliserObjectif({ type: 'evenement' });
@@ -626,23 +758,72 @@ describe('7. L’écran — minimal, honnête, et sans jargon', () => {
       .toEqual(politiqueDePlan(fenetres, nu, ALGORITHME_PLAN).ordreRangs);
   });
 
-  it('7.13 les cibles tactiles principales ne sont pas des confettis', () => {
+  it('7.19 les cibles tactiles principales ne sont pas des confettis', () => {
     // Le banc responsive avait mesuré des interrupteurs de 19 px. Le texte
     // reste petit ; ce sont les CIBLES qui doivent rester visables au doigt.
     monter(null);
     ouvrir();
+    // Les tuiles de choix, puis les commandes de navigation.
+    const tuile = document.querySelector('[data-mon-objectif-type="evenement"]') as HTMLElement;
+    expect(tuile.className).toContain('min-h-[44px]');
+    jusquAuRecap();
     for (const sel of [
       '[data-mon-objectif-toggle]',
-      '[data-mon-objectif-enregistrer]',
       '[data-mon-objectif-cette-video]',
+      '[data-mon-objectif-retour]',
     ]) {
       const el = document.querySelector(sel) as HTMLElement;
       expect(el).toBeTruthy();
       // jsdom ne calcule aucune taille : on vérifie la contrainte qui la
       // porte, faute de mieux. La MESURE réelle est faite au banc Chromium
-      // — 44 px sur ces trois cibles, 40 px sur les listes de choix — parce
-      // que lui seul sait ce qu'un pixel vaut.
+      // — 44 px sur ces cibles — parce que lui seul sait ce qu'un pixel vaut.
       expect(el.className).toContain('min-h-[44px]');
     }
+  });
+
+  it('7.20 les deux actions secondaires vivent dans UN conteneur empilable', () => {
+    // ⚠️ CE TEST EXISTE PARCE QUE LE BANC A TROUVE LE DEFAUT, PAS L'INVERSE.
+    //
+    // Sans conteneur, deux `<button>` restent des elements en ligne : mesures
+    // dans Chromium, « Voir plus de priorités » et « Ajouter un message » se
+    // posaient sur la MEME ligne a 320 px comme a 1280, bord a bord, zero
+    // pixel entre eux, et 40 px de haut. jsdom ne mesure rien — il peut en
+    // revanche tenir la STRUCTURE qui rend la mesure possible. Les pixels,
+    // eux, restent l'affaire de `scripts/mon-objectif-proof/run.js`.
+    monter(null);
+    ouvrir();
+    fireEvent.click(document.querySelector('[data-mon-objectif-type="temoignage"]')!);
+    suivant();
+
+    const bloc = document.querySelector('[data-mon-objectif-actions-secondaires]') as HTMLElement;
+    expect(bloc).toBeTruthy();
+    // Empilees par defaut, cote a cote seulement a partir de 768 px.
+    expect(bloc.className).toContain('flex-col');
+    expect(bloc.className).toContain('md:flex-row');
+    expect(bloc.className).toMatch(/gap-2/);
+
+    const voirPlus = bloc.querySelector('[data-mon-objectif-voir-plus-contexte]') as HTMLElement;
+    const message = bloc.querySelector('[data-mon-objectif-voir-message]') as HTMLElement;
+    expect(voirPlus).toBeTruthy();
+    expect(message).toBeTruthy();
+    for (const el of [voirPlus, message]) expect(el.className).toContain('min-h-[44px]');
+    // Le libelle court, celui qu'on lit sur un telephone.
+    expect(message.textContent).toContain('+ Ajouter un message');
+  });
+
+  it('7.21 le clavier suffit : chaque choix est un vrai bouton', () => {
+    monter(null);
+    ouvrir();
+    for (const sel of ['[data-mon-objectif-type="evenement"]', '[data-mon-objectif-suivant]']) {
+      const el = document.querySelector(sel)!;
+      expect(el.tagName).toBe('BUTTON');
+      expect(el.getAttribute('type')).toBe('button');
+      expect(el.className).toContain('focus-visible:ring');
+    }
+    // L'état sélectionné est LU, pas seulement coloré : le violet seul
+    // n'existe pas pour un lecteur d'écran.
+    fireEvent.click(document.querySelector('[data-mon-objectif-type="evenement"]')!);
+    expect(document.querySelector('[data-mon-objectif-type="evenement"]')
+      ?.getAttribute('aria-pressed')).toBe('true');
   });
 });
