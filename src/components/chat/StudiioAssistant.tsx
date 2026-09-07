@@ -158,7 +158,7 @@ export function StudiioAssistant() {
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onClick={() => { if (isDragging) return; if (!btnPos) handleOpen(); }}
-          className={`fixed z-40 h-14 w-14 rounded-full bg-gradient-to-br from-purple-600 to-pink-500 text-white shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 transition-all flex items-center justify-center ${isDragging ? 'ring-4 ring-purple-400/50 scale-105' : 'hover:scale-110'} ${!btnPos ? 'bottom-4 right-4' : 'lg:bottom-4 lg:right-4'}`}
+          className={`fixed z-40 h-14 w-14 rounded-full bg-gradient-to-br from-purple-600 to-pink-500 text-white shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 transition-all flex items-center justify-center ${isDragging ? 'ring-4 ring-purple-400/50 scale-105' : 'hover:scale-110'} ${!btnPos ? 'bottom-[calc(1rem+env(safe-area-inset-bottom))] right-4' : 'lg:bottom-4 lg:right-4'}`}
           style={btnPos ? { left: btnPos.x, top: btnPos.y, bottom: 'auto', right: 'auto', touchAction: 'none' } : { touchAction: 'none' }}
           title={t('title')}
         >

@@ -444,35 +444,55 @@ export default function MonObjectifPanel({
           La vidéo en cours EN HAUT et en clair ; le défaut du compte en
           dessous, en gris, annoncé comme tel. L'écran précédent n'affichait
           que la seconde, ce qui la faisait lire comme la première. */}
-      <div className="flex items-start justify-between gap-2">
+      {/* ⚠️ LA LARGEUR NE SE DEDUIT PAS DU VIEWPORT, ELLE SE MESURE.
+          A 1024 px de viewport, cette colonne n'a que 274 px : le point de
+          rupture `sm:` disait « grand ecran » la ou il n'y avait pas la place.
+          Le libelle et sa valeur restent donc empiles PARTOUT. Seul le bouton
+          garde un point de rupture, et il est mesure : sous 360 px il ne
+          reste que ~113 px au titre s'il partage la ligne. */}
+      <div className="flex flex-col items-stretch gap-2
+        min-[360px]:flex-row min-[360px]:items-start min-[360px]:justify-between">
         <div className="min-w-0 space-y-0.5">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <Target className="w-3.5 h-3.5 text-purple-400 shrink-0" aria-hidden="true" />
-            <p className="text-xs font-medium text-gray-300">
-              {pourUneVideo ? 'Objectif de cette vidéo' : 'Objectif'}
-            </p>
-            {chargement ? (
-              <Loader2 className="w-3 h-3 animate-spin text-gray-400" aria-hidden="true" />
-            ) : pourUneVideo ? (
-              <span
-                data-mon-objectif-video={aUnObjectifVideo ? 'personnel' : 'defaut'}
-                className={`truncate text-[11px] ${
-                  aUnObjectifVideo ? 'text-purple-300' : 'text-gray-400'}`}
-              >
-                {aUnObjectifVideo ? nommer(objectifCetteVideo) : nommer(objectifEnregistre)}
-              </span>
-            ) : (
-              <span
-                data-mon-objectif-etat={aUnObjectif ? 'personnel' : 'defaut'}
-                className={`truncate text-[11px] ${
-                  aUnObjectif ? 'text-purple-300' : 'text-gray-400'}`}
-              >
-                {nommer(objectifEnregistre)}
-              </span>
-            )}
-            {aUnObjectifVideo && (
-              <Check className="w-3 h-3 text-purple-400 shrink-0" aria-hidden="true" />
-            )}
+          {/* ⚠️ LE LIBELLE ET LA VALEUR SE SUPERPOSENT SOUS 640 PX.
+              Sur la meme ligne, ils se partageaient 185 px mesures dans
+              l'application : « Objectif de cette vidéo » se cassait en trois
+              lignes et « Promouvoir un événement » sortait en « Pro… ». Ce
+              n'etait pas un manque de place, c'etait deux textes qui se la
+              disputaient. Empiles, chacun a toute la colonne. */}
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <Target className="w-3.5 h-3.5 text-purple-400 shrink-0" aria-hidden="true" />
+              <p className="text-xs font-medium text-gray-300">
+                {pourUneVideo ? 'Objectif de cette vidéo' : 'Objectif'}
+              </p>
+            </div>
+            {/* `pl-5` aligne la valeur sous le libelle, pas sous l'icone :
+                14 px de pictogramme plus 6 px d'ecart. Au-dessus de 640 px la
+                ligne se reforme et le decalage disparait. */}
+            <div className="flex min-w-0 items-center gap-1.5 pl-5">
+              {chargement ? (
+                <Loader2 className="w-3 h-3 animate-spin text-gray-400" aria-hidden="true" />
+              ) : pourUneVideo ? (
+                <span
+                  data-mon-objectif-video={aUnObjectifVideo ? 'personnel' : 'defaut'}
+                  className={`truncate text-[11px] ${
+                    aUnObjectifVideo ? 'text-purple-300' : 'text-gray-400'}`}
+                >
+                  {aUnObjectifVideo ? nommer(objectifCetteVideo) : nommer(objectifEnregistre)}
+                </span>
+              ) : (
+                <span
+                  data-mon-objectif-etat={aUnObjectif ? 'personnel' : 'defaut'}
+                  className={`truncate text-[11px] ${
+                    aUnObjectif ? 'text-purple-300' : 'text-gray-400'}`}
+                >
+                  {nommer(objectifEnregistre)}
+                </span>
+              )}
+              {aUnObjectifVideo && (
+                <Check className="w-3 h-3 text-purple-400 shrink-0" aria-hidden="true" />
+              )}
+            </div>
           </div>
           {pourUneVideo && (
             <p className="pl-5 text-[10px] text-gray-400">

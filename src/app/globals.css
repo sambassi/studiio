@@ -28,8 +28,17 @@ body {
   @apply bg-gradient-to-br from-gray-900 via-gray-800 to-studiio-dark;
 }
 
+/**
+ * ⚠️ `p-4` SOUS 640 PX, ET C'EST UNE MESURE, PAS UN GOUT.
+ *
+ * Le `<main>` du tableau de bord pose deja 16 px de marge. Ajouter 24 px de
+ * padding de carte par-dessus laissait 240 px de contenu sur un ecran de
+ * 320 px — 75 % du telephone, le quart perdu en marges superposees. Au-dessus
+ * de 640 px la carte retrouve exactement ses 24 px : le bureau ne bouge pas
+ * d'un pixel.
+ */
 .card-base {
-  @apply bg-gray-900 border border-gray-800 rounded-xl p-6;
+  @apply bg-gray-900 border border-gray-800 rounded-xl p-4 sm:p-6;
 }
 
 .input-base {

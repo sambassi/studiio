@@ -83,7 +83,7 @@ export default function PWAInstallPrompt() {
   // Standard PWA install prompt
   if (showPrompt) {
     return (
-      <div className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 px-4 py-4 shadow-lg z-50">
+      <div className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 px-4 py-4 shadow-lg z-50 pb-[calc(1rem+env(safe-area-inset-bottom))]">
         <div className="max-w-md mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-1">
             <Download className="w-5 h-5 text-purple-500 flex-shrink-0" />
@@ -117,7 +117,7 @@ export default function PWAInstallPrompt() {
   // iOS Safari instructions
   if (showIOSPrompt) {
     return (
-      <div className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 px-4 py-4 shadow-lg z-50">
+      <div className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 px-4 py-4 shadow-lg z-50 pb-[calc(1rem+env(safe-area-inset-bottom))]">
         <div className="max-w-md mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-1">
             <Smartphone className="w-5 h-5 text-purple-500 flex-shrink-0" />

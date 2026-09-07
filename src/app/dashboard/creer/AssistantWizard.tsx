@@ -6920,9 +6920,14 @@ export default function AssistantWizard() {
         {!started && (
           <>
             <Card>
-              <div className="flex items-start gap-4">
+              <div className="flex items-start gap-3 sm:gap-4">
                 <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+                  /* ⚠️ MASQUEE SOUS 640 PX, ET C'EST UNE MESURE.
+                     L'icone et son ecart prenaient 60 px — 16 % d'un ecran de
+                     375 px — sur une colonne qui n'en avait que 185. Elle
+                     decore ; le titre juste a cote dit deja de quelle carte
+                     il s'agit. Au-dessus de 640 px elle revient, inchangee. */
+                  className="hidden sm:flex w-11 h-11 rounded-xl items-center justify-center flex-shrink-0"
                   style={{ backgroundColor: `${accent}26`, color: '#C4B5FD' }}
                 >
                   <Wand2 className="w-5 h-5" />
@@ -6943,9 +6948,14 @@ export default function AssistantWizard() {
             </Card>
 
             <Card>
-              <div className="flex items-start gap-4">
+              <div className="flex items-start gap-3 sm:gap-4">
                 <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+                  /* ⚠️ MASQUEE SOUS 640 PX, ET C'EST UNE MESURE.
+                     L'icone et son ecart prenaient 60 px — 16 % d'un ecran de
+                     375 px — sur une colonne qui n'en avait que 185. Elle
+                     decore ; le titre juste a cote dit deja de quelle carte
+                     il s'agit. Au-dessus de 640 px elle revient, inchangee. */
+                  className="hidden sm:flex w-11 h-11 rounded-xl items-center justify-center flex-shrink-0"
                   style={{ backgroundColor: '#EC489926', color: '#F9A8D4' }}
                 >
                   <Rocket className="w-5 h-5" />
@@ -9011,7 +9021,21 @@ export default function AssistantWizard() {
           `top-20` et non `top-4` : la navbar est `fixed h-16`, un decalage
           plus court glissait 48 px de la carte — en-tete et onglets compris —
           sous cette barre. */}
-      <div className="lg:col-span-2 lg:sticky lg:top-20">
+      {/* ⚠️ `order-first` SOUS 1024 PX — L'APERCU AVANT LES REGLAGES.
+          La grille empile `grid-cols-1` sur telephone, et l'ordre du DOM est
+          celui du bureau : configuration d'abord, apercu ensuite. L'apercu se
+          retrouvait donc SOUS la totalite des reglages — rush, objectif,
+          style, format, duree, audio, avance — c'est-a-dire hors de vue
+          pendant tout le reglage. On regle sans voir ce qu'on regle.
+
+          `order-first` remet l'apercu en tete, et `sticky top-16` l'y garde
+          pendant qu'on fait defiler les reglages dessous : 16 = la navbar
+          `fixed h-16`. Au-dessus de 1024 px, `lg:order-none` rend l'ordre du
+          DOM et la colonne de droite retrouve exactement son comportement —
+          le bureau ne bouge pas. */}
+      <div className="order-first lg:order-none sticky top-16 z-20 -mx-4 bg-studiio-dark px-4 py-2
+        lg:static lg:z-auto lg:mx-0 lg:bg-transparent lg:px-0 lg:py-0
+        lg:col-span-2 lg:sticky lg:top-20">
         {/* ── AVANT DE COMMENCER : L'APERÇU DE L'AUTOPILOTE ─────────────
             L'assistant n'a rien généré tant qu'on n'a pas cliqué
             « Commencer » : sa colonne d'aperçu n'affichait donc qu'un cadre
@@ -9047,9 +9071,15 @@ export default function AssistantWizard() {
 
                  Rien d'autre ne change — ni la colonne collante, ni l'aperçu
                  lui-même, ni le panneau vidéo qui, lui, tenait déjà. */
+              /* ⚠️ `dvh` ET NON `vh`, ET C'EST CE QUI SAUVE LA SAISIE.
+                 `vh` ignore le clavier logiciel : un apercu colle a 38 % de
+                 `vh` garde sa taille quand le clavier reduit l'ecran de
+                 moitie, et le champ qu'on remplit passe sous la ligne de
+                 flottaison. `dvh` suit le viewport reellement visible — le
+                 clavier ouvert, l'apercu maigrit, le champ gagne. Au-dessus
+                 de 1024 px, la borne d'origine revient intacte. */
               <div
-                className="overflow-y-auto"
-                style={{ maxHeight: 'calc(100vh - 6rem)' }}
+                className="overflow-y-auto max-h-[38dvh] lg:max-h-[calc(100vh-6rem)]"
                 data-autopilot-apercu-cadre
               >
                 <AutopilotPreview
