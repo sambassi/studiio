@@ -552,16 +552,24 @@ describe('10. La géométrie de l’aperçu borne la LARGEUR', () => {
     expect(g.width).toBe('100%');
   });
 
-  it('D bis. les quatre états de l’aperçu partagent la même géométrie', async () => {
+  it('D bis. tous les états de l’aperçu partagent la même géométrie', async () => {
     const { readFileSync } = await import('node:fs');
     const path = await import('node:path');
     const src = readFileSync(
       path.resolve(__dirname, '../components/creer/VideosPretes.tsx'), 'utf8',
     );
-    // TROIS appels — `CadreFormat`, l'affiche, le lecteur — pour CINQ
-    // emplacements : `CadreFormat` sert a lui seul « aucun rush », « aucune
-    // video » et « creation en cours ». Une formule, aucune exception.
-    expect(src.match(/geometrieApercu\(/g) ?? []).toHaveLength(3);
+    /**
+     * CINQ appels — `CadreFormat`, l'affiche, le lecteur, puis les deux de la
+     * version precedente ajoutes par LOT PC-5 (sa porte et son lecteur).
+     *
+     * ⚠️ CE QUE CE TEST TIENT N'EST PAS UN NOMBRE, C'EST UNE REGLE : une seule
+     * formule de geometrie, aucune exception. Le compte n'est qu'une facon de
+     * remarquer un nouvel emplacement — quand il change, il faut verifier que
+     * le nouveau venu passe bien par `geometrieApercu`, ce qui est le cas des
+     * deux ajouts. L'assertion qui compte vraiment est la derniere : aucun
+     * `aspect-ratio` ecrit a la main.
+     */
+    expect(src.match(/geometrieApercu\(/g) ?? []).toHaveLength(5);
     expect(src.match(/<CadreFormat/g) ?? []).toHaveLength(3);
     // Et plus aucun `aspect-ratio` écrit à la main, qui échapperait à la règle.
     expect(src).not.toContain('aspectRatio: `${');

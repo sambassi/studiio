@@ -81,7 +81,7 @@ import {
 import {
   DELAI_SUIVI_MS, creerBrouillonPlanification, ecartNotable, formaterDuree,
   lireRenduDeSession, messageEchec, orientation, phraseEnCours, renduEnCours,
-  type Fetcher, type RenduEcran,
+  type Fetcher, type RenduEcran, type VideoEcran,
 } from '@/lib/autopilot/analyse/rendu-passerelle';
 
 interface Props {
@@ -131,6 +131,22 @@ export default function VideosPretes({
   sessionId, aucunRush, relance = 0, onEtat, fetcher, formatSouhaite,
 }: Props) {
   const [etat, setEtat] = useState<Etat>({ sorte: 'chargement' });
+  /**
+   * La derniere video REELLEMENT prete de cette session.
+   *
+   * ⚠️ SANS ELLE, RECREER UNE VIDEO EFFACE CELLE QU'ON REGARDAIT. L'ecran
+   * bascule sur l'etat « en cours » et rend un cadre vide : pendant une
+   * demi-minute, le travail precedent n'existe plus, et le seul repere visuel
+   * de l'utilisateur disparait au moment ou il compare. On garde donc la
+   * derniere reussite affichable, et on la montre pendant que la suivante se
+   * fabrique.
+   *
+   * ⚠️ REMISE A ZERO AU CHANGEMENT DE SESSION, comme l'etat lui-meme : montrer
+   * la video d'un autre tournage serait pire que de ne rien montrer.
+   */
+  const [dernierePrete, setDernierePrete] = useState<VideoEcran | null>(null);
+  /** Le tournage dont la memoire ci-dessus parle. */
+  const sessionRegardeeRef = useRef<string | null>(null);
   const [lecture, setLecture] = useState(false);
   const [detail, setDetail] = useState(false);
   /**
@@ -194,6 +210,8 @@ export default function VideosPretes({
 
     if (r.sorte === 'trouve') {
       setEtat({ sorte: 'trouve', rendu: r.rendu });
+      // Une reussite affichable devient le repere a garder sous les yeux.
+      if (r.rendu.etat === 'reussie' && r.rendu.video) setDernierePrete(r.rendu.video);
       planifier(r.rendu);
       return;
     }
@@ -218,6 +236,22 @@ export default function VideosPretes({
   // la vidéo du tournage précédent pendant que la nouvelle charge.
   useEffect(() => {
     setEtat({ sorte: 'chargement' });
+    /**
+     * ⚠️ LA MEMOIRE NE S'EFFACE QU'EN CHANGEANT DE TOURNAGE.
+     *
+     * Cet effet se declenche aussi sur `relance`, c'est-a-dire a CHAQUE
+     * « Creer ma video ». Y remettre la derniere reussite a `null` effacait
+     * donc le repere une fraction de seconde avant d'en avoir besoin — le
+     * defaut meme qu'on corrige, reintroduit par le correctif. Un test l'a
+     * attrape.
+     *
+     * Changer de tournage, en revanche, DOIT tout oublier : montrer la video
+     * d'une autre session serait pire que de ne rien montrer.
+     */
+    if (sessionRegardeeRef.current !== sessionId) {
+      sessionRegardeeRef.current = sessionId;
+      setDernierePrete(null);
+    }
     setLecture(false);
     setMedia('chargement');
     // ⚠️ SANS RUSH, ON N'INTERROGE PAS. Une session vide ne peut avoir produit
@@ -331,7 +365,61 @@ export default function VideosPretes({
     return (
       <section className="space-y-1.5" data-videos-pretes data-videos-etat="en_cours">
         <Titre texte="Création en cours" fort />
-        <CadreFormat enfant={<Loader2 className="h-5 w-5 animate-spin text-purple-400" aria-hidden="true" />} />
+        {/* ⚠️ LA VIDEO PRECEDENTE RESTE, QUAND IL Y EN A UNE.
+            Le cadre vide etait le comportement d'origine : on cliquait
+            « Creer ma video » pour en essayer une variante, et la version
+            qu'on venait de regarder disparaissait pendant toute la
+            fabrication. Or c'est precisement le moment ou l'on veut la
+            comparer. La premiere creation, elle, n'a rien a montrer : elle
+            garde le cadre et son animation. */}
+        {dernierePrete ? (
+          /* ⚠️ UN BOUTON, PAS UN `<video>` MONTE D'OFFICE.
+             Le premier jet posait ici un lecteur avec `preload`. Il rendait
+             bien la video precedente visible — et violait la regle que
+             l'en-tete de ce fichier defend depuis un lot entier : le `<video>`
+             n'existe QU'APRES un clic, faute de quoi chaque affichage
+             telecharge plusieurs megaoctets pour une video que personne n'a
+             demande a voir. On garde donc la meme porte que l'etat « prete » :
+             la version precedente reste ATTEIGNABLE, et ne se charge que si
+             on la reclame. */
+          <div className="space-y-1" data-videos-precedente>
+            {lecture ? (
+              <video
+                src={dernierePrete.chemin}
+                controls
+                controlsList="nodownload"
+                playsInline
+                preload="auto"
+                data-videos-precedente-lecteur
+                className="rounded-md bg-black"
+                style={geometrieApercu(dernierePrete.largeur, dernierePrete.hauteur)}
+              />
+            ) : (
+            <button
+              type="button"
+              onClick={() => { setMedia('chargement'); setLecture(true); }}
+              data-videos-precedente-regarder
+              aria-label="Lire la version précédente"
+              title="Lire la version précédente"
+              className="group flex w-full items-center justify-center rounded-lg border
+                border-white/10 bg-white/[0.02] transition-colors hover:border-purple-500/50
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+              style={geometrieApercu(dernierePrete.largeur, dernierePrete.hauteur)}
+            >
+              <span className="flex h-11 w-11 items-center justify-center rounded-full
+                border border-white/20 text-gray-300 group-hover:border-purple-400
+                group-hover:text-white">
+                <Play className="h-5 w-5" aria-hidden="true" />
+              </span>
+            </button>
+            )}
+            <p className="text-[10px] text-gray-400">
+              Version précédente — la nouvelle se prépare.
+            </p>
+          </div>
+        ) : (
+          <CadreFormat enfant={<Loader2 className="h-5 w-5 animate-spin text-purple-400" aria-hidden="true" />} />
+        )}
         {/* Le relais de la colonne gauche : mêmes étapes, même vocabulaire,
             pour que la progression ne « recommence » pas en changeant de
             colonne. */}
