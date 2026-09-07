@@ -332,10 +332,15 @@ export async function monterAvecM3(d: DemandeM3Automatique): Promise<IssueM3> {
 
   // ── M3-H : le rendu ──────────────────────────────────────────────────
   const profil = await lireProfilCreatifUtilisateur(userId);
+  /* ⚠️ LE MEME OBJECTIF QUE LE PLAN, RELU UNE SEULE FOIS. C'est lui qui porte
+     le message du CTA — ce que le bandeau DIT, par opposition a la maniere de
+     l'afficher. Le reprendre ici garantit que la video automatique affiche
+     exactement l'appel a l'action que la personne a ecrit. */
+  const appelAction = objectif.appelAction ?? null;
   const identiteRendu: IdentiteRendu = {
     montagePlanId: planId,
     montagePlanVersion: planVersion,
-    methodeRendu: methodeRendu(d.recette, profil),
+    methodeRendu: methodeRendu(d.recette, profil, appelAction),
   };
   const renduDejaLa = await lireRenduReussiIdentique(userId, identiteRendu);
   if (renduDejaLa.motif === 'socle_absent') return echec('socle_absent');
@@ -365,6 +370,7 @@ export async function monterAvecM3(d: DemandeM3Automatique): Promise<IssueM3> {
       plan,
       recette: d.recette,
       profil,
+      appelAction,
       avancer: async (etape) => {
         const r = await majRendu(userId, renduId, {
           etape, siEtat: ['en_attente', 'en_cours'],

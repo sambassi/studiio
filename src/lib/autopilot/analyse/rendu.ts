@@ -38,6 +38,11 @@ import {
 } from './recette-audio';
 import type { MontagePlan, PlanMontage } from './montage-contrat';
 import type { ProfilCreatifAutopilote } from './profil-creatif';
+import { join } from 'node:path';
+import { writeFile } from 'node:fs/promises';
+import { preparerCouches } from './rendu-texte';
+import { fichierPolice } from './rendu-polices';
+import type { TexteAPoser } from './rendu-style';
 import { construireStyle, type LogoLocal, type StyleRendu } from './rendu-style';
 import {
   PIXEL_FORMAT_RENDU, AUDIO_FREQUENCE_RENDU, TOLERANCE_FPS, MOTIF_RENDU_INTERROMPU,
@@ -88,6 +93,17 @@ export interface DemandeRendu {
    * Absent ou historique = graphe d'avant ce lot, au caractere pres.
    */
   profil?: ProfilCreatifAutopilote | null;
+  /**
+   * Ce que le CTA DIT, et ou il mene — quand le compte l'a ecrit.
+   *
+   * ⚠️ CELA NE VIENT PAS DU PROFIL, et c'est le depot qui le dit : le
+   * MESSAGE d'un appel a l'action appartient a l'objectif, sa FORME au style.
+   * Melanger les deux obligerait a rejouer un montage pour changer la couleur
+   * d'un bouton, et a rejouer un style pour changer un lien.
+   *
+   * `null` : aucun texte de CTA n'est dessine. Rien n'est invente ici.
+   */
+  appelAction?: { texte: string | null; destination: string | null } | null;
 }
 
 export interface ResultatRendu {
@@ -398,6 +414,40 @@ export async function produireMontage(
     // presence de la musique ; la lui faire deviner ferait pointer son
     // incrustation sur l'entree du voisin — un logo qui affiche le mauvais
     // flux ne leve aucune erreur.
+    /* ── LE TEXTE : PREPARE, PUIS ECRIT SUR LE DISQUE ──────────────────
+       ⚠️ AUCUNE VALEUR SAISIE N'ENTRE DANS LE GRAPHE DE FILTRES. Chaque
+       texte part dans son propre fichier, et `drawtext` le lit par
+       `textfile=`. Un CTA qui contient « 50% : c'est aujourd'hui ! » ne peut
+       donc ni casser le graphe ni en changer le sens — il n'y est jamais.
+
+       Et si la machine ne porte pas les polices (un poste de developpement
+       sans `fonts-liberation`), la couche est SAUTEE et tracee dans `usage`
+       plutot que de faire echouer un montage par ailleurs valide. */
+    const couches = preparerCouches({
+      profil,
+      appelAction: demande.appelAction ?? null,
+      dureeTotaleSecondes: plan.dureeTotaleSecondes,
+    });
+    const textesAPoser: TexteAPoser[] = [];
+    const textesNonRendus: string[] = [];
+    for (const [i, c] of couches.entries()) {
+      const fichierPol = fichierPolice(c.police, c.graisse);
+      if (fichierPol === null) { textesNonRendus.push(c.nature); continue; }
+      const fichierTexte = join(dossier, `texte-${i}.txt`);
+      await writeFile(fichierTexte, c.texte, 'utf8');
+      textesAPoser.push({
+        fichierTexte,
+        fichierPolice: fichierPol,
+        taillePx: (hauteur * c.taillePct) / 100,
+        couleur: c.couleur,
+        ancre: c.ancre,
+        debutSecondes: c.debutSecondes,
+        finSecondes: c.finSecondes,
+      });
+    }
+    if (textesNonRendus.length > 0) usage.textesNonRendus = textesNonRendus;
+    if (textesAPoser.length > 0) usage.textesRendus = textesAPoser.length;
+
     const style: StyleRendu = construireStyle(profil, {
       cible: { largeur, hauteur },
       // Les durees RETENUES, celles que le graphe met dans `trim` : un fondu
@@ -408,6 +458,7 @@ export async function produireMontage(
         .map((s) => ({ dureeSecondes: s.dureeRetenueSecondes })),
       dureeTotaleSecondes: plan.dureeTotaleSecondes,
       logo,
+      textes: textesAPoser,
       indicePremiereEntree: sources.length + (musique !== null ? 1 : 0),
     });
     if (style.transitionsNonRendues.length > 0) {

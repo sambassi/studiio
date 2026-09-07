@@ -160,12 +160,18 @@ export function empreinteRecette(recette: RecetteAudio): string {
 export function methodeRendu(
   recette: RecetteAudio | null | undefined,
   profil?: ProfilCreatifPartiel | ProfilCreatifAutopilote | null,
+  appelAction?: { texte: string | null; destination: string | null } | null,
 ): string {
   // ⚠️ LE PROFIL D'ABORD. Un profil qui demande quelque chose l'emporte, meme
   // sur une recette audio historique : sinon une video sans musique mais avec
   // un CTA rendrait `METHODE_RENDU`, c'est-a-dire le fichier d'avant.
-  if (!estProfilHistorique(profil)) {
-    return `${PREFIXE_METHODE_PROFIL}${empreinteRenduComplet(recette, profil)}`;
+  /* ⚠️ UN CTA SANS PROFIL COMPTE AUSSI. Un compte qui n'a rien regle
+     visuellement mais dont l'objectif porte « Reserve ta place » produit
+     desormais une video AVEC ce texte : la rendre sous l'identite historique
+     ferait resservir un montage muet. */
+  const ctaEcrit = !!(appelAction && (appelAction.texte || appelAction.destination));
+  if (!estProfilHistorique(profil) || ctaEcrit) {
+    return `${PREFIXE_METHODE_PROFIL}${empreinteRenduComplet(recette, profil, appelAction)}`;
   }
   if (estRecetteHistorique(recette)) return METHODE_RENDU;
   return `${PREFIXE_METHODE_MIX}${empreinteRecette(recette as RecetteAudio)}`;
@@ -186,11 +192,25 @@ export function methodeRendu(
 export function empreinteRenduComplet(
   recette: RecetteAudio | null | undefined,
   profil: ProfilCreatifPartiel | ProfilCreatifAutopilote | null | undefined,
+  appelAction?: { texte: string | null; destination: string | null } | null,
 ): string {
   const audio = recetteCanonique(recette ?? RECETTE_AUDIO_DEFAUT);
   const style = profilCreatifCanonique(profil);
+  /* ⚠️ LE MESSAGE DU CTA ENTRE DANS L'IDENTITE, ET IL LE FAUT.
+     Il vient de l'OBJECTIF, pas du profil : il ne passe donc ni par
+     `profilCreatifCanonique`, ni par la recette. Sans cette ligne, changer
+     « Reserve ta place » en « Derniers jours » laisserait l'identite
+     inchangee — et le moteur rendrait la video d'hier, avec l'ancien texte,
+     sans qu'aucune erreur ne le dise. La pire des pannes : celle qui ne se
+     voit pas.
+
+     Absent, il n'ajoute RIEN a la chaine hachee : les rendus d'avant ce lot
+     gardent exactement leur empreinte, et restent donc reutilisables. */
+  const cta = appelAction
+    ? `\n--\ncta:${appelAction.texte ?? ''}|${appelAction.destination ?? ''}`
+    : '';
   return createHash('sha256')
-    .update(`${audio}\n--\n${style}`, 'utf8')
+    .update(`${audio}\n--\n${style}${cta}`, 'utf8')
     .digest('hex')
     .slice(0, LONGUEUR_EMPREINTE);
 }

@@ -34,6 +34,7 @@ import {
   fusionnerProfilEtOverride, lireProfilCreatif,
   type ProfilCreatifAutopilote, type ProfilCreatifPartiel,
 } from '@/lib/autopilot/analyse/profil-creatif';
+import { objectifEffectifUtilisateur } from '@/lib/autopilot/analyse/objectif-compte';
 import { lireProfilCreatifUtilisateur } from '@/lib/autopilot/analyse/profil-compte';
 import { MESSAGES_LOGO, verifierLogo } from '@/lib/autopilot/analyse/logo-source';
 import { MESSAGES_MUSIQUE, verifierMusique } from '@/lib/autopilot/analyse/musique-source';
@@ -199,6 +200,12 @@ export async function POST(
     // un compte qui n'a jamais configure son style continue de se voir servir
     // ses rendus deja reussis.
     const profilDuCompte = await lireProfilCreatifUtilisateur(userId);
+    /* ⚠️ L'OBJECTIF PORTE LE MESSAGE DU CTA, le style n'en porte que la
+       forme. Le lire ici est ce qui permet au montage manuel d'afficher
+       exactement le meme appel a l'action que le montage automatique — un
+       seul reglage, deux chemins. */
+    const objectifDuCompte = await objectifEffectifUtilisateur(userId);
+    const appelAction = objectifDuCompte.appelAction ?? null;
     const profil: ProfilCreatifAutopilote | null = override !== null
       ? fusionnerProfilEtOverride(profilDuCompte, override)
       : profilDuCompte;
@@ -242,7 +249,10 @@ export async function POST(
       // servirait la video de l'ANCIEN style — le meme piege muet que celui
       // de la musique au Lot 2A. Profil historique = methode historique, donc
       // les rendus deja produits restent reutilisables.
-      methodeRendu: methodeRendu(recette, profil),
+      /* Le message du CTA vient de l'OBJECTIF, pas du style : sans lui dans
+         l'identite, changer « Reserve ta place » resservirait la video
+         d'hier avec l'ancien texte. */
+      methodeRendu: methodeRendu(recette, profil, appelAction),
     };
 
     // ── Déjà rendu ? On sert l'existant, sans rien relancer ──────────────
@@ -311,7 +321,7 @@ export async function POST(
     // et `output: 'standalone'` : le processus vit, rien ne gèle après le
     // `return`. Le `catch` est la ceinture qui rend la place si le travail
     // jetait avant d'entrer dans son propre `finally`.
-    void executerRendu(userId, plan, rendu.id, placeDuTravail, recette, profil)
+    void executerRendu(userId, plan, rendu.id, placeDuTravail, recette, profil, appelAction)
       .catch((e: unknown) => {
         // La ceinture, et elle ne se tait pas : une panne avant le `try` du
         // travail serait autrement invisible.
@@ -354,6 +364,8 @@ async function executerRendu(
   place: { liberer(): void },
   recette: RecetteAudio | null,
   profil: ProfilCreatifAutopilote | null,
+  /* Le message du CTA, relu par l'appelant : ce module ne lit pas la base. */
+  appelAction: { texte: string | null; destination: string | null } | null,
 ): Promise<void> {
   try {
     // ⚠️ AVEC LA GARDE, ET SON RETOUR LU. Entre l'insertion et cette écriture,
@@ -365,7 +377,7 @@ async function executerRendu(
     if (depart.motif === 'rendu_absent') return;
     await rendreEtPublier(
       {
-        userId, plan: plan!, recette, profil,
+        userId, plan: plan!, recette, profil, appelAction,
         // Chaque frontière demande si la ligne existe encore. `rendu_absent`
         // est un ordre d'arrêt : on nettoie et on n'écrit plus rien.
         avancer: async (etape) => {

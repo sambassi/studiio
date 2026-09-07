@@ -51,18 +51,31 @@
  * une LUT_FILE la reproduit.
  *
  * ---------------------------------------------------------------------------
- * ⚠️ AUCUN TEXTE, AUCUNE POLICE
+ * LE TEXTE : CE QUI A CHANGE, ET POURQUOI L'INTERDIT A ETE LEVE
  * ---------------------------------------------------------------------------
  *
- * Les 52 familles de `POLICES_AUTORISEES` ont `licence: null` et
- * `ressourceServeur: null`. Brancher `drawtext` supposerait un fichier de
- * fonte choisi au hasard sur la machine, et sa redistribution dans un MP4
- * publie. Tant que la licence n'est pas etablie, ce module n'emet AUCUN
- * `drawtext` — le CTA visuel se limite a sa forme graphique.
+ * Ce bloc disait « AUCUN TEXTE, AUCUNE POLICE », et la raison etait juste :
+ * les 52 familles de `POLICES_AUTORISEES` ont `licence: null` et
+ * `ressourceServeur: null`. Brancher `drawtext` dessus aurait suppose un
+ * fichier de fonte choisi au hasard sur la machine, et sa redistribution
+ * dans un MP4 publie.
+ *
+ * ⚠️ CE N'EST PLUS CE QUI SE PASSE, ET LA DIFFERENCE EST ENTIERE. Le texte
+ * n'utilise AUCUNE de ces 52 familles. Il utilise les trois familles
+ * `Liberation` que l'image installe deliberement (`fonts-liberation` dans le
+ * Dockerfile), publiees sous une licence libre qui autorise l'incrustation et
+ * la redistribution. Le profil ne porte qu'un IDENTIFIANT, range vers l'une
+ * de ces trois familles par `rendu-texte` ; aucun chemin de fonte ne vient
+ * d'un reglage, et aucune police sous licence indeterminee n'est lue.
+ *
+ * L'import de polices de marque reste donc un lot a part, avec sa question de
+ * licence intacte — ce lot ne l'a pas tranchee, il l'a contournee en
+ * n'utilisant que ce qui etait deja libre et deja installe.
  */
 import {
   type ProfilCreatifAutopilote, type AncreTexte, type PositionLogo,
 } from './profil-creatif';
+import { filtreDrawtext, positionY } from './rendu-texte';
 
 // ---------------------------------------------------------------------------
 // Le contexte que le moteur fournit
@@ -101,6 +114,29 @@ export interface ContexteStyle {
    * affiche simplement le mauvais flux.
    */
   indicePremiereEntree: number;
+  /**
+   * Les couches de texte, DEJA preparees et validees par `rendu-texte`.
+   *
+   * ⚠️ PREPAREES AILLEURS, ET C'EST VOULU. Ce module traduit un profil en
+   * filtres ; il ne decide pas de ce qu'un texte dit, ne lit ni objectif ni
+   * base, et n'ecrit aucun fichier. Lui passer le profil brut l'obligerait a
+   * connaitre l'appel a l'action — qui appartient a l'objectif, pas au style.
+   *
+   * Chaque couche porte le chemin du fichier ou son texte a ete ecrit : rien
+   * de ce que l'utilisateur a saisi n'entre dans le graphe de filtres.
+   */
+  textes?: readonly TexteAPoser[];
+}
+
+/** Une couche prete a etre dessinee : le texte est deja sur le disque. */
+export interface TexteAPoser {
+  fichierTexte: string;
+  fichierPolice: string;
+  taillePx: number;
+  couleur: string;
+  ancre: 'haut' | 'centre' | 'bas';
+  debutSecondes: number;
+  finSecondes: number;
 }
 
 /**
@@ -508,6 +544,32 @@ export function construireStyle(
     );
     courant = '[stylecta]';
   }
+
+  /* ── LE TEXTE, DESSINE EN DERNIER ────────────────────────────────────
+     Apres le logo et apres le bandeau : un CTA dont le texte passerait SOUS
+     son propre fond serait invisible, et c'est exactement l'ordre des
+     couches qui le decide. */
+  const marges = margesPixels(profil, ctx.cible);
+  (ctx.textes ?? []).forEach((t, i) => {
+    const taille = Math.max(8, Math.round(t.taillePx));
+    /* La hauteur reelle d'une ligne depend de la police ; `1.2 * fontsize`
+       est l'approximation que ffmpeg lui-meme utilise pour `text_h` sur une
+       ligne. Elle sert UNIQUEMENT a garder la ligne dans les marges. */
+    const y = positionY(t.ancre, ctx.cible.hauteur, Math.round(taille * 1.2), {
+      haut: marges.haut, bas: marges.bas,
+    });
+    const sortie = `[styletexte${i}]`;
+    etapes.push(`${courant}${filtreDrawtext({
+      fichierTexte: t.fichierTexte,
+      fichierPolice: t.fichierPolice,
+      taillePx: taille,
+      couleur: t.couleur,
+      y,
+      debutSecondes: t.debutSecondes,
+      finSecondes: t.finSecondes,
+    })}${sortie}`);
+    courant = sortie;
+  });
 
   if (etapes.length === 0) {
     return {
