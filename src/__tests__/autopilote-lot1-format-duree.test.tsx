@@ -89,6 +89,18 @@ const duree = (c: HTMLElement) => c.querySelector('[data-montage-duree]') as HTM
 
 beforeEach(() => {
   recuParAnalyse.length = 0;
+  /**
+   * ⚠️ LE BROUILLON DE LOT PC-1 SURVIT ENTRE DEUX TESTS, ET C'EST NORMAL.
+   *
+   * `SessionsTournagePanel` ecrit desormais le format, la duree, l'objectif
+   * et l'audio de la video dans `localStorage`, sous une cle portant l'`id`
+   * du rush. Or jsdom partage UN seul `localStorage` pour tout le fichier :
+   * sans ce nettoyage, le brouillon ecrit par un test etait relu par le
+   * suivant, qui voyait alors le reglage de son voisin au lieu du defaut du
+   * compte. Ce n'est pas un defaut du produit — c'est le prix d'un stockage
+   * qui, lui, doit bel et bien survivre.
+   */
+  try { window.localStorage.clear(); } catch { /* stockage indisponible */ }
   vi.stubGlobal('fetch', serveur());
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });

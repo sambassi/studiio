@@ -735,6 +735,12 @@ export default function AutopilotPanel({
               onSessionChange={onSessionChange}
               onVideoLancee={onVideoLancee}
               objectifCetteVideo={objectifCetteVideo}
+              /* ⚠️ LE BROUILLON REND L'OBJECTIF, IL NE LE DECIDE PAS. Le
+                 panneau des sessions sait QUEL rush on regarde, donc quel
+                 brouillon relire ; l'objectif, lui, vit ici avec le wizard
+                 qui l'ecrit. Il remonte, et rien de plus : aucune route n'est
+                 appelee, le defaut du compte ne bouge pas. */
+              onObjectifRestaure={setObjectifCetteVideo}
             />
           </div>
 

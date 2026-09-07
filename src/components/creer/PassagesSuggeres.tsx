@@ -58,6 +58,17 @@ interface Props {
    * habitudes changent. Seul `onEnregistrerAudioDefaut` les reecrit.
    */
   audioDefaut?: RecetteAudio;
+  /**
+   * La recette DEJA choisie pour cette video, relue d'un brouillon.
+   *
+   * ⚠️ ELLE N'EST PAS LE DEFAUT DU COMPTE, et les deux ne doivent pas se
+   * confondre : `audioDefaut` dit ce que le compte fait d'habitude — c'est lui
+   * que « enregistrer comme defaut » reecrit. `audioInitial` dit ce que CETTE
+   * video avait deja, et ne concerne qu'elle. Absent = on part du defaut.
+   */
+  audioInitial?: RecetteAudio | null;
+  /** Signale la recette courante au proprietaire du brouillon. N'ecrit rien. */
+  onAudioChange?: (recette: RecetteAudio) => void;
   /** Enregistre la recette comme defaut. Absent = le bouton ne s'affiche pas. */
   onEnregistrerAudioDefaut?: (recette: RecetteAudio) => Promise<boolean>;
   /**
@@ -94,7 +105,8 @@ type EtatChaine =
   | { sorte: 'dit'; texte: string; alerte: boolean };
 
 export default function PassagesSuggeres({
-  analyseId, montage, audioDefaut, onEnregistrerAudioDefaut, onVideoLancee,
+  analyseId, montage, audioDefaut, audioInitial, onAudioChange,
+  onEnregistrerAudioDefaut, onVideoLancee,
   objectifCetteVideo,
   variante = 'complete', onVoirAnalyse,
 }: Props) {
@@ -102,12 +114,32 @@ export default function PassagesSuggeres({
   // pour `designStyle` : l'objet change d'identite a chaque relecture de la
   // configuration, et se caler dessus reinitialiserait le reglage en cours
   // d'edition a chaque rafraichissement.
-  const signatureDefaut = JSON.stringify(audioDefaut ?? null);
-  const [audio, setAudio] = useState<RecetteAudio>(audioDefaut ?? RECETTE_AUDIO_DEFAUT);
+  /**
+   * ⚠️ LE BROUILLON PASSE AVANT LE DEFAUT, ET LA PRIORITE EST TOUT LE SUJET.
+   *
+   * L'ordre d'hydratation est : defaut du compte, PUIS brouillon de cette
+   * video s'il existe. Inverser les deux ferait ecraser au chargement ce que
+   * l'utilisateur avait regle, par ce que son compte fait d'habitude — c'est
+   * exactement la perte silencieuse qu'on ferme.
+   *
+   * La resynchronisation se fait sur la SIGNATURE des deux, et non sur leur
+   * identite d'objet : la configuration se relit en reseau et rend un objet
+   * neuf a chaque tour, ce qui reinitialiserait le reglage en cours d'edition.
+   */
+  const signatureAudio = JSON.stringify(audioInitial ?? audioDefaut ?? null);
+  const [audio, setAudio] = useState<RecetteAudio>(
+    audioInitial ?? audioDefaut ?? RECETTE_AUDIO_DEFAUT,
+  );
   useEffect(() => {
-    setAudio(audioDefaut ?? RECETTE_AUDIO_DEFAUT);
+    setAudio(audioInitial ?? audioDefaut ?? RECETTE_AUDIO_DEFAUT);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signatureDefaut]);
+  }, [signatureAudio]);
+
+  /** Le proprietaire du brouillon apprend la recette courante. Aucune ecriture. */
+  useEffect(() => {
+    onAudioChange?.(audio);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(audio)]);
   const [generation, setGeneration] = useState<GenerationEcran | null>(null);
   const [chargement, setChargement] = useState(true);
   const [indisponible, setIndisponible] = useState<string | null>(null);

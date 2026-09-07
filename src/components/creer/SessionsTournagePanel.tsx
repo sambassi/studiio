@@ -15,7 +15,15 @@ import { lireAnalyse } from '@/lib/autopilot/analyse/passerelle';
 import {
   MONTAGE_DEFAUT, type AutopilotMontageStyle,
 } from '@/lib/autopilot/textStyle';
-import type { RecetteAudio } from '@/lib/autopilot/analyse/recette-audio';
+import {
+  RECETTE_AUDIO_DEFAUT, type RecetteAudio,
+} from '@/lib/autopilot/analyse/recette-audio';
+import {
+  ecrireBrouillon, lireBrouillon,
+} from '@/lib/autopilot/brouillon-video';
+import {
+  lireObjectif, normaliserObjectif, type ObjectifCommunication,
+} from '@/lib/autopilot/analyse/objectif-communication';
 import type { ShootSession, Rush } from '@/lib/autopilot/tournage/contrat';
 
 /**
@@ -88,6 +96,15 @@ interface Props {
   montageDefaut?: AutopilotMontageStyle;
   /** Enregistre le réglage courant comme défaut. Absent = bouton masqué. */
   onEnregistrerDefaut?: (m: AutopilotMontageStyle) => void | Promise<void>;
+  /**
+   * Rend a son proprietaire l'objectif relu dans le brouillon de ce rush.
+   *
+   * ⚠️ IL REMONTE, IL N'EST PAS DECIDE ICI. `objectifCetteVideo` vit dans
+   * `AutopilotPanel` avec le wizard qui l'ecrit ; ce panneau sait seulement
+   * QUEL rush on regarde, donc quel brouillon relire. Il rend sa trouvaille
+   * et n'en fait rien d'autre.
+   */
+  onObjectifRestaure?: (objectif: ObjectifCommunication | null) => void;
   /** Le réglage AUDIO enregistré du compte. Passe-plat vers `AnalyseRush`. */
   audioDefaut?: RecetteAudio;
   /** Enregistre la recette audio comme défaut. Absent = bouton masqué. */
@@ -135,7 +152,7 @@ interface Props {
 
 export default function SessionsTournagePanel({
   montageDefaut, onEnregistrerDefaut, onSessionChange, onVideoLancee, audioDefaut,
-  onEnregistrerAudioDefaut, avance, objectifCetteVideo,
+  onEnregistrerAudioDefaut, avance, objectifCetteVideo, onObjectifRestaure,
 }: Props = {}) {
   const [sessions, setSessions] = useState<ShootSession[]>([]);
   const [selection, setSelection] = useState<string | null>(null);
@@ -160,6 +177,32 @@ export default function SessionsTournagePanel({
   const [analyses, setAnalyses] = useState<Record<string, AnalyseCarte | null>>({});
   const [tiroir, setTiroir] = useState<'analyse' | 'avance' | null>(null);
   const [relances, setRelances] = useState<Record<string, number>>({});
+  /**
+   * La recette audio de CETTE video, telle que l'ecran la porte a l'instant.
+   *
+   * Elle vit dans `PassagesSuggeres`, deux niveaux plus bas — ce panneau ne
+   * la decide pas, il l'apprend pour pouvoir l'ecrire dans le brouillon.
+   */
+  const [audioVideo, setAudioVideo] = useState<RecetteAudio | null>(null);
+  /**
+   * La recette relue du brouillon, passee EN BAS comme point de depart.
+   *
+   * ⚠️ DISTINCTE DE `audioVideo`. L'une descend (ce qu'on restaure), l'autre
+   * remonte (ce que l'utilisateur regle). Les confondre ferait une boucle :
+   * on redescendrait ce qui vient de remonter, et le reglage se figerait.
+   */
+  const [audioBrouillon, setAudioBrouillon] = useState<RecetteAudio | null>(null);
+  /**
+   * Le rush dont le brouillon est DEJA relu.
+   *
+   * ⚠️ SANS CE GARDE, L'HYDRATATION S'ECRASE ELLE-MEME. L'effet d'ecriture
+   * se declenche des que le format ou l'audio changent — c'est-a-dire au tour
+   * de rendu qui SUIT la restauration. Sans savoir qu'on vient de restaurer,
+   * il reecrirait le brouillon avec les valeurs par defaut affichees une
+   * fraction de seconde plus tot, et la perte serait la meme qu'avant, en
+   * moins visible.
+   */
+  const rushHydrateRef = useRef<string | null>(null);
   const [nouvelleSession, setNouvelleSession] = useState(false);
 
   // Le réglage enregistré arrive après le premier rendu (la config se charge
@@ -272,6 +315,87 @@ export default function SessionsTournagePanel({
     const t = setInterval(() => chargerAnalyses(rushes), 8000);
     return () => clearInterval(t);
   }, [enVol, rushes, chargerAnalyses]);
+
+  /**
+   * ── LE BROUILLON DE CE RUSH, RELU AU CHANGEMENT DE RUSH ────────────────
+   *
+   * Ordre d'hydratation, et il compte : les defauts du compte d'abord — ils
+   * sont deja dans `montage` et descendent dans `audioDefaut` — puis le
+   * brouillon de CETTE video s'il existe. Un rush sans brouillon garde donc
+   * les defauts du compte, et ne recupere JAMAIS les reglages du rush
+   * precedent : chaque rush lit sa propre cle.
+   */
+  useEffect(() => {
+    if (!rushChoisi) return;
+    if (rushHydrateRef.current === rushChoisi) return;
+    rushHydrateRef.current = rushChoisi;
+    const brouillon = lireBrouillon(rushChoisi);
+    if (!brouillon) {
+      /**
+       * ⚠️ PAS DE BROUILLON : ON NE POSE RIEN, ON REMET LE COMPTEUR A ZERO.
+       *
+       * Le premier jet ecrivait ici `setMontage(montageDefaut ?? …)`. Quatre
+       * tests l'ont refuse, et ils avaient raison : ce panneau applique deja
+       * le defaut du compte, mais SEULEMENT tant que l'utilisateur n'a rien
+       * touche (`toucheRef`). Ecrire par-dessus revenait a effacer un choix
+       * delibere — et a le faire au moment ou le defaut du compte arrive en
+       * retard du reseau, donc de facon imprevisible.
+       *
+       * Rendre `toucheRef` a `false` suffit : le rush suivant redevient
+       * vierge, l'effet existant repose le defaut du compte, et un choix fait
+       * APRES ce point reste intact. Ce qui ne doit surtout pas survivre au
+       * changement de rush, ce sont l'objectif et l'audio de la video
+       * precedente — eux, on les efface explicitement.
+       */
+      toucheRef.current = false;
+      setAudioBrouillon(null);
+      setAudioVideo(null);
+      onObjectifRestaure?.(null);
+      return;
+    }
+    // Un brouillon EST un choix delibere : il compte comme « touche », faute
+    // de quoi le defaut du compte arriverait ensuite l'ecraser.
+    toucheRef.current = true;
+    setMontage(brouillon.montage);
+    setAudioBrouillon(brouillon.audio);
+    setAudioVideo(brouillon.audio);
+    onObjectifRestaure?.(brouillon.objectif);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rushChoisi]);
+
+  /**
+   * ── L'ECRITURE, A CHAQUE REGLAGE ──────────────────────────────────────
+   *
+   * ⚠️ ELLE N'ECRIT QUE DANS `localStorage`. Aucune route, aucun defaut de
+   * compte : le seul geste qui change l'objectif habituel reste la case du
+   * wizard. Un brouillon ne doit jamais devenir une habitude a l'insu de son
+   * auteur — c'est la confusion qui a coute un objectif de compte.
+   *
+   * Le declenchement est cible : format, duree, objectif, recette audio. Pas
+   * de minuterie, pas de debounce — ces valeurs changent au clic, quelques
+   * fois par minute, jamais par image.
+   */
+  useEffect(() => {
+    if (!rushChoisi) return;
+    if (rushHydrateRef.current !== rushChoisi) return;
+    /**
+     * ⚠️ L'OBJECTIF REPASSE PAR SON VALIDATEUR AVANT D'ETRE ECRIT.
+     *
+     * `objectifCetteVideo` arrive ici en `unknown` — c'est un passe-plat, ce
+     * panneau ne le decide pas. Ecrire tel quel mettrait dans le brouillon
+     * une forme que la relecture refuserait ensuite en silence : le reglage
+     * paraitrait enregistre et ne reviendrait jamais.
+     */
+    const lu = objectifCetteVideo === undefined || objectifCetteVideo === null
+      ? null : lireObjectif(objectifCetteVideo);
+    ecrireBrouillon(rushChoisi, {
+      objectif: lu && lu.ok ? normaliserObjectif(lu.objectif) : null,
+      montage,
+      audio: audioVideo ?? audioDefaut ?? RECETTE_AUDIO_DEFAUT,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rushChoisi, montage.format, montage.dureeSecondes,
+    JSON.stringify(objectifCetteVideo ?? null), JSON.stringify(audioVideo ?? null)]);
 
   // L'aperçu unique de la colonne de droite a besoin de savoir QUEL tournage
   // on regarde. Sans ce signal, il faudrait un second lecteur ici.
@@ -501,6 +625,8 @@ export default function SessionsTournagePanel({
               rushId={rushActif.id}
               montage={montage}
               audioDefaut={audioDefaut}
+              audioInitial={audioBrouillon}
+              onAudioChange={setAudioVideo}
               onEnregistrerAudioDefaut={onEnregistrerAudioDefaut}
               onVideoLancee={onVideoLancee}
               objectifCetteVideo={objectifCetteVideo}

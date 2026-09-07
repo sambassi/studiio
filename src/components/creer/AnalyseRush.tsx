@@ -68,6 +68,10 @@ interface Props {
   montage?: AutopilotMontageStyle;
   /** Passe-plat, comme `montage` : ce composant n'en fait rien. */
   audioDefaut?: RecetteAudio;
+  /** Passe-plat : la recette deja choisie pour cette video, s'il y en a une. */
+  audioInitial?: RecetteAudio | null;
+  /** Passe-plat : signale la recette courante au proprietaire du brouillon. */
+  onAudioChange?: (recette: RecetteAudio) => void;
   onEnregistrerAudioDefaut?: (recette: RecetteAudio) => Promise<boolean>;
   /**
    * Passe-plat vers `PassagesSuggeres`, qui porte le bouton « Créer ma
@@ -115,7 +119,8 @@ interface Refus {
 }
 
 export default function AnalyseRush({
-  rushId, montage, onVideoLancee, audioDefaut, onEnregistrerAudioDefaut,
+  rushId, montage, onVideoLancee, audioDefaut, audioInitial, onAudioChange,
+  onEnregistrerAudioDefaut,
   variante = 'complete', onVoirAnalyse, relance, objectifCetteVideo,
 }: Props) {
   const chaine = variante === 'chaine';
@@ -552,6 +557,8 @@ export default function AnalyseRush({
               analyseId={analyse.id}
               montage={montage}
               audioDefaut={audioDefaut}
+              audioInitial={audioInitial}
+              onAudioChange={onAudioChange}
               onEnregistrerAudioDefaut={onEnregistrerAudioDefaut}
               onVideoLancee={onVideoLancee}
               objectifCetteVideo={objectifCetteVideo}
