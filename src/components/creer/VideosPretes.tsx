@@ -79,7 +79,7 @@ import {
   RATIOS_APERCU, geometrieApercu,
 } from '@/lib/creer/apercu-geometrie';
 import {
-  DELAI_SUIVI_MS, creerBrouillonPlanification, formaterDuree,
+  DELAI_SUIVI_MS, creerBrouillonPlanification, ecartNotable, formaterDuree,
   lireRenduDeSession, messageEchec, orientation, phraseEnCours, renduEnCours,
   type Fetcher, type RenduEcran,
 } from '@/lib/autopilot/analyse/rendu-passerelle';
@@ -481,6 +481,28 @@ export default function VideosPretes({
         <p className="text-[11px] text-gray-400" data-videos-resume>
           {[duree, forme, 'dernière vidéo créée'].filter(Boolean).join(' · ')}
         </p>
+
+        {/* ══ LA DUREE DEMANDEE, QUAND ELLE N'A PAS ETE TENUE ══════════════
+            ⚠️ CE N'EST PAS UNE ERREUR, ET LE TON LE DIT.
+
+            Le moteur traite la duree comme une CIBLE, pas comme une
+            obligation : il ne meuble pas. Demander une minute sur un rush qui
+            n'offre que treize secondes de passages distincts rend treize
+            secondes — c'est le comportement voulu. Mais l'ecran ne le disait
+            pas, et treize secondes apres en avoir demande soixante se lisent
+            comme une panne.
+
+            D'ou une phrase, en gris, sans rouge, sans « echec » : le rendu a
+            reussi. Et aucun jargon — ni palier de qualite, ni anti-repetition,
+            ni score : l'utilisateur n'a pas a connaitre le moteur pour
+            comprendre qu'on a prefere la qualite au remplissage. */}
+        {ecartNotable(rendu.montage) && (
+          <p className="text-[11px] text-gray-400" data-videos-ecart>
+            Durée demandée&nbsp;: {formaterDuree(rendu.montage!.demandeeSecondes)}.
+            {' '}Studiio a gardé les meilleurs passages sans les répéter
+            {rendu.montage!.clipsEcartes > 0 ? ' ni forcer la durée' : ''}.
+          </p>
+        )}
 
         {detail && (
           <dl className="grid grid-cols-2 gap-x-3 gap-y-1" data-videos-detail>

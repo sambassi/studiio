@@ -61,7 +61,7 @@ export async function GET(
       );
     }
 
-    const { rendu, motif } = await lireRenduDeSession(session.user.id, params.id);
+    const { rendu, plan, motif } = await lireRenduDeSession(session.user.id, params.id);
 
     if (motif === 'socle_absent') {
       return NextResponse.json(
@@ -77,7 +77,12 @@ export async function GET(
     }
 
     return NextResponse.json(
-      { ok: true, rendu: rendu ? renduPublic(rendu) : null },
+      /* ⚠️ `montage` A COTE DU RENDU, ET NON DEDANS. `renduPublic` projette ce
+         que le RENDU sait de lui-meme ; la duree demandee appartient au PLAN,
+         un cran plus haut. Les fondre ferait croire qu'un rendu porte une
+         cible, et le jour ou un rendu existerait sans plan on inventerait un
+         nombre. Ici, `null` dit simplement « on ne sait pas ». */
+      { ok: true, rendu: rendu ? renduPublic(rendu) : null, montage: plan ?? null },
       // `private, no-store` : la réponse dépend de la session, et un cache
       // partagé qui la garderait la servirait au visiteur suivant.
       { status: 200, headers: { 'Cache-Control': 'private, no-store' } },

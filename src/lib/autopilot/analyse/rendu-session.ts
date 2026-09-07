@@ -87,13 +87,56 @@ function identifiants(lignes: unknown, colonne: string): string[] {
   return [...vus];
 }
 
+/**
+ * Ce que le PLAN de ce rendu avait demande, et ce qui manque.
+ *
+ * ⚠️ TROIS NOMBRES, ET RIEN D'AUTRE. Pas de liste de clips, pas de rangs, pas
+ * de scores : l'ecran doit pouvoir dire « vous aviez demande une minute »
+ * sans exposer le moteur a qui ne l'a pas demande.
+ */
+export interface MontageDemande {
+  /** Ce que l'utilisateur a demande, en secondes. */
+  demandeeSecondes: number;
+  /** Ce qui manque pour l'atteindre. Zero quand la cible est tenue. */
+  ecartSecondes: number;
+  /** Combien de passages le moteur a ecartes en chemin. */
+  clipsEcartes: number;
+}
+
+/** Un nombre fini, ou `0`. Une ligne ancienne peut ne rien porter. */
+function nombreSur(row: Record<string, unknown>, cle: string): number {
+  const v = row[cle];
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+}
+
+/**
+ * ⚠️ `null` PLUTOT QU'UN ZERO INVENTE. Un plan ancien peut n'avoir aucune
+ * duree cible : afficher « 0 s demandee » serait un mensonge lisible, alors
+ * qu'une absence se tait proprement.
+ */
+export function montageDemandeDepuisLigne(
+  row: Record<string, unknown>,
+): MontageDemande | null {
+  const demandee = row.duree_cible_secondes;
+  if (typeof demandee !== 'number' || !Number.isFinite(demandee) || demandee <= 0) {
+    return null;
+  }
+  return {
+    demandeeSecondes: demandee,
+    ecartSecondes: nombreSur(row, 'ecart_secondes'),
+    clipsEcartes: nombreSur(row, 'clips_ecartes'),
+  };
+}
+
 export interface ResultatRenduSession {
   /** Le rendu le plus récent de la session, ou `null` s'il n'y en a aucun. */
   rendu: RenduMontage | null;
+  /** Ce que le plan de CE rendu avait demande. `null` si on ne le sait pas. */
+  plan?: MontageDemande | null;
   motif: MotifRenduSession | null;
 }
 
-const AUCUN: ResultatRenduSession = { rendu: null, motif: null };
+const AUCUN: ResultatRenduSession = { rendu: null, plan: null, motif: null };
 
 /**
  * Le rendu le plus récent produit à partir d'une session de tournage.
@@ -142,8 +185,21 @@ export async function lireRenduDeSession(
 
   // ── 3. Les plans de montage de ces jeux ─────────────────────────────────
   const plans = await supabaseAdmin
+    /**
+     * ⚠️ TROIS COLONNES DE PLUS, ET AUCUNE REQUETE DE PLUS.
+     *
+     * Cette lecture existait deja pour retrouver les plans de la session. Le
+     * plan sait ce qui a ete DEMANDE (`duree_cible_secondes`) et ce qui
+     * manque (`ecart_secondes`, `clips_ecartes`) ; l'ecran, lui, ne voyait
+     * que la duree obtenue. Demander 60 s et recevoir 13 s sans un mot fait
+     * croire a une panne la ou le moteur a simplement refuse de meubler.
+     *
+     * On elargit donc le `select` existant plutot que d'ajouter un aller-
+     * retour, et surtout plutot que de recalculer cote client une valeur que
+     * le serveur a deja ecrite.
+     */
     .from('rush_montage_plans')
-    .select('id, created_at')
+    .select('id, created_at, duree_cible_secondes, ecart_secondes, clips_ecartes')
     .eq('user_id', userId)
     .in('clip_set_id', jeuIds)
     .order('created_at', { ascending: false });
@@ -175,5 +231,11 @@ export async function lireRenduDeSession(
   // sort du préfixe utilisateur, ou dont les octets valent zéro, est
   // rétrogradée. C'est le même geste qu'à la lecture par identifiant, et
   // c'est ce qui garantit qu'un `video` non nul désigne un fichier servable.
-  return { rendu: renduDepuisLigne(ligne as Record<string, unknown>), motif: null };
+  const rendu = renduDepuisLigne(ligne as Record<string, unknown>);
+  // Le plan de CE rendu, retrouve dans la liste deja lue. Absent pour un
+  // rendu ancien dont le plan aurait disparu : l'ecran s'en passe alors.
+  const ligneP = (plans.data ?? []).find(
+    (x) => (x as Record<string, unknown>).id === rendu?.montagePlanId,
+  ) as Record<string, unknown> | undefined;
+  return { rendu, plan: ligneP ? montageDemandeDepuisLigne(ligneP) : null, motif: null };
 }

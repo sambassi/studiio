@@ -51,12 +51,42 @@ export interface VideoEcran {
   chemin: string;
 }
 
+/**
+ * Ce que le plan de ce rendu avait demande — relu du reseau.
+ *
+ * ⚠️ TOUT EST OPTIONNEL DE FAIT. Les rendus produits avant ce lot n'ont
+ * jamais renvoye ce bloc, et la base compte deja vingt-trois reussites. Un
+ * ecran qui l'exigerait afficherait « 0 s demandee » sur tout l'historique —
+ * un mensonge lisible. Absent veut dire absent.
+ */
+export interface MontageDemandeEcran {
+  demandeeSecondes: number;
+  ecartSecondes: number;
+  clipsEcartes: number;
+}
+
 export interface RenduEcran {
   id: string;
   etat: EtatRendu;
   etape: EtapeRendu | null;
   motif: MotifRendu | null;
   video: VideoEcran | null;
+  /** Ce qui avait ete demande. `null` quand on ne le sait pas. */
+  montage: MontageDemandeEcran | null;
+}
+
+/** Relit le bloc `montage`, ou rend `null` — jamais un zero fabrique. */
+export function montageDepuisReponse(brut: unknown): MontageDemandeEcran | null {
+  if (typeof brut !== 'object' || brut === null) return null;
+  const m = brut as Record<string, unknown>;
+  const d = m.demandeeSecondes;
+  if (typeof d !== 'number' || !Number.isFinite(d) || d <= 0) return null;
+  const nb = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
+  return {
+    demandeeSecondes: d,
+    ecartSecondes: nb(m.ecartSecondes),
+    clipsEcartes: nb(m.clipsEcartes),
+  };
 }
 
 const ETATS: readonly string[] = [
@@ -73,7 +103,11 @@ const ETATS: readonly string[] = [
  * zéro : la vidéo entière est écartée, et l'écran retombe sur « en cours »
  * plutôt que d'annoncer une vidéo prête qu'il ne peut pas jouer.
  */
-export function renduDepuisReponse(brut: unknown): RenduEcran | null {
+export function renduDepuisReponse(
+  brut: unknown,
+  /** Le bloc `montage` de la MEME reponse — il vit a cote, pas dedans. */
+  brutMontage?: unknown,
+): RenduEcran | null {
   if (typeof brut !== 'object' || brut === null) return null;
   const r = brut as Record<string, unknown>;
   if (typeof r.id !== 'string' || r.id.length === 0) return null;
@@ -103,6 +137,10 @@ export function renduDepuisReponse(brut: unknown): RenduEcran | null {
     // pour l'écran non plus — le serveur applique déjà cette règle, et la
     // répéter ici garantit qu'aucun bouton « Regarder » ne pointe vers rien.
     video: r.etat === 'reussie' ? video : null,
+    // ⚠️ SEULEMENT SUR UNE REUSSITE. Expliquer une duree obtenue n'a pas de
+    // sens tant qu'aucune video n'existe : le dire pendant un rendu en cours
+    // ferait lire un ecart comme un echec annonce.
+    montage: r.etat === 'reussie' ? montageDepuisReponse(brutMontage) : null,
   };
 }
 
@@ -243,6 +281,28 @@ export const MOTIFS_TRADUITS = Object.keys(ECHECS) as MotifRendu[];
 // Les mises en forme — humaines, jamais techniques
 // ───────────────────────────────────────────────────────────────────────────
 
+/**
+ * ── QUAND L'ECART MERITE UNE PHRASE ────────────────────────────────────────
+ *
+ * ⚠️ DEUX CONDITIONS, ET IL FAUT LES DEUX. Un seuil en secondes seul
+ * bavarderait sur une cible longue — trois secondes manquantes sur soixante
+ * n'interessent personne. Un seuil en pourcentage seul bavarderait sur une
+ * cible courte — vingt pour cent de dix secondes font deux secondes, soit un
+ * plan tronque de rien du tout.
+ *
+ * Les valeurs viennent de la production : une cible de 60 s a rendu 13,1 s
+ * (47 s manquantes, 78 %) — l'utilisateur doit comprendre. Une cible de 15 s
+ * qui rend 14,6 s (0,4 s, 2,7 %) ne merite pas un mot.
+ */
+export const ECART_NOTABLE_SECONDES = 3;
+export const ECART_NOTABLE_PART = 0.2;
+
+export function ecartNotable(m: MontageDemandeEcran | null): boolean {
+  if (!m || m.demandeeSecondes <= 0) return false;
+  return m.ecartSecondes >= ECART_NOTABLE_SECONDES
+    && m.ecartSecondes / m.demandeeSecondes >= ECART_NOTABLE_PART;
+}
+
 /** `28` → `0:28`. Jamais de millisecondes, jamais de timecode. */
 export function formaterDuree(secondes: number): string {
   if (!Number.isFinite(secondes) || secondes < 0) return '';
@@ -320,7 +380,8 @@ export async function lireRenduDeSession(
   }
 
   if (c.rendu === null || c.rendu === undefined) return { sorte: 'aucun' };
-  const rendu = renduDepuisReponse(c.rendu);
+  // Le bloc `montage` voyage a cote du rendu dans la meme reponse.
+  const rendu = renduDepuisReponse(c.rendu, (c as Record<string, unknown>).montage);
   // Une charge utile qu'on ne sait pas relire n'est pas « aucun rendu » : le
   // dire effacerait de l'écran un travail qui existe.
   if (!rendu) return { sorte: 'erreur', message: 'Réponse illisible.' };
