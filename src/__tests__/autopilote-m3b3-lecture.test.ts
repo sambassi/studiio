@@ -785,7 +785,16 @@ describe('Une clé stockée hors périmètre n est jamais ouverte', () => {
 // 9. LES DEUX ROUTES N ONT PAS DÉRIVÉ
 // ═══════════════════════════════════════════════════════════════════════════
 describe('Les routes de lecture restent des lectures', () => {
-  const lire = (relatif: string) => readFileSync(join(process.cwd(), relatif), 'utf-8')
+  /* ⚠️ L'ORCHESTRATION A DÉMÉNAGÉ (A_0b) : elle sert AUSSI l'Autopilote
+     automatique, qui n'a pas de session. Le code n'a pas été réécrit — il vit
+     dans deux fichiers, et CERTAINS invariants se lisent sur leur union. */
+  const lire = (relatif: string) => (
+    readFileSync(join(process.cwd(), relatif), 'utf-8')
+    + (relatif.includes('analyse/route.ts')
+      ? '\n' + readFileSync(
+        join(process.cwd(), 'src/lib/autopilot/analyse/analyse-orchestration.ts'), 'utf-8')
+      : '')
+  )
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
 

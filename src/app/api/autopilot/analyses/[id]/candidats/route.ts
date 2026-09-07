@@ -22,16 +22,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { lireAnalyse } from '@/lib/autopilot/analyse/service';
+import { lireDerniereGeneration } from '@/lib/autopilot/analyse/candidat-service';
 import {
-  chargerMoteurCandidats, resultatCandidatsEtapeValide,
-  FOURNISSEUR_CANDIDATS, diagnosticCandidatsSur,
-} from '@/lib/autopilot/analyse/moteur-candidat';
-import {
-  creerGeneration, majGeneration, lireDerniereGeneration,
-} from '@/lib/autopilot/analyse/candidat-service';
-import { CANDIDATS_MAX } from '@/lib/autopilot/analyse/candidat-contrat';
-import { lireObjectifCommunicationUtilisateur } from '@/lib/autopilot/analyse/objectif-compte';
-import { objectifPeutChangerLeMontage } from '@/lib/autopilot/analyse/objectif-score';
+  SOCLE_CANDIDATS_ABSENT, genererCandidatsPourAnalyse,
+} from '@/lib/autopilot/analyse/candidat-orchestration';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -46,27 +40,8 @@ export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 /** Le message d'un socle non appliqué — le même esprit qu'en M3-B1. */
-const SOCLE_CANDIDATS_ABSENT =
-  'La table des passages suggérés n’existe pas encore sur ce serveur.';
 
 /** Ce que chaque motif d'étape dit à l'écran, et avec quel statut. */
-const REFUS_CANDIDATS: Record<string, { message: string; statut: number }> = {
-  aucune_image: {
-    message: 'Aucune vignette lisible pour cette analyse.', statut: 422,
-  },
-  analyse_inexploitable: {
-    message: 'Cette analyse ne contient pas de quoi proposer des passages.', statut: 422,
-  },
-  fournisseur_absent: {
-    message: 'La recherche de passages n’est pas activée sur ce serveur.', statut: 503,
-  },
-  fournisseur_en_erreur: {
-    message: 'La recherche de passages a échoué.', statut: 502,
-  },
-  resultat_candidats_invalide: {
-    message: 'La recherche de passages a rendu un résultat inexploitable.', statut: 500,
-  },
-};
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -112,211 +87,18 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     }
     const userId = session.user.id;
 
-    // ── L'analyse source ──────────────────────────────────────────────────
-    const { analyse, motif } = await lireAnalyse(userId, params.id);
-    if (motif === 'socle_absent') {
-      return NextResponse.json(
-        { ok: false, error: SOCLE_CANDIDATS_ABSENT, motif: 'socle_absent' }, { status: 503 },
-      );
-    }
-    if (!analyse) {
-      return NextResponse.json({ ok: false, error: 'Analyse introuvable' }, { status: 404 });
-    }
-
-    // ⚠️ `reussie`, ET PAS SEULEMENT « terminée ».
-    //
-    // Une analyse `echouee` porte parfois une extraction valide et un visuel
-    // manquant. Y chercher des passages reviendrait à demander au modèle de
-    // choisir des moments dans une description qui n'existe pas.
-    if (analyse.etat !== 'reussie') {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: 'L’analyse doit être terminée avec succès.',
-          motif: 'analyse_non_reussie',
-        },
-        { status: 409 },
-      );
-    }
-
-    const duree = analyse.dureeSecondes;
-    if (typeof duree !== 'number' || !Number.isFinite(duree) || duree <= 0) {
-      return NextResponse.json(
-        { ok: false, error: REFUS_CANDIDATS.analyse_inexploitable.message, motif: 'analyse_inexploitable' },
-        { status: 422 },
-      );
-    }
-    if (!Array.isArray(analyse.vignettes) || analyse.vignettes.length === 0) {
-      return NextResponse.json(
-        { ok: false, error: REFUS_CANDIDATS.aucune_image.message, motif: 'aucune_image' },
-        { status: 422 },
-      );
-    }
-
-    // ── La ligne, AVANT tout travail ──────────────────────────────────────
-    const creation = await creerGeneration(userId, analyse.id, analyse.rushId);
-    if (creation.motif === 'socle_absent') {
-      return NextResponse.json(
-        { ok: false, error: SOCLE_CANDIDATS_ABSENT, motif: 'socle_absent' }, { status: 503 },
-      );
-    }
-    if (creation.motif === 'generation_active_existante') {
-      // 409 : la contrainte de la base a tranché, pas un `if` de cette route.
-      return NextResponse.json(
-        {
-          ok: false,
-          error: 'Une recherche de passages est déjà en cours pour cette analyse.',
-          motif: 'generation_active_existante',
-        },
-        { status: 409 },
-      );
-    }
-    const generation = creation.generation!;
-
-    // ── Le moteur ─────────────────────────────────────────────────────────
-    //
-    // Chargé APRÈS la création : si le serveur n'a pas d'adaptateur, la ligne
-    // existe déjà et se clôt `echouee` avec un motif nommé, plutôt que de
-    // laisser l'utilisateur devant un bouton qui ne fait rien.
-    let moteur;
-    try {
-      moteur = await chargerMoteurCandidats();
-    } catch {
-      // `ConfigurationCandidatsInvalide` : le drapeau est posé mais la clé ou
-      // le modèle manque. Ce n'est pas « aucun fournisseur », c'est une
-      // configuration incomplète — et ça se dit.
-      await majGeneration(userId, generation.id, {
-        etat: 'echouee', etape: 'candidats', motifEchec: 'fournisseur_absent',
-      });
-      return NextResponse.json(
-        { ok: false, error: REFUS_CANDIDATS.fournisseur_absent.message, motif: 'fournisseur_absent' },
-        { status: 503 },
-      );
-    }
-
-    if (!moteur) {
-      await majGeneration(userId, generation.id, {
-        etat: 'echouee', etape: 'candidats', motifEchec: 'fournisseur_absent',
-      });
-      return NextResponse.json(
-        { ok: false, error: REFUS_CANDIDATS.fournisseur_absent.message, motif: 'fournisseur_absent' },
-        { status: 503 },
-      );
-    }
-
-    await majGeneration(userId, generation.id, { etat: 'en_cours', etape: 'candidats' });
-
-    // ── L'ENRICHISSEMENT SEMANTIQUE VAUT-IL SON APPEL ? ──────────────────
-    //
-    // ⚠️ L'OBJECTIF EST LU ICI, ET IL NE TOUCHE PAS A LA SELECTION. Il ne
-    // part pas au fournisseur qui CHOISIT les moments — l'etape 4A.1 a
-    // separe les deux pour de bon. Il ne sert qu'a decider si le SECOND
-    // appel, celui qui releve ce que montre chaque fenetre, a une chance de
-    // servir a quelque chose.
-    //
-    // Sans objectif, ou avec un objectif que rien ne distingue a l'image
-    // (`inscriptions`, `reservations`, `leads`…), on ne paie pas un releve
-    // que `politiqueDePlan` refusera ensuite de lire. Le montage reste
-    // `m3g-v2`, exactement comme avant ce lot.
-    const objectifCompte = await lireObjectifCommunicationUtilisateur(userId);
-    const enrichissementUtile = objectifPeutChangerLeMontage(objectifCompte);
-
-    // ⚠️ UN SEUL APPEL. Aucune reprise, quoi qu'il arrive.
-    let brut: unknown;
-    try {
-      brut = await moteur({
-        userId,
-        analysisId: analyse.id,
-        vignettes: analyse.vignettes,
-        dureeSecondes: duree,
-        contexte: {
-          resume: analyse.resume ?? '',
-          textesVisibles: (analyse.textesVisibles ?? []) as ContexteTextes,
-          qualite: (analyse.qualite ?? {}) as Record<string, unknown>,
-        },
-        enrichissementUtile,
-      });
-    } catch {
-      await majGeneration(userId, generation.id, {
-        etat: 'echouee', etape: 'candidats', motifEchec: 'fournisseur_en_erreur',
-      });
-      return NextResponse.json(
-        { ok: false, error: REFUS_CANDIDATS.fournisseur_en_erreur.message, motif: 'fournisseur_en_erreur' },
-        { status: 502 },
-      );
-    }
-
-    const resultat = resultatCandidatsEtapeValide(brut);
-    if (!resultat) {
-      await majGeneration(userId, generation.id, {
-        etat: 'echouee', etape: 'candidats', motifEchec: 'resultat_candidats_invalide',
-      });
-      return NextResponse.json(
-        {
-          ok: false,
-          error: REFUS_CANDIDATS.resultat_candidats_invalide.message,
-          motif: 'resultat_candidats_invalide',
-        },
-        { status: 500 },
-      );
-    }
-
-    if (!resultat.ok) {
-      // ⚠️ LA CAUSE FINE VA AU JOURNAL, ET NULLE PART AILLEURS.
-      //
-      // Le motif public ne change pas, et le nom d'un champ interne n'a rien
-      // à faire devant l'utilisateur. Une seule ligne, et seulement pour ce
-      // motif : les autres n'ont pas de détail à donner, et
-      // `fournisseur_en_erreur` porte un message de fournisseur qu'on ne
-      // recopie surtout pas.
-      if (resultat.motif === 'resultat_candidats_invalide' && resultat.detail !== undefined) {
-        console.warn(
-          `[autopilote][candidats] resultat_candidats_invalide generation=${generation.id} `
-          + `diagnostic=${diagnosticCandidatsSur(resultat.detail)}`,
-        );
-      }
-      const refus = REFUS_CANDIDATS[resultat.motif] ?? REFUS_CANDIDATS.resultat_candidats_invalide;
-      await majGeneration(userId, generation.id, {
-        etat: 'echouee', etape: 'candidats', motifEchec: resultat.motif,
-      });
-      return NextResponse.json(
-        { ok: false, error: refus.message, motif: resultat.motif }, { status: refus.statut },
-      );
-    }
-
-    // ── LA SEULE ÉCRITURE DE `reussie` DE TOUT LE CHEMIN ──────────────────
-    //
-    // Ceinture de dernier moment : le contrat borne déjà la liste, mais ce
-    // qui entre en base ne doit jamais dépendre d'un seul contrôle.
-    const candidats = resultat.candidats.slice(0, CANDIDATS_MAX);
-
-    const clot = await majGeneration(userId, generation.id, {
-      etat: 'reussie',
-      etape: 'candidats',
-      // ⚠️ LE MODÈLE RÉELLEMENT EMPLOYÉ, pas l'étiquette générique posée
-      // avant l'appel. La valeur vient d'une CONSTANTE de l'adaptateur,
-      // jamais d'un champ de la réponse.
-      fournisseurs: {
-        candidats: { ...FOURNISSEUR_CANDIDATS, modele: resultat.modele },
-      },
-      candidats,
-      usage: resultat.usage,
-      motifEchec: null,
-    });
-    if (!clot.ok) {
-      return NextResponse.json(
-        { ok: false, error: 'Résultat non consigné.', motif: clot.motif }, { status: 409 },
-      );
-    }
-
-    const { generation: finale } = await lireDerniereGeneration(userId, analyse.id);
-    return NextResponse.json({ ok: true, generation: finale }, { status: 201 });
+    /* ⚠️ L'ORCHESTRATION A DÉMÉNAGÉ — LA ROUTE N'EN GARDE QUE L'HABILLAGE.
+       Les 200 lignes qui vivaient ici sont dans `candidat-orchestration.ts`,
+       mot pour mot : seuls les quatorze `NextResponse.json(x, {status:n})`
+       sont devenus `reponse(x, n)`. La raison n'est pas esthétique — tant que
+       ce bloc était ici, « Trouver les meilleurs passages » exigeait une
+       session, et l'Autopilote automatique devait attendre qu'un humain
+       clique. Le cron appelle désormais la MÊME fonction. */
+    const r = await genererCandidatsPourAnalyse(userId, params.id);
+    return NextResponse.json(r.corps, { status: r.statut });
   } catch (e: unknown) {
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : 'Erreur' }, { status: 500 },
     );
   }
 }
-
-/** Les textes visibles, tels que M3-B4 les a validés. */
-type ContexteTextes = ReadonlyArray<{ texte: string; seconde: number; confiance: number }>;

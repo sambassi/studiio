@@ -83,6 +83,12 @@ describe('Les deux morceaux parlent le MÊME vocabulaire', () => {
     // dit aussi en clair, pour qui lit les tests avant le type.
     const route = readFileSync(
       resolve(__dirname, '../app/api/autopilot/rushes/[id]/analyse/route.ts'), 'utf-8',
+    ) + '\n' + readFileSync(
+  /* ⚠️ L'ORCHESTRATION A DÉMÉNAGÉ (A_0b) : elle a quitté la route pour servir
+     AUSSI l'Autopilote automatique, qui n'a pas de session. Le code n'a pas
+     été réécrit — il vit dans deux fichiers, et l'invariant se lit sur leur
+     union. */
+      resolve(__dirname, '../lib/autopilot/analyse/analyse-orchestration.ts'), 'utf-8',
     );
     for (const motif of [
       'cle_hors_perimetre', 'objet_introuvable', 'stockage_injoignable',

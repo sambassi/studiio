@@ -479,6 +479,12 @@ describe('Une migration absente se dit, et NOMME son fichier', () => {
   it('M3-B2 n ajoute AUCUNE migration', () => {
     const route = readFileSync(
       join(process.cwd(), 'src/app/api/autopilot/rushes/[id]/analyse/route.ts'), 'utf-8',
+    ) + '\n' + readFileSync(
+      /* ⚠️ L'ORCHESTRATION A DÉMÉNAGÉ (lot A_0b) : elle a quitté la route
+         pour pouvoir servir AUSSI l'Autopilote automatique, qui n'a pas de
+         session. Le code n'a pas été réécrit — il vit dans deux fichiers,
+         et l'invariant se lit donc sur leur union. */
+      join(process.cwd(), 'src/lib/autopilot/analyse/analyse-orchestration.ts'), 'utf-8',
     );
     // Les seuls fichiers SQL cités sont ceux des lots précédents.
     const cites = [...route.matchAll(/\d{4}-\d{2}-\d{2}-[a-z0-9-]+\.sql/g)].map((m) => m[0]);
@@ -615,6 +621,12 @@ describe('Aucune URL de stockage, aucun secret ne sort', () => {
   it('la route ne signe aucune URL et ne parle à aucun fournisseur', () => {
     const source = readFileSync(
       join(process.cwd(), 'src/app/api/autopilot/rushes/[id]/analyse/route.ts'), 'utf-8',
+    ) + '\n' + readFileSync(
+      /* ⚠️ L'ORCHESTRATION A DÉMÉNAGÉ (lot A_0b) : elle a quitté la route
+         pour pouvoir servir AUSSI l'Autopilote automatique, qui n'a pas de
+         session. Le code n'a pas été réécrit — il vit dans deux fichiers,
+         et l'invariant se lit donc sur leur union. */
+      join(process.cwd(), 'src/lib/autopilot/analyse/analyse-orchestration.ts'), 'utf-8',
     );
     const code = source.replace(/\/\*[\s\S]*?\*\//g, '')
       .split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
@@ -892,6 +904,12 @@ describe('Le cadre d exécution', () => {
   it('la route tourne sur Node, en dynamique — jamais mise en cache', () => {
     const source = readFileSync(
       join(process.cwd(), 'src/app/api/autopilot/rushes/[id]/analyse/route.ts'), 'utf-8',
+    ) + '\n' + readFileSync(
+      /* ⚠️ L'ORCHESTRATION A DÉMÉNAGÉ (lot A_0b) : elle a quitté la route
+         pour pouvoir servir AUSSI l'Autopilote automatique, qui n'a pas de
+         session. Le code n'a pas été réécrit — il vit dans deux fichiers,
+         et l'invariant se lit donc sur leur union. */
+      join(process.cwd(), 'src/lib/autopilot/analyse/analyse-orchestration.ts'), 'utf-8',
     );
     expect(source).toContain("export const runtime = 'nodejs'");
     expect(source).toContain("export const dynamic = 'force-dynamic'");

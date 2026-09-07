@@ -772,7 +772,15 @@ describe('Aucun consommateur ne peut porter une clé de l espace bloqué', () =>
     .replace(/from\s+['"][^'"]+['"]/g, 'from ""')
     .replace(/import\s*\(\s*(?:\/\*[^*]*\*\/\s*)?['"][^'"]+['"]\s*\)/g, 'import("")')
     .replace(/require\s*\(\s*['"][^'"]+['"]\s*\)/g, 'require("")')
-    .replace(/[`'"][^`'"\n]*\/api\/[^`'"\n]*[`'"]/g, '""');
+    .replace(/[`'"][^`'"\n]*\/api\/[^`'"\n]*[`'"]/g, '""')
+    /* ⚠️ UN LITTÉRAL QUI NOMME UN FICHIER SOURCE N'EST PAS UNE CLÉ D'OBJET.
+       Le message « …extraction.ts n'est pas branché » dit à un ingénieur QUOI
+       regarder ; il ne fabrique aucun chemin de stockage. Il était invisible
+       tant que ce message vivait dans une route — écartée par son chemin — et
+       le lot A_0b l'a déplacé dans `src/lib`. La règle est donc affinée, pas
+       relâchée : seuls les littéraux se terminant par `.ts`/`.tsx` sortent, et
+       une vraie clé (`…/analyse/<id>/vignette-01.jpg`) continue de mordre. */
+    .replace(/[`'"][^`'"\n]*\.tsx?[^`'"\n]*[`'"]/g, '""');
 
   function producteursDeCleAnalyse(entrees: Array<{ fichier: string; code: string }>) {
     return entrees

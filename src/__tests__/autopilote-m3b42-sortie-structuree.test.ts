@@ -76,6 +76,22 @@ const ANALYSE = 'a-m3b42';
 const SOURCE_ROUTE = resolve(
   process.cwd(), 'src/app/api/autopilot/rushes/[id]/analyse/route.ts',
 );
+/**
+ * ⚠️ L'ANALYSE VIT DÉSORMAIS DANS DEUX FICHIERS, ET C'EST VOULU (lot A_0b).
+ *
+ * Les 640 lignes d'orchestration ont quitté la route pour
+ * `analyse-orchestration.ts` : tant qu'elles y étaient, seule une session
+ * pouvait analyser un rush, et l'Autopilote automatique ne pouvait pas
+ * partir d'un rush brut. Le code n'a pas été réécrit, il a déménagé.
+ *
+ * Ces tests lisent donc l'UNION des deux fichiers. Chaque invariant qu'ils
+ * tenaient — présences, absences, comptes — reste vrai sur l'union, puisque
+ * le code n'existe qu'une seule fois au total.
+ */
+const SOURCE_ORCHESTRATION = resolve(
+  process.cwd(), 'src/lib/autopilot/analyse/analyse-orchestration.ts',
+);
+const lireAnalyseSource = () => `${readFileSync(SOURCE_ROUTE, 'utf8')}\n${readFileSync(SOURCE_ORCHESTRATION, 'utf8')}`;
 const SOURCE_CONTRAT = resolve(
   process.cwd(), 'src/lib/autopilot/analyse/visuel-contrat.ts',
 );
@@ -511,7 +527,7 @@ describe('M3-B4.2 — `diagnosticVisuelSur` ne laisse passer que notre forme', (
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('M3-B4.2 — la route journalise sans rien exposer', () => {
-  const source = () => readFileSync(SOURCE_ROUTE, 'utf8');
+  const source = () => lireAnalyseSource();
 
   it('14. il y a EXACTEMENT une écriture de journal dans la route', () => {
     const lignes = source().match(/console\.[a-z]+\(/g) ?? [];

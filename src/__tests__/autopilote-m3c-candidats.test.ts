@@ -75,6 +75,22 @@ const DUREE = 40;
 const SOURCE_ROUTE = resolve(
   process.cwd(), 'src/app/api/autopilot/analyses/[id]/candidats/route.ts',
 );
+/**
+ * ⚠️ LA GÉNÉRATION DE CANDIDATS VIT DÉSORMAIS DANS DEUX FICHIERS (lot A_0b).
+ *
+ * Les 200 lignes d'orchestration ont quitté la route pour
+ * `candidat-orchestration.ts` : tant qu'elles y étaient, « Trouver les
+ * meilleurs passages » exigeait une session, et l'Autopilote automatique
+ * devait attendre qu'un humain clique. Le code n'a pas été réécrit.
+ *
+ * Ces tests lisent donc l'UNION des deux fichiers : chaque invariant reste
+ * vrai, puisque le code n'existe qu'une seule fois au total.
+ */
+const SOURCE_CANDIDATS_ORCH = resolve(
+  process.cwd(), 'src/lib/autopilot/analyse/candidat-orchestration.ts',
+);
+const lireCandidatsSource = () => `${readFileSync(SOURCE_ROUTE, 'utf8')}\n`
+  + readFileSync(SOURCE_CANDIDATS_ORCH, 'utf8');
 const MIGRATION = resolve(process.cwd(), 'migrations/2026-09-02-rush-candidate-sets.sql');
 
 function jpeg(octets = 2048): Buffer {
@@ -684,7 +700,7 @@ describe('M3-C — le diagnostic ne laisse passer que notre forme', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('M3-C — la route et le socle', () => {
-  const route = () => readFileSync(SOURCE_ROUTE, 'utf8');
+  const route = () => lireCandidatsSource();
   const migration = () => readFileSync(MIGRATION, 'utf8');
 
   it('23bis. la route exige l authentification et le propriétaire', () => {

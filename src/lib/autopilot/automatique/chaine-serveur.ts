@@ -37,9 +37,15 @@
  * sondage et rend l'issue immédiatement lisible.
  */
 import { lireRush } from '@/lib/autopilot/tournage/service';
+import { lireDerniereAnalyse } from '@/lib/autopilot/analyse/service';
+import { analyseActive } from '@/lib/autopilot/analyse/contrat';
+import { executerAnalyseRush } from '@/lib/autopilot/analyse/analyse-orchestration';
+import {
+  genererCandidatsPourAnalyse,
+} from '@/lib/autopilot/analyse/candidat-orchestration';
 import { lireAnalyse } from '@/lib/autopilot/analyse/service';
 import {
-  lireGenerationParId,
+  lireGenerationParId, lireDerniereGeneration,
 } from '@/lib/autopilot/analyse/candidat-service';
 import {
   lireDerniereTranscriptionReussie,
@@ -72,8 +78,10 @@ import type { IssueM3, MotifM3 } from './contrat';
 export interface DemandeM3Automatique {
   userId: string;
   rushId: string;
-  analysisId: string;
-  candidateSetId: string;
+  /** `null` : la chaîne lancera l'analyse elle-même. */
+  analysisId: string | null;
+  /** `null` : la chaîne demandera les candidats elle-même. */
+  candidateSetId: string | null;
   format: FormatMontage;
   dureeCibleSecondes: number;
   /** La recette audio du compte — musique, volumes, son du rush. */
@@ -89,15 +97,101 @@ const echec = (motif: MotifM3, detail: string | null = null): IssueM3 =>
  * Rend TOUJOURS une issue, jamais une exception : un cron qui traite dix
  * comptes ne doit pas s'arrêter au premier rush abîmé.
  */
+
+/**
+ * Prépare un rush brut : analyse, puis candidats — mais seulement si besoin.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ NE JAMAIS RAPPELER UN FOURNISSEUR DONT LE RÉSULTAT EXISTE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * L'analyse fait tourner ffmpeg et un moteur visuel ; les candidats font
+ * tourner Sonnet. Les deux coûtent du temps et de l'argent, et leurs
+ * résultats sont persistés. Chaque étape commence donc par une LECTURE, et ne
+ * travaille que si cette lecture ne rend rien d'exploitable.
+ *
+ * ⚠️ ET NE JAMAIS DOUBLER UN TRAVAIL EN VOL. Une analyse `en_attente` ou
+ * `en_cours` — lancée par un humain il y a deux minutes, ou par le cycle
+ * précédent — n'est ni une réussite ni un échec. La base l'interdirait de
+ * toute façon (`rush_analyses_active_unique`, qui rend 409), mais s'y
+ * heurter ferait remonter un échec là où il n'y a qu'une attente. On rend
+ * « ignoré », et le cycle suivant reprendra.
+ */
+async function preparer(
+  userId: string, rushId: string,
+  analysisId: string | null, candidateSetId: string | null,
+): Promise<{ analysisId: string; candidateSetId: string } | IssueM3> {
+  let idAnalyse = analysisId;
+
+  if (idAnalyse === null) {
+    const { analyse } = await lireDerniereAnalyse(userId, rushId);
+    if (analyse && analyseActive(analyse.etat)) {
+      return { sorte: 'ignore', motif: 'analyse_en_cours' };
+    }
+    if (analyse?.etat === 'reussie') {
+      idAnalyse = analyse.id;
+    } else {
+      const { rush } = await lireRush(userId, rushId);
+      if (!rush) return { sorte: 'ignore', motif: 'aucun_rush_analyse' };
+      /* LA MEME fonction que le bouton « Analyser » de l'écran : ni copie, ni
+         variante. C'est ce qui garantit que l'automatique et le manuel
+         analysent exactement pareil. */
+      const r = await executerAnalyseRush(userId, rushId, rush);
+      if (r.statut !== 201) {
+        return r.statut === 409 || r.statut === 429
+          ? { sorte: 'ignore', motif: 'analyse_en_cours' }
+          : { sorte: 'echec', motif: 'analyse_echouee', detail: String(r.corps.motif ?? r.statut) };
+      }
+      const apres = await lireDerniereAnalyse(userId, rushId);
+      if (apres.analyse?.etat !== 'reussie') {
+        return { sorte: 'echec', motif: 'analyse_echouee', detail: null };
+      }
+      idAnalyse = apres.analyse.id;
+    }
+  }
+
+  let idCandidats = candidateSetId;
+  if (idCandidats === null) {
+    const { generation } = await lireDerniereGeneration(userId, idAnalyse);
+    if (generation && (generation.etat === 'en_attente' || generation.etat === 'en_cours')) {
+      return { sorte: 'ignore', motif: 'candidats_en_cours' };
+    }
+    if (generation?.etat === 'reussie') {
+      idCandidats = generation.id;
+    } else {
+      // LA MEME fonction que « Trouver les meilleurs passages ».
+      const r = await genererCandidatsPourAnalyse(userId, idAnalyse);
+      if (r.statut !== 201) {
+        return r.statut === 409 || r.statut === 429
+          ? { sorte: 'ignore', motif: 'candidats_en_cours' }
+          : { sorte: 'echec', motif: 'candidats_echoues', detail: String(r.corps.motif ?? r.statut) };
+      }
+      const apres = await lireDerniereGeneration(userId, idAnalyse);
+      if (apres.generation?.etat !== 'reussie') {
+        return { sorte: 'echec', motif: 'candidats_echoues', detail: null };
+      }
+      idCandidats = apres.generation.id;
+    }
+  }
+  return { analysisId: idAnalyse, candidateSetId: idCandidats };
+}
+
 export async function monterAvecM3(d: DemandeM3Automatique): Promise<IssueM3> {
   const { userId } = d;
 
+  /* ── La préparation, si le rush est brut ──────────────────────────────
+     ⚠️ C'EST CE QUI FAIT D'A_0b UN AUTOPILOTE. Avant ce lot, un rush sans
+     analyse faisait simplement ignorer le cycle : la production automatique
+     s'arrêtait à ce qu'un humain avait bien voulu préparer. */
+  const pret = await preparer(userId, d.rushId, d.analysisId, d.candidateSetId);
+  if ('sorte' in pret) return pret;
+
   // ── La matière : génération, analyse, rush, transcription ────────────
-  const { generation } = await lireGenerationParId(userId, d.candidateSetId);
+  const { generation } = await lireGenerationParId(userId, pret.candidateSetId);
   if (!generation || generation.etat !== 'reussie') {
     return { sorte: 'ignore', motif: 'candidats_absents' };
   }
-  const { analyse } = await lireAnalyse(userId, d.analysisId);
+  const { analyse } = await lireAnalyse(userId, pret.analysisId);
   if (!analyse || analyse.etat !== 'reussie') {
     return { sorte: 'ignore', motif: 'analyse_absente' };
   }

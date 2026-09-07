@@ -60,7 +60,16 @@ export function moteurDepuisConfig(brut: unknown): MoteurAutopilote {
 export const MOTIFS_M3 = [
   'aucun_rush_analyse',
   'analyse_absente',
+  /* ⚠️ « EN COURS » N'EST NI UNE REUSSITE NI UN ECHEC. Une analyse deja en
+     vol — lancee par un humain il y a deux minutes, ou par le cycle
+     precedent — ne doit pas en declencher une seconde : la base l'interdit
+     de toute facon (`rush_analyses_active_unique`), et insister ferait
+     tourner un fournisseur pour rien. On attend le cycle suivant. */
+  'analyse_en_cours',
+  'analyse_echouee',
   'candidats_absents',
+  'candidats_en_cours',
+  'candidats_echoues',
   'coupes_vides',
   'clips_echoues',
   'plan_impossible',

@@ -27,8 +27,10 @@ import { lireDerniereGeneration } from '@/lib/autopilot/analyse/candidat-service
 /** Un rush prêt à être monté, avec la matière que M3 exige. */
 export interface RushMontable {
   rushId: string;
-  analysisId: string;
-  candidateSetId: string;
+  /** `null` quand le rush n'a encore aucune analyse réussie. */
+  analysisId: string | null;
+  /** `null` quand aucun jeu de candidats réussi n'existe. */
+  candidateSetId: string | null;
   /** Le rang du rush dans sa session — il sert la rotation, rien d'autre. */
   derniereUtilisation: string | null;
 }
@@ -59,14 +61,14 @@ async function rushesVerifies(userId: string): Promise<{ id: string }[]> {
  * ⚠️ CE QUE CETTE FONCTION NE FAIT PAS, DÉLIBÉRÉMENT
  * ─────────────────────────────────────────────────────────────────────────
  *
- * Elle ne LANCE ni analyse ni génération de candidats. Ces deux étapes
- * coûtent un fournisseur externe, plusieurs minutes, et leur orchestration
- * vit aujourd'hui à l'intérieur de deux routes HTTP — l'automatiser demande
- * de l'en extraire, ce qui est un lot à part entière.
+ * Elle ne LANCE rien : elle CHOISIT. La préparation — analyse, candidats —
+ * appartient à la chaîne, qui sait la conduire et l'interrompre proprement.
+ * Ce module reste une lecture, et c'est ce qui le rend simple à tenir.
  *
- * Conséquence assumée et à dire clairement : la passerelle monte la matière
- * DÉJÀ analysée. Un compte qui n'a jamais ouvert un rush dans l'application
- * n'a rien à monter, et le cycle est ignoré — pas échoué.
+ * ⚠️ DEPUIS A_0b, UN RUSH BRUT EST UN CHOIX VALIDE. Il est rendu avec
+ * `analysisId: null` : c'est la chaîne qui décidera de l'analyser. Mais un
+ * rush DÉJÀ prêt passe toujours devant — sinon un compte disposant de dix
+ * rushes analysés paierait quand même un fournisseur à chaque cycle.
  *
  * `evites` porte les rushes déjà montés dans ce cycle : sans lui, deux
  * montages du même cycle repartiraient du même rush et se ressembleraient.
@@ -74,15 +76,27 @@ async function rushesVerifies(userId: string): Promise<{ id: string }[]> {
 export async function choisirRushMontable(
   userId: string, evites: ReadonlySet<string> = new Set(),
 ): Promise<RushMontable | null> {
-  for (const rush of await rushesVerifies(userId)) {
-    if (evites.has(rush.id)) continue;
+  /* ⚠️ DEUX PASSES, ET L'ORDRE COMPTE. On cherche D'ABORD un rush entierement
+     pret : le monter ne coute rien de plus qu'un encodage. Ce n'est que si
+     aucun ne l'est qu'on rend un rush brut, dont la preparation appellera des
+     fournisseurs. Sans cet ordre, un compte disposant de dix rushes prets
+     paierait quand meme une analyse a chaque cycle. */
+  const verifies = (await rushesVerifies(userId)).filter((r) => !evites.has(r.id));
 
+  const bruts: RushMontable[] = [];
+  for (const rush of verifies) {
     const { analyse } = await lireDerniereAnalyse(userId, rush.id);
-    if (!analyse || analyse.etat !== 'reussie') continue;
-
+    if (!analyse || analyse.etat !== 'reussie') {
+      bruts.push({ rushId: rush.id, analysisId: null, candidateSetId: null,
+        derniereUtilisation: null });
+      continue;
+    }
     const { generation } = await lireDerniereGeneration(userId, analyse.id);
-    if (!generation || generation.etat !== 'reussie') continue;
-
+    if (!generation || generation.etat !== 'reussie') {
+      bruts.push({ rushId: rush.id, analysisId: analyse.id, candidateSetId: null,
+        derniereUtilisation: null });
+      continue;
+    }
     return {
       rushId: rush.id,
       analysisId: analyse.id,
@@ -90,5 +104,5 @@ export async function choisirRushMontable(
       derniereUtilisation: null,
     };
   }
-  return null;
+  return bruts[0] ?? null;
 }

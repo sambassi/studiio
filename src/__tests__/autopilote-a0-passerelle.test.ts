@@ -229,10 +229,15 @@ describe('7. Les deux banques de rushes', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 describe('8. Le vocabulaire des issues', () => {
   it('8.1 les motifs sont une liste fermée', () => {
+    /* A_0b a ajouté les états intermédiaires : « en cours » n'est ni une
+       réussite ni un échec, et « échouée » n'est pas « absente ». Sans cette
+       distinction, une analyse lancée deux minutes plus tôt par un humain
+       serait comptée comme une panne à chaque cycle. */
     expect(MOTIFS_M3).toEqual([
-      'aucun_rush_analyse', 'analyse_absente', 'candidats_absents',
-      'coupes_vides', 'clips_echoues', 'plan_impossible', 'rendu_echoue',
-      'socle_absent',
+      'aucun_rush_analyse', 'analyse_absente', 'analyse_en_cours',
+      'analyse_echouee', 'candidats_absents', 'candidats_en_cours',
+      'candidats_echoues', 'coupes_vides', 'clips_echoues', 'plan_impossible',
+      'rendu_echoue', 'socle_absent',
     ]);
   });
 

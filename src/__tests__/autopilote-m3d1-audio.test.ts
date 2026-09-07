@@ -136,9 +136,41 @@ import { ETAPES_ANALYSE } from '@/lib/autopilot/analyse/contrat';
 const SOURCE_ROUTE = resolve(
   process.cwd(), 'src/app/api/autopilot/rushes/[id]/analyse/route.ts',
 );
+/**
+ * ⚠️ L'ANALYSE VIT DÉSORMAIS DANS DEUX FICHIERS, ET C'EST VOULU (lot A_0b).
+ *
+ * Les 640 lignes d'orchestration ont quitté la route pour
+ * `analyse-orchestration.ts` : tant qu'elles y étaient, seule une session
+ * pouvait analyser un rush, et l'Autopilote automatique ne pouvait pas
+ * partir d'un rush brut. Le code n'a pas été réécrit, il a déménagé.
+ *
+ * Ces tests lisent donc l'UNION des deux fichiers. Chaque invariant qu'ils
+ * tenaient — présences, absences, comptes — reste vrai sur l'union, puisque
+ * le code n'existe qu'une seule fois au total.
+ */
+const SOURCE_ORCHESTRATION = resolve(
+  process.cwd(), 'src/lib/autopilot/analyse/analyse-orchestration.ts',
+);
+const lireAnalyseSource = () => `${readFileSync(SOURCE_ROUTE, 'utf8')}\n${readFileSync(SOURCE_ORCHESTRATION, 'utf8')}`;
 const SOURCE_ROUTE_M3C = resolve(
   process.cwd(), 'src/app/api/autopilot/analyses/[id]/candidats/route.ts',
 );
+/**
+ * ⚠️ LA GÉNÉRATION DE CANDIDATS VIT DÉSORMAIS DANS DEUX FICHIERS (lot A_0b).
+ *
+ * Les 200 lignes d'orchestration ont quitté la route pour
+ * `candidat-orchestration.ts` : tant qu'elles y étaient, « Trouver les
+ * meilleurs passages » exigeait une session, et l'Autopilote automatique
+ * devait attendre qu'un humain clique. Le code n'a pas été réécrit.
+ *
+ * Ces tests lisent donc l'UNION des deux fichiers : chaque invariant reste
+ * vrai, puisque le code n'existe qu'une seule fois au total.
+ */
+const SOURCE_CANDIDATS_ORCH = resolve(
+  process.cwd(), 'src/lib/autopilot/analyse/candidat-orchestration.ts',
+);
+const lireCandidatsSource = () => `${readFileSync(SOURCE_ROUTE_M3C, 'utf8')}\n`
+  + readFileSync(SOURCE_CANDIDATS_ORCH, 'utf8');
 const SOURCE_AUDIO = resolve(process.cwd(), 'src/lib/autopilot/analyse/audio.ts');
 const SOURCE_CONTRAT = resolve(process.cwd(), 'src/lib/autopilot/analyse/audio-contrat.ts');
 
@@ -524,7 +556,7 @@ describe('10. Rien de signé, rien de stocké, rien de brut n’entre en base', 
 
 // ═════════════════════════════════════════════════════════════════════════
 describe('11-13. Le pipeline : le visuel est EN BASE avant que l’audio commence', () => {
-  const route = readFileSync(SOURCE_ROUTE, 'utf8');
+  const route = lireAnalyseSource();
 
   /** Une extraction réussie, sans ffmpeg. */
   function moteurExtractionDouble() {
@@ -705,7 +737,7 @@ describe('11-13. Le pipeline : le visuel est EN BASE avant que l’audio commenc
 
 describe('14. M3-C n’est pas touché', () => {
   it('la route des candidats exige toujours une analyse `reussie`', () => {
-    const m3c = readFileSync(SOURCE_ROUTE_M3C, 'utf8');
+    const m3c = lireCandidatsSource();
     expect(m3c).toContain("analyse.etat !== 'reussie'");
     expect(m3c).toContain('analyse_non_reussie');
     // M3-D1 n'a aucune raison d'apparaître dans le chemin des candidats.
@@ -726,7 +758,7 @@ describe('15-16. Rien d’externe, rien de facturé, rien à migrer', () => {
   });
 
   it('15bis. aucun débit de crédits sur ce chemin', () => {
-    for (const s of [...sources, readFileSync(SOURCE_ROUTE, 'utf8')]) {
+    for (const s of [...sources, lireAnalyseSource()]) {
       expect(s).not.toContain('@/lib/credits');
       expect(s).not.toContain('debiter_credits');
     }
@@ -781,7 +813,7 @@ describe('La capacité, et le budget qu’elle annonce', () => {
     // faire refuser de nouveau, et compterait ce refus comme une panne.
     expect(BUDGET_EXTRACTION_MS + TIMEOUT_VISUEL_MS + BUDGET_AUDIO_MS)
       .toBeLessThanOrEqual(RETRY_APRES_SECONDES * 1000);
-    expect(readFileSync(SOURCE_ROUTE, 'utf8'))
+    expect(lireAnalyseSource())
       .toContain(`export const maxDuration = ${RETRY_APRES_SECONDES}`);
   });
 });

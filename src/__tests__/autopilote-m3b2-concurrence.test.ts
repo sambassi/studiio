@@ -380,6 +380,11 @@ const MODULE_ROUTE = 'src/app/api/autopilot/rushes/[id]/analyse/route.ts';
 
 const chemin = (relatif: string) => join(process.cwd(), relatif);
 const source = (relatif: string) => readFileSync(chemin(relatif), 'utf-8');
+/* ⚠️ L'ORCHESTRATION A DÉMÉNAGÉ (A_0b) : elle sert AUSSI l'Autopilote
+   automatique, qui n'a pas de session. Le code n'a pas été réécrit — il vit
+   dans deux fichiers, et CERTAINS invariants se lisent sur leur union. */
+const sourceAnalyseEntiere = () => source(MODULE_ROUTE) + '\n'
+  + source('src/lib/autopilot/analyse/analyse-orchestration.ts');
 const sansCommentaires = (code: string) => code
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
@@ -735,7 +740,10 @@ const importsDe = (code: string) => [...new Set([
 ])].sort();
 
 describe('La route n a pas dérivé en accueillant le limiteur', () => {
-  const code = sansCommentaires(source(MODULE_ROUTE));
+  /* ⚠️ L'UNION DES DEUX FICHIERS. L'appel au moteur a suivi
+     l'orchestration dans `analyse-orchestration.ts` (A_0b) ; l'invariant
+     « une seule fois » porte sur le code, pas sur le fichier. */
+  const code = sansCommentaires(sourceAnalyseEntiere());
 
   it('elle ne matérialise toujours le rush par aucun moyen connu', () => {
     for (const [nom, motif] of MATERIALISATIONS) {
@@ -942,10 +950,14 @@ describe.skipIf(!capacitePresente)('L ordre du chemin est celui qui tient l isol
     const capacite = sansCommentaires(source(MODULE_CAPACITE));
     expect(capacite, 'motif absent du module de capacité')
       .toContain("'analyse_capacite_saturee'");
-    expect(code, 'la route n importe pas le motif').toContain('MOTIF_CAPACITE_SATUREE');
-    expect(code, 'en-tête `Retry-After` absent : un 429 sans consigne de '
+    /* Le refus faute de place a suivi l'orchestration : on lit l'union. */
+    const analyse = sansCommentaires(sourceAnalyseEntiere());
+    expect(analyse, 'le motif n est importé nulle part').toContain('MOTIF_CAPACITE_SATUREE');
+    expect(analyse, 'en-tête `Retry-After` absent : un 429 sans consigne de '
       + 'relance ne dit pas quand revenir').toContain('Retry-After');
-    expect(code).toContain('429');
+    /* Le statut lui aussi a suivi : il est écrit `429` dans l'orchestration,
+       et rhabillé en HTTP par la route. */
+    expect(analyse).toContain('429');
   });
 });
 
