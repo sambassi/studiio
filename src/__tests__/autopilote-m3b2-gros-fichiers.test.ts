@@ -792,7 +792,16 @@ describe('M3-B2 n ajoute AUCUNE migration', () => {
       (f) => f > '2026-09-01-rush-analyses.sql' && !AUTORISEES.has(f),
     );
     const fautives = posterieures.filter((f) => {
-      const sql = readFileSync(chemin(join('migrations', f)), 'utf-8').toLowerCase();
+      /* ⚠️ LE CODE, PAS LES COMMENTAIRES — et l'en-tête de ce test le disait
+         déjà pour « ffmpeg » : « un commentaire a le droit d'annoncer la
+         suite ». Le verrou de créneau (A_0c) EXPLIQUE en commentaire pourquoi
+         il ne touche ni aux rushes ni aux analyses ; le compter comme fautif
+         pour l'avoir dit interdirait d'écrire la raison d'une décision.
+         La règle, elle, ne bouge pas : ce que le SQL EXÉCUTE reste interdit. */
+      const sql = readFileSync(chemin(join('migrations', f)), 'utf-8')
+        .split('\n').filter((l) => !l.trim().startsWith('--'))
+        .join('\n').replace(/--.*$/gm, '')
+        .toLowerCase();
       return sql.includes('rush') || sql.includes('analyse');
     });
     expect(fautives).toEqual([]);

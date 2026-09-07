@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { moteurDepuisConfig, repliDepuisConfig } from '@/lib/autopilot/automatique/contrat';
+import {
+  nouveauJeton, reclamerCreneau, conclureCreneau,
+} from '@/lib/autopilot/automatique/creneau';
 import { choisirRushMontable } from '@/lib/autopilot/automatique/rush-banque';
 import { monterAvecM3 } from '@/lib/autopilot/automatique/chaine-serveur';
 import { montageDepuisStyle, audioDepuisStyle } from '@/lib/autopilot/textStyle';
@@ -325,10 +328,41 @@ export async function GET(req: NextRequest) {
           continue;
         }
 
+        /* ══ LE VERROU, AVANT LA PREMIERE DEPENSE ═══════════════════════
+           ⚠️ `dejaFaits` CI-DESSUS N'EST PAS UN VERROU — c'est une lecture,
+           faite une fois par compte, comparee en JavaScript. Deux crons qui
+           se croisent y lisent tous les deux « creneau libre », puis
+           analysent tous les deux, appellent Sonnet tous les deux, encodent
+           tous les deux et debitent tous les deux. Il reste utile comme
+           raccourci (il evite un aller-retour), mais la SECURITE vient
+           d'ici : la base tranche, en une instruction.
+
+           Et le verrou est pris ICI, avant l'aiguillage : le placer plus bas
+           laisserait le doublon payer l'analyse avant de decouvrir qu'il
+           n'avait pas la main. */
+        const jetonCreneau = nouveauJeton();
+        const creneau = await reclamerCreneau(userId, jeton, jetonCreneau);
+        if (creneau.issue !== 'reclame') {
+          /* Aucun de ces cas n'est une erreur : un autre worker travaille, ou
+             a deja fini. Compter cela comme un echec ferait sonner une alarme
+             a chaque cycle sur une installation a plusieurs workers. */
+          if (creneau.issue === 'deja_terminee') dejaFaits.add(jeton);
+          doublons += 1;
+          if (creneau.issue === 'socle_absent') {
+            /* ⚠️ ON NE PRODUIT PAS SANS VERROU. Tant que la migration n'est
+               pas appliquee, produire quand meme reintroduirait exactement le
+               defaut que ce lot ferme — en silence, et le jour du
+               deploiement. */
+            console.warn('[autopilote][creneau] verrou indisponible : cycle ignore');
+          }
+          continue;
+        }
+
         // ── Un montage, isole ────────────────────────────────────────────
         // Chromium peut refuser de demarrer, un rush etre illisible, un
         // televersement echouer. Rien de tout cela ne doit emporter le reste
         // du cycle.
+        let creneauConclu = false;
         try {
           /* ══ L'AIGUILLAGE DES DEUX MOTEURS ══════════════════════════════
              ⚠️ ICI, ET PAS AILLEURS. A cet instant tout ce qui dit QUOI
@@ -391,6 +425,9 @@ export async function GET(req: NextRequest) {
               dejaFaits.add(jeton);
               reussis += 1;
               m3Reussis += 1;
+              await conclureCreneau(userId, jeton, jetonCreneau, 'terminee',
+                { renduId: issue.renduId });
+              creneauConclu = true;
               try {
                 await deductCredits(userId, COST_PER_VIDEO, 'render',
                   referenceOperation('autopilote', `m3-${issue.renduId}`));
@@ -479,6 +516,8 @@ export async function GET(req: NextRequest) {
             .from('scheduled_posts')
             .insert(toPostRow({ userId, post: postUtilise, config, videoUrl, metadata }));
           if (insertError) throw new Error(`insertion du post : ${insertError.message}`);
+          await conclureCreneau(userId, jeton, jetonCreneau, 'terminee');
+          creneauConclu = true;
 
           // Debit APRES coup, comme le chemin manuel : la video est en ligne
           // et le post existe. Debiter avant ferait payer un rendu qui peut
@@ -521,6 +560,25 @@ export async function GET(req: NextRequest) {
             `[Autopilote/Cron] ${userId} — montage ${post.scheduledDate} echoue :`,
             err instanceof Error ? err.message : err,
           );
+        } finally {
+          /* ⚠️ LE CRENEAU EST TOUJOURS RENDU, QUEL QUE SOIT LE CHEMIN.
+             Sans ce `finally`, un `continue` du milieu — M3 qui ignore, un
+             format inconnu, une exception — laisserait le creneau tenu
+             jusqu'a l'expiration du bail. Il serait REPRENABLE, jamais
+             perdu, mais le compte attendrait des minutes pour rien.
+
+             « echouee » et non « terminee » : le travail n'a pas abouti, et
+             le prochain cycle doit pouvoir reprendre ce creneau tout de
+             suite. La trace, elle, reste — on ne supprime pas la ligne. */
+          if (!creneauConclu) {
+            try {
+              await conclureCreneau(userId, jeton, jetonCreneau, 'echouee',
+                { motifEchec: 'cycle_interrompu' });
+            } catch (e) {
+              console.error('[autopilote][creneau] liberation impossible',
+                e instanceof Error ? e.message : e);
+            }
+          }
         }
       }
 
