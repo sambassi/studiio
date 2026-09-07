@@ -649,7 +649,31 @@ export default function AutopilotPanel({
                  deux corbeilles, pour deux magasins differents. Dans le
                  tiroir, elle garde tout son comportement et cesse d'etre
                  confondue avec les rushes du tournage. */
-              avance={<div className="space-y-3">{/* ── Banque de rushes ─────────────────────────────────────────── */}
+              /* ⚠️ CE QUI SERT A L'AUTOPILOTE AUTONOME VIT ICI, ET NON DANS
+                 LE PARCOURS MANUEL.
+
+                 La banque de rushes et les affiches sont lues par
+                 `/api/cron/autopilot` — le mode autonome — et par lui seul.
+                 « Creer ma video » ne s'en sert PAS : `lib/autopilot/poster.ts`
+                 n'a qu'un appelant, et ce n'est pas la chaine manuelle.
+                 Posees au milieu des reglages du montage, elles se lisaient
+                 pourtant comme deux etapes obligatoires avant le bouton.
+
+                 Elles ne sont ni supprimees ni modifiees — meme composants,
+                 meme `config`, meme format. Elles demenagent, et l'en-tete
+                 dit desormais a quoi elles servent. */
+              avance={(
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-xs font-medium text-gray-300" data-autonome-titre>
+                      Autopilote autonome
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-gray-400">
+                      Réglages utilisés par les créations automatiques. La vidéo
+                      que vous créez ici ne s’en sert pas.
+                    </p>
+                  </div>
+                  <div className="space-y-3" data-autonome-rushes>{/* ── Banque de rushes ─── */}
           <div>
             <div className="flex items-center justify-between gap-2 mb-2">
               <p className="text-xs font-medium text-gray-300">
@@ -714,68 +738,8 @@ export default function AutopilotPanel({
                 if (url) enregistrer({ rushUrls: [...config.rushUrls, url] });
               }}
             />
-          </div></div>}
-              montageDefaut={montageDepuisStyle(config.designStyle)}
-              onEnregistrerDefaut={(m) => enregistrer({
-                // ⚠️ FUSION, JAMAIS REMPLACEMENT : `designStyle` porte aussi
-                // les polices et les icônes de cartes. Les écraser ici les
-                // perdrait sans un mot.
-                designStyle: { ...config.designStyle, montage: m },
-              })}
-              audioDefaut={audioDepuisStyle(config.designStyle)}
-              onEnregistrerAudioDefaut={async (audio) => {
-                // ⚠️ MEME FUSION QUE POUR `montage`, ET POUR LA MEME RAISON :
-                // `designStyle` porte aussi les polices, les icones et le
-                // reglage de montage. Les ecraser ici les perdrait sans un mot.
-                await enregistrer({
-                  designStyle: { ...config.designStyle, audio },
-                });
-                return true;
-              }}
-              onSessionChange={onSessionChange}
-              onVideoLancee={onVideoLancee}
-              objectifCetteVideo={objectifCetteVideo}
-              /* ⚠️ LE BROUILLON REND L'OBJECTIF, IL NE LE DECIDE PAS. Le
-                 panneau des sessions sait QUEL rush on regarde, donc quel
-                 brouillon relire ; l'objectif, lui, vit ici avec le wizard
-                 qui l'ecrit. Il remonte, et rien de plus : aucune route n'est
-                 appelee, le defaut du compte ne bouge pas. */
-              onObjectifRestaure={setObjectifCetteVideo}
-            />
-          </div>
-
-{/* ── MON OBJECTIF ─────────────────────────────────────────────
-              POURQUOI la video existe. Regle une fois, applique ensuite tout
-              seul — et modifiable pour une seule video sans toucher au
-              defaut du compte.
-
-              ⚠️ AVANT « Mon style », ET C'EST L'ORDRE DE LA DECISION. On
-              choisit ce qu'on veut obtenir, puis a quoi cela ressemble. */}
-          <MonObjectifPanel
-            objectifEnregistre={monObjectif}
-            chargement={monObjectifChargement}
-            onEnregistrerDefaut={enregistrerMonObjectif}
-            onAppliquerACetteVideo={setObjectifCetteVideo}
-            objectifCetteVideo={objectifCetteVideo}
-          />
-
-{/* ── MON STYLE ────────────────────────────────────────────────
-              L'identite visuelle du compte : look, logo, bandeau de fin,
-              transitions. Reglee UNE FOIS, appliquee ensuite toute seule aux
-              videos de l'Autopilote.
-
-              ⚠️ SA PROPRE ROUTE, ET NON `PUT /api/autopilot/config`. Celle-ci
-              reecrit TOUTES les colonnes — cadence, mode, plateformes,
-              plancher de credits : un champ oublie par l'ecran remettrait un
-              reglage a son defaut sans un mot. Et elle ne verifie pas la
-              PROPRIETE du logo, ce que `PUT /api/autopilot/profil-creatif`
-              fait avant d'ecrire. */}
-          <MonStylePanel
-            profilEnregistre={monStyle}
-            chargement={monStyleChargement}
-            onEnregistrer={enregistrerMonStyle}
-          />
-
+          </div></div>
+                  <div data-autonome-affiches>
 {/* ── VOS AFFICHES ─────────────────────────────────────────────
               ⚠️ L'AUTOPILOTE CHOISISSAIT SEUL. Il cherche une photo chez
               Pexels a partir du theme — un bon defaut, et ce n'en est qu'un :
@@ -784,7 +748,7 @@ export default function AutopilotPanel({
               Ici, et non dans une etape de plus : c'est la meme idee que la
               banque de rushes, au meme endroit. Le wizard reste a six
               etapes. */}
-          <div className="pt-3 border-t border-gray-800">
+          <div>
             <p className="text-xs font-medium text-gray-300 mb-2">Affiches</p>
             <div className="grid grid-cols-2 gap-1.5">
               {POSTER_MODES.map((m: AutopilotPosterMode) => (
@@ -885,6 +849,70 @@ export default function AutopilotPanel({
               </div>
             )}
           </div>
+                  </div>
+                </div>
+              )}
+              montageDefaut={montageDepuisStyle(config.designStyle)}
+              onEnregistrerDefaut={(m) => enregistrer({
+                // ⚠️ FUSION, JAMAIS REMPLACEMENT : `designStyle` porte aussi
+                // les polices et les icônes de cartes. Les écraser ici les
+                // perdrait sans un mot.
+                designStyle: { ...config.designStyle, montage: m },
+              })}
+              audioDefaut={audioDepuisStyle(config.designStyle)}
+              onEnregistrerAudioDefaut={async (audio) => {
+                // ⚠️ MEME FUSION QUE POUR `montage`, ET POUR LA MEME RAISON :
+                // `designStyle` porte aussi les polices, les icones et le
+                // reglage de montage. Les ecraser ici les perdrait sans un mot.
+                await enregistrer({
+                  designStyle: { ...config.designStyle, audio },
+                });
+                return true;
+              }}
+              onSessionChange={onSessionChange}
+              onVideoLancee={onVideoLancee}
+              objectifCetteVideo={objectifCetteVideo}
+              /* ⚠️ LE BROUILLON REND L'OBJECTIF, IL NE LE DECIDE PAS. Le
+                 panneau des sessions sait QUEL rush on regarde, donc quel
+                 brouillon relire ; l'objectif, lui, vit ici avec le wizard
+                 qui l'ecrit. Il remonte, et rien de plus : aucune route n'est
+                 appelee, le defaut du compte ne bouge pas. */
+              onObjectifRestaure={setObjectifCetteVideo}
+            />
+          </div>
+
+{/* ── MON OBJECTIF ─────────────────────────────────────────────
+              POURQUOI la video existe. Regle une fois, applique ensuite tout
+              seul — et modifiable pour une seule video sans toucher au
+              defaut du compte.
+
+              ⚠️ AVANT « Mon style », ET C'EST L'ORDRE DE LA DECISION. On
+              choisit ce qu'on veut obtenir, puis a quoi cela ressemble. */}
+          <MonObjectifPanel
+            objectifEnregistre={monObjectif}
+            chargement={monObjectifChargement}
+            onEnregistrerDefaut={enregistrerMonObjectif}
+            onAppliquerACetteVideo={setObjectifCetteVideo}
+            objectifCetteVideo={objectifCetteVideo}
+          />
+
+{/* ── MON STYLE ────────────────────────────────────────────────
+              L'identite visuelle du compte : look, logo, bandeau de fin,
+              transitions. Reglee UNE FOIS, appliquee ensuite toute seule aux
+              videos de l'Autopilote.
+
+              ⚠️ SA PROPRE ROUTE, ET NON `PUT /api/autopilot/config`. Celle-ci
+              reecrit TOUTES les colonnes — cadence, mode, plateformes,
+              plancher de credits : un champ oublie par l'ecran remettrait un
+              reglage a son defaut sans un mot. Et elle ne verifie pas la
+              PROPRIETE du logo, ce que `PUT /api/autopilot/profil-creatif`
+              fait avant d'ecrire. */}
+          <MonStylePanel
+            profilEnregistre={monStyle}
+            chargement={monStyleChargement}
+            onEnregistrer={enregistrerMonStyle}
+          />
+
         </div>
       )}
 
