@@ -562,6 +562,12 @@ describe('10. La géométrie de l’aperçu borne la LARGEUR', () => {
      * CINQ appels — `CadreFormat`, l'affiche, le lecteur, puis les deux de la
      * version precedente ajoutes par LOT PC-5 (sa porte et son lecteur).
      *
+     * QUATRE emplacements de `<CadreFormat>` depuis que le rush prepare passe
+     * devant la video deja faite : aucun rush, aucune video, creation en
+     * cours, et desormais l'apercu prioritaire de l'etat « prete ». Le
+     * composant est le MEME — donc toujours un seul appel a
+     * `geometrieApercu`, et le compte de cinq ne bouge pas.
+     *
      * ⚠️ CE QUE CE TEST TIENT N'EST PAS UN NOMBRE, C'EST UNE REGLE : une seule
      * formule de geometrie, aucune exception. Le compte n'est qu'une facon de
      * remarquer un nouvel emplacement — quand il change, il faut verifier que
@@ -570,7 +576,7 @@ describe('10. La géométrie de l’aperçu borne la LARGEUR', () => {
      * `aspect-ratio` ecrit a la main.
      */
     expect(src.match(/geometrieApercu\(/g) ?? []).toHaveLength(5);
-    expect(src.match(/<CadreFormat/g) ?? []).toHaveLength(3);
+    expect(src.match(/<CadreFormat/g) ?? []).toHaveLength(4);
     // Et plus aucun `aspect-ratio` écrit à la main, qui échapperait à la règle.
     expect(src).not.toContain('aspectRatio: `${');
   });

@@ -227,3 +227,59 @@ describe('6. L’identifiant d’analyse remonte jusqu’à l’aperçu', () => 
     expect(src).toContain('analyseApercuId={tournageRegarde.analyseApercuId}');
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('8. Le rush préparé passe devant la vidéo déjà faite', () => {
+  const VIDEO = {
+    dureeSecondes: 13.1, largeur: 1080, hauteur: 1920,
+    fps: 30, octets: 5493401, chemin: '/api/autopilot/rendus-montage/x/fichier',
+  };
+  const prete = vi.fn(async () => new Response(JSON.stringify({
+    ok: true,
+    rendu: { id: 'r1', etat: 'reussie', etape: null, motif: null, video: VIDEO },
+    montage: null,
+  }), { headers: { 'Content-Type': 'application/json' } }));
+
+  const monterPrete = (analyseApercuId: string | null) => render(
+    <VideosPretes
+      sessionId={SESSION}
+      aucunRush={false}
+      formatSouhaite="9:16"
+      fetcher={prete as never}
+      analyseApercuId={analyseApercuId}
+    />,
+  );
+
+  it('8.1 avec un rush sélectionné, son aperçu est en tête', async () => {
+    // ⚠️ LE DÉFAUT DU TEST LIVE : on changeait de rush et la colonne montrait
+    // encore la vidéo rendue la fois d'avant.
+    monterPrete(ANALYSE_A);
+    await waitFor(() => expect(
+      document.querySelector('[data-videos-apercu-prioritaire]')).not.toBeNull());
+    expect(image()!.getAttribute('src'))
+      .toBe(`/api/autopilot/analyses/${ANALYSE_A}/vignettes/0`);
+  });
+
+  it('8.2 la vidéo prête n’est pas perdue — elle est nommée', async () => {
+    monterPrete(ANALYSE_A);
+    await waitFor(() => expect(
+      document.querySelector('[data-videos-etat="prete"]')).not.toBeNull());
+    expect(document.body.textContent).toContain('Dernière vidéo créée');
+    expect(document.body.textContent).toContain('Rush sélectionné');
+  });
+
+  it('8.3 sans rush sélectionné, l’écran ne change pas d’un mot', async () => {
+    monterPrete(null);
+    await waitFor(() => expect(
+      document.querySelector('[data-videos-etat="prete"]')).not.toBeNull());
+    expect(document.querySelector('[data-videos-apercu-prioritaire]')).toBeNull();
+    expect(document.body.textContent).toContain('Votre vidéo est prête');
+  });
+
+  it('8.4 et toujours aucun MP4 chargé tant qu’on n’a rien demandé', async () => {
+    monterPrete(ANALYSE_A);
+    await waitFor(() => expect(
+      document.querySelector('[data-videos-etat="prete"]')).not.toBeNull());
+    expect(document.querySelector('video')).toBeNull();
+  });
+});

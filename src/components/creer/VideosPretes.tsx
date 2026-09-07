@@ -518,8 +518,21 @@ export default function VideosPretes({
 
   return (
     <section className="space-y-1.5" data-videos-pretes data-videos-etat="prete">
+      {/* ── LE RUSH QU'ON PRÉPARE PASSE DEVANT LA VIDÉO DÉJÀ FAITE ────────
+          ⚠️ TEST LIVE DU 2026-09-07 : on sélectionne un autre rush, et la
+          colonne de droite continue de montrer la vidéo rendue la fois
+          d'avant. On règle un montage en regardant un média qui n'a plus
+          rien à voir avec lui. La vidéo prête n'est pas perdue pour autant :
+          elle descend d'un cran, sous son propre titre, avec son lecteur et
+          ses actions intacts. */}
+      {apercu !== null && (
+        <div className="space-y-1" data-videos-apercu-prioritaire>
+          <Titre texte="Rush sélectionné" />
+          <CadreFormat />
+        </div>
+      )}
       <div className="flex items-center justify-between gap-2">
-        <Titre texte="Votre vidéo est prête" fort />
+        <Titre texte={apercu !== null ? 'Dernière vidéo créée' : 'Votre vidéo est prête'} fort />
         {/* ⚠️ AUCUN IDENTIFIANT ICI. Ni rendu, ni plan, ni algorithme : ce
             sont des reperes de diagnostic, pas des informations d'usage. Ce
             que le menu montre — duree, dimensions, poids — est ce qu'on lit
