@@ -34,6 +34,9 @@ import { bucketAutorise } from '@/lib/storage/buckets';
 import { cheminFfmpeg, cheminFfprobe } from '@/lib/ffmpeg/binaires';
 import { clientMinio, lecteurMinio } from '@/lib/storage/minio-client';
 import { masquerUrls, lancer } from './extraction';
+import {
+  argumentsMesureSilence, argumentsCoupeSilence, silenceInitialSecondes,
+} from './musique-silence';
 import { arrondirSeconde, nombreFini } from './clip-contrat';
 import type { Recadrage } from './montage-contrat';
 import {
@@ -672,6 +675,34 @@ export async function encoder(
     return { ok: true, motif: null, diagnostic };
   }
   return { ok: false, motif: motifProcessus(proc, 'encodage_echoue'), diagnostic };
+}
+
+/**
+ * Mesure le blanc initial d'une musique, puis la coupe si besoin.
+ *
+ * Rend le chemin À UTILISER : le fichier coupé s'il y avait un blanc, le
+ * fichier d'origine sinon. Aucune erreur n'est propagée — une musique qu'on
+ * n'a pas su mesurer se joue telle quelle, exactement comme avant ce lot.
+ * Un rendu ne doit pas échouer parce qu'un silence n'a pas pu être compté.
+ */
+export async function couperSilenceInitialMusique(
+  source: string, destination: string,
+): Promise<{ chemin: string; coupeSecondes: number }> {
+  const mesure = await lancer(cheminFfmpeg(), [...argumentsMesureSilence(source)], {
+    timeoutMs: TIMEOUT_MESURE_MS, maxSortie: SORTIE_MAX,
+  });
+  if (mesure.introuvable || mesure.timeout) return { chemin: source, coupeSecondes: 0 };
+  const coupe = silenceInitialSecondes(mesure.stderr);
+  if (coupe <= 0) return { chemin: source, coupeSecondes: 0 };
+
+  const taille = await lancer(
+    cheminFfmpeg(), [...argumentsCoupeSilence(source, destination, coupe)],
+    { timeoutMs: TIMEOUT_MESURE_MS, maxSortie: SORTIE_MAX },
+  );
+  if (taille.code !== 0 || taille.timeout || taille.introuvable) {
+    return { chemin: source, coupeSecondes: 0 };
+  }
+  return { chemin: destination, coupeSecondes: coupe };
 }
 
 export interface SondeSource {

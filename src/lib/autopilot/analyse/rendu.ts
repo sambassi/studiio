@@ -49,6 +49,7 @@ import {
   nomLogoLocale, sonderImage,
   nomMusiqueLocale, rendraDeLAudio, type MusiqueLocale,
   mesurer, ouvrirDossierRendu, rectangleCrop, sonderSource, sonderSourceAudio,
+  couperSilenceInitialMusique,
   supprimerObjetRendu,
   televerserRendu,
   type CibleRendu, type MesureRendu, type SourceLocale,
@@ -323,7 +324,16 @@ export async function produireMontage(
       const sondeMusique = await sonderSourceAudio(cheminMusique);
       if (sondeMusique.motif !== null) return echec(sondeMusique.motif, usage);
       if (!sondeMusique.aAudio) return echec('musique_illisible', usage);
-      musique = { chemin: cheminMusique };
+      /* ⚠️ LE BLANC DU DÉBUT EST COUPÉ ICI, ET SEULEMENT POUR LE RENDU.
+         Le fichier de l'utilisateur n'est pas touché : la coupe vit dans le
+         dossier temporaire et meurt avec lui. Et elle est faite AVANT que
+         `-stream_loop` n'entre en jeu — mesuré le 2026-09-07, un `-ss` à
+         l'entrée laisse le silence revenir à CHAQUE tour de boucle. */
+      const coupee = await couperSilenceInitialMusique(
+        cheminMusique, `${cheminMusique}-sans-blanc.wav`,
+      );
+      musique = { chemin: coupee.chemin };
+      usage.silenceMusiqueCoupeSecondes = coupee.coupeSecondes;
       usage.octetsMusique = descente.octets;
     }
 
